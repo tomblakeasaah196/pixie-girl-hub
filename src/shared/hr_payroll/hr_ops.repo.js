@@ -443,9 +443,10 @@ async function upsertAttendanceDay({ client, brand, input }) {
         is_offsite, offsite_distance_m, clock_in_address, clock_in_lat, clock_in_lng,
         last_clock_out_at, early_leave_minutes,
         clock_out_address, clock_out_lat, clock_out_lng, clock_out_is_offsite,
-        clock_out_distance_m, clock_in_ip, clock_out_ip)
+        clock_out_distance_m, clock_in_ip, clock_out_ip,
+        clock_in_device_recognized)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,
-             $22,$23,$24,$25,$26,$27,$28)
+             $22,$23,$24,$25,$26,$27,$28,$29)
      ON CONFLICT (profile_id, work_date) DO UPDATE SET
         status = EXCLUDED.status,
         expected_start_time = EXCLUDED.expected_start_time,
@@ -472,7 +473,8 @@ async function upsertAttendanceDay({ client, brand, input }) {
         clock_out_is_offsite = EXCLUDED.clock_out_is_offsite,
         clock_out_distance_m = EXCLUDED.clock_out_distance_m,
         clock_in_ip = EXCLUDED.clock_in_ip,
-        clock_out_ip = EXCLUDED.clock_out_ip
+        clock_out_ip = EXCLUDED.clock_out_ip,
+        clock_in_device_recognized = EXCLUDED.clock_in_device_recognized
      RETURNING *`,
     [
       brand,
@@ -503,6 +505,7 @@ async function upsertAttendanceDay({ client, brand, input }) {
       input.clock_out_distance_m ?? null,
       input.clock_in_ip || null,
       input.clock_out_ip || null,
+      input.clock_in_device_recognized ?? null,
     ],
   );
   return rows[0];
@@ -788,7 +791,7 @@ async function firstClockInsForDate({ client, profileIds, dateStr }) {
   const { rows } = await exec(client)(
     `SELECT DISTINCT ON (profile_id) profile_id, event_id, occurred_at,
             is_offsite, distance_m, formatted_address, latitude, longitude,
-            ip_address
+            ip_address, device_recognized
        FROM shared.staff_clock_events
       WHERE profile_id = ANY($1::uuid[])
         AND event_type = 'clock_in' AND accepted = true

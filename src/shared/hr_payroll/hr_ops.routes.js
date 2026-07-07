@@ -13,6 +13,8 @@
 const express = require("express");
 const c = require("./hr_ops.controller");
 const v = require("./hr_ops.validator");
+const dc = require("./devices.controller");
+const dv = require("./devices.validator");
 const { requirePermission } = require("../../middleware/rbac");
 
 // Side-effect: register HR subscribers (target-achieved → auto-bonus;
@@ -31,6 +33,13 @@ router.post("/me/leave", v.leaveRequest, c.requestLeave);
 router.post("/me/queries/:id/respond", v.queryRespond, c.respondToQuery);
 router.post("/me/onboarding", v.onboardingToggle, c.toggleOnboardingItem);
 
+// ── Device binding (My HR) — auth only, email-OTP gated ────
+router.get("/me/devices", dc.listMyDevices);
+router.post("/me/devices/enroll/start", dv.enrollStart, dc.startEnrollment);
+router.post("/me/devices/enroll/verify", dv.otp, dc.verifyEnrollment);
+router.post("/me/devices/:id/remove/start", dc.startRemoval);
+router.post("/me/devices/:id/remove/verify", dv.otp, dc.verifyRemoval);
+
 // ── Overview + analytics + reconcile ───────────────────────
 router.get("/overview", P("view"), c.getOverview);
 router.get("/analytics", P("view"), c.getAnalytics);
@@ -40,6 +49,10 @@ router.post("/attendance/reconcile", P("edit"), v.reconcile, c.reconcile);
 router.post("/attendance/reconcile-period", P("edit"), v.reconcilePeriod, c.reconcilePeriod);
 router.post("/attendance/apply-lapsed-offsite", P("edit"), c.applyLapsedOffsite);
 router.get("/attendance-days", P("view"), c.listAttendanceDays);
+
+// ── Device binding (HR & Staff) — every employee + change feed ──
+router.get("/devices", P("view"), dc.listAllDevices);
+router.get("/devices/changes", P("view"), dc.listChangeFeed);
 
 // ── Leave inbox ────────────────────────────────────────────
 router.get("/leave", P("view"), c.listLeave);

@@ -24,9 +24,11 @@ const appraisalRepo = require("./appraisal.repo");
 const rewardsRepo = require("./rewards.repo");
 const hrService = require("./hr.service");
 const attendanceRepo = require("../attendance/attendance.repo");
+const devicesRepo = require("./devices.repo");
 const calc = require("./lateness.calc");
 const geo = require("../attendance/geo.calc");
 const { evaluateClockTransition } = require("./clock.guard");
+const { evaluateDeviceRecognition } = require("./device.guard");
 const events = require("./hr.events");
 const { reverseGeocode } = require("../../services/geoapify.service");
 const { audit } = require("../../middleware/audit");
@@ -554,6 +556,7 @@ async function reconcileDay({ brand, user, date }) {
           clock_out_distance_m: clockOut ? clockOut.distance_m : null,
           clock_in_ip: clock ? clock.ip_address : null,
           clock_out_ip: clockOut ? clockOut.ip_address : null,
+          clock_in_device_recognized: clock ? clock.device_recognized : null,
         },
       });
 
@@ -833,6 +836,34 @@ async function selfClock({ brand, user, input, requestMeta = {} }) {
       throw new ConflictError(transition.message);
     }
 
+    // Device binding (000304): FLAG — never block — a punch from an
+    // un-enrolled device. The CEO is exempt (recognized = null). An employee
+    // who hasn't enrolled any device yet is neutral (null) so we don't
+    // red-flag the whole rollout; once they have devices, a punch whose
+    // fingerprint is outside that set is the buddy-punch signal (false).
+    let deviceRecognized = null;
+    let matchedDeviceId = null;
+    if (!user.is_ceo) {
+      const enrolledCount = await devicesRepo.countActive({
+        client,
+        profileId: profile.profile_id,
+      });
+      const match =
+        enrolledCount > 0 && input.device_fingerprint
+          ? await devicesRepo.findActiveByFingerprint({
+              client,
+              profileId: profile.profile_id,
+              fingerprint: input.device_fingerprint,
+            })
+          : null;
+      deviceRecognized = evaluateDeviceRecognition({
+        isCeo: user.is_ceo,
+        enrolledCount,
+        hasMatch: Boolean(match),
+      });
+      matchedDeviceId = match ? match.device_id : null;
+    }
+
     let decision = { is_offsite: false, matched_geofence_id: null, distance_m: null, reason: null };
     if (hasPoint && settings.geofence_enabled && mode.mode === "on_site") {
       const fences = await attendanceRepo.activeGeofences({ client, brand });
@@ -863,6 +894,8 @@ async function selfClock({ brand, user, input, requestMeta = {} }) {
           rejection_reason: decision.reason,
           is_offsite: decision.is_offsite,
           formatted_address: addressLabel,
+          device_recognized: deviceRecognized,
+          device_id: matchedDeviceId,
           occurred_at: null,
         },
       });
@@ -877,6 +910,47 @@ async function selfClock({ brand, user, input, requestMeta = {} }) {
         );
       }
       throw err;
+    }
+
+    // Device-binding side-effects. A recognised device gets its last-seen
+    // bumped; an UNKNOWN device on a clock-in raises an 'unknown_device' HR
+    // query and writes the change feed so it surfaces red on attendance and
+    // reaches HR & Staff. Only clock-in raises the query (one accepted
+    // clock-in per day → naturally de-duped); clock-out still records the flag.
+    if (deviceRecognized === true && matchedDeviceId) {
+      await devicesRepo.touchDevice({
+        client,
+        deviceId: matchedDeviceId,
+        ip: requestMeta.ip_address,
+      });
+    } else if (deviceRecognized === false && input.event_type === "clock_in") {
+      await repo.createQuery({
+        client,
+        brand,
+        input: {
+          profile_id: profile.profile_id,
+          query_type: "unknown_device",
+          severity: "high",
+          subject: `Clock-in from an unrecognised device on ${todayStr()}`,
+          details:
+            `You clocked in on ${todayStr()} from a device that isn't enrolled ` +
+            `for attendance. If this was you, enrol the device in My HR → My ` +
+            `devices. If it wasn't, tell HR immediately — someone may have ` +
+            `clocked in as you.`,
+          source: "auto",
+        },
+      });
+      await devicesRepo.logChange({
+        client,
+        business: profile.business,
+        profileId: profile.profile_id,
+        deviceId: null,
+        action: "flagged_unknown",
+        label: null,
+        fingerprint: input.device_fingerprint ?? null,
+        actorUserId: user.user_id,
+        note: `Clock-in from an unrecognised device on ${todayStr()}`,
+      });
     }
 
     // Immediate lateness feedback on clock-in (server time is authoritative).
@@ -897,8 +971,26 @@ async function selfClock({ brand, user, input, requestMeta = {} }) {
       });
     }
 
+    // Real-time attendance: carry a compact, ready-to-render row so the
+    // Attendance tab updates the instant someone punches — no waiting for the
+    // nightly reconcile (which now only settles the books at 21:00 Lagos).
+    // device_recognized === false drives the red unknown-device marker.
     events.emit("clock_event", {
-      brand, event_id: event.event_id, is_offsite: decision.is_offsite,
+      brand,
+      event_id: event.event_id,
+      is_offsite: decision.is_offsite,
+      live_row: {
+        profile_id: profile.profile_id,
+        display_name: profile.display_name || null,
+        event_type: event.event_type,
+        occurred_at: event.occurred_at,
+        is_offsite: decision.is_offsite,
+        distance_m: decision.distance_m,
+        address: event.formatted_address,
+        device_recognized: deviceRecognized,
+        late_minutes: lateMinutes,
+        status: lateMinutes > 0 ? "late" : "present",
+      },
     });
     return {
       event_id: event.event_id,
@@ -907,6 +999,7 @@ async function selfClock({ brand, user, input, requestMeta = {} }) {
       is_offsite: decision.is_offsite,
       distance_m: decision.distance_m,
       address: event.formatted_address,
+      device_recognized: deviceRecognized,
       late_minutes: lateMinutes,
       status: lateMinutes > 0 ? "late" : "present",
     };

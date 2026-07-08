@@ -1,5 +1,5 @@
 import { lazy, Suspense, type ComponentType } from "react";
-import { createBrowserRouter } from "react-router-dom";
+import { createBrowserRouter, Navigate } from "react-router-dom";
 import { AppShell } from "@/components/shell/AppShell";
 import { RequireAuth } from "@/components/auth/RequireAuth";
 import { CommandCenter } from "@/pages/CommandCenter";
@@ -290,7 +290,6 @@ const RetailPartnersPage = lazyWithRetry(() =>
     default: m.RetailPartnersPage,
   })),
 );
-const MyHrPage = lazyWithRetry(() => import("@/pages/hr/MyHrPage"));
 const HrStaffPage = lazyWithRetry(() => import("@/pages/hr/HrStaffPage"));
 const EmployeeProfilePage = lazyWithRetry(() => import("@/pages/hr/EmployeeProfilePage"));
 const PayrollPage = lazyWithRetry(() => import("@/pages/hr/PayrollPage"));
@@ -411,12 +410,10 @@ export const router = createBrowserRouter(
             { path: "contacts/staff/new", element: <EmployeeOnboardingPage /> },
             { path: "contacts/:id", element: <ContactProfilePage /> },
             {
+              // My HR moved into Workspace as a tab (module consolidation) —
+              // redirect old bookmarks/links rather than 404ing them.
               path: "my-hr",
-              element: (
-                <Suspense fallback={null}>
-                  <MyHrPage />
-                </Suspense>
-              ),
+              element: <Navigate to="/workspace?tab=my-hr" replace />,
             },
             {
               path: "hr",

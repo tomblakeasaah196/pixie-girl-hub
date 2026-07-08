@@ -125,5 +125,5 @@ export interface EventUpdateInput {
 
 // ── Workspace tab ───────────────────────────────────────────────────────
 
-export type WorkspaceTab = "my-day" | "calendar" | "tasks";
+export type WorkspaceTab = "my-day" | "calendar" | "tasks" | "my-hr";
 export type CalendarViewMode = "month" | "week" | "day" | "agenda";

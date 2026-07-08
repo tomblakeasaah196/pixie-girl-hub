@@ -129,7 +129,7 @@ export const MODULES: AppModule[] = [
   {
     key: "workspace",
     label: "Workspace",
-    description: "Tasks, calendar & my day",
+    description: "My day, calendar, tasks & My HR",
     group: "run",
     route: "/workspace",
     icon: CalendarDays,
@@ -248,14 +248,6 @@ export const MODULES: AppModule[] = [
     route: "/intercompany",
     icon: ArrowLeftRight,
     hidden: true, // out of scope for this project; keep for future clients
-  },
-  {
-    key: "my-hr",
-    label: "My HR",
-    description: "My earnings, leave & targets",
-    group: "people",
-    route: "/my-hr",
-    icon: Wallet,
   },
   {
     key: "hr",

@@ -76,6 +76,11 @@ describe("sql-agent summarise fallback", () => {
     expect(call.messages[0].content).toMatch(/Have the 27 orders/);
     expect(call.messages[0].content).toMatch(/sales_orders/);
     expect(r.replyText).toMatch(/sales_orders table for this brand/);
+    // Regression: every other Gemini caller in the codebase disables
+    // thinking for plain-text extraction — without it, Gemini 2.5 can burn
+    // the whole output budget on thinking and return empty text, which this
+    // fallback would then (wrongly) treat as "unavailable".
+    expect(call.thinkingBudget).toBe(0);
   });
 
   test("no fallback vendor → raw result is code-fenced, never bare JSON", async () => {

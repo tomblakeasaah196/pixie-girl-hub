@@ -797,23 +797,146 @@ async function getCustomer360({ brand, contact_id }) {
 const ngn = (v) => `₦${Number(v || 0).toLocaleString()}`;
 
 /**
- * Render a `product_share` (catalogue) or `send_invoice` card as plain
- * text for platforms with no native rich-card support wired up yet
- * (WhatsApp free-form / Instagram DM). Keeps the tap-to-order link and
- * price visible even without a synced Meta Commerce Catalog.
+ * Fetch fresh, authoritative display fields (name/description/price/
+ * image) for one shared-catalogue item straight from the catalogue
+ * tables, rather than trusting whatever was snapshotted onto the
+ * message at share time — prices and descriptions can change, and the
+ * snapshot never carried a description at all. Returns null if the
+ * item can no longer be found (deleted, etc.) so the caller can fall
+ * back to the snapshot.
+ */
+async function resolveProductForShare({ business, kind, ref_id }) {
+  if (!ref_id) return null;
+  const schema = `"${business}"`;
+  try {
+    if (kind === "styled") {
+      const styledRepo = require("../catalogue/styled.repo");
+      const s = await styledRepo.getById({ brand: business, id: ref_id });
+      if (!s || s.is_deleted) return null;
+      return {
+        name: s.name,
+        description: s.short_description || s.long_description || null,
+        price_ngn:
+          s.retail_price_ngn !== null && s.retail_price_ngn !== undefined
+            ? Number(s.retail_price_ngn)
+            : null,
+        image_url: s.primary_image_url || null,
+      };
+    }
+    if (kind === "bundle") {
+      const bundleService = require("../retention/bundle.service");
+      const b = await bundleService.getBundle({ brand: business, id: ref_id });
+      if (!b || b.is_active === false) return null;
+      return {
+        name: b.display_name,
+        description: b.description || null,
+        price_ngn:
+          b.effective_price_ngn !== null && b.effective_price_ngn !== undefined
+            ? Number(b.effective_price_ngn)
+            : Number(b.bundle_price_ngn || 0),
+        image_url: b.hero_image_url || null,
+      };
+    }
+    if (kind === "service") {
+      const { rows } = await query(
+        `SELECT name, short_description, long_description, base_price_ngn, image_url
+           FROM shared.service_offerings
+          WHERE service_id = $1 AND is_active = true`,
+        [ref_id],
+      );
+      const svc = rows[0];
+      if (!svc) return null;
+      return {
+        name: svc.name,
+        description: svc.short_description || svc.long_description || null,
+        price_ngn:
+          svc.base_price_ngn !== null && svc.base_price_ngn !== undefined
+            ? Number(svc.base_price_ngn)
+            : null,
+        image_url: svc.image_url || null,
+      };
+    }
+    // base product
+    const { rows } = await query(
+      `SELECT p.name, p.short_description, p.long_description,
+              (SELECT pi.cdn_url FROM ${schema}.product_images pi
+                WHERE pi.product_id = p.product_id
+                ORDER BY pi.is_primary DESC, pi.display_order LIMIT 1) AS image_url,
+              (SELECT pv.price_storefront_ngn FROM ${schema}.product_variants pv
+                WHERE pv.product_id = p.product_id AND pv.is_active = true
+                ORDER BY pv.is_default DESC, pv.created_at ASC LIMIT 1) AS price_ngn
+         FROM ${schema}.products p
+        WHERE p.product_id = $1 AND p.is_active = true`,
+      [ref_id],
+    );
+    const p = rows[0];
+    if (!p) return null;
+    return {
+      name: p.name,
+      description: p.short_description || p.long_description || null,
+      price_ngn:
+        p.price_ngn !== null && p.price_ngn !== undefined ? Number(p.price_ngn) : null,
+      image_url: p.image_url || null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Build one "card" per shared product — a professional-looking name +
+ * description + price, with the product photo as a real WhatsApp/IG
+ * media attachment (not just a text bullet). Falls back to the
+ * name/price snapshotted at share time when the live lookup can't find
+ * the item, and to a text-only card when there's no photo. A single
+ * closing card carries the tap-to-order link (every product in one
+ * catalogue share points at the same capture link) so it isn't
+ * repeated on every card.
+ */
+async function buildProductShareCards({ business, message }) {
+  const meta = message.metadata || {};
+  const products = Array.isArray(meta.products) ? meta.products : [];
+  const cards = [];
+  if (meta.intro) cards.push({ type: "text", body: meta.intro });
+
+  let capture_url = null;
+  for (const p of products) {
+    const fresh = await resolveProductForShare({
+      business,
+      kind: p.kind,
+      ref_id: p.id,
+    });
+    const name = fresh?.name || p.name;
+    const description = fresh?.description || null;
+    const price_ngn = fresh ? fresh.price_ngn : p.price;
+    const image_url = fresh?.image_url || p.image_url || null;
+    if (p.capture_url && !capture_url) capture_url = p.capture_url;
+
+    const bits = [`*${name}*`];
+    if (description) bits.push(description);
+    if (price_ngn !== null && price_ngn !== undefined) {
+      bits.push(`Price: ${ngn(price_ngn)}`);
+    }
+    const caption = bits.join("\n");
+    cards.push(
+      image_url ? { type: "image", media_url: image_url, caption } : { type: "text", body: caption },
+    );
+  }
+
+  if (capture_url) {
+    cards.push({
+      type: "text",
+      body: `🛍️ Ready to order? Tap to confirm & pay:\n${capture_url}`,
+    });
+  }
+  return cards;
+}
+
+/**
+ * Render a `send_invoice` card as plain text — invoices carry no
+ * photo, so unlike product_share this stays a single message.
  */
 function composeCardText(message, content) {
-  if (message.message_type === "product_share") {
-    const meta = message.metadata || {};
-    const products = Array.isArray(meta.products) ? meta.products : [];
-    const lines = products.map((p) => {
-      const hasPrice = p.price !== null && p.price !== undefined;
-      const bits = [`• ${p.name}${hasPrice ? ` — ${ngn(p.price)}` : ""}`];
-      if (p.capture_url) bits.push(`  Tap to order: ${p.capture_url}`);
-      return bits.join("\n");
-    });
-    return [meta.intro, ...lines].filter(Boolean).join("\n\n") || null;
-  }
   if (message.message_type === "send_invoice") {
     const meta = message.metadata || {};
     const bits = [`Invoice ${meta.invoice_number || ""}`.trim()];
@@ -859,25 +982,49 @@ async function resolveOutboundMedia(message, client) {
  * actually reach the customer instead of silently being dropped (only
  * the plain-text `content` used to be sent, regardless of type).
  */
-async function buildWhatsAppSend(message, content, client) {
+/**
+ * Build the whatsapp-send job payload(s) for a posted message, branching
+ * on message_type so attachments/catalogue-shares/invoice-cards
+ * actually reach the customer instead of silently being dropped (only
+ * the plain-text `content` used to be sent, regardless of type).
+ * Always returns an array — one job for most types, one job per
+ * product + a closing link for `product_share` (WhatsApp supports an
+ * image with its own caption, so each product is a single native
+ * image bubble).
+ */
+async function buildWhatsAppSends(message, content, client, business) {
   switch (message.message_type) {
     case "image":
     case "video":
     case "document":
     case "voice_note": {
       const media = await resolveOutboundMedia(message, client);
-      if (!media) return null;
+      if (!media) return [];
       const kind =
         message.message_type === "voice_note" ? "audio" : message.message_type;
-      return { kind, media_url: media.media_url, filename: media.filename, caption: content || undefined };
+      return [
+        {
+          kind,
+          media_url: media.media_url,
+          filename: media.filename,
+          caption: content || undefined,
+        },
+      ];
     }
-    case "product_share":
+    case "product_share": {
+      const cards = await buildProductShareCards({ business, message });
+      return cards.map((c) =>
+        c.type === "image"
+          ? { kind: "image", media_url: c.media_url, caption: c.caption }
+          : { kind: "text", body: c.body },
+      );
+    }
     case "send_invoice": {
       const body = composeCardText(message, content);
-      return body ? { kind: "text", body } : null;
+      return body ? [{ kind: "text", body }] : [];
     }
     default:
-      return content ? { kind: "text", body: content } : null;
+      return content ? [{ kind: "text", body: content }] : [];
   }
 }
 
@@ -920,8 +1067,8 @@ async function enqueueOutboundForChannel({
       });
       return;
     }
-    const send = await buildWhatsAppSend(message, content, client);
-    if (!send) {
+    const sends = await buildWhatsAppSends(message, content, client, channel.business);
+    if (sends.length === 0) {
       await repo.setMessageDelivery({
         message_id: message.message_id,
         delivery_status: "failed",
@@ -929,13 +1076,20 @@ async function enqueueOutboundForChannel({
       });
       return;
     }
-    await enqueue("whatsapp-send", "customer-whatsapp", {
-      brand: channel.business,
-      to,
-      ...send,
-      smartcomm_message_id: message.message_id,
-      channel_id: channel.channel_id,
-    });
+    // A product_share fans out into several native bubbles (one photo
+    // per product + a closing link) — every job carries the same
+    // smartcomm_message_id so any one of them completing marks the
+    // message "sent"; only the last to complete's provider ref sticks
+    // (fine — the tick reflects the overall share, not one bubble).
+    for (const send of sends) {
+      await enqueue("whatsapp-send", "customer-whatsapp", {
+        brand: channel.business,
+        to,
+        ...send,
+        smartcomm_message_id: message.message_id,
+        channel_id: channel.channel_id,
+      });
+    }
   } else if (platform === "instagram") {
     const recipient_id = c.ig_user_id || meta.ig_user_id;
     if (!recipient_id) {
@@ -953,7 +1107,7 @@ async function enqueueOutboundForChannel({
     const outsideWindow =
       channel.ig_window_expires_at &&
       new Date(channel.ig_window_expires_at) < new Date();
-    let jobPayload;
+    let jobPayloads;
     if (message.message_type === "image") {
       const media = await resolveOutboundMedia(message, client);
       if (!media) {
@@ -964,7 +1118,7 @@ async function enqueueOutboundForChannel({
         });
         return;
       }
-      jobPayload = { image_url: media.media_url };
+      jobPayloads = [{ image_url: media.media_url }];
     } else if (
       message.message_type === "video" ||
       message.message_type === "document" ||
@@ -980,6 +1134,28 @@ async function enqueueOutboundForChannel({
         delivery_error: "IG_MEDIA_TYPE_UNSUPPORTED",
       });
       return;
+    } else if (message.message_type === "product_share") {
+      // IG image attachments carry no caption field, unlike WhatsApp —
+      // each card becomes its own text bubble (name/description/price)
+      // immediately followed by the photo, rather than one combined
+      // bubble.
+      const cards = await buildProductShareCards({
+        business: channel.business,
+        message,
+      });
+      jobPayloads = cards.flatMap((card) =>
+        card.type === "image"
+          ? [{ text: card.caption }, { image_url: card.media_url }]
+          : [{ text: card.body }],
+      );
+      if (jobPayloads.length === 0) {
+        await repo.setMessageDelivery({
+          message_id: message.message_id,
+          delivery_status: "failed",
+          delivery_error: "NOTHING_TO_SEND",
+        });
+        return;
+      }
     } else {
       const body = composeCardText(message, content);
       if (!body) {
@@ -990,16 +1166,18 @@ async function enqueueOutboundForChannel({
         });
         return;
       }
-      jobPayload = { text: body };
+      jobPayloads = [{ text: body }];
     }
-    await enqueue("instagram-send", "customer-ig", {
-      brand: channel.business,
-      recipient_id,
-      ...jobPayload,
-      tag: outsideWindow ? "HUMAN_AGENT" : undefined,
-      smartcomm_message_id: message.message_id,
-      channel_id: channel.channel_id,
-    });
+    for (const jobPayload of jobPayloads) {
+      await enqueue("instagram-send", "customer-ig", {
+        brand: channel.business,
+        recipient_id,
+        ...jobPayload,
+        tag: outsideWindow ? "HUMAN_AGENT" : undefined,
+        smartcomm_message_id: message.message_id,
+        channel_id: channel.channel_id,
+      });
+    }
   } else if (platform === "email") {
     const to = c.email;
     if (!to) return;

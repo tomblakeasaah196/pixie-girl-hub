@@ -119,6 +119,44 @@ function quotaSnapshot({ used }) {
   };
 }
 
+// ── WhatsApp fallback contact ───────────────────────────────
+
+/**
+ * Normalise a Brand Profile phone number (Settings → Business Setup →
+ * Profile) into wa.me's digits-only, country-coded format. This platform
+ * serves Nigerian businesses only, so a local 0-prefixed number is assumed
+ * Nigerian (+234); anything already carrying a country code passes through
+ * with punctuation stripped.
+ */
+function toWhatsAppDigits(raw) {
+  const digits = String(raw || "").replace(/\D/g, "");
+  if (!digits) return null;
+  return digits.startsWith("0") ? `234${digits.slice(1)}` : digits;
+}
+
+/**
+ * When Praxis genuinely can't respond, the shopper should never hit a dead
+ * end — the storefront offers a "continue on WhatsApp" escape hatch using
+ * the brand's own contact number instead of a hardcoded support line, so it
+ * always matches whatever the business has set in its Brand Profile. Never
+ * throws: a lookup failure just means no WhatsApp button is offered.
+ */
+async function resolveWhatsAppSupport({ brand }) {
+  try {
+    const identity = await repo.getBrandIdentity({ brand });
+    const phone = identity && identity.phone ? String(identity.phone).trim() : null;
+    if (!phone) return null;
+    const wa_number = toWhatsAppDigits(phone);
+    return wa_number ? { phone, wa_number } : null;
+  } catch (err) {
+    logger.debug(
+      { err: err.message, brand },
+      "shade finder whatsapp support lookup skipped",
+    );
+    return null;
+  }
+}
+
 // ── Guest tokens ────────────────────────────────────────────
 
 function signGuestToken({ sid, brand, deviceKey }) {
@@ -225,6 +263,28 @@ function emitStage(brand, sid, stage, extra = {}) {
 }
 function emitReply(brand, sid, result) {
   events.emit("session.reply", { brand, session_id: sid, result });
+}
+
+/**
+ * gemini.service.js attaches the real diagnosis (HTTP status + Google's own
+ * api_message — "API key not valid", "RESOURCE_EXHAUSTED", "model not
+ * found", …) to errors it throws, but the generic `err.message` string alone
+ * doesn't carry that through to this module's own log line. Logging the full
+ * shape here means a plain grep on "shade finder … failed" is enough to tell
+ * a real outage (bad key / quota / model) apart from a one-off hiccup —
+ * instead of every failure looking identically opaque.
+ */
+function logPipelineFailure(event, err) {
+  logger.error(
+    {
+      err: err.message,
+      code: err.code,
+      status: err.status,
+      api_message: err.api_message,
+      retryable: err.retryable,
+    },
+    event,
+  );
 }
 
 // ── Image preparation (in-memory only) ──────────────────────
@@ -587,7 +647,10 @@ async function startSession({ brand, device_id, ip }) {
   const used = await readCount(
     quotaKey("d", brand, deviceKey, lagosDay()),
   );
-  const shades = await repo.listActiveShadesWithSwatches({ brand });
+  const [shades, whatsapp_support] = await Promise.all([
+    repo.listActiveShadesWithSwatches({ brand }),
+    resolveWhatsAppSupport({ brand }),
+  ]);
   return {
     session_id: sid,
     guest_token: signGuestToken({ sid, brand, deviceKey }),
@@ -595,6 +658,8 @@ async function startSession({ brand, device_id, ip }) {
     privacy: PRIVACY_NOTICE,
     quota: quotaSnapshot({ used }),
     shades: shades.map(publicShade),
+    whatsapp_support,
+    max_photo_mb: config.SHADE_FINDER_MAX_PHOTO_MB,
   };
 }
 
@@ -605,13 +670,18 @@ async function getSessionState({ brand, sid, deviceKey }) {
       user_message: "This styling session has ended — start a fresh one.",
     });
   }
-  const used = await readCount(quotaKey("d", brand, deviceKey, lagosDay()));
+  const [used, whatsapp_support] = await Promise.all([
+    readCount(quotaKey("d", brand, deviceKey, lagosDay())),
+    resolveWhatsAppSupport({ brand }),
+  ]);
   return {
     history: state.history,
     last_result: state.last_result,
     has_photo_analysis: !!state.perceived,
     quota: quotaSnapshot({ used }),
     privacy: PRIVACY_NOTICE,
+    whatsapp_support,
+    max_photo_mb: config.SHADE_FINDER_MAX_PHOTO_MB,
   };
 }
 
@@ -724,6 +794,14 @@ async function adviseAndReply({
   });
   const advice = parseModelJson(completion.text);
   if (!advice || !advice.message) {
+    // gemini.service.js already warns when the reply is empty (with
+    // finish/block reason); this covers the other case — a non-empty reply
+    // that didn't parse as the expected JSON shape — which otherwise leaves
+    // no trace of what the model actually sent back.
+    logger.warn(
+      { model: completion.model, text_length: (completion.text || "").length },
+      "shade finder advise: model reply was empty or unparseable",
+    );
     throw new AppError("AI_UNAVAILABLE", "advise parse failed", 503, {
       user_message: "Praxis lost its train of thought — please try again.",
     });
@@ -961,7 +1039,7 @@ async function analyzePhoto({ brand, sid, deviceKey, ip, file, message }) {
       await refundQuota(dayKey);
     }
     if (err instanceof AppError) throw err;
-    logger.error({ err: err.message }, "shade finder analyze failed");
+    logPipelineFailure("shade finder analyze failed", err);
     throw new AppError("AI_UNAVAILABLE", "shade finder pipeline failed", 503, {
       user_message: "Praxis hit a snag reading that photo — please try again.",
     });
@@ -1023,7 +1101,7 @@ async function chatTurn({ brand, sid, deviceKey, message }) {
   } catch (err) {
     emitStage(brand, sid, "error");
     if (err instanceof AppError) throw err;
-    logger.error({ err: err.message }, "shade finder chat failed");
+    logPipelineFailure("shade finder chat failed", err);
     throw new AppError("AI_UNAVAILABLE", "shade finder chat failed", 503, {
       user_message: "Praxis lost its train of thought — please try again.",
     });
@@ -1049,5 +1127,6 @@ module.exports = {
     withinBudget,
     isRefinement,
     resolveBudget,
+    toWhatsAppDigits,
   },
 };

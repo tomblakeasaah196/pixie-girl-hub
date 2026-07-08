@@ -8,6 +8,7 @@ import {
   Camera,
   ImagePlus,
   Loader2,
+  MessageCircle,
   RefreshCcw,
   Send,
   ShieldCheck,
@@ -20,12 +21,14 @@ import { useCurrency } from "@/lib/useStore";
 import {
   analyzePhoto,
   connectShadeSocket,
+  DEFAULT_MAX_PHOTO_MB,
   endShadeSession,
   getShadeSession,
   isQuotaError,
   isSessionExpired,
   sendChat,
   startShadeSession,
+  whatsAppFallbackUrl,
   type ShadeQuota,
   type ShadeRef,
   type ShadeReference,
@@ -62,6 +65,13 @@ type ChatItem =
       role: "praxis";
       kind: "result";
       result: Omit<ShadeResult, "quota" | "privacy">;
+    }
+  | {
+      id: string;
+      role: "praxis";
+      kind: "fallback";
+      text: string;
+      whatsappUrl: string | null;
     };
 
 let seq = 0;
@@ -176,6 +186,8 @@ function ShadeFinderPage() {
               privacy: state.privacy,
               quota: state.quota,
               shades: [],
+              whatsapp_support: state.whatsapp_support ?? null,
+              max_photo_mb: state.max_photo_mb,
             },
           );
           setPhase("ready");
@@ -259,13 +271,31 @@ function ShadeFinderPage() {
 
   // ── Actions ───────────────────────────────────────────────
 
+  const maxPhotoMb = session?.max_photo_mb ?? DEFAULT_MAX_PHOTO_MB;
+
   const pickFile = (f: File | null) => {
+    if (f && f.size > maxPhotoMb * 1024 * 1024) {
+      toast.error(`That photo is too heavy — please use one under ${maxPhotoMb}MB.`);
+      return;
+    }
     if (pendingUrl) URL.revokeObjectURL(pendingUrl);
     setPendingFile(f);
     setPendingUrl(f ? URL.createObjectURL(f) : null);
   };
 
-  const handleFailure = (e: unknown) => {
+  /** Prefilled so a shopper who lands on WhatsApp never has to type their
+   *  question twice — a photo can't ride along in a wa.me link, so that case
+   *  asks them to resend it there instead. */
+  const whatsappPrefill = (text: string | undefined, photo: boolean) => {
+    const parts = [
+      "Hi! I was chatting with Praxis (Find My Shade) on the website and it stopped responding.",
+    ];
+    if (text) parts.push(`Here's what I asked: "${text}"`);
+    if (photo) parts.push("I wanted a shade match from a photo — sending it here now.");
+    return parts.join(" ");
+  };
+
+  const handleFailure = (e: unknown, context?: { text?: string; photo?: boolean }) => {
     if (isSessionExpired(e)) {
       sessionStorage.removeItem(SESSION_KEY);
       toast("That session had expired — I've started you a fresh one.");
@@ -274,11 +304,28 @@ function ShadeFinderPage() {
     }
     const msg =
       e instanceof Error ? e.message : "Something went wrong — please try again.";
+    if (isQuotaError(e)) {
+      setItems((it) => [
+        ...it,
+        { id: cid(), role: "praxis", kind: "text", text: msg },
+      ]);
+      setQuota((q) => (q ? { ...q, remaining: 0 } : q));
+      return;
+    }
+    // A genuine hiccup (AI unavailable, network, etc.) — never a dead end:
+    // offer WhatsApp, carrying the shopper's own words over, when the brand
+    // has a number configured in Settings → Business Setup → Profile.
+    const support = session?.whatsapp_support;
+    const whatsappUrl = support
+      ? whatsAppFallbackUrl(
+          support.wa_number,
+          whatsappPrefill(context?.text, !!context?.photo),
+        )
+      : null;
     setItems((it) => [
       ...it,
-      { id: cid(), role: "praxis", kind: "text", text: msg },
+      { id: cid(), role: "praxis", kind: "fallback", text: msg, whatsappUrl },
     ]);
-    if (isQuotaError(e)) setQuota((q) => (q ? { ...q, remaining: 0 } : q));
   };
 
   const submitResult = (r: ShadeResult) => {
@@ -319,7 +366,7 @@ function ShadeFinderPage() {
       );
       submitResult(r);
     } catch (e) {
-      handleFailure(e);
+      handleFailure(e, { text: caption, photo: true });
     } finally {
       setBusy(false);
       stopStages();
@@ -336,7 +383,7 @@ function ShadeFinderPage() {
       const r = await sendChat(session.session_id, session.guest_token, message);
       submitResult(r);
     } catch (e) {
-      handleFailure(e);
+      handleFailure(e, { text: message });
     } finally {
       setBusy(false);
       stopStages();
@@ -480,6 +527,8 @@ function ShadeFinderPage() {
                   <UserBubble item={item} />
                 ) : item.kind === "result" ? (
                   <ResultBubble result={item.result} currency={currency} />
+                ) : item.kind === "fallback" ? (
+                  <FallbackBubble text={item.text} whatsappUrl={item.whatsappUrl} />
                 ) : (
                   <PraxisBubble text={item.text} references={item.references} />
                 )}
@@ -660,6 +709,43 @@ function PraxisBubble({
       <div className="rounded-2xl rounded-bl-md bg-secondary px-4 py-3 text-body-sm leading-relaxed">
         {text}
         <ReferenceChips references={references} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Shown when Praxis genuinely can't respond (not quota, not a stale
+ * session) — never a dead end: offers WhatsApp with the shopper's own
+ * message already carried over, when the brand has a number configured.
+ */
+function FallbackBubble({
+  text,
+  whatsappUrl,
+}: {
+  text: string;
+  whatsappUrl: string | null;
+}) {
+  return (
+    <div className="flex max-w-[85%] items-end gap-2.5">
+      <div className="hidden shrink-0 md:block">
+        <PraxisAvatar />
+      </div>
+      <div className="rounded-2xl rounded-bl-md bg-secondary px-4 py-3 text-body-sm leading-relaxed">
+        {text}
+        {whatsappUrl ? (
+          <div className="mt-3">
+            <a
+              href={whatsappUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-body-sm text-primary-foreground transition-opacity hover:opacity-90"
+            >
+              <MessageCircle className="h-4 w-4" />
+              Continue on WhatsApp
+            </a>
+          </div>
+        ) : null}
       </div>
     </div>
   );

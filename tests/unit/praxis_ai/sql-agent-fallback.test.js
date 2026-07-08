@@ -76,6 +76,11 @@ describe("sql-agent summarise fallback", () => {
     expect(call.messages[0].content).toMatch(/Have the 27 orders/);
     expect(call.messages[0].content).toMatch(/sales_orders/);
     expect(r.replyText).toMatch(/sales_orders table for this brand/);
+    // Regression: every other Gemini caller in the codebase disables
+    // thinking for plain-text extraction — without it, Gemini 2.5 can burn
+    // the whole output budget on thinking and return empty text, which this
+    // fallback would then (wrongly) treat as "unavailable".
+    expect(call.thinkingBudget).toBe(0);
   });
 
   test("no fallback vendor → raw result is code-fenced, never bare JSON", async () => {
@@ -91,6 +96,32 @@ describe("sql-agent summarise fallback", () => {
     // Marked degraded so the trace/usage ledger can surface it — previously
     // this silently recorded as an ordinary successful turn.
     expect(r.degraded).toBe(true);
+  });
+
+  test("a wrong table guess gets similar_tables so the model can self-correct in one hop", async () => {
+    mockDb.query
+      .mockResolvedValueOnce({ rows: [] }) // columns lookup for the guessed name: no match
+      .mockResolvedValueOnce({
+        rows: [{ table_schema: "faitlynhair", table_name: "products" }],
+      }); // fuzzy-match lookup
+    mockLlm.chat.mockResolvedValueOnce({
+      content: "Let me check the products table instead.",
+      tool_calls: [],
+      usage: { total_tokens: 4 },
+    });
+
+    const r = await sqlAgent.run({
+      ...baseArgs,
+      args: { table: "catalogue_products" },
+    });
+
+    expect(r.replyText).toBe("Let me check the products table instead.");
+    const toolMsg = mockLlm.chat.mock.calls[0][0].messages.find(
+      (m) => m.role === "tool",
+    );
+    const payload = JSON.parse(toolMsg.content);
+    expect(payload.similar_tables).toContain("faitlynhair.products");
+    expect(payload.note).toMatch(/similar_tables/);
   });
 
   test("non-CEO users are still refused before any query runs", async () => {

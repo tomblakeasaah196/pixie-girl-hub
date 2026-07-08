@@ -109,6 +109,27 @@ function validateSelect(rawSql, brand) {
   return null;
 }
 
+/**
+ * Tables named close to a wrong guess (e.g. 'catalogue_products' when the
+ * real table is 'products') — surfaced so the model can self-correct on its
+ * NEXT call instead of guessing blind or falling back to a full table list.
+ * Every wasted schema round trip eats into MAX_ITERS and raises the odds of
+ * landing on the two-consecutive-vendor-failure path that degrades the turn.
+ */
+async function suggestSimilarTables({ brand, table }) {
+  const words = table.split(/[^a-z0-9]+/i).filter((w) => w.length >= 3);
+  if (!words.length) return [];
+  const { rows } = await query(
+    `SELECT DISTINCT table_schema, table_name
+       FROM information_schema.tables
+      WHERE table_schema = ANY($1) AND table_type = 'BASE TABLE'
+        AND table_name ILIKE ANY($2)
+      ORDER BY table_name LIMIT 15`,
+    [[brand, "shared"], words.map((w) => `%${w}%`)],
+  );
+  return rows.map((r) => `${r.table_schema}.${r.table_name}`);
+}
+
 async function execSchema({ brand, table }) {
   if (table) {
     const { rows } = await query(
@@ -118,7 +139,17 @@ async function execSchema({ brand, table }) {
         ORDER BY table_schema, ordinal_position`,
       [[brand, "shared"], table],
     );
-    if (!rows.length) return { table, note: "no such table in scope", columns: [] };
+    if (!rows.length) {
+      const similar = await suggestSimilarTables({ brand, table });
+      return {
+        table,
+        note: similar.length
+          ? "no such table in scope — did you mean one of similar_tables?"
+          : "no such table in scope",
+        columns: [],
+        ...(similar.length ? { similar_tables: similar } : {}),
+      };
+    }
     return {
       table,
       columns: rows.map((r) => `${r.table_schema}.${r.column_name} ${r.data_type}`),

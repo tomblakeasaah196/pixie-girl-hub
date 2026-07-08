@@ -148,6 +148,7 @@ describe("execution", () => {
     });
     expect(r.replyText).toBe("You had 9 paid orders.");
     expect(r.degraded).toBeFalsy();
+    expect(mockGemini.chatCompletion.mock.calls[0][0].thinkingBudget).toBe(0);
   });
 });
 

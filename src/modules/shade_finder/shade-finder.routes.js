@@ -16,6 +16,7 @@
 
 const express = require("express");
 const multer = require("multer");
+const { config } = require("../../config/env");
 const { AppError } = require("../../utils/errors");
 const c = require("./shade-finder.controller");
 const v = require("./shade-finder.validator");
@@ -23,11 +24,15 @@ const service = require("./shade-finder.service");
 
 const router = express.Router();
 
+const MAX_PHOTO_MB = config.SHADE_FINDER_MAX_PHOTO_MB;
+
 // Selfie/hair photos only — Gemini-supported raster types (HEIC converts
-// in-memory via the shared compressor). 8MB cap keeps memory bounded.
+// in-memory via the shared compressor). The cap keeps memory bounded; the
+// shared compressor (media-compression.service) then downscales whatever
+// gets through before it ever reaches Gemini.
 const photoUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 8 * 1024 * 1024, files: 1 },
+  limits: { fileSize: MAX_PHOTO_MB * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, cb) => {
     const ok = /^image\/(jpeg|jpg|png|webp|heic|heif)$/i.test(
       file.mimetype || "",
@@ -37,6 +42,35 @@ const photoUpload = multer({
     }), ok);
   },
 });
+
+/**
+ * multer's own errors (oversized file, stray extra file) arrive via next(err)
+ * as a MulterError, which is neither an AppError nor anything the global
+ * handler recognises — it used to fall through to a generic "something went
+ * wrong" 500 that gave the shopper no idea their photo was the problem. Map
+ * the size-limit case explicitly so they're told exactly what to do instead
+ * of silently failing (and Praxis never gets a photo to hallucinate around).
+ */
+function uploadPhoto(req, res, next) {
+  photoUpload.single("photo")(req, res, (err) => {
+    if (!err) return next();
+    if (err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE") {
+      return next(
+        new AppError("PHOTO_TOO_LARGE", "photo exceeds size limit", 413, {
+          user_message: `That photo is a bit too heavy — please try one under ${MAX_PHOTO_MB}MB.`,
+        }),
+      );
+    }
+    if (err instanceof multer.MulterError) {
+      return next(
+        new AppError("UPLOAD_FAILED", err.code || "multer error", 400, {
+          user_message: "That photo couldn't be uploaded — please try again.",
+        }),
+      );
+    }
+    next(err);
+  });
+}
 
 /** Guest-token gate: Bearer token bound to this session id + brand. */
 function requireGuest(req, _res, next) {
@@ -58,7 +92,7 @@ router.delete("/session/:sid", requireGuest, c.endSession);
 router.post(
   "/session/:sid/analyze",
   requireGuest,
-  photoUpload.single("photo"),
+  uploadPhoto,
   v.validateAnalyze,
   c.analyze,
 );

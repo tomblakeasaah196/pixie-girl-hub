@@ -293,6 +293,12 @@ const schema = z.object({
   PRAXIS_LLM_VENDOR: z.string().default("deepseek"),
   PRAXIS_RAG_TOP_K: z.coerce.number().int().min(0).max(20).default(6),
   PRAXIS_MAX_TOOLS: z.coerce.number().int().min(1).max(128).default(40),
+  // Minimum cosine similarity (1 - distance) for a retrieved chunk to enter
+  // the prompt. Top-K nearest-neighbour ALWAYS returns k rows, so without a
+  // floor an off-corpus question gets unrelated chunks presented as
+  // grounding. 0.3 is conservative for text-embedding-3-small; raise it once
+  // corpus relevance has been observed in ai_run_steps traces.
+  PRAXIS_RAG_MIN_SCORE: z.coerce.number().min(0).max(1).default(0.3),
 
   // Feature flags
   FEATURE_MANUAL_PAYMENTS_ENABLED: zBool(false),

@@ -36,6 +36,9 @@ async function postMessage(req, res) {
       ...base(req),
       id: req.params.id,
       input: req.body,
+      // Threaded through to the orchestrator so read-safe catalogue actions
+      // can execute inline over loopback with the caller's own credentials.
+      auth_header: req.headers.authorization,
     }),
   });
 }

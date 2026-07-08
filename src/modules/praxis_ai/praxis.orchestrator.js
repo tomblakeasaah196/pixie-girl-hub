@@ -29,12 +29,17 @@ const gemini = require("../../services/gemini.service");
 const queryAgent = require("./query-agent");
 const queryCatalogue = require("./query-catalogue");
 const sqlAgent = require("./sql-agent");
+const executor = require("./praxis.executor");
 const { money, toCurrencyString } = require("../../utils/money");
 const { logger } = require("../../config/logger");
 const { config } = require("../../config/env");
 
 const FEATURE = "praxis_chat";
 const HISTORY_TURNS = 10;
+// Corrective rounds when a catalogue action's route params are missing:
+// tool-error feedback → model retries (may look the reference up via a
+// query tool first). Bounded so a confused model can't loop the turn.
+const MAX_ACTION_ROUNDS = 4;
 
 const safeName = (key) =>
   String(key)
@@ -79,6 +84,314 @@ function buildTools(actions) {
   return { tools, byName };
 }
 
+/**
+ * Route params (`:id` etc.) the payload leaves unfilled. Pure. Used to
+ * validate at PROPOSAL time — previously an unresolvable route was only
+ * discovered by the executor AFTER the human confirmed the card, so every
+ * such proposal was doomed to "missing a required reference".
+ */
+function missingRouteParams(route, payload) {
+  const p = payload || {};
+  return (String(route).match(/:([A-Za-z_][A-Za-z0-9_]*)/g) || [])
+    .map((s) => s.slice(1))
+    .filter((k) => p[k] === undefined || p[k] === null || p[k] === "");
+}
+
+function parseToolArgs(raw) {
+  try {
+    return typeof raw === "string" ? JSON.parse(raw || "{}") : raw || {};
+  } catch {
+    return {};
+  }
+}
+
+function addUsage(acc, u) {
+  if (!u) return;
+  acc.prompt_tokens = (acc.prompt_tokens || 0) + (u.prompt_tokens || 0);
+  acc.completion_tokens =
+    (acc.completion_tokens || 0) + (u.completion_tokens || 0);
+  acc.total_tokens = (acc.total_tokens || 0) + (u.total_tokens || 0);
+}
+
+const asstMsg = (c) => ({
+  role: "assistant",
+  content: c.content || null,
+  tool_calls: c.tool_calls,
+});
+const toolMsg = (id, payload) => ({
+  role: "tool",
+  tool_call_id: id,
+  content: JSON.stringify(payload).slice(0, 6000),
+});
+
+/**
+ * Resolve a catalogue-action tool call to a finished turn. Bounded loop:
+ *
+ *   • Route params missing → feed a tool-error back and let the model retry
+ *     (it may call a query tool first to look the reference up — those run
+ *     mid-chain with their raw rows fed back).
+ *   • Read-safe actions (is_write = false AND requires_confirmation = false)
+ *     execute INLINE over loopback with the caller's own credentials, and the
+ *     result is summarised for the user — no confirm card for plain reads.
+ *   • Writes (and confirmation-flagged reads) still go through the §6.29
+ *     pending-action human gate — now only with a route known to resolve.
+ *
+ * @returns {Promise<{replyText:string, pending:object|null, usage:object}>}
+ *          `usage` covers only the EXTRA model calls made here.
+ */
+async function resolveCatalogueAction({
+  client,
+  vendor,
+  user,
+  brand,
+  messages,
+  completion,
+  toolCall,
+  args,
+  byName,
+  allTools,
+  authHeader,
+  requestId,
+  userMsg,
+  trace,
+}) {
+  const usage = {};
+  const convo = [...messages];
+
+  for (let round = 0; round < MAX_ACTION_ROUNDS; round++) {
+    const name = toolCall.function.name;
+
+    // Mid-chain curated query (e.g. campaigns_recent to find a campaign id):
+    // run it raw and hand the rows back so the model can fill the action in.
+    if (queryAgent.isQueryTool(name)) {
+      const q = await queryAgent.execute({ user, brand, name, args });
+      const payload = !q ? { error: "unknown query" } : q.ok ? q.rows : { error: q.message };
+      await trace({
+        step_type: "call_action",
+        output: {
+          query: (q && q.queryKey) || name,
+          mid_chain: true,
+          denied: (q && q.denied) || false,
+        },
+      });
+      convo.push(asstMsg(completion), toolMsg(toolCall.id, payload));
+      let follow;
+      try {
+        follow = await llm.chat({ vendor, messages: convo, tools: allTools });
+      } catch (err) {
+        logger.error({ err: err.message }, "praxis: action chain call failed");
+        return {
+          replyText:
+            "I looked that up but couldn't finish composing the answer — please try again.",
+          pending: null,
+          usage,
+        };
+      }
+      addUsage(usage, follow.usage);
+      const next = follow.tool_calls && follow.tool_calls[0];
+      if (next) {
+        completion = follow;
+        toolCall = next;
+        args = parseToolArgs(next.function.arguments);
+        continue;
+      }
+      return {
+        replyText: follow.content || "Here's what I found.",
+        pending: null,
+        usage,
+      };
+    }
+
+    // SQL tools mid-chain: the sql-agent runs its own bounded loop and
+    // finishes the turn with a text answer.
+    if (sqlAgent.isSqlTool(name)) {
+      const qr = await sqlAgent.run({
+        vendor,
+        user,
+        brand,
+        messages: convo,
+        completion,
+        toolCall,
+        args,
+      });
+      addUsage(usage, qr.usage);
+      await trace({
+        step_type: "call_action",
+        output: { query: "sql-agent", denied: qr.denied || false },
+      });
+      return { replyText: qr.replyText || "", pending: null, usage };
+    }
+
+    const action = byName.get(name);
+    if (!action) {
+      return { replyText: completion.content || "", pending: null, usage };
+    }
+
+    // Proposal-time route validation — the fix for the FAILED-pending loop.
+    const missing = missingRouteParams(action.route, args);
+    if (missing.length) {
+      await trace({
+        step_type: "match_action",
+        matched_action_id: action.action_id,
+        output: { action_key: action.action_key, missing_params: missing },
+        status: "failed",
+        error_message: `missing route parameter(s): ${missing.join(", ")}`,
+      });
+      convo.push(
+        asstMsg(completion),
+        toolMsg(toolCall.id, {
+          error:
+            `Cannot run ${action.action_key}: required route parameter(s) missing: ${missing.join(", ")}. ` +
+            "Look the reference up first (for a campaign, query_campaigns_recent returns campaign_id) " +
+            "and call the tool again with it filled in. If the user hasn't said which record they mean, " +
+            "ask them instead of guessing.",
+        }),
+      );
+      let follow;
+      try {
+        follow = await llm.chat({ vendor, messages: convo, tools: allTools });
+      } catch (err) {
+        logger.error({ err: err.message }, "praxis: param retry call failed");
+        return {
+          replyText: `I need the ${missing.join(", ")} for “${action.title || action.action_key}” — which record should I use?`,
+          pending: null,
+          usage,
+        };
+      }
+      addUsage(usage, follow.usage);
+      const next = follow.tool_calls && follow.tool_calls[0];
+      if (next) {
+        completion = follow;
+        toolCall = next;
+        args = parseToolArgs(next.function.arguments);
+        continue;
+      }
+      return {
+        replyText:
+          follow.content ||
+          `I need the ${missing.join(", ")} for “${action.title || action.action_key}” — which record should I use?`,
+        pending: null,
+        usage,
+      };
+    }
+
+    // Read-safe → execute inline. The loopback call re-enters the full
+    // middleware pipeline (auth, brand, RBAC, Zod) with the caller's own
+    // Authorization header, so this can never do more than the user could.
+    const readSafe =
+      action.is_write === false && action.requires_confirmation === false;
+    if (readSafe && authHeader) {
+      let exec;
+      try {
+        exec = await executor.executeAction({
+          pending: {
+            method: action.method,
+            route: action.route,
+            payload: args,
+            business: brand,
+          },
+          authHeader,
+          requestId,
+        });
+      } catch (err) {
+        logger.error(
+          { err: err.message, action_key: action.action_key },
+          "praxis: inline read action failed",
+        );
+        await trace({
+          step_type: "call_action",
+          matched_action_id: action.action_id,
+          output: { action_key: action.action_key, inline: true },
+          status: "failed",
+          error_message: err.message,
+        });
+        return {
+          replyText: `I couldn't run “${action.title || action.action_key}” just now — please try again.`,
+          pending: null,
+          usage,
+        };
+      }
+      await trace({
+        step_type: "call_action",
+        matched_action_id: action.action_id,
+        output: {
+          action_key: action.action_key,
+          inline: true,
+          http_status: exec.http_status,
+        },
+      });
+      convo.push(asstMsg(completion), toolMsg(toolCall.id, exec.result));
+      try {
+        const follow = await llm.chat({ vendor, messages: convo });
+        addUsage(usage, follow.usage);
+        return {
+          replyText: follow.content || "Here's what I found.",
+          pending: null,
+          usage,
+        };
+      } catch (err) {
+        logger.error(
+          { err: err.message },
+          "praxis: inline action summarise failed",
+        );
+        return {
+          replyText:
+            (exec.ok
+              ? "Here's the raw result — the summariser is briefly unavailable:\n"
+              : "The action returned an error:\n") +
+            "```json\n" +
+            JSON.stringify(exec.result, null, 2).slice(0, 1200) +
+            "\n```",
+          pending: null,
+          usage,
+        };
+      }
+    }
+
+    // Writes (and confirmation-flagged reads): the human gate, as before.
+    const human_summary =
+      completion.content || `Proposed: ${action.title || action.action_key}`;
+    const pending = await repo.createPendingAction({
+      client,
+      p: {
+        conversation_id: userMsg.conversation_id,
+        message_id: userMsg.message_id,
+        proposed_by_user_id: user.user_id,
+        action_id: action.action_id,
+        action_key: action.action_key,
+        business: brand,
+        method: action.method,
+        route: action.route,
+        payload: args,
+        human_summary,
+        confidence:
+          action.min_confidence !== null && action.min_confidence !== undefined
+            ? action.min_confidence
+            : 0.8,
+      },
+    });
+    await trace({
+      step_type: "match_action",
+      matched_action_id: action.action_id,
+      output: { action_key: action.action_key },
+    });
+    return {
+      replyText:
+        human_summary +
+        "\n\nThis is a proposed action — confirm it to run, or reject it.",
+      pending,
+      usage,
+    };
+  }
+
+  return {
+    replyText:
+      "I couldn't pin down the exact record that action needs. Tell me which record (e.g. which campaign) you mean and I'll try again.",
+    pending: null,
+    usage,
+  };
+}
+
 // A compact, static map of the platform so the model always knows the shape of
 // the system even before RAG has any corpus. Keep it terse — it's prepended to
 // every turn. (Deeper, retrievable detail comes from the embeddings corpus.)
@@ -98,15 +411,42 @@ const SYSTEM_MAP = [
   "• Accounting, Expenses, Pricing, Intercompany, Retail Partners, Storefront Studio, Campaigns, Praxis AI.",
 ].join("\n");
 
+// Human-readable provenance label for a retrieved chunk, so the model can
+// cite honestly ("from the Help centre article X") instead of guessing where
+// its context came from.
+function chunkLabel(c) {
+  if (c.chunk_title) {
+    const type = c.chunk_source_type
+      ? c.chunk_source_type.replace(/_/g, " ")
+      : "knowledge base";
+    return `${type}: "${c.chunk_title}"`;
+  }
+  if (c.source_table === "ai_action_catalogue") return "action catalogue entry";
+  return c.source_table || "knowledge base";
+}
+
 function systemPrompt({ brand, contextChunks, user, queries = [] }) {
   const today = new Date().toISOString().slice(0, 10);
   const role = user?.is_ceo
     ? "the CEO / owner (full access)"
     : "a staff member (scoped to their own permissions)";
   const ctx = contextChunks.length
-    ? "RETRIEVED KNOWLEDGE (use this — it is authoritative):\n" +
-      contextChunks.map((c, i) => `[${i + 1}] ${c.source_text}`).join("\n\n")
-    : "RETRIEVED KNOWLEDGE: none matched this question in the knowledge base.";
+    ? "RETRIEVED KNOWLEDGE — excerpts from the internal knowledge base " +
+      "(help articles, docs, schema notes) that scored closest to this " +
+      "question. They may be incomplete or off-topic: use only what is " +
+      "genuinely relevant, and if none of it answers the question say you " +
+      "don't have that information rather than forcing an answer from these " +
+      "excerpts. If asked where an answer came from, these excerpts and " +
+      "your tool results are your ONLY sources — name them accurately.\n" +
+      contextChunks
+        .map(
+          (c, i) =>
+            `[${i + 1}] (${chunkLabel(c)}, relevance ${Math.round((c.score || 0) * 100)}%) ${c.source_text}`,
+        )
+        .join("\n\n")
+    : "RETRIEVED KNOWLEDGE: nothing in the knowledge base matched this " +
+      "question closely enough to include — do not claim knowledge-base " +
+      "backing for this answer.";
   const queryList = queries.length
     ? queries.map((q) => `• ${q.title} — ${q.description}`).join("\n")
     : "(no live-data queries are configured yet)";
@@ -151,7 +491,15 @@ function computeCost(vendor, usage) {
  * null when no LLM vendor is configured (caller should use the stub).
  * Inserts DB rows via the passed transaction `client`.
  */
-async function orchestrate({ client, user, brand, conversation, userMsg }) {
+async function orchestrate({
+  client,
+  user,
+  brand,
+  conversation,
+  userMsg,
+  authHeader,
+  requestId,
+}) {
   const vendor = await llm.resolveVendor(conversation.provider);
   if (!vendor) return null;
 
@@ -159,6 +507,19 @@ async function orchestrate({ client, user, brand, conversation, userMsg }) {
   const userText = userMsg.content || userMsg.transcribed_text || "";
   let step = 0;
   const t0 = Date.now();
+  // Trace helper for the action-resolution loop (status defaults to
+  // 'completed' in the repo when not supplied).
+  const trace = (s) =>
+    repo.insertRunStep({
+      client,
+      s: {
+        conversation_id: convId,
+        message_id: userMsg.message_id,
+        agent: "orchestrator",
+        step_number: ++step,
+        ...s,
+      },
+    });
 
   // 1) RAG retrieve (best-effort; skipped if embeddings not configured)
   let contextChunks = [];
@@ -169,6 +530,7 @@ async function orchestrate({ client, user, brand, conversation, userMsg }) {
         queryVector: `[${vecs[0].join(",")}]`,
         business: brand,
         limit: config.PRAXIS_RAG_TOP_K,
+        minScore: config.PRAXIS_RAG_MIN_SCORE,
       });
     }
   } catch (err) {
@@ -355,47 +717,26 @@ async function orchestrate({ client, user, brand, conversation, userMsg }) {
         },
       });
     } else {
-      const action = byName.get(toolCall.function.name);
-      if (action) {
-        const human_summary =
-          replyText || `Proposed: ${action.title || action.action_key}`;
-        pending = await repo.createPendingAction({
-          client,
-          p: {
-            conversation_id: convId,
-            message_id: userMsg.message_id,
-            proposed_by_user_id: user.user_id,
-            action_id: action.action_id,
-            action_key: action.action_key,
-            business: brand,
-            method: action.method,
-            route: action.route,
-            payload: args,
-            human_summary,
-            confidence:
-              action.min_confidence !== null &&
-              action.min_confidence !== undefined
-                ? action.min_confidence
-                : 0.8,
-          },
-        });
-        replyText =
-          human_summary +
-          "\n\nThis is a proposed action — confirm it to run, or reject it.";
-        await repo.insertRunStep({
-          client,
-          s: {
-            conversation_id: convId,
-            message_id: userMsg.message_id,
-            agent: "orchestrator",
-            step_number: ++step,
-            step_type: "match_action",
-            output: { action_key: action.action_key },
-            matched_action_id: action.action_id,
-            status: "completed",
-          },
-        });
-      }
+      const r = await resolveCatalogueAction({
+        client,
+        vendor,
+        user,
+        brand,
+        messages,
+        completion,
+        toolCall,
+        args,
+        byName,
+        allTools,
+        authHeader,
+        requestId,
+        userMsg,
+        trace,
+      });
+      pending = r.pending;
+      if (r.replyText) replyText = r.replyText;
+      addUsage(usage, r.usage);
+      if (r.usage && r.usage.total_tokens) costNgn = computeCost(vendor, usage);
     }
   }
 
@@ -738,4 +1079,4 @@ async function generateSmartcommDraft({ user, brand, context }) {
   };
 }
 
-module.exports = { orchestrate, generateSmartcommDraft };
+module.exports = { orchestrate, generateSmartcommDraft, missingRouteParams };

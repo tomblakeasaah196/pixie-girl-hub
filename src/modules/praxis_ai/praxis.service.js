@@ -71,7 +71,7 @@ async function archiveConversation({ user, id }) {
  * keeping the conversation + usage flow intact. A real orchestrator would,
  * for write intents, create an ai_pending_actions row instead of answering.
  */
-async function postMessage({ user, brand, request_id, id, input }) {
+async function postMessage({ user, brand, request_id, id, input, auth_header }) {
   const conv = await repo.findConversation({ id });
   if (!conv || conv.user_id !== user.user_id)
     throw new NotFoundError("Conversation");
@@ -128,6 +128,8 @@ async function postMessage({ user, brand, request_id, id, input }) {
           brand,
           conversation: conv,
           userMsg,
+          authHeader: auth_header,
+          requestId: request_id,
         });
         if (result) {
           assistantMsg = result.assistant_message;

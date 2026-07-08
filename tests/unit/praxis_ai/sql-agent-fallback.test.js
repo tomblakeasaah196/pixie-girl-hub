@@ -88,6 +88,9 @@ describe("sql-agent summarise fallback", () => {
     expect(r.replyText).toMatch(/couldn't compose a summary/i);
     // The old bare-dump prefix must be gone.
     expect(r.replyText).not.toMatch(/^Here's the raw result:/);
+    // Marked degraded so the trace/usage ledger can surface it — previously
+    // this silently recorded as an ordinary successful turn.
+    expect(r.degraded).toBe(true);
   });
 
   test("non-CEO users are still refused before any query runs", async () => {

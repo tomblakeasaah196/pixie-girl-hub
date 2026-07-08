@@ -27,9 +27,9 @@
 "use strict";
 
 const llm = require("../../services/llm.service");
-const gemini = require("../../services/gemini.service");
 const { query, transaction } = require("../../config/database");
 const { logger } = require("../../config/logger");
+const { summariseViaFallback } = require("./fallback-summarise");
 
 const ROW_CAP = 200;
 const TIMEOUT_MS = 6000;
@@ -194,43 +194,6 @@ function fencedResult(result, intro) {
 }
 
 /**
- * Last-resort summarise on the FALLBACK vendor (Gemini, no tools needed for
- * a plain summarise). Mirrors the smartcomm draft path's primary→fallback
- * behaviour — previously a single primary-vendor hiccup dumped raw
- * information_schema JSON into the chat. Returns null when unavailable.
- */
-async function summariseViaFallback({ messages, result }) {
-  if (!gemini.isConfigured()) return null;
-  const lastUser = [...messages].reverse().find((m) => m.role === "user");
-  try {
-    const r = await gemini.chatCompletion({
-      system:
-        "You are Praxis, the AI operations assistant inside Pixie Girl Hub. " +
-        "Answer the user's question using ONLY the JSON query result provided. " +
-        "Be concise and specific; use plain English, not JSON. If the result " +
-        "doesn't answer the question, say so plainly.",
-      messages: [
-        {
-          role: "user",
-          content:
-            `Question: ${(lastUser && lastUser.content) || "(see result)"}\n\n` +
-            `Query result JSON:\n${JSON.stringify(result).slice(0, 6000)}`,
-        },
-      ],
-      temperature: 0.3,
-      maxOutputTokens: 500,
-    });
-    return (r && r.text) || null;
-  } catch (err) {
-    logger.warn(
-      { err: err.message },
-      "praxis sql-agent: fallback summarise failed",
-    );
-    return null;
-  }
-}
-
-/**
  * Agentic read loop: run the model's sql tool call, feed the result back, and
  * let it call again (discover schema → query → answer) until it produces a
  * natural-language answer. Mirrors query-agent.run's contract.
@@ -293,6 +256,10 @@ async function run({ vendor, user, brand, messages, completion, toolCall, args }
             ),
           usage,
           sql: true,
+          // No natural-language answer was produced — the trace/usage ledger
+          // should show this as a failed turn, not a silent success, or ops
+          // has no way to see how often this degrades in production.
+          degraded: !fallbackText,
         };
       }
     }

@@ -16,7 +16,9 @@
 const llm = require("../../services/llm.service");
 const permissionsRepo = require("../../shared/org_workflow/permissions.repo");
 const catalogue = require("./query-catalogue");
+const executor = require("./praxis.executor");
 const { logger } = require("../../config/logger");
+const { summariseViaFallback } = require("./fallback-summarise");
 
 const PREFIX = "query_";
 const safe = (s) =>
@@ -42,6 +44,24 @@ function isQueryTool(name) {
 
 function entryForTool(name) {
   return catalogue.get(String(name).slice(PREFIX.length));
+}
+
+function parseArgs(raw) {
+  try {
+    return typeof raw === "string" ? JSON.parse(raw || "{}") : raw || {};
+  } catch {
+    return {};
+  }
+}
+
+function sumUsage(a, b) {
+  const x = a || {};
+  const y = b || {};
+  return {
+    prompt_tokens: (x.prompt_tokens || 0) + (y.prompt_tokens || 0),
+    completion_tokens: (x.completion_tokens || 0) + (y.completion_tokens || 0),
+    total_tokens: (x.total_tokens || 0) + (y.total_tokens || 0),
+  };
 }
 
 async function hasView(user, module) {
@@ -91,6 +111,20 @@ async function execute({ user, brand, name, args }) {
 
 /**
  * Run a query tool the model selected, then summarise the live result.
+ *
+ * A lookup often exists only to feed a SECOND call — "who was our last
+ * campaign?" (a query) then "was it a success?" (a read-safe catalogue
+ * action needing the campaign id the query just found). Previously the
+ * summarise step offered no tools at all, so the model could only report
+ * what the query already returned and had to claim it "doesn't have a
+ * tool" for the follow-up even when one exists. When `allTools`/`byName`
+ * are supplied, one extra hop into a READ-SAFE catalogue action (is_write
+ * false, requires_confirmation false) is chased inline over loopback, the
+ * same trust model `resolveCatalogueAction`'s inline-read branch uses.
+ * Writes and confirmation-gated actions are deliberately NOT chased here —
+ * a "tell me about X" read turn shouldn't spontaneously create a pending
+ * action; the model can still propose one as an ordinary next turn.
+ *
  * @returns {Promise<{replyText:string|null, usage:object, queryKey?:string, denied?:boolean, error?:boolean}>}
  */
 async function run({
@@ -101,6 +135,10 @@ async function run({
   completion,
   toolCall,
   args,
+  allTools,
+  byName,
+  authHeader,
+  requestId,
 }) {
   const res = await execute({
     user,
@@ -135,26 +173,95 @@ async function run({
     },
   ];
 
+  let follow;
   try {
-    const follow = await llm.chat({ vendor, messages: followMessages });
-    return {
-      replyText: follow.content || "Here's what I found.",
-      usage: follow.usage || {},
-      queryKey: res.queryKey,
-    };
+    follow = await llm.chat({
+      vendor,
+      messages: followMessages,
+      tools: allTools && allTools.length ? allTools : undefined,
+    });
   } catch (err) {
-    logger.error({ err: err.message }, "praxis query summarise failed");
+    logger.error(
+      { err: err.message },
+      "praxis query summarise failed — trying fallback vendor",
+    );
+    const fallbackText = await summariseViaFallback({
+      messages: followMessages,
+      result: rows,
+    });
     // Degrade to a compact data answer rather than failing the turn. Fenced,
     // so the chat's Markdown renderer can't shred snake_case into italics.
     return {
       replyText:
+        fallbackText ||
         "Here's what I found:\n```json\n" +
         JSON.stringify(rows, null, 2).slice(0, 1000) +
         "\n```",
       usage: {},
       queryKey: res.queryKey,
+      degraded: !fallbackText,
     };
   }
+
+  const next = follow.tool_calls && follow.tool_calls[0];
+  const nextAction = next && byName ? byName.get(next.function.name) : null;
+  const readSafe =
+    nextAction &&
+    nextAction.is_write === false &&
+    nextAction.requires_confirmation === false;
+  if (next && readSafe && authHeader) {
+    const nextArgs = parseArgs(next.function.arguments);
+    const convo = [
+      ...followMessages,
+      {
+        role: "assistant",
+        content: follow.content || null,
+        tool_calls: follow.tool_calls,
+      },
+    ];
+    try {
+      const exec = await executor.executeAction({
+        pending: {
+          method: nextAction.method,
+          route: nextAction.route,
+          payload: nextArgs,
+          business: brand,
+        },
+        authHeader,
+        requestId,
+      });
+      convo.push({
+        role: "tool",
+        tool_call_id: next.id,
+        content: JSON.stringify(exec.result).slice(0, 6000),
+      });
+      const final = await llm.chat({ vendor, messages: convo });
+      return {
+        replyText: final.content || "Here's what I found.",
+        usage: sumUsage(follow.usage, final.usage),
+        queryKey: res.queryKey,
+        chainedAction: nextAction.action_key,
+      };
+    } catch (err) {
+      logger.error(
+        { err: err.message, action_key: nextAction.action_key },
+        "praxis: query-chained action failed",
+      );
+      return {
+        replyText:
+          err.user_message ||
+          `I looked that up but couldn't finish "${nextAction.title || nextAction.action_key}" — please try again.`,
+        usage: follow.usage || {},
+        queryKey: res.queryKey,
+      };
+    }
+  }
+
+  return {
+    replyText: follow.content || "Here's what I found.",
+    usage: follow.usage || {},
+    queryKey: res.queryKey,
+  };
 }
 
 module.exports = { tools, isQueryTool, execute, run, PREFIX };

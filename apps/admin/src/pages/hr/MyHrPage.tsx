@@ -6,6 +6,9 @@
  * shown the same day, the monthly target countdown ("20 styles away"), plus
  * leave, queries (with respond), assigned tasks and contracts/SOPs — all on
  * the Maroon Noir kit.
+ *
+ * Rendered as a tab inside Workspace (module consolidation), not its own
+ * route — no self-breadcrumb; Workspace owns that.
  */
 
 import { useState } from "react";
@@ -32,15 +35,20 @@ import {
   Skeleton,
   EmptyState,
   KpiTile,
+  Pagination,
 } from "@/components/ui/primitives";
 import { Modal } from "@/components/ui/Modal";
-import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { money } from "@/lib/format";
 import {
   getMyHr,
   requestLeave,
   respondToQuery,
   payslipPdf,
+  myAttendance,
+  myTasks,
+  myContracts,
+  myTargets,
+  myPayslips,
   type HrQuery,
   type PerformanceTarget,
 } from "@/lib/hr-api";
@@ -50,8 +58,10 @@ import {
   SectionTitle,
   QueryStatusPill,
   ClockLocationLink,
+  AttendanceStatusPill,
   clockTime,
   minutesLabel,
+  workDateLabel,
   useNotify,
   errMsg,
   statusTone,
@@ -89,6 +99,258 @@ function TargetCountdown({ t }: { t: PerformanceTarget }) {
         )}
       </div>
     </Card>
+  );
+}
+
+const PAGE_SIZE = 10;
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+function MonthYearPicker({
+  year,
+  month,
+  onChange,
+}: {
+  year: number;
+  month: number;
+  onChange: (year: number, month: number) => void;
+}) {
+  const nowYear = new Date().getFullYear();
+  const years = [nowYear - 2, nowYear - 1, nowYear];
+  const selectClass =
+    "rounded-lg border border-line bg-text-primary/[0.04] px-2 py-1 text-xs text-text-primary";
+  return (
+    <div className="flex gap-2">
+      <select value={month} onChange={(e) => onChange(year, Number(e.target.value))} className={selectClass}>
+        {MONTH_NAMES.map((m, i) => (
+          <option key={m} value={i + 1}>{m}</option>
+        ))}
+      </select>
+      <select value={year} onChange={(e) => onChange(Number(e.target.value), month)} className={selectClass}>
+        {years.map((y) => (
+          <option key={y} value={y}>{y}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+/** "This month's attendance" — 10/page, with a month/year picker (defaults to now). */
+function AttendanceSection() {
+  const now = new Date();
+  const [year, setYear] = useState(now.getFullYear());
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [page, setPage] = useState(1);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["my-hr", "attendance", year, month, page],
+    queryFn: () => myAttendance({ year, month, page, page_size: PAGE_SIZE }),
+  });
+
+  return (
+    <div>
+      <SectionTitle
+        icon={<CalendarDays className="h-4 w-4 text-accent-glow" />}
+        action={
+          <MonthYearPicker
+            year={year}
+            month={month}
+            onChange={(y, m) => { setYear(y); setMonth(m); setPage(1); }}
+          />
+        }
+      >
+        Attendance — {MONTH_NAMES[month - 1]} {year}
+      </SectionTitle>
+      {isLoading || !data ? (
+        <Skeleton className="h-24 rounded-[var(--radius)]" />
+      ) : data.data.length ? (
+        <>
+          <div className="space-y-2">
+            {data.data.map((d) => (
+              <Card key={d.day_id} className="flex items-center justify-between gap-3 p-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-text-primary">{workDateLabel(d.work_date)}</span>
+                    <span className="text-xs text-text-faint">
+                      In {clockTime(d.first_clock_in_at)}
+                      {d.last_clock_out_at ? ` · Out ${clockTime(d.last_clock_out_at)}` : ""}
+                    </span>
+                  </div>
+                  <ClockLocationLink day={d} />
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {d.is_late && <span className="text-xs text-warn">{d.minutes_late}m late</span>}
+                  {d.early_leave_minutes > 0 && (
+                    <span className="text-xs text-warn">{d.early_leave_minutes}m early</span>
+                  )}
+                  <AttendanceStatusPill day={d} />
+                </div>
+              </Card>
+            ))}
+          </div>
+          <Pagination
+            page={data.meta.page}
+            pageSize={data.meta.page_size}
+            total={data.meta.total}
+            onPageChange={setPage}
+          />
+        </>
+      ) : (
+        <Card className="p-4 text-sm text-text-muted">
+          No attendance recorded for {MONTH_NAMES[month - 1]} {year}.
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/** "My tasks" — 10/page. */
+function TasksSection() {
+  const [page, setPage] = useState(1);
+  const { data, isLoading } = useQuery({
+    queryKey: ["my-hr", "tasks", page],
+    queryFn: () => myTasks({ page, page_size: PAGE_SIZE }),
+  });
+  return (
+    <div>
+      <SectionTitle icon={<ListTodo className="h-4 w-4 text-accent-glow" />}>My tasks</SectionTitle>
+      {isLoading || !data ? (
+        <Skeleton className="h-16 rounded-[var(--radius)]" />
+      ) : data.data.length ? (
+        <>
+          <div className="space-y-2">
+            {data.data.map((t) => (
+              <Card key={t.task_id} className="flex items-center justify-between gap-3 p-3">
+                <span className="truncate text-sm text-text-primary">{t.title}</span>
+                <Pill tone={t.status === "done" ? "success" : "neutral"}>{t.status}</Pill>
+              </Card>
+            ))}
+          </div>
+          <Pagination page={data.meta.page} pageSize={data.meta.page_size} total={data.meta.total} onPageChange={setPage} />
+        </>
+      ) : (
+        <Card className="p-4 text-sm text-text-muted">No tasks assigned.</Card>
+      )}
+    </div>
+  );
+}
+
+/** "Contracts & documents" — 10/page. */
+function ContractsSection() {
+  const [page, setPage] = useState(1);
+  const { data, isLoading } = useQuery({
+    queryKey: ["my-hr", "contracts", page],
+    queryFn: () => myContracts({ page, page_size: PAGE_SIZE }),
+  });
+  return (
+    <div>
+      <SectionTitle icon={<FileText className="h-4 w-4 text-accent-glow" />}>
+        Contracts &amp; documents
+      </SectionTitle>
+      {isLoading || !data ? (
+        <Skeleton className="h-16 rounded-[var(--radius)]" />
+      ) : data.data.length ? (
+        <>
+          <div className="space-y-2">
+            {data.data.map((c) => (
+              <Card key={c.contract_id} className="flex items-center justify-between gap-3 p-3">
+                <div>
+                  <span className="text-sm capitalize text-text-primary">
+                    {c.contract_type.replace("_", " ")}
+                  </span>
+                  <div className="text-xs text-text-muted">
+                    From {c.effective_from}
+                    {c.effective_to ? ` to ${c.effective_to}` : " · current"}
+                  </div>
+                </div>
+                {c.document_id && <Pill tone="info">PDF</Pill>}
+              </Card>
+            ))}
+          </div>
+          <Pagination page={data.meta.page} pageSize={data.meta.page_size} total={data.meta.total} onPageChange={setPage} />
+        </>
+      ) : (
+        <Card className="p-4 text-sm text-text-muted">No contracts on file yet.</Card>
+      )}
+    </div>
+  );
+}
+
+/** "My targets this month" — 10/page. */
+function TargetsSection() {
+  const [page, setPage] = useState(1);
+  const { data, isLoading } = useQuery({
+    queryKey: ["my-hr", "targets", page],
+    queryFn: () => myTargets({ page, page_size: PAGE_SIZE }),
+  });
+  return (
+    <div>
+      <SectionTitle icon={<Target className="h-4 w-4 text-accent-glow" />}>
+        My targets this month
+      </SectionTitle>
+      {isLoading || !data ? (
+        <Skeleton className="h-24 rounded-[var(--radius)]" />
+      ) : data.data.length ? (
+        <>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {data.data.map((t) => (
+              <TargetCountdown key={t.target_id} t={t} />
+            ))}
+          </div>
+          <Pagination page={data.meta.page} pageSize={data.meta.page_size} total={data.meta.total} onPageChange={setPage} />
+        </>
+      ) : (
+        <Card className="p-4 text-sm text-text-muted">No targets set for this month yet.</Card>
+      )}
+    </div>
+  );
+}
+
+/** "My payslips" — 10/page. */
+function PayslipsSection() {
+  const [page, setPage] = useState(1);
+  const notify = useNotify("HR → My HR");
+  const pdf = useMutation({
+    mutationFn: (id: string) => payslipPdf(id),
+    onSuccess: (doc) => downloadDocument(doc).catch(() => notify("Download failed", "", "high")),
+    onError: (e) => notify("Couldn't generate PDF", errMsg(e), "high"),
+  });
+  const { data, isLoading } = useQuery({
+    queryKey: ["my-hr", "payslips", page],
+    queryFn: () => myPayslips({ page, page_size: PAGE_SIZE }),
+  });
+  return (
+    <div>
+      <SectionTitle icon={<Wallet className="h-4 w-4 text-accent-glow" />}>My payslips</SectionTitle>
+      {isLoading || !data ? (
+        <Skeleton className="h-16 rounded-[var(--radius)]" />
+      ) : data.data.length ? (
+        <>
+          <div className="space-y-2">
+            {data.data.map((s) => (
+              <Card key={s.payslip_id} className="flex items-center justify-between gap-3 p-3">
+                <div className="min-w-0">
+                  <span className="text-sm text-text-primary">{s.payslip_number}</span>
+                  <div className="text-xs text-text-muted">Net {money(Number(s.net_pay_ngn))}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Pill tone={statusTone(s.payment_status === "paid" ? "approved" : s.payment_status === "failed" ? "rejected" : "pending")}>
+                    {s.payment_status}
+                  </Pill>
+                  <Button size="sm" variant="ghost" icon={<Download className="h-3.5 w-3.5" />}
+                    disabled={pdf.isPending} onClick={() => pdf.mutate(s.payslip_id)}>PDF</Button>
+                </div>
+              </Card>
+            ))}
+          </div>
+          <Pagination page={data.meta.page} pageSize={data.meta.page_size} total={data.meta.total} onPageChange={setPage} />
+        </>
+      ) : (
+        <Card className="p-4 text-sm text-text-muted">No payslips yet.</Card>
+      )}
+    </div>
   );
 }
 
@@ -255,8 +517,6 @@ function RequestLeaveModal({ open, onClose }: { open: boolean; onClose: () => vo
 }
 
 export default function MyHrPage() {
-  useBreadcrumbs([{ label: "My HR" }]);
-  const notify = useNotify("HR → My HR");
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [respondQuery, setRespondQuery] = useState<HrQuery | null>(null);
 
@@ -264,12 +524,6 @@ export default function MyHrPage() {
     queryKey: ["my-hr"],
     queryFn: getMyHr,
     retry: false,
-  });
-
-  const pdf = useMutation({
-    mutationFn: (id: string) => payslipPdf(id),
-    onSuccess: (doc) => downloadDocument(doc).catch(() => notify("Download failed", "", "high")),
-    onError: (e) => notify("Couldn't generate PDF", errMsg(e), "high"),
   });
 
   if (isError) {
@@ -307,7 +561,7 @@ export default function MyHrPage() {
       ) : (
         <>
           {/* Getting started (onboarding pack — always available) */}
-          <OnboardingCard onboarding={data.onboarding} contracts={data.contracts} />
+          <OnboardingCard onboarding={data.onboarding} />
 
           {/* Earnings tracker hero */}
           {data.earnings.tracker_enabled && (
@@ -350,7 +604,7 @@ export default function MyHrPage() {
               <div className="mt-1 font-display text-lg text-text-primary">
                 {minutesLabel(data.insights.earliest_arrival?.local_minutes ?? null)}
               </div>
-              <div className="text-xs text-text-faint">{data.insights.earliest_arrival?.work_date || "—"}</div>
+              <div className="text-xs text-text-faint">{workDateLabel(data.insights.earliest_arrival?.work_date)}</div>
             </Card>
             <Card className="p-4">
               <div className="flex items-center gap-2 text-xs text-text-muted">
@@ -359,7 +613,7 @@ export default function MyHrPage() {
               <div className="mt-1 font-display text-lg text-text-primary">
                 {minutesLabel(data.insights.latest_departure?.local_minutes ?? null)}
               </div>
-              <div className="text-xs text-text-faint">{data.insights.latest_departure?.work_date || "—"}</div>
+              <div className="text-xs text-text-faint">{workDateLabel(data.insights.latest_departure?.work_date)}</div>
             </Card>
             <KpiTile label="Punctuality" value={`${data.insights.punctuality_pct}%`}
               tone={data.insights.punctuality_pct >= 90 ? "accent" : "warn"} />
@@ -414,22 +668,7 @@ export default function MyHrPage() {
           </div>
 
           {/* Target countdowns */}
-          <div>
-            <SectionTitle icon={<Target className="h-4 w-4 text-accent-glow" />}>
-              My targets this month
-            </SectionTitle>
-            {data.targets.length ? (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {data.targets.map((t) => (
-                  <TargetCountdown key={t.target_id} t={t} />
-                ))}
-              </div>
-            ) : (
-              <Card className="p-4 text-sm text-text-muted">
-                No targets set for this month yet.
-              </Card>
-            )}
-          </div>
+          <TargetsSection />
 
           {/* Open queries */}
           {data.open_queries.length > 0 && (
@@ -464,93 +703,15 @@ export default function MyHrPage() {
           )}
 
           <div className="grid gap-4 md:grid-cols-2">
-            {/* Tasks */}
-            <div>
-              <SectionTitle icon={<ListTodo className="h-4 w-4 text-accent-glow" />}>
-                My tasks
-              </SectionTitle>
-              {data.tasks.length ? (
-                <div className="space-y-2">
-                  {data.tasks.map((t) => (
-                    <Card key={t.task_id} className="flex items-center justify-between gap-3 p-3">
-                      <span className="truncate text-sm text-text-primary">{t.title}</span>
-                      <Pill tone={t.status === "done" ? "success" : "neutral"}>{t.status}</Pill>
-                    </Card>
-                  ))}
-                </div>
-              ) : (
-                <Card className="p-4 text-sm text-text-muted">No tasks assigned.</Card>
-              )}
-            </div>
-
-            {/* Contracts / documents */}
-            <div>
-              <SectionTitle icon={<FileText className="h-4 w-4 text-accent-glow" />}>
-                Contracts & documents
-              </SectionTitle>
-              {data.contracts.length ? (
-                <div className="space-y-2">
-                  {data.contracts.map((c) => (
-                    <Card key={c.contract_id} className="flex items-center justify-between gap-3 p-3">
-                      <div>
-                        <span className="text-sm capitalize text-text-primary">
-                          {c.contract_type.replace("_", " ")}
-                        </span>
-                        <div className="text-xs text-text-muted">
-                          From {c.effective_from}
-                          {c.effective_to ? ` to ${c.effective_to}` : " · current"}
-                        </div>
-                      </div>
-                      {c.document_id && <Pill tone="info">PDF</Pill>}
-                    </Card>
-                  ))}
-                </div>
-              ) : (
-                <Card className="p-4 text-sm text-text-muted">
-                  No contracts on file yet.
-                </Card>
-              )}
-            </div>
+            <TasksSection />
+            <ContractsSection />
           </div>
 
           {/* My devices — enrol the phone/laptop you clock in with */}
           <MyDevicesSection />
 
-          {/* Attendance this month */}
-          <div>
-            <SectionTitle icon={<CalendarDays className="h-4 w-4 text-accent-glow" />}>
-              This month's attendance
-            </SectionTitle>
-            {data.attendance.length ? (
-              <div className="space-y-2">
-                {data.attendance.slice(0, 31).map((d) => (
-                  <Card key={d.day_id} className="flex items-center justify-between gap-3 p-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm text-text-primary">{d.work_date}</span>
-                        <span className="text-xs text-text-faint">
-                          In {clockTime(d.first_clock_in_at)}
-                          {d.last_clock_out_at ? ` · Out ${clockTime(d.last_clock_out_at)}` : ""}
-                        </span>
-                      </div>
-                      <ClockLocationLink day={d} />
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      {d.is_late && <span className="text-xs text-warn">{d.minutes_late}m late</span>}
-                      {d.early_leave_minutes > 0 && (
-                        <span className="text-xs text-warn">{d.early_leave_minutes}m early</span>
-                      )}
-                      <Pill tone={d.is_offsite ? "warn" : statusTone(d.status)}>
-                        {d.status.replace("_", " ")}
-                      </Pill>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            ) : (
-              <Card className="p-4 text-sm text-text-muted">No attendance recorded yet this month.</Card>
-            )}
-          </div>
+          {/* Attendance this month (or a chosen month) */}
+          <AttendanceSection />
 
           {/* My rewards */}
           {data.rewards.length > 0 && (
@@ -577,30 +738,7 @@ export default function MyHrPage() {
           )}
 
           {/* My payslips */}
-          <div>
-            <SectionTitle icon={<Wallet className="h-4 w-4 text-accent-glow" />}>My payslips</SectionTitle>
-            {data.payslips.length ? (
-              <div className="space-y-2">
-                {data.payslips.map((s) => (
-                  <Card key={s.payslip_id} className="flex items-center justify-between gap-3 p-3">
-                    <div className="min-w-0">
-                      <span className="text-sm text-text-primary">{s.payslip_number}</span>
-                      <div className="text-xs text-text-muted">Net {money(Number(s.net_pay_ngn))}</div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Pill tone={statusTone(s.payment_status === "paid" ? "approved" : s.payment_status === "failed" ? "rejected" : "pending")}>
-                        {s.payment_status}
-                      </Pill>
-                      <Button size="sm" variant="ghost" icon={<Download className="h-3.5 w-3.5" />}
-                        disabled={pdf.isPending} onClick={() => pdf.mutate(s.payslip_id)}>PDF</Button>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            ) : (
-              <Card className="p-4 text-sm text-text-muted">No payslips yet.</Card>
-            )}
-          </div>
+          <PayslipsSection />
         </>
       )}
 

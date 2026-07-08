@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Calendar,
+  Wallet,
 } from "lucide-react";
 import {
   DndContext,
@@ -39,6 +40,7 @@ import {
   Pill,
 } from "@/components/ui/primitives";
 import { ErrorState } from "@/components/ui/controls";
+import MyHrPage from "@/pages/hr/MyHrPage";
 
 import { useTaskBoard, useCalendarEvents, useMoveTask } from "./hooks";
 import { TaskCard } from "./TaskCard";
@@ -73,6 +75,7 @@ const TABS: { key: WorkspaceTab; label: string; icon: typeof Sun }[] = [
   { key: "my-day", label: "My Day", icon: Sun },
   { key: "calendar", label: "Calendar", icon: CalendarDays },
   { key: "tasks", label: "Tasks", icon: ListTodo },
+  { key: "my-hr", label: "My HR", icon: Wallet },
 ];
 
 const CAL_VIEWS: { key: CalendarViewMode; label: string }[] = [
@@ -487,6 +490,8 @@ export function WorkspacePage() {
                 }}
               />
             ))}
+
+          {activeTab === "my-hr" && <MyHrPage />}
         </div>
 
         {/* Detail panel (desktop only) */}

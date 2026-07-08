@@ -100,6 +100,22 @@ export function clockTime(iso: string | null): string {
   return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
+/**
+ * "Mon, Jul 6" from a "YYYY-MM-DD" date-only string. Reads the calendar
+ * parts directly rather than round-tripping through `new Date(iso)`, so it
+ * can't shift a day under the viewer's browser timezone.
+ */
+export function workDateLabel(dateStr: string | null | undefined): string {
+  if (!dateStr) return "—";
+  const [y, m, d] = dateStr.slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return "—";
+  return new Date(y, m - 1, d).toLocaleDateString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 /** "8:10 AM" from minutes-since-midnight (workplace-local, from insights). */
 export function minutesLabel(local: number | null | undefined): string {
   if (local == null) return "—";
@@ -263,6 +279,7 @@ export function SectionTitle({
 export function statusTone(status: string): Tone {
   switch (status) {
     case "present":
+    case "present_day_off":
     case "approved":
     case "achieved":
     case "waived":
@@ -285,6 +302,48 @@ export function statusTone(status: string): Tone {
 
 export function QueryStatusPill({ status }: { status: string }) {
   return <Pill tone={statusTone(status)}>{status.replace("_", " ")}</Pill>;
+}
+
+/**
+ * Attendance-day badge (label + tone + emoji), keyed off the reconciled
+ * `status` plus the `is_offsite` flag. Off-site takes precedence over the
+ * underlying status — a late-but-offsite clock-in still reads "Remote", since
+ * the location needs verification regardless of the time.
+ */
+const ATTENDANCE_STATUS_META: Record<string, { label: string; tone: Tone; emoji: string }> = {
+  present: { label: "Present (Early Bird)", tone: "success", emoji: "☺️" },
+  present_day_off: { label: "Present (Day Off)", tone: "success", emoji: "🥳" },
+  late: { label: "Present (Late)", tone: "warn", emoji: "☹️" },
+  absent: { label: "Absent", tone: "danger", emoji: "😡" },
+  on_leave: { label: "On Leave", tone: "info", emoji: "🌴" },
+  off: { label: "Off", tone: "neutral", emoji: "😴" },
+};
+
+export function attendanceStatusMeta(
+  day: Pick<AttendanceDay, "status" | "is_offsite">,
+): { label: string; tone: Tone; emoji: string } {
+  if (day.is_offsite) return { label: "Remote", tone: "danger", emoji: "😒" };
+  return (
+    ATTENDANCE_STATUS_META[day.status] ?? {
+      label: day.status.replace("_", " "),
+      tone: statusTone(day.status),
+      emoji: "",
+    }
+  );
+}
+
+export function AttendanceStatusPill({
+  day,
+}: {
+  day: Pick<AttendanceDay, "status" | "is_offsite">;
+}) {
+  const meta = attendanceStatusMeta(day);
+  return (
+    <Pill tone={meta.tone}>
+      <span className="mr-1">{meta.emoji}</span>
+      {meta.label}
+    </Pill>
+  );
 }
 
 /** Lightweight tab bar matching the kit (no external Tabs component). */

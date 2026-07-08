@@ -52,6 +52,7 @@ function ServiceTypeDrawer({
   onSave,
   onClose,
   isSaving,
+  error,
 }: {
   initial?: ServiceType;
   onSave: (data: {
@@ -65,6 +66,7 @@ function ServiceTypeDrawer({
   }) => void;
   onClose: () => void;
   isSaving: boolean;
+  error?: string;
 }) {
   const [form, setForm] = useState({
     service_key: initial?.service_key ?? "",
@@ -177,6 +179,8 @@ function ServiceTypeDrawer({
           </label>
         )}
 
+        {error && <p className="text-sm text-danger">{error}</p>}
+
         <div className="flex gap-3 pt-2">
           <Button variant="secondary" onClick={onClose}>
             Cancel
@@ -197,7 +201,11 @@ function ServiceTypeDrawer({
                 display_order: form.display_order
                   ? parseInt(form.display_order)
                   : undefined,
-                is_active: form.is_active,
+                // is_active is only a recognised field on update — the create
+                // validator is .strict() and 400s on unknown keys, which is
+                // exactly why every "New Service Type" save used to silently
+                // fail (the error was never surfaced either — see `error` above).
+                ...(initial ? { is_active: form.is_active } : {}),
               });
             }}
             disabled={!form.service_key || !form.display_name || isSaving}
@@ -304,6 +312,7 @@ function ServiceTypesTab({ canCreate }: { canCreate: boolean }) {
           }
           onClose={() => setShowCreate(false)}
           isSaving={create.isPending}
+          error={create.isError ? (create.error as Error)?.message : undefined}
         />
       )}
 
@@ -317,6 +326,7 @@ function ServiceTypesTab({ canCreate }: { canCreate: boolean }) {
           }
           onClose={() => setEditing(null)}
           isSaving={update.isPending}
+          error={update.isError ? (update.error as Error)?.message : undefined}
         />
       )}
     </div>
@@ -609,7 +619,7 @@ export function ServiceJobsPage() {
       {tab === "board" && <JobBoard canCreate={canCreate} />}
       {tab === "qc" && <QcQueue />}
       {tab === "accountability" && <AccountabilityPanel />}
-      {tab === "types" && <ServiceTypesTab canCreate={canEdit} />}
+      {tab === "types" && <ServiceTypesTab canCreate={canCreate} />}
       {tab === "recipes" && <RecipesPanel canCreate={canEdit} />}
       {tab === "reconciliation" && <ReconciliationTab />}
     </div>

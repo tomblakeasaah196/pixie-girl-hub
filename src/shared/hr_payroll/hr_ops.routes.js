@@ -27,6 +27,11 @@ const P = (action) => requirePermission("hr_payroll", action);
 
 // ── Self-service (My HR) — auth only ───────────────────────
 router.get("/me", c.getMyHr);
+router.get("/me/attendance", c.myAttendance);
+router.get("/me/tasks", c.myTasks);
+router.get("/me/contracts", c.myContracts);
+router.get("/me/targets", c.myTargets);
+router.get("/me/payslips", c.myPayslips);
 router.get("/me/today", c.getMyToday);
 router.post("/me/clock", v.clock, c.selfClock);
 router.post("/me/leave", v.leaveRequest, c.requestLeave);

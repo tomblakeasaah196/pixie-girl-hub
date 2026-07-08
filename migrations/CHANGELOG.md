@@ -11,6 +11,42 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-08 — Curated onboarding articles (HR & Staff → Onboarding)
+
+**Source:** user feedback on My HR's "Getting started" card pulling
+unrelated Help Center articles (any article tagged `onboarding` brand-wide,
+regardless of what it's actually about).
+
+**Files (new):** `000308_shared_hr_onboarding_articles.sql`.
+
+**What:** `shared.hr_settings.onboarding_help_article_ids UUID[]` — an
+explicit, ordered list of Help Center articles HR curates for new hires via
+a new HR & Staff → Onboarding tab. `hr_ops.repo.onboardingHelpArticles` uses
+this list when non-empty and falls back to the legacy tag-based query
+otherwise, so existing installs are unaffected until HR picks articles.
+
+---
+
+## 2026-07-08 — Praxis campaign action payload schemas (hallucination fixes PR 1)
+
+**Source:** Praxis hallucination root-cause analysis (2026-07-08). The six
+`sales_campaigns.*` rows seeded by 000221 carry routes with `:id` but left
+`payload_schema` at the default `'{}'`, which the orchestrator normalises to
+an EMPTY tool-parameter schema — the model was never told a campaign id is
+required, so every proposed action failed after human confirmation with
+`ACTION_ROUTE_PARAMS_MISSING` ("This action is missing a required reference").
+
+**Files (new):** `000307_shared_praxis_campaign_action_payload_schemas.sql`.
+
+**What:** real JSON Schemas (mirroring each route's Zod validator plus the
+`id` route param, with `required` lists) for the six campaign actions;
+descriptions + examples now tell the model to look the campaign id up via
+the new `query_campaigns_recent` catalogue query instead of guessing.
+Backend companions (same PR): proposal-time route-param validation with one
+corrective model round, inline execution of read-safe catalogue actions, and
+a RAG similarity floor (`PRAXIS_RAG_MIN_SCORE`) + provenance labels on
+retrieved chunks.
+
 ## 2026-07-07 — Stamp `sales_orders.paid_at` on payment + backfill (V2.2 §6.2)
 
 **Source:** Sales/Logistics audit follow-up (2026-07-07). The `paid_at`

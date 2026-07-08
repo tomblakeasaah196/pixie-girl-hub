@@ -1,17 +1,19 @@
 import { useSearchParams } from "react-router-dom";
-import { Sun, LayoutGrid, Users } from "lucide-react";
+import { Sun, LayoutGrid, Users, BarChart3 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { TodayTab } from "./today/TodayTab";
 import { PipelineTab } from "./pipeline/PipelineTab";
 import { ClientsTab } from "./clients/ClientsTab";
+import { ReportsTab } from "./reports/ReportsTab";
 
-type CrmTab = "today" | "pipeline" | "clients";
+type CrmTab = "today" | "pipeline" | "clients" | "reports";
 
 const TABS: { key: CrmTab; label: string; icon: typeof Sun }[] = [
   { key: "today", label: "Today", icon: Sun },
   { key: "pipeline", label: "Pipeline", icon: LayoutGrid },
   { key: "clients", label: "Clients", icon: Users },
+  { key: "reports", label: "Reports", icon: BarChart3 },
 ];
 
 export function CrmPage() {
@@ -52,6 +54,7 @@ export function CrmPage() {
       {activeTab === "today" && <TodayTab />}
       {activeTab === "pipeline" && <PipelineTab />}
       {activeTab === "clients" && <ClientsTab />}
+      {activeTab === "reports" && <ReportsTab />}
     </div>
   );
 }

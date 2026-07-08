@@ -60,6 +60,7 @@ import {
 } from "@/lib/hr-api";
 import { OfficeGeofenceSettings } from "./OfficeGeofenceSettings";
 import { OnboardingSettings } from "./OnboardingSettings";
+import { OnboardingArticlesTab } from "./OnboardingArticlesTab";
 import { RewardsTab } from "./RewardsTab";
 import { DevicesTab, LiveAttendanceStrip, UnknownDeviceFlag } from "./devices";
 import {
@@ -69,6 +70,7 @@ import {
   TabBar,
   ClockLocationLink,
   clockTime,
+  workDateLabel,
   useNotify,
   errMsg,
   statusTone,
@@ -657,7 +659,7 @@ function AttendanceTab() {
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-text-primary">{d.staff_name || "Staff"}</span>
-                  <span className="text-xs text-text-faint">{d.work_date}</span>
+                  <span className="text-xs text-text-faint">{workDateLabel(d.work_date)}</span>
                 </div>
                 <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
                   <span className="text-xs text-text-muted">
@@ -1034,6 +1036,7 @@ export default function HrStaffPage() {
           { key: "rewards", label: "Rewards" },
           { key: "analytics", label: "Analytics" },
           { key: "settings", label: "Settings" },
+          { key: "onboarding", label: "Onboarding" },
         ]}
       />
 
@@ -1095,6 +1098,13 @@ export default function HrStaffPage() {
           ? <SettingsTab />
           : <div className="flex items-center gap-2 text-sm text-text-muted">
               <SettingsIcon className="h-4 w-4" /> You need edit access to change HR settings.
+            </div>
+      )}
+      {tab === "onboarding" && (
+        can("hr_payroll", "edit")
+          ? <OnboardingArticlesTab />
+          : <div className="flex items-center gap-2 text-sm text-text-muted">
+              <SettingsIcon className="h-4 w-4" /> You need edit access to change onboarding articles.
             </div>
       )}
 

@@ -29,6 +29,7 @@
 const llm = require("../../services/llm.service");
 const { query, transaction } = require("../../config/database");
 const { logger } = require("../../config/logger");
+const { summariseViaFallback } = require("./fallback-summarise");
 
 const ROW_CAP = 200;
 const TIMEOUT_MS = 6000;
@@ -181,6 +182,17 @@ function accUsage(acc, u) {
   acc.total_tokens += u.total_tokens || 0;
 }
 
+/** Fence raw JSON so the chat's Markdown renderer can't shred it (bare
+ *  snake_case becomes italics: order_number → order*number*). */
+function fencedResult(result, intro) {
+  return (
+    intro +
+    "\n```json\n" +
+    JSON.stringify(result, null, 2).slice(0, 1200) +
+    "\n```"
+  );
+}
+
 /**
  * Agentic read loop: run the model's sql tool call, feed the result back, and
  * let it call again (discover schema → query → answer) until it produces a
@@ -221,13 +233,35 @@ async function run({ vendor, user, brand, messages, completion, toolCall, args }
     try {
       follow = await llm.chat({ vendor, messages: convo, tools: sqlTools });
     } catch (e) {
-      logger.error({ err: e.message }, "praxis sql-agent summarise failed");
-      return {
-        replyText:
-          "Here's the raw result:\n" + JSON.stringify(result).slice(0, 1200),
-        usage,
-        sql: true,
-      };
+      logger.error(
+        { err: e.message },
+        "praxis sql-agent summarise failed — retrying once",
+      );
+      // Retry the primary once, then the fallback vendor, then a fenced raw
+      // dump as the true last resort (never bare JSON into Markdown).
+      try {
+        follow = await llm.chat({ vendor, messages: convo, tools: sqlTools });
+      } catch (e2) {
+        logger.error(
+          { err: e2.message },
+          "praxis sql-agent summarise retry failed — trying fallback vendor",
+        );
+        const fallbackText = await summariseViaFallback({ messages, result });
+        return {
+          replyText:
+            fallbackText ||
+            fencedResult(
+              result,
+              "I ran the query but couldn't compose a summary just now. Raw result:",
+            ),
+          usage,
+          sql: true,
+          // No natural-language answer was produced — the trace/usage ledger
+          // should show this as a failed turn, not a silent success, or ops
+          // has no way to see how often this degrades in production.
+          degraded: !fallbackText,
+        };
+      }
     }
     accUsage(usage, follow.usage);
 

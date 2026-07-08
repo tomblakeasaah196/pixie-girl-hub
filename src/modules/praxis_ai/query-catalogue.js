@@ -16,6 +16,7 @@
 "use strict";
 
 const dashboardsRepo = require("../dashboards/dashboards.repo");
+const dashboardsMetricsRepo = require("../dashboards/dashboards.metrics.repo");
 const cashRequestRepo = require("../cash_request/cash-request.repo");
 const hrService = require("../../shared/hr_payroll/hr_ops.service");
 const hrRepo = require("../../shared/hr_payroll/hr_ops.repo");
@@ -26,6 +27,7 @@ const purchasingRepo = require("../purchasing/purchasing.repo");
 const contactsRepo = require("../../shared/contacts/contacts.repo");
 const crmRepo = require("../crm/crm.repo");
 const insightsRepo = require("../ai_insights/insights.repo");
+const campaignsRepo = require("../sales_campaigns/campaigns.repo");
 
 const str = (v) => (typeof v === "string" && v ? v : null);
 
@@ -38,6 +40,45 @@ const QUERIES = [
     module: "ai_insights",
     parameters: { type: "object", properties: {} },
     run: ({ brand }) => insightsRepo.summary({ business: brand }),
+  },
+  {
+    key: "insights_list",
+    title: "Open insight details (drill-down)",
+    description:
+      "Individual open AI-insight records for the current brand — each one names the specific affected record (order, invoice, staff member, etc.), its severity, and supporting context (why it was raised). insights_open only gives per-module COUNTS; use insights_list whenever asked for detail, root causes, which records are affected, or what to do first about a module's insights.",
+    module: "ai_insights",
+    parameters: {
+      type: "object",
+      properties: {
+        module: {
+          type: "string",
+          description:
+            "Restrict to one module's insights, e.g. 'sales', 'stock', 'invoicing', 'purchasing', 'expenses', 'hr_attendance', 'crm', 'production', 'accounting', 'retention', 'pricing', 'logistics', 'approvals', 'intercompany', 'catalogue' (optional — omit for all modules).",
+        },
+        severity: {
+          type: "string",
+          description: "Filter by severity: low, medium, high, critical (optional).",
+        },
+        limit: {
+          type: "integer",
+          description: "Max insights to return (optional; default 20, max 50).",
+        },
+      },
+    },
+    run: ({ brand, args }) => {
+      const limit =
+        Number.isInteger(args.limit) && args.limit > 0
+          ? Math.min(args.limit, 50)
+          : 20;
+      return insightsRepo.list({
+        module: str(args.module) || undefined,
+        business: brand,
+        status: "open",
+        severity: str(args.severity) || undefined,
+        page: 1,
+        page_size: limit,
+      });
+    },
   },
   {
     key: "sales_summary",
@@ -64,6 +105,42 @@ const QUERIES = [
         from: str(args.from),
         to: str(args.to),
       }),
+  },
+  {
+    key: "top_products",
+    title: "Best-selling products",
+    description:
+      "Top-selling products for the current brand by revenue over a date range — units sold and revenue per product. Defaults to year-to-date if no range is given. Use this for 'best seller', 'top product(s)', 'what's selling' questions instead of sql_schema/sql_query.",
+    module: "dashboards",
+    parameters: {
+      type: "object",
+      properties: {
+        from: {
+          type: "string",
+          description:
+            "ISO date/time lower bound (optional; defaults to 1 Jan of the current year).",
+        },
+        to: {
+          type: "string",
+          description: "ISO date/time upper bound (optional; defaults to now).",
+        },
+        limit: {
+          type: "integer",
+          description: "Max products to return (optional; default 10, max 50).",
+        },
+      },
+    },
+    run: ({ brand, args }) => {
+      const now = new Date();
+      const from =
+        str(args.from) || new Date(Date.UTC(now.getUTCFullYear(), 0, 1)).toISOString();
+      const to = str(args.to) || now.toISOString();
+      const limit =
+        Number.isInteger(args.limit) && args.limit > 0
+          ? Math.min(args.limit, 50)
+          : 10;
+      return dashboardsMetricsRepo.topProducts({ brand, from, to, limit });
+    },
   },
   {
     key: "operations_summary",
@@ -275,6 +352,44 @@ const QUERIES = [
     module: "crm",
     parameters: { type: "object", properties: {} },
     run: ({ brand }) => crmRepo.kpis({ brand }),
+  },
+  {
+    key: "campaigns_recent",
+    title: "Recent / current sales campaigns",
+    description:
+      "The brand's sales campaigns, most recent first: campaign_id, name, slug, status and start/end dates. Use this to answer 'when was our last campaign?', to see what's live now, or to find a campaign's id (campaign_id) before calling any sales_campaigns action.",
+    module: "sales_campaigns",
+    parameters: {
+      type: "object",
+      properties: {
+        status: {
+          type: "string",
+          description:
+            "Optional status filter (comma-separated): draft, pending_approval, scheduled, live, paused, ended, archived.",
+        },
+      },
+    },
+    run: async ({ brand, args }) => {
+      const r = await campaignsRepo.findAll({
+        brand,
+        scope: "all",
+        filters: { status: str(args.status) || undefined },
+        page: 1,
+        page_size: 10,
+        offset: 0,
+      });
+      // Compact projection — the model needs identifiers + timeline, not the
+      // whole row (landing blocks, voice profiles, etc. would blow the prompt).
+      return (r.data || []).map((c) => ({
+        campaign_id: c.campaign_id,
+        name: c.name,
+        slug: c.slug,
+        status: c.status,
+        starts_at: c.starts_at,
+        ends_at: c.ends_at,
+        created_at: c.created_at,
+      }));
+    },
   },
 ];
 

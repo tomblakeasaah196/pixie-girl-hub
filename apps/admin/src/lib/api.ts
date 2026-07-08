@@ -101,23 +101,41 @@ function notifySessionExpired() {
 }
 
 /** Exchange the refresh cookie for a new access token. Returns true on
- *  success. Kept out of `request` so it never recurses into itself. */
-export async function refreshAccessToken(): Promise<boolean> {
-  try {
-    const res = await fetch(`${API_BASE}/auth/refresh`, {
-      method: "POST",
-      headers: { Accept: "application/json" },
-      credentials: "include",
-    });
-    if (!res.ok) return false;
-    const json = (await res.json()) as { data?: { access_token?: string } };
-    const token = json?.data?.access_token ?? null;
-    if (!token) return false;
-    accessToken = token;
-    return true;
-  } catch {
-    return false;
-  }
+ *  success. Kept out of `request` so it never recurses into itself.
+ *
+ *  The refresh token is single-use and rotates server-side on every call
+ *  (old jti deleted, new one issued — see auth.service.js#refresh). If two
+ *  requests 401 around the same moment (e.g. several queries refetching at
+ *  once after the tab was idle past the access-token's life), each used
+ *  to fire its own /auth/refresh with the same still-valid cookie; the
+ *  loser of that race got back TOKEN_REVOKED and wrongly told the app the
+ *  whole session had expired, popping the password modal, even though the
+ *  winner had just silently refreshed it. Sharing one in-flight promise
+ *  across concurrent callers means only one refresh call ever goes out.
+ */
+let refreshPromise: Promise<boolean> | null = null;
+export function refreshAccessToken(): Promise<boolean> {
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = (async () => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/refresh`, {
+        method: "POST",
+        headers: { Accept: "application/json" },
+        credentials: "include",
+      });
+      if (!res.ok) return false;
+      const json = (await res.json()) as { data?: { access_token?: string } };
+      const token = json?.data?.access_token ?? null;
+      if (!token) return false;
+      accessToken = token;
+      return true;
+    } catch {
+      return false;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+  return refreshPromise;
 }
 
 async function request<T>(path: string, opts: Options = {}): Promise<T> {

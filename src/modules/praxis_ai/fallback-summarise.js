@@ -48,6 +48,15 @@ async function summariseViaFallback({ messages, result }) {
       ],
       temperature: 0.3,
       maxOutputTokens: 500,
+      // This is plain-text extraction from an already-fetched result, not
+      // reasoning — every other Gemini caller in this codebase (storefront
+      // search, shade finder) disables thinking for exactly this shape of
+      // call. Without it, Gemini 2.5's default thinking can silently
+      // consume the whole maxOutputTokens budget and return empty text —
+      // which this function then treats as "fallback unavailable" and
+      // degrades to the raw JSON dump anyway, defeating the entire point
+      // of having a fallback vendor.
+      thinkingBudget: 0,
     });
     return (r && r.text) || null;
   } catch (err) {

@@ -36,16 +36,22 @@ const QUERIES = [
     key: "insights_open",
     title: "Open insights / what needs attention",
     description:
-      "Open AI-insight counts per module for the current brand — overdue invoices, low stock, unpaid settlements, unanswered messages, and more. Use this when asked 'what needs my attention?', 'any alerts?', or 'what's wrong today?'.",
+      "Open AI-insight counts per module for the current brand (overdue invoices, low stock, unpaid settlements, unanswered messages, and more), PLUS a sample of the individual affected records behind those counts — so root-cause / 'which records' / 'what should I do first' follow-ups can already be answered from this SAME call, without a second tool call. Use this for 'what needs my attention?', 'any alerts?', 'what's wrong today?', and for detail/root-cause follow-ups about those counts.",
     module: "ai_insights",
     parameters: { type: "object", properties: {} },
-    run: ({ brand }) => insightsRepo.summary({ business: brand }),
+    run: async ({ brand }) => {
+      const [summary, records] = await Promise.all([
+        insightsRepo.summary({ business: brand }),
+        insightsRepo.list({ business: brand, status: "open", page: 1, page_size: 30 }),
+      ]);
+      return { summary, records };
+    },
   },
   {
     key: "insights_list",
-    title: "Open insight details (drill-down)",
+    title: "Open insight details (drill-down, filterable)",
     description:
-      "Individual open AI-insight records for the current brand — each one names the specific affected record (order, invoice, staff member, etc.), its severity, and supporting context (why it was raised). insights_open only gives per-module COUNTS; use insights_list whenever asked for detail, root causes, which records are affected, or what to do first about a module's insights.",
+      "Individual open AI-insight records for the current brand — each one names the specific affected record (order, invoice, staff member, etc.), its severity, and supporting context (why it was raised). insights_open already includes a sample of these; call insights_list instead when you need to FILTER by one module or by severity, or need more than insights_open's sample.",
     module: "ai_insights",
     parameters: {
       type: "object",

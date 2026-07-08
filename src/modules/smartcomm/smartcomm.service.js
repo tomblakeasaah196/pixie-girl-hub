@@ -95,6 +95,40 @@ async function assertPlatformAccess({
   }
 }
 
+/**
+ * Read-access gate for a channel. `customer_thread` channels only ever
+ * carry the CONTACT as a member (see findOrCreateCustomerThread) — no
+ * staff user_id is ever added — so a plain membership check locks EVERY
+ * non-CEO staffer out of EVERY WhatsApp/Instagram/email conversation.
+ * Mirrors listChannelsForUser's visibility rule: customer threads are
+ * readable by any staffer with (brand + per-platform) view access;
+ * internal direct/group channels still require real membership.
+ */
+async function assertChannelReadable({ user, brand, channel }) {
+  if (isCeo(user)) return;
+  if (channel.channel_type === "customer_thread") {
+    if (channel.external_platform) {
+      await assertPlatformAccess({
+        user,
+        brand,
+        platform: channel.external_platform,
+        action: "view",
+      });
+    }
+    return;
+  }
+  const member = await repo.findMember({
+    channel_id: channel.channel_id,
+    user_id: user.user_id,
+  });
+  if (!member)
+    throw new AppError(
+      "NOT_MEMBER",
+      "You are not a member of this channel",
+      403,
+    );
+}
+
 // ── Channels ──────────────────────────────────────────────
 
 function listChannels({
@@ -124,10 +158,11 @@ function listChannels({
   });
 }
 
-async function getChannel({ user, id }) {
-  const channel = await repo.getChannelEnriched({ id, user_id: user.user_id });
+async function getChannel({ user, brand, id }) {
+  const channel = await repo.getChannel({ id });
   if (!channel) throw new NotFoundError("Channel");
-  return channel;
+  await assertChannelReadable({ user, brand, channel });
+  return repo.getChannelEnriched({ id, user_id: user.user_id });
 }
 
 /** Create an internal team channel (group or direct). */
@@ -341,18 +376,11 @@ async function muteChannel({ user, id, muted, hours }) {
 
 // ── Messages ──────────────────────────────────────────────
 
-async function listMessages({ user, id, before, limit }) {
-  // Verify membership before exposing message content.
-  const member = await repo.findMember({
-    channel_id: id,
-    user_id: user.user_id,
-  });
-  if (!member && !isCeo(user))
-    throw new AppError(
-      "NOT_MEMBER",
-      "You are not a member of this channel",
-      403,
-    );
+async function listMessages({ user, brand, id, before, limit }) {
+  const channel = await repo.getChannel({ id });
+  if (!channel) throw new NotFoundError("Channel");
+  // Verify read access before exposing message content.
+  await assertChannelReadable({ user, brand, channel });
   return repo.listMessages({ channel_id: id, before, limit });
 }
 
@@ -527,6 +555,12 @@ async function forwardMessage({
 }) {
   const src = await repo.getMessage({ id: message_id });
   if (!src || src.is_deleted) throw new NotFoundError("Message");
+  // The caller must actually be able to read the message they're
+  // forwarding — otherwise anyone with smartcomm.edit could enumerate
+  // message_ids from another private DM/group and re-broadcast them.
+  const srcChannel = await repo.getChannel({ id: src.channel_id });
+  if (!srcChannel) throw new NotFoundError("Channel");
+  await assertChannelReadable({ user, brand, channel: srcChannel });
   let forwarded = 0;
   for (const target_channel_id of channel_ids) {
     const dest = await repo.getChannel({ id: target_channel_id });
@@ -538,6 +572,19 @@ async function forwardMessage({
         platform: dest.external_platform,
         action: "reply",
       });
+    } else if (!isCeo(user)) {
+      // Internal direct/group destination — must actually be a member to
+      // post there (assertPlatformAccess only covers external platforms).
+      const destMember = await repo.findMember({
+        channel_id: dest.channel_id,
+        user_id: user.user_id,
+      });
+      if (!destMember)
+        throw new AppError(
+          "NOT_MEMBER",
+          "You are not a member of this channel",
+          403,
+        );
     }
     await transaction(async (client) => {
       const msg = await repo.insertMessage({
@@ -1169,25 +1216,36 @@ async function sendToCustomer({
     if (soft) return null;
     throw new AppError("NO_PHONE", "Contact has no phone/WhatsApp", 422);
   }
-  const thread = await findOrCreateCustomerThread({
-    brand,
-    contact_id,
-    platform: channel === "email" ? "email" : channel,
-  });
-  const msg = await repo.insertMessage({
-    message: {
-      channel_id: thread.channel_id,
-      sender_user_id: user ? user.user_id : null,
-      message_type: user ? "text" : "system",
+  // Find-or-create + insert run in one transaction: two concurrent sends
+  // to the same contact (two staff replying at once, or a queued job
+  // racing a manual send) must not both pass the "does a thread already
+  // exist?" check before either INSERT commits, which would create
+  // duplicate customer_thread channels for the same contact/platform.
+  const { thread, msg } = await transaction(async (client) => {
+    const th = await findOrCreateCustomerThread({
+      client,
+      brand,
+      contact_id,
+      platform: channel === "email" ? "email" : channel,
+    });
+    const m = await repo.insertMessage({
+      client,
+      message: {
+        channel_id: th.channel_id,
+        sender_user_id: user ? user.user_id : null,
+        message_type: user ? "text" : "system",
+        content: body,
+        delivery_status: "queued",
+      },
+    });
+    await enqueueOutboundForChannel({
+      channel: th,
+      message: m,
       content: body,
-      delivery_status: "queued",
-    },
-  });
-  await enqueueOutboundForChannel({
-    channel: thread,
-    message: msg,
-    content: body,
-    attachments: [],
+      attachments: [],
+      client,
+    });
+    return { thread: th, msg: m };
   });
   events.emit("customer.message_sent", {
     brand,

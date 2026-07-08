@@ -2,7 +2,9 @@
  * Pending-action confirmation card (§6.29 — the human-in-the-loop gate).
  *
  * Praxis proposes; a human disposes. The card shows the plain-language
- * summary, the exact endpoint + payload it will call, a confidence hint and
+ * summary, the exact endpoint + payload it will call, the action's approval
+ * threshold (the catalogue's min_confidence — NOT a per-proposal model
+ * confidence, so don't present it as one) and
  * an expiry countdown. Confirm executes the real endpoint AS the confirming
  * user (RBAC re-applies server-side); Reject records a reason. Every state
  * of the row (proposed / executed / failed / rejected / expired) renders —
@@ -101,8 +103,11 @@ export function PendingActionCard({
               </span>
             )}
             {confidence !== null && (
-              <span className="text-[11px] text-text-muted">
-                confidence {confidence}%
+              <span
+                className="text-[11px] text-text-muted"
+                title="The minimum intent-match confidence this action type requires before Praxis proposes it — a catalogue setting, not a per-proposal score."
+              >
+                approval threshold {confidence}%
               </span>
             )}
           </div>

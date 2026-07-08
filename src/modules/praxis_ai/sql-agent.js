@@ -27,6 +27,7 @@
 "use strict";
 
 const llm = require("../../services/llm.service");
+const gemini = require("../../services/gemini.service");
 const { query, transaction } = require("../../config/database");
 const { logger } = require("../../config/logger");
 
@@ -181,6 +182,54 @@ function accUsage(acc, u) {
   acc.total_tokens += u.total_tokens || 0;
 }
 
+/** Fence raw JSON so the chat's Markdown renderer can't shred it (bare
+ *  snake_case becomes italics: order_number → order*number*). */
+function fencedResult(result, intro) {
+  return (
+    intro +
+    "\n```json\n" +
+    JSON.stringify(result, null, 2).slice(0, 1200) +
+    "\n```"
+  );
+}
+
+/**
+ * Last-resort summarise on the FALLBACK vendor (Gemini, no tools needed for
+ * a plain summarise). Mirrors the smartcomm draft path's primary→fallback
+ * behaviour — previously a single primary-vendor hiccup dumped raw
+ * information_schema JSON into the chat. Returns null when unavailable.
+ */
+async function summariseViaFallback({ messages, result }) {
+  if (!gemini.isConfigured()) return null;
+  const lastUser = [...messages].reverse().find((m) => m.role === "user");
+  try {
+    const r = await gemini.chatCompletion({
+      system:
+        "You are Praxis, the AI operations assistant inside Pixie Girl Hub. " +
+        "Answer the user's question using ONLY the JSON query result provided. " +
+        "Be concise and specific; use plain English, not JSON. If the result " +
+        "doesn't answer the question, say so plainly.",
+      messages: [
+        {
+          role: "user",
+          content:
+            `Question: ${(lastUser && lastUser.content) || "(see result)"}\n\n` +
+            `Query result JSON:\n${JSON.stringify(result).slice(0, 6000)}`,
+        },
+      ],
+      temperature: 0.3,
+      maxOutputTokens: 500,
+    });
+    return (r && r.text) || null;
+  } catch (err) {
+    logger.warn(
+      { err: err.message },
+      "praxis sql-agent: fallback summarise failed",
+    );
+    return null;
+  }
+}
+
 /**
  * Agentic read loop: run the model's sql tool call, feed the result back, and
  * let it call again (discover schema → query → answer) until it produces a
@@ -221,13 +270,31 @@ async function run({ vendor, user, brand, messages, completion, toolCall, args }
     try {
       follow = await llm.chat({ vendor, messages: convo, tools: sqlTools });
     } catch (e) {
-      logger.error({ err: e.message }, "praxis sql-agent summarise failed");
-      return {
-        replyText:
-          "Here's the raw result:\n" + JSON.stringify(result).slice(0, 1200),
-        usage,
-        sql: true,
-      };
+      logger.error(
+        { err: e.message },
+        "praxis sql-agent summarise failed — retrying once",
+      );
+      // Retry the primary once, then the fallback vendor, then a fenced raw
+      // dump as the true last resort (never bare JSON into Markdown).
+      try {
+        follow = await llm.chat({ vendor, messages: convo, tools: sqlTools });
+      } catch (e2) {
+        logger.error(
+          { err: e2.message },
+          "praxis sql-agent summarise retry failed — trying fallback vendor",
+        );
+        const fallbackText = await summariseViaFallback({ messages, result });
+        return {
+          replyText:
+            fallbackText ||
+            fencedResult(
+              result,
+              "I ran the query but couldn't compose a summary just now. Raw result:",
+            ),
+          usage,
+          sql: true,
+        };
+      }
     }
     accUsage(usage, follow.usage);
 

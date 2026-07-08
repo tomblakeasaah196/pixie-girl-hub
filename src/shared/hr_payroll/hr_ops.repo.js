@@ -556,7 +556,10 @@ async function listAttendanceDays({ client, brand, filters = {} }) {
   const offset = (page - 1) * pageSize;
   params.push(pageSize, offset);
   const { rows } = await exec(client)(
-    `SELECT ad.*, c.display_name AS staff_name
+    // ad.work_date::text overrides the DATE column ad.* would otherwise
+    // yield — pg's default DATE parser builds a local-midnight JS Date,
+    // which toISOString() then shifts to the prior day under TZ=Africa/Lagos.
+    `SELECT ad.*, ad.work_date::text AS work_date, c.display_name AS staff_name
        FROM shared.attendance_days ad
        JOIN shared.staff_profiles sp ON sp.profile_id = ad.profile_id
        LEFT JOIN shared.contacts c ON c.contact_id = sp.contact_id

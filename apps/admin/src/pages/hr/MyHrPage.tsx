@@ -52,6 +52,7 @@ import {
   ClockLocationLink,
   clockTime,
   minutesLabel,
+  workDateLabel,
   useNotify,
   errMsg,
   statusTone,
@@ -350,7 +351,7 @@ export default function MyHrPage() {
               <div className="mt-1 font-display text-lg text-text-primary">
                 {minutesLabel(data.insights.earliest_arrival?.local_minutes ?? null)}
               </div>
-              <div className="text-xs text-text-faint">{data.insights.earliest_arrival?.work_date || "—"}</div>
+              <div className="text-xs text-text-faint">{workDateLabel(data.insights.earliest_arrival?.work_date)}</div>
             </Card>
             <Card className="p-4">
               <div className="flex items-center gap-2 text-xs text-text-muted">
@@ -359,7 +360,7 @@ export default function MyHrPage() {
               <div className="mt-1 font-display text-lg text-text-primary">
                 {minutesLabel(data.insights.latest_departure?.local_minutes ?? null)}
               </div>
-              <div className="text-xs text-text-faint">{data.insights.latest_departure?.work_date || "—"}</div>
+              <div className="text-xs text-text-faint">{workDateLabel(data.insights.latest_departure?.work_date)}</div>
             </Card>
             <KpiTile label="Punctuality" value={`${data.insights.punctuality_pct}%`}
               tone={data.insights.punctuality_pct >= 90 ? "accent" : "warn"} />
@@ -527,7 +528,7 @@ export default function MyHrPage() {
                   <Card key={d.day_id} className="flex items-center justify-between gap-3 p-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-sm text-text-primary">{d.work_date}</span>
+                        <span className="text-sm text-text-primary">{workDateLabel(d.work_date)}</span>
                         <span className="text-xs text-text-faint">
                           In {clockTime(d.first_clock_in_at)}
                           {d.last_clock_out_at ? ` · Out ${clockTime(d.last_clock_out_at)}` : ""}

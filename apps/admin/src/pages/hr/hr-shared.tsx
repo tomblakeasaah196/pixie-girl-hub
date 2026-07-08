@@ -100,6 +100,22 @@ export function clockTime(iso: string | null): string {
   return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
+/**
+ * "Mon, Jul 6" from a "YYYY-MM-DD" date-only string. Reads the calendar
+ * parts directly rather than round-tripping through `new Date(iso)`, so it
+ * can't shift a day under the viewer's browser timezone.
+ */
+export function workDateLabel(dateStr: string | null | undefined): string {
+  if (!dateStr) return "—";
+  const [y, m, d] = dateStr.slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return "—";
+  return new Date(y, m - 1, d).toLocaleDateString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 /** "8:10 AM" from minutes-since-midnight (workplace-local, from insights). */
 export function minutesLabel(local: number | null | undefined): string {
   if (local == null) return "—";

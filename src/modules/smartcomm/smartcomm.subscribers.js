@@ -132,6 +132,32 @@ function parseMetaWhatsApp(payload) {
 }
 
 /**
+ * Parse the delivery-status callbacks Meta sends alongside (or instead
+ * of) inbound messages on the WhatsApp webhook: `value.statuses[]`,
+ * each `{ id, status: sent|delivered|read|failed, recipient_id,
+ * errors? }`. `id` is the provider message id we stamped onto
+ * `shared.messages.external_ref` at send time.
+ */
+function parseMetaWhatsAppStatuses(payload) {
+  const statuses = [];
+  for (const entry of payload.entry || []) {
+    for (const change of entry.changes || []) {
+      const value = change.value || {};
+      for (const s of value.statuses || []) {
+        statuses.push({
+          external_ref: s.id,
+          status: s.status,
+          error:
+            (Array.isArray(s.errors) && s.errors[0] && s.errors[0].title) ||
+            null,
+        });
+      }
+    }
+  }
+  return statuses;
+}
+
+/**
  * Parse a Meta Instagram Messenger payload. Each entry is a page; each
  * `messaging` row is a single DM either from a user or an echo of one
  * we sent. We ignore echoes (is_echo) because we record those at send
@@ -385,9 +411,12 @@ async function onWebhookReceived({ webhook_id, source }) {
   if (!log.signature_valid) return; // never process unverified
   const payload = log.payload || {};
   let events = [];
+  let statuses = [];
   try {
-    if (source === "meta_whatsapp") events = parseMetaWhatsApp(payload);
-    else if (source === "meta_instagram") events = parseMetaInstagram(payload);
+    if (source === "meta_whatsapp") {
+      events = parseMetaWhatsApp(payload);
+      statuses = parseMetaWhatsAppStatuses(payload);
+    } else if (source === "meta_instagram") events = parseMetaInstagram(payload);
     else if (source === "cloudflare_email")
       events = parseCloudflareEmail(payload);
   } catch (err) {
@@ -396,6 +425,17 @@ async function onWebhookReceived({ webhook_id, source }) {
       "smartcomm: webhook parse failed",
     );
     return;
+  }
+  for (const st of statuses) {
+    try {
+      await service.applyProviderStatus(st);
+    } catch (err) {
+      logger.error(
+        { err: err.message, source, webhook_id, external_ref: st.external_ref },
+        "smartcomm: delivery-status webhook apply failed",
+      );
+      throw err; // let outbox retry the whole batch
+    }
   }
   for (const evt of events) {
     try {
@@ -432,6 +472,7 @@ module.exports = {
   register,
   // exported for tests
   parseMetaWhatsApp,
+  parseMetaWhatsAppStatuses,
   parseMetaInstagram,
   parseCloudflareEmail,
   resolveOrCreateContact,

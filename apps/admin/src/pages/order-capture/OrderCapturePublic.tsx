@@ -24,15 +24,26 @@ import { formatDateTime } from "@/lib/format";
  * record we already had).
  */
 
+interface PrefillLine {
+  variant_id: string;
+  quantity: number;
+}
+
 interface PrefillItem {
-  product_id: string;
-  variant_id: string | null;
+  kind: "base" | "styled" | "bundle";
+  ref_id: string | null;
   qty: number;
   price_ngn: string | null;
   note: string | null;
   name: string | null;
   product_code: string | null;
   image_url: string | null;
+  // Resolved sellable variant line(s) — empty when the item couldn't be
+  // resolved (deleted/out-of-stock product, unresolvable bundle
+  // component, etc.), in which case it's excluded from the submitted
+  // order and flagged for manual follow-up instead.
+  lines: PrefillLine[];
+  bundle_id?: string;
 }
 
 interface PrefillAddress {
@@ -124,16 +135,24 @@ export function OrderCapturePublic() {
     };
   }, [token]);
 
-  const variantItems = useMemo(
-    () => (ctx?.items ?? []).filter((i) => i.variant_id),
+  const resolvedItems = useMemo(
+    () => (ctx?.items ?? []).filter((i) => i.lines.length > 0),
     [ctx],
   );
   const unsupportedItems = useMemo(
-    () => (ctx?.items ?? []).filter((i) => !i.variant_id),
+    () => (ctx?.items ?? []).filter((i) => i.lines.length === 0),
     [ctx],
   );
+  // The public order-form accepts a single bundle_id per order (matches
+  // every other bundle-purchase path today) — if the staffer somehow put
+  // two different bundles in one capture link, only the first carries
+  // the bundle attribution; both still fully expand into real lines.
+  const bundleId = useMemo(
+    () => resolvedItems.find((i) => i.kind === "bundle")?.bundle_id,
+    [resolvedItems],
+  );
 
-  const canSubmit = !!address.line1 && !!phone && variantItems.length > 0;
+  const canSubmit = !!address.line1 && !!phone && resolvedItems.length > 0;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -164,10 +183,8 @@ export function OrderCapturePublic() {
             )
               ? ctx.sales_channel
               : "public_form",
-          items: variantItems.map((i) => ({
-            variant_id: i.variant_id!,
-            quantity: i.qty,
-          })),
+          items: resolvedItems.flatMap((i) => i.lines),
+          bundle_id: bundleId || undefined,
           client_idempotency_key: `capture:${token.slice(-24)}`,
         },
         "public",
@@ -240,9 +257,9 @@ export function OrderCapturePublic() {
           </span>
         </div>
         <div className="space-y-2">
-          {ctx.items.map((i) => (
+          {ctx.items.map((i, idx) => (
             <div
-              key={i.product_id}
+              key={`${i.kind}-${i.ref_id}-${idx}`}
               className="flex items-center gap-3 rounded-lg bg-panel-2 border hairline p-2.5"
             >
               {i.image_url ? (
@@ -265,9 +282,9 @@ export function OrderCapturePublic() {
                     {i.note}
                   </div>
                 )}
-                {!i.variant_id && (
+                {i.lines.length === 0 && (
                   <div className="text-[11px] text-amber-300 mt-0.5">
-                    Variant unavailable — we&rsquo;ll confirm by WhatsApp.
+                    Unavailable right now — we&rsquo;ll confirm by WhatsApp.
                   </div>
                 )}
               </div>

@@ -108,6 +108,63 @@ async function sendImage({ brand, to, image_url, caption }) {
 }
 
 /**
+ * Send a video via a pre-hosted URL.
+ */
+async function sendVideo({ brand, to, video_url, caption }) {
+  const cfg = await resolveSendConfig({ brand });
+  const url = `${GRAPH()}/${cfg.phone_number_id}/messages`;
+  return axios.post(
+    url,
+    {
+      messaging_product: "whatsapp",
+      to,
+      type: "video",
+      video: { link: video_url, caption },
+    },
+    { headers: { Authorization: `Bearer ${cfg.access_token}` }, timeout: 15000 },
+  );
+}
+
+/**
+ * Send a document (PDF, etc.) via a pre-hosted URL. Meta requires the
+ * `filename` field to render a sensible name in the customer's client —
+ * without it WhatsApp shows a generic/garbled name.
+ */
+async function sendDocument({ brand, to, document_url, filename, caption }) {
+  const cfg = await resolveSendConfig({ brand });
+  const url = `${GRAPH()}/${cfg.phone_number_id}/messages`;
+  return axios.post(
+    url,
+    {
+      messaging_product: "whatsapp",
+      to,
+      type: "document",
+      document: { link: document_url, filename, caption },
+    },
+    { headers: { Authorization: `Bearer ${cfg.access_token}` }, timeout: 15000 },
+  );
+}
+
+/**
+ * Send a voice note / audio clip via a pre-hosted URL. Meta's `audio`
+ * type has no caption field — the sound is the whole message.
+ */
+async function sendAudio({ brand, to, audio_url }) {
+  const cfg = await resolveSendConfig({ brand });
+  const url = `${GRAPH()}/${cfg.phone_number_id}/messages`;
+  return axios.post(
+    url,
+    {
+      messaging_product: "whatsapp",
+      to,
+      type: "audio",
+      audio: { link: audio_url },
+    },
+    { headers: { Authorization: `Bearer ${cfg.access_token}` }, timeout: 15000 },
+  );
+}
+
+/**
  * True iff the given brand has an active WhatsApp row on file. Cheap
  * predicate used by delivery services that want to fall back to email
  * silently rather than raise a 412 to the operator.
@@ -122,4 +179,12 @@ async function isConfigured({ brand }) {
   }
 }
 
-module.exports = { sendText, sendTemplate, sendImage, isConfigured };
+module.exports = {
+  sendText,
+  sendTemplate,
+  sendImage,
+  sendVideo,
+  sendDocument,
+  sendAudio,
+  isConfigured,
+};

@@ -161,7 +161,10 @@ export function CataloguePickerModal({
       const r = await smartcommApi.createOrderCapture({
         contact_id: contactId,
         items: products.map((c) => ({
-          product_id: c.id,
+          kind: c.kind as "base" | "styled" | "bundle",
+          product_id: c.kind === "base" ? c.id : undefined,
+          styled_id: c.kind === "styled" ? c.id : undefined,
+          bundle_id: c.kind === "bundle" ? c.id : undefined,
           qty: c.qty,
           price_ngn: c.price != null ? String(c.price) : undefined,
         })),

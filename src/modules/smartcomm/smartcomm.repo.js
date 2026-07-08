@@ -400,6 +400,39 @@ async function setMessageDelivery({
   );
 }
 
+// Ranks the WhatsApp/Instagram delivery lifecycle so an out-of-order
+// webhook redelivery (Meta does not guarantee status event ordering)
+// can never regress a message that's already shown as delivered/read
+// back to an earlier state. `rank(col)` is applied to both the row's
+// current value and the incoming value so the WHERE clause only lets
+// the update through when it moves the status forward (or sideways).
+function deliveryRankCase(column) {
+  return `(CASE ${column}
+    WHEN 'queued' THEN 0 WHEN 'sent' THEN 1 WHEN 'delivered' THEN 2
+    WHEN 'read' THEN 3 WHEN 'failed' THEN 4 ELSE -1 END)`;
+}
+
+/**
+ * Update delivery_status by the provider's own message id (Meta's
+ * `statuses[].id` on the WhatsApp webhook) rather than our internal
+ * message_id — used when a status callback arrives asynchronously
+ * after the send already completed.
+ */
+async function setMessageDeliveryByExternalRef({
+  external_ref,
+  delivery_status,
+  delivery_error,
+}) {
+  await query(
+    `UPDATE shared.messages
+        SET delivery_status = $2,
+            delivery_error  = $3
+      WHERE external_ref = $1
+        AND ${deliveryRankCase("delivery_status")} <= ${deliveryRankCase("$2::text")}`,
+    [external_ref, delivery_status, delivery_error || null],
+  );
+}
+
 async function editMessageContent({ client, message_id, content }) {
   const { rows } = await ex(client)(
     `UPDATE shared.messages
@@ -672,6 +705,28 @@ async function addAttachment({ client, a }) {
 async function listAttachments({ message_id }) {
   const { rows } = await query(
     `SELECT * FROM shared.message_attachments WHERE message_id = $1 ORDER BY created_at`,
+    [message_id],
+  );
+  return rows;
+}
+
+/**
+ * Attachments joined with their stored file's path/mime — what the
+ * outbound provider dispatch (WhatsApp/Instagram) needs to build a
+ * media message, as opposed to listAttachments()'s raw join-free rows.
+ */
+async function getAttachmentsForSend({ client, message_id }) {
+  // Accepts the in-flight transaction's client (when called from inside
+  // postMessage/forwardMessage's transaction, before it commits) so it
+  // can see the attachment row it just inserted on the same connection
+  // — a separate pool connection wouldn't see an uncommitted insert.
+  const { rows } = await ex(client)(
+    `SELECT ma.document_id, COALESCE(ma.display_name, d.title) AS display_name,
+            d.mime_type, d.file_path
+       FROM shared.message_attachments ma
+       LEFT JOIN shared.documents d ON d.document_id = ma.document_id
+      WHERE ma.message_id = $1
+      ORDER BY ma.created_at`,
     [message_id],
   );
   return rows;
@@ -1054,6 +1109,7 @@ module.exports = {
   insertMessage,
   setMessageExternalRef,
   setMessageDelivery,
+  setMessageDeliveryByExternalRef,
   editMessageContent,
   listMessages,
   getMessage,
@@ -1070,6 +1126,7 @@ module.exports = {
   // Attachments
   addAttachment,
   listAttachments,
+  getAttachmentsForSend,
   // Drafts
   getDraft,
   upsertDraft,

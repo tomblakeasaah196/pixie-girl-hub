@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
+import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
 import { useChannel, useInboxRealtime } from "@/hooks/useSmartcomm";
@@ -9,6 +10,9 @@ import { MessageThread } from "@/components/messaging/MessageThread";
 import { CustomerSidebar } from "@/components/messaging/CustomerSidebar";
 import { NewChatModal } from "@/components/messaging/NewChatModal";
 import { smartcommApi } from "@/lib/smartcomm-api";
+import { cn } from "@/lib/cn";
+
+const SIDEBAR_PREF_KEY = "smartcomm.sidebarOpen";
 
 /**
  * Full Messaging page — three-pane workstation (list / thread /
@@ -27,6 +31,17 @@ export function SmartCommPage() {
   const dmUser = params.get("dm_user");
   const [mobileShowThread, setMobileShowThread] = useState(false);
   const [newChat, setNewChat] = useState<null | "chat" | "group">(null);
+  const [sidebarOpen, setSidebarOpen] = useState(
+    () => localStorage.getItem(SIDEBAR_PREF_KEY) !== "0",
+  );
+  // Draw a one-time bit of attention to the collapse/expand toggle the
+  // first time this page mounts in a session, so reps who never noticed
+  // it discover it exists.
+  const [drawAttention, setDrawAttention] = useState(true);
+  useEffect(() => {
+    const t = window.setTimeout(() => setDrawAttention(false), 2600);
+    return () => window.clearTimeout(t);
+  }, []);
   useInboxRealtime(user?.id);
 
   const { data: channel } = useChannel(channelId);
@@ -66,8 +81,15 @@ export function SmartCommPage() {
   }, [dmUser, params, qc, setParams]);
 
   return (
-    <div className="h-[calc(100vh-180px)] min-h-[520px] -mx-[34px] -my-[26px] max-md:-mx-4 max-md:-my-5 rounded-none border-y hairline">
-      <div className="grid h-full grid-cols-1 md:grid-cols-[320px_1fr] xl:grid-cols-[320px_1fr_320px]">
+    <div className="relative h-[calc(100vh-180px)] min-h-[520px] -mx-[34px] -my-[26px] max-md:-mx-4 max-md:-my-5 rounded-none border-y hairline">
+      <div
+        className={cn(
+          "grid h-full grid-cols-1 md:grid-cols-[320px_minmax(0,1fr)] transition-[grid-template-columns] duration-300 ease-in-out",
+          sidebarOpen
+            ? "xl:grid-cols-[320px_minmax(0,1fr)_320px]"
+            : "xl:grid-cols-[320px_minmax(0,1fr)_0px]",
+        )}
+      >
         {/* List */}
         <div
           className={
@@ -87,7 +109,12 @@ export function SmartCommPage() {
         </div>
 
         {/* Thread */}
-        <div className={mobileShowThread ? "h-full" : "hidden md:block h-full"}>
+        <div
+          className={cn(
+            "h-full min-w-0",
+            !mobileShowThread && "hidden md:block",
+          )}
+        >
           {channelId ? (
             <MessageThread
               channelId={channelId}
@@ -101,10 +128,42 @@ export function SmartCommPage() {
         </div>
 
         {/* Customer-360 */}
-        <div className="hidden xl:block h-full">
-          {channel && <CustomerSidebar channel={channel} />}
+        <div className="hidden xl:block h-full overflow-hidden">
+          <div className="w-[320px] h-full">
+            {channel && <CustomerSidebar channel={channel} />}
+          </div>
         </div>
       </div>
+
+      {/* Collapse/expand toggle for the Customer-360 pane — sits on the
+          seam between the thread and the sidebar. */}
+      {channelId && (
+        <button
+          onClick={() => {
+            setSidebarOpen((v) => {
+              const next = !v;
+              localStorage.setItem(SIDEBAR_PREF_KEY, next ? "1" : "0");
+              return next;
+            });
+            setDrawAttention(false);
+          }}
+          title={sidebarOpen ? "Collapse customer panel" : "Show customer panel"}
+          className={cn(
+            "hidden xl:grid absolute top-1/2 -translate-y-1/2 z-10 place-items-center",
+            "w-6 h-12 rounded-l-lg border hairline bg-panel shadow-md",
+            "text-text-muted hover:text-accent-glow hover:bg-panel-2",
+            "transition-[right] duration-300 ease-in-out",
+            drawAttention && "animate-bounce",
+          )}
+          style={{ right: sidebarOpen ? 320 : 0 }}
+        >
+          {sidebarOpen ? (
+            <PanelRightClose className="w-3.5 h-3.5" />
+          ) : (
+            <PanelRightOpen className="w-3.5 h-3.5" />
+          )}
+        </button>
+      )}
 
       <NewChatModal
         open={newChat !== null}

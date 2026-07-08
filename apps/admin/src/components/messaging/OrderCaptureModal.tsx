@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ShoppingCart,
   Loader2,
@@ -9,12 +9,20 @@ import {
   Copy,
   Check,
   AlertCircle,
+  Package,
+  Layers,
+  Box,
 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { toastReport } from "@/lib/error-report";
 import { smartcommApi } from "@/lib/smartcomm-api";
-import { useBaseProducts } from "@/lib/catalogue";
+import {
+  searchByKind,
+  type ProductKind,
+  type ProductHit,
+} from "@/lib/product-search";
 import { resolveMessagingSalesChannel } from "@/lib/messaging-utils";
+import { cn } from "@/lib/cn";
 import type { Channel } from "@/lib/smartcomm-types";
 
 interface Props {
@@ -24,8 +32,23 @@ interface Props {
   onSentLink: (url: string) => void | Promise<void>;
 }
 
+// Order Capture is for physical, deliverable lines — base/styled/bundle.
+// Services don't ship, so they're not offered here (they convert through
+// the service-job flow instead).
+const CAPTURE_KINDS: { key: ProductKind; label: string }[] = [
+  { key: "base", label: "Base" },
+  { key: "styled", label: "Styled" },
+  { key: "bundle", label: "Bundle" },
+];
+const KIND_ICON: Record<string, typeof Package> = {
+  base: Package,
+  styled: Layers,
+  bundle: Box,
+};
+
 interface LineItem {
-  product_id: string;
+  kind: ProductKind;
+  id: string;
   name: string;
   qty: number;
   note?: string;
@@ -50,7 +73,10 @@ export function OrderCaptureModal({
   const contactId = customer?.contact_id ?? null;
   const platform: string = channel.external_platform || "whatsapp";
 
+  const [kind, setKind] = useState<ProductKind>("base");
   const [search, setSearch] = useState("");
+  const [hits, setHits] = useState<ProductHit[]>([]);
+  const [searching, setSearching] = useState(false);
   const [items, setItems] = useState<LineItem[]>([]);
   const [notes, setNotes] = useState("");
   const [sending, setSending] = useState(false);
@@ -58,38 +84,60 @@ export function OrderCaptureModal({
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const productsQ = useBaseProducts({ q: search || undefined });
+  useEffect(() => {
+    const q = search.trim();
+    if (q.length < 2) {
+      setHits([]);
+      return;
+    }
+    let cancelled = false;
+    setSearching(true);
+    const t = setTimeout(async () => {
+      try {
+        const r = await searchByKind(kind, q);
+        if (!cancelled) setHits(r);
+      } catch {
+        if (!cancelled) setHits([]);
+      } finally {
+        if (!cancelled) setSearching(false);
+      }
+    }, 220);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [kind, search]);
 
   const total = useMemo(() => items.reduce((s, i) => s + i.qty, 0), [items]);
   const canSend = items.length > 0 && contactId;
 
-  function addItem(product_id: string, name: string) {
+  function addItem(k: ProductKind, id: string, name: string) {
     setItems((arr) => {
-      const existing = arr.find((i) => i.product_id === product_id);
+      const existing = arr.find((i) => i.kind === k && i.id === id);
       if (existing) {
         return arr.map((i) =>
-          i.product_id === product_id ? { ...i, qty: i.qty + 1 } : i,
+          i.kind === k && i.id === id ? { ...i, qty: i.qty + 1 } : i,
         );
       }
-      return [...arr, { product_id, name, qty: 1 }];
+      return [...arr, { kind: k, id, name, qty: 1 }];
     });
   }
-  function setQty(product_id: string, qty: number) {
+  function setQty(k: ProductKind, id: string, qty: number) {
     if (qty <= 0) {
-      setItems((arr) => arr.filter((i) => i.product_id !== product_id));
+      setItems((arr) => arr.filter((i) => !(i.kind === k && i.id === id)));
       return;
     }
     setItems((arr) =>
-      arr.map((i) => (i.product_id === product_id ? { ...i, qty } : i)),
+      arr.map((i) => (i.kind === k && i.id === id ? { ...i, qty } : i)),
     );
   }
-  function setNote(product_id: string, note: string) {
+  function setNote(k: ProductKind, id: string, note: string) {
     setItems((arr) =>
-      arr.map((i) => (i.product_id === product_id ? { ...i, note } : i)),
+      arr.map((i) => (i.kind === k && i.id === id ? { ...i, note } : i)),
     );
   }
-  function remove(product_id: string) {
-    setItems((arr) => arr.filter((i) => i.product_id !== product_id));
+  function remove(k: ProductKind, id: string) {
+    setItems((arr) => arr.filter((i) => !(i.kind === k && i.id === id)));
   }
 
   async function generate() {
@@ -105,7 +153,10 @@ export function OrderCaptureModal({
       const r = await smartcommApi.createOrderCapture({
         contact_id: contactId,
         items: items.map((i) => ({
-          product_id: i.product_id,
+          kind: i.kind,
+          product_id: i.kind === "base" ? i.id : undefined,
+          styled_id: i.kind === "styled" ? i.id : undefined,
+          bundle_id: i.kind === "bundle" ? i.id : undefined,
           qty: i.qty,
           note: i.note,
         })),
@@ -136,6 +187,7 @@ export function OrderCaptureModal({
       setNotes("");
       setGeneratedUrl(null);
       setSearch("");
+      setHits([]);
     } finally {
       setSending(false);
     }
@@ -162,41 +214,66 @@ export function OrderCaptureModal({
           </div>
         )}
 
-        {/* Search */}
+        {/* Kind tabs */}
         <div>
           <span className="block text-[11px] uppercase tracking-widest text-text-faint mb-1.5">
             Add products
           </span>
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {CAPTURE_KINDS.map((k) => {
+              const Icon = KIND_ICON[k.key];
+              const on = kind === k.key;
+              return (
+                <button
+                  key={k.key}
+                  onClick={() => {
+                    setKind(k.key);
+                    setHits([]);
+                    setSearch("");
+                  }}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[12px] transition-colors",
+                    on
+                      ? "bg-accent/15 border-accent text-accent-glow"
+                      : "hairline text-text-muted hover:text-text-primary",
+                  )}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {k.label}
+                </button>
+              );
+            })}
+          </div>
           <div className="relative">
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-text-faint" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search products by name or code…"
+              placeholder="Search by name or code (min 2 chars)…"
               className="w-full pl-9 pr-3 py-2 rounded-xl bg-panel-2 border hairline text-[13px] focus:outline-none focus:border-accent/40" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
             />
           </div>
-          {search && (
+          {search.trim().length >= 2 && (
             <div className="mt-2 max-h-44 overflow-y-auto rounded-xl border hairline bg-panel-2/70">
-              {productsQ.isLoading ? (
+              {searching ? (
                 <div className="p-3 text-center text-[12px] text-text-faint">
                   <Loader2 className="w-3.5 h-3.5 animate-spin inline mr-1" />
                   Loading…
                 </div>
-              ) : productsQ.data && productsQ.data.length > 0 ? (
-                productsQ.data.slice(0, 15).map((p) => (
+              ) : hits.length > 0 ? (
+                hits.slice(0, 15).map((p) => (
                   <button
-                    key={p.product_id}
+                    key={`${p.kind}-${p.id}`}
                     onClick={() => {
-                      addItem(p.product_id, p.name);
+                      addItem(p.kind, p.id, p.label);
                       setSearch("");
                     }}
                     className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-panel border-b hairline last:border-b-0"
                   >
                     <div className="min-w-0">
-                      <div className="text-[12.5px] truncate">{p.name}</div>
-                      <div className="text-[10.5px] text-text-faint font-mono">
-                        {p.product_code}
+                      <div className="text-[12.5px] truncate">{p.label}</div>
+                      <div className="text-[10.5px] text-text-faint font-mono truncate">
+                        {p.sub}
                       </div>
                     </div>
                     <Plus className="w-3.5 h-3.5 text-accent-glow shrink-0" />
@@ -204,7 +281,7 @@ export function OrderCaptureModal({
                 ))
               ) : (
                 <p className="p-3 text-center text-[12px] italic text-text-faint">
-                  No products match &ldquo;{search}&rdquo;.
+                  No {kind} products match &ldquo;{search}&rdquo;.
                 </p>
               )}
             </div>
@@ -221,16 +298,19 @@ export function OrderCaptureModal({
             <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
               {items.map((i) => (
                 <div
-                  key={i.product_id}
+                  key={`${i.kind}-${i.id}`}
                   className="rounded-xl bg-panel-2 border hairline p-2.5"
                 >
                   <div className="flex items-center gap-2">
                     <span className="flex-1 text-[12.5px] truncate">
                       {i.name}
                     </span>
+                    <span className="text-[9.5px] uppercase tracking-wide text-text-faint shrink-0">
+                      {i.kind}
+                    </span>
                     <div className="inline-flex items-center gap-1 bg-panel rounded-lg p-0.5">
                       <button
-                        onClick={() => setQty(i.product_id, i.qty - 1)}
+                        onClick={() => setQty(i.kind, i.id, i.qty - 1)}
                         className="w-6 h-6 grid place-items-center hover:text-accent-glow"
                       >
                         −
@@ -239,14 +319,14 @@ export function OrderCaptureModal({
                         {i.qty}
                       </span>
                       <button
-                        onClick={() => setQty(i.product_id, i.qty + 1)}
+                        onClick={() => setQty(i.kind, i.id, i.qty + 1)}
                         className="w-6 h-6 grid place-items-center hover:text-accent-glow"
                       >
                         +
                       </button>
                     </div>
                     <button
-                      onClick={() => remove(i.product_id)}
+                      onClick={() => remove(i.kind, i.id)}
                       className="text-text-muted hover:text-danger"
                     >
                       <X className="w-3.5 h-3.5" />
@@ -254,7 +334,7 @@ export function OrderCaptureModal({
                   </div>
                   <input
                     value={i.note ?? ""}
-                    onChange={(e) => setNote(i.product_id, e.target.value)}
+                    onChange={(e) => setNote(i.kind, i.id, e.target.value)}
                     placeholder="Note for this item (colour, custom style…)"
                     className="w-full mt-1.5 bg-transparent border-t hairline pt-1.5 text-[11.5px] focus:outline-none placeholder:text-text-faint" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
                   />

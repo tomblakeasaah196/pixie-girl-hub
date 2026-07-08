@@ -24,6 +24,22 @@ function publicUrl(key) {
   return config.CDN_BASE_URL ? `${config.CDN_BASE_URL}/${key}` : `/media/${key}`;
 }
 
+/**
+ * Build an ABSOLUTE, internet-reachable URL for a stored key. Browser
+ * clients are fine with the relative `/media/...` path from publicUrl()
+ * (same origin via the Vite proxy in dev, same host in prod), but
+ * outbound provider APIs (WhatsApp/Instagram media sends) fetch the URL
+ * themselves from Meta's servers — a relative path is meaningless to
+ * them. Returns null when neither a CDN nor ADMIN_BASE_URL is
+ * configured, so callers can fail loud instead of silently sending a
+ * link Meta can never reach.
+ */
+function absoluteUrl(key) {
+  if (config.CDN_BASE_URL) return `${config.CDN_BASE_URL}/${key}`;
+  const base = (config.ADMIN_BASE_URL || "").replace(/\/+$/, "");
+  return base ? `${base}/media/${key}` : null;
+}
+
 async function put(buffer, { key, contentType }) {
   const finalKey = key || crypto.randomBytes(16).toString("hex");
   const filePath = path.join(config.STORAGE_LOCAL_ROOT, finalKey);
@@ -45,4 +61,4 @@ async function del(key) {
   await fs.unlink(path.join(config.STORAGE_LOCAL_ROOT, key));
 }
 
-module.exports = { put, get, delete: del, publicUrl };
+module.exports = { put, get, delete: del, publicUrl, absoluteUrl };

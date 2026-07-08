@@ -182,7 +182,10 @@ export const smartcommApi = {
   createOrderCapture: (input: {
     contact_id: string;
     items: {
-      product_id: string;
+      kind?: "base" | "styled" | "bundle";
+      product_id?: string;
+      styled_id?: string;
+      bundle_id?: string;
       qty: number;
       price_ngn?: string;
       note?: string;

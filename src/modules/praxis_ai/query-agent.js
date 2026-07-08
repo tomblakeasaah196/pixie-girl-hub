@@ -55,6 +55,41 @@ async function hasView(user, module) {
 }
 
 /**
+ * Permission-check and run one catalogue query, WITHOUT the summarise step.
+ * Used by `run` below and by the orchestrator's action-resolution loop, which
+ * needs the raw rows fed back to the model mid-chain (e.g. look a campaign id
+ * up, then fill it into an action's arguments).
+ * @returns {Promise<{ok:boolean, rows?:any, denied?:boolean, error?:boolean,
+ *                    message?:string, queryKey?:string}|null>}
+ *          null when the tool name isn't a catalogue query.
+ */
+async function execute({ user, brand, name, args }) {
+  const entry = entryForTool(name);
+  if (!entry) return null;
+
+  if (!(await hasView(user, entry.module))) {
+    return {
+      ok: false,
+      denied: true,
+      queryKey: entry.key,
+      message: `You don't have permission to view ${entry.module} data, so I can't answer that.`,
+    };
+  }
+  try {
+    const rows = await entry.run({ brand, args: args || {}, user });
+    return { ok: true, rows, queryKey: entry.key };
+  } catch (err) {
+    logger.error({ err: err.message, query: entry.key }, "praxis query failed");
+    return {
+      ok: false,
+      error: true,
+      queryKey: entry.key,
+      message: "I couldn't run that lookup just now — please try again.",
+    };
+  }
+}
+
+/**
  * Run a query tool the model selected, then summarise the live result.
  * @returns {Promise<{replyText:string|null, usage:object, queryKey?:string, denied?:boolean, error?:boolean}>}
  */
@@ -67,30 +102,23 @@ async function run({
   toolCall,
   args,
 }) {
-  const entry = entryForTool(toolCall.function.name);
-  if (!entry) return { replyText: null, usage: {} };
-
-  if (!(await hasView(user, entry.module))) {
+  const res = await execute({
+    user,
+    brand,
+    name: toolCall.function.name,
+    args,
+  });
+  if (!res) return { replyText: null, usage: {} };
+  if (!res.ok) {
     return {
-      replyText: `You don't have permission to view ${entry.module} data, so I can't answer that.`,
+      replyText: res.message,
       usage: {},
-      denied: true,
-      queryKey: entry.key,
+      denied: res.denied || false,
+      error: res.error || false,
+      queryKey: res.queryKey,
     };
   }
-
-  let rows;
-  try {
-    rows = await entry.run({ brand, args: args || {}, user });
-  } catch (err) {
-    logger.error({ err: err.message, query: entry.key }, "praxis query failed");
-    return {
-      replyText: "I couldn't run that lookup just now — please try again.",
-      usage: {},
-      error: true,
-      queryKey: entry.key,
-    };
-  }
+  const rows = res.rows;
 
   // Feed the result back so the model answers in natural language.
   const followMessages = [
@@ -112,7 +140,7 @@ async function run({
     return {
       replyText: follow.content || "Here's what I found.",
       usage: follow.usage || {},
-      queryKey: entry.key,
+      queryKey: res.queryKey,
     };
   } catch (err) {
     logger.error({ err: err.message }, "praxis query summarise failed");
@@ -120,9 +148,9 @@ async function run({
     return {
       replyText: "Here's what I found:\n" + JSON.stringify(rows).slice(0, 1000),
       usage: {},
-      queryKey: entry.key,
+      queryKey: res.queryKey,
     };
   }
 }
 
-module.exports = { tools, isQueryTool, run, PREFIX };
+module.exports = { tools, isQueryTool, execute, run, PREFIX };

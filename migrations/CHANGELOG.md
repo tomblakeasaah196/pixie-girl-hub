@@ -11,6 +11,26 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-08 — Praxis campaign action payload schemas (hallucination fixes PR 1)
+
+**Source:** Praxis hallucination root-cause analysis (2026-07-08). The six
+`sales_campaigns.*` rows seeded by 000221 carry routes with `:id` but left
+`payload_schema` at the default `'{}'`, which the orchestrator normalises to
+an EMPTY tool-parameter schema — the model was never told a campaign id is
+required, so every proposed action failed after human confirmation with
+`ACTION_ROUTE_PARAMS_MISSING` ("This action is missing a required reference").
+
+**Files (new):** `000307_shared_praxis_campaign_action_payload_schemas.sql`.
+
+**What:** real JSON Schemas (mirroring each route's Zod validator plus the
+`id` route param, with `required` lists) for the six campaign actions;
+descriptions + examples now tell the model to look the campaign id up via
+the new `query_campaigns_recent` catalogue query instead of guessing.
+Backend companions (same PR): proposal-time route-param validation with one
+corrective model round, inline execution of read-safe catalogue actions, and
+a RAG similarity floor (`PRAXIS_RAG_MIN_SCORE`) + provenance labels on
+retrieved chunks.
+
 ## 2026-07-07 — Stamp `sales_orders.paid_at` on payment + backfill (V2.2 §6.2)
 
 **Source:** Sales/Logistics audit follow-up (2026-07-07). The `paid_at`

@@ -26,6 +26,7 @@ const purchasingRepo = require("../purchasing/purchasing.repo");
 const contactsRepo = require("../../shared/contacts/contacts.repo");
 const crmRepo = require("../crm/crm.repo");
 const insightsRepo = require("../ai_insights/insights.repo");
+const campaignsRepo = require("../sales_campaigns/campaigns.repo");
 
 const str = (v) => (typeof v === "string" && v ? v : null);
 
@@ -275,6 +276,44 @@ const QUERIES = [
     module: "crm",
     parameters: { type: "object", properties: {} },
     run: ({ brand }) => crmRepo.kpis({ brand }),
+  },
+  {
+    key: "campaigns_recent",
+    title: "Recent / current sales campaigns",
+    description:
+      "The brand's sales campaigns, most recent first: campaign_id, name, slug, status and start/end dates. Use this to answer 'when was our last campaign?', to see what's live now, or to find a campaign's id (campaign_id) before calling any sales_campaigns action.",
+    module: "sales_campaigns",
+    parameters: {
+      type: "object",
+      properties: {
+        status: {
+          type: "string",
+          description:
+            "Optional status filter (comma-separated): draft, pending_approval, scheduled, live, paused, ended, archived.",
+        },
+      },
+    },
+    run: async ({ brand, args }) => {
+      const r = await campaignsRepo.findAll({
+        brand,
+        scope: "all",
+        filters: { status: str(args.status) || undefined },
+        page: 1,
+        page_size: 10,
+        offset: 0,
+      });
+      // Compact projection — the model needs identifiers + timeline, not the
+      // whole row (landing blocks, voice profiles, etc. would blow the prompt).
+      return (r.data || []).map((c) => ({
+        campaign_id: c.campaign_id,
+        name: c.name,
+        slug: c.slug,
+        status: c.status,
+        starts_at: c.starts_at,
+        ends_at: c.ends_at,
+        created_at: c.created_at,
+      }));
+    },
   },
 ];
 

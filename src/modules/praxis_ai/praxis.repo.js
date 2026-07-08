@@ -168,17 +168,30 @@ async function setPendingStatus({ client, id, status, fields = {} }) {
 // ── RAG retrieval (X-2) ────────────────────────────────────
 // Cosine-nearest active embeddings, scoped to the business and to
 // non-sensitive material. `queryVector` is a pgvector literal string '[..]'.
-async function retrieveContext({ queryVector, business, limit = 6 }) {
+// minScore floors the similarity: top-K otherwise ALWAYS returns k rows, so
+// an off-corpus question would get unrelated chunks presented as grounding.
+// The join surfaces each chunk's title/source_type so the prompt can label
+// provenance instead of presenting anonymous text as authoritative.
+async function retrieveContext({
+  queryVector,
+  business,
+  limit = 6,
+  minScore = 0,
+}) {
   const { rows } = await query(
-    `SELECT source_table, source_id, source_text,
-            1 - (embedding <=> $1::vector) AS score
-       FROM shared.ai_embeddings
-      WHERE is_active = true
-        AND sensitivity IN ('public','normal')
-        AND (business IS NULL OR business = $2)
-      ORDER BY embedding <=> $1::vector
+    `SELECT e.source_table, e.source_id, e.source_text,
+            1 - (e.embedding <=> $1::vector) AS score,
+            k.title AS chunk_title, k.source_type AS chunk_source_type
+       FROM shared.ai_embeddings e
+       LEFT JOIN shared.ai_knowledge_chunks k
+         ON e.source_table = 'ai_knowledge_chunks' AND k.chunk_id = e.source_id
+      WHERE e.is_active = true
+        AND e.sensitivity IN ('public','normal')
+        AND (e.business IS NULL OR e.business = $2)
+        AND 1 - (e.embedding <=> $1::vector) >= $4
+      ORDER BY e.embedding <=> $1::vector
       LIMIT $3`,
-    [queryVector, business || null, limit],
+    [queryVector, business || null, limit, minScore],
   );
   return rows;
 }

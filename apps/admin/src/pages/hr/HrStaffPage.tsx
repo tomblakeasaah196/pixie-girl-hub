@@ -69,6 +69,7 @@ import {
   TabBar,
   ClockLocationLink,
   clockTime,
+  workDateLabel,
   useNotify,
   errMsg,
   statusTone,
@@ -657,7 +658,7 @@ function AttendanceTab() {
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-text-primary">{d.staff_name || "Staff"}</span>
-                  <span className="text-xs text-text-faint">{d.work_date}</span>
+                  <span className="text-xs text-text-faint">{workDateLabel(d.work_date)}</span>
                 </div>
                 <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
                   <span className="text-xs text-text-muted">

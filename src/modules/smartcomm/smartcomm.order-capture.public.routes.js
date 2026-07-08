@@ -47,9 +47,12 @@ async function defaultVariant(schema, product_id) {
 /** Resolve a `kind: 'base'` item into one sellable line. */
 async function resolveBaseItem(schema, it) {
   const { rows } = await query(
-    `SELECT product_id, name, product_code, primary_image_url
-       FROM ${schema}.products
-      WHERE product_id = $1 AND is_active = true`,
+    `SELECT p.product_id, p.name, p.product_code,
+            (SELECT pi.cdn_url FROM ${schema}.product_images pi
+              WHERE pi.product_id = p.product_id
+              ORDER BY pi.is_primary DESC, pi.display_order LIMIT 1) AS primary_image_url
+       FROM ${schema}.products p
+      WHERE p.product_id = $1 AND p.is_active = true`,
     [it.product_id],
   );
   const p = rows[0];

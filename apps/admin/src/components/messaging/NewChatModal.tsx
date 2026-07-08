@@ -1,15 +1,31 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Search, MessageSquare, Users, ChevronLeft, Check, X } from "lucide-react";
+import {
+  Search,
+  MessageSquare,
+  Users,
+  UserRound,
+  ChevronLeft,
+  Check,
+  X,
+  Send,
+  Loader2,
+  Mail,
+  Phone,
+} from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { listStaff, type StaffRow } from "@/lib/hr-api";
+import { listCrmClients } from "@/pages/crm/api";
+import type { CrmClient } from "@/pages/crm/types";
 import { smartcommApi } from "@/lib/smartcomm-api";
 import { useAuthStore } from "@/stores/auth";
 import { getAvatarColour, getInitials } from "@/lib/messaging-utils";
+import { toastReport } from "@/lib/error-report";
 import { cn } from "@/lib/cn";
 
-type Mode = "chat" | "group";
-type Step = "pick" | "name";
+type Mode = "chat" | "group" | "customer";
+type Step = "pick" | "name" | "compose";
+type CustomerChannel = "whatsapp" | "email" | "instagram";
 
 interface Props {
   open: boolean;
@@ -39,6 +55,16 @@ export function NewChatModal({ open, onClose, onStarted, initialMode = "chat" }:
   const [groupName, setGroupName] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  // Customer mode — search contacts, then compose the first message.
+  const [contacts, setContacts] = useState<CrmClient[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [selectedContact, setSelectedContact] = useState<CrmClient | null>(
+    null,
+  );
+  const [composeChannel, setComposeChannel] =
+    useState<CustomerChannel>("whatsapp");
+  const [composeBody, setComposeBody] = useState("");
+
   // Reset every time the modal opens so a second launch is never stale.
   useEffect(() => {
     if (!open) return;
@@ -48,12 +74,57 @@ export function NewChatModal({ open, onClose, onStarted, initialMode = "chat" }:
     setSelected(new Set());
     setGroupName("");
     setError(null);
+    setContacts([]);
+    setSelectedContact(null);
+    setComposeBody("");
   }, [open, initialMode]);
 
   const { data, isLoading } = useQuery({
     queryKey: ["hr", "staff", "new-chat"],
     queryFn: () => listStaff({ page_size: "200" }),
-    enabled: open,
+    enabled: open && mode !== "customer",
+  });
+
+  // Debounced contact search (min 2 chars) — customer mode only.
+  useEffect(() => {
+    if (mode !== "customer" || step !== "pick") return;
+    const term = q.trim();
+    if (term.length < 2) {
+      setContacts([]);
+      return;
+    }
+    let cancelled = false;
+    setContactsLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const r = await listCrmClients({ q: term, page_size: 15 });
+        if (!cancelled) setContacts(r.data ?? []);
+      } catch {
+        if (!cancelled) setContacts([]);
+      } finally {
+        if (!cancelled) setContactsLoading(false);
+      }
+    }, 220);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [mode, step, q]);
+
+  const sendToCustomer = useMutation({
+    mutationFn: () =>
+      smartcommApi.sendToCustomer({
+        contact_id: selectedContact!.contact_id,
+        channel: composeChannel,
+        body: composeBody.trim(),
+      }),
+    onSuccess: (res) => onStarted(res.channel_id),
+    onError: (e: unknown) => {
+      toastReport("Messaging → New chat", "Message a customer", e);
+      setError(
+        e instanceof Error ? e.message : "Could not start the conversation",
+      );
+    },
   });
 
   const startDm = useMutation({
@@ -146,7 +217,8 @@ export function NewChatModal({ open, onClose, onStarted, initialMode = "chat" }:
   // ── Header ───────────────────────────────────────────────
   const title = (
     <div className="flex items-center gap-3">
-      {mode === "group" && step === "name" ? (
+      {(mode === "group" && step === "name") ||
+      (mode === "customer" && step === "compose") ? (
         <button
           onClick={() => setStep("pick")}
           className="grid place-items-center h-8 w-8 rounded-lg text-text-muted hover:bg-panel-2 hover:text-text-primary"
@@ -160,7 +232,11 @@ export function NewChatModal({ open, onClose, onStarted, initialMode = "chat" }:
           ? step === "pick"
             ? "New group"
             : "Name your group"
-          : "New conversation"}
+          : mode === "customer"
+            ? step === "pick"
+              ? "Message a customer"
+              : `Message ${selectedContact?.display_name ?? "customer"}`
+            : "New conversation"}
       </span>
     </div>
   );
@@ -168,6 +244,31 @@ export function NewChatModal({ open, onClose, onStarted, initialMode = "chat" }:
   // ── Footer ───────────────────────────────────────────────
   const footer = (() => {
     if (mode === "chat") return null;
+    if (mode === "customer") {
+      if (step === "pick") return null;
+      return (
+        <div className="flex items-center justify-end gap-2">
+          <button
+            onClick={() => setStep("pick")}
+            className="rounded-lg px-3 py-1.5 text-[12.5px] text-text-muted hover:text-text-primary"
+          >
+            Back
+          </button>
+          <button
+            onClick={() => sendToCustomer.mutate()}
+            disabled={!composeBody.trim() || sendToCustomer.isPending}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-1.5 text-[12.5px] font-medium text-bg hover:bg-accent-glow disabled:opacity-40"
+          >
+            {sendToCustomer.isPending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Send className="h-3.5 w-3.5" />
+            )}
+            Send
+          </button>
+        </div>
+      );
+    }
     if (step === "pick") {
       return (
         <div className="flex items-center justify-between gap-3">
@@ -220,9 +321,9 @@ export function NewChatModal({ open, onClose, onStarted, initialMode = "chat" }:
 
   return (
     <Modal open={open} onClose={onClose} title={title} footer={footer} size="md">
-      {/* Mode toggle — hidden on step 2 (naming) */}
+      {/* Mode toggle — hidden on step 2 (naming/composing) */}
       {step === "pick" && (
-        <div className="mb-3 grid grid-cols-2 gap-1 rounded-xl bg-panel-2 p-1">
+        <div className="mb-3 grid grid-cols-3 gap-1 rounded-xl bg-panel-2 p-1">
           <ModeTab
             active={mode === "chat"}
             onClick={() => {
@@ -232,6 +333,17 @@ export function NewChatModal({ open, onClose, onStarted, initialMode = "chat" }:
             }}
             icon={<MessageSquare className="h-3.5 w-3.5" />}
             label="Direct message"
+          />
+          <ModeTab
+            active={mode === "customer"}
+            onClick={() => {
+              setMode("customer");
+              setSelectedContact(null);
+              setQ("");
+              setError(null);
+            }}
+            icon={<UserRound className="h-3.5 w-3.5" />}
+            label="Customer"
           />
           <ModeTab
             active={mode === "group"}
@@ -246,7 +358,7 @@ export function NewChatModal({ open, onClose, onStarted, initialMode = "chat" }:
       )}
 
       {/* ── Step: pick colleagues ─────────────────────── */}
-      {step === "pick" && (
+      {step === "pick" && mode !== "customer" && (
         <div className="space-y-3">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-faint" />
@@ -390,6 +502,154 @@ export function NewChatModal({ open, onClose, onStarted, initialMode = "chat" }:
         </div>
       )}
 
+      {/* ── Step: pick a customer contact ──────────────── */}
+      {step === "pick" && mode === "customer" && (
+        <div className="space-y-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-faint" />
+            <input
+              autoFocus
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search contacts by name, phone, or email…"
+              className="w-full rounded-xl border border-line bg-text-primary/[0.04] py-2.5 pl-9 pr-3 text-sm text-text-primary outline-none focus-visible:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+            />
+          </div>
+
+          <div className="max-h-72 space-y-0.5 overflow-y-auto rounded-xl border hairline bg-panel-2/40">
+            {q.trim().length < 2 ? (
+              <div className="p-4 text-sm text-text-muted">
+                Type at least 2 characters to search your contacts.
+              </div>
+            ) : contactsLoading ? (
+              <div className="p-4 text-sm text-text-muted">
+                <Loader2 className="inline h-3.5 w-3.5 animate-spin mr-1.5" />
+                Searching…
+              </div>
+            ) : contacts.length === 0 ? (
+              <div className="p-4 text-sm text-text-muted">
+                No contacts match &ldquo;{q}&rdquo;.
+              </div>
+            ) : (
+              contacts.map((c) => {
+                const canWhatsapp = !!c.primary_phone;
+                return (
+                  <button
+                    key={c.contact_id}
+                    onClick={() => {
+                      setSelectedContact(c);
+                      setComposeChannel(canWhatsapp ? "whatsapp" : "email");
+                      setStep("compose");
+                      setError(null);
+                    }}
+                    className="flex w-full items-center gap-3 px-3 py-2 text-left transition-colors hover:bg-accent/[0.06]"
+                  >
+                    <span
+                      className="grid h-9 w-9 shrink-0 place-items-center rounded-full font-display text-xs text-white"
+                      style={{
+                        backgroundColor: getAvatarColour(
+                          c.display_name || "?",
+                        ),
+                      }}
+                    >
+                      {getInitials(c.display_name || "?")}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm text-text-primary">
+                        {c.display_name || "Unnamed contact"}
+                      </span>
+                      <span className="flex items-center gap-2 truncate text-xs text-text-muted">
+                        {c.primary_phone && (
+                          <span className="inline-flex items-center gap-1">
+                            <Phone className="h-3 w-3" /> {c.primary_phone}
+                          </span>
+                        )}
+                        {c.email && (
+                          <span className="inline-flex items-center gap-1 truncate">
+                            <Mail className="h-3 w-3" /> {c.email}
+                          </span>
+                        )}
+                        {!c.primary_phone && !c.email && "No contact info on file"}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+
+          {error && <p className="text-[11.5px] text-danger">{error}</p>}
+        </div>
+      )}
+
+      {/* ── Step: compose the first message to a customer ── */}
+      {mode === "customer" && step === "compose" && selectedContact && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 rounded-xl bg-panel-2/60 border hairline px-3 py-2.5">
+            <span
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-full font-display text-sm text-white"
+              style={{
+                backgroundColor: getAvatarColour(
+                  selectedContact.display_name || "?",
+                ),
+              }}
+            >
+              {getInitials(selectedContact.display_name || "?")}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] text-text-primary">
+                {selectedContact.display_name || "Unnamed contact"}
+              </p>
+              <p className="truncate text-[11.5px] text-text-muted">
+                {selectedContact.primary_phone || selectedContact.email || "No contact info on file"}
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <span className="text-[11.5px] uppercase tracking-widest text-text-faint">
+              Send via
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              <ChannelChip
+                active={composeChannel === "whatsapp"}
+                disabled={!selectedContact.primary_phone}
+                onClick={() => setComposeChannel("whatsapp")}
+                label="WhatsApp"
+              />
+              <ChannelChip
+                active={composeChannel === "email"}
+                disabled={!selectedContact.email}
+                onClick={() => setComposeChannel("email")}
+                label="Email"
+              />
+              <ChannelChip
+                active={composeChannel === "instagram"}
+                disabled={false}
+                onClick={() => setComposeChannel("instagram")}
+                label="Instagram"
+              />
+            </div>
+          </div>
+
+          <label className="block space-y-1.5">
+            <span className="text-[11.5px] uppercase tracking-widest text-text-faint">
+              First message
+            </span>
+            <textarea
+              autoFocus
+              value={composeBody}
+              onChange={(e) => setComposeBody(e.target.value)}
+              placeholder="e.g. Hi! Following up on your order…"
+              rows={4}
+              className="w-full rounded-xl border border-line bg-text-primary/[0.04] px-3 py-2.5 text-sm text-text-primary outline-none focus-visible:border-accent/50 resize-none"
+            />
+          </label>
+
+          {error && <p className="text-[11.5px] text-danger">{error}</p>}
+        </div>
+      )}
+
       {/* ── Step: name the group ──────────────────────── */}
       {mode === "group" && step === "name" && (
         <div className="space-y-4">
@@ -476,6 +736,35 @@ function ModeTab({
       )}
     >
       {icon}
+      {label}
+    </button>
+  );
+}
+
+function ChannelChip({
+  active,
+  disabled,
+  onClick,
+  label,
+}: {
+  active: boolean;
+  disabled: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={disabled ? "No contact info on file for this channel" : undefined}
+      className={cn(
+        "rounded-full border px-3 py-1.5 text-[12px] transition-colors disabled:opacity-35 disabled:cursor-not-allowed",
+        active
+          ? "border-accent bg-accent/15 text-accent-glow"
+          : "hairline text-text-muted hover:text-text-primary",
+      )}
+    >
       {label}
     </button>
   );

@@ -35,7 +35,8 @@ interface Props {
 // Order Capture is for physical, deliverable lines — base/styled/bundle.
 // Services don't ship, so they're not offered here (they convert through
 // the service-job flow instead).
-const CAPTURE_KINDS: { key: ProductKind; label: string }[] = [
+type CaptureKind = Exclude<ProductKind, "service">;
+const CAPTURE_KINDS: { key: CaptureKind; label: string }[] = [
   { key: "base", label: "Base" },
   { key: "styled", label: "Styled" },
   { key: "bundle", label: "Bundle" },
@@ -47,7 +48,7 @@ const KIND_ICON: Record<string, typeof Package> = {
 };
 
 interface LineItem {
-  kind: ProductKind;
+  kind: CaptureKind;
   id: string;
   name: string;
   qty: number;
@@ -73,7 +74,7 @@ export function OrderCaptureModal({
   const contactId = customer?.contact_id ?? null;
   const platform: string = channel.external_platform || "whatsapp";
 
-  const [kind, setKind] = useState<ProductKind>("base");
+  const [kind, setKind] = useState<CaptureKind>("base");
   const [search, setSearch] = useState("");
   const [hits, setHits] = useState<ProductHit[]>([]);
   const [searching, setSearching] = useState(false);
@@ -111,7 +112,7 @@ export function OrderCaptureModal({
   const total = useMemo(() => items.reduce((s, i) => s + i.qty, 0), [items]);
   const canSend = items.length > 0 && contactId;
 
-  function addItem(k: ProductKind, id: string, name: string) {
+  function addItem(k: CaptureKind, id: string, name: string) {
     setItems((arr) => {
       const existing = arr.find((i) => i.kind === k && i.id === id);
       if (existing) {
@@ -122,7 +123,7 @@ export function OrderCaptureModal({
       return [...arr, { kind: k, id, name, qty: 1 }];
     });
   }
-  function setQty(k: ProductKind, id: string, qty: number) {
+  function setQty(k: CaptureKind, id: string, qty: number) {
     if (qty <= 0) {
       setItems((arr) => arr.filter((i) => !(i.kind === k && i.id === id)));
       return;
@@ -131,12 +132,12 @@ export function OrderCaptureModal({
       arr.map((i) => (i.kind === k && i.id === id ? { ...i, qty } : i)),
     );
   }
-  function setNote(k: ProductKind, id: string, note: string) {
+  function setNote(k: CaptureKind, id: string, note: string) {
     setItems((arr) =>
       arr.map((i) => (i.kind === k && i.id === id ? { ...i, note } : i)),
     );
   }
-  function remove(k: ProductKind, id: string) {
+  function remove(k: CaptureKind, id: string) {
     setItems((arr) => arr.filter((i) => !(i.kind === k && i.id === id)));
   }
 
@@ -265,7 +266,7 @@ export function OrderCaptureModal({
                   <button
                     key={`${p.kind}-${p.id}`}
                     onClick={() => {
-                      addItem(p.kind, p.id, p.label);
+                      addItem(p.kind as CaptureKind, p.id, p.label);
                       setSearch("");
                     }}
                     className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-panel border-b hairline last:border-b-0"

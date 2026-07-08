@@ -152,13 +152,19 @@ export const smartcommApi = {
   getCustomer360: (contact_id: string) =>
     api.get<Customer360>(`/smartcomm/customer-360/${contact_id}`),
 
-  // Send to customer (outbound dispatch, ignores existing channel)
+  // Send to customer (outbound dispatch, ignores existing channel) — used
+  // both by system reminders and by the "message a customer" contact
+  // picker to kick off a brand-new customer_thread with a first message.
   sendToCustomer: (input: {
     contact_id: string;
     channel?: "whatsapp" | "email" | "instagram";
     subject?: string;
     body: string;
-  }) => api.post("/smartcomm/send", input),
+  }) =>
+    api.post<{ channel_id: string; message: Message; queued: boolean }>(
+      "/smartcomm/send",
+      input,
+    ),
 
   // Quick replies
   listQuickReplies: () => api.get<QuickReply[]>("/smartcomm/quick-replies"),

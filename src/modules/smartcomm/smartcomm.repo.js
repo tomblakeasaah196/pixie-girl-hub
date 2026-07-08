@@ -50,8 +50,18 @@ async function listChannelsForUser({
   // hides every customer conversation from every staff account. They are
   // visible to any caller of this endpoint (route RBAC + the brand filter
   // below scope access); internal chats/DMs still require membership.
+  //
+  // A customer_thread with zero messages ever sent/received is not a real
+  // conversation — it's either a channel row left behind by a partial
+  // failure between find-or-create and the first message insert, or a
+  // one-off pre-creation with nothing to show. With one row per contact
+  // in the brand, showing every such empty row would flood the inbox
+  // with names nobody has actually talked to. Internal direct/group
+  // channels still show even with zero messages (a freshly created group
+  // is useful to see before anyone's typed in it).
   const where = [
     "(cm.user_id IS NOT NULL OR c.channel_type = 'customer_thread')",
+    "(c.channel_type != 'customer_thread' OR c.last_message_at IS NOT NULL)",
   ];
   const params = [user_id];
   let i = 2;

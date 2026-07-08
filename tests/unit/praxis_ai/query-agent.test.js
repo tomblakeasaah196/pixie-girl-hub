@@ -31,6 +31,9 @@ jest.mock("../../../src/services/llm.service", () => mockLlm);
 const mockGemini = { isConfigured: jest.fn(), chatCompletion: jest.fn() };
 jest.mock("../../../src/services/gemini.service", () => mockGemini);
 
+const mockExecutor = { executeAction: jest.fn() };
+jest.mock("../../../src/modules/praxis_ai/praxis.executor", () => mockExecutor);
+
 const mockPermissionsRepo = { findGrants: jest.fn() };
 jest.mock(
   "../../../src/shared/org_workflow/permissions.repo",
@@ -145,5 +148,113 @@ describe("execution", () => {
     });
     expect(r.replyText).toBe("You had 9 paid orders.");
     expect(r.degraded).toBeFalsy();
+  });
+});
+
+describe("chaining into a second tool after the lookup", () => {
+  const analyticsAction = {
+    action_key: "sales_campaigns.analytics_qna",
+    title: "Plain-English campaign analytics Q&A",
+    method: "POST",
+    route: "/api/v1/sales-campaigns/:id/praxis/analytics-qna",
+    is_write: false,
+    requires_confirmation: false,
+  };
+  const writeAction = {
+    action_key: "sales_campaigns.draft_copy",
+    title: "Draft hero copy",
+    method: "POST",
+    route: "/api/v1/sales-campaigns/:id/praxis/draft-copy",
+    is_write: false,
+    requires_confirmation: true,
+  };
+  const byName = new Map([
+    ["sales_campaigns_analytics_qna", analyticsAction],
+    ["sales_campaigns_draft_copy", writeAction],
+  ]);
+
+  beforeEach(() => {
+    mockPermissionsRepo.findGrants.mockResolvedValue([{ record_scope: "all" }]);
+    mockEntry.run.mockResolvedValue([{ campaign_id: "camp-1", name: "Summer Sale" }]);
+  });
+
+  test("a read-safe follow-up action is chased inline over loopback", async () => {
+    mockLlm.chat
+      .mockResolvedValueOnce({
+        content: null,
+        tool_calls: [
+          {
+            id: "tc2",
+            function: {
+              name: "sales_campaigns_analytics_qna",
+              arguments: JSON.stringify({ id: "camp-1", question: "was it a success?" }),
+            },
+          },
+        ],
+        usage: { total_tokens: 5 },
+      })
+      .mockResolvedValueOnce({
+        content: "Yes — it beat the prior campaign by 12% revenue.",
+        usage: { total_tokens: 8 },
+      });
+    mockExecutor.executeAction.mockResolvedValue({
+      ok: true,
+      http_status: 200,
+      result: { revenue_ngn: "500000", vs_prior_pct: 12 },
+    });
+
+    const r = await agent.run({
+      ...baseArgs,
+      user: { is_ceo: true },
+      allTools: [{ type: "function", function: { name: "sales_campaigns_analytics_qna" } }],
+      byName,
+      authHeader: "Bearer test-token",
+      requestId: "req-1",
+    });
+
+    expect(mockExecutor.executeAction).toHaveBeenCalledWith({
+      pending: {
+        method: "POST",
+        route: "/api/v1/sales-campaigns/:id/praxis/analytics-qna",
+        payload: { id: "camp-1", question: "was it a success?" },
+        business: "pixiegirl",
+      },
+      authHeader: "Bearer test-token",
+      requestId: "req-1",
+    });
+    expect(r.replyText).toBe("Yes — it beat the prior campaign by 12% revenue.");
+    expect(r.chainedAction).toBe("sales_campaigns.analytics_qna");
+    expect(r.usage.total_tokens).toBe(13);
+  });
+
+  test("a write / confirmation-gated follow-up is NOT chased — answers with what's already known", async () => {
+    mockLlm.chat.mockResolvedValueOnce({
+      content: "Here's the last campaign; I can't draft copy without your go-ahead.",
+      tool_calls: [
+        {
+          id: "tc2",
+          function: {
+            name: "sales_campaigns_draft_copy",
+            arguments: JSON.stringify({ id: "camp-1", section: "hero" }),
+          },
+        },
+      ],
+      usage: {},
+    });
+
+    const r = await agent.run({
+      ...baseArgs,
+      user: { is_ceo: true },
+      allTools: [{ type: "function", function: { name: "sales_campaigns_draft_copy" } }],
+      byName,
+      authHeader: "Bearer test-token",
+      requestId: "req-1",
+    });
+
+    expect(mockExecutor.executeAction).not.toHaveBeenCalled();
+    expect(r.replyText).toBe(
+      "Here's the last campaign; I can't draft copy without your go-ahead.",
+    );
+    expect(r.chainedAction).toBeUndefined();
   });
 });

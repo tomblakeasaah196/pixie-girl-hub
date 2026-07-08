@@ -690,19 +690,27 @@ async function orchestrate({
       sqlAgent.isSqlTool(toolCall.function.name);
     if (isRead) {
       // Read path — curated Query Catalogue OR the generic SQL agent (CEO).
-      // Both return { replyText, usage } and never write.
-      const agent = sqlAgent.isSqlTool(toolCall.function.name)
-        ? sqlAgent
-        : queryAgent;
-      const qr = await agent.run({
-        vendor,
-        user,
-        brand,
-        messages,
-        completion,
-        toolCall,
-        args,
-      });
+      // Both return { replyText, usage } and never write. The query agent
+      // additionally gets allTools/byName/authHeader so a lookup (e.g. "find
+      // our last campaign") can chase ONE further hop into a read-safe
+      // catalogue action (e.g. "was it a success?") instead of dead-ending
+      // with no tools to continue the chain — see query-agent.run's docstring.
+      const isSql = sqlAgent.isSqlTool(toolCall.function.name);
+      const qr = isSql
+        ? await sqlAgent.run({ vendor, user, brand, messages, completion, toolCall, args })
+        : await queryAgent.run({
+            vendor,
+            user,
+            brand,
+            messages,
+            completion,
+            toolCall,
+            args,
+            allTools,
+            byName,
+            authHeader,
+            requestId,
+          });
       if (qr.replyText) replyText = qr.replyText;
       const fu = qr.usage || {};
       if (fu.total_tokens) {
@@ -724,6 +732,7 @@ async function orchestrate({
           step_type: "call_action",
           output: {
             query: qr.queryKey || (qr.sql ? "sql-agent" : null),
+            chained_action: qr.chainedAction || null,
             denied: qr.denied || false,
           },
           status: qr.degraded ? "failed" : "completed",

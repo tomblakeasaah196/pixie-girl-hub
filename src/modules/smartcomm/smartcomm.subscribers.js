@@ -335,32 +335,40 @@ async function ingestInbound(evt) {
     );
     return;
   }
-  await transaction(async (client) => {
-    const { contact } = await resolveOrCreateContact({
+  // The contact must be COMMITTED before recordInboundFromCustomer runs:
+  // that call opens its own transaction on a different pool connection, so
+  // a contact created inside a still-open wrapper transaction is invisible
+  // to its channel_members FK check — every inbound from a brand-new sender
+  // failed with channel_members_contact_id_fkey and the rollback erased the
+  // contact, so outbox retries repeated the identical failure. Both steps
+  // are idempotent (find-first contact match, external_ref message dedup),
+  // so at-least-once redelivery between them is safe.
+  const { contact } = await transaction(async (client) =>
+    resolveOrCreateContact({
       client,
       brand,
       platform: evt.platform,
       sender: evt.sender,
-    });
-    // Merge parser-supplied metadata (story mentions/replies carry
-    // story_url/story_id) with email's subject/in_reply_to bits.
-    let metadata;
-    if (evt.metadata) metadata = { ...evt.metadata };
-    if (evt.subject) {
-      metadata = metadata || {};
-      metadata.subject = evt.subject;
-      metadata.in_reply_to = evt.in_reply_to;
-    }
-    await service.recordInboundFromCustomer({
-      brand,
-      contact_id: contact.contact_id,
-      platform: evt.platform,
-      body: evt.body,
-      message_type: evt.message_type,
-      external_ref: evt.external_ref,
-      external_thread_ref: evt.external_thread_ref,
-      metadata,
-    });
+    }),
+  );
+  // Merge parser-supplied metadata (story mentions/replies carry
+  // story_url/story_id) with email's subject/in_reply_to bits.
+  let metadata;
+  if (evt.metadata) metadata = { ...evt.metadata };
+  if (evt.subject) {
+    metadata = metadata || {};
+    metadata.subject = evt.subject;
+    metadata.in_reply_to = evt.in_reply_to;
+  }
+  await service.recordInboundFromCustomer({
+    brand,
+    contact_id: contact.contact_id,
+    platform: evt.platform,
+    body: evt.body,
+    message_type: evt.message_type,
+    external_ref: evt.external_ref,
+    external_thread_ref: evt.external_thread_ref,
+    metadata,
   });
 }
 

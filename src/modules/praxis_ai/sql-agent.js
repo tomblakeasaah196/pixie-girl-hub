@@ -276,7 +276,34 @@ async function run({ vendor, user, brand, messages, completion, toolCall, args }
       curArgs = parseArgs(next.function.arguments);
       continue;
     }
-    return { replyText: follow.content || "Here's what I found.", usage, sql: true };
+    // Never return a raw JSON/rows dump as the answer — if the model did that
+    // (or returned nothing), do one plain-English synthesis pass with no tools.
+    let text = (follow.content || "").trim();
+    const dump =
+      text.replace(/^```(?:json)?/i, "").trim().startsWith("{") ||
+      text.replace(/^```(?:json)?/i, "").trim().startsWith("[");
+    if (!text || dump) {
+      try {
+        const s = await llm.chat({
+          vendor,
+          messages: [
+            ...convo,
+            { role: "assistant", content: follow.content || null },
+            {
+              role: "user",
+              content:
+                "Answer my question in plain English using the data above — " +
+                "specific figures and a clear conclusion. Do NOT output JSON or rows.",
+            },
+          ],
+        });
+        accUsage(usage, s.usage);
+        if (s.content && s.content.trim()) text = s.content.trim();
+      } catch (e) {
+        logger.warn({ err: e.message }, "praxis sql-agent synthesis pass failed");
+      }
+    }
+    return { replyText: text || "Here's what I found.", usage, sql: true };
   }
   return {
     replyText:

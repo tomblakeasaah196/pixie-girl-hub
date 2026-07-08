@@ -50,7 +50,7 @@
     "rag:reembed:missing": "node scripts/rag-reembed.js --missing",
     "ai:ingest-docs": "node scripts/ai-ingest-docs.js",
     "ai:ingest-schema": "node scripts/ai-ingest-schema.js",
-    "ai:reindex": "node scripts/ai-ingest-docs.js && node scripts/ai-ingest-schema.js && node scripts/build-action-catalogue.js && node scripts/rag-reembed.js",
+    "ai:reindex": "node scripts/ai-ingest-docs.js && node scripts/ai-ingest-schema.js && node scripts/build-action-catalogue.js && node scripts/rag-reembed.js --missing",
     "lint:naming": "node scripts/check-file-naming.js",
     "books:verify": "node scripts/verify-books.js"
   },

@@ -24,46 +24,20 @@
 
 require("dotenv").config();
 
-const crypto = require("crypto");
 const {
   initDatabase,
   query,
   closeDatabase,
 } = require("../src/config/database");
+const { syncSlice } = require("./lib/incremental-chunks");
 
-const sha256 = (s) => crypto.createHash("sha256").update(s).digest("hex");
-const tokenEstimate = (s) => Math.max(1, Math.ceil(s.length / 4));
-
-/** Compact, readable type name. */
+/** Compact, readable type name. format_type() already produces the canonical
+ *  form (e.g. "character varying(255)", "timestamp with time zone", "uuid",
+ *  "numeric(12,2)", "text[]"); tidy the two verbose timestamp spellings. */
 function typeOf(c) {
-  if (c.data_type === "USER-DEFINED") return c.udt_name; // enum/domain
-  if (c.data_type === "character varying")
-    return c.character_maximum_length
-      ? `varchar(${c.character_maximum_length})`
-      : "varchar";
-  if (c.data_type === "timestamp with time zone") return "timestamptz";
-  if (c.data_type === "timestamp without time zone") return "timestamp";
-  if (c.data_type === "numeric" && c.numeric_precision)
-    return `numeric(${c.numeric_precision},${c.numeric_scale || 0})`;
-  if (c.data_type === "ARRAY") return `${c.udt_name.replace(/^_/, "")}[]`;
-  return c.data_type;
-}
-
-async function upsertChunk({ source_ref, title, content, business }) {
-  await query(
-    `INSERT INTO shared.ai_knowledge_chunks
-       (source_type, source_ref, business, title, content, token_count,
-        required_permissions, sensitivity, content_hash)
-     VALUES ('schema_doc',$1,$2,$3,$4,$5,'{}','normal',$6)`,
-    [
-      source_ref,
-      business,
-      title.slice(0, 240),
-      content,
-      tokenEstimate(content),
-      sha256(content),
-    ],
-  );
+  return String(c.full_type || "")
+    .replace(/timestamp with time zone/g, "timestamptz")
+    .replace(/timestamp without time zone/g, "timestamp");
 }
 
 async function main() {
@@ -87,35 +61,51 @@ async function main() {
       ORDER BY t.table_schema, t.table_name`,
     [schemas],
   );
+  // NOTE: information_schema.columns / key_column_usage / constraint_column_usage
+  // are catastrophically slow at this table count — the `_pg_expandarray` behind
+  // key_column_usage times out over 425 tables. We query pg_catalog directly:
+  // same data, orders of magnitude faster, and format_type() yields a clean,
+  // ready-to-print type string (so we don't need the old typeOf() mapping).
   const { rows: cols } = await query(
-    `SELECT table_schema, table_name, column_name, data_type, udt_name,
-            is_nullable, character_maximum_length, numeric_precision, numeric_scale,
-            ordinal_position
-       FROM information_schema.columns
-      WHERE table_schema = ANY($1)
-      ORDER BY table_schema, table_name, ordinal_position`,
+    `SELECT n.nspname AS table_schema, c.relname AS table_name,
+            a.attname AS column_name,
+            format_type(a.atttypid, a.atttypmod) AS full_type,
+            CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END AS is_nullable,
+            a.attnum AS ordinal_position
+       FROM pg_attribute a
+       JOIN pg_class c ON c.oid = a.attrelid
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = ANY($1) AND c.relkind IN ('r', 'p')
+        AND a.attnum > 0 AND NOT a.attisdropped
+      ORDER BY n.nspname, c.relname, a.attnum`,
     [schemas],
   );
   const { rows: pks } = await query(
-    `SELECT tc.table_schema, tc.table_name, kcu.column_name
-       FROM information_schema.table_constraints tc
-       JOIN information_schema.key_column_usage kcu
-         ON kcu.constraint_name = tc.constraint_name
-        AND kcu.table_schema = tc.table_schema
-      WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = ANY($1)`,
+    `SELECT n.nspname AS table_schema, c.relname AS table_name,
+            a.attname AS column_name
+       FROM pg_constraint con
+       JOIN pg_class c ON c.oid = con.conrelid
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+       JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum = ANY(con.conkey)
+      WHERE con.contype = 'p' AND n.nspname = ANY($1)`,
     [schemas],
   );
   const { rows: fks } = await query(
-    `SELECT tc.table_schema, tc.table_name, kcu.column_name,
-            ccu.table_schema AS ref_schema, ccu.table_name AS ref_table,
-            ccu.column_name AS ref_column
-       FROM information_schema.table_constraints tc
-       JOIN information_schema.key_column_usage kcu
-         ON kcu.constraint_name = tc.constraint_name
-        AND kcu.table_schema = tc.table_schema
-       JOIN information_schema.constraint_column_usage ccu
-         ON ccu.constraint_name = tc.constraint_name
-      WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_schema = ANY($1)`,
+    `SELECT n.nspname AS table_schema, c.relname AS table_name,
+            att.attname AS column_name,
+            fn.nspname AS ref_schema, fc.relname AS ref_table,
+            fatt.attname AS ref_column
+       FROM pg_constraint con
+       JOIN pg_class c ON c.oid = con.conrelid
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+       JOIN pg_class fc ON fc.oid = con.confrelid
+       JOIN pg_namespace fn ON fn.oid = fc.relnamespace
+       JOIN generate_subscripts(con.conkey, 1) AS s(i) ON true
+       JOIN pg_attribute att
+         ON att.attrelid = c.oid AND att.attnum = con.conkey[s.i]
+       JOIN pg_attribute fatt
+         ON fatt.attrelid = fc.oid AND fatt.attnum = con.confkey[s.i]
+      WHERE con.contype = 'f' AND n.nspname = ANY($1)`,
     [schemas],
   );
 
@@ -139,16 +129,10 @@ async function main() {
     );
   }
 
-  const del = await query(
-    `DELETE FROM shared.ai_knowledge_chunks WHERE source_ref LIKE 'schema/%'`,
-  );
-  // eslint-disable-next-line no-console
-  console.log(
-    `Cleared ${del.rowCount} previous schema chunks. Base schema: ${brandSchema}.`,
-  );
-
-  let n = 0;
-  for (const tbl of tables) {
+  // Build the desired schema slice, then sync incrementally: only tables whose
+  // structure changed (or new tables) are rewritten + re-embedded; unchanged
+  // tables keep their row and embedding, dropped tables are pruned.
+  const desired = tables.map((tbl) => {
     const isBrand = tbl.table_schema === brandSchema;
     const logical = isBrand ? "business" : "shared";
     const k = key(tbl.table_schema, tbl.table_name);
@@ -174,18 +158,22 @@ async function main() {
       .filter(Boolean)
       .join("\n");
 
-    await upsertChunk({
+    return {
+      source_type: "schema_doc",
       source_ref: `schema/${logical}.${tbl.table_name}`,
       title: `${logical}.${tbl.table_name} (schema)`,
       content,
       business: null, // structure applies to both brands
-    });
-    n += 1;
-  }
+    };
+  });
+
+  const res = await syncSlice({ query, prefixes: ["schema/%"], chunks: desired });
 
   // eslint-disable-next-line no-console
   console.log(
-    `\nIngested ${n} table schema chunks. Run "npm run rag:reembed" to vectorise.`,
+    `Schema synced (base: ${brandSchema}): ${res.inserted} new, ${res.updated} changed, ` +
+      `${res.unchanged} unchanged, ${res.deleted} removed. ` +
+      `Run "npm run rag:reembed -- --missing" to embed only new/changed chunks.`,
   );
 }
 

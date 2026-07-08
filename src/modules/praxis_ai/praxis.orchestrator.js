@@ -125,6 +125,42 @@ const toolMsg = (id, payload) => ({
   content: JSON.stringify(payload).slice(0, 6000),
 });
 
+/** A reply that is (or starts with) a JSON blob is a raw-data dump, never a
+ *  real answer — used to catch the model regurgitating tool output. */
+function looksLikeDump(text) {
+  const t = String(text || "")
+    .trim()
+    .replace(/^```(?:json)?/i, "")
+    .trim();
+  return t.startsWith("{") || t.startsWith("[");
+}
+
+/**
+ * Final synthesis pass: ask the model (no tools) to turn everything gathered so
+ * far into a plain-English answer. Used both as the normal closer and to rescue
+ * a turn where the model handed back raw JSON. Never throws.
+ */
+async function synthesizeAnswer({ vendor, convo, usage }) {
+  const conv = [
+    ...convo,
+    {
+      role: "user",
+      content:
+        "Using the data above, answer my original question in clear plain " +
+        "English — specific figures and a direct conclusion. Do NOT output " +
+        "JSON or raw rows.",
+    },
+  ];
+  try {
+    const r = await llm.chat({ vendor, messages: conv });
+    if (usage) addUsage(usage, r.usage);
+    return (r.content || "").trim();
+  } catch (err) {
+    logger.warn({ err: err.message }, "praxis: synthesis pass failed");
+    return "";
+  }
+}
+
 /**
  * Resolve a catalogue-action tool call to a finished turn. Bounded loop:
  *
@@ -181,11 +217,17 @@ async function resolveCatalogueAction({
         follow = await llm.chat({ vendor, messages: convo, tools: allTools });
       } catch (err) {
         logger.error({ err: err.message }, "praxis: action chain call failed");
+        const fb = await summariseViaFallback({
+          messages: convo,
+          result: payload,
+        });
         return {
           replyText:
-            "I looked that up but couldn't finish composing the answer — please try again.",
+            fb ||
+            "I pulled the data but the summariser is briefly unavailable — please ask me again in a moment.",
           pending: null,
           usage,
+          degraded: !fb,
         };
       }
       addUsage(usage, follow.usage);
@@ -196,8 +238,19 @@ async function resolveCatalogueAction({
         args = parseToolArgs(next.function.arguments);
         continue;
       }
+      // Never hand back a raw-data dump — if the model regurgitated JSON (or
+      // returned nothing), force one plain-English synthesis pass.
+      let replyText = (follow.content || "").trim();
+      if (!replyText || looksLikeDump(replyText)) {
+        replyText =
+          (await synthesizeAnswer({
+            vendor,
+            convo: [...convo, asstMsg(follow)],
+            usage,
+          })) || replyText;
+      }
       return {
-        replyText: follow.content || "Here's what I found.",
+        replyText: replyText || "Here's what I found.",
         pending: null,
         usage,
       };
@@ -325,8 +378,17 @@ async function resolveCatalogueAction({
       try {
         const follow = await llm.chat({ vendor, messages: convo });
         addUsage(usage, follow.usage);
+        let replyText = (follow.content || "").trim();
+        if (!replyText || looksLikeDump(replyText)) {
+          replyText =
+            (await synthesizeAnswer({
+              vendor,
+              convo: [...convo, asstMsg(follow)],
+              usage,
+            })) || replyText;
+        }
         return {
-          replyText: follow.content || "Here's what I found.",
+          replyText: replyText || "Here's what I found.",
           pending: null,
           usage,
         };
@@ -468,6 +530,10 @@ function systemPrompt({ brand, contextChunks, user, queries = [] }) {
     "3. For anything that CHANGES data (create/update/delete/approve/send), do NOT claim it's done — call the matching action tool with precise arguments; a human confirms before it runs.",
     "4. Be concise and specific; prefer real figures returned by tools over prose. Cite the retrieved knowledge when you use it.",
     "5. You know the LIVE business data and the system's CURRENT shape — you do NOT track the software project's build status. If asked how 'complete', 'finished', 'far along', or what percentage of the app/project is done, or for a roadmap, say plainly that you don't track development progress and can't give a completion figure. Never invent a percentage or progress claim.",
+    "6. NEVER paste raw JSON, arrays, or database rows into your reply — the user cannot read those. When a tool returns data, translate it into clear plain-English sentences, a short markdown table, or bullet metrics. A reply that is (or starts with) a JSON blob is always wrong.",
+    "7. Actually ANSWER the question asked, in full. If it is evaluative ('was it a success?', 'how did X do?'), give a clear verdict AND the figures that justify it (e.g. revenue, orders, units, conversion, vs. target or the prior period) — call more than one tool if you need to, up to what's allowed. If some data is genuinely unavailable, state what you found and what's missing; never stop half-way or hand back a data dump in place of an answer.",
+    "8. DRAFTING/WRITING requests — a WhatsApp/SMS/email broadcast, caption, announcement, product description, or reply — are CONTENT GENERATION, not data lookups. Write the requested text directly, in a warm on-brand tone. Only call a tool if you need a specific live value to put IN the copy (e.g. the actual names of new-arrival products). If such a lookup returns nothing or errors, still deliver a complete, ready-to-send draft using clear placeholders like [product name] / [price] — NEVER show the user an empty result, a campaigns list, or any query output in place of the draft they asked for.",
+    "9. Pick the tool that matches the user's actual intent. Do not run a loosely-related query just to have called something — if no tool genuinely fits (e.g. a pure writing task), don't call one; just do the task.",
     "",
     "LIVE-DATA QUERIES YOU CAN CALL RIGHT NOW:",
     queryList,

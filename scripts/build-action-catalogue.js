@@ -137,6 +137,14 @@ async function main() {
       const module = (op.tags && op.tags[0]) || p.split("/")[1] || "misc";
       if (SKIP_MODULES.has(module)) continue;
 
+      // Honour the spec's own annotations when present: x-is-write marks true
+      // mutations (a POST can be a search — those aren't actions, reads go
+      // through the query/SQL agent), and x-required-permission is the exact
+      // RBAC key (better than our method→word heuristic).
+      const xWrite = op["x-is-write"];
+      const isWrite = xWrite === undefined ? true : xWrite === true;
+      if (!isWrite) continue; // non-mutating endpoint → not a Praxis action
+
       const action_key = `${module}.${method}_${slug(p)}`.slice(0, 120);
       const route = `${BASE_PREFIX}${toExpressRoute(p)}`;
       const title = op.summary || `${method.toUpperCase()} ${p}`;
@@ -153,7 +161,8 @@ async function main() {
         description: description.slice(0, 2000),
         module,
         payload_schema: jsonSchemaFor(op),
-        required_permission: `${module}.${permWord(method, p)}`,
+        required_permission:
+          op["x-required-permission"] || `${module}.${permWord(method, p)}`,
         ai_enabled: method !== "delete", // deletes are opt-in
       });
       created += 1;

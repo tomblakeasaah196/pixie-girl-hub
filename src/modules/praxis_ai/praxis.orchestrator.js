@@ -123,6 +123,9 @@ function addUsage(acc, u) {
 const asstMsg = (c, only) => ({
   role: "assistant",
   content: c.content || null,
+  // DeepSeek thinking models require the reasoning_content that produced a tool
+  // call to be replayed with it, or the follow-up 400s.
+  ...(c.reasoning_content ? { reasoning_content: c.reasoning_content } : {}),
   tool_calls: only ? [only] : c.tool_calls,
 });
 const toolMsg = (id, payload) => ({

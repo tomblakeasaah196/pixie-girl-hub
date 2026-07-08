@@ -242,7 +242,15 @@ async function run({ vendor, user, brand, messages, completion, toolCall, args }
     // Replay ONLY the tool call we answer below — carrying every tool_call while
     // sending one tool response makes the vendor 400 ("tool responses must match
     // tool calls"), which is what forced the raw-result fallback dumps.
-    { role: "assistant", content: completion.content || null, tool_calls: [toolCall] },
+    // DeepSeek thinking models also require reasoning_content to be replayed.
+    {
+      role: "assistant",
+      content: completion.content || null,
+      ...(completion.reasoning_content
+        ? { reasoning_content: completion.reasoning_content }
+        : {}),
+      tool_calls: [toolCall],
+    },
   ];
   const usage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
   const sqlTools = tools();
@@ -308,6 +316,9 @@ async function run({ vendor, user, brand, messages, completion, toolCall, args }
       convo.push({
         role: "assistant",
         content: follow.content || null,
+        ...(follow.reasoning_content
+          ? { reasoning_content: follow.reasoning_content }
+          : {}),
         tool_calls: [next], // replay only the call we answer next (see above)
       });
       cur = next;

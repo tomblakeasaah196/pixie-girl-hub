@@ -111,6 +111,12 @@ async function chat({ vendor, messages, tools, model, temperature = 0.2 }) {
     result = {
       content: msg.content || "",
       tool_calls: Array.isArray(msg.tool_calls) ? msg.tool_calls : [],
+      // DeepSeek "thinking"/reasoner models return reasoning_content alongside
+      // content. When the turn made a tool call, that reasoning_content MUST be
+      // sent back in the replayed assistant message or the next call 400s
+      // ("reasoning_content in the thinking mode must be passed back"). Surface
+      // it so callers can round-trip it.
+      reasoning_content: msg.reasoning_content || null,
       usage: data.usage || {
         prompt_tokens: 0,
         completion_tokens: 0,

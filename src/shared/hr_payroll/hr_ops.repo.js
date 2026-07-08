@@ -30,7 +30,7 @@ async function analytics({ client, brand, year, month }) {
        (SELECT count(*) FROM shared.staff_profiles sp
          WHERE ${VISIBLE} AND sp.is_deleted = false
            AND (sp.end_date IS NULL OR sp.end_date >= CURRENT_DATE))::int AS headcount,
-       (SELECT count(*) FROM md WHERE status IN ('present','late'))::int AS present_days,
+       (SELECT count(*) FROM md WHERE status IN ('present','late','present_day_off'))::int AS present_days,
        (SELECT count(*) FROM md WHERE status = 'late')::int AS late_days,
        (SELECT count(*) FROM md WHERE status = 'absent')::int AS absent_days,
        (SELECT count(*) FROM md WHERE status = 'on_leave')::int AS leave_days,
@@ -80,8 +80,8 @@ async function analyticsTrends({ client, brand, months = 12 }) {
        (SELECT count(*) FROM shared.staff_profiles sp
           WHERE sp.business = $1
             AND sp.end_date >= ms AND sp.end_date < ms + interval '1 month')::int AS attrition,
-       (SELECT COALESCE(ROUND(100.0 * count(*) FILTER (WHERE status = 'present' AND is_late = false)
-              / NULLIF(count(*) FILTER (WHERE status IN ('present','late')), 0), 1), 0)
+       (SELECT COALESCE(ROUND(100.0 * count(*) FILTER (WHERE status IN ('present','present_day_off') AND is_late = false)
+              / NULLIF(count(*) FILTER (WHERE status IN ('present','late','present_day_off')), 0), 1), 0)
           FROM shared.attendance_days ad
          WHERE ad.business = $1 AND ad.work_date >= ms AND ad.work_date < ms + interval '1 month')::numeric AS punctuality_pct,
        (SELECT COALESCE(SUM(earned_ngn), 0) FROM shared.staff_earnings_daily e
@@ -200,10 +200,12 @@ async function updateSettings({ client, brand, patch }) {
     "onboarding_checklist",
     "onboarding_links",
     "onboarding_welcome",
+    "onboarding_help_article_ids",
     "contract_template_doc_id",
   ];
   const jsonb = new Set(["lateness_tiers", "onboarding_checklist", "onboarding_links"]);
   const arr = new Set(["working_days"]);
+  const uuidArr = new Set(["onboarding_help_article_ids"]);
   const sets = [];
   const params = [brand];
   let i = 2;
@@ -214,6 +216,9 @@ async function updateSettings({ client, brand, patch }) {
       params.push(JSON.stringify(patch[col]));
     } else if (arr.has(col)) {
       sets.push(`${col} = $${i}::text[]`);
+      params.push(patch[col]);
+    } else if (uuidArr.has(col)) {
+      sets.push(`${col} = $${i}::uuid[]`);
       params.push(patch[col]);
     } else {
       sets.push(`${col} = $${i}`);
@@ -571,6 +576,50 @@ async function listAttendanceDays({ client, brand, filters = {} }) {
   return rows;
 }
 
+/**
+ * Same filters as listAttendanceDays, but paginated with a real total —
+ * powers My HR's "This month's attendance" list (10/page, Prev/Next).
+ */
+async function listAttendanceDaysPage({ client, brand, filters = {} }) {
+  const where = ["ad.business = $1"];
+  const params = [brand];
+  let i = 2;
+  if (filters.profile_id) {
+    where.push(`ad.profile_id = $${i++}`);
+    params.push(filters.profile_id);
+  }
+  if (filters.from) {
+    where.push(`ad.work_date >= $${i++}`);
+    params.push(filters.from);
+  }
+  if (filters.to) {
+    where.push(`ad.work_date <= $${i++}`);
+    params.push(filters.to);
+  }
+  const whereSql = where.join(" AND ");
+  const pageSize = Math.min(Number(filters.page_size) || 10, 100);
+  const page = Math.max(Number(filters.page) || 1, 1);
+  const offset = (page - 1) * pageSize;
+  const { rows } = await exec(client)(
+    `SELECT ad.*, ad.work_date::text AS work_date, c.display_name AS staff_name
+       FROM shared.attendance_days ad
+       JOIN shared.staff_profiles sp ON sp.profile_id = ad.profile_id
+       LEFT JOIN shared.contacts c ON c.contact_id = sp.contact_id
+      WHERE ${whereSql}
+      ORDER BY ad.work_date DESC, c.display_name ASC
+      LIMIT $${i++} OFFSET $${i++}`,
+    [...params, pageSize, offset],
+  );
+  const { rows: cr } = await exec(client)(
+    `SELECT count(*)::int AS total
+       FROM shared.attendance_days ad
+       JOIN shared.staff_profiles sp ON sp.profile_id = ad.profile_id
+      WHERE ${whereSql}`,
+    params,
+  );
+  return { data: rows, page, page_size: pageSize, total: cr[0].total };
+}
+
 /** Distinct dates already reconciled in a range (pre-review payroll guard). */
 async function reconciledDatesInRange({ client, brand, from, to }) {
   const { rows } = await exec(client)(
@@ -655,6 +704,51 @@ async function listTargets({ client, brand, filters = {} }) {
     params,
   );
   return rows;
+}
+
+/** Same filters as listTargets, but paginated with a real total (My HR). */
+async function listTargetsPage({ client, brand, filters = {} }) {
+  const where = ["t.business = $1"];
+  const params = [brand];
+  let i = 2;
+  if (filters.profile_id) {
+    where.push(`t.profile_id = $${i++}`);
+    params.push(filters.profile_id);
+  }
+  if (filters.status) {
+    where.push(`t.status = $${i++}`);
+    params.push(filters.status);
+  }
+  if (filters.period_year) {
+    where.push(`t.period_year = $${i++}`);
+    params.push(filters.period_year);
+  }
+  if (filters.period_month) {
+    where.push(`t.period_month = $${i++}`);
+    params.push(filters.period_month);
+  }
+  const whereSql = where.join(" AND ");
+  const pageSize = Math.min(Number(filters.page_size) || 10, 100);
+  const page = Math.max(Number(filters.page) || 1, 1);
+  const offset = (page - 1) * pageSize;
+  const { rows } = await exec(client)(
+    `SELECT t.*, c.display_name AS staff_name
+       FROM shared.performance_targets t
+       JOIN shared.staff_profiles sp ON sp.profile_id = t.profile_id
+       LEFT JOIN shared.contacts c ON c.contact_id = sp.contact_id
+      WHERE ${whereSql}
+      ORDER BY t.period_year DESC, t.period_month DESC, c.display_name ASC
+      LIMIT $${i++} OFFSET $${i++}`,
+    [...params, pageSize, offset],
+  );
+  const { rows: cr } = await exec(client)(
+    `SELECT count(*)::int AS total
+       FROM shared.performance_targets t
+       JOIN shared.staff_profiles sp ON sp.profile_id = t.profile_id
+      WHERE ${whereSql}`,
+    params,
+  );
+  return { data: rows, page, page_size: pageSize, total: cr[0].total };
 }
 
 async function findTarget({ client, brand, id }) {
@@ -948,7 +1042,7 @@ async function overviewCounts({ client, brand }) {
            AND (sp.end_date IS NULL OR sp.end_date >= CURRENT_DATE))::int AS total_staff,
        (SELECT count(*) FROM shared.attendance_days ad
          WHERE ad.business = $1 AND ad.work_date = CURRENT_DATE
-           AND ad.status IN ('present','late'))::int AS present_today,
+           AND ad.status IN ('present','late','present_day_off'))::int AS present_today,
        (SELECT count(*) FROM shared.attendance_days ad
          WHERE ad.business = $1 AND ad.work_date = CURRENT_DATE
            AND ad.status = 'late')::int AS late_today,
@@ -979,6 +1073,29 @@ async function tasksForUser({ client, brand, userId }) {
   return rows;
 }
 
+/** Same shape as tasksForUser, but paginated with a real total (My HR). */
+async function tasksForUserPage({ client, brand, userId, page = 1, page_size = 10 }) {
+  const pageSize = Math.min(Number(page_size) || 10, 100);
+  const p = Math.max(Number(page) || 1, 1);
+  const offset = (p - 1) * pageSize;
+  const { rows } = await exec(client)(
+    `SELECT task_id, title, status, priority, due_at, reference_type
+       FROM shared.tasks
+      WHERE business = $1 AND assigned_to = $2 AND is_deleted = false
+        AND status <> 'cancelled'
+      ORDER BY (status = 'done') ASC, due_at ASC NULLS LAST
+      LIMIT $3 OFFSET $4`,
+    [brand, userId, pageSize, offset],
+  );
+  const { rows: cr } = await exec(client)(
+    `SELECT count(*)::int AS total FROM shared.tasks
+      WHERE business = $1 AND assigned_to = $2 AND is_deleted = false
+        AND status <> 'cancelled'`,
+    [brand, userId],
+  );
+  return { data: rows, page: p, page_size: pageSize, total: cr[0].total };
+}
+
 async function contractsForProfile({ client, profileId }) {
   // Left-join the latest signature-request status per contract document so the
   // onboarding card can show "awaiting signature" / "signed".
@@ -994,6 +1111,30 @@ async function contractsForProfile({ client, profileId }) {
     [profileId],
   );
   return rows;
+}
+
+/** Same shape as contractsForProfile, but paginated with a real total. */
+async function contractsForProfilePage({ client, profileId, page = 1, page_size = 10 }) {
+  const pageSize = Math.min(Number(page_size) || 10, 100);
+  const p = Math.max(Number(page) || 1, 1);
+  const offset = (p - 1) * pageSize;
+  const { rows } = await exec(client)(
+    `SELECT sc.contract_id, sc.contract_type, sc.effective_from, sc.effective_to,
+            sc.gross_salary, sc.document_id,
+            (SELECT sr.status FROM shared.signature_requests sr
+              WHERE sr.document_id = sc.document_id
+              ORDER BY sr.created_at DESC LIMIT 1) AS signature_status
+       FROM shared.staff_contracts sc
+      WHERE sc.profile_id = $1
+      ORDER BY sc.effective_from DESC
+      LIMIT $2 OFFSET $3`,
+    [profileId, pageSize, offset],
+  );
+  const { rows: cr } = await exec(client)(
+    `SELECT count(*)::int AS total FROM shared.staff_contracts WHERE profile_id = $1`,
+    [profileId],
+  );
+  return { data: rows, page: p, page_size: pageSize, total: cr[0].total };
 }
 
 // ── Onboarding (meeting §3.7) ──────────────────────────────
@@ -1031,8 +1172,23 @@ async function onboardingDoneCount({ client, brand, profileId }) {
   return Number(rows[0].done || 0);
 }
 
-/** Active Help Center articles tagged 'onboarding' (SOP source). */
-async function onboardingHelpArticles({ client }) {
+/**
+ * SOP articles for the "Getting started" card. When HR has curated a list
+ * (hr_settings.onboarding_help_article_ids), those articles show in the
+ * chosen order; otherwise falls back to the legacy convention of any active
+ * Help Center article tagged 'onboarding'.
+ */
+async function onboardingHelpArticles({ client, articleIds }) {
+  if (Array.isArray(articleIds) && articleIds.length > 0) {
+    const { rows } = await exec(client)(
+      `SELECT article_id, slug, title, summary
+         FROM shared.help_articles
+        WHERE is_active = true AND article_id = ANY($1::uuid[])
+        ORDER BY array_position($1::uuid[], article_id)`,
+      [articleIds],
+    );
+    return rows;
+  }
   const { rows } = await exec(client)(
     `SELECT article_id, slug, title, summary
        FROM shared.help_articles
@@ -1087,10 +1243,12 @@ module.exports = {
   onboardingHelpArticles,
   ownDocumentsForProfile,
   listAttendanceDays,
+  listAttendanceDaysPage,
   reconciledDatesInRange,
   upsertEarningsDay,
   earningsMonthToDate,
   listTargets,
+  listTargetsPage,
   findTarget,
   createTarget,
   updateTargetProgress,
@@ -1109,5 +1267,7 @@ module.exports = {
   dueReminderQueries,
   bumpReminder,
   tasksForUser,
+  tasksForUserPage,
   contractsForProfile,
+  contractsForProfilePage,
 };

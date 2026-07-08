@@ -11,6 +11,22 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-08 — Curated onboarding articles (HR & Staff → Onboarding)
+
+**Source:** user feedback on My HR's "Getting started" card pulling
+unrelated Help Center articles (any article tagged `onboarding` brand-wide,
+regardless of what it's actually about).
+
+**Files (new):** `000308_shared_hr_onboarding_articles.sql`.
+
+**What:** `shared.hr_settings.onboarding_help_article_ids UUID[]` — an
+explicit, ordered list of Help Center articles HR curates for new hires via
+a new HR & Staff → Onboarding tab. `hr_ops.repo.onboardingHelpArticles` uses
+this list when non-empty and falls back to the legacy tag-based query
+otherwise, so existing installs are unaffected until HR picks articles.
+
+---
+
 ## 2026-07-08 — Praxis campaign action payload schemas (hallucination fixes PR 1)
 
 **Source:** Praxis hallucination root-cause analysis (2026-07-08). The six

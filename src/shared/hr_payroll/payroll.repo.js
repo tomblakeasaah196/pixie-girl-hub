@@ -45,7 +45,7 @@ async function attendanceSummaryForPeriod({ client, brand, from, to }) {
                 WHEN status = 'absent' THEN daily_rate_ngn
                 ELSE deduction_ngn
               END), 0)::numeric AS deduction_ngn,
-            COUNT(*) FILTER (WHERE status IN ('present','late'))::int AS days_worked
+            COUNT(*) FILTER (WHERE status IN ('present','late','present_day_off'))::int AS days_worked
        FROM shared.attendance_days
       WHERE business = $1 AND work_date >= $2 AND work_date <= $3
       GROUP BY profile_id`,

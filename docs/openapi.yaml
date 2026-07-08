@@ -9503,6 +9503,106 @@ paths:
         x-is-write: true,
         responses: { "200": { description: Reversed } },
       }
+  # ── My HR self-service — paginated lists (auth only, no permission gate;
+  #    each scopes to the requesting user's own staff profile) ──────
+  /hr/me/attendance:
+    get:
+      {
+        summary: My reconciled attendance for one month, paginated (10/page default),
+        tags: [hr_payroll],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            { name: year, in: query, schema: { type: integer } },
+            { name: month, in: query, schema: { type: integer, minimum: 1, maximum: 12 } },
+            { name: page, in: query, schema: { type: integer, default: 1 } },
+            { name: page_size, in: query, schema: { type: integer, default: 10 } },
+          ],
+        x-required-permission: null,
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses:
+          {
+            "200":
+              {
+                description: "Attendance days + { page, page_size, total, year, month } meta",
+              },
+          },
+      }
+  /hr/me/tasks:
+    get:
+      {
+        summary: My assigned tasks, paginated (10/page default),
+        tags: [hr_payroll],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            { name: page, in: query, schema: { type: integer, default: 1 } },
+            { name: page_size, in: query, schema: { type: integer, default: 10 } },
+          ],
+        x-required-permission: null,
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses:
+          { "200": { description: "Tasks + { page, page_size, total } meta" } },
+      }
+  /hr/me/contracts:
+    get:
+      {
+        summary: My contracts and their signature status, paginated (10/page default),
+        tags: [hr_payroll],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            { name: page, in: query, schema: { type: integer, default: 1 } },
+            { name: page_size, in: query, schema: { type: integer, default: 10 } },
+          ],
+        x-required-permission: null,
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses:
+          {
+            "200":
+              { description: "Contracts + { page, page_size, total } meta" },
+          },
+      }
+  /hr/me/targets:
+    get:
+      {
+        summary: My active performance targets for the current month, paginated (10/page default),
+        tags: [hr_payroll],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            { name: page, in: query, schema: { type: integer, default: 1 } },
+            { name: page_size, in: query, schema: { type: integer, default: 10 } },
+          ],
+        x-required-permission: null,
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses:
+          { "200": { description: "Targets + { page, page_size, total } meta" } },
+      }
+  /hr/me/payslips:
+    get:
+      {
+        summary: My payslips, paginated (10/page default),
+        tags: [hr_payroll],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            { name: page, in: query, schema: { type: integer, default: 1 } },
+            { name: page_size, in: query, schema: { type: integer, default: 10 } },
+          ],
+        x-required-permission: null,
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses:
+          {
+            "200":
+              { description: "Payslips + { page, page_size, total } meta" },
+          },
+      }
   /hr/payslips:
     get:
       {

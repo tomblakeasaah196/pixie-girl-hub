@@ -1102,25 +1102,19 @@ async function getMyHr({ brand, user }) {
   const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
 
   const [
-    mtd, attendance, openQueries, targets, leaveRows, tasks, contracts,
-    payslips, commissions, bonuses,
+    mtd, attendance, openQueries, leaveRows, commissions, bonuses,
   ] = await Promise.all([
     repo.earningsMonthToDate({ brand, profileId: profile.profile_id, year, month }),
+    // Full month, used only to compute `insights` below — the display list
+    // itself is served paginated by GET /hr/me/attendance.
     repo.listAttendanceDays({
       brand, filters: { profile_id: profile.profile_id, from: monthStart },
     }),
     repo.listQueries({
       brand, filters: { profile_id: profile.profile_id, open: true },
     }),
-    repo.listTargets({
-      brand,
-      filters: { profile_id: profile.profile_id, status: "active", period_year: year, period_month: month },
-    }),
     repo.listLeave({ brand, filters: { profile_id: profile.profile_id } }),
-    repo.tasksForUser({ brand, userId: user.user_id }),
-    repo.contractsForProfile({ profileId: profile.profile_id }),
     // Own pay artefacts (§3.4 end product + accruals as they build — audit M3/M5).
-    payrollRepo.listPayslips({ brand, filters: { user_id: user.user_id }, page: 1, page_size: 12 }),
     payrollRepo.listCommissions({ brand, filters: { user_id: user.user_id }, page: 1, page_size: 25 }),
     payrollRepo.listBonuses({ brand, filters: { user_id: user.user_id }, page: 1, page_size: 25 }),
   ]);
@@ -1128,7 +1122,7 @@ async function getMyHr({ brand, user }) {
   // SOP articles, own documents and handy links — always available on My HR.
   const [onboardDone, helpArticles, ownDocs] = await Promise.all([
     repo.onboardingProgress({ brand, profileId: profile.profile_id }),
-    repo.onboardingHelpArticles({}).catch(() => []),
+    repo.onboardingHelpArticles({ articleIds: settings.onboarding_help_article_ids }).catch(() => []),
     repo.ownDocumentsForProfile({ brand, profileId: profile.profile_id }).catch(() => []),
   ]);
   const checklist = Array.isArray(settings.onboarding_checklist)
@@ -1201,14 +1195,6 @@ async function getMyHr({ brand, user }) {
       at_risk_ngn: atRisk,
       projected_month_ngn: calc.round2(dailyRate * workingDaysCount),
     },
-    targets: targets.map((t) => ({
-      ...t,
-      remaining: Math.max(0, Number(t.target_value) - Number(t.current_value)),
-      progress_pct: Number(t.target_value) > 0
-        ? Math.min(100, Math.round((Number(t.current_value) / Number(t.target_value)) * 100))
-        : 0,
-    })),
-    attendance,
     insights,
     open_queries: openQueries,
     leave_balance: Object.entries(balanceMap).map(([leave_type, days_taken]) => ({
@@ -1216,13 +1202,75 @@ async function getMyHr({ brand, user }) {
     })),
     leave_requests: leaveRows.slice(0, 25),
     annual_leave_days_remaining: Number(profile.annual_leave_days_remaining || 0),
-    tasks,
-    contracts,
-    payslips: payslips.data,
     accruals,
     rewards,
     onboarding,
   };
+}
+
+/** Shape a raw performance_targets row with its live countdown fields. */
+function withTargetProgress(t) {
+  return {
+    ...t,
+    remaining: Math.max(0, Number(t.target_value) - Number(t.current_value)),
+    progress_pct: Number(t.target_value) > 0
+      ? Math.min(100, Math.round((Number(t.current_value) / Number(t.target_value)) * 100))
+      : 0,
+  };
+}
+
+/**
+ * Paginated self-service sections of My HR (10/page by default) — attendance
+ * (scoped to one calendar month, defaulting to the current one), tasks,
+ * targets, contracts/documents and payslips. Split out from getMyHr's
+ * bootstrap payload so each list can page independently (audit: the bootstrap
+ * previously shipped every row for the month/every task/every contract in one
+ * response, which the frontend then sliced client-side — never actually
+ * paginated server-side).
+ */
+async function myAttendance({ brand, user, year, month, page, page_size }) {
+  const profile = await repo.profileForUser({ brand, userId: user.user_id });
+  if (!profile) throw new NotFoundError("Staff profile");
+  const now = new Date();
+  const y = Number(year) || now.getUTCFullYear();
+  const m = Math.min(12, Math.max(1, Number(month) || now.getUTCMonth() + 1));
+  const from = `${y}-${String(m).padStart(2, "0")}-01`;
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const to = `${y}-${String(m).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+  const result = await repo.listAttendanceDaysPage({
+    brand,
+    filters: { profile_id: profile.profile_id, from, to, page, page_size },
+  });
+  return { ...result, year: y, month: m };
+}
+
+async function myTasks({ brand, user, page, page_size }) {
+  return repo.tasksForUserPage({ brand, userId: user.user_id, page, page_size });
+}
+
+async function myContracts({ brand, user, page, page_size }) {
+  const profile = await repo.profileForUser({ brand, userId: user.user_id });
+  if (!profile) throw new NotFoundError("Staff profile");
+  return repo.contractsForProfilePage({ profileId: profile.profile_id, page, page_size });
+}
+
+async function myTargets({ brand, user, page, page_size }) {
+  const profile = await repo.profileForUser({ brand, userId: user.user_id });
+  if (!profile) throw new NotFoundError("Staff profile");
+  const { year, month } = ym();
+  const result = await repo.listTargetsPage({
+    brand,
+    filters: {
+      profile_id: profile.profile_id, period_year: year, period_month: month, page, page_size,
+    },
+  });
+  return { ...result, data: result.data.map(withTargetProgress) };
+}
+
+async function myPayslips({ brand, user, page, page_size }) {
+  return payrollRepo.listPayslips({
+    brand, filters: { user_id: user.user_id }, page: page || 1, page_size: page_size || 10,
+  });
 }
 
 /** Tick / untick one of my onboarding checklist items (self-service). */
@@ -1378,6 +1426,11 @@ module.exports = {
   getAnalyticsTrends,
   getProbationEndingSoon,
   getMyHr,
+  myAttendance,
+  myTasks,
+  myContracts,
+  myTargets,
+  myPayslips,
   toggleOnboardingItem,
   getEmployee360,
 };

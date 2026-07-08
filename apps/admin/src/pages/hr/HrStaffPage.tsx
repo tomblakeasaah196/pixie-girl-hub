@@ -60,6 +60,7 @@ import {
 } from "@/lib/hr-api";
 import { OfficeGeofenceSettings } from "./OfficeGeofenceSettings";
 import { OnboardingSettings } from "./OnboardingSettings";
+import { OnboardingArticlesTab } from "./OnboardingArticlesTab";
 import { RewardsTab } from "./RewardsTab";
 import { DevicesTab, LiveAttendanceStrip, UnknownDeviceFlag } from "./devices";
 import {
@@ -1035,6 +1036,7 @@ export default function HrStaffPage() {
           { key: "rewards", label: "Rewards" },
           { key: "analytics", label: "Analytics" },
           { key: "settings", label: "Settings" },
+          { key: "onboarding", label: "Onboarding" },
         ]}
       />
 
@@ -1096,6 +1098,13 @@ export default function HrStaffPage() {
           ? <SettingsTab />
           : <div className="flex items-center gap-2 text-sm text-text-muted">
               <SettingsIcon className="h-4 w-4" /> You need edit access to change HR settings.
+            </div>
+      )}
+      {tab === "onboarding" && (
+        can("hr_payroll", "edit")
+          ? <OnboardingArticlesTab />
+          : <div className="flex items-center gap-2 text-sm text-text-muted">
+              <SettingsIcon className="h-4 w-4" /> You need edit access to change onboarding articles.
             </div>
       )}
 

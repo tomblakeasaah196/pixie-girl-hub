@@ -30,8 +30,8 @@ const run = (client) => (client ? ex(client) : query);
 async function onTimeByProfile({ client, brand, from, to }) {
   const { rows } = await run(client)(
     `SELECT profile_id,
-            count(*) FILTER (WHERE status IN ('present','late'))::int AS present_days,
-            count(*) FILTER (WHERE status = 'present' AND is_late = false)::int AS punctual_days
+            count(*) FILTER (WHERE status IN ('present','late','present_day_off'))::int AS present_days,
+            count(*) FILTER (WHERE status IN ('present','present_day_off') AND is_late = false)::int AS punctual_days
        FROM shared.attendance_days
       WHERE business = $1 AND work_date >= $2 AND work_date < $3
       GROUP BY profile_id`,

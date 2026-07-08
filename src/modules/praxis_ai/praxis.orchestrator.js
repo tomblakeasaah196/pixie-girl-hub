@@ -224,6 +224,7 @@ async function resolveCatalogueAction({
       } catch (err) {
         logger.error({ err: err.message }, "praxis: action chain call failed");
         const fb = await summariseViaFallback({
+          vendor,
           messages: convo,
           result: payload,
         });
@@ -404,6 +405,7 @@ async function resolveCatalogueAction({
           "praxis: inline action summarise failed — trying fallback vendor",
         );
         const fallbackText = await summariseViaFallback({
+          vendor,
           messages: convo,
           result: exec.result,
         });

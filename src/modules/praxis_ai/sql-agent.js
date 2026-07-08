@@ -280,7 +280,11 @@ async function run({ vendor, user, brand, messages, completion, toolCall, args }
           { err: e2.message },
           "praxis sql-agent summarise retry failed — trying fallback vendor",
         );
-        const fallbackText = await summariseViaFallback({ messages, result });
+        const fallbackText = await summariseViaFallback({
+          vendor,
+          messages,
+          result,
+        });
         return {
           replyText:
             fallbackText ||

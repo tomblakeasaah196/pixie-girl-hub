@@ -5,6 +5,7 @@
 "use strict";
 
 const service = require("./praxis.service");
+const learning = require("./learning.service");
 
 const base = (req) => ({
   user: req.user,
@@ -90,6 +91,51 @@ async function listActions(req, res) {
   });
 }
 
+// Self-learning
+async function teach(req, res) {
+  res.status(201).json({
+    data: await learning.teach({
+      ...base(req),
+      title: req.body.title,
+      content: req.body.content,
+    }),
+  });
+}
+async function recordFeedback(req, res) {
+  res.json({
+    data: await learning.recordFeedback({
+      ...base(req),
+      message_id: req.params.id,
+      conversation_id: req.body.conversation_id,
+      rating: req.body.rating,
+      comment: req.body.comment,
+    }),
+  });
+}
+
+// Training material (uploads)
+async function uploadTraining(req, res) {
+  res.status(201).json({
+    data: await learning.ingestUpload({
+      ...base(req),
+      file: req.file,
+      title: req.body.title,
+      note: req.body.note,
+    }),
+  });
+}
+async function listTraining(req, res) {
+  res.json({ data: await learning.listTrainingSources({ brand: req.brand }) });
+}
+async function deleteTraining(req, res) {
+  res.json({
+    data: await learning.deleteTrainingSource({
+      ...base(req),
+      source_id: req.params.id,
+    }),
+  });
+}
+
 module.exports = {
   listConversations,
   getConversation,
@@ -102,4 +148,9 @@ module.exports = {
   confirmAction,
   rejectAction,
   listActions,
+  teach,
+  recordFeedback,
+  uploadTraining,
+  listTraining,
+  deleteTraining,
 };

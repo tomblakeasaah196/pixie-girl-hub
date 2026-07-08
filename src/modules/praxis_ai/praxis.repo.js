@@ -183,6 +183,30 @@ async function retrieveContext({ queryVector, business, limit = 6 }) {
   return rows;
 }
 
+/**
+ * Rank ai_enabled action-catalogue entries by similarity to the query vector.
+ * Returns the top-`limit` action_ids most relevant to what the user asked, so
+ * the orchestrator can expose only those as tools (instead of a blind slice) —
+ * this is what lets Praxis reach the RIGHT action out of hundreds across every
+ * module, and scales as new modules add endpoints.
+ */
+async function retrieveActionIds({ queryVector, limit = 24 }) {
+  const { rows } = await query(
+    `SELECT e.source_id AS action_id,
+            1 - (e.embedding <=> $1::vector) AS score
+       FROM shared.ai_embeddings e
+       JOIN shared.ai_action_catalogue a ON a.action_id = e.source_id
+      WHERE e.source_table = 'ai_action_catalogue'
+        AND e.is_active = true
+        AND a.ai_enabled = true
+        AND a.is_active = true
+      ORDER BY e.embedding <=> $1::vector
+      LIMIT $2`,
+    [queryVector, limit],
+  );
+  return rows.map((r) => r.action_id);
+}
+
 // ── Run steps (trace) ──────────────────────────────────────
 async function insertRunStep({ client, s }) {
   const { rows } = await ex(client)(
@@ -230,6 +254,7 @@ module.exports = {
   listPendingActions,
   setPendingStatus,
   retrieveContext,
+  retrieveActionIds,
   insertRunStep,
   listRunSteps,
 };

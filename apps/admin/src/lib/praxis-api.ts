@@ -274,6 +274,94 @@ export function useEnabledActions() {
   });
 }
 
+// ── Self-learning ──────────────────────────────────────────
+
+/** Rate an assistant answer. A 👎 with a `comment` from the CEO is stored as a
+ *  correction Praxis retrieves next time. */
+export function useSendFeedback() {
+  return useMutation({
+    mutationFn: (v: {
+      messageId: string;
+      rating: "up" | "down";
+      comment?: string;
+      conversationId?: string | null;
+    }) =>
+      api.post<{ ok: boolean; taught_chunk_id: string | null }>(
+        `/praxis/messages/${v.messageId}/feedback`,
+        {
+          rating: v.rating,
+          comment: v.comment,
+          conversation_id: v.conversationId ?? undefined,
+        },
+      ),
+  });
+}
+
+/** Teach Praxis a durable fact/rule (CEO only, enforced server-side). */
+export function useTeachPraxis() {
+  return useMutation({
+    mutationFn: (v: { content: string; title?: string }) =>
+      api.post<{ chunk_id: string }>("/praxis/teach", v),
+  });
+}
+
+// ── Training material (uploads) ────────────────────────────
+
+export interface TrainingSource {
+  source_id: string;
+  title: string;
+  note: string | null;
+  kind: "file" | "text";
+  original_filename: string | null;
+  mime_type: string | null;
+  byte_size: number;
+  status: "stored" | "embedded" | "failed";
+  chunk_count: number;
+  extract_chars: number;
+  error: string | null;
+  created_at: string;
+  uploaded_by_name: string | null;
+}
+
+export const praxisTrainingKey = ["praxis", "training"] as const;
+
+export function useTrainingSources() {
+  return useQuery({
+    queryKey: praxisTrainingKey,
+    queryFn: () => api.get<TrainingSource[]>("/praxis/train/sources"),
+  });
+}
+
+/** Upload any file to train Praxis. Text is extracted where possible; title +
+ *  note are always embedded so images/media are trainable by description. */
+export function useUploadTraining() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { file: File; title?: string; note?: string }) => {
+      const fd = new FormData();
+      fd.append("file", v.file);
+      if (v.title) fd.append("title", v.title);
+      if (v.note) fd.append("note", v.note);
+      return api.postForm<{
+        source_id: string;
+        title: string;
+        status: string;
+        chunk_count: number;
+        extract_chars: number;
+      }>("/praxis/train/upload", fd);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: praxisTrainingKey }),
+  });
+}
+
+export function useDeleteTrainingSource() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.delete(`/praxis/train/sources/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: praxisTrainingKey }),
+  });
+}
+
 // ── Realtime ───────────────────────────────────────────────
 
 /**

@@ -50,7 +50,7 @@
     "rag:reembed:missing": "node scripts/rag-reembed.js --missing",
     "ai:ingest-docs": "node scripts/ai-ingest-docs.js",
     "ai:ingest-schema": "node scripts/ai-ingest-schema.js",
-    "ai:reindex": "node scripts/ai-ingest-docs.js && node scripts/ai-ingest-schema.js && node scripts/rag-reembed.js",
+    "ai:reindex": "node scripts/ai-ingest-docs.js && node scripts/ai-ingest-schema.js && node scripts/build-action-catalogue.js && node scripts/rag-reembed.js",
     "lint:naming": "node scripts/check-file-naming.js",
     "books:verify": "node scripts/verify-books.js"
   },
@@ -84,6 +84,7 @@
     "node-cron": "^3.0.3",
     "nodemailer": "^6.9.16",
     "pdf-lib": "^1.17.1",
+    "pdf-parse": "^1.1.1",
     "pdfkit": "^0.16.0",
     "pg": "^8.13.1",
     "pgvector": "^0.2.0",

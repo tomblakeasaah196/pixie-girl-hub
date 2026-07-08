@@ -160,13 +160,16 @@ async function orchestrate({ client, user, brand, conversation, userMsg }) {
   let step = 0;
   const t0 = Date.now();
 
-  // 1) RAG retrieve (best-effort; skipped if embeddings not configured)
+  // 1) RAG retrieve (best-effort; skipped if embeddings not configured).
+  // We keep the query vector to also rank the action catalogue below.
   let contextChunks = [];
+  let queryVector = null;
   try {
     const vecs = await embeddings.embed(userText);
-    if (vecs && vecs[0] && config.PRAXIS_RAG_TOP_K > 0) {
+    if (vecs && vecs[0]) queryVector = `[${vecs[0].join(",")}]`;
+    if (queryVector && config.PRAXIS_RAG_TOP_K > 0) {
       contextChunks = await repo.retrieveContext({
-        queryVector: `[${vecs[0].join(",")}]`,
+        queryVector,
         business: brand,
         limit: config.PRAXIS_RAG_TOP_K,
       });
@@ -194,7 +197,32 @@ async function orchestrate({ client, user, brand, conversation, userMsg }) {
     .filter((m) => m.role === "user" || m.role === "assistant")
     .slice(-HISTORY_TURNS)
     .map((m) => ({ role: m.role, content: m.content || "" }));
-  const actions = await governance.listActions({ ai_enabled: true });
+  let actions = await governance.listActions({ ai_enabled: true });
+  // Select the actions most RELEVANT to this turn, so Praxis reaches the right
+  // action out of hundreds across every module — not just the first N the tool
+  // cap would keep. Requires action embeddings (npm run ai:reindex); if they're
+  // not ready or retrieval fails, we fall back to the full list (buildTools
+  // still caps it). This is what makes "act across all modules" actually scale.
+  if (queryVector && actions.length > config.PRAXIS_MAX_TOOLS) {
+    try {
+      const ids = await repo.retrieveActionIds({
+        queryVector,
+        limit: config.PRAXIS_MAX_TOOLS,
+      });
+      if (ids.length) {
+        const order = new Map(ids.map((id, i) => [id, i]));
+        const ranked = actions
+          .filter((a) => order.has(a.action_id))
+          .sort((a, b) => order.get(a.action_id) - order.get(b.action_id));
+        if (ranked.length) actions = ranked;
+      }
+    } catch (err) {
+      logger.warn(
+        { err: err.message },
+        "praxis: action retrieval failed (using default set)",
+      );
+    }
+  }
   const { tools, byName } = buildTools(actions);
   // §8.2 Query Agent: expose the read-only query catalogue as tools too, so the
   // model can answer questions about LIVE data (not just embedded docs).

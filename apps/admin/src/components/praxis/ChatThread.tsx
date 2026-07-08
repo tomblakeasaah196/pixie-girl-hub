@@ -8,11 +8,135 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Sparkles, Copy, Check, RotateCw, X, AlertCircle } from "lucide-react";
+import {
+  Sparkles,
+  Copy,
+  Check,
+  RotateCw,
+  X,
+  AlertCircle,
+  ThumbsUp,
+  ThumbsDown,
+  Loader2,
+} from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Markdown } from "@/components/help/Markdown";
+import { useAuthStore } from "@/stores/auth";
+import { useSendFeedback } from "@/lib/praxis-api";
 import { PendingActionCard } from "./PendingActionCard";
 import type { PendingAction, PraxisMessage } from "@/lib/praxis-api";
+
+/** 👍/👎 on an assistant answer. For the CEO, a 👎 opens a correction box that
+ *  Praxis learns from (stored + embedded server-side). */
+function FeedbackBar({ msg }: { msg: PraxisMessage }) {
+  const isCeo = useAuthStore((s) => s.user?.isCeo ?? false);
+  const send = useSendFeedback();
+  const [rated, setRated] = useState<"up" | "down" | null>(null);
+  const [correcting, setCorrecting] = useState(false);
+  const [correction, setCorrection] = useState("");
+  const [taught, setTaught] = useState(false);
+
+  const rate = (rating: "up" | "down") => {
+    setRated(rating);
+    if (rating === "down" && isCeo) setCorrecting(true);
+    send.mutate({
+      messageId: msg.message_id,
+      rating,
+      conversationId: msg.conversation_id,
+    });
+  };
+
+  const saveCorrection = () => {
+    if (!correction.trim()) return;
+    send.mutate(
+      {
+        messageId: msg.message_id,
+        rating: "down",
+        comment: correction.trim(),
+        conversationId: msg.conversation_id,
+      },
+      {
+        onSuccess: () => {
+          setTaught(true);
+          setCorrecting(false);
+        },
+      },
+    );
+  };
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => rate("up")}
+          title="Good answer"
+          className={cn(
+            "inline-flex items-center gap-1 text-[11px] transition-colors",
+            rated === "up"
+              ? "text-green-300"
+              : "text-text-faint hover:text-text-primary",
+          )}
+        >
+          <ThumbsUp className="w-3 h-3" />
+        </button>
+        <button
+          type="button"
+          onClick={() => rate("down")}
+          title={isCeo ? "Wrong — correct it" : "Bad answer"}
+          className={cn(
+            "inline-flex items-center gap-1 text-[11px] transition-colors",
+            rated === "down"
+              ? "text-danger"
+              : "text-text-faint hover:text-text-primary",
+          )}
+        >
+          <ThumbsDown className="w-3 h-3" />
+        </button>
+        {taught && (
+          <span className="inline-flex items-center gap-1 text-[10.5px] text-green-300">
+            <Check className="w-3 h-3" /> Learned
+          </span>
+        )}
+      </div>
+
+      {correcting && (
+        <div className="flex flex-col gap-1.5 max-w-[520px]">
+          <textarea
+            value={correction}
+            onChange={(e) => setCorrection(e.target.value)}
+            placeholder="What's the correct answer? Praxis will remember this."
+            rows={2}
+            autoFocus
+            className="w-full rounded-xl bg-panel-2 border hairline px-3 py-2 text-[12.5px] focus:outline-none focus:border-accent/40 resize-none"
+          />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={saveCorrection}
+              disabled={!correction.trim() || send.isPending}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-accent text-bg px-3 py-1.5 text-[12px] font-semibold hover:bg-accent-glow disabled:opacity-50"
+            >
+              {send.isPending ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <Check className="w-3 h-3" />
+              )}
+              Teach Praxis
+            </button>
+            <button
+              type="button"
+              onClick={() => setCorrecting(false)}
+              className="text-[11.5px] text-text-muted hover:text-text-primary"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** A user message sent from this client but not yet acknowledged by the server. */
 export interface OutboxItem {
@@ -90,8 +214,11 @@ function Bubble({ msg }: { msg: PraxisMessage }) {
           className="text-[14px] leading-[1.7] text-text-primary space-y-3 [&_ul]:my-1.5 [&_ol]:my-1.5 [&_pre]:rounded-xl [&_pre]:bg-black/30 [&_pre]:border [&_pre]:border-line"
         />
         {text.trim() && (
-          <div className="mt-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-            <CopyButton text={text} />
+          <div className="mt-2 flex flex-col gap-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+            <div className="flex items-center gap-3">
+              <CopyButton text={text} />
+              <FeedbackBar msg={msg} />
+            </div>
           </div>
         )}
       </div>

@@ -35,6 +35,21 @@ const reasonBody = z
   .object({ reason: z.string().max(1000).optional() })
   .strict();
 
+const teachBody = z
+  .object({
+    title: z.string().max(200).optional(),
+    content: z.string().min(3).max(8000),
+  })
+  .strict();
+
+const feedbackBody = z
+  .object({
+    rating: z.enum(["up", "down"]),
+    comment: z.string().max(4000).optional(),
+    conversation_id: z.string().uuid().optional(),
+  })
+  .strict();
+
 const mk = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body || {});
   next();
@@ -44,4 +59,6 @@ module.exports = {
   validateConversationCreate: mk(conversationCreate),
   validateMessagePost: mk(messagePost),
   validateReason: mk(reasonBody),
+  validateTeach: mk(teachBody),
+  validateFeedback: mk(feedbackBody),
 };

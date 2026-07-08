@@ -249,6 +249,11 @@ const AiInsightsControlPage = lazyWithRetry(() =>
     default: m.AiInsightsControlPage,
   })),
 );
+const TrainPraxisPage = lazyWithRetry(() =>
+  import("@/pages/ai-control/TrainPraxisPage").then((m) => ({
+    default: m.TrainPraxisPage,
+  })),
+);
 const InvoicingPage = lazyWithRetry(() =>
   import("@/pages/invoicing/InvoicingPage").then((m) => ({
     default: m.InvoicingPage,
@@ -793,6 +798,14 @@ export const router = createBrowserRouter(
               element: (
                 <Suspense fallback={null}>
                   <ModelsAndVendorsPage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "ai-control/training",
+              element: (
+                <Suspense fallback={null}>
+                  <TrainPraxisPage />
                 </Suspense>
               ),
             },

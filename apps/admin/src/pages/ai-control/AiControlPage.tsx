@@ -5,6 +5,7 @@ import {
   KeyRound,
   Gauge,
   Lightbulb,
+  GraduationCap,
   ChevronRight,
 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
@@ -29,6 +30,13 @@ const TILES = [
     title: "Brand Voice",
     body: "Per-brand tone, signature, do/don'ts, FAQ & sample transcripts for Praxis drafts.",
     href: "/ai-control/brand-voice",
+    ready: true,
+  },
+  {
+    icon: GraduationCap,
+    title: "Knowledge & Training",
+    body: "Upload files (docs, PDFs, images, media) or teach facts. Praxis embeds them and recalls them in future answers.",
+    href: "/ai-control/training",
     ready: true,
   },
   {

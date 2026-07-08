@@ -9,12 +9,20 @@
 "use strict";
 
 const express = require("express");
+const multer = require("multer");
 const c = require("./praxis.controller");
 const v = require("./praxis.validator");
 const { requirePermission } = require("../../middleware/rbac");
 
 const router = express.Router();
 const can = (action) => requirePermission("praxis_ai", action);
+
+// In-memory upload for training material (extracted + embedded, not served).
+// 25 MB cap covers docs/PDFs/images; larger media should be linked, not uploaded.
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 },
+});
 
 // ── Action catalogue (literal before /:id) ─────────────────
 router.get("/actions", can("view"), c.listActions);
@@ -47,5 +55,28 @@ router.post(
   v.validateMessagePost,
   c.postMessage,
 );
+
+// ── Self-learning (§8.5) ───────────────────────────────────
+// Teach a durable fact/rule; rate an answer (a 👎 + correction from a trusted
+// user becomes knowledge). CEO-gating for what actually enters the corpus is
+// enforced in learning.service.
+router.post("/teach", can("edit"), v.validateTeach, c.teach);
+router.post(
+  "/messages/:id/feedback",
+  can("edit"),
+  v.validateFeedback,
+  c.recordFeedback,
+);
+
+// ── Training material (upload any media to teach Praxis) ────
+// CEO-gating for what actually enters the corpus is enforced in learning.service.
+router.get("/train/sources", can("view"), c.listTraining);
+router.post(
+  "/train/upload",
+  can("edit"),
+  upload.single("file"),
+  c.uploadTraining,
+);
+router.delete("/train/sources/:id", can("edit"), c.deleteTraining);
 
 module.exports = router;

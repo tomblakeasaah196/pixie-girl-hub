@@ -170,22 +170,11 @@ export interface MyHr {
     grace_minutes: number;
   };
   earnings: MyHrEarnings;
-  targets: PerformanceTarget[];
-  attendance: AttendanceDay[];
   insights: AttendanceInsights;
   open_queries: HrQuery[];
   leave_balance: { leave_type: string; days_taken: number }[];
   leave_requests: LeaveRequest[];
   annual_leave_days_remaining: number;
-  tasks: {
-    task_id: string;
-    title: string;
-    status: string;
-    priority: string;
-    due_at: string | null;
-  }[];
-  contracts: HrContract[];
-  payslips: Payslip[];
   accruals: {
     commission_pending_ngn: number;
     bonus_pending_ngn: number;
@@ -194,6 +183,20 @@ export interface MyHr {
   };
   rewards: RewardGrant[];
   onboarding: Onboarding;
+}
+
+export interface MyTask {
+  task_id: string;
+  title: string;
+  status: string;
+  priority: string;
+  due_at: string | null;
+}
+
+/** Paginated envelope for the My HR self-service lists (10/page by default). */
+export interface Paginated<T> {
+  data: T[];
+  meta: { page: number; page_size: number; total: number };
 }
 
 export interface Onboarding {
@@ -301,6 +304,7 @@ export interface HrSettings {
   onboarding_checklist: { key: string; label: string }[];
   onboarding_links: { label: string; url: string }[];
   onboarding_welcome: string | null;
+  onboarding_help_article_ids: string[];
 }
 
 interface ListEnvelope<T> {
@@ -413,6 +417,45 @@ export interface Geofence {
 export const getMyHr = () => api.get<MyHr>("/hr/me");
 export const toggleOnboardingItem = (item_key: string, completed: boolean) =>
   api.post<{ item_key: string; completed: boolean }>("/hr/me/onboarding", { item_key, completed });
+
+interface PageParams {
+  page?: number;
+  page_size?: number;
+}
+
+function pageQs(params: PageParams): string {
+  return qs({
+    ...(params.page ? { page: String(params.page) } : {}),
+    ...(params.page_size ? { page_size: String(params.page_size) } : {}),
+  });
+}
+
+/** This month's (or a chosen month's) reconciled attendance, 10/page by default. */
+export const myAttendance = (
+  params: PageParams & { year?: number; month?: number } = {},
+) =>
+  api.get<
+    Paginated<AttendanceDay> & { meta: { year: number; month: number } }
+  >(
+    `/hr/me/attendance${qs({
+      ...(params.year ? { year: String(params.year) } : {}),
+      ...(params.month ? { month: String(params.month) } : {}),
+      ...(params.page ? { page: String(params.page) } : {}),
+      ...(params.page_size ? { page_size: String(params.page_size) } : {}),
+    })}`,
+  );
+
+export const myTasks = (params: PageParams = {}) =>
+  api.get<Paginated<MyTask>>(`/hr/me/tasks${pageQs(params)}`);
+
+export const myContracts = (params: PageParams = {}) =>
+  api.get<Paginated<HrContract>>(`/hr/me/contracts${pageQs(params)}`);
+
+export const myTargets = (params: PageParams = {}) =>
+  api.get<Paginated<PerformanceTarget>>(`/hr/me/targets${pageQs(params)}`);
+
+export const myPayslips = (params: PageParams = {}) =>
+  api.get<Paginated<Payslip>>(`/hr/me/payslips${pageQs(params)}`);
 
 export const requestLeave = (body: {
   leave_type: string;

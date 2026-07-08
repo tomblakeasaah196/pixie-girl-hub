@@ -42,6 +42,39 @@ async function toggleOnboardingItem(req, res) {
     }),
   });
 }
+async function myAttendance(req, res) {
+  const result = await service.myAttendance({
+    brand: req.brand, user: req.user,
+    year: req.query.year, month: req.query.month,
+    page: req.query.page, page_size: req.query.page_size,
+  });
+  const { data, page, page_size, total, year, month } = result;
+  res.json({ data, meta: { page, page_size, total, year, month } });
+}
+async function myTasks(req, res) {
+  const { data, page, page_size, total } = await service.myTasks({
+    brand: req.brand, user: req.user, page: req.query.page, page_size: req.query.page_size,
+  });
+  res.json({ data, meta: { page, page_size, total } });
+}
+async function myContracts(req, res) {
+  const { data, page, page_size, total } = await service.myContracts({
+    brand: req.brand, user: req.user, page: req.query.page, page_size: req.query.page_size,
+  });
+  res.json({ data, meta: { page, page_size, total } });
+}
+async function myTargets(req, res) {
+  const { data, page, page_size, total } = await service.myTargets({
+    brand: req.brand, user: req.user, page: req.query.page, page_size: req.query.page_size,
+  });
+  res.json({ data, meta: { page, page_size, total } });
+}
+async function myPayslips(req, res) {
+  const { data, page, page_size, total } = await service.myPayslips({
+    brand: req.brand, user: req.user, page: req.query.page, page_size: req.query.page_size,
+  });
+  res.json({ data, meta: { page, page_size, total } });
+}
 async function selfClock(req, res) {
   res.status(201).json({
     data: await service.selfClock({
@@ -188,6 +221,11 @@ async function setPayoutPin(req, res) {
 
 module.exports = {
   getMyHr,
+  myAttendance,
+  myTasks,
+  myContracts,
+  myTargets,
+  myPayslips,
   requestLeave,
   respondToQuery,
   getMyToday,

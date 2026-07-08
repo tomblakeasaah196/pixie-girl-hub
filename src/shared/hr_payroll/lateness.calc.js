@@ -174,6 +174,14 @@ function reconcileDay({
 }) {
   const rate = dailyRate(baseSalaryNgn, workingDaysCount);
 
+  // A real clock-in always counts as presence, even on a scheduled day off —
+  // checked BEFORE the rest-day short-circuit below. Previously `!isWorkingDay`
+  // returned "off" unconditionally, so an employee who clocked in on their day
+  // off was mislabelled "off" despite the clock-in being recorded and paid.
+  if (!isWorkingDay && firstClockInAt) {
+    return { status: "present_day_off", minutes_late: 0, deduction_pct: 0, deduction_ngn: 0,
+      daily_rate_ngn: rate, earned_ngn: rate, worked: true };
+  }
   if (!isWorkingDay) {
     return { status: "off", minutes_late: 0, deduction_pct: 0, deduction_ngn: 0,
       daily_rate_ngn: rate, earned_ngn: 0, worked: false };
@@ -230,7 +238,7 @@ function computeAttendanceInsights(days, tzOffsetMinutes = 0) {
   let earliestDeparture = null, latestDeparture = null;
 
   for (const d of days || []) {
-    if (d.status === "present" || d.status === "late") present++;
+    if (d.status === "present" || d.status === "late" || d.status === "present_day_off") present++;
     if (d.is_late) { late++; lateSum += Number(d.minutes_late || 0); }
     if (d.status === "absent") absent++;
     if (d.is_offsite) offsite++;

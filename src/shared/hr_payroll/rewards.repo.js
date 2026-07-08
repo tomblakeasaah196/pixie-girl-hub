@@ -188,7 +188,7 @@ async function firstInDays({ client, brand, year, month }) {
               rank() OVER (PARTITION BY work_date ORDER BY first_clock_in_at ASC) AS r
          FROM shared.attendance_days
         WHERE business = $1 AND work_date >= $2 AND work_date < $3
-          AND first_clock_in_at IS NOT NULL AND status IN ('present','late'))
+          AND first_clock_in_at IS NOT NULL AND status IN ('present','late','present_day_off'))
      SELECT profile_id, count(*)::int AS value FROM ranked WHERE r = 1 GROUP BY profile_id`,
     [brand, from, to],
   );
@@ -203,7 +203,7 @@ async function lastOutDays({ client, brand, year, month }) {
               rank() OVER (PARTITION BY work_date ORDER BY last_clock_out_at DESC) AS r
          FROM shared.attendance_days
         WHERE business = $1 AND work_date >= $2 AND work_date < $3
-          AND last_clock_out_at IS NOT NULL AND status IN ('present','late'))
+          AND last_clock_out_at IS NOT NULL AND status IN ('present','late','present_day_off'))
      SELECT profile_id, count(*)::int AS value FROM ranked WHERE r = 1 GROUP BY profile_id`,
     [brand, from, to],
   );
@@ -216,7 +216,7 @@ async function punctualDays({ client, brand, year, month }) {
     `SELECT profile_id, count(*)::int AS value
        FROM shared.attendance_days
       WHERE business = $1 AND work_date >= $2 AND work_date < $3
-        AND status = 'present' AND is_late = false
+        AND status IN ('present','present_day_off') AND is_late = false
       GROUP BY profile_id`,
     [brand, from, to],
   );

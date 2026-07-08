@@ -118,4 +118,24 @@ describe("lateness.calc — reconcileDay", () => {
     expect(r.status).toBe("off");
     expect(r.worked).toBe(false);
   });
+
+  test("clocking in on a scheduled day off counts as present, not off", () => {
+    const r = calc.reconcileDay({
+      ...common, firstClockInAt: "2026-06-22T13:00:00Z", isWorkingDay: false,
+    });
+    expect(r.status).toBe("present_day_off");
+    expect(r.worked).toBe(true);
+    expect(r.deduction_ngn).toBe(0);
+    expect(r.earned_ngn).toBe(10000);
+  });
+});
+
+describe("lateness.calc — computeAttendanceInsights", () => {
+  test("counts present_day_off as a present day", () => {
+    const insights = calc.computeAttendanceInsights([
+      { status: "present_day_off", first_clock_in_at: "2026-06-22T13:00:00Z", work_date: "2026-06-22" },
+      { status: "present", first_clock_in_at: "2026-06-23T09:00:00Z", work_date: "2026-06-23" },
+    ]);
+    expect(insights.present_days).toBe(2);
+  });
 });

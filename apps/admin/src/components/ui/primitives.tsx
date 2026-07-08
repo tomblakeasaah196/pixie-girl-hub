@@ -244,6 +244,49 @@ export function MoneyText({
   );
 }
 
+/* ── Pagination — Prev/Next strip for a { page, page_size, total } list ── */
+export function Pagination({
+  page,
+  pageSize,
+  total,
+  onPageChange,
+}: {
+  page: number;
+  pageSize: number;
+  total: number;
+  onPageChange: (page: number) => void;
+}) {
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  if (pages <= 1) return null;
+  const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const to = Math.min(page * pageSize, total);
+  return (
+    <div className="flex items-center justify-between gap-3 pt-1">
+      <span className="text-xs text-text-faint">
+        {from}–{to} of {total}
+      </span>
+      <div className="flex gap-1.5">
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={page <= 1}
+          onClick={() => onPageChange(page - 1)}
+        >
+          Prev
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={page >= pages}
+          onClick={() => onPageChange(page + 1)}
+        >
+          Next
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 /* ── MaskedField — keys/PINs/account numbers never render raw ── */
 export function MaskedField({
   value,

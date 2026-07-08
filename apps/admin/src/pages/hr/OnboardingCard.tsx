@@ -8,7 +8,7 @@
  * separate follow-up). Here we show each contract's status + a View button.
  */
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
   Rocket,
@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { Card, Button, Pill } from "@/components/ui/primitives";
 import { downloadDocumentById } from "@/lib/documents-api";
-import { toggleOnboardingItem, type Onboarding, type HrContract } from "@/lib/hr-api";
+import { toggleOnboardingItem, myContracts, type Onboarding } from "@/lib/hr-api";
 import { SectionTitle, useNotify, errMsg } from "./hr-shared";
 
 function signatureTone(status?: string | null) {
@@ -36,13 +36,7 @@ function signatureLabel(status?: string | null) {
   return status.replace(/_/g, " ");
 }
 
-export function OnboardingCard({
-  onboarding,
-  contracts,
-}: {
-  onboarding: Onboarding;
-  contracts: HrContract[];
-}) {
+export function OnboardingCard({ onboarding }: { onboarding: Onboarding }) {
   const qc = useQueryClient();
   const notify = useNotify("HR → Onboarding");
   const toggle = useMutation({
@@ -55,6 +49,14 @@ export function OnboardingCard({
     mutationFn: ({ id, name }: { id: string; name: string | null }) => downloadDocumentById(id, name),
     onError: (e) => notify("Download failed", errMsg(e), "high"),
   });
+  // All of it — this card flags any contract needing a signature, not a
+  // browsable list, so it isn't paginated like the "Contracts & documents"
+  // section further down the page.
+  const { data: contractsData } = useQuery({
+    queryKey: ["my-hr", "onboarding-contracts"],
+    queryFn: () => myContracts({ page: 1, page_size: 50 }),
+  });
+  const contracts = contractsData?.data ?? [];
 
   const pct = onboarding.total ? Math.round((onboarding.done / onboarding.total) * 100) : 0;
   const nothing =

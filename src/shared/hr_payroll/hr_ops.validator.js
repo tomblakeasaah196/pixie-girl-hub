@@ -104,6 +104,7 @@ const settingsUpdateSchema = z
       .max(30)
       .optional(),
     onboarding_welcome: z.string().max(2000).nullable().optional(),
+    onboarding_help_article_ids: z.array(uuid).max(50).optional(),
     contract_template_doc_id: uuid.nullable().optional(),
   })
   .refine((o) => Object.keys(o).length > 0, "No fields to update");

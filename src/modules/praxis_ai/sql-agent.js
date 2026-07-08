@@ -33,7 +33,7 @@ const { summariseViaFallback } = require("./fallback-summarise");
 
 const ROW_CAP = 200;
 const TIMEOUT_MS = 6000;
-const MAX_ITERS = 5; // schema→query round-trips within one user turn
+const MAX_ITERS = 7; // schema→query round-trips within one user turn
 const KNOWN_BRANDS = new Set(["pixiegirl", "faitlynhair"]);
 
 const str = (v) => (typeof v === "string" && v.trim() ? v.trim() : null);
@@ -256,6 +256,7 @@ async function run({ vendor, user, brand, messages, completion, toolCall, args }
   const sqlTools = tools();
   let cur = toolCall;
   let curArgs = args;
+  let lastResult = null; // most recent tool result, for the exhaustion fallback
 
   for (let iter = 0; iter < MAX_ITERS; iter++) {
     let result;
@@ -265,6 +266,7 @@ async function run({ vendor, user, brand, messages, completion, toolCall, args }
       logger.error({ err: e.message }, "praxis sql-agent dispatch failed");
       result = { error: e.message };
     }
+    lastResult = result;
     convo.push({
       role: "tool",
       tool_call_id: cur.id,
@@ -354,9 +356,16 @@ async function run({ vendor, user, brand, messages, completion, toolCall, args }
     }
     return { replyText: text || "Here's what I found.", usage, sql: true };
   }
+  // Tool budget exhausted. The convo now ends with an assistant tool_call we
+  // never answered, so we can't just append to it (that recreates the
+  // "insufficient tool messages" 400). Instead summarise the LAST result with a
+  // fresh, clean call (minimal primary → gemini) — turning a dead-end into a
+  // best-effort answer.
+  const fb = await summariseViaFallback({ vendor, messages, result: lastResult });
   return {
     replyText:
-      "That took too many query steps — please narrow the question and I'll try again.",
+      fb ||
+      "I couldn't fully pin that down in a few steps. Could you narrow it a little — e.g. a date range or the specific metric you want?",
     usage,
     sql: true,
   };

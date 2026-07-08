@@ -45,6 +45,13 @@ export interface ShadeQuota {
   resets_in_seconds: number;
 }
 
+/** Brand Profile contact (Settings → Business Setup → Profile → Phone),
+ *  offered as a WhatsApp escape hatch when Praxis can't respond. */
+export interface ShadeWhatsAppSupport {
+  phone: string;
+  wa_number: string;
+}
+
 /** A validated brand reference — always a real storefront route. */
 export interface ShadeReference {
   key: string;
@@ -73,6 +80,8 @@ export interface ShadeSession {
   privacy: string;
   quota: ShadeQuota;
   shades: ShadeRef[];
+  whatsapp_support?: ShadeWhatsAppSupport | null;
+  max_photo_mb?: number;
 }
 
 export interface ShadeSessionState {
@@ -81,6 +90,8 @@ export interface ShadeSessionState {
   has_photo_analysis: boolean;
   quota: ShadeQuota;
   privacy: string;
+  whatsapp_support?: ShadeWhatsAppSupport | null;
+  max_photo_mb?: number;
 }
 
 export type ShadeStage =
@@ -177,6 +188,19 @@ export function analyzePhoto(
 
 export const sendChat = (sid: string, token: string, message: string) =>
   sfFetch<ShadeResult>("POST", `/session/${sid}/chat`, { token, json: { message } });
+
+// ── WhatsApp fallback ───────────────────────────────────────
+
+// Mirrors the backend default (SHADE_FINDER_MAX_PHOTO_MB) so a photo can be
+// rejected instantly, before spending a round trip — the session's own
+// max_photo_mb (once loaded) is always the source of truth.
+export const DEFAULT_MAX_PHOTO_MB = 20;
+
+/** A wa.me deep link pre-filled with the shopper's own words, so switching
+ *  to WhatsApp never means typing the same question twice. */
+export function whatsAppFallbackUrl(waNumber: string, text: string): string {
+  return `https://wa.me/${waNumber}?text=${encodeURIComponent(text)}`;
+}
 
 // ── Live socket (progressive enhancement) ───────────────────
 

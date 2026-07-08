@@ -147,4 +147,27 @@ describe("shade finder service internals", () => {
     });
     expect(out.products.map((p) => p.slug)).toEqual(["wig-a"]);
   });
+
+  describe("toWhatsAppDigits", () => {
+    const wa = _internal.toWhatsAppDigits;
+
+    test("converts a local Nigerian number (leading 0) to wa.me digits", () => {
+      expect(wa("08061987874")).toBe("2348061987874");
+    });
+
+    test("strips punctuation from an already-international number", () => {
+      expect(wa("+234 806 198 7874")).toBe("2348061987874");
+    });
+
+    test("strips spaces/dashes without a leading zero or +", () => {
+      expect(wa("234-806-198-7874")).toBe("2348061987874");
+    });
+
+    test("returns null for empty/missing input", () => {
+      expect(wa("")).toBeNull();
+      expect(wa(null)).toBeNull();
+      expect(wa(undefined)).toBeNull();
+      expect(wa("no digits here")).toBeNull();
+    });
+  });
 });

@@ -252,6 +252,10 @@ const schema = z.object({
   SHADE_FINDER_CHAT_DAILY_LIMIT: z.coerce.number().int().positive().default(60),
   // Guest session lifetime (Redis TTL + guest-token expiry), seconds.
   SHADE_FINDER_SESSION_TTL_S: z.coerce.number().int().positive().default(7200),
+  // Largest raw photo upload accepted before the shared compressor ever runs
+  // (multer memoryStorage limit). Below this, oversized phone-camera shots
+  // fail with a clear message instead of a silent/generic error.
+  SHADE_FINDER_MAX_PHOTO_MB: z.coerce.number().int().positive().default(20),
 
   // Shop AI Search (public "ask Praxis" natural-language search on the shop
   // page). One Gemini text turn per search; the client resends recent turns

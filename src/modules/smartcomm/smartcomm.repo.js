@@ -45,7 +45,14 @@ async function listChannelsForUser({
   limit = 50,
   offset = 0,
 }) {
-  const where = ["cm.user_id = $1"];
+  // Customer threads (webhook-ingested WhatsApp/IG/email convos) have only
+  // the CONTACT as a member — no staff user — so a membership-only filter
+  // hides every customer conversation from every staff account. They are
+  // visible to any caller of this endpoint (route RBAC + the brand filter
+  // below scope access); internal chats/DMs still require membership.
+  const where = [
+    "(cm.user_id IS NOT NULL OR c.channel_type = 'customer_thread')",
+  ];
   const params = [user_id];
   let i = 2;
   if (brand) {
@@ -110,7 +117,7 @@ async function listChannelsForUser({
          WHERE m.channel_id = c.channel_id
            AND m.is_deleted = false
            AND (cm.last_read_at IS NULL OR m.created_at > cm.last_read_at)
-           AND (m.sender_user_id IS DISTINCT FROM cm.user_id)
+           AND (m.sender_user_id IS DISTINCT FROM $1::uuid)
       ) AS unread_count,
       peer.display_name  AS peer_display_name,
       peer.avatar_url    AS peer_avatar_url,
@@ -119,8 +126,9 @@ async function listChannelsForUser({
       peer.email         AS peer_email,
       peer.contact_id    AS peer_contact_id,
       peer.user_id       AS peer_user_id
-    FROM shared.channel_members cm
-    JOIN shared.message_channels c ON c.channel_id = cm.channel_id
+    FROM shared.message_channels c
+    LEFT JOIN shared.channel_members cm
+      ON cm.channel_id = c.channel_id AND cm.user_id = $1
     LEFT JOIN LATERAL (
       SELECT
         COALESCE(u.display_name, con.display_name) AS display_name,
@@ -145,7 +153,7 @@ async function listChannelsForUser({
       LIMIT 1
     ) AS peer ON TRUE
     WHERE ${where.join(" AND ")}
-    ORDER BY cm.is_pinned DESC,
+    ORDER BY COALESCE(cm.is_pinned, false) DESC,
              COALESCE(c.last_message_at, c.created_at) DESC
     LIMIT $${i++} OFFSET $${i}`;
   params.push(limit, offset);

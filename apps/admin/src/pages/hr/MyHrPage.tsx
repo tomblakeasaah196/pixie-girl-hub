@@ -6,6 +6,9 @@
  * shown the same day, the monthly target countdown ("20 styles away"), plus
  * leave, queries (with respond), assigned tasks and contracts/SOPs — all on
  * the Maroon Noir kit.
+ *
+ * Rendered as a tab inside Workspace (module consolidation), not its own
+ * route — no self-breadcrumb; Workspace owns that.
  */
 
 import { useState } from "react";
@@ -35,7 +38,6 @@ import {
   Pagination,
 } from "@/components/ui/primitives";
 import { Modal } from "@/components/ui/Modal";
-import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { money } from "@/lib/format";
 import {
   getMyHr,
@@ -515,7 +517,6 @@ function RequestLeaveModal({ open, onClose }: { open: boolean; onClose: () => vo
 }
 
 export default function MyHrPage() {
-  useBreadcrumbs([{ label: "My HR" }]);
   const [leaveOpen, setLeaveOpen] = useState(false);
   const [respondQuery, setRespondQuery] = useState<HrQuery | null>(null);
 

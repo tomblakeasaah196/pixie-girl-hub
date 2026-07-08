@@ -17,7 +17,15 @@ const orderFormSchema = z
     sales_channel: z
       .enum(["public_form", "whatsapp", "instagram", "facebook"])
       .optional(),
-    shipping_fee_ngn: z.coerce.number().nonnegative().optional(),
+    // "pickup" skips delivery pricing entirely (collect in store, ₦0).
+    // Defaults to "delivery" — every existing caller before this field
+    // existed was a delivery order.
+    fulfilment_type: z.enum(["delivery", "pickup"]).optional(),
+    // The delivery-zone code the fee resolves against: an NG state
+    // ("NG-AB"), a Lagos LGA ("NG-LA-AGEGE"), or an ISO-2 country code
+    // for everywhere else (DHL). Required when fulfilment_type is
+    // "delivery" — the server ALWAYS quotes the fee itself from this
+    // zone; there is deliberately no client-supplied fee field here.
     items: z
       .array(
         z.object({

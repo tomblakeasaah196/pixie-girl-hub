@@ -235,6 +235,37 @@ async function submitOrderForm({ brand, input, request_id }) {
   if (!Array.isArray(input.items) || input.items.length === 0)
     throw new AppError("NO_ITEMS", "At least one item is required", 422);
 
+  // Never trust a client-supplied shipping_fee_ngn for a delivery order —
+  // re-quote it from the logistics zones every time, exactly like the
+  // main storefront checkout (sale/:slug/checkout). Pickup is the only
+  // ₦0 fulfilment; a delivery order with no resolvable zone or a
+  // "pending" (unconfigured) fee is rejected rather than silently
+  // shipped for free or at a client-chosen price.
+  const fulfilmentType = input.fulfilment_type || "delivery";
+  let shipping_fee_ngn = 0;
+  if (fulfilmentType === "delivery") {
+    if (!input.zone_code)
+      throw new AppError(
+        "ZONE_REQUIRED",
+        "A delivery zone (country/state/LGA) is required for delivery orders",
+        422,
+      );
+    const qty = input.items.reduce((s, it) => s + Number(it.quantity || 0), 0);
+    const quote = await zonesService.quote({
+      brand,
+      country_code: input.zone_code,
+      qty,
+    });
+    if (quote.fee_status !== "priced" && quote.fee_status !== "free") {
+      throw new AppError(
+        "DELIVERY_UNPRICED",
+        "We couldn't calculate a delivery fee for that location yet — please choose pickup or try again shortly.",
+        422,
+      );
+    }
+    shipping_fee_ngn = Number(quote.fee_ngn) || 0;
+  }
+
   return transaction(async (client) => {
     // 1. Upsert the customer as a contact.
     let contact = await repo.findContactByEmailOrPhone({
@@ -269,12 +300,12 @@ async function submitOrderForm({ brand, input, request_id }) {
       input: {
         contact_id: contact.contact_id,
         sales_channel: input.sales_channel || "public_form",
-        order_type: "dispatch",
+        order_type: fulfilmentType === "pickup" ? "collection" : "dispatch",
         lines: input.items.map((it) => ({
           variant_id: it.variant_id,
           quantity: it.quantity,
         })),
-        shipping_fee_ngn: input.shipping_fee_ngn || 0,
+        shipping_fee_ngn,
         utm_source: input.utm_source,
         utm_medium: input.utm_medium,
         utm_campaign: input.utm_campaign,

@@ -6,14 +6,21 @@
  * hiccup is retried by BullMQ instead of lost inline.
  *
  * Expected job.data — free-text:
- *   { brand, to, body }
+ *   { brand, to, kind: 'text', body }
  * or template:
  *   { brand, to, template_name, language_code?, components? }
+ * or media (image/video/document/audio — smartcomm attachments):
+ *   { brand, to, kind: 'image'|'video'|'document'|'audio', media_url, filename?, caption? }
  *
  * `brand` is REQUIRED as of 000289 — every send resolves the per-brand
  * token from shared.messaging_accounts. A job missing brand fails fast
  * (surfaced to the queue's dead-letter view rather than silently sending
  * from the wrong number).
+ *
+ * The processor stamps the provider mid + flips delivery_status from
+ * queued → sent the instant Meta accepts the send; the later
+ * delivered/read/failed transitions arrive asynchronously via the
+ * WhatsApp webhook's `statuses[]` array (see smartcomm.subscribers).
  *
  * Returns the provider message id. Throws on failure → BullMQ retries.
  */
@@ -25,8 +32,23 @@ const { logger } = require("../../config/logger");
 
 module.exports = async function process(job) {
   const data = job.data || {};
+  const smartcommRepo = require("../../modules/smartcomm/smartcomm.repo");
+
+  async function markDelivery(patch) {
+    if (!data.smartcomm_message_id) return;
+    try {
+      await smartcommRepo.setMessageDelivery({
+        message_id: data.smartcomm_message_id,
+        ...patch,
+      });
+    } catch (e) {
+      logger.warn({ e: e.message }, "whatsapp-send: delivery-status stamp failed");
+    }
+  }
+
   if (!data.to) {
     logger.warn({ jobId: job.id }, "whatsapp-send: missing 'to' — skipping");
+    await markDelivery({ delivery_status: "failed", delivery_error: "NO_RECIPIENT" });
     return { skipped: true };
   }
   if (!data.brand) {
@@ -34,40 +56,76 @@ module.exports = async function process(job) {
       { jobId: job.id },
       "whatsapp-send: missing 'brand' — every send needs a brand context",
     );
+    await markDelivery({
+      delivery_status: "failed",
+      delivery_error: "WA_SEND_BRAND_REQUIRED",
+    });
     throw new Error("WA_SEND_BRAND_REQUIRED");
   }
-  const res = data.template_name
-    ? await whatsapp.sendTemplate({
+
+  try {
+    let res;
+    if (data.template_name) {
+      res = await whatsapp.sendTemplate({
         brand: data.brand,
         to: data.to,
         template_name: data.template_name,
         language_code: data.language_code,
         components: data.components,
-      })
-    : await whatsapp.sendText({
+      });
+    } else if (data.kind === "image") {
+      res = await whatsapp.sendImage({
+        brand: data.brand,
+        to: data.to,
+        image_url: data.media_url,
+        caption: data.caption,
+      });
+    } else if (data.kind === "video") {
+      res = await whatsapp.sendVideo({
+        brand: data.brand,
+        to: data.to,
+        video_url: data.media_url,
+        caption: data.caption,
+      });
+    } else if (data.kind === "document") {
+      res = await whatsapp.sendDocument({
+        brand: data.brand,
+        to: data.to,
+        document_url: data.media_url,
+        filename: data.filename,
+        caption: data.caption,
+      });
+    } else if (data.kind === "audio") {
+      res = await whatsapp.sendAudio({
+        brand: data.brand,
+        to: data.to,
+        audio_url: data.media_url,
+      });
+    } else {
+      res = await whatsapp.sendText({
         brand: data.brand,
         to: data.to,
         body: data.body,
       });
-  const messageId =
-    res && res.data && res.data.messages && res.data.messages[0]
-      ? res.data.messages[0].id
-      : null;
-  // H-8: stamp the provider ref onto the originating smartcomm message.
-  if (data.smartcomm_message_id && messageId) {
-    try {
-      const smartcommRepo = require("../../modules/smartcomm/smartcomm.repo");
-      await smartcommRepo.setMessageExternalRef({
-        message_id: data.smartcomm_message_id,
-        external_ref: String(messageId),
-      });
-    } catch (e) {
-      logger.warn({ e: e.message }, "whatsapp-send: external_ref stamp failed");
     }
+    const messageId =
+      res && res.data && res.data.messages && res.data.messages[0]
+        ? res.data.messages[0].id
+        : null;
+    await markDelivery({
+      delivery_status: "sent",
+      external_ref: messageId ? String(messageId) : null,
+    });
+    logger.info(
+      { jobId: job.id, brand: data.brand, to: data.to, messageId },
+      "whatsapp sent",
+    );
+    return { messageId };
+  } catch (err) {
+    await markDelivery({
+      delivery_status: "failed",
+      delivery_error: String(err.message || err).slice(0, 1000),
+    });
+    throw err;
   }
-  logger.info(
-    { jobId: job.id, brand: data.brand, to: data.to, messageId },
-    "whatsapp sent",
-  );
-  return { messageId };
 };

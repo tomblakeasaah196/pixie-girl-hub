@@ -34,7 +34,11 @@ async function listChannels(req, res) {
 }
 
 async function getChannel(req, res) {
-  const data = await service.getChannel({ user: req.user, id: req.params.id });
+  const data = await service.getChannel({
+    user: req.user,
+    brand: req.brand,
+    id: req.params.id,
+  });
   res.json(data);
 }
 
@@ -119,6 +123,7 @@ async function removeMember(req, res) {
 async function listMessages(req, res) {
   const data = await service.listMessages({
     user: req.user,
+    brand: req.brand,
     id: req.params.id,
     before: req.query.before,
     limit: req.query.limit ? Math.min(parseInt(req.query.limit, 10), 100) : 50,

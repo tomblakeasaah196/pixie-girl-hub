@@ -6,9 +6,18 @@ import {
   AlertCircle,
   ShoppingBag,
   ShieldCheck,
+  Truck,
+  Store,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
+import {
+  fetchGeoOptions,
+  fetchDeliveryQuote,
+  GEO_FALLBACK,
+  type GeoOptions,
+} from "@/lib/order-capture-geo";
+import { cn } from "@/lib/cn";
 
 /**
  * Public Order Capture consumer (`/order/capture/:token`).
@@ -16,23 +25,37 @@ import { formatDateTime } from "@/lib/format";
  * The customer lands here from a link a staffer generated inside a
  * Smartcomm chat. We verify the signed JWT via the public verifier
  * endpoint, hydrate the item list + their delivery address from
- * `contact_addresses`, let them confirm / edit the address, then post
- * to the existing public order-form endpoint to create a real order.
+ * `contact_addresses`, let them confirm / edit the address (with the
+ * same country → state → LGA delivery-fee gating as the main storefront
+ * checkout), then post to the public order-form endpoint to create a
+ * real order. The server re-quotes the delivery fee itself from the
+ * chosen zone — it never trusts a client-side number.
  *
  * The customer never has to retype their address — it's pre-filled
  * from the Online QR form they completed earlier (or the contact
  * record we already had).
  */
 
+interface PrefillLine {
+  variant_id: string;
+  quantity: number;
+}
+
 interface PrefillItem {
-  product_id: string;
-  variant_id: string | null;
+  kind: "base" | "styled" | "bundle";
+  ref_id: string | null;
   qty: number;
   price_ngn: string | null;
   note: string | null;
   name: string | null;
   product_code: string | null;
   image_url: string | null;
+  // Resolved sellable variant line(s) — empty when the item couldn't be
+  // resolved (deleted/out-of-stock product, unresolvable bundle
+  // component, etc.), in which case it's excluded from the submitted
+  // order and flagged for manual follow-up instead.
+  lines: PrefillLine[];
+  bundle_id?: string;
 }
 
 interface PrefillAddress {
@@ -69,6 +92,9 @@ interface PrefillContext {
 }
 
 type Stage = "loading" | "form" | "submitting" | "done" | "error";
+type Fulfilment = "delivery" | "pickup";
+
+const norm = (s: string) => s.trim().toLowerCase();
 
 export function OrderCapturePublic() {
   const { token = "" } = useParams<{ token: string }>();
@@ -76,15 +102,28 @@ export function OrderCapturePublic() {
   const [ctx, setCtx] = useState<PrefillContext | null>(null);
   const [errMsg, setErrMsg] = useState<string | null>(null);
 
+  const [fulfilment, setFulfilment] = useState<Fulfilment>("delivery");
+  const [geo, setGeo] = useState<GeoOptions>(GEO_FALLBACK);
   const [address, setAddress] = useState({
     line1: "",
     area: "",
-    city: "Lagos",
-    state: "Lagos",
+    city: "",
+    state: "",
     landmark: "",
   });
+  const [country, setCountry] = useState("Nigeria");
+  const [countryCode, setCountryCode] = useState("NG");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+
+  // Live delivery-fee quote — resolves once the zone is fully picked
+  // (country for non-NG; state, then LGA for Lagos, for Nigeria).
+  const [deliveryFee, setDeliveryFee] = useState<number | null>(null);
+  const [deliveryZoneName, setDeliveryZoneName] = useState<string | null>(
+    null,
+  );
+  const [quoting, setQuoting] = useState(false);
+  const [showDeliveryHelp, setShowDeliveryHelp] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -101,15 +140,24 @@ export function OrderCapturePublic() {
           setAddress({
             line1: data.delivery_address.line1 ?? "",
             area: data.delivery_address.area ?? "",
-            city: data.delivery_address.city ?? "Lagos",
-            state: data.delivery_address.state ?? "Lagos",
+            city: data.delivery_address.city ?? "",
+            state: data.delivery_address.state ?? "",
             landmark: data.delivery_address.landmark ?? "",
           });
+          if (data.delivery_address.country) {
+            setCountry(data.delivery_address.country);
+          }
+          if (data.delivery_address.country_code) {
+            setCountryCode(data.delivery_address.country_code.toUpperCase());
+          }
         }
         setPhone(
           data.contact.primary_phone || data.contact.whatsapp_number || "",
         );
         setEmail(data.contact.email ?? "");
+        fetchGeoOptions(data.brand).then((g) => {
+          if (!cancelled) setGeo(g);
+        });
         setStage("form");
       } catch (e: unknown) {
         if (cancelled) return;
@@ -124,22 +172,105 @@ export function OrderCapturePublic() {
     };
   }, [token]);
 
-  const variantItems = useMemo(
-    () => (ctx?.items ?? []).filter((i) => i.variant_id),
+  const resolvedItems = useMemo(
+    () => (ctx?.items ?? []).filter((i) => i.lines.length > 0),
     [ctx],
   );
   const unsupportedItems = useMemo(
-    () => (ctx?.items ?? []).filter((i) => !i.variant_id),
+    () => (ctx?.items ?? []).filter((i) => i.lines.length === 0),
     [ctx],
   );
+  // The public order-form accepts a single bundle_id per order (matches
+  // every other bundle-purchase path today) — if the staffer somehow put
+  // two different bundles in one capture link, only the first carries
+  // the bundle attribution; both still fully expand into real lines.
+  const bundleId = useMemo(
+    () => resolvedItems.find((i) => i.kind === "bundle")?.bundle_id,
+    [resolvedItems],
+  );
+  const totalQty = useMemo(
+    () => resolvedItems.reduce((s, i) => s + i.qty, 0) || 1,
+    [resolvedItems],
+  );
 
-  const canSubmit = !!address.line1 && !!phone && variantItems.length > 0;
+  const isNigeria = country === "Nigeria" || countryCode === "NG";
+  const isLagos = isNigeria && norm(address.state) === "lagos";
+  // Non-NG: the country IS the zone (DHL). NG: wait for the state pick
+  // (and the LGA pick too, for Lagos) to resolve a real zone — typing a
+  // country/state without picking it from the list must never resolve.
+  const effectiveZone = !isNigeria
+    ? countryCode ||
+      geo.countries.find((o) => norm(o.name) === norm(country))?.code ||
+      ""
+    : isLagos
+      ? geo.lagos_lgas.find((o) => norm(o.name) === norm(address.city))
+          ?.code || ""
+      : geo.nigeria_states.find((o) => norm(o.name) === norm(address.state))
+          ?.code || "";
+
+  // Re-quote the delivery fee whenever the zone or basket size changes.
+  useEffect(() => {
+    if (fulfilment !== "delivery" || !effectiveZone || !ctx) {
+      setDeliveryFee(null);
+      setDeliveryZoneName(null);
+      setQuoting(false);
+      return;
+    }
+    let cancelled = false;
+    setQuoting(true);
+    fetchDeliveryQuote({ brand: ctx.brand, zoneCode: effectiveZone, qty: totalQty })
+      .then((q) => {
+        if (cancelled) return;
+        setDeliveryFee(q?.fee_ngn ?? null);
+        setDeliveryZoneName(q?.zone_name ?? null);
+      })
+      .finally(() => {
+        if (!cancelled) setQuoting(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fulfilment, effectiveZone, totalQty, ctx]);
+
+  const deliveryDue =
+    fulfilment === "delivery" && deliveryFee != null ? deliveryFee : 0;
+
+  const canSubmit =
+    !!phone &&
+    resolvedItems.length > 0 &&
+    (fulfilment === "pickup" ||
+      (!!address.line1 &&
+        !!address.city &&
+        (!isNigeria || !!address.state) &&
+        (!isLagos || !!effectiveZone)));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!canSubmit || !ctx) return;
-    setStage("submitting");
     setErrMsg(null);
+
+    if (fulfilment === "delivery") {
+      if (!effectiveZone) {
+        setErrMsg(
+          isNigeria
+            ? "Please pick your state from the list (and your LGA for Lagos) so we can calculate delivery."
+            : "Please pick your country from the list so we can calculate delivery.",
+        );
+        return;
+      }
+      if (quoting) {
+        setErrMsg(
+          "Calculating delivery… give it a second, then tap Place order again.",
+        );
+        return;
+      }
+      if (deliveryFee == null || !(deliveryFee > 0)) {
+        setShowDeliveryHelp(true);
+        return;
+      }
+    }
+
+    setStage("submitting");
     try {
       await api.post(
         "/order-form",
@@ -148,15 +279,21 @@ export function OrderCapturePublic() {
           last_name: ctx.contact.last_name || undefined,
           phone,
           email: email || undefined,
-          delivery_address: [
-            address.line1,
-            address.area,
-            address.city,
-            address.state,
-            address.landmark ? `Landmark: ${address.landmark}` : null,
-          ]
-            .filter(Boolean)
-            .join(", "),
+          fulfilment_type: fulfilment,
+          zone_code: fulfilment === "delivery" ? effectiveZone : undefined,
+          delivery_address:
+            fulfilment === "delivery"
+              ? [
+                  address.line1,
+                  address.area,
+                  address.city,
+                  address.state,
+                  country,
+                  address.landmark ? `Landmark: ${address.landmark}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(", ")
+              : undefined,
           sales_channel:
             ctx.sales_channel &&
             ["public_form", "whatsapp", "instagram", "facebook"].includes(
@@ -164,10 +301,8 @@ export function OrderCapturePublic() {
             )
               ? ctx.sales_channel
               : "public_form",
-          items: variantItems.map((i) => ({
-            variant_id: i.variant_id!,
-            quantity: i.qty,
-          })),
+          items: resolvedItems.flatMap((i) => i.lines),
+          bundle_id: bundleId || undefined,
           client_idempotency_key: `capture:${token.slice(-24)}`,
         },
         "public",
@@ -228,7 +363,7 @@ export function OrderCapturePublic() {
     <Shell brand={ctx.brand}>
       <p className="text-[13px] text-text-muted leading-relaxed mb-5">
         Hi {ctx.contact.first_name || "there"} — your selection is below.
-        Confirm your delivery address and place the order.
+        Confirm your details and place the order.
       </p>
 
       {/* Items */}
@@ -240,9 +375,9 @@ export function OrderCapturePublic() {
           </span>
         </div>
         <div className="space-y-2">
-          {ctx.items.map((i) => (
+          {ctx.items.map((i, idx) => (
             <div
-              key={i.product_id}
+              key={`${i.kind}-${i.ref_id}-${idx}`}
               className="flex items-center gap-3 rounded-lg bg-panel-2 border hairline p-2.5"
             >
               {i.image_url ? (
@@ -265,9 +400,9 @@ export function OrderCapturePublic() {
                     {i.note}
                   </div>
                 )}
-                {!i.variant_id && (
+                {i.lines.length === 0 && (
                   <div className="text-[11px] text-amber-300 mt-0.5">
-                    Variant unavailable — we&rsquo;ll confirm by WhatsApp.
+                    Unavailable right now — we&rsquo;ll confirm by WhatsApp.
                   </div>
                 )}
               </div>
@@ -288,37 +423,169 @@ export function OrderCapturePublic() {
       )}
 
       <form onSubmit={submit} className="space-y-4">
-        <Section title="Delivery">
-          <Field
-            label="Street / house"
-            required
-            value={address.line1}
-            onChange={(v) => setAddress({ ...address, line1: v })}
-            placeholder="e.g. 12 Admiralty Way"
-          />
-          <Field
-            label="Area / neighbourhood"
-            value={address.area}
-            onChange={(v) => setAddress({ ...address, area: v })}
-          />
-          <Row>
-            <Field
-              label="City"
-              value={address.city}
-              onChange={(v) => setAddress({ ...address, city: v })}
+        {/* Fulfilment */}
+        <Section title="How would you like it">
+          <div className="grid grid-cols-2 gap-2">
+            <FulfilmentPill
+              active={fulfilment === "delivery"}
+              onClick={() => setFulfilment("delivery")}
+              icon={<Truck className="w-3.5 h-3.5" />}
+              label="Delivery"
             />
-            <Field
-              label="State"
-              value={address.state}
-              onChange={(v) => setAddress({ ...address, state: v })}
+            <FulfilmentPill
+              active={fulfilment === "pickup"}
+              onClick={() => setFulfilment("pickup")}
+              icon={<Store className="w-3.5 h-3.5" />}
+              label="Pickup in store"
             />
-          </Row>
-          <Field
-            label="Landmark (helps the rider)"
-            value={address.landmark}
-            onChange={(v) => setAddress({ ...address, landmark: v })}
-          />
+          </div>
         </Section>
+
+        {fulfilment === "delivery" && (
+          <Section title="Delivery">
+            <Field
+              label="Street / house"
+              required
+              value={address.line1}
+              onChange={(v) => setAddress({ ...address, line1: v })}
+              placeholder="e.g. 12 Admiralty Way"
+            />
+            <Field
+              label="Area / neighbourhood"
+              value={address.area}
+              onChange={(v) => setAddress({ ...address, area: v })}
+            />
+
+            <label className="block">
+              <span className="block text-[11.5px] text-text-muted mb-1">
+                Country
+                <span className="text-danger ml-1">*</span>
+              </span>
+              <select
+                value={country}
+                onChange={(e) => {
+                  const name = e.target.value;
+                  const opt = geo.countries.find((o) => o.name === name);
+                  setCountry(name);
+                  setCountryCode(opt?.code ?? "");
+                  setAddress((a) => ({ ...a, state: "", city: "" }));
+                }}
+                className="w-full rounded-xl bg-panel-2 border hairline px-3 py-2 text-[13.5px] focus:outline-none focus:border-accent/40"
+              >
+                {geo.countries.map((o) => (
+                  <option key={o.code} value={o.name}>
+                    {o.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {isNigeria ? (
+              <Row>
+                <label className="block">
+                  <span className="block text-[11.5px] text-text-muted mb-1">
+                    State
+                    <span className="text-danger ml-1">*</span>
+                  </span>
+                  <select
+                    value={address.state}
+                    onChange={(e) =>
+                      setAddress({ ...address, state: e.target.value, city: "" })
+                    }
+                    className="w-full rounded-xl bg-panel-2 border hairline px-3 py-2 text-[13.5px] focus:outline-none focus:border-accent/40"
+                  >
+                    <option value="">Select your state…</option>
+                    {geo.nigeria_states.map((o) => (
+                      <option key={o.code} value={o.name}>
+                        {o.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {isLagos ? (
+                  <label className="block">
+                    <span className="block text-[11.5px] text-text-muted mb-1">
+                      LGA
+                      <span className="text-danger ml-1">*</span>
+                    </span>
+                    <select
+                      value={address.city}
+                      onChange={(e) =>
+                        setAddress({ ...address, city: e.target.value })
+                      }
+                      className="w-full rounded-xl bg-panel-2 border hairline px-3 py-2 text-[13.5px] focus:outline-none focus:border-accent/40"
+                    >
+                      <option value="">Select your LGA…</option>
+                      {geo.lagos_lgas.map((o) => (
+                        <option key={o.code} value={o.name}>
+                          {o.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <Field
+                    label="City"
+                    required
+                    value={address.city}
+                    onChange={(v) => setAddress({ ...address, city: v })}
+                  />
+                )}
+              </Row>
+            ) : (
+              <Field
+                label="City"
+                required
+                value={address.city}
+                onChange={(v) => setAddress({ ...address, city: v })}
+              />
+            )}
+
+            <Field
+              label="Landmark (helps the rider)"
+              value={address.landmark}
+              onChange={(v) => setAddress({ ...address, landmark: v })}
+            />
+
+            {/* Live delivery fee */}
+            <div
+              className={cn(
+                "rounded-xl border px-3 py-2.5 text-[12.5px] flex items-center justify-between gap-2",
+                deliveryFee != null && deliveryFee > 0
+                  ? "border-accent/30 bg-accent/5 text-text-primary"
+                  : "hairline bg-panel-2/60 text-text-muted",
+              )}
+            >
+              <span>
+                {!effectiveZone
+                  ? "Pick your location above to calculate delivery."
+                  : quoting
+                    ? "Calculating delivery fee…"
+                    : deliveryFee != null && deliveryFee > 0
+                      ? `Delivery to ${deliveryZoneName ?? "your area"}`
+                      : "We couldn't price delivery for this location yet."}
+              </span>
+              {effectiveZone && !quoting && (
+                <span className="font-mono font-semibold tabular-nums shrink-0">
+                  {deliveryFee != null && deliveryFee > 0
+                    ? `₦${deliveryFee.toLocaleString()}`
+                    : "—"}
+                </span>
+              )}
+              {quoting && (
+                <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+              )}
+            </div>
+
+            {showDeliveryHelp && (
+              <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3 text-[12px] text-amber-200">
+                We can&rsquo;t confirm a delivery fee for this location yet.
+                Double-check your country, state and LGA, or choose pickup in
+                store instead.
+              </div>
+            )}
+          </Section>
+        )}
 
         <Section title="Contact">
           <Field
@@ -342,6 +609,15 @@ export function OrderCapturePublic() {
             <AlertCircle className="w-3.5 h-3.5" />
             {errMsg}
           </p>
+        )}
+
+        {fulfilment === "delivery" && deliveryDue > 0 && (
+          <div className="flex items-center justify-between text-[13px] px-1">
+            <span className="text-text-muted">Delivery fee</span>
+            <span className="font-mono font-semibold">
+              ₦{deliveryDue.toLocaleString()}
+            </span>
+          </div>
         )}
 
         <button
@@ -459,5 +735,33 @@ function Field({
         className="w-full rounded-xl bg-panel-2 border hairline px-3 py-2 text-[13.5px] focus:outline-none focus:border-accent/40"
       />
     </label>
+  );
+}
+
+function FulfilmentPill({
+  active,
+  onClick,
+  icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-[12.5px] font-medium transition-colors",
+        active
+          ? "border-accent bg-accent/15 text-accent-glow"
+          : "hairline text-text-muted hover:text-text-primary",
+      )}
+    >
+      {icon}
+      {label}
+    </button>
   );
 }

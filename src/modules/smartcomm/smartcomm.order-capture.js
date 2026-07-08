@@ -38,7 +38,7 @@ const DEFAULT_EXPIRY_SECONDS = 24 * 3600;
  * @param {string} args.request_id
  * @param {object} args.input
  * @param {string} args.input.contact_id
- * @param {Array<{product_id:string, qty:number, price_ngn?:string|number, note?:string}>} args.input.items
+ * @param {Array<{kind?:'base'|'styled'|'bundle', product_id?:string, styled_id?:string, bundle_id?:string, qty:number, price_ngn?:string|number, note?:string}>} args.input.items
  * @param {string} [args.input.sales_channel]   defaults: 'whatsapp' (callers usually pass the channel platform)
  * @param {string} [args.input.notes]
  * @param {number} [args.input.expires_in]      seconds; default 24h
@@ -51,9 +51,23 @@ async function createCaptureLink({ brand, user, request_id, input }) {
   if (items.length === 0) {
     throw new AppError("ITEMS_REQUIRED", "At least one item required", 422);
   }
+  // Items may reference a base product, a styled product, or a bundle —
+  // `kind` picks the field; when omitted it's inferred from whichever id
+  // field is present (defaults to 'base' for backward compatibility with
+  // callers that only ever sent `product_id`).
+  function itemKind(it) {
+    return it.kind || (it.styled_id ? "styled" : it.bundle_id ? "bundle" : "base");
+  }
+  function itemId(it) {
+    return it.product_id || it.styled_id || it.bundle_id || it.id;
+  }
   for (const it of items) {
-    if (!it.product_id) {
-      throw new AppError("ITEM_INVALID", "Every item needs product_id", 422);
+    if (!itemId(it)) {
+      throw new AppError(
+        "ITEM_INVALID",
+        "Every item needs a product_id, styled_id, or bundle_id",
+        422,
+      );
     }
     if (!it.qty || it.qty <= 0) {
       throw new AppError(
@@ -69,15 +83,22 @@ async function createCaptureLink({ brand, user, request_id, input }) {
     brand,
     contact_id: input.contact_id,
     sales_channel: input.sales_channel || "whatsapp",
-    items: items.map((it) => ({
-      product_id: it.product_id,
-      qty: Number(it.qty),
-      price_ngn:
-        it.price_ngn !== undefined && it.price_ngn !== null
-          ? String(it.price_ngn)
-          : undefined,
-      note: it.note || undefined,
-    })),
+    items: items.map((it) => {
+      const kind = itemKind(it);
+      const id = itemId(it);
+      return {
+        kind,
+        product_id: kind === "base" ? id : undefined,
+        styled_id: kind === "styled" ? id : undefined,
+        bundle_id: kind === "bundle" ? id : undefined,
+        qty: Number(it.qty),
+        price_ngn:
+          it.price_ngn !== undefined && it.price_ngn !== null
+            ? String(it.price_ngn)
+            : undefined,
+        note: it.note || undefined,
+      };
+    }),
     staffer_user_id: user.user_id,
     notes: input.notes || undefined,
   };

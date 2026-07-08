@@ -9,6 +9,9 @@
  *   - looks up the contact behind the token so the storefront / consumer
  *     page can pre-fill name + delivery address from
  *     `contact_addresses` (default delivery row),
+ *   - resolves each item (base product / styled product / bundle) down
+ *     to concrete `product_variants` lines the public order-form's
+ *     existing `{variant_id, quantity}` contract already understands,
  *   - returns a compact payload safe to render publicly.
  *
  * NEVER returns full PII for an unrelated contact — the token is the
@@ -25,6 +28,143 @@ const { query } = require("../../config/database");
 const { AppError, NotFoundError } = require("../../utils/errors");
 
 const router = express.Router();
+
+/** Default sellable variant for a base product: prefer the flagged
+ *  default, else the oldest active row — mirrors the convention used
+ *  across catalogue/bundle/cart resolution elsewhere in the codebase. */
+async function defaultVariant(schema, product_id) {
+  const { rows } = await query(
+    `SELECT variant_id, price_storefront_ngn, price_pos_ngn
+       FROM ${schema}.product_variants
+      WHERE product_id = $1 AND is_active = true
+      ORDER BY is_default DESC, created_at ASC
+      LIMIT 1`,
+    [product_id],
+  );
+  return rows[0] || null;
+}
+
+/** Resolve a `kind: 'base'` item into one sellable line. */
+async function resolveBaseItem(schema, it) {
+  const { rows } = await query(
+    `SELECT product_id, name, product_code, primary_image_url
+       FROM ${schema}.products
+      WHERE product_id = $1 AND is_active = true`,
+    [it.product_id],
+  );
+  const p = rows[0];
+  const v = await defaultVariant(schema, it.product_id);
+  return {
+    kind: "base",
+    ref_id: it.product_id,
+    name: p ? p.name : null,
+    product_code: p ? p.product_code : null,
+    image_url: p ? p.primary_image_url : null,
+    qty: it.qty,
+    price_ngn: it.price_ngn || null,
+    note: it.note || null,
+    lines: v ? [{ variant_id: v.variant_id, quantity: it.qty }] : [],
+  };
+}
+
+/** Resolve a `kind: 'styled'` item. A styled product sells through the
+ *  base product's stock variant — the pinned one when the styled record
+ *  has it, else the base's default variant (mirrors the ERP-wide
+ *  product-search resolver in apps/admin/src/lib/product-search.ts). */
+async function resolveStyledItem(business, it) {
+  const styledRepo = require("../catalogue/styled.repo");
+  const styled = await styledRepo.getById({ brand: business, id: it.styled_id });
+  const schema = `"${business}"`;
+  if (!styled || styled.is_deleted || styled.status !== "live") {
+    return {
+      kind: "styled",
+      ref_id: it.styled_id,
+      name: null,
+      product_code: null,
+      image_url: null,
+      qty: it.qty,
+      price_ngn: it.price_ngn || null,
+      note: it.note || null,
+      lines: [],
+    };
+  }
+  let variant_id = styled.base_variant_id || null;
+  if (!variant_id) {
+    const v = await defaultVariant(schema, styled.base_product_id);
+    variant_id = v ? v.variant_id : null;
+  }
+  return {
+    kind: "styled",
+    ref_id: it.styled_id,
+    name: styled.name,
+    product_code: styled.styled_code,
+    image_url: styled.primary_image_url || null,
+    qty: it.qty,
+    price_ngn: it.price_ngn || String(styled.retail_price_ngn ?? ""),
+    note: it.note || null,
+    lines: variant_id ? [{ variant_id, quantity: it.qty }] : [],
+  };
+}
+
+/** Resolve a `kind: 'bundle'` item into its component lines. A bundle
+ *  only resolves cleanly when EVERY component maps to a stocked base
+ *  product; if any component can't resolve (e.g. a styled sub-component
+ *  with no pinned variant) the whole bundle is left unsupported rather
+ *  than shipping a partial order silently. */
+async function resolveBundleItem(business, it) {
+  const bundleService = require("../retention/bundle.service");
+  const schema = `"${business}"`;
+  let bundle;
+  try {
+    bundle = await bundleService.getBundle({ brand: business, id: it.bundle_id });
+  } catch {
+    bundle = null;
+  }
+  if (!bundle || bundle.is_active === false) {
+    return {
+      kind: "bundle",
+      ref_id: it.bundle_id,
+      name: null,
+      product_code: null,
+      image_url: null,
+      qty: it.qty,
+      price_ngn: it.price_ngn || null,
+      note: it.note || null,
+      lines: [],
+    };
+  }
+  const lines = [];
+  let allResolved = true;
+  for (const comp of bundle.components || []) {
+    let variant_id = comp.variant_id || null;
+    if (!variant_id && comp.product_id) {
+      const v = await defaultVariant(schema, comp.product_id);
+      variant_id = v ? v.variant_id : null;
+    }
+    if (!variant_id) {
+      allResolved = false;
+      break;
+    }
+    lines.push({
+      variant_id,
+      quantity: (comp.quantity || 1) * it.qty,
+    });
+  }
+  return {
+    kind: "bundle",
+    ref_id: it.bundle_id,
+    name: bundle.display_name,
+    product_code: bundle.bundle_code || null,
+    image_url: bundle.hero_image_url || null,
+    qty: it.qty,
+    price_ngn:
+      it.price_ngn ||
+      String(bundle.effective_price_ngn ?? bundle.bundle_price_ngn ?? ""),
+    note: it.note || null,
+    bundle_id: it.bundle_id,
+    lines: allResolved ? lines : [],
+  };
+}
 
 async function fetchPrefillContext(decoded) {
   const { rows: contacts } = await query(
@@ -47,50 +187,35 @@ async function fetchPrefillContext(decoded) {
     [contact.contact_id],
   );
 
-  // Hydrate item rows with name + image where available. Per CLAUDE.md
-  // products live in the brand schema, so we use the brand carried in
-  // the token.
+  // Hydrate item rows with name + image + a resolved sellable variant per
+  // kind. Per CLAUDE.md products live in the brand schema, so we use the
+  // brand carried in the token. Any single item failing to resolve never
+  // takes the whole link down — it just surfaces as "unsupported" so the
+  // rest of the order can still go through.
   const items = [];
   if (decoded.brand && Array.isArray(decoded.items)) {
     const schema = `"${decoded.brand}"`;
     for (const it of decoded.items) {
       try {
-        const { rows: prows } = await query(
-          `SELECT product_id, name, product_code, primary_image_url
-             FROM ${schema}.products
-            WHERE product_id = $1`,
-          [it.product_id],
-        );
-        const p = prows[0];
-        // The public order form is keyed by variant_id, not product_id.
-        // Resolve to the default (first) variant so the consumer page can
-        // submit without exposing variant complexity to the staffer who
-        // generated the capture link.
-        let variant_id = null;
-        try {
-          const { rows: vrows } = await query(
-            `SELECT variant_id FROM ${schema}.product_variants
-              WHERE product_id = $1
-              ORDER BY created_at ASC
-              LIMIT 1`,
-            [it.product_id],
-          );
-          variant_id = vrows[0] ? vrows[0].variant_id : null;
-        } catch {
-          /* schema variants table may not exist for legacy brands */
+        if (it.kind === "styled" && it.styled_id) {
+          items.push(await resolveStyledItem(decoded.brand, it));
+        } else if (it.kind === "bundle" && it.bundle_id) {
+          items.push(await resolveBundleItem(decoded.brand, it));
+        } else {
+          items.push(await resolveBaseItem(schema, it));
         }
+      } catch {
         items.push({
-          product_id: it.product_id,
-          variant_id,
+          kind: it.kind || "base",
+          ref_id: it.product_id || it.styled_id || it.bundle_id || null,
+          name: null,
+          product_code: null,
+          image_url: null,
           qty: it.qty,
           price_ngn: it.price_ngn || null,
           note: it.note || null,
-          name: p ? p.name : null,
-          product_code: p ? p.product_code : null,
-          image_url: p ? p.primary_image_url : null,
+          lines: [],
         });
-      } catch {
-        items.push({ ...it, name: null, product_code: null, image_url: null });
       }
     }
   }

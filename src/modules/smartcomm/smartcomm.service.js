@@ -95,6 +95,40 @@ async function assertPlatformAccess({
   }
 }
 
+/**
+ * Read-access gate for a channel. `customer_thread` channels only ever
+ * carry the CONTACT as a member (see findOrCreateCustomerThread) — no
+ * staff user_id is ever added — so a plain membership check locks EVERY
+ * non-CEO staffer out of EVERY WhatsApp/Instagram/email conversation.
+ * Mirrors listChannelsForUser's visibility rule: customer threads are
+ * readable by any staffer with (brand + per-platform) view access;
+ * internal direct/group channels still require real membership.
+ */
+async function assertChannelReadable({ user, brand, channel }) {
+  if (isCeo(user)) return;
+  if (channel.channel_type === "customer_thread") {
+    if (channel.external_platform) {
+      await assertPlatformAccess({
+        user,
+        brand,
+        platform: channel.external_platform,
+        action: "view",
+      });
+    }
+    return;
+  }
+  const member = await repo.findMember({
+    channel_id: channel.channel_id,
+    user_id: user.user_id,
+  });
+  if (!member)
+    throw new AppError(
+      "NOT_MEMBER",
+      "You are not a member of this channel",
+      403,
+    );
+}
+
 // ── Channels ──────────────────────────────────────────────
 
 function listChannels({
@@ -124,10 +158,11 @@ function listChannels({
   });
 }
 
-async function getChannel({ user, id }) {
-  const channel = await repo.getChannelEnriched({ id, user_id: user.user_id });
+async function getChannel({ user, brand, id }) {
+  const channel = await repo.getChannel({ id });
   if (!channel) throw new NotFoundError("Channel");
-  return channel;
+  await assertChannelReadable({ user, brand, channel });
+  return repo.getChannelEnriched({ id, user_id: user.user_id });
 }
 
 /** Create an internal team channel (group or direct). */
@@ -341,18 +376,11 @@ async function muteChannel({ user, id, muted, hours }) {
 
 // ── Messages ──────────────────────────────────────────────
 
-async function listMessages({ user, id, before, limit }) {
-  // Verify membership before exposing message content.
-  const member = await repo.findMember({
-    channel_id: id,
-    user_id: user.user_id,
-  });
-  if (!member && !isCeo(user))
-    throw new AppError(
-      "NOT_MEMBER",
-      "You are not a member of this channel",
-      403,
-    );
+async function listMessages({ user, brand, id, before, limit }) {
+  const channel = await repo.getChannel({ id });
+  if (!channel) throw new NotFoundError("Channel");
+  // Verify read access before exposing message content.
+  await assertChannelReadable({ user, brand, channel });
   return repo.listMessages({ channel_id: id, before, limit });
 }
 
@@ -450,6 +478,7 @@ async function postMessage({ brand, user, request_id, id, input }) {
         message: msg,
         content: input.content,
         attachments: input.attachments,
+        client,
       });
     }
     return msg;
@@ -526,6 +555,12 @@ async function forwardMessage({
 }) {
   const src = await repo.getMessage({ id: message_id });
   if (!src || src.is_deleted) throw new NotFoundError("Message");
+  // The caller must actually be able to read the message they're
+  // forwarding — otherwise anyone with smartcomm.edit could enumerate
+  // message_ids from another private DM/group and re-broadcast them.
+  const srcChannel = await repo.getChannel({ id: src.channel_id });
+  if (!srcChannel) throw new NotFoundError("Channel");
+  await assertChannelReadable({ user, brand, channel: srcChannel });
   let forwarded = 0;
   for (const target_channel_id of channel_ids) {
     const dest = await repo.getChannel({ id: target_channel_id });
@@ -537,6 +572,19 @@ async function forwardMessage({
         platform: dest.external_platform,
         action: "reply",
       });
+    } else if (!isCeo(user)) {
+      // Internal direct/group destination — must actually be a member to
+      // post there (assertPlatformAccess only covers external platforms).
+      const destMember = await repo.findMember({
+        channel_id: dest.channel_id,
+        user_id: user.user_id,
+      });
+      if (!destMember)
+        throw new AppError(
+          "NOT_MEMBER",
+          "You are not a member of this channel",
+          403,
+        );
     }
     await transaction(async (client) => {
       const msg = await repo.insertMessage({
@@ -575,6 +623,7 @@ async function forwardMessage({
           message: msg,
           content: src.content,
           attachments: atts,
+          client,
         });
       }
     });
@@ -745,6 +794,93 @@ async function getCustomer360({ brand, contact_id }) {
 
 // ── Outbound dispatch ─────────────────────────────────────
 
+const ngn = (v) => `₦${Number(v || 0).toLocaleString()}`;
+
+/**
+ * Render a `product_share` (catalogue) or `send_invoice` card as plain
+ * text for platforms with no native rich-card support wired up yet
+ * (WhatsApp free-form / Instagram DM). Keeps the tap-to-order link and
+ * price visible even without a synced Meta Commerce Catalog.
+ */
+function composeCardText(message, content) {
+  if (message.message_type === "product_share") {
+    const meta = message.metadata || {};
+    const products = Array.isArray(meta.products) ? meta.products : [];
+    const lines = products.map((p) => {
+      const hasPrice = p.price !== null && p.price !== undefined;
+      const bits = [`• ${p.name}${hasPrice ? ` — ${ngn(p.price)}` : ""}`];
+      if (p.capture_url) bits.push(`  Tap to order: ${p.capture_url}`);
+      return bits.join("\n");
+    });
+    return [meta.intro, ...lines].filter(Boolean).join("\n\n") || null;
+  }
+  if (message.message_type === "send_invoice") {
+    const meta = message.metadata || {};
+    const bits = [`Invoice ${meta.invoice_number || ""}`.trim()];
+    if (meta.amount_due !== null && meta.amount_due !== undefined)
+      bits.push(`Amount due: ${ngn(meta.amount_due)}`);
+    if (meta.due_date) bits.push(`Due: ${meta.due_date}`);
+    if (meta.url) bits.push(meta.url);
+    return bits.join("\n");
+  }
+  return content || null;
+}
+
+/**
+ * Resolve the first attachment on a message into an internet-reachable
+ * media URL for a provider send. Returns null (with a logged warning)
+ * when no ADMIN_BASE_URL/CDN_BASE_URL is configured — sending Meta a
+ * relative /media/... path silently fails, so callers must treat null
+ * as "can't send this media" rather than best-effort.
+ */
+async function resolveOutboundMedia(message, client) {
+  const rows = await repo.getAttachmentsForSend({
+    client,
+    message_id: message.message_id,
+  });
+  const a = rows[0];
+  if (!a || !a.file_path) return null;
+  const storage = require("../../services/storage.service");
+  const media_url = storage.absoluteUrl(a.file_path);
+  if (!media_url) {
+    const { logger } = require("../../config/logger");
+    logger.warn(
+      { message_id: message.message_id },
+      "smartcomm: outbound media has no public base URL configured (set ADMIN_BASE_URL or CDN_BASE_URL) — cannot send to WhatsApp/Instagram",
+    );
+    return null;
+  }
+  return { media_url, filename: a.display_name, mime_type: a.mime_type };
+}
+
+/**
+ * Build the whatsapp-send job payload for a posted message, branching
+ * on message_type so attachments/catalogue-shares/invoice-cards
+ * actually reach the customer instead of silently being dropped (only
+ * the plain-text `content` used to be sent, regardless of type).
+ */
+async function buildWhatsAppSend(message, content, client) {
+  switch (message.message_type) {
+    case "image":
+    case "video":
+    case "document":
+    case "voice_note": {
+      const media = await resolveOutboundMedia(message, client);
+      if (!media) return null;
+      const kind =
+        message.message_type === "voice_note" ? "audio" : message.message_type;
+      return { kind, media_url: media.media_url, filename: media.filename, caption: content || undefined };
+    }
+    case "product_share":
+    case "send_invoice": {
+      const body = composeCardText(message, content);
+      return body ? { kind: "text", body } : null;
+    }
+    default:
+      return content ? { kind: "text", body: content } : null;
+  }
+}
+
 /**
  * Translate a posted message on a customer_thread into a provider-
  * specific send job. The processor stamps `external_ref` and updates
@@ -755,6 +891,7 @@ async function enqueueOutboundForChannel({
   message,
   content,
   attachments: _attachments,
+  client,
 }) {
   const platform = channel.external_platform;
   const meta = channel.metadata || {};
@@ -775,17 +912,40 @@ async function enqueueOutboundForChannel({
 
   if (platform === "whatsapp") {
     const to = c.whatsapp_number || c.primary_phone;
-    if (!to) return; // marked queued; ops will see it failed.
+    if (!to) {
+      await repo.setMessageDelivery({
+        message_id: message.message_id,
+        delivery_status: "failed",
+        delivery_error: "NO_WHATSAPP_NUMBER_ON_FILE",
+      });
+      return;
+    }
+    const send = await buildWhatsAppSend(message, content, client);
+    if (!send) {
+      await repo.setMessageDelivery({
+        message_id: message.message_id,
+        delivery_status: "failed",
+        delivery_error: "NOTHING_TO_SEND",
+      });
+      return;
+    }
     await enqueue("whatsapp-send", "customer-whatsapp", {
       brand: channel.business,
       to,
-      body: content,
+      ...send,
       smartcomm_message_id: message.message_id,
       channel_id: channel.channel_id,
     });
   } else if (platform === "instagram") {
     const recipient_id = c.ig_user_id || meta.ig_user_id;
-    if (!recipient_id) return;
+    if (!recipient_id) {
+      await repo.setMessageDelivery({
+        message_id: message.message_id,
+        delivery_status: "failed",
+        delivery_error: "NO_IG_HANDLE_ON_FILE",
+      });
+      return;
+    }
     // The 24h-window guard in postMessage marks the message with
     // is_template === true when the operator has opted into a
     // HUMAN_AGENT-tagged reply outside the window — pass that
@@ -793,10 +953,49 @@ async function enqueueOutboundForChannel({
     const outsideWindow =
       channel.ig_window_expires_at &&
       new Date(channel.ig_window_expires_at) < new Date();
+    let jobPayload;
+    if (message.message_type === "image") {
+      const media = await resolveOutboundMedia(message, client);
+      if (!media) {
+        await repo.setMessageDelivery({
+          message_id: message.message_id,
+          delivery_status: "failed",
+          delivery_error: "MEDIA_URL_UNAVAILABLE",
+        });
+        return;
+      }
+      jobPayload = { image_url: media.media_url };
+    } else if (
+      message.message_type === "video" ||
+      message.message_type === "document" ||
+      message.message_type === "voice_note"
+    ) {
+      // Instagram Messenger doesn't support arbitrary document/video/audio
+      // sends through this client yet — fail loud instead of silently
+      // dropping so ops see it in the tick rather than a customer
+      // wondering why nothing arrived.
+      await repo.setMessageDelivery({
+        message_id: message.message_id,
+        delivery_status: "failed",
+        delivery_error: "IG_MEDIA_TYPE_UNSUPPORTED",
+      });
+      return;
+    } else {
+      const body = composeCardText(message, content);
+      if (!body) {
+        await repo.setMessageDelivery({
+          message_id: message.message_id,
+          delivery_status: "failed",
+          delivery_error: "NOTHING_TO_SEND",
+        });
+        return;
+      }
+      jobPayload = { text: body };
+    }
     await enqueue("instagram-send", "customer-ig", {
       brand: channel.business,
       recipient_id,
-      text: content,
+      ...jobPayload,
       tag: outsideWindow ? "HUMAN_AGENT" : undefined,
       smartcomm_message_id: message.message_id,
       channel_id: channel.channel_id,
@@ -1017,25 +1216,36 @@ async function sendToCustomer({
     if (soft) return null;
     throw new AppError("NO_PHONE", "Contact has no phone/WhatsApp", 422);
   }
-  const thread = await findOrCreateCustomerThread({
-    brand,
-    contact_id,
-    platform: channel === "email" ? "email" : channel,
-  });
-  const msg = await repo.insertMessage({
-    message: {
-      channel_id: thread.channel_id,
-      sender_user_id: user ? user.user_id : null,
-      message_type: user ? "text" : "system",
+  // Find-or-create + insert run in one transaction: two concurrent sends
+  // to the same contact (two staff replying at once, or a queued job
+  // racing a manual send) must not both pass the "does a thread already
+  // exist?" check before either INSERT commits, which would create
+  // duplicate customer_thread channels for the same contact/platform.
+  const { thread, msg } = await transaction(async (client) => {
+    const th = await findOrCreateCustomerThread({
+      client,
+      brand,
+      contact_id,
+      platform: channel === "email" ? "email" : channel,
+    });
+    const m = await repo.insertMessage({
+      client,
+      message: {
+        channel_id: th.channel_id,
+        sender_user_id: user ? user.user_id : null,
+        message_type: user ? "text" : "system",
+        content: body,
+        delivery_status: "queued",
+      },
+    });
+    await enqueueOutboundForChannel({
+      channel: th,
+      message: m,
       content: body,
-      delivery_status: "queued",
-    },
-  });
-  await enqueueOutboundForChannel({
-    channel: thread,
-    message: msg,
-    content: body,
-    attachments: [],
+      attachments: [],
+      client,
+    });
+    return { thread: th, msg: m };
   });
   events.emit("customer.message_sent", {
     brand,
@@ -1054,6 +1264,23 @@ async function sendToCustomer({
     );
   }
   return { channel_id: thread.channel_id, message: msg, queued: true };
+}
+
+/**
+ * Apply a provider delivery-status callback (Meta's `statuses[]` array
+ * on the WhatsApp webhook: sent/delivered/read/failed, keyed by the
+ * provider's own message id). This is the other half of the tick —
+ * whatsapp-processor marks a message "sent" the instant the Graph API
+ * accepts it, and this applies the later delivered/read/failed events
+ * as Meta reports them back.
+ */
+async function applyProviderStatus({ external_ref, status, error }) {
+  if (!external_ref || !status) return;
+  await repo.setMessageDeliveryByExternalRef({
+    external_ref,
+    delivery_status: status,
+    delivery_error: error || null,
+  });
 }
 
 // ── Attachments ───────────────────────────────────────────
@@ -1159,5 +1386,6 @@ module.exports = {
   addAttachment,
   // exposed for webhook subscriber:
   enqueueOutboundForChannel,
+  applyProviderStatus,
   assertPlatformAccess,
 };

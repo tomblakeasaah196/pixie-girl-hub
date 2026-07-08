@@ -338,6 +338,11 @@ async function startWorkers() {
   require("../modules/service_jobs/service-jobs.subscribers"); // order.deposit_met + order.paid → service job
   require("../modules/stylist_programme/stylist.subscribers"); // order.paid → stylist referral accrual
   require("../modules/business_setup/webhooks.service"); // webhook.received → dispatch
+  // webhook.received → smartcomm inbox ingest (meta_whatsapp / meta_instagram /
+  // cloudflare_email). Without this require, a standalone worker completes the
+  // outbox event with only webhook-dispatch registered and inbound messages
+  // silently never reach the inbox (events are marked done, not retried).
+  require("../modules/smartcomm/smartcomm.subscribers");
 
   // ── Realtime relays (DEFECT-3) ──────────────────────────
   // The outbox consumers and cron sweeps above emit domain events IN THIS

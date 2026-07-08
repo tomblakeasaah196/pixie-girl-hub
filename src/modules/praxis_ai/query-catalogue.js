@@ -16,6 +16,7 @@
 "use strict";
 
 const dashboardsRepo = require("../dashboards/dashboards.repo");
+const dashboardsMetricsRepo = require("../dashboards/dashboards.metrics.repo");
 const cashRequestRepo = require("../cash_request/cash-request.repo");
 const hrService = require("../../shared/hr_payroll/hr_ops.service");
 const hrRepo = require("../../shared/hr_payroll/hr_ops.repo");
@@ -65,6 +66,42 @@ const QUERIES = [
         from: str(args.from),
         to: str(args.to),
       }),
+  },
+  {
+    key: "top_products",
+    title: "Best-selling products",
+    description:
+      "Top-selling products for the current brand by revenue over a date range — units sold and revenue per product. Defaults to year-to-date if no range is given. Use this for 'best seller', 'top product(s)', 'what's selling' questions instead of sql_schema/sql_query.",
+    module: "dashboards",
+    parameters: {
+      type: "object",
+      properties: {
+        from: {
+          type: "string",
+          description:
+            "ISO date/time lower bound (optional; defaults to 1 Jan of the current year).",
+        },
+        to: {
+          type: "string",
+          description: "ISO date/time upper bound (optional; defaults to now).",
+        },
+        limit: {
+          type: "integer",
+          description: "Max products to return (optional; default 10, max 50).",
+        },
+      },
+    },
+    run: ({ brand, args }) => {
+      const now = new Date();
+      const from =
+        str(args.from) || new Date(Date.UTC(now.getUTCFullYear(), 0, 1)).toISOString();
+      const to = str(args.to) || now.toISOString();
+      const limit =
+        Number.isInteger(args.limit) && args.limit > 0
+          ? Math.min(args.limit, 50)
+          : 10;
+      return dashboardsMetricsRepo.topProducts({ brand, from, to, limit });
+    },
   },
   {
     key: "operations_summary",

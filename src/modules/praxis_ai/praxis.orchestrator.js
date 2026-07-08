@@ -30,6 +30,7 @@ const queryAgent = require("./query-agent");
 const queryCatalogue = require("./query-catalogue");
 const sqlAgent = require("./sql-agent");
 const executor = require("./praxis.executor");
+const { summariseViaFallback } = require("./fallback-summarise");
 const { money, toCurrencyString } = require("../../utils/money");
 const { logger } = require("../../config/logger");
 const { config } = require("../../config/env");
@@ -332,18 +333,24 @@ async function resolveCatalogueAction({
       } catch (err) {
         logger.error(
           { err: err.message },
-          "praxis: inline action summarise failed",
+          "praxis: inline action summarise failed — trying fallback vendor",
         );
+        const fallbackText = await summariseViaFallback({
+          messages: convo,
+          result: exec.result,
+        });
         return {
           replyText:
+            fallbackText ||
             (exec.ok
               ? "Here's the raw result — the summariser is briefly unavailable:\n"
               : "The action returned an error:\n") +
-            "```json\n" +
-            JSON.stringify(exec.result, null, 2).slice(0, 1200) +
-            "\n```",
+              "```json\n" +
+              JSON.stringify(exec.result, null, 2).slice(0, 1200) +
+              "\n```",
           pending: null,
           usage,
+          degraded: !fallbackText,
         };
       }
     }
@@ -661,6 +668,11 @@ async function orchestrate({
   // 3) Decide: tool call (write → pending action) or plain answer (read)
   let pending = null;
   let replyText = completion.content || "";
+  // Flips false when a read path exhausts its summariser and falls back to a
+  // raw-JSON dump — the usage ledger and trace previously showed these as
+  // ordinary successes, so there was no way to see how often this degraded
+  // in production without grepping logs by hand.
+  let ok = true;
 
   const toolCall = completion.tool_calls[0];
   if (toolCall && toolCall.function) {
@@ -701,6 +713,7 @@ async function orchestrate({
         usage.total_tokens = (usage.total_tokens || 0) + (fu.total_tokens || 0);
         costNgn = computeCost(vendor, usage);
       }
+      if (qr.degraded) ok = false;
       await repo.insertRunStep({
         client,
         s: {
@@ -713,7 +726,10 @@ async function orchestrate({
             query: qr.queryKey || (qr.sql ? "sql-agent" : null),
             denied: qr.denied || false,
           },
-          status: "completed",
+          status: qr.degraded ? "failed" : "completed",
+          error_message: qr.degraded
+            ? "summariser exhausted (primary + fallback vendor) — degraded to raw data"
+            : null,
         },
       });
     } else {
@@ -735,6 +751,7 @@ async function orchestrate({
       });
       pending = r.pending;
       if (r.replyText) replyText = r.replyText;
+      if (r.degraded) ok = false;
       addUsage(usage, r.usage);
       if (r.usage && r.usage.total_tokens) costNgn = computeCost(vendor, usage);
     }
@@ -770,7 +787,7 @@ async function orchestrate({
     model: completion.model,
     usage,
     cost_ngn: costNgn,
-    ok: true,
+    ok,
   });
 
   return { assistant_message: assistant, pending_action: pending };

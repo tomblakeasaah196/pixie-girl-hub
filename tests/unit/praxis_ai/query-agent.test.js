@@ -28,6 +28,9 @@ jest.mock("../../../src/modules/praxis_ai/query-catalogue", () => ({
 const mockLlm = { chat: jest.fn() };
 jest.mock("../../../src/services/llm.service", () => mockLlm);
 
+const mockGemini = { isConfigured: jest.fn(), chatCompletion: jest.fn() };
+jest.mock("../../../src/services/gemini.service", () => mockGemini);
+
 const mockPermissionsRepo = { findGrants: jest.fn() };
 jest.mock(
   "../../../src/shared/org_workflow/permissions.repo",
@@ -115,14 +118,32 @@ describe("execution", () => {
     expect(r.replyText).toBe("2 orders.");
   });
 
-  test("falls back to a data answer if summarisation fails (never throws)", async () => {
+  test("falls back to a data answer if summarisation fails and no fallback vendor is configured", async () => {
     mockPermissionsRepo.findGrants.mockResolvedValue([{ record_scope: "all" }]);
     mockEntry.run.mockResolvedValue({ paid_orders: 9 });
     mockLlm.chat.mockRejectedValue(new Error("model down"));
+    mockGemini.isConfigured.mockReturnValue(false);
     const r = await agent.run({
       ...baseArgs,
       user: { is_ceo: false, role_ids: ["r1"] },
     });
     expect(r.replyText).toMatch(/paid_orders/);
+    expect(r.degraded).toBe(true);
+  });
+
+  test("summarisation failure tries the Gemini fallback before dumping raw JSON", async () => {
+    mockPermissionsRepo.findGrants.mockResolvedValue([{ record_scope: "all" }]);
+    mockEntry.run.mockResolvedValue({ paid_orders: 9 });
+    mockLlm.chat.mockRejectedValue(new Error("model down"));
+    mockGemini.isConfigured.mockReturnValue(true);
+    mockGemini.chatCompletion.mockResolvedValue({
+      text: "You had 9 paid orders.",
+    });
+    const r = await agent.run({
+      ...baseArgs,
+      user: { is_ceo: false, role_ids: ["r1"] },
+    });
+    expect(r.replyText).toBe("You had 9 paid orders.");
+    expect(r.degraded).toBeFalsy();
   });
 });

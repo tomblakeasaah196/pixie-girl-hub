@@ -144,9 +144,13 @@ async function run({
     };
   } catch (err) {
     logger.error({ err: err.message }, "praxis query summarise failed");
-    // Degrade to a compact data answer rather than failing the turn.
+    // Degrade to a compact data answer rather than failing the turn. Fenced,
+    // so the chat's Markdown renderer can't shred snake_case into italics.
     return {
-      replyText: "Here's what I found:\n" + JSON.stringify(rows).slice(0, 1000),
+      replyText:
+        "Here's what I found:\n```json\n" +
+        JSON.stringify(rows, null, 2).slice(0, 1000) +
+        "\n```",
       usage: {},
       queryKey: res.queryKey,
     };

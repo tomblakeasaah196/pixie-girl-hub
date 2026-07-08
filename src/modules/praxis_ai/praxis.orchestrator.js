@@ -114,10 +114,16 @@ function addUsage(acc, u) {
   acc.total_tokens = (acc.total_tokens || 0) + (u.total_tokens || 0);
 }
 
-const asstMsg = (c) => ({
+// When we answer a SINGLE tool call, the assistant message we replay must carry
+// only that one tool_call. If the model emitted several in one turn and we
+// replay all of them but send just one tool response, the vendor rejects the
+// request ("number of tool responses must match tool calls") — which made every
+// summarise/compose follow-up 400 and fall back to a raw-data dump. Pass the
+// specific `only` tool call to keep the exchange balanced.
+const asstMsg = (c, only) => ({
   role: "assistant",
   content: c.content || null,
-  tool_calls: c.tool_calls,
+  tool_calls: only ? [only] : c.tool_calls,
 });
 const toolMsg = (id, payload) => ({
   role: "tool",
@@ -211,7 +217,7 @@ async function resolveCatalogueAction({
           denied: (q && q.denied) || false,
         },
       });
-      convo.push(asstMsg(completion), toolMsg(toolCall.id, payload));
+      convo.push(asstMsg(completion, toolCall), toolMsg(toolCall.id, payload));
       let follow;
       try {
         follow = await llm.chat({ vendor, messages: convo, tools: allTools });
@@ -292,7 +298,7 @@ async function resolveCatalogueAction({
         error_message: `missing route parameter(s): ${missing.join(", ")}`,
       });
       convo.push(
-        asstMsg(completion),
+        asstMsg(completion, toolCall),
         toolMsg(toolCall.id, {
           error:
             `Cannot run ${action.action_key}: required route parameter(s) missing: ${missing.join(", ")}. ` +
@@ -374,7 +380,7 @@ async function resolveCatalogueAction({
           http_status: exec.http_status,
         },
       });
-      convo.push(asstMsg(completion), toolMsg(toolCall.id, exec.result));
+      convo.push(asstMsg(completion, toolCall), toolMsg(toolCall.id, exec.result));
       try {
         const follow = await llm.chat({ vendor, messages: convo });
         addUsage(usage, follow.usage);
@@ -494,7 +500,49 @@ function chunkLabel(c) {
   return c.source_table || "knowledge base";
 }
 
-function systemPrompt({ brand, contextChunks, user, queries = [] }) {
+/** Compact brand-voice block for the system prompt (empty string if unset). */
+function renderBrandVoice(bv) {
+  if (!bv) return "";
+  const lines = [
+    "BRAND VOICE — write ALL customer-facing copy (broadcasts, captions, replies, descriptions) in this voice:",
+  ];
+  if (bv.tone) lines.push(`• Tone: ${bv.tone}`);
+  if (bv.voice_summary) lines.push(`• Voice: ${bv.voice_summary}`);
+  const dd = bv.do_donts || {};
+  if (Array.isArray(dd.do) && dd.do.length)
+    lines.push(`• Do: ${dd.do.slice(0, 6).join("; ")}`);
+  if (Array.isArray(dd.dont) && dd.dont.length)
+    lines.push(`• Don't: ${dd.dont.slice(0, 6).join("; ")}`);
+  if (bv.primary_emojis) lines.push(`• Emojis to favour: ${bv.primary_emojis}`);
+  if (bv.signature_html) {
+    const sig = String(bv.signature_html)
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (sig) lines.push(`• Sign off with: ${sig.slice(0, 160)}`);
+  }
+  const samples = Array.isArray(bv.sample_transcripts) ? bv.sample_transcripts : [];
+  if (samples.length) {
+    const ex = samples
+      .slice(0, 2)
+      .map((s) =>
+        typeof s === "string"
+          ? s
+          : s.text || s.body || s.content || JSON.stringify(s),
+      )
+      .map((t) => `“${String(t).slice(0, 220)}”`);
+    lines.push(`• Example phrasings: ${ex.join(" / ")}`);
+  }
+  return lines.length > 1 ? lines.join("\n") : "";
+}
+
+function systemPrompt({
+  brand,
+  contextChunks,
+  user,
+  queries = [],
+  brandVoice = null,
+}) {
   const today = new Date().toISOString().slice(0, 10);
   const role = user?.is_ceo
     ? "the CEO / owner (full access)"
@@ -519,6 +567,7 @@ function systemPrompt({ brand, contextChunks, user, queries = [] }) {
   const queryList = queries.length
     ? queries.map((q) => `• ${q.title} — ${q.description}`).join("\n")
     : "(no live-data queries are configured yet)";
+  const voiceBlock = renderBrandVoice(brandVoice);
   return [
     `You are Praxis, the AI operations assistant inside Pixie Girl Hub. You are acting for the "${brand}" business on behalf of ${role}. Today is ${today}.`,
     "",
@@ -532,7 +581,7 @@ function systemPrompt({ brand, contextChunks, user, queries = [] }) {
     "5. You know the LIVE business data and the system's CURRENT shape — you do NOT track the software project's build status. If asked how 'complete', 'finished', 'far along', or what percentage of the app/project is done, or for a roadmap, say plainly that you don't track development progress and can't give a completion figure. Never invent a percentage or progress claim.",
     "6. NEVER paste raw JSON, arrays, or database rows into your reply — the user cannot read those. When a tool returns data, translate it into clear plain-English sentences, a short markdown table, or bullet metrics. A reply that is (or starts with) a JSON blob is always wrong.",
     "7. Actually ANSWER the question asked, in full. If it is evaluative ('was it a success?', 'how did X do?'), give a clear verdict AND the figures that justify it (e.g. revenue, orders, units, conversion, vs. target or the prior period) — call more than one tool if you need to, up to what's allowed. If some data is genuinely unavailable, state what you found and what's missing; never stop half-way or hand back a data dump in place of an answer.",
-    "8. DRAFTING/WRITING requests — a WhatsApp/SMS/email broadcast, caption, announcement, product description, or reply — are CONTENT GENERATION, not data lookups. Write the requested text directly, in a warm on-brand tone. Only call a tool if you need a specific live value to put IN the copy (e.g. the actual names of new-arrival products). If such a lookup returns nothing or errors, still deliver a complete, ready-to-send draft using clear placeholders like [product name] / [price] — NEVER show the user an empty result, a campaigns list, or any query output in place of the draft they asked for.",
+    "8. DRAFTING/WRITING requests — a WhatsApp/SMS/email broadcast, caption, announcement, product description, or reply — are CONTENT GENERATION, not data lookups. Write the requested text directly, following the BRAND VOICE below (or a warm on-brand tone if none is given). Only call a tool if you need a specific live value to put IN the copy (e.g. the actual names of new-arrival products). If such a lookup returns nothing or errors, still deliver a complete, ready-to-send draft using clear placeholders like [product name] / [price] — NEVER show the user an empty result, a campaigns list, or any query output in place of the draft they asked for.",
     "9. Pick the tool that matches the user's actual intent. Do not run a loosely-related query just to have called something — if no tool genuinely fits (e.g. a pure writing task), don't call one; just do the task.",
     "",
     "LIVE-DATA QUERIES YOU CAN CALL RIGHT NOW:",
@@ -540,6 +589,7 @@ function systemPrompt({ brand, contextChunks, user, queries = [] }) {
     user?.is_ceo
       ? "\nGENERIC DATABASE ACCESS: for anything the queries above don't cover, you also have `sql_schema` (list/describe tables) and `sql_query` (run a single read-only SELECT). Prefer a curated query when one fits; otherwise call `sql_schema` to find the right tables/columns, then `sql_query`. Reads only, scoped to this business."
       : "",
+    voiceBlock ? `\n${voiceBlock}` : "",
     "",
     ctx,
   ].join("\n");
@@ -683,6 +733,18 @@ async function orchestrate({
         parameters: normalizeParams(t.function.parameters),
       },
     }));
+  // Brand voice — so any drafting the model does this turn is on-voice
+  // (tone, signature, do/don'ts). Best-effort; drafting still works without it.
+  let brandVoice = null;
+  try {
+    brandVoice = await governance.getBrandVoice({ brand });
+  } catch (err) {
+    logger.warn(
+      { err: err.message },
+      "praxis: brand voice load failed (continuing)",
+    );
+  }
+
   const messages = [
     {
       role: "system",
@@ -691,6 +753,7 @@ async function orchestrate({
         contextChunks,
         user,
         queries: queryCatalogue.list(),
+        brandVoice,
       }),
     },
     ...history,

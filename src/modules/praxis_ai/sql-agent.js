@@ -208,7 +208,10 @@ async function run({ vendor, user, brand, messages, completion, toolCall, args }
 
   const convo = [
     ...messages,
-    { role: "assistant", content: completion.content || null, tool_calls: completion.tool_calls },
+    // Replay ONLY the tool call we answer below — carrying every tool_call while
+    // sending one tool response makes the vendor 400 ("tool responses must match
+    // tool calls"), which is what forced the raw-result fallback dumps.
+    { role: "assistant", content: completion.content || null, tool_calls: [toolCall] },
   ];
   const usage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
   const sqlTools = tools();
@@ -270,7 +273,7 @@ async function run({ vendor, user, brand, messages, completion, toolCall, args }
       convo.push({
         role: "assistant",
         content: follow.content || null,
-        tool_calls: follow.tool_calls,
+        tool_calls: [next], // replay only the call we answer next (see above)
       });
       cur = next;
       curArgs = parseArgs(next.function.arguments);

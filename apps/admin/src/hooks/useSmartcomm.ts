@@ -5,9 +5,17 @@
 
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ApiError } from "@/lib/api";
 import { smartcommApi, type ChannelListParams } from "@/lib/smartcomm-api";
 import { getSocket, joinRoom, leaveRoom, rooms } from "@/lib/socket";
 import { useAuthStore } from "@/stores/auth";
+
+/** 403 = the role has no smartcomm grant. Retrying or re-polling can never
+ *  succeed until an admin edits the role, so stop hitting the API. */
+const isForbidden = (err: unknown) =>
+  err instanceof ApiError && err.status === 403;
+const retryUnlessForbidden = (failureCount: number, err: unknown) =>
+  !isForbidden(err) && failureCount < 2;
 
 /** List the inbox for the current user (active brand). */
 export function useChannels(params: ChannelListParams = {}) {
@@ -15,7 +23,9 @@ export function useChannels(params: ChannelListParams = {}) {
     queryKey: ["smartcomm", "channels", params],
     queryFn: () => smartcommApi.listChannels(params),
     staleTime: 15_000,
-    refetchInterval: 60_000,
+    retry: retryUnlessForbidden,
+    refetchInterval: (query) =>
+      isForbidden(query.state.error) ? false : 60_000,
   });
 }
 
@@ -45,7 +55,9 @@ export function useUnreadMessages() {
     queryKey: ["smartcomm", "unread"],
     queryFn: () => smartcommApi.getUnread(),
     staleTime: 15_000,
-    refetchInterval: 60_000,
+    retry: retryUnlessForbidden,
+    refetchInterval: (query) =>
+      isForbidden(query.state.error) ? false : 60_000,
   });
 }
 

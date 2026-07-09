@@ -1,5 +1,14 @@
 import { useState } from "react";
-import { Search, Pin, BellOff, Plus, Settings2 } from "lucide-react";
+import {
+  Search,
+  Pin,
+  BellOff,
+  Plus,
+  Settings2,
+  ShieldAlert,
+  RefreshCw,
+} from "lucide-react";
+import { ApiError } from "@/lib/api";
 import {
   fmtRelativeTime,
   getAvatarColour,
@@ -74,7 +83,14 @@ export function ChannelList({
   // reintroduces one.
   const [searchArmed, setSearchArmed] = useState(false);
   const params = paramsForTab(tab);
-  const { data, isLoading } = useChannels({ ...params, q: q || undefined });
+  const { data, isLoading, isError, error, refetch } = useChannels({
+    ...params,
+    q: q || undefined,
+  });
+  // A 403 here means the user's ROLE has no smartcomm grant — rendering the
+  // ordinary empty state for it made "no permission" indistinguishable from
+  // "no messages", which cost days of delivery-bug hunting. Say what it is.
+  const isForbidden = error instanceof ApiError && error.status === 403;
 
   // RBAC — the gear icon is invisible to users without messaging_accounts.
   // edit (or CEO / super-admin, which resolve to "*" in the auth store).
@@ -183,6 +199,31 @@ export function ChannelList({
                 className="h-14 rounded-xl bg-panel-2 border hairline animate-pulse"
               />
             ))}
+          </div>
+        ) : isForbidden ? (
+          <div className="py-12 px-6 text-center space-y-3">
+            <ShieldAlert className="w-7 h-7 mx-auto text-text-faint" />
+            <p className="text-[13px] font-medium text-text-primary">
+              No access to Messaging
+            </p>
+            <p className="text-[12px] text-text-faint leading-relaxed">
+              Your role doesn't have SmartComm permission, so conversations
+              can't load. Ask an admin to grant it under IAM &amp; Security →
+              Roles.
+            </p>
+          </div>
+        ) : isError ? (
+          <div className="py-12 px-6 text-center space-y-3">
+            <p className="text-[12.5px] text-text-faint">
+              Couldn't load conversations.
+            </p>
+            <button
+              onClick={() => refetch()}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-accent/40 bg-accent/[0.08] px-3 py-1.5 text-[11.5px] font-medium text-accent-glow hover:bg-accent/[0.14]"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Retry
+            </button>
           </div>
         ) : channels.length === 0 ? (
           <div className="py-12 px-4 text-center text-[12.5px] text-text-faint space-y-3">

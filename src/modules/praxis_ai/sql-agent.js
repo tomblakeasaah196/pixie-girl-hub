@@ -248,10 +248,9 @@ function looksLikeDbSpeak(text) {
     /\bno such table\b|\bdoes not exist\b/i.test(t) ||
     /\bschemas?\b|\bcolumns?\b/i.test(t) ||
     /\bis not a (clear|specific|valid)?\s*(question|request)\b/i.test(t) ||
-    /\bthe [a-z]+_[a-z_]+ table\b/i.test(t) ||
-    /\b(sales_order_lines|credit_notes|cancellation_requests|order_lines)\b/i.test(
-      t,
-    )
+    // Any database identifier (snake_case token like sales_order_state_history,
+    // cancellation_requests, product_id) is a dead giveaway of leaked mechanics.
+    /\b[a-z][a-z0-9]*_[a-z0-9_]+\b/.test(t)
   );
 }
 

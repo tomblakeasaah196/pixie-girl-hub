@@ -299,7 +299,7 @@ async function listTrainingSources({ brand }) {
   const { rows } = await query(
     `SELECT s.source_id, s.title, s.note, s.kind, s.original_filename,
             s.mime_type, s.byte_size, s.status, s.chunk_count, s.extract_chars,
-            s.error, s.created_at, u.full_name AS uploaded_by_name
+            s.error, s.created_at, u.display_name AS uploaded_by_name
        FROM shared.ai_training_sources s
        LEFT JOIN shared.users u ON u.user_id = s.uploaded_by
       WHERE (s.business IS NULL OR s.business = $1)

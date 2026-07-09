@@ -21,7 +21,7 @@ async function salesKpis({ brand, from, to }) {
   const params = [];
   const fromExpr = from
     ? `$${params.push(from)}::timestamptz`
-    : "date_trunc('month', now() AT TIME ZONE 'Africa/Lagos') AT TIME ZONE 'Africa/Lagos'";
+    : "(date_trunc('month', now() AT TIME ZONE 'Africa/Lagos') AT TIME ZONE 'Africa/Lagos')";
   const toExpr = to ? `$${params.push(to)}::timestamptz` : "now()";
   const { rows } = await query(
     `SELECT

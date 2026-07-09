@@ -164,6 +164,93 @@ async function sendAudio({ brand, to, audio_url }) {
   );
 }
 
+// ── Message-template management (Meta Business Management API) ──
+//
+// These operate on the WhatsApp Business Account (WABA) node, not the
+// phone-number node, so they need the business_account_id resolved
+// alongside the access token. resolveSendConfig() already returns it.
+
+function requireWaba(cfg) {
+  if (!cfg.business_account_id) {
+    throw new AppError(
+      "WA_NO_BUSINESS_ACCOUNT",
+      "No WhatsApp Business Account ID on file for this brand. Add it under Messaging Accounts before managing templates.",
+      412,
+    );
+  }
+  return cfg.business_account_id;
+}
+
+/**
+ * List the brand's message templates from Meta. Returns the raw
+ * `data` array of template objects (name, status, category, language,
+ * components, quality_score, id).
+ */
+async function listTemplates({ brand, limit }) {
+  const cfg = await resolveSendConfig({ brand });
+  const waba = requireWaba(cfg);
+  const fields =
+    "name,status,category,language,components,quality_score,id,rejected_reason";
+  const url = `${GRAPH()}/${waba}/message_templates?fields=${fields}&limit=${limit || 100}`;
+  const { data } = await axios.get(url, {
+    headers: { Authorization: `Bearer ${cfg.access_token}` },
+    timeout: 20000,
+  });
+  return (data && data.data) || [];
+}
+
+/**
+ * Submit a NEW template to Meta for review. Meta returns { id, status,
+ * category }. Throws the provider's error message straight through so
+ * the UI can show "invalid component" etc.
+ */
+async function createTemplate({ brand, name, language, category, components }) {
+  const cfg = await resolveSendConfig({ brand });
+  const waba = requireWaba(cfg);
+  const url = `${GRAPH()}/${waba}/message_templates`;
+  const { data } = await axios.post(
+    url,
+    { name, language, category, components },
+    { headers: { Authorization: `Bearer ${cfg.access_token}` }, timeout: 20000 },
+  );
+  return data;
+}
+
+/**
+ * Edit an EXISTING approved/rejected template. Meta only allows the
+ * category and components to change, and the edit is addressed by the
+ * template's own id (not the WABA node).
+ */
+async function editTemplate({ brand, meta_template_id, category, components }) {
+  const cfg = await resolveSendConfig({ brand });
+  const url = `${GRAPH()}/${meta_template_id}`;
+  const body = { components };
+  if (category) body.category = category;
+  const { data } = await axios.post(url, body, {
+    headers: { Authorization: `Bearer ${cfg.access_token}` },
+    timeout: 20000,
+  });
+  return data;
+}
+
+/**
+ * Delete a template on Meta. Deleting by name removes every language
+ * variant; passing hsm_id (the template id) scopes it to one. We pass
+ * both when we have them.
+ */
+async function deleteTemplate({ brand, name, meta_template_id }) {
+  const cfg = await resolveSendConfig({ brand });
+  const waba = requireWaba(cfg);
+  let qs = `name=${encodeURIComponent(name)}`;
+  if (meta_template_id) qs += `&hsm_id=${encodeURIComponent(meta_template_id)}`;
+  const url = `${GRAPH()}/${waba}/message_templates?${qs}`;
+  const { data } = await axios.delete(url, {
+    headers: { Authorization: `Bearer ${cfg.access_token}` },
+    timeout: 20000,
+  });
+  return data;
+}
+
 /**
  * True iff the given brand has an active WhatsApp row on file. Cheap
  * predicate used by delivery services that want to fall back to email
@@ -187,4 +274,9 @@ module.exports = {
   sendDocument,
   sendAudio,
   isConfigured,
+  // template management (Business Management API):
+  listTemplates,
+  createTemplate,
+  editTemplate,
+  deleteTemplate,
 };

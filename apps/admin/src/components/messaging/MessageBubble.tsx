@@ -10,6 +10,7 @@ import {
   Check,
   Clock,
   AlertTriangle,
+  LayoutTemplate,
 } from "lucide-react";
 import {
   fmtClockTime,
@@ -132,9 +133,15 @@ export function MessageBubble({
             {message.message_type === "send_invoice" && (
               <InvoiceCard message={message} />
             )}
+            {message.message_type === "template" && (
+              <div className="mb-1 inline-flex items-center gap-1 text-[10px] uppercase tracking-widest text-accent-glow/90">
+                <LayoutTemplate className="w-3 h-3" /> Approved template
+              </div>
+            )}
             {message.message_type !== "text" &&
               message.message_type !== "product_share" &&
-              message.message_type !== "send_invoice" && (
+              message.message_type !== "send_invoice" &&
+              message.message_type !== "template" && (
                 <MessageAttachments message={message} />
               )}
             {message.is_forwarded && (

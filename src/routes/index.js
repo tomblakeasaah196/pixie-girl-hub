@@ -125,6 +125,9 @@ const serviceCatalogueRouter = require("../modules/service_catalogue/service-cat
 // Messaging Accounts (PR 6) — admin surface for inbound routing rows
 const messagingAccountsRouter = require("../modules/messaging_accounts/messaging-accounts.routes");
 
+// WhatsApp approved templates + per-category send-cost rates
+const whatsappTemplatesRouter = require("../modules/whatsapp_templates/whatsapp-templates.routes");
+
 // Outbound Channel Policy (cost discipline — PR 2)
 const outboundPolicyRouter = require("../modules/outbound_policy/outbound-policy.routes");
 
@@ -366,6 +369,7 @@ function mountRoutes(app) {
     ["/customer-onboarding", onboardingAdminRouter],
     ["/service-catalogue", serviceCatalogueRouter],
     ["/messaging-accounts", messagingAccountsRouter],
+    ["/whatsapp-templates", whatsappTemplatesRouter],
     ["/outbound-policy", outboundPolicyRouter],
     ["/help", helpCenterRouter],
     ["/calendar", calendarRouter],

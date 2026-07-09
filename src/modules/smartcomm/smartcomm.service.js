@@ -31,6 +31,10 @@ function isCeo(user) {
 // these fields make it onto the message row — this prevents trojan keys (e.g.
 // "is_admin", "delivery_status") from leaking in via the open metadata channel.
 const METADATA_WHITELIST = {
+  // Approved WhatsApp template send — the composer stamps the Meta
+  // addressing (name + language) plus the filled components so the
+  // outbound builder can hand the exact payload to the Graph API.
+  template: ["template_name", "language", "components", "category", "template_id"],
   product_share: ["products", "intro"],
   send_invoice: [
     "invoice_id",
@@ -1059,6 +1063,21 @@ async function buildWhatsAppSends(message, content, client, business) {
     case "send_invoice": {
       const body = composeCardText(message, content);
       return body ? [{ kind: "text", body }] : [];
+    }
+    case "template": {
+      // Approved-template send (reaches the customer outside the 24h
+      // window). The processor branches on `template_name`, so shape the
+      // job as { template_name, language_code, components }.
+      const meta = message.metadata || {};
+      if (!meta.template_name) return [];
+      return [
+        {
+          kind: "template",
+          template_name: meta.template_name,
+          language_code: meta.language || "en_US",
+          components: meta.components || undefined,
+        },
+      ];
     }
     default:
       return content ? [{ kind: "text", body: content }] : [];

@@ -16,6 +16,7 @@ const messageType = z.enum([
   "system",
   "product_share",
   "send_invoice",
+  "template",
 ]);
 
 const channelCreate = z

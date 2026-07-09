@@ -24,6 +24,7 @@ import {
   Globe,
   MessageCircle,
   Plug,
+  LayoutTemplate,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -208,6 +209,13 @@ const SECTIONS: Section[] = [
         desc: "Connect WhatsApp, Instagram, FB Messenger & inbound email per brand",
         icon: Plug,
         to: "/settings/messaging-accounts",
+      },
+      {
+        key: "whatsapp-templates",
+        label: "WhatsApp Templates",
+        desc: "Approved templates for the 24h window + per-category send costs",
+        icon: LayoutTemplate,
+        to: "/settings/whatsapp-templates",
       },
     ],
   },

@@ -18,11 +18,15 @@ export function CoverImageEditor({
   onChange,
   referenceType,
   referenceId,
+  coverAspect = "16:9",
 }: {
   value: string | null | undefined;
   onChange: (url: string | null) => void;
   referenceType: "collection" | "bundle" | "shade";
   referenceId?: string;
+  /** Must match the aspect ratio the entity's card actually displays the
+   *  cover at, or the crop preview here will lie about what gets shown. */
+  coverAspect?: "16:9" | "4:5";
 }) {
   const upload = useUploadCoverImage();
   const { progress, run } = useUploadProgress();
@@ -75,7 +79,9 @@ export function CoverImageEditor({
 
   return (
     <div className="space-y-3">
-      <div className="aspect-[16/9] rounded-[12px] overflow-hidden bg-text-primary/[0.04] border border-line">
+      <div
+        className={`${coverAspect === "4:5" ? "aspect-[4/5]" : "aspect-[16/9]"} rounded-[12px] overflow-hidden bg-text-primary/[0.04] border border-line`}
+      >
         {value ? (
           <img src={value} alt="Cover" className="w-full h-full object-cover" />
         ) : (
@@ -181,6 +187,7 @@ export function CoverImageEditor({
       {cropFile && (
         <CoverCropModal
           file={cropFile}
+          aspect={coverAspect}
           onCancel={() => setCropFile(null)}
           onDone={uploadCropped}
         />

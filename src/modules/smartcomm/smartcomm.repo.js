@@ -66,8 +66,12 @@ async function listChannelsForUser({
   const params = [user_id];
   let i = 2;
   if (brand) {
-    where.push(`c.business = $${i++}`);
+    // Internal chat (direct DMs, staff groups) isn't brand-owned data — a
+    // staff member should see it regardless of which entity is currently
+    // active. Only customer_thread channels belong to a single brand.
+    where.push(`(c.business = $${i} OR c.channel_type != 'customer_thread')`);
     params.push(brand);
+    i++;
   }
   if (!include_archived) where.push("c.is_archived = false");
   if (channel_type) {
@@ -265,8 +269,8 @@ async function setChannelArchived({ id, archived }) {
   return rows[0] || null;
 }
 
-async function setChannelStatus({ id, status, assigned_to }) {
-  const { rows } = await query(
+async function setChannelStatus({ client, id, status, assigned_to }) {
+  const { rows } = await ex(client)(
     `UPDATE shared.message_channels
         SET status = COALESCE($2, status),
             assigned_to = COALESCE($3, assigned_to),
@@ -511,9 +515,13 @@ async function listMessages({ channel_id, before, limit = 50 }) {
       LEFT JOIN shared.users u ON u.user_id = m.sender_user_id
       LEFT JOIN shared.contacts con ON con.contact_id = m.sender_contact_id
      WHERE m.channel_id = $1 AND m.is_deleted = false${extra}
-     ORDER BY m.created_at ASC
+     ORDER BY m.created_at DESC
      LIMIT $${params.length}`;
+  // Fetched newest-first so LIMIT keeps the most recent page (otherwise a
+  // channel with >limit messages would be stuck showing its oldest ones);
+  // reversed back to ascending for chronological display.
   const { rows } = await query(sql, params);
+  rows.reverse();
   // Turn each attachment's storage file_path into a browser URL (and drop the
   // raw path from the payload — the client only needs the URL + display meta).
   for (const r of rows) {

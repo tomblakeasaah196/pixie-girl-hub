@@ -435,6 +435,20 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
     invalidate();
   }
 
+  async function handleReopen() {
+    setBusy("sending");
+    try {
+      await smartcommApi.reopenThread(channelId);
+      qc.invalidateQueries({ queryKey: ["smartcomm", "channel", channelId] });
+      qc.invalidateQueries({ queryKey: ["smartcomm", "channels"] });
+    } catch (e: unknown) {
+      toastReport("Messaging → Thread", "Reopen thread", e);
+      setError(e instanceof Error ? e.message : "Could not reopen");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   if (!channel) {
     return (
       <div className="grid h-full place-items-center text-text-faint text-[13px]">
@@ -782,7 +796,26 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
       )}
 
       {/* Composer */}
-      {!isResolved && (
+      {isResolved ? (
+        <div className="border-t hairline px-3 sm:px-4 py-3 pb-safe">
+          <div className="flex items-center justify-between gap-2 rounded-xl border border-accent/30 bg-accent/5 px-3 py-2.5 text-[12px] text-text-muted">
+            <span className="flex items-center gap-2">
+              <CheckCircle2 className="w-3.5 h-3.5 text-accent-glow shrink-0" />
+              This conversation is marked resolved.
+            </span>
+            <button
+              onClick={handleReopen}
+              disabled={busy === "sending"}
+              className="shrink-0 rounded-lg bg-accent px-3 py-1.5 text-[12px] font-medium text-bg hover:bg-accent-glow disabled:opacity-50"
+            >
+              Reopen
+            </button>
+          </div>
+          {error && (
+            <div className="mt-2 text-[11.5px] text-danger">{error}</div>
+          )}
+        </div>
+      ) : (
         <div className="border-t hairline px-3 sm:px-4 pt-2.5 pb-safe">
           {composerLocked && (
             <div className="mb-2 flex items-start gap-2 rounded-xl border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-[12px] text-amber-200">
@@ -1151,20 +1184,33 @@ function ThreadMenu({
               <BellOff className="w-3.5 h-3.5" />
               {channel.muted_until ? "Unmute" : "Mute for 8h"}
             </button>
-            {channel.channel_type === "customer_thread" && (
-              <button
-                onClick={async () => {
-                  setOpen(false);
-                  await smartcommApi.resolveThread(channel.channel_id);
-                  onChanged();
-                  onResolve?.();
-                }}
-                className="flex items-center gap-2 w-full px-3 py-2 hover:bg-panel-2 text-text-primary"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                Resolve thread
-              </button>
-            )}
+            {channel.channel_type === "customer_thread" &&
+              (channel.status === "resolved" ? (
+                <button
+                  onClick={async () => {
+                    setOpen(false);
+                    await smartcommApi.reopenThread(channel.channel_id);
+                    onChanged();
+                  }}
+                  className="flex items-center gap-2 w-full px-3 py-2 hover:bg-panel-2 text-text-primary"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Reopen thread
+                </button>
+              ) : (
+                <button
+                  onClick={async () => {
+                    setOpen(false);
+                    await smartcommApi.resolveThread(channel.channel_id);
+                    onChanged();
+                    onResolve?.();
+                  }}
+                  className="flex items-center gap-2 w-full px-3 py-2 hover:bg-panel-2 text-text-primary"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Resolve thread
+                </button>
+              ))}
             <button
               onClick={async () => {
                 setOpen(false);

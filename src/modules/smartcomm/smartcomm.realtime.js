@@ -174,6 +174,17 @@ function register() {
       });
   });
 
+  events.on("thread.reopened", async (p) => {
+    const brand = await channelBrand(p.channel_id);
+    emit(`channel:${p.channel_id}`, "thread.reopened", {
+      channel_id: p.channel_id,
+    });
+    if (brand)
+      emit(`brand:${brand}:smartcomm`, "thread.reopened", {
+        channel_id: p.channel_id,
+      });
+  });
+
   events.on("thread.assigned", async (p) => {
     const brand = await channelBrand(p.channel_id);
     emit(`channel:${p.channel_id}`, "thread.assigned", {

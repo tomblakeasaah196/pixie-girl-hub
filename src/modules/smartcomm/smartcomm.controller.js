@@ -69,6 +69,11 @@ async function resolveThread(req, res) {
   res.json(data);
 }
 
+async function reopenThread(req, res) {
+  const data = await service.reopenThread({ ...ctx(req), id: req.params.id });
+  res.json(data);
+}
+
 async function assignThread(req, res) {
   const data = await service.assignThread({
     ...ctx(req),
@@ -343,6 +348,7 @@ module.exports = {
   createChannel,
   archiveChannel,
   resolveThread,
+  reopenThread,
   assignThread,
   pinChannel,
   muteChannel,

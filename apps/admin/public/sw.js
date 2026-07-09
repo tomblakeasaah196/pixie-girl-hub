@@ -5,16 +5,27 @@
 // Bump this version on any change that should evict the old shell cache.
 // The activate handler deletes every cache that isn't CACHE_NAME, so a new
 // version guarantees clients drop stale assets on next activation.
-const CACHE_NAME = "pixie-hub-shell-v2";
+const CACHE_NAME = "pixie-hub-shell-v3";
 const SHELL_ASSETS = ["/favicon.svg", "/pwa-icon.svg", "/pwa-icon-192.svg"];
 
 self.addEventListener("install", (event) => {
+  // NOTE: we deliberately do NOT call self.skipWaiting() here. A newly
+  // installed worker parks in the "waiting" state and lets the running page
+  // decide when to switch over, so we never yank the app out from under a
+  // user mid-task. The client surfaces an "update available" banner and only
+  // posts SKIP_WAITING (see the message handler below) when the user opts in.
   event.waitUntil(
-    caches
-      .open(CACHE_NAME)
-      .then((cache) => cache.addAll(SHELL_ASSETS))
-      .then(() => self.skipWaiting()),
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_ASSETS)),
   );
+});
+
+// Triggered by the update banner. When the page tells us the user accepted the
+// update, activate immediately; the activate handler's clients.claim() then
+// fires a controllerchange on the page, which reloads it onto the new build.
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener("activate", (event) => {

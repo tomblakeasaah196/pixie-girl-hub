@@ -26,6 +26,7 @@ import { ChatDock } from "@/components/messaging/ChatDock";
 import { PraxisDrawer } from "@/components/praxis/PraxisDrawer";
 import { IosInstallHint } from "./IosInstallHint";
 import { PwaInstallBanner } from "./PwaInstallBanner";
+import { PwaUpdateBanner } from "./PwaUpdateBanner";
 import { OfflineIndicator } from "./OfflineIndicator";
 import { EmailActivationBanner } from "./EmailActivationBanner";
 
@@ -155,6 +156,9 @@ export function AppShell() {
 
       {/* App-wide save/publish feedback + JBS Praxis error reporting */}
       <Toaster />
+
+      {/* In-app PWA update prompt (shows when a new build is waiting) */}
+      <PwaUpdateBanner />
     </div>
   );
 }

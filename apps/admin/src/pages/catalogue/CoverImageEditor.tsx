@@ -1,9 +1,11 @@
 import { useRef, useState } from "react";
-import { Upload, Image as ImageIcon, Search, Check } from "lucide-react";
+import { Upload, Image as ImageIcon, Search, Check, Move } from "lucide-react";
 import { Button } from "@/components/ui/primitives";
 import { UploadProgress } from "@/components/ui/UploadProgress";
 import { useUploadProgress } from "@/lib/use-upload";
 import { useStyledProducts, useUploadCoverImage } from "@/lib/catalogue";
+import { CoverCropModal } from "./CoverCropModal";
+import { useToast } from "@/lib/toast";
 
 /**
  * Cover picker for collections & bundles. Per the owner directive you can
@@ -24,15 +26,18 @@ export function CoverImageEditor({
 }) {
   const upload = useUploadCoverImage();
   const { progress, run } = useUploadProgress();
+  const toast = useToast("Catalogue → Cover image");
   const fileRef = useRef<HTMLInputElement>(null);
   const [picking, setPicking] = useState(false);
   const [q, setQ] = useState("");
+  const [cropFile, setCropFile] = useState<File | null>(null);
+  const [repositioning, setRepositioning] = useState(false);
   const styled = useStyledProducts(q.trim().length >= 2 ? { q: q.trim() } : {});
   const withImages = (styled.data ?? []).filter((s) => s.primary_image_url);
 
-  const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const uploadCropped = (blob: Blob) => {
+    const file = new File([blob], "cover.jpg", { type: "image/jpeg" });
+    setCropFile(null);
     run((onProgress) =>
       upload.mutateAsync({
         file,
@@ -42,8 +47,30 @@ export function CoverImageEditor({
       }),
     )
       .then((res) => onChange(res.cdn_url))
-      .catch(() => {});
+      .catch(() => toast.error("Couldn't save cover image"));
+  };
+
+  const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) setCropFile(file);
     e.target.value = "";
+  };
+
+  const reposition = async () => {
+    if (!value) return;
+    setRepositioning(true);
+    try {
+      const res = await fetch(value);
+      const blob = await res.blob();
+      setCropFile(new File([blob], "cover.jpg", { type: blob.type || "image/jpeg" }));
+    } catch {
+      toast.error(
+        "Couldn't load this image for repositioning",
+        "Try uploading it again instead.",
+      );
+    } finally {
+      setRepositioning(false);
+    }
   };
 
   return (
@@ -76,6 +103,17 @@ export function CoverImageEditor({
         >
           Pick from a product
         </Button>
+        {value && (
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={<Move className="w-3.5 h-3.5" />}
+            disabled={repositioning}
+            onClick={reposition}
+          >
+            {repositioning ? "Loading…" : "Reposition"}
+          </Button>
+        )}
         {value && (
           <Button size="sm" variant="ghost" onClick={() => onChange(null)}>
             Remove
@@ -138,6 +176,14 @@ export function CoverImageEditor({
             </div>
           )}
         </div>
+      )}
+
+      {cropFile && (
+        <CoverCropModal
+          file={cropFile}
+          onCancel={() => setCropFile(null)}
+          onDone={uploadCropped}
+        />
       )}
     </div>
   );

@@ -677,11 +677,65 @@ async function markChannelRead({ client, channel_id, user_id, up_to_id }) {
       [channel_id, user_id],
     );
   }
+  // Customer_thread channels only carry the CONTACT as a member — the
+  // staff viewer has NO channel_members row of their own, so a plain
+  // UPDATE here used to be a silent no-op: cm.last_read_at stayed NULL,
+  // and `listChannelsForUser`'s unread_count subquery (which reads
+  // cm.last_read_at) treated every message as unread forever. Every
+  // staffer's inbox badge for every WhatsApp/IG/email thread ballooned
+  // to the whole message count and never dropped, no matter how many
+  // times the thread was opened. UPSERT so a first read on a customer
+  // thread creates a per-staffer read cursor row without touching the
+  // customer's own membership row (the partial unique index on
+  // (channel_id, user_id) WHERE user_id IS NOT NULL is the conflict
+  // target — the customer row has user_id=NULL and can't collide).
   await ex(client)(
-    `UPDATE shared.channel_members SET last_read_at = now()
-      WHERE channel_id = $1 AND user_id = $2`,
+    `INSERT INTO shared.channel_members (channel_id, user_id, role, last_read_at)
+     VALUES ($1, $2, 'member', now())
+     ON CONFLICT (channel_id, user_id) WHERE user_id IS NOT NULL
+     DO UPDATE SET last_read_at = now()`,
     [channel_id, user_id],
   );
+}
+
+/**
+ * Advance `delivery_status` on internal (direct/group) messages the
+ * reader received from a colleague to 'read'. Rank-guarded so it can
+ * never regress a status already at 'read' back to a lower state.
+ * Returns the message_ids the update actually moved forward so the
+ * realtime layer can tell the SENDER's clients to refresh their ticks.
+ *
+ * Customer threads are excluded: their delivery_status is owned by the
+ * Meta webhook lifecycle (whatsapp-processor / applyProviderStatus) and
+ * must never be forced to 'read' by a staff member opening the thread.
+ */
+async function markInternalMessagesRead({
+  client,
+  channel_id,
+  reader_user_id,
+  up_to_id,
+}) {
+  const params = [channel_id, reader_user_id];
+  let boundary = "";
+  if (up_to_id) {
+    params.push(up_to_id);
+    boundary = ` AND m.created_at <= (SELECT created_at FROM shared.messages WHERE message_id = $3)`;
+  }
+  const { rows } = await ex(client)(
+    `UPDATE shared.messages m
+        SET delivery_status = 'read'
+       FROM shared.message_channels c
+      WHERE m.channel_id = $1
+        AND c.channel_id = m.channel_id
+        AND c.channel_type IN ('direct','group')
+        AND m.sender_user_id IS DISTINCT FROM $2::uuid
+        AND m.sender_user_id IS NOT NULL
+        AND m.is_deleted = false
+        AND m.delivery_status IS DISTINCT FROM 'read'${boundary}
+      RETURNING m.message_id, m.sender_user_id`,
+    params,
+  );
+  return rows;
 }
 
 async function unreadCountForUser({ user_id, brand }) {
@@ -1145,6 +1199,7 @@ module.exports = {
   searchMessages,
   // Reads
   markChannelRead,
+  markInternalMessagesRead,
   unreadCountForUser,
   // Attachments
   addAttachment,

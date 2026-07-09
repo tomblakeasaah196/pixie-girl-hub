@@ -21,9 +21,7 @@ const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
 const { getClient: getRedis } = require("../../config/redis");
 const { AppError } = require("../../utils/errors");
-const { money, toCurrencyString } = require("../../utils/money");
-const gemini = require("../../services/gemini.service");
-const llm = require("../../services/llm.service");
+const aiRun = require("../../services/ai-run.service");
 const governance = require("../ai_governance/governance.service");
 const repo = require("./storefront.repo");
 
@@ -81,62 +79,28 @@ function quotaSnapshot({ used }) {
 
 // ── Governance guard + metering (mirrors shade_finder.service.js) ──────
 
-async function guardFeature() {
+async function guardFeature(brand) {
   const guard = await governance.canUseFeature({
     user_id: null,
     feature_key: FEATURE_KEY,
     is_ceo: true,
+    business: brand,
   });
   if (!guard.ok) {
+    // Q8: prefer the CEO-authored "Praxis is resting" copy when set —
+    // shoppers see brand-consistent language, not a technical 503.
     throw new AppError("AI_UNAVAILABLE", `shop ai search gated: ${guard.reason}`, 503, {
-      user_message: "Praxis search is taking a short break — please try again soon.",
+      user_message:
+        guard.resting_message ||
+        "Praxis search is taking a short break — please try again soon.",
     });
   }
 }
 
-let cachedVendorRates = null;
-async function vendorRates() {
-  if (cachedVendorRates) return cachedVendorRates;
-  try {
-    const v = await llm.resolveVendor("gemini");
-    cachedVendorRates = {
-      in: v.cost_per_1k_input_tokens || 0,
-      out: v.cost_per_1k_output_tokens || 0,
-    };
-  } catch {
-    cachedVendorRates = { in: 0, out: 0 };
-  }
-  return cachedVendorRates;
-}
-async function recordUsageSafe({ brand, model, input_tokens, output_tokens }) {
-  try {
-    const rates = await vendorRates();
-    const cost = toCurrencyString(
-      money(input_tokens || 0)
-        .div(1000)
-        .times(money(rates.in))
-        .plus(money(output_tokens || 0).div(1000).times(money(rates.out))),
-    );
-    await governance.recordUsage({
-      usage: {
-        user_id: null,
-        feature_key: FEATURE_KEY,
-        business: brand,
-        provider: "gemini",
-        model,
-        call_type: "chat_completion",
-        input_tokens: input_tokens || 0,
-        output_tokens: output_tokens || 0,
-        total_tokens: (input_tokens || 0) + (output_tokens || 0),
-        cost_native: cost,
-        cost_ngn: cost,
-        was_successful: true,
-      },
-    });
-  } catch (err) {
-    logger.debug({ err: err.message }, "shop ai search usage record skipped");
-  }
-}
+// Metering + failure logging now live in ai-run.service.js so the ledger
+// records every call (success AND failure) with the same shape across
+// storefront + shade-finder + Praxis. The Jul-2026 outage was invisible
+// for 5 days because this feature only wrote success rows — never again.
 
 // ── LLM schema + prompt ─────────────────────────────────────
 
@@ -235,7 +199,7 @@ function publicMatch(list, key, value) {
  * shopper already saw) so a follow-up can refine without a server session.
  */
 async function search({ brand, device_id, ip, query: userQuery, history = [] }) {
-  await guardFeature();
+  await guardFeature(brand);
 
   const ttl = secondsToLagosMidnight();
   const deviceKey = deviceKeyFrom({ device_id, ip });
@@ -273,30 +237,30 @@ async function search({ brand, device_id, ip, query: userQuery, history = [] }) 
       shadeSlugs: shades.map((s) => s.slug),
     });
 
-    const completion = await gemini.chatCompletion({
-      system: systemPrompt(brand),
-      messages: [
-        {
-          role: "user",
-          content: `CATALOGUE: ${catalogueContext({ products, collections, bundles, shades })}`,
-        },
-        { role: "assistant", content: "Understood — I will only recommend from this catalogue." },
-        ...history.slice(-6),
-        { role: "user", content: userQuery },
-      ],
-      temperature: 0.5,
-      maxOutputTokens: 1536,
-      responseSchema: schema,
-      // Structured extraction, not reasoning — see shade-finder's identical
-      // note: without this, Gemini 2.5's default thinking can eat the whole
-      // output budget and return an empty reply.
-      thinkingBudget: 0,
-    });
-    await recordUsageSafe({
-      brand,
-      model: completion.model,
-      input_tokens: completion.input_tokens,
-      output_tokens: completion.output_tokens,
+    const completion = await aiRun.runGeminiCall({
+      feature_key: FEATURE_KEY,
+      business: brand,
+      user_id: null,
+      call_type: "chat_completion",
+      gemini: {
+        system: systemPrompt(brand),
+        messages: [
+          {
+            role: "user",
+            content: `CATALOGUE: ${catalogueContext({ products, collections, bundles, shades })}`,
+          },
+          { role: "assistant", content: "Understood — I will only recommend from this catalogue." },
+          ...history.slice(-6),
+          { role: "user", content: userQuery },
+        ],
+        temperature: 0.5,
+        maxOutputTokens: 1536,
+        responseSchema: schema,
+        // Structured extraction, not reasoning — see shade-finder's identical
+        // note: without this, Gemini 2.5's default thinking can eat the whole
+        // output budget and return an empty reply.
+        thinkingBudget: 0,
+      },
     });
 
     const advice = parseModelJson(completion.text);

@@ -17,10 +17,31 @@ const flagUpsert = z
     default_provider: z.enum(VENDOR).optional(),
     default_model: z.string().max(120).optional(),
     est_cost_per_call_ngn: z.coerce.number().nonnegative().optional(),
+    feature_scope: z.enum(["internal", "storefront"]).optional(),
+    enabled_for_pxg: z.boolean().optional(),
+    enabled_for_flh: z.boolean().optional(),
+    daily_user_cap: z.coerce.number().int().nonnegative().nullable().optional(),
+    resting_message: z.string().max(500).nullable().optional(),
   })
   .strict();
 
 const flagToggle = z.object({ is_enabled: z.boolean() }).strict();
+const flagBrandScope = z
+  .object({
+    enabled_for_pxg: z.boolean().optional(),
+    enabled_for_flh: z.boolean().optional(),
+  })
+  .strict();
+const flagUserCap = z
+  .object({
+    daily_user_cap: z.coerce.number().int().nonnegative().nullable(),
+  })
+  .strict();
+const flagRestingMessage = z
+  .object({
+    resting_message: z.string().max(500).nullable(),
+  })
+  .strict();
 
 const grantCreate = z
   .object({
@@ -74,6 +95,15 @@ const modelUpsert = z
 
 const vendorRotate = z.object({ api_key: z.string().min(1).max(500) }).strict();
 const vendorActive = z.object({ is_active: z.boolean() }).strict();
+// Test connection — all fields optional; empty body pings the SAVED vendor.
+// Overrides let the admin verify a NEW key before persisting it (Save gate).
+const vendorTest = z
+  .object({
+    api_key: z.string().max(500).optional(),
+    endpoint_url: z.string().url().max(500).optional(),
+    model: z.string().max(120).optional(),
+  })
+  .strict();
 
 const budgetOpen = z
   .object({
@@ -88,6 +118,19 @@ const budgetCaps = z
   .object({
     soft_cap_ngn: z.coerce.number().nonnegative().optional(),
     hard_cap_ngn: z.coerce.number().nonnegative().optional(),
+    // Q7 storefront caps — nullable so the CEO can explicitly "uncap"
+    // storefront features (revenue-features-die-last stance) or set a
+    // separate ceiling. Distinct from undefined (leave alone).
+    storefront_soft_cap_ngn: z
+      .coerce.number()
+      .nonnegative()
+      .nullable()
+      .optional(),
+    storefront_hard_cap_ngn: z
+      .coerce.number()
+      .nonnegative()
+      .nullable()
+      .optional(),
   })
   .strict();
 
@@ -151,11 +194,15 @@ const mk = (schema) => (req, _res, next) => {
 module.exports = {
   validateFlagUpsert: mk(flagUpsert),
   validateFlagToggle: mk(flagToggle),
+  validateFlagBrandScope: mk(flagBrandScope),
+  validateFlagUserCap: mk(flagUserCap),
+  validateFlagRestingMessage: mk(flagRestingMessage),
   validateGrantCreate: mk(grantCreate),
   validateReason: mk(reasonBody),
   validateVendorUpsert: mk(vendorUpsert),
   validateVendorRotate: mk(vendorRotate),
   validateVendorActive: mk(vendorActive),
+  validateVendorTest: mk(vendorTest),
   validateBudgetOpen: mk(budgetOpen),
   validateBudgetCaps: mk(budgetCaps),
   validateActionUpsert: mk(actionUpsert),

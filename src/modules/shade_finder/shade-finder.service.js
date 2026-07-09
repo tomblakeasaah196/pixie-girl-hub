@@ -39,9 +39,7 @@ const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
 const { getClient: getRedis } = require("../../config/redis");
 const { AppError } = require("../../utils/errors");
-const { money, toCurrencyString } = require("../../utils/money");
-const gemini = require("../../services/gemini.service");
-const llm = require("../../services/llm.service");
+const aiRun = require("../../services/ai-run.service");
 const { compressImage } = require("../../services/media-compression.service");
 const governance = require("../ai_governance/governance.service");
 const repo = require("./shade-finder.repo");
@@ -199,62 +197,27 @@ async function saveSession(sid, state) {
  * apply — is_ceo:true skips exactly that check while the feature flag toggle
  * and the monthly budget hard cap still gate the call.
  */
-async function guardFeature() {
+async function guardFeature(brand) {
   const guard = await governance.canUseFeature({
     user_id: null,
     feature_key: FEATURE_KEY,
     is_ceo: true,
+    business: brand,
   });
   if (!guard.ok) {
+    // Prefer the CEO-authored "Praxis is resting" copy (Q8) so shoppers
+    // always see brand-consistent language, never a technical 503.
     throw new AppError("AI_UNAVAILABLE", `shade finder gated: ${guard.reason}`, 503, {
-      user_message: "Praxis is taking a short break — please try again soon.",
+      user_message:
+        guard.resting_message ||
+        "Praxis is taking a short break — please try again soon.",
     });
   }
 }
 
-let cachedVendorRates = null;
-async function vendorRates() {
-  if (cachedVendorRates) return cachedVendorRates;
-  try {
-    const v = await llm.resolveVendor("gemini");
-    cachedVendorRates = {
-      in: v.cost_per_1k_input_tokens || 0,
-      out: v.cost_per_1k_output_tokens || 0,
-    };
-  } catch {
-    cachedVendorRates = { in: 0, out: 0 };
-  }
-  return cachedVendorRates;
-}
-
-async function recordUsageSafe({ brand, model, input_tokens, output_tokens }) {
-  try {
-    const rates = await vendorRates();
-    const cost = toCurrencyString(
-      money(input_tokens || 0).div(1000).times(money(rates.in)).plus(
-        money(output_tokens || 0).div(1000).times(money(rates.out)),
-      ),
-    );
-    await governance.recordUsage({
-      usage: {
-        user_id: null,
-        feature_key: FEATURE_KEY,
-        business: brand,
-        provider: "gemini",
-        model,
-        call_type: "chat_completion",
-        input_tokens: input_tokens || 0,
-        output_tokens: output_tokens || 0,
-        total_tokens: (input_tokens || 0) + (output_tokens || 0),
-        cost_native: cost,
-        cost_ngn: cost,
-        was_successful: true,
-      },
-    });
-  } catch (err) {
-    logger.debug({ err: err.message }, "shade finder usage record skipped");
-  }
-}
+// Metering + failure logging live in ai-run.service.js so the ledger
+// records every call, success or failure, with a uniform shape. Callers
+// (perception + chat) go through aiRun.runGeminiCall — see below.
 
 // ── Stage events (→ public socket room) ─────────────────────
 
@@ -633,7 +596,7 @@ function hydrate({ advice, shades, products }) {
 // ── Public API ──────────────────────────────────────────────
 
 async function startSession({ brand, device_id, ip }) {
-  await guardFeature();
+  await guardFeature(brand);
   const deviceKey = deviceKeyFrom({ device_id, ip });
   const sid = crypto.randomUUID();
   await saveSession(sid, {
@@ -769,28 +732,28 @@ async function adviseAndReply({
     );
   }
   const history = (state.history || []).slice(-12);
-  const completion = await gemini.chatCompletion({
-    system: adviseSystem({
-      brand,
-      brandName: brain && brain.identity ? brain.identity.name : null,
-    }),
-    messages: [
-      { role: "user", content: hints.join("\n") },
-      { role: "assistant", content: "Understood — I will only recommend from this catalogue." },
-      ...history,
-      { role: "user", content: userText },
-    ],
-    temperature: 0.6,
-    maxOutputTokens: 2048,
-    responseSchema: schema,
-    // See analyzePhoto: thinking off so the token budget is all answer.
-    thinkingBudget: 0,
-  });
-  await recordUsageSafe({
-    brand,
-    model: completion.model,
-    input_tokens: completion.input_tokens,
-    output_tokens: completion.output_tokens,
+  const completion = await aiRun.runGeminiCall({
+    feature_key: FEATURE_KEY,
+    business: brand,
+    user_id: null,
+    call_type: "chat_completion",
+    gemini: {
+      system: adviseSystem({
+        brand,
+        brandName: brain && brain.identity ? brain.identity.name : null,
+      }),
+      messages: [
+        { role: "user", content: hints.join("\n") },
+        { role: "assistant", content: "Understood — I will only recommend from this catalogue." },
+        ...history,
+        { role: "user", content: userText },
+      ],
+      temperature: 0.6,
+      maxOutputTokens: 2048,
+      responseSchema: schema,
+      // See analyzePhoto: thinking off so the token budget is all answer.
+      thinkingBudget: 0,
+    },
   });
   const advice = parseModelJson(completion.text);
   if (!advice || !advice.message) {
@@ -887,7 +850,7 @@ async function adviseAndReply({
 }
 
 async function analyzePhoto({ brand, sid, deviceKey, ip, file, message }) {
-  await guardFeature();
+  await guardFeature(brand);
 
   const ttl = secondsToLagosMidnight();
   const dayKey = quotaKey("d", brand, deviceKey, lagosDay());
@@ -925,35 +888,35 @@ async function analyzePhoto({ brand, sid, deviceKey, ip, file, message }) {
       filename: file.originalname,
     });
 
-    const perception = await gemini.chatCompletion({
-      system: PERCEIVE_SYSTEM,
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "image", mime_type: img.mime_type, data: img.data },
-            {
-              type: "text",
-              text: message
-                ? `Shopper note: ${message}`
-                : "Analyse for shade matching.",
-            },
-          ],
-        },
-      ],
-      temperature: 0.15,
-      maxOutputTokens: 1024,
-      responseSchema: PERCEIVE_SCHEMA,
-      // Structured extraction, not reasoning — without this, Gemini 2.5's
-      // default thinking can consume the whole output budget and return an
-      // empty reply (HTTP 200, finishReason=MAX_TOKENS, no text).
-      thinkingBudget: 0,
-    });
-    await recordUsageSafe({
-      brand,
-      model: perception.model,
-      input_tokens: perception.input_tokens,
-      output_tokens: perception.output_tokens,
+    const perception = await aiRun.runGeminiCall({
+      feature_key: FEATURE_KEY,
+      business: brand,
+      user_id: null,
+      call_type: "chat_completion",
+      gemini: {
+        system: PERCEIVE_SYSTEM,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "image", mime_type: img.mime_type, data: img.data },
+              {
+                type: "text",
+                text: message
+                  ? `Shopper note: ${message}`
+                  : "Analyse for shade matching.",
+              },
+            ],
+          },
+        ],
+        temperature: 0.15,
+        maxOutputTokens: 1024,
+        responseSchema: PERCEIVE_SCHEMA,
+        // Structured extraction, not reasoning — without this, Gemini 2.5's
+        // default thinking can consume the whole output budget and return an
+        // empty reply (HTTP 200, finishReason=MAX_TOKENS, no text).
+        thinkingBudget: 0,
+      },
     });
 
     const perceived = parseModelJson(perception.text);
@@ -1047,7 +1010,7 @@ async function analyzePhoto({ brand, sid, deviceKey, ip, file, message }) {
 }
 
 async function chatTurn({ brand, sid, deviceKey, message }) {
-  await guardFeature();
+  await guardFeature(brand);
 
   const ttl = secondsToLagosMidnight();
   const chatKey = quotaKey("c", brand, deviceKey, lagosDay());

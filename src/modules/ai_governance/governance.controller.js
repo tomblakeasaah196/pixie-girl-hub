@@ -5,6 +5,10 @@
 "use strict";
 
 const service = require("./governance.service");
+const repo = require("./governance.repo");
+const health = require("./health.service");
+const healthRepo = require("./health.repo");
+const gemini = require("../../services/gemini.service");
 
 const base = (req) => ({ user: req.user, request_id: req.request_id });
 
@@ -23,6 +27,34 @@ async function toggleFlag(req, res) {
       ...base(req),
       feature_key: req.params.feature_key,
       is_enabled: req.body.is_enabled,
+    }),
+  });
+}
+async function setFlagBrandScope(req, res) {
+  res.json({
+    data: await service.setFlagBrandScope({
+      ...base(req),
+      feature_key: req.params.feature_key,
+      enabled_for_pxg: req.body.enabled_for_pxg,
+      enabled_for_flh: req.body.enabled_for_flh,
+    }),
+  });
+}
+async function setFlagUserCap(req, res) {
+  res.json({
+    data: await service.setFlagUserCap({
+      ...base(req),
+      feature_key: req.params.feature_key,
+      daily_user_cap: req.body.daily_user_cap,
+    }),
+  });
+}
+async function setFlagRestingMessage(req, res) {
+  res.json({
+    data: await service.setFlagRestingMessage({
+      ...base(req),
+      feature_key: req.params.feature_key,
+      resting_message: req.body.resting_message,
     }),
   });
 }
@@ -97,6 +129,8 @@ async function setBudgetCaps(req, res) {
       period_id: req.params.period_id,
       soft_cap_ngn: req.body.soft_cap_ngn,
       hard_cap_ngn: req.body.hard_cap_ngn,
+      storefront_soft_cap_ngn: req.body.storefront_soft_cap_ngn,
+      storefront_hard_cap_ngn: req.body.storefront_hard_cap_ngn,
     }),
   });
 }
@@ -174,6 +208,123 @@ async function upsertModel(req, res) {
   });
 }
 
+// ── Test connection (Q2) ───────────────────────────────────
+// Body may include an api_key/endpoint_url/model override so the admin
+// can Test-then-Save without committing the new value first — but only
+// the CEO+ai_governance.edit role can even reach this route.
+async function testVendor(req, res) {
+  const vendor = req.params.vendor;
+  const started = Date.now();
+  // If overrides were supplied we do a one-shot ping using those values;
+  // otherwise the persisted vendor row (or .env fallback) is used.
+  const override =
+    req.body && (req.body.api_key || req.body.endpoint_url || req.body.model)
+      ? {
+          api_key: (req.body.api_key || "").trim() || null,
+          endpoint_url: (req.body.endpoint_url || "").trim() || null,
+          model: (req.body.model || "").trim() || null,
+        }
+      : null;
+  let result;
+  try {
+    if (override && vendor === "gemini") {
+      // Ad-hoc gemini ping bypassing the saved row.
+      const v = {
+        source: "override",
+        vendor: "gemini",
+        api_key: override.api_key,
+        endpoint_url: override.endpoint_url || gemini.DEFAULT_BASE_URL,
+        default_model: override.model || gemini.DEFAULT_MODEL,
+      };
+      const completion = await gemini.chatCompletion({
+        vendor: v,
+        messages: [{ role: "user", content: "hi" }],
+        maxOutputTokens: 8,
+        thinkingBudget: 0,
+        timeoutMs: 15000,
+      });
+      result = {
+        ok: true,
+        latency_ms: completion.latency_ms,
+        http_status: 200,
+      };
+    } else {
+      result = await health.pingVendor({
+        vendor,
+        source: "manual",
+        checked_by: req.user?.user_id || null,
+      });
+    }
+  } catch (err) {
+    result = {
+      ok: false,
+      latency_ms: Date.now() - started,
+      error_code: err.code || "PING_FAILED",
+      error_message: String(err.api_message || err.message || "test failed").slice(0, 500),
+      http_status: err.status ?? null,
+    };
+  }
+  // Stamp test outcome on the vendor row (Save-gate reads this).
+  await healthRepo.markTestOutcome({
+    vendor,
+    ok: result.ok,
+    latency_ms: result.latency_ms,
+    error: result.ok ? null : (result.error_code || result.error_message || "test failed"),
+    user_id: req.user?.user_id || null,
+  });
+  res.json({ data: result });
+}
+
+async function listVendorHealth(req, res) {
+  // Reuses the standard vendor list; the DB columns added in 000309 come
+  // through automatically.
+  res.json({ data: await service.listVendors() });
+}
+async function listHealthPings(req, res) {
+  res.json({
+    data: await healthRepo.recentPings({
+      vendor: req.query.vendor || null,
+      limit: Math.min(200, Number(req.query.limit) || 50),
+    }),
+  });
+}
+async function listIncidents(req, res) {
+  res.json({
+    data: await healthRepo.listIncidents({
+      vendor: req.query.vendor || null,
+      limit: Math.min(200, Number(req.query.limit) || 100),
+    }),
+  });
+}
+async function pingVendorNow(req, res) {
+  const r = await health.pingVendor({
+    vendor: req.params.vendor,
+    source: "manual",
+    checked_by: req.user?.user_id || null,
+  });
+  res.json({ data: r });
+}
+async function recentErrors(req, res) {
+  res.json({
+    data: await healthRepo.recentErrors({
+      vendor: req.query.vendor || null,
+      limit: Math.min(200, Number(req.query.limit) || 50),
+    }),
+  });
+}
+async function successRate(req, res) {
+  const hours = Math.max(1, Math.min(720, Number(req.query.hours) || 24));
+  res.json({ data: await healthRepo.vendorSuccessRate({ since_hours: hours }) });
+}
+
+async function recentFlagAudit(req, res) {
+  res.json({
+    data: await repo.recentFlagAudit({
+      limit: Math.min(200, Number(req.query.limit) || 50),
+    }),
+  });
+}
+
 async function getBrandVoice(req, res) {
   res.json(await service.getBrandVoice({ brand: req.brand }));
 }
@@ -192,6 +343,10 @@ module.exports = {
   listFlags,
   upsertFlag,
   toggleFlag,
+  setFlagBrandScope,
+  setFlagUserCap,
+  setFlagRestingMessage,
+  recentFlagAudit,
   listGrants,
   grant,
   revokeGrant,
@@ -199,6 +354,13 @@ module.exports = {
   upsertVendor,
   rotateVendor,
   setVendorActive,
+  testVendor,
+  listVendorHealth,
+  listHealthPings,
+  listIncidents,
+  pingVendorNow,
+  recentErrors,
+  successRate,
   activeBudget,
   listBudgets,
   openBudget,

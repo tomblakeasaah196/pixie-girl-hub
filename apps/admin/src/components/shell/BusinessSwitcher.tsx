@@ -46,7 +46,7 @@ export function BusinessSwitcher({ collapsed }: { collapsed: boolean }) {
         <img
           src={b.logoUrl}
           alt=""
-          className="w-full h-full rounded-[9px] object-cover"
+          className="w-full h-full rounded-[9px] object-contain p-[3px]"
         />
       ) : (
         b.monogram

@@ -111,7 +111,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     // static default so the browser doesn't mis-sniff it.
     icon.removeAttribute("type");
     icon.href = url;
-    ensure("apple-touch-icon").href = url;
+    // iOS needs a padded, opaque PNG, not the bare favicon (which the
+    // pipeline generates with zero safe-zone padding for small tab-icon
+    // sizes) — the pipeline writes apple-touch-icon.png as a sibling of
+    // favicon.ico in the same hashed folder, mirroring getWebManifest's
+    // icon-192/512 derivation on the backend.
+    const appleUrl = p.favicon_url
+      ? p.favicon_url.replace(/\/favicon\.ico$/, "/apple-touch-icon.png")
+      : url;
+    ensure("apple-touch-icon").href = appleUrl;
   }, [theme, branding.data]);
 
   // Layer-B accent: gradient + accent for the active business chip /

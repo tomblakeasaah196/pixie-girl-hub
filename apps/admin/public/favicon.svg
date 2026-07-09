@@ -12,7 +12,7 @@
   </defs>
   <rect width="64" height="64" rx="16" fill="url(#bg)"/>
   <g transform="translate(32,32)">
-    <ellipse rx="5.5" ry="14" transform="rotate(45)" fill="url(#petal)"/>
-    <ellipse rx="5.5" ry="14" transform="rotate(-45)" fill="url(#petal)"/>
+    <ellipse rx="4.5" ry="11.5" transform="rotate(45)" fill="url(#petal)"/>
+    <ellipse rx="4.5" ry="11.5" transform="rotate(-45)" fill="url(#petal)"/>
   </g>
 </svg>

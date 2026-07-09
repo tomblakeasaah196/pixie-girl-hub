@@ -275,6 +275,47 @@ function OutboxBubble({
   );
 }
 
+/** Progress messages for the in-flight indicator. They advance by elapsed time
+ *  so a slow turn reads as "still working" rather than a frozen/broken screen —
+ *  reassuring the user it isn't their network. */
+const THINKING_STAGES: { after: number; text: string }[] = [
+  { after: 0, text: "Praxis is thinking…" },
+  { after: 3, text: "Looking that up…" },
+  { after: 7, text: "Pulling your data…" },
+  { after: 12, text: "Working through it…" },
+  { after: 20, text: "Still working — this one's taking a moment…" },
+  { after: 35, text: "Almost there, hang tight…" },
+  { after: 55, text: "This is a heavy one — still on it…" },
+];
+
+function ThinkingIndicator() {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setElapsed((s) => s + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const text =
+    [...THINKING_STAGES].reverse().find((s) => elapsed >= s.after)?.text ??
+    THINKING_STAGES[0].text;
+  return (
+    <div className="flex gap-3 items-center">
+      <Avatar pulse />
+      <span className="inline-flex items-center gap-2 text-[12.5px] text-text-muted">
+        <span className="inline-flex gap-1">
+          {[0, 1, 2].map((i) => (
+            <span
+              key={i}
+              className="w-1.5 h-1.5 rounded-full bg-accent-glow animate-bounce"
+              style={{ animationDelay: `${i * 140}ms` }}
+            />
+          ))}
+        </span>
+        {text}
+      </span>
+    </div>
+  );
+}
+
 export function ChatThread({
   messages,
   pendingActions,
@@ -346,23 +387,7 @@ export function ChatThread({
         />
       ))}
 
-      {thinking && (
-        <div className="flex gap-3 items-center">
-          <Avatar pulse />
-          <span className="inline-flex items-center gap-2 text-[12.5px] text-text-muted">
-            <span className="inline-flex gap-1">
-              {[0, 1, 2].map((i) => (
-                <span
-                  key={i}
-                  className="w-1.5 h-1.5 rounded-full bg-accent-glow animate-bounce"
-                  style={{ animationDelay: `${i * 140}ms` }}
-                />
-              ))}
-            </span>
-            Praxis is thinking…
-          </span>
-        </div>
-      )}
+      {thinking && <ThinkingIndicator />}
 
       {errorNotice && (
         <div className="ml-11 rounded-xl border border-warn/40 bg-warn/10 px-3.5 py-2.5 text-[12.5px] text-warn">

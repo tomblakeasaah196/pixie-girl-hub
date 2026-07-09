@@ -236,6 +236,26 @@ function parseArgs(raw) {
 }
 
 /**
+ * Detect database-mechanics leaking into a user-facing answer. Deep in a schema
+ * exploration the model anchors on table/column text and produces replies like
+ * "the credit_notes table does not exist" or "the provided data only describes
+ * …" — which is broken UX. When this fires we rewrite the answer cleanly.
+ */
+function looksLikeDbSpeak(text) {
+  const t = String(text || "");
+  return (
+    /\b(provided|given) data\b/i.test(t) ||
+    /\bno such table\b|\bdoes not exist\b/i.test(t) ||
+    /\bschemas?\b|\bcolumns?\b/i.test(t) ||
+    /\bis not a (clear|specific|valid)?\s*(question|request)\b/i.test(t) ||
+    /\bthe [a-z]+_[a-z_]+ table\b/i.test(t) ||
+    /\b(sales_order_lines|credit_notes|cancellation_requests|order_lines)\b/i.test(
+      t,
+    )
+  );
+}
+
+/**
  * Run ONE sql tool call and return its raw result payload — the per-hop
  * primitive the query-agent read loop uses to chain a curated-query turn into a
  * generic SQL lookup (e.g. "top styled product" -> "trace it to its base
@@ -411,6 +431,35 @@ async function run({ vendor, user, brand, messages, completion, toolCall, args }
         if (s.content && s.content.trim()) text = s.content.trim();
       } catch (e) {
         logger.warn({ err: e.message }, "praxis sql-agent synthesis pass failed");
+      }
+    }
+    // Final guard: if the answer leaked database mechanics, rewrite it into a
+    // plain business reply with a FRESH, un-anchored call (schema context can't
+    // drag this one back into db-speak). Real figures are preserved.
+    if (looksLikeDbSpeak(text)) {
+      const lastUser = [...messages].reverse().find((m) => m.role === "user");
+      try {
+        const r = await llm.chat({
+          vendor,
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are Praxis, a business operations assistant. Rewrite the DRAFT as a natural reply to the user's question in plain BUSINESS language. NEVER mention tables, columns, schemas, SQL, or 'the provided/given data'. If the draft says data is missing or a table doesn't exist, restate it as a business fact (e.g. 'we don't track product returns in the system yet'). Keep any real figures and names. If the user's message was just chit-chat or a vague 'hmmm', reply naturally and briefly — don't lecture about questions.",
+            },
+            {
+              role: "user",
+              content: `User said: ${(lastUser && lastUser.content) || "(see draft)"}\n\nDRAFT:\n${text}`,
+            },
+          ],
+        });
+        accUsage(usage, r.usage);
+        if (r.content && r.content.trim()) text = r.content.trim();
+      } catch (e) {
+        logger.warn(
+          { err: e.message },
+          "praxis sql-agent db-speak rewrite failed",
+        );
       }
     }
     return { replyText: text || "Here's what I found.", usage, sql: true };

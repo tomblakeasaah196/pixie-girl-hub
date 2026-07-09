@@ -11,6 +11,27 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-09 — Email account activation + OTP password reset
+
+**Source:** user request — every account must verify ownership of its email
+once ("activate"), shown as a post-login banner until done; and forgotten
+passwords should be reset with an emailed one-time code instead of a link.
+Email-only by design (no SMS/WhatsApp). A per-login OTP challenge was
+explicitly rejected as too much friction, so login itself is unchanged.
+
+**Files (new):** `000312_shared_email_mfa.sql` — adds `email_verified`
+(BOOLEAN, default false) and `email_verified_at` on `shared.users`. The
+transient 6-digit codes live in Redis (single-use, 10-min TTL); only the
+resulting flag + timestamp persist.
+
+**Related (no migration):** `auth.service` now (a) sends/confirms a
+one-time activation code (`/auth/activate/send` + `/confirm`), surfacing
+`email_verified` on login + `/auth/me`; and (b) reworks
+`forgotPassword`/`resetPassword` to an emailed OTP keyed by address
+(attempt-capped, resend cooldown) rather than a hashed link token.
+
+---
+
 ## 2026-07-09 — Fix TOTP secret column type (MFA "Invalid code")
 
 **Source:** user report that MFA/TOTP setup always failed with "Invalid code.

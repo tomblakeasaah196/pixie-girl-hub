@@ -20,8 +20,10 @@ import {
   isPinEnabledLocally,
   loginWithPassword,
   loginWithPin,
+  resetPassword,
   type AuthUser,
 } from "@/lib/auth-api";
+import { checkPassword, PASSWORD_RULE_TEXT } from "@/lib/password";
 import { useAuthStore } from "@/stores/auth";
 import { useBusinessStore } from "@/stores/business";
 import type { LoginToggles } from "@/lib/branding";
@@ -89,6 +91,11 @@ export function AuthModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [forgotDone, setForgotDone] = useState(false);
+  // Forgot-password → OTP → new password (two steps in the "forgot" view).
+  const [forgotStep, setForgotStep] = useState<"email" | "reset">("email");
+  const [otp, setOtp] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [newPwConfirm, setNewPwConfirm] = useState("");
 
   const emailRef = useRef<HTMLInputElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -99,6 +106,10 @@ export function AuthModal({
     setView("signin");
     setError(null);
     setForgotDone(false);
+    setForgotStep("email");
+    setOtp("");
+    setNewPw("");
+    setNewPwConfirm("");
     setPassword("");
     setPin("");
     // Default to the PIN pad only when a PIN was actually set up on this
@@ -206,6 +217,8 @@ export function AuthModal({
     setTimeout(() => emailRef.current?.focus(), 60);
   };
 
+  // Step 1: request a code. We always advance to the code step regardless of
+  // whether the address exists (no account enumeration).
   const submitForgot = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading) return;
@@ -213,11 +226,38 @@ export function AuthModal({
     setError(null);
     try {
       await forgotPassword(email.trim().toLowerCase());
-      setForgotDone(true);
     } catch {
-      // Even on failure we show the neutral confirmation (no enumeration).
-      setForgotDone(true);
+      // ignore — never reveal whether the email exists
     } finally {
+      setLoading(false);
+      setForgotStep("reset");
+    }
+  };
+
+  // Step 2: submit the emailed code + a new password.
+  const submitReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (loading) return;
+    if (otp.length !== 6) {
+      setError("Enter the 6-digit code from your email.");
+      return;
+    }
+    const pw = checkPassword(newPw);
+    if (!pw.ok) {
+      setError(pw.error ?? PASSWORD_RULE_TEXT);
+      return;
+    }
+    if (newPw !== newPwConfirm) {
+      setError("Passwords don't match.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      await resetPassword(email.trim().toLowerCase(), otp, newPw);
+      setForgotDone(true);
+    } catch (err) {
+      setError(messageFor(err, "Couldn't reset your password."));
       setLoading(false);
     }
   };
@@ -489,26 +529,36 @@ export function AuthModal({
                 <div className="w-16 h-16 mx-auto mb-4 rounded-full grid place-items-center bg-success/15 text-success">
                   <CheckCircle2 className="w-8 h-8" />
                 </div>
-                <h2 className="font-display text-[22px]">Check your email</h2>
+                <h2 className="font-display text-[22px]">Password updated</h2>
                 <p className="text-text-muted text-[13px] mt-2 max-w-[320px] mx-auto">
-                  If an account exists for{" "}
-                  <span className="text-text-primary font-medium">{email}</span>
-                  , we've sent a link to reset your password. It expires
-                  shortly.
+                  For your security, every other session has been signed out.
+                  Sign in with your new password.
                 </p>
                 <button
-                  onClick={onClose}
+                  onClick={() => {
+                    setView("signin");
+                    setError(null);
+                    setPassword("");
+                  }}
                   className="mt-6 w-full h-11 rounded-xl bg-accent-deep text-[#F4E9D9] font-semibold text-[13px] tracking-widest uppercase hover:bg-accent transition-all"
                 >
-                  Done
+                  Sign In
                 </button>
               </div>
-            ) : (
+            ) : forgotStep === "email" ? (
               <form onSubmit={submitForgot}>
                 <h2 className="font-display text-[24px]">Reset password</h2>
                 <p className="text-text-muted text-[13px] mt-1 mb-5">
-                  Enter your email and we'll send you a secure reset link.
+                  Enter your email and we'll send you a one-time code.
                 </p>
+                {error && (
+                  <div
+                    role="alert"
+                    className="mb-4 text-[12.5px] font-medium text-danger bg-danger/10 border border-danger/30 rounded-lg px-3 py-2"
+                  >
+                    {error}
+                  </div>
+                )}
                 <div className="relative mb-4">
                   <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-text-faint" />
                   <input
@@ -528,9 +578,103 @@ export function AuthModal({
                   {loading ? (
                     <Loader2 className="w-5 h-5 animate-spin" />
                   ) : (
-                    "Send reset link"
+                    "Send code"
                   )}
                 </button>
+              </form>
+            ) : (
+              <form onSubmit={submitReset}>
+                <h2 className="font-display text-[24px]">Enter code</h2>
+                <p className="text-text-muted text-[13px] mt-1 mb-5">
+                  If an account exists for{" "}
+                  <span className="text-text-primary font-medium">{email}</span>
+                  , we've emailed a 6-digit code. Enter it with your new
+                  password.
+                </p>
+                {error && (
+                  <div
+                    role="alert"
+                    className="mb-4 text-[12.5px] font-medium text-danger bg-danger/10 border border-danger/30 rounded-lg px-3 py-2"
+                  >
+                    {error}
+                  </div>
+                )}
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  autoFocus
+                  maxLength={6}
+                  value={otp}
+                  onChange={(e) =>
+                    setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))
+                  }
+                  placeholder="000000"
+                  className="w-full mb-3 bg-text-primary/[0.04] border border-line/60 rounded-xl py-3 text-center text-2xl font-mono tracking-[0.4em] text-text-primary focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/60 transition-all"
+                />
+                <div className="relative mb-3">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-text-faint" />
+                  <input
+                    type={showPw ? "text" : "password"}
+                    autoComplete="new-password"
+                    required
+                    value={newPw}
+                    onChange={(e) => setNewPw(e.target.value)}
+                    placeholder="New password"
+                    className={cn(inputCls, "pr-11")}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPw((s) => !s)}
+                    aria-label={showPw ? "Hide password" : "Show password"}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 grid place-items-center w-7 h-7 rounded-md text-text-faint hover:text-text-primary"
+                  >
+                    {showPw ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+                <div className="relative mb-2">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-text-faint" />
+                  <input
+                    type={showPw ? "text" : "password"}
+                    autoComplete="new-password"
+                    required
+                    value={newPwConfirm}
+                    onChange={(e) => setNewPwConfirm(e.target.value)}
+                    placeholder="Confirm new password"
+                    className={inputCls}
+                  />
+                </div>
+                <p className="text-[11px] text-text-faint mb-4">
+                  {PASSWORD_RULE_TEXT}
+                </p>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full h-12 rounded-xl bg-accent-deep text-[#F4E9D9] font-semibold text-[13px] tracking-widest uppercase hover:bg-accent transition-all disabled:opacity-80 flex items-center justify-center"
+                >
+                  {loading ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : (
+                    "Update password"
+                  )}
+                </button>
+                <div className="text-center mt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForgotStep("email");
+                      setError(null);
+                      setOtp("");
+                    }}
+                    className="text-[12.5px] font-semibold text-text-muted hover:text-text-primary"
+                  >
+                    Use a different email
+                  </button>
+                </div>
               </form>
             )}
           </div>

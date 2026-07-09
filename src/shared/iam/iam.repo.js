@@ -339,20 +339,12 @@ async function findUserById(userId) {
     `SELECT user_id, email, display_name, password_hash, status,
             is_ceo, permitted_businesses, default_business_key,
             COALESCE(totp_enabled, false) AS totp_enabled,
-            COALESCE(email_mfa_enabled, false) AS email_mfa_enabled,
             totp_secret_enc, profile_type
        FROM shared.users
       WHERE user_id = $1`,
     [userId],
   );
   return rows[0] || null;
-}
-
-async function setEmailMfa(userId, enabled) {
-  await query(
-    `UPDATE shared.users SET email_mfa_enabled = $2, updated_at = now() WHERE user_id = $1`,
-    [userId, enabled],
-  );
 }
 
 // ── Sessions ────────────────────────────────────────────────
@@ -924,7 +916,6 @@ module.exports = {
   getTotpSecret,
   enableTotp,
   disableTotp,
-  setEmailMfa,
   // Audit
   queryAuditLog,
   getAuditEntry,

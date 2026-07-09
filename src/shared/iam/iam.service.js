@@ -25,46 +25,6 @@ const {
 } = require("../../utils/errors");
 const repo = require("./iam.repo");
 const events = require("./iam.events");
-const emailService = require("../../services/email.service");
-const { logger } = require("../../config/logger");
-
-// ── Email MFA helpers ───────────────────────────────────────
-
-// Transient enrolment codes live in Redis, never the DB. Single-use.
-const EMAIL_MFA_ENROLL_PREFIX = "emailmfa:enroll:";
-const EMAIL_MFA_ENROLL_CD_PREFIX = "emailmfa:enroll:cd:";
-const EMAIL_MFA_TTL_SEC = 600; // 10 minutes
-const EMAIL_MFA_RESEND_COOLDOWN_SEC = 45;
-
-/** Cryptographically-strong 6-digit numeric code (000000–999999). */
-function generateOtp() {
-  return String(crypto.randomInt(0, 1000000)).padStart(6, "0");
-}
-
-/** Mask an email for display: "jane.doe@x.com" → "ja******@x.com". */
-function maskEmail(email) {
-  const [local, domain] = String(email || "").split("@");
-  if (!domain) return "your email";
-  const shown = local.slice(0, 2);
-  return `${shown}${"*".repeat(Math.max(1, local.length - shown.length))}@${domain}`;
-}
-
-/** Send a one-time MFA code email. Shared copy for enrol + (login lives in auth). */
-async function sendMfaCodeEmail(to, code, { purpose } = {}) {
-  const heading =
-    purpose === "enroll"
-      ? "Confirm email authentication"
-      : "Your sign-in verification code";
-  await emailService.send({
-    to,
-    subject: `${code} is your Pixie Girl Hub verification code`,
-    html: `<p>Hello,</p>
-           <p>${heading}. Enter this code to continue:</p>
-           <p style="font-size:30px;font-family:monospace;letter-spacing:0.4em;font-weight:bold;">${code}</p>
-           <p>This code expires in 10 minutes and can be used once. If you did not request it, ignore this email.</p>`,
-    text: `Your Pixie Girl Hub verification code is ${code} (expires in 10 minutes, single use).`,
-  });
-}
 
 // ── TOTP helpers (RFC 6238, crypto-only, no external deps) ──
 
@@ -550,129 +510,6 @@ async function totpStatus(ctx) {
   };
 }
 
-// ── Email MFA (one-time code to the account's own email) ────
-
-/**
- * Begin email-MFA enrolment: email a single-use 6-digit code to the
- * caller's own account email and stash it (hashed by nobody — short-lived,
- * single-use) in Redis. Rate-limited so it can't be used to email-bomb.
- */
-async function setupEmailMfa(ctx) {
-  const user = await repo.findUserById(ctx.user_id);
-  if (!user) throw new NotFoundError("User");
-  if (user.email_mfa_enabled) {
-    throw new ConflictError(
-      "Email authentication is already enabled. Disable it first to re-verify.",
-    );
-  }
-
-  const redis = getRedis();
-  const cdKey = EMAIL_MFA_ENROLL_CD_PREFIX + ctx.user_id;
-  if (await redis.get(cdKey)) {
-    throw new AppError(
-      "MFA_CODE_THROTTLED",
-      "A code was just sent. Please wait a moment before requesting another.",
-      429,
-    );
-  }
-
-  const code = generateOtp();
-  await redis.set(
-    EMAIL_MFA_ENROLL_PREFIX + ctx.user_id,
-    code,
-    "EX",
-    EMAIL_MFA_TTL_SEC,
-  );
-  await redis.set(cdKey, "1", "EX", EMAIL_MFA_RESEND_COOLDOWN_SEC);
-
-  await sendMfaCodeEmail(user.email, code, { purpose: "enroll" });
-
-  return { sent: true, email_masked: maskEmail(user.email) };
-}
-
-/** Verify the enrolment code and turn email MFA on for the account. */
-async function verifyEmailMfa(ctx, code) {
-  const redis = getRedis();
-  const key = EMAIL_MFA_ENROLL_PREFIX + ctx.user_id;
-  const stored = await redis.get(key);
-  if (!stored) {
-    throw new AppError(
-      "EMAIL_MFA_CODE_EXPIRED",
-      "Verification code expired or not found. Request a new one.",
-      400,
-    );
-  }
-  if (String(code).trim() !== stored) {
-    throw new AppError(
-      "INVALID_EMAIL_MFA_CODE",
-      "Incorrect verification code",
-      401,
-    );
-  }
-
-  await redis.del(key); // single-use
-  await repo.setEmailMfa(ctx.user_id, true);
-
-  await audit({
-    business: ctx.business,
-    user_id: ctx.user_id,
-    action_key: "email_mfa_enabled",
-    target_type: "users",
-    target_id: ctx.user_id,
-    request_id: ctx.request_id,
-  });
-  events.emit("email_mfa_enabled", {
-    business: ctx.business,
-    user_id: ctx.user_id,
-  });
-
-  return { enabled: true };
-}
-
-/** Disable email MFA. Requires a password re-check, mirroring TOTP disable. */
-async function disableEmailMfa(ctx, password) {
-  const user = await repo.findUserById(ctx.user_id);
-  if (!user) throw new NotFoundError("User");
-  if (!user.email_mfa_enabled) {
-    throw new AppError(
-      "EMAIL_MFA_NOT_ENABLED",
-      "Email authentication is not currently enabled",
-      400,
-    );
-  }
-
-  const ok = await argon2.verify(user.password_hash, password);
-  if (!ok) {
-    throw new AppError("INVALID_PASSWORD", "Password is incorrect", 401);
-  }
-
-  await repo.setEmailMfa(ctx.user_id, false);
-  const redis = getRedis();
-  await redis
-    .del(EMAIL_MFA_ENROLL_PREFIX + ctx.user_id)
-    .catch(() => {}); // clear any dangling enrol code
-
-  await audit({
-    business: ctx.business,
-    user_id: ctx.user_id,
-    action_key: "email_mfa_disabled",
-    target_type: "users",
-    target_id: ctx.user_id,
-    request_id: ctx.request_id,
-  });
-  events.emit("email_mfa_disabled", {
-    business: ctx.business,
-    user_id: ctx.user_id,
-  });
-
-  return { disabled: true };
-}
-
-async function emailMfaStatus(ctx) {
-  const user = await repo.findUserById(ctx.user_id);
-  return { enabled: !!(user && user.email_mfa_enabled) };
-}
-
 // ── Access reviews ──────────────────────────────────────────
 
 async function listReviews(ctx, { status, page, limit }) {
@@ -935,11 +772,6 @@ module.exports = {
   verifyTotp,
   disableTotp,
   totpStatus,
-  // Email MFA
-  setupEmailMfa,
-  verifyEmailMfa,
-  disableEmailMfa,
-  emailMfaStatus,
   // Access reviews
   listReviews,
   getReview,

@@ -23,6 +23,7 @@ import { PraxisDrawer } from "@/components/praxis/PraxisDrawer";
 import { IosInstallHint } from "./IosInstallHint";
 import { PwaInstallBanner } from "./PwaInstallBanner";
 import { OfflineIndicator } from "./OfflineIndicator";
+import { EmailActivationBanner } from "./EmailActivationBanner";
 
 /** The authenticated shell (canon §3): sidebar + sticky top bar + content,
  *  plus the global floating layer (App-Menu pill, launcher, mobile nav, ⌘K). */
@@ -71,6 +72,7 @@ export function AppShell() {
             <OfflineIndicator />
             <PwaInstallBanner />
             <IosInstallHint />
+            <EmailActivationBanner />
             <BreadcrumbStrip />
           </>
         )}

@@ -11,6 +11,26 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-09 — Fix TOTP secret column type (MFA "Invalid code")
+
+**Source:** user report that MFA/TOTP setup always failed with "Invalid code.
+Check your authenticator app and try again", regardless of the code entered.
+
+**Root cause:** `shared.users.totp_secret_enc` was declared `BYTEA`, but the
+shared encryption service (`services/encryption.service.js`) returns/accepts
+base64 **TEXT** — like every other `*_enc` column. The base64 ciphertext was
+stored as raw bytes; on read `decrypt()` ran `Buffer.from(buffer, "base64")`,
+which ignores the encoding when handed a Buffer, so AES-256-GCM auth failed
+and `verifyTotp` threw a 500 that the admin UI relabelled as "Invalid code".
+
+**Files (edited):** `000211_shared_iam_security.sql` — column is now `TEXT`
+so a clean checkout is correct on first deploy.
+**Files (new):** `000311_shared_totp_secret_text.sql` — converts existing
+deployments from `BYTEA` to `TEXT` (guarded; `convert_from` recovers any
+in-progress secret losslessly, so no re-scan is needed).
+
+---
+
 ## 2026-07-08 — Curated onboarding articles (HR & Staff → Onboarding)
 
 **Source:** user feedback on My HR's "Getting started" card pulling

@@ -334,7 +334,8 @@ export const MODULES: AppModule[] = [
   {
     key: "praxis",
     label: "Praxis AI",
-    description: "Your agent",
+    description:
+      "Reads freely · writes only with your sign-off · acts with your permissions",
     group: "grow",
     route: "/praxis",
     icon: Sparkles,

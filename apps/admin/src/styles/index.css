@@ -193,7 +193,13 @@ select {
    mismatched/late theme. A Tailwind `text-*` utility still wins where set. */
 input,
 textarea {
+  color-scheme: dark;
   color: rgb(var(--text));
+  background: rgb(var(--panel-2));
+}
+[data-theme="light"] input,
+[data-theme="light"] textarea {
+  color-scheme: light;
 }
 input::placeholder,
 textarea::placeholder {

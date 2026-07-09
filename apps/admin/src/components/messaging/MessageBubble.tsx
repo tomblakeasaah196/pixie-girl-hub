@@ -103,7 +103,7 @@ export function MessageBubble({
             className={cn(
               "rounded-2xl px-3 py-2 text-[13.5px] leading-relaxed shadow-sm break-words",
               isOwn
-                ? "bg-accent/85 text-bg rounded-tr-md"
+                ? "bg-accent/15 border border-accent/30 text-text-primary rounded-tr-md"
                 : "bg-panel-2 border hairline text-text-primary rounded-tl-md",
             )}
           >
@@ -112,7 +112,7 @@ export function MessageBubble({
                 className={cn(
                   "mb-1.5 -mx-1 px-2 py-1 rounded border-l-2 text-[11.5px] truncate",
                   isOwn
-                    ? "border-bg/40 bg-bg/10 text-bg/70"
+                    ? "border-accent/50 bg-bg/10 text-text-muted"
                     : "border-accent/60 bg-panel/40 text-text-muted",
                 )}
               >
@@ -127,22 +127,21 @@ export function MessageBubble({
                 <ProductCarousel
                   intro={message.metadata.intro}
                   products={message.metadata.products}
-                  isOwn={isOwn}
                 />
               )}
             {message.message_type === "send_invoice" && (
-              <InvoiceCard message={message} isOwn={isOwn} />
+              <InvoiceCard message={message} />
             )}
             {message.message_type !== "text" &&
               message.message_type !== "product_share" &&
               message.message_type !== "send_invoice" && (
-                <MessageAttachments message={message} isOwn={isOwn} />
+                <MessageAttachments message={message} />
               )}
             {message.is_forwarded && (
               <div
                 className={cn(
                   "mb-0.5 flex items-center gap-1 text-[10.5px] italic",
-                  isOwn ? "text-bg/60" : "text-text-faint",
+                  "text-text-faint",
                 )}
               >
                 <Forward className="w-3 h-3" /> Forwarded

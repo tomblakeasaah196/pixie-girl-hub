@@ -12,10 +12,8 @@ const BARS = 40;
 /** WhatsApp-style voice-note player: play/pause + scrubbable waveform. */
 export function VoiceNotePlayer({
   url,
-  isOwn,
 }: {
   url: string;
-  isOwn?: boolean;
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [peaks, setPeaks] = useState<number[]>([]);
@@ -73,7 +71,7 @@ export function VoiceNotePlayer({
         onClick={toggle}
         className={cn(
           "grid place-items-center w-8 h-8 rounded-full shrink-0",
-          isOwn ? "bg-bg/20 text-bg" : "bg-accent/15 text-accent-glow",
+          "bg-accent/15 text-accent-glow",
         )}
         title={playing ? "Pause" : "Play"}
       >
@@ -91,13 +89,7 @@ export function VoiceNotePlayer({
                 key={i}
                 className={cn(
                   "flex-1 rounded-full transition-colors",
-                  active
-                    ? isOwn
-                      ? "bg-bg/80"
-                      : "bg-accent"
-                    : isOwn
-                      ? "bg-bg/30"
-                      : "bg-text-faint/40",
+                  active ? "bg-accent" : "bg-text-faint/40",
                 )}
                 style={{ height: `${Math.max(12, p * 100)}%` }}
               />
@@ -107,7 +99,7 @@ export function VoiceNotePlayer({
         <div
           className={cn(
             "text-[10px] mt-0.5 font-mono",
-            isOwn ? "text-bg/70" : "text-text-faint",
+            "text-text-faint",
           )}
         >
           {fmtDuration(current || duration)}

@@ -9,11 +9,9 @@ const ngn = (v: string | number | null | undefined) =>
 export function ProductCarousel({
   intro,
   products,
-  isOwn,
 }: {
   intro?: string;
   products: ProductCard[];
-  isOwn: boolean;
 }) {
   return (
     <div className="space-y-2 mb-1 min-w-[260px]">
@@ -32,7 +30,7 @@ export function ProductCarousel({
             key={`${p.kind}-${p.id}`}
             className={cn(
               "snap-start shrink-0 w-40 rounded-lg overflow-hidden border",
-              isOwn ? "border-bg/25 bg-bg/10" : "hairline bg-panel",
+              "hairline bg-panel",
             )}
           >
             <div className="aspect-square bg-panel-2 grid place-items-center text-text-faint relative">
@@ -49,7 +47,7 @@ export function ProductCarousel({
               <span
                 className={cn(
                   "absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-full text-[9px] uppercase tracking-wide",
-                  isOwn ? "bg-bg/30 text-bg" : "bg-panel/90 text-text-muted",
+                  "bg-panel/90 text-text-muted",
                 )}
               >
                 {p.kind}
@@ -63,7 +61,7 @@ export function ProductCarousel({
                 <div
                   className={cn(
                     "text-[11.5px] font-mono mt-0.5",
-                    isOwn ? "text-bg/80" : "text-accent-glow",
+                    "text-accent-glow",
                   )}
                 >
                   {ngn(p.price)}
@@ -76,9 +74,7 @@ export function ProductCarousel({
                   rel="noreferrer"
                   className={cn(
                     "mt-1.5 flex items-center justify-center gap-1 rounded-md py-1.5 text-[11px] font-medium transition-colors",
-                    isOwn
-                      ? "bg-bg/25 text-bg hover:bg-bg/35"
-                      : "bg-accent text-bg hover:bg-accent-glow",
+                    "bg-accent text-bg hover:bg-accent-glow",
                   )}
                 >
                   Tap to order <ChevronRight className="w-3 h-3" />

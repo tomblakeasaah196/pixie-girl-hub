@@ -243,19 +243,20 @@ async function createChannel({ client, channel }) {
   return rows[0];
 }
 
-/** Existing 1:1 internal DM between two users in a brand, if any. */
-async function findDirectChannel({ client, brand, userA, userB }) {
+/** Existing 1:1 internal DM between two users, if any — not brand-scoped
+ *  (see listChannelsForUser: staff DMs aren't owned by a single brand). */
+async function findDirectChannel({ client, userA, userB }) {
   const { rows } = await ex(client)(
     `SELECT c.*
        FROM shared.message_channels c
-       JOIN shared.channel_members m1 ON m1.channel_id = c.channel_id AND m1.user_id = $2
-       JOIN shared.channel_members m2 ON m2.channel_id = c.channel_id AND m2.user_id = $3
-      WHERE c.channel_type = 'direct' AND c.business = $1
+       JOIN shared.channel_members m1 ON m1.channel_id = c.channel_id AND m1.user_id = $1
+       JOIN shared.channel_members m2 ON m2.channel_id = c.channel_id AND m2.user_id = $2
+      WHERE c.channel_type = 'direct'
         AND (SELECT count(*) FROM shared.channel_members mm
               WHERE mm.channel_id = c.channel_id AND mm.user_id IS NOT NULL) = 2
       ORDER BY c.created_at ASC
       LIMIT 1`,
-    [brand, userA, userB],
+    [userA, userB],
   );
   return rows[0] || null;
 }
@@ -688,7 +689,11 @@ async function unreadCountForUser({ user_id, brand }) {
   let extra = "";
   if (brand) {
     params.push(brand);
-    extra = ` AND c.business = $${params.length}`;
+    // Same exemption as listChannelsForUser: a direct DM or staff group
+    // isn't owned by whichever brand happens to be active right now, so
+    // don't let it drop out of the badge count when the viewer is on the
+    // "wrong" brand.
+    extra = ` AND (c.business = $${params.length} OR c.channel_type != 'customer_thread')`;
   }
   const { rows } = await query(
     `SELECT c.channel_id, c.business, c.external_platform,

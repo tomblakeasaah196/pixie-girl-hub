@@ -218,7 +218,7 @@ async function getOrCreateDirect({ brand, user, request_id, target_user_id }) {
     throw new ValidationError("A valid colleague is required to start a chat");
   }
   const existing = await repo.findDirectChannel({
-    brand, userA: user.user_id, userB: target_user_id,
+    userA: user.user_id, userB: target_user_id,
   });
   if (existing) return existing;
   return createChannel({

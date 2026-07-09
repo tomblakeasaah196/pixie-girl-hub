@@ -190,6 +190,13 @@ const SECTIONS: Section[] = [
         to: "/settings/notifications",
       },
       {
+        key: "comms-studio",
+        label: "Communications Studio",
+        desc: "Every automated message in one place — edit copy, pick channel, preview email templates",
+        icon: MessageCircle,
+        to: "/settings/comms-studio",
+      },
+      {
         key: "channel-policy",
         label: "Channel Policy",
         desc: "Where every automated message goes — keeps the WhatsApp bill in check",

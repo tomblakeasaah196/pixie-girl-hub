@@ -2,9 +2,10 @@
  * Sales Campaigns — NOTIFICATIONS & REPORT (V2.2 §6.22).
  *
  *   fireGoLiveBlast(): on go-live, fan out to the pre-launch signup list
- *     via email (Nodemailer) and WhatsApp (Meta Cloud API), per each
- *     signup's notify_via. Idempotent — only un-notified signups are sent,
- *     and each is marked notified.
+ *     through the Communications Studio's `campaign_launch` automation.
+ *     Channel, body and subject come from the Studio row — this function
+ *     supplies the variables (campaign name, URL) and the destination.
+ *     Idempotent — only un-notified signups are sent, each marked notified.
  *
  *   generatePostCampaignReport(): on end, render a PDF summary (pdfkit),
  *     store it via the storage abstraction, return its URL.
@@ -16,8 +17,7 @@ const PDFDocument = require("pdfkit");
 const repo = require("./campaigns.repo");
 const main = require("./campaigns.service");
 const businessConfig = require("../business_setup/business-config.repo");
-const email = require("../../services/email.service");
-const whatsapp = require("../../services/whatsapp.service");
+const commsStudio = require("../comms_studio/comms-studio.service");
 const documents = require("../../shared/documents/documents.service");
 const { logger } = require("../../config/logger");
 
@@ -39,29 +39,28 @@ async function fireGoLiveBlast({ brand, campaign_id }) {
 
   for (const s of signups) {
     try {
-      const wantsEmail =
-        (s.notify_via === "email" || s.notify_via === "both") && s.email;
-      const wantsWa =
-        (s.notify_via === "whatsapp" || s.notify_via === "both") && s.phone;
-
-      if (wantsEmail) {
-        await email.send({
-          to: s.email,
-          subject: `${campaign.name} is live 🎉`,
-          html: `<p>${campaign.name} is now live. Shop before it ends:</p><p><a href="${url}">${url}</a></p>`,
-          text: `${campaign.name} is now live. Shop here: ${url}`,
-        });
-      }
-      if (wantsWa) {
-        await whatsapp.sendText({
-          brand,
-          to: s.phone,
-          body: `🔥 ${campaign.name} is LIVE! Shop now: ${url}`,
-        });
-      }
-      if (wantsEmail || wantsWa) {
+      // Each signup goes through the Studio's campaign_launch automation.
+      // The Studio row (000309 seed) hard-blocks WhatsApp on campaign_launch,
+      // so a signup with notify_via='whatsapp' falls back to email — the
+      // "WhatsApp marketing" leak this function used to have is closed here.
+      const result = await commsStudio.dispatch({
+        brand,
+        event_key: "campaign_launch",
+        contact_id: s.contact_id || null,
+        reference_type: "sales_campaign",
+        reference_id: campaign_id,
+        dedup_key: `campaign_launch:${campaign_id}:${s.signup_id}`,
+        variables: {
+          campaign_name: campaign.name,
+          campaign_url: url,
+          override_to_email: s.email || null,
+          override_to_phone: s.phone || null,
+          first_name: s.email ? String(s.email).split("@")[0] : "there",
+        },
+      });
+      if (result.dispatched || result.reason === "already_sent") {
         await repo.markSignupNotified({ brand, signup_id: s.signup_id });
-        sent++;
+        if (result.dispatched) sent++;
       }
     } catch (err) {
       logger.error(

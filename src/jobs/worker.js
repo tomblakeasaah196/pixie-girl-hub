@@ -146,6 +146,7 @@ async function startWorkers() {
     runPendingActionExpirySweep,
   } = require("./schedulers/ai-pending-expiry");
   const { runLayawayReminders } = require("./schedulers/layaway-reminders");
+  const { runBirthdayWishes } = require("./schedulers/birthday-wishes");
   const { runWorkflowTimeoutSweep } = require("./schedulers/workflow-timeout");
   const {
     runCampaignStateTransitions,
@@ -248,6 +249,10 @@ async function startWorkers() {
     runPendingActionExpirySweep,
   );
   scheduleCron("layaway-reminders", "*/30 * * * *", runLayawayReminders);
+  // Birthday wishes — Communications Studio `birthday_wish` automation.
+  // 09:00 Africa/Lagos = 08:00 UTC. Dispatcher deduplicates per year, so
+  // a restart, retry, or manual re-trigger the same day is a no-op.
+  scheduleCron("birthday-wishes", "0 8 * * *", runBirthdayWishes);
   // Nightly HR attendance: reconcile + query reminders + lapsed off-site.
   // 21:00 Africa/Lagos — attendance is now live all day (Socket.io pushes
   // every punch to the Attendance tab), so this only settles the books at

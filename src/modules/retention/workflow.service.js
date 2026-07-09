@@ -18,6 +18,7 @@ const couponService = require("./coupon.service");
 const retentionService = require("./retention.service");
 const tasksService = require("../../shared/tasks/tasks.service");
 const email = require("../../services/email.service");
+const policy = require("../outbound_policy/outbound-policy.service");
 const whatsapp = require("../../services/whatsapp.service");
 // SMS removed in PR 2 (smartcomm policy work — see migration 000214).
 // Email + WhatsApp + Instagram cover every retention workflow we need;
@@ -191,12 +192,40 @@ async function runAction({ brand, rule, execution }) {
     case "send_whatsapp": {
       if (!contact || !contact.phone)
         return { status: "suppressed", failure_reason: "no contact phone" };
-      await whatsapp.sendText({
+      // Respect the Communications Studio's outbound policy: if the rule's
+      // synthetic event (or a broad 'marketing_blast' default) is set to
+      // block_whatsapp, the retention worker must not push WhatsApp behind
+      // the CEO's back. Falls through to email when blocked and the rule
+      // has an email body configured, otherwise suppresses.
+      const eventKey = cfg.event_key || "marketing_blast";
+      const resolved = await policy.resolveChannel({
         brand,
-        to: contact.phone,
-        body: cfg.body || "",
+        event_key: eventKey,
+        contact_id: execution.contact_id,
       });
-      return { status: "completed", result_summary: { whatsapp_sent: true } };
+      if (resolved.channel === "whatsapp") {
+        await whatsapp.sendText({
+          brand,
+          to: contact.phone,
+          body: cfg.body || "",
+        });
+        return { status: "completed", result_summary: { whatsapp_sent: true } };
+      }
+      if (resolved.channel === "email" && contact.email && (cfg.email_body || cfg.body)) {
+        await email.send({
+          to: contact.email,
+          subject: cfg.subject || "A note from us",
+          html: cfg.email_body || cfg.body,
+        });
+        return {
+          status: "completed",
+          result_summary: { email_sent: true, whatsapp_blocked_by_policy: true },
+        };
+      }
+      return {
+        status: "suppressed",
+        failure_reason: `whatsapp blocked by policy (${resolved.reason})`,
+      };
     }
     case "notify_team": {
       if (!cfg.user_id)

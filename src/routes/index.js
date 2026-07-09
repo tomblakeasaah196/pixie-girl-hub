@@ -131,6 +131,9 @@ const whatsappTemplatesRouter = require("../modules/whatsapp_templates/whatsapp-
 // Outbound Channel Policy (cost discipline — PR 2)
 const outboundPolicyRouter = require("../modules/outbound_policy/outbound-policy.routes");
 
+// Communications Studio — CEO-editable automated-message control plane
+const commsStudioRouter = require("../modules/comms_studio/comms-studio.routes");
+
 // Help Center (DB-driven guides + FAQs — PR 2)
 const helpCenterRouter = require("../modules/help_center/help-center.routes");
 
@@ -371,6 +374,7 @@ function mountRoutes(app) {
     ["/messaging-accounts", messagingAccountsRouter],
     ["/whatsapp-templates", whatsappTemplatesRouter],
     ["/outbound-policy", outboundPolicyRouter],
+    ["/comms-studio", commsStudioRouter],
     ["/help", helpCenterRouter],
     ["/calendar", calendarRouter],
     ["/tasks", tasksRouter],

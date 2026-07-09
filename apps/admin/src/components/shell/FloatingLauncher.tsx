@@ -205,8 +205,13 @@ export function FloatingLauncher() {
       suppressClick.current = false;
       return;
     }
-    if (isDesktop) openPraxis();
-    else setOpen((v) => !v);
+    if (isDesktop) {
+      // The badge on this button counts unread messages, not Praxis
+      // activity — so when it's showing a number, clicking should land on
+      // the thing the badge is about instead of opening Praxis underneath it.
+      if (unread > 0) openDock();
+      else openPraxis();
+    } else setOpen((v) => !v);
   }
 
   const fanBelow = pos != null && pos.top < FAN_HEIGHT + EDGE_PAD;
@@ -219,6 +224,7 @@ export function FloatingLauncher() {
     icon: ReactNode,
     onClick: () => void,
     accent?: boolean,
+    badge?: number,
   ) => (
     <button
       onClick={() => {
@@ -234,6 +240,11 @@ export function FloatingLauncher() {
         {label}
       </span>
       {icon}
+      {!!badge && (
+        <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 rounded-[8px] bg-danger text-white text-[9px] font-bold grid place-items-center border-2 border-bg">
+          {badge > 99 ? "99+" : badge}
+        </span>
+      )}
     </button>
   );
 
@@ -265,8 +276,12 @@ export function FloatingLauncher() {
             )}
           </div>
           <div className="group/m">
-            {mini("Messages", <MessageCircle className="w-5 h-5" />, () =>
-              isDesktop ? openDock() : navigate("/smartcomm"),
+            {mini(
+              "Messages",
+              <MessageCircle className="w-5 h-5" />,
+              () => (isDesktop ? openDock() : navigate("/smartcomm")),
+              false,
+              unread,
             )}
           </div>
           <div className="group/m">

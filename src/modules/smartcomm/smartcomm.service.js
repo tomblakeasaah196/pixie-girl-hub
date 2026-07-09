@@ -703,9 +703,30 @@ async function markRead({ user, id, up_to_id }) {
       user_id: user.user_id,
       up_to_id,
     });
+    // Internal DMs / groups: advance the SENDER-visible delivery tick on
+    // every message this reader just consumed to 'read', so the sender's
+    // one-check bubble flips to two blue checks. Customer threads keep
+    // their Meta-driven delivery lifecycle and are excluded inside the
+    // helper — nothing to do for them here.
+    let advanced = [];
+    if (channel.channel_type !== "customer_thread") {
+      advanced = await repo.markInternalMessagesRead({
+        client,
+        channel_id: id,
+        reader_user_id: user.user_id,
+        up_to_id,
+      });
+    }
     events.emit("channel.read", {
       channel_id: id,
       user_id: user.user_id,
+      // The realtime layer forwards these ids to each SENDER so their
+      // open MessageThread can flip the ticks without waiting for the
+      // 60-second poll. Empty array on customer threads / no-op reads.
+      delivered_message_ids: advanced.map((r) => r.message_id),
+      sender_user_ids: [
+        ...new Set(advanced.map((r) => r.sender_user_id).filter(Boolean)),
+      ],
     });
     return { channel_id: id, read_at: new Date().toISOString() };
   });

@@ -7,6 +7,7 @@ import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { smartcommApi, type ChannelListParams } from "@/lib/smartcomm-api";
 import { getSocket, joinRoom, leaveRoom, rooms } from "@/lib/socket";
+import { useAuthStore } from "@/stores/auth";
 
 /** List the inbox for the current user (active brand). */
 export function useChannels(params: ChannelListParams = {}) {
@@ -97,9 +98,22 @@ export function useChannelRealtime(channelId: string | null | undefined) {
     };
     const onMessageDeleted = onMessageEdited;
     const onMessageReacted = onMessageEdited;
-    const onChannelRead = (p: { channel_id: string }) => {
-      if (p.channel_id === channelId) {
-        qc.invalidateQueries({ queryKey: ["smartcomm", "unread"] });
+    const onChannelRead = (p: {
+      channel_id: string;
+      user_id?: string;
+      delivered_message_ids?: string[];
+    }) => {
+      if (p.channel_id !== channelId) return;
+      qc.invalidateQueries({ queryKey: ["smartcomm", "unread"] });
+      // A colleague opening the thread advances my messages from "sent"
+      // (one tick) to "read" (two blue checks) — refetch so the ticks
+      // update instantly, not sixty seconds later on the poll. Skip when
+      // I'm the reader (nothing of mine transitions from my own read).
+      const someoneElseRead =
+        p.user_id !== useAuthStore.getState().user?.id &&
+        (p.delivered_message_ids?.length ?? 0) > 0;
+      if (someoneElseRead) {
+        qc.invalidateQueries({ queryKey: ["smartcomm", "messages", channelId] });
       }
     };
     const onThreadStatusChanged = (p: { channel_id: string }) => {

@@ -1,7 +1,10 @@
 import { useEffect, useCallback } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/cn";
+import { moduleForPath, moduleIsPermitted } from "@/lib/modules";
+import { useAuthStore } from "@/stores/auth";
+import { DeniedState } from "@/components/ui/controls";
 import { useUiStore } from "@/stores/ui";
 import { useIsDesktop } from "@/hooks/useMediaQuery";
 import { useRealtimeInvalidation } from "@/hooks/useRealtimeInvalidation";
@@ -24,6 +27,38 @@ import { PraxisDrawer } from "@/components/praxis/PraxisDrawer";
 import { IosInstallHint } from "./IosInstallHint";
 import { PwaInstallBanner } from "./PwaInstallBanner";
 import { OfflineIndicator } from "./OfflineIndicator";
+import { EmailActivationBanner } from "./EmailActivationBanner";
+
+/**
+ * Route-level RBAC guard: resolves the module owning the current path and
+ * blocks it if the user lacks that module's permission. Defense-in-depth for
+ * direct URL access (nav already hides the entry points); the API enforces
+ * data access regardless. Waits for grants to resolve so it never flashes
+ * "denied" during the post-login load window, and never gates un-permissioned
+ * personal routes (Command Center, Workspace, Notifications).
+ */
+function GuardedOutlet() {
+  const { pathname } = useLocation();
+  const can = useAuthStore((s) => s.can);
+  const isCeo = useAuthStore((s) => s.user?.isCeo);
+  const permissionsLoaded = useAuthStore((s) => s.permissionsLoaded);
+  const mod = moduleForPath(pathname);
+
+  const blocked =
+    !isCeo &&
+    permissionsLoaded &&
+    mod !== undefined &&
+    !moduleIsPermitted(mod, can);
+
+  if (blocked) {
+    return (
+      <DeniedState
+        message={`You don't have access to ${mod!.label}. Ask an administrator to grant it in Org & Workflow → Permissions.`}
+      />
+    );
+  }
+  return <Outlet />;
+}
 
 /** The authenticated shell (canon §3): sidebar + sticky top bar + content,
  *  plus the global floating layer (App-Menu pill, launcher, mobile nav, ⌘K). */
@@ -76,6 +111,7 @@ export function AppShell() {
             <OfflineIndicator />
             <PwaInstallBanner />
             <IosInstallHint />
+            <EmailActivationBanner />
             <BreadcrumbStrip />
           </>
         )}
@@ -95,7 +131,7 @@ export function AppShell() {
             {/* One screen crashing must not take down the shell — the sidebar
                 and top bar stay usable and the boundary resets on nav. */}
             <RouteErrorBoundary>
-              <Outlet />
+              <GuardedOutlet />
             </RouteErrorBoundary>
           </PageTransition>
         </div>

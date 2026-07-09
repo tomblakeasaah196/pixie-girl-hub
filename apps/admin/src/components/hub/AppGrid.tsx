@@ -3,6 +3,7 @@ import { LayoutGrid, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { MODULE_BY_KEY, GROUP_ORDER, GROUP_LABELS } from "@/lib/modules";
 import { useNavStore, moreKeys } from "@/stores/nav";
+import { usePermittedModuleKeys } from "@/hooks/useModuleAccess";
 import { AppTile } from "./AppTile";
 
 const GRID =
@@ -15,7 +16,11 @@ const GRID =
  */
 export function AppGrid({ badges = {} }: { badges?: Record<string, number> }) {
   const { top, reorder, pin, unpin } = useNavStore();
-  const more = moreKeys(top);
+  const permitted = usePermittedModuleKeys();
+  // Reorder/pin logic still operates on the raw `top` (by key); we only filter
+  // what's rendered, so users never see a tile for a module they can't access.
+  const visibleTop = top.filter((k) => permitted.has(k));
+  const more = moreKeys(top).filter((k) => permitted.has(k));
   const [moreOpen, setMoreOpen] = useState(false);
   const [dragKey, setDragKey] = useState<string | null>(null);
   const [overKey, setOverKey] = useState<string | null>(null);
@@ -34,7 +39,7 @@ export function AppGrid({ badges = {} }: { badges?: Record<string, number> }) {
   return (
     <div>
       <div className={GRID}>
-        {top.map((key, i) => {
+        {visibleTop.map((key, i) => {
           const m = MODULE_BY_KEY[key]!;
           const anchor = key === "dashboard";
           return (

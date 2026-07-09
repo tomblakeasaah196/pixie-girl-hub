@@ -11,6 +11,47 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-09 — Email account activation + OTP password reset
+
+**Source:** user request — every account must verify ownership of its email
+once ("activate"), shown as a post-login banner until done; and forgotten
+passwords should be reset with an emailed one-time code instead of a link.
+Email-only by design (no SMS/WhatsApp). A per-login OTP challenge was
+explicitly rejected as too much friction, so login itself is unchanged.
+
+**Files (new):** `000312_shared_email_mfa.sql` — adds `email_verified`
+(BOOLEAN, default false) and `email_verified_at` on `shared.users`. The
+transient 6-digit codes live in Redis (single-use, 10-min TTL); only the
+resulting flag + timestamp persist.
+
+**Related (no migration):** `auth.service` now (a) sends/confirms a
+one-time activation code (`/auth/activate/send` + `/confirm`), surfacing
+`email_verified` on login + `/auth/me`; and (b) reworks
+`forgotPassword`/`resetPassword` to an emailed OTP keyed by address
+(attempt-capped, resend cooldown) rather than a hashed link token.
+
+---
+
+## 2026-07-09 — Fix TOTP secret column type (MFA "Invalid code")
+
+**Source:** user report that MFA/TOTP setup always failed with "Invalid code.
+Check your authenticator app and try again", regardless of the code entered.
+
+**Root cause:** `shared.users.totp_secret_enc` was declared `BYTEA`, but the
+shared encryption service (`services/encryption.service.js`) returns/accepts
+base64 **TEXT** — like every other `*_enc` column. The base64 ciphertext was
+stored as raw bytes; on read `decrypt()` ran `Buffer.from(buffer, "base64")`,
+which ignores the encoding when handed a Buffer, so AES-256-GCM auth failed
+and `verifyTotp` threw a 500 that the admin UI relabelled as "Invalid code".
+
+**Files (edited):** `000211_shared_iam_security.sql` — column is now `TEXT`
+so a clean checkout is correct on first deploy.
+**Files (new):** `000311_shared_totp_secret_text.sql` — converts existing
+deployments from `BYTEA` to `TEXT` (guarded; `convert_from` recovers any
+in-progress secret losslessly, so no re-scan is needed).
+
+---
+
 ## 2026-07-08 — Curated onboarding articles (HR & Staff → Onboarding)
 
 **Source:** user feedback on My HR's "Getting started" card pulling

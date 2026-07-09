@@ -165,7 +165,13 @@ router.post(
   validator.validateTotpVerify,
   controller.verifyTotp,
 );
-router.delete("/totp", validator.validateTotpDisable, controller.disableTotp);
+// Disable is a POST (not DELETE): it carries a password in the body for
+// re-auth confirmation, and the admin client calls POST /totp/disable.
+router.post(
+  "/totp/disable",
+  validator.validateTotpDisable,
+  controller.disableTotp,
+);
 router.get("/totp/status", controller.totpStatus);
 
 module.exports = router;

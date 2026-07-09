@@ -1,21 +1,33 @@
 /**
- * Permission catalog (V2.2 §3 — RBAC).
+ * Permission catalog (V2.2 §3 — RBAC). SINGLE SOURCE OF TRUTH for modules.
  *
  * The authoritative vocabulary for the role → permission matrix. The module
- * keys are exactly the keys the routes ENFORCE via requirePermission(module,
- * action) — harvested from the codebase, not the abbreviated keys in the
- * schema comment — so a grant authored against this catalog always lines up
- * with what the middleware checks. `settings` is added because the Access
- * module itself is gated on it.
+ * keys below are EXACTLY the keys the routes enforce via
+ * requirePermission(module, action) — nothing more, nothing less — so a grant
+ * authored against this catalog always lines up with what the middleware
+ * checks, and the permissions table can never accumulate keys nothing
+ * enforces (or miss keys that something does).
  *
  * Used to (a) drive the matrix UI and (b) reject writes that reference a
- * module/action/scope outside the vocabulary, so the permissions table can
- * never accumulate keys nothing enforces.
+ * module/action/scope outside the vocabulary.
+ *
+ * ── Keeping this in sync (do not skip when adding/removing a module) ──
+ * This list must equal the distinct enforced module keys. Regenerate with:
+ *
+ *   grep -rhoP 'requirePermission\(\s*"\K[a-z_]+' src/ --include="*.js" \
+ *     | sort -u
+ *
+ * If you add a new module (new route gated on a new requirePermission key),
+ * add the key here AND map it in the admin nav (apps/admin/src/lib/modules.ts
+ * `permission` field) so the sidebar hides it from users who lack access. If
+ * you retire a module, remove its key here and ship a migration that purges
+ * its rows from shared.permissions. See README "RBAC & module governance".
  */
 
 "use strict";
 
-// Enforced module keys (the 36 requirePermission keys) + the access/admin key.
+// The distinct requirePermission keys enforced across src/ (44 modules).
+// `settings` and `iam` gate the admin/access surfaces themselves.
 const MODULES = [
   "accounting",
   "ad_analytics",
@@ -25,19 +37,24 @@ const MODULES = [
   "audit",
   "business_setup",
   "calendar",
+  "catalogue",
   "contacts",
   "crm",
+  "customer_onboarding",
   "dashboards",
   "documents",
   "email_campaigns",
   "expenses",
+  "help_center",
   "hr_payroll",
   "iam",
   "intercompany",
   "invoicing",
   "logistics",
+  "messaging_accounts",
   "org_workflow",
-  "pos",
+  "outbound_policy",
+  "platform_settings",
   "praxis_ai",
   "pricing",
   "production",
@@ -46,6 +63,7 @@ const MODULES = [
   "retention",
   "sales",
   "sales_campaigns",
+  "service_catalogue",
   "service_jobs",
   "settings",
   "smartcomm",

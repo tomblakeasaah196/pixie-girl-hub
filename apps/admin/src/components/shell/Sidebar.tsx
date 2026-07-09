@@ -12,6 +12,7 @@ import {
   type ModuleGroup,
 } from "@/lib/modules";
 import { useNavStore, moreKeys } from "@/stores/nav";
+import { usePermittedModuleKeys } from "@/hooks/useModuleAccess";
 import { BusinessSwitcher } from "./BusinessSwitcher";
 import { AccountMenu } from "./AccountMenu";
 
@@ -38,8 +39,12 @@ export function Sidebar() {
   const tail = words.length > 1 ? words.pop()! : "";
   const head = words.join(" ");
   const location = useLocation();
-  const top = useNavStore((s) => s.top);
-  const more = moreKeys(top);
+  const permitted = usePermittedModuleKeys();
+  // Filter AFTER computing More from the raw priority list, so an un-permitted
+  // module can't leak from Priority into the More group — it drops out entirely.
+  const rawTop = useNavStore((s) => s.top);
+  const top = rawTop.filter((k) => permitted.has(k));
+  const more = moreKeys(rawTop).filter((k) => permitted.has(k));
   const [moreOpen, setMoreOpen] = useState(false);
   const navRef = useRef<HTMLElement>(null);
 

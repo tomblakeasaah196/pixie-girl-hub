@@ -58,6 +58,11 @@ router.post("/forgot-password", publicWriteLimiter, controller.forgotPassword);
 router.post("/reset-password", publicWriteLimiter, controller.resetPassword);
 
 router.post("/change-password", authMiddleware, controller.changePassword);
+
+// One-time email account activation (authed self-service).
+router.post("/activate/send", authMiddleware, controller.sendActivation);
+router.post("/activate/confirm", authMiddleware, controller.confirmActivation);
+
 router.get("/me", authMiddleware, controller.getMe);
 router.patch("/me", authMiddleware, controller.updateMe);
 router.post(

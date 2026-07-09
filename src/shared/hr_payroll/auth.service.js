@@ -19,11 +19,45 @@ const staffRepo = require("./staff.repo");
 const { audit } = require("../../middleware/audit");
 const iamRepo = require("../iam/iam.repo");
 
-// ── Password-reset helpers ─────────────────────────────────
+// ── Password-reset + one-time-code (OTP) helpers ───────────
 const RESET_PREFIX = "pwreset:";
+const RESET_CD_PREFIX = "pwreset:cd:";
+const ACTIVATE_PREFIX = "activate:";
+const ACTIVATE_CD_PREFIX = "activate:cd:";
 const MIN_PASSWORD_LEN = 8;
 const PIN_RE = /^\d{6}$/;
-const sha256 = (raw) => crypto.createHash("sha256").update(raw).digest("hex");
+// One-time email codes (account activation + password reset).
+const OTP_TTL_SEC = 10 * 60; // 10 minutes
+const OTP_RESEND_COOLDOWN_SEC = 45;
+const OTP_MAX_ATTEMPTS = 5;
+
+/** Cryptographically-strong 6-digit numeric code (000000–999999). */
+const genOtp = () => String(crypto.randomInt(0, 1000000)).padStart(6, "0");
+
+/** Mask an email for display: "jane.doe@x.com" → "ja******@x.com". */
+function maskEmail(email) {
+  const [local, domain] = String(email || "").split("@");
+  if (!domain) return "your email";
+  const shown = local.slice(0, 2);
+  return `${shown}${"*".repeat(Math.max(1, local.length - shown.length))}@${domain}`;
+}
+
+/** Email a single-use verification code (account activation or password reset). */
+async function sendOtpEmail(to, code, purpose) {
+  const line =
+    purpose === "reset"
+      ? "Use this code to reset your password:"
+      : "Use this code to activate your account:";
+  await emailService.send({
+    to,
+    subject: `${code} is your Pixie Girl Hub verification code`,
+    html: `<p>Hello,</p>
+           <p>${line}</p>
+           <p style="font-size:30px;font-family:monospace;letter-spacing:0.4em;font-weight:bold;">${code}</p>
+           <p>This code expires in 10 minutes and can be used once. If you didn't request it, ignore this email.</p>`,
+    text: `Your Pixie Girl Hub verification code is ${code} (expires in 10 minutes, single use).`,
+  });
+}
 
 /**
  * Enforce the password policy: ≥8 chars AND at least one uppercase,
@@ -97,6 +131,7 @@ async function issueTokens(user) {
       role_names: user.role_names || [],
       available_businesses: user.available_businesses || [],
       default_business_key: user.default_business_key || null,
+      email_verified: !!user.email_verified,
     },
     access_token,
     refresh_token,
@@ -140,10 +175,6 @@ async function recordLoginSession(user, { ip, user_agent }) {
     }
   }
 }
-
-const resetTtlSec = () => (config.PASSWORD_RESET_TTL_MIN || 30) * 60;
-const resetLink = (raw) =>
-  `${String(config.APP_URL || "").replace(/\/$/, "")}/reset-password?token=${raw}`;
 
 /**
  * Revoke every refresh session for a user. Refresh tokens live in redis as
@@ -397,65 +428,83 @@ async function logout({ refresh_token, user_id, ip, user_agent }) {
 }
 
 /**
- * Begin a password reset. Generates a single-use raw token, stores only its
- * SHA-256 hash in redis (TTL = PASSWORD_RESET_TTL_MIN), and emails the raw token
- * as a link. ALWAYS resolves without revealing whether the email exists or is
- * active — the controller returns 200 regardless (no account enumeration).
+ * Begin a password reset with a one-time email code. Stores a single-use
+ * 6-digit OTP in redis (TTL OTP_TTL_SEC) keyed by email and emails it.
+ * ALWAYS resolves without revealing whether the email exists or is active —
+ * the controller returns 200 regardless (no account enumeration). A short
+ * resend cooldown blunts email-bombing.
  */
 async function forgotPassword({ email: rawEmail }) {
   if (!rawEmail || typeof rawEmail !== "string") return;
-  const user = await staffRepo.findByEmail(rawEmail.toLowerCase().trim());
-  // Only issue a token for a real, active account — but never disclose that.
+  const email = rawEmail.toLowerCase().trim();
+  const user = await staffRepo.findByEmail(email);
+  // Only issue a code for a real, active account — but never disclose that.
   if (!user || user.status !== "active") return;
 
-  const rawToken = crypto.randomBytes(32).toString("hex");
-  const token_hash = sha256(rawToken);
   const redis = getRedis();
-  await redis.set(RESET_PREFIX + token_hash, user.user_id, "EX", resetTtlSec());
+  const cdKey = RESET_CD_PREFIX + email;
+  if (await redis.get(cdKey)) return; // one was just sent — silently ignore
+
+  const otp = genOtp();
+  await redis.set(
+    RESET_PREFIX + email,
+    JSON.stringify({ otp, user_id: user.user_id, attempts: 0 }),
+    "EX",
+    OTP_TTL_SEC,
+  );
+  await redis.set(cdKey, "1", "EX", OTP_RESEND_COOLDOWN_SEC);
 
   try {
-    const link = resetLink(rawToken);
-    const mins = Math.round(resetTtlSec() / 60);
-    await emailService.send({
-      to: user.email,
-      subject: "Reset your Pixie Girl Hub password",
-      html: `<p>Hello${user.display_name ? " " + user.display_name : ""},</p>
-             <p>We received a request to reset your password. This link expires in ${mins} minutes:</p>
-             <p><a href="${link}">Reset your password</a></p>
-             <p>If you didn't request this, you can safely ignore this email — your password will not change.</p>`,
-      text: `Reset your Pixie Girl Hub password (link expires in ${mins} minutes): ${link}`,
-    });
+    await sendOtpEmail(user.email, otp, "reset");
   } catch (err) {
-    // Best-effort: the token is stored; surfacing the email failure would leak
+    // Best-effort: the code is stored; surfacing the email failure would leak
     // that the address exists. Log it for ops; the user can retry.
     logger.error({ err: err.message }, "password reset email send failed");
   }
 }
 
 /**
- * Complete a password reset. Verifies the token against its stored hash, sets
- * the new argon2 password, consumes the token (single-use), and revokes every
- * existing session so any leaked/old credentials stop working.
+ * Complete a password reset with the emailed OTP. Verifies the code for the
+ * given email, sets the new argon2 password, consumes the code (single-use),
+ * and revokes every existing session so any leaked/old credentials stop
+ * working. Wrong codes are counted; too many burn the code.
  */
-async function resetPassword({ token, new_password }) {
-  if (!token || typeof token !== "string")
-    throw new AppError(
-      "INVALID_RESET_TOKEN",
-      "Invalid or expired reset link",
-      400,
-    );
+async function resetPassword({ email: rawEmail, otp, new_password }) {
+  const email = String(rawEmail || "")
+    .toLowerCase()
+    .trim();
+  if (!email || !otp)
+    throw new AppError("INVALID_RESET_CODE", "Invalid or expired code", 400);
   assertStrongPassword(new_password);
 
   const redis = getRedis();
-  const key = RESET_PREFIX + sha256(token);
-  const userId = await redis.get(key);
-  if (!userId)
-    throw new AppError(
-      "INVALID_RESET_TOKEN",
-      "Invalid or expired reset link",
-      400,
-    );
+  const key = RESET_PREFIX + email;
+  const raw = await redis.get(key);
+  if (!raw)
+    throw new AppError("INVALID_RESET_CODE", "Invalid or expired code", 400);
 
+  const data = JSON.parse(raw);
+  if (String(otp).trim() !== data.otp) {
+    data.attempts = (data.attempts || 0) + 1;
+    if (data.attempts >= OTP_MAX_ATTEMPTS) {
+      await redis.del(key);
+      throw new AppError(
+        "TOO_MANY_ATTEMPTS",
+        "Too many incorrect codes. Request a new one.",
+        429,
+      );
+    }
+    const ttl = await redis.ttl(key);
+    await redis.set(
+      key,
+      JSON.stringify(data),
+      "EX",
+      ttl > 0 ? ttl : OTP_TTL_SEC,
+    );
+    throw new AppError("INVALID_RESET_CODE", "Invalid or expired code", 400);
+  }
+
+  const userId = data.user_id;
   const password_hash = await argon2.hash(new_password, hashOptions);
   await staffRepo.updatePassword(userId, password_hash);
   await redis.del(key); // single-use
@@ -490,7 +539,69 @@ async function getMe({ user_id }) {
     department: user.department || null,
     employee_number: user.employee_number || null,
     is_ceo: user.is_ceo,
+    email_verified: !!user.email_verified,
   };
+}
+
+// ── Email account activation (one-time verification) ───────
+
+/**
+ * Send a one-time activation code to the caller's own account email.
+ * Rate-limited so it can't email-bomb. Returns { already: true } if the
+ * account is already verified (idempotent — the banner is already gone).
+ */
+async function sendActivation({ user_id }) {
+  const user = await staffRepo.findById(user_id);
+  if (!user) throw new AppError("USER_NOT_FOUND", "User not found", 404);
+  if (user.email_verified) {
+    return { already: true, email_masked: maskEmail(user.email) };
+  }
+
+  const redis = getRedis();
+  const cdKey = ACTIVATE_CD_PREFIX + user_id;
+  if (await redis.get(cdKey)) {
+    throw new AppError(
+      "OTP_THROTTLED",
+      "A code was just sent. Please wait a moment before requesting another.",
+      429,
+    );
+  }
+
+  const otp = genOtp();
+  await redis.set(ACTIVATE_PREFIX + user_id, otp, "EX", OTP_TTL_SEC);
+  await redis.set(cdKey, "1", "EX", OTP_RESEND_COOLDOWN_SEC);
+  await sendOtpEmail(user.email, otp, "activate");
+
+  return { sent: true, email_masked: maskEmail(user.email) };
+}
+
+/** Confirm the activation code and mark the account's email verified. */
+async function confirmActivation({ user_id, otp }) {
+  const redis = getRedis();
+  const key = ACTIVATE_PREFIX + user_id;
+  const stored = await redis.get(key);
+  if (!stored)
+    throw new AppError(
+      "INVALID_OTP",
+      "Verification code expired or not found. Request a new one.",
+      400,
+    );
+  if (String(otp || "").trim() !== stored)
+    throw new AppError("INVALID_OTP", "Incorrect verification code", 401);
+
+  await redis.del(key); // single-use
+  await staffRepo.setEmailVerified(user_id);
+
+  audit({
+    business: "system",
+    user_id,
+    action_key: "email_verified",
+    target_type: "users",
+    target_id: user_id,
+    module: "auth",
+  });
+
+  return { verified: true };
 }
 
 async function updateMe({ user_id, display_name, phone }) {
@@ -649,4 +760,6 @@ module.exports = {
   uploadAvatar,
   requestEmailChange,
   confirmEmailChange,
+  sendActivation,
+  confirmActivation,
 };

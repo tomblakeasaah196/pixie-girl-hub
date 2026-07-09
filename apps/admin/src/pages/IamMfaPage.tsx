@@ -66,10 +66,22 @@ export function IamMfaPage() {
           setSecret("");
           setUri("");
         },
-        onError: () =>
-          setCodeError(
-            "Invalid code. Check your authenticator app and try again.",
-          ),
+        onError: (err) => {
+          // A genuinely wrong/expired code comes back as 401 INVALID_TOTP.
+          // Anything else (a server/config error) must NOT masquerade as a
+          // bad code — surface the real message so setup issues are debuggable.
+          const e = err as { status?: number; code?: string; message?: string };
+          if (e?.code === "INVALID_TOTP" || e?.status === 401) {
+            setCodeError(
+              "Invalid code. Check your authenticator app and try again.",
+            );
+          } else {
+            setCodeError(
+              e?.message ||
+                "Couldn't verify the code right now. Please try again.",
+            );
+          }
+        },
       },
     );
   }

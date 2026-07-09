@@ -158,13 +158,20 @@ async function run({
   }
   const rows = res.rows;
 
-  // Feed the result back so the model answers in natural language.
+  // Feed the result back so the model answers in natural language. Replay ONLY
+  // the tool call we answer here — carrying every tool_call while sending one
+  // tool response makes the vendor 400 ("insufficient tool messages following
+  // tool_calls"). Also round-trip reasoning_content, which DeepSeek thinking
+  // models require back or they 400 ("reasoning_content must be passed back").
   const followMessages = [
     ...messages,
     {
       role: "assistant",
       content: completion.content || null,
-      tool_calls: completion.tool_calls,
+      ...(completion.reasoning_content
+        ? { reasoning_content: completion.reasoning_content }
+        : {}),
+      tool_calls: [toolCall],
     },
     {
       role: "tool",
@@ -186,6 +193,7 @@ async function run({
       "praxis query summarise failed — trying fallback vendor",
     );
     const fallbackText = await summariseViaFallback({
+      vendor,
       messages: followMessages,
       result: rows,
     });
@@ -216,7 +224,10 @@ async function run({
       {
         role: "assistant",
         content: follow.content || null,
-        tool_calls: follow.tool_calls,
+        ...(follow.reasoning_content
+          ? { reasoning_content: follow.reasoning_content }
+          : {}),
+        tool_calls: [next], // replay only the call we answer below
       },
     ];
     try {

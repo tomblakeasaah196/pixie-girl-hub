@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Cake,
@@ -9,10 +10,14 @@ import {
   RotateCcw,
   Crown,
   BellRing,
+  CreditCard,
+  Target,
+  Trophy,
   ChevronRight,
   Loader2,
 } from "lucide-react";
 import { Button, Pill, Skeleton, MoneyText } from "@/components/ui/primitives";
+import { Select } from "@/components/ui/controls";
 import { toast } from "@/stores/toast";
 import { toastReport } from "@/lib/error-report";
 import {
@@ -28,7 +33,30 @@ import type {
   TodayWinBackItem,
   TodayTopItem,
   TodayFollowUpItem,
+  TodayPendingPaymentItem,
+  TodayClosingSoonItem,
+  TodayTopAllTimeItem,
 } from "../types";
+
+// ── Month/year filter (applies to every bucket except the all-time card) ──
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+const MONTH_OPTIONS = MONTH_NAMES.map((label, i) => ({
+  value: String(i + 1),
+  label,
+}));
+
+function yearOptions() {
+  const currentYear = new Date().getFullYear();
+  return [currentYear, currentYear - 1, currentYear - 2].map((y) => ({
+    value: String(y),
+    label: String(y),
+  }));
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -71,8 +99,8 @@ function relTime(iso: string | null) {
 
 // ── KPI strip ─────────────────────────────────────────────────────────────
 
-function KpiStrip() {
-  const { data: kpis, isLoading } = useCrmKpis();
+function KpiStrip({ month, year }: { month: number; year: number }) {
+  const { data: kpis, isLoading } = useCrmKpis(month, year);
 
   if (isLoading) {
     return (
@@ -170,7 +198,9 @@ function BucketCard({
           Nothing waiting — all caught up.
         </div>
       ) : (
-        <div className="flex flex-col gap-1.5">{children}</div>
+        <div className="flex flex-col gap-1.5 max-h-[224px] overflow-y-auto pr-0.5">
+          {children}
+        </div>
       )}
     </div>
   );
@@ -180,11 +210,13 @@ function BucketRow({
   name,
   meta,
   trailing,
+  rank,
   onClick,
 }: {
   name: string;
   meta?: React.ReactNode;
   trailing?: React.ReactNode;
+  rank?: number;
   onClick: () => void;
 }) {
   return (
@@ -192,6 +224,11 @@ function BucketRow({
       onClick={onClick}
       className="flex items-center gap-2.5 p-2 rounded-[10px] hover:bg-text-primary/[0.05] transition-colors cursor-pointer group"
     >
+      {rank != null && (
+        <span className="w-4 text-center text-[11px] font-display font-semibold text-text-faint flex-shrink-0">
+          {rank}
+        </span>
+      )}
       <div
         className="w-7 h-7 rounded-full grid place-items-center text-[10px] font-semibold text-white font-display flex-shrink-0"
         style={{ background: avatarColor(name) }}
@@ -214,9 +251,15 @@ function BucketRow({
 
 // ── Bucket grid (the Orika-style "who to reach out to" row) ──────────────
 
-const PREVIEW = 3;
-
-function BucketGrid({ data }: { data: TodayBuckets }) {
+function BucketGrid({
+  data,
+  periodLabel,
+  monthLabel,
+}: {
+  data: TodayBuckets;
+  periodLabel: string;
+  monthLabel: string;
+}) {
   const navigate = useNavigate();
   const winBack = useTriggerWinBack();
 
@@ -241,16 +284,16 @@ function BucketGrid({ data }: { data: TodayBuckets }) {
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 mb-6">
+    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-6">
       <BucketCard
         icon={Cake}
         title="To celebrate"
-        subtitle="Birthdays this week"
+        subtitle={`Birthdays in ${monthLabel}`}
         count={data.to_celebrate.total}
         iconColor="#d4a853"
         isEmpty={data.to_celebrate.items.length === 0}
       >
-        {data.to_celebrate.items.slice(0, PREVIEW).map((c: TodayCelebrateItem) => (
+        {data.to_celebrate.items.map((c: TodayCelebrateItem) => (
           <BucketRow
             key={c.contact_id}
             name={nameOf(c)}
@@ -271,12 +314,12 @@ function BucketGrid({ data }: { data: TodayBuckets }) {
       <BucketCard
         icon={UserPlus}
         title="To welcome"
-        subtitle="New clients, every source"
+        subtitle={`New clients in ${periodLabel}`}
         count={data.to_welcome.total}
         iconColor="#8b9d77"
         isEmpty={data.to_welcome.items.length === 0}
       >
-        {data.to_welcome.items.slice(0, PREVIEW).map((c: TodayWelcomeItem) => (
+        {data.to_welcome.items.map((c: TodayWelcomeItem) => (
           <BucketRow
             key={c.contact_id}
             name={nameOf(c)}
@@ -294,12 +337,12 @@ function BucketGrid({ data }: { data: TodayBuckets }) {
       <BucketCard
         icon={RotateCcw}
         title="To win back"
-        subtitle="Gone quiet — call them"
+        subtitle={`Gone quiet in ${periodLabel}`}
         count={data.to_win_back.total}
         iconColor="#e5544e"
         isEmpty={data.to_win_back.items.length === 0}
       >
-        {data.to_win_back.items.slice(0, PREVIEW).map((c: TodayWinBackItem) => (
+        {data.to_win_back.items.map((c: TodayWinBackItem) => (
           <BucketRow
             key={c.contact_id}
             name={nameOf(c)}
@@ -334,14 +377,15 @@ function BucketGrid({ data }: { data: TodayBuckets }) {
       <BucketCard
         icon={Crown}
         title="Top this month"
-        subtitle="Deserve extra attention"
+        subtitle={`Deserve extra attention · ${periodLabel}`}
         count={data.top_this_month.total}
         iconColor="#9c7ad9"
         isEmpty={data.top_this_month.items.length === 0}
       >
-        {data.top_this_month.items.slice(0, PREVIEW).map((c: TodayTopItem) => (
+        {data.top_this_month.items.map((c: TodayTopItem, i) => (
           <BucketRow
             key={c.contact_id}
+            rank={i + 1}
             name={nameOf(c)}
             meta={
               <span className="font-mono">
@@ -357,12 +401,12 @@ function BucketGrid({ data }: { data: TodayBuckets }) {
       <BucketCard
         icon={BellRing}
         title="Follow-ups"
-        subtitle="Quiet deals need a nudge"
+        subtitle={`Quiet deals in ${periodLabel}`}
         count={data.follow_ups.total}
         iconColor="#c9a24b"
         isEmpty={data.follow_ups.items.length === 0}
       >
-        {data.follow_ups.items.slice(0, PREVIEW).map((d: TodayFollowUpItem) => (
+        {data.follow_ups.items.map((d: TodayFollowUpItem) => (
           <BucketRow
             key={d.deal_id}
             name={d.title}
@@ -375,6 +419,81 @@ function BucketGrid({ data }: { data: TodayBuckets }) {
             onClick={() => navigate(`/crm/deals/${d.deal_id}`)}
           />
         ))}
+      </BucketCard>
+
+      <BucketCard
+        icon={CreditCard}
+        title="Pending payments"
+        subtitle="Checked out, never paid"
+        count={data.pending_payments.total}
+        iconColor="#4ea8c9"
+        isEmpty={data.pending_payments.items.length === 0}
+      >
+        {data.pending_payments.items.map((o: TodayPendingPaymentItem) => (
+          <BucketRow
+            key={o.order_id}
+            name={nameOf(o)}
+            meta={
+              <span className="font-mono">
+                <MoneyText ngn={parseFloat(o.total_ngn)} /> ·{" "}
+                {o.order_number} · pending {relTime(o.pending_since)}
+              </span>
+            }
+            onClick={() => openClient(o.contact_id)}
+          />
+        ))}
+      </BucketCard>
+
+      <BucketCard
+        icon={Target}
+        title="Closing soon"
+        subtitle={`Expected to close · ${periodLabel}`}
+        count={data.closing_soon.total}
+        iconColor="#5aa0a8"
+        isEmpty={data.closing_soon.items.length === 0}
+      >
+        {data.closing_soon.items.map((d: TodayClosingSoonItem) => (
+          <BucketRow
+            key={d.deal_id}
+            name={d.title}
+            meta={
+              <>
+                {d.display_name ?? d.deal_number} · closes{" "}
+                {new Date(d.expected_close_date).toLocaleDateString(undefined, {
+                  day: "numeric",
+                  month: "short",
+                })}
+              </>
+            }
+            onClick={() => navigate(`/crm/deals/${d.deal_id}`)}
+          />
+        ))}
+      </BucketCard>
+
+      <BucketCard
+        icon={Trophy}
+        title="All-time top 10"
+        subtitle="Treat these VIPs so well"
+        count={data.top_customers_all_time.total}
+        iconColor="#d4a853"
+        isEmpty={data.top_customers_all_time.items.length === 0}
+      >
+        {data.top_customers_all_time.items.map(
+          (c: TodayTopAllTimeItem, i) => (
+            <BucketRow
+              key={c.contact_id}
+              rank={i + 1}
+              name={nameOf(c)}
+              meta={
+                <span className="font-mono">
+                  <MoneyText ngn={parseFloat(c.lifetime_spend_ngn)} /> ·{" "}
+                  {c.orders_count} order{c.orders_count === 1 ? "" : "s"}
+                </span>
+              }
+              onClick={() => openClient(c.contact_id)}
+            />
+          ),
+        )}
       </BucketCard>
     </div>
   );
@@ -400,14 +519,57 @@ const EVENT_LABELS: Record<string, string> = {
 
 export function TodayTab() {
   const navigate = useNavigate();
-  const { data: today, isLoading, isError, refetch } = useCrmToday();
+  const now = new Date();
+  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useState(now.getFullYear());
+  const isCurrentPeriod =
+    month === now.getMonth() + 1 && year === now.getFullYear();
+  const monthLabel = MONTH_NAMES[month - 1];
+  const periodLabel = isCurrentPeriod ? "this month" : `${monthLabel} ${year}`;
+
+  const { data: today, isLoading, isError, refetch } = useCrmToday(month, year);
   const { data: milestones = [] } = useTodayMilestones();
 
   const todayMs = milestones.filter((m) => m.days_until === 0);
 
   return (
     <div className="animate-fade-in">
-      <KpiStrip />
+      <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+        <span className="micro text-text-faint">
+          Showing {periodLabel} — applies to every card below except
+          all-time top 10
+        </span>
+        <div className="flex items-center gap-2">
+          <Select
+            ariaLabel="Month"
+            value={String(month)}
+            onChange={(v) => setMonth(Number(v))}
+            options={MONTH_OPTIONS}
+            className="w-[136px]"
+          />
+          <Select
+            ariaLabel="Year"
+            value={String(year)}
+            onChange={(v) => setYear(Number(v))}
+            options={yearOptions()}
+            className="w-[92px]"
+          />
+          {!isCurrentPeriod && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setMonth(now.getMonth() + 1);
+                setYear(now.getFullYear());
+              }}
+            >
+              This month
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <KpiStrip month={month} year={year} />
 
       {/* Who to reach out to */}
       <div className="flex items-center gap-2 mb-3">
@@ -418,8 +580,8 @@ export function TodayTab() {
       </div>
 
       {isLoading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 mb-6">
-          {Array.from({ length: 5 }).map((_, i) => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-6">
+          {Array.from({ length: 8 }).map((_, i) => (
             <Skeleton key={i} className="h-[150px] rounded-[14px]" />
           ))}
         </div>
@@ -433,7 +595,7 @@ export function TodayTab() {
           </Button>
         </div>
       ) : today ? (
-        <BucketGrid data={today} />
+        <BucketGrid data={today} periodLabel={periodLabel} monthLabel={monthLabel} />
       ) : null}
 
       {/* Today's milestones (richer event types than birthdays) */}

@@ -29,11 +29,11 @@ export {
 
 // ── CRM KPIs ──────────────────────────────────────────────────────────────
 
-export function useCrmKpis() {
+export function useCrmKpis(month?: number, year?: number) {
   const biz = useBiz();
   return useQuery({
-    queryKey: ["crm", biz, "kpis"],
-    queryFn: crmApi.getCrmKpis,
+    queryKey: ["crm", biz, "kpis", month, year],
+    queryFn: () => crmApi.getCrmKpis({ month, year }),
     staleTime: 5 * 60_000,
   });
 }
@@ -49,11 +49,11 @@ export function useTodayMilestones() {
   });
 }
 
-export function useCrmToday() {
+export function useCrmToday(month?: number, year?: number) {
   const biz = useBiz();
   return useQuery({
-    queryKey: ["crm", biz, "today"],
-    queryFn: crmApi.getCrmToday,
+    queryKey: ["crm", biz, "today", month, year],
+    queryFn: () => crmApi.getCrmToday({ month, year }),
     staleTime: 5 * 60_000,
   });
 }

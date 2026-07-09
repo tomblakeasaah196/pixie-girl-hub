@@ -278,11 +278,28 @@ function register() {
   });
 
   events.on("channel.read", (p) => {
+    // The channel room broadcasts include the message ids whose
+    // delivery_status just advanced to 'read'. The reader themself
+    // doesn't care (nothing of theirs transitions from their own read),
+    // but every SENDER whose bubble is in that list flips their tick
+    // from one grey check to two blue checks on the next messages
+    // refetch — see the frontend useChannelRealtime handler.
     emit(`channel:${p.channel_id}`, "channel.read", {
       channel_id: p.channel_id,
       user_id: p.user_id,
+      delivered_message_ids: p.delivered_message_ids || [],
       at: new Date().toISOString(),
     });
+    // Notify SENDERs directly in case they're on the messaging shell
+    // but don't currently have the channel room open (composer closed
+    // but launcher badge visible) so their inbox row can drop its
+    // unread state cleanly.
+    for (const uid of p.sender_user_ids || []) {
+      if (!uid || uid === p.user_id) continue;
+      emit(`user:${uid}:messages`, "channel.read", {
+        channel_id: p.channel_id,
+      });
+    }
     emit(`user:${p.user_id}:messages`, "channel.read", {
       channel_id: p.channel_id,
     });

@@ -7,6 +7,7 @@ import { useAuthStore } from "@/stores/auth";
 import { DeniedState } from "@/components/ui/controls";
 import { useUiStore } from "@/stores/ui";
 import { useIsDesktop } from "@/hooks/useMediaQuery";
+import { useRealtimeInvalidation } from "@/hooks/useRealtimeInvalidation";
 import { Sidebar } from "./Sidebar";
 import { TopBar } from "./TopBar";
 import { BreadcrumbStrip } from "./BreadcrumbStrip";
@@ -66,6 +67,10 @@ export function AppShell() {
     useUiStore();
   const isDesktop = useIsDesktop();
   const queryClient = useQueryClient();
+
+  // Live-refresh Sales / Stock / Service-Jobs boards from backend realtime
+  // signals (joins the active brand's rooms; invalidates on change).
+  useRealtimeInvalidation();
 
   const handleRefresh = useCallback(async () => {
     await queryClient.invalidateQueries();

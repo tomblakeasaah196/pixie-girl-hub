@@ -17,6 +17,9 @@ const { BRANDS } = require("../config/brands");
 const ROOMS = {
   // Brand-scoped resource streams
   stock: (brand) => `brand:${brand}:stock`,
+  // Sales order/quotation lifecycle — the Sales board & KPI tiles re-read when
+  // an order is created/paid/cancelled anywhere (POS, storefront, campaign).
+  sales: (brand) => `brand:${brand}:sales`,
   deliveries: (brand) => `brand:${brand}:deliveries`,
   service_jobs: (brand) => `brand:${brand}:service_jobs`,
   pos_session: (brand, sessionId) => `brand:${brand}:pos_session:${sessionId}`,

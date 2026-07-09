@@ -138,6 +138,43 @@ async function issueTokens(user) {
     expires_in: 45 * 60,
   };
 }
+/**
+ * Record the login session row for the IAM "active sessions" view. Shared by
+ * password and PIN login so both behave identically.
+ *
+ * Awaited (so the sessions list is consistent the moment login returns) with a
+ * couple of quick retries to ride out a transient DB blip — but non-fatal: a
+ * persistent failure is logged and login still succeeds. The session row is an
+ * audit/visibility artefact; it must never be the reason a valid user can't get
+ * in. (Previously this was fire-and-forget, so a failed insert silently dropped
+ * the session with no retry.)
+ */
+async function recordLoginSession(user, { ip, user_agent }) {
+  const sessionExpiry = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+  const payload = {
+    session_id: uuidv4(),
+    user_id: user.user_id,
+    ip_address: ip || null,
+    user_agent: user_agent || null,
+    device_label: null,
+    expires_at: sessionExpiry.toISOString(),
+  };
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      await iamRepo.createSession(payload);
+      return;
+    } catch (err) {
+      if (attempt === 3) {
+        logger.error(
+          { err: err.message, user_id: user.user_id },
+          "session record create failed after retries",
+        );
+        return;
+      }
+      await new Promise((r) => setTimeout(r, attempt * 150));
+    }
+  }
+}
 
 /**
  * Revoke every refresh session for a user. Refresh tokens live in redis as
@@ -205,20 +242,7 @@ async function login({ email, password, ip, user_agent }) {
 
   const result = await issueTokens(user);
 
-  const sessionId = uuidv4();
-  const sessionExpiry = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
-  iamRepo
-    .createSession({
-      session_id: sessionId,
-      user_id: user.user_id,
-      ip_address: ip || null,
-      user_agent: user_agent || null,
-      device_label: null,
-      expires_at: sessionExpiry.toISOString(),
-    })
-    .catch((err) =>
-      logger.error({ err: err.message }, "session record create failed"),
-    );
+  await recordLoginSession(user, { ip, user_agent });
 
   audit({
     business: user.default_business_key || "system",
@@ -287,20 +311,7 @@ async function loginPin({ email, pin, ip, user_agent }) {
 
   const result = await issueTokens(user);
 
-  const sessionId = uuidv4();
-  const sessionExpiry = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
-  iamRepo
-    .createSession({
-      session_id: sessionId,
-      user_id: user.user_id,
-      ip_address: ip || null,
-      user_agent: user_agent || null,
-      device_label: null,
-      expires_at: sessionExpiry.toISOString(),
-    })
-    .catch((err) =>
-      logger.error({ err: err.message }, "session record create failed"),
-    );
+  await recordLoginSession(user, { ip, user_agent });
 
   audit({
     business: user.default_business_key || "system",

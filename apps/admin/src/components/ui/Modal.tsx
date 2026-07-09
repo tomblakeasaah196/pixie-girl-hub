@@ -1,7 +1,8 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { IconButton } from "./primitives";
 
 /** Centered glass Modal — confirmations & forms (canon §5).
@@ -36,12 +37,17 @@ export function Modal({
   size?: ModalSize;
   children: ReactNode;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
+
+  // Keep keyboard focus inside the dialog while it's open; restore it on close.
+  useFocusTrap(panelRef, open);
 
   return createPortal(
     <div
@@ -54,6 +60,7 @@ export function Modal({
       onClick={onClose}
     >
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}

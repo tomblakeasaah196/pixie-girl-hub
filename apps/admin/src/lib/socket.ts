@@ -58,12 +58,33 @@ export function getSocket(): Socket {
     window.dispatchEvent(new CustomEvent("pgh:device:changed", { detail }));
   });
 
+  // Stock / Sales / Service-jobs lifecycle signals. These fan out many thin
+  // sub-events (stock:moved, sales:order.paid, service_jobs:completed, …); we
+  // re-dispatch each family as ONE window event the invalidation hook listens
+  // to, so this file stays stable as new server-side sub-events are added.
+  socket.onAny((event: string, detail: unknown) => {
+    if (
+      event.startsWith("stock:") ||
+      event.startsWith("sales:") ||
+      event.startsWith("service_jobs:")
+    ) {
+      const [domain] = event.split(":");
+      window.dispatchEvent(
+        new CustomEvent(`pgh:${domain}:changed`, {
+          detail: { event, ...(detail as Record<string, unknown>) },
+        }),
+      );
+    }
+  });
+
   return socket;
 }
 
 /** Canonical room helpers (mirror of src/realtime/rooms.js). */
 export const rooms = {
   stock: (brand: string) => `brand:${brand}:stock`,
+  sales: (brand: string) => `brand:${brand}:sales`,
+  serviceJobs: (brand: string) => `brand:${brand}:service_jobs`,
   notifications: (userId: string) => `user:${userId}:notifications`,
   userMessages: (userId: string) => `user:${userId}:messages`,
   channel: (channelId: string) => `channel:${channelId}`,

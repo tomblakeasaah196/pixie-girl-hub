@@ -84,6 +84,18 @@ const schema = z.object({
   // CORS
   CORS_ORIGINS: z.string().default(""),
 
+  // Content-Security-Policy (admin SPA served same-origin as the API).
+  // Enforcing by default; flip CSP_REPORT_ONLY=true to observe violations
+  // without blocking while tuning. Extra hosts (deploy-specific CDNs, map/
+  // analytics vendors) can be appended per-directive as comma-separated lists
+  // without a code change.
+  CSP_ENABLED: z.coerce.boolean().default(true),
+  CSP_REPORT_ONLY: z.coerce.boolean().default(false),
+  CSP_EXTRA_SCRIPT_SRC: z.string().default(""),
+  CSP_EXTRA_CONNECT_SRC: z.string().default(""),
+  CSP_EXTRA_IMG_SRC: z.string().default(""),
+  CSP_EXTRA_FRAME_SRC: z.string().default(""),
+
   // Express `trust proxy`. An integer string → number of hops to trust; a CSV
   // of keywords/IPs (e.g. "loopback,uniquelocal") → trusted addresses.
   TRUSTED_PROXIES: z.string().default("1"),

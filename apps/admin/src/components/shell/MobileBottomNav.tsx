@@ -4,6 +4,7 @@ import { LayoutGrid } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { MODULE_BY_KEY, type AppModule } from "@/lib/modules";
 import { useNavStore } from "@/stores/nav";
+import { usePermittedModuleKeys } from "@/hooks/useModuleAccess";
 
 // ── Context map ────────────────────────────────────────────────────────────────
 // Each route prefix maps to up to 4 module keys shown alongside the Hub tab.
@@ -194,7 +195,10 @@ export function MobileBottomNav() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  const moduleTabs = tabsForRoute(pathname, pinnedBottomNav, top);
+  const permitted = usePermittedModuleKeys();
+  const moduleTabs = tabsForRoute(pathname, pinnedBottomNav, top).filter((t) =>
+    permitted.has(t.key),
+  );
 
   const handleLongPress = useCallback(
     (key: string) => {

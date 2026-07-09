@@ -45,6 +45,12 @@ type SessionStatus = "unknown" | "authed" | "anon";
 interface AuthState {
   user: User | null;
   status: SessionStatus;
+  /**
+   * True once `loadPermissions()` has resolved (or short-circuited for a CEO)
+   * this session. Route/nav gating waits for this so it never flashes a
+   * "denied" screen in the window between login and grants arriving.
+   */
+  permissionsLoaded: boolean;
   setSession: (u: AuthUser) => void;
   signOut: () => Promise<void>;
   /** Restore a session on app boot using the refresh cookie. Idempotent. */
@@ -87,6 +93,7 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       user: null,
       status: "unknown",
+      permissionsLoaded: false,
       setSession: (u) => {
         const user = toUser(u);
         set({ user, status: "authed" });
@@ -117,13 +124,16 @@ export const useAuthStore = create<AuthState>()(
       signOut: async () => {
         await apiLogout();
         clearSessionLock();
-        set({ user: null, status: "anon" });
+        set({ user: null, status: "anon", permissionsLoaded: false });
       },
       loadPermissions: async () => {
         const user = get().user;
         if (!user) return;
-        // CEO already has ["*"] — no need to fetch.
-        if (user.isCeo) return;
+        // CEO already has ["*"] — no need to fetch; grants are "resolved".
+        if (user.isCeo) {
+          set({ permissionsLoaded: true });
+          return;
+        }
         try {
           const grants = await fetchMyPermissions();
           // CEO synthetic grant from backend: [{module:"*",action:"*"}]
@@ -131,9 +141,12 @@ export const useAuthStore = create<AuthState>()(
           const permissions = isSuperGrant
             ? ["*"]
             : grants.map((g) => `${g.module}:${g.action}`);
-          set({ user: { ...user, permissions } });
+          set({ user: { ...user, permissions }, permissionsLoaded: true });
         } catch {
-          // Non-fatal: keep whatever permissions the user already has.
+          // Non-fatal: keep whatever permissions the user already has, but
+          // mark resolved so the UI stops waiting (nav/guard fall back to the
+          // grants in hand; the API still enforces every call).
+          set({ permissionsLoaded: true });
         }
       },
       bootstrap: async () => {

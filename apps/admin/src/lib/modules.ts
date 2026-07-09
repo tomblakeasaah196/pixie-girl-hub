@@ -60,6 +60,15 @@ export interface AppModule {
    * it — just flip this off. Used for modules out of scope for this project.
    */
   hidden?: boolean;
+  /**
+   * RBAC module key that gates this nav entry (a key in the backend permission
+   * catalog, src/shared/access/access.catalog.js). A user who lacks
+   * `<permission>:view` never sees this module in any nav surface, and the
+   * route guard blocks direct URL access. Omit for personal/always-on modules
+   * (Dashboard anchor, Workspace, Notifications). The API enforces access
+   * regardless; this is the UI half of "never show what they can't access".
+   */
+  permission?: string;
 }
 
 export const GROUP_LABELS: Record<ModuleGroup, string> = {
@@ -92,6 +101,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "sales",
+    permission: "sales",
     label: "Sales",
     description: "Orders, quotes, payments",
     group: "run",
@@ -101,6 +111,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "crm",
+    permission: "crm",
     label: "CRM",
     description: "Deals & 360° profiles",
     group: "run",
@@ -109,6 +120,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "service_jobs",
+    permission: "service_jobs",
     label: "Stylist Studio",
     description: "In-house styling operations",
     group: "run",
@@ -119,6 +131,7 @@ export const MODULES: AppModule[] = [
   // module + backend routes are deleted; selling happens through Sales.
   {
     key: "ecommerce",
+    permission: "storefront",
     label: "E-Commerce",
     description: "Storefront admin",
     group: "run",
@@ -136,6 +149,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "insights",
+    permission: "ai_insights",
     label: "Insights",
     description: "Praxis proactive alerts",
     group: "run",
@@ -144,6 +158,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "stock",
+    permission: "stock",
     label: "Stock",
     description: "One true count",
     group: "operate",
@@ -152,6 +167,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "catalogue",
+    permission: "catalogue",
     label: "Catalogue",
     description: "Products & variants",
     group: "operate",
@@ -160,6 +176,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "logistics",
+    permission: "logistics",
     label: "Logistics",
     description: "Deliveries & couriers",
     group: "operate",
@@ -168,6 +185,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "purchasing",
+    permission: "purchasing",
     label: "Purchasing",
     description: "Imports & POs",
     group: "operate",
@@ -176,6 +194,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "production",
+    permission: "production",
     label: "Production",
     description: "Landed cost & jobs",
     group: "operate",
@@ -184,6 +203,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "retail",
+    permission: "retail_partners",
     label: "Retail Partners",
     description: "Consignment",
     group: "operate",
@@ -192,6 +212,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "stylists",
+    permission: "stylist_programme",
     label: "Stylists",
     description: "Partner programme",
     group: "operate",
@@ -200,6 +221,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "invoicing",
+    permission: "invoicing",
     label: "Invoicing",
     description: "Billing & live AR",
     group: "finance",
@@ -209,6 +231,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "accounting",
+    permission: "accounting",
     label: "Accounting",
     description: "The books",
     group: "finance",
@@ -217,6 +240,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "expenses",
+    permission: "expenses",
     label: "Expenses",
     description: "Claims & advances",
     group: "finance",
@@ -225,6 +249,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "pricing",
+    permission: "pricing",
     label: "Pricing",
     description: "Margin & fees",
     group: "finance",
@@ -233,6 +258,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "cash",
+    permission: "expenses",
     label: "Cash Requests",
     description: "Disbursements",
     group: "finance",
@@ -242,6 +268,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "intercompany",
+    permission: "intercompany",
     label: "Intercompany",
     description: "Cross-brand settlement",
     group: "finance",
@@ -251,6 +278,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "hr",
+    permission: "hr_payroll",
     label: "HR & Staff",
     description: "People, attendance & pay",
     group: "people",
@@ -259,6 +287,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "payroll",
+    permission: "hr_payroll",
     label: "Payroll",
     description: "Runs, payslips & disbursement",
     group: "people",
@@ -267,6 +296,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "performance",
+    permission: "hr_payroll",
     label: "Performance",
     description: "Appraisals & reviews",
     group: "people",
@@ -275,6 +305,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "contacts",
+    permission: "contacts",
     label: "Contacts",
     description: "Directory",
     group: "people",
@@ -283,6 +314,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "retention",
+    permission: "retention",
     label: "Retention",
     description: "Loyalty, referrals & strategies",
     group: "people",
@@ -291,6 +323,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "smartcomm",
+    permission: "smartcomm",
     label: "Messaging",
     description: "Unified inbox",
     group: "people",
@@ -299,6 +332,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "orgworkflow",
+    permission: "org_workflow",
     label: "Org & Workflow",
     description: "Structure, roles & approvals",
     group: "people",
@@ -308,6 +342,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "campaigns",
+    permission: "sales_campaigns",
     label: "Sales Campaigns",
     description: "Flash sales & landing pages",
     group: "grow",
@@ -317,6 +352,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "social",
+    permission: "social",
     label: "Social",
     description: "Posts & reach",
     group: "grow",
@@ -325,6 +361,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "marketing",
+    permission: "email_campaigns",
     label: "Marketing",
     description: "Email & ads",
     group: "grow",
@@ -333,6 +370,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "praxis",
+    permission: "praxis_ai",
     label: "Praxis AI",
     description:
       "Reads freely · writes only with your sign-off · acts with your permissions",
@@ -342,6 +380,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "settings",
+    permission: "settings",
     label: "Settings",
     description: "Configure the hub",
     group: "system",
@@ -350,6 +389,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "iam_security",
+    permission: "iam",
     label: "IAM & Security",
     description: "Audit, access & sessions",
     group: "system",
@@ -358,6 +398,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "documents",
+    permission: "documents",
     label: "Documents",
     description: "Filing cabinet",
     group: "system",
@@ -366,6 +407,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "aicontrol",
+    permission: "ai_governance",
     label: "AI Control",
     description: "Governance",
     group: "system",
@@ -374,6 +416,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "storefront_studio",
+    permission: "storefront_studio",
     label: "Storefront Studio",
     description: "Templates & vocabulary",
     group: "system",
@@ -390,6 +433,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "help_center",
+    permission: "help_center",
     label: "Help Center",
     description: "Guides & FAQs",
     group: "system",
@@ -401,6 +445,33 @@ export const MODULES: AppModule[] = [
 export const MODULE_BY_KEY: Record<string, AppModule> = Object.fromEntries(
   MODULES.map((m) => [m.key, m]),
 );
+
+/**
+ * Is this module permitted for the current user? `can` comes from the auth
+ * store (`useAuthStore(s => s.can)`); a CEO's `can` returns true for
+ * everything, so CEOs always see the full catalogue. Modules with no
+ * `permission` (Dashboard anchor, Workspace, Notifications) are always
+ * permitted — they're personal, not RBAC-gated.
+ */
+export function moduleIsPermitted(
+  m: AppModule,
+  can: (module: string, action: string) => boolean,
+): boolean {
+  if (!m.permission) return true;
+  return can(m.permission, "view");
+}
+
+/** Resolve the module that owns a given route path (longest-prefix match), so
+ *  a route guard can find the permission gating the current screen. */
+export function moduleForPath(pathname: string): AppModule | undefined {
+  let best: AppModule | undefined;
+  for (const m of MODULES) {
+    if (pathname === m.route || pathname.startsWith(m.route + "/")) {
+      if (!best || m.route.length > best.route.length) best = m;
+    }
+  }
+  return best;
+}
 
 /** The default top-10 (Dashboard is anchored first). */
 export const DEFAULT_TOP = [

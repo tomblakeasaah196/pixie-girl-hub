@@ -26,6 +26,7 @@ import {
   Phone,
   Mail,
   MessageSquare,
+  Pencil,
 } from "lucide-react";
 import { Card, Button, Pill, Skeleton, EmptyState, KpiTile } from "@/components/ui/primitives";
 import { DeniedState } from "@/components/ui/controls";
@@ -245,7 +246,8 @@ export default function EmployeeProfilePage() {
             <div className="flex items-center justify-between">
               <SectionTitle icon={<CalendarDays className="h-4 w-4 text-accent-glow" />}>Employment</SectionTitle>
               {canEdit && (
-                <Button size="sm" variant="ghost" onClick={() => setEmploymentOpen(true)}>Manage</Button>
+                <Button size="sm" variant="secondary" icon={<Pencil className="h-3.5 w-3.5" />}
+                  onClick={() => setEmploymentOpen(true)}>Edit</Button>
               )}
             </div>
             <InfoRow label="Job title" value={p.job_title} />
@@ -266,7 +268,8 @@ export default function EmployeeProfilePage() {
             <div className="flex items-center justify-between">
               <SectionTitle icon={<Wallet className="h-4 w-4 text-accent-glow" />}>Compensation & banking</SectionTitle>
               {canEdit && (
-                <Button size="sm" variant="ghost" onClick={() => setCompOpen(true)}>Manage</Button>
+                <Button size="sm" variant="secondary" icon={<Pencil className="h-3.5 w-3.5" />}
+                  onClick={() => setCompOpen(true)}>Edit</Button>
               )}
             </div>
             <InfoRow label="Base salary" value={money(Number(p.base_salary || 0))} />
@@ -284,7 +287,8 @@ export default function EmployeeProfilePage() {
             <div className="flex items-center justify-between">
               <SectionTitle icon={<ShieldAlert className="h-4 w-4 text-accent-glow" />}>Terms & probation</SectionTitle>
               {canEdit && (
-                <Button size="sm" variant="ghost" onClick={() => setTermsOpen(true)}>Manage</Button>
+                <Button size="sm" variant="secondary" icon={<Pencil className="h-3.5 w-3.5" />}
+                  onClick={() => setTermsOpen(true)}>Edit</Button>
               )}
             </div>
             <InfoRow

@@ -170,7 +170,9 @@ Field/endpoint truth: migration SQL → `docs/openapi.yaml` → `docs/Frontend_E
 4. **Record** — scope: `all` (everything), `team` (their team), `own` (their records)
 5. **Field** — cost, salary, factory origin hidden from non-privileged roles
 
-CEO role bypasses permission checks. 23 seeded system roles; custom roles are creatable. Middleware: `requirePermission(module, action)` sets `req.permission_scope`.
+CEO role bypasses permission checks. 15 seeded system roles; custom roles are creatable. Middleware: `requirePermission(module, action)` sets `req.permission_scope`.
+
+**Module list is a single source of truth.** `src/shared/access/access.catalog.js` `MODULES` must equal the distinct `requirePermission(module, …)` keys enforced in `src/`, and each nav module in `apps/admin/src/lib/modules.ts` carries a `permission` field so the admin UI hides modules a user can't access (the API enforces regardless). When you add/remove a module, update the catalog + nav mapping (and purge stale `shared.permissions` rows) in the same PR — see README "RBAC & module governance".
 
 ## Migrations
 

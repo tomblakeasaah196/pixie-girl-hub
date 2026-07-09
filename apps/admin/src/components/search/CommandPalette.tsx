@@ -13,6 +13,7 @@ import { useUiStore } from "@/stores/ui";
 import { useAuthStore } from "@/stores/auth";
 import { useBusinessStore } from "@/stores/business";
 import { MODULES, GROUP_LABELS, type ModuleGroup } from "@/lib/modules";
+import { usePermittedModuleKeys } from "@/hooks/useModuleAccess";
 import {
   search as apiSearch,
   type SearchGroup,
@@ -156,6 +157,7 @@ export function CommandPalette() {
   const [loading, setLoading] = useState(false);
   const [remoteGroups, setRemoteGroups] = useState<SearchGroup[]>([]);
   const [crossBrand, setCrossBrand] = useState(false);
+  const permitted = usePermittedModuleKeys();
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -207,6 +209,7 @@ export function CommandPalette() {
     const needle = q.toLowerCase();
     return MODULES.filter((m) => {
       if (m.hidden) return false;
+      if (!permitted.has(m.key)) return false; // never surface a locked module
       if (mode.key === "apps" && !needle) return true;
       if (!needle) return false;
       return (
@@ -215,7 +218,7 @@ export function CommandPalette() {
         m.key.toLowerCase().includes(needle)
       );
     }).slice(0, mode.key === "apps" ? 20 : 5);
-  }, [q, mode.key]);
+  }, [q, mode.key, permitted]);
 
   // ── Records (server) ─────────────────────────────────
   useEffect(() => {

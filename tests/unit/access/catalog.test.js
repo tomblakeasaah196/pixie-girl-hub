@@ -28,8 +28,19 @@ describe("permission catalog", () => {
       "hr_payroll",
       "settings",
       "intercompany",
+      // Reconciled in — these are enforced by routes and were missing before.
+      "catalogue",
+      "help_center",
+      "messaging_accounts",
+      "service_catalogue",
     ].forEach((k) => expect(MODULES).toContain(k));
     expect(MODULES.length).toBeGreaterThanOrEqual(37);
+  });
+
+  test("does not carry retired modules that nothing enforces", () => {
+    // POS was retired (owner directive) — selling happens through Sales.
+    // A key here that no route enforces lets the matrix accumulate dead grants.
+    expect(MODULES).not.toContain("pos");
   });
 
   test("action vocabulary matches the middleware and the permissions schema", () => {

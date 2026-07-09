@@ -1,26 +1,31 @@
 import { createPortal } from "react-dom";
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useCallback } from "react";
 import { ZoomIn, ZoomOut, X } from "lucide-react";
 
-// 16:9 to match the cover preview box in CoverImageEditor.
-const PREVIEW_W = 480;
-const PREVIEW_H = 270;
-const EXPORT_W = 1600;
-const EXPORT_H = 900;
+// Preview/export dimensions per supported cover aspect ratio. Export is a
+// fixed multiple of preview so exported quality stays consistent across
+// ratios.
+const DIMENSIONS = {
+  "16:9": { previewW: 480, previewH: 270, exportW: 1600, exportH: 900 },
+  "4:5": { previewW: 360, previewH: 450, exportW: 1200, exportH: 1500 },
+} as const;
 
 /** Drag-to-pan, wheel/slider-to-zoom cropper for collection/bundle/shade cover
  *  images — lets the user pull the focal point (hair, not face/fingers) into
  *  frame before it's saved. Mirrors PhotoCropModal's interaction model but
- *  crops to a 16:9 rectangle instead of a circular avatar. */
+ *  crops to a rectangle instead of a circular avatar. */
 export function CoverCropModal({
   file,
+  aspect = "16:9",
   onDone,
   onCancel,
 }: {
   file: File;
+  aspect?: keyof typeof DIMENSIONS;
   onDone: (blob: Blob) => void;
   onCancel: () => void;
 }) {
+  const { previewW, previewH, exportW, exportH } = DIMENSIONS[aspect];
   const imgRef = useRef<HTMLImageElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [src, setSrc] = useState("");
@@ -36,14 +41,29 @@ export function CoverCropModal({
     const img = new Image();
     img.onload = () => {
       imgRef.current = img;
-      const natural = Math.max(PREVIEW_W / img.width, PREVIEW_H / img.height);
+      const natural = Math.max(previewW / img.width, previewH / img.height);
       setMinZoom(natural);
       setZoom(natural);
       setOffset({ x: 0, y: 0 });
     };
     img.src = url;
     return () => URL.revokeObjectURL(url);
-  }, [file]);
+  }, [file, previewW, previewH]);
+
+  const clampOffset = useCallback(
+    (o: { x: number; y: number }, z: number) => {
+      if (!imgRef.current) return o;
+      const w = imgRef.current.width * z;
+      const h = imgRef.current.height * z;
+      const maxX = Math.max(0, (w - previewW) / 2);
+      const maxY = Math.max(0, (h - previewH) / 2);
+      return {
+        x: Math.max(-maxX, Math.min(maxX, o.x)),
+        y: Math.max(-maxY, Math.min(maxY, o.y)),
+      };
+    },
+    [previewW, previewH],
+  );
 
   // Non-passive wheel listener — can't use JSX onWheel + preventDefault (passive by default)
   useEffect(() => {
@@ -52,25 +72,21 @@ export function CoverCropModal({
     const handler = (e: WheelEvent) => {
       e.preventDefault();
       setZoom((z) => {
-        const next = z * (1 - e.deltaY * 0.001);
-        return Math.max(minZoom, Math.min(minZoom * 4, next));
+        const next = Math.max(
+          minZoom,
+          Math.min(minZoom * 4, z * (1 - e.deltaY * 0.001)),
+        );
+        // Re-clamp the offset for the new zoom immediately — otherwise
+        // zooming back out with the wheel leaves the pan offset from the
+        // more-zoomed-in state in place, and the image no longer covers
+        // the box (gaps of empty background appear at the edges).
+        setOffset((o) => clampOffset(o, next));
+        return next;
       });
     };
     el.addEventListener("wheel", handler, { passive: false });
     return () => el.removeEventListener("wheel", handler);
-  }, [minZoom]);
-
-  const clampOffset = (o: { x: number; y: number }, z: number) => {
-    if (!imgRef.current) return o;
-    const w = imgRef.current.width * z;
-    const h = imgRef.current.height * z;
-    const maxX = Math.max(0, (w - PREVIEW_W) / 2);
-    const maxY = Math.max(0, (h - PREVIEW_H) / 2);
-    return {
-      x: Math.max(-maxX, Math.min(maxX, o.x)),
-      y: Math.max(-maxY, Math.min(maxY, o.y)),
-    };
-  };
+  }, [minZoom, clampOffset]);
 
   const imgStyle = () => {
     if (!imgRef.current) return {};
@@ -79,9 +95,15 @@ export function CoverCropModal({
     return {
       width: w,
       height: h,
+      // Tailwind's preflight sets `img { max-width: 100% }`, which silently
+      // caps the rendered width at the container's width once zoom pushes
+      // it past that — height keeps scaling but width doesn't, so the image
+      // stops covering the box and shows background on one side. Override
+      // it so the explicit width above always wins.
+      maxWidth: "none" as const,
       position: "absolute" as const,
-      top: (PREVIEW_H - h) / 2 + offset.y,
-      left: (PREVIEW_W - w) / 2 + offset.x,
+      top: (previewH - h) / 2 + offset.y,
+      left: (previewW - w) / 2 + offset.x,
       userSelect: "none" as const,
       pointerEvents: "none" as const,
     };
@@ -93,27 +115,49 @@ export function CoverCropModal({
   };
   const moveDrag = (x: number, y: number) => {
     if (!dragging.current) return;
-    setOffset((o) =>
-      clampOffset(
-        { x: o.x + x - lastPos.current.x, y: o.y + y - lastPos.current.y },
-        zoom,
-      ),
-    );
+    // Compute the delta against lastPos synchronously, before mutating it —
+    // setOffset's updater callback runs later, during React's render phase,
+    // so if lastPos were read inside that callback it would already reflect
+    // this same call's (x, y) by the time the callback runs (the mutation
+    // below always executes first), making every delta compute as zero.
+    // That's why drag-to-reposition never actually moved the image.
+    const dx = x - lastPos.current.x;
+    const dy = y - lastPos.current.y;
     lastPos.current = { x, y };
+    setOffset((o) => clampOffset({ x: o.x + dx, y: o.y + dy }, zoom));
+  };
+  const endDrag = () => {
+    dragging.current = false;
+  };
+
+  // Mouse drag is tracked on `window`, not just the small preview box — the
+  // box is only 270-450px tall, so a normal-speed drag routinely carries the
+  // cursor outside it, and element-scoped mousemove/mouseup listeners simply
+  // stop firing at that point (making "drag to reposition" feel broken).
+  const onMouseDownDrag = (e: React.MouseEvent) => {
+    startDrag(e.clientX, e.clientY);
+    const onMove = (ev: MouseEvent) => moveDrag(ev.clientX, ev.clientY);
+    const onUp = () => {
+      endDrag();
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
   };
 
   const handleConfirm = () => {
     const img = imgRef.current;
     if (!img) return;
     const canvas = document.createElement("canvas");
-    canvas.width = EXPORT_W;
-    canvas.height = EXPORT_H;
+    canvas.width = exportW;
+    canvas.height = exportH;
     const ctx = canvas.getContext("2d")!;
-    const scale = EXPORT_W / PREVIEW_W;
+    const scale = exportW / previewW;
     const w = img.width * zoom * scale;
     const h = img.height * zoom * scale;
-    const x = (EXPORT_W - w) / 2 + offset.x * scale;
-    const y = (EXPORT_H - h) / 2 + offset.y * scale;
+    const x = (exportW - w) / 2 + offset.x * scale;
+    const y = (exportH - h) / 2 + offset.y * scale;
     ctx.drawImage(img, x, y, w, h);
     canvas.toBlob(
       (b) => {
@@ -148,15 +192,8 @@ export function CoverCropModal({
         <div
           ref={containerRef}
           className="mx-auto rounded-[12px] overflow-hidden bg-text-primary/[0.06] border-2 border-accent/30 cursor-grab active:cursor-grabbing touch-none"
-          style={{ width: PREVIEW_W, height: PREVIEW_H, position: "relative" }}
-          onMouseDown={(e) => startDrag(e.clientX, e.clientY)}
-          onMouseMove={(e) => moveDrag(e.clientX, e.clientY)}
-          onMouseUp={() => {
-            dragging.current = false;
-          }}
-          onMouseLeave={() => {
-            dragging.current = false;
-          }}
+          style={{ width: previewW, height: previewH, position: "relative" }}
+          onMouseDown={onMouseDownDrag}
           onTouchStart={(e) =>
             startDrag(e.touches[0].clientX, e.touches[0].clientY)
           }
@@ -164,9 +201,7 @@ export function CoverCropModal({
             e.preventDefault();
             moveDrag(e.touches[0].clientX, e.touches[0].clientY);
           }}
-          onTouchEnd={() => {
-            dragging.current = false;
-          }}
+          onTouchEnd={endDrag}
         >
           {src && <img src={src} alt="" style={imgStyle()} draggable={false} />}
         </div>

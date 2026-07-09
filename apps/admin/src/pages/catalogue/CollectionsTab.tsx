@@ -109,7 +109,7 @@ export function CollectionsTab() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {(cols.data ?? []).map((c: Collection) => (
             <Card key={c.collection_id} className="p-4">
-              <div className="aspect-[16/9] -mx-4 -mt-4 mb-3 overflow-hidden rounded-t-[var(--radius)] bg-text-primary/[0.04] relative group">
+              <div className="aspect-[4/5] -mx-4 -mt-4 mb-3 overflow-hidden rounded-t-[var(--radius)] bg-text-primary/[0.04] relative group">
                 {c.hero_image_url ? (
                   <img
                     src={c.hero_image_url}
@@ -197,6 +197,7 @@ function CollectionCoverModal({
         value={collection.hero_image_url}
         referenceType="collection"
         referenceId={collection.collection_id}
+        coverAspect="4:5"
         onChange={save}
       />
     </Modal>

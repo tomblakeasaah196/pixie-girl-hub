@@ -50,7 +50,7 @@ function tools() {
       function: {
         name: "sql_schema",
         description:
-          "[READ] Discover the live database schema for THIS business. Call with no args to list all tables (brand + shared schemas); call with `table` to get its columns AND its foreign-key links, shown as `column → other_table.column` (e.g. `styled_products.base_product_id → products.product_id`). ALWAYS inspect the tables you intend to join BEFORE writing a query, and join on the columns those arrows show — that's how the tables actually relate.",
+          "[READ] Discover the live database schema for THIS business. Call with no args to list ALL tables (brand + shared schemas); call with `table` to get its columns AND its foreign-key links, shown as `column → other_table.column` (e.g. `styled_products.base_product_id → products.product_id`). ALWAYS inspect the tables you intend to join BEFORE writing a query, and join on the columns those arrows show. If a table isn't found the result lists SIMILAR table names — silently try those, never report table names to the user. To find where something lives (order items, returns, refunds, etc.), call with no args and scan the full list before ever concluding the data 'doesn't exist'. Keep going until you can answer.",
         parameters: {
           type: "object",
           properties: {

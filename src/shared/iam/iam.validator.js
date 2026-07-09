@@ -53,10 +53,16 @@ function makeQuery(schema) {
 
 // ── Schemas ─────────────────────────────────────────────────
 
+// A login must be given at least one role at creation (owner Q4): no more
+// permission-less accounts. Extra per-business roles are added later in
+// Users & Access.
+const roleIds = z.array(z.string().uuid()).min(1, "Select at least one role");
+
 const provisionStaffLoginSchema = z.object({
   email: z.string().email(),
   default_business: z.string().min(1),
   permitted_businesses: z.array(z.string().min(1)).min(1),
+  role_ids: roleIds,
 });
 
 const provisionExternalSchema = z.object({
@@ -65,6 +71,7 @@ const provisionExternalSchema = z.object({
   external_label: z.string().optional(),
   default_business: z.string().min(1),
   permitted_businesses: z.array(z.string().min(1)).min(1),
+  role_ids: roleIds,
 });
 
 const totpVerifySchema = z.object({

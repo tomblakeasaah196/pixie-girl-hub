@@ -25,6 +25,8 @@ import { useCreateContact } from "./hooks";
 import { listContacts, getContact } from "./api";
 import { DIAL_CODES } from "./ContactFormModal";
 import type { Contact, ContactCreateInput } from "./types";
+import { orgApi } from "@/lib/org-api";
+import { accessApi } from "@/lib/access-api";
 
 // ──────────────────────────────────────────────────────────────────────────
 // Staff onboarding — full 4-step wizard (Person · Employment · Financial ·
@@ -40,19 +42,6 @@ const STEPS = [
   { key: "financial", label: "Financial", description: "Salary, bank, IDs" },
   { key: "access", label: "Access", description: "Login & businesses" },
 ] as const;
-
-const DEPARTMENTS = [
-  { value: "", label: "—" },
-  { value: "management", label: "Management" },
-  { value: "sales", label: "Sales" },
-  { value: "operations", label: "Operations" },
-  { value: "finance", label: "Finance" },
-  { value: "logistics", label: "Logistics" },
-  { value: "marketing", label: "Marketing" },
-  { value: "hr", label: "Human Resources" },
-  { value: "it", label: "IT" },
-  { value: "customer_service", label: "Customer Service" },
-];
 
 const EMPLOYMENT_TYPES = [
   { value: "full_time", label: "Full time" },
@@ -135,8 +124,9 @@ export function EmployeeOnboardingPage() {
 
   // ── Employment ──────────────────────────────────────────
   const [business, setBusiness] = useState(activeKey);
-  const [jobTitle, setJobTitle] = useState("");
-  const [department, setDepartment] = useState("");
+  // Job title + department come from the organigramme (no free text). Picking a
+  // position sets both, and assigns the new hire to that seat after creation.
+  const [positionId, setPositionId] = useState("");
   const [employmentType, setEmploymentType] = useState("full_time");
   const [startDate, setStartDate] = useState(
     new Date().toISOString().slice(0, 10),
@@ -168,6 +158,23 @@ export function EmployeeOnboardingPage() {
   // ── Access ──────────────────────────────────────────────
   const [createLogin, setCreateLogin] = useState(true);
   const [permitted, setPermitted] = useState<string[]>([activeKey]);
+  const [roleId, setRoleId] = useState("");
+
+  // Organigramme sources: positions drive title/department/role; roles gate
+  // the login (required — no permission-less accounts).
+  const { data: positions = [] } = useQuery({
+    queryKey: ["org-positions"],
+    queryFn: () => orgApi.listPositions(),
+  });
+  const { data: roles = [] } = useQuery({
+    queryKey: ["access-roles"],
+    queryFn: () => accessApi.listRoles(),
+  });
+  const selectedPosition = positions.find((p) => p.position_id === positionId);
+  // Default the login role to the position's role once a position is chosen.
+  if (createLogin && !roleId && selectedPosition?.role_id) {
+    setRoleId(selectedPosition.role_id);
+  }
 
   // Reports-to options (same business).
   const { data: staffResp } = useQuery({
@@ -195,8 +202,11 @@ export function EmployeeOnboardingPage() {
     }
     if (step === 1) {
       if (!business) return "Pick a primary business.";
-      if (!jobTitle.trim()) return "Job title is required.";
+      if (!positionId) return "Pick a position (it sets the job title & department).";
       if (!startDate) return "Start date is required.";
+    }
+    if (step === 3 && createLogin) {
+      if (!roleId) return "Pick a role for the login (no permission-less accounts).";
     }
     return null;
   };
@@ -236,13 +246,16 @@ export function EmployeeOnboardingPage() {
         contactId = c.contact_id;
       }
 
-      // 2. Create the HR employee profile (incl. work schedule).
+      // 2. Create the HR employee profile (incl. work schedule). Title +
+      //    department are taken from the chosen organigramme position.
       const profile = await api.post<StaffProfileResult>("/hr/employees", {
         contact_id: contactId,
-        job_title: jobTitle.trim(),
+        job_title: selectedPosition?.display_name ?? "Unassigned",
         employment_type: employmentType,
         start_date: startDate,
-        ...(department ? { department } : {}),
+        ...(selectedPosition?.unit_name
+          ? { department: selectedPosition.unit_name }
+          : {}),
         ...(reportsTo ? { reports_to: reportsTo } : {}),
         ...(baseSalary ? { base_salary: Number(baseSalary) } : {}),
         ...(bankName.trim() ? { bank_name: bankName.trim() } : {}),
@@ -260,8 +273,20 @@ export function EmployeeOnboardingPage() {
         work_grace_minutes: Number(grace) || 0,
       });
 
+      // 2b. Slot the new hire into their organigramme seat — this grants the
+      //     position's role and confirms their title + department.
+      if (positionId) {
+        try {
+          await orgApi.updatePosition(positionId, {
+            profile_id: profile.profile_id,
+          });
+        } catch (e) {
+          toastReport("Contacts → Employee onboarding", "Assign position", e);
+        }
+      }
+
       // 3. Optionally provision a Hub login instantly — returns a one-time
-      //    temporary password to hand to the new hire.
+      //    temporary password to hand to the new hire. A role is required.
       let credentials: { email: string; temp_password: string } | null = null;
       const loginEmail = email.trim() || linked?.email || "";
       if (createLogin && loginEmail) {
@@ -274,6 +299,7 @@ export function EmployeeOnboardingPage() {
             display_name: displayName,
             business_keys: permitted.length ? permitted : [business],
             staff_profile_id: profile.profile_id,
+            ...(roleId ? { role_ids: [roleId] } : {}),
           });
         } catch {
           /* provisioning is best-effort; HR can create the login later */
@@ -408,19 +434,30 @@ export function EmployeeOnboardingPage() {
                     }))}
                   />
                 </Field>
-                <Field label="Job title *">
-                  <TextInput
-                    value={jobTitle}
-                    onChange={(e) => setJobTitle(e.target.value)}
-                    placeholder="e.g. Sales Associate"
-                  />
-                </Field>
-                <Field label="Department">
+                <Field label="Position *">
                   <Select
-                    value={department}
-                    onChange={setDepartment}
-                    options={DEPARTMENTS}
+                    value={positionId}
+                    onChange={setPositionId}
+                    options={[
+                      { value: "", label: "— Select a position —" },
+                      ...positions.map((p) => ({
+                        value: p.position_id,
+                        label: `${p.display_name}${p.unit_name ? ` · ${p.unit_name}` : ""}`,
+                      })),
+                    ]}
                   />
+                  <div className="mt-1 flex items-center justify-between text-[11px]">
+                    <span className="text-text-faint">
+                      {selectedPosition
+                        ? `Dept ${selectedPosition.unit_name ?? "—"}${selectedPosition.role_name ? ` · grants ${selectedPosition.role_name}` : ""}`
+                        : "Sets job title, department & role"}
+                    </span>
+                    <button type="button"
+                      onClick={() => navigate("/org-workflow")}
+                      className="text-accent-glow hover:underline">
+                      + Create position
+                    </button>
+                  </div>
                 </Field>
                 <Field label="Employment type">
                   <Select
@@ -555,6 +592,23 @@ export function EmployeeOnboardingPage() {
                       provisioned.
                     </div>
                   )}
+                  <Field label="Role *">
+                    <Select
+                      value={roleId}
+                      onChange={setRoleId}
+                      options={[
+                        { value: "", label: "— Select a role —" },
+                        ...roles.map((r) => ({
+                          value: r.role_id,
+                          label: r.role_name,
+                        })),
+                      ]}
+                    />
+                    <span className="mt-1 block text-[11px] text-text-faint">
+                      Every login needs a role — it decides what they can see and
+                      do. Defaults to the position&rsquo;s role.
+                    </span>
+                  </Field>
                   <div>
                     <div className="micro mb-2">Permitted businesses</div>
                     <div className="flex flex-wrap gap-2">

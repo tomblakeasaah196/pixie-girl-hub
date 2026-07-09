@@ -19,7 +19,13 @@ const createSchema = z
     staff_profile_id: uuid.optional(),
     expires_in_days: z.coerce.number().int().min(1).max(30).optional(),
   })
-  .strict();
+  .strict()
+  // Owner Q4: no permission-less accounts. A non-CEO invite must carry at
+  // least one role (a CEO invite bypasses roles entirely).
+  .refine((o) => o.is_ceo === true || (o.role_ids && o.role_ids.length > 0), {
+    message: "Select at least one role for the new user",
+    path: ["role_ids"],
+  });
 
 const acceptSchema = z
   .object({

@@ -22,6 +22,8 @@ export interface OrgPosition {
   position_key: string;
   display_name: string;
   profile_id: string | null;
+  /** RBAC role this seat grants its holder (hard link). Null = structure-only. */
+  role_id: string | null;
   reports_to_position_id: string | null;
   is_management: boolean;
   is_deputy: boolean;
@@ -30,6 +32,10 @@ export interface OrgPosition {
   display_order: number;
   created_at: string;
   updated_at: string;
+  // Read-side enrichment from the API (joins), not written directly.
+  unit_name?: string | null;
+  role_name?: string | null;
+  holder_name?: string | null;
 }
 
 export interface DottedLine {

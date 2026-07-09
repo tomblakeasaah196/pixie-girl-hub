@@ -39,6 +39,8 @@ const positionCreateSchema = z.object({
   position_key: positionKey,
   display_name: z.string().min(1).max(120),
   profile_id: uuid.nullable().optional(),
+  // The RBAC role this position grants its holder. NULL = structure-only.
+  role_id: uuid.nullable().optional(),
   reports_to_position_id: uuid.nullable().optional(),
   is_management: z.boolean().optional(),
   is_deputy: z.boolean().optional(),

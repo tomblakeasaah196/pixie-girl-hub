@@ -31,6 +31,17 @@ export interface RoleMember {
   expires_at: string | null;
 }
 
+/** A role a user holds, for a given business (from GET .../users/:id/roles). */
+export interface UserRole {
+  user_id: string;
+  role_id: string;
+  business: string;
+  role_name: string;
+  is_system: boolean;
+  granted_at: string;
+  expires_at: string | null;
+}
+
 export interface CatalogEntry {
   module: string;
   actions: string[];
@@ -86,4 +97,16 @@ export const accessApi = {
       hidden_fields?: string[];
     }>,
   ) => api.put<Permission[]>(`/access/roles/${id}/permissions`, { grants }),
+
+  // ── user ⇄ role grants (per business) ──────────────────────
+  listUserRoles: (userId: string) =>
+    api.get<UserRole[]>(`/access/users/${userId}/roles`),
+  grantUserRole: (
+    userId: string,
+    body: { role_id: string; business: string; expires_at?: string | null },
+  ) => api.post<UserRole>(`/access/users/${userId}/roles`, body),
+  revokeUserRole: (userId: string, roleId: string, business: string) =>
+    api.delete<void>(
+      `/access/users/${userId}/roles/${roleId}?business=${encodeURIComponent(business)}`,
+    ),
 };

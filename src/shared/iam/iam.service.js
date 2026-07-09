@@ -24,7 +24,17 @@ const {
   ConflictError,
 } = require("../../utils/errors");
 const repo = require("./iam.repo");
+const grantsRepo = require("../access/grants.repo");
 const events = require("./iam.events");
+
+/** Grant each selected role to a freshly provisioned user for their default
+ *  brand (owner Q4: a login is never created without a role). Runs inside the
+ *  provisioning transaction so the account + its access commit atomically. */
+async function grantProvisionRoles(client, { user_id, role_ids, business, granted_by }) {
+  for (const role_id of role_ids || []) {
+    await grantsRepo.grantRole({ client, user_id, role_id, business, granted_by });
+  }
+}
 
 // ── TOTP helpers (RFC 6238, crypto-only, no external deps) ──
 
@@ -180,6 +190,12 @@ async function provisionStaffLogin(ctx, profileId, input) {
     if (!created) {
       throw new NotFoundError("Staff profile");
     }
+    await grantProvisionRoles(client, {
+      user_id: created.user_id,
+      role_ids: input.role_ids,
+      business: input.default_business,
+      granted_by: ctx.user_id,
+    });
     return created;
   });
 
@@ -205,7 +221,7 @@ async function provisionExternalUser(ctx, input) {
   const password_hash = await argon2.hash(tempPassword, hashOptions);
 
   const user = await transaction(async (client) => {
-    return repo.provisionExternalUser(client, {
+    const created = await repo.provisionExternalUser(client, {
       email: input.email,
       password_hash,
       display_name: input.display_name,
@@ -213,6 +229,13 @@ async function provisionExternalUser(ctx, input) {
       default_business: input.default_business,
       permitted_businesses: input.permitted_businesses,
     });
+    await grantProvisionRoles(client, {
+      user_id: created.user_id,
+      role_ids: input.role_ids,
+      business: input.default_business,
+      granted_by: ctx.user_id,
+    });
+    return created;
   });
 
   await audit({

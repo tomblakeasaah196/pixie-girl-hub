@@ -10,10 +10,74 @@
 "use strict";
 
 const repo = require("./org.repo");
+const grantsRepo = require("../access/grants.repo");
 const events = require("./org.events");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { NotFoundError } = require("../../utils/errors");
+
+/**
+ * The organigramme hard link (V2.2 §6.27, owner Q1): a position grants its
+ * role to whoever holds it, and the holder's job title + department flow from
+ * the position. When the (person, role) pairing on a position changes we grant
+ * the new role and revoke the old — unless the same person still holds that
+ * role via another seat. Roles are only granted to people who have a login;
+ * title/department always sync. `before`/`after` are enriched position rows
+ * (findPosition), so they carry `unit_name` for the department.
+ */
+async function applyPositionAssignment({ client, brand, granted_by, before, after }) {
+  const oldProfile = before?.profile_id ?? null;
+  const oldRole = before?.role_id ?? null;
+  const newProfile = after?.profile_id ?? null;
+  const newRole = after?.role_id ?? null;
+  const changed = oldProfile !== newProfile || oldRole !== newRole;
+
+  if (changed && oldProfile && oldRole) {
+    const stillHeld = await repo.profileHoldsRoleElsewhere({
+      client,
+      brand,
+      profile_id: oldProfile,
+      role_id: oldRole,
+      exclude_position_id: after?.position_id ?? before.position_id,
+    });
+    if (!stillHeld) {
+      const oldUser = await repo.userIdForProfile({ client, profile_id: oldProfile });
+      if (oldUser) {
+        await grantsRepo.revokeRole({
+          client,
+          user_id: oldUser,
+          role_id: oldRole,
+          business: brand,
+        });
+      }
+    }
+  }
+
+  if (changed && newProfile && newRole) {
+    const newUser = await repo.userIdForProfile({ client, profile_id: newProfile });
+    if (newUser) {
+      await grantsRepo.grantRole({
+        client,
+        user_id: newUser,
+        role_id: newRole,
+        business: brand,
+        granted_by,
+      });
+    }
+  }
+
+  // Keep the holder's title + department aligned with the seat (also catches a
+  // renamed position / moved unit even when the pairing itself didn't change).
+  if (newProfile) {
+    await repo.syncProfileFromPosition({
+      client,
+      brand,
+      profile_id: newProfile,
+      job_title: after.display_name,
+      department: after.unit_name,
+    });
+  }
+}
 
 // ── org_units ──────────────────────────────────────────────
 
@@ -112,7 +176,21 @@ async function createPosition({ brand, user, request_id, input }) {
     });
     if (!ok) throw new NotFoundError("OrgUnit");
 
-    const created = await repo.createPosition({ client, brand, input });
+    const createdRaw = await repo.createPosition({ client, brand, input });
+    // Re-read enriched (unit_name/role_name/holder_name) for the response and
+    // for the assignment sync below.
+    const created = await repo.findPosition({
+      client,
+      brand,
+      id: createdRaw.position_id,
+    });
+    await applyPositionAssignment({
+      client,
+      brand,
+      granted_by: user.user_id,
+      before: null,
+      after: created,
+    });
     await audit({
       business: brand,
       user_id: user.user_id,
@@ -144,7 +222,15 @@ async function updatePosition({ brand, user, request_id, id, patch }) {
       });
       if (!ok) throw new NotFoundError("OrgUnit");
     }
-    const updated = await repo.updatePosition({ client, brand, id, patch });
+    await repo.updatePosition({ client, brand, id, patch });
+    const updated = await repo.findPosition({ client, brand, id });
+    await applyPositionAssignment({
+      client,
+      brand,
+      granted_by: user.user_id,
+      before,
+      after: updated,
+    });
     await audit({
       business: brand,
       user_id: user.user_id,
@@ -168,6 +254,15 @@ async function deletePosition({ brand, user, request_id, id }) {
   return transaction(async (client) => {
     const before = await repo.findPosition({ client, brand, id });
     if (!before) throw new NotFoundError("OrgPosition");
+    // Removing the seat revokes the role it granted its holder (unless they
+    // still hold it via another position).
+    await applyPositionAssignment({
+      client,
+      brand,
+      granted_by: user.user_id,
+      before,
+      after: null,
+    });
     await repo.deletePosition({ client, brand, id });
     await audit({
       business: brand,

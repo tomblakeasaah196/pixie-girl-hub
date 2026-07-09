@@ -1,14 +1,15 @@
-import { Menu, Search, Sun, Moon } from "lucide-react";
+import { Menu, Search, Sun, Moon, LogOut } from "lucide-react";
 import { useLocation } from "react-router-dom";
 import { useUiStore } from "@/stores/ui";
 import { useIsDesktop } from "@/hooks/useMediaQuery";
 import { MODULES } from "@/lib/modules";
 import { ClockWidget } from "./ClockWidget";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
-import { useState } from "react";
-import { useAuthStore } from "@/stores/auth";
+import { useEffect, useRef, useState } from "react";
+import { cn } from "@/lib/cn";
 import { initials } from "@/lib/format";
-import { ProfileDrawer } from "@/components/profile/ProfileDrawer";
+import { ACCOUNT_MENU_ITEMS, useAccountMenu } from "./useAccountMenu";
+import { AccountMenuModals } from "./AccountMenuModals";
 import { usePageActionsSlotRef } from "./PageActions";
 
 /** Sticky top bar (canon §3.2): module title+desc · page actions · clock-in · ⌘K search · bell · theme. */
@@ -17,9 +18,20 @@ export function TopBar() {
   const { setMobileSidebarOpen, setPaletteOpen, theme, toggleTheme } =
     useUiStore();
   const isDesktop = useIsDesktop();
-  const user = useAuthStore((s) => s.user);
-  const [profileOpen, setProfileOpen] = useState(false);
+  const menu = useAccountMenu();
+  const { user, onItem, onSignOut } = menu;
+  const [accountOpen, setAccountOpen] = useState(false);
+  const accountRef = useRef<HTMLDivElement>(null);
   const slotRef = usePageActionsSlotRef();
+
+  useEffect(() => {
+    if (!accountOpen) return;
+    const onDown = (e: MouseEvent) =>
+      !accountRef.current?.contains(e.target as Node) &&
+      setAccountOpen(false);
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [accountOpen]);
 
   const mod = MODULES.find((m) => pathname.startsWith(m.route));
   const title = pathname === "/" ? "Hub" : (mod?.label ?? "Hub");
@@ -84,26 +96,88 @@ export function TopBar() {
               </button>
             )}
             {!isDesktop && user && (
-              <button
-                aria-label="Account"
-                onClick={() => setProfileOpen(true)}
-                className="w-[38px] h-[38px] rounded-full overflow-hidden grid place-items-center font-display font-semibold text-[13px] text-white bg-[linear-gradient(140deg,var(--biz-1),var(--biz-2))] shrink-0"
-              >
-                {user.avatarUrl ? (
-                  <img
-                    src={user.avatarUrl}
-                    alt={user.name}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  initials(user.name)
+              <div className="relative" ref={accountRef}>
+                <button
+                  aria-label="Account"
+                  aria-haspopup="menu"
+                  aria-expanded={accountOpen}
+                  onClick={() => setAccountOpen((o) => !o)}
+                  className="w-[38px] h-[38px] rounded-full overflow-hidden grid place-items-center font-display font-semibold text-[13px] text-white bg-[linear-gradient(140deg,var(--biz-1),var(--biz-2))] shrink-0"
+                >
+                  {user.avatarUrl ? (
+                    <img
+                      src={user.avatarUrl}
+                      alt={user.name}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    initials(user.name)
+                  )}
+                </button>
+                {accountOpen && (
+                  <div
+                    role="menu"
+                    className="absolute z-[65] top-full right-0 mt-2 w-[230px] p-2 rounded-[15px] dropglass animate-fade-in"
+                  >
+                    <div className="flex items-center gap-[11px] p-[10px_10px_12px] border-b hairline mb-1.5">
+                      <div className="w-10 h-10 rounded-full overflow-hidden bg-[linear-gradient(140deg,var(--biz-1),var(--biz-2))] grid place-items-center shrink-0">
+                        {user.avatarUrl ? (
+                          <img
+                            src={user.avatarUrl}
+                            alt={user.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <span className="font-display font-semibold text-white text-[14px]">
+                            {initials(user.name)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-semibold text-[13.5px] truncate">
+                          {user.name}
+                        </div>
+                        <div className="text-[11px] text-text-faint truncate">
+                          {user.email}
+                        </div>
+                      </div>
+                    </div>
+                    {ACCOUNT_MENU_ITEMS.map((it) => (
+                      <button
+                        key={it.key}
+                        role="menuitem"
+                        onClick={() => {
+                          setAccountOpen(false);
+                          onItem(it.key);
+                        }}
+                        className="w-full flex items-center gap-[11px] p-[9px_10px] rounded-[10px] text-[13px] font-medium text-text-muted hover:bg-text-primary/[0.06] hover:text-text-primary transition-all"
+                      >
+                        <it.icon className="w-4 h-4" />
+                        {it.label}
+                      </button>
+                    ))}
+                    <div className="h-px bg-line/30 my-1.5 mx-1" />
+                    <button
+                      role="menuitem"
+                      onClick={() => {
+                        setAccountOpen(false);
+                        void onSignOut();
+                      }}
+                      className={cn(
+                        "w-full flex items-center gap-[11px] p-[9px_10px] rounded-[10px] text-[13px] font-medium text-danger hover:bg-danger/10 transition-all",
+                      )}
+                    >
+                      <LogOut className="w-4 h-4" />
+                      Sign out
+                    </button>
+                  </div>
                 )}
-              </button>
+              </div>
             )}
           </div>
         </div>
       </header>
-      <ProfileDrawer open={profileOpen} onClose={() => setProfileOpen(false)} />
+      <AccountMenuModals menu={menu} />
     </>
   );
 }

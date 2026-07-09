@@ -1,6 +1,11 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { getAccessToken, refreshAccessToken, setAccessToken } from "@/lib/api";
+import {
+  clearSessionLock,
+  getAccessToken,
+  refreshAccessToken,
+  setAccessToken,
+} from "@/lib/api";
 import {
   logout as apiLogout,
   fetchMyPermissions,
@@ -85,6 +90,9 @@ export const useAuthStore = create<AuthState>()(
       setSession: (u) => {
         const user = toUser(u);
         set({ user, status: "authed" });
+        // A fresh password/PIN check just succeeded — any prior lock
+        // (refresh-cookie-only revival is disabled while it's set) is over.
+        clearSessionLock();
 
         // Ensure the business context is set immediately after login
         // so X-Brand-Context is present on the very first API call. CEOs
@@ -108,6 +116,7 @@ export const useAuthStore = create<AuthState>()(
       },
       signOut: async () => {
         await apiLogout();
+        clearSessionLock();
         set({ user: null, status: "anon" });
       },
       loadPermissions: async () => {

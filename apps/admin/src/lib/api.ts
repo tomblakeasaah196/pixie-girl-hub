@@ -88,6 +88,30 @@ function hadKnownSession(): boolean {
   }
 }
 
+/** Once a session has been declared expired on this device, it stays locked
+ *  — surviving a reload — until the user re-proves identity (password/PIN).
+ *  Without this, hitting refresh while the SessionExpiredOverlay is up (or
+ *  right after it fires) let `bootstrap()` silently exchange the still-valid
+ *  httpOnly refresh cookie for a brand-new access token, handing back full
+ *  access with no credential check at all. Stored in localStorage (not the
+ *  in-memory token) specifically so it survives the reload it's meant to
+ *  guard against. */
+const SESSION_LOCK_KEY = "pgh-session-locked";
+
+export function isSessionLocked(): boolean {
+  return (
+    typeof localStorage !== "undefined" &&
+    localStorage.getItem(SESSION_LOCK_KEY) === "1"
+  );
+}
+
+/** Clears the lock after the user has re-proven identity via password/PIN. */
+export function clearSessionLock(): void {
+  if (typeof localStorage !== "undefined") {
+    localStorage.removeItem(SESSION_LOCK_KEY);
+  }
+}
+
 /** Broadcasts that a previously-authed session just failed to refresh (the
  *  refresh cookie itself has expired or been revoked — typically after long
  *  inactivity). A root-level listener (SessionExpiredOverlay) blurs the app
@@ -95,6 +119,9 @@ function hadKnownSession(): boolean {
  *  call fail silently with its own error. */
 export const SESSION_EXPIRED_EVENT = "pgh:session-expired";
 function notifySessionExpired() {
+  if (typeof localStorage !== "undefined") {
+    localStorage.setItem(SESSION_LOCK_KEY, "1");
+  }
   if (typeof window !== "undefined") {
     window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
   }
@@ -115,6 +142,9 @@ function notifySessionExpired() {
  */
 let refreshPromise: Promise<boolean> | null = null;
 export function refreshAccessToken(): Promise<boolean> {
+  // A locked session must never be silently revived — not even by a fresh
+  // page load — until the user re-enters a password or PIN.
+  if (isSessionLocked()) return Promise.resolve(false);
   if (refreshPromise) return refreshPromise;
   refreshPromise = (async () => {
     try {

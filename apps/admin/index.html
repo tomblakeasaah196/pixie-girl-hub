@@ -17,7 +17,10 @@
     <!-- Static defaults so there's never a /favicon.ico 404; ThemeProvider
          swaps these to the live branding (logo / favicon) once it loads. -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="apple-touch-icon" href="/pwa-icon.svg" />
+    <!-- iOS does not reliably render SVG as a home-screen icon, so this
+         must be a padded, opaque PNG or Safari falls back to a stretched
+         page screenshot. -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <!-- Dynamic manifest (live product name + icons). Falls back to the
          static /manifest.webmanifest shipped in public/ if the API is
          unavailable at build/host time. -->

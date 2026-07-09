@@ -109,11 +109,13 @@ export function Sidebar() {
           className="flex items-center gap-3 p-[18px] border-b hairline shrink-0 group"
         >
           {logoUrl ? (
-            <img
-              src={logoUrl}
-              alt={productName}
-              className="w-10 h-10 rounded-full object-cover shrink-0"
-            />
+            <span className="w-10 h-10 rounded-full grid place-items-center bg-text-primary/[0.04] border border-line shrink-0 overflow-hidden">
+              <img
+                src={logoUrl}
+                alt={productName}
+                className="w-full h-full object-contain p-1.5"
+              />
+            </span>
           ) : (
             <span className="w-10 h-10 rounded-full grid place-items-center font-display text-[19px] text-accent-glow border border-accent/45 bg-accent/[0.08] group-hover:shadow-glow transition-shadow shrink-0">
               {productName.charAt(0)}

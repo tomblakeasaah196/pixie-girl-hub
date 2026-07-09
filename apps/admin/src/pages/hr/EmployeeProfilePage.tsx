@@ -41,6 +41,7 @@ import {
   type StaffProfile,
   type StaffRow,
 } from "@/lib/hr-api";
+import { orgApi } from "@/lib/org-api";
 import { Modal } from "@/components/ui/Modal";
 import { downloadDocument } from "@/lib/documents-api";
 import {
@@ -617,31 +618,60 @@ function EmploymentEditModal({
   onClose: () => void;
 }) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const notify = useNotify("HR → Employee: employment");
+
+  // Job title + department are no longer free text — they flow from the
+  // organigramme. Picking a position here assigns this employee to that seat,
+  // which (via the backend hard link) sets their title, department and role.
+  const { data: positions = [] } = useQuery({
+    queryKey: ["org-positions"],
+    queryFn: () => orgApi.listPositions(),
+  });
+  const currentPositionId =
+    positions.find((p) => p.profile_id === profileId)?.position_id ?? "";
+
   const [form, setForm] = useState({
-    job_title: profile.job_title ?? "",
-    department: profile.department ?? "",
+    position_id: currentPositionId,
     employment_type: profile.employment_type ?? "full_time",
     start_date: profile.start_date ?? "",
     end_date: profile.end_date ?? "",
     reports_to: (profile.reports_to as string | null) ?? "",
   });
+  // Once positions load, default the picker to the seat the person holds.
+  const [seeded, setSeeded] = useState(false);
+  if (!seeded && currentPositionId && !form.position_id) {
+    setForm((f) => ({ ...f, position_id: currentPositionId }));
+    setSeeded(true);
+  }
+
+  const selected = positions.find((p) => p.position_id === form.position_id);
 
   const save = useMutation({
-    mutationFn: () => {
-      const patch: Record<string, unknown> = {
-        job_title: form.job_title,
+    mutationFn: async () => {
+      // Reassign the org seat first (grants role + syncs title/department).
+      if (form.position_id !== currentPositionId) {
+        if (currentPositionId) {
+          await orgApi.updatePosition(currentPositionId, { profile_id: null });
+        }
+        if (form.position_id) {
+          await orgApi.updatePosition(form.position_id, {
+            profile_id: profileId,
+          });
+        }
+      }
+      // Staff-level fields that don't come from the position.
+      await updateStaff(profileId, {
         employment_type: form.employment_type,
         start_date: form.start_date || undefined,
         end_date: form.end_date || null,
         reports_to: form.reports_to || null,
-      };
-      if (form.department) patch.department = form.department;
-      return updateStaff(profileId, patch);
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["hr", "employee-360", profileId] });
-      notify("Employment details updated");
+      qc.invalidateQueries({ queryKey: ["org-positions"] });
+      notify("Employment updated");
       onClose();
     },
     onError: (e) => notify("Failed", errMsg(e), "high"),
@@ -653,31 +683,45 @@ function EmploymentEditModal({
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={save.isPending || !form.job_title || !form.start_date}
+          <Button variant="primary" disabled={save.isPending || !form.start_date}
             onClick={() => save.mutate()}>
             {save.isPending ? "Saving…" : "Save"}
           </Button>
         </>
       }>
       <div className="space-y-3">
-        <label className="block text-xs text-text-muted">Job title
-          <input value={form.job_title} className={cls}
-            onChange={(e) => setForm({ ...form, job_title: e.target.value })} />
-        </label>
-        <div className="grid grid-cols-2 gap-3">
-          <label className="block text-xs text-text-muted">Department
-            <input value={form.department} className={cls}
-              onChange={(e) => setForm({ ...form, department: e.target.value })} />
-          </label>
-          <label className="block text-xs text-text-muted">Employment type
-            <select value={form.employment_type} className={cls}
-              onChange={(e) => setForm({ ...form, employment_type: e.target.value })}>
-              {["full_time", "part_time", "contract", "intern"].map((t) => (
-                <option key={t} value={t}>{t.replace("_", " ")}</option>
-              ))}
-            </select>
-          </label>
+        <div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-text-muted">Position</span>
+            <button type="button"
+              onClick={() => { onClose(); navigate("/org-workflow"); }}
+              className="inline-flex items-center gap-1 text-[11px] text-accent-glow hover:underline">
+              + Create position
+            </button>
+          </div>
+          <select value={form.position_id} className={cls}
+            onChange={(e) => setForm({ ...form, position_id: e.target.value })}>
+            <option value="">— Unassigned —</option>
+            {positions.map((p) => (
+              <option key={p.position_id} value={p.position_id}>
+                {p.display_name}{p.unit_name ? ` · ${p.unit_name}` : ""}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-[11px] text-text-faint">
+            {selected
+              ? `Job title “${selected.display_name}”${selected.unit_name ? `, department ${selected.unit_name}` : ""}${selected.role_name ? `, grants role ${selected.role_name}` : ""}.`
+              : "Job title and department come from the assigned position."}
+          </p>
         </div>
+        <label className="block text-xs text-text-muted">Employment type
+          <select value={form.employment_type} className={cls}
+            onChange={(e) => setForm({ ...form, employment_type: e.target.value })}>
+            {["full_time", "part_time", "contract", "intern"].map((t) => (
+              <option key={t} value={t}>{t.replace("_", " ")}</option>
+            ))}
+          </select>
+        </label>
         <div className="grid grid-cols-2 gap-3">
           <label className="block text-xs text-text-muted">Start date
             <input type="date" value={form.start_date ?? ""} className={cls}

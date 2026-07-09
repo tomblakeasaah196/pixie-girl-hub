@@ -211,11 +211,18 @@ export function useProvisionStaff() {
     mutationFn: (data: {
       profileId: string;
       email: string;
-      businesses: string[];
+      default_business: string;
+      permitted_businesses: string[];
+      role_ids: string[];
     }) =>
       api.post<{ temp_password: string }>(
         `/iam/users/provision-staff/${data.profileId}`,
-        { email: data.email, businesses: data.businesses },
+        {
+          email: data.email,
+          default_business: data.default_business,
+          permitted_businesses: data.permitted_businesses,
+          role_ids: data.role_ids,
+        },
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["iam-users", brand] }),
   });
@@ -229,12 +236,11 @@ export function useProvisionExternal() {
       display_name: string;
       email: string;
       external_label: string;
-      businesses: string[];
+      default_business: string;
+      permitted_businesses: string[];
+      role_ids: string[];
     }) =>
-      api.post<{ temp_password: string }>(
-        "/iam/users/provision-external",
-        data,
-      ),
+      api.post<{ temp_password: string }>("/iam/users/provision-external", data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["iam-users", brand] }),
   });
 }

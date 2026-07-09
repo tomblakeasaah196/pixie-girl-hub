@@ -32,6 +32,10 @@ import {
   type IamUser,
   type UserSession,
 } from "@/lib/iam";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { accessApi } from "@/lib/access-api";
+import { listStaff } from "@/lib/hr-api";
+import { useBusinesses } from "@/stores/business";
 
 // ────────────────────────────────────────────────────────────
 // Constants
@@ -82,6 +86,73 @@ function useDebounce(value: string, delay: number) {
 // Staff Provision Drawer
 // ────────────────────────────────────────────────────────────
 
+/** Required role + business selection, shared by both provisioning drawers.
+ *  Every login must carry at least one role (owner Q4). */
+function AccessFields({
+  businesses,
+  permitted,
+  togglePermitted,
+  roleId,
+  setRoleId,
+  onCreateRole,
+}: {
+  businesses: { key: string; name: string }[];
+  permitted: string[];
+  togglePermitted: (key: string) => void;
+  roleId: string;
+  setRoleId: (v: string) => void;
+  onCreateRole: () => void;
+}) {
+  const { data: roles = [] } = useQuery({
+    queryKey: ["access-roles"],
+    queryFn: () => accessApi.listRoles(),
+  });
+  return (
+    <>
+      <Field label="Role *" hint="Decides what this login can see and do">
+        <Select
+          value={roleId}
+          onChange={setRoleId}
+          options={[
+            { value: "", label: "— Select a role —" },
+            ...roles.map((r) => ({ value: r.role_id, label: r.role_name })),
+          ]}
+        />
+      </Field>
+      <button
+        type="button"
+        onClick={onCreateRole}
+        className="text-[12px] text-accent-glow hover:underline"
+      >
+        Need a new role? Create one in Org &amp; Workflow →
+      </button>
+      <div>
+        <div className="micro mb-2">Businesses *</div>
+        <div className="flex flex-wrap gap-2">
+          {businesses.map((b) => {
+            const on = permitted.includes(b.key);
+            return (
+              <button
+                key={b.key}
+                type="button"
+                onClick={() => togglePermitted(b.key)}
+                className={[
+                  "px-3 h-[34px] rounded-[9px] text-[12px] font-semibold border transition-all",
+                  on
+                    ? "bg-accent-deep/[0.15] border-accent-deep/50 text-accent-glow"
+                    : "bg-text-primary/[0.04] border-line text-text-muted hover:text-text-primary",
+                ].join(" ")}
+              >
+                {b.name}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </>
+  );
+}
+
 function StaffDrawer({
   open,
   onClose,
@@ -93,14 +164,25 @@ function StaffDrawer({
 }) {
   const navigate = useNavigate();
   const provisionStaff = useProvisionStaff();
+  const businesses = useBusinesses();
   const [profileId, setProfileId] = useState("");
   const [email, setEmail] = useState("");
-  const [businesses, setBusinesses] = useState("");
+  const [permitted, setPermitted] = useState<string[]>([]);
+  const [roleId, setRoleId] = useState("");
+
+  // Staff without a login yet — the pool this drawer can provision for.
+  const { data: staffResp } = useQuery({
+    queryKey: ["hr", "staff-picker"],
+    queryFn: () => listStaff({ page_size: "200" }),
+    enabled: open,
+  });
+  const staff = staffResp?.data ?? [];
 
   const reset = useCallback(() => {
     setProfileId("");
     setEmail("");
-    setBusinesses("");
+    setPermitted([]);
+    setRoleId("");
     provisionStaff.reset();
   }, [provisionStaff]);
 
@@ -109,13 +191,23 @@ function StaffDrawer({
     onClose();
   }, [reset, onClose]);
 
+  const togglePermitted = (key: string) =>
+    setPermitted((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
+    );
+
+  const canSubmit =
+    profileId && email && roleId && permitted.length > 0 && !provisionStaff.isPending;
+
   const handleSubmit = () => {
-    const biz = businesses
-      .split(",")
-      .map((b) => b.trim())
-      .filter(Boolean);
     provisionStaff.mutate(
-      { profileId, email, businesses: biz },
+      {
+        profileId,
+        email,
+        default_business: permitted[0],
+        permitted_businesses: permitted,
+        role_ids: [roleId],
+      },
       {
         onSuccess: (data) => {
           handleClose();
@@ -136,25 +228,32 @@ function StaffDrawer({
           <Button variant="ghost" onClick={handleClose}>
             Cancel
           </Button>
-          <Button
-            variant="primary"
-            disabled={!profileId || !email || provisionStaff.isPending}
-            onClick={handleSubmit}
-          >
+          <Button variant="primary" disabled={!canSubmit} onClick={handleSubmit}>
             {provisionStaff.isPending ? "Provisioning..." : "Provision"}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <Field label="Staff Profile ID" hint="ID of existing staff profile">
-          <TextInput
+        <Field label="Staff member *">
+          <Select
             value={profileId}
-            onChange={(e) => setProfileId(e.target.value)}
-            placeholder="e.g. prof_abc123"
+            onChange={(v) => {
+              setProfileId(v);
+              const s = staff.find((x) => x.profile_id === v);
+              if (s && !email && (s as { contact_email?: string }).contact_email)
+                setEmail((s as { contact_email?: string }).contact_email ?? "");
+            }}
+            options={[
+              { value: "", label: "— Select staff —" },
+              ...staff.map((s) => ({
+                value: s.profile_id,
+                label: `${s.display_name}${s.job_title ? ` · ${s.job_title}` : ""}`,
+              })),
+            ]}
           />
         </Field>
-        <Field label="Email">
+        <Field label="Email *">
           <TextInput
             type="email"
             value={email}
@@ -162,28 +261,22 @@ function StaffDrawer({
             placeholder="user@company.com"
           />
         </Field>
-        <Field label="Businesses" hint="comma-separated business keys">
-          <TextInput
-            value={businesses}
-            onChange={(e) => setBusinesses(e.target.value)}
-            placeholder="e.g. acme, globex"
-          />
-        </Field>
+        <AccessFields
+          businesses={businesses}
+          permitted={permitted}
+          togglePermitted={togglePermitted}
+          roleId={roleId}
+          setRoleId={setRoleId}
+          onCreateRole={() => {
+            handleClose();
+            navigate("/org-workflow");
+          }}
+        />
         {provisionStaff.isError && (
           <p className="text-[12px] text-danger">
             {(provisionStaff.error as Error)?.message ?? "Provisioning failed."}
           </p>
         )}
-        <button
-          type="button"
-          onClick={() => {
-            handleClose();
-            navigate("/org-workflow");
-          }}
-          className="text-[12px] text-accent-glow hover:underline"
-        >
-          Need to create a role first?
-        </button>
       </div>
     </Drawer>
   );
@@ -202,17 +295,21 @@ function ExternalDrawer({
   onClose: () => void;
   onSuccess: (tempPw: string) => void;
 }) {
+  const navigate = useNavigate();
   const provisionExternal = useProvisionExternal();
+  const businesses = useBusinesses();
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [label, setLabel] = useState("");
-  const [businesses, setBusinesses] = useState("");
+  const [permitted, setPermitted] = useState<string[]>([]);
+  const [roleId, setRoleId] = useState("");
 
   const reset = useCallback(() => {
     setDisplayName("");
     setEmail("");
     setLabel("");
-    setBusinesses("");
+    setPermitted([]);
+    setRoleId("");
     provisionExternal.reset();
   }, [provisionExternal]);
 
@@ -221,17 +318,27 @@ function ExternalDrawer({
     onClose();
   }, [reset, onClose]);
 
+  const togglePermitted = (key: string) =>
+    setPermitted((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
+    );
+
+  const canSubmit =
+    displayName &&
+    email &&
+    roleId &&
+    permitted.length > 0 &&
+    !provisionExternal.isPending;
+
   const handleSubmit = () => {
-    const biz = businesses
-      .split(",")
-      .map((b) => b.trim())
-      .filter(Boolean);
     provisionExternal.mutate(
       {
         display_name: displayName,
         email,
         external_label: label,
-        businesses: biz,
+        default_business: permitted[0],
+        permitted_businesses: permitted,
+        role_ids: [roleId],
       },
       {
         onSuccess: (data) => {
@@ -253,25 +360,21 @@ function ExternalDrawer({
           <Button variant="ghost" onClick={handleClose}>
             Cancel
           </Button>
-          <Button
-            variant="primary"
-            disabled={!displayName || !email || provisionExternal.isPending}
-            onClick={handleSubmit}
-          >
+          <Button variant="primary" disabled={!canSubmit} onClick={handleSubmit}>
             {provisionExternal.isPending ? "Provisioning..." : "Provision"}
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <Field label="Display Name">
+        <Field label="Display Name *">
           <TextInput
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             placeholder="Jane Doe"
           />
         </Field>
-        <Field label="Email">
+        <Field label="Email *">
           <TextInput
             type="email"
             value={email}
@@ -286,13 +389,17 @@ function ExternalDrawer({
             placeholder="External Auditor"
           />
         </Field>
-        <Field label="Businesses" hint="comma-separated business keys">
-          <TextInput
-            value={businesses}
-            onChange={(e) => setBusinesses(e.target.value)}
-            placeholder="e.g. acme, globex"
-          />
-        </Field>
+        <AccessFields
+          businesses={businesses}
+          permitted={permitted}
+          togglePermitted={togglePermitted}
+          roleId={roleId}
+          setRoleId={setRoleId}
+          onCreateRole={() => {
+            handleClose();
+            navigate("/org-workflow");
+          }}
+        />
         {provisionExternal.isError && (
           <p className="text-[12px] text-danger">
             {(provisionExternal.error as Error)?.message ??
@@ -541,6 +648,142 @@ function TempPasswordModal({
 }
 
 // ────────────────────────────────────────────────────────────
+// Roles Drawer — assign / reassign a user's roles, per business
+// ────────────────────────────────────────────────────────────
+
+function RolesDrawer({
+  user,
+  onClose,
+}: {
+  user: IamUser | null;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const businesses = useBusinesses();
+  const [roleId, setRoleId] = useState("");
+  const [business, setBusiness] = useState("");
+
+  const held = useQuery({
+    queryKey: ["user-roles", user?.user_id],
+    queryFn: () => accessApi.listUserRoles(user!.user_id),
+    enabled: !!user,
+  });
+  const { data: roles = [] } = useQuery({
+    queryKey: ["access-roles"],
+    queryFn: () => accessApi.listRoles(),
+    enabled: !!user,
+  });
+
+  const invalidate = () =>
+    qc.invalidateQueries({ queryKey: ["user-roles", user?.user_id] });
+
+  const grant = useMutation({
+    mutationFn: () =>
+      accessApi.grantUserRole(user!.user_id, { role_id: roleId, business }),
+    onSuccess: () => {
+      setRoleId("");
+      setBusiness("");
+      invalidate();
+    },
+  });
+  const revoke = useMutation({
+    mutationFn: (v: { role_id: string; business: string }) =>
+      accessApi.revokeUserRole(user!.user_id, v.role_id, v.business),
+    onSuccess: invalidate,
+  });
+
+  return (
+    <Drawer
+      open={!!user}
+      onClose={onClose}
+      title="Roles & access"
+      subtitle={user ? `${user.display_name} (${user.email})` : undefined}
+    >
+      <div className="space-y-5">
+        <div>
+          <div className="micro mb-2">Current roles</div>
+          {held.isLoading ? (
+            <div className="flex items-center gap-2 text-text-faint text-[13px]">
+              <Loader2 className="w-4 h-4 animate-spin" /> Loading…
+            </div>
+          ) : (held.data ?? []).length === 0 ? (
+            <p className="text-[13px] text-warn">
+              No roles — this user currently has no access.
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              {(held.data ?? []).map((ur) => (
+                <div
+                  key={`${ur.role_id}:${ur.business}`}
+                  className="flex items-center justify-between gap-3 rounded-xl border border-line bg-text-primary/[0.03] px-3 py-2"
+                >
+                  <span className="text-[13px] text-text-primary">
+                    {ur.role_name}
+                    <span className="text-text-faint">
+                      {" "}
+                      · {ur.business === "*" ? "All businesses" : ur.business}
+                    </span>
+                  </span>
+                  <button
+                    onClick={() =>
+                      revoke.mutate({
+                        role_id: ur.role_id,
+                        business: ur.business,
+                      })
+                    }
+                    disabled={revoke.isPending}
+                    className="text-[11px] font-semibold text-danger px-2 h-7 rounded-lg hover:bg-danger/10"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="border-t hairline pt-4 space-y-3">
+          <div className="micro">Add a role</div>
+          <Field label="Role">
+            <Select
+              value={roleId}
+              onChange={setRoleId}
+              options={[
+                { value: "", label: "— Select a role —" },
+                ...roles.map((r) => ({ value: r.role_id, label: r.role_name })),
+              ]}
+            />
+          </Field>
+          <Field label="Business">
+            <Select
+              value={business}
+              onChange={setBusiness}
+              options={[
+                { value: "", label: "— Select business —" },
+                { value: "*", label: "All businesses" },
+                ...businesses.map((b) => ({ value: b.key, label: b.name })),
+              ]}
+            />
+          </Field>
+          {grant.isError && (
+            <p className="text-[12px] text-danger">
+              {(grant.error as Error)?.message ?? "Could not grant role."}
+            </p>
+          )}
+          <Button
+            variant="primary"
+            disabled={!roleId || !business || grant.isPending}
+            onClick={() => grant.mutate()}
+          >
+            {grant.isPending ? "Granting…" : "Grant role"}
+          </Button>
+        </div>
+      </div>
+    </Drawer>
+  );
+}
+
+// ────────────────────────────────────────────────────────────
 // Main page
 // ────────────────────────────────────────────────────────────
 
@@ -558,6 +801,7 @@ export function IamUsersPage() {
   const [page, setPage] = useState(1);
   const [drawer, setDrawer] = useState<"staff" | "external" | null>(null);
   const [sessionsUser, setSessionsUser] = useState<IamUser | null>(null);
+  const [rolesUser, setRolesUser] = useState<IamUser | null>(null);
   const [resetUser, setResetUser] = useState<IamUser | null>(null);
   const [deactivateUser, setDeactivateUser] = useState<IamUser | null>(null);
   const [tempPassword, setTempPassword] = useState<string | null>(null);
@@ -674,6 +918,12 @@ export function IamUsersPage() {
           className="flex items-center justify-end gap-1"
           onClick={(e) => e.stopPropagation()}
         >
+          <button
+            onClick={() => setRolesUser(r)}
+            className="text-[11px] font-semibold text-accent-glow px-2 h-7 rounded-lg hover:bg-accent/10"
+          >
+            Roles
+          </button>
           <button
             onClick={() => setSessionsUser(r)}
             className="text-[11px] font-semibold text-text-muted px-2 h-7 rounded-lg hover:bg-text-primary/[0.06]"
@@ -846,6 +1096,7 @@ export function IamUsersPage() {
         user={sessionsUser}
         onClose={() => setSessionsUser(null)}
       />
+      <RolesDrawer user={rolesUser} onClose={() => setRolesUser(null)} />
 
       {/* Modals */}
       <ResetPasswordModal

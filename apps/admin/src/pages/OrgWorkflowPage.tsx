@@ -55,6 +55,7 @@ import {
   ACTION_META,
   RECORD_SCOPE_LABELS,
 } from "@/lib/access-api";
+import { listStaff, type StaffRow } from "@/lib/hr-api";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -246,18 +247,26 @@ function PositionForm({
   initial,
   units,
   positions,
+  roles,
+  staff,
+  onCreateRole,
   onSave,
   saving,
 }: {
   initial?: Partial<OrgPosition>;
   units: OrgUnit[];
   positions: OrgPosition[];
+  roles: Role[];
+  staff: StaffRow[];
+  onCreateRole: () => void;
   onSave: (data: Partial<OrgPosition>) => void;
   saving: boolean;
 }) {
   const [displayName, setDisplayName] = useState(initial?.display_name ?? "");
   const [posKey, setPosKey] = useState(initial?.position_key ?? "");
   const [unitId, setUnitId] = useState(initial?.unit_id ?? "");
+  const [roleId, setRoleId] = useState(initial?.role_id ?? "");
+  const [profileId, setProfileId] = useState(initial?.profile_id ?? "");
   const [reportsTo, setReportsTo] = useState(
     initial?.reports_to_position_id ?? "",
   );
@@ -320,6 +329,53 @@ function PositionForm({
             </option>
           ))}
         </select>
+      </div>
+      <div>
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="micro">Grants role</label>
+          <button
+            type="button"
+            onClick={onCreateRole}
+            className="text-[11px] text-[rgb(var(--accent-glow))] hover:underline inline-flex items-center gap-1"
+          >
+            <Plus className="w-3 h-3" /> Create a role
+          </button>
+        </div>
+        <select
+          className="w-full bg-[rgb(var(--panel-2)/0.6)] border border-[rgb(var(--border-c))] rounded-xl px-3.5 py-2.5 text-[13px] focus:outline-none focus:border-[rgb(var(--accent)/0.5)]"
+          value={roleId ?? ""}
+          onChange={(e) => setRoleId(e.target.value)}
+        >
+          <option value="">— No role (structure-only) —</option>
+          {roles.map((r) => (
+            <option key={r.role_id} value={r.role_id}>
+              {r.role_name}
+            </option>
+          ))}
+        </select>
+        <p className="text-[11px] text-[rgb(var(--text-faint))] mt-1">
+          The person assigned to this position is automatically granted this
+          role; moving them out revokes it.
+        </p>
+      </div>
+      <div>
+        <label className="micro block mb-1.5">Assigned to (holder)</label>
+        <select
+          className="w-full bg-[rgb(var(--panel-2)/0.6)] border border-[rgb(var(--border-c))] rounded-xl px-3.5 py-2.5 text-[13px] focus:outline-none focus:border-[rgb(var(--accent)/0.5)]"
+          value={profileId ?? ""}
+          onChange={(e) => setProfileId(e.target.value)}
+        >
+          <option value="">— Vacant —</option>
+          {staff.map((s) => (
+            <option key={s.profile_id} value={s.profile_id}>
+              {s.display_name}
+              {s.job_title ? ` · ${s.job_title}` : ""}
+            </option>
+          ))}
+        </select>
+        <p className="text-[11px] text-[rgb(var(--text-faint))] mt-1">
+          Sets the person's job title and department from this position.
+        </p>
       </div>
       <div>
         <label className="micro block mb-1.5">Reports to (solid line)</label>
@@ -401,6 +457,8 @@ function PositionForm({
             display_name: displayName.trim(),
             position_key: posKey || autoKey,
             unit_id: unitId || undefined,
+            role_id: roleId || null,
+            profile_id: profileId || null,
             reports_to_position_id: reportsTo || null,
             is_management: isMgmt,
             is_deputy: isDeputy,
@@ -424,7 +482,13 @@ function PositionForm({
   );
 }
 
-function OrgTab({ canEdit }: { canEdit: boolean }) {
+function OrgTab({
+  canEdit,
+  onCreateRole,
+}: {
+  canEdit: boolean;
+  onCreateRole: () => void;
+}) {
   const qc = useQueryClient();
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
   const [selectedPositionId, setSelectedPositionId] = useState<string | null>(
@@ -449,6 +513,19 @@ function OrgTab({ canEdit }: { canEdit: boolean }) {
     queryKey: ["org-positions"],
     queryFn: () => orgApi.listPositions(),
   });
+
+  // Roles (to hard-link a position) and staff (to assign a holder).
+  const { data: roles = [] } = useQuery({
+    queryKey: ["access-roles"],
+    queryFn: () => accessApi.listRoles(),
+    enabled: canEdit,
+  });
+  const { data: staffResp } = useQuery({
+    queryKey: ["hr", "staff-picker"],
+    queryFn: () => listStaff({ page_size: "200" }),
+    enabled: canEdit,
+  });
+  const staff = staffResp?.data ?? [];
 
   const selectedUnit =
     units.find((u) => u.unit_id === selectedUnitId) ?? units[0] ?? null;
@@ -673,6 +750,14 @@ function OrgTab({ canEdit }: { canEdit: boolean }) {
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     {[
                       {
+                        label: "Holder",
+                        value: selectedPosition.holder_name || "Vacant",
+                      },
+                      {
+                        label: "Grants role",
+                        value: selectedPosition.role_name || "None",
+                      },
+                      {
                         label: "Management",
                         value: selectedPosition.is_management ? "Yes" : "No",
                       },
@@ -761,6 +846,9 @@ function OrgTab({ canEdit }: { canEdit: boolean }) {
             }
             units={units}
             positions={allPositions}
+            roles={roles}
+            staff={staff}
+            onCreateRole={onCreateRole}
             saving={createPosMutation.isPending || updatePosMutation.isPending}
             onSave={(data) => {
               if (posDrawer === "create") createPosMutation.mutate(data);
@@ -787,18 +875,24 @@ const MODULE_LABELS: Record<string, string> = {
   audit: "Audit",
   business_setup: "Biz Setup",
   calendar: "Calendar",
+  catalogue: "Catalogue",
   contacts: "Contacts",
   crm: "CRM",
+  customer_onboarding: "Cust. Onb.",
   dashboards: "Dashboards",
   documents: "Documents",
   email_campaigns: "Email Camp.",
   expenses: "Expenses",
+  help_center: "Help",
   hr_payroll: "HR & Pay",
+  iam: "IAM",
   intercompany: "Interco.",
   invoicing: "Invoicing",
   logistics: "Logistics",
+  messaging_accounts: "Msg. Accts",
   org_workflow: "Org & WF",
-  pos: "POS",
+  outbound_policy: "Outbound",
+  platform_settings: "Platform",
   praxis_ai: "Praxis AI",
   pricing: "Pricing",
   production: "Production",
@@ -807,6 +901,7 @@ const MODULE_LABELS: Record<string, string> = {
   retention: "Retention",
   sales: "Sales",
   sales_campaigns: "Sales Camp.",
+  service_catalogue: "Svc. Cat.",
   service_jobs: "Service",
   settings: "Settings",
   smartcomm: "Comm.",
@@ -2474,7 +2569,9 @@ export function OrgWorkflowPage() {
       <ModuleInsights module="approvals" className="mb-4" />
       <TabBar active={tab} onChange={setTab} pendingCount={pendingMeta ?? 0} />
 
-      {tab === "org" && <OrgTab canEdit={canEdit} />}
+      {tab === "org" && (
+        <OrgTab canEdit={canEdit} onCreateRole={() => setTab("permissions")} />
+      )}
       {tab === "permissions" && <PermissionsTab canEdit={canEdit} />}
       {tab === "workflows" && <WorkflowsTab canEdit={canEdit} />}
       {tab === "pending" && <PendingTab canAct={canAct} />}

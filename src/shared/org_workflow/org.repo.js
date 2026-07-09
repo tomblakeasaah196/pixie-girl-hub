@@ -29,6 +29,7 @@ const POSITION_WRITE_COLS = [
   "position_key",
   "display_name",
   "profile_id",
+  "role_id",
   "reports_to_position_id",
   "is_management",
   "is_deputy",
@@ -36,6 +37,21 @@ const POSITION_WRITE_COLS = [
   "approval_threshold_ngn",
   "display_order",
 ];
+
+// Read-side enrichment shared by list + find: resolve the role name, the
+// owning unit's display name (the "department"), and the assigned person's
+// display name so the org chart / HR pickers can render without extra calls.
+const POSITION_SELECT = `
+  p.*,
+  u.display_name AS unit_name,
+  r.role_name    AS role_name,
+  c.display_name AS holder_name`;
+const POSITION_JOINS = `
+  FROM shared.org_positions p
+  JOIN shared.org_units u        ON u.unit_id = p.unit_id
+  LEFT JOIN shared.roles r       ON r.role_id = p.role_id
+  LEFT JOIN shared.staff_profiles sp ON sp.profile_id = p.profile_id
+  LEFT JOIN shared.contacts c    ON c.contact_id = sp.contact_id`;
 
 // ── org_units ──────────────────────────────────────────────────────────
 
@@ -153,11 +169,7 @@ async function deactivate({ client, brand, id }) {
 async function listPositions({ client, brand, unit_id }) {
   assertBrand(brand);
   const params = [brand];
-  let sql = `
-    SELECT p.*
-      FROM shared.org_positions p
-      JOIN shared.org_units u ON u.unit_id = p.unit_id
-     WHERE u.business = $1`;
+  let sql = `SELECT ${POSITION_SELECT} ${POSITION_JOINS} WHERE u.business = $1`;
   if (unit_id) {
     sql += ` AND p.unit_id = $2`;
     params.push(unit_id);
@@ -170,14 +182,65 @@ async function listPositions({ client, brand, unit_id }) {
 async function findPosition({ client, brand, id }) {
   assertBrand(brand);
   const { rows } = await exec(client)(
-    `SELECT p.*
-       FROM shared.org_positions p
-       JOIN shared.org_units u ON u.unit_id = p.unit_id
+    `SELECT ${POSITION_SELECT} ${POSITION_JOINS}
       WHERE p.position_id = $1 AND u.business = $2
       LIMIT 1`,
     [id, brand],
   );
   return rows[0] || null;
+}
+
+/** The login user_id for a staff profile (if the person has an account). */
+async function userIdForProfile({ client, profile_id }) {
+  if (!profile_id) return null;
+  const { rows } = await exec(client)(
+    `SELECT user_id FROM shared.users
+      WHERE staff_profile_id = $1
+      ORDER BY is_active DESC, created_at ASC
+      LIMIT 1`,
+    [profile_id],
+  );
+  return rows[0]?.user_id ?? null;
+}
+
+/** True if the profile still holds `role_id` via another position (so we must
+ *  NOT revoke that role when moving them out of this one). */
+async function profileHoldsRoleElsewhere({
+  client,
+  brand,
+  profile_id,
+  role_id,
+  exclude_position_id,
+}) {
+  if (!profile_id || !role_id) return false;
+  const { rows } = await exec(client)(
+    `SELECT 1
+       FROM shared.org_positions p
+       JOIN shared.org_units u ON u.unit_id = p.unit_id
+      WHERE u.business = $1 AND p.profile_id = $2 AND p.role_id = $3
+        AND p.position_id <> $4
+      LIMIT 1`,
+    [brand, profile_id, role_id, exclude_position_id],
+  );
+  return rows.length > 0;
+}
+
+/** Push a position's title + department down onto the staff profile it holds. */
+async function syncProfileFromPosition({
+  client,
+  brand,
+  profile_id,
+  job_title,
+  department,
+}) {
+  if (!profile_id) return;
+  await exec(client)(
+    `UPDATE shared.staff_profiles
+        SET job_title = COALESCE($3, job_title),
+            department = COALESCE($4, department)
+      WHERE profile_id = $1 AND business = $2`,
+    [profile_id, brand, job_title ?? null, department ?? null],
+  );
 }
 
 /** Guard: a unit_id must belong to this brand before we attach a position. */
@@ -361,6 +424,9 @@ module.exports = {
   createPosition,
   updatePosition,
   deletePosition,
+  userIdForProfile,
+  syncProfileFromPosition,
+  profileHoldsRoleElsewhere,
   // dotted lines
   listDottedLines,
   findDottedLine,

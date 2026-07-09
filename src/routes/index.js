@@ -128,6 +128,9 @@ const messagingAccountsRouter = require("../modules/messaging_accounts/messaging
 // Outbound Channel Policy (cost discipline — PR 2)
 const outboundPolicyRouter = require("../modules/outbound_policy/outbound-policy.routes");
 
+// Communications Studio — CEO-editable automated-message control plane
+const commsStudioRouter = require("../modules/comms_studio/comms-studio.routes");
+
 // Help Center (DB-driven guides + FAQs — PR 2)
 const helpCenterRouter = require("../modules/help_center/help-center.routes");
 
@@ -367,6 +370,7 @@ function mountRoutes(app) {
     ["/service-catalogue", serviceCatalogueRouter],
     ["/messaging-accounts", messagingAccountsRouter],
     ["/outbound-policy", outboundPolicyRouter],
+    ["/comms-studio", commsStudioRouter],
     ["/help", helpCenterRouter],
     ["/calendar", calendarRouter],
     ["/tasks", tasksRouter],

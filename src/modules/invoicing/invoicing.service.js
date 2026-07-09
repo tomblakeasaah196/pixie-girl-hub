@@ -956,30 +956,59 @@ async function cancelReminder({
 
 async function sendDueReminders({ brand }) {
   const reminders = await repo.findDueReminders({ brand, limit: 50 });
+  const commsStudio = require("../comms_studio/comms-studio.service");
+  const Decimal = require("decimal.js");
+  const ngn = (v) =>
+    "₦" +
+    new Decimal(v || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   let sent = 0;
   let failed = 0;
   for (const r of reminders) {
     try {
-      const smartcomm = require("../smartcomm/smartcomm.service");
-      await smartcomm.sendToCustomer({
+      // Route through the Communications Studio. Channel, subject, body all
+      // come from the payment_reminder automation row — the CEO edits copy
+      // from the Studio; this cron only supplies the variables.
+      const due = r.due_date ? new Date(r.due_date) : null;
+      const dueLabel = due
+        ? due.toLocaleDateString("en-NG", {
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+          })
+        : "";
+      const result = await commsStudio.dispatch({
         brand,
+        event_key: "payment_reminder",
         contact_id: r.contact_id,
-        channel: r.channel,
-        template_key: r.template_key || "invoice_reminder",
+        reference_type: "invoice",
+        reference_id: r.invoice_id,
+        dedup_key: `payment_reminder:${r.reminder_id}`,
         variables: {
           invoice_number: r.invoice_number,
-          due_date: r.due_date,
-          balance_due_ngn: r.balance_due_ngn,
+          balance_due_ngn: ngn(r.balance_due_ngn),
+          balance_due_ngn_display: ngn(r.balance_due_ngn),
+          due_date_html: dueLabel ? ` by <strong>${dueLabel}</strong>` : "",
+          due_date_text: dueLabel ? ` by ${dueLabel}` : "",
           reminder_type: r.reminder_type,
         },
       });
-      await repo.updateReminderStatus({
-        brand,
-        id: r.reminder_id,
-        status: "sent",
-      });
-      await repo.bumpReminderCount({ brand, invoice_id: r.invoice_id });
-      sent += 1;
+      if (result.dispatched || result.reason === "already_sent") {
+        await repo.updateReminderStatus({
+          brand,
+          id: r.reminder_id,
+          status: "sent",
+        });
+        await repo.bumpReminderCount({ brand, invoice_id: r.invoice_id });
+        sent += 1;
+      } else {
+        await repo.updateReminderStatus({
+          brand,
+          id: r.reminder_id,
+          status: "failed",
+          extra: { reason: result.reason || "not_dispatched" },
+        });
+        failed += 1;
+      }
     } catch (err) {
       await repo.updateReminderStatus({
         brand,

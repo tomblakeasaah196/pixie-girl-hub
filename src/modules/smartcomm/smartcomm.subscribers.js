@@ -1,77 +1,35 @@
 /**
  * Smartcomm subscribers — durable event-driven side effects.
  *
- * Registers two consumers of the transactional outbox:
+ * Registers one consumer of the transactional outbox:
  *
- *   1. sales.order.payment_reminder → WhatsApp dispatch (G-4). The
- *      layaway gentle reminder lands in the customer's thread plus
- *      goes out over the customer's preferred channel.
+ *   webhook.received → ingest meta_whatsapp / meta_instagram /
+ *   cloudflare_email payloads into the right brand's inbox. The
+ *   webhook_log row is fetched, parsed by source, the contact is
+ *   resolved (or created as a lead with priority='new'), and the
+ *   message is recorded on a customer_thread. Idempotent on the
+ *   provider's external_ref so re-delivery is safe.
  *
- *   2. webhook.received → ingest meta_whatsapp / meta_instagram /
- *      cloudflare_email payloads into the right brand's inbox. The
- *      webhook_log row is fetched, parsed by source, the contact is
- *      resolved (or created as a lead with priority='new'), and the
- *      message is recorded on a customer_thread. Idempotent on the
- *      provider's external_ref so re-delivery is safe.
+ * The layaway reminder listener that used to live here (sales.order.
+ * payment_reminder → WhatsApp send with a hardcoded body) has moved:
+ * layaway-reminders.js now calls the Communications Studio dispatcher
+ * directly, which reads the layaway_reminder automation row for the
+ * channel, subject, body, and the "skip untouched orders" gate. The
+ * CEO edits it from the Comms Studio UI — no more hardcoded strings.
  *
- * All consumers are registered exactly once (idempotent guard).
+ * The consumer is registered exactly once (idempotent guard).
  */
 
 "use strict";
 
-const salesEvents = require("../sales/sales.events");
 const service = require("./smartcomm.service");
 const repo = require("./smartcomm.repo");
 const outbox = require("../../shared/outbox/outbox");
 const webhookRepo = require("../business_setup/webhooks.repo");
 const { logger } = require("../../config/logger");
 const { transaction } = require("../../config/database");
-const brandUrls = require("../../utils/brand-urls");
 
 let registered = false;
-
-// ── G-4: layaway reminder over WhatsApp ──────────────────────────
-
-function registerSalesReminder() {
-  salesEvents.on(
-    "order.payment_reminder",
-    async ({
-      brand,
-      contact_id,
-      order_number,
-      total_ngn,
-      amount_paid_ngn,
-      balance_due_ngn,
-      public_tracking_token,
-    }) => {
-      if (!contact_id) return;
-      const link = await brandUrls.payLinkUrl(brand, public_tracking_token);
-      const body =
-        `Hi! You've paid ₦${amount_paid_ngn || 0} of ₦${total_ngn} on order ` +
-        `${order_number} (₦${balance_due_ngn} left). Pay any amount${
-          link ? `: ${link}` : " anytime"
-        }.`;
-      try {
-        await service.sendToCustomer({
-          brand,
-          contact_id,
-          // Let the outbound channel policy decide. Default seed is
-          // 'whatsapp' for layaway_reminder because the recovery rate
-          // justifies the ₦11 per send — but the CEO can flip it in
-          // Business Setup → Channel Policy without a code change.
-          event_key: "layaway_reminder",
-          body,
-          soft: true,
-        });
-      } catch (err) {
-        logger.error(
-          { err: err.message, brand, order_number },
-          "smartcomm: layaway reminder dispatch failed",
-        );
-      }
-    },
-  );
-}
 
 // ── webhook.received → inbox routing ─────────────────────────────
 
@@ -419,11 +377,8 @@ async function onWebhookReceived({ webhook_id, source }) {
 function register() {
   if (registered) return;
   registered = true;
-  registerSalesReminder();
   outbox.register("webhook.received", "smartcomm-ingest", onWebhookReceived);
-  logger.info(
-    "smartcomm subscribers registered (sales.payment_reminder, webhook.received)",
-  );
+  logger.info("smartcomm subscribers registered (webhook.received)");
 }
 
 register();

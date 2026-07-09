@@ -229,6 +229,11 @@ const ChannelPolicyPage = lazyWithRetry(() =>
     default: m.ChannelPolicyPage,
   })),
 );
+const CommsStudioPage = lazyWithRetry(() =>
+  import("@/pages/comms-studio/CommsStudioPage").then((m) => ({
+    default: m.CommsStudioPage,
+  })),
+);
 const QuickRepliesPage = lazyWithRetry(() =>
   import("@/pages/settings/QuickRepliesPage").then((m) => ({
     default: m.QuickRepliesPage,
@@ -805,6 +810,14 @@ export const router = createBrowserRouter(
               element: (
                 <Suspense fallback={null}>
                   <ChannelPolicyPage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "settings/comms-studio",
+              element: (
+                <Suspense fallback={null}>
+                  <CommsStudioPage />
                 </Suspense>
               ),
             },

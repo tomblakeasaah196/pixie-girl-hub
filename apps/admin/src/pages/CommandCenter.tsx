@@ -500,8 +500,8 @@ function ActivityFeed({
   }
 
   const entries = feed.data?.data ?? [];
-  const total = feed.data?.total ?? entries.length;
-  const pageSize = feed.data?.page_size ?? 10;
+  const total = feed.data?.meta.total ?? entries.length;
+  const pageSize = feed.data?.meta.page_size ?? 10;
   const pageCount = Math.max(1, Math.min(3, Math.ceil(total / pageSize)));
 
   if (entries.length === 0 && page === 1) {
@@ -791,7 +791,7 @@ export function CommandCenter() {
           <SectionHead
             title="My activity"
             action={
-              myFeed.data?.window === "24h" ? (
+              myFeed.data?.meta.window === "24h" ? (
                 <span className="micro text-text-faint">Last 24 hours</span>
               ) : (
                 <span className="micro text-text-faint">Latest actions</span>

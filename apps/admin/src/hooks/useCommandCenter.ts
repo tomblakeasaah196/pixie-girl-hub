@@ -131,10 +131,13 @@ export function useMyAuditFeed(page = 1) {
     queryFn: () =>
       api.get<{
         data: AuditFeedEntry[];
-        window: "24h" | "all_time";
-        page: number;
-        page_size: number;
-        total: number;
+        meta: {
+          window: "24h" | "all_time";
+          page: number;
+          page_size: number;
+          total: number;
+          has_more: boolean;
+        };
       }>(`/audit/my-feed?page=${page}`),
     staleTime: 30 * 1000,
     refetchInterval: page === 1 ? 60 * 1000 : false,

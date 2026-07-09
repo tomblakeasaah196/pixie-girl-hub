@@ -128,6 +128,17 @@ async function forRecord({ brand, table_name, record_id }) {
  * query itself still hard-scopes to `user_id = $1`: a user's own action
  * history is never someone else's business data, regardless of which brand
  * tab happens to be active when they look at it.
+ *
+ * Response shape is `{ data, meta: { page, page_size, total, has_more, window } }`
+ * — the same paginated envelope every other list endpoint uses (see
+ * stock.repo.js, purchasing.repo.js). apps/admin/src/lib/api.ts only preserves
+ * the full envelope past its `{ data }`-unwrap when it sees a sibling `meta`
+ * key; a flat `{ data, page, page_size, total }` (no `meta`) reads as a
+ * single-resource response and gets unwrapped straight to the bare array,
+ * silently discarding pagination/window — and the caller's `feed.data?.data`
+ * then reads a `.data` property off that array, which is always undefined.
+ * That mismatch — not brand scoping or RLS — is why "My activity" showed "No
+ * activity yet" even with correctly-returned rows.
  */
 async function myFeed({ user_id, page = 1, page_size = 10, max_total = 30 }) {
   const safePageSize = Math.max(1, Math.min(page_size, max_total));
@@ -138,10 +149,13 @@ async function myFeed({ user_id, page = 1, page_size = 10, max_total = 30 }) {
   if (limit === 0) {
     return {
       data: [],
-      window: "all_time",
-      page: safePage,
-      page_size: safePageSize,
-      total: max_total,
+      meta: {
+        window: "all_time",
+        page: safePage,
+        page_size: safePageSize,
+        total: max_total,
+        has_more: false,
+      },
     };
   }
   return brandTransaction(null, user_id, async (client) => {
@@ -166,17 +180,26 @@ async function myFeed({ user_id, page = 1, page_size = 10, max_total = 30 }) {
         LIMIT $2 OFFSET $3`,
       [user_id, limit, offset],
     );
-    return finishMyFeed(rows, safePage, safePageSize, total);
+    return finishMyFeed(rows, safePage, safePageSize, total, offset);
   });
 }
 
-function finishMyFeed(rows, safePage, safePageSize, total) {
+function finishMyFeed(rows, safePage, safePageSize, total, offset) {
   const cutoff = Date.now() - 24 * 60 * 60 * 1000;
   const window =
     safePage === 1 && rows.length > 0 && new Date(rows[0].occurred_at).getTime() >= cutoff
       ? "24h"
       : "all_time";
-  return { data: rows, window, page: safePage, page_size: safePageSize, total };
+  return {
+    data: rows,
+    meta: {
+      window,
+      page: safePage,
+      page_size: safePageSize,
+      total,
+      has_more: offset + rows.length < total,
+    },
+  };
 }
 
 module.exports = { list, getById, forRecord, myFeed };

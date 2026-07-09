@@ -35,6 +35,7 @@ const events = require("./smartcomm.events");
 const { query } = require("../../config/database");
 const { getBroadcaster } = require("../../realtime/emitter");
 const { logger } = require("../../config/logger");
+const notifications = require("../../services/notifications.service");
 
 let registered = false;
 
@@ -79,6 +80,73 @@ async function channelBrand(channel_id) {
   }
 }
 
+async function messageSender(message_id) {
+  try {
+    const { rows } = await query(
+      `SELECT m.sender_user_id,
+              COALESCE(u.display_name, con.display_name) AS sender_name
+         FROM shared.messages m
+         LEFT JOIN shared.users u ON u.user_id = m.sender_user_id
+         LEFT JOIN shared.contacts con ON con.contact_id = m.sender_contact_id
+        WHERE m.message_id = $1`,
+      [message_id],
+    );
+    return rows[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+async function hasUnreadNotification({ user_id, channel_id }) {
+  try {
+    const { rows } = await query(
+      `SELECT 1 FROM shared.notifications
+        WHERE user_id = $1 AND reference_type = 'smartcomm_channel'
+          AND reference_id = $2 AND is_read = false
+        LIMIT 1`,
+      [user_id, channel_id],
+    );
+    return rows.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Fan a "new message" notification out through the shared notifications
+ * pipeline (toast/sound/push/tab-badge) — chat previously bypassed it
+ * entirely, so unread messages never surfaced outside the Messaging page.
+ * Deduped to one unread notification per channel per user so a burst of
+ * messages doesn't fire a sound/push per message; it clears (and a new one
+ * can fire again) once the existing one is read.
+ */
+async function notifyNewMessage({ channel_id, brand, members, message_id }) {
+  const sender = await messageSender(message_id);
+  const senderName = sender?.sender_name || "Someone";
+  for (const uid of members) {
+    if (!uid || uid === sender?.sender_user_id) continue;
+    try {
+      if (await hasUnreadNotification({ user_id: uid, channel_id })) continue;
+      await notifications.notify({
+        user_id: uid,
+        business: brand,
+        type: "message",
+        title: "SmartComm",
+        body: `New message from ${senderName}`,
+        priority: "normal",
+        reference_type: "smartcomm_channel",
+        reference_id: channel_id,
+        action_url: `/smartcomm?channel=${channel_id}`,
+      });
+    } catch (err) {
+      logger.debug(
+        { err: err.message, channel_id, uid },
+        "smartcomm: message notification skipped",
+      );
+    }
+  }
+}
+
 function register() {
   if (registered) return;
   registered = true;
@@ -105,6 +173,12 @@ function register() {
         message_id: p.message_id,
       });
     }
+    notifyNewMessage({
+      channel_id: p.channel_id,
+      brand,
+      members,
+      message_id: p.message_id,
+    }).catch(() => {});
   });
 
   events.on("message.edited", (p) => {
@@ -174,6 +248,17 @@ function register() {
       });
   });
 
+  events.on("thread.reopened", async (p) => {
+    const brand = await channelBrand(p.channel_id);
+    emit(`channel:${p.channel_id}`, "thread.reopened", {
+      channel_id: p.channel_id,
+    });
+    if (brand)
+      emit(`brand:${brand}:smartcomm`, "thread.reopened", {
+        channel_id: p.channel_id,
+      });
+  });
+
   events.on("thread.assigned", async (p) => {
     const brand = await channelBrand(p.channel_id);
     emit(`channel:${p.channel_id}`, "thread.assigned", {
@@ -220,6 +305,12 @@ function register() {
         message_id: p.message_id,
       });
     }
+    notifyNewMessage({
+      channel_id: p.channel_id,
+      brand: p.brand,
+      members,
+      message_id: p.message_id,
+    }).catch(() => {});
   });
 
   events.on("customer.message_sent", (p) => {

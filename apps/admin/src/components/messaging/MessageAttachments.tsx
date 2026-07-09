@@ -15,10 +15,8 @@ import { VoiceNotePlayer } from "./VoiceNotePlayer";
 /** Renders a message's media attachments (image / video / voice / file). */
 export function MessageAttachments({
   message,
-  isOwn,
 }: {
   message: Message;
-  isOwn: boolean;
 }) {
   const [lightbox, setLightbox] = useState<MessageAttachment | null>(null);
   const atts = message.attachments ?? [];
@@ -71,7 +69,7 @@ export function MessageAttachments({
         }
 
         if (kind === "audio") {
-          return <VoiceNotePlayer key={key} url={a.url} isOwn={isOwn} />;
+          return <VoiceNotePlayer key={key} url={a.url} />;
         }
 
         return (
@@ -83,15 +81,13 @@ export function MessageAttachments({
             rel="noreferrer"
             className={cn(
               "flex items-center gap-2.5 rounded-lg border px-2.5 py-2 min-w-[180px] max-w-[260px] transition-colors",
-              isOwn
-                ? "border-bg/20 bg-bg/10 hover:bg-bg/15"
-                : "hairline bg-panel hover:bg-panel-2",
+              "hairline bg-panel hover:bg-panel-2",
             )}
           >
             <span
               className={cn(
                 "grid place-items-center w-8 h-8 rounded-md shrink-0",
-                isOwn ? "bg-bg/15 text-bg" : "bg-accent/15 text-accent-glow",
+                "bg-accent/15 text-accent-glow",
               )}
             >
               <FileText className="w-4 h-4" />
@@ -104,7 +100,7 @@ export function MessageAttachments({
                 <span
                   className={cn(
                     "block text-[10.5px]",
-                    isOwn ? "text-bg/60" : "text-text-faint",
+                    "text-text-faint",
                   )}
                 >
                   {formatBytes(a.file_size_bytes)}
@@ -114,7 +110,7 @@ export function MessageAttachments({
             <Download
               className={cn(
                 "w-3.5 h-3.5 shrink-0",
-                isOwn ? "text-bg/70" : "text-text-faint",
+                "text-text-faint",
               )}
             />
           </a>

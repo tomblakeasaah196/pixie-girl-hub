@@ -89,6 +89,7 @@ router.post(
   c.archiveChannel,
 );
 router.post("/channels/:id/resolve", can("edit"), c.resolveThread);
+router.post("/channels/:id/reopen", can("edit"), c.reopenThread);
 router.post(
   "/channels/:id/assign",
   can("edit"),

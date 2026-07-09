@@ -86,6 +86,10 @@ export function useChannelRealtime(channelId: string | null | undefined) {
       qc.invalidateQueries({ queryKey: ["smartcomm", "messages", channelId] });
       qc.invalidateQueries({ queryKey: ["smartcomm", "channels"] });
       qc.invalidateQueries({ queryKey: ["smartcomm", "unread"] });
+      // A customer message can silently reopen a resolved thread server-side
+      // (see recordInboundFromCustomer) — refetch the channel so the
+      // composer reappears without needing a manual reload.
+      qc.invalidateQueries({ queryKey: ["smartcomm", "channel", channelId] });
     };
     const onMessageEdited = (p: { channel_id: string }) => {
       if (p.channel_id !== channelId) return;
@@ -98,12 +102,20 @@ export function useChannelRealtime(channelId: string | null | undefined) {
         qc.invalidateQueries({ queryKey: ["smartcomm", "unread"] });
       }
     };
+    const onThreadStatusChanged = (p: { channel_id: string }) => {
+      if (p.channel_id === channelId) {
+        qc.invalidateQueries({ queryKey: ["smartcomm", "channel", channelId] });
+        qc.invalidateQueries({ queryKey: ["smartcomm", "channels"] });
+      }
+    };
 
     socket.on("message.posted", onMessagePosted);
     socket.on("message.edited", onMessageEdited);
     socket.on("message.deleted", onMessageDeleted);
     socket.on("message.reacted", onMessageReacted);
     socket.on("channel.read", onChannelRead);
+    socket.on("thread.resolved", onThreadStatusChanged);
+    socket.on("thread.reopened", onThreadStatusChanged);
 
     return () => {
       leaveRoom(rooms.channel(channelId));
@@ -113,6 +125,8 @@ export function useChannelRealtime(channelId: string | null | undefined) {
       socket.off("message.deleted", onMessageDeleted);
       socket.off("message.reacted", onMessageReacted);
       socket.off("channel.read", onChannelRead);
+      socket.off("thread.resolved", onThreadStatusChanged);
+      socket.off("thread.reopened", onThreadStatusChanged);
     };
   }, [channelId, qc]);
 }

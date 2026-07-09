@@ -61,6 +61,8 @@ export const smartcommApi = {
     api.post<Channel>(`/smartcomm/channels/${id}/archive`, { archived }),
   resolveThread: (id: string) =>
     api.post<Channel>(`/smartcomm/channels/${id}/resolve`),
+  reopenThread: (id: string) =>
+    api.post<Channel>(`/smartcomm/channels/${id}/reopen`),
   assignThread: (
     id: string,
     assigned_to: string | null,

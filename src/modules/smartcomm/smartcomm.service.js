@@ -218,7 +218,7 @@ async function getOrCreateDirect({ brand, user, request_id, target_user_id }) {
     throw new ValidationError("A valid colleague is required to start a chat");
   }
   const existing = await repo.findDirectChannel({
-    brand, userA: user.user_id, userB: target_user_id,
+    userA: user.user_id, userB: target_user_id,
   });
   if (existing) return existing;
   return createChannel({
@@ -273,6 +273,22 @@ async function resolveThread({ brand, user, request_id, id }) {
     request_id,
   });
   events.emit("thread.resolved", { channel_id: id });
+  return updated;
+}
+
+async function reopenThread({ brand, user, request_id, id }) {
+  const channel = await repo.getChannel({ id });
+  if (!channel) throw new NotFoundError("Channel");
+  const updated = await repo.setChannelStatus({ id, status: "open" });
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "smartcomm.thread.reopen",
+    target_type: "channel",
+    target_id: id,
+    request_id,
+  });
+  events.emit("thread.reopened", { channel_id: id });
   return updated;
 }
 
@@ -1287,6 +1303,17 @@ async function recordInboundFromCustomer({
       platform: platform || "instagram",
       external_thread_ref,
     });
+    // A customer replying to a resolved thread reopens it — otherwise the
+    // composer stays hidden (see MessageThread's isResolved gate) and staff
+    // have no way to answer a conversation that looked "done".
+    if (thread.status === "resolved") {
+      await repo.setChannelStatus({
+        client,
+        id: thread.channel_id,
+        status: "open",
+      });
+      thread.status = "open";
+    }
     // Story-preview metadata belongs on the message row (so the inbox
     // can render a card next to that specific message). Email's
     // subject / in_reply_to belongs on the channel (so replies thread
@@ -1533,6 +1560,7 @@ module.exports = {
   getOrCreateDirect,
   archiveChannel,
   resolveThread,
+  reopenThread,
   assignThread,
   addMember,
   removeMember,

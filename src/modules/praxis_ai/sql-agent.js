@@ -206,6 +206,31 @@ function parseArgs(raw) {
   }
 }
 
+/**
+ * Run ONE sql tool call and return its raw result payload — the per-hop
+ * primitive the query-agent read loop uses to chain a curated-query turn into a
+ * generic SQL lookup (e.g. "top styled product" -> "trace it to its base
+ * product"). Enforces the same CEO-only + brand-scope guardrails `run` does;
+ * never throws (a DB/permission problem comes back as `{ error }` for the model
+ * to read and adapt to).
+ *
+ * @returns {Promise<object>} schema/rows payload, or `{ error }`.
+ */
+async function dispatchTool({ user, brand, name, args }) {
+  if (!user || user.is_ceo !== true) {
+    return { error: "Direct database queries are limited to the CEO." };
+  }
+  if (!KNOWN_BRANDS.has(brand)) {
+    return { error: "I can't determine which business to query." };
+  }
+  try {
+    return await dispatch(brand, name, args || {});
+  } catch (e) {
+    logger.error({ err: e.message }, "praxis sql-agent dispatchTool failed");
+    return { error: `database error: ${e.message}` };
+  }
+}
+
 function accUsage(acc, u) {
   if (!u) return;
   acc.prompt_tokens += u.prompt_tokens || 0;
@@ -329,11 +354,16 @@ async function run({ vendor, user, brand, messages, completion, toolCall, args }
     }
     // Never return a raw JSON/rows dump as the answer — if the model did that
     // (or returned nothing), do one plain-English synthesis pass with no tools.
+    // A NON-sql tool call we won't chase is the same trap: its `content` is
+    // usually just a "Let me check…" preamble to an action we're dropping, so
+    // shipping it verbatim is exactly the half-sentence cut-off we're fixing —
+    // force the synthesis pass so the user gets a complete answer instead.
+    const hasUnhandledToolCall = Boolean(next);
     let text = (follow.content || "").trim();
     const dump =
       text.replace(/^```(?:json)?/i, "").trim().startsWith("{") ||
       text.replace(/^```(?:json)?/i, "").trim().startsWith("[");
-    if (!text || dump) {
+    if (!text || dump || hasUnhandledToolCall) {
       try {
         const s = await llm.chat({
           vendor,
@@ -371,4 +401,4 @@ async function run({ vendor, user, brand, messages, completion, toolCall, args }
   };
 }
 
-module.exports = { tools, isSqlTool, run };
+module.exports = { tools, isSqlTool, run, dispatchTool };

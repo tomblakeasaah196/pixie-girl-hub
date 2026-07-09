@@ -30,11 +30,14 @@ describe("insights_open", () => {
     expect(mockInsightsRepo.summary).toHaveBeenCalledWith({
       business: "faitlynhair",
     });
+    // The sample spans ALL modules ordered by recency, so it must be large
+    // enough that a single busy module (e.g. 27 undispatched sales orders)
+    // isn't partly pushed out of the sample by other modules' findings.
     expect(mockInsightsRepo.list).toHaveBeenCalledWith({
       business: "faitlynhair",
       status: "open",
       page: 1,
-      page_size: 30,
+      page_size: 60,
     });
     expect(result.summary).toEqual([{ module: "sales", open: 27, urgent: 27 }]);
     expect(result.records).toHaveLength(1);

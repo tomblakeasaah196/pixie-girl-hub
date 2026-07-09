@@ -64,9 +64,17 @@ function stripToolMarkup(content) {
  * @param {Array}  [args.tools]   OpenAI-style tool definitions
  * @param {string} [args.model]   override vendor.default_model
  * @param {number} [args.temperature=0.2]
- * @returns {Promise<{content:string, tool_calls:Array, usage:object, model:string}>}
+ * @param {number} [args.max_tokens] output-token cap (default from config)
+ * @returns {Promise<{content:string, tool_calls:Array, usage:object, model:string, finish_reason:string|null}>}
  */
-async function chat({ vendor, messages, tools, model, temperature = 0.2 }) {
+async function chat({
+  vendor,
+  messages,
+  tools,
+  model,
+  temperature = 0.2,
+  max_tokens = config.PRAXIS_MAX_OUTPUT_TOKENS,
+}) {
   if (!vendor) throw new Error("llm.chat: no vendor config");
   const base = vendor.endpoint_url.replace(/\/$/, "");
   const body = {
@@ -74,6 +82,10 @@ async function chat({ vendor, messages, tools, model, temperature = 0.2 }) {
     messages,
     temperature,
   };
+  // Always request a generous output budget so a long answer isn't silently
+  // truncated at the vendor's implicit default; callers detect any remaining
+  // `finish_reason === 'length'` and continue.
+  if (max_tokens) body.max_tokens = max_tokens;
   if (tools && tools.length) {
     body.tools = tools;
     body.tool_choice = "auto";
@@ -111,6 +123,9 @@ async function chat({ vendor, messages, tools, model, temperature = 0.2 }) {
     result = {
       content: msg.content || "",
       tool_calls: Array.isArray(msg.tool_calls) ? msg.tool_calls : [],
+      // 'length' means the vendor stopped because the output-token cap was hit,
+      // i.e. the answer is truncated. Callers use this to continue the answer.
+      finish_reason: choice.finish_reason || null,
       // DeepSeek "thinking"/reasoner models return reasoning_content alongside
       // content. When the turn made a tool call, that reasoning_content MUST be
       // sent back in the replayed assistant message or the next call 400s

@@ -25,7 +25,6 @@ import {
   Plus,
   ScrollText,
   Search,
-  Sparkles,
   Wand2,
   X,
 } from "lucide-react";
@@ -522,23 +521,16 @@ export default function PraxisPage() {
   };
 
   return (
-    <div className="flex flex-col gap-4 h-[calc(100dvh-140px)] min-h-[520px]">
-      {/* Header */}
-      <header className="flex items-center gap-3">
-        <div className="grid place-items-center w-11 h-11 rounded-[14px] bg-[linear-gradient(140deg,rgb(var(--accent)),var(--biz-2))] text-[#F4E9D9] shadow-[0_10px_28px_rgb(var(--accent-deep)/0.4)]">
-          <Sparkles className="w-5 h-5" />
-        </div>
-        <div className="min-w-0">
-          <h1 className="font-display text-2xl leading-tight">Praxis</h1>
-          <p className="text-[12.5px] text-text-muted truncate">
-            Reads freely · writes only with your sign-off · acts with your
-            permissions
-          </p>
-        </div>
-      </header>
-
-      {/* Workspace frame */}
-      <div className="glass rounded-[var(--radius)] shadow-glass overflow-hidden min-h-0 flex-1 flex">
+    <div
+      className={cn(
+        "flex flex-col h-[calc(100dvh-64px)] min-h-[520px] -mx-[34px] -mt-[26px] -mb-[120px]",
+        "max-md:h-[calc(100dvh-124px)] max-md:-mx-4 max-md:-mt-5 max-md:-mb-24",
+      )}
+    >
+      {/* Workspace frame — full-bleed: the shell's sticky top bar already
+          carries the Praxis title + tagline, so this page skips its own
+          header and hands the conversation the entire remaining viewport. */}
+      <div className="glass rounded-none border-y hairline overflow-hidden min-h-0 flex-1 flex">
         {/* Left history rail (desktop) */}
         {isDesktop && historyOpen && (
           <div className="w-[280px] shrink-0 border-r hairline min-h-0">

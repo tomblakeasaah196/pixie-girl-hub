@@ -50,7 +50,7 @@ function tools() {
       function: {
         name: "sql_schema",
         description:
-          "[READ] Discover the live database schema for THIS business. Call with no args to list all tables (brand + shared schemas); call with `table` to get a table's columns. Use this to find the right tables/columns before writing a query.",
+          "[READ] Discover the live database schema for THIS business. Call with no args to list all tables (brand + shared schemas); call with `table` to get its columns AND its foreign-key links, shown as `column → other_table.column` (e.g. `styled_products.base_product_id → products.product_id`). ALWAYS inspect the tables you intend to join BEFORE writing a query, and join on the columns those arrows show — that's how the tables actually relate.",
         parameters: {
           type: "object",
           properties: {
@@ -68,7 +68,7 @@ function tools() {
       function: {
         name: "sql_query",
         description:
-          "[READ] Run a single read-only SQL SELECT against THIS business's data and get the rows back. Reads only — no INSERT/UPDATE/DELETE/DDL. Use unqualified table names (they resolve to this brand's schema first, then shared). Always constrain and aggregate as needed; results are capped.",
+          "[READ] Run a single read-only SQL SELECT against THIS business's data and get the rows back. Reads only — no INSERT/UPDATE/DELETE/DDL. Use unqualified table names (they resolve to this brand's schema first, then shared). Before you aggregate, sql_schema the tables involved to confirm exact column names and how they join (use the `→` foreign-key links). Answer the whole question in ONE query: JOIN on the FK columns, filter the date range, GROUP BY the entity asked about, and SUM/COUNT — when asked for a breakdown or ranking (top customers, by product, by month…) NEVER return a bare grand total. If a query errors, read the error message and correct the query. Results are capped.",
         parameters: {
           type: "object",
           properties: {

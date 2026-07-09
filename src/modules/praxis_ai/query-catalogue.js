@@ -149,6 +149,53 @@ const QUERIES = [
     },
   },
   {
+    key: "top_customers",
+    title: "Top customers by spend",
+    description:
+      "Highest-spending customers for the current brand over a date range — each customer's paid order count and total spend (NGN). Defaults to the CURRENT MONTH if no range is given. Use this for 'top/best customers', 'who spends the most', 'biggest customers this month' questions instead of sql_schema/sql_query.",
+    module: "dashboards",
+    parameters: {
+      type: "object",
+      properties: {
+        from: {
+          type: "string",
+          description:
+            "ISO date/time lower bound (optional; defaults to the 1st of the current month).",
+        },
+        to: {
+          type: "string",
+          description: "ISO date/time upper bound (optional; defaults to now).",
+        },
+        limit: {
+          type: "integer",
+          description: "Max customers to return (optional; default 10, max 50).",
+        },
+      },
+    },
+    run: async ({ brand, args }) => {
+      const now = new Date();
+      const from =
+        str(args.from) ||
+        new Date(
+          Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+        ).toISOString();
+      const to = str(args.to) || now.toISOString();
+      const limit =
+        Number.isInteger(args.limit) && args.limit > 0
+          ? Math.min(args.limit, 50)
+          : 10;
+      // Existing repo method returns { rows }; unwrap to a plain array so the
+      // model gets the customer list directly (matches top_products' shape).
+      const { rows } = await dashboardsMetricsRepo.topCustomers({
+        brand,
+        from,
+        to,
+        limit,
+      });
+      return rows;
+    },
+  },
+  {
     key: "operations_summary",
     title: "Operations summary",
     description:

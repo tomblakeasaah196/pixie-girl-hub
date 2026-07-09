@@ -595,7 +595,7 @@ function systemPrompt({
     "LIVE-DATA QUERIES YOU CAN CALL RIGHT NOW:",
     queryList,
     user?.is_ceo
-      ? "\nGENERIC DATABASE ACCESS: for anything the queries above don't cover, you also have `sql_schema` (list/describe tables) and `sql_query` (run a single read-only SELECT). Prefer a curated query when one fits; otherwise call `sql_schema` to find the right tables/columns, then `sql_query`. Reads only, scoped to this business."
+      ? "\nGENERIC DATABASE ACCESS: for ANY analytical question the queries above don't cover, you have `sql_schema` (lists tables; describing a table shows its columns AND foreign-key links) and `sql_query` (one read-only SELECT). Prefer a curated query when one fits; otherwise `sql_schema` the relevant tables to see how they join, then write ONE `sql_query` that JOINs on those foreign-key columns, filters the range, and GROUP BYs the entity asked about (for a ranking/breakdown, never return a bare grand total). If a query errors, read it and fix it — you can answer questions no one pre-registered. Reads only, scoped to this business; present results in plain business language."
       : "",
     voiceBlock ? `\n${voiceBlock}` : "",
     "",

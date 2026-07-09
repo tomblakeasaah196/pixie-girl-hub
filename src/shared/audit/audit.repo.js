@@ -104,6 +104,14 @@ async function forRecord({ brand, table_name, record_id }) {
  * dashboard can show three pages of recent activity without dumping the full
  * trail. `window` reflects whether page 1 fits inside the last 24 h; older
  * pages always report "all_time".
+ *
+ * Includes `business = 'system'` rows alongside the active brand: pre-brand
+ * events (login, logout, email verification — anything that happens before
+ * X-Brand-Context exists) are written with business='system' by the audit()
+ * helper, since `business` is NOT NULL and no brand has been selected yet.
+ * Those rows carry no other brand's business data, so surfacing them here
+ * doesn't cross entity isolation — it just makes a user's own login show up
+ * in their activity feed no matter which brand tab they're on.
  */
 async function myFeed({ brand, user_id, page = 1, page_size = 10, max_total = 30 }) {
   const safePageSize = Math.max(1, Math.min(page_size, max_total));
@@ -124,7 +132,7 @@ async function myFeed({ brand, user_id, page = 1, page_size = 10, max_total = 30
     `SELECT count(*)::int AS total
        FROM (
          SELECT 1 FROM shared.audit_log
-          WHERE business = $1 AND user_id = $2
+          WHERE business IN ($1, 'system') AND user_id = $2
           ORDER BY occurred_at DESC
           LIMIT $3
        ) t`,
@@ -135,7 +143,7 @@ async function myFeed({ brand, user_id, page = 1, page_size = 10, max_total = 30
     `SELECT log_id, occurred_at, module, action, table_name, record_id,
             metadata
        FROM shared.audit_log
-      WHERE business = $1
+      WHERE business IN ($1, 'system')
         AND user_id  = $2
       ORDER BY occurred_at DESC
       LIMIT $3 OFFSET $4`,

@@ -142,6 +142,11 @@ const MessagingAccountsPage = lazyWithRetry(() =>
     default: m.MessagingAccountsPage,
   })),
 );
+const WhatsAppTemplatesPage = lazyWithRetry(() =>
+  import("@/pages/settings/WhatsAppTemplatesPage").then((m) => ({
+    default: m.WhatsAppTemplatesPage,
+  })),
+);
 const CustomerOnboardingPublic = lazyWithRetry(() =>
   import("@/pages/onboarding/CustomerOnboardingPublic").then((m) => ({
     default: m.CustomerOnboardingPublic,
@@ -863,6 +868,14 @@ export const router = createBrowserRouter(
               element: (
                 <Suspense fallback={<RouteFallback />}>
                   <QuickRepliesPage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "settings/whatsapp-templates",
+              element: (
+                <Suspense fallback={<RouteFallback />}>
+                  <WhatsAppTemplatesPage />
                 </Suspense>
               ),
             },

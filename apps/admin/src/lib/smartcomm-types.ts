@@ -21,7 +21,8 @@ export type MessageType =
   | "sticker"
   | "system"
   | "product_share"
-  | "send_invoice";
+  | "send_invoice"
+  | "template";
 export type ChannelStatus = "open" | "resolved";
 export type ParticipantRole = "member" | "admin";
 export type SenderKind = "staff" | "customer" | "system";

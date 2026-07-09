@@ -33,6 +33,7 @@ import {
   Package,
   Phone,
   MessageCircle,
+  LayoutTemplate,
 } from "lucide-react";
 import {
   fmtDayLabel,
@@ -70,6 +71,10 @@ import { ThreadSearch } from "./ThreadSearch";
 import { VoiceRecorder } from "./VoiceRecorder";
 import { CataloguePickerModal } from "./CataloguePickerModal";
 import { QuickReplyVarsModal } from "./QuickReplyVarsModal";
+import {
+  TemplatePickerModal,
+  type TemplateSendPayload,
+} from "./TemplatePickerModal";
 
 interface Props {
   channelId: string;
@@ -93,6 +98,8 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
   const [costOpen, setCostOpen] = useState(false);
   const [orderCaptureOpen, setOrderCaptureOpen] = useState(false);
   const [catalogueOpen, setCatalogueOpen] = useState(false);
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+  const [sendingTemplate, setSendingTemplate] = useState(false);
   const [varReply, setVarReply] = useState<QuickReply | null>(null);
   const [praxisDrafted, setPraxisDrafted] = useState(false);
   const [busy, setBusy] = useState<"sending" | "uploading" | "drafting" | null>(
@@ -220,6 +227,32 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
       setError(e instanceof Error ? e.message : "Could not send");
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function sendTemplate(payload: TemplateSendPayload) {
+    setError(null);
+    setSendingTemplate(true);
+    try {
+      await smartcommApi.postMessage(channelId, {
+        message_type: "template",
+        content: payload.rendered_body,
+        is_template: true,
+        metadata: {
+          template_name: payload.template_name,
+          language: payload.language,
+          category: payload.category,
+          template_id: payload.template_id,
+          components: payload.components,
+        },
+      });
+      setTemplatePickerOpen(false);
+      invalidate();
+    } catch (e: unknown) {
+      toastReport("Messaging → Thread", "Send template", e);
+      setError(e instanceof Error ? e.message : "Could not send template");
+    } finally {
+      setSendingTemplate(false);
     }
   }
 
@@ -818,13 +851,22 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
       ) : (
         <div className="border-t hairline px-3 sm:px-4 pt-2.5 pb-safe">
           {composerLocked && (
-            <div className="mb-2 flex items-start gap-2 rounded-xl border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-[12px] text-amber-200">
-              <AlertTriangle className="w-3.5 h-3.5 mt-[2px] shrink-0" />
-              <div>
-                WhatsApp 24-hour window has closed. Send an approved template
-                from quick-replies, or message the customer via email. Free-form
-                replies will be rejected by Meta.
+            <div className="mb-2 flex flex-col gap-2 rounded-xl border border-amber-400/30 bg-amber-400/5 px-3 py-2.5 text-[12px] text-amber-200 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-3.5 h-3.5 mt-[2px] shrink-0" />
+                <div>
+                  WhatsApp 24-hour window has closed. Free-form replies will be
+                  rejected by Meta — reach the customer with an approved
+                  template instead.
+                </div>
               </div>
+              <button
+                onClick={() => setTemplatePickerOpen(true)}
+                className="shrink-0 inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber-400/20 border border-amber-400/40 px-3 py-1.5 text-[12px] font-semibold text-amber-100 hover:bg-amber-400/30"
+              >
+                <LayoutTemplate className="w-3.5 h-3.5" />
+                Send approved template
+              </button>
             </div>
           )}
 
@@ -906,6 +948,15 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
                       title="Share catalogue"
                     >
                       <Package className="w-4 h-4" />
+                    </button>
+                  )}
+                  {isCustomerThread && isWhatsapp && (
+                    <button
+                      onClick={() => setTemplatePickerOpen(true)}
+                      className="p-1 text-text-faint hover:text-text-primary"
+                      title="Send an approved template"
+                    >
+                      <LayoutTemplate className="w-4 h-4" />
                     </button>
                   )}
                   {canPraxis("praxis_ai", "view") && (
@@ -1010,6 +1061,15 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
         onClose={() => setCatalogueOpen(false)}
         channel={channel}
         onSent={invalidate}
+      />
+
+      {/* Approved-template picker + send confirmation */}
+      <TemplatePickerModal
+        open={templatePickerOpen}
+        onClose={() => setTemplatePickerOpen(false)}
+        onSend={sendTemplate}
+        sending={sendingTemplate}
+        toName={displayName}
       />
 
       {/* Quick-reply variable fill */}

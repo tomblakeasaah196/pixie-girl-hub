@@ -38,6 +38,8 @@ export interface User {
   /** True when the user holds the factory_manager role — triggers Chinese UI default. */
   isFactoryManager: boolean;
   avatarUrl?: string | null;
+  /** Whether the account has completed one-time email verification. */
+  emailVerified: boolean;
 }
 
 type SessionStatus = "unknown" | "authed" | "anon";
@@ -61,6 +63,8 @@ interface AuthState {
   patchUser: (
     partial: Partial<Pick<User, "name" | "email" | "avatarUrl">>,
   ) => void;
+  /** Flip the account to verified after a successful email activation. */
+  markEmailVerified: () => void;
 }
 
 /** Map the backend AuthUser onto the shell's User shape. */
@@ -83,6 +87,7 @@ export function toUser(u: AuthUser): User {
     availableBusinesses: u.available_businesses,
     defaultBusinessKey: u.default_business_key,
     isFactoryManager: roleNames.includes("factory_manager"),
+    emailVerified: !!u.email_verified,
   };
 }
 
@@ -194,6 +199,10 @@ export const useAuthStore = create<AuthState>()(
       patchUser: (partial) => {
         const u = get().user;
         if (u) set({ user: { ...u, ...partial } });
+      },
+      markEmailVerified: () => {
+        const u = get().user;
+        if (u && !u.emailVerified) set({ user: { ...u, emailVerified: true } });
       },
     }),
     {

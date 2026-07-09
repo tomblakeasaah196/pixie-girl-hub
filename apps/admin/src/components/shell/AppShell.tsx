@@ -26,6 +26,7 @@ import { PraxisDrawer } from "@/components/praxis/PraxisDrawer";
 import { IosInstallHint } from "./IosInstallHint";
 import { PwaInstallBanner } from "./PwaInstallBanner";
 import { OfflineIndicator } from "./OfflineIndicator";
+import { EmailActivationBanner } from "./EmailActivationBanner";
 
 /**
  * Route-level RBAC guard: resolves the module owning the current path and
@@ -105,6 +106,7 @@ export function AppShell() {
             <OfflineIndicator />
             <PwaInstallBanner />
             <IosInstallHint />
+            <EmailActivationBanner />
             <BreadcrumbStrip />
           </>
         )}

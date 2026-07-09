@@ -15,6 +15,8 @@ export interface AuthUser {
   role_names: string[];
   available_businesses: string[];
   default_business_key: string | null;
+  /** Whether the account has completed one-time email verification. */
+  email_verified: boolean;
 }
 
 interface LoginResponse {
@@ -56,10 +58,34 @@ export async function forgotPassword(email: string): Promise<void> {
 }
 
 export async function resetPassword(
-  token: string,
+  email: string,
+  otp: string,
   newPassword: string,
 ): Promise<void> {
-  await api.post("/auth/reset-password", { token, new_password: newPassword });
+  await api.post("/auth/reset-password", {
+    email,
+    otp,
+    new_password: newPassword,
+  });
+}
+
+// ── One-time email account activation (authed) ────────────
+export interface ActivationSendResult {
+  sent?: boolean;
+  already?: boolean;
+  email_masked: string;
+}
+
+/** Email a one-time activation code to the signed-in user's own address. */
+export async function sendActivationCode(): Promise<ActivationSendResult> {
+  return api.post<ActivationSendResult>("/auth/activate/send");
+}
+
+/** Confirm the activation code, marking the account's email verified. */
+export async function confirmActivation(
+  otp: string,
+): Promise<{ verified: boolean }> {
+  return api.post<{ verified: boolean }>("/auth/activate/confirm", { otp });
 }
 
 // ── PIN management (authed) ───────────────────────────────
@@ -139,6 +165,7 @@ export interface MyProfile {
   department: string | null;
   employee_number: string | null;
   is_ceo: boolean;
+  email_verified: boolean;
 }
 
 export async function getMe(): Promise<MyProfile> {

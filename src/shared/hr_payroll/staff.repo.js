@@ -13,6 +13,7 @@ async function findById(userId) {
   const { rows } = await query(
     `SELECT u.user_id, u.email, u.display_name, u.password_hash, u.pin_hash,
             u.status, u.is_ceo, u.default_business_key, u.failed_login_count,
+            COALESCE(u.email_verified, false) AS email_verified,
             COALESCE((SELECT array_agg(role_id) FROM shared.user_roles ur WHERE ur.user_id = u.user_id), '{}') AS role_ids,
             COALESCE((SELECT array_agg(business_key) FROM shared.user_business_access uba WHERE uba.user_id = u.user_id), '{}') AS available_businesses
        FROM shared.users u
@@ -28,6 +29,7 @@ async function findByEmail(email) {
     `SELECT u.user_id, u.email, u.display_name, u.password_hash, u.pin_hash,
             u.status, u.is_ceo,
             u.default_business_key, u.failed_login_count,
+            COALESCE(u.email_verified, false) AS email_verified,
             COALESCE((SELECT array_agg(r.role_name)
                         FROM shared.user_roles ur
                         JOIN shared.roles r ON r.role_id = ur.role_id
@@ -144,6 +146,7 @@ async function findByIdWithProfile(userId) {
   const { rows } = await query(
     `SELECT u.user_id, u.email, u.display_name, u.is_ceo, u.default_business_key,
             u.avatar_url, u.phone, u.status,
+            COALESCE(u.email_verified, false) AS email_verified,
             sp.job_title, sp.department, sp.employee_number,
             COALESCE(
               (SELECT array_agg(business_key) FROM shared.user_business_access uba WHERE uba.user_id = u.user_id),
@@ -156,6 +159,16 @@ async function findByIdWithProfile(userId) {
     [userId],
   );
   return rows[0] || null;
+}
+
+/** Mark an account's email as verified (one-time activation). */
+async function setEmailVerified(userId) {
+  await query(
+    `UPDATE shared.users
+        SET email_verified = true, email_verified_at = now()
+      WHERE user_id = $1`,
+    [userId],
+  );
 }
 
 async function updateUserProfile(userId, { display_name, avatar_url, phone }) {
@@ -200,4 +213,5 @@ module.exports = {
   findByIdWithProfile,
   updateUserProfile,
   updateEmail,
+  setEmailVerified,
 };

@@ -8,8 +8,11 @@
 -- ============================================================
 
 -- ── TOTP / MFA columns on shared.users ──────────────────────
+-- totp_secret_enc holds the base64 ciphertext from the shared encryption
+-- service (AES-256-GCM), so it is TEXT — same as every other *_enc column.
+-- (It was originally BYTEA, which broke decrypt on read; see 000311.)
 ALTER TABLE shared.users
-  ADD COLUMN IF NOT EXISTS totp_secret_enc   BYTEA,
+  ADD COLUMN IF NOT EXISTS totp_secret_enc   TEXT,
   ADD COLUMN IF NOT EXISTS totp_enabled      BOOLEAN NOT NULL DEFAULT false,
   ADD COLUMN IF NOT EXISTS totp_verified_at  TIMESTAMPTZ;
 

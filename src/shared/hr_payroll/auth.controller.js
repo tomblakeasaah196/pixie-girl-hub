@@ -110,10 +110,26 @@ async function forgotPassword(req, res) {
 
 async function resetPassword(req, res) {
   await service.resetPassword({
-    token: req.body?.token,
+    email: req.body?.email,
+    otp: req.body?.otp,
     new_password: req.body?.new_password,
   });
   res.json({ data: { ok: true } });
+}
+
+/** POST /auth/activate/send — email a one-time activation code to self. */
+async function sendActivation(req, res) {
+  const data = await service.sendActivation({ user_id: req.user.user_id });
+  res.json({ data });
+}
+
+/** POST /auth/activate/confirm — verify the activation code for self. */
+async function confirmActivation(req, res) {
+  const data = await service.confirmActivation({
+    user_id: req.user.user_id,
+    otp: req.body?.otp,
+  });
+  res.json({ data });
 }
 
 /**
@@ -200,4 +216,6 @@ module.exports = {
   uploadAvatar,
   requestEmailChange,
   confirmEmailChange,
+  sendActivation,
+  confirmActivation,
 };

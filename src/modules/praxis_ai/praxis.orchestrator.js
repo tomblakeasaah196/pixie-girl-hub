@@ -1218,6 +1218,22 @@ async function generateSmartcommDraft({ user, brand, context }) {
   if (!result && primary !== fallback) {
     try {
       result = await callVendor(fallback, { system, messages });
+      // Real failover engagement — record an incident + rate-limited alert
+      // so ops sees the primary is degraded without waiting for a shopper
+      // to notice. Never blocks the reply.
+      Promise.resolve()
+        .then(() =>
+          require("../ai_governance/health.service").recordFailover({
+            primary_vendor: primary,
+            fallback_vendor: fallback,
+            feature_key: "smartcomm_draft",
+            business: context.business || null,
+            primary_error: lastError && lastError.message,
+          }),
+        )
+        .catch((e) =>
+          logger.debug({ err: e.message }, "failover incident skipped"),
+        );
     } catch (err) {
       lastError = err;
       logger.error(

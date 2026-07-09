@@ -7,6 +7,7 @@ import {
   Lightbulb,
   GraduationCap,
   ChevronRight,
+  Activity,
 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { Card } from "@/components/ui/primitives";
@@ -59,6 +60,13 @@ const TILES = [
     body: "Which AI features are on, who can use them, per-user caps.",
     href: "/ai-control/governance",
     ready: false,
+  },
+  {
+    icon: Activity,
+    title: "AI Health & Logs",
+    body: "Live vendor status, failure rate per vendor, recent errors, failover incidents. This is where you'd have seen the July 2026 outage on day one.",
+    href: "/ai-control/health",
+    ready: true,
   },
 ];
 

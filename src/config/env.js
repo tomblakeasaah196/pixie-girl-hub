@@ -243,6 +243,12 @@ const schema = z.object({
   PRAXIS_LLM_FALLBACK_VENDOR: z.string().default("gemini"),
   AI_MONTHLY_SOFT_CAP_NGN: z.coerce.number().nonnegative().default(75000),
   AI_MONTHLY_HARD_CAP_NGN: z.coerce.number().nonnegative().default(80000),
+  // Optional: email address that receives AI ops alerts (vendor down,
+  // failover spike, hard-cap breach). Leave blank to disable — the alert
+  // is still logged as an error in pm2 either way.
+  AI_ALERT_EMAIL: z.string().optional(),
+  // Cron: hourly vendor health ping (Q6). Set to "off" to disable.
+  CRON_AI_VENDOR_HEALTH_PING: z.string().default("15 * * * *"),
 
   // Shade Finder (public Praxis shade match on the storefront). Photo
   // analyses per device per day; a wider per-IP ceiling backstops device-id

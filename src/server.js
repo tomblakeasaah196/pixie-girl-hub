@@ -57,10 +57,18 @@ async function bootstrap() {
   logger.info("redis connected");
 
   // ── AI config sanity (non-fatal) ───────────────────────
-  // Warns loudly at boot if GEMINI_BASE_URL is missing/misconfigured, so a
-  // bad host (the classic gemini.api.google.com typo) screams here instead
-  // of silently 503-ing every AI feature at request time.
-  require("./services/gemini.service").checkConfigAtBoot();
+  // Warns loudly at boot if the Gemini endpoint is missing/misconfigured,
+  // so a bad host (the classic gemini.api.google.com typo) screams here
+  // instead of silently 503-ing every AI feature at request time.
+  //
+  // Follow-up: also fires an asynchronous "live" ping against every
+  // configured vendor and writes a health row (see aiHealthCron). The
+  // await guarantees the sanity warning lands in logs before we mount
+  // routes; the live pings are fire-and-forget so slow vendors never
+  // block boot.
+  await require("./services/gemini.service").checkConfigAtBoot();
+  require("./modules/ai_governance/health.service")
+    .pingAllVendorsInBackground({ source: "boot" });
 
   // ── SMTP config sanity (non-fatal) ─────────────────────
   // Warns loudly if the SMTP relay is placeholder-shaped (localhost / port 25 /

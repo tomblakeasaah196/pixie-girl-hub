@@ -50,6 +50,28 @@ router.post(
   v.validateVendorActive,
   c.setVendorActive,
 );
+// Live "Test connection" (Q2) — makes a real 1-token call so a bad key /
+// bad endpoint is caught at Save time, not by a shopper's failing request.
+router.post(
+  "/vendors/:vendor/test",
+  can("edit"),
+  v.validateVendorTest,
+  c.testVendor,
+);
+
+// ── Health (Q6) ────────────────────────────────────────────
+router.get("/health/vendors", can("view"), c.listVendorHealth);
+router.get("/health/pings", can("view"), c.listHealthPings);
+router.get("/health/incidents", can("view"), c.listIncidents);
+router.post(
+  "/health/vendors/:vendor/ping",
+  can("edit"),
+  c.pingVendorNow,
+);
+
+// ── AI Health & Logs (Q5) ──────────────────────────────────
+router.get("/logs/recent", can("view"), c.recentErrors);
+router.get("/logs/success-rate", can("view"), c.successRate);
 
 // ── Budget periods ─────────────────────────────────────────
 router.get("/budget/active", can("view"), c.activeBudget);

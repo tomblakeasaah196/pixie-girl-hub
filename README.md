@@ -135,6 +135,33 @@ src/modules/<module-name>/
 - **Repositories are SQL only**, services are business logic, controllers are HTTP only.
 - **No business logic in middleware** beyond auth/RBAC/audit/CORS.
 
+### RBAC & module governance (keep permissions in sync)
+
+The permission system is only trustworthy if its module list matches the modules
+that actually exist. There is **one source of truth**:
+[`src/shared/access/access.catalog.js`](src/shared/access/access.catalog.js)
+`MODULES` — and it must always equal the distinct `requirePermission(module, …)`
+keys enforced across `src/`. **Whenever you add or remove a feature, update the
+RBAC in the same PR:**
+
+1. **Adding a module** (any route gated on a new `requirePermission` key):
+   - Add the key to `access.catalog.js` `MODULES`.
+   - Map it in the admin nav so it hides from users without access:
+     set the `permission` field on the module in
+     [`apps/admin/src/lib/modules.ts`](apps/admin/src/lib/modules.ts).
+2. **Removing / renaming a module:**
+   - Remove the old key from `access.catalog.js`.
+   - Ship a migration that purges its rows from `shared.permissions`
+     (see `migrations/000311_shared_rbac_module_reconcile.sql` for the pattern).
+3. **Verify the two lists agree** — the catalog must equal:
+   ```bash
+   grep -rhoP 'requirePermission\(\s*"\K[a-z_]+' src/ --include="*.js" | sort -u
+   ```
+   `tests/unit/access/catalog.test.js` guards this; a stale catalog lets the
+   Access matrix show modules that no longer exist and lets the nav leak links
+   to modules a user can't open. **A feature isn't "done" until its permission
+   is wired.**
+
 ### Naming
 
 - Files: `kebab-case.js` or `snake_case.js` (consistent within a module)

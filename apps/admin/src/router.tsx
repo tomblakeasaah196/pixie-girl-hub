@@ -260,6 +260,16 @@ const AiHealthLogsPage = lazyWithRetry(() =>
     default: m.AiHealthLogsPage,
   })),
 );
+const SpendBudgetPage = lazyWithRetry(() =>
+  import("@/pages/ai-control/SpendBudgetPage").then((m) => ({
+    default: m.SpendBudgetPage,
+  })),
+);
+const FeatureFlagsPage = lazyWithRetry(() =>
+  import("@/pages/ai-control/FeatureFlagsPage").then((m) => ({
+    default: m.FeatureFlagsPage,
+  })),
+);
 const InvoicingPage = lazyWithRetry(() =>
   import("@/pages/invoicing/InvoicingPage").then((m) => ({
     default: m.InvoicingPage,
@@ -818,6 +828,22 @@ export const router = createBrowserRouter(
               element: (
                 <Suspense fallback={null}>
                   <AiHealthLogsPage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "ai-control/budget",
+              element: (
+                <Suspense fallback={null}>
+                  <SpendBudgetPage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "ai-control/governance",
+              element: (
+                <Suspense fallback={null}>
+                  <FeatureFlagsPage />
                 </Suspense>
               ),
             },

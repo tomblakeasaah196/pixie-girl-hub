@@ -17,12 +17,34 @@ const can = (action) => requirePermission("ai_governance", action);
 
 // ── Feature flags ──────────────────────────────────────────
 router.get("/flags", can("view"), c.listFlags);
+router.get("/flags/audit", can("view"), c.recentFlagAudit);
 router.post("/flags", can("create"), v.validateFlagUpsert, c.upsertFlag);
 router.post(
   "/flags/:feature_key/toggle",
   can("edit"),
   v.validateFlagToggle,
   c.toggleFlag,
+);
+// Q8: per-brand toggle, per-user daily cap, per-feature "resting"
+// message. All audit-logged in the service — "who turned it off, when"
+// always answers itself.
+router.post(
+  "/flags/:feature_key/brand-scope",
+  can("edit"),
+  v.validateFlagBrandScope,
+  c.setFlagBrandScope,
+);
+router.post(
+  "/flags/:feature_key/user-cap",
+  can("edit"),
+  v.validateFlagUserCap,
+  c.setFlagUserCap,
+);
+router.post(
+  "/flags/:feature_key/resting-message",
+  can("edit"),
+  v.validateFlagRestingMessage,
+  c.setFlagRestingMessage,
 );
 
 // ── Access grants ──────────────────────────────────────────

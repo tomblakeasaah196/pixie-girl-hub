@@ -50,16 +50,16 @@ const TILES = [
   {
     icon: Gauge,
     title: "Spend & budget",
-    body: "Monthly soft + hard caps, daily spend meter, per-feature usage ledger.",
+    body: "Tiered caps: internal AI blocks first, storefront stays online under its own cap. Per-feature & per-vendor spend.",
     href: "/ai-control/budget",
-    ready: false,
+    ready: true,
   },
   {
     icon: ShieldCheck,
     title: "Feature flags & access",
-    body: "Which AI features are on, who can use them, per-user caps.",
+    body: "Per-brand toggles, per-user daily caps, custom “Praxis is resting” copy. Every change audit-logged.",
     href: "/ai-control/governance",
-    ready: false,
+    ready: true,
   },
   {
     icon: Activity,

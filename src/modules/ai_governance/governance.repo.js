@@ -29,9 +29,13 @@ async function upsertFlag({ flag, user_id }) {
   const { rows } = await query(
     `INSERT INTO shared.ai_feature_flags
        (feature_key, display_name, description, is_enabled, default_provider,
-        default_model, est_cost_per_call_ngn, last_changed_by, last_changed_at)
+        default_model, est_cost_per_call_ngn,
+        feature_scope, enabled_for_pxg, enabled_for_flh, daily_user_cap, resting_message,
+        last_changed_by, last_changed_at)
      VALUES ($1,$2,$3,COALESCE($4,true),COALESCE($5,'deepseek'),
-             COALESCE($6,'deepseek-chat'),$7,$8,now())
+             COALESCE($6,'deepseek-chat'),$7,
+             COALESCE($8,'internal'), COALESCE($9,true), COALESCE($10,true), $11, $12,
+             $13, now())
      ON CONFLICT (feature_key) DO UPDATE
        SET display_name = EXCLUDED.display_name,
            description = EXCLUDED.description,
@@ -39,6 +43,11 @@ async function upsertFlag({ flag, user_id }) {
            default_provider = EXCLUDED.default_provider,
            default_model = EXCLUDED.default_model,
            est_cost_per_call_ngn = EXCLUDED.est_cost_per_call_ngn,
+           feature_scope = EXCLUDED.feature_scope,
+           enabled_for_pxg = EXCLUDED.enabled_for_pxg,
+           enabled_for_flh = EXCLUDED.enabled_for_flh,
+           daily_user_cap = EXCLUDED.daily_user_cap,
+           resting_message = EXCLUDED.resting_message,
            last_changed_by = EXCLUDED.last_changed_by,
            last_changed_at = now(),
            updated_at = now()
@@ -53,6 +62,11 @@ async function upsertFlag({ flag, user_id }) {
       flag.est_cost_per_call_ngn === undefined
         ? null
         : flag.est_cost_per_call_ngn,
+      flag.feature_scope || null,
+      flag.enabled_for_pxg === undefined ? null : flag.enabled_for_pxg,
+      flag.enabled_for_flh === undefined ? null : flag.enabled_for_flh,
+      flag.daily_user_cap === undefined ? null : flag.daily_user_cap,
+      flag.resting_message === undefined ? null : flag.resting_message,
       user_id || null,
     ],
   );
@@ -66,6 +80,59 @@ async function setFlagEnabled({ feature_key, is_enabled, user_id }) {
     [feature_key, is_enabled, user_id || null],
   );
   return rows[0] || null;
+}
+/**
+ * Q8: per-brand toggle. Partial updates — pass only the brand(s) you're
+ * changing. `last_changed_by` gets stamped for the audit trail.
+ */
+async function setFlagBrandScope({ feature_key, enabled_for_pxg, enabled_for_flh, user_id }) {
+  const { rows } = await query(
+    `UPDATE shared.ai_feature_flags
+        SET enabled_for_pxg = COALESCE($2, enabled_for_pxg),
+            enabled_for_flh = COALESCE($3, enabled_for_flh),
+            last_changed_by = $4, last_changed_at = now(), updated_at = now()
+      WHERE feature_key = $1 RETURNING *`,
+    [
+      feature_key,
+      enabled_for_pxg === undefined ? null : enabled_for_pxg,
+      enabled_for_flh === undefined ? null : enabled_for_flh,
+      user_id || null,
+    ],
+  );
+  return rows[0] || null;
+}
+async function setFlagUserCap({ feature_key, daily_user_cap, user_id }) {
+  const { rows } = await query(
+    `UPDATE shared.ai_feature_flags
+        SET daily_user_cap = $2,
+            last_changed_by = $3, last_changed_at = now(), updated_at = now()
+      WHERE feature_key = $1 RETURNING *`,
+    [feature_key, daily_user_cap ?? null, user_id || null],
+  );
+  return rows[0] || null;
+}
+async function setFlagRestingMessage({ feature_key, resting_message, user_id }) {
+  const { rows } = await query(
+    `UPDATE shared.ai_feature_flags
+        SET resting_message = $2,
+            last_changed_by = $3, last_changed_at = now(), updated_at = now()
+      WHERE feature_key = $1 RETURNING *`,
+    [feature_key, resting_message ?? null, user_id || null],
+  );
+  return rows[0] || null;
+}
+
+/** Total calls this user has made to feature_key today (Africa/Lagos). */
+async function userCallsToday({ client, user_id, feature_key }) {
+  if (!user_id) return 0;
+  const { rows } = await ex(client)(
+    `SELECT COALESCE(SUM(calls_count), 0)::int AS n
+       FROM shared.ai_usage_daily
+      WHERE user_id = $1 AND feature_key = $2
+        AND metric_date = (now() AT TIME ZONE 'Africa/Lagos')::date`,
+    [user_id, feature_key],
+  );
+  return rows[0]?.n || 0;
 }
 
 // ── Access grants ──────────────────────────────────────────
@@ -235,13 +302,49 @@ async function createPeriod({ p, user_id }) {
   );
   return rows[0];
 }
-async function setCaps({ period_id, soft_cap_ngn, hard_cap_ngn }) {
+async function setCaps({
+  period_id,
+  soft_cap_ngn,
+  hard_cap_ngn,
+  storefront_soft_cap_ngn,
+  storefront_hard_cap_ngn,
+}) {
+  // Partial updates — undefined leaves a column alone. NULL storefront
+  // caps mean "uncapped" (the storefront never blocks on spend); that's
+  // still a valid saved value the CEO can choose, so we differentiate
+  // undefined (skip) from null (write null) by branching per column.
+  const sets = [];
+  const params = [period_id];
+  let i = 2;
+  if (soft_cap_ngn !== undefined) {
+    sets.push(`soft_cap_ngn = $${i++}`);
+    params.push(soft_cap_ngn);
+  }
+  if (hard_cap_ngn !== undefined) {
+    sets.push(`hard_cap_ngn = $${i++}`);
+    params.push(hard_cap_ngn);
+  }
+  if (storefront_soft_cap_ngn !== undefined) {
+    sets.push(`storefront_soft_cap_ngn = $${i++}`);
+    params.push(storefront_soft_cap_ngn);
+  }
+  if (storefront_hard_cap_ngn !== undefined) {
+    sets.push(`storefront_hard_cap_ngn = $${i++}`);
+    params.push(storefront_hard_cap_ngn);
+  }
+  if (sets.length === 0) {
+    // No columns to update — just return the current row.
+    const { rows } = await query(
+      `SELECT * FROM shared.ai_budget_periods WHERE period_id = $1`,
+      [period_id],
+    );
+    return rows[0] || null;
+  }
+  sets.push("updated_at = now()");
   const { rows } = await query(
-    `UPDATE shared.ai_budget_periods
-        SET soft_cap_ngn = COALESCE($2, soft_cap_ngn),
-            hard_cap_ngn = COALESCE($3, hard_cap_ngn), updated_at = now()
+    `UPDATE shared.ai_budget_periods SET ${sets.join(", ")}
       WHERE period_id = $1 RETURNING *`,
-    [period_id, soft_cap_ngn ?? null, hard_cap_ngn ?? null],
+    params,
   );
   return rows[0] || null;
 }
@@ -438,11 +541,35 @@ async function setActionEnabled({ action_key, ai_enabled }) {
   return rows[0] || null;
 }
 
+/**
+ * Q8 audit trail lookup: the most recent flag-related audit rows so the
+ * FeatureFlagsPage can show "who turned what off, when" without
+ * cross-joining shared.audit_log in the admin app.
+ */
+async function recentFlagAudit({ limit = 50 } = {}) {
+  const { rows } = await query(
+    `SELECT audit_id, occurred_at, user_id, user_name, action AS action_key,
+            record_id AS flag_id, after_state, metadata
+       FROM shared.audit_log
+      WHERE module = 'ai_governance'
+        AND action LIKE 'ai_governance.flag.%'
+      ORDER BY occurred_at DESC
+      LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+
 module.exports = {
   listFlags,
   findFlag,
   upsertFlag,
   setFlagEnabled,
+  setFlagBrandScope,
+  setFlagUserCap,
+  setFlagRestingMessage,
+  userCallsToday,
+  recentFlagAudit,
   listGrants,
   hasGrant,
   grant,

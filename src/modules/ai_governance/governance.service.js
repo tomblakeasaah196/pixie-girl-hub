@@ -99,6 +99,76 @@ async function setFlagEnabled({ user, request_id, feature_key, is_enabled }) {
   );
   return flag;
 }
+// Q8: per-brand toggle. Audit-logged so the "who turned it off, when"
+// question always has an answer without a `git blame`.
+async function setFlagBrandScope({
+  user,
+  request_id,
+  feature_key,
+  enabled_for_pxg,
+  enabled_for_flh,
+}) {
+  const flag = await repo.setFlagBrandScope({
+    feature_key,
+    enabled_for_pxg,
+    enabled_for_flh,
+    user_id: user.user_id,
+  });
+  if (!flag) throw new NotFoundError("Feature flag");
+  await A(
+    user,
+    "ai_governance.flag.brand_scope",
+    "ai_feature_flag",
+    flag.flag_id,
+    { enabled_for_pxg, enabled_for_flh },
+    request_id,
+  );
+  return flag;
+}
+async function setFlagUserCap({
+  user,
+  request_id,
+  feature_key,
+  daily_user_cap,
+}) {
+  const flag = await repo.setFlagUserCap({
+    feature_key,
+    daily_user_cap,
+    user_id: user.user_id,
+  });
+  if (!flag) throw new NotFoundError("Feature flag");
+  await A(
+    user,
+    "ai_governance.flag.user_cap",
+    "ai_feature_flag",
+    flag.flag_id,
+    { daily_user_cap },
+    request_id,
+  );
+  return flag;
+}
+async function setFlagRestingMessage({
+  user,
+  request_id,
+  feature_key,
+  resting_message,
+}) {
+  const flag = await repo.setFlagRestingMessage({
+    feature_key,
+    resting_message,
+    user_id: user.user_id,
+  });
+  if (!flag) throw new NotFoundError("Feature flag");
+  await A(
+    user,
+    "ai_governance.flag.resting_message",
+    "ai_feature_flag",
+    flag.flag_id,
+    { has_message: !!resting_message },
+    request_id,
+  );
+  return flag;
+}
 
 // ── Access grants ──────────────────────────────────────────
 function listGrants(args) {
@@ -235,15 +305,28 @@ async function setCaps({
   period_id,
   soft_cap_ngn,
   hard_cap_ngn,
+  storefront_soft_cap_ngn,
+  storefront_hard_cap_ngn,
 }) {
-  const p = await repo.setCaps({ period_id, soft_cap_ngn, hard_cap_ngn });
+  const p = await repo.setCaps({
+    period_id,
+    soft_cap_ngn,
+    hard_cap_ngn,
+    storefront_soft_cap_ngn,
+    storefront_hard_cap_ngn,
+  });
   if (!p) throw new NotFoundError("Budget period");
   await A(
     user,
     "ai_governance.budget.caps",
     "ai_budget_period",
     period_id,
-    { soft_cap_ngn, hard_cap_ngn },
+    {
+      soft_cap_ngn,
+      hard_cap_ngn,
+      storefront_soft_cap_ngn,
+      storefront_hard_cap_ngn,
+    },
     request_id,
   );
   return p;
@@ -251,27 +334,127 @@ async function setCaps({
 
 // ── Runtime guards (called by the AI layer) ────────────────
 /**
- * Whether `user` may use `feature_key` right now: the flag is enabled, the
- * user has an active grant, and the active budget period hasn't hit its hard
- * cap. Returns { ok, reason }.
+ * Whether the caller may use `feature_key` right now. The gate order is:
+ *
+ *   1. Feature flag globally enabled.
+ *   2. Per-brand toggle for the calling brand (Q8) — a CEO can disable
+ *      Praxis chat for pxg but keep it running for flh.
+ *   3. Access grant (skipped for CEO). Public/storefront callers pass
+ *      `is_ceo: true` so this is bypassed for them.
+ *   4. Per-user daily cap (Q8). Only enforced for staff features
+ *      (feature_scope='internal') with a set cap. Public storefront
+ *      callers have user_id=null → they gate on Redis quotas instead.
+ *   5. Budget cap (Q7 tiered). Internal features gate on the standard
+ *      hard_cap_ngn. Storefront features gate on their SEPARATE
+ *      storefront_hard_cap_ngn (NULL → uncapped, "revenue features
+ *      die last"). Both use the ledger totals maintained by the
+ *      trigger in 000310.
+ *
+ * On a block, returns `{ ok: false, reason, resting_message, feature_scope }`
+ * so the caller can show the right copy — the storefront surfaces
+ * resting_message to shoppers, staff features see the technical reason.
  */
-async function canUseFeature({ user_id, feature_key, is_ceo }) {
+async function canUseFeature({ user_id, feature_key, is_ceo, business }) {
   const flag = await repo.findFlag({ feature_key });
-  if (!flag || !flag.is_enabled)
-    return { ok: false, reason: "FEATURE_DISABLED" };
+  if (!flag || !flag.is_enabled) {
+    return {
+      ok: false,
+      reason: "FEATURE_DISABLED",
+      resting_message: flag ? flag.resting_message : null,
+      feature_scope: flag ? flag.feature_scope : "internal",
+    };
+  }
+  // Per-brand toggle. Only enforced when the caller declares a brand;
+  // internal admin surfaces without a brand context skip this check.
+  if (business === "pixiegirl" && !flag.enabled_for_pxg) {
+    return {
+      ok: false,
+      reason: "FEATURE_DISABLED_FOR_BRAND",
+      resting_message: flag.resting_message,
+      feature_scope: flag.feature_scope,
+    };
+  }
+  if (business === "faitlynhair" && !flag.enabled_for_flh) {
+    return {
+      ok: false,
+      reason: "FEATURE_DISABLED_FOR_BRAND",
+      resting_message: flag.resting_message,
+      feature_scope: flag.feature_scope,
+    };
+  }
   if (!is_ceo) {
     const granted = await repo.hasGrant({ user_id, feature_key });
-    if (!granted) return { ok: false, reason: "NO_ACCESS_GRANT" };
+    if (!granted) {
+      return {
+        ok: false,
+        reason: "NO_ACCESS_GRANT",
+        resting_message: flag.resting_message,
+        feature_scope: flag.feature_scope,
+      };
+    }
   }
+  // Per-user daily cap. Only for staff features with a cap set — public
+  // storefront callers (user_id=null) skip this by design.
+  if (
+    user_id &&
+    flag.daily_user_cap &&
+    Number(flag.daily_user_cap) > 0 &&
+    flag.feature_scope !== "storefront"
+  ) {
+    const used = await repo.userCallsToday({ user_id, feature_key });
+    if (used >= Number(flag.daily_user_cap)) {
+      return {
+        ok: false,
+        reason: "USER_DAILY_CAP",
+        resting_message: flag.resting_message,
+        feature_scope: flag.feature_scope,
+        used_today: used,
+        daily_user_cap: Number(flag.daily_user_cap),
+      };
+    }
+  }
+  // Budget cap — tiered by feature scope (Q7).
   const period = await repo.activePeriod({});
-  if (period && period.hard_cap_breached_at)
-    return { ok: false, reason: "BUDGET_HARD_CAP" };
-  if (period && money(period.actual_spend_ngn).gte(money(period.hard_cap_ngn)))
-    return { ok: false, reason: "BUDGET_HARD_CAP" };
+  if (period) {
+    if (flag.feature_scope === "storefront") {
+      // NULL storefront cap → uncapped, storefront never blocks on spend.
+      // This is what makes revenue features die last: a Praxis training
+      // spike drains the internal cap but the shop stays online.
+      const cap = period.storefront_hard_cap_ngn;
+      if (
+        cap !== null &&
+        cap !== undefined &&
+        (period.storefront_hard_cap_breached_at ||
+          money(period.storefront_actual_spend_ngn).gte(money(cap)))
+      ) {
+        return {
+          ok: false,
+          reason: "STOREFRONT_BUDGET_HARD_CAP",
+          resting_message: flag.resting_message,
+          feature_scope: flag.feature_scope,
+        };
+      }
+    } else {
+      // Internal features honour the original hard cap.
+      if (
+        period.hard_cap_breached_at ||
+        money(period.actual_spend_ngn).gte(money(period.hard_cap_ngn))
+      ) {
+        return {
+          ok: false,
+          reason: "BUDGET_HARD_CAP",
+          resting_message: flag.resting_message,
+          feature_scope: flag.feature_scope,
+        };
+      }
+    }
+  }
   return {
     ok: true,
     reason: null,
     period_id: period ? period.period_id : null,
+    feature_scope: flag.feature_scope,
+    resting_message: flag.resting_message,
   };
 }
 /** Append a usage row (trigger updates budget period + daily rollup). */
@@ -294,11 +477,41 @@ async function spendMeter({ from, to, feature_key, vendor }) {
     repo.usageDaily({ from, to, feature_key, vendor }),
     repo.activePeriod({}),
   ]);
+  // Split the internal vs storefront view (Q7). The internal totals
+  // are (all AI) − storefront, so an internal-cap breach reflects
+  // what *staff* consumed, not what shoppers cost. The storefront
+  // totals live in their own columns updated by the 000310 trigger.
+  const internalSpend = period
+    ? Number(period.actual_spend_ngn || 0) -
+      Number(period.storefront_actual_spend_ngn || 0)
+    : 0;
+  const internalCalls = period
+    ? Number(period.actual_calls_count || 0) -
+      Number(period.storefront_actual_calls_count || 0)
+    : 0;
   return {
     current_period: period
       ? {
+          period_id: period.period_id,
           period_start: period.period_start,
           period_end: period.period_end,
+          internal: {
+            soft_cap_ngn: period.soft_cap_ngn,
+            hard_cap_ngn: period.hard_cap_ngn,
+            actual_spend_ngn: String(internalSpend.toFixed(2)),
+            actual_calls_count: internalCalls,
+            soft_cap_breached: !!period.soft_cap_breached_at,
+            hard_cap_breached: !!period.hard_cap_breached_at,
+          },
+          storefront: {
+            soft_cap_ngn: period.storefront_soft_cap_ngn,
+            hard_cap_ngn: period.storefront_hard_cap_ngn,
+            actual_spend_ngn: period.storefront_actual_spend_ngn,
+            actual_calls_count: period.storefront_actual_calls_count,
+            soft_cap_breached: !!period.storefront_soft_cap_breached_at,
+            hard_cap_breached: !!period.storefront_hard_cap_breached_at,
+          },
+          // Retained for backwards-compat with existing callers.
           soft_cap_ngn: period.soft_cap_ngn,
           hard_cap_ngn: period.hard_cap_ngn,
           actual_spend_ngn: period.actual_spend_ngn,
@@ -372,6 +585,9 @@ module.exports = {
   listFlags,
   upsertFlag,
   setFlagEnabled,
+  setFlagBrandScope,
+  setFlagUserCap,
+  setFlagRestingMessage,
   listGrants,
   grant,
   revokeGrant,

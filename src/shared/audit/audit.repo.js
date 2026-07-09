@@ -8,7 +8,7 @@
 
 "use strict";
 
-const { query } = require("../../config/database");
+const { query, brandTransaction, ex } = require("../../config/database");
 
 async function list({
   brand,
@@ -105,15 +105,31 @@ async function forRecord({ brand, table_name, record_id }) {
  * trail. `window` reflects whether page 1 fits inside the last 24 h; older
  * pages always report "all_time".
  *
- * Includes `business = 'system'` rows alongside the active brand: pre-brand
- * events (login, logout, email verification — anything that happens before
- * X-Brand-Context exists) are written with business='system' by the audit()
- * helper, since `business` is NOT NULL and no brand has been selected yet.
- * Those rows carry no other brand's business data, so surfacing them here
- * doesn't cross entity isolation — it just makes a user's own login show up
- * in their activity feed no matter which brand tab they're on.
+ * Scoped by user_id only — deliberately NOT filtered by the caller's active
+ * brand. Two reasons a brand filter breaks this feed:
+ *   1. Pre-brand events (login, logout, email verification) are written with
+ *      business='system' (shared.audit_log.business is NOT NULL and no brand
+ *      is selected yet at that point) — never equal to any real brand key.
+ *   2. shared.audit_log has RLS enabled with the standard per-business policy
+ *      (migration 000200): when RLS_READ_ENFORCE is on (the default) and a
+ *      request has an ambient brand, `query()` routes through
+ *      queryWithContext, which sets app.current_business to the caller's
+ *      active brand — so Postgres itself re-filters to `business =
+ *      <active brand>` underneath any WHERE clause the app writes. Widening
+ *      the WHERE clause alone (e.g. `business IN ($1, 'system')`) has no
+ *      effect: RLS strips non-matching rows before the WHERE is even
+ *      evaluated. The only way to see a user's cross-brand/system history is
+ *      to not set app.current_business at all for this read.
+ * `brandTransaction(null, user_id, …)` does exactly that: passing brand=null
+ * means applySessionContext never sets the business GUC, so
+ * shared.current_business() reads NULL and the RLS policy's `current_business()
+ * IS NULL OR …` clause passes every row through untouched — the same "no
+ * filter" path already used for CEO cross-brand reads. Safe here because the
+ * query itself still hard-scopes to `user_id = $1`: a user's own action
+ * history is never someone else's business data, regardless of which brand
+ * tab happens to be active when they look at it.
  */
-async function myFeed({ brand, user_id, page = 1, page_size = 10, max_total = 30 }) {
+async function myFeed({ user_id, page = 1, page_size = 10, max_total = 30 }) {
   const safePageSize = Math.max(1, Math.min(page_size, max_total));
   const safePage = Math.max(1, page);
   const offset = (safePage - 1) * safePageSize;
@@ -128,27 +144,33 @@ async function myFeed({ brand, user_id, page = 1, page_size = 10, max_total = 30
       total: max_total,
     };
   }
-  const { rows: countRows } = await query(
-    `SELECT count(*)::int AS total
-       FROM (
-         SELECT 1 FROM shared.audit_log
-          WHERE business IN ($1, 'system') AND user_id = $2
-          ORDER BY occurred_at DESC
-          LIMIT $3
-       ) t`,
-    [brand, user_id, max_total],
-  );
-  const total = countRows[0]?.total ?? 0;
-  const { rows } = await query(
-    `SELECT log_id, occurred_at, module, action, table_name, record_id,
-            metadata
-       FROM shared.audit_log
-      WHERE business IN ($1, 'system')
-        AND user_id  = $2
-      ORDER BY occurred_at DESC
-      LIMIT $3 OFFSET $4`,
-    [brand, user_id, limit, offset],
-  );
+  return brandTransaction(null, user_id, async (client) => {
+    const run = ex(client);
+    const { rows: countRows } = await run(
+      `SELECT count(*)::int AS total
+         FROM (
+           SELECT 1 FROM shared.audit_log
+            WHERE user_id = $1
+            ORDER BY occurred_at DESC
+            LIMIT $2
+         ) t`,
+      [user_id, max_total],
+    );
+    const total = countRows[0]?.total ?? 0;
+    const { rows } = await run(
+      `SELECT log_id, occurred_at, module, action, table_name, record_id,
+              metadata
+         FROM shared.audit_log
+        WHERE user_id = $1
+        ORDER BY occurred_at DESC
+        LIMIT $2 OFFSET $3`,
+      [user_id, limit, offset],
+    );
+    return finishMyFeed(rows, safePage, safePageSize, total);
+  });
+}
+
+function finishMyFeed(rows, safePage, safePageSize, total) {
   const cutoff = Date.now() - 24 * 60 * 60 * 1000;
   const window =
     safePage === 1 && rows.length > 0 && new Date(rows[0].occurred_at).getTime() >= cutoff

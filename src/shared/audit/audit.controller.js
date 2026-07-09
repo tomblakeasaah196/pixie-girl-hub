@@ -52,7 +52,6 @@ async function forRecord(req, res) {
 async function myFeed(req, res) {
   const page = Math.max(1, Number.parseInt(req.query.page ?? "1", 10) || 1);
   const result = await service.myFeed({
-    brand: req.brand,
     user_id: req.user.user_id,
     page,
     page_size: 10,

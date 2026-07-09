@@ -32,7 +32,14 @@ import { DeniedState } from "@/components/ui/controls";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
 import { money } from "@/lib/format";
-import { getEmployee360, payslipPdf, updateStaff } from "@/lib/hr-api";
+import {
+  getEmployee360,
+  payslipPdf,
+  updateStaff,
+  listStaff,
+  type StaffProfile,
+  type StaffRow,
+} from "@/lib/hr-api";
 import { Modal } from "@/components/ui/Modal";
 import { downloadDocument } from "@/lib/documents-api";
 import {
@@ -66,14 +73,22 @@ export default function EmployeeProfilePage() {
   const can = useAuthStore((s) => s.can);
   const [tab, setTab] = useState("overview");
   const [termsOpen, setTermsOpen] = useState(false);
+  const [employmentOpen, setEmploymentOpen] = useState(false);
+  const [compOpen, setCompOpen] = useState(false);
   useBreadcrumbs([{ label: "HR & Staff", href: "/hr" }, { label: "Employee" }]);
 
+  const canEdit = can("hr_payroll", "edit");
   const allowed = can("hr_payroll", "view");
   const { data, isLoading, isError } = useQuery({
     queryKey: ["hr", "employee-360", profileId],
     queryFn: () => getEmployee360(profileId),
     enabled: allowed && Boolean(profileId),
     retry: false,
+  });
+  const { data: staffList } = useQuery({
+    queryKey: ["hr", "staff-picker"],
+    queryFn: () => listStaff({ page_size: "200" }),
+    enabled: allowed && canEdit,
   });
 
   const pdf = useMutation({
@@ -227,19 +242,48 @@ export default function EmployeeProfilePage() {
       {tab === "overview" && (
         <div className="grid gap-4 lg:grid-cols-2">
           <Card className="p-5">
-            <SectionTitle icon={<CalendarDays className="h-4 w-4 text-accent-glow" />}>Employment</SectionTitle>
+            <div className="flex items-center justify-between">
+              <SectionTitle icon={<CalendarDays className="h-4 w-4 text-accent-glow" />}>Employment</SectionTitle>
+              {canEdit && (
+                <Button size="sm" variant="ghost" onClick={() => setEmploymentOpen(true)}>Manage</Button>
+              )}
+            </div>
+            <InfoRow label="Job title" value={p.job_title} />
+            <InfoRow label="Department" value={p.department} />
             <InfoRow label="Employment type" value={p.employment_type} />
             <InfoRow label="Start date" value={p.start_date} />
             <InfoRow label="End date" value={p.end_date} />
+            <InfoRow
+              label="Reports to"
+              value={
+                (p.reports_to as string | null)
+                  ? staffList?.data.find((s) => s.profile_id === p.reports_to)?.display_name ?? "—"
+                  : "—"
+              }
+            />
+          </Card>
+          <Card className="p-5">
+            <div className="flex items-center justify-between">
+              <SectionTitle icon={<Wallet className="h-4 w-4 text-accent-glow" />}>Compensation & banking</SectionTitle>
+              {canEdit && (
+                <Button size="sm" variant="ghost" onClick={() => setCompOpen(true)}>Manage</Button>
+              )}
+            </div>
             <InfoRow label="Base salary" value={money(Number(p.base_salary || 0))} />
             <InfoRow label="Bank" value={p.bank_name} />
             <InfoRow label="Account" value={p.bank_account_number} />
+            <InfoRow label="Sort code" value={p.bank_sort_code as string | null} />
             <InfoRow label="Statutory tax" value={p.statutory_exempt ? "Exempt" : "Standard"} />
+            <InfoRow label="Tax ID" value={p.tax_id as string | null} />
+            <InfoRow label="Pension PIN" value={p.pension_pin as string | null} />
+            <InfoRow label="NHF number" value={p.nhf_number as string | null} />
+            <InfoRow label="NIN" value={p.nin as string | null} />
+            <InfoRow label="BVN" value={p.bvn as string | null} />
           </Card>
           <Card className="p-5">
             <div className="flex items-center justify-between">
               <SectionTitle icon={<ShieldAlert className="h-4 w-4 text-accent-glow" />}>Terms & probation</SectionTitle>
-              {can("hr_payroll", "edit") && (
+              {canEdit && (
                 <Button size="sm" variant="ghost" onClick={() => setTermsOpen(true)}>Manage</Button>
               )}
             </div>
@@ -443,6 +487,17 @@ export default function EmployeeProfilePage() {
       {termsOpen && (
         <TermsEditModal profileId={profileId} profile={p} onClose={() => setTermsOpen(false)} />
       )}
+      {employmentOpen && (
+        <EmploymentEditModal
+          profileId={profileId}
+          profile={p}
+          staffOptions={(staffList?.data ?? []).filter((s) => s.profile_id !== profileId)}
+          onClose={() => setEmploymentOpen(false)}
+        />
+      )}
+      {compOpen && (
+        <CompensationEditModal profileId={profileId} profile={p} onClose={() => setCompOpen(false)} />
+      )}
     </div>
   );
 }
@@ -539,6 +594,217 @@ function TermsEditModal({
           <label className="block text-xs text-text-muted">Leave remaining
             <input type="number" value={form.annual_leave_days_remaining} className={cls}
               onChange={(e) => setForm({ ...form, annual_leave_days_remaining: e.target.value })} />
+          </label>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function EmploymentEditModal({
+  profileId,
+  profile,
+  staffOptions,
+  onClose,
+}: {
+  profileId: string;
+  profile: StaffProfile;
+  staffOptions: StaffRow[];
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const notify = useNotify("HR → Employee: employment");
+  const [form, setForm] = useState({
+    job_title: profile.job_title ?? "",
+    department: profile.department ?? "",
+    employment_type: profile.employment_type ?? "full_time",
+    start_date: profile.start_date ?? "",
+    end_date: profile.end_date ?? "",
+    reports_to: (profile.reports_to as string | null) ?? "",
+  });
+
+  const save = useMutation({
+    mutationFn: () => {
+      const patch: Record<string, unknown> = {
+        job_title: form.job_title,
+        employment_type: form.employment_type,
+        start_date: form.start_date || undefined,
+        end_date: form.end_date || null,
+        reports_to: form.reports_to || null,
+      };
+      if (form.department) patch.department = form.department;
+      return updateStaff(profileId, patch);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["hr", "employee-360", profileId] });
+      notify("Employment details updated");
+      onClose();
+    },
+    onError: (e) => notify("Failed", errMsg(e), "high"),
+  });
+
+  const cls = "w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary";
+  return (
+    <Modal open onClose={onClose} title="Edit employment"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" disabled={save.isPending || !form.job_title || !form.start_date}
+            onClick={() => save.mutate()}>
+            {save.isPending ? "Saving…" : "Save"}
+          </Button>
+        </>
+      }>
+      <div className="space-y-3">
+        <label className="block text-xs text-text-muted">Job title
+          <input value={form.job_title} className={cls}
+            onChange={(e) => setForm({ ...form, job_title: e.target.value })} />
+        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block text-xs text-text-muted">Department
+            <input value={form.department} className={cls}
+              onChange={(e) => setForm({ ...form, department: e.target.value })} />
+          </label>
+          <label className="block text-xs text-text-muted">Employment type
+            <select value={form.employment_type} className={cls}
+              onChange={(e) => setForm({ ...form, employment_type: e.target.value })}>
+              {["full_time", "part_time", "contract", "intern"].map((t) => (
+                <option key={t} value={t}>{t.replace("_", " ")}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block text-xs text-text-muted">Start date
+            <input type="date" value={form.start_date ?? ""} className={cls}
+              onChange={(e) => setForm({ ...form, start_date: e.target.value })} />
+          </label>
+          <label className="block text-xs text-text-muted">End date
+            <input type="date" value={form.end_date ?? ""} className={cls}
+              onChange={(e) => setForm({ ...form, end_date: e.target.value })} />
+          </label>
+        </div>
+        <label className="block text-xs text-text-muted">Reports to
+          <select value={form.reports_to} className={cls}
+            onChange={(e) => setForm({ ...form, reports_to: e.target.value })}>
+            <option value="">— None —</option>
+            {staffOptions.map((s) => (
+              <option key={s.profile_id} value={s.profile_id}>{s.display_name}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+    </Modal>
+  );
+}
+
+function CompensationEditModal({
+  profileId,
+  profile,
+  onClose,
+}: {
+  profileId: string;
+  profile: StaffProfile;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const notify = useNotify("HR → Employee: compensation");
+  const [form, setForm] = useState({
+    base_salary: profile.base_salary != null ? String(profile.base_salary) : "",
+    bank_name: profile.bank_name ?? "",
+    // Bank/tax/ID numbers may arrive masked (e.g. "••••1234") for non-CEO
+    // viewers — leaving these blank and only sending what's retyped avoids
+    // overwriting the real stored value with the masked placeholder.
+    bank_account_number: "",
+    bank_sort_code: "",
+    tax_id: "",
+    pension_pin: "",
+    nhf_number: "",
+    nin: "",
+    bvn: "",
+  });
+
+  const save = useMutation({
+    mutationFn: () => {
+      const patch: Record<string, unknown> = {};
+      if (form.base_salary !== "") patch.base_salary = Number(form.base_salary);
+      if (form.bank_name) patch.bank_name = form.bank_name;
+      for (const f of [
+        "bank_account_number",
+        "bank_sort_code",
+        "tax_id",
+        "pension_pin",
+        "nhf_number",
+        "nin",
+        "bvn",
+      ] as const) {
+        if (form[f]) patch[f] = form[f];
+      }
+      return updateStaff(profileId, patch);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["hr", "employee-360", profileId] });
+      notify("Compensation updated");
+      onClose();
+    },
+    onError: (e) => notify("Failed", errMsg(e), "high"),
+  });
+
+  const cls = "w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary";
+  const maskedHint = "Leave blank to keep the current value";
+  return (
+    <Modal open onClose={onClose} title="Edit compensation & banking"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" disabled={save.isPending} onClick={() => save.mutate()}>
+            {save.isPending ? "Saving…" : "Save"}
+          </Button>
+        </>
+      }>
+      <div className="space-y-3">
+        <label className="block text-xs text-text-muted">Base salary (NGN, monthly)
+          <input type="number" min="0" value={form.base_salary} className={cls}
+            onChange={(e) => setForm({ ...form, base_salary: e.target.value })} />
+        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block text-xs text-text-muted">Bank name
+            <input value={form.bank_name} className={cls}
+              onChange={(e) => setForm({ ...form, bank_name: e.target.value })} />
+          </label>
+          <label className="block text-xs text-text-muted">Account number
+            <input value={form.bank_account_number} className={cls} placeholder={maskedHint}
+              onChange={(e) => setForm({ ...form, bank_account_number: e.target.value })} />
+          </label>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block text-xs text-text-muted">Sort code
+            <input value={form.bank_sort_code} className={cls} placeholder={maskedHint}
+              onChange={(e) => setForm({ ...form, bank_sort_code: e.target.value })} />
+          </label>
+          <label className="block text-xs text-text-muted">Tax ID
+            <input value={form.tax_id} className={cls}
+              onChange={(e) => setForm({ ...form, tax_id: e.target.value })} />
+          </label>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block text-xs text-text-muted">Pension PIN
+            <input value={form.pension_pin} className={cls}
+              onChange={(e) => setForm({ ...form, pension_pin: e.target.value })} />
+          </label>
+          <label className="block text-xs text-text-muted">NHF number
+            <input value={form.nhf_number} className={cls}
+              onChange={(e) => setForm({ ...form, nhf_number: e.target.value })} />
+          </label>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <label className="block text-xs text-text-muted">NIN
+            <input value={form.nin} className={cls} placeholder={maskedHint}
+              onChange={(e) => setForm({ ...form, nin: e.target.value })} />
+          </label>
+          <label className="block text-xs text-text-muted">BVN
+            <input value={form.bvn} className={cls} placeholder={maskedHint}
+              onChange={(e) => setForm({ ...form, bvn: e.target.value })} />
           </label>
         </div>
       </div>

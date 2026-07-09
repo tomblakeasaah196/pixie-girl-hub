@@ -27,7 +27,8 @@ import { OfflineIndicator } from "./OfflineIndicator";
 /** The authenticated shell (canon §3): sidebar + sticky top bar + content,
  *  plus the global floating layer (App-Menu pill, launcher, mobile nav, ⌘K). */
 export function AppShell() {
-  const { sidebarCollapsed, setPaletteOpen, paletteOpen } = useUiStore();
+  const { sidebarCollapsed, setPaletteOpen, paletteOpen, immersive } =
+    useUiStore();
   const isDesktop = useIsDesktop();
   const queryClient = useQueryClient();
 
@@ -60,16 +61,31 @@ export function AppShell() {
             : "ml-0",
         )}
       >
-        <TopBar />
-        <OfflineIndicator />
-        <PwaInstallBanner />
-        <IosInstallHint />
-        <BreadcrumbStrip />
+        {/* Immersive mode (canon-adjacent: a route asked to take over the
+            whole viewport, e.g. an open conversation on mobile Messaging) —
+            the shell steps out entirely instead of just visually covering
+            its chrome, so hidden controls don't linger in the tab order. */}
+        {!immersive && (
+          <>
+            <TopBar />
+            <OfflineIndicator />
+            <PwaInstallBanner />
+            <IosInstallHint />
+            <BreadcrumbStrip />
+          </>
+        )}
         {/* Centered content column on desktop (canon §3): caps at --content-max
             and gains side gutters on wide monitors instead of stretching
             edge-to-edge. The cap is wider than any phone/tablet, so this is a
-            no-op below the desktop tier. */}
-        <div className="mx-auto w-full max-w-[var(--content-max)] p-[26px_34px_120px] max-md:p-[20px_16px_96px]">
+            no-op below the desktop tier. Immersive routes opt out of the cap
+            and padding — they manage their own full-bleed layout. */}
+        <div
+          className={
+            immersive
+              ? "h-full"
+              : "mx-auto w-full max-w-[var(--content-max)] p-[26px_34px_120px] max-md:p-[20px_16px_96px]"
+          }
+        >
           <PageTransition>
             {/* One screen crashing must not take down the shell — the sidebar
                 and top bar stay usable and the boundary resets on nav. */}
@@ -80,11 +96,15 @@ export function AppShell() {
         </div>
       </PullToRefresh>
 
-      <AppMenuFab />
-      <FloatingLauncher />
+      {!immersive && (
+        <>
+          <AppMenuFab />
+          <FloatingLauncher />
+          <MobileBottomNav />
+        </>
+      )}
       <ChatDock />
       <PraxisDrawer />
-      <MobileBottomNav />
       {paletteOpen && <CommandPalette />}
       <BusinessSwitchOverlay />
 

@@ -39,12 +39,21 @@ interface UiState {
   paletteRecents: PaletteRecent[];
   /** Most-recently-typed queries (deduped), newest first. */
   paletteRecentQueries: string[];
+  /**
+   * Full-bleed mode: a route has taken over the whole viewport (e.g. an
+   * open conversation on mobile Messaging) and wants the shell to stop
+   * rendering its own chrome — top bar, breadcrumb, bottom nav, floating
+   * launcher — around it. Not persisted; a page sets it while mounted in
+   * that state and clears it on the way out.
+   */
+  immersive: boolean;
   setTheme: (t: Theme) => void;
   toggleTheme: () => void;
   setDensity: (d: Density) => void;
   toggleSidebar: () => void;
   setMobileSidebarOpen: (v: boolean) => void;
   setPaletteOpen: (v: boolean) => void;
+  setImmersive: (v: boolean) => void;
   setAppMenuOffset: (o: { x: number; y: number }) => void;
   setSwitchingToBiz: (key: string | null) => void;
   logPaletteVisit: (r: Omit<PaletteRecent, "visitedAt">) => void;
@@ -64,6 +73,7 @@ export const useUiStore = create<UiState>()(
       switchingToBiz: null,
       paletteRecents: [],
       paletteRecentQueries: [],
+      immersive: false,
       setTheme: (theme) => set({ theme }),
       toggleTheme: () =>
         set({ theme: get().theme === "dark" ? "light" : "dark" }),
@@ -71,6 +81,7 @@ export const useUiStore = create<UiState>()(
       toggleSidebar: () => set({ sidebarCollapsed: !get().sidebarCollapsed }),
       setMobileSidebarOpen: (mobileSidebarOpen) => set({ mobileSidebarOpen }),
       setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
+      setImmersive: (immersive) => set({ immersive }),
       setAppMenuOffset: (appMenuOffset) => set({ appMenuOffset }),
       setSwitchingToBiz: (switchingToBiz) => set({ switchingToBiz }),
       logPaletteVisit: (r) => {

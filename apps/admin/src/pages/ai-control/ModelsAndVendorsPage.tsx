@@ -13,6 +13,9 @@ import {
   AlertCircle,
   Star,
   StarOff,
+  Circle,
+  Activity,
+  X,
 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { Card } from "@/components/ui/primitives";
@@ -153,7 +156,7 @@ export function ModelsAndVendorsPage() {
                       <div className="font-medium text-[13.5px] truncate">
                         {row.display_name}
                       </div>
-                      <div className="text-[11.5px] text-text-faint mt-0.5 flex items-center gap-2">
+                      <div className="text-[11.5px] text-text-faint mt-0.5 flex items-center gap-2 flex-wrap">
                         <span>
                           {row.has_api_key ? (
                             <span className="inline-flex items-center gap-1 text-green-300">
@@ -164,6 +167,7 @@ export function ModelsAndVendorsPage() {
                             <span className="text-amber-300">No API key</span>
                           )}
                         </span>
+                        <HealthChip row={row} />
                         {row.last_rotated_at && (
                           <span>
                             · rotated{" "}
@@ -293,6 +297,31 @@ const VENDOR_OPTIONS: { value: AiVendor; label: string }[] = [
   { value: "other", label: "Other" },
 ];
 
+function HealthChip({ row }: { row: AiVendorRow }) {
+  const status = row.last_health_status || "unknown";
+  const label =
+    status === "green" ? "Healthy" : status === "red" ? "Unhealthy" : "Not tested";
+  const cls =
+    status === "green"
+      ? "text-green-300"
+      : status === "red"
+        ? "text-red-300"
+        : "text-text-faint";
+  const title =
+    status === "red" && row.last_health_error
+      ? `${label}: ${row.last_health_error}`
+      : label;
+  return (
+    <span className={`inline-flex items-center gap-1 ${cls}`} title={title}>
+      <Circle className="w-2.5 h-2.5 fill-current" />
+      {label}
+      {status !== "unknown" && row.last_health_latency_ms != null && (
+        <span className="text-text-faint">· {row.last_health_latency_ms}ms</span>
+      )}
+    </span>
+  );
+}
+
 function VendorEditor({
   row,
   existingVendors,
@@ -320,6 +349,52 @@ function VendorEditor({
   const [currency, setCurrency] = useState(row?.cost_native_currency ?? "");
   const [active, setActive] = useState(row?.is_active ?? true);
   const [err, setErr] = useState<string | null>(null);
+  // Q2 Save gate: any change to the api_key OR endpoint requires a
+  // passing "Test connection" click before Save unblocks. This is the
+  // guardrail that prevents a repeat of the Jul-2026 outage — a bad
+  // endpoint typo can never reach production without being caught.
+  const [testResult, setTestResult] = useState<
+    | { state: "idle" }
+    | { state: "running" }
+    | { state: "ok"; latency_ms: number | null }
+    | { state: "fail"; message: string }
+  >({ state: "idle" });
+  const initialEndpoint = row?.endpoint_url ?? "";
+  const sensitiveChanged =
+    apiKey.trim().length > 0 || endpoint.trim() !== initialEndpoint;
+  const requiresTest = sensitiveChanged;
+  const testPassed = testResult.state === "ok";
+  const saveBlocked =
+    !displayName.trim() ||
+    (requiresTest && !testPassed);
+
+  const runTest = useMutation({
+    mutationFn: async () => {
+      setTestResult({ state: "running" });
+      const r = await aiGovernanceApi.testVendor(vendor, {
+        api_key: apiKey.trim() || undefined,
+        endpoint_url: endpoint.trim() || undefined,
+        model: defaultModel.trim() || undefined,
+      });
+      if (r.ok) {
+        setTestResult({ state: "ok", latency_ms: r.latency_ms });
+      } else {
+        setTestResult({
+          state: "fail",
+          message:
+            r.error_message ||
+            r.error_code ||
+            "Connection failed — check the key + endpoint.",
+        });
+      }
+    },
+    onError: (e) => {
+      setTestResult({
+        state: "fail",
+        message: e instanceof Error ? e.message : "Test failed.",
+      });
+    },
+  });
 
   const save = useMutation({
     mutationFn: async () => {
@@ -368,9 +443,27 @@ function VendorEditor({
             Cancel
           </button>
           <button
+            onClick={() => runTest.mutate()}
+            disabled={runTest.isPending}
+            className="rounded-xl bg-panel-2 border hairline px-4 py-2 text-[13px] font-medium hover:border-accent/40 disabled:opacity-50 inline-flex items-center gap-1.5"
+            title="Fire a live 1-token call to make sure the key + endpoint work"
+          >
+            {runTest.isPending ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Activity className="w-3.5 h-3.5" />
+            )}
+            Test connection
+          </button>
+          <button
             onClick={() => save.mutate()}
-            disabled={!displayName.trim() || save.isPending}
+            disabled={saveBlocked || save.isPending}
             className="rounded-xl bg-accent text-bg px-4 py-2 text-[13px] font-semibold hover:bg-accent-glow disabled:opacity-50 inline-flex items-center gap-1.5"
+            title={
+              requiresTest && !testPassed
+                ? "Run a passing Test connection first — safety gate after the Jul 2026 endpoint typo"
+                : "Save vendor"
+            }
           >
             {save.isPending ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -475,6 +568,31 @@ function VendorEditor({
           </label>
         )}
       </div>
+      {/* Test connection outcome banner */}
+      {testResult.state === "ok" && (
+        <div className="mt-3 rounded-xl bg-green-500/10 border border-green-500/30 px-3 py-2 text-[12.5px] text-green-200 inline-flex items-center gap-2">
+          <Check className="w-3.5 h-3.5" />
+          Connection OK
+          {testResult.latency_ms != null && (
+            <span className="text-green-300/70">· {testResult.latency_ms}ms</span>
+          )}
+        </div>
+      )}
+      {testResult.state === "fail" && (
+        <div className="mt-3 rounded-xl bg-red-500/10 border border-red-500/30 px-3 py-2 text-[12.5px] text-red-200 inline-flex items-start gap-2">
+          <X className="w-3.5 h-3.5 mt-0.5" />
+          <span className="flex-1">
+            <span className="font-medium">Connection failed:</span> {testResult.message}
+          </span>
+        </div>
+      )}
+      {requiresTest && !testPassed && testResult.state !== "fail" && (
+        <div className="mt-3 text-[11.5px] text-text-faint">
+          You changed the API key or endpoint — click <b>Test connection</b> to
+          verify before Save unblocks. (This is the safety gate after the July
+          2026 endpoint typo took the storefront down.)
+        </div>
+      )}
       {(err || save.isError) && (
         <div className="pt-2 text-[12px] text-danger inline-flex items-center gap-1.5">
           <AlertCircle className="w-3.5 h-3.5" />

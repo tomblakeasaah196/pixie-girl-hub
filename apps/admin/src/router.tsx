@@ -255,6 +255,11 @@ const TrainPraxisPage = lazyWithRetry(() =>
     default: m.TrainPraxisPage,
   })),
 );
+const AiHealthLogsPage = lazyWithRetry(() =>
+  import("@/pages/ai-control/AiHealthLogsPage").then((m) => ({
+    default: m.AiHealthLogsPage,
+  })),
+);
 const InvoicingPage = lazyWithRetry(() =>
   import("@/pages/invoicing/InvoicingPage").then((m) => ({
     default: m.InvoicingPage,
@@ -805,6 +810,14 @@ export const router = createBrowserRouter(
               element: (
                 <Suspense fallback={null}>
                   <TrainPraxisPage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "ai-control/health",
+              element: (
+                <Suspense fallback={null}>
+                  <AiHealthLogsPage />
                 </Suspense>
               ),
             },

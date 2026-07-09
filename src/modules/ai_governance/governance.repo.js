@@ -128,7 +128,10 @@ async function listVendors() {
     `SELECT credential_id, vendor, display_name, endpoint_url, default_model, current_model,
             cost_per_1k_input_tokens, cost_per_1k_output_tokens, cost_per_audio_minute,
             cost_native_currency, per_vendor_monthly_cap_ngn, is_active,
-            (api_key_enc IS NOT NULL) AS has_api_key, last_rotated_at, created_at, updated_at
+            (api_key_enc IS NOT NULL) AS has_api_key, last_rotated_at,
+            last_health_status, last_health_at, last_health_latency_ms, last_health_error,
+            last_test_ok_at, last_test_latency_ms, last_test_error,
+            created_at, updated_at
        FROM shared.ai_vendor_credentials ORDER BY vendor`,
   );
   return rows;

@@ -257,6 +257,17 @@ async function startWorkers() {
   scheduleCron("esign-reminder-sweep", "0 9 * * *", runEsignReminderSweep);
   scheduleCron("email-campaign-send", "* * * * *", runScheduledEmailSends);
   scheduleCron("ai-insights-sweep", "*/30 * * * *", runAiInsightsSweep);
+  // Hourly synthetic ping against every active AI vendor: green/red status
+  // chip on AI Control turns red within an hour of a real outage instead of
+  // waiting for a shopper to hit it.
+  scheduleCron(
+    "ai-vendor-health-ping",
+    config.CRON_AI_VENDOR_HEALTH_PING,
+    async () => {
+      require("../modules/ai_governance/health.service")
+        .pingAllVendorsInBackground({ source: "cron" });
+    },
+  );
   scheduleCron("retention-workflows", "* * * * *", runRetentionWorkflows);
   // Retention strategy engine: advance due enrolments every minute; scan for
   // time-based triggers + expire stale points nightly (02:30 Lagos).

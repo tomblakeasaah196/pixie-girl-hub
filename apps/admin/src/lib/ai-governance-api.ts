@@ -82,6 +82,71 @@ export interface AiVendorRow {
   is_active: boolean;
   last_rotated_at?: string | null;
   has_api_key: boolean;
+  // Health + test outcome columns (000309). All optional so older API
+  // versions render gracefully during a rolling deploy.
+  last_health_status?: "green" | "red" | "unknown" | null;
+  last_health_at?: string | null;
+  last_health_latency_ms?: number | null;
+  last_health_error?: string | null;
+  last_test_ok_at?: string | null;
+  last_test_latency_ms?: number | null;
+  last_test_error?: string | null;
+}
+
+export interface VendorTestResult {
+  ok: boolean;
+  latency_ms: number | null;
+  http_status?: number | null;
+  error_code?: string | null;
+  error_message?: string | null;
+}
+
+export interface VendorHealthPing {
+  ping_id: string;
+  vendor: string;
+  source: "boot" | "cron" | "manual" | "live_call";
+  ok: boolean;
+  latency_ms: number | null;
+  http_status: number | null;
+  error_code: string | null;
+  error_message: string | null;
+  checked_at: string;
+}
+
+export interface AiIncident {
+  incident_id: string;
+  incident_type: "failover_engaged" | "vendor_red" | "vendor_recovered" | "failure_spike";
+  vendor: string;
+  fallback_vendor: string | null;
+  feature_key: string | null;
+  business: string | null;
+  severity: "info" | "warning" | "critical";
+  summary: string;
+  details: Record<string, unknown>;
+  alert_sent_at: string | null;
+  resolved_at: string | null;
+  created_at: string;
+}
+
+export interface VendorSuccessRate {
+  vendor: string;
+  total_calls: number;
+  successes: number;
+  failures: number;
+  success_rate_pct: number;
+  avg_latency_ms: number | null;
+}
+
+export interface AiUsageError {
+  usage_id: string;
+  vendor: string;
+  model: string;
+  feature_key: string;
+  business: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  latency_ms: number | null;
+  occurred_at: string;
 }
 
 export interface SpendMeter {
@@ -151,6 +216,59 @@ export const aiGovernanceApi = {
       `/ai-governance/vendors/${vendor}/active`,
       { is_active },
     ),
+  // Live "Test connection" — pass overrides to test a not-yet-saved key.
+  testVendor: (
+    vendor: AiVendor,
+    overrides?: { api_key?: string; endpoint_url?: string; model?: string },
+  ) =>
+    api.post<VendorTestResult>(
+      `/ai-governance/vendors/${vendor}/test`,
+      overrides ?? {},
+    ),
+
+  // Health + observability (AI Health & Logs page)
+  listVendorHealth: () =>
+    api.get<AiVendorRow[]>("/ai-governance/health/vendors"),
+  listHealthPings: (params: { vendor?: string; limit?: number } = {}) => {
+    const u = new URLSearchParams();
+    if (params.vendor) u.set("vendor", params.vendor);
+    if (params.limit) u.set("limit", String(params.limit));
+    const qs = u.toString();
+    return api.get<VendorHealthPing[]>(
+      `/ai-governance/health/pings${qs ? `?${qs}` : ""}`,
+    );
+  },
+  listIncidents: (params: { vendor?: string; limit?: number } = {}) => {
+    const u = new URLSearchParams();
+    if (params.vendor) u.set("vendor", params.vendor);
+    if (params.limit) u.set("limit", String(params.limit));
+    const qs = u.toString();
+    return api.get<AiIncident[]>(
+      `/ai-governance/health/incidents${qs ? `?${qs}` : ""}`,
+    );
+  },
+  pingVendorNow: (vendor: AiVendor) =>
+    api.post<VendorTestResult>(
+      `/ai-governance/health/vendors/${vendor}/ping`,
+      {},
+    ),
+  vendorSuccessRate: (params: { hours?: number } = {}) => {
+    const u = new URLSearchParams();
+    if (params.hours) u.set("hours", String(params.hours));
+    const qs = u.toString();
+    return api.get<VendorSuccessRate[]>(
+      `/ai-governance/logs/success-rate${qs ? `?${qs}` : ""}`,
+    );
+  },
+  recentErrors: (params: { vendor?: string; limit?: number } = {}) => {
+    const u = new URLSearchParams();
+    if (params.vendor) u.set("vendor", params.vendor);
+    if (params.limit) u.set("limit", String(params.limit));
+    const qs = u.toString();
+    return api.get<AiUsageError[]>(
+      `/ai-governance/logs/recent${qs ? `?${qs}` : ""}`,
+    );
+  },
 
   spendMeter: (params: { from?: string; to?: string } = {}) => {
     const u = new URLSearchParams();

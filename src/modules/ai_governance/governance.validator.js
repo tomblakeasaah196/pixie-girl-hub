@@ -74,6 +74,15 @@ const modelUpsert = z
 
 const vendorRotate = z.object({ api_key: z.string().min(1).max(500) }).strict();
 const vendorActive = z.object({ is_active: z.boolean() }).strict();
+// Test connection — all fields optional; empty body pings the SAVED vendor.
+// Overrides let the admin verify a NEW key before persisting it (Save gate).
+const vendorTest = z
+  .object({
+    api_key: z.string().max(500).optional(),
+    endpoint_url: z.string().url().max(500).optional(),
+    model: z.string().max(120).optional(),
+  })
+  .strict();
 
 const budgetOpen = z
   .object({
@@ -156,6 +165,7 @@ module.exports = {
   validateVendorUpsert: mk(vendorUpsert),
   validateVendorRotate: mk(vendorRotate),
   validateVendorActive: mk(vendorActive),
+  validateVendorTest: mk(vendorTest),
   validateBudgetOpen: mk(budgetOpen),
   validateBudgetCaps: mk(budgetCaps),
   validateActionUpsert: mk(actionUpsert),

@@ -5,6 +5,7 @@
 "use strict";
 
 const service = require("./governance.service");
+const repo = require("./governance.repo");
 const health = require("./health.service");
 const healthRepo = require("./health.repo");
 const gemini = require("../../services/gemini.service");
@@ -26,6 +27,34 @@ async function toggleFlag(req, res) {
       ...base(req),
       feature_key: req.params.feature_key,
       is_enabled: req.body.is_enabled,
+    }),
+  });
+}
+async function setFlagBrandScope(req, res) {
+  res.json({
+    data: await service.setFlagBrandScope({
+      ...base(req),
+      feature_key: req.params.feature_key,
+      enabled_for_pxg: req.body.enabled_for_pxg,
+      enabled_for_flh: req.body.enabled_for_flh,
+    }),
+  });
+}
+async function setFlagUserCap(req, res) {
+  res.json({
+    data: await service.setFlagUserCap({
+      ...base(req),
+      feature_key: req.params.feature_key,
+      daily_user_cap: req.body.daily_user_cap,
+    }),
+  });
+}
+async function setFlagRestingMessage(req, res) {
+  res.json({
+    data: await service.setFlagRestingMessage({
+      ...base(req),
+      feature_key: req.params.feature_key,
+      resting_message: req.body.resting_message,
     }),
   });
 }
@@ -100,6 +129,8 @@ async function setBudgetCaps(req, res) {
       period_id: req.params.period_id,
       soft_cap_ngn: req.body.soft_cap_ngn,
       hard_cap_ngn: req.body.hard_cap_ngn,
+      storefront_soft_cap_ngn: req.body.storefront_soft_cap_ngn,
+      storefront_hard_cap_ngn: req.body.storefront_hard_cap_ngn,
     }),
   });
 }
@@ -286,6 +317,14 @@ async function successRate(req, res) {
   res.json({ data: await healthRepo.vendorSuccessRate({ since_hours: hours }) });
 }
 
+async function recentFlagAudit(req, res) {
+  res.json({
+    data: await repo.recentFlagAudit({
+      limit: Math.min(200, Number(req.query.limit) || 50),
+    }),
+  });
+}
+
 async function getBrandVoice(req, res) {
   res.json(await service.getBrandVoice({ brand: req.brand }));
 }
@@ -304,6 +343,10 @@ module.exports = {
   listFlags,
   upsertFlag,
   toggleFlag,
+  setFlagBrandScope,
+  setFlagUserCap,
+  setFlagRestingMessage,
+  recentFlagAudit,
   listGrants,
   grant,
   revokeGrant,

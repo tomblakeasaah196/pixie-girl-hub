@@ -79,15 +79,20 @@ function quotaSnapshot({ used }) {
 
 // ── Governance guard + metering (mirrors shade_finder.service.js) ──────
 
-async function guardFeature() {
+async function guardFeature(brand) {
   const guard = await governance.canUseFeature({
     user_id: null,
     feature_key: FEATURE_KEY,
     is_ceo: true,
+    business: brand,
   });
   if (!guard.ok) {
+    // Q8: prefer the CEO-authored "Praxis is resting" copy when set —
+    // shoppers see brand-consistent language, not a technical 503.
     throw new AppError("AI_UNAVAILABLE", `shop ai search gated: ${guard.reason}`, 503, {
-      user_message: "Praxis search is taking a short break — please try again soon.",
+      user_message:
+        guard.resting_message ||
+        "Praxis search is taking a short break — please try again soon.",
     });
   }
 }
@@ -194,7 +199,7 @@ function publicMatch(list, key, value) {
  * shopper already saw) so a follow-up can refine without a server session.
  */
 async function search({ brand, device_id, ip, query: userQuery, history = [] }) {
-  await guardFeature();
+  await guardFeature(brand);
 
   const ttl = secondsToLagosMidnight();
   const deviceKey = deviceKeyFrom({ device_id, ip });

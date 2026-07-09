@@ -197,15 +197,20 @@ async function saveSession(sid, state) {
  * apply — is_ceo:true skips exactly that check while the feature flag toggle
  * and the monthly budget hard cap still gate the call.
  */
-async function guardFeature() {
+async function guardFeature(brand) {
   const guard = await governance.canUseFeature({
     user_id: null,
     feature_key: FEATURE_KEY,
     is_ceo: true,
+    business: brand,
   });
   if (!guard.ok) {
+    // Prefer the CEO-authored "Praxis is resting" copy (Q8) so shoppers
+    // always see brand-consistent language, never a technical 503.
     throw new AppError("AI_UNAVAILABLE", `shade finder gated: ${guard.reason}`, 503, {
-      user_message: "Praxis is taking a short break — please try again soon.",
+      user_message:
+        guard.resting_message ||
+        "Praxis is taking a short break — please try again soon.",
     });
   }
 }
@@ -591,7 +596,7 @@ function hydrate({ advice, shades, products }) {
 // ── Public API ──────────────────────────────────────────────
 
 async function startSession({ brand, device_id, ip }) {
-  await guardFeature();
+  await guardFeature(brand);
   const deviceKey = deviceKeyFrom({ device_id, ip });
   const sid = crypto.randomUUID();
   await saveSession(sid, {
@@ -845,7 +850,7 @@ async function adviseAndReply({
 }
 
 async function analyzePhoto({ brand, sid, deviceKey, ip, file, message }) {
-  await guardFeature();
+  await guardFeature(brand);
 
   const ttl = secondsToLagosMidnight();
   const dayKey = quotaKey("d", brand, deviceKey, lagosDay());
@@ -1005,7 +1010,7 @@ async function analyzePhoto({ brand, sid, deviceKey, ip, file, message }) {
 }
 
 async function chatTurn({ brand, sid, deviceKey, message }) {
-  await guardFeature();
+  await guardFeature(brand);
 
   const ttl = secondsToLagosMidnight();
   const chatKey = quotaKey("c", brand, deviceKey, lagosDay());

@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { PanelRightClose, PanelRightOpen } from "lucide-react";
+import { ChevronLeft, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
+import { useUiStore } from "@/stores/ui";
+import { useIsPhone } from "@/hooks/useMediaQuery";
 import { useChannel, useInboxRealtime } from "@/hooks/useSmartcomm";
 import { ChannelList } from "@/components/messaging/ChannelList";
 import { MessageThread } from "@/components/messaging/MessageThread";
 import { CustomerSidebar } from "@/components/messaging/CustomerSidebar";
+import { CustomerPanelDrawer } from "@/components/messaging/CustomerPanelDrawer";
 import { NewChatModal } from "@/components/messaging/NewChatModal";
 import { smartcommApi } from "@/lib/smartcomm-api";
 import { cn } from "@/lib/cn";
@@ -34,6 +37,23 @@ export function SmartCommPage() {
   const [sidebarOpen, setSidebarOpen] = useState(
     () => localStorage.getItem(SIDEBAR_PREF_KEY) !== "0",
   );
+  // Below `xl` the Customer-360 column (below) isn't rendered at all — this
+  // drives the floating edge-tab + overlay drawer that stands in for it.
+  const [mobileCustomerOpen, setMobileCustomerOpen] = useState(false);
+  useEffect(() => {
+    setMobileCustomerOpen(false);
+  }, [channelId]);
+  // On phone widths the list/thread stack into a single pane (below). Once a
+  // thread is open there, take the whole viewport WhatsApp-style: ask the
+  // shell to step out of its own top bar / bottom nav / floating launcher
+  // instead of us fighting their fixed heights with a magic-number calc.
+  const isPhone = useIsPhone();
+  const setImmersive = useUiStore((s) => s.setImmersive);
+  const immersive = isPhone && mobileShowThread && !!channelId;
+  useEffect(() => {
+    setImmersive(immersive);
+  }, [immersive, setImmersive]);
+  useEffect(() => () => setImmersive(false), [setImmersive]);
   // Draw a one-time bit of attention to the collapse/expand toggle the
   // first time this page mounts in a session, so reps who never noticed
   // it discover it exists.
@@ -81,10 +101,23 @@ export function SmartCommPage() {
   }, [dmUser, params, qc, setParams]);
 
   return (
-    <div className="relative h-[calc(100vh-180px)] min-h-[520px] -mx-[34px] -my-[26px] max-md:-mx-4 max-md:-my-5 rounded-none border-y hairline">
+    <div
+      className={cn(
+        "relative overflow-hidden rounded-none border-y hairline",
+        "h-[calc(100dvh-64px)] min-h-[420px] -mx-[34px] -mt-[26px] -mb-[120px]",
+        "max-md:h-[calc(100dvh-124px)] max-md:-mx-4 max-md:-mt-5 max-md:-mb-24",
+        // Immersive: escape the shell's padded content column entirely and
+        // pin edge-to-edge to the viewport — the shell has already stepped
+        // its own chrome out (AppShell reads the same `immersive` flag), so
+        // this is the only chrome left on screen. See PageTransition.tsx's
+        // note on why `position: fixed` here is safe to rely on.
+        immersive &&
+          "max-md:fixed max-md:inset-0 max-md:z-[100] max-md:m-0 max-md:h-[100dvh] max-md:min-h-0 max-md:border-0 max-md:rounded-none",
+      )}
+    >
       <div
         className={cn(
-          "grid h-full grid-cols-1 md:grid-cols-[320px_minmax(0,1fr)] transition-[grid-template-columns] duration-300 ease-in-out",
+          "grid h-full grid-cols-1 md:grid-cols-[320px_minmax(0,1fr)] transition-[grid-template-columns] duration-300 ease-in-out overflow-hidden",
           sidebarOpen
             ? "xl:grid-cols-[320px_minmax(0,1fr)_320px]"
             : "xl:grid-cols-[320px_minmax(0,1fr)_0px]",
@@ -111,7 +144,7 @@ export function SmartCommPage() {
         {/* Thread */}
         <div
           className={cn(
-            "h-full min-w-0",
+            "h-full min-w-0 overflow-hidden",
             !mobileShowThread && "hidden md:block",
           )}
         >
@@ -164,6 +197,35 @@ export function SmartCommPage() {
           )}
         </button>
       )}
+
+      {/* Customer-360 stand-in below `xl`: the persistent column above is
+          `hidden xl:block`, so this is the only way to reach it on tablet
+          and phone. Same idea as the desktop collapse toggle — a tab
+          hanging off the right edge — just an overlay drawer instead of a
+          persistent column since there's no spare width to push into. */}
+      {channelId && channel && (mobileShowThread || !isPhone) && (
+        <button
+          onClick={() => setMobileCustomerOpen(true)}
+          aria-label="Show customer details"
+          title="Customer details"
+          className={cn(
+            "xl:hidden fixed right-0 top-1/2 -translate-y-1/2 z-[70]",
+            "flex flex-col items-center gap-1 py-3 pl-2 pr-1.5 rounded-l-xl",
+            "dropglass border border-r-0 text-text-muted hover:text-accent-glow",
+            "shadow-[-8px_0_20px_rgb(0_0_0/0.35)] transition-colors",
+          )}
+        >
+          <ChevronLeft className="w-3.5 h-3.5" />
+          <span className="text-[9px] font-semibold uppercase tracking-[0.15em] [writing-mode:vertical-rl]">
+            Info
+          </span>
+        </button>
+      )}
+      <CustomerPanelDrawer
+        open={mobileCustomerOpen}
+        onClose={() => setMobileCustomerOpen(false)}
+        channel={channel}
+      />
 
       <NewChatModal
         open={newChat !== null}

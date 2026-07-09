@@ -76,7 +76,7 @@ export function CustomerSidebar({ channel }: Props) {
 
   const c = data.contact;
   return (
-    <div className="flex h-full flex-col bg-panel/40 border-l hairline overflow-y-auto">
+    <div className="flex h-full flex-col bg-panel/40 border-l hairline overflow-hidden">
       {/* Identity */}
       <div className="p-4 border-b hairline space-y-3">
         <div className="flex items-start gap-3">
@@ -152,142 +152,147 @@ export function CustomerSidebar({ channel }: Props) {
         </div>
       </div>
 
-      {/* Recent orders */}
-      <Section
-        title="Recent orders"
-        icon={<Package className="w-3.5 h-3.5" />}
-        count={data.orders.length}
-        onViewAll={() => navigate(`/sales?contact_id=${c.contact_id}`)}
-      >
-        {data.orders.length === 0 ? (
-          <Empty>No orders yet</Empty>
-        ) : (
-          data.orders.slice(0, 4).map((o) => (
-            <button
-              key={o.order_id}
-              onClick={() => navigate(`/sales/${o.order_id}`)}
-              className="w-full flex items-center justify-between rounded-lg px-3 py-1.5 hover:bg-panel-2/70 text-left"
-            >
-              <div>
-                <div className="text-[12px] font-medium text-text-primary">
-                  {o.order_number}
-                </div>
-                <div className="text-[10.5px] text-text-faint">
-                  {o.sales_channel ?? "—"}
-                </div>
-              </div>
-              <span className="text-[10.5px] uppercase tracking-widest text-text-muted">
-                {o.status?.replace(/_/g, " ")}
-              </span>
-            </button>
-          ))
-        )}
-      </Section>
-
-      {/* Open invoices */}
-      <Section
-        title="Open invoices"
-        icon={<FileText className="w-3.5 h-3.5" />}
-        count={data.invoices.length}
-        onViewAll={() => navigate(`/invoicing?contact_id=${c.contact_id}`)}
-      >
-        {data.invoices.length === 0 ? (
-          <Empty>No outstanding invoices</Empty>
-        ) : (
-          data.invoices.slice(0, 4).map((i) => (
-            <div
-              key={i.invoice_id}
-              className="flex items-center gap-2 rounded-lg px-3 py-1.5 group"
-            >
-              <div className="text-[12px] text-text-primary flex-1 truncate">
-                {i.invoice_number}
-              </div>
-              <div className="text-[11.5px] font-semibold text-amber-300 tabular-nums">
-                ₦{Number(i.amount_due).toLocaleString()}
-              </div>
+      {/* Everything below the snapshot scrolls on its own — identity + the
+          value tiles above stay put so the rep never loses track of who
+          they're looking at while digging through orders/invoices. */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {/* Recent orders */}
+        <Section
+          title="Recent orders"
+          icon={<Package className="w-3.5 h-3.5" />}
+          count={data.orders.length}
+          onViewAll={() => navigate(`/sales?contact_id=${c.contact_id}`)}
+        >
+          {data.orders.length === 0 ? (
+            <Empty>No orders yet</Empty>
+          ) : (
+            data.orders.slice(0, 4).map((o) => (
               <button
-                onClick={() => sendInvoice(i.invoice_id)}
-                disabled={sendingInvoice === i.invoice_id}
-                title="Send to chat"
-                className="text-text-faint hover:text-accent-glow disabled:opacity-50 shrink-0"
+                key={o.order_id}
+                onClick={() => navigate(`/sales/${o.order_id}`)}
+                className="w-full flex items-center justify-between rounded-lg px-3 py-1.5 hover:bg-panel-2/70 text-left"
               >
-                {sendingInvoice === i.invoice_id ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Send className="w-3.5 h-3.5" />
-                )}
-              </button>
-            </div>
-          ))
-        )}
-      </Section>
-
-      {/* Deliveries */}
-      <Section
-        title="Deliveries"
-        icon={<Truck className="w-3.5 h-3.5" />}
-        count={data.deliveries.length}
-      >
-        {data.deliveries.length === 0 ? (
-          <Empty>No deliveries</Empty>
-        ) : (
-          data.deliveries.slice(0, 4).map((d) => (
-            <div
-              key={d.delivery_id}
-              className="flex items-center justify-between rounded-lg px-3 py-1.5 text-[12px]"
-            >
-              <span className="text-text-primary">{d.delivery_number}</span>
-              <span className="text-[10.5px] uppercase tracking-widest text-text-muted">
-                {d.status?.replace(/_/g, " ")}
-              </span>
-            </div>
-          ))
-        )}
-      </Section>
-
-      {/* Comms log — "did she get her receipt?" */}
-      <Section
-        title="Comms log"
-        icon={<Send className="w-3.5 h-3.5" />}
-        count={data.comms?.length ?? 0}
-      >
-        {!data.comms || data.comms.length === 0 ? (
-          <Empty>No emails or notifications sent yet</Empty>
-        ) : (
-          data.comms.slice(0, 6).map((m) => (
-            <div
-              key={m.log_id}
-              className="flex items-center gap-2 rounded-lg px-3 py-1.5"
-            >
-              <span
-                className={`grid place-items-center w-5 h-5 rounded-full shrink-0 ${
-                  m.status === "failed"
-                    ? "bg-danger/15 text-danger"
-                    : "bg-accent/15 text-accent-glow"
-                }`}
-              >
-                {m.channel === "email" ? (
-                  <Mail className="w-3 h-3" />
-                ) : (
-                  <Send className="w-3 h-3" />
-                )}
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="text-[12px] text-text-primary truncate">
-                  {m.subject || m.event_key || m.channel}
+                <div>
+                  <div className="text-[12px] font-medium text-text-primary">
+                    {o.order_number}
+                  </div>
+                  <div className="text-[10.5px] text-text-faint">
+                    {o.sales_channel ?? "—"}
+                  </div>
                 </div>
-                <div className="text-[10px] text-text-faint">
-                  {new Date(m.created_at).toLocaleDateString(undefined, {
-                    month: "short",
-                    day: "numeric",
-                  })}
-                  {m.status === "failed" && " · failed"}
+                <span className="text-[10.5px] uppercase tracking-widest text-text-muted">
+                  {o.status?.replace(/_/g, " ")}
+                </span>
+              </button>
+            ))
+          )}
+        </Section>
+
+        {/* Open invoices */}
+        <Section
+          title="Open invoices"
+          icon={<FileText className="w-3.5 h-3.5" />}
+          count={data.invoices.length}
+          onViewAll={() => navigate(`/invoicing?contact_id=${c.contact_id}`)}
+        >
+          {data.invoices.length === 0 ? (
+            <Empty>No outstanding invoices</Empty>
+          ) : (
+            data.invoices.slice(0, 4).map((i) => (
+              <div
+                key={i.invoice_id}
+                className="flex items-center gap-2 rounded-lg px-3 py-1.5 group"
+              >
+                <div className="text-[12px] text-text-primary flex-1 truncate">
+                  {i.invoice_number}
+                </div>
+                <div className="text-[11.5px] font-semibold text-amber-300 tabular-nums">
+                  ₦{Number(i.amount_due).toLocaleString()}
+                </div>
+                <button
+                  onClick={() => sendInvoice(i.invoice_id)}
+                  disabled={sendingInvoice === i.invoice_id}
+                  title="Send to chat"
+                  className="text-text-faint hover:text-accent-glow disabled:opacity-50 shrink-0"
+                >
+                  {sendingInvoice === i.invoice_id ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Send className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              </div>
+            ))
+          )}
+        </Section>
+
+        {/* Deliveries */}
+        <Section
+          title="Deliveries"
+          icon={<Truck className="w-3.5 h-3.5" />}
+          count={data.deliveries.length}
+        >
+          {data.deliveries.length === 0 ? (
+            <Empty>No deliveries</Empty>
+          ) : (
+            data.deliveries.slice(0, 4).map((d) => (
+              <div
+                key={d.delivery_id}
+                className="flex items-center justify-between rounded-lg px-3 py-1.5 text-[12px]"
+              >
+                <span className="text-text-primary">{d.delivery_number}</span>
+                <span className="text-[10.5px] uppercase tracking-widest text-text-muted">
+                  {d.status?.replace(/_/g, " ")}
+                </span>
+              </div>
+            ))
+          )}
+        </Section>
+
+        {/* Comms log — "did she get her receipt?" */}
+        <Section
+          title="Comms log"
+          icon={<Send className="w-3.5 h-3.5" />}
+          count={data.comms?.length ?? 0}
+        >
+          {!data.comms || data.comms.length === 0 ? (
+            <Empty>No emails or notifications sent yet</Empty>
+          ) : (
+            data.comms.slice(0, 6).map((m) => (
+              <div
+                key={m.log_id}
+                className="flex items-center gap-2 rounded-lg px-3 py-1.5"
+              >
+                <span
+                  className={`grid place-items-center w-5 h-5 rounded-full shrink-0 ${
+                    m.status === "failed"
+                      ? "bg-danger/15 text-danger"
+                      : "bg-accent/15 text-accent-glow"
+                  }`}
+                >
+                  {m.channel === "email" ? (
+                    <Mail className="w-3 h-3" />
+                  ) : (
+                    <Send className="w-3 h-3" />
+                  )}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[12px] text-text-primary truncate">
+                    {m.subject || m.event_key || m.channel}
+                  </div>
+                  <div className="text-[10px] text-text-faint">
+                    {new Date(m.created_at).toLocaleDateString(undefined, {
+                      month: "short",
+                      day: "numeric",
+                    })}
+                    {m.status === "failed" && " · failed"}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))
-        )}
-      </Section>
+            ))
+          )}
+        </Section>
+      </div>
     </div>
   );
 }

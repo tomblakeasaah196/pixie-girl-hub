@@ -166,13 +166,22 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length]);
 
-  // Mark read when the thread opens / new messages arrive
+  // Mark read when the thread opens / new messages arrive. Invalidate both
+  // the global unread counter AND the channel list — the list is what
+  // actually feeds each row's own badge/bold state, and it was being left
+  // stale here (only the socket round-trip via useInboxRealtime cleared it,
+  // which is silently skipped when the Redis broadcaster is unavailable —
+  // see smartcomm.realtime.js). Without this the conversation you're
+  // actively reading kept showing as unread until the next 60s poll.
   useEffect(() => {
     if (!messages.length) return;
     const lastId = messages[messages.length - 1]?.message_id;
     smartcommApi
       .markRead(channelId, lastId)
-      .then(() => qc.invalidateQueries({ queryKey: ["smartcomm", "unread"] }))
+      .then(() => {
+        qc.invalidateQueries({ queryKey: ["smartcomm", "unread"] });
+        qc.invalidateQueries({ queryKey: ["smartcomm", "channels"] });
+      })
       .catch(() => {});
   }, [channelId, messages.length, qc]);
 
@@ -529,14 +538,21 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
             <span className="truncate">{displayName}</span>
             <PlatformPill platform={platform} />
           </div>
-          <p
-            className={cn(
-              "truncate text-[11.5px]",
-              typingNames.length ? "text-accent-glow" : "text-text-muted",
+          {/* Subtitle line — the WhatsApp window pill rides here, never on
+              the name's own line, so it can never crowd out the name. */}
+          <div className="flex items-center gap-1.5 min-w-0">
+            <p
+              className={cn(
+                "truncate min-w-0 flex-1 text-[11.5px]",
+                typingNames.length ? "text-accent-glow" : "text-text-muted",
+              )}
+            >
+              {subtitle}
+            </p>
+            {isWhatsapp && channel.wa_window_expires_at && (
+              <WhatsAppWindowBadge expiresAt={channel.wa_window_expires_at} />
             )}
-          >
-            {subtitle}
-          </p>
+          </div>
         </div>
 
         {(peerPhoneRaw || peerWhatsAppRaw) && (
@@ -564,9 +580,6 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
           >
             <Users className="w-4 h-4" />
           </button>
-        )}
-        {isWhatsapp && channel.wa_window_expires_at && (
-          <WhatsAppWindowBadge expiresAt={channel.wa_window_expires_at} />
         )}
         {(isWhatsapp || isInstagram) && (
           <button
@@ -770,7 +783,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
 
       {/* Composer */}
       {!isResolved && (
-        <div className="border-t hairline px-3 sm:px-4 py-2.5">
+        <div className="border-t hairline px-3 sm:px-4 pt-2.5 pb-safe">
           {composerLocked && (
             <div className="mb-2 flex items-start gap-2 rounded-xl border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-[12px] text-amber-200">
               <AlertTriangle className="w-3.5 h-3.5 mt-[2px] shrink-0" />

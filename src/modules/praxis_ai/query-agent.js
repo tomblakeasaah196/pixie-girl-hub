@@ -64,6 +64,19 @@ function sumUsage(a, b) {
   };
 }
 
+/** A reply that is (or starts with) a JSON blob is a raw dump, not an answer. */
+function looksLikeDump(text) {
+  const t = String(text || "")
+    .trim()
+    .replace(/^```(?:json)?/i, "")
+    .trim();
+  return t.startsWith("{") || t.startsWith("[");
+}
+
+// One user turn can need several curated lookups ("no overdue invoices — let me
+// also check receivables…"). Bound the chase so a turn always terminates.
+const MAX_QUERY_ROUNDS = 6;
+
 async function hasView(user, module) {
   if (user && user.is_ceo === true) return true;
   const grants = await permissionsRepo.findGrants({
@@ -156,14 +169,18 @@ async function run({
       queryKey: res.queryKey,
     };
   }
-  const rows = res.rows;
+  let rows = res.rows;
 
-  // Feed the result back so the model answers in natural language. Replay ONLY
-  // the tool call we answer here — carrying every tool_call while sending one
-  // tool response makes the vendor 400 ("insufficient tool messages following
-  // tool_calls"). Also round-trip reasoning_content, which DeepSeek thinking
-  // models require back or they 400 ("reasoning_content must be passed back").
-  const followMessages = [
+  // Feed the result back and let the model keep going until it produces a FINAL
+  // text answer (no tool call). A turn often needs several lookups in a row
+  // ("no overdue invoices — let me also check receivables…"); the old code only
+  // chased ONE follow-up, so a multi-step answer stopped half-way. This bounded
+  // loop chases further curated queries and read-safe actions inline.
+  //
+  // Each replayed assistant message carries ONLY the tool_call it answers (or
+  // the vendor 400s "insufficient tool messages") plus reasoning_content (which
+  // DeepSeek thinking models require back).
+  let convo = [
     ...messages,
     {
       role: "assistant",
@@ -179,100 +196,165 @@ async function run({
       content: JSON.stringify(rows).slice(0, 6000),
     },
   ];
+  let usageAcc = {};
 
-  let follow;
-  try {
-    follow = await llm.chat({
-      vendor,
-      messages: followMessages,
-      tools: allTools && allTools.length ? allTools : undefined,
-    });
-  } catch (err) {
-    logger.error(
-      { err: err.message },
-      "praxis query summarise failed — trying fallback vendor",
-    );
-    const fallbackText = await summariseViaFallback({
-      vendor,
-      messages: followMessages,
-      result: rows,
-    });
-    // Degrade to a compact data answer rather than failing the turn. Fenced,
-    // so the chat's Markdown renderer can't shred snake_case into italics.
-    return {
-      replyText:
-        fallbackText ||
-        "Here's what I found:\n```json\n" +
-        JSON.stringify(rows, null, 2).slice(0, 1000) +
-        "\n```",
-      usage: {},
-      queryKey: res.queryKey,
-      degraded: !fallbackText,
-    };
-  }
+  const degradeToData = (extra) => ({
+    replyText:
+      "Here's what I found:\n```json\n" +
+      JSON.stringify(rows, null, 2).slice(0, 1000) +
+      "\n```",
+    usage: usageAcc,
+    queryKey: res.queryKey,
+    ...extra,
+  });
 
-  const next = follow.tool_calls && follow.tool_calls[0];
-  const nextAction = next && byName ? byName.get(next.function.name) : null;
-  const readSafe =
-    nextAction &&
-    nextAction.is_write === false &&
-    nextAction.requires_confirmation === false;
-  if (next && readSafe && authHeader) {
-    const nextArgs = parseArgs(next.function.arguments);
-    const convo = [
-      ...followMessages,
-      {
-        role: "assistant",
-        content: follow.content || null,
-        ...(follow.reasoning_content
-          ? { reasoning_content: follow.reasoning_content }
-          : {}),
-        tool_calls: [next], // replay only the call we answer below
-      },
-    ];
+  for (let round = 0; round < MAX_QUERY_ROUNDS; round++) {
+    let follow;
     try {
-      const exec = await executor.executeAction({
-        pending: {
-          method: nextAction.method,
-          route: nextAction.route,
-          payload: nextArgs,
-          business: brand,
-        },
-        authHeader,
-        requestId,
+      follow = await llm.chat({
+        vendor,
+        messages: convo,
+        tools: allTools && allTools.length ? allTools : undefined,
       });
-      convo.push({
-        role: "tool",
-        tool_call_id: next.id,
-        content: JSON.stringify(exec.result).slice(0, 6000),
-      });
-      const final = await llm.chat({ vendor, messages: convo });
-      return {
-        replyText: final.content || "Here's what I found.",
-        usage: sumUsage(follow.usage, final.usage),
-        queryKey: res.queryKey,
-        chainedAction: nextAction.action_key,
-      };
     } catch (err) {
       logger.error(
-        { err: err.message, action_key: nextAction.action_key },
-        "praxis: query-chained action failed",
+        { err: err.message },
+        "praxis query summarise failed — trying fallback vendor",
       );
-      return {
-        replyText:
-          err.user_message ||
-          `I looked that up but couldn't finish "${nextAction.title || nextAction.action_key}" — please try again.`,
-        usage: follow.usage || {},
-        queryKey: res.queryKey,
-      };
+      const fallbackText = await summariseViaFallback({
+        vendor,
+        messages: convo,
+        result: rows,
+      });
+      return fallbackText
+        ? { replyText: fallbackText, usage: usageAcc, queryKey: res.queryKey }
+        : degradeToData({ degraded: true });
     }
+    usageAcc = sumUsage(usageAcc, follow.usage);
+
+    const next = follow.tool_calls && follow.tool_calls[0];
+
+    // No more tool calls → this is the final answer. Guard empty/dump.
+    if (!next) {
+      let text = (follow.content || "").trim();
+      if (!text || looksLikeDump(text)) {
+        const fb = await summariseViaFallback({
+          vendor,
+          messages: convo,
+          result: rows,
+        });
+        if (fb) text = fb;
+      }
+      return text
+        ? { replyText: text, usage: usageAcc, queryKey: res.queryKey }
+        : degradeToData({});
+    }
+
+    // Replay only the call we answer next (+ reasoning_content).
+    const assistantMsg = {
+      role: "assistant",
+      content: follow.content || null,
+      ...(follow.reasoning_content
+        ? { reasoning_content: follow.reasoning_content }
+        : {}),
+      tool_calls: [next],
+    };
+    const nextArgs = parseArgs(next.function.arguments);
+
+    // (a) Another curated query → run it and keep going.
+    if (isQueryTool(next.function.name)) {
+      const q = await execute({
+        user,
+        brand,
+        name: next.function.name,
+        args: nextArgs,
+      });
+      const payload = !q
+        ? { error: "unknown query" }
+        : q.ok
+          ? q.rows
+          : { error: q.message };
+      if (q && q.ok) rows = q.rows; // freshest data for any later fallback
+      convo = [
+        ...convo,
+        assistantMsg,
+        {
+          role: "tool",
+          tool_call_id: next.id,
+          content: JSON.stringify(payload).slice(0, 6000),
+        },
+      ];
+      continue;
+    }
+
+    // (b) A read-safe catalogue action → chase it inline and keep going.
+    const nextAction = byName ? byName.get(next.function.name) : null;
+    const readSafe =
+      nextAction &&
+      nextAction.is_write === false &&
+      nextAction.requires_confirmation === false;
+    if (readSafe && authHeader) {
+      try {
+        const exec = await executor.executeAction({
+          pending: {
+            method: nextAction.method,
+            route: nextAction.route,
+            payload: nextArgs,
+            business: brand,
+          },
+          authHeader,
+          requestId,
+        });
+        convo = [
+          ...convo,
+          assistantMsg,
+          {
+            role: "tool",
+            tool_call_id: next.id,
+            content: JSON.stringify(exec.result).slice(0, 6000),
+          },
+        ];
+        continue;
+      } catch (err) {
+        logger.error(
+          { err: err.message, action_key: nextAction.action_key },
+          "praxis: query-chained action failed",
+        );
+        return {
+          replyText:
+            err.user_message ||
+            `I looked that up but couldn't finish "${nextAction.title || nextAction.action_key}" — please try again.`,
+          usage: usageAcc,
+          queryKey: res.queryKey,
+        };
+      }
+    }
+
+    // (c) A write / confirmation-gated / unknown tool — not chaseable in a read
+    // turn. Return the model's text if it gave any, else summarise the data.
+    const text = (follow.content || "").trim();
+    if (text && !looksLikeDump(text)) {
+      return { replyText: text, usage: usageAcc, queryKey: res.queryKey };
+    }
+    const fb = await summariseViaFallback({
+      vendor,
+      messages: convo,
+      result: rows,
+    });
+    return fb
+      ? { replyText: fb, usage: usageAcc, queryKey: res.queryKey }
+      : degradeToData({});
   }
 
-  return {
-    replyText: follow.content || "Here's what I found.",
-    usage: follow.usage || {},
-    queryKey: res.queryKey,
-  };
+  // Rounds exhausted — summarise from the latest data rather than dead-ending.
+  const fb = await summariseViaFallback({
+    vendor,
+    messages: convo,
+    result: rows,
+  });
+  return fb
+    ? { replyText: fb, usage: usageAcc, queryKey: res.queryKey }
+    : degradeToData({});
 }
 
 module.exports = { tools, isQueryTool, execute, run, PREFIX };

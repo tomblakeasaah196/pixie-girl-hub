@@ -150,9 +150,38 @@ async function execSchema({ brand, table }) {
         ...(similar.length ? { similar_tables: similar } : {}),
       };
     }
+    // Foreign keys, so the model can SEE how this table links to others (e.g.
+    // styled_products.base_product_id → products.product_id) instead of guessing
+    // relationships from column names.
+    const { rows: fks } = await query(
+      `SELECT att.attname AS column,
+              fn.nspname AS ref_schema, fc.relname AS ref_table,
+              fatt.attname AS ref_column
+         FROM pg_constraint con
+         JOIN pg_class c ON c.oid = con.conrelid
+         JOIN pg_namespace n ON n.oid = c.relnamespace
+         JOIN pg_class fc ON fc.oid = con.confrelid
+         JOIN pg_namespace fn ON fn.oid = fc.relnamespace
+         JOIN generate_subscripts(con.conkey, 1) AS s(i) ON true
+         JOIN pg_attribute att
+           ON att.attrelid = c.oid AND att.attnum = con.conkey[s.i]
+         JOIN pg_attribute fatt
+           ON fatt.attrelid = fc.oid AND fatt.attnum = con.confkey[s.i]
+        WHERE con.contype = 'f' AND n.nspname = ANY($1) AND c.relname = $2`,
+      [[brand, "shared"], table],
+    );
+    const fkBy = new Map(
+      fks.map((f) => [
+        f.column,
+        `${f.ref_schema === brand ? "" : f.ref_schema + "."}${f.ref_table}.${f.ref_column}`,
+      ]),
+    );
     return {
       table,
-      columns: rows.map((r) => `${r.table_schema}.${r.column_name} ${r.data_type}`),
+      columns: rows.map((r) => {
+        const fk = fkBy.get(r.column_name);
+        return `${r.table_schema}.${r.column_name} ${r.data_type}${fk ? ` → ${fk}` : ""}`;
+      }),
     };
   }
   const { rows } = await query(

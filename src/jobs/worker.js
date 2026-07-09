@@ -363,6 +363,8 @@ async function startWorkers() {
   // Each register is idempotent — in-process dev (ENABLE_WORKERS=true on
   // the API) already registered them during socket init.
   require("../realtime/stock-realtime").registerStockRealtime();
+  require("../realtime/sales-realtime").registerSalesRealtime();
+  require("../realtime/service-jobs-realtime").registerServiceJobsRealtime();
   require("../realtime/workflow-realtime").registerWorkflowRealtime();
   require("../realtime/campaign-realtime").registerCampaignRealtime();
   require("../realtime/praxis-realtime").registerPraxisRealtime();

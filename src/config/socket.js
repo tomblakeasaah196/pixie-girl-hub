@@ -82,6 +82,14 @@ async function initSocketIo(httpServer) {
   const { registerStockRealtime } = require("../realtime/stock-realtime");
   registerStockRealtime();
 
+  const { registerSalesRealtime } = require("../realtime/sales-realtime");
+  registerSalesRealtime();
+
+  const {
+    registerServiceJobsRealtime,
+  } = require("../realtime/service-jobs-realtime");
+  registerServiceJobsRealtime();
+
   const { registerPraxisRealtime } = require("../realtime/praxis-realtime");
   registerPraxisRealtime();
 

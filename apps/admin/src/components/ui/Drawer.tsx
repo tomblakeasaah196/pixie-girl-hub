@@ -1,7 +1,8 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 import { IconButton } from "./primitives";
 
 /**
@@ -33,12 +34,17 @@ export function Drawer({
   wide?: boolean;
   children: ReactNode;
 }) {
+  const panelRef = useRef<HTMLElement>(null);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
+
+  // Keep keyboard focus inside the drawer while it's open; restore it on close.
+  useFocusTrap(panelRef, open);
 
   return createPortal(
     <>
@@ -50,6 +56,7 @@ export function Drawer({
         )}
       />
       <aside
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         className={cn(

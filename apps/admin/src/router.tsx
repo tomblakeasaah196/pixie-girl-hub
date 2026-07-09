@@ -20,6 +20,7 @@ import { StyledProductPage } from "@/pages/catalogue/StyledProductPage";
 import { AppearancePage } from "@/pages/AppearancePage";
 import { LoginEditorPage } from "@/pages/LoginEditorPage";
 import { ModulePlaceholder } from "@/pages/ModulePlaceholder";
+import { RouteFallback } from "@/components/common/RouteFallback";
 import { OrgWorkflowPage } from "@/pages/OrgWorkflowPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { ResetPasswordPage } from "@/pages/ResetPasswordPage";
@@ -335,7 +336,7 @@ export const router = createBrowserRouter(
     {
       path: "/walkin/:brand",
       element: (
-        <Suspense fallback={null}>
+        <Suspense fallback={<RouteFallback />}>
           <WalkInPublic />
         </Suspense>
       ),
@@ -344,7 +345,7 @@ export const router = createBrowserRouter(
     {
       path: "/welcome/:business/:token",
       element: (
-        <Suspense fallback={null}>
+        <Suspense fallback={<RouteFallback />}>
           <CustomerOnboardingPublic />
         </Suspense>
       ),
@@ -353,7 +354,7 @@ export const router = createBrowserRouter(
     {
       path: "/order/capture/:token",
       element: (
-        <Suspense fallback={null}>
+        <Suspense fallback={<RouteFallback />}>
           <OrderCapturePublic />
         </Suspense>
       ),
@@ -363,7 +364,7 @@ export const router = createBrowserRouter(
     {
       path: "/sign/:token",
       element: (
-        <Suspense fallback={null}>
+        <Suspense fallback={<RouteFallback />}>
           <SignDocumentPage />
         </Suspense>
       ),
@@ -372,7 +373,7 @@ export const router = createBrowserRouter(
     {
       path: "/verify/:code",
       element: (
-        <Suspense fallback={null}>
+        <Suspense fallback={<RouteFallback />}>
           <VerifyDocumentPage />
         </Suspense>
       ),
@@ -387,7 +388,7 @@ export const router = createBrowserRouter(
         {
           path: "/landing-studio",
           element: (
-            <Suspense fallback={null}>
+            <Suspense fallback={<RouteFallback />}>
               <LandingStudioPage />
             </Suspense>
           ),
@@ -395,7 +396,7 @@ export const router = createBrowserRouter(
         {
           path: "/landing-studio/preview",
           element: (
-            <Suspense fallback={null}>
+            <Suspense fallback={<RouteFallback />}>
               <LandingPreviewPage />
             </Suspense>
           ),
@@ -409,7 +410,7 @@ export const router = createBrowserRouter(
             {
               path: "insights",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <InsightsPage />
                 </Suspense>
               ),
@@ -420,7 +421,7 @@ export const router = createBrowserRouter(
             {
               path: "storefront-studio",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <StorefrontStudioPage />
                 </Suspense>
               ),
@@ -438,7 +439,7 @@ export const router = createBrowserRouter(
             {
               path: "hr",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <HrStaffPage />
                 </Suspense>
               ),
@@ -446,7 +447,7 @@ export const router = createBrowserRouter(
             {
               path: "hr/employees/:profileId",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <EmployeeProfilePage />
                 </Suspense>
               ),
@@ -454,7 +455,7 @@ export const router = createBrowserRouter(
             {
               path: "payroll",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <PayrollPage />
                 </Suspense>
               ),
@@ -462,7 +463,7 @@ export const router = createBrowserRouter(
             {
               path: "performance",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <PerformancePage />
                 </Suspense>
               ),
@@ -473,7 +474,7 @@ export const router = createBrowserRouter(
             {
               path: "expenses",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <ExpensesPage />
                 </Suspense>
               ),
@@ -481,7 +482,7 @@ export const router = createBrowserRouter(
             {
               path: "accounting",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <AccountingPage />
                 </Suspense>
               ),
@@ -489,7 +490,7 @@ export const router = createBrowserRouter(
             {
               path: "cash-requests",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <CashRequestsPage />
                 </Suspense>
               ),
@@ -507,7 +508,7 @@ export const router = createBrowserRouter(
             {
               path: "praxis",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <PraxisPage />
                 </Suspense>
               ),
@@ -515,7 +516,7 @@ export const router = createBrowserRouter(
             {
               path: "workspace",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <WorkspacePage />
                 </Suspense>
               ),
@@ -525,7 +526,7 @@ export const router = createBrowserRouter(
             {
               path: "stock",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <StockPage />
                 </Suspense>
               ),
@@ -535,7 +536,7 @@ export const router = createBrowserRouter(
             {
               path: "sales-campaigns",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <SalesCampaignsListPage />
                 </Suspense>
               ),
@@ -543,7 +544,7 @@ export const router = createBrowserRouter(
             {
               path: "sales-campaigns/bundles",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <CampaignBundlesPage />
                 </Suspense>
               ),
@@ -551,7 +552,7 @@ export const router = createBrowserRouter(
             {
               path: "sales-campaigns/codes",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <SpecialCodesPage />
                 </Suspense>
               ),
@@ -559,7 +560,7 @@ export const router = createBrowserRouter(
             {
               path: "sales-campaigns/:id",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <CampaignDetailPage />
                 </Suspense>
               ),
@@ -567,7 +568,7 @@ export const router = createBrowserRouter(
             {
               path: "sales-campaigns/:id/edit",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <CampaignBuilderPage />
                 </Suspense>
               ),
@@ -577,7 +578,7 @@ export const router = createBrowserRouter(
             {
               path: "social",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <SocialPage />
                 </Suspense>
               ),
@@ -585,7 +586,7 @@ export const router = createBrowserRouter(
             {
               path: "marketing",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <MarketingPage />
                 </Suspense>
               ),
@@ -595,7 +596,7 @@ export const router = createBrowserRouter(
             {
               path: "retention",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <RetentionPage />
                 </Suspense>
               ),
@@ -603,7 +604,7 @@ export const router = createBrowserRouter(
             {
               path: "retention/strategies/new",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <StrategyBuilderPage />
                 </Suspense>
               ),
@@ -611,7 +612,7 @@ export const router = createBrowserRouter(
             {
               path: "retention/strategies/:id/edit",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <StrategyBuilderPage />
                 </Suspense>
               ),
@@ -619,7 +620,7 @@ export const router = createBrowserRouter(
             {
               path: "documents",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <DocumentsPage />
                 </Suspense>
               ),
@@ -627,7 +628,7 @@ export const router = createBrowserRouter(
             {
               path: "logistics",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <LogisticsPage />
                 </Suspense>
               ),
@@ -637,7 +638,7 @@ export const router = createBrowserRouter(
             {
               path: "service-jobs",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <ServiceJobsPage />
                 </Suspense>
               ),
@@ -647,7 +648,7 @@ export const router = createBrowserRouter(
             {
               path: "stylists",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <StylistsPage />
                 </Suspense>
               ),
@@ -657,7 +658,7 @@ export const router = createBrowserRouter(
             {
               path: "production",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <ProductionPage />
                 </Suspense>
               ),
@@ -666,7 +667,7 @@ export const router = createBrowserRouter(
             {
               path: "pricing",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <PricingPage />
                 </Suspense>
               ),
@@ -675,7 +676,7 @@ export const router = createBrowserRouter(
             {
               path: "purchasing",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <PurchasingPage />
                 </Suspense>
               ),
@@ -684,7 +685,7 @@ export const router = createBrowserRouter(
             {
               path: "invoicing",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <InvoicingPage />
                 </Suspense>
               ),
@@ -693,7 +694,7 @@ export const router = createBrowserRouter(
             {
               path: "retail-partners",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <RetailPartnersPage />
                 </Suspense>
               ),
@@ -746,7 +747,7 @@ export const router = createBrowserRouter(
             {
               path: "settings/factory-languages",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <FactoryLanguagePage />
                 </Suspense>
               ),
@@ -776,7 +777,7 @@ export const router = createBrowserRouter(
             {
               path: "smartcomm",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <SmartCommPage />
                 </Suspense>
               ),
@@ -786,7 +787,7 @@ export const router = createBrowserRouter(
             {
               path: "ai-control",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <AiControlPage />
                 </Suspense>
               ),
@@ -794,7 +795,7 @@ export const router = createBrowserRouter(
             {
               path: "ai-control/brand-voice",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <BrandVoicePage />
                 </Suspense>
               ),
@@ -802,7 +803,7 @@ export const router = createBrowserRouter(
             {
               path: "ai-control/insights",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <AiInsightsControlPage />
                 </Suspense>
               ),
@@ -810,7 +811,7 @@ export const router = createBrowserRouter(
             {
               path: "ai-control/vendors",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <ModelsAndVendorsPage />
                 </Suspense>
               ),
@@ -818,7 +819,7 @@ export const router = createBrowserRouter(
             {
               path: "ai-control/training",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <TrainPraxisPage />
                 </Suspense>
               ),
@@ -826,7 +827,7 @@ export const router = createBrowserRouter(
             {
               path: "ai-control/health",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <AiHealthLogsPage />
                 </Suspense>
               ),
@@ -834,7 +835,7 @@ export const router = createBrowserRouter(
             {
               path: "ai-control/budget",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <SpendBudgetPage />
                 </Suspense>
               ),
@@ -842,7 +843,7 @@ export const router = createBrowserRouter(
             {
               path: "ai-control/governance",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <FeatureFlagsPage />
                 </Suspense>
               ),
@@ -852,7 +853,7 @@ export const router = createBrowserRouter(
             {
               path: "settings/channel-policy",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <ChannelPolicyPage />
                 </Suspense>
               ),
@@ -860,7 +861,7 @@ export const router = createBrowserRouter(
             {
               path: "settings/quick-replies",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <QuickRepliesPage />
                 </Suspense>
               ),
@@ -868,7 +869,7 @@ export const router = createBrowserRouter(
             {
               path: "settings/messaging-accounts",
               element: (
-                <Suspense fallback={null}>
+                <Suspense fallback={<RouteFallback />}>
                   <MessagingAccountsPage />
                 </Suspense>
               ),

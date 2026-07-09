@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/cn";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 interface BottomSheetProps {
   open: boolean;
@@ -26,6 +27,9 @@ export function BottomSheet({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [open, onClose]);
+
+  // Keep keyboard focus inside the sheet while it's open; restore it on close.
+  useFocusTrap(sheetRef, open);
 
   if (!open) return null;
 
@@ -57,6 +61,9 @@ export function BottomSheet({
       />
       <div
         ref={sheetRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
         className={cn(
           "fixed bottom-0 inset-x-0 z-[81] rounded-t-[24px] glass border-t animate-[sheet-slide-up_250ms_cubic-bezier(.16,1,.3,1)_both]",
           !dragging && "transition-transform duration-200",

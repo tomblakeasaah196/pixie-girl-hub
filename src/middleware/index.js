@@ -54,6 +54,74 @@ function lazyLimiter(factory) {
   };
 }
 
+/**
+ * Content-Security-Policy for the admin SPA (served same-origin as the API).
+ *
+ * Returns a helmet CSP options object, or `false` when CSP is disabled via env.
+ *
+ * The production build ships only hashed external scripts (no inline <script>),
+ * so `script-src` stays strict — no 'unsafe-inline', which is what keeps the
+ * policy an actual XSS control. Inline STYLE is unavoidable (React `style={{}}`
+ * attributes, the boot `<style>` in index.html, Google-Maps-injected styles),
+ * so `style-src` allows 'unsafe-inline'. Known third parties the app loads
+ * (Google Fonts, Maps, YouTube embeds, QR image service) are enumerated;
+ * anything deploy-specific is appended from CSP_EXTRA_* env lists.
+ */
+function buildCsp() {
+  if (!config.CSP_ENABLED) return false;
+
+  const extra = (v) =>
+    String(v || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+  const directives = {
+    defaultSrc: ["'self'"],
+    baseUri: ["'self'"],
+    objectSrc: ["'none'"],
+    // Anti-clickjacking; the admin is never meant to be framed by third parties.
+    frameAncestors: ["'self'"],
+    formAction: ["'self'"],
+    scriptSrc: [
+      "'self'",
+      "https://maps.googleapis.com",
+      "https://www.youtube.com",
+      ...extra(config.CSP_EXTRA_SCRIPT_SRC),
+    ],
+    styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+    fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
+    // Images arrive from many hosts (media/CDN, avatars, QR service, YouTube
+    // thumbs, map tiles) — `https:` + data:/blob: is the pragmatic allowance.
+    imgSrc: ["'self'", "data:", "blob:", "https:", ...extra(config.CSP_EXTRA_IMG_SRC)],
+    // API + Socket.io (ws/wss) are same-origin; maps API is fetched directly.
+    connectSrc: [
+      "'self'",
+      "ws:",
+      "wss:",
+      "https://maps.googleapis.com",
+      ...extra(config.CSP_EXTRA_CONNECT_SRC),
+    ],
+    mediaSrc: ["'self'", "blob:", "data:"],
+    frameSrc: [
+      "'self'",
+      "https://www.youtube.com",
+      "https://www.google.com",
+      ...extra(config.CSP_EXTRA_FRAME_SRC),
+    ],
+    workerSrc: ["'self'", "blob:"],
+    manifestSrc: ["'self'"],
+  };
+
+  // Only force https upgrades in production; in dev the API is hit over http
+  // from the Vite origin and this directive would rewrite those requests.
+  if (config.NODE_ENV === "production") {
+    directives.upgradeInsecureRequests = [];
+  }
+
+  return { useDefaults: false, directives, reportOnly: config.CSP_REPORT_ONLY };
+}
+
 function applyGlobalMiddleware(app) {
   // Behind a proxy (nginx, etc.) — trust X-Forwarded-* headers. An integer
   // string → hop count; a CSV of keywords/IPs → trusted addresses.
@@ -81,7 +149,7 @@ function applyGlobalMiddleware(app) {
   // Security headers
   app.use(
     helmet({
-      contentSecurityPolicy: false, // storefront has its own CSP via Next.js
+      contentSecurityPolicy: buildCsp(),
       crossOriginResourcePolicy: { policy: "cross-origin" },
     }),
   );

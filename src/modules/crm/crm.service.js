@@ -511,7 +511,8 @@ function listClients({ brand, filters, sort, page, page_size }) {
   const offset = (page - 1) * page_size;
   return repo.listClients({ brand, filters, sort, page, page_size, offset });
 }
-const todayBuckets = ({ brand }) => repo.todayBuckets({ brand });
+const todayBuckets = ({ brand, month, year }) =>
+  repo.todayBuckets({ brand, month, year });
 function reportLtv({ brand, page, page_size }) {
   const offset = (page - 1) * page_size;
   return repo.reportLtv({ brand, page, page_size, offset });
@@ -670,8 +671,8 @@ async function recordChurnScore({
 }
 
 /** CRM dashboard KPIs (open pipeline, monthly wins, win rate). */
-async function kpis({ brand }) {
-  const k = await repo.kpis({ brand });
+async function kpis({ brand, month, year }) {
+  const k = await repo.kpis({ brand, month, year });
   const closed = Number(k.closed_total) || 0;
   return {
     open_deals: Number(k.open_deals),

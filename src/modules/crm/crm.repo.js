@@ -640,6 +640,7 @@ async function listClients({
   const params = [brand];
   const where = [
     "c.is_deleted = false",
+    "'customer' = ANY(c.contact_type)",
     "($1 = ANY(c.visible_to) OR c.visible_to = '{}')",
   ];
   let i = 2;
@@ -728,30 +729,49 @@ async function listClients({
   };
 }
 
-// ── Today buckets (who to reach out to) ──────────────────
-async function todayBuckets({ brand, limit = 10 }) {
-  const visible = `c.is_deleted = false AND ($1 = ANY(c.visible_to) OR c.visible_to = '{}')`;
+/**
+ * Resolve a (possibly partial/invalid) month+year query param pair into a
+ * clamped calendar-month window. Defaults to the current month/year.
+ */
+function resolveMonth(month, year) {
+  const now = new Date();
+  const y = Number.isInteger(Number(year)) ? Number(year) : now.getFullYear();
+  const mRaw = Number.isInteger(Number(month)) ? Number(month) : now.getMonth() + 1;
+  const m = Math.min(12, Math.max(1, mRaw));
+  const start = new Date(Date.UTC(y, m - 1, 1));
+  const end = new Date(Date.UTC(y, m, 1));
+  return { month: m, year: y, start: start.toISOString(), end: end.toISOString() };
+}
 
+// ── Today buckets (who to reach out to) ──────────────────
+async function todayBuckets({ brand, limit = 10, month, year }) {
+  const visible = `c.is_deleted = false AND 'customer' = ANY(c.contact_type) AND ($1 = ANY(c.visible_to) OR c.visible_to = '{}')`;
+  const { month: mm, start, end } = resolveMonth(month, year);
+
+  // Birthday month — recurs every year, so only the month digit matters.
   const celebrate = await query(
     `SELECT c.contact_id, c.display_name, c.first_name, c.date_of_birth,
             COUNT(*) OVER ()::int AS total
        FROM shared.contacts c
-      WHERE ${visible} AND ${birthdayClause("c", 2)}
-      ORDER BY to_char(c.date_of_birth, 'MMDD')
+      WHERE ${visible} AND c.date_of_birth IS NOT NULL
+        AND EXTRACT(MONTH FROM c.date_of_birth) = $2
+      ORDER BY EXTRACT(DAY FROM c.date_of_birth)
       LIMIT ${Number(limit)}`,
-    [brand, String(P.CELEBRATE_WINDOW_DAYS)],
+    [brand, mm],
   );
 
   const welcome = await query(
     `SELECT c.contact_id, c.display_name, c.first_name, c.source, c.created_at,
             COUNT(*) OVER ()::int AS total
        FROM shared.contacts c
-      WHERE ${visible} AND c.created_at >= now() - interval '${P.NEW_CLIENT_DAYS} days'
+      WHERE ${visible} AND c.created_at >= $2::timestamptz AND c.created_at < $3::timestamptz
       ORDER BY c.created_at DESC
       LIMIT ${Number(limit)}`,
-    [brand],
+    [brand, start, end],
   );
 
+  // days_since_last_order is a snapshot taken at scoring time — approximate
+  // the calendar month of that last order from it to apply the same filter.
   const winBack = await query(
     `SELECT c.contact_id, c.display_name, c.first_name,
             s.risk_score, s.risk_band, s.days_since_last_order, s.lifetime_value_ngn,
@@ -760,9 +780,13 @@ async function todayBuckets({ brand, limit = 10 }) {
        JOIN shared.contacts c ON c.contact_id = s.contact_id
       WHERE s.superseded_at IS NULL AND s.risk_band IN ('high','critical')
         AND ${visible}
+        AND (s.computed_at::date - (COALESCE(s.days_since_last_order, 0) || ' days')::interval)
+              >= $2::timestamptz
+        AND (s.computed_at::date - (COALESCE(s.days_since_last_order, 0) || ' days')::interval)
+              < $3::timestamptz
       ORDER BY s.risk_score DESC
       LIMIT ${Number(limit)}`,
-    [brand],
+    [brand, start, end],
   );
 
   const topMonth = await query(
@@ -773,12 +797,13 @@ async function todayBuckets({ brand, limit = 10 }) {
        FROM ${t(brand, "sales_orders")} o
        JOIN shared.contacts c ON c.contact_id = o.contact_id
       WHERE o.status IN ${PAID_STATUSES}
-        AND COALESCE(o.placed_at, o.created_at) >= date_trunc('month', now())
+        AND COALESCE(o.placed_at, o.created_at) >= $2::timestamptz
+        AND COALESCE(o.placed_at, o.created_at) < $3::timestamptz
         AND ${visible}
       GROUP BY o.contact_id, c.display_name, c.first_name
       ORDER BY SUM(o.total_ngn) DESC
       LIMIT ${Number(limit)}`,
-    [brand],
+    [brand, start, end],
   );
 
   const followUps = await query(
@@ -789,8 +814,58 @@ async function todayBuckets({ brand, limit = 10 }) {
        JOIN shared.contacts c ON c.contact_id = d.contact_id
       WHERE d.status = 'open' AND d.is_deleted = false
         AND COALESCE(d.last_activity_at, d.created_at) < now() - interval '${P.STALE_DEAL_DAYS} days'
+        AND COALESCE(d.last_activity_at, d.created_at) >= $2::timestamptz
+        AND COALESCE(d.last_activity_at, d.created_at) < $3::timestamptz
         AND ${visible}
       ORDER BY COALESCE(d.last_activity_at, d.created_at) ASC
+      LIMIT ${Number(limit)}`,
+    [brand, start, end],
+  );
+
+  // Checkout started (payment record created) but never completed — the
+  // "clicked checkout, never paid" list. Leaves the list the moment status
+  // moves off pending_payment.
+  const pendingPayments = await query(
+    `SELECT o.order_id, o.order_number, o.contact_id, c.display_name, c.first_name,
+            o.total_ngn, o.sales_channel, COALESCE(o.placed_at, o.created_at) AS pending_since,
+            COUNT(*) OVER ()::int AS total
+       FROM ${t(brand, "sales_orders")} o
+       JOIN shared.contacts c ON c.contact_id = o.contact_id
+      WHERE o.status = 'pending_payment'
+        AND COALESCE(o.placed_at, o.created_at) >= $2::timestamptz
+        AND COALESCE(o.placed_at, o.created_at) < $3::timestamptz
+        AND ${visible}
+      ORDER BY COALESCE(o.placed_at, o.created_at) ASC
+      LIMIT ${Number(limit)}`,
+    [brand, start, end],
+  );
+
+  // Open deals expected to close within the selected month.
+  const closingSoon = await query(
+    `SELECT d.deal_id, d.deal_number, d.title, d.contact_id, c.display_name,
+            d.expected_value_ngn, d.expected_close_date,
+            COUNT(*) OVER ()::int AS total
+       FROM ${t(brand, "crm_deals")} d
+       JOIN shared.contacts c ON c.contact_id = d.contact_id
+      WHERE d.status = 'open' AND d.is_deleted = false
+        AND d.expected_close_date >= $2::date AND d.expected_close_date < $3::date
+        AND ${visible}
+      ORDER BY d.expected_close_date ASC
+      LIMIT ${Number(limit)}`,
+    [brand, start, end],
+  );
+
+  // All-time — deliberately not month-scoped.
+  const topAllTime = await query(
+    `SELECT c.contact_id, c.display_name, c.first_name,
+            SUM(o.total_ngn) AS lifetime_spend_ngn,
+            COUNT(*)::int AS orders_count,
+            COUNT(*) OVER ()::int AS total
+       FROM ${t(brand, "sales_orders")} o
+       JOIN shared.contacts c ON c.contact_id = o.contact_id
+      WHERE o.status IN ${PAID_STATUSES} AND ${visible}
+      GROUP BY c.contact_id, c.display_name, c.first_name
+      ORDER BY SUM(o.total_ngn) DESC
       LIMIT ${Number(limit)}`,
     [brand],
   );
@@ -805,6 +880,9 @@ async function todayBuckets({ brand, limit = 10 }) {
     to_win_back: bucket(winBack),
     top_this_month: bucket(topMonth),
     follow_ups: bucket(followUps),
+    pending_payments: bucket(pendingPayments),
+    closing_soon: bucket(closingSoon),
+    top_customers_all_time: bucket(topAllTime),
   };
 }
 
@@ -814,7 +892,8 @@ async function reportLtv({ brand, page = 1, page_size = 25, offset = 0 }) {
     `SELECT COUNT(DISTINCT o.contact_id)::int AS total
        FROM ${t(brand, "sales_orders")} o
        JOIN shared.contacts c ON c.contact_id = o.contact_id
-      WHERE c.is_deleted = false AND o.status IN ${PAID_STATUSES}`,
+      WHERE c.is_deleted = false AND 'customer' = ANY(c.contact_type)
+        AND o.status IN ${PAID_STATUSES}`,
   );
   const { rows } = await query(
     `SELECT c.contact_id, c.display_name, c.first_name, c.email, c.primary_phone,
@@ -825,7 +904,8 @@ async function reportLtv({ brand, page = 1, page_size = 25, offset = 0 }) {
             MAX(COALESCE(o.placed_at, o.created_at)) AS last_order_at
        FROM ${t(brand, "sales_orders")} o
        JOIN shared.contacts c ON c.contact_id = o.contact_id
-      WHERE c.is_deleted = false AND o.status IN ${PAID_STATUSES}
+      WHERE c.is_deleted = false AND 'customer' = ANY(c.contact_type)
+        AND o.status IN ${PAID_STATUSES}
       GROUP BY c.contact_id, c.display_name, c.first_name, c.email, c.primary_phone
       ORDER BY SUM(o.total_ngn) DESC
       LIMIT $1 OFFSET $2`,
@@ -957,21 +1037,23 @@ async function reportForecast({ brand }) {
 }
 
 /** Dashboard KPIs: open pipeline, wins this month, win/closed totals. */
-async function kpis({ brand, client }) {
+async function kpis({ brand, client, month, year }) {
+  const { start, end } = resolveMonth(month, year);
   const { rows } = await ex(client)(
     `SELECT
        COUNT(*) FILTER (WHERE status = 'open')::int AS open_deals,
        COALESCE(SUM(expected_value_ngn) FILTER (WHERE status = 'open'), 0)
          AS open_pipeline_ngn,
        COUNT(*) FILTER (WHERE status = 'won'
-         AND won_at >= date_trunc('month', now()))::int AS won_this_month,
+         AND won_at >= $1::timestamptz AND won_at < $2::timestamptz)::int AS won_this_month,
        COALESCE(SUM(expected_value_ngn) FILTER (WHERE status = 'won'
-         AND won_at >= date_trunc('month', now())), 0)
+         AND won_at >= $1::timestamptz AND won_at < $2::timestamptz), 0)
          AS won_value_this_month_ngn,
        COUNT(*) FILTER (WHERE status = 'won')::int AS won_total,
        COUNT(*) FILTER (WHERE status IN ('won', 'lost'))::int AS closed_total
      FROM ${t(brand, "crm_deals")}
      WHERE is_deleted = false`,
+    [start, end],
   );
   return rows[0];
 }

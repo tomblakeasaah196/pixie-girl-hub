@@ -197,12 +197,44 @@ export interface TodayFollowUpItem {
   quiet_since: string;
 }
 
+export interface TodayPendingPaymentItem {
+  order_id: string;
+  order_number: string;
+  contact_id: string;
+  display_name: string | null;
+  first_name: string | null;
+  total_ngn: string;
+  sales_channel: string;
+  pending_since: string;
+}
+
+export interface TodayClosingSoonItem {
+  deal_id: string;
+  deal_number: string;
+  title: string;
+  contact_id: string;
+  display_name: string | null;
+  expected_value_ngn: string | null;
+  expected_close_date: string;
+}
+
+export interface TodayTopAllTimeItem {
+  contact_id: string;
+  display_name: string | null;
+  first_name: string | null;
+  lifetime_spend_ngn: string;
+  orders_count: number;
+}
+
 export interface TodayBuckets {
   to_celebrate: TodayBucket<TodayCelebrateItem>;
   to_welcome: TodayBucket<TodayWelcomeItem>;
   to_win_back: TodayBucket<TodayWinBackItem>;
   top_this_month: TodayBucket<TodayTopItem>;
   follow_ups: TodayBucket<TodayFollowUpItem>;
+  pending_payments: TodayBucket<TodayPendingPaymentItem>;
+  closing_soon: TodayBucket<TodayClosingSoonItem>;
+  top_customers_all_time: TodayBucket<TodayTopAllTimeItem>;
 }
 
 // ── Reports (GET /crm/reports/*) ──────────────────────────────────────────

@@ -215,7 +215,13 @@ const recordChurnScore = async (req, res) =>
   });
 
 const kpis = async (req, res) =>
-  res.json({ data: await service.kpis({ brand: req.brand }) });
+  res.json({
+    data: await service.kpis({
+      brand: req.brand,
+      month: req.query.month,
+      year: req.query.year,
+    }),
+  });
 
 // Stage history + deal products
 const listStageHistory = async (req, res) =>
@@ -290,7 +296,13 @@ async function listClients(req, res) {
   );
 }
 const today = async (req, res) =>
-  res.json({ data: await service.todayBuckets({ brand: req.brand }) });
+  res.json({
+    data: await service.todayBuckets({
+      brand: req.brand,
+      month: req.query.month,
+      year: req.query.year,
+    }),
+  });
 async function reportLtv(req, res) {
   const { page, page_size } = parsePagination(req.query);
   res.json(await service.reportLtv({ brand: req.brand, page, page_size }));

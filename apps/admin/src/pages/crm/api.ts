@@ -44,10 +44,17 @@ interface CrmKpiServer {
   win_rate: number | null;
 }
 
+export interface MonthYearParams {
+  month?: number;
+  year?: number;
+}
+
 // The /crm/kpis endpoint returns a different field set than the dashboard
 // reads; map it (and derive the two values the backend doesn't send).
-export const getCrmKpis = async (): Promise<CrmKpiRaw> => {
-  const r = await api.get<CrmKpiServer>("/crm/kpis");
+export const getCrmKpis = async (
+  params: MonthYearParams = {},
+): Promise<CrmKpiRaw> => {
+  const r = await api.get<CrmKpiServer>(`/crm/kpis${qs(params)}`);
   const won = Number(r.won_this_month) || 0;
   const wonValue = Number(r.won_value_this_month_ngn) || 0;
   return {
@@ -72,8 +79,8 @@ function qs(params: object) {
 
 // ── Today buckets (server-computed — GET /crm/today) ──────────────────────
 
-export const getCrmToday = () =>
-  api.get<TodayBuckets>("/crm/today");
+export const getCrmToday = (params: MonthYearParams = {}) =>
+  api.get<TodayBuckets>(`/crm/today${qs(params)}`);
 
 // ── Clients (contacts + commercial roll-up — GET /crm/clients) ────────────
 

@@ -303,6 +303,16 @@ const schema = z.object({
   // grounding. 0.3 is conservative for text-embedding-3-small; raise it once
   // corpus relevance has been observed in ai_run_steps traces.
   PRAXIS_RAG_MIN_SCORE: z.coerce.number().min(0).max(1).default(0.3),
+  // Max output tokens per Praxis LLM completion. Answers were being cut off
+  // mid-table because no cap was sent and the vendor's implicit default is low;
+  // 4096 comfortably fits a long answer (e.g. a 27-row order table), and the
+  // continuation helper stitches anything that still hits the cap.
+  PRAXIS_MAX_OUTPUT_TOKENS: z.coerce
+    .number()
+    .int()
+    .min(256)
+    .max(32000)
+    .default(4096),
 
   // Feature flags
   FEATURE_MANUAL_PAYMENTS_ENABLED: zBool(false),

@@ -42,7 +42,7 @@ const QUERIES = [
     run: async ({ brand }) => {
       const [summary, records] = await Promise.all([
         insightsRepo.summary({ business: brand }),
-        insightsRepo.list({ business: brand, status: "open", page: 1, page_size: 30 }),
+        insightsRepo.list({ business: brand, status: "open", page: 1, page_size: 60 }),
       ]);
       return { summary, records };
     },
@@ -67,15 +67,15 @@ const QUERIES = [
         },
         limit: {
           type: "integer",
-          description: "Max insights to return (optional; default 20, max 50).",
+          description: "Max insights to return (optional; default 50, max 200).",
         },
       },
     },
     run: ({ brand, args }) => {
       const limit =
         Number.isInteger(args.limit) && args.limit > 0
-          ? Math.min(args.limit, 50)
-          : 20;
+          ? Math.min(args.limit, 200)
+          : 50;
       return insightsRepo.list({
         module: str(args.module) || undefined,
         business: brand,

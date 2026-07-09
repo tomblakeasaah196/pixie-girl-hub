@@ -19,8 +19,25 @@ const catalogue = require("./query-catalogue");
 const executor = require("./praxis.executor");
 const { logger } = require("../../config/logger");
 const { summariseViaFallback } = require("./fallback-summarise");
+const { extendIfTruncated } = require("./continuation");
 
 const PREFIX = "query_";
+
+// How many follow-up READ tool calls one turn may chain (query -> query -> sql
+// -> answer). Bounded so a confused model can't loop the turn forever, generous
+// enough that a lookup can feed a second lookup that feeds the answer.
+const MAX_READ_HOPS = 6;
+// How much of a tool result (JSON) is handed back to the model. The old 6 000
+// hard slice cut multi-row results mid-record — the model then reported the
+// severed values as "(cut off)". Results are already row-capped upstream, so a
+// larger, row-boundary-aware budget lets the full set through intact.
+const TOOL_RESULT_MAX_CHARS = 24000;
+// The generic SQL agent's tool names, declared locally so a query-only turn
+// never has to load the SQL agent (and its DB dependency) merely to recognise
+// them — the agent itself is lazy-required only when such a call is dispatched.
+// Kept in sync with sql-agent.isSqlTool.
+const SQL_TOOL_NAMES = new Set(["sql_schema", "sql_query"]);
+const sqlIsSqlTool = (name) => SQL_TOOL_NAMES.has(name);
 const safe = (s) =>
   String(s)
     .replace(/[^a-zA-Z0-9_-]/g, "_")
@@ -64,7 +81,46 @@ function sumUsage(a, b) {
   };
 }
 
-/** A reply that is (or starts with) a JSON blob is a raw dump, not an answer. */
+/**
+ * Serialise a tool result for the model within a char budget. A blind
+ * `slice(maxChars)` truncates mid-record, which the model then reports as
+ * "(cut off)" values. So for an array we include as many WHOLE elements as fit
+ * and tell the model how many were omitted; a non-array is sliced only as a
+ * last resort.
+ */
+function clampToolResult(data, maxChars = TOOL_RESULT_MAX_CHARS) {
+  let full;
+  try {
+    full = JSON.stringify(data);
+  } catch {
+    return JSON.stringify({ _unserialisable: true });
+  }
+  if (full.length <= maxChars) return full;
+
+  const arr = Array.isArray(data)
+    ? data
+    : data && Array.isArray(data.data)
+      ? data.data
+      : null;
+  if (arr) {
+    const kept = [];
+    let size = 2; // "[]" / "{}" braces
+    for (const row of arr) {
+      const s = JSON.stringify(row);
+      if (size + s.length + 1 > maxChars) break;
+      kept.push(row);
+      size += s.length + 1;
+    }
+    return JSON.stringify({
+      rows: kept,
+      _note: `showing ${kept.length} of ${arr.length} rows — result truncated to fit; ask to narrow or page for the rest`,
+    });
+  }
+  return full.slice(0, maxChars);
+}
+
+/** A reply that IS (or starts with) a JSON blob is a raw-data dump, never a
+ *  real answer — used to catch the model regurgitating tool output. */
 function looksLikeDump(text) {
   const t = String(text || "")
     .trim()
@@ -73,9 +129,31 @@ function looksLikeDump(text) {
   return t.startsWith("{") || t.startsWith("[");
 }
 
-// One user turn can need several curated lookups ("no overdue invoices — let me
-// also check receivables…"). Bound the chase so a turn always terminates.
-const MAX_QUERY_ROUNDS = 6;
+/** True when a catalogue action is safe to run inline in a READ turn (no write,
+ *  no confirmation gate) — the same trust rule the orchestrator uses. */
+function isReadSafeAction(action) {
+  return (
+    action &&
+    action.is_write === false &&
+    action.requires_confirmation === false
+  );
+}
+
+const asstToolMsg = (completion, calls) => ({
+  role: "assistant",
+  content: completion.content || null,
+  // DeepSeek thinking models require the reasoning_content that produced a tool
+  // call to be replayed with it, or the follow-up 400s.
+  ...(completion.reasoning_content
+    ? { reasoning_content: completion.reasoning_content }
+    : {}),
+  tool_calls: calls,
+});
+const toolResultMsg = (id, payload) => ({
+  role: "tool",
+  tool_call_id: id,
+  content: clampToolResult(payload),
+});
 
 async function hasView(user, module) {
   if (user && user.is_ceo === true) return true;
@@ -123,22 +201,27 @@ async function execute({ user, brand, name, args }) {
 }
 
 /**
- * Run a query tool the model selected, then summarise the live result.
+ * Run the query tool the model selected, then let it chain follow-up READ
+ * lookups until it produces a natural-language answer.
  *
- * A lookup often exists only to feed a SECOND call — "who was our last
- * campaign?" (a query) then "was it a success?" (a read-safe catalogue
- * action needing the campaign id the query just found). Previously the
- * summarise step offered no tools at all, so the model could only report
- * what the query already returned and had to claim it "doesn't have a
- * tool" for the follow-up even when one exists. When `allTools`/`byName`
- * are supplied, one extra hop into a READ-SAFE catalogue action (is_write
- * false, requires_confirmation false) is chased inline over loopback, the
- * same trust model `resolveCatalogueAction`'s inline-read branch uses.
- * Writes and confirmation-gated actions are deliberately NOT chased here —
- * a "tell me about X" read turn shouldn't spontaneously create a pending
- * action; the model can still propose one as an ordinary next turn.
+ * A lookup often exists only to feed a SECOND (or third) call — "top styled
+ * product?" (a query) then "trace it to its base product" (a generic SQL read),
+ * or "what needs attention?" then "pull the customer names behind those
+ * orders". Previously the summarise step could chase only ONE hop, and only
+ * into a read-safe catalogue action: a follow-up `query_*` or `sql_*` tool call
+ * was silently DROPPED and whatever "Let me…" preamble came with it shipped as
+ * the whole answer — the exact cut-off the user reported. This now loops over
+ * every follow-up read the model asks for (another curated query, a generic SQL
+ * read for the CEO, or a read-safe catalogue action), feeds each result back,
+ * and only stops when the model answers in text (or the hop budget is spent).
  *
- * @returns {Promise<{replyText:string|null, usage:object, queryKey?:string, denied?:boolean, error?:boolean}>}
+ * Still deliberately NOT chased: writes and confirmation-gated actions — a
+ * "tell me about X" read turn must not spontaneously create a pending action;
+ * the model can propose one on an ordinary next turn.
+ *
+ * @returns {Promise<{replyText:string|null, usage:object, queryKey?:string,
+ *                    chainedAction?:string, denied?:boolean, error?:boolean,
+ *                    degraded?:boolean}>}
  */
 async function run({
   vendor,
@@ -169,46 +252,55 @@ async function run({
       queryKey: res.queryKey,
     };
   }
-  let rows = res.rows;
 
-  // Feed the result back and let the model keep going until it produces a FINAL
-  // text answer (no tool call). A turn often needs several lookups in a row
-  // ("no overdue invoices — let me also check receivables…"); the old code only
-  // chased ONE follow-up, so a multi-step answer stopped half-way. This bounded
-  // loop chases further curated queries and read-safe actions inline.
-  //
-  // Each replayed assistant message carries ONLY the tool_call it answers (or
-  // the vendor 400s "insufficient tool messages") plus reasoning_content (which
-  // DeepSeek thinking models require back).
-  let convo = [
+  const fenced = (data) =>
+    "Here's what I found:\n```json\n" +
+    JSON.stringify(data, null, 2).slice(0, 1000) +
+    "\n```";
+
+  // A follow-up tool call is dispatchable here only if it is another READ:
+  // a curated query, a generic SQL read, or a read-safe catalogue action we can
+  // actually run over loopback (needs the caller's auth header).
+  const canDispatch = (name) => {
+    if (isQueryTool(name) || sqlIsSqlTool(name)) return true;
+    const action = byName && byName.get(name);
+    return Boolean(action && isReadSafeAction(action) && authHeader);
+  };
+
+  // Plain-English rescue when the model hands back nothing / a raw JSON dump.
+  const synthesize = async (convo, from) => {
+    try {
+      const r = await llm.chat({
+        vendor,
+        messages: [
+          ...convo,
+          { role: "assistant", content: from.content || null },
+          {
+            role: "user",
+            content:
+              "Using the data above, answer my original question in clear " +
+              "plain English — specific figures and a direct conclusion. Do " +
+              "NOT output JSON or raw rows.",
+          },
+        ],
+      });
+      return { text: (r.content || "").trim(), usage: r.usage, finish_reason: r.finish_reason };
+    } catch (err) {
+      logger.warn({ err: err.message }, "praxis query synthesis pass failed");
+      return { text: "", usage: {} };
+    }
+  };
+
+  const convo = [
     ...messages,
-    {
-      role: "assistant",
-      content: completion.content || null,
-      ...(completion.reasoning_content
-        ? { reasoning_content: completion.reasoning_content }
-        : {}),
-      tool_calls: [toolCall],
-    },
-    {
-      role: "tool",
-      tool_call_id: toolCall.id,
-      content: JSON.stringify(rows).slice(0, 6000),
-    },
+    asstToolMsg(completion, [toolCall]),
+    toolResultMsg(toolCall.id, res.rows),
   ];
-  let usageAcc = {};
+  let usage = {};
+  let lastResult = res.rows;
+  let lastChainedAction;
 
-  const degradeToData = (extra) => ({
-    replyText:
-      "Here's what I found:\n```json\n" +
-      JSON.stringify(rows, null, 2).slice(0, 1000) +
-      "\n```",
-    usage: usageAcc,
-    queryKey: res.queryKey,
-    ...extra,
-  });
-
-  for (let round = 0; round < MAX_QUERY_ROUNDS; round++) {
+  for (let hop = 0; hop < MAX_READ_HOPS; hop++) {
     let follow;
     try {
       follow = await llm.chat({
@@ -224,137 +316,130 @@ async function run({
       const fallbackText = await summariseViaFallback({
         vendor,
         messages: convo,
-        result: rows,
+        result: lastResult,
       });
-      return fallbackText
-        ? { replyText: fallbackText, usage: usageAcc, queryKey: res.queryKey }
-        : degradeToData({ degraded: true });
+      return {
+        replyText: fallbackText || fenced(lastResult),
+        usage,
+        queryKey: res.queryKey,
+        degraded: !fallbackText,
+        ...(lastChainedAction ? { chainedAction: lastChainedAction } : {}),
+      };
     }
-    usageAcc = sumUsage(usageAcc, follow.usage);
+    usage = sumUsage(usage, follow.usage);
 
-    const next = follow.tool_calls && follow.tool_calls[0];
+    const calls = (follow.tool_calls || []).filter((c) => c && c.function);
+    const dispatchable = calls.filter((c) => canDispatch(c.function.name));
 
-    // No more tool calls → this is the final answer. Guard empty/dump.
-    if (!next) {
+    // No further READ to run → this turn is finished. Translate to plain
+    // English (rescuing an empty / dumped reply), then extend it if the vendor
+    // cut it off at the token cap, so the answer is never half-written.
+    if (!dispatchable.length) {
       let text = (follow.content || "").trim();
+      let finishReason = follow.finish_reason;
       if (!text || looksLikeDump(text)) {
-        const fb = await summariseViaFallback({
-          vendor,
-          messages: convo,
-          result: rows,
-        });
-        if (fb) text = fb;
+        const synth = await synthesize(convo, follow);
+        usage = sumUsage(usage, synth.usage);
+        if (synth.text) {
+          text = synth.text;
+          finishReason = synth.finish_reason;
+        }
       }
-      return text
-        ? { replyText: text, usage: usageAcc, queryKey: res.queryKey }
-        : degradeToData({});
-    }
-
-    // Replay only the call we answer next (+ reasoning_content).
-    const assistantMsg = {
-      role: "assistant",
-      content: follow.content || null,
-      ...(follow.reasoning_content
-        ? { reasoning_content: follow.reasoning_content }
-        : {}),
-      tool_calls: [next],
-    };
-    const nextArgs = parseArgs(next.function.arguments);
-
-    // (a) Another curated query → run it and keep going.
-    if (isQueryTool(next.function.name)) {
-      const q = await execute({
-        user,
-        brand,
-        name: next.function.name,
-        args: nextArgs,
+      text = await extendIfTruncated({
+        vendor,
+        baseMessages: convo,
+        text,
+        finishReason,
+        usage,
       });
-      const payload = !q
-        ? { error: "unknown query" }
-        : q.ok
-          ? q.rows
-          : { error: q.message };
-      if (q && q.ok) rows = q.rows; // freshest data for any later fallback
-      convo = [
-        ...convo,
-        assistantMsg,
-        {
-          role: "tool",
-          tool_call_id: next.id,
-          content: JSON.stringify(payload).slice(0, 6000),
-        },
-      ];
-      continue;
+      return {
+        replyText: text || "Here's what I found.",
+        usage,
+        queryKey: res.queryKey,
+        ...(lastChainedAction ? { chainedAction: lastChainedAction } : {}),
+      };
     }
 
-    // (b) A read-safe catalogue action → chase it inline and keep going.
-    const nextAction = byName ? byName.get(next.function.name) : null;
-    const readSafe =
-      nextAction &&
-      nextAction.is_write === false &&
-      nextAction.requires_confirmation === false;
-    if (readSafe && authHeader) {
-      try {
-        const exec = await executor.executeAction({
-          pending: {
-            method: nextAction.method,
-            route: nextAction.route,
-            payload: nextArgs,
-            business: brand,
-          },
-          authHeader,
-          requestId,
+    // Run every follow-up read the model asked for this turn, feed the results
+    // back, and loop. Replaying exactly the calls we answer keeps the
+    // assistant/tool message counts balanced (a mismatch 400s the vendor).
+    const answered = [];
+    for (const call of dispatchable) {
+      const name = call.function.name;
+      const cargs = parseArgs(call.function.arguments);
+      let payload;
+      if (isQueryTool(name)) {
+        const q = await execute({ user, brand, name, args: cargs });
+        payload = !q
+          ? { error: "unknown query" }
+          : q.ok
+            ? q.rows
+            : { error: q.message };
+      } else if (sqlIsSqlTool(name)) {
+        // Lazy require: keep the SQL agent's DB dependency out of the import
+        // graph for query-only turns (and query-agent's own unit tests).
+        payload = await require("./sql-agent").dispatchTool({
+          user,
+          brand,
+          name,
+          args: cargs,
         });
-        convo = [
-          ...convo,
-          assistantMsg,
-          {
-            role: "tool",
-            tool_call_id: next.id,
-            content: JSON.stringify(exec.result).slice(0, 6000),
-          },
-        ];
-        continue;
-      } catch (err) {
-        logger.error(
-          { err: err.message, action_key: nextAction.action_key },
-          "praxis: query-chained action failed",
-        );
-        return {
-          replyText:
-            err.user_message ||
-            `I looked that up but couldn't finish "${nextAction.title || nextAction.action_key}" — please try again.`,
-          usage: usageAcc,
-          queryKey: res.queryKey,
-        };
+      } else {
+        const action = byName.get(name);
+        try {
+          const exec = await executor.executeAction({
+            pending: {
+              method: action.method,
+              route: action.route,
+              payload: cargs,
+              business: brand,
+            },
+            authHeader,
+            requestId,
+          });
+          payload = exec.result;
+          lastChainedAction = action.action_key;
+        } catch (err) {
+          logger.error(
+            { err: err.message, action_key: action.action_key },
+            "praxis: query-chained action failed",
+          );
+          payload = {
+            error:
+              err.user_message ||
+              `couldn't run ${action.title || action.action_key}`,
+          };
+        }
       }
+      answered.push({ id: call.id, payload });
+      lastResult = payload;
     }
-
-    // (c) A write / confirmation-gated / unknown tool — not chaseable in a read
-    // turn. Return the model's text if it gave any, else summarise the data.
-    const text = (follow.content || "").trim();
-    if (text && !looksLikeDump(text)) {
-      return { replyText: text, usage: usageAcc, queryKey: res.queryKey };
-    }
-    const fb = await summariseViaFallback({
-      vendor,
-      messages: convo,
-      result: rows,
-    });
-    return fb
-      ? { replyText: fb, usage: usageAcc, queryKey: res.queryKey }
-      : degradeToData({});
+    convo.push(asstToolMsg(follow, dispatchable));
+    for (const a of answered) convo.push(toolResultMsg(a.id, a.payload));
   }
 
-  // Rounds exhausted — summarise from the latest data rather than dead-ending.
+  // Hop budget spent without a text answer. Summarise the last result we have
+  // rather than dead-ending — never leave the turn without a reply.
   const fb = await summariseViaFallback({
     vendor,
     messages: convo,
-    result: rows,
+    result: lastResult,
   });
-  return fb
-    ? { replyText: fb, usage: usageAcc, queryKey: res.queryKey }
-    : degradeToData({});
+  return {
+    replyText:
+      fb ||
+      "I couldn't fully pin that down in a few steps — could you narrow it a little (e.g. a date range or the specific detail you want)?",
+    usage,
+    queryKey: res.queryKey,
+    ...(lastChainedAction ? { chainedAction: lastChainedAction } : {}),
+  };
 }
 
-module.exports = { tools, isQueryTool, execute, run, PREFIX };
+module.exports = {
+  tools,
+  isQueryTool,
+  execute,
+  run,
+  PREFIX,
+  clampToolResult,
+};

@@ -31,6 +31,7 @@ const queryCatalogue = require("./query-catalogue");
 const sqlAgent = require("./sql-agent");
 const executor = require("./praxis.executor");
 const { summariseViaFallback } = require("./fallback-summarise");
+const { extendIfTruncated } = require("./continuation");
 const { money, toCurrencyString } = require("../../utils/money");
 const { logger } = require("../../config/logger");
 const { config } = require("../../config/env");
@@ -928,6 +929,17 @@ async function orchestrate({
       addUsage(usage, r.usage);
       if (r.usage && r.usage.total_tokens) costNgn = computeCost(vendor, usage);
     }
+  } else if (completion.finish_reason === "length") {
+    // A direct (no-tool) answer the vendor cut off at the token cap — continue
+    // it so a long single-shot reply is never shipped half-written.
+    replyText = await extendIfTruncated({
+      vendor,
+      baseMessages: messages,
+      text: replyText,
+      finishReason: completion.finish_reason,
+      usage,
+    });
+    costNgn = computeCost(vendor, usage);
   }
 
   if (!replyText) replyText = "Done.";

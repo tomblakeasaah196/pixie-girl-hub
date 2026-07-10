@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { getBundleDetail, addCartItem, fmt } from "@/lib/storefront";
 import { useCurrency, notifyCartChanged } from "@/lib/useStore";
 import { Section, LoadingGrid, ErrorState } from "@/components/parts";
+import { usePageSlots, withSlots } from "@/lib/site-config";
 
 export const Route = createFileRoute("/bundles/$slug")({
   component: BundleDetail,
@@ -19,6 +20,17 @@ function BundleDetail() {
     queryKey: ["bundle", slug],
     queryFn: () => getBundleDetail(slug),
   });
+  const s = withSlots(
+    {
+      eyebrow: "Bundle",
+      includedLabel: "What's included",
+      ctaLabel: "Add bundle to bag",
+      ctaBusyLabel: "Adding...",
+      addedToast: "Bundle added to bag",
+      errorToast: "Couldn't add bundle. Please try again.",
+    },
+    usePageSlots("bundle_detail"),
+  );
 
   async function add() {
     if (!data) return;
@@ -30,10 +42,10 @@ function BundleDetail() {
         display_currency: currency,
       });
       notifyCartChanged();
-      toast.success("Bundle added to bag");
+      toast.success(s.addedToast);
       navigate({ to: "/cart" });
     } catch {
-      toast.error("Couldn't add bundle. Please try again.");
+      toast.error(s.errorToast);
     } finally {
       setBusy(false);
     }
@@ -60,7 +72,7 @@ function BundleDetail() {
         ) : null}
       </div>
       <div>
-        <p className="text-caption">Bundle</p>
+        <p className="text-caption">{s.eyebrow}</p>
         <h1 className="mt-2 text-h3 font-display">{data.display_name}</h1>
         {data.bundle_price_ngn ? (
           <p className="mt-3 font-mono text-h5">{fmt(data.bundle_price_ngn, "NGN")}</p>
@@ -71,7 +83,7 @@ function BundleDetail() {
 
         {data.components?.length ? (
           <div className="mt-8">
-            <p className="text-caption">What's included</p>
+            <p className="text-caption">{s.includedLabel}</p>
             <ul className="mt-3 divide-y divide-border">
               {data.components.map((c, i) => (
                 <li key={i} className="flex items-center gap-3 py-3">
@@ -95,7 +107,7 @@ function BundleDetail() {
           disabled={busy}
           className="mt-8 rounded-full bg-primary px-8 py-3 text-body text-primary-foreground disabled:opacity-60"
         >
-          {busy ? "Adding..." : "Add bundle to bag"}
+          {busy ? s.ctaBusyLabel : s.ctaLabel}
         </button>
       </div>
     </Section>

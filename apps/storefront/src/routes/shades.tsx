@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Sparkles } from "lucide-react";
 import { getShades } from "@/lib/storefront";
 import { Section, LoadingGrid, EmptyState, ErrorState } from "@/components/parts";
+import { usePageSlots, withSlots } from "@/lib/site-config";
 
 export const Route = createFileRoute("/shades")({ component: ShadesPage });
 
@@ -13,15 +14,25 @@ function ShadesPage() {
     queryFn: () => getShades(),
   });
   const shades = data ?? [];
+  const s = withSlots(
+    {
+      heading: "Shop by shade",
+      body: "Find your match, then make it yours.",
+      finderTitle: "Not sure which shade is yours?",
+      finderBody:
+        "Share one photo and Praxis, our AI stylist, will read your undertone and pick it — free, private, nothing saved.",
+      finderCta: "Find my shade",
+      emptyTitle: "No shades published yet.",
+    },
+    usePageSlots("shades"),
+  );
 
   if (pathname !== "/shades" && pathname !== "/shades/") return <Outlet />;
 
   return (
     <Section>
-      <h1 className="text-h2 font-display">Shop by shade</h1>
-      <p className="mt-2 text-body text-muted-foreground">
-        Find your match, then make it yours.
-      </p>
+      <h1 className="text-h2 font-display">{s.heading}</h1>
+      <p className="mt-2 text-body text-muted-foreground">{s.body}</p>
 
       {/* Praxis Shade Finder invitation */}
       <Link
@@ -33,15 +44,12 @@ function ShadesPage() {
             <Sparkles className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-body font-couture">Not sure which shade is yours?</p>
-            <p className="mt-0.5 text-body-sm text-muted-foreground">
-              Share one photo and Praxis, our AI stylist, will read your
-              undertone and pick it — free, private, nothing saved.
-            </p>
+            <p className="text-body font-couture">{s.finderTitle}</p>
+            <p className="mt-0.5 text-body-sm text-muted-foreground">{s.finderBody}</p>
           </div>
         </div>
         <span className="hidden shrink-0 rounded-full border border-border px-4 py-2 text-body-sm transition-colors group-hover:border-foreground md:block">
-          Find my shade
+          {s.finderCta}
         </span>
       </Link>
 
@@ -51,7 +59,7 @@ function ShadesPage() {
         ) : isError ? (
           <ErrorState onRetry={() => refetch()} />
         ) : shades.length === 0 ? (
-          <EmptyState title="No shades published yet." />
+          <EmptyState title={s.emptyTitle} />
         ) : (
           <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
             {shades.map((s) => (

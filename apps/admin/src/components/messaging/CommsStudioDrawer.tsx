@@ -76,9 +76,11 @@ function fromAutomation(row: Automation): DraftState {
 export function CommsStudioDrawer({
   eventKey,
   onClose,
+  elevated,
 }: {
   eventKey: string;
   onClose: () => void;
+  elevated?: boolean;
 }) {
   const queryClient = useQueryClient();
   const q = useQuery({
@@ -114,6 +116,7 @@ export function CommsStudioDrawer({
         title={eventKey}
         subtitle="Loading…"
         wide
+        elevated={elevated}
       >
         <div className="animate-pulse h-64 rounded-2xl bg-text-primary/[0.04]" />
       </Drawer>
@@ -131,6 +134,7 @@ export function CommsStudioDrawer({
       open
       onClose={onClose}
       wide
+      elevated={elevated}
       title={row.display_name || row.event_key}
       subtitle={row.description || row.event_key}
       leading={

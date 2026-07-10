@@ -19,6 +19,11 @@ require("./commission.subscribers");
 
 const router = express.Router();
 const P = (action) => requirePermission("hr_payroll", action);
+// Performance appraisal (KPIs, cycles, scoring, reviews) has its own gate so a
+// manager can be granted "Performance" to score their team WITHOUT seeing
+// payroll or salary. Grants were copied from hr_payroll on split (migration
+// 000289) so no existing role loses access.
+const PERF = (action) => requirePermission("performance", action);
 
 // ── Employees ──────────────────────────────────────────────
 router.get("/employees", P("view"), controller.listStaff);
@@ -76,104 +81,106 @@ router.patch(
 router.delete("/bonus-rules/:id", P("delete"), controller.bonusRules.remove);
 
 // ── Performance KPI definitions (weighted; must total 100) ──
+// Gated on `performance` (split from hr_payroll) so team scoring can be
+// delegated without granting payroll/salary access.
 router.get(
   "/kpi-definitions/weight-summary",
-  P("view"),
+  PERF("view"),
   controller.kpiDefs.weightSummary,
 );
-router.get("/kpi-definitions", P("view"), controller.kpiDefs.list);
+router.get("/kpi-definitions", PERF("view"), controller.kpiDefs.list);
 router.post(
   "/kpi-definitions",
-  P("create"),
+  PERF("create"),
   validate.kpiDef.create,
   controller.kpiDefs.create,
 );
-router.get("/kpi-definitions/:id", P("view"), controller.kpiDefs.get);
+router.get("/kpi-definitions/:id", PERF("view"), controller.kpiDefs.get);
 router.patch(
   "/kpi-definitions/:id",
-  P("edit"),
+  PERF("edit"),
   validate.kpiDef.update,
   controller.kpiDefs.update,
 );
-router.delete("/kpi-definitions/:id", P("delete"), controller.kpiDefs.remove);
+router.delete("/kpi-definitions/:id", PERF("delete"), controller.kpiDefs.remove);
 
 // ── Performance cycles ─────────────────────────────────────
-router.get("/performance-cycles", P("view"), controller.cycles.list);
+router.get("/performance-cycles", PERF("view"), controller.cycles.list);
 router.post(
   "/performance-cycles",
-  P("create"),
+  PERF("create"),
   validate.cycle.create,
   controller.cycles.create,
 );
-router.get("/performance-cycles/:id", P("view"), controller.cycles.get);
+router.get("/performance-cycles/:id", PERF("view"), controller.cycles.get);
 router.patch(
   "/performance-cycles/:id",
-  P("edit"),
+  PERF("edit"),
   validate.cycle.update,
   controller.cycles.update,
 );
-router.delete("/performance-cycles/:id", P("delete"), controller.cycles.remove);
+router.delete("/performance-cycles/:id", PERF("delete"), controller.cycles.remove);
 
 // ── Appraisal scoring + reviews (F-8) ──────────────────────
 // Scores are nested under a cycle; reviews roll the scores into one figure.
 router.get(
   "/performance-cycles/:cycleId/scores",
-  P("view"),
+  PERF("view"),
   controller.appraisal.listScores,
 );
 router.post(
   "/performance-cycles/:cycleId/scores",
-  P("edit"),
+  PERF("edit"),
   validate.appraisal.score,
   controller.appraisal.score,
 );
 // Auto-score a cycle from real HR data (attendance, sales, quality, ratings).
 router.post(
   "/performance-cycles/:cycleId/auto-score",
-  P("edit"),
+  PERF("edit"),
   validate.appraisal.autoScore,
   controller.appraisal.autoScore,
 );
 // Manager calibration of a single score (overrides + shields from auto-refresh).
 router.post(
   "/performance-cycles/:cycleId/scores/:scoreId/calibrate",
-  P("edit"),
+  PERF("edit"),
   validate.appraisal.calibrate,
   controller.appraisal.calibrate,
 );
 router.post(
   "/performance-cycles/:cycleId/reviews",
-  P("edit"),
+  PERF("edit"),
   validate.appraisal.reviewGenerate,
   controller.appraisal.generateReview,
 );
-router.get("/performance-reviews", P("view"), controller.appraisal.listReviews);
+router.get("/performance-reviews", PERF("view"), controller.appraisal.listReviews);
 router.get(
   "/performance-reviews/:id",
-  P("view"),
+  PERF("view"),
   controller.appraisal.getReview,
 );
 router.patch(
   "/performance-reviews/:id",
-  P("edit"),
+  PERF("edit"),
   validate.appraisal.reviewContent,
   controller.appraisal.updateReview,
 );
 router.post(
   "/performance-reviews/:id/advance",
-  P("approve"),
+  PERF("approve"),
   validate.appraisal.reviewAdvance,
   controller.appraisal.advanceReview,
 );
 // Export the review as a stored PDF (sets performance_reviews.document_id).
 router.post(
   "/performance-reviews/:id/pdf",
-  P("edit"),
+  PERF("edit"),
   controller.appraisal.exportPdf,
 );
 router.post(
   "/performance-reviews/:id/acknowledge",
-  P("edit"),
+  PERF("edit"),
   validate.appraisal.reviewAcknowledge,
   controller.appraisal.acknowledgeReview,
 );

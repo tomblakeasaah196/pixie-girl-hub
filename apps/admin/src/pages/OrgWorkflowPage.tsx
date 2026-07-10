@@ -22,6 +22,9 @@ import {
   XCircle,
   MessageSquare,
   Layers,
+  Search,
+  Copy,
+  Wand2,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DataTable, type Column } from "@/components/ui/DataTable";
@@ -52,9 +55,15 @@ import {
   type Role,
   type Permission,
   type CatalogEntry,
+  type Catalog,
   ACTION_META,
   RECORD_SCOPE_LABELS,
 } from "@/lib/access-api";
+import {
+  moduleLabel,
+  moduleDescription,
+  groupModules,
+} from "@/lib/access-labels";
 import { listStaff, type StaffRow } from "@/lib/hr-api";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -866,69 +875,24 @@ function OrgTab({
 // ║  TAB 2 — PERMISSIONS                                        ║
 // ╚════════════════════════════════════════════════════════════╝
 
-const MODULE_LABELS: Record<string, string> = {
-  accounting: "Accounting",
-  ad_analytics: "Ad Analytics",
-  ai_governance: "AI Gov.",
-  ai_insights: "AI Insights",
-  attendance: "Attendance",
-  audit: "Audit",
-  business_setup: "Biz Setup",
-  calendar: "Calendar",
-  catalogue: "Catalogue",
-  comms_studio: "Comms Studio",
-  contacts: "Contacts",
-  crm: "CRM",
-  customer_onboarding: "Cust. Onb.",
-  dashboards: "Dashboards",
-  documents: "Documents",
-  email_campaigns: "Email Camp.",
-  expenses: "Expenses",
-  help_center: "Help",
-  hr_payroll: "HR & Pay",
-  iam: "IAM",
-  intercompany: "Interco.",
-  invoicing: "Invoicing",
-  logistics: "Logistics",
-  messaging_accounts: "Msg. Accts",
-  org_workflow: "Org & WF",
-  outbound_policy: "Outbound",
-  platform_settings: "Platform",
-  praxis_ai: "Praxis AI",
-  pricing: "Pricing",
-  production: "Production",
-  purchasing: "Purchasing",
-  retail_partners: "Retail",
-  retention: "Retention",
-  sales: "Sales",
-  sales_campaigns: "Sales Camp.",
-  service_catalogue: "Svc. Cat.",
-  service_jobs: "Service",
-  settings: "Settings",
-  smartcomm: "Comm.",
-  social: "Social",
-  stock: "Stock",
-  storefront: "Storefront",
-  storefront_studio: "SF Studio",
-  stylist_programme: "Stylists",
-  tasks: "Tasks",
-};
-
 const ACTION_ORDER = ["view", "create", "edit", "delete", "approve", "export"];
 
 function RoleEditorDrawer({
   roleId,
   catalog,
+  groups,
   onClose,
   canEdit,
 }: {
   roleId: string;
   catalog: CatalogEntry[];
+  groups?: Catalog["groups"];
   onClose: () => void;
   canEdit: boolean;
 }) {
   const qc = useQueryClient();
   const [expandedModule, setExpandedModule] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
   const [pendingGrants, setPendingGrants] = useState<Map<string, Permission>>(
     new Map(),
   );
@@ -1011,6 +975,43 @@ function RoleEditorDrawer({
     setDirty(true);
   }
 
+  // Bulk: ADD the given actions across a set of modules (union — never removes
+  // an existing grant). Powers the per-section "View" / "Full access" buttons.
+  function grantModulesActions(mods: CatalogEntry[], actions: string[]) {
+    if (!canEdit || role?.is_system) return;
+    initPending();
+    const next = new Map(dirty ? pendingGrants : permMap);
+    for (const cat of mods) {
+      for (const action of actions) {
+        if (!cat.actions.includes(action)) continue;
+        const key = `${cat.module}.${action}`;
+        if (!next.has(key)) {
+          next.set(key, {
+            permission_id: "",
+            module: cat.module,
+            action,
+            record_scope: "all",
+            hidden_fields: [],
+          });
+        }
+      }
+    }
+    setPendingGrants(next);
+    setDirty(true);
+  }
+
+  // Bulk: remove every grant across a set of modules.
+  function clearModules(mods: CatalogEntry[]) {
+    if (!canEdit || role?.is_system) return;
+    initPending();
+    const next = new Map(dirty ? pendingGrants : permMap);
+    for (const cat of mods) {
+      for (const action of ACTION_ORDER) next.delete(`${cat.module}.${action}`);
+    }
+    setPendingGrants(next);
+    setDirty(true);
+  }
+
   async function handleSave() {
     if (!roleId || !dirty) return;
     setSaving(true);
@@ -1088,46 +1089,110 @@ function RoleEditorDrawer({
               </span>
             </div>
           )}
-          <div className="space-y-1.5">
-            {catalog.map((cat) => {
-              const modulePerms = ACTION_ORDER.filter((a) =>
-                effectiveMap.has(`${cat.module}.${a}`),
-              );
-              const isExp = expandedModule === cat.module;
-              return (
-                <div
-                  key={cat.module}
-                  className="rounded-xl border border-[rgb(var(--border-c))] overflow-hidden"
-                >
-                  <button
-                    onClick={() => setExpandedModule(isExp ? null : cat.module)}
-                    className="flex w-full items-center gap-3 px-4 py-3 hover:bg-[rgb(var(--text)/0.03)] transition-colors"
-                  >
-                    <span className="text-[13px] font-semibold flex-1 text-left">
-                      {MODULE_LABELS[cat.module] ?? cat.module}
-                    </span>
-                    <div className="flex gap-1">
-                      {modulePerms.map((a) => (
-                        <span
-                          key={a}
-                          className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded"
-                          style={{
-                            background: `${ACTION_META[a]?.color}22`,
-                            color: ACTION_META[a]?.color,
-                          }}
-                        >
-                          {a}
-                        </span>
-                      ))}
+          {/* Search — jump to any module in under a second */}
+          <div className="relative mb-3">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[rgb(var(--text-faint))]" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search modules… (e.g. Messaging, Performance)"
+              className="w-full bg-[rgb(var(--panel-2)/0.6)] border border-[rgb(var(--border-c))] rounded-xl pl-9 pr-3 py-2.5 text-[13px] focus:outline-none focus:border-[rgb(var(--accent)/0.5)]"
+              autoComplete="off"
+              data-lpignore="true"
+              data-1p-ignore=""
+              data-form-type="other"
+            />
+          </div>
+          <div className="space-y-4">
+            {groupModules(
+              catalog.filter((c) => {
+                const q = search.trim().toLowerCase();
+                if (!q) return true;
+                return (
+                  moduleLabel(c.module, c).toLowerCase().includes(q) ||
+                  moduleDescription(c.module, c).toLowerCase().includes(q) ||
+                  c.module.includes(q)
+                );
+              }),
+              groups,
+            ).map((grp) => (
+              <div key={grp.key}>
+                <div className="flex items-center justify-between mb-1.5 px-0.5">
+                  <div className="micro">{grp.label}</div>
+                  {canEdit && !isSystemRole && (
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() =>
+                          grantModulesActions(grp.modules, ["view"])
+                        }
+                        className="text-[10px] font-semibold px-2 py-0.5 rounded-md border border-[rgb(var(--border-c))] text-[rgb(var(--text-muted))] hover:border-[rgb(var(--accent)/0.4)] hover:text-[rgb(var(--text))] transition-colors"
+                      >
+                        View all
+                      </button>
+                      <button
+                        onClick={() =>
+                          grantModulesActions(grp.modules, ACTION_ORDER)
+                        }
+                        className="text-[10px] font-semibold px-2 py-0.5 rounded-md border border-[rgb(var(--border-c))] text-[rgb(var(--text-muted))] hover:border-[rgb(var(--accent)/0.4)] hover:text-[rgb(var(--text))] transition-colors"
+                      >
+                        Full access
+                      </button>
+                      <button
+                        onClick={() => clearModules(grp.modules)}
+                        className="text-[10px] font-semibold px-2 py-0.5 rounded-md border border-[rgb(var(--border-c))] text-[rgb(var(--text-muted))] hover:border-[rgb(var(--danger)/0.4)] hover:text-[rgb(var(--danger))] transition-colors"
+                      >
+                        Clear
+                      </button>
                     </div>
-                    <ChevronDown
-                      className={cn(
-                        "w-4 h-4 text-[rgb(var(--text-muted))] transition-transform",
-                        isExp && "rotate-180",
-                      )}
-                    />
-                  </button>
-                  {isExp && (
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  {grp.modules.map((cat) => {
+                    const modulePerms = ACTION_ORDER.filter((a) =>
+                      effectiveMap.has(`${cat.module}.${a}`),
+                    );
+                    const isExp = expandedModule === cat.module;
+                    return (
+                      <div
+                        key={cat.module}
+                        className="rounded-xl border border-[rgb(var(--border-c))] overflow-hidden"
+                      >
+                        <button
+                          onClick={() =>
+                            setExpandedModule(isExp ? null : cat.module)
+                          }
+                          className="flex w-full items-center gap-3 px-4 py-2.5 hover:bg-[rgb(var(--text)/0.03)] transition-colors"
+                        >
+                          <div className="flex-1 min-w-0 text-left">
+                            <div className="text-[13px] font-semibold">
+                              {moduleLabel(cat.module, cat)}
+                            </div>
+                            <div className="text-[11px] text-[rgb(var(--text-faint))] leading-tight truncate">
+                              {moduleDescription(cat.module, cat)}
+                            </div>
+                          </div>
+                          <div className="flex gap-1">
+                            {modulePerms.map((a) => (
+                              <span
+                                key={a}
+                                className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded"
+                                style={{
+                                  background: `${ACTION_META[a]?.color}22`,
+                                  color: ACTION_META[a]?.color,
+                                }}
+                              >
+                                {a}
+                              </span>
+                            ))}
+                          </div>
+                          <ChevronDown
+                            className={cn(
+                              "w-4 h-4 text-[rgb(var(--text-muted))] transition-transform shrink-0",
+                              isExp && "rotate-180",
+                            )}
+                          />
+                        </button>
+                        {isExp && (
                     <div className="border-t border-[rgb(var(--border-c))] bg-[rgb(var(--text)/0.02)] px-4 py-3 space-y-3">
                       {/* Action toggles */}
                       <div className="grid grid-cols-3 gap-2">
@@ -1228,11 +1293,14 @@ function RoleEditorDrawer({
                             </div>
                           </div>
                         )}
-                    </div>
-                  )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
         </>
       )}
@@ -1241,17 +1309,22 @@ function RoleEditorDrawer({
 }
 
 function NewRoleDrawer({
+  roles,
   onClose,
   onCreated,
 }: {
+  roles: Role[];
   onClose: () => void;
   onCreated: (r: Role) => void;
 }) {
   const [roleName, setRoleName] = useState("");
   const [description, setDescription] = useState("");
   const [scope, setScope] = useState<"brand" | "system">("brand");
+  const [cloneFromId, setCloneFromId] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const cloneFrom = roles.find((r) => r.role_id === cloneFromId) ?? null;
 
   async function handleCreate() {
     setSaving(true);
@@ -1262,6 +1335,22 @@ function NewRoleDrawer({
         description: description.trim() || undefined,
         scope,
       });
+      // Clone the chosen role's grants into the new one, so the CEO starts from
+      // a working set and just tweaks — a new role in seconds, not from scratch.
+      if (cloneFromId) {
+        const perms = await accessApi.getRolePermissions(cloneFromId);
+        if (Array.isArray(perms) && perms.length > 0) {
+          await accessApi.setRolePermissions(
+            role.role_id,
+            perms.map((p) => ({
+              module: p.module,
+              action: p.action,
+              record_scope: p.record_scope,
+              hidden_fields: p.hidden_fields,
+            })),
+          );
+        }
+      }
       onCreated(role);
     } catch (e: unknown) {
       toastReport("Org & Workflow → Roles", "Create role", e);
@@ -1274,6 +1363,37 @@ function NewRoleDrawer({
   return (
     <Drawer open onClose={onClose} title="New role">
       <div className="space-y-4">
+        <div>
+          <label className="micro block mb-1.5">
+            Start from{" "}
+            <span className="text-[rgb(var(--text-faint))]">
+              — copy another role, then tweak
+            </span>
+          </label>
+          <div className="relative">
+            <Wand2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[rgb(var(--accent-glow))] pointer-events-none" />
+            <select
+              className="w-full bg-[rgb(var(--panel-2)/0.6)] border border-[rgb(var(--border-c))] rounded-xl pl-9 pr-3.5 py-2.5 text-[13px] focus:outline-none focus:border-[rgb(var(--accent)/0.5)]"
+              value={cloneFromId}
+              onChange={(e) => setCloneFromId(e.target.value)}
+            >
+              <option value="">— Blank (no permissions) —</option>
+              {roles.map((r) => (
+                <option key={r.role_id} value={r.role_id}>
+                  {r.role_name}
+                  {r.is_system ? " (system)" : ""} · {r.permission_count} grants
+                </option>
+              ))}
+            </select>
+          </div>
+          {cloneFrom && (
+            <p className="text-[11px] text-[rgb(var(--accent-glow))] mt-1">
+              Copies {cloneFrom.permission_count} grants from{" "}
+              <span className="font-semibold">{cloneFrom.role_name}</span> —
+              open afterwards to adjust.
+            </p>
+          )}
+        </div>
         <div>
           <label className="micro block mb-1.5">Role name (snake_case)</label>
           <input
@@ -1311,7 +1431,11 @@ function NewRoleDrawer({
           disabled={!roleName.trim() || saving}
           onClick={handleCreate}
         >
-          {saving ? "Creating…" : "Create role"}
+          {saving
+            ? "Creating…"
+            : cloneFrom
+              ? `Create from ${cloneFrom.role_name}`
+              : "Create role"}
         </Button>
       </div>
     </Drawer>
@@ -1321,6 +1445,7 @@ function NewRoleDrawer({
 function PermissionsTab({ canEdit }: { canEdit: boolean }) {
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
   const [showNewRole, setShowNewRole] = useState(false);
+  const [moduleQuery, setModuleQuery] = useState("");
   const qc = useQueryClient();
 
   const { data: roles = [], isLoading: rolesLoading } = useQuery({
@@ -1349,6 +1474,50 @@ function PermissionsTab({ canEdit }: { canEdit: boolean }) {
   });
 
   const catalogModules = catalog?.modules ?? [];
+
+  // Group + filter the columns so they read like the sidebar and the CEO can
+  // jump straight to a module (e.g. "Messaging") in a second.
+  const grouped = groupModules(
+    catalogModules.filter((m) => {
+      const q = moduleQuery.trim().toLowerCase();
+      if (!q) return true;
+      return (
+        moduleLabel(m.module, m).toLowerCase().includes(q) ||
+        moduleDescription(m.module, m).toLowerCase().includes(q) ||
+        m.module.includes(q)
+      );
+    }),
+    catalog?.groups,
+  );
+  const visibleModules = grouped.flatMap((g) => g.modules);
+
+  // One-click clone of any role (seeded or custom) → opens the copy to tweak.
+  async function handleDuplicate(role: Role) {
+    try {
+      const newRole = await accessApi.createRole({
+        role_name: `${role.role_name}_copy`,
+        description: role.description ?? undefined,
+        scope: "brand",
+      });
+      const perms = await accessApi.getRolePermissions(role.role_id);
+      if (Array.isArray(perms) && perms.length > 0) {
+        await accessApi.setRolePermissions(
+          newRole.role_id,
+          perms.map((p) => ({
+            module: p.module,
+            action: p.action,
+            record_scope: p.record_scope,
+            hidden_fields: p.hidden_fields,
+          })),
+        );
+      }
+      qc.invalidateQueries({ queryKey: ["roles"] });
+      qc.invalidateQueries({ queryKey: ["roles-permissions-all"] });
+      setSelectedRoleId(newRole.role_id);
+    } catch (e: unknown) {
+      toastReport("Org & Workflow → Roles", "Duplicate role", e);
+    }
+  }
 
   // Legend
   const legend = Object.entries(ACTION_META).slice(0, 6);
@@ -1380,16 +1549,31 @@ function PermissionsTab({ canEdit }: { canEdit: boolean }) {
             </span>
           ))}
         </div>
-        {canEdit && (
-          <Button
-            variant="primary"
-            size="sm"
-            icon={<Plus className="w-3.5 h-3.5" />}
-            onClick={() => setShowNewRole(true)}
-          >
-            New Role
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[rgb(var(--text-faint))]" />
+            <input
+              value={moduleQuery}
+              onChange={(e) => setModuleQuery(e.target.value)}
+              placeholder="Find a module…"
+              className="w-44 bg-[rgb(var(--panel-2)/0.6)] border border-[rgb(var(--border-c))] rounded-lg pl-8 pr-2.5 py-1.5 text-[12px] focus:outline-none focus:border-[rgb(var(--accent)/0.5)]"
+              autoComplete="off"
+              data-lpignore="true"
+              data-1p-ignore=""
+              data-form-type="other"
+            />
+          </div>
+          {canEdit && (
+            <Button
+              variant="primary"
+              size="sm"
+              icon={<Plus className="w-3.5 h-3.5" />}
+              onClick={() => setShowNewRole(true)}
+            >
+              New Role
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Roles × modules matrix */}
@@ -1397,18 +1581,44 @@ function PermissionsTab({ canEdit }: { canEdit: boolean }) {
         <div className="overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
+              {/* Section band — the same groups as the sidebar */}
               <tr>
-                <th className="sticky left-0 z-10 bg-[rgb(var(--panel))] micro p-[12px_18px] border-b border-r border-[rgb(var(--border-c))] text-left min-w-[160px]">
+                <th
+                  rowSpan={2}
+                  className="sticky left-0 z-10 bg-[rgb(var(--panel))] micro p-[12px_18px] border-b border-r border-[rgb(var(--border-c))] text-left min-w-[160px] align-bottom"
+                >
                   Role
                 </th>
-                {catalogModules.map((m) => (
+                {grouped.map((g) => (
                   <th
-                    key={m.module}
-                    className="micro p-[10px_8px] border-b border-[rgb(var(--border-c))] text-center min-w-[64px] text-[9px]"
+                    key={g.key}
+                    colSpan={g.modules.length}
+                    className="p-[7px_8px] border-b border-l border-[rgb(var(--border-c))] text-center text-[10px] font-bold uppercase tracking-wide text-[rgb(var(--accent-glow))] bg-[rgb(var(--text)/0.03)]"
                   >
-                    {(MODULE_LABELS[m.module] ?? m.module).slice(0, 8)}
+                    {g.label}
                   </th>
                 ))}
+              </tr>
+              <tr>
+                {visibleModules.map((m) => {
+                  const isGroupStart = grouped.some(
+                    (g) => g.modules[0]?.module === m.module,
+                  );
+                  return (
+                    <th
+                      key={m.module}
+                      title={moduleDescription(m.module, m)}
+                      className={cn(
+                        "p-[8px_6px] border-b border-[rgb(var(--border-c))] text-center align-bottom min-w-[84px] max-w-[104px]",
+                        isGroupStart && "border-l",
+                      )}
+                    >
+                      <span className="block text-[10px] font-semibold leading-tight whitespace-normal text-[rgb(var(--text))]">
+                        {moduleLabel(m.module, m)}
+                      </span>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
@@ -1427,22 +1637,37 @@ function PermissionsTab({ canEdit }: { canEdit: boolean }) {
                         "bg-[rgb(var(--accent)/0.05)]",
                     )}
                   >
-                    <td className="sticky left-0 z-10 bg-[rgb(var(--panel))] p-[0_18px] h-[48px] border-r border-[rgb(var(--border-c))]">
+                    <td className="group sticky left-0 z-10 bg-[rgb(var(--panel))] p-[0_18px] h-[48px] border-r border-[rgb(var(--border-c))]">
                       <div className="flex items-center gap-2">
                         {role.is_system ? (
                           <Lock className="w-3 h-3 text-[rgb(var(--warn))] shrink-0" />
                         ) : (
                           <Shield className="w-3 h-3 text-[rgb(var(--accent))] shrink-0" />
                         )}
-                        <span className="text-[12.5px] font-semibold truncate max-w-[130px]">
+                        <span className="text-[12.5px] font-semibold truncate max-w-[110px]">
                           {role.role_name}
                         </span>
                         {role.is_system && (
                           <Crown className="w-3 h-3 text-[rgb(var(--warn))] shrink-0" />
                         )}
+                        {canEdit && (
+                          <button
+                            title="Duplicate this role"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDuplicate(role);
+                            }}
+                            className="ml-auto opacity-0 group-hover:opacity-100 p-1 rounded-md hover:bg-[rgb(var(--text)/0.08)] text-[rgb(var(--text-muted))] transition-all"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </td>
-                    {catalogModules.map((m) => {
+                    {visibleModules.map((m) => {
+                      const isGroupStart = grouped.some(
+                        (g) => g.modules[0]?.module === m.module,
+                      );
                       const hasApprove = permSet.has(`${m.module}.approve`);
                       const hasEdit =
                         permSet.has(`${m.module}.edit`) ||
@@ -1458,7 +1683,10 @@ function PermissionsTab({ canEdit }: { canEdit: boolean }) {
                       return (
                         <td
                           key={m.module}
-                          className="p-[0_4px] h-[48px] text-center"
+                          className={cn(
+                            "p-[0_4px] h-[48px] text-center",
+                            isGroupStart && "border-l border-[rgb(var(--border-c))]",
+                          )}
                         >
                           {color ? (
                             <span
@@ -1478,7 +1706,9 @@ function PermissionsTab({ canEdit }: { canEdit: boolean }) {
           </table>
         </div>
         <div className="px-4 py-2 border-t border-[rgb(var(--border-c))] micro">
-          {catalogModules.length} modules · click a role row to open the editor
+          {moduleQuery.trim()
+            ? `${visibleModules.length} of ${catalogModules.length} modules match "${moduleQuery.trim()}"`
+            : `${catalogModules.length} modules · click a role to edit, or hover a role to duplicate it`}
         </div>
       </div>
 
@@ -1487,6 +1717,7 @@ function PermissionsTab({ canEdit }: { canEdit: boolean }) {
         <RoleEditorDrawer
           roleId={selectedRoleId}
           catalog={catalogModules}
+          groups={catalog?.groups}
           canEdit={canEdit}
           onClose={() => setSelectedRoleId(null)}
         />
@@ -1495,9 +1726,11 @@ function PermissionsTab({ canEdit }: { canEdit: boolean }) {
       {/* New role drawer */}
       {showNewRole && (
         <NewRoleDrawer
+          roles={roles}
           onClose={() => setShowNewRole(false)}
           onCreated={(r) => {
             qc.invalidateQueries({ queryKey: ["roles"] });
+            qc.invalidateQueries({ queryKey: ["roles-permissions-all"] });
             setShowNewRole(false);
             setSelectedRoleId(r.role_id);
           }}
@@ -1935,7 +2168,7 @@ function WorkflowBuilderDrawer({
               <option value="">— Select module —</option>
               {MODULE_KEYS.map((k) => (
                 <option key={k} value={k}>
-                  {MODULE_LABELS[k] ?? k}
+                  {moduleLabel(k)}
                 </option>
               ))}
             </select>
@@ -2040,8 +2273,7 @@ function WorkflowsTab({ canEdit }: { canEdit: boolean }) {
       qc.invalidateQueries({ queryKey: ["workflow-definitions"] }),
   });
 
-  const triggerLabel = (m: string, a: string) =>
-    `${MODULE_LABELS[m] ?? m} · ${a}`;
+  const triggerLabel = (m: string, a: string) => `${moduleLabel(m)} · ${a}`;
 
   const wfColumns: Column<WorkflowDefinition>[] = [
     {

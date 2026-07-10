@@ -321,10 +321,34 @@ async function testAccount({ id }) {
     }
   } catch (err) {
     const status = err.response && err.response.status;
+    // Meta returns a structured error body on the Graph node ping. Axios
+    // collapses it to the opaque "Request failed with status code 400",
+    // which tells the operator nothing. Surface Meta's own message +
+    // code/subcode/fbtrace_id so a failed Test names the real cause —
+    // e.g. "Invalid OAuth access token", "(#100) nonexistent field", or
+    // "Unsupported get request … missing permissions" (wrong ID / scope).
+    const metaErr =
+      err.response && err.response.data && err.response.data.error;
     logger.warn(
-      { err: err.message, platform: row.platform, status },
+      {
+        platform: row.platform,
+        status,
+        err: err.message,
+        meta_error: metaErr || null,
+      },
       "messaging_accounts.test failed",
     );
+    if (metaErr && metaErr.message) {
+      const parts = [metaErr.message];
+      if (metaErr.code) parts.push(`code ${metaErr.code}`);
+      if (metaErr.error_subcode) parts.push(`subcode ${metaErr.error_subcode}`);
+      if (metaErr.fbtrace_id) parts.push(`trace ${metaErr.fbtrace_id}`);
+      throw new AppError(
+        "PROVIDER_PING_FAILED",
+        parts.join(" — "),
+        status && status >= 400 && status < 500 ? status : 502,
+      );
+    }
     throw new AppError(
       err.code || "PROVIDER_PING_FAILED",
       err.message || "Provider check failed",

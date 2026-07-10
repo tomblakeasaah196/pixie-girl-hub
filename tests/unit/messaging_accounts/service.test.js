@@ -145,4 +145,37 @@ describe("messaging_accounts.service", () => {
       http_status: 401,
     });
   });
+
+  test("testAccount surfaces Meta's structured error message (not axios's opaque 400)", async () => {
+    repo.getRaw.mockResolvedValue({
+      account_id: "id-1",
+      platform: "instagram",
+      external_account_id: "IGBIZ1",
+      access_token_enc: "enc:bad-token",
+    });
+    // Axios collapses a Graph 400 to a useless message; Meta's real cause
+    // lives in response.data.error. The test-ping must relay it.
+    const err = Object.assign(new Error("Request failed with status code 400"), {
+      response: {
+        status: 400,
+        data: {
+          error: {
+            message:
+              "Unsupported get request. Object with ID 'IGBIZ1' does not exist, cannot be loaded due to missing permissions, or does not support this operation.",
+            code: 100,
+            error_subcode: 33,
+            fbtrace_id: "AbCdEf123",
+          },
+        },
+      },
+    });
+    axios.get.mockRejectedValue(err);
+    await expect(service.testAccount({ id: "id-1" })).rejects.toMatchObject({
+      http_status: 400,
+      message: expect.stringContaining("Unsupported get request"),
+    });
+    const thrown = await service.testAccount({ id: "id-1" }).catch((e) => e);
+    expect(thrown.message).toContain("code 100");
+    expect(thrown.message).toContain("trace AbCdEf123");
+  });
 });

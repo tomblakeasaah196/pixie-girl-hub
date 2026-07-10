@@ -441,14 +441,8 @@ function PraxisSidebar({
       <Card className="p-4">
         <div className="micro mb-3">At a glance</div>
         <div className="space-y-2 text-[12.5px]">
-          <Row
-            label="Starts"
-            value={formatDateTime(campaign.starts_at)}
-          />
-          <Row
-            label="Ends"
-            value={formatDateTime(campaign.ends_at)}
-          />
+          <Row label="Starts" value={formatDateTime(campaign.starts_at)} />
+          <Row label="Ends" value={formatDateTime(campaign.ends_at)} />
           <Row
             label="Visitors"
             value={String(campaign.total_unique_visitors)}
@@ -558,6 +552,10 @@ function BriefStep({
     ...(gwPaystack ? (["paystack"] as PaymentGateway[]) : []),
     ...(gwNomba ? (["nomba"] as PaymentGateway[]) : []),
   ];
+  // Flexi Pay (PR-3): does this sale offer the instalment plan at checkout?
+  const [allowInstalments, setAllowInstalments] = useState(
+    campaign.allow_instalments ?? false,
+  );
   const [abandonment, setAbandonment] = useState(
     campaign.abandonment_recovery_enabled,
   );
@@ -570,9 +568,7 @@ function BriefStep({
   // Static "1 USD = N NGN" rate used by the landing-page currency toggle.
   // Customer-facing display only — order settlement uses the LIVE FX rate.
   const [ngnPerUsd, setNgnPerUsd] = useState<string>(
-    campaign.ngn_per_usd_rate != null
-      ? String(campaign.ngn_per_usd_rate)
-      : "",
+    campaign.ngn_per_usd_rate != null ? String(campaign.ngn_per_usd_rate) : "",
   );
   // Free-shipping threshold: when cart goods subtotal ≥ this amount, delivery
   // is automatically zeroed. Empty string = no threshold.
@@ -620,6 +616,7 @@ function BriefStep({
     multiCurrency !== campaign.allow_multi_currency_display ||
     allowedGateways.slice().sort().join(",") !==
       initialGateways.slice().sort().join(",") ||
+    allowInstalments !== (campaign.allow_instalments ?? false) ||
     abandonment !== campaign.abandonment_recovery_enabled ||
     deliveryWeeks !==
       (campaign.delivery_weeks != null
@@ -668,6 +665,7 @@ function BriefStep({
         exit_intent_button: exitEnabled ? exitButton || null : null,
         allow_multi_currency_display: multiCurrency,
         allowed_payment_gateways: allowedGateways,
+        allow_instalments: allowInstalments,
         abandonment_recovery_enabled: abandonment,
         delivery_weeks: deliveryWeeks ? Number(deliveryWeeks) : null,
         preorder_extra_weeks: Number(preorderExtraWeeks) || 4,
@@ -699,7 +697,11 @@ function BriefStep({
               value={name}
               onChange={(e) => setName(e.target.value)}
               disabled={!canEdit}
-              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50"
+              autoComplete="off"
+              data-lpignore="true"
+              data-1p-ignore=""
+              data-form-type="other"
             />
           </Field>
           <Field
@@ -715,7 +717,11 @@ function BriefStep({
               onChange={(e) => setSlug(cleanSlugInput(e.target.value))}
               disabled={!canEdit}
               spellCheck={false}
-              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50 font-mono" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50 font-mono"
+              autoComplete="off"
+              data-lpignore="true"
+              data-1p-ignore=""
+              data-form-type="other"
             />
           </Field>
         </div>
@@ -767,7 +773,11 @@ function BriefStep({
               disabled={!canEdit}
               inputMode="decimal"
               placeholder="1310"
-              className="flex-1 h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[13px] tabular-nums disabled:opacity-50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+              className="flex-1 h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[13px] tabular-nums disabled:opacity-50"
+              autoComplete="off"
+              data-lpignore="true"
+              data-1p-ignore=""
+              data-form-type="other"
             />
             <span className="inline-flex items-center px-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-muted text-[13px] font-mono">
               NGN
@@ -778,8 +788,8 @@ function BriefStep({
 
       <FormSection title="Top-level discount">
         <p className="text-[12px] text-text-faint -mt-2 mb-2">
-          Fully optional. Leave blank when bundles or per-position ladders
-          carry the offer.
+          Fully optional. Leave blank when bundles or per-position ladders carry
+          the offer.
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="Discount type" hint="Optional — leave blank for none">
@@ -823,7 +833,11 @@ function BriefStep({
               onChange={(e) => setDiscountValue(e.target.value)}
               disabled={!canEdit || !discountType}
               placeholder={discountType ? "" : "—"}
-              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] font-mono tabular-nums disabled:opacity-40" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] font-mono tabular-nums disabled:opacity-40"
+              autoComplete="off"
+              data-lpignore="true"
+              data-1p-ignore=""
+              data-form-type="other"
             />
           </Field>
         </div>
@@ -872,8 +886,8 @@ function BriefStep({
       <FormSection title="Payment gateways">
         <p className="text-[12px] text-text-faint -mt-2 mb-2">
           Choose which gateways buyers can pay with on this sale's checkout.
-          Keep at least one on. USD orders always settle on Nomba (the only
-          USD rail), so turning Nomba off only affects Naira checkout.
+          Keep at least one on. USD orders always settle on Nomba (the only USD
+          rail), so turning Nomba off only affects Naira checkout.
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Field label="Paystack" hint="Cards, bank transfer, USSD (NGN)">
@@ -899,7 +913,24 @@ function BriefStep({
               label={gwNomba ? "On" : "Off"}
             />
           </Field>
+          <Field
+            label="Allow Flexi Pay (instalments)"
+            hint="Buyers can reserve with a deposit & pay the balance later"
+          >
+            <Toggle
+              checked={allowInstalments}
+              onChange={setAllowInstalments}
+              disabled={!canEdit}
+              label={allowInstalments ? "On" : "Off"}
+            />
+          </Field>
         </div>
+        {allowInstalments && (
+          <p className="text-[12px] text-text-faint mt-1">
+            Flexi Pay must also be enabled for the Sales Campaign channel in
+            Sales → Payments for this to show at checkout.
+          </p>
+        )}
         {!gwNomba && multiCurrency && (
           <div className="flex items-center gap-2 text-[12px] text-warn mt-1">
             <span>
@@ -1004,7 +1035,11 @@ function BriefStep({
                   onChange={(e) => setExitCode(e.target.value)}
                   disabled={!canEdit}
                   placeholder="STAY10"
-                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[13px] disabled:opacity-50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[13px] disabled:opacity-50"
+                  autoComplete="off"
+                  data-lpignore="true"
+                  data-1p-ignore=""
+                  data-form-type="other"
                 />
               </Field>
               <Field label="Exit-intent ₦ off">
@@ -1025,13 +1060,14 @@ function BriefStep({
                   onChange={(e) => setExitTitle(e.target.value)}
                   disabled={!canEdit}
                   placeholder="Wait — a small gift before you go."
-                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50"
+                  autoComplete="off"
+                  data-lpignore="true"
+                  data-1p-ignore=""
+                  data-form-type="other"
                 />
               </Field>
-              <Field
-                label="Modal body"
-                hint="Paragraph text below the title"
-              >
+              <Field label="Modal body" hint="Paragraph text below the title">
                 <textarea
                   value={exitBody}
                   onChange={(e) => setExitBody(e.target.value)}
@@ -1041,16 +1077,17 @@ function BriefStep({
                   className="w-full px-[13px] py-[10px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50"
                 />
               </Field>
-              <Field
-                label="Button label"
-                hint="Text on the CTA button"
-              >
+              <Field label="Button label" hint="Text on the CTA button">
                 <input
                   value={exitButton}
                   onChange={(e) => setExitButton(e.target.value)}
                   disabled={!canEdit}
                   placeholder="Copy code & keep shopping"
-                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50"
+                  autoComplete="off"
+                  data-lpignore="true"
+                  data-1p-ignore=""
+                  data-form-type="other"
                 />
               </Field>
             </>
@@ -1208,7 +1245,8 @@ function ProductsStep({
         styled_id: sp.styled_id,
         product_id: sp.base_product_id || null,
         image_url: sp.primary_image_url || null,
-        regular_price_ngn: sp.effective_price_ngn ?? sp.retail_price_ngn ?? null,
+        regular_price_ngn:
+          sp.effective_price_ngn ?? sp.retail_price_ngn ?? null,
         regular_price_usd: sp.retail_price_usd ?? null,
         short_description: sp.short_description ?? null,
         long_description: sp.long_description ?? null,
@@ -1243,9 +1281,7 @@ function ProductsStep({
       </div>
 
       {productsQ.isLoading && <Skeleton style={{ height: 80 }} />}
-      {productsQ.isError && (
-        <ErrorState onRetry={() => productsQ.refetch()} />
-      )}
+      {productsQ.isError && <ErrorState onRetry={() => productsQ.refetch()} />}
       {!productsQ.isLoading && products.length === 0 && (
         <EmptyState
           icon={<ShoppingBag className="w-7 h-7" />}
@@ -1393,10 +1429,7 @@ function BundlesStep({
       await importBundle.mutateAsync(offerId);
     } catch (e) {
       toastReport("Sales Campaigns → Campaign builder", "Import bundle", e);
-      describeError(
-        e,
-        "Couldn't import that bundle. Please try again.",
-      );
+      describeError(e, "Couldn't import that bundle. Please try again.");
     }
   }
 
@@ -1408,9 +1441,9 @@ function BundlesStep({
             Campaign bundles
           </h2>
           <p className="text-text-muted text-[13px] mt-1">
-            Import bundles from your catalogue. Pricing, components and
-            images come straight from Catalogue → Bundles — edit the source
-            there and re-import to refresh.
+            Import bundles from your catalogue. Pricing, components and images
+            come straight from Catalogue → Bundles — edit the source there and
+            re-import to refresh.
           </p>
         </div>
         {canEdit && (
@@ -1553,9 +1586,7 @@ function BundlesStep({
 
       {/* Stylish animated modal — bundle hero + full product list + prices */}
       <BundleDetailModal
-        bundleLink={
-          links.find((l) => l.bundle_id === bundleDetailId) || null
-        }
+        bundleLink={links.find((l) => l.bundle_id === bundleDetailId) || null}
         bundleId={bundleDetailId}
         onClose={() => setBundleDetailId(null)}
       />
@@ -1606,14 +1637,14 @@ function CatalogueBundlePicker({
   return (
     <div className="space-y-2 max-h-[60vh] overflow-y-auto">
       {sources.map((s) => {
-        const isImported = links.some(
-          (l) => l.bundle_id === s.bundle_offer_id,
-        );
+        const isImported = links.some((l) => l.bundle_id === s.bundle_offer_id);
         const isBusy = importingId === s.bundle_offer_id;
         return (
           <button
             key={s.bundle_offer_id}
-            onClick={() => !isImported && !isBusy && onImport(s.bundle_offer_id)}
+            onClick={() =>
+              !isImported && !isBusy && onImport(s.bundle_offer_id)
+            }
             disabled={isImported || isBusy}
             className={cn(
               "w-full text-left flex items-center gap-3 p-3 rounded-[12px] border transition-colors",
@@ -1698,8 +1729,7 @@ function pricingModelHelp(m: string): string {
     return "Take this percentage off the total of everything in the bundle.";
   if (m === "amount_off")
     return "Take this fixed ₦ amount off EACH unit — it multiplies by the number of items in the bundle.";
-  if (m === "buy_x_get_y")
-    return "Buy a quantity, get another at a discount.";
+  if (m === "buy_x_get_y") return "Buy a quantity, get another at a discount.";
   if (m === "tiered") return "Different discount at different quantities.";
   return "";
 }
@@ -1740,10 +1770,7 @@ function BundleDetailModal({
     bundleLink?.per_item_discount_ngn != null &&
     Number(bundleLink.per_item_discount_ngn) > 0
   ) {
-    const itemCount = items.reduce(
-      (s, i) => s + (Number(i.quantity) || 1),
-      0,
-    );
+    const itemCount = items.reduce((s, i) => s + (Number(i.quantity) || 1), 0);
     discountedTotal = Math.max(
       0,
       realTotal - Number(bundleLink.per_item_discount_ngn) * itemCount,
@@ -1752,14 +1779,10 @@ function BundleDetailModal({
     bundle?.default_per_item_discount_ngn != null &&
     Number(bundle.default_per_item_discount_ngn) > 0
   ) {
-    const itemCount = items.reduce(
-      (s, i) => s + (Number(i.quantity) || 1),
-      0,
-    );
+    const itemCount = items.reduce((s, i) => s + (Number(i.quantity) || 1), 0);
     discountedTotal = Math.max(
       0,
-      realTotal -
-        Number(bundle.default_per_item_discount_ngn) * itemCount,
+      realTotal - Number(bundle.default_per_item_discount_ngn) * itemCount,
     );
   }
 
@@ -1896,8 +1919,8 @@ function BundleDetailModal({
 
             {items.length === 0 && (
               <div className="text-center py-8 text-text-muted text-[13px]">
-                This bundle has no products yet. Add them under
-                Catalogue → Bundles and re-import.
+                This bundle has no products yet. Add them under Catalogue →
+                Bundles and re-import.
               </div>
             )}
 
@@ -1961,9 +1984,9 @@ function BundleDetailModal({
           </div>
 
           <p className="text-[11.5px] text-text-faint border-t hairline pt-3">
-            Bundles are managed under Catalogue → Bundles. Edit the source
-            there to change the name, components, pricing or images, then
-            re-import to refresh this campaign.
+            Bundles are managed under Catalogue → Bundles. Edit the source there
+            to change the name, components, pricing or images, then re-import to
+            refresh this campaign.
           </p>
         </div>
       )}
@@ -2000,8 +2023,8 @@ function PricingStep({
           </h2>
           <p className="text-text-muted text-[13px] mt-1">
             Discounts for individual wig purchases. 1st wig gets X off, 2nd gets
-            more, 3rd gets even more — encourages buying multiple individual wigs
-            (not bundles).
+            more, 3rd gets even more — encourages buying multiple individual
+            wigs (not bundles).
           </p>
         </div>
         <PositionLadderEditor
@@ -2110,15 +2133,18 @@ function PositionLadderEditor({
   const [lbl, setLbl] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const dirty =
-    JSON.stringify(items) !== JSON.stringify(ladder);
+  const dirty = JSON.stringify(items) !== JSON.stringify(ladder);
 
   function addRow() {
     if (!pos || !disc) return;
     const p = Number(pos);
     const next = items
       .filter((r) => r.position !== p)
-      .concat({ position: p, discount_ngn: Number(disc), label: lbl || undefined });
+      .concat({
+        position: p,
+        discount_ngn: Number(disc),
+        label: lbl || undefined,
+      });
     next.sort((a, b) => a.position - b.position);
     setItems(next);
     setPos("");
@@ -2198,7 +2224,11 @@ function PositionLadderEditor({
                   value={lbl}
                   onChange={(e) => setLbl(e.target.value)}
                   placeholder={`${ordinal(Number(pos) || 1)} wig discount`}
-                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
+                  autoComplete="off"
+                  data-lpignore="true"
+                  data-1p-ignore=""
+                  data-form-type="other"
                 />
               </Field>
             </div>
@@ -2298,7 +2328,11 @@ function StackingBonusEditor({
               onChange={(e) => setLabel(e.target.value)}
               disabled={!canEdit}
               placeholder="You unlocked ₦120,000 off!"
-              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px] disabled:opacity-50"
+              autoComplete="off"
+              data-lpignore="true"
+              data-1p-ignore=""
+              data-form-type="other"
             />
           </Field>
         </div>
@@ -2420,7 +2454,11 @@ function BulkTierEditor({
                   value={lbl}
                   onChange={(e) => setLbl(e.target.value)}
                   placeholder={`${qty || "N"}+ = factory rate`}
-                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+                  className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
+                  autoComplete="off"
+                  data-lpignore="true"
+                  data-1p-ignore=""
+                  data-form-type="other"
                 />
               </Field>
             </div>
@@ -2537,7 +2575,11 @@ function TierEditor({
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
                 placeholder={`Buy ${qty || "N"} save ${money(Number(discount) || 0)}`}
-                className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+                className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
+                autoComplete="off"
+                data-lpignore="true"
+                data-1p-ignore=""
+                data-form-type="other"
               />
             </Field>
           </div>
@@ -2699,7 +2741,11 @@ function UpsellEditor({
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               placeholder="Add 1 more bundle"
-              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
+              autoComplete="off"
+              data-lpignore="true"
+              data-1p-ignore=""
+              data-form-type="other"
             />
           </Field>
           <Field
@@ -2710,7 +2756,11 @@ function UpsellEditor({
               value={subline}
               onChange={(e) => setSubline(e.target.value)}
               placeholder="and save an extra ₦100,000"
-              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+              className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 text-[13px]"
+              autoComplete="off"
+              data-lpignore="true"
+              data-1p-ignore=""
+              data-form-type="other"
             />
           </Field>
           <div className="flex justify-end">
@@ -2786,7 +2836,9 @@ function LandingStep({
           <Button
             variant="primary"
             icon={<Pencil className="w-4 h-4" />}
-            onClick={() => navigate(`/landing-studio?campaign=${campaign.campaign_id}`)}
+            onClick={() =>
+              navigate(`/landing-studio?campaign=${campaign.campaign_id}`)
+            }
           >
             {canEdit ? "Open the Studio" : "Open preview"}
           </Button>
@@ -2833,7 +2885,6 @@ function LandingStep({
           )}
         </div>
       </div>
-
     </Card>
   );
 }

@@ -104,15 +104,15 @@ silently dropped.
 
 ## PR-3 — Admin UI + polish
 
-- [ ] Sales module → **"Payments" tab**: every config field (name, terms, percentages, windows, channel toggles, manual-payment toggle, milestone toggle), per brand, permission-gated
-- [ ] Order Detail: plan badge, paid/balance progress, custom-amount pay-link, send link via WhatsApp/email, **Record bank transfer** modal (mandatory ref/bank, shows recorder), payments ledger labels
-- [ ] Orders list: part-paid filter, balance column, copy-pay-link row action, "cancelled with money paid" flag view
-- [ ] Invoicing UI: record payment + `partially_paid` badge + balance surfacing
-- [ ] Campaign builder: "Allow Flexi Pay" toggle
-- [ ] Quick Sale form: plan picker + first-amount + pay-link at chosen amount
-- [ ] Business Setup: raw `installment_settings` JSON editor replaced by a pointer to the new tab
-- [ ] Comms Studio: verify the three new automations render/edit correctly; refresh default reminder copy (plan name, no "₦0.00 of…" tone)
-- [ ] Tests: lint + build green; component tests where patterns exist
+- [x] Sales module → **"Payments" tab** (`PaymentSettingsView`): every config field (name, editable terms list, first-payment %, top-up minimum, custom-order deposit %, abandonment/reminder/nudge/expiry windows, per-channel toggles, manual-payment toggle, milestone/auto-cancel toggles), per brand. View for all `sales.view`; edits gated on `sales.approve` (fields disabled otherwise). Reads/writes `GET/PUT /sales/payment-settings`.
+- [x] Order Detail: plan badge (`Flexi Pay`), paid/of-total under the balance ribbon, **Payment options** modal — custom-amount pay-link (defaults to full balance, USD-aware) **and** a **Record bank transfer** form (mandatory bank ref + name, recorder stamped server-side, shown only when the config toggle is on).
+- [x] Orders list: **part-paid filter** (backend `part_paid` filter → committed instalment orders with a balance) + existing balance column. _Per-row copy-pay-link consolidated into the Order Detail "Payment options" modal — the admin domain differs from the sales/pay domain, so a per-row permanent-link build was avoided; the capability (copy a pay link) is one click away in the detail._
+- [x] Invoicing UI: **already supported** — `useRecordPayment` panel, `partially_paid` badge, "Paid to date" + balance surfacing all pre-exist. No change needed.
+- [x] Campaign builder: **"Allow Flexi Pay" toggle** (validator `allow_instalments` on create+update, repo column, admin serializer returns it, builder toggle + dirty-check + save). Activates PR-2's campaign checkout picker.
+- [x] Quick Sale form: plan picker (Full / deposit), shown only when the channel enables instalments; instalment charges the snapshotted deposit now, full charges the balance.
+- [x] Business Setup: raw `installment_settings` JSON editor replaced by a pointer card linking to Sales → Payments.
+- [x] Comms Studio: the three new automations render + edit through the generic Studio list (icons added for `payment_received` / `payment_milestone` / `abandoned_checkout`); default copy was seeded plan-name-aware in PR-1 (no "₦0.00 of…" tone).
+- [x] Tests: campaign `allow_instalments` validator test; backend suites green; both apps typecheck + production-build clean; lint clean (pre-existing OrdersView warnings only).
 
 ---
 

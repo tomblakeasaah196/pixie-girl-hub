@@ -136,6 +136,13 @@ describe("createSchema validation", () => {
       createSchema.parse({ ...base, slug: "Black Friday!" }),
     ).toThrow();
   });
+  test("accepts the Flexi Pay allow_instalments toggle (create + update)", () => {
+    expect(() =>
+      createSchema.parse({ ...base, allow_instalments: true }),
+    ).not.toThrow();
+    const parsed = updateSchema.parse({ allow_instalments: true });
+    expect(parsed.allow_instalments).toBe(true);
+  });
 });
 
 describe("signupSchema", () => {
@@ -306,7 +313,10 @@ describe("discount engine", () => {
     // engine and surface as INTERNAL_ERROR at checkout.
     const res = await discount.resolveDiscount({
       brand: "pixiegirl",
-      campaignRef: liveCampaign({ discount_type: "percentage", discount_value: null }),
+      campaignRef: liveCampaign({
+        discount_type: "percentage",
+        discount_value: null,
+      }),
       cart: {
         items: [{ product_id: "p1", unit_price_ngn: "100000.00", quantity: 1 }],
       },

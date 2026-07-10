@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ShoppingBag, Search } from "lucide-react";
 import { DataTable, type Column } from "@/components/ui/DataTable";
@@ -26,7 +32,10 @@ const columns: Column<SalesOrder>[] = [
         <span className="text-[12px] text-text-muted">
           <span className="block">{d.toLocaleDateString()}</span>
           <span className="block text-[11px] opacity-70">
-            {d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+            {d.toLocaleTimeString(undefined, {
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
           </span>
         </span>
       );
@@ -45,11 +54,7 @@ const columns: Column<SalesOrder>[] = [
   {
     key: "contact",
     header: "Customer",
-    render: (o) => (
-      <span className="text-[13px]">
-        {o.contact_name ?? "—"}
-      </span>
-    ),
+    render: (o) => <span className="text-[13px]">{o.contact_name ?? "—"}</span>,
   },
   {
     key: "channel",
@@ -79,23 +84,33 @@ const columns: Column<SalesOrder>[] = [
         bundle: 2,
         product: 3,
       };
-      const sorted = [...kinds].sort(
-        (a, b) => (rank[a] ?? 9) - (rank[b] ?? 9),
-      );
-      const meta: Record<string, { label: string; tone: "success" | "warn" | "danger" | "info" | "accent" | "neutral" }> = {
+      const sorted = [...kinds].sort((a, b) => (rank[a] ?? 9) - (rank[b] ?? 9));
+      const meta: Record<
+        string,
+        {
+          label: string;
+          tone: "success" | "warn" | "danger" | "info" | "accent" | "neutral";
+        }
+      > = {
         styled: { label: "Styled", tone: "accent" },
         service: { label: "Service", tone: "info" },
         bundle: { label: "Bundle", tone: "success" },
         product: { label: "Base", tone: "neutral" },
       };
-      const first = meta[sorted[0]] ?? { label: sorted[0], tone: "neutral" as const };
+      const first = meta[sorted[0]] ?? {
+        label: sorted[0],
+        tone: "neutral" as const,
+      };
       return (
         <span className="inline-flex items-center gap-1">
           <Pill tone={first.tone}>{first.label}</Pill>
           {sorted.length > 1 && (
             <span
               className="text-[10px] text-text-faint"
-              title={sorted.slice(1).map((k) => meta[k]?.label ?? k).join(", ")}
+              title={sorted
+                .slice(1)
+                .map((k) => meta[k]?.label ?? k)
+                .join(", ")}
             >
               +{sorted.length - 1}
             </span>
@@ -219,6 +234,7 @@ export function OrdersView() {
   const navigate = useNavigate();
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
+  const [partPaid, setPartPaid] = useState(false);
   const [page, setPage] = useState(1);
   const [sp, setSp] = useSearchParams();
 
@@ -266,6 +282,7 @@ export function OrdersView() {
   const { data, isLoading, isError, refetch } = useOrders({
     status: status || undefined,
     search: search || undefined,
+    part_paid: partPaid || undefined,
     page,
     page_size: 25,
   });
@@ -347,7 +364,11 @@ export function OrdersView() {
                       setSearch(e.target.value);
                       setPage(1);
                     }}
-                    className="w-full h-[38px] pl-9 pr-3 rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+                    className="w-full h-[38px] pl-9 pr-3 rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
+                    autoComplete="off"
+                    data-lpignore="true"
+                    data-1p-ignore=""
+                    data-form-type="other"
                   />
                 </div>
                 <Select
@@ -361,6 +382,21 @@ export function OrdersView() {
                   }
                   className="w-[180px]"
                 />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPartPaid((v) => !v);
+                    setPage(1);
+                  }}
+                  aria-pressed={partPaid}
+                  className={`h-[38px] px-3.5 rounded-[10px] border text-[12px] font-semibold whitespace-nowrap transition-colors ${
+                    partPaid
+                      ? "border-accent/50 bg-accent/10 text-accent-readable"
+                      : "border-line text-text-muted hover:text-text-primary"
+                  }`}
+                >
+                  Part-paid
+                </button>
               </>
             }
           />

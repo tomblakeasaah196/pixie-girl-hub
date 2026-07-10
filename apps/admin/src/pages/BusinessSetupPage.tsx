@@ -338,20 +338,23 @@ function FinancialTab({
         </Link>
         .
       </div>
-      <Field
-        label="Installment defaults"
-        hint="Per-business defaults; products may override"
-      >
-        <JsonScalarEditor
-          value={draft.installment_settings as Record<string, unknown>}
-          onChange={(v) =>
-            set(
-              "installment_settings",
-              v as BusinessConfig["installment_settings"],
-            )
-          }
-        />
-      </Field>
+      <div className="rounded-[12px] border border-line bg-text-primary/[0.02] p-4 text-[13px] text-text-muted">
+        <div className="font-semibold text-text-primary mb-1">
+          Flexi Pay (instalments)
+        </div>
+        <p>
+          Partial-payment settings — plan name, deposit minimums, reminder
+          windows, which channels offer instalments and staff bank-transfer
+          recording — now live in{" "}
+          <Link
+            to="/sales?tab=payments"
+            className="text-accent-glow hover:underline"
+          >
+            Sales → Payments
+          </Link>
+          .
+        </p>
+      </div>
     </Card>
   );
 }

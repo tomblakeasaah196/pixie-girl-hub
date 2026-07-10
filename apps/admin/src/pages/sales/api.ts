@@ -12,6 +12,8 @@ import type {
   QuotationConvertInput,
   CancellationRequestInput,
   PaginatedResponse,
+  FlexiPaySettings,
+  FlexiPaySettingsPatch,
 } from "./types";
 
 const S = "/sales";
@@ -33,13 +35,19 @@ export interface OrderListParams {
   sales_channel?: string;
   sales_campaign_id?: string;
   search?: string;
+  /** Flexi Pay (PR-3): committed instalment orders with a balance still due. */
+  part_paid?: boolean;
   page?: number;
   page_size?: number;
 }
 
-export const listOrders = ({ search, ...rest }: OrderListParams = {}) =>
+export const listOrders = ({
+  search,
+  part_paid,
+  ...rest
+}: OrderListParams = {}) =>
   api.get<PaginatedResponse<SalesOrder>>(
-    `${S}/orders${qs({ ...rest, q: search })}`,
+    `${S}/orders${qs({ ...rest, q: search, part_paid: part_paid || undefined })}`,
   );
 
 export const getOrder = (id: string) =>
@@ -220,16 +228,23 @@ export interface SalesReportParams {
 
 /** Download the styled Sales Report .xlsx for a period (authed file download). */
 export const exportSalesReport = (params: SalesReportParams = {}) =>
-  api.download(
-    `${S}/reports/export${qs({ ...params })}`,
-    "sales-report.xlsx",
-  );
+  api.download(`${S}/reports/export${qs({ ...params })}`, "sales-report.xlsx");
+
+// ── Flexi Pay settings (Sales → Payments tab) ───────────────
+
+export const getPaymentSettings = () =>
+  api.get<FlexiPaySettings>(`${S}/payment-settings`);
+
+export const updatePaymentSettings = (patch: FlexiPaySettingsPatch) =>
+  api.put<FlexiPaySettings>(`${S}/payment-settings`, patch);
 
 // ── KPIs ────────────────────────────────────────────────────
 
 export const getSalesKpis = () => api.get<SalesKpis>(`/dashboards/kpis/sales`);
 
-export const listDeliveryPendingOrders = (params: Omit<OrderListParams, "status"> = {}) =>
+export const listDeliveryPendingOrders = (
+  params: Omit<OrderListParams, "status"> = {},
+) =>
   api.get<PaginatedResponse<SalesOrder>>(
     `${S}/orders${qs({ ...params, fee_pending: "true" })}`,
   );
@@ -240,9 +255,14 @@ export const setOrderDeliveryFee = (id: string, fee_ngn: number) =>
 // ── Contact search ─────────────────────────────────────────
 
 export const searchContacts = (q: string, limit = 6) =>
-  api.get<PaginatedResponse<{ contact_id: string; display_name: string; email: string | null; primary_phone: string | null }>>(
-    `/contacts?q=${encodeURIComponent(q)}&page_size=${limit}`
-  );
+  api.get<
+    PaginatedResponse<{
+      contact_id: string;
+      display_name: string;
+      email: string | null;
+      primary_phone: string | null;
+    }>
+  >(`/contacts?q=${encodeURIComponent(q)}&page_size=${limit}`);
 
 // ── Catalogue helpers (for product picker) ──────────────────
 

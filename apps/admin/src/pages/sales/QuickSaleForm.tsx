@@ -27,7 +27,11 @@ import {
   SALES_CHANNEL_GROUPS,
   FULFILMENT_OPTIONS,
 } from "./constants";
-import { useCreateOrder, useOrderPaymentWatch } from "./hooks";
+import {
+  useCreateOrder,
+  useOrderPaymentWatch,
+  usePaymentSettings,
+} from "./hooks";
 import { useToastStore } from "@/components/notifications/NotificationToast";
 import { toastReport } from "@/lib/error-report";
 import { onboardingApi } from "@/lib/smartcomm-api";
@@ -87,6 +91,11 @@ export function QuickSaleForm() {
   const [currency, setCurrency] = useState("NGN");
   const [applyVat, setApplyVat] = useState(true);
   const [coupon, setCoupon] = useState("");
+  // Flexi Pay: offer the instalment plan when this channel enables it.
+  const { data: flexiSettings } = usePaymentSettings();
+  const instalmentsEnabled =
+    !!flexiSettings && flexiSettings.channels[channel] !== false;
+  const [paymentPlan, setPaymentPlan] = useState<"full" | "instalment">("full");
   const [fulfilment, setFulfilment] = useState<FulfilmentType>("walk_in");
   const [addressText, setAddressText] = useState("");
   const [, setAddress] = useState<PlaceAddress | null>(null);
@@ -257,6 +266,10 @@ export function QuickSaleForm() {
         bundle_id: bundleId || undefined,
         coupon_code: coupon || undefined,
         shipping_fee_ngn: shipping || undefined,
+        payment_plan:
+          instalmentsEnabled && paymentPlan === "instalment"
+            ? "instalment"
+            : "full",
       };
       const order = await createOrder.mutateAsync(input);
       // Take the customer's own wig into custody (chain of custody).
@@ -275,8 +288,15 @@ export function QuickSaleForm() {
           );
         }
       }
+      // Flexi Pay: an instalment order charges the deposit now (server-snapshot
+      // required_deposit_ngn), otherwise the full balance. The customer pays the
+      // rest later via their pay link.
+      const firstCharge =
+        order.payment_plan === "instalment" && order.required_deposit_ngn
+          ? Number(order.required_deposit_ngn)
+          : Number(order.balance_due_ngn);
       const link = await salesApi.createPaymentLink(order.order_id, {
-        amount_ngn: Number(order.balance_due_ngn),
+        amount_ngn: firstCharge,
         currency: currency !== "NGN" ? currency : undefined,
       });
       setPaymentUrl(link.checkout_url);
@@ -310,6 +330,7 @@ export function QuickSaleForm() {
     setCurrency("NGN");
     setApplyVat(true);
     setCoupon("");
+    setPaymentPlan("full");
     setFulfilment("walk_in");
     setAddressText("");
     setAddress(null);
@@ -507,7 +528,11 @@ export function QuickSaleForm() {
                   className="mt-2 w-full rounded-lg border border-line bg-white/5 px-3 py-2 text-sm outline-none focus:border-accent"
                   value={wigCondition}
                   onChange={(e) => setWigCondition(e.target.value)}
-                  placeholder="Condition on arrival (e.g. lace intact, slight shedding)" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+                  placeholder="Condition on arrival (e.g. lace intact, slight shedding)"
+                  autoComplete="off"
+                  data-lpignore="true"
+                  data-1p-ignore=""
+                  data-form-type="other"
                 />
               )}
             </div>
@@ -603,6 +628,43 @@ export function QuickSaleForm() {
               label="Apply VAT (7.5%)"
             />
           </div>
+
+          {instalmentsEnabled && (
+            <div className="mt-5">
+              <div className="micro mb-2">Payment plan</div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPaymentPlan("full")}
+                  className={`flex-1 rounded-[11px] border px-3 py-2.5 text-[13px] font-semibold transition-colors ${
+                    paymentPlan === "full"
+                      ? "border-accent/50 bg-accent/10 text-accent-readable"
+                      : "border-line text-text-muted"
+                  }`}
+                >
+                  Pay in full
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentPlan("instalment")}
+                  className={`flex-1 rounded-[11px] border px-3 py-2.5 text-[13px] font-semibold transition-colors ${
+                    paymentPlan === "instalment"
+                      ? "border-accent/50 bg-accent/10 text-accent-readable"
+                      : "border-line text-text-muted"
+                  }`}
+                >
+                  {flexiSettings?.plan_display_name || "Flexi Pay"} (deposit)
+                </button>
+              </div>
+              {paymentPlan === "instalment" && (
+                <p className="text-[12px] text-text-muted mt-2">
+                  Charges the {flexiSettings?.min_first_payment_pct ?? 30}%
+                  deposit now; the customer pays the balance later via their pay
+                  link.
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="mt-5">
             <div className="micro mb-3">Fulfilment</div>

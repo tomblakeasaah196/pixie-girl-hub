@@ -148,6 +148,8 @@ export interface SalesOrder {
   display_total: string | null;
   fx_rate_used: string | null;
   coupon_code: string | null;
+  /** Flexi Pay: the buyer's explicit plan choice ('full' | 'instalment'). */
+  payment_plan: string | null;
   payment_model: string | null;
   required_deposit_pct: string | null;
   required_deposit_ngn: string | null;
@@ -262,6 +264,8 @@ export interface OrderCreateInput {
   client_idempotency_key?: string;
   shipping_fee_ngn?: number;
   required_deposit_pct?: number;
+  /** Flexi Pay: 'instalment' raises the order on the flexible plan. */
+  payment_plan?: "full" | "instalment";
   utm_source?: string;
   utm_medium?: string;
   utm_campaign?: string;
@@ -277,8 +281,37 @@ export interface PaymentCreateInput {
   fx_rate_used?: number;
   fee_ngn?: number;
   payment_path?: PaymentPath;
+  // Flexi Pay (D13): staff-recorded bank transfer — mandatory bank reference +
+  // bank name; the recorder is stamped server-side.
+  manual_bank_transaction_id?: string;
+  manual_bank_name?: string;
+  notes?: string;
   client_idempotency_key?: string;
 }
+
+// ── Flexi Pay settings (Sales → Payments tab) ───────────────
+export interface FlexiPaySettings {
+  plan_display_name: string;
+  plan_terms: string[];
+  min_first_payment_pct: number;
+  min_topup_ngn: number;
+  custom_order_deposit_pct: number;
+  layaway_abandonment_days: number;
+  layaway_reminder_cadence_days: number;
+  auto_cancel_after_no_payment: boolean;
+  abandoned_checkout_nudge_enabled: boolean;
+  abandoned_checkout_nudge_hours: number;
+  abandoned_checkout_expiry_hours: number;
+  milestone_messages_enabled: boolean;
+  channels: Record<string, boolean>;
+  allow_staff_recorded_manual_payments: boolean;
+}
+export type FlexiPaySettingsPatch = Partial<
+  Omit<FlexiPaySettings, "channels" | "plan_terms">
+> & {
+  channels?: Record<string, boolean>;
+  plan_terms?: string[];
+};
 
 export interface PaymentLinkInput {
   amount_ngn?: number;

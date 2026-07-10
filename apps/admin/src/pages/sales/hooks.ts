@@ -14,6 +14,7 @@ import type {
   QuotationSendInput,
   QuotationConvertInput,
   CancellationRequestInput,
+  FlexiPaySettingsPatch,
 } from "./types";
 
 function useBiz() {
@@ -176,7 +177,10 @@ export function useContactRecentOrders(
       const others = excludeOrderId
         ? all.filter((o) => o.order_id !== excludeOrderId)
         : all;
-      return { orders: others.slice(0, 5), total: res.meta?.total ?? all.length };
+      return {
+        orders: others.slice(0, 5),
+        total: res.meta?.total ?? all.length,
+      };
     },
     enabled: !!contactId,
   });
@@ -200,10 +204,17 @@ export function useSendOrderInvoice(orderId: string | null) {
   const qc = useQueryClient();
   const biz = useBiz();
   return useMutation({
-    mutationFn: ({ invoiceId, sent_via }: { invoiceId: string; sent_via?: string }) =>
-      salesApi.sendOrderInvoice(invoiceId, { sent_via }),
+    mutationFn: ({
+      invoiceId,
+      sent_via,
+    }: {
+      invoiceId: string;
+      sent_via?: string;
+    }) => salesApi.sendOrderInvoice(invoiceId, { sent_via }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["sales-orders", biz, "invoice", orderId] });
+      qc.invalidateQueries({
+        queryKey: ["sales-orders", biz, "invoice", orderId],
+      });
       qc.invalidateQueries({ queryKey: ["invoices", biz] });
     },
   });
@@ -248,7 +259,9 @@ export function useSendQuotation() {
       salesApi.sendQuotation(id, input),
     onSuccess: (_data, { id }) => {
       qc.invalidateQueries({ queryKey: ["sales-quotations", biz] });
-      qc.invalidateQueries({ queryKey: ["sales-quotations", biz, "detail", id] });
+      qc.invalidateQueries({
+        queryKey: ["sales-quotations", biz, "detail", id],
+      });
     },
   });
 }
@@ -260,7 +273,9 @@ export function useAcceptQuotation() {
     mutationFn: (id: string) => salesApi.acceptQuotation(id),
     onSuccess: (_data, id) => {
       qc.invalidateQueries({ queryKey: ["sales-quotations", biz] });
-      qc.invalidateQueries({ queryKey: ["sales-quotations", biz, "detail", id] });
+      qc.invalidateQueries({
+        queryKey: ["sales-quotations", biz, "detail", id],
+      });
     },
   });
 }
@@ -293,14 +308,18 @@ export function useRequestCancellation() {
     }) => salesApi.requestCancellation(orderId, input),
     onSuccess: (_data, { orderId }) => {
       qc.invalidateQueries({ queryKey: ["sales-orders", biz] });
-      qc.invalidateQueries({ queryKey: ["sales-orders", biz, "detail", orderId] });
+      qc.invalidateQueries({
+        queryKey: ["sales-orders", biz, "detail", orderId],
+      });
     },
   });
 }
 
 // ── Delivery pending orders ──────────────────────────────────
 
-export function useDeliveryPendingOrders(params: salesApi.OrderListParams = {}) {
+export function useDeliveryPendingOrders(
+  params: salesApi.OrderListParams = {},
+) {
   const biz = useBiz();
   return useQuery({
     queryKey: ["sales-orders-fee-pending", biz, params],
@@ -331,5 +350,28 @@ export function useSalesKpis() {
     queryKey: ["sales-kpis", biz],
     queryFn: salesApi.getSalesKpis,
     staleTime: 30_000,
+  });
+}
+
+// ── Flexi Pay settings (Sales → Payments tab) ───────────────
+
+export function usePaymentSettings() {
+  const biz = useBiz();
+  return useQuery({
+    queryKey: ["sales-payment-settings", biz],
+    queryFn: salesApi.getPaymentSettings,
+    staleTime: 60_000,
+  });
+}
+
+export function useSavePaymentSettings() {
+  const qc = useQueryClient();
+  const biz = useBiz();
+  return useMutation({
+    mutationFn: (patch: FlexiPaySettingsPatch) =>
+      salesApi.updatePaymentSettings(patch),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sales-payment-settings", biz] });
+    },
   });
 }

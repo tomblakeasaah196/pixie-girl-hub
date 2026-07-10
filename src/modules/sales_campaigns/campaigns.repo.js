@@ -91,6 +91,8 @@ const CREATE_COLS = [
   // TEXT[] of enabled gateways for this sale's checkout. node-pg binds a JS
   // array straight to the Postgres array column — no JSONB cast.
   "allowed_payment_gateways",
+  // Flexi Pay (PR-3): per-campaign instalment gate (template 000078).
+  "allow_instalments",
 ];
 const UPDATE_COLS = CREATE_COLS; // same set is editable (status excluded by design)
 const JSONB_COLS = new Set([

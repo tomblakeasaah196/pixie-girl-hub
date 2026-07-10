@@ -3,11 +3,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Cake,
+  CreditCard,
   ExternalLink,
   Mail,
   MessageCircle,
   MessagesSquare,
   Package,
+  PartyPopper,
   ShieldOff,
   ShoppingBag,
   Sparkles,
@@ -49,6 +51,10 @@ const EVENT_ICON: Record<string, LucideIcon> = {
   delivery_failed: AlertTriangle,
   payment_reminder: Mail,
   layaway_reminder: Mail,
+  // Flexi Pay (PR-3) automations seeded by migration 000315.
+  payment_received: CreditCard,
+  payment_milestone: PartyPopper,
+  abandoned_checkout: ShoppingBag,
   production_update: Package,
   abandoned_cart: ShoppingBag,
   review_request: MessageCircle,
@@ -109,8 +115,8 @@ export function CommsStudioTab() {
       <header>
         <h3 className="font-display text-[17px]">Automations</h3>
         <p className="text-[12.5px] text-text-muted mt-0.5 max-w-[640px]">
-          Every automated message the Hub sends to customers, in one place.
-          Set the channel, edit the copy, preview the branded email — nothing
+          Every automated message the Hub sends to customers, in one place. Set
+          the channel, edit the copy, preview the branded email — nothing
           hard-coded. Defaults are email; WhatsApp is opt-in per automation.
         </p>
         <div className="mt-2 flex items-center gap-2 text-[11.5px] text-text-faint">

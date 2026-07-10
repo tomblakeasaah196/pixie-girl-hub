@@ -256,9 +256,9 @@ async function listReveals({ id }) {
  * Test a configured account by pinging the provider. Doesn't send a
  * real message — just verifies the token can authenticate.
  *
- *   whatsapp  → GET /{phone_number_id}     (Meta Graph)
- *   instagram → GET /{ig_business_id}      (Meta Graph)
- *   facebook  → GET /{page_id}             (Meta Graph)
+ *   whatsapp  → GET /{phone_number_id}   (graph.facebook.com)
+ *   instagram → GET /me                  (graph.instagram.com — IG Login)
+ *   facebook  → GET /{page_id}           (graph.facebook.com)
  *   email     → DNS check on the inbound domain's MX record
  */
 async function testAccount({ id }) {
@@ -282,13 +282,32 @@ async function testAccount({ id }) {
           422,
         );
       }
-      // Field sets differ per Graph node type: the WhatsApp phone-number
-      // node has no `name` field (asking for it 400s with error #100 —
-      // "nonexistent field"), it exposes `verified_name` instead. The IG
-      // business-account node uses `username`.
+      // Instagram uses the "Instagram API with Instagram Login" family:
+      // the saved token is an IG user token (IGAA…) that ONLY authenticates
+      // against graph.instagram.com — sending it to graph.facebook.com 401s
+      // with "Invalid OAuth access token". Ping the self node `me`, which
+      // returns { user_id, username } without needing the exact account id.
+      if (row.platform === "instagram") {
+        const { data } = await axios.get(
+          `https://graph.instagram.com/${v}/me?fields=user_id,username`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+            timeout: 15000,
+          },
+        );
+        return {
+          ok: true,
+          platform: "instagram",
+          provider_id: (data && (data.user_id || data.id)) || null,
+          provider_name: (data && data.username) || null,
+        };
+      }
+      // WhatsApp + Facebook stay on graph.facebook.com. Field sets differ per
+      // node type: the WhatsApp phone-number node has no `name` field (asking
+      // for it 400s with error #100 — "nonexistent field"), it exposes
+      // `verified_name` instead.
       const FIELDS = {
         whatsapp: "id,verified_name,display_phone_number",
-        instagram: "id,username",
         facebook: "id,name",
       };
       const url = `https://graph.facebook.com/${v}/${encodeURIComponent(row.external_account_id)}?fields=${FIELDS[row.platform]}`;
@@ -301,7 +320,7 @@ async function testAccount({ id }) {
         platform: row.platform,
         provider_id: data && data.id,
         provider_name:
-          (data && (data.verified_name || data.username || data.name)) || null,
+          (data && (data.verified_name || data.name)) || null,
       };
     }
     if (row.platform === "email") {
@@ -321,10 +340,34 @@ async function testAccount({ id }) {
     }
   } catch (err) {
     const status = err.response && err.response.status;
+    // Meta returns a structured error body on the Graph node ping. Axios
+    // collapses it to the opaque "Request failed with status code 400",
+    // which tells the operator nothing. Surface Meta's own message +
+    // code/subcode/fbtrace_id so a failed Test names the real cause —
+    // e.g. "Invalid OAuth access token", "(#100) nonexistent field", or
+    // "Unsupported get request … missing permissions" (wrong ID / scope).
+    const metaErr =
+      err.response && err.response.data && err.response.data.error;
     logger.warn(
-      { err: err.message, platform: row.platform, status },
+      {
+        platform: row.platform,
+        status,
+        err: err.message,
+        meta_error: metaErr || null,
+      },
       "messaging_accounts.test failed",
     );
+    if (metaErr && metaErr.message) {
+      const parts = [metaErr.message];
+      if (metaErr.code) parts.push(`code ${metaErr.code}`);
+      if (metaErr.error_subcode) parts.push(`subcode ${metaErr.error_subcode}`);
+      if (metaErr.fbtrace_id) parts.push(`trace ${metaErr.fbtrace_id}`);
+      throw new AppError(
+        "PROVIDER_PING_FAILED",
+        parts.join(" — "),
+        status && status >= 400 && status < 500 ? status : 502,
+      );
+    }
     throw new AppError(
       err.code || "PROVIDER_PING_FAILED",
       err.message || "Provider check failed",

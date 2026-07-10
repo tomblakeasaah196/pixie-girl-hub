@@ -118,6 +118,33 @@ describe("messaging_accounts.service", () => {
     });
   });
 
+  test("testAccount pings graph.instagram.com/me for Instagram (IG Login token)", async () => {
+    repo.getRaw.mockResolvedValue({
+      account_id: "id-2",
+      platform: "instagram",
+      external_account_id: "IGBIZ1",
+      access_token_enc: "enc:IGAA-token",
+    });
+    axios.get.mockResolvedValue({
+      data: { user_id: "17841400000000000", username: "faitlynhair" },
+    });
+    const r = await service.testAccount({ id: "id-2" });
+    const call = axios.get.mock.calls[0];
+    // IG Login tokens only authenticate against graph.instagram.com — the
+    // ping must NOT hit graph.facebook.com (that 401s), and uses the `me`
+    // self node so the exact account id isn't required.
+    expect(call[0]).toContain("https://graph.instagram.com/v21.0/me");
+    expect(call[0]).toContain("fields=user_id,username");
+    expect(call[0]).not.toContain("graph.facebook.com");
+    expect(call[1].headers.Authorization).toBe("Bearer IGAA-token");
+    expect(r).toEqual({
+      ok: true,
+      platform: "instagram",
+      provider_id: "17841400000000000",
+      provider_name: "faitlynhair",
+    });
+  });
+
   test("testAccount refuses WhatsApp without a token", async () => {
     repo.getRaw.mockResolvedValue({
       account_id: "id-1",
@@ -144,5 +171,38 @@ describe("messaging_accounts.service", () => {
     await expect(service.testAccount({ id: "id-1" })).rejects.toMatchObject({
       http_status: 401,
     });
+  });
+
+  test("testAccount surfaces Meta's structured error message (not axios's opaque 400)", async () => {
+    repo.getRaw.mockResolvedValue({
+      account_id: "id-1",
+      platform: "instagram",
+      external_account_id: "IGBIZ1",
+      access_token_enc: "enc:bad-token",
+    });
+    // Axios collapses a Graph 400 to a useless message; Meta's real cause
+    // lives in response.data.error. The test-ping must relay it.
+    const err = Object.assign(new Error("Request failed with status code 400"), {
+      response: {
+        status: 400,
+        data: {
+          error: {
+            message:
+              "Unsupported get request. Object with ID 'IGBIZ1' does not exist, cannot be loaded due to missing permissions, or does not support this operation.",
+            code: 100,
+            error_subcode: 33,
+            fbtrace_id: "AbCdEf123",
+          },
+        },
+      },
+    });
+    axios.get.mockRejectedValue(err);
+    await expect(service.testAccount({ id: "id-1" })).rejects.toMatchObject({
+      http_status: 400,
+      message: expect.stringContaining("Unsupported get request"),
+    });
+    const thrown = await service.testAccount({ id: "id-1" }).catch((e) => e);
+    expect(thrown.message).toContain("code 100");
+    expect(thrown.message).toContain("trace AbCdEf123");
   });
 });

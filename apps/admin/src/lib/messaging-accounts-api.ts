@@ -229,7 +229,7 @@ export const PLATFORM_META: Record<
   },
   instagram: {
     label: "Instagram",
-    description: "Instagram Business Account linked to a Facebook Page.",
+    description: "Instagram professional account (Instagram API with Instagram Login).",
     placeholder_id: "IG Business Account ID (e.g. 17841405822304914)",
     placeholder_name: "@pixiegirlglobal",
   },

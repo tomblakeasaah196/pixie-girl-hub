@@ -17,10 +17,38 @@
 "use strict";
 
 const axios = require("axios");
+const path = require("path");
+const FormData = require("form-data");
 const { config } = require("../config/env");
 const { AppError } = require("../utils/errors");
+const { logger } = require("../config/logger");
 
 const GRAPH = () => `https://graph.facebook.com/${config.META_GRAPH_VERSION || "v18.0"}`;
+
+// Best-effort MIME from a filename/URL/key extension — used when Meta or the
+// storage layer doesn't hand us an explicit content-type for an upload.
+const MIME_BY_EXT = {
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+  ".mp4": "video/mp4",
+  ".mov": "video/quicktime",
+  ".3gp": "video/3gpp",
+  ".pdf": "application/pdf",
+  ".mp3": "audio/mpeg",
+  ".ogg": "audio/ogg",
+  ".oga": "audio/ogg",
+  ".m4a": "audio/mp4",
+  ".aac": "audio/aac",
+  ".amr": "audio/amr",
+};
+function mimeFromName(name) {
+  if (!name) return null;
+  const clean = String(name).split("?")[0];
+  return MIME_BY_EXT[path.extname(clean).toLowerCase()] || null;
+}
 
 // Lazy-required to sidestep a circular init cost during module load —
 // messaging_accounts.service requires whatsapp.service transitively.
@@ -90,78 +118,243 @@ async function sendTemplate({
 }
 
 /**
- * Send an image via a pre-hosted URL. Same brand resolution.
+ * Send an image. Prefer `media_id` (a handle from uploadMedia() — the
+ * reliable path that doesn't require our media host to be publicly
+ * reachable); fall back to `image_url` (Meta fetches the link itself,
+ * which only works when the URL is internet-reachable without auth).
  */
-async function sendImage({ brand, to, image_url, caption }) {
+async function sendImage({ brand, to, image_url, media_id, caption }) {
   const cfg = await resolveSendConfig({ brand });
   const url = `${GRAPH()}/${cfg.phone_number_id}/messages`;
+  const image = media_id ? { id: media_id } : { link: image_url };
+  if (caption) image.caption = caption;
   return axios.post(
     url,
-    {
-      messaging_product: "whatsapp",
-      to,
-      type: "image",
-      image: { link: image_url, caption },
-    },
+    { messaging_product: "whatsapp", to, type: "image", image },
     { headers: { Authorization: `Bearer ${cfg.access_token}` }, timeout: 15000 },
   );
 }
 
 /**
- * Send a video via a pre-hosted URL.
+ * Send a video. `media_id` (upload-first) preferred over `video_url` (link).
  */
-async function sendVideo({ brand, to, video_url, caption }) {
+async function sendVideo({ brand, to, video_url, media_id, caption }) {
   const cfg = await resolveSendConfig({ brand });
   const url = `${GRAPH()}/${cfg.phone_number_id}/messages`;
+  const video = media_id ? { id: media_id } : { link: video_url };
+  if (caption) video.caption = caption;
   return axios.post(
     url,
-    {
-      messaging_product: "whatsapp",
-      to,
-      type: "video",
-      video: { link: video_url, caption },
-    },
+    { messaging_product: "whatsapp", to, type: "video", video },
     { headers: { Authorization: `Bearer ${cfg.access_token}` }, timeout: 15000 },
   );
 }
 
 /**
- * Send a document (PDF, etc.) via a pre-hosted URL. Meta requires the
- * `filename` field to render a sensible name in the customer's client —
- * without it WhatsApp shows a generic/garbled name.
+ * Send a document (PDF, etc.). `media_id` (upload-first) preferred over
+ * `document_url` (link). Meta needs `filename` to render a sensible name
+ * in the customer's client — without it WhatsApp shows a garbled name.
  */
-async function sendDocument({ brand, to, document_url, filename, caption }) {
+async function sendDocument({ brand, to, document_url, media_id, filename, caption }) {
   const cfg = await resolveSendConfig({ brand });
   const url = `${GRAPH()}/${cfg.phone_number_id}/messages`;
+  const document = media_id ? { id: media_id } : { link: document_url };
+  if (filename) document.filename = filename;
+  if (caption) document.caption = caption;
   return axios.post(
     url,
-    {
-      messaging_product: "whatsapp",
-      to,
-      type: "document",
-      document: { link: document_url, filename, caption },
-    },
+    { messaging_product: "whatsapp", to, type: "document", document },
     { headers: { Authorization: `Bearer ${cfg.access_token}` }, timeout: 15000 },
   );
 }
 
 /**
- * Send a voice note / audio clip via a pre-hosted URL. Meta's `audio`
- * type has no caption field — the sound is the whole message.
+ * Send a voice note / audio clip. `media_id` (upload-first) preferred
+ * over `audio_url` (link). Meta's `audio` type has no caption field —
+ * the sound is the whole message.
  */
-async function sendAudio({ brand, to, audio_url }) {
+async function sendAudio({ brand, to, audio_url, media_id }) {
   const cfg = await resolveSendConfig({ brand });
   const url = `${GRAPH()}/${cfg.phone_number_id}/messages`;
+  const audio = media_id ? { id: media_id } : { link: audio_url };
   return axios.post(
     url,
-    {
-      messaging_product: "whatsapp",
-      to,
-      type: "audio",
-      audio: { link: audio_url },
-    },
+    { messaging_product: "whatsapp", to, type: "audio", audio },
     { headers: { Authorization: `Bearer ${cfg.access_token}` }, timeout: 15000 },
   );
+}
+
+// ── Media upload / download (Cloud API resumable-less path) ───
+//
+// The reliable way to send media is to POST the bytes to Meta first,
+// receive a media id, then reference that id in the message. This
+// removes the "Meta must be able to fetch my URL" dependency that makes
+// the link method silently drop images when the media host isn't
+// publicly reachable. Inbound media is the mirror image: Meta's webhook
+// only carries a media *id*, so we resolve it to a temporary URL and
+// download the bytes (both calls token-gated).
+
+/**
+ * Upload raw bytes to Meta and return the media id. The id is valid for
+ * ~30 days and can be reused across sends, but we treat it as one-shot.
+ */
+async function uploadMedia({ brand, buffer, mime_type, filename }) {
+  const cfg = await resolveSendConfig({ brand });
+  const url = `${GRAPH()}/${cfg.phone_number_id}/media`;
+  const form = new FormData();
+  form.append("messaging_product", "whatsapp");
+  form.append("file", buffer, {
+    filename: filename || "upload",
+    contentType: mime_type || "application/octet-stream",
+  });
+  const { data } = await axios.post(url, form, {
+    headers: { Authorization: `Bearer ${cfg.access_token}`, ...form.getHeaders() },
+    timeout: 60000,
+    maxBodyLength: Infinity,
+    maxContentLength: Infinity,
+  });
+  if (!data || !data.id) {
+    throw new AppError("WA_UPLOAD_NO_ID", "Meta media upload returned no id", 502);
+  }
+  return data.id;
+}
+
+/**
+ * Resolve an inbound media id to its provider metadata (temporary URL,
+ * mime, size, sha256). The returned `url` is short-lived and must be
+ * fetched with the same bearer token.
+ */
+async function getMediaInfo({ brand, media_id }) {
+  const cfg = await resolveSendConfig({ brand });
+  const { data } = await axios.get(`${GRAPH()}/${media_id}`, {
+    headers: { Authorization: `Bearer ${cfg.access_token}` },
+    timeout: 15000,
+  });
+  return data; // { url, mime_type, sha256, file_size, id, messaging_product }
+}
+
+/**
+ * Download an inbound media id's bytes. Two hops: resolve the id → URL,
+ * then GET the URL with the token. Returns { buffer, mime_type, file_size }.
+ */
+async function downloadMedia({ brand, media_id }) {
+  const cfg = await resolveSendConfig({ brand });
+  const info = await getMediaInfo({ brand, media_id });
+  if (!info || !info.url) {
+    throw new AppError("WA_MEDIA_NO_URL", "Meta returned no media URL", 502);
+  }
+  const resp = await axios.get(info.url, {
+    // Meta's lookaside CDN requires the bearer token AND rejects requests
+    // without a User-Agent header.
+    headers: {
+      Authorization: `Bearer ${cfg.access_token}`,
+      "User-Agent": "PixieGirlHub/1.0",
+    },
+    responseType: "arraybuffer",
+    timeout: 60000,
+    maxContentLength: Infinity,
+  });
+  return {
+    buffer: Buffer.from(resp.data),
+    mime_type:
+      info.mime_type || resp.headers["content-type"] || "application/octet-stream",
+    file_size: info.file_size,
+    sha256: info.sha256,
+  };
+}
+
+/**
+ * Load the bytes behind an outbound media reference. Prefers a local
+ * storage key (`media_key` — the common case for staff-composed
+ * attachments, read straight off disk with no public URL needed); falls
+ * back to interpreting `media_url` as a local /media path, or fetching
+ * it over HTTP when it's a genuine absolute URL (e.g. a catalogue CDN
+ * image in a product share).
+ */
+async function loadMediaBytes({ media_key, media_url, mime_type }) {
+  const storage = require("./storage.service");
+  let key = media_key || null;
+  if (!key && media_url) {
+    if (media_url.startsWith("/media/")) {
+      key = media_url.slice("/media/".length);
+    } else if (config.CDN_BASE_URL && media_url.startsWith(`${config.CDN_BASE_URL}/`)) {
+      key = media_url.slice(config.CDN_BASE_URL.length + 1);
+    } else if (config.ADMIN_BASE_URL) {
+      const base = `${config.ADMIN_BASE_URL.replace(/\/+$/, "")}/media/`;
+      if (media_url.startsWith(base)) key = media_url.slice(base.length);
+    }
+  }
+  if (key) {
+    try {
+      const buffer = await storage.get(key);
+      return { buffer, mime: mime_type || mimeFromName(key) || "application/octet-stream" };
+    } catch (err) {
+      // A key that isn't on local disk but IS an absolute URL can still be
+      // fetched over HTTP below; otherwise re-throw.
+      if (!/^https?:\/\//i.test(media_url || "")) throw err;
+    }
+  }
+  if (/^https?:\/\//i.test(media_url || "")) {
+    const resp = await axios.get(media_url, {
+      responseType: "arraybuffer",
+      timeout: 30000,
+      maxContentLength: Infinity,
+    });
+    return {
+      buffer: Buffer.from(resp.data),
+      mime:
+        mime_type ||
+        resp.headers["content-type"] ||
+        mimeFromName(media_url) ||
+        "application/octet-stream",
+    };
+  }
+  throw new AppError(
+    "MEDIA_BYTES_UNAVAILABLE",
+    "Could not load media bytes for outbound send (no local key and no fetchable URL)",
+    422,
+  );
+}
+
+/**
+ * Send a media message the reliable way: load the bytes, upload them to
+ * Meta for a media id, then send by id. If the upload can't happen but a
+ * publicly-fetchable URL exists, degrade to the link method rather than
+ * dropping the media entirely.
+ */
+async function sendMedia({ brand, to, kind, media_url, media_key, filename, mime_type, caption }) {
+  let media_id = null;
+  try {
+    const { buffer, mime } = await loadMediaBytes({ media_key, media_url, mime_type });
+    media_id = await uploadMedia({ brand, buffer, mime_type: mime, filename });
+  } catch (err) {
+    // Only fall back to the link method when we actually have a URL Meta
+    // could fetch; otherwise surface the failure so the job is retried.
+    if (!/^https?:\/\//i.test(media_url || "")) throw err;
+    logger.warn(
+      { err: err.message, brand, kind },
+      "whatsapp: media upload failed — falling back to link method",
+    );
+  }
+  switch (kind) {
+    case "image":
+      return sendImage({ brand, to, media_id, image_url: media_id ? undefined : media_url, caption });
+    case "video":
+      return sendVideo({ brand, to, media_id, video_url: media_id ? undefined : media_url, caption });
+    case "document":
+      return sendDocument({
+        brand,
+        to,
+        media_id,
+        document_url: media_id ? undefined : media_url,
+        filename,
+        caption,
+      });
+    case "audio":
+      return sendAudio({ brand, to, media_id, audio_url: media_id ? undefined : media_url });
+    default:
+      throw new AppError("WA_BAD_MEDIA_KIND", `Unsupported media kind '${kind}'`, 400);
+  }
 }
 
 // ── Message-template management (Meta Business Management API) ──
@@ -273,6 +466,10 @@ module.exports = {
   sendVideo,
   sendDocument,
   sendAudio,
+  sendMedia,
+  uploadMedia,
+  getMediaInfo,
+  downloadMedia,
   isConfigured,
   // template management (Business Management API):
   listTemplates,

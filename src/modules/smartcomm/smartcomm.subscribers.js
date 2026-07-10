@@ -50,11 +50,46 @@ async function resolveBrand({ platform, external_account_id }) {
   return account ? account.business : null;
 }
 
+// Map WhatsApp's inbound message type to the message_type our inbox
+// renders. audio → voice_note (waveform player), sticker → image.
+function waMessageType(type) {
+  if (!type || type === "text") return "text";
+  if (type === "audio") return "voice_note";
+  if (type === "sticker") return "image";
+  return type; // image | video | document pass through; others render as-is
+}
+
+// Pull the media descriptor off an inbound WhatsApp message. The webhook
+// only carries a media id (+ mime/caption/filename) — never the bytes —
+// so we capture the id here and download it on ingest. Returns null for
+// non-media messages.
+function extractWhatsAppMedia(m) {
+  const kinds = [
+    ["image", m.image],
+    ["video", m.video],
+    ["document", m.document],
+    ["audio", m.audio],
+    ["sticker", m.sticker],
+  ];
+  for (const [kind, node] of kinds) {
+    if (node && node.id) {
+      return {
+        kind,
+        media_id: node.id,
+        mime_type: node.mime_type || null,
+        filename: node.filename || null,
+        caption: node.caption || null,
+      };
+    }
+  }
+  return null;
+}
+
 /**
  * Parse a Meta WhatsApp payload into our normalised events. Returns
  * an array of { brand, platform, external_account_id, external_ref,
  * external_thread_ref, sender (phone, name), body, message_type,
- * attachment_url }.
+ * media }.
  */
 function parseMetaWhatsApp(payload) {
   const events = [];
@@ -66,6 +101,7 @@ function parseMetaWhatsApp(payload) {
       const contacts = value.contacts || [];
       for (const m of value.messages || []) {
         const c = contacts.find((x) => x.wa_id === m.from) || {};
+        const media = extractWhatsAppMedia(m);
         events.push({
           platform: META_WA_PLATFORM,
           external_account_id: externalAccountId,
@@ -79,9 +115,15 @@ function parseMetaWhatsApp(payload) {
           body:
             (m.text && m.text.body) ||
             (m.image && m.image.caption) ||
+            (m.video && m.video.caption) ||
             (m.document && m.document.caption) ||
             "",
-          message_type: m.type === "text" ? "text" : m.type || "text",
+          // Normalise the display type: WhatsApp's `audio` renders as a
+          // voice note and `sticker` as an image in our inbox.
+          message_type: waMessageType(m.type),
+          // Media messages carry only a provider media *id* on the webhook
+          // — the bytes are downloaded on ingest (see recordInboundFromCustomer).
+          media,
         });
       }
     }
@@ -352,6 +394,7 @@ async function ingestInbound(evt) {
     message_type: evt.message_type,
     external_ref: evt.external_ref,
     external_thread_ref: evt.external_thread_ref,
+    media: evt.media,
     metadata,
   });
 }

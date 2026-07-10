@@ -991,11 +991,12 @@ function composeCardText(message, content) {
 }
 
 /**
- * Resolve the first attachment on a message into an internet-reachable
- * media URL for a provider send. Returns null (with a logged warning)
- * when no ADMIN_BASE_URL/CDN_BASE_URL is configured — sending Meta a
- * relative /media/... path silently fails, so callers must treat null
- * as "can't send this media" rather than best-effort.
+ * Resolve the first attachment on a message for a provider send.
+ * Returns the local storage key (`media_key`) so WhatsApp can upload the
+ * bytes straight to Meta without the file ever needing to be publicly
+ * reachable, plus an absolute `media_url` when one can be built (used by
+ * Instagram, which only supports the link method here). Returns null
+ * only when there's genuinely no stored file.
  */
 async function resolveOutboundMedia(message, client) {
   const rows = await repo.getAttachmentsForSend({
@@ -1005,16 +1006,12 @@ async function resolveOutboundMedia(message, client) {
   const a = rows[0];
   if (!a || !a.file_path) return null;
   const storage = require("../../services/storage.service");
-  const media_url = storage.absoluteUrl(a.file_path);
-  if (!media_url) {
-    const { logger } = require("../../config/logger");
-    logger.warn(
-      { message_id: message.message_id },
-      "smartcomm: outbound media has no public base URL configured (set ADMIN_BASE_URL or CDN_BASE_URL) — cannot send to WhatsApp/Instagram",
-    );
-    return null;
-  }
-  return { media_url, filename: a.display_name, mime_type: a.mime_type };
+  return {
+    media_key: a.file_path,
+    media_url: storage.absoluteUrl(a.file_path), // may be null (WhatsApp doesn't need it)
+    filename: a.display_name,
+    mime_type: a.mime_type,
+  };
 }
 
 /**
@@ -1046,7 +1043,9 @@ async function buildWhatsAppSends(message, content, client, business) {
       return [
         {
           kind,
+          media_key: media.media_key,
           media_url: media.media_url,
+          mime_type: media.mime_type,
           filename: media.filename,
           caption: content || undefined,
         },
@@ -1166,7 +1165,9 @@ async function enqueueOutboundForChannel({
     let jobPayloads;
     if (message.message_type === "image") {
       const media = await resolveOutboundMedia(message, client);
-      if (!media) {
+      // Instagram only supports the link method here, so it still needs a
+      // publicly-fetchable URL (unlike WhatsApp's upload-first path).
+      if (!media || !media.media_url) {
         await repo.setMessageDelivery({
           message_id: message.message_id,
           delivery_status: "failed",
@@ -1308,9 +1309,60 @@ async function findOrCreateCustomerThread({
 }
 
 /**
+ * Download an inbound media descriptor (WhatsApp media id) and persist it
+ * through the documents gateway. Returns { document_id, display_name } to
+ * attach to the recorded message, or null when the media can't be fetched
+ * — in which case the message is still recorded (caption/placeholder
+ * preserved) so a media hiccup never blocks the inbox.
+ */
+async function downloadInboundMediaToDocument({ brand, media }) {
+  if (!media || !media.media_id) return null;
+  try {
+    const whatsapp = require("../../services/whatsapp.service");
+    const documents = require("../../shared/documents/documents.service");
+    const dl = await whatsapp.downloadMedia({ brand, media_id: media.media_id });
+    const mime = media.mime_type || dl.mime_type || "application/octet-stream";
+    const filename = media.filename || defaultMediaFilename(media.kind, mime);
+    const doc = await documents.store({
+      brand,
+      buffer: dl.buffer,
+      mime_type: mime,
+      filename,
+      document_type:
+        media.kind === "image" || media.kind === "sticker" ? "image" : "other",
+      title: filename,
+      reference_type: "smartcomm_inbound",
+    });
+    return { document_id: doc.document_id, display_name: filename };
+  } catch (err) {
+    const { logger } = require("../../config/logger");
+    logger.error(
+      { err: err.message, media_id: media.media_id, kind: media.kind, brand },
+      "smartcomm: inbound media download failed — recording message without attachment",
+    );
+    return null;
+  }
+}
+
+// Fallback filename for inbound media that arrives without one (images,
+// video, audio never carry a filename — only documents do). `kind` is
+// WhatsApp's raw type (image|video|document|audio|sticker).
+function defaultMediaFilename(kind, mime) {
+  const ext =
+    (mime && mime.includes("/") ? `.${mime.split("/")[1].split(";")[0]}` : "") || "";
+  const base = kind === "audio" ? "voice-note" : kind || "media";
+  return `${base}${ext}`;
+}
+
+/**
  * Record an INBOUND customer message. Bridges Meta webhooks
  * (WhatsApp/Instagram), inbound email, and the social DM ingest route.
  * Idempotent on `external_ref` — re-delivery from the platform is safe.
+ *
+ * `media` (WhatsApp only) is a { kind, media_id, mime_type, filename }
+ * descriptor: the bytes are downloaded from Meta and attached as a
+ * document so the inbox shows the real image/video/file instead of a
+ * blank "Photo" placeholder.
  */
 async function recordInboundFromCustomer({
   brand,
@@ -1320,11 +1372,29 @@ async function recordInboundFromCustomer({
   message_type = "text",
   external_ref,
   external_thread_ref,
-  attachment_url: _attachment_url,
+  media,
   metadata,
 }) {
+  // Cheap idempotency pre-check BEFORE downloading media: a redelivery of
+  // an already-recorded message must not re-fetch (and re-store) the file.
+  if (external_ref) {
+    const pre = await query(
+      `SELECT message_id, channel_id FROM shared.messages
+        WHERE external_ref = $1 LIMIT 1`,
+      [external_ref],
+    );
+    if (pre.rows.length) {
+      const row = pre.rows[0];
+      return { channel_id: row.channel_id, message: row, duplicate: true };
+    }
+  }
+  // Download inbound media (network I/O) outside the transaction so the
+  // DB connection isn't held open while we talk to Meta.
+  const storedDoc = await downloadInboundMediaToDocument({ brand, media });
+
   return transaction(async (client) => {
-    // Idempotency: if we've already saved this provider message id, return it.
+    // Authoritative idempotency: a concurrent delivery may have inserted
+    // between the pre-check and here.
     if (external_ref) {
       const dup = await client.query(
         `SELECT message_id, channel_id FROM shared.messages
@@ -1385,6 +1455,18 @@ async function recordInboundFromCustomer({
         metadata: messageMetadata,
       },
     });
+    // Link the downloaded media (if any) so the inbox renders the real
+    // file instead of a placeholder.
+    if (storedDoc) {
+      await repo.addAttachment({
+        client,
+        a: {
+          message_id: msg.message_id,
+          document_id: storedDoc.document_id,
+          display_name: storedDoc.display_name,
+        },
+      });
+    }
     events.emit("customer.message_received", {
       brand,
       contact_id,

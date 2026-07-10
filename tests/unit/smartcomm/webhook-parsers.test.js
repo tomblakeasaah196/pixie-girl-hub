@@ -194,7 +194,7 @@ describe("smartcomm webhook parsers", () => {
     expect(parseCloudflareEmail(null)).toEqual([]);
   });
 
-  test("parseMetaWhatsApp handles image with caption", () => {
+  test("parseMetaWhatsApp handles image with caption + captures the media id", () => {
     const payload = {
       entry: [
         {
@@ -208,7 +208,11 @@ describe("smartcomm webhook parsers", () => {
                     id: "wamid.IMG",
                     from: "234801",
                     type: "image",
-                    image: { caption: "What style is this?" },
+                    image: {
+                      id: "MEDIA_123",
+                      mime_type: "image/jpeg",
+                      caption: "What style is this?",
+                    },
                   },
                 ],
               },
@@ -220,5 +224,99 @@ describe("smartcomm webhook parsers", () => {
     const events = parseMetaWhatsApp(payload);
     expect(events[0].body).toBe("What style is this?");
     expect(events[0].message_type).toBe("image");
+    // The bytes aren't on the webhook — only the media id, which ingest
+    // downloads. Capturing it is what fixes the blank "Photo" placeholder.
+    expect(events[0].media).toMatchObject({
+      kind: "image",
+      media_id: "MEDIA_123",
+      mime_type: "image/jpeg",
+    });
+  });
+
+  test("parseMetaWhatsApp maps a voice note to voice_note with its media id", () => {
+    const payload = {
+      entry: [
+        {
+          changes: [
+            {
+              value: {
+                metadata: { phone_number_id: "PID" },
+                contacts: [{ wa_id: "234801", profile: { name: "B" } }],
+                messages: [
+                  {
+                    id: "wamid.AUD",
+                    from: "234801",
+                    type: "audio",
+                    audio: { id: "AUD_9", mime_type: "audio/ogg", voice: true },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const events = parseMetaWhatsApp(payload);
+    expect(events[0].message_type).toBe("voice_note");
+    expect(events[0].media).toMatchObject({ kind: "audio", media_id: "AUD_9" });
+  });
+
+  test("parseMetaWhatsApp carries a document's filename through the media descriptor", () => {
+    const payload = {
+      entry: [
+        {
+          changes: [
+            {
+              value: {
+                metadata: { phone_number_id: "PID" },
+                contacts: [{ wa_id: "234801", profile: { name: "B" } }],
+                messages: [
+                  {
+                    id: "wamid.DOC",
+                    from: "234801",
+                    type: "document",
+                    document: {
+                      id: "DOC_5",
+                      mime_type: "application/pdf",
+                      filename: "receipt.pdf",
+                      caption: "here you go",
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const events = parseMetaWhatsApp(payload);
+    expect(events[0].message_type).toBe("document");
+    expect(events[0].body).toBe("here you go");
+    expect(events[0].media).toMatchObject({
+      kind: "document",
+      media_id: "DOC_5",
+      filename: "receipt.pdf",
+    });
+  });
+
+  test("parseMetaWhatsApp leaves plain text messages without a media descriptor", () => {
+    const payload = {
+      entry: [
+        {
+          changes: [
+            {
+              value: {
+                metadata: { phone_number_id: "PID" },
+                messages: [
+                  { id: "wamid.T", from: "234801", type: "text", text: { body: "hi" } },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const events = parseMetaWhatsApp(payload);
+    expect(events[0].media).toBeNull();
   });
 });

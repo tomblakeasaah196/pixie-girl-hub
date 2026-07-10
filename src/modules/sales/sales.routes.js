@@ -7,11 +7,23 @@
 const express = require("express");
 const c = require("./sales.controller");
 const v = require("./sales.validator");
+const vSettings = require("./payment-settings.validator");
 const timelineController = require("./timeline.controller");
 const { requirePermission } = require("../../middleware/rbac");
 
 const router = express.Router();
 const can = (a) => requirePermission("sales", a);
+
+// Flexi Pay settings (D2/D16) — the Sales → Payments tab. Gated at the
+// manager tier (sales.approve): the RBAC action vocabulary is a fixed
+// 6-action set (schema CHECK), so a bespoke action was consciously avoided.
+router.get("/payment-settings", can("view"), c.getPaymentSettings);
+router.put(
+  "/payment-settings",
+  can("approve"),
+  vSettings.validateSettingsPatch,
+  c.updatePaymentSettings,
+);
 
 // Sales Report export (§6.2) — styled .xlsx for a chosen period.
 // Declared before "/orders/:id" so the literal path isn't shadowed.

@@ -350,48 +350,77 @@ describe("computeTotalsAndLines", () => {
   });
 });
 
-describe("computeDepositPolicy", () => {
-  it("snapshots the deposit for deposit_triggered orders (default 50%)", () => {
-    const built = [line("100", 1, null, { payment_model: "deposit_triggered" })];
+describe("computeDepositPolicy (Flexi Pay — config-driven, D1/D6)", () => {
+  it("full plan (the default) → full_payment_only, no deposit machinery", () => {
     const p = computeDepositPolicy({
-      built,
       installmentSettings: {},
       input: {},
       total: money("1000"),
     });
-    expect(p.paymentModel).toBe("deposit_triggered");
-    expect(p.requiredDepositPct.toFixed(2)).toBe("50.00");
-    expect(n(p.requiredDepositNgn)).toBe("500.00");
+    expect(p.paymentPlan).toBe("full");
+    expect(p.paymentModel).toBe("full_payment_only");
+    expect(p.requiredDepositPct).toBeNull();
+    expect(p.requiredDepositNgn).toBeNull();
   });
 
-  it("prefers the input override, then business settings", () => {
-    const built = [line("100", 1, null, { payment_model: "deposit_triggered" })];
+  it("instalment plan on a stock order → layaway with the min-first snapshot", () => {
+    const p = computeDepositPolicy({
+      installmentSettings: { min_first_payment_pct: 30 },
+      input: { payment_plan: "instalment" },
+      total: money("1000"),
+    });
+    expect(p.paymentPlan).toBe("instalment");
+    expect(p.paymentModel).toBe("layaway");
+    expect(n(p.requiredDepositNgn)).toBe("300.00");
+  });
+
+  it("custom orders are ALWAYS deposit_triggered, whatever the plan", () => {
+    const full = computeDepositPolicy({
+      installmentSettings: { custom_order_deposit_pct: 50 },
+      input: { is_custom_order: true },
+      total: money("1000"),
+    });
+    expect(full.paymentPlan).toBe("full");
+    expect(full.paymentModel).toBe("deposit_triggered");
+    expect(n(full.requiredDepositNgn)).toBe("500.00");
+
+    const instalment = computeDepositPolicy({
+      installmentSettings: { custom_order_deposit_pct: 40 },
+      input: { is_custom_order: true, payment_plan: "instalment" },
+      total: money("1000"),
+    });
+    expect(instalment.paymentModel).toBe("deposit_triggered");
+    expect(n(instalment.requiredDepositNgn)).toBe("400.00");
+  });
+
+  it("prefers the input override, then config, then the legacy key, then 50", () => {
     const withInput = computeDepositPolicy({
-      built,
-      installmentSettings: { default_deposit_pct_for_deposit_triggered: 30 },
-      input: { required_deposit_pct: 70 },
+      installmentSettings: { custom_order_deposit_pct: 30 },
+      input: { is_custom_order: true, required_deposit_pct: 70 },
       total: money("1000"),
     });
     expect(n(withInput.requiredDepositNgn)).toBe("700.00");
-    const withSettings = computeDepositPolicy({
-      built,
+    const legacyKey = computeDepositPolicy({
       installmentSettings: { default_deposit_pct_for_deposit_triggered: 30 },
-      input: {},
+      input: { is_custom_order: true },
       total: money("1000"),
     });
-    expect(n(withSettings.requiredDepositNgn)).toBe("300.00");
+    expect(n(legacyKey.requiredDepositNgn)).toBe("300.00");
+    const fallback = computeDepositPolicy({
+      installmentSettings: {},
+      input: { is_custom_order: true },
+      total: money("1000"),
+    });
+    expect(n(fallback.requiredDepositNgn)).toBe("500.00");
   });
 
-  it("defaults to layaway with no deposit snapshot", () => {
+  it("instalment min-first defaults to 30% when config is silent", () => {
     const p = computeDepositPolicy({
-      built: [line("100", 1)],
       installmentSettings: {},
-      input: {},
+      input: { payment_plan: "instalment" },
       total: money("1000"),
     });
-    expect(p.paymentModel).toBe("layaway");
-    expect(p.requiredDepositPct).toBeNull();
-    expect(p.requiredDepositNgn).toBeNull();
+    expect(n(p.requiredDepositNgn)).toBe("300.00");
   });
 });
 

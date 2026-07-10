@@ -43,6 +43,7 @@ async function findByKey(businessKey) {
             payment_methods,
             payment_gateway_fees,
             installment_settings,
+            allow_staff_recorded_manual_payments,
             cash_request_ceo_threshold_ngn,
             email_signature_template
        FROM shared.business_config

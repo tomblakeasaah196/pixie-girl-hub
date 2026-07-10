@@ -146,6 +146,9 @@ async function startWorkers() {
     runPendingActionExpirySweep,
   } = require("./schedulers/ai-pending-expiry");
   const { runLayawayReminders } = require("./schedulers/layaway-reminders");
+  const {
+    runAbandonedCheckoutSweep,
+  } = require("./schedulers/abandoned-checkout");
   const { runBirthdayWishes } = require("./schedulers/birthday-wishes");
   const { runWorkflowTimeoutSweep } = require("./schedulers/workflow-timeout");
   const {
@@ -249,6 +252,14 @@ async function startWorkers() {
     runPendingActionExpirySweep,
   );
   scheduleCron("layaway-reminders", "*/30 * * * *", runLayawayReminders);
+  // Abandoned checkouts (Flexi Pay D10): nudge at ~2h, expire self-serve at
+  // ~48h (staff channels on the slow lane) — windows read live from
+  // installment_settings each run.
+  scheduleCron(
+    "abandoned-checkout",
+    "*/30 * * * *",
+    runAbandonedCheckoutSweep,
+  );
   // Birthday wishes — Communications Studio `birthday_wish` automation.
   // 09:00 Africa/Lagos = 08:00 UTC. Dispatcher deduplicates per year, so
   // a restart, retry, or manual re-trigger the same day is a no-op.
@@ -348,6 +359,7 @@ async function startWorkers() {
   require("../shared/notifications/notifications.subscribers"); // rep notification
   require("../modules/sales/timeline.subscribers"); // order.paid → timeline event
   require("../modules/sales/receipt.subscribers"); // order.paid → archive receipt PDF
+  require("../modules/sales/payment-comms.subscribers"); // part-payment receipt + milestone → Comms Studio
   require("../modules/sales/duplicate-resolve.subscribers"); // order.paid → cancel pending duplicate twins
   require("../modules/retention/workflow.subscribers"); // order.paid → workflow trigger
   require("../modules/stock/stock.subscribers"); // variant.created → seed stock level

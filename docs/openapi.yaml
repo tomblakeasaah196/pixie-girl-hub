@@ -7194,8 +7194,8 @@ paths:
     post:
       {
         summary: Create an order (prices lines,
-        reserves stock,
-        payment_model),
+        reserves stock for every plan,
+        payment_plan full|instalment — config-driven deposit policy),
         tags: [sales],
         parameters: [{ $ref: "#/components/parameters/BrandContext" }],
         x-required-permission: "sales.create",
@@ -7249,7 +7249,10 @@ paths:
   /sales/orders/{id}/payments:
     post:
       {
-        summary: Record a payment (deposit_met / paid events fan out),
+        summary: Record a payment — gateway webhook path or staff-recorded
+          bank transfer (payment_path staff_recorded; requires the
+          allow_staff_recorded_manual_payments toggle + bank reference;
+          deposit_met / paid events fan out),
         tags: [sales],
         parameters:
           [
@@ -11760,19 +11763,60 @@ paths:
         responses: { "201": { description: Checkout link } },
       }
 
+  # ── Flexi Pay settings (Sales → Payments tab; V2.2 §6.2 D2) ───────
+  /sales/payment-settings:
+    get:
+      {
+        summary: Read the brand's Flexi Pay payment-plan settings,
+        tags: [sales],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "sales.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Settings (defaults merged) } },
+      }
+    put:
+      {
+        summary: Patch the brand's Flexi Pay settings (plan name/terms/minimums/windows/channel toggles/manual-payment toggle),
+        tags: [sales],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "sales.approve",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "200": { description: Updated settings } },
+      }
+
   # ── Public tokenised pay-link (served at /api/public/pay) ─────────
+  /pay/config/{brand}:
+    get:
+      summary: "PUBLIC: Flexi Pay availability + name + terms + minimums for a brand/channel (served at /api/public/pay/config/{brand}?channel=…)"
+      tags: [sales, public]
+      security: []
+      parameters:
+        [
+          { name: brand, in: path, required: true, schema: { type: string } },
+          {
+            name: channel,
+            in: query,
+            required: false,
+            schema: { type: string, default: storefront },
+          },
+        ]
+      responses:
+        "200": { description: Checkout-safe plan config }
+        "404": { $ref: "#/components/responses/NotFound" }
   /pay/{token}:
     get:
-      summary: "PUBLIC: preview what an order owes (served at /api/public/pay/{token})"
+      summary: "PUBLIC: preview what an order owes — plan, terms, paid/balance, payment history, minimum next payment (served at /api/public/pay/{token})"
       tags: [sales, public]
       security: []
       parameters:
         [{ name: token, in: path, required: true, schema: { type: string } }]
       responses:
-        "200": { description: Outstanding + currency }
+        "200": { description: Outstanding + plan + history }
         "404": { $ref: "#/components/responses/NotFound" }
     post:
-      summary: "PUBLIC: generate a checkout link for an order by token"
+      summary: "PUBLIC: generate a checkout link for an order by token (any amount ≥ the plan minimum; exact balance always allowed)"
       tags: [sales, public]
       security: []
       parameters:
@@ -11780,6 +11824,7 @@ paths:
       responses:
         "201": { description: Checkout link }
         "404": { $ref: "#/components/responses/NotFound" }
+        "422": { description: Below the plan minimum / exceeds balance }
 
   # ── Payment gateways (B / §6.21 — CEO-managed, secrets write-only) ─
   /business-setup/payment-gateways:

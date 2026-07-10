@@ -63,6 +63,9 @@ const orderCreate = z
     bundle_id: z.string().uuid().optional(),
     client_idempotency_key: z.string().max(80).optional(),
     shipping_fee_ngn: money.optional(),
+    // Flexi Pay (D1): the BUYER's explicit choice. Defaults to 'full' in the
+    // service — nobody becomes an instalment customer by accident.
+    payment_plan: z.enum(["full", "instalment"]).optional(),
     // Override the business-default deposit % for a deposit_triggered order.
     required_deposit_pct: z.coerce.number().min(0).max(100).optional(),
     utm_source: z.string().max(80).optional(),
@@ -83,19 +86,55 @@ const paymentCreate = z
       "opay",
       "nomba_terminal",
       "subscription_recurring",
+      // D13: customer paid by direct bank transfer, staff records it. Only
+      // honoured when business_config.allow_staff_recorded_manual_payments
+      // is on (enforced in the service) and the bank reference is supplied.
+      "bank_transfer",
     ]),
     amount_ngn: z.coerce.number().positive(),
     provider: z.string().max(40),
-    provider_reference: z.string().max(200),
+    provider_reference: z.string().max(200).optional(),
     // Foreign-currency settlement (V2.2 §6.6 realised FX gain/loss).
     paid_currency: z.string().length(3).optional(),
     paid_amount: z.coerce.number().positive().optional(),
     fx_rate_used: z.coerce.number().positive().optional(),
     fee_ngn: money.optional(),
-    payment_path: z.enum(["gateway"]),
+    payment_path: z.enum(["gateway", "staff_recorded"]),
+    // Mandatory for staff_recorded (refined below): the bank's transaction
+    // reference + bank name, reconciled against the statement import (§6.6).
+    manual_bank_transaction_id: z.string().min(3).max(200).optional(),
+    manual_bank_name: z.string().min(2).max(120).optional(),
+    notes: z.string().max(1000).optional(),
     client_idempotency_key: z.string().max(120).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((v, ctx) => {
+    if (v.payment_path === "staff_recorded") {
+      if (v.method !== "bank_transfer")
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "staff_recorded payments must use method bank_transfer",
+        });
+      if (!v.manual_bank_transaction_id)
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "manual_bank_transaction_id is required",
+          path: ["manual_bank_transaction_id"],
+        });
+      if (!v.manual_bank_name)
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "manual_bank_name is required",
+          path: ["manual_bank_name"],
+        });
+    }
+    if (v.payment_path === "gateway" && !v.provider_reference)
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "provider_reference is required for gateway payments",
+        path: ["provider_reference"],
+      });
+  });
 
 const orderUpdate = z
   .object({

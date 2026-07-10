@@ -17,6 +17,7 @@
 
 const salesRepo = require("./sales.repo");
 const campaignsRepo = require("../sales_campaigns/campaigns.repo");
+const paymentSettings = require("./payment-settings.service");
 const gateways = require("../business_setup/payment-gateways.service");
 const paystack = require("../../services/paystack.service");
 const opay = require("../../services/opay.service");
@@ -227,6 +228,27 @@ async function createPaymentLink({
       : money(amount_ngn);
   if (amt.lte(0))
     throw new AppError("NOTHING_DUE", "Order has no outstanding balance", 409);
+  if (amt.gt(outstanding))
+    throw new AppError(
+      "AMOUNT_EXCEEDS_BALANCE",
+      "Payment amount exceeds the outstanding balance",
+      422,
+      {
+        user_message: `Only ₦${toCurrencyString(outstanding)} is outstanding on this order.`,
+      },
+    );
+  // Flexi Pay minimums (D5): the plan's first-payment / top-up floors are
+  // enforced HERE, at initiation — never at webhook confirm time (money a
+  // gateway already captured is never rejected). The exact balance is always
+  // allowed. Full-plan orders are exempt (their link is the full balance).
+  if (amount_ngn !== null && amount_ngn !== undefined) {
+    const settings = await paymentSettings.getSettings(brand);
+    paymentSettings.assertPaymentAmountAllowed({
+      settings,
+      order,
+      amountNgn: amt,
+    });
+  }
   const amountStr = toCurrencyString(amt);
 
   // Settlement currency + the amount actually charged at the gateway.
@@ -329,7 +351,13 @@ async function resolveByToken(token) {
   return null;
 }
 
-/** Public, no-auth preview of what's owed on an order (for the pay page). */
+/**
+ * Public, no-auth preview of what's owed on an order (for the pay page).
+ * Enriched for Flexi Pay (D12/D15): the plan, its display name + terms, the
+ * minimum acceptable next payment, and the payment history — everything the
+ * /pay/{token} page renders. All figures are server-computed; the page never
+ * does its own math.
+ */
 async function previewByToken({ token }) {
   const found = await resolveByToken(token);
   if (!found) throw new NotFoundError("Order");
@@ -337,14 +365,34 @@ async function previewByToken({ token }) {
   const outstanding = money(order.total_ngn).minus(
     money(order.amount_paid_ngn || 0),
   );
+  const settings = await paymentSettings.getSettings(brand);
+  const minNext = paymentSettings.minNextPaymentNgn(settings, order);
+  const payments = await salesRepo.listPayments({
+    brand,
+    order_id: order.order_id,
+  });
   return {
     brand,
     order_number: order.order_number,
     status: order.status,
+    payment_plan: order.payment_plan || "full",
+    plan_display_name: settings.plan_display_name,
+    plan_terms: settings.plan_terms,
+    display_currency: order.display_currency || "NGN",
     total_ngn: toCurrencyString(money(order.total_ngn)),
+    amount_paid_ngn: toCurrencyString(money(order.amount_paid_ngn || 0)),
     outstanding_ngn: toCurrencyString(
       outstanding.lt(0) ? money(0) : outstanding,
     ),
+    min_next_payment_ngn: toCurrencyString(minNext),
+    payments: payments
+      .filter((p) => p.status === "captured")
+      .map((p) => ({
+        payment_number: p.payment_number,
+        amount_ngn: toCurrencyString(money(p.amount_ngn)),
+        method: p.method,
+        paid_at: p.captured_at || p.recorded_at,
+      })),
   };
 }
 

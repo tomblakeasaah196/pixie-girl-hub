@@ -338,6 +338,141 @@ async function testAccount({ id }) {
   );
 }
 
+// ── WhatsApp business profile (display picture, about, …) ──────
+//
+// The profile is the "business card" a customer sees in the chat
+// header. It's owned by the phone number, so we resolve the account
+// row → brand and hand off to whatsapp.service, which talks to Meta.
+// The display picture is uploaded via Meta's resumable upload, which
+// needs the numeric Meta App ID — public config we keep in the row's
+// metadata.app_id (no secret, no migration).
+
+function assertWhatsApp(row) {
+  if (!row) throw new NotFoundError("Messaging account");
+  if (row.platform !== "whatsapp") {
+    throw new AppError(
+      "NOT_WHATSAPP",
+      "Business profile is only available for WhatsApp accounts",
+      400,
+    );
+  }
+  return row;
+}
+
+/**
+ * Normalise any staff-supplied image into a WhatsApp-ready display
+ * picture: a square JPEG. Meta only accepts JPEG for the profile photo
+ * and renders it in a circle, so we cover-crop to 640×640 (well within
+ * Meta's 5MB / min-192px limits) and re-encode. HEIC (iPhone default)
+ * is decoded first so a phone photo just works.
+ */
+async function toProfilePictureJpeg(file) {
+  const sharp = require("sharp");
+  const {
+    normalizeImageInput,
+  } = require("../../services/media-compression.service");
+  const normalized = await normalizeImageInput(file); // HEIC → JPEG bytes
+  return sharp(normalized.buffer, { failOn: "none" })
+    .rotate() // honour EXIF orientation
+    .resize(640, 640, { fit: "cover", position: sharp.strategy.attention })
+    .jpeg({ quality: 90, mozjpeg: true })
+    .toBuffer();
+}
+
+/**
+ * Read a WhatsApp account's business profile from Meta. Also returns
+ * the stored app_id so the UI can tell whether a picture upload will
+ * work without a round-trip.
+ */
+async function getWhatsAppProfile({ id }) {
+  const row = assertWhatsApp(await repo.getRaw({ id }));
+  const wa = require("../../services/whatsapp.service");
+  const profile = await wa.getBusinessProfile({ brand: row.business });
+  const app_id = (row.metadata && row.metadata.app_id) || null;
+  return { ...profile, app_id };
+}
+
+/**
+ * Update the text fields of a WhatsApp business profile. `profile`
+ * carries only the keys the operator changed (about, address,
+ * description, email, vertical, websites).
+ */
+async function updateWhatsAppProfile({ brand, user, request_id, id, profile }) {
+  const row = assertWhatsApp(await repo.getRaw({ id }));
+  const wa = require("../../services/whatsapp.service");
+  const result = await wa.updateBusinessProfile({ brand: row.business, profile });
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "messaging_accounts.whatsapp_profile_update",
+    target_type: "messaging_account",
+    target_id: id,
+    after: { fields: Object.keys(profile || {}) },
+    request_id,
+  });
+  return result;
+}
+
+/**
+ * Set the WhatsApp display picture from an uploaded image. Persists the
+ * App ID (if newly supplied) so it's remembered for next time, converts
+ * the image to a square JPEG, then uploads + writes the handle.
+ */
+async function setWhatsAppProfilePicture({
+  brand,
+  user,
+  request_id,
+  id,
+  file,
+  app_id,
+}) {
+  const row = assertWhatsApp(await repo.getRaw({ id }));
+  if (!file || !file.buffer) {
+    throw new ValidationError("An image file is required");
+  }
+  const storedAppId = (row.metadata && row.metadata.app_id) || null;
+  const cleaned = app_id ? String(app_id).trim() : "";
+  if (cleaned && !/^\d{1,32}$/.test(cleaned)) {
+    throw new ValidationError("Meta App ID must be numeric");
+  }
+  const effectiveAppId = cleaned || storedAppId;
+  if (!effectiveAppId) {
+    throw new AppError(
+      "WA_NO_APP_ID",
+      "Enter your Meta App ID before uploading a display picture.",
+      412,
+    );
+  }
+  // Remember a freshly-entered App ID so future uploads don't ask again.
+  if (cleaned && cleaned !== storedAppId) {
+    await repo.setAppId({ id, app_id: cleaned });
+  }
+
+  const buffer = await toProfilePictureJpeg(file);
+  const wa = require("../../services/whatsapp.service");
+  await wa.setProfilePicture({
+    brand: row.business,
+    app_id: effectiveAppId,
+    buffer,
+    mime_type: "image/jpeg",
+    filename: "profile.jpg",
+  });
+
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "messaging_accounts.whatsapp_profile_picture",
+    target_type: "messaging_account",
+    target_id: id,
+    after: { bytes: buffer.length },
+    request_id,
+  });
+
+  // Return the refreshed profile so the UI can show the new picture.
+  const profile = await wa.getBusinessProfile({ brand: row.business });
+  return { ...profile, app_id: effectiveAppId };
+}
+
 // ── Internal resolver helpers (used by whatsapp.service etc.) ──
 
 /**
@@ -429,6 +564,10 @@ module.exports = {
   testAccount,
   revealSecret,
   listReveals,
+  // WhatsApp business profile:
+  getWhatsAppProfile,
+  updateWhatsAppProfile,
+  setWhatsAppProfilePicture,
   // internal — for whatsapp.service + webhooks:
   resolveWhatsAppSendConfig,
   resolveWhatsAppInboundSecrets,

@@ -51,6 +51,37 @@ async function listReveals(req, res) {
   res.json({ data: await service.listReveals({ id: req.params.id }) });
 }
 
+async function getWhatsAppProfile(req, res) {
+  res.json({ data: await service.getWhatsAppProfile({ id: req.params.id }) });
+}
+
+async function updateWhatsAppProfile(req, res) {
+  // Drop blank website slots the UI may send for empty inputs — Meta
+  // rejects empty strings inside the websites array.
+  const profile = { ...req.body };
+  if (Array.isArray(profile.websites)) {
+    profile.websites = profile.websites.filter((w) => w && w.trim());
+  }
+  res.json({
+    data: await service.updateWhatsAppProfile({
+      ...ctx(req),
+      id: req.params.id,
+      profile,
+    }),
+  });
+}
+
+async function setWhatsAppProfilePicture(req, res) {
+  res.json({
+    data: await service.setWhatsAppProfilePicture({
+      ...ctx(req),
+      id: req.params.id,
+      file: req.file,
+      app_id: req.body && req.body.app_id,
+    }),
+  });
+}
+
 module.exports = {
   listAccounts,
   getAccount,
@@ -60,4 +91,7 @@ module.exports = {
   testAccount,
   revealSecret,
   listReveals,
+  getWhatsAppProfile,
+  updateWhatsAppProfile,
+  setWhatsAppProfilePicture,
 };

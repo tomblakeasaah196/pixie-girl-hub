@@ -43,6 +43,7 @@ import { ChannelPolicyTab } from "./ChannelPolicyTab";
 import { CommsStudioTab } from "./CommsStudioTab";
 import { QuickRepliesTab } from "./QuickRepliesTab";
 import { WhatsAppTemplatesTab } from "./WhatsAppTemplatesTab";
+import { WhatsAppBusinessProfile } from "./WhatsAppBusinessProfile";
 
 /**
  * Messaging settings — every configuration concern the Messaging module
@@ -599,6 +600,10 @@ function PlatformEditor({ platform, account, onSaved }: EditorProps) {
           </span>
         )}
       </div>
+
+      {platform === "whatsapp" && account && (
+        <WhatsAppBusinessProfile account={account} />
+      )}
 
       {account && <RevealHistory accountId={account.account_id} />}
 

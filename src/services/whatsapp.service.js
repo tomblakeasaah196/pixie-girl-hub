@@ -444,6 +444,159 @@ async function deleteTemplate({ brand, name, meta_template_id }) {
   return data;
 }
 
+// ── Business profile (Meta WhatsApp Business Profile API) ──────
+//
+// The profile is what a customer sees when they open the chat: the
+// display picture, the "about" line, description, address, email,
+// websites and business category. It hangs off the phone-number node
+// (not the WABA). Meta surfaces this under
+// /{phone_number_id}/whatsapp_business_profile. Setting the picture is
+// a two-hop resumable upload (bytes → file handle → profile), because
+// Meta won't accept a raw image URL for the display photo the way it
+// does for outbound image messages.
+
+// Fields Meta exposes on the business profile. profile_picture_url is
+// read-only here — writing the picture goes through a file handle.
+const PROFILE_FIELDS =
+  "about,address,description,email,profile_picture_url,vertical,websites,messaging_product";
+
+/** Meta returns errors nested; surface the human-facing message. */
+function metaProfileError(err, fallback) {
+  const apiErr = err.response && err.response.data && err.response.data.error;
+  const status = err.response && err.response.status;
+  const msg =
+    (apiErr && (apiErr.error_user_msg || apiErr.message)) ||
+    err.message ||
+    fallback;
+  return new AppError(
+    "WA_PROFILE_API_ERROR",
+    msg,
+    status && status >= 400 && status < 500 ? status : 502,
+  );
+}
+
+/**
+ * Read the brand's WhatsApp business profile. Returns the single
+ * profile object (about, address, description, email,
+ * profile_picture_url, vertical, websites) or {} when Meta returns an
+ * empty set.
+ */
+async function getBusinessProfile({ brand }) {
+  const cfg = await resolveSendConfig({ brand });
+  const url = `${GRAPH()}/${cfg.phone_number_id}/whatsapp_business_profile?fields=${PROFILE_FIELDS}`;
+  try {
+    const { data } = await axios.get(url, {
+      headers: { Authorization: `Bearer ${cfg.access_token}` },
+      timeout: 15000,
+    });
+    return (data && data.data && data.data[0]) || {};
+  } catch (err) {
+    throw metaProfileError(err, "Could not read the WhatsApp business profile");
+  }
+}
+
+/**
+ * Update text fields on the business profile. `profile` may carry any
+ * of: about, address, description, email, vertical, websites,
+ * profile_picture_handle. Only the keys present are changed; an empty
+ * string clears a field. Meta answers { success: true }.
+ */
+async function updateBusinessProfile({ brand, profile }) {
+  const cfg = await resolveSendConfig({ brand });
+  const url = `${GRAPH()}/${cfg.phone_number_id}/whatsapp_business_profile`;
+  try {
+    const { data } = await axios.post(
+      url,
+      { messaging_product: "whatsapp", ...profile },
+      { headers: { Authorization: `Bearer ${cfg.access_token}` }, timeout: 20000 },
+    );
+    return data;
+  } catch (err) {
+    throw metaProfileError(err, "Meta rejected the profile update");
+  }
+}
+
+/**
+ * Resumable Upload API — push raw bytes to the Meta app node and get
+ * back a file handle usable as `profile_picture_handle`. Two hops:
+ *
+ *   1. POST /{app_id}/uploads?file_length&file_type&file_name  → session id
+ *   2. POST /{session_id}  (Authorization: OAuth, file_offset: 0, body=bytes)
+ *      → { h }
+ *
+ * Needs the numeric Meta App ID (public, not a secret — it lives in the
+ * messaging account's metadata.app_id). The bearer token is the same
+ * system-user token used for sends; note hop 2 wants the "OAuth" auth
+ * scheme, not "Bearer" — a well-known gotcha that 400s otherwise.
+ */
+async function uploadResumable({ brand, app_id, buffer, mime_type, filename }) {
+  if (!app_id) {
+    throw new AppError(
+      "WA_NO_APP_ID",
+      "A Meta App ID is required to upload a profile picture. Add it in Messaging → WhatsApp settings.",
+      412,
+    );
+  }
+  const cfg = await resolveSendConfig({ brand });
+  const type = mime_type || "image/jpeg";
+  try {
+    const { data: session } = await axios.post(
+      `${GRAPH()}/${encodeURIComponent(app_id)}/uploads`,
+      null,
+      {
+        params: {
+          file_length: buffer.length,
+          file_type: type,
+          file_name: filename || "profile.jpg",
+        },
+        headers: { Authorization: `Bearer ${cfg.access_token}` },
+        timeout: 20000,
+      },
+    );
+    if (!session || !session.id) {
+      throw new AppError(
+        "WA_UPLOAD_NO_SESSION",
+        "Meta did not return an upload session",
+        502,
+      );
+    }
+    const { data: uploaded } = await axios.post(
+      `${GRAPH()}/${session.id}`,
+      buffer,
+      {
+        headers: {
+          Authorization: `OAuth ${cfg.access_token}`,
+          file_offset: "0",
+          "Content-Type": type,
+        },
+        timeout: 60000,
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+      },
+    );
+    if (!uploaded || !uploaded.h) {
+      throw new AppError(
+        "WA_UPLOAD_NO_HANDLE",
+        "Meta did not return a file handle for the upload",
+        502,
+      );
+    }
+    return uploaded.h;
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+    throw metaProfileError(err, "Could not upload the profile picture to Meta");
+  }
+}
+
+/**
+ * Set the display picture: upload the bytes for a handle, then write
+ * that handle onto the business profile. Returns Meta's { success }.
+ */
+async function setProfilePicture({ brand, app_id, buffer, mime_type, filename }) {
+  const handle = await uploadResumable({ brand, app_id, buffer, mime_type, filename });
+  return updateBusinessProfile({ brand, profile: { profile_picture_handle: handle } });
+}
+
 /**
  * True iff the given brand has an active WhatsApp row on file. Cheap
  * predicate used by delivery services that want to fall back to email
@@ -476,4 +629,9 @@ module.exports = {
   createTemplate,
   editTemplate,
   deleteTemplate,
+  // business profile (display picture, about, description, …):
+  getBusinessProfile,
+  updateBusinessProfile,
+  uploadResumable,
+  setProfilePicture,
 };

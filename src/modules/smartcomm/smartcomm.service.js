@@ -967,7 +967,7 @@ async function buildProductShareCards({ business, message }) {
   if (capture_url) {
     cards.push({
       type: "text",
-      body: `🛍️ Ready to order? Tap to confirm & pay:\n${capture_url}`,
+      body: `🛍️ Like anything? Pick your items & order here:\n${capture_url}`,
     });
   }
   return cards;

@@ -33,7 +33,41 @@ const orderFormSchema = z
           quantity: z.coerce.number().int().positive(),
         }),
       )
-      .min(1),
+      // A service-only checkout has no product lines — the object-level
+      // refine below still requires at least one item OR one booking.
+      .default([]),
+    // Service lines from an order link: booking REQUESTS (customer's
+    // preferred date/time; the business confirms from the thread).
+    service_bookings: z
+      .array(
+        z.object({
+          service_id: z.string().uuid(),
+          qty: z.coerce.number().int().positive().max(20).default(1),
+          price_ngn: z.union([z.string(), z.number()]).optional(),
+          requested_for: z.string().datetime({ offset: true }).optional(),
+          note: z.string().max(280).optional(),
+        }),
+      )
+      .max(10)
+      .optional(),
+    // Inline welcome-form mirror (no-contact order links): these land in
+    // the same tables the Online QR form writes.
+    whatsapp_number: z.string().max(40).optional(),
+    instagram_handle: z.string().max(80).optional(),
+    address: z
+      .object({
+        line1: z.string().max(240),
+        line2: z.string().max(240).optional(),
+        area: z.string().max(120).optional(),
+        city: z.string().max(120).optional(),
+        state: z.string().max(120).optional(),
+        country: z.string().max(120).optional(),
+        country_code: z.string().max(3).optional(),
+        landmark: z.string().max(240).optional(),
+      })
+      .optional(),
+    // Signed order-link token — marks the link used + posts thread events.
+    capture_token: z.string().max(4000).optional(),
     utm_source: z.string().max(80).optional(),
     utm_medium: z.string().max(80).optional(),
     utm_campaign: z.string().max(120).optional(),
@@ -52,7 +86,13 @@ const orderFormSchema = z
     // pay link they receive. Defaults to 'full'.
     payment_plan: z.enum(["full", "instalment"]).optional().default("full"),
   })
-  .strict();
+  .strict()
+  .refine(
+    (o) =>
+      (o.items && o.items.length > 0) ||
+      (o.service_bookings && o.service_bookings.length > 0),
+    { message: "At least one item or service booking is required" },
+  );
 
 const sessionSchema = z
   .object({

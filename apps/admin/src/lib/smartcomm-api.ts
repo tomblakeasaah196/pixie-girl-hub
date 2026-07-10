@@ -186,14 +186,18 @@ export const smartcommApi = {
       `/smartcomm/channels/${channelId}/draft-with-praxis`,
     ),
 
-  // Order capture link
+  // Order capture link (universal order link: capture = staff-picked
+  // cart, shop = curated mini-shop the customer picks from)
   createOrderCapture: (input: {
-    contact_id: string;
+    contact_id?: string;
+    channel_id?: string;
+    mode?: "capture" | "shop";
     items: {
-      kind?: "base" | "styled" | "bundle";
+      kind?: "base" | "styled" | "bundle" | "service";
       product_id?: string;
       styled_id?: string;
       bundle_id?: string;
+      service_id?: string;
       qty: number;
       price_ngn?: string;
       note?: string;
@@ -202,11 +206,44 @@ export const smartcommApi = {
     notes?: string;
     expires_in?: number;
   }) =>
-    api.post<{ url: string; token: string; expires_at: string }>(
-      "/smartcomm/order-capture",
-      input,
+    api.post<{
+      url: string;
+      token: string;
+      expires_at: string;
+      link_id?: string;
+      mode?: "capture" | "shop";
+    }>("/smartcomm/order-capture", input),
+
+  // Sidebar activity panel: a channel's order links + live cart state.
+  listOrderLinks: (channelId: string) =>
+    api.get<{ data: OrderLinkRow[] }>(
+      `/smartcomm/channels/${channelId}/order-links`,
     ),
 };
+
+export interface OrderLinkRow {
+  link_id: string;
+  mode: "capture" | "shop";
+  status: "active" | "ordered" | "expired" | "revoked";
+  items: { kind: string; qty: number }[];
+  cart:
+    | {
+        kind: string;
+        ref_id: string | null;
+        name: string;
+        qty: number;
+        price_ngn: string | null;
+      }[]
+    | null;
+  opened_at: string | null;
+  opened_count: number;
+  cart_updated_at: string | null;
+  order_number: string | null;
+  ordered_at: string | null;
+  booking_count: number;
+  expires_at: string;
+  created_at: string;
+}
 
 // ── Customer Onboarding (Online QR link) ─────────────────
 

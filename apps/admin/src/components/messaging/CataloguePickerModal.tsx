@@ -151,29 +151,29 @@ export function CataloguePickerModal({
   }
 
   async function mintCaptureUrl(cards: Selected[]): Promise<string | null> {
-    // Tap-to-order is only meaningful for product kinds (services convert
-    // through the service-job flow). Skip when nothing's sellable, or when
-    // we don't know the customer — the cards still render as a browse-only
-    // carousel and the rep can drop a link manually.
-    const products = cards.filter((c) => c.kind !== "service");
-    if (!contactId || products.length === 0) return null;
-    try {
-      const r = await smartcommApi.createOrderCapture({
-        contact_id: contactId,
-        items: products.map((c) => ({
-          kind: c.kind as "base" | "styled" | "bundle",
-          product_id: c.kind === "base" ? c.id : undefined,
-          styled_id: c.kind === "styled" ? c.id : undefined,
-          bundle_id: c.kind === "bundle" ? c.id : undefined,
-          qty: c.qty,
-          price_ngn: c.price != null ? String(c.price) : undefined,
-        })),
-        sales_channel: resolveMessagingSalesChannel(channel.external_platform),
-      });
-      return r.url;
-    } catch {
-      return null;
-    }
+    // Shared catalogues mint a "shop" link: one mini-shop page with the
+    // curated picks where the CUSTOMER chooses items + quantities.
+    // Services are orderable too (they become booking requests). Works
+    // without a linked contact — checkout collects the customer inline.
+    // Mint failures are surfaced, not swallowed: silent 'Browse only'
+    // fallbacks hid a broken validator for weeks.
+    if (cards.length === 0) return null;
+    const r = await smartcommApi.createOrderCapture({
+      contact_id: contactId ?? undefined,
+      channel_id: channel.channel_id,
+      mode: "shop",
+      items: cards.map((c) => ({
+        kind: c.kind as "base" | "styled" | "bundle" | "service",
+        product_id: c.kind === "base" ? c.id : undefined,
+        styled_id: c.kind === "styled" ? c.id : undefined,
+        bundle_id: c.kind === "bundle" ? c.id : undefined,
+        service_id: c.kind === "service" ? c.id : undefined,
+        qty: c.qty,
+        price_ngn: c.price != null ? String(c.price) : undefined,
+      })),
+      sales_channel: resolveMessagingSalesChannel(channel.external_platform),
+    });
+    return r.url;
   }
 
   async function submit() {
@@ -189,7 +189,7 @@ export function CataloguePickerModal({
         price: s.price ?? null,
         image_url: s.image_url ?? null,
         sub: s.sub ?? null,
-        capture_url: s.kind === "service" ? null : capture_url,
+        capture_url,
       }));
       await smartcommApi.postMessage(channel.channel_id, {
         message_type: "product_share",
@@ -417,8 +417,8 @@ export function CataloguePickerModal({
       {error && <div className="mt-2 text-[11.5px] text-danger">{error}</div>}
       {selected.length > 0 && !contactId && (
         <div className="mt-2 text-[11px] text-text-faint">
-          No customer is linked to this thread — cards will send for browsing
-          only (no tap-to-order link).
+          No customer is linked to this thread yet — the order link will ask
+          them for their details at checkout and link them automatically.
         </div>
       )}
     </Modal>

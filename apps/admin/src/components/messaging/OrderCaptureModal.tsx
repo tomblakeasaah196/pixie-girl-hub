@@ -12,6 +12,7 @@ import {
   Package,
   Layers,
   Box,
+  Sparkles,
 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { toastReport } from "@/lib/error-report";
@@ -32,19 +33,21 @@ interface Props {
   onSentLink: (url: string) => void | Promise<void>;
 }
 
-// Order Capture is for physical, deliverable lines — base/styled/bundle.
-// Services don't ship, so they're not offered here (they convert through
-// the service-job flow instead).
-type CaptureKind = Exclude<ProductKind, "service">;
+// Order Capture covers everything sellable: base/styled/bundle ship as
+// product lines; services become booking requests (the customer picks a
+// preferred date/time at checkout and the business confirms).
+type CaptureKind = ProductKind;
 const CAPTURE_KINDS: { key: CaptureKind; label: string }[] = [
   { key: "base", label: "Base" },
   { key: "styled", label: "Styled" },
   { key: "bundle", label: "Bundle" },
+  { key: "service", label: "Service" },
 ];
 const KIND_ICON: Record<string, typeof Package> = {
   base: Package,
   styled: Layers,
   bundle: Box,
+  service: Sparkles,
 };
 
 interface LineItem {
@@ -110,7 +113,7 @@ export function OrderCaptureModal({
   }, [kind, search]);
 
   const total = useMemo(() => items.reduce((s, i) => s + i.qty, 0), [items]);
-  const canSend = items.length > 0 && contactId;
+  const canSend = items.length > 0;
 
   function addItem(k: CaptureKind, id: string, name: string) {
     setItems((arr) => {
@@ -142,22 +145,19 @@ export function OrderCaptureModal({
   }
 
   async function generate() {
-    if (!contactId) {
-      setError(
-        "This thread isn't linked to a customer. Open the Online QR form first.",
-      );
-      return;
-    }
     setError(null);
     setSending(true);
     try {
       const r = await smartcommApi.createOrderCapture({
-        contact_id: contactId,
+        contact_id: contactId ?? undefined,
+        channel_id: channel.channel_id,
+        mode: "capture",
         items: items.map((i) => ({
           kind: i.kind,
           product_id: i.kind === "base" ? i.id : undefined,
           styled_id: i.kind === "styled" ? i.id : undefined,
           bundle_id: i.kind === "bundle" ? i.id : undefined,
+          service_id: i.kind === "service" ? i.id : undefined,
           qty: i.qty,
           note: i.note,
         })),
@@ -208,9 +208,9 @@ export function OrderCaptureModal({
           <div className="flex items-start gap-2 rounded-xl border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-[12px] text-amber-200">
             <AlertCircle className="w-3.5 h-3.5 mt-[2px] shrink-0" />
             <div>
-              This thread isn&rsquo;t linked to a customer profile yet. Send the
-              Online QR welcome form first so the order can attach to their
-              record.
+              No customer is linked to this thread yet — the checkout will ask
+              for their details (like the welcome form) and link them to this
+              conversation automatically.
             </div>
           </div>
         )}

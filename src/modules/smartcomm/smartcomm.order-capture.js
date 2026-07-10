@@ -28,6 +28,7 @@ const { config } = require("../../config/env");
 const { audit } = require("../../middleware/audit");
 const { AppError } = require("../../utils/errors");
 const brandUrls = require("../../utils/brand-urls");
+const orderLinksRepo = require("./smartcomm.order-links.repo");
 
 // Owner decision (2026-07): order links live 7 days by default and die
 // after a successful order (enforced via shared.smartcomm_order_links).
@@ -46,8 +47,10 @@ const DEFAULT_EXPIRY_SECONDS = 7 * 24 * 3600;
  * @param {number} [args.input.expires_in]      seconds; default 24h
  */
 async function createCaptureLink({ brand, user, request_id, input }) {
-  if (!input || !input.contact_id) {
-    throw new AppError("CONTACT_REQUIRED", "contact_id is required", 422);
+  // contact_id is optional now: checkout collects the customer inline
+  // (mirroring the Online QR form) and back-fills the contact on submit.
+  if (!input) {
+    throw new AppError("ITEMS_REQUIRED", "At least one item required", 422);
   }
   const items = Array.isArray(input.items) ? input.items : [];
   if (items.length === 0) {
@@ -58,16 +61,25 @@ async function createCaptureLink({ brand, user, request_id, input }) {
   // field is present (defaults to 'base' for backward compatibility with
   // callers that only ever sent `product_id`).
   function itemKind(it) {
-    return it.kind || (it.styled_id ? "styled" : it.bundle_id ? "bundle" : "base");
+    return (
+      it.kind ||
+      (it.styled_id
+        ? "styled"
+        : it.bundle_id
+          ? "bundle"
+          : it.service_id
+            ? "service"
+            : "base")
+    );
   }
   function itemId(it) {
-    return it.product_id || it.styled_id || it.bundle_id || it.id;
+    return it.product_id || it.styled_id || it.bundle_id || it.service_id || it.id;
   }
   for (const it of items) {
     if (!itemId(it)) {
       throw new AppError(
         "ITEM_INVALID",
-        "Every item needs a product_id, styled_id, or bundle_id",
+        "Every item needs a product_id, styled_id, bundle_id, or service_id",
         422,
       );
     }
@@ -80,54 +92,79 @@ async function createCaptureLink({ brand, user, request_id, input }) {
     }
   }
 
+  const normalisedItems = items.map((it) => {
+    const kind = itemKind(it);
+    const id = itemId(it);
+    return {
+      kind,
+      product_id: kind === "base" ? id : undefined,
+      styled_id: kind === "styled" ? id : undefined,
+      bundle_id: kind === "bundle" ? id : undefined,
+      service_id: kind === "service" ? id : undefined,
+      qty: Number(it.qty),
+      price_ngn:
+        it.price_ngn !== undefined && it.price_ngn !== null
+          ? String(it.price_ngn)
+          : undefined,
+      note: it.note || undefined,
+    };
+  });
+  const expiresIn = Number(input.expires_in) || DEFAULT_EXPIRY_SECONDS;
+  const expires_at = new Date(Date.now() + expiresIn * 1000).toISOString();
+
+  // Persist first: the row is what makes the link single-use and feeds
+  // the activity panel. The JWT carries the link_id so the public
+  // verifier can find the row without a lookup table.
+  const linkRow = await orderLinksRepo.createOrderLink({
+    link: {
+      business: brand,
+      channel_id: input.channel_id || null,
+      contact_id: input.contact_id || null,
+      created_by: user.user_id,
+      mode: input.mode || "capture",
+      sales_channel: input.sales_channel || "whatsapp",
+      items: normalisedItems,
+      notes: input.notes || null,
+      expires_at,
+    },
+  });
+
   const payload = {
-    v: 1,
+    v: 2,
+    link_id: linkRow.link_id,
     brand,
-    contact_id: input.contact_id,
+    contact_id: input.contact_id || undefined,
+    channel_id: input.channel_id || undefined,
+    mode: linkRow.mode,
     sales_channel: input.sales_channel || "whatsapp",
-    items: items.map((it) => {
-      const kind = itemKind(it);
-      const id = itemId(it);
-      return {
-        kind,
-        product_id: kind === "base" ? id : undefined,
-        styled_id: kind === "styled" ? id : undefined,
-        bundle_id: kind === "bundle" ? id : undefined,
-        qty: Number(it.qty),
-        price_ngn:
-          it.price_ngn !== undefined && it.price_ngn !== null
-            ? String(it.price_ngn)
-            : undefined,
-        note: it.note || undefined,
-      };
-    }),
+    items: normalisedItems,
     staffer_user_id: user.user_id,
     notes: input.notes || undefined,
   };
-  const expiresIn = Number(input.expires_in) || DEFAULT_EXPIRY_SECONDS;
   const token = jwt.sign(payload, config.JWT_SECRET, {
     expiresIn,
     issuer: "smartcomm",
     audience: "order-capture",
   });
   const url = await brandUrls.orderCaptureUrl(brand, token);
-  const expires_at = new Date(Date.now() + expiresIn * 1000).toISOString();
 
   await audit({
     business: brand,
     user_id: user.user_id,
     action_key: "smartcomm.order_capture.create",
     target_type: "order_capture",
-    target_id: input.contact_id,
+    target_id: linkRow.link_id,
     after: {
       items_count: items.length,
+      mode: linkRow.mode,
+      contact_id: input.contact_id || null,
       sales_channel: payload.sales_channel,
       expires_at,
     },
     request_id,
   });
 
-  return { url, token, expires_at };
+  return { url, token, expires_at, link_id: linkRow.link_id, mode: linkRow.mode };
 }
 
 /**

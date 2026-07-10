@@ -17,6 +17,18 @@ jest.mock("../../../src/config/env", () => ({
 jest.mock("../../../src/middleware/audit", () => ({
   audit: jest.fn().mockResolvedValue(undefined),
 }));
+// Links persist to shared.smartcomm_order_links (single-use lifecycle +
+// activity panel); hermetic tests fake the row.
+jest.mock(
+  "../../../src/modules/smartcomm/smartcomm.order-links.repo",
+  () => ({
+    createOrderLink: jest.fn(async ({ link }) => ({
+      link_id: "44444444-4444-4444-4444-444444444444",
+      mode: link.mode || "capture",
+      ...link,
+    })),
+  }),
+);
 
 const jwt = require("jsonwebtoken");
 const orderCapture = require("../../../src/modules/smartcomm/smartcomm.order-capture");
@@ -36,13 +48,20 @@ const validItems = [
 ];
 
 describe("smartcomm order-capture", () => {
-  test("createCaptureLink rejects when contact_id missing", async () => {
-    await expect(
-      orderCapture.createCaptureLink({
-        ...baseArgs,
-        input: { items: validItems },
-      }),
-    ).rejects.toMatchObject({ code: "CONTACT_REQUIRED" });
+  // Owner decision (2026-07): contact is optional — no-contact links show
+  // the inline welcome-form block at checkout and back-fill the contact.
+  test("createCaptureLink works without a contact_id", async () => {
+    const r = await orderCapture.createCaptureLink({
+      ...baseArgs,
+      input: { items: validItems },
+    });
+    const decoded = jwt.verify(
+      r.token,
+      "test-secret-must-be-at-least-32-chars-long-XYZ",
+      { issuer: "smartcomm", audience: "order-capture" },
+    );
+    expect(decoded.contact_id).toBeUndefined();
+    expect(decoded.link_id).toBe("44444444-4444-4444-4444-444444444444");
   });
 
   test("createCaptureLink rejects when items empty", async () => {

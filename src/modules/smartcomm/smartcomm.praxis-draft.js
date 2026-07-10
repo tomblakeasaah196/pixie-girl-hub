@@ -100,8 +100,19 @@ async function draftReply({ brand, user, request_id, channel_id }) {
     customer?.email ||
     "the customer";
 
+  // Who spoke last decides what we're drafting: a reply to the customer,
+  // or a follow-up nudge because they've gone quiet since our last
+  // message. The mode rides into the prompt AND back to the composer so
+  // the chip can label the draft honestly.
+  const lastSpeaker = [...messages]
+    .reverse()
+    .find((m) => m.sender_kind !== "system");
+  const draft_mode =
+    lastSpeaker && lastSpeaker.sender_kind === "staff" ? "followup" : "reply";
+
   // ── 3. Build the prompt ────────────────────────────────
   const promptContext = {
+    draft_mode,
     brand,
     platform,
     voice_summary: voice?.voice_summary || null,
@@ -178,10 +189,10 @@ async function draftReply({ brand, user, request_id, channel_id }) {
     action_key: "smartcomm.praxis.draft",
     target_type: "message_draft",
     target_id: channel_id,
-    after: { generated_by: "praxis", chars: draftText.length },
+    after: { generated_by: "praxis", mode: draft_mode, chars: draftText.length },
     request_id,
   });
-  return draft;
+  return { ...draft, draft_mode };
 }
 
 /**
@@ -198,10 +209,13 @@ function composeStubDraft(ctx) {
     ? `\n\n— ${stripHtml(ctx.signature_html).slice(0, 200)}`
     : "";
   const lastCustomerLine = lastFromTranscript(ctx.transcript, "Customer");
-  const body = lastCustomerLine
-    ? `Thanks for reaching out, ${firstName(ctx.customer_name)} ${greetingEmoji}\n\n` +
-      `I hear you on "${truncate(lastCustomerLine, 120)}". Let me confirm a couple of details and come back to you with the next step.`
-    : `Hi ${firstName(ctx.customer_name)} ${greetingEmoji} — thanks for getting in touch! How can we help today?`;
+  const body =
+    ctx.draft_mode === "followup"
+      ? `Hi ${firstName(ctx.customer_name)} ${greetingEmoji} — just checking in! Let me know if you have any questions or if there's anything I can help with to get you sorted.`
+      : lastCustomerLine
+        ? `Thanks for reaching out, ${firstName(ctx.customer_name)} ${greetingEmoji}\n\n` +
+          `I hear you on "${truncate(lastCustomerLine, 120)}". Let me confirm a couple of details and come back to you with the next step.`
+        : `Hi ${firstName(ctx.customer_name)} ${greetingEmoji} — thanks for getting in touch! How can we help today?`;
   return (
     body +
     `\n\n(Praxis draft — live AI is not configured in this environment; this is a placeholder.)` +

@@ -102,6 +102,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
   const [sendingTemplate, setSendingTemplate] = useState(false);
   const [varReply, setVarReply] = useState<QuickReply | null>(null);
   const [praxisDrafted, setPraxisDrafted] = useState(false);
+  const [praxisMode, setPraxisMode] = useState<"reply" | "followup">("reply");
   const [busy, setBusy] = useState<"sending" | "uploading" | "drafting" | null>(
     null,
   );
@@ -439,6 +440,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
       setBusy("drafting");
       const draft = await smartcommApi.draftWithPraxis(channelId);
       setContent(draft.content || "");
+      setPraxisMode(draft.draft_mode === "followup" ? "followup" : "reply");
       setPraxisDrafted(true);
       // Auto-resize the textarea to the new content
       requestAnimationFrame(() => {
@@ -766,8 +768,9 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
         <div className="mx-3 sm:mx-4 mb-1 flex items-center gap-2 rounded-xl border border-accent/30 bg-accent/5 px-3 py-1.5 text-[11.5px] text-text-muted">
           <Sparkles className="w-3.5 h-3.5 text-accent-glow shrink-0" />
           <span className="flex-1">
-            Praxis drafted this — edit before sending, or hit Send if it sounds
-            right.
+            {praxisMode === "followup"
+              ? "Praxis drafted a follow-up nudge (the customer hasn't replied yet) — edit before sending."
+              : "Praxis drafted this reply — edit before sending, or hit Send if it sounds right."}
           </span>
           <button
             onClick={() => {

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ExternalLink,
   Mail,
@@ -12,6 +12,7 @@ import {
   Send,
   Loader2,
   Wallet,
+  ShoppingCart,
 } from "lucide-react";
 import { useCustomer360 } from "@/hooks/useSmartcomm";
 import { smartcommApi } from "@/lib/smartcomm-api";
@@ -36,6 +37,16 @@ export function CustomerSidebar({ channel }: Props) {
   const contactId = customer?.contact_id ?? undefined;
   const { data, isLoading } = useCustomer360(contactId);
   const [sendingInvoice, setSendingInvoice] = useState<string | null>(null);
+  // Order links + live customer activity (opened / picking / ordered).
+  // Polled lightly — the thread's system lines arrive instantly anyway;
+  // this keeps the cart panel fresh while the customer is browsing.
+  const { data: orderLinks } = useQuery({
+    queryKey: ["smartcomm", "order-links", channel.channel_id],
+    queryFn: () => smartcommApi.listOrderLinks(channel.channel_id),
+    enabled: channel.channel_type === "customer_thread",
+    refetchInterval: 20_000,
+    select: (r) => r.data,
+  });
 
   async function sendInvoice(invoiceId: string) {
     setSendingInvoice(invoiceId);
@@ -244,6 +255,54 @@ export function CustomerSidebar({ channel }: Props) {
                 <span className="text-[10.5px] uppercase tracking-widest text-text-muted">
                   {d.status?.replace(/_/g, " ")}
                 </span>
+              </div>
+            ))
+          )}
+        </Section>
+
+        {/* Order links — what the customer is doing with them right now */}
+        <Section
+          title="Order links"
+          icon={<ShoppingCart className="w-3.5 h-3.5" />}
+          count={orderLinks?.length ?? 0}
+        >
+          {!orderLinks || orderLinks.length === 0 ? (
+            <Empty>No order links sent yet</Empty>
+          ) : (
+            orderLinks.slice(0, 4).map((l) => (
+              <div key={l.link_id} className="rounded-lg px-3 py-1.5">
+                <div className="flex items-center justify-between text-[12px]">
+                  <span className="text-text-primary">
+                    {l.mode === "shop" ? "Catalogue link" : "Order link"}
+                  </span>
+                  <span
+                    className={`text-[10.5px] uppercase tracking-widest ${
+                      l.status === "ordered"
+                        ? "text-green-400"
+                        : l.status === "active"
+                          ? "text-accent-glow"
+                          : "text-text-muted"
+                    }`}
+                  >
+                    {l.status === "ordered" && l.order_number
+                      ? l.order_number
+                      : l.status}
+                  </span>
+                </div>
+                <div className="text-[11px] text-text-faint mt-0.5">
+                  {l.status === "ordered"
+                    ? `Ordered ${l.ordered_at ? new Date(l.ordered_at).toLocaleDateString() : ""}`
+                    : l.opened_at
+                      ? l.cart && l.cart.length
+                        ? `Picking now: ${l.cart
+                            .slice(0, 3)
+                            .map((c) => `${c.qty}× ${c.name || c.kind}`)
+                            .join(", ")}${l.cart.length > 3 ? "…" : ""}`
+                        : `Opened ${l.opened_count}× — nothing picked yet`
+                      : "Sent — not opened yet"}
+                  {l.booking_count > 0 &&
+                    ` · ${l.booking_count} service booking${l.booking_count === 1 ? "" : "s"}`}
+                </div>
               </div>
             ))
           )}

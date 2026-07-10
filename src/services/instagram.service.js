@@ -22,7 +22,11 @@ const axios = require("axios");
 const { config } = require("../config/env");
 const { AppError } = require("../utils/errors");
 
-const GRAPH = () => `https://graph.facebook.com/${config.META_GRAPH_VERSION || "v21.0"}`;
+// "Instagram API with Instagram Login" (V2.2 §6.17): outbound DMs go to
+// graph.instagram.com with the brand's IG user token (IGAA…). This is NOT
+// graph.facebook.com — a Facebook Page token / the old Messenger-API-for-
+// Instagram host is a different family and would 401 here.
+const GRAPH = () => `https://graph.instagram.com/${config.META_GRAPH_VERSION || "v21.0"}`;
 
 // Lazy-required to sidestep a circular init cost during module load —
 // messaging_accounts.service requires this file transitively.
@@ -53,12 +57,17 @@ function resolveSendConfig({ brand }) {
 async function sendText({ brand, recipient_id, text, tag }) {
   const cfg = await resolveSendConfig({ brand });
   const url = `${GRAPH()}/me/messages`;
+  // Standard replies (inside the 24h window) send the minimal documented
+  // body. messaging_type/tag are only attached for a HUMAN_AGENT-style send
+  // outside the window, so we don't ship an unexpected field on a normal DM.
   const body = {
     recipient: { id: recipient_id },
     message: { text },
-    messaging_type: tag ? "MESSAGE_TAG" : "RESPONSE",
   };
-  if (tag) body.tag = tag;
+  if (tag) {
+    body.messaging_type = "MESSAGE_TAG";
+    body.tag = tag;
+  }
   const { data } = await axios.post(url, body, {
     headers: { Authorization: `Bearer ${cfg.access_token}` },
     timeout: 15000,
@@ -82,9 +91,11 @@ async function sendImage({ brand, recipient_id, image_url, tag }) {
         payload: { url: image_url, is_reusable: false },
       },
     },
-    messaging_type: tag ? "MESSAGE_TAG" : "RESPONSE",
   };
-  if (tag) body.tag = tag;
+  if (tag) {
+    body.messaging_type = "MESSAGE_TAG";
+    body.tag = tag;
+  }
   const { data } = await axios.post(url, body, {
     headers: { Authorization: `Bearer ${cfg.access_token}` },
     timeout: 15000,

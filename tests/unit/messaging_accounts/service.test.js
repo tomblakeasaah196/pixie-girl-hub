@@ -118,6 +118,33 @@ describe("messaging_accounts.service", () => {
     });
   });
 
+  test("testAccount pings graph.instagram.com/me for Instagram (IG Login token)", async () => {
+    repo.getRaw.mockResolvedValue({
+      account_id: "id-2",
+      platform: "instagram",
+      external_account_id: "IGBIZ1",
+      access_token_enc: "enc:IGAA-token",
+    });
+    axios.get.mockResolvedValue({
+      data: { user_id: "17841400000000000", username: "faitlynhair" },
+    });
+    const r = await service.testAccount({ id: "id-2" });
+    const call = axios.get.mock.calls[0];
+    // IG Login tokens only authenticate against graph.instagram.com — the
+    // ping must NOT hit graph.facebook.com (that 401s), and uses the `me`
+    // self node so the exact account id isn't required.
+    expect(call[0]).toContain("https://graph.instagram.com/v21.0/me");
+    expect(call[0]).toContain("fields=user_id,username");
+    expect(call[0]).not.toContain("graph.facebook.com");
+    expect(call[1].headers.Authorization).toBe("Bearer IGAA-token");
+    expect(r).toEqual({
+      ok: true,
+      platform: "instagram",
+      provider_id: "17841400000000000",
+      provider_name: "faitlynhair",
+    });
+  });
+
   test("testAccount refuses WhatsApp without a token", async () => {
     repo.getRaw.mockResolvedValue({
       account_id: "id-1",

@@ -137,19 +137,67 @@ async function userCallsToday({ client, user_id, feature_key }) {
 
 // ── Access grants ──────────────────────────────────────────
 async function listGrants({ user_id, feature_key }) {
-  const where = ["revoked_at IS NULL"];
+  const where = ["g.revoked_at IS NULL"];
   const params = [];
   let i = 1;
   if (user_id) {
-    where.push(`user_id = $${i++}`);
+    where.push(`g.user_id = $${i++}`);
     params.push(user_id);
   }
   if (feature_key) {
-    where.push(`feature_key = $${i++}`);
+    where.push(`g.feature_key = $${i++}`);
     params.push(feature_key);
   }
+  // Joined to users + flags so the AI Access screen can render names
+  // without needing iam.view (AI Control admins aren't necessarily IAM admins).
   const { rows } = await query(
-    `SELECT * FROM shared.ai_access_grants WHERE ${where.join(" AND ")} ORDER BY granted_at DESC`,
+    `SELECT g.*,
+            u.display_name  AS user_name,
+            u.email         AS user_email,
+            u.status        AS user_status,
+            u.is_ceo        AS user_is_ceo,
+            gb.display_name AS granted_by_name,
+            f.display_name  AS feature_name,
+            f.feature_scope AS feature_scope
+       FROM shared.ai_access_grants g
+       JOIN shared.users u             ON u.user_id = g.user_id
+       LEFT JOIN shared.users gb       ON gb.user_id = g.granted_by
+       JOIN shared.ai_feature_flags f  ON f.feature_key = g.feature_key
+      WHERE ${where.join(" AND ")}
+      ORDER BY u.display_name, f.display_name`,
+    params,
+  );
+  return rows;
+}
+/**
+ * Employee picker for the AI Access screen. Searches login users (not raw
+ * HR profiles — a grant is meaningless without a login) and carries each
+ * user's currently-granted feature keys so the picker can show who already
+ * has what. CEO rows are included but flagged: they bypass grants entirely.
+ */
+async function searchGrantUsers({ search, limit = 20 }) {
+  const params = [];
+  let i = 1;
+  let filter = "";
+  if (search) {
+    filter = `AND (u.display_name ILIKE $${i} OR u.email ILIKE $${i})`;
+    params.push(`%${search}%`);
+    i++;
+  }
+  params.push(Math.min(Math.max(Number(limit) || 20, 1), 50));
+  const { rows } = await query(
+    `SELECT u.user_id, u.display_name, u.email, u.status, u.profile_type,
+            u.is_ceo,
+            COALESCE(gr.feature_keys, '{}') AS granted_feature_keys
+       FROM shared.users u
+       LEFT JOIN LATERAL (
+         SELECT array_agg(g.feature_key ORDER BY g.feature_key) AS feature_keys
+           FROM shared.ai_access_grants g
+          WHERE g.user_id = u.user_id AND g.revoked_at IS NULL
+       ) gr ON true
+      WHERE u.status IN ('active','invited') ${filter}
+      ORDER BY u.is_ceo DESC, u.display_name
+      LIMIT $${i}`,
     params,
   );
   return rows;
@@ -571,6 +619,7 @@ module.exports = {
   userCallsToday,
   recentFlagAudit,
   listGrants,
+  searchGrantUsers,
   hasGrant,
   grant,
   revokeGrant,

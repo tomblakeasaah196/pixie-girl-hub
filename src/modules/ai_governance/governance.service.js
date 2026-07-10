@@ -174,6 +174,9 @@ async function setFlagRestingMessage({
 function listGrants(args) {
   return repo.listGrants(args);
 }
+function searchGrantUsers(args) {
+  return repo.searchGrantUsers(args);
+}
 async function grant({ user, request_id, input }) {
   const g = await repo.grant({ g: input, granted_by: user.user_id });
   await A(
@@ -185,6 +188,42 @@ async function grant({ user, request_id, input }) {
     request_id,
   );
   return g;
+}
+/**
+ * Grant one user several AI features in one call — the "give this staff
+ * member the whole AI" path on the AI Access screen. Unknown feature keys
+ * are rejected up front (clearer than the FK error), each grant upserts
+ * (re-granting un-revokes), and one audit row records the batch.
+ */
+async function grantBulk({ user, request_id, input }) {
+  const flags = await repo.listFlags();
+  const known = new Set(flags.map((f) => f.feature_key));
+  const unknown = input.feature_keys.filter((k) => !known.has(k));
+  if (unknown.length) {
+    throw new NotFoundError(`Feature flag (${unknown.join(", ")})`);
+  }
+  const grants = [];
+  for (const feature_key of input.feature_keys) {
+    grants.push(
+      await repo.grant({
+        g: {
+          user_id: input.user_id,
+          feature_key,
+          monthly_cap_ngn: input.monthly_cap_ngn,
+        },
+        granted_by: user.user_id,
+      }),
+    );
+  }
+  await A(
+    user,
+    "ai_governance.grant_bulk",
+    "ai_access_grant",
+    input.user_id,
+    { user_id: input.user_id, feature_keys: input.feature_keys },
+    request_id,
+  );
+  return grants;
 }
 async function revokeGrant({ user, request_id, grant_id, reason }) {
   const ok = await repo.revokeGrant({ grant_id, reason });
@@ -589,7 +628,9 @@ module.exports = {
   setFlagUserCap,
   setFlagRestingMessage,
   listGrants,
+  searchGrantUsers,
   grant,
+  grantBulk,
   revokeGrant,
   listVendors,
   upsertVendor,

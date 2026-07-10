@@ -23,6 +23,10 @@ export function Drawer({
   leading,
   footer,
   wide,
+  /** Renders above an open Modal (z-92) — for editors opened from inside a
+   *  config Modal, e.g. Comms Studio's automation editor inside the
+   *  Messaging Settings modal. Leave unset for a page-level Drawer. */
+  elevated,
   children,
 }: {
   open: boolean;
@@ -32,6 +36,7 @@ export function Drawer({
   leading?: ReactNode;
   footer?: ReactNode;
   wide?: boolean;
+  elevated?: boolean;
   children: ReactNode;
 }) {
   const panelRef = useRef<HTMLElement>(null);
@@ -51,7 +56,8 @@ export function Drawer({
       <div
         onClick={onClose}
         className={cn(
-          "fixed inset-0 z-[80] bg-black/50 backdrop-blur-[3px] transition-opacity duration-300",
+          "fixed inset-0 bg-black/50 backdrop-blur-[3px] transition-opacity duration-300",
+          elevated ? "z-[94]" : "z-[80]",
           open ? "opacity-100" : "opacity-0 pointer-events-none",
         )}
       />
@@ -64,7 +70,8 @@ export function Drawer({
           // panel stays visible while it slides out, then flips to hidden —
           // otherwise the big left-spreading shadow bleeds back on-screen and
           // the drawer appears to "hang" at the right edge when closed.
-          "fixed top-0 right-0 h-full z-[90] flex flex-col dropglass border-l shadow-[-30px_0_80px_rgb(0_0_0/0.5)] transition-[transform,visibility] duration-300 ease-brand",
+          "fixed top-0 right-0 h-full flex flex-col dropglass border-l shadow-[-30px_0_80px_rgb(0_0_0/0.5)] transition-[transform,visibility] duration-300 ease-brand",
+          elevated ? "z-[96]" : "z-[90]",
           // Mobile widths are frozen (min() caps); the lg:/xl: overrides only
           // widen the panel on the desktop tier (≥1024px) so detail/edit
           // content isn't crushed into a phone-width column on a big monitor.

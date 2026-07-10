@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  Wallet,
   AlertTriangle,
   Loader2,
   Check,
@@ -12,7 +11,6 @@ import {
   Ban,
   HelpCircle,
 } from "lucide-react";
-import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useActiveBusiness } from "@/stores/business";
 import { Card } from "@/components/ui/primitives";
 import {
@@ -24,7 +22,7 @@ import {
 } from "@/lib/outbound-policy-api";
 
 /**
- * Channel Policy editor — Settings → Channel Policy.
+ * Channel Policy tab — Messaging settings → Channel Policy.
  *
  * Lays out the 19 seeded events grouped by category. Each row has
  * an inline channel picker, fallback picker, block-WhatsApp toggle,
@@ -58,11 +56,7 @@ const CHOICES: {
   { value: "disabled", label: "Disabled", icon: Ban, cost: "—" },
 ];
 
-export function ChannelPolicyPage() {
-  useBreadcrumbs([
-    { label: "Settings", href: "/settings" },
-    { label: "Channel Policy" },
-  ]);
+export function ChannelPolicyTab() {
   const business = useActiveBusiness();
   const qc = useQueryClient();
   const [savedAt, setSavedAt] = useState<Record<string, number>>({});
@@ -94,27 +88,17 @@ export function ChannelPolicyPage() {
   }, [policies]);
 
   return (
-    <div className="max-w-[1040px]">
-      <header className="flex items-center gap-3 mb-1">
-        <span className="grid place-items-center w-11 h-11 rounded-xl bg-accent/10 text-accent-glow border border-accent/20">
-          <Wallet className="w-5 h-5" />
-        </span>
-        <div>
-          <h2 className="font-display text-[22px] font-medium">
-            Channel Policy
-            <span className="text-text-faint text-[14px] ml-2">
-              · {business.name}
-            </span>
-          </h2>
-          <p className="text-text-muted text-[13px]">
-            Where every automated outbound message goes. Most things default to
-            email (free); only delivery + recovery use WhatsApp; marketing stays
-            off WhatsApp by guardrail.
-          </p>
-        </div>
+    <div className="space-y-5">
+      <header>
+        <h3 className="font-display text-[17px]">Channel Policy</h3>
+        <p className="text-[12.5px] text-text-muted mt-0.5">
+          Where every automated outbound message goes. Most things default to
+          email (free); only delivery + recovery use WhatsApp; marketing stays
+          off WhatsApp by guardrail.
+        </p>
       </header>
 
-      <div className="mt-3 mb-5 flex items-start gap-2.5 rounded-xl border border-amber-400/30 bg-amber-400/5 px-3.5 py-2.5 text-[12.5px] text-amber-200">
+      <div className="flex items-start gap-2.5 rounded-xl border border-amber-400/30 bg-amber-400/5 px-3.5 py-2.5 text-[12.5px] text-amber-200">
         <AlertTriangle className="w-4 h-4 mt-[2px] shrink-0" />
         <div>
           <span className="font-medium text-text-primary">
@@ -411,7 +395,7 @@ function CostProjector({ policies }: { policies: OutboundPolicy[] }) {
   }, 0);
 
   return (
-    <Card className="mb-5 p-4">
+    <Card className="p-4">
       <div className="flex items-center justify-between mb-1">
         <h3 className="font-display text-[15px] font-medium">
           Monthly cost projection

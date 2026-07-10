@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  MessageCircle,
   Plus,
   Save,
   Trash2,
@@ -10,7 +9,6 @@ import {
   Hash,
   Check,
 } from "lucide-react";
-import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useActiveBusiness } from "@/stores/business";
 import { Card } from "@/components/ui/primitives";
 import { Modal } from "@/components/ui/Modal";
@@ -18,7 +16,7 @@ import { api } from "@/lib/api";
 import type { QuickReply } from "@/lib/smartcomm-types";
 
 /**
- * Quick Replies admin — Settings → Quick Replies.
+ * Quick Replies tab — Messaging settings → Quick Replies.
  *
  * Personal snippets (per-user) AND brand-shared library (per-business).
  * Slash command `/welcome` triggers the matching reply in the
@@ -67,11 +65,7 @@ const qrApi = {
     api.delete(`/smartcomm/quick-replies/${reply_id}`),
 };
 
-export function QuickRepliesPage() {
-  useBreadcrumbs([
-    { label: "Settings", href: "/settings" },
-    { label: "Quick Replies" },
-  ]);
+export function QuickRepliesTab() {
   const business = useActiveBusiness();
   const qc = useQueryClient();
   const [editing, setEditing] = useState<QuickReplyDraft | null>(null);
@@ -126,23 +120,16 @@ export function QuickRepliesPage() {
   });
 
   return (
-    <div className="max-w-[960px]">
-      <header className="flex items-start gap-3 mb-5">
-        <span className="grid place-items-center w-11 h-11 rounded-xl bg-accent/10 text-accent-glow border border-accent/20">
-          <MessageCircle className="w-5 h-5" />
-        </span>
-        <div className="flex-1">
-          <h2 className="font-display text-[22px] font-medium">
-            Quick Replies
-          </h2>
-          <p className="text-text-muted text-[13px]">
-            Slash-command snippets the team taps into the composer. Use{" "}
-            <code className="font-mono text-[11px] bg-panel-2 px-1 rounded">
-              {`{{first_name}}`}
-            </code>{" "}
-            to insert variables at send time.
-          </p>
-        </div>
+    <div className="space-y-5">
+      <header>
+        <h3 className="font-display text-[17px]">Quick Replies</h3>
+        <p className="text-[12.5px] text-text-muted mt-0.5">
+          Slash-command snippets the team taps into the composer. Use{" "}
+          <code className="font-mono text-[11px] bg-panel-2 px-1 rounded">
+            {`{{first_name}}`}
+          </code>{" "}
+          to insert variables at send time.
+        </p>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

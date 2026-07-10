@@ -149,6 +149,7 @@ async function getAuthUser(userId) {
       is_ceo: u.is_ceo === true,
       default_business_key: u.default_business_key || null,
       role_ids: u.role_ids || [],
+      role_grants: u.role_grants || [],
       available_businesses: u.available_businesses || [],
     };
   });

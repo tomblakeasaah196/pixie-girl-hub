@@ -234,13 +234,34 @@ async function grantUserRole({ brand, user, request_id, user_id, input }) {
       granted_by: user.user_id,
       expires_at: input.expires_at,
     });
+    // A role scoped to a business the user cannot enter is a silent no-op:
+    // brand-context 403s before RBAC ever sees the role. Granting for a
+    // concrete business therefore implies entity access to it.
+    let accessExtended = false;
+    if (
+      input.business !== "*" &&
+      !(target.permitted_businesses || []).includes(input.business)
+    ) {
+      await grantsRepo.setUserAccess({
+        client,
+        user_id,
+        permitted_businesses: [
+          ...(target.permitted_businesses || []),
+          input.business,
+        ],
+        default_business: target.default_business || input.business,
+      });
+      accessExtended = true;
+    }
     await sensitiveAudit({
       business: brand,
       user_id: user.user_id,
       action_key: "access.grant_role",
       target_type: "user_roles",
       target_id: user_id,
-      after: grant,
+      after: accessExtended
+        ? { ...grant, permitted_business_added: input.business }
+        : grant,
       request_id,
     });
     events.emit("role_granted", {

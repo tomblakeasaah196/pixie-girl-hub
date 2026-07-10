@@ -165,7 +165,7 @@ async function mePermissions(req, res) {
       data: [{ module: "*", action: "*", record_scope: "all" }],
     });
   }
-  const { rows } = await permissionsRepo.findAllForRoles({
+  const rows = await permissionsRepo.findAllForRoles({
     role_ids: req.user.role_ids,
   });
   res.json({ data: rows });

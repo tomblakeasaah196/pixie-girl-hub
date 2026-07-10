@@ -58,10 +58,28 @@ function requirePermission(moduleKey, action) {
       return next();
     }
 
+    // Brand-scoped roles: a grant carries the business it was made for
+    // ('*' = all brands), and must not apply under another brand context.
+    // Cached auth projections that predate role_grants fall back to the
+    // unscoped role set (30 s TTL, so the window is brief).
+    const roleGrants = Array.isArray(req.user.role_grants)
+      ? req.user.role_grants
+      : null;
+    const role_ids =
+      req.brand && roleGrants
+        ? [
+            ...new Set(
+              roleGrants
+                .filter((g) => g.business === "*" || g.business === req.brand)
+                .map((g) => g.role_id),
+            ),
+          ]
+        : req.user.role_ids;
+
     // Cached (30 s TTL; permission edits invalidate every grants entry) —
     // saves a DB round-trip on every permission-gated request.
     const grants = await identityCache.getGrants({
-      role_ids: req.user.role_ids,
+      role_ids,
       module: moduleKey,
       action,
     });

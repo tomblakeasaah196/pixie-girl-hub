@@ -850,16 +850,21 @@ export function IamUsersPage() {
     },
     {
       key: "role",
-      header: "Role",
-      width: "130px",
-      render: (r) =>
-        r.role_name ? (
-          <Pill tone="accent" dot={false}>
-            {r.role_name}
-          </Pill>
-        ) : (
-          <span className="text-text-faint">--</span>
-        ),
+      header: "Roles",
+      width: "170px",
+      render: (r) => {
+        const names = [...new Set((r.roles ?? []).map((ur) => ur.role_name))];
+        if (!names.length) return <span className="text-text-faint">--</span>;
+        return (
+          <div className="flex flex-wrap gap-1">
+            {names.map((name) => (
+              <Pill key={name} tone="accent" dot={false}>
+                {name}
+              </Pill>
+            ))}
+          </div>
+        );
+      },
     },
     {
       key: "status",

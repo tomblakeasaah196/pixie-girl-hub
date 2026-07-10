@@ -95,6 +95,17 @@ async function userExistsByEmail({ client, email }) {
   return rows[0] || null;
 }
 
+/** The non-disabled login already linked to a staff profile, if any. */
+async function activeUserForProfile({ client, profile_id }) {
+  const { rows } = await ex(client)(
+    `SELECT user_id, email FROM shared.users
+      WHERE staff_profile_id = $1 AND status <> 'disabled'
+      LIMIT 1`,
+    [profile_id],
+  );
+  return rows[0] || null;
+}
+
 async function createUser({ client, user }) {
   // status='active' drives is_active via the 000113 sync trigger; permitted_businesses
   // drives shared.user_business_access via the same migration's AFTER trigger.
@@ -136,6 +147,7 @@ module.exports = {
   getByTokenHash,
   setStatus,
   userExistsByEmail,
+  activeUserForProfile,
   createUser,
   assignRole,
 };

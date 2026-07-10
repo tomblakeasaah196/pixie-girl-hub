@@ -11,7 +11,12 @@
 
 import { api } from "@/lib/api";
 
-export type MessagingPlatform = "whatsapp" | "instagram" | "facebook" | "email";
+export type MessagingPlatform =
+  | "whatsapp"
+  | "instagram"
+  | "facebook"
+  | "email"
+  | "email_outbound";
 
 export interface MessagingAccount {
   account_id: string;
@@ -26,11 +31,21 @@ export interface MessagingAccount {
   has_app_secret: boolean;
   has_verify_token: boolean;
   has_business_account_id: boolean;
+  has_smtp_password: boolean;
   // Masked previews (plaintext-safe first 4 chars)
   access_token_first4: string | null;
   app_secret_first4: string | null;
   verify_token_first4: string | null;
   business_account_first4: string | null;
+  smtp_password_first4: string | null;
+  // 'email_outbound' only
+  smtp_host: string | null;
+  smtp_port: number | null;
+  smtp_secure: boolean;
+  smtp_user: string | null;
+  from_email: string | null;
+  from_name: string | null;
+  reply_to_email: string | null;
   // Ops metadata
   connected_by: string | null;
   connected_at: string;
@@ -54,6 +69,15 @@ export interface UpsertInput {
   is_active?: boolean;
   notes?: string;
   metadata?: Record<string, unknown>;
+  // 'email_outbound' only
+  smtp_host?: string;
+  smtp_port?: number;
+  smtp_secure?: boolean;
+  smtp_user?: string;
+  smtp_password?: string;
+  from_email?: string;
+  from_name?: string;
+  reply_to_email?: string;
 }
 
 export interface TestResult {
@@ -68,7 +92,8 @@ export type RevealableField =
   | "access_token"
   | "app_secret"
   | "verify_token"
-  | "business_account_id";
+  | "business_account_id"
+  | "smtp_password";
 
 export interface RevealResult {
   field: RevealableField;
@@ -167,6 +192,22 @@ export interface WhatsAppProfilePatch {
   websites?: string[];
 }
 
+export interface InboundDnsRecord {
+  type: string;
+  name: string;
+  value: string;
+  note?: string;
+}
+
+export interface InboundDnsRecords {
+  domain: string;
+  webhook_url: string;
+  webhook_header: string;
+  webhook_secret_configured: boolean;
+  records: InboundDnsRecord[];
+  instructions: string[];
+}
+
 export const messagingAccountsApi = {
   // Backend auto-unwraps `{ data }` — see api.ts. Types match the
   // inner payload.
@@ -210,6 +251,12 @@ export const messagingAccountsApi = {
       { onProgress },
     );
   },
+  // Computed on the fly from the mailbox typed into the Inbound Email
+  // form — works even before the account row is saved.
+  dnsRecords: (mailbox: string) =>
+    api.get<InboundDnsRecords>(
+      `/messaging-accounts/dns-records?mailbox=${encodeURIComponent(mailbox)}`,
+    ),
 };
 
 export const PLATFORM_META: Record<
@@ -229,7 +276,8 @@ export const PLATFORM_META: Record<
   },
   instagram: {
     label: "Instagram",
-    description: "Instagram professional account (Instagram API with Instagram Login).",
+    description:
+      "Instagram professional account (Instagram API with Instagram Login).",
     placeholder_id: "IG Business Account ID (e.g. 17841405822304914)",
     placeholder_name: "@pixiegirlglobal",
   },
@@ -245,5 +293,11 @@ export const PLATFORM_META: Record<
     placeholder_id: "support@pixiegirlglobal.com",
     placeholder_name: "Pixie Girl Support",
   },
+  email_outbound: {
+    label: "Outbound Email",
+    description:
+      "SMTP relay this brand sends transactional and reply mail through.",
+    placeholder_id: "sales@pixiegirlglobal.com",
+    placeholder_name: "Pixie Girl Global",
+  },
 };
-

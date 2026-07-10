@@ -25,10 +25,14 @@ const PUBLIC_COLUMNS = `
   (app_secret_enc           IS NOT NULL) AS has_app_secret,
   (verify_token_enc         IS NOT NULL) AS has_verify_token,
   (business_account_id_enc  IS NOT NULL) AS has_business_account_id,
+  (smtp_password_enc        IS NOT NULL) AS has_smtp_password,
   access_token_first4,
   app_secret_first4,
   verify_token_first4,
   business_account_first4,
+  smtp_password_first4,
+  smtp_host, smtp_port, smtp_secure, smtp_user,
+  from_email, from_name, reply_to_email,
   created_at, updated_at
 `;
 
@@ -98,7 +102,7 @@ async function findByExternalId({ platform, external_account_id }) {
 async function upsert({ brand, user_id, input, secrets }) {
   // `secrets` is a pre-encrypted bundle:
   //   { access_token_enc, app_secret_enc, verify_token_enc,
-  //     business_account_id_enc, access_token_first4, ... }
+  //     business_account_id_enc, smtp_password_enc, access_token_first4, ... }
   // Any missing key means "don't touch this secret" — the ON CONFLICT
   // COALESCEs the incoming value against the existing one.
   const s = secrets || {};
@@ -106,16 +110,20 @@ async function upsert({ brand, user_id, input, secrets }) {
     `INSERT INTO shared.messaging_accounts
        (business, platform, external_account_id, display_name,
         access_token_enc, app_secret_enc, verify_token_enc,
-        business_account_id_enc,
+        business_account_id_enc, smtp_password_enc,
         access_token_first4, app_secret_first4, verify_token_first4,
-        business_account_first4,
+        business_account_first4, smtp_password_first4,
         webhook_verify_token, is_active, connected_by, metadata, notes,
+        smtp_host, smtp_port, smtp_secure, smtp_user,
+        from_email, from_name, reply_to_email,
         secrets_last_rotated_at)
      VALUES ($1,$2,$3,$4,
-             $5,$6,$7,$8,
-             $9,$10,$11,$12,
-             $13,COALESCE($14,true),$15,COALESCE($16,'{}'::jsonb),$17,
-             CASE WHEN COALESCE($5,$6,$7,$8) IS NOT NULL THEN now() ELSE NULL END)
+             $5,$6,$7,$8,$9,
+             $10,$11,$12,$13,$14,
+             $15,COALESCE($16,true),$17,COALESCE($18,'{}'::jsonb),$19,
+             $20,$21,COALESCE($22,false),$23,
+             $24,$25,$26,
+             CASE WHEN COALESCE($5,$6,$7,$8,$9) IS NOT NULL THEN now() ELSE NULL END)
      ON CONFLICT (platform, external_account_id) DO UPDATE
        SET business                = EXCLUDED.business,
            display_name            = EXCLUDED.display_name,
@@ -127,6 +135,8 @@ async function upsert({ brand, user_id, input, secrets }) {
                                               shared.messaging_accounts.verify_token_enc),
            business_account_id_enc = COALESCE(EXCLUDED.business_account_id_enc,
                                               shared.messaging_accounts.business_account_id_enc),
+           smtp_password_enc       = COALESCE(EXCLUDED.smtp_password_enc,
+                                              shared.messaging_accounts.smtp_password_enc),
            access_token_first4     = COALESCE(EXCLUDED.access_token_first4,
                                               shared.messaging_accounts.access_token_first4),
            app_secret_first4       = COALESCE(EXCLUDED.app_secret_first4,
@@ -135,16 +145,32 @@ async function upsert({ brand, user_id, input, secrets }) {
                                               shared.messaging_accounts.verify_token_first4),
            business_account_first4 = COALESCE(EXCLUDED.business_account_first4,
                                               shared.messaging_accounts.business_account_first4),
+           smtp_password_first4    = COALESCE(EXCLUDED.smtp_password_first4,
+                                              shared.messaging_accounts.smtp_password_first4),
            webhook_verify_token    = EXCLUDED.webhook_verify_token,
            is_active               = EXCLUDED.is_active,
            metadata                = EXCLUDED.metadata,
            notes                   = COALESCE(EXCLUDED.notes,
                                               shared.messaging_accounts.notes),
+           smtp_host               = COALESCE(EXCLUDED.smtp_host,
+                                              shared.messaging_accounts.smtp_host),
+           smtp_port               = COALESCE(EXCLUDED.smtp_port,
+                                              shared.messaging_accounts.smtp_port),
+           smtp_secure             = COALESCE($22, shared.messaging_accounts.smtp_secure, false),
+           smtp_user               = COALESCE(EXCLUDED.smtp_user,
+                                              shared.messaging_accounts.smtp_user),
+           from_email              = COALESCE(EXCLUDED.from_email,
+                                              shared.messaging_accounts.from_email),
+           from_name               = COALESCE(EXCLUDED.from_name,
+                                              shared.messaging_accounts.from_name),
+           reply_to_email          = COALESCE(EXCLUDED.reply_to_email,
+                                              shared.messaging_accounts.reply_to_email),
            secrets_last_rotated_at = CASE
              WHEN EXCLUDED.access_token_enc        IS NOT NULL
                OR EXCLUDED.app_secret_enc          IS NOT NULL
                OR EXCLUDED.verify_token_enc        IS NOT NULL
                OR EXCLUDED.business_account_id_enc IS NOT NULL
+               OR EXCLUDED.smtp_password_enc       IS NOT NULL
              THEN now()
              ELSE shared.messaging_accounts.secrets_last_rotated_at
            END,
@@ -159,15 +185,24 @@ async function upsert({ brand, user_id, input, secrets }) {
       s.app_secret_enc           || null,
       s.verify_token_enc         || null,
       s.business_account_id_enc  || null,
+      s.smtp_password_enc        || null,
       s.access_token_first4      || null,
       s.app_secret_first4        || null,
       s.verify_token_first4      || null,
       s.business_account_first4  || null,
+      s.smtp_password_first4     || null,
       input.webhook_verify_token || null,
       input.is_active,
       user_id || null,
       input.metadata ? JSON.stringify(input.metadata) : null,
       input.notes || null,
+      input.smtp_host    || null,
+      input.smtp_port    || null,
+      input.smtp_secure === undefined ? null : input.smtp_secure,
+      input.smtp_user    || null,
+      input.from_email      || null,
+      input.from_name       || null,
+      input.reply_to_email  || null,
     ],
   );
   return rows[0];

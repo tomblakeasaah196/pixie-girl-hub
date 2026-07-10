@@ -34,7 +34,11 @@ const smartcommRepo = require("../smartcomm/smartcomm.repo");
 const staffRepo = require("../../shared/hr_payroll/staff.repo");
 const { audit } = require("../../middleware/audit");
 const { config } = require("../../config/env");
-const { NotFoundError, AppError, ValidationError } = require("../../utils/errors");
+const {
+  NotFoundError,
+  AppError,
+  ValidationError,
+} = require("../../utils/errors");
 const { logger } = require("../../config/logger");
 
 // Fields the reveal endpoint understands. Whitelisted so a client
@@ -44,13 +48,15 @@ const REVEALABLE_FIELDS = new Set([
   "app_secret",
   "verify_token",
   "business_account_id",
+  "smtp_password",
 ]);
 
 const ENC_COLUMN = {
-  access_token:        "access_token_enc",
-  app_secret:          "app_secret_enc",
-  verify_token:        "verify_token_enc",
+  access_token: "access_token_enc",
+  app_secret: "app_secret_enc",
+  verify_token: "verify_token_enc",
   business_account_id: "business_account_id_enc",
+  smtp_password: "smtp_password_enc",
 };
 
 function first4(s) {
@@ -66,20 +72,24 @@ function first4(s) {
 function encryptIncomingSecrets(input) {
   const s = {};
   if (input.access_token) {
-    s.access_token_enc    = crypto.encrypt(input.access_token);
+    s.access_token_enc = crypto.encrypt(input.access_token);
     s.access_token_first4 = first4(input.access_token);
   }
   if (input.app_secret) {
-    s.app_secret_enc      = crypto.encrypt(input.app_secret);
-    s.app_secret_first4   = first4(input.app_secret);
+    s.app_secret_enc = crypto.encrypt(input.app_secret);
+    s.app_secret_first4 = first4(input.app_secret);
   }
   if (input.verify_token) {
-    s.verify_token_enc    = crypto.encrypt(input.verify_token);
+    s.verify_token_enc = crypto.encrypt(input.verify_token);
     s.verify_token_first4 = first4(input.verify_token);
   }
   if (input.business_account_id) {
     s.business_account_id_enc = crypto.encrypt(input.business_account_id);
     s.business_account_first4 = first4(input.business_account_id);
+  }
+  if (input.smtp_password) {
+    s.smtp_password_enc = crypto.encrypt(input.smtp_password);
+    s.smtp_password_first4 = first4(input.smtp_password);
   }
   return s;
 }
@@ -106,6 +116,18 @@ async function upsertAccount({ brand, user, request_id, input }) {
   // doesn't see stale routing data.
   if (smartcommRepo.invalidateMessagingAccountCache) {
     smartcommRepo.invalidateMessagingAccountCache();
+  }
+  // Same idea for outbound: a saved SMTP relay change must take effect
+  // on the very next send, not after a restart.
+  if (saved.platform === "email_outbound") {
+    try {
+      require("../../services/email.service").invalidateTransporter(brand);
+    } catch (err) {
+      logger.warn(
+        { err: err.message, brand },
+        "email transporter cache invalidation failed",
+      );
+    }
   }
   await audit({
     business: brand,
@@ -140,8 +162,19 @@ async function setActive({ brand, user, request_id, id, is_active }) {
 }
 
 async function removeAccount({ brand, user, request_id, id }) {
+  const existing = await repo.getRaw({ id });
   const row = await repo.remove({ id });
   if (!row) throw new NotFoundError("Messaging account");
+  if (existing && existing.platform === "email_outbound") {
+    try {
+      require("../../services/email.service").invalidateTransporter(brand);
+    } catch (err) {
+      logger.warn(
+        { err: err.message, brand },
+        "email transporter cache invalidation failed",
+      );
+    }
+  }
   await audit({
     business: brand,
     user_id: user.user_id,
@@ -190,7 +223,10 @@ async function revealSecret({
   try {
     ok = await argon2.verify(caller.password_hash, password);
   } catch (err) {
-    logger.warn({ err: err.message, user_id: user.user_id }, "argon2 verify threw");
+    logger.warn(
+      { err: err.message, user_id: user.user_id },
+      "argon2 verify threw",
+    );
     ok = false;
   }
   if (!ok) {
@@ -319,8 +355,7 @@ async function testAccount({ id }) {
         ok: true,
         platform: row.platform,
         provider_id: data && data.id,
-        provider_name:
-          (data && (data.verified_name || data.name)) || null,
+        provider_name: (data && (data.verified_name || data.name)) || null,
       };
     }
     if (row.platform === "email") {
@@ -336,6 +371,33 @@ async function testAccount({ id }) {
           exchange: r.exchange,
           priority: r.priority,
         })),
+      };
+    }
+    if (row.platform === "email_outbound") {
+      if (!row.smtp_host) {
+        throw new AppError(
+          "SMTP_NOT_CONFIGURED",
+          "No SMTP host saved for this account",
+          422,
+        );
+      }
+      const nodemailer = require("nodemailer");
+      const pass = row.smtp_password_enc
+        ? crypto.decrypt(row.smtp_password_enc)
+        : null;
+      const port = row.smtp_port || 587;
+      const secure = row.smtp_secure === true || port === 465;
+      const transporter = nodemailer.createTransport({
+        host: row.smtp_host,
+        port,
+        secure,
+        auth: row.smtp_user ? { user: row.smtp_user, pass } : undefined,
+      });
+      await transporter.verify();
+      return {
+        ok: true,
+        platform: "email_outbound",
+        provider_name: `${row.smtp_host}:${port}`,
       };
     }
   } catch (err) {
@@ -443,7 +505,10 @@ async function getWhatsAppProfile({ id }) {
 async function updateWhatsAppProfile({ brand, user, request_id, id, profile }) {
   const row = assertWhatsApp(await repo.getRaw({ id }));
   const wa = require("../../services/whatsapp.service");
-  const result = await wa.updateBusinessProfile({ brand: row.business, profile });
+  const result = await wa.updateBusinessProfile({
+    brand: row.business,
+    profile,
+  });
   await audit({
     business: brand,
     user_id: user.user_id,
@@ -581,6 +646,85 @@ async function resolveInstagramSendConfig({ brand }) {
 }
 
 /**
+ * Build the exact DNS records + webhook wiring an operator needs to
+ * finish inbound email setup, computed for a specific mailbox/domain
+ * instead of making an engineer copy them by hand out of
+ * docs/EMAIL_TWO_WAY_SETUP.md. Mirrors that runbook's Step 2 + Step 5
+ * so both stay in sync — if you change one, check the other.
+ *
+ * @param {object} args
+ * @param {string} args.external_account_id — the inbound mailbox, e.g. sales@brand.com
+ */
+function getInboundDnsRecords({ external_account_id }) {
+  const domain = String(external_account_id || "").split("@")[1] || "";
+  const webhookUrl = `${config.APP_URL}/api/webhooks/email/inbound`;
+  const secretConfigured = Boolean(config.CF_EMAIL_INBOUND_SECRET);
+
+  return {
+    domain,
+    webhook_url: webhookUrl,
+    webhook_header: "x-cf-email-signature",
+    webhook_secret_configured: secretConfigured,
+    records: domain
+      ? [
+          {
+            type: "MX",
+            name: "@",
+            value:
+              "Added automatically when you enable Cloudflare Email Routing for this domain",
+            note: "Cloudflare → domain → Email → Email Routing → Enable",
+          },
+          {
+            type: "TXT (SPF)",
+            name: "@",
+            value:
+              "Added automatically by Cloudflare Email Routing — merge with any SPF record this domain already publishes for outbound sending (a domain can only have one).",
+            note: "Check Cloudflare DNS after enabling Email Routing; merge manually if an SPF TXT already exists.",
+          },
+          {
+            type: "TXT",
+            name: "_dmarc",
+            value: `v=DMARC1; p=quarantine; rua=mailto:dmarc@${domain}; fo=1`,
+            note: "DMARC — reporting address can be any mailbox you monitor.",
+          },
+        ]
+      : [],
+    instructions: [
+      `In Cloudflare, add ${domain || "the domain"} and enable Email Routing.`,
+      `Route ${external_account_id || "the mailbox"} (and ideally a catch-all) to an Email Worker.`,
+      `The Worker should HMAC-SHA256 the raw message with the shared secret and POST it to ${webhookUrl} with header x-cf-email-signature: sha256=<hex>.`,
+      "Publish the SPF and DMARC TXT records above (merge SPF with any existing record).",
+      "Send yourself a test email and confirm it appears as an inbound message in the Hub.",
+    ],
+  };
+}
+
+/**
+ * Resolve a brand's outbound SMTP relay for sending, preferring the
+ * per-brand row configured in Messaging Settings over the legacy
+ * SMTP_* / SMTP_<BRAND>_* environment variables. Returns null if
+ * nothing is configured anywhere so callers can fall back cleanly.
+ */
+async function resolveOutboundEmailConfig({ brand }) {
+  const row = await repo.findActiveByBrand({
+    brand,
+    platform: "email_outbound",
+  });
+  if (!row || !row.smtp_host) return null;
+  return {
+    account_id: row.account_id,
+    host: row.smtp_host,
+    port: row.smtp_port || 587,
+    secure: row.smtp_secure === true || row.smtp_port === 465,
+    user: row.smtp_user || null,
+    pass: row.smtp_password_enc ? crypto.decrypt(row.smtp_password_enc) : null,
+    from_email: row.from_email || null,
+    from_name: row.from_name || null,
+    reply_to: row.reply_to_email || null,
+  };
+}
+
+/**
  * Resolve inbound WhatsApp secrets from an incoming payload's
  * phone_number_id — used by the webhook signature verifier + the
  * GET verify handshake.
@@ -614,9 +758,12 @@ module.exports = {
   getWhatsAppProfile,
   updateWhatsAppProfile,
   setWhatsAppProfilePicture,
+  getInboundDnsRecords,
   // internal — for whatsapp.service + webhooks:
   resolveWhatsAppSendConfig,
   resolveWhatsAppInboundSecrets,
   // internal — for instagram.service:
   resolveInstagramSendConfig,
+  // internal — for email.service.js outbound sends:
+  resolveOutboundEmailConfig,
 };

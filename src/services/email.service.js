@@ -21,10 +21,13 @@ const { query } = require("../config/database");
 const { logger } = require("../config/logger");
 
 // One cached transporter per resolved config ("global" or a brand key).
+// Cache is cleared whenever Messaging Settings saves a new/changed
+// email_outbound row (see messaging-accounts.service.js upsertAccount),
+// same pattern smartcomm uses to bust its own in-memory lookup.
 const transporters = new Map();
 
 /** Resolve a brand's SMTP block from the environment, or null for the default. */
-function brandSmtp(brand) {
+function brandSmtpFromEnv(brand) {
   if (!brand) return null;
   const key = String(brand)
     .toUpperCase()
@@ -38,6 +41,45 @@ function brandSmtp(brand) {
     user: process.env[`SMTP_${key}_USER`],
     pass: process.env[`SMTP_${key}_PASSWORD`],
   };
+}
+
+/**
+ * Resolve a brand's SMTP relay, preferring the per-brand
+ * "email_outbound" row configured in Messaging Settings (Connections →
+ * Outbound Email) over the legacy SMTP_<BRAND>_* env vars. Required so
+ * an operator can rotate/point a brand's outbound relay from the UI
+ * without an engineer editing .env and restarting the app.
+ *
+ * Lazily required to dodge any require-cycle risk between the two
+ * modules — messaging-accounts.service.js never imports this file.
+ */
+async function brandSmtp(brand) {
+  if (!brand) return null;
+  try {
+    const messagingAccounts = require("../modules/messaging_accounts/messaging-accounts.service");
+    const dbConfig = await messagingAccounts.resolveOutboundEmailConfig({ brand });
+    if (dbConfig) {
+      return {
+        host: dbConfig.host,
+        port: dbConfig.port,
+        secure: dbConfig.secure,
+        user: dbConfig.user,
+        pass: dbConfig.pass,
+      };
+    }
+  } catch (err) {
+    logger.warn(
+      { err: err.message, brand },
+      "brandSmtp: DB-configured SMTP lookup failed, falling back to env",
+    );
+  }
+  return brandSmtpFromEnv(brand);
+}
+
+/** Invalidate a brand's cached transporter — call after Messaging Settings
+ *  saves a changed email_outbound row so the next send picks it up. */
+function invalidateTransporter(brand) {
+  transporters.delete(brand ? `brand:${brand}` : "global");
 }
 
 /**
@@ -73,8 +115,8 @@ function defaultTransportOptions() {
   return opts;
 }
 
-function getTransporter(brand) {
-  const bs = brandSmtp(brand);
+async function getTransporter(brand) {
+  const bs = await brandSmtp(brand);
   const cacheKey = bs ? `brand:${brand}` : "global";
   if (transporters.has(cacheKey)) return transporters.get(cacheKey);
 
@@ -140,7 +182,7 @@ async function send({
   headers,
   brand,
 }) {
-  const t = getTransporter(brand);
+  const t = await getTransporter(brand);
   const sender = await getSender(brand);
   const fromEmail = from_email || sender.fromEmail;
   const replyTo = reply_to || replyToFor(fromEmail);
@@ -219,11 +261,12 @@ function checkConfigAtBoot() {
  */
 async function verifyConnection(brand) {
   try {
-    await getTransporter(brand).verify();
+    const t = await getTransporter(brand);
+    await t.verify();
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err.message, code: err.code };
   }
 }
 
-module.exports = { send, checkConfigAtBoot, verifyConnection };
+module.exports = { send, checkConfigAtBoot, verifyConnection, invalidateTransporter };

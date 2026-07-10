@@ -2,13 +2,14 @@
 
 const { z } = require("zod");
 
-const PLATFORM = ["whatsapp", "instagram", "facebook", "email"];
+const PLATFORM = ["whatsapp", "instagram", "facebook", "email", "email_outbound"];
 
 const REVEAL_FIELDS = [
   "access_token",
   "app_secret",
   "verify_token",
   "business_account_id",
+  "smtp_password",
 ];
 
 // New fields are optional so callers can rotate one secret at a
@@ -29,6 +30,17 @@ const upsert = z
     is_active: z.boolean().optional(),
     metadata: z.record(z.any()).optional(),
     notes: z.string().max(2000).optional(),
+    // 'email_outbound' only — per-brand SMTP relay config. host/port/
+    // user/from/reply_to are plain; smtp_password is encrypted like
+    // every other secret on this row.
+    smtp_host: z.string().max(255).optional(),
+    smtp_port: z.coerce.number().int().min(1).max(65535).optional(),
+    smtp_secure: z.boolean().optional(),
+    smtp_user: z.string().max(255).optional(),
+    smtp_password: z.string().max(1000).optional(),
+    from_email: z.string().email().optional(),
+    from_name: z.string().max(160).optional(),
+    reply_to_email: z.string().email().optional(),
   })
   .strict();
 

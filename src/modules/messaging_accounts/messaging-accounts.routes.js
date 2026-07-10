@@ -20,6 +20,11 @@ const upload = multer({
 
 router.get("/", can("view"), c.listAccounts);
 router.post("/", can("create"), v.validateUpsert, c.upsertAccount);
+// Static route BEFORE the dynamic /:id — same class of bug as the
+// factory_account route-ordering issue: a static path must be
+// registered above a dynamic param route or Express treats
+// "dns-records" as an :id value.
+router.get("/dns-records", can("view"), c.getDnsRecords);
 router.get("/:id", can("view"), c.getAccount);
 router.post("/:id/active", can("edit"), v.validateSetActive, c.setActive);
 router.post("/:id/test", can("view"), c.testAccount);

@@ -15,11 +15,9 @@ async function getAccount(req, res) {
   res.json(await service.getAccount({ id: req.params.id }));
 }
 async function upsertAccount(req, res) {
-  res
-    .status(201)
-    .json({
-      data: await service.upsertAccount({ ...ctx(req), input: req.body }),
-    });
+  res.status(201).json({
+    data: await service.upsertAccount({ ...ctx(req), input: req.body }),
+  });
 }
 async function setActive(req, res) {
   res.json({
@@ -82,6 +80,17 @@ async function setWhatsAppProfilePicture(req, res) {
   });
 }
 
+// Computed, not stored — safe to call before the account row exists so the
+// UI can show the DNS records while the operator is still typing the
+// mailbox address into the "Inbound mailbox" field.
+async function getDnsRecords(req, res) {
+  res.json({
+    data: service.getInboundDnsRecords({
+      external_account_id: req.query.mailbox || "",
+    }),
+  });
+}
+
 module.exports = {
   listAccounts,
   getAccount,
@@ -94,4 +103,5 @@ module.exports = {
   getWhatsAppProfile,
   updateWhatsAppProfile,
   setWhatsAppProfilePicture,
+  getDnsRecords,
 };

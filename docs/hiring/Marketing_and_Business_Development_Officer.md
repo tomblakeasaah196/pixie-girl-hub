@@ -5,9 +5,9 @@
 **Purpose:** Job description + offer letter for a single hire to own end-to-end marketing and business development across both brands, with a mandate to drive global exposure — especially for Pixie Girl Global.
 
 > **How to use this document**
-> Anything written as `[BRACKETED TEXT]` is a placeholder for you and Faith to finalise (name, salary, dates, etc.). Recommended defaults are noted where useful. Two documents follow:
+> Anything written as `[BRACKETED TEXT]` is a placeholder for you and Faith to finalise (name, dates, benefits, etc.). Salary figures below reflect your decisions (₦220k probation → ≥₦300k on completion, plus commission + bonus). Two documents follow:
 > 1. **Part A — Full Job Description** (the internal spec + the version you can post)
-> 2. **Part B — Offer Letter** (the letter you send the successful candidate)
+> 2. **Part B — Offer Letter** (the letter you send the chosen candidate)
 
 ---
 
@@ -20,16 +20,18 @@
 | **Job title** | Marketing & Business Development Officer |
 | **Brands** | Pixie Girl Global and Faitlyn Hair |
 | **Reports to** | Chief Executive Officer (Faith) |
-| **Location** | [Lagos, Nigeria — on-site / hybrid] |
-| **Employment type** | Full-time |
-| **Probation** | 6 months, with a formal 90-day review milestone |
-| **Direct reports** | None at start; earns headcount by proving return on investment |
-| **Compensation** | Base salary + performance bonus (see §9) |
+| **Location** | [Lagos, Nigeria — on-site] |
+| **Employment type** | Full-time, in-house |
+| **Probation** | 3 months, with a formal 60-day strategy-and-results review |
+| **Team** | Leads a small core team: content creator, social media manager, and brand models (the faces); grows the team by proving ROI |
+| **Compensation** | ₦220,000/month during probation → **minimum ₦300,000/month** on successful completion, **plus revenue commission + performance bonus** (see §9) |
 
 ### Role summary
 We are looking for a strategic, hands-on marketer to take **full ownership of marketing and business development for two brands** — Pixie Girl Global and Faitlyn Hair. This is not a "social media manager" role. It spans **the entire marketing discipline**: strategy, market research, brand building, digital, offline/traditional, PR, partnerships, retail and export business development, and measurable growth.
 
-The core mission is simple to state and hard to do well: **come up with the best strategies, execute them flawlessly, and deliver results** — taking both brands to a new level, and giving them global exposure. **Pixie Girl Global's primary target is the international market**, so this person must be able to think and act beyond Nigeria while keeping both brands commercially strong at home.
+The core mission is simple to state and hard to do well: **come up with the best strategies, execute them flawlessly, and deliver results** — taking both brands to a new level and giving them global exposure. **Pixie Girl Global's primary target is the international market**, so this person must think and act beyond Nigeria while keeping both brands commercially strong at home.
+
+This is a **high-stakes, high-accountability** role. We expect sharp thinking, decisive execution, and clear, quantifiable results — and we reward them. We are not looking for someone who runs the standard playbook. We want someone who **goes beyond the conventional**, opens up new ideas and channels, and builds a modern, data-driven marketing engine on top of the Hub's CRM and e-commerce data.
 
 ---
 
@@ -38,34 +40,36 @@ The core mission is simple to state and hard to do well: **come up with the best
 At **12 months**, a great hire will have delivered:
 
 - A clear, documented marketing strategy for **each** brand, with distinct positioning.
-- Measurable growth in revenue and qualified leads across both brands (targets agreed in month one).
-- A live, credible **global presence for Pixie Girl Global** — at minimum a diaspora-focused go-to-market (US/UK/Canada) with real traction (audience, orders, or stockists/distributors).
-- A repeatable content and campaign engine, not one-off bursts.
+- **Quantifiable** growth in revenue and qualified leads across both brands (targets agreed in month one).
+- A live, credible **global presence for Pixie Girl Global** — at minimum a diaspora go-to-market (US/UK/Canada) with real traction (audience, international orders, or signed stockists/distributors).
+- A repeatable content and campaign engine — not one-off bursts.
 - Stronger brand equity: recognisable identity, consistent voice, growing share of voice in the hair/beauty space.
 - New business channels opened: partnerships, influencers, retail placement, and/or export leads.
+
+> **Structure note:** This starts as one leader owning both brands with two distinct sub-strategies. As the brands scale, the intent is to **split into two dedicated brand leads**, with this hire well-placed to grow into Head of Marketing.
 
 ---
 
 ## 3. Key Responsibilities
 
 ### A. Strategy & brand
-- Own the marketing strategy for **both brands**, keeping their identities distinct while leveraging a shared premium DNA.
+- Own the marketing strategy for **both brands**, running two distinct sub-strategies under a shared premium DNA.
 - Define positioning, target audiences, messaging, and brand guidelines for each brand.
-- Set quarterly marketing goals tied to business objectives, and report against them.
+- Set quarterly goals tied to business objectives, and report against them with numbers.
 
 ### B. Market research & insight
-- Continuously research the market: customers, competitors, pricing, trends, and category gaps — **locally and internationally**.
+- Continuously research the market — customers, competitors, pricing, trends, category gaps — **locally and internationally**.
 - Size and prioritise target markets, with special focus on **global/diaspora opportunities for Pixie Girl Global**.
 - Turn research into decisions: which products to push, which channels to invest in, which markets to enter next.
 
 ### C. Digital marketing
-- Own social media strategy and execution across platforms (Instagram, TikTok, Facebook, YouTube, WhatsApp, and others as relevant).
+- Own social media strategy and execution (Instagram, TikTok, Facebook, YouTube, WhatsApp, and others as relevant).
 - Plan and run paid campaigns (Meta, TikTok, Google) with clear budgets and ROI tracking.
 - Grow email/WhatsApp/SMS marketing, SEO, and content marketing.
 - Manage influencer and creator partnerships end to end.
 
 ### D. Traditional & offline marketing
-- Plan and execute offline activity: events, pop-ups, activations, launches, PR, print, radio/TV where it makes sense, trade shows, and exhibitions.
+- Plan and execute offline activity: events, pop-ups, activations, launches, PR, print, radio/TV where it fits, trade shows, and exhibitions.
 - Build media and PR relationships to earn coverage for both brands.
 
 ### E. Business development
@@ -74,18 +78,20 @@ At **12 months**, a great hire will have delivered:
 - Support the sales and e-commerce teams with demand generation and qualified leads.
 
 ### F. Global expansion (Pixie Girl Global priority)
-- Design and execute the **international go-to-market**, starting diaspora-first (Nigerian/African communities in the US, UK, and Canada) then widening.
+- Design and execute the **international go-to-market**, starting diaspora-first (Nigerian/African communities in the US, UK, and Canada), then widening.
 - Adapt messaging, pricing, fulfilment, and channels for international audiences.
 - Identify overseas stockists, distributors, marketplaces, and fulfilment options.
 
-### G. Content & creative
+### G. Content, creative & the team
 - Direct the content calendar and creative output for both brands.
-- Brief, and where needed produce, content (photo/video/copy); outsource polish to freelancers/agencies within budget.
+- Lead and get the best from a small core team — **content creator, social media manager, and brand models/faces** — briefing, directing, and holding standards.
+- Be hands-on: can brief, shoot rough, and direct; outsources polish to freelancers/agencies within budget.
 - Guard brand consistency across every touchpoint.
 
 ### H. Analytics, budget & reporting
 - Own the marketing budget; allocate to the highest-ROI channels and justify spend with data.
-- Track performance against KPIs; use the Hub's CRM/e-commerce data for attribution.
+- Build **true attribution** using the Hub's CRM and e-commerce data — connect spend to revenue, not vanity metrics.
+- Push beyond the standard playbook: test new channels, formats, and ideas; bring fresh thinking every quarter.
 - Report monthly to the CEO with results, learnings, and next steps.
 
 ---
@@ -95,7 +101,7 @@ At **12 months**, a great hire will have delivered:
 ### Pixie Girl Global — *global-first*
 - Primary target is the **international market**; treat Nigeria as a strong home base, not the ceiling.
 - Build a premium, globally-credible brand image that travels across cultures.
-- Prioritise diaspora go-to-market first for speed and ROI, then expand.
+- Prioritise the diaspora go-to-market first for speed and ROI, then expand.
 
 ### Faitlyn Hair — *Nigeria-first, then export*
 - Deepen dominance and loyalty in the Nigerian market.
@@ -104,40 +110,40 @@ At **12 months**, a great hire will have delivered:
 
 ---
 
-## 5. Key Performance Indicators (blended scorecard)
+## 5. Key Performance Indicators (quantifiable scorecard)
 
-Targets to be finalised with the CEO in month one. Indicative KPIs:
+All KPIs are numeric; targets are finalised with the CEO in month one. Indicative:
 
-1. **Revenue growth** attributable to marketing, per brand.
-2. **Qualified leads / new customers** acquired, per brand.
-3. **Return on ad spend (ROAS)** and cost per acquisition.
-4. **Audience & engagement growth** (followers, reach, engagement rate, share of voice).
-5. **Global traction for Pixie Girl Global** (international orders, audience, stockists/distributors signed).
-6. **New business channels opened** (partnerships, retail placements, distributors).
-7. **Brand health** (awareness, sentiment, repeat-purchase rate).
+1. **Revenue growth** attributable to marketing — `[+X% per quarter]`, per brand.
+2. **Qualified leads / new customers** — `[N per month]`, per brand.
+3. **Return on ad spend (ROAS)** — `[≥ X:1]`; cost per acquisition `[≤ ₦Y]`.
+4. **Audience & engagement growth** — `[+X% followers / reach / engagement]`, per brand.
+5. **Global traction for Pixie Girl Global** — `[N international orders / audience size / stockists signed]`.
+6. **New business channels opened** — `[N partnerships / retail placements / distributors]`.
+7. **Brand health** — awareness, sentiment, and repeat-purchase rate `[targets TBD]`.
 
 ---
 
 ## 6. Requirements (Must-Have)
 
-- **[5–7]+ years** in marketing, with real ownership of strategy *and* execution.
-- A **demonstrable track record of results** — real numbers, not vanity metrics. *(This is the non-negotiable.)*
+- **5–7 years** in marketing, with real ownership of strategy *and* execution.
+- A **demonstrable, quantifiable track record of results** — real numbers, not vanity metrics. *(This is the non-negotiable.)*
 - Proven experience running **both digital and offline** marketing.
-- Experience marketing to, or growing, **international / diaspora audiences** (Western markets a strong plus).
+- Experience running or growing campaigns for **Western / diaspora audiences** — **and** the drive and openness to learn new markets fast.
 - Strong commercial instinct: understands sales, margins, and ROI — not just creativity.
 - Excellent communication, storytelling, and project management.
 - Data-literate: comfortable with analytics, ad platforms, and performance reporting.
-- Self-starter who can operate independently and build from a blank page.
+- Self-starter who can operate independently, lead a small team, and build from a blank page.
 
 ## 7. Nice-to-Have
-- Background in **beauty, hair, fashion, or consumer/e-commerce**.
+- Background in **beauty, hair, fashion, or consumer/e-commerce/FMCG** (preferred, not required).
 - Existing network of influencers, media, retailers, or distributors (local and/or abroad).
 - Hands-on content skills (shooting, editing, copywriting, design direction).
 - Experience with export, cross-border e-commerce, or international logistics.
 - Familiarity with CRM/marketing automation and attribution.
 
 ## 8. Attributes We're Hiring For
-Results-driven · Strategic but hands-on · Culturally fluent across markets · Creative brand-builder · Data-informed · Ownership mentality · Fast learner · Great communicator.
+Results-driven · Strategic **and** hands-on · Culturally fluent across markets · Creative brand-builder · Data-informed · Thinks beyond the conventional playbook · Ownership mentality · Fast learner · Great communicator.
 
 ---
 
@@ -145,12 +151,14 @@ Results-driven · Strategic but hands-on · Culturally fluent across markets · 
 
 | Item | Detail |
 |---|---|
-| **Base salary** | `[₦450,000 – ₦900,000]` per month (band; set to the offer figure) |
-| **Performance bonus** | Tied to agreed KPIs (revenue, growth, global traction) — `[quarterly / annual]` |
-| **Budget authority** | Defined marketing test budget, expandable on proven ROI |
-| **Growth path** | Opportunity to grow into **Head of Marketing** and build a team |
-| **Other benefits** | `[e.g. paid leave, data/airtime allowance, tools & devices, training budget, HMO, etc.]` |
-| **Working model** | `[On-site / hybrid]`, `[days/hours]` |
+| **Probation salary** | **₦220,000 / month** during the 3-month probation |
+| **Post-probation base** | **Minimum ₦300,000 / month** on successful completion, with room to grow on performance |
+| **Revenue commission** | Commission on revenue attributable to marketing (clean attribution via the Hub) |
+| **Performance bonus** | Tied to agreed KPIs (revenue, growth, global traction), reviewed `[quarterly / annually]` |
+| **Budget authority** | Defined marketing budget, expandable on proven ROI |
+| **Growth path** | Clear path to **Head of Marketing** and a two-brand-lead structure |
+| **Other benefits** | `[e.g. paid leave, data/airtime allowance, tools & devices, training budget, HMO, pension per statute]` |
+| **Working model** | On-site, `[days/hours]` |
 
 ---
 
@@ -161,15 +169,16 @@ Results-driven · Strategic but hands-on · Culturally fluent across markets · 
 - Full marketing audit; competitor and market research (local + global).
 - Agree KPIs, budgets, and priorities with the CEO.
 
-**Days 31–60 — Strategy & quick wins**
+**Days 31–60 — Strategy, quick wins & first campaign** *(60-day formal review)*
 - Deliver a written strategy for each brand (positioning, channels, calendar, budget).
 - Ship 2–3 quick wins to build momentum and trust.
-- Stand up the content and campaign engine.
+- **Launch a flagship campaign fast** to show real movement.
+- **60-day review:** strategy + early results assessed with the CEO.
 
-**Days 61–90 — Execute & prove**
-- Launch a flagship campaign per brand.
+**Days 61–90 — Scale & prove**
 - Kick off the Pixie Girl Global diaspora go-to-market.
-- Present month-3 review: results so far, learnings, and the plan for the next quarter.
+- Scale what's working; cut what isn't.
+- Present the 90-day results and the next-quarter plan (probation completion decision).
 
 ---
 
@@ -198,24 +207,26 @@ We are delighted to offer you the position of **Marketing & Business Development
 The key terms of your offer are set out below.
 
 **1. Position & reporting**
-You will serve as Marketing & Business Development Officer, reporting directly to the Chief Executive Officer. You will own marketing and business development across both brands, as described in the attached Job Description.
+You will serve as Marketing & Business Development Officer, reporting directly to the Chief Executive Officer. You will own marketing and business development across both brands, leading a small core team (content creator, social media manager, and brand models), as described in the attached Job Description.
 
 **2. Start date**
 Your employment will begin on **[Start Date]**, or another date agreed in writing.
 
 **3. Location & working hours**
-Your primary place of work will be **[Lagos, Nigeria / hybrid]**. Standard working hours are **[e.g. 9:00am–5:00pm, Monday–Friday]**, with flexibility as the role requires.
+Your place of work will be **[Lagos, Nigeria]**. Standard working hours are **[e.g. 9:00am–5:00pm, Monday–Friday]**, with flexibility as the role requires.
 
 **4. Remuneration**
-- **Base salary:** **₦[amount]** per month (₦[annual] per annum), paid **[monthly, in arrears]**.
-- **Performance bonus:** You will be eligible for a performance bonus tied to agreed marketing KPIs (including revenue growth, brand growth, and global-market traction), reviewed **[quarterly / annually]**.
-- **Marketing budget:** You will be allocated a marketing budget, with scope to grow it based on demonstrated return on investment.
+- **Probationary salary:** **₦220,000** per month during your 3-month probationary period.
+- **Post-probation salary:** on successful completion of probation, your base salary will rise to a **minimum of ₦300,000** per month, with scope to grow based on performance.
+- **Commission:** you will earn commission on revenue attributable to your marketing efforts, measured through the company's CRM and e-commerce systems.
+- **Performance bonus:** you will be eligible for a performance bonus tied to agreed marketing KPIs (including revenue growth, brand growth, and global-market traction), reviewed **[quarterly / annually]**.
+- **Marketing budget:** you will be allocated a marketing budget, with scope to grow it based on demonstrated return on investment.
 
 **5. Benefits**
 [List benefits, e.g. paid annual leave of [X] days, public holidays, data/airtime allowance, tools and equipment, professional development budget, health cover (HMO), pension per statutory requirements, etc.]
 
-**6. Probationary period**
-Your employment is subject to a probationary period of **six (6) months**, including a formal review at the **90-day** mark. During probation, either party may end the employment with **[notice period, e.g. two weeks']** written notice.
+**6. Probationary period & performance**
+Your employment is subject to a **three (3) month** probationary period, including a formal review at the **60-day** mark covering your strategy and early results. This is a results-focused role: clear, measurable performance is expected during and after probation. During probation, either party may end the employment with **[notice period, e.g. two weeks']** written notice.
 
 **7. Confidentiality & brand protection**
 Given your access to strategy, customer data, and both brands' plans, your employment is subject to confidentiality, data-protection, and intellectual-property terms, detailed in your full employment contract.
@@ -249,4 +260,4 @@ Signature: _______________________   Date: ______________
 
 ---
 
-*This document is a template prepared for internal use. Figures, dates, and terms are placeholders to be finalised by the CEO, and the full employment contract should be reviewed against applicable Nigerian labour law before issue.*
+*This document is a template prepared for internal use. Bracketed figures, dates, and terms are placeholders to be finalised by the CEO, and the full employment contract should be reviewed against applicable Nigerian labour law before issue.*

@@ -1,0 +1,68 @@
+-- ============================================================
+-- TEMPLATE 000078 — payment_plan: the buyer's explicit choice
+-- Pixie Girl Hub · JBS Praxis · Flexi Pay (V2.2 §6.2, owner session 2026-07-10)
+--
+-- Before this, every checkout inherited payment_model='layaway' from the
+-- product default, so an abandoned checkout was indistinguishable from a
+-- committed instalment customer — which is how buyers who never paid a kobo
+-- received "You've paid ₦0.00 of ₦506,200.00" WhatsApp reminders.
+--
+-- payment_plan records what the BUYER chose at checkout:
+--   'full'       — pay everything now (the default; also every legacy
+--                  ₦0-paid order, so reminders to them stop on deploy)
+--   'instalment' — the customer explicitly opted into Flexi Pay
+--
+-- payment_model stays as the POLICY snapshot (deposit thresholds etc.);
+-- the per-product payment_model columns go dormant — policy now comes from
+-- business_config.installment_settings (Sales → Payments tab).
+--
+-- Idempotent: this template has no CREATE TABLE sentinel, so db:repair
+-- re-runs it on every invocation. Every statement must tolerate that.
+-- ============================================================
+
+ALTER TABLE {{BUSINESS}}.sales_orders
+  ADD COLUMN IF NOT EXISTS payment_plan TEXT NOT NULL DEFAULT 'full';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = '{{BUSINESS}}_sales_orders_payment_plan_check'
+       AND conrelid = '{{BUSINESS}}.sales_orders'::regclass
+  ) THEN
+    ALTER TABLE {{BUSINESS}}.sales_orders
+      ADD CONSTRAINT {{BUSINESS}}_sales_orders_payment_plan_check
+      CHECK (payment_plan IN ('full','instalment'));
+  END IF;
+END $$;
+
+-- One-shot backfill with a fixed cutoff so a later db:repair re-run can never
+-- reclassify orders created after Flexi Pay shipped: any order that was
+-- part-paid (committed money, not settled) before the cutoff is an instalment
+-- customer; everything else stays 'full' (₦0-paid pending orders are abandoned
+-- checkouts, not layaways).
+UPDATE {{BUSINESS}}.sales_orders
+   SET payment_plan = 'instalment'
+ WHERE payment_plan = 'full'
+   AND created_at < '2026-07-11'
+   AND amount_paid_ngn > 0
+   AND fully_paid_at IS NULL
+   AND status = 'pending_payment';
+
+-- Per-campaign Flexi Pay toggle (owner Q5: off by default, the campaign
+-- builder decides per sale).
+ALTER TABLE {{BUSINESS}}.sales_campaigns
+  ADD COLUMN IF NOT EXISTS allow_instalments BOOLEAN NOT NULL DEFAULT false;
+
+-- Sweep index: instalment reminders + abandonment both scan committed,
+-- unsettled instalment orders.
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_sales_orders_instalment_open
+  ON {{BUSINESS}}.sales_orders (last_payment_at, created_at)
+  WHERE payment_plan = 'instalment'
+    AND status = 'pending_payment';
+
+-- Abandoned-checkout sweep index: unpaid pending orders by age.
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_sales_orders_unpaid_pending
+  ON {{BUSINESS}}.sales_orders (created_at)
+  WHERE status = 'pending_payment'
+    AND amount_paid_ngn = 0;

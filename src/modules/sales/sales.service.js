@@ -30,6 +30,7 @@ const emailRender = require("../email_campaigns/email-render");
 const stockService = require("../stock/stock.service");
 const stockRepo = require("../stock/stock.repo");
 const businessConfig = require("../business_setup/business-config.repo");
+const paymentSettings = require("./payment-settings.service");
 const salesReportExport = require("./sales-report.export");
 const { audit } = require("../../middleware/audit");
 const { transaction, query } = require("../../config/database");
@@ -415,11 +416,54 @@ async function createOrderTx({ brand, user, request_id, input }) {
     const shipping = shipping0.minus(couponShipping);
     const total = subtotal.minus(discountTotal).plus(taxTotal).plus(shipping);
 
-    // 4b. Payment model + deposit policy (V2.2 §6.2) — pricing/totals.js.
-    const { paymentModel, requiredDepositPct, requiredDepositNgn } =
+    // 4b. Payment plan + deposit policy (V2.2 §6.2, Flexi Pay D1/D6) —
+    // config-driven via pricing/totals.js. The buyer's explicit plan choice
+    // is validated against the Sales → Payments configuration first.
+    const installmentSettings = paymentSettings.withDefaults(
+      (cfg && cfg.installment_settings) || {},
+    );
+    if (input.payment_plan === "instalment") {
+      if (installmentSettings.channels[input.sales_channel] === false) {
+        throw new AppError(
+          "INSTALMENT_NOT_AVAILABLE",
+          `Instalment plan is not offered on the ${input.sales_channel} channel`,
+          409,
+          {
+            user_message: `${installmentSettings.plan_display_name} is not available for this order.`,
+          },
+        );
+      }
+      // Campaigns gate instalments per sale (D7): the campaign builder toggle
+      // must be on for THIS campaign.
+      if (input.sales_channel === "sales_campaign") {
+        const campRow = input.sales_campaign_id
+          ? await campaignsRepo.findById({
+              client,
+              brand,
+              id: input.sales_campaign_id,
+            })
+          : input.campaign_slug
+            ? await campaignsRepo.findBySlug({
+                client,
+                brand,
+                slug: input.campaign_slug,
+              })
+            : null;
+        if (!campRow || campRow.allow_instalments !== true) {
+          throw new AppError(
+            "INSTALMENT_NOT_AVAILABLE",
+            "This campaign does not offer the instalment plan",
+            409,
+            {
+              user_message: `${installmentSettings.plan_display_name} is not available on this sale.`,
+            },
+          );
+        }
+      }
+    }
+    const { paymentPlan, paymentModel, requiredDepositPct, requiredDepositNgn } =
       computeDepositPolicy({
-        built,
-        installmentSettings: (cfg && cfg.installment_settings) || {},
+        installmentSettings,
         input,
         total,
       });
@@ -453,6 +497,7 @@ async function createOrderTx({ brand, user, request_id, input }) {
         coupon_code: input.coupon_code || null,
         client_idempotency_key: input.client_idempotency_key || null,
         stylist_referral_code: input.stylist_referral_code || null,
+        payment_plan: paymentPlan,
         payment_model: paymentModel,
         required_deposit_pct:
           requiredDepositPct !== null && requiredDepositPct !== undefined
@@ -634,8 +679,10 @@ async function createOrderTx({ brand, user, request_id, input }) {
       });
     }
 
-    // 5b. Layaway reserves stock at placement (V2.2 §6.2): the unit is held
-    // but no work begins until paid in full.
+    // 5b. Stock is reserved at placement for EVERY order (Flexi Pay D8) —
+    // full-plan orders hold their units through the payment window (the
+    // abandoned-checkout sweep releases them if the buyer never pays), and
+    // instalment orders hold them for the life of the plan.
     //
     // CRITICAL (the #1 cause of INTERNAL_ERROR at checkout): the Stock SSOT
     // enforces `reserved <= on_hand`, so reserving an out-of-stock, unstocked,
@@ -649,7 +696,7 @@ async function createOrderTx({ brand, user, request_id, input }) {
     // line as a PRE-ORDER. We accept pre-orders, so checkout never fails on
     // stock — the buyer is told the item ships on the pre-order timeline.
     const preorderLines = [];
-    if (paymentModel === "layaway") {
+    {
       const loc = await stockRepo.getDefaultLocation({ client, brand });
       for (const lr of lineRows) {
         if (!lr.variant_id) continue;
@@ -825,18 +872,46 @@ async function addPayment({ brand, user, request_id, id, input }) {
         409,
       );
 
-    // ── Gateway-only enforcement ────────────────────────────────
-    // Non-negotiable: stock can never leave without a verified payment-
-    // gateway webhook (Paystack / Opay / Nomba / Stripe). Staff-recorded
-    // and POS-originated payments are blocked at the service layer as
-    // defense-in-depth (the validator also blocks them at the HTTP edge).
-    // Sole exception: pay-on-delivery remittances — stock already left with
-    // the courier, and only logistics' remit flow (never HTTP input, the
-    // validator strips unknown fields) can set the internal flag.
+    // ── Payment-path enforcement ────────────────────────────────
+    // Default rule: stock can never leave without a verified payment-gateway
+    // webhook (Paystack / Opay / Nomba / Stripe). Two exceptions:
+    //   • pay-on-delivery remittances — stock already left with the courier,
+    //     and only logistics' remit flow (never HTTP input, the validator
+    //     strips unknown fields) can set the internal flag;
+    //   • staff-recorded bank transfers (Flexi Pay D13) — permitted ONLY when
+    //     business_config.allow_staff_recorded_manual_payments is switched on
+    //     (Sales → Payments tab), with a mandatory bank transaction reference
+    //     (reconciled against the bank-statement import, §6.6) and the
+    //     recording staff member stamped on the row.
     const isPodRemit =
       input._internal_pod_remit === true &&
       input.method === "pay_on_delivery";
-    if (input.payment_path !== "gateway" && !isPodRemit) {
+    const isStaffRecorded = input.payment_path === "staff_recorded";
+    if (isStaffRecorded) {
+      const cfg = await businessConfig.findByKey(brand);
+      if (!cfg || cfg.allow_staff_recorded_manual_payments !== true) {
+        throw new AppError(
+          "PAYMENT_PATH_BLOCKED",
+          "Manual payment recording is disabled for this business. Enable it in Sales → Payments.",
+          403,
+        );
+      }
+      if (!input.manual_bank_transaction_id || !input.manual_bank_name) {
+        throw new AppError(
+          "MANUAL_REF_REQUIRED",
+          "A bank transaction reference and bank name are required to record a manual payment",
+          422,
+        );
+      }
+      // Staff recording IS the initiation point, so the plan minimums apply
+      // here (gateway payments are validated at link creation instead — money
+      // a gateway already captured is never rejected).
+      paymentSettings.assertPaymentAmountAllowed({
+        settings: paymentSettings.withDefaults(cfg.installment_settings),
+        order,
+        amountNgn: input.amount_ngn,
+      });
+    } else if (input.payment_path !== "gateway" && !isPodRemit) {
       throw new AppError(
         "PAYMENT_PATH_BLOCKED",
         "Payments may only be recorded through an authorized payment gateway. Manual payment entry is disabled.",
@@ -856,14 +931,26 @@ async function addPayment({ brand, user, request_id, id, input }) {
         payment_number,
         order_id: id,
         method: input.method,
-        provider: input.provider,
-        provider_reference: input.provider_reference,
+        provider: isStaffRecorded ? "manual" : input.provider,
+        // Manual payments dedupe on the bank's transaction reference — the
+        // same UNIQUE (provider, provider_reference) backstop the gateways
+        // use, so the same transfer can never be recorded twice.
+        provider_reference: isStaffRecorded
+          ? input.manual_bank_transaction_id
+          : input.provider_reference,
         amount_ngn: input.amount_ngn,
         paid_currency: input.paid_currency || null,
         paid_amount: input.paid_amount || null,
         fx_rate_used: input.fx_rate_used || null,
         fee_ngn: input.fee_ngn || 0,
         payment_path: input.payment_path,
+        manual_bank_transaction_id: isStaffRecorded
+          ? input.manual_bank_transaction_id
+          : undefined,
+        manual_bank_name: isStaffRecorded ? input.manual_bank_name : undefined,
+        manual_recorded_by: isStaffRecorded ? user.user_id : undefined,
+        recorded_by: user.user_id || undefined,
+        notes: input.notes || undefined,
         client_idempotency_key: input.client_idempotency_key,
         status: "captured",
         captured_at: new Date().toISOString(),
@@ -904,7 +991,9 @@ async function addPayment({ brand, user, request_id, id, input }) {
         },
         lines: salesPostings.buildCaptureLines({
           amount_ngn: input.amount_ngn,
-          provider: input.provider,
+          // Manual bank transfers post as 'manual' → settlement falls back to
+          // the main bank account, which is exactly where the money landed.
+          provider: isStaffRecorded ? "manual" : input.provider,
           contact_id: order.contact_id,
           reference: order.order_number,
         }),
@@ -1024,6 +1113,47 @@ async function addPayment({ brand, user, request_id, id, input }) {
         });
       }
     }
+
+    // Part-payment comms (Flexi Pay D15): receipt after every instalment +
+    // a one-time halfway celebration. Post-commit via the outbox — the
+    // payment-comms subscriber renders through the Comms Studio automations
+    // (payment_received / payment_milestone), so the copy stays CEO-editable.
+    // Fully-paid orders skip this: order.paid drives the final receipt flow.
+    if (!PAID_STATES.has(result.status)) {
+      await outbox.enqueue(client, {
+        business: brand,
+        event_type: "order.payment_recorded",
+        payload: {
+          brand,
+          order_id: id,
+          contact_id: updated.contact_id,
+          payment_id: paymentRow.payment_id,
+          amount_ngn: String(input.amount_ngn),
+          amount_paid_ngn: String(updated.amount_paid_ngn),
+          total_ngn: String(updated.total_ngn),
+        },
+        dedup_key: `order.payment_recorded:${paymentRow.payment_id}`,
+      });
+      const beforePaid = money(order.amount_paid_ngn || 0);
+      const afterPaid = money(updated.amount_paid_ngn || 0);
+      const half = money(updated.total_ngn).dividedBy(2);
+      if (half.gt(0) && beforePaid.lt(half) && afterPaid.gte(half)) {
+        await outbox.enqueue(client, {
+          business: brand,
+          event_type: "order.payment_milestone",
+          payload: {
+            brand,
+            order_id: id,
+            contact_id: updated.contact_id,
+            milestone: "half",
+            amount_paid_ngn: String(updated.amount_paid_ngn),
+            total_ngn: String(updated.total_ngn),
+          },
+          dedup_key: `order.payment_milestone:half:${id}`,
+        });
+      }
+    }
+
     await audit({
       business: brand,
       user_id: user.user_id,
@@ -1051,28 +1181,30 @@ async function markPaid({ client, brand, user, _request_id, order }) {
       409,
     );
 
+  const shortfallLines = [];
   for (const line of order.lines) {
     if (line.variant_id) {
-      // Layaway held the unit on placement — release the reservation first
-      // so the 'sale' deduction keeps reserved <= on_hand valid.
-      if (order.payment_model === "layaway") {
-        try {
-          await stockService.releaseReservation({
-            client,
-            brand,
-            variant_id: line.variant_id,
-            location_id: loc.location_id,
-            quantity: line.quantity,
-            reference_id: order.order_id,
-            user_id: user.user_id,
-            reason: "layaway paid in full",
-          });
-        } catch (err) {
-          logger.warn(
-            { err, order_id: order.order_id, variant_id: line.variant_id },
-            "layaway release on markPaid skipped",
-          );
-        }
+      // Every order reserves at placement now (Flexi Pay D8) — release the
+      // hold first so the 'sale' deduction keeps reserved <= on_hand valid.
+      // releaseOrderReservation releases only what THIS order actually holds
+      // (its own movement ledger), so legacy orders with no reservation are a
+      // clean no-op and another order's hold can never be freed by mistake.
+      try {
+        await stockService.releaseOrderReservation({
+          client,
+          brand,
+          variant_id: line.variant_id,
+          location_id: loc.location_id,
+          quantity: line.quantity,
+          reference_id: order.order_id,
+          user_id: user.user_id,
+          reason: "order paid in full",
+        });
+      } catch (err) {
+        logger.warn(
+          { err, order_id: order.order_id, variant_id: line.variant_id },
+          "reservation release on markPaid skipped",
+        );
       }
       // GAP-3: when styled_product_id is on the line, COGS = base cost + style addon
       let costForCogs = line.unit_cost_ngn;
@@ -1095,18 +1227,63 @@ async function markPaid({ client, brand, user, _request_id, order }) {
           );
         }
       }
-      await stockService.deductForSale({
-        client,
-        brand,
-        variant_id: line.variant_id,
-        location_id: loc.location_id,
-        quantity: line.quantity,
-        reference_id: order.order_id,
-        sales_channel: order.sales_channel,
-        unit_cost_ngn: costForCogs,
-        user_id: user.user_id,
-      });
+      // SAFETY (Flexi Pay plan, PR-1): a stock shortfall must NEVER block the
+      // payment from being recorded — the gateway has already taken the
+      // customer's money, and a throw here would roll back the whole
+      // addPayment transaction and strand the order in pending_payment while
+      // the webhook retries forever (pre-order lines have no stock to deduct
+      // by definition). Each deduction runs in its own savepoint; short lines
+      // are flagged on the order for ops instead.
+      await client.query("SAVEPOINT pgh_deduct");
+      try {
+        await stockService.deductForSale({
+          client,
+          brand,
+          variant_id: line.variant_id,
+          location_id: loc.location_id,
+          quantity: line.quantity,
+          reference_id: order.order_id,
+          sales_channel: order.sales_channel,
+          unit_cost_ngn: costForCogs,
+          user_id: user.user_id,
+        });
+        await client.query("RELEASE SAVEPOINT pgh_deduct");
+      } catch (err) {
+        await client.query("ROLLBACK TO SAVEPOINT pgh_deduct");
+        await client.query("RELEASE SAVEPOINT pgh_deduct").catch(() => {});
+        shortfallLines.push({
+          variant_id: line.variant_id,
+          quantity: line.quantity,
+          name: line.product_name_snapshot || null,
+        });
+        logger.error(
+          {
+            err: err.message,
+            order_id: order.order_id,
+            variant_id: line.variant_id,
+          },
+          "stock shortfall on paid order — deduction skipped, payment proceeds",
+        );
+      }
     }
+  }
+  if (shortfallLines.length) {
+    await repo.mergeInternalNotes({
+      client,
+      brand,
+      id: order.order_id,
+      patch: {
+        stock_shortfall: {
+          lines: shortfallLines,
+          flagged_at: new Date().toISOString(),
+        },
+      },
+    });
+    events.emit("order.stock_shortfall", {
+      brand,
+      order_id: order.order_id,
+      lines: shortfallLines,
+    });
   }
   if (order.sales_campaign_id) {
     // Sum only rows attributed to this campaign (source = 'campaign' or
@@ -1239,14 +1416,17 @@ async function cancelOrder({ brand, user, request_id, id, reason }) {
         "Paid orders cannot be cancelled here (use refund)",
         409,
       );
-    // Release any layaway hold so the units return to available stock.
-    if (order.payment_model === "layaway") {
+    // Release whatever THIS order holds so the units return to available
+    // stock. Every plan reserves at placement now (Flexi Pay D8);
+    // releaseOrderReservation reads the order's own movement ledger, so
+    // legacy orders with no hold are a clean no-op.
+    {
       const loc = await stockRepo.getDefaultLocation({ client, brand });
       if (loc) {
         for (const line of order.lines || []) {
           if (!line.variant_id) continue;
           try {
-            await stockService.releaseReservation({
+            await stockService.releaseOrderReservation({
               client,
               brand,
               variant_id: line.variant_id,
@@ -1259,7 +1439,7 @@ async function cancelOrder({ brand, user, request_id, id, reason }) {
           } catch (err) {
             logger.warn(
               { err, order_id: id, variant_id: line.variant_id },
-              "layaway release on cancel skipped",
+              "reservation release on cancel skipped",
             );
           }
         }

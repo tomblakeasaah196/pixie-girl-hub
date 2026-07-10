@@ -27,6 +27,9 @@ const ORDER = [
   "total_ngn",
   "coupon_code",
   "client_idempotency_key",
+  // Flexi Pay (D1): the buyer's explicit plan choice — distinct from
+  // payment_model, which is the policy snapshot derived from it.
+  "payment_plan",
   "payment_model",
   "required_deposit_pct",
   "required_deposit_ngn",
@@ -78,6 +81,13 @@ const PAY = [
   "fx_rate_used",
   "fee_ngn",
   "payment_path",
+  // Staff-recorded bank transfers (Flexi Pay D13): mandatory bank reference +
+  // who recorded it, reconciled against the bank-statement import (§6.6).
+  "manual_bank_transaction_id",
+  "manual_bank_name",
+  "manual_recorded_by",
+  "recorded_by",
+  "notes",
   "client_idempotency_key",
   "status",
   "captured_at",
@@ -296,7 +306,8 @@ async function findByPublicToken({ client, brand, token }) {
   if (!token) return null;
   const { rows } = await ex(client)(
     `SELECT order_id, order_number, status, total_ngn, amount_paid_ngn,
-            balance_due_ngn, contact_id
+            balance_due_ngn, contact_id, payment_plan, required_deposit_ngn,
+            display_currency, fx_rate_used
        FROM ${t(brand, "sales_orders")}
       WHERE public_tracking_token = $1 LIMIT 1`,
     [token],
@@ -438,8 +449,10 @@ async function markDepositMet({ client, brand, id }) {
 }
 
 /**
- * Layaway orders eligible for auto-cancel: payment_model='layaway', still
- * awaiting payment, no payment crossed the abandonment window.
+ * Instalment orders eligible for auto-cancel (Flexi Pay D9/D11): the buyer
+ * explicitly chose the plan AND committed money, but no payment has arrived
+ * within the abandonment window. ₦0-paid orders are NOT layaways — they are
+ * abandoned checkouts, handled by the (much faster) abandoned-checkout sweep.
  * `days` comes from business_config.installment_settings.
  */
 async function listAbandonableLayaway({ brand, days }) {
@@ -449,8 +462,9 @@ async function listAbandonableLayaway({ brand, days }) {
     `SELECT so.order_id, so.order_number, so.contact_id,
             so.total_ngn, so.amount_paid_ngn
        FROM ${t(brand, "sales_orders")} so
-      WHERE so.payment_model = 'layaway'
+      WHERE so.payment_plan = 'instalment'
         AND so.status = 'pending_payment'
+        AND so.amount_paid_ngn > 0
         AND COALESCE(
               (SELECT max(p.captured_at)
                  FROM ${t(brand, "sales_order_payments")} p
@@ -463,16 +477,18 @@ async function listAbandonableLayaway({ brand, days }) {
 }
 
 /**
- * Layaway orders with an outstanding balance that are due a reminder:
- * never reminded, or last reminded longer ago than the cadence.
+ * Instalment orders due a balance reminder (Flexi Pay D11): the buyer chose
+ * the plan AND has paid something. Commitment = choice + money — an abandoned
+ * checkout (₦0 paid) can never receive a "You've paid ₦0.00" message again.
  */
 async function listLayawayDueForReminder({ brand, cadenceDays }) {
   const { rows } = await query(
     `SELECT order_id, order_number, contact_id, total_ngn, amount_paid_ngn,
             balance_due_ngn, public_tracking_token
        FROM ${t(brand, "sales_orders")}
-      WHERE payment_model = 'layaway'
+      WHERE payment_plan = 'instalment'
         AND status = 'pending_payment'
+        AND amount_paid_ngn > 0
         AND amount_paid_ngn < total_ngn
         AND (
           last_reminder_sent_at IS NULL
@@ -502,8 +518,9 @@ async function claimReminderSend({ brand, id, cadenceDays }) {
     `UPDATE ${t(brand, "sales_orders")}
         SET last_reminder_sent_at = now()
       WHERE order_id = $1
-        AND payment_model = 'layaway'
+        AND payment_plan = 'instalment'
         AND status = 'pending_payment'
+        AND amount_paid_ngn > 0
         AND amount_paid_ngn < total_ngn
         AND (
           last_reminder_sent_at IS NULL
@@ -513,6 +530,108 @@ async function claimReminderSend({ brand, id, cadenceDays }) {
     [id, String(cadenceDays)],
   );
   return rows.length > 0;
+}
+
+// ── Abandoned checkouts (Flexi Pay D10) ──────────────────
+// A pending order with ₦0 paid is an abandoned checkout, whatever plan the
+// buyer clicked: one friendly nudge, then expiry. Windows come from
+// business_config.installment_settings. The fast (hours) lane applies only
+// to buyer-self-serve channels — a staff-negotiated order (WhatsApp DM,
+// walk-in pay-link) may legitimately take days, so those expire on the slow
+// (days) lane instead.
+const SELF_SERVE_CHANNELS = ["storefront", "sales_campaign", "public_form"];
+
+/**
+ * Self-serve abandoned checkouts due their one-time "complete your order"
+ * nudge: ₦0 paid, older than the nudge window, younger than expiry, never
+ * nudged (last_reminder_sent_at doubles as the nudge stamp — these orders
+ * are excluded from instalment reminders by the amount_paid_ngn > 0
+ * predicate, so the column cannot double-fire).
+ */
+async function listAbandonedCheckoutsForNudge({
+  brand,
+  nudgeHours,
+  expiryHours,
+}) {
+  const { rows } = await query(
+    `SELECT order_id, order_number, contact_id, total_ngn,
+            public_tracking_token
+       FROM ${t(brand, "sales_orders")}
+      WHERE status = 'pending_payment'
+        AND amount_paid_ngn = 0
+        AND sales_channel = ANY($3)
+        AND last_reminder_sent_at IS NULL
+        AND created_at < now() - ($1 || ' hours')::interval
+        AND created_at > now() - ($2 || ' hours')::interval`,
+    [String(nudgeHours), String(expiryHours), SELF_SERVE_CHANNELS],
+  );
+  return rows;
+}
+
+/** Atomically claim the nudge (same race-closing pattern as reminders). */
+async function claimAbandonedNudge({ brand, id }) {
+  const { rows } = await query(
+    `UPDATE ${t(brand, "sales_orders")}
+        SET last_reminder_sent_at = now()
+      WHERE order_id = $1
+        AND status = 'pending_payment'
+        AND amount_paid_ngn = 0
+        AND last_reminder_sent_at IS NULL
+      RETURNING order_id`,
+    [id],
+  );
+  return rows.length > 0;
+}
+
+/**
+ * ₦0-paid pending orders past their expiry window → auto-cancel + release
+ * stock. Self-serve channels expire after `expiryHours`; every other channel
+ * (staff-negotiated) expires on the slow lane after `staleDays`.
+ */
+async function listExpiredAbandonedCheckouts({ brand, expiryHours, staleDays }) {
+  const { rows } = await query(
+    `SELECT order_id, order_number
+       FROM ${t(brand, "sales_orders")}
+      WHERE status = 'pending_payment'
+        AND amount_paid_ngn = 0
+        AND (
+          (sales_channel = ANY($3) AND created_at < now() - ($1 || ' hours')::interval)
+          OR
+          (NOT (sales_channel = ANY($3)) AND created_at < now() - ($2 || ' days')::interval)
+        )`,
+    [String(expiryHours), String(staleDays), SELF_SERVE_CHANNELS],
+  );
+  return rows;
+}
+
+/**
+ * Merge a JSON patch into sales_orders.internal_notes (TEXT holding JSON —
+ * the same convention the public checkout writes). Non-JSON legacy content is
+ * preserved under `_text`.
+ */
+async function mergeInternalNotes({ client, brand, id, patch }) {
+  const { rows } = await ex(client)(
+    `SELECT internal_notes FROM ${t(brand, "sales_orders")} WHERE order_id = $1`,
+    [id],
+  );
+  if (!rows[0]) return;
+  let obj = {};
+  const raw = rows[0].internal_notes;
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
+        obj = parsed;
+      else obj = { _text: raw };
+    } catch {
+      obj = { _text: raw };
+    }
+  }
+  Object.assign(obj, patch);
+  await ex(client)(
+    `UPDATE ${t(brand, "sales_orders")} SET internal_notes = $2 WHERE order_id = $1`,
+    [id, JSON.stringify(obj)],
+  );
 }
 const HEADER_COLS = [
   "order_type",
@@ -1099,6 +1218,10 @@ module.exports = {
   markDepositMet,
   listAbandonableLayaway,
   listLayawayDueForReminder,
+  listAbandonedCheckoutsForNudge,
+  claimAbandonedNudge,
+  listExpiredAbandonedCheckouts,
+  mergeInternalNotes,
   markReminderSent,
   addPayment,
   listPayments,

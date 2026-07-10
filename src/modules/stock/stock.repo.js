@@ -167,6 +167,33 @@ async function lockLevel({ client, brand, variant_id, location_id }) {
   return rows[0] || null;
 }
 
+/**
+ * Units THIS order still holds reserved for a variant at a location:
+ * sum of its 'reserve' movements minus its 'release_reserve' movements.
+ * stock_levels.reserved is an aggregate counter across all orders, so a
+ * release must never exceed this figure or it frees someone else's hold.
+ */
+async function outstandingReservationForOrder({
+  client,
+  brand,
+  variant_id,
+  location_id,
+  reference_id,
+}) {
+  const { rows } = await ex(client)(
+    `SELECT COALESCE(SUM(CASE WHEN movement_type = 'reserve' THEN ABS(quantity)
+                              WHEN movement_type = 'release_reserve' THEN -ABS(quantity)
+                              ELSE 0 END), 0) AS held
+       FROM ${t(brand, "stock_movements")}
+      WHERE variant_id = $1 AND location_id = $2
+        AND reference_type = 'sales_order' AND reference_id = $3
+        AND movement_type IN ('reserve','release_reserve')`,
+    [variant_id, location_id, reference_id],
+  );
+  const held = rows[0] ? Number(rows[0].held) : 0;
+  return held > 0 ? held : 0;
+}
+
 // Movements (the only way to change on_hand)
 async function nextMovementNumber({ client, brand }) {
   const { rows } = await ex(client)(
@@ -877,6 +904,7 @@ module.exports = {
   levelsForVariant,
   seedLevel,
   lockLevel,
+  outstandingReservationForOrder,
   nextMovementNumber,
   nextDocNumber,
   defaultVariantForProduct,

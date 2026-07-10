@@ -83,29 +83,63 @@ function computeTotalsAndLines({ built, extraShareByIdx, defaultVat }) {
 }
 
 /**
- * Payment model + deposit policy (V2.2 §6.2). The order inherits its model
- * from the first line's variant/product; deposit_triggered orders snapshot
- * the required deposit so fulfilment can unlock at the threshold.
+ * Payment model + deposit policy (V2.2 §6.2, Flexi Pay D1/D6).
+ *
+ * CONFIG-DRIVEN since the 2026-07-10 owner session: the policy comes from
+ * business_config.installment_settings (the Sales → Payments tab) plus the
+ * BUYER's explicit payment_plan choice — never from per-product
+ * payment_model columns (those are dormant; one config switch governs all
+ * products).
+ *
+ *   plan 'full'        → full_payment_only (no deposit machinery)
+ *   plan 'instalment'  → custom order  → deposit_triggered at
+ *                        custom_order_deposit_pct (production unlocks there)
+ *                      → stock order   → layaway; the snapshotted deposit is
+ *                        the MINIMUM FIRST PAYMENT (min_first_payment_pct),
+ *                        locked on the order so a later config change never
+ *                        moves the goalposts on an existing plan.
  *
  * @param {object} args
- * @param {Array} args.built
  * @param {object} args.installmentSettings  business_config.installment_settings ({} when absent).
- * @param {object} args.input                The createOrder input (required_deposit_pct override).
+ * @param {object} args.input                createOrder input (payment_plan, is_custom_order, required_deposit_pct override).
  * @param {import('decimal.js').Decimal} args.total
  */
-function computeDepositPolicy({ built, installmentSettings, input, total }) {
-  const paymentModel = built[0].ctx.payment_model || "layaway";
-  let requiredDepositPct = null;
-  let requiredDepositNgn = null;
-  if (paymentModel === "deposit_triggered") {
-    requiredDepositPct = money(
+function computeDepositPolicy({ installmentSettings, input, total }) {
+  const s = installmentSettings || {};
+  const paymentPlan =
+    input.payment_plan === "instalment" ? "instalment" : "full";
+  // Custom orders are ALWAYS deposit_triggered regardless of plan: the
+  // deposit threshold is what unlocks production / opens the Studio job
+  // (order.deposit_met), and a full payment clears it trivially.
+  if (input.is_custom_order) {
+    const pct = money(
       input.required_deposit_pct ??
-        installmentSettings.default_deposit_pct_for_deposit_triggered ??
+        s.custom_order_deposit_pct ??
+        s.default_deposit_pct_for_deposit_triggered ??
         50,
     );
-    requiredDepositNgn = total.times(requiredDepositPct).dividedBy(100);
+    return {
+      paymentPlan,
+      paymentModel: "deposit_triggered",
+      requiredDepositPct: pct,
+      requiredDepositNgn: total.times(pct).dividedBy(100),
+    };
   }
-  return { paymentModel, requiredDepositPct, requiredDepositNgn };
+  if (paymentPlan === "full") {
+    return {
+      paymentPlan,
+      paymentModel: "full_payment_only",
+      requiredDepositPct: null,
+      requiredDepositNgn: null,
+    };
+  }
+  const pct = money(input.required_deposit_pct ?? s.min_first_payment_pct ?? 30);
+  return {
+    paymentPlan,
+    paymentModel: "layaway",
+    requiredDepositPct: pct,
+    requiredDepositNgn: total.times(pct).dividedBy(100),
+  };
 }
 
 module.exports = { computeTotalsAndLines, computeDepositPolicy };

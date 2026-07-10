@@ -6,6 +6,7 @@
 
 const service = require("./sales.service");
 const paymentLink = require("./payment-link.service");
+const paymentSettings = require("./payment-settings.service");
 const { parsePagination } = require("../../utils/pagination");
 
 const base = (req) => ({
@@ -215,6 +216,17 @@ const setDeliveryFee = async (req, res) =>
     }),
   });
 
+// Flexi Pay settings (Sales → Payments tab)
+const getPaymentSettings = async (req, res) =>
+  res.json({ data: await paymentSettings.getSettings(req.brand) });
+const updatePaymentSettings = async (req, res) =>
+  res.json({
+    data: await paymentSettings.updateSettings({
+      ...base(req),
+      patch: req.body,
+    }),
+  });
+
 module.exports = {
   listOrders,
   getById,
@@ -226,6 +238,8 @@ module.exports = {
   cancelOrder,
   createPaymentLink,
   setDeliveryFee,
+  getPaymentSettings,
+  updatePaymentSettings,
   listQuotations,
   getQuotation,
   quotationPdf,

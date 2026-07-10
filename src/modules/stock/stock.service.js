@@ -442,6 +442,44 @@ async function releaseReservation({
   return m;
 }
 
+/**
+ * Release exactly what THIS order still holds for a variant — never more.
+ * stock_levels.reserved aggregates every order's holds, so a blind release
+ * for an order that never reserved (legacy pre-payment_plan orders) would
+ * silently free someone else's unit. Reads the order's own movement ledger
+ * first and releases min(requested, still-held). No-op when nothing is held.
+ */
+async function releaseOrderReservation({
+  client,
+  brand,
+  variant_id,
+  location_id,
+  quantity,
+  reference_id,
+  user_id,
+  reason,
+}) {
+  const held = await repo.outstandingReservationForOrder({
+    client,
+    brand,
+    variant_id,
+    location_id,
+    reference_id,
+  });
+  const qty = Math.min(Math.abs(quantity), held);
+  if (qty <= 0) return null;
+  return releaseReservation({
+    client,
+    brand,
+    variant_id,
+    location_id,
+    quantity: qty,
+    reference_id,
+    user_id,
+    reason,
+  });
+}
+
 const A = (
   brand,
   user_id,
@@ -1051,6 +1089,7 @@ module.exports = {
   reserveForOrder,
   reserveForCart,
   releaseReservation,
+  releaseOrderReservation,
   seedVariant,
   listAdjustments,
   getAdjustment,

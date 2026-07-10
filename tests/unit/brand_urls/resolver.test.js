@@ -65,16 +65,20 @@ describe("brand-urls helpers", () => {
     brandUrls.invalidate();
   });
 
-  test("welcomeUrl uses the brand storefront domain + slug", async () => {
-    mockBrand({ storefront_domain: "pixiegirlglobal.com" });
+  // The /welcome and /order/capture pages are routes of the Hub app, so
+  // their links mint on the hub (admin) domain — NOT storefront_domain.
+  // Minting on storefront_domain produced 404s whenever the brand domain
+  // didn't serve the Hub bundle (faitlynhair.com). No DB call involved.
+  test("welcomeUrl mints on the hub domain + brand slug", async () => {
     const url = await brandUrls.welcomeUrl("pixiegirl", "tok123");
-    expect(url).toBe("https://pixiegirlglobal.com/welcome/pixiegirl/tok123");
+    expect(url).toBe("https://admin.fallback.test/welcome/pixiegirl/tok123");
+    expect(query).not.toHaveBeenCalled();
   });
 
-  test("orderCaptureUrl uses the /order/capture/ path", async () => {
-    mockBrand({ storefront_domain: "thefaitlynbrand.com" });
+  test("orderCaptureUrl mints on the hub domain with /order/capture/", async () => {
     const url = await brandUrls.orderCaptureUrl("faitlynhair", "jwt-abc");
-    expect(url).toBe("https://thefaitlynbrand.com/order/capture/jwt-abc");
+    expect(url).toBe("https://admin.fallback.test/order/capture/jwt-abc");
+    expect(query).not.toHaveBeenCalled();
   });
 
   test("payLinkUrl matches legacy /pay/{token} shape", async () => {

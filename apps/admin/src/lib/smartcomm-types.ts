@@ -257,4 +257,7 @@ export interface MessageDraft {
   generated_by: "human" | "praxis";
   generated_at?: string | null;
   updated_at: string;
+  /** Present on Praxis drafts: "reply" answers the customer's last
+   *  message; "followup" nudges a customer who hasn't replied yet. */
+  draft_mode?: "reply" | "followup";
 }

@@ -29,7 +29,9 @@ const { audit } = require("../../middleware/audit");
 const { AppError } = require("../../utils/errors");
 const brandUrls = require("../../utils/brand-urls");
 
-const DEFAULT_EXPIRY_SECONDS = 24 * 3600;
+// Owner decision (2026-07): order links live 7 days by default and die
+// after a successful order (enforced via shared.smartcomm_order_links).
+const DEFAULT_EXPIRY_SECONDS = 7 * 24 * 3600;
 
 /**
  * @param {object} args

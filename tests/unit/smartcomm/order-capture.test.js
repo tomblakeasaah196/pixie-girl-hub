@@ -9,7 +9,9 @@
 jest.mock("../../../src/config/env", () => ({
   config: {
     JWT_SECRET: "test-secret-must-be-at-least-32-chars-long-XYZ",
-    STOREFRONT_BASE_URL: "https://pixiegirl.test",
+    // Order links mint on the hub domain (where /order/capture is served),
+    // not the brand storefront domain.
+    ADMIN_BASE_URL: "https://pixiegirl.test",
   },
 }));
 jest.mock("../../../src/middleware/audit", () => ({

@@ -86,24 +86,38 @@ async function publicBaseUrl(brand) {
 }
 
 /**
- * `${publicBaseUrl}/welcome/{token}` for the Online QR customer form.
+ * Base URL of the Hub app itself (the admin deployment). The public
+ * `/welcome/...` and `/order/capture/...` pages are routes of the Hub
+ * app — NOT the brand storefront — so links to them must be minted on
+ * the hub domain. Minting them on `storefront_domain` produced dead
+ * links whenever that domain doesn't serve the Hub bundle (e.g.
+ * faitlynhair.com → 404). Same resolution the walk-in QR uses.
+ */
+function hubBaseUrl() {
+  return (
+    normaliseUrl(config.ADMIN_BASE_URL) || normaliseUrl(config.APP_URL) || ""
+  );
+}
+
+/**
+ * `${hubBaseUrl}/welcome/{brand}/{token}` for the Online QR customer form.
  */
 async function welcomeUrl(brand, token) {
-  const base = await publicBaseUrl(brand);
+  const base = hubBaseUrl();
   // The /welcome route is keyed by business + token because the same
-  // public app may serve multiple brands at the same host.
+  // public app serves both brands at the same host.
   return base
     ? `${base}/welcome/${brand}/${token}`
     : `/welcome/${brand}/${token}`;
 }
 
 /**
- * `${publicBaseUrl}/order/capture/{token}` for a pre-filled order
- * capture link. The consumer page decodes the signed JWT and pre-fills
- * the cart.
+ * `${hubBaseUrl}/order/capture/{token}` for an order link (staff-picked
+ * cart or shared-catalogue mini-shop). The consumer page decodes the
+ * signed JWT and pre-fills the cart.
  */
 async function orderCaptureUrl(brand, token) {
-  const base = await publicBaseUrl(brand);
+  const base = hubBaseUrl();
   return base ? `${base}/order/capture/${token}` : `/order/capture/${token}`;
 }
 
@@ -140,6 +154,7 @@ function invalidate(brand) {
 
 module.exports = {
   publicBaseUrl,
+  hubBaseUrl,
   welcomeUrl,
   orderCaptureUrl,
   payLinkUrl,

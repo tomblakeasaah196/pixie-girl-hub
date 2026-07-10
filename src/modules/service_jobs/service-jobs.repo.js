@@ -762,15 +762,17 @@ async function overdueOutWigs({ brand, threshold_days }) {
 }
 
 /**
- * Return staff who can be assigned service jobs — anyone with a Stylist-flavoured
- * job title in the active brand. Includes a live open-jobs count (pending or
- * in_progress or assigned or on_hold) and an on-leave-today flag so the picker
- * can show workload + availability without a second round-trip.
+ * Return staff who can be assigned service jobs — every employee in the
+ * Operations department of the active brand who has an active login account.
+ * Includes a live open-jobs count (pending or in_progress or assigned or
+ * on_hold or rework) and an on-leave-today flag so the picker can show
+ * workload + availability without a second round-trip.
  *
- * We deliberately match on job_title text (no is_stylist column added) because
- * the meeting notes described stylists as a job-title concept, not a separate
- * role. Match is case-insensitive on "stylist" so both "Senior Stylist" and
- * "Trainee Stylist" qualify.
+ * Department is matched two ways so no one is missed regardless of which
+ * source a brand keeps current: the legacy `staff_profiles.department` text
+ * AND membership of an "Operations" org unit (org_positions → org_units, the
+ * newer source of truth). Each person's own job_title rides along as their
+ * role within the department (e.g. "Chief Stylist", "Operations Lead").
  */
 async function listAssignableStylists({ brand }) {
   const { rows } = await query(
@@ -786,6 +788,7 @@ async function listAssignableStylists({ brand }) {
        COALESCE(NULLIF(TRIM(COALESCE(c.first_name, '') || ' ' || COALESCE(c.last_name, '')), ''), u.email) AS full_name,
        u.avatar_url,
        sp.job_title,
+       sp.department,
        COALESCE(oj.n, 0)::int AS open_jobs_count,
        EXISTS (
          SELECT 1
@@ -801,7 +804,19 @@ async function listAssignableStylists({ brand }) {
       WHERE sp.business = $1
         AND sp.is_deleted = false
         AND sp.end_date IS NULL
-        AND sp.job_title ILIKE '%stylist%'
+        AND u.status <> 'disabled'
+        AND (
+          TRIM(sp.department) ILIKE 'operations'
+          OR EXISTS (
+            SELECT 1
+              FROM shared.org_positions op
+              JOIN shared.org_units ou ON ou.unit_id = op.unit_id
+             WHERE op.profile_id = sp.profile_id
+               AND ou.business = sp.business
+               AND (TRIM(ou.unit_key) ILIKE 'operations'
+                    OR TRIM(ou.display_name) ILIKE 'operations')
+          )
+        )
       ORDER BY on_leave_today ASC, open_jobs_count ASC, full_name ASC`,
     [brand],
   );

@@ -105,9 +105,9 @@ async function assignStaff(req, res) {
     }),
   });
 }
-// Options for the drawer's stylist picker: staff whose job_title contains
-// 'stylist' + live workload + leave state. No pagination — a brand's stylist
-// bench is small (< 50) and the picker needs the whole list at once.
+// Options for the drawer's assignment picker: every Operations-department
+// employee with an active login + live workload + leave state. No pagination —
+// a brand's Operations bench is small and the picker needs it all at once.
 async function listAssignableStylists(req, res) {
   res.json({
     data: await service.listAssignableStylists({ brand: req.brand }),

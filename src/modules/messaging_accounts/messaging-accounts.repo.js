@@ -99,6 +99,50 @@ async function findByExternalId({ platform, external_account_id }) {
   return rows[0] || null;
 }
 
+// All active rows for a platform — used by the webhook fallback: when the
+// payload's account id matches no row but exactly ONE active row exists
+// for the platform, that row must be it (the operator typed the wrong id).
+async function listActiveByPlatform({ platform }) {
+  const { rows } = await query(
+    `SELECT * FROM shared.messaging_accounts
+      WHERE platform = $1 AND is_active = true
+      ORDER BY updated_at DESC`,
+    [platform],
+  );
+  return rows;
+}
+
+/**
+ * Correct a row's provider id in place (auto-heal). Instagram operators
+ * routinely paste the wrong id (Business-Manager asset id instead of the
+ * Graph user id) — the true id is learned from a /me ping or a signature-
+ * verified webhook, and webhook→brand routing matches on this column, so
+ * it must hold the id Meta actually sends. The previous value is kept in
+ * metadata.previous_external_id for the audit trail. Returns null when
+ * the target id is already taken by another row (unique constraint) —
+ * callers treat that as "leave it alone".
+ */
+async function updateExternalId({ id, external_account_id }) {
+  const { rows } = await query(
+    `UPDATE shared.messaging_accounts m
+        SET metadata = jsonb_set(COALESCE(m.metadata, '{}'::jsonb),
+                                 '{previous_external_id}',
+                                 to_jsonb(m.external_account_id), true),
+            external_account_id = $2,
+            updated_at = now()
+      WHERE m.account_id = $1
+        AND NOT EXISTS (
+          SELECT 1 FROM shared.messaging_accounts o
+           WHERE o.platform = m.platform
+             AND o.external_account_id = $2
+             AND o.account_id <> m.account_id
+        )
+      RETURNING account_id, external_account_id, metadata`,
+    [id, String(external_account_id)],
+  );
+  return rows[0] || null;
+}
+
 async function upsert({ brand, user_id, input, secrets }) {
   // `secrets` is a pre-encrypted bundle:
   //   { access_token_enc, app_secret_enc, verify_token_enc,
@@ -208,6 +252,33 @@ async function upsert({ brand, user_id, input, secrets }) {
   return rows[0];
 }
 
+/**
+ * Persist a refreshed access token (IG 60-day rotation). Stamps
+ * secrets_last_rotated_at and records the provider-reported expiry in
+ * metadata.token_expires_at so ops can see how much runway is left.
+ */
+async function rotateAccessToken({
+  id,
+  access_token_enc,
+  access_token_first4,
+  expires_at,
+}) {
+  const { rows } = await query(
+    `UPDATE shared.messaging_accounts
+        SET access_token_enc = $2,
+            access_token_first4 = $3,
+            secrets_last_rotated_at = now(),
+            metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb),
+                                 '{token_expires_at}',
+                                 to_jsonb($4::text), true),
+            updated_at = now()
+      WHERE account_id = $1
+      RETURNING account_id, secrets_last_rotated_at`,
+    [id, access_token_enc, access_token_first4, expires_at || null],
+  );
+  return rows[0] || null;
+}
+
 // Persist the Meta App ID onto the row's metadata jsonb. The App ID is
 // public (not a secret) and is needed for the resumable upload used to
 // set the WhatsApp display picture. jsonb_set is surgical — it merges
@@ -274,6 +345,9 @@ module.exports = {
   getRaw,
   findActiveByBrand,
   findByExternalId,
+  listActiveByPlatform,
+  updateExternalId,
+  rotateAccessToken,
   upsert,
   setAppId,
   setActive,

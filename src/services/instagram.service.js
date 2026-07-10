@@ -75,20 +75,39 @@ async function sendText({ brand, recipient_id, text, tag }) {
   return data;
 }
 
+// Attachment types the IG Messaging API accepts on /me/messages.
+const MEDIA_KINDS = new Set(["image", "audio", "video"]);
+
 /**
- * Send an image to an Instagram user via an already-public URL.
- * Graph API requires a hosted URL — we'll re-host attachments under
- * /media/ at send time.
+ * Send a media DM (image / audio / video) to an Instagram user via an
+ * already-public URL. The Graph API only supports the link method —
+ * Meta's servers fetch the URL themselves — so attachments are re-hosted
+ * under /media/ (an absolute, internet-reachable URL) at send time.
+ * Voice notes go out as `audio`.
+ *
+ * @param {object} args
+ * @param {string} args.brand
+ * @param {string} args.recipient_id — IGSID from the inbound webhook
+ * @param {string} args.kind         — image | audio | video
+ * @param {string} args.media_url    — public https URL to the bytes
+ * @param {string} [args.tag]        — 'HUMAN_AGENT' outside the 24h window
  */
-async function sendImage({ brand, recipient_id, image_url, tag }) {
+async function sendMedia({ brand, recipient_id, kind, media_url, tag }) {
+  if (!MEDIA_KINDS.has(kind)) {
+    throw new AppError(
+      "IG_MEDIA_TYPE_UNSUPPORTED",
+      `Instagram DMs don't support '${kind}' attachments`,
+      400,
+    );
+  }
   const cfg = await resolveSendConfig({ brand });
   const url = `${GRAPH()}/me/messages`;
   const body = {
     recipient: { id: recipient_id },
     message: {
       attachment: {
-        type: "image",
-        payload: { url: image_url, is_reusable: false },
+        type: kind,
+        payload: { url: media_url, is_reusable: false },
       },
     },
   };
@@ -101,6 +120,17 @@ async function sendImage({ brand, recipient_id, image_url, tag }) {
     timeout: 15000,
   });
   return data;
+}
+
+/** Back-compat wrapper — image is just sendMedia(kind: 'image'). */
+function sendImage({ brand, recipient_id, image_url, tag }) {
+  return sendMedia({
+    brand,
+    recipient_id,
+    kind: "image",
+    media_url: image_url,
+    tag,
+  });
 }
 
 /**
@@ -118,4 +148,4 @@ async function isConfigured({ brand }) {
   }
 }
 
-module.exports = { sendText, sendImage, isConfigured };
+module.exports = { sendText, sendImage, sendMedia, isConfigured };

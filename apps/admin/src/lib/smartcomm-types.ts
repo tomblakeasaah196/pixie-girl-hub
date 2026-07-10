@@ -23,7 +23,9 @@ export type MessageType =
   | "product_share"
   | "send_invoice"
   | "template"
-  | "call";
+  | "call"
+  | "ig_story_mention"
+  | "ig_story_reply";
 export type ChannelStatus = "open" | "resolved";
 export type ParticipantRole = "member" | "admin";
 export type SenderKind = "staff" | "customer" | "system";
@@ -75,6 +77,7 @@ export interface Channel {
   assigned_to?: string | null;
   assigned_at?: string | null;
   wa_window_expires_at?: string | null;
+  ig_window_expires_at?: string | null;
   metadata?: ChannelMetadata;
   last_message_at?: string | null;
   last_message_preview?: string | null;
@@ -166,6 +169,9 @@ export interface Message {
     answered_by_name?: string | null;
     outcome?: string | null;
     outcome_notes?: string | null;
+    /** IG story surfaces (ig_story_mention / ig_story_reply). */
+    story_url?: string;
+    story_id?: string;
   } | null;
 }
 

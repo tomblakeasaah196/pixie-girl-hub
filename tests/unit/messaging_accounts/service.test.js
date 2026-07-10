@@ -15,6 +15,9 @@ jest.mock(
     upsert: jest.fn(),
     setActive: jest.fn(),
     remove: jest.fn(),
+    updateExternalId: jest.fn(),
+    listActiveByPlatform: jest.fn(),
+    rotateAccessToken: jest.fn(),
   }),
 );
 jest.mock("../../../src/services/encryption.service", () => ({
@@ -122,7 +125,7 @@ describe("messaging_accounts.service", () => {
     repo.getRaw.mockResolvedValue({
       account_id: "id-2",
       platform: "instagram",
-      external_account_id: "IGBIZ1",
+      external_account_id: "17841400000000000",
       access_token_enc: "enc:IGAA-token",
     });
     axios.get.mockResolvedValue({
@@ -137,12 +140,120 @@ describe("messaging_accounts.service", () => {
     expect(call[0]).toContain("fields=user_id,username");
     expect(call[0]).not.toContain("graph.facebook.com");
     expect(call[1].headers.Authorization).toBe("Bearer IGAA-token");
+    // Stored id already matches Meta's → no heal.
+    expect(repo.updateExternalId).not.toHaveBeenCalled();
     expect(r).toEqual({
       ok: true,
       platform: "instagram",
       provider_id: "17841400000000000",
       provider_name: "faitlynhair",
+      healed: false,
     });
+  });
+
+  test("testAccount auto-heals a mistyped IG provider id from /me", async () => {
+    // Operator saved the Business-Manager asset id; Meta's webhooks route
+    // by the Graph user id — Test must correct the row.
+    repo.getRaw.mockResolvedValue({
+      account_id: "id-2",
+      platform: "instagram",
+      external_account_id: "1309705977894720",
+      access_token_enc: "enc:IGAA-token",
+    });
+    axios.get.mockResolvedValue({
+      data: { user_id: "17841401903263911", username: "faitlynhair" },
+    });
+    repo.updateExternalId.mockResolvedValue({
+      account_id: "id-2",
+      external_account_id: "17841401903263911",
+    });
+    const r = await service.testAccount({ id: "id-2" });
+    expect(repo.updateExternalId).toHaveBeenCalledWith({
+      id: "id-2",
+      external_account_id: "17841401903263911",
+    });
+    expect(r.healed).toBe(true);
+    expect(r.provider_id).toBe("17841401903263911");
+  });
+
+  test("refreshInstagramTokens rotates stale tokens via graph.instagram.com", async () => {
+    const eightDaysAgo = new Date(
+      Date.now() - 8 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    repo.listActiveByPlatform.mockResolvedValue([
+      {
+        account_id: "id-2",
+        business: "faitlynhair",
+        platform: "instagram",
+        access_token_enc: "enc:IGAA-old",
+        secrets_last_rotated_at: eightDaysAgo,
+      },
+      {
+        // Rotated an hour ago — must be skipped, not refreshed daily.
+        account_id: "id-3",
+        business: "pixiegirl",
+        platform: "instagram",
+        access_token_enc: "enc:IGAA-fresh",
+        secrets_last_rotated_at: new Date().toISOString(),
+      },
+    ]);
+    axios.get.mockResolvedValue({
+      data: { access_token: "IGAA-new-token", expires_in: 5184000 },
+    });
+    repo.rotateAccessToken.mockResolvedValue({ account_id: "id-2" });
+
+    const summary = await service.refreshInstagramTokens();
+
+    expect(summary).toMatchObject({ checked: 2, refreshed: 1, skipped: 1, failed: 0 });
+    expect(axios.get).toHaveBeenCalledTimes(1);
+    const [url, opts] = axios.get.mock.calls[0];
+    expect(url).toBe("https://graph.instagram.com/refresh_access_token");
+    expect(opts.params).toMatchObject({
+      grant_type: "ig_refresh_token",
+      access_token: "IGAA-old",
+    });
+    expect(repo.rotateAccessToken).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "id-2",
+        access_token_enc: "enc:IGAA-new-token",
+        access_token_first4: "IGAA",
+      }),
+    );
+  });
+
+  test("refreshInstagramTokens isolates one account's failure", async () => {
+    const old = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    repo.listActiveByPlatform.mockResolvedValue([
+      {
+        account_id: "id-bad",
+        business: "pixiegirl",
+        platform: "instagram",
+        access_token_enc: "enc:IGAA-revoked",
+        secrets_last_rotated_at: old,
+      },
+      {
+        account_id: "id-good",
+        business: "faitlynhair",
+        platform: "instagram",
+        access_token_enc: "enc:IGAA-ok",
+        secrets_last_rotated_at: old,
+      },
+    ]);
+    axios.get
+      .mockRejectedValueOnce(
+        Object.assign(new Error("revoked"), { response: { status: 400 } }),
+      )
+      .mockResolvedValueOnce({
+        data: { access_token: "IGAA-renewed", expires_in: 5184000 },
+      });
+    repo.rotateAccessToken.mockResolvedValue({ account_id: "id-good" });
+
+    const summary = await service.refreshInstagramTokens();
+    expect(summary).toMatchObject({ refreshed: 1, failed: 1 });
+    expect(repo.rotateAccessToken).toHaveBeenCalledTimes(1);
+    expect(repo.rotateAccessToken).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "id-good" }),
+    );
   });
 
   test("testAccount refuses WhatsApp without a token", async () => {

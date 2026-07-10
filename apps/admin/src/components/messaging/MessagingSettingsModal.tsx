@@ -441,6 +441,12 @@ function PlatformEditor({ platform, account, onSaved }: EditorProps) {
 
   const test = useMutation({
     mutationFn: () => messagingAccountsApi.test(account!.account_id),
+    onSuccess: (r) => {
+      // Instagram Test can auto-correct a mistyped provider id (the row's
+      // external_account_id) — refresh the account list so the corrected
+      // id renders instead of the stale one.
+      if (r?.healed) onSaved();
+    },
   });
 
   const canSave =
@@ -495,13 +501,21 @@ function PlatformEditor({ platform, account, onSaved }: EditorProps) {
       {test.isSuccess && (
         <div className="rounded-lg border border-green-500/30 bg-green-500/5 px-3 py-2 text-[12px] text-green-300 inline-flex items-start gap-1.5">
           <Check className="w-3.5 h-3.5 mt-[1px] shrink-0" />
-          {platform === "email_outbound" && test.data?.provider_name
-            ? `SMTP connected — ${test.data.provider_name}.`
-            : test.data?.provider_name
-              ? `Authenticated as "${test.data.provider_name}" (${test.data.provider_id ?? "ok"}).`
-              : test.data?.mx_records?.length
-                ? `MX OK — primary: ${test.data.mx_records[0].exchange}`
-                : "Provider responded."}
+          <span>
+            {platform === "email_outbound" && test.data?.provider_name
+              ? `SMTP connected — ${test.data.provider_name}.`
+              : test.data?.provider_name
+                ? `Authenticated as "${test.data.provider_name}" (${test.data.provider_id ?? "ok"}).`
+                : test.data?.mx_records?.length
+                  ? `MX OK — primary: ${test.data.mx_records[0].exchange}`
+                  : "Provider responded."}
+            {test.data?.healed && (
+              <span className="block text-green-200/80">
+                The saved account ID didn't match Meta's — it has been
+                corrected automatically so inbound DMs route properly.
+              </span>
+            )}
+          </span>
         </div>
       )}
       {test.isError && (
@@ -1344,25 +1358,20 @@ function InstagramGuide() {
         <Info className="w-4 h-4 mt-[2px] text-accent-glow" />
         <div>
           <h4 className="text-[13px] font-medium">
-            How to get your Instagram API keys
+            How to connect Instagram (Instagram API with Instagram Login)
           </h4>
           <p className="text-[11.5px] text-text-faint mt-0.5">
-            Instagram Messenger rides the same Meta app as WhatsApp — you just
-            add the <strong>Instagram</strong> and <strong>Messenger</strong>{" "}
-            products. Your brand's IG account must be a{" "}
-            <em>Business</em> account linked to the Facebook Page that owns it.
+            Uses the <strong>Instagram API with Instagram Login</strong> — no
+            Facebook Page link required. Your brand's IG account must be a{" "}
+            <em>Professional</em> (Business/Creator) account. Access tokens
+            start with <span className="font-mono">IGAA</span> and are
+            auto-renewed by the hub before their 60-day expiry.
           </p>
         </div>
       </div>
       <ol className="p-4 space-y-3 text-[12.5px] text-text-muted list-decimal ml-5">
         <li>
-          On the IG mobile app, switch the account to{" "}
-          <strong>Business</strong> and connect it to your brand's Facebook
-          Page — this is the only combination the Graph API accepts. If you
-          already did this, skip.
-        </li>
-        <li>
-          Go to your Meta app at{" "}
+          In your Meta app at{" "}
           <a
             href="https://developers.facebook.com/apps/"
             target="_blank"
@@ -1371,70 +1380,60 @@ function InstagramGuide() {
           >
             developers.facebook.com/apps <ExternalLink className="w-3 h-3" />
           </a>{" "}
-          → add the <strong>Instagram</strong> and <strong>Messenger</strong>{" "}
-          products. Under Instagram → API Setup, pick the connected IG Business
-          Account and copy the{" "}
-          <span className="font-mono text-accent-glow">
-            Instagram Business Account ID
-          </span>
-          . Paste it into the ID field above.
+          add the use case{" "}
+          <strong>"Manage messaging &amp; content on Instagram"</strong>. It
+          grants <span className="font-mono">instagram_business_basic</span>{" "}
+          and{" "}
+          <span className="font-mono">instagram_business_manage_messages</span>
+          .
         </li>
         <li>
-          Generate a permanent{" "}
-          <span className="font-mono text-accent-glow">Page Access Token</span>
-          . In{" "}
-          <a
-            href="https://business.facebook.com/settings/system-users"
-            target="_blank"
-            rel="noreferrer noopener"
-            className="text-accent-glow underline underline-offset-2 inline-flex items-center gap-0.5"
-          >
-            Business Manager → System Users <ExternalLink className="w-3 h-3" />
-          </a>{" "}
-          create a system user, assign the Page owning your IG to it, and
-          generate a token with{" "}
-          <strong>instagram_manage_messages</strong>,{" "}
-          <strong>instagram_manage_comments</strong>, and{" "}
-          <strong>pages_messaging</strong> scopes. Paste it above.
+          Under the use case's <strong>API setup with Instagram login</strong>{" "}
+          → step 2 <strong>"Generate access tokens"</strong>, add your IG
+          professional account and generate its token (starts with{" "}
+          <span className="font-mono">IGAA</span>). Paste it into the Access
+          Token field above. Skip step 4 ("Set up Instagram business login") —
+          that OAuth flow is only for letting third parties connect, which
+          this ERP doesn't need.
         </li>
         <li>
-          In the Meta app's <strong>Settings → Basic</strong>, copy the{" "}
+          In the app's <strong>App settings → Basic</strong>, copy the{" "}
           <span className="font-mono text-accent-glow">App Secret</span> and
           paste it above. We use it to verify inbound webhook signatures
           (HMAC-SHA256, same as WhatsApp).
         </li>
         <li>
-          Under <strong>Instagram → Configuration → Webhooks</strong>, set the{" "}
+          Under the use case's step 3 <strong>"Configure webhooks"</strong>,
+          set the{" "}
           <span className="font-mono text-accent-glow">Callback URL</span> to{" "}
           <span className="font-mono text-text-primary">
             https://your-domain/api/webhooks/meta/instagram
           </span>{" "}
-          and set the{" "}
+          and the{" "}
           <span className="font-mono text-accent-glow">Verify Token</span> to
-          any random string — put the same string in the "Webhook Verify Token"
-          field above.
+          any random string — put the same string in the "Webhook Verify
+          Token" field above. Subscribe at least the{" "}
+          <span className="font-mono">messages</span> field.
         </li>
         <li>
-          Subscribe the webhook to these fields:{" "}
-          <span className="font-mono">messages</span>,{" "}
-          <span className="font-mono">messaging_seen</span>,{" "}
-          <span className="font-mono">message_reactions</span>. To ingest{" "}
-          <strong>story mentions</strong> and{" "}
-          <strong>replies to your stories</strong>, also subscribe{" "}
-          <span className="font-mono">messaging_postbacks</span> and{" "}
-          <span className="font-mono">messaging_referral</span>. Hit{" "}
-          <em>Verify and save</em>.
+          The ID field above wants the IG account's{" "}
+          <strong>Graph user ID</strong> (a long number starting{" "}
+          <span className="font-mono">1784…</span>). Don't worry about getting
+          it exactly right — <strong>Test</strong> reads the true ID from Meta
+          and corrects the field automatically.
         </li>
         <li>
-          For replies <strong>outside the 24-hour service window</strong>, your
-          Meta app must be approved for the{" "}
+          Hit <strong>Test</strong>. A green pill confirms the token
+          authenticates as your IG account against{" "}
+          <span className="font-mono">graph.instagram.com</span>.
+        </li>
+        <li>
+          Until the app passes <strong>App Review</strong> (Advanced Access on{" "}
+          <span className="font-mono">instagram_business_manage_messages</span>
+          ), only accounts with a role on the app (admins/testers) can DM you.
+          For replies <strong>outside the 24-hour window</strong> the{" "}
           <span className="font-mono text-accent-glow">HUMAN_AGENT</span> tag
-          (App Review → Standard Access). Until it's approved, expect a
-          "24-hour window expired" error on late replies.
-        </li>
-        <li>
-          Come back and hit <strong>Test</strong>. A green pill confirms the
-          token authenticates as your IG Business Account against Meta Graph.
+          must also be approved.
         </li>
       </ol>
     </div>

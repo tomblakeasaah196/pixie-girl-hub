@@ -118,6 +118,8 @@ export const smartcommApi = {
       reply_to_id?: string;
       attachments?: { document_id: string; display_name?: string }[];
       is_template?: boolean;
+      /** IG only: send outside the 24h window with Meta's HUMAN_AGENT tag. */
+      is_human_agent?: boolean;
       metadata?: Record<string, unknown>;
     },
   ) => api.post<Message>(`/smartcomm/channels/${id}/messages`, input),

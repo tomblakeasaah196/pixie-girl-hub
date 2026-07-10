@@ -331,11 +331,38 @@ async function testAccount({ id }) {
             timeout: 15000,
           },
         );
+        const providerId = (data && (data.user_id || data.id)) || null;
+        // Auto-heal a mistyped provider id: inbound webhooks route by
+        // matching entry.id against external_account_id, and Meta sends
+        // the Graph user id (what /me just returned) — NOT the Business-
+        // Manager asset id operators tend to paste. When they differ,
+        // fix the row so inbound DMs are never dropped. Skipped if the
+        // true id already belongs to another row (unique constraint).
+        let healed = false;
+        if (providerId && String(providerId) !== row.external_account_id) {
+          const updated = await repo.updateExternalId({
+            id: row.account_id,
+            external_account_id: String(providerId),
+          });
+          healed = !!updated;
+          logger.warn(
+            {
+              account_id: row.account_id,
+              previous: row.external_account_id,
+              corrected: String(providerId),
+              healed,
+            },
+            healed
+              ? "messaging_accounts.test corrected IG provider id"
+              : "messaging_accounts.test: IG provider id mismatch NOT healed (id taken)",
+          );
+        }
         return {
           ok: true,
           platform: "instagram",
-          provider_id: (data && (data.user_id || data.id)) || null,
+          provider_id: providerId,
           provider_name: (data && data.username) || null,
+          healed,
         };
       }
       // WhatsApp + Facebook stay on graph.facebook.com. Field sets differ per
@@ -441,6 +468,91 @@ async function testAccount({ id }) {
     `Test not implemented for ${row.platform}`,
     400,
   );
+}
+
+// ── Instagram token auto-refresh (60-day IGAA expiry) ──────────
+//
+// "Instagram API with Instagram Login" long-lived tokens expire after
+// ~60 days. Meta's refresh endpoint mints a fresh 60-day token from a
+// valid one (must be ≥ 24h old), so a periodic sweep keeps every brand's
+// IG connection alive with no operator involvement. Called daily by the
+// ig-token-refresh scheduler in the worker.
+
+const IG_REFRESH_MIN_AGE_DAYS = 7;
+
+/**
+ * Refresh the access token of every active Instagram account whose last
+ * rotation is older than IG_REFRESH_MIN_AGE_DAYS. One account failing
+ * (revoked token, network) never blocks the others. Returns a summary
+ * for the scheduler log.
+ */
+async function refreshInstagramTokens() {
+  const rows = await repo.listActiveByPlatform({ platform: "instagram" });
+  const summary = { checked: rows.length, refreshed: 0, skipped: 0, failed: 0 };
+  const cutoff = Date.now() - IG_REFRESH_MIN_AGE_DAYS * 24 * 60 * 60 * 1000;
+  for (const row of rows) {
+    if (!row.access_token_enc) {
+      summary.skipped += 1;
+      continue;
+    }
+    const rotatedAt = row.secrets_last_rotated_at
+      ? new Date(row.secrets_last_rotated_at).getTime()
+      : 0;
+    if (rotatedAt > cutoff) {
+      summary.skipped += 1; // fresh enough — nothing to do
+      continue;
+    }
+    try {
+      const token = crypto.decrypt(row.access_token_enc);
+      const { data } = await axios.get(
+        "https://graph.instagram.com/refresh_access_token",
+        {
+          params: { grant_type: "ig_refresh_token", access_token: token },
+          timeout: 15000,
+        },
+      );
+      if (!data || !data.access_token) {
+        throw new Error("refresh_access_token returned no access_token");
+      }
+      const expires_at = data.expires_in
+        ? new Date(Date.now() + data.expires_in * 1000).toISOString()
+        : null;
+      await repo.rotateAccessToken({
+        id: row.account_id,
+        access_token_enc: crypto.encrypt(data.access_token),
+        access_token_first4: first4(data.access_token),
+        expires_at,
+      });
+      await audit({
+        business: row.business,
+        user_id: null,
+        action_key: "messaging_accounts.token_auto_refresh",
+        target_type: "messaging_account",
+        target_id: row.account_id,
+        after: { platform: "instagram", expires_at },
+        request_id: null,
+      });
+      summary.refreshed += 1;
+      logger.info(
+        { account_id: row.account_id, business: row.business, expires_at },
+        "instagram token auto-refreshed",
+      );
+    } catch (err) {
+      summary.failed += 1;
+      const metaErr =
+        err.response && err.response.data && err.response.data.error;
+      logger.error(
+        {
+          account_id: row.account_id,
+          business: row.business,
+          err: err.message,
+          meta_error: metaErr || null,
+        },
+        "instagram token auto-refresh FAILED — token may expire; re-paste a fresh token in Messaging → Settings if this persists",
+      );
+    }
+  }
+  return summary;
 }
 
 // ── WhatsApp business profile (display picture, about, …) ──────
@@ -795,6 +907,7 @@ module.exports = {
   testAccount,
   revealSecret,
   listReveals,
+  refreshInstagramTokens,
   // WhatsApp business profile:
   getWhatsAppProfile,
   updateWhatsAppProfile,

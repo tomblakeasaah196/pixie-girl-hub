@@ -296,7 +296,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "performance",
-    permission: "hr_payroll",
+    permission: "performance",
     label: "Performance",
     description: "Appraisals & reviews",
     group: "people",

@@ -44,11 +44,25 @@ export interface UserRole {
 
 export interface CatalogEntry {
   module: string;
+  /** CEO-friendly name (matches the sidebar). Server-provided; may be absent
+   *  on older backends, in which case the UI falls back to a local label. */
+  label?: string;
+  /** Plain-English one-liner shown under the name in the grant UI. */
+  description?: string;
+  /** Sidebar section this module belongs to (run/workspace/operate/…). */
+  group?: string;
   actions: string[];
+}
+
+export interface CatalogGroup {
+  key: string;
+  label: string;
 }
 
 export interface Catalog {
   modules: CatalogEntry[];
+  /** Ordered section headers so the UI can band the columns like the sidebar. */
+  groups?: CatalogGroup[];
   actions: string[];
   record_scopes: string[];
 }

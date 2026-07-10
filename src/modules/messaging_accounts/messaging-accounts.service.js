@@ -435,28 +435,25 @@ async function setWhatsAppProfilePicture({
   if (cleaned && !/^\d{1,32}$/.test(cleaned)) {
     throw new ValidationError("Meta App ID must be numeric");
   }
-  const effectiveAppId = cleaned || storedAppId;
-  if (!effectiveAppId) {
-    throw new AppError(
-      "WA_NO_APP_ID",
-      "Enter your Meta App ID before uploading a display picture.",
-      412,
-    );
-  }
-  // Remember a freshly-entered App ID so future uploads don't ask again.
-  if (cleaned && cleaned !== storedAppId) {
-    await repo.setAppId({ id, app_id: cleaned });
-  }
+  // App ID is optional — whatsapp.service auto-derives it from the access
+  // token. A manually-entered id (or a previously-remembered one) is only
+  // a hint, used if the automatic lookup ever fails.
+  const hintAppId = cleaned || storedAppId || null;
 
   const buffer = await toProfilePictureJpeg(file);
   const wa = require("../../services/whatsapp.service");
-  await wa.setProfilePicture({
+  const { app_id: usedAppId } = await wa.setProfilePicture({
     brand: row.business,
-    app_id: effectiveAppId,
+    app_id: hintAppId,
     buffer,
     mime_type: "image/jpeg",
     filename: "profile.jpg",
   });
+
+  // Remember whichever App ID actually worked so we never ask again.
+  if (usedAppId && usedAppId !== storedAppId) {
+    await repo.setAppId({ id, app_id: usedAppId });
+  }
 
   await audit({
     business: brand,
@@ -464,13 +461,19 @@ async function setWhatsAppProfilePicture({
     action_key: "messaging_accounts.whatsapp_profile_picture",
     target_type: "messaging_account",
     target_id: id,
-    after: { bytes: buffer.length },
+    after: { bytes: buffer.length, app_id: usedAppId },
     request_id,
   });
 
   // Return the refreshed profile so the UI can show the new picture.
+  // profile_picture_url reflecting the new image confirms Meta applied
+  // it; if it's still empty the client shows a "may take a moment" note.
   const profile = await wa.getBusinessProfile({ brand: row.business });
-  return { ...profile, app_id: effectiveAppId };
+  return {
+    ...profile,
+    app_id: usedAppId,
+    picture_applied: !!profile.profile_picture_url,
+  };
 }
 
 // ── Internal resolver helpers (used by whatsapp.service etc.) ──

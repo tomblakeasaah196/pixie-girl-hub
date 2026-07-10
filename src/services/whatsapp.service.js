@@ -589,12 +589,58 @@ async function uploadResumable({ brand, app_id, buffer, mime_type, filename }) {
 }
 
 /**
- * Set the display picture: upload the bytes for a handle, then write
- * that handle onto the business profile. Returns Meta's { success }.
+ * Resolve the Meta App ID to use for the resumable upload.
+ *
+ * The upload handle only counts toward the profile when it comes from
+ * the SAME app the access token belongs to — so the token's own app id
+ * is authoritative. We derive it with debug_token (a token can
+ * introspect itself) and fall back to an explicitly supplied id only if
+ * that lookup fails. This means the operator never has to hunt for their
+ * App ID, and a wrong one can't silently break the upload.
+ */
+async function resolveUploadAppId({ brand, hint }) {
+  const cfg = await resolveSendConfig({ brand });
+  try {
+    const { data } = await axios.get(`${GRAPH()}/debug_token`, {
+      params: { input_token: cfg.access_token, access_token: cfg.access_token },
+      timeout: 15000,
+    });
+    const appId = data && data.data && data.data.app_id;
+    if (appId) return String(appId);
+  } catch (err) {
+    logger.warn(
+      { err: err.message, brand },
+      "whatsapp: debug_token app-id lookup failed — falling back to supplied App ID",
+    );
+  }
+  if (hint) return String(hint);
+  throw new AppError(
+    "WA_NO_APP_ID",
+    "Couldn't detect your Meta App ID automatically. Enter it under Messaging → WhatsApp settings and try again.",
+    412,
+  );
+}
+
+/**
+ * Set the display picture: resolve the app id, upload the bytes for a
+ * handle, then write that handle onto the business profile. Returns
+ * Meta's result plus the app id that was actually used (so the caller
+ * can remember it).
  */
 async function setProfilePicture({ brand, app_id, buffer, mime_type, filename }) {
-  const handle = await uploadResumable({ brand, app_id, buffer, mime_type, filename });
-  return updateBusinessProfile({ brand, profile: { profile_picture_handle: handle } });
+  const effectiveAppId = await resolveUploadAppId({ brand, hint: app_id });
+  const handle = await uploadResumable({
+    brand,
+    app_id: effectiveAppId,
+    buffer,
+    mime_type,
+    filename,
+  });
+  const result = await updateBusinessProfile({
+    brand,
+    profile: { profile_picture_handle: handle },
+  });
+  return { result, app_id: effectiveAppId };
 }
 
 /**

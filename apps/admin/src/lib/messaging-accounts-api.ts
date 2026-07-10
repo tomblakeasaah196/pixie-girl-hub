@@ -151,8 +151,11 @@ export interface WhatsAppProfile {
   websites?: string[];
   /** Read-only — Meta's hosted URL for the current display picture. */
   profile_picture_url?: string;
-  /** Stored Meta App ID (needed to upload a new display picture). */
+  /** Stored Meta App ID (auto-detected; shown for reference). */
   app_id: string | null;
+  /** Set on a picture-upload response: whether Meta already reflects the
+   *  new picture (false ⇒ it may take a moment to appear). */
+  picture_applied?: boolean;
 }
 
 export interface WhatsAppProfilePatch {

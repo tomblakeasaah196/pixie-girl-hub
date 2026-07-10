@@ -10,7 +10,10 @@
  * or template:
  *   { brand, to, template_name, language_code?, components? }
  * or media (image/video/document/audio — smartcomm attachments):
- *   { brand, to, kind: 'image'|'video'|'document'|'audio', media_url, filename?, caption? }
+ *   { brand, to, kind: 'image'|'video'|'document'|'audio',
+ *     media_key?, media_url?, mime_type?, filename?, caption? }
+ *   media_key is the local storage key (preferred — bytes are uploaded to
+ *   Meta for a media id); media_url is a URL fallback (catalogue images).
  *
  * `brand` is REQUIRED as of 000289 — every send resolves the per-brand
  * token from shared.messaging_accounts. A job missing brand fails fast
@@ -73,33 +76,24 @@ module.exports = async function process(job) {
         language_code: data.language_code,
         components: data.components,
       });
-    } else if (data.kind === "image") {
-      res = await whatsapp.sendImage({
+    } else if (
+      data.kind === "image" ||
+      data.kind === "video" ||
+      data.kind === "document" ||
+      data.kind === "audio"
+    ) {
+      // Upload-first: sendMedia loads the bytes (local storage key when
+      // present, else the URL) and hands Meta a media id so the send
+      // doesn't depend on our media host being publicly reachable.
+      res = await whatsapp.sendMedia({
         brand: data.brand,
         to: data.to,
-        image_url: data.media_url,
-        caption: data.caption,
-      });
-    } else if (data.kind === "video") {
-      res = await whatsapp.sendVideo({
-        brand: data.brand,
-        to: data.to,
-        video_url: data.media_url,
-        caption: data.caption,
-      });
-    } else if (data.kind === "document") {
-      res = await whatsapp.sendDocument({
-        brand: data.brand,
-        to: data.to,
-        document_url: data.media_url,
+        kind: data.kind,
+        media_url: data.media_url,
+        media_key: data.media_key,
         filename: data.filename,
+        mime_type: data.mime_type,
         caption: data.caption,
-      });
-    } else if (data.kind === "audio") {
-      res = await whatsapp.sendAudio({
-        brand: data.brand,
-        to: data.to,
-        audio_url: data.media_url,
       });
     } else {
       res = await whatsapp.sendText({

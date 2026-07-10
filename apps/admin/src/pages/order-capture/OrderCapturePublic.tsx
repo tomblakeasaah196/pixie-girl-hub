@@ -42,7 +42,7 @@ interface PrefillLine {
 }
 
 interface PrefillItem {
-  kind: "base" | "styled" | "bundle";
+  kind: "base" | "styled" | "bundle" | "service";
   ref_id: string | null;
   qty: number;
   price_ngn: string | null;
@@ -53,9 +53,12 @@ interface PrefillItem {
   // Resolved sellable variant line(s) — empty when the item couldn't be
   // resolved (deleted/out-of-stock product, unresolvable bundle
   // component, etc.), in which case it's excluded from the submitted
-  // order and flagged for manual follow-up instead.
+  // order and flagged for manual follow-up instead. Service items never
+  // carry lines — they submit as booking requests.
   lines: PrefillLine[];
   bundle_id?: string;
+  service_id?: string;
+  duration_minutes?: number | null;
 }
 
 interface PrefillAddress {
@@ -74,9 +77,13 @@ interface PrefillAddress {
 }
 
 interface PrefillContext {
+  status?: "active" | "ordered";
   brand: string;
+  mode?: "capture" | "shop";
   sales_channel: string | null;
   expires_at: string;
+  // Null on no-contact links: the page shows the inline "your details"
+  // block (welcome-form mirror) and the contact is created at submit.
   contact: {
     contact_id: string;
     first_name: string | null;
@@ -85,13 +92,17 @@ interface PrefillContext {
     primary_phone: string | null;
     whatsapp_number: string | null;
     email: string | null;
-  };
+  } | null;
+  require_contact_form?: boolean;
   delivery_address: PrefillAddress | null;
   items: PrefillItem[];
   notes: string | null;
+  // Present when status === "ordered" (single-use link already consumed).
+  order_number?: string | null;
+  ordered_at?: string | null;
 }
 
-type Stage = "loading" | "form" | "submitting" | "done" | "error";
+type Stage = "loading" | "form" | "submitting" | "done" | "used" | "error";
 type Fulfilment = "delivery" | "pickup";
 
 const norm = (s: string) => s.trim().toLowerCase();
@@ -124,6 +135,18 @@ export function OrderCapturePublic() {
   const [countryCode, setCountryCode] = useState("NG");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  // Inline welcome-form mirror (no-contact links) + shop-mode selection
+  // + service booking preferences.
+  const [who, setWho] = useState({
+    first_name: "",
+    last_name: "",
+    whatsapp: "",
+    instagram: "",
+  });
+  // Per-item state keyed by item index: included? + qty (shop mode lets
+  // the customer choose; capture mode starts with everything included).
+  const [picks, setPicks] = useState<Record<number, { on: boolean; qty: number }>>({});
+  const [svcTimes, setSvcTimes] = useState<Record<number, string>>({});
 
   // Live delivery-fee quote — resolves once the zone is fully picked
   // (country for non-NG; state, then LGA for Lagos, for Nigeria).
@@ -145,6 +168,17 @@ export function OrderCapturePublic() {
         );
         if (cancelled) return;
         setCtx(data);
+        if (data.status === "ordered") {
+          setStage("used");
+          return;
+        }
+        // Everything starts selected (capture links are staff-set carts;
+        // shop links let the customer prune + adjust below).
+        setPicks(
+          Object.fromEntries(
+            (data.items ?? []).map((it, idx) => [idx, { on: true, qty: it.qty || 1 }]),
+          ),
+        );
         if (data.delivery_address) {
           setAddress({
             line1: data.delivery_address.line1 ?? "",
@@ -161,9 +195,15 @@ export function OrderCapturePublic() {
           }
         }
         setPhone(
-          data.contact.primary_phone || data.contact.whatsapp_number || "",
+          data.contact?.primary_phone || data.contact?.whatsapp_number || "",
         );
-        setEmail(data.contact.email ?? "");
+        setEmail(data.contact?.email ?? "");
+        setWho((w) => ({
+          ...w,
+          first_name: data.contact?.first_name ?? "",
+          last_name: data.contact?.last_name ?? "",
+          whatsapp: data.contact?.whatsapp_number ?? "",
+        }));
         fetchGeoOptions(data.brand).then((g) => {
           if (!cancelled) setGeo(g);
         });
@@ -205,14 +245,79 @@ export function OrderCapturePublic() {
     };
   }, [token]);
 
+  const isShop = ctx?.mode === "shop";
+  // The customer's live pick: item + chosen qty (shop mode lets them
+  // include/exclude and re-quantity; capture mode keeps staff's qty).
+  const picked = useMemo(
+    () =>
+      (ctx?.items ?? [])
+        .map((it, idx) => ({
+          ...it,
+          idx,
+          on: picks[idx]?.on ?? true,
+          base_qty: it.qty ?? 1,
+          qty: picks[idx]?.qty ?? it.qty ?? 1,
+        }))
+        .filter((it) => it.on),
+    [ctx, picks],
+  );
   const resolvedItems = useMemo(
-    () => (ctx?.items ?? []).filter((i) => i.lines.length > 0),
-    [ctx],
+    () =>
+      picked
+        .filter((i) => i.kind !== "service" && i.lines.length > 0)
+        .map((i) => ({
+          ...i,
+          // Re-scale variant lines to the customer's chosen qty (the
+          // server resolved lines at the staff-set qty; bundles keep
+          // their per-unit component ratio).
+          lines: i.lines.map((l) => ({
+            ...l,
+            quantity: Math.max(
+              1,
+              Math.round(
+                (l.quantity / Math.max(1, i.base_qty)) * i.qty,
+              ) || i.qty,
+            ),
+          })),
+        })),
+    [picked],
+  );
+  const serviceItems = useMemo(
+    () => picked.filter((i) => i.kind === "service" && i.service_id),
+    [picked],
   );
   const unsupportedItems = useMemo(
-    () => (ctx?.items ?? []).filter((i) => i.lines.length === 0),
-    [ctx],
+    () =>
+      picked.filter((i) => i.kind !== "service" && i.lines.length === 0),
+    [picked],
   );
+  const hasProducts = resolvedItems.length > 0;
+  const serviceOnly = !hasProducts && serviceItems.length > 0;
+
+  // Live activity: report the current selection so the team's sidebar
+  // panel updates while the customer is picking. Debounced; best-effort.
+  useEffect(() => {
+    if (!ctx || stage !== "form") return;
+    const t = setTimeout(() => {
+      api
+        .post(
+          "/order-capture/activity",
+          {
+            token,
+            cart: picked.map((c) => ({
+              kind: c.kind,
+              ref_id: c.ref_id,
+              name: c.name || "",
+              qty: c.qty,
+              price_ngn: c.price_ngn,
+            })),
+          },
+          "public",
+        )
+        .catch(() => {});
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [ctx, stage, picked, token]);
   // The public order-form accepts a single bundle_id per order (matches
   // every other bundle-purchase path today) — if the staffer somehow put
   // two different bundles in one capture link, only the first carries
@@ -243,7 +348,7 @@ export function OrderCapturePublic() {
 
   // Re-quote the delivery fee whenever the zone or basket size changes.
   useEffect(() => {
-    if (fulfilment !== "delivery" || !effectiveZone || !ctx) {
+    if (serviceOnly || fulfilment !== "delivery" || !effectiveZone || !ctx) {
       setDeliveryFee(null);
       setDeliveryZoneName(null);
       setQuoting(false);
@@ -268,10 +373,13 @@ export function OrderCapturePublic() {
   const deliveryDue =
     fulfilment === "delivery" && deliveryFee != null ? deliveryFee : 0;
 
+  const needsWho = !!ctx?.require_contact_form;
   const canSubmit =
     !!phone &&
-    resolvedItems.length > 0 &&
-    (fulfilment === "pickup" ||
+    (hasProducts || serviceItems.length > 0) &&
+    (!needsWho || !!who.first_name.trim()) &&
+    (serviceOnly ||
+      fulfilment === "pickup" ||
       (!!address.line1 &&
         !!address.city &&
         (!isNigeria || !!address.state) &&
@@ -282,7 +390,7 @@ export function OrderCapturePublic() {
     if (!canSubmit || !ctx) return;
     setErrMsg(null);
 
-    if (fulfilment === "delivery") {
+    if (!serviceOnly && fulfilment === "delivery") {
       if (!effectiveZone) {
         setErrMsg(
           isNigeria
@@ -305,18 +413,48 @@ export function OrderCapturePublic() {
 
     setStage("submitting");
     try {
+      const wantsDelivery = !serviceOnly && fulfilment === "delivery";
       await api.post(
         "/order-form",
         {
-          first_name: ctx.contact.first_name || undefined,
-          last_name: ctx.contact.last_name || undefined,
+          first_name:
+            who.first_name.trim() || ctx.contact?.first_name || undefined,
+          last_name:
+            who.last_name.trim() || ctx.contact?.last_name || undefined,
           phone,
           email: email || undefined,
-          fulfilment_type: fulfilment,
-          zone_code: fulfilment === "delivery" ? effectiveZone : undefined,
-          delivery_address:
-            fulfilment === "delivery"
-              ? [
+          // Welcome-form mirror: handles + structured address land in the
+          // same shared tables the Online QR form writes.
+          whatsapp_number: who.whatsapp.trim() || undefined,
+          instagram_handle: who.instagram.trim() || undefined,
+          address: wantsDelivery
+            ? {
+                line1: address.line1,
+                area: address.area || undefined,
+                city: address.city || undefined,
+                state: address.state || undefined,
+                country: country || undefined,
+                country_code: countryCode || undefined,
+                landmark: address.landmark || undefined,
+              }
+            : undefined,
+          // Marks the link used + posts order/booking events in the thread.
+          capture_token: token || undefined,
+          service_bookings: serviceItems.length
+            ? serviceItems.map((s) => ({
+                service_id: s.service_id as string,
+                qty: s.qty,
+                price_ngn: s.price_ngn ?? undefined,
+                requested_for: svcTimes[s.idx]
+                  ? new Date(svcTimes[s.idx]).toISOString()
+                  : undefined,
+                note: s.note ?? undefined,
+              }))
+            : undefined,
+          fulfilment_type: serviceOnly ? "pickup" : fulfilment,
+          zone_code: wantsDelivery ? effectiveZone : undefined,
+          delivery_address: wantsDelivery
+            ? [
                   address.line1,
                   address.area,
                   address.city,
@@ -395,13 +533,37 @@ export function OrderCapturePublic() {
     );
   }
 
+  if (stage === "used") {
+    return (
+      <Shell brand={ctx?.brand}>
+        <div className="text-center py-12">
+          <CheckCircle2 className="w-9 h-9 mx-auto mb-3 text-green-400" />
+          <p className="font-display text-[20px] mb-1">
+            Order already placed 🌹
+          </p>
+          <p className="text-[13px] text-text-muted max-w-[380px] mx-auto">
+            This link was used to place
+            {ctx?.order_number ? ` order ${ctx.order_number}` : " your order"}
+            {ctx?.ordered_at
+              ? ` on ${new Date(ctx.ordered_at).toLocaleDateString("en-NG", { dateStyle: "medium" })}`
+              : ""}
+            . Message us on WhatsApp if you&rsquo;d like to order again —
+            we&rsquo;ll send a fresh link.
+          </p>
+        </div>
+      </Shell>
+    );
+  }
+
   if (!ctx) return null;
 
   return (
     <Shell brand={ctx.brand}>
       <p className="text-[13px] text-text-muted leading-relaxed mb-5">
-        Hi {ctx.contact.first_name || "there"} — your selection is below.
-        Confirm your details and place the order.
+        Hi {ctx.contact?.first_name || who.first_name || "there"} —{" "}
+        {isShop
+          ? "here's a selection we picked for you. Choose what you'd like and place your order."
+          : "your selection is below. Confirm your details and place the order."}
       </p>
 
       {/* Items */}
@@ -409,46 +571,132 @@ export function OrderCapturePublic() {
         <div className="flex items-center gap-2 mb-2.5">
           <ShoppingBag className="w-4 h-4 text-accent-glow" />
           <span className="text-[12px] uppercase tracking-widest text-text-faint font-semibold">
-            Your selection ({ctx.items.length})
+            {isShop ? "Pick your items" : `Your selection (${ctx.items.length})`}
           </span>
         </div>
         <div className="space-y-2">
-          {ctx.items.map((i, idx) => (
-            <div
-              key={`${i.kind}-${i.ref_id}-${idx}`}
-              className="flex items-center gap-3 rounded-lg bg-panel-2 border hairline p-2.5"
-            >
-              {i.image_url ? (
-                <img
-                  src={i.image_url}
-                  alt=""
-                  className="w-12 h-12 rounded-lg object-cover border hairline"
-                />
-              ) : (
-                <div className="w-12 h-12 rounded-lg bg-panel grid place-items-center text-text-faint border hairline">
-                  <ShoppingBag className="w-4 h-4" />
-                </div>
-              )}
-              <div className="flex-1 min-w-0">
-                <div className="text-[13px] truncate">
-                  {i.name ?? "Product"}
-                </div>
-                {i.note && (
-                  <div className="text-[11.5px] text-text-faint truncate">
-                    {i.note}
-                  </div>
+          {ctx.items.map((i, idx) => {
+            const p = picks[idx] ?? { on: true, qty: i.qty || 1 };
+            const isSvc = i.kind === "service";
+            return (
+              <div
+                key={`${i.kind}-${i.ref_id}-${idx}`}
+                className={cn(
+                  "rounded-lg bg-panel-2 border hairline p-2.5",
+                  isShop && !p.on && "opacity-50",
                 )}
-                {i.lines.length === 0 && (
-                  <div className="text-[11px] text-amber-300 mt-0.5">
-                    Unavailable right now — we&rsquo;ll confirm by WhatsApp.
+              >
+                <div className="flex items-center gap-3">
+                  {isShop && (
+                    <input
+                      type="checkbox"
+                      checked={p.on}
+                      onChange={(e) =>
+                        setPicks((m) => ({
+                          ...m,
+                          [idx]: { ...p, on: e.target.checked },
+                        }))
+                      }
+                      className="w-4 h-4 accent-[var(--accent,#690909)] shrink-0"
+                      aria-label={`Include ${i.name ?? "item"}`}
+                    />
+                  )}
+                  {i.image_url ? (
+                    <img
+                      src={i.image_url}
+                      alt=""
+                      className="w-12 h-12 rounded-lg object-cover border hairline"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-lg bg-panel grid place-items-center text-text-faint border hairline">
+                      <ShoppingBag className="w-4 h-4" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] truncate">
+                      {i.name ?? (isSvc ? "Service" : "Product")}
+                      {isSvc && (
+                        <span className="ml-1.5 text-[10px] uppercase tracking-wide text-accent-glow">
+                          service
+                        </span>
+                      )}
+                    </div>
+                    {i.price_ngn != null && (
+                      <div className="text-[11.5px] text-text-faint">
+                        ₦{Number(i.price_ngn).toLocaleString()}
+                        {isSvc && i.duration_minutes
+                          ? ` · ~${i.duration_minutes} min`
+                          : ""}
+                      </div>
+                    )}
+                    {i.note && (
+                      <div className="text-[11.5px] text-text-faint truncate">
+                        {i.note}
+                      </div>
+                    )}
+                    {!isSvc && i.lines.length === 0 && (
+                      <div className="text-[11px] text-amber-300 mt-0.5">
+                        Unavailable right now — we&rsquo;ll confirm by WhatsApp.
+                      </div>
+                    )}
                   </div>
+                  {isShop && p.on && !isSvc ? (
+                    <div className="inline-flex items-center gap-1 bg-panel rounded-lg p-0.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPicks((m) => ({
+                            ...m,
+                            [idx]: { ...p, qty: Math.max(1, p.qty - 1) },
+                          }))
+                        }
+                        className="w-6 h-6 grid place-items-center hover:text-accent-glow"
+                      >
+                        −
+                      </button>
+                      <span className="w-6 text-center text-[12.5px] font-medium tabular-nums">
+                        {p.qty}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPicks((m) => ({
+                            ...m,
+                            [idx]: { ...p, qty: Math.min(100, p.qty + 1) },
+                          }))
+                        }
+                        className="w-6 h-6 grid place-items-center hover:text-accent-glow"
+                      >
+                        +
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-[12px] font-medium tabular-nums">
+                      ×{p.qty}
+                    </span>
+                  )}
+                </div>
+                {isSvc && p.on && (
+                  <label className="block mt-2 pl-0.5">
+                    <span className="block text-[11px] text-text-muted mb-1">
+                      Preferred date &amp; time (we&rsquo;ll confirm with you)
+                    </span>
+                    <input
+                      type="datetime-local"
+                      value={svcTimes[idx] ?? ""}
+                      onChange={(e) =>
+                        setSvcTimes((m) => ({ ...m, [idx]: e.target.value }))
+                      }
+                      min={new Date(Date.now() + 3600_000)
+                        .toISOString()
+                        .slice(0, 16)}
+                      className="w-full rounded-xl bg-panel border hairline px-3 py-2 text-[13px] focus:outline-none focus:border-accent/40"
+                    />
+                  </label>
                 )}
               </div>
-              <span className="text-[12px] font-medium tabular-nums">
-                ×{i.qty}
-              </span>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -461,25 +709,60 @@ export function OrderCapturePublic() {
       )}
 
       <form onSubmit={submit} className="space-y-4">
-        {/* Fulfilment */}
-        <Section title="How would you like it">
-          <div className="grid grid-cols-2 gap-2">
-            <FulfilmentPill
-              active={fulfilment === "delivery"}
-              onClick={() => setFulfilment("delivery")}
-              icon={<Truck className="w-3.5 h-3.5" />}
-              label="Delivery"
+        {/* Inline welcome-form mirror: shown when the thread had no linked
+            customer yet — same fields, same tables, no separate form. */}
+        {needsWho && (
+          <Section title="Tell us who you are">
+            <div className="grid grid-cols-2 gap-2">
+              <Field
+                label="First name"
+                required
+                value={who.first_name}
+                onChange={(v) => setWho({ ...who, first_name: v })}
+              />
+              <Field
+                label="Last name"
+                value={who.last_name}
+                onChange={(v) => setWho({ ...who, last_name: v })}
+              />
+            </div>
+            <Field
+              label="WhatsApp number"
+              value={who.whatsapp}
+              onChange={(v) => setWho({ ...who, whatsapp: v })}
+              placeholder="e.g. +2348012345678"
             />
-            <FulfilmentPill
-              active={fulfilment === "pickup"}
-              onClick={() => setFulfilment("pickup")}
-              icon={<Store className="w-3.5 h-3.5" />}
-              label="Pickup in store"
+            <Field
+              label="Instagram handle"
+              value={who.instagram}
+              onChange={(v) => setWho({ ...who, instagram: v })}
+              placeholder="@yourhandle"
             />
-          </div>
-        </Section>
+          </Section>
+        )}
 
-        {fulfilment === "delivery" && (
+        {/* Fulfilment — services carry no shipping, so a service-only
+            order skips it entirely */}
+        {!serviceOnly && (
+          <Section title="How would you like it">
+            <div className="grid grid-cols-2 gap-2">
+              <FulfilmentPill
+                active={fulfilment === "delivery"}
+                onClick={() => setFulfilment("delivery")}
+                icon={<Truck className="w-3.5 h-3.5" />}
+                label="Delivery"
+              />
+              <FulfilmentPill
+                active={fulfilment === "pickup"}
+                onClick={() => setFulfilment("pickup")}
+                icon={<Store className="w-3.5 h-3.5" />}
+                label="Pickup in store"
+              />
+            </div>
+          </Section>
+        )}
+
+        {!serviceOnly && fulfilment === "delivery" && (
           <Section title="Delivery">
             <Field
               label="Street / house"
@@ -642,7 +925,7 @@ export function OrderCapturePublic() {
           />
         </Section>
 
-        {flexi?.instalments_enabled && (
+        {!serviceOnly && flexi?.instalments_enabled && (
           <Section title="Payment plan">
             <div className="grid grid-cols-2 gap-2">
               <button

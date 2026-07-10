@@ -5,6 +5,7 @@
  */
 
 import { api, setAccessToken } from "@/lib/api";
+import { setIdleLimitSeconds } from "@/lib/activity";
 
 /** The user object the backend returns from /auth/login + /auth/login-pin. */
 export interface AuthUser {
@@ -23,6 +24,8 @@ interface LoginResponse {
   user: AuthUser;
   access_token: string;
   expires_in: number;
+  /** Server-side idle timeout (seconds) — the client idle lock mirrors it. */
+  idle_timeout_s?: number;
 }
 
 export async function loginWithPassword(
@@ -31,6 +34,7 @@ export async function loginWithPassword(
 ): Promise<AuthUser> {
   const res = await api.post<LoginResponse>("/auth/login", { email, password });
   setAccessToken(res.access_token);
+  setIdleLimitSeconds(res.idle_timeout_s);
   return res.user;
 }
 
@@ -40,6 +44,7 @@ export async function loginWithPin(
 ): Promise<AuthUser> {
   const res = await api.post<LoginResponse>("/auth/login-pin", { email, pin });
   setAccessToken(res.access_token);
+  setIdleLimitSeconds(res.idle_timeout_s);
   return res.user;
 }
 

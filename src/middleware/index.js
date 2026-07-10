@@ -165,6 +165,7 @@ function applyGlobalMiddleware(app) {
         "Authorization",
         "X-Brand-Context",
         "X-Request-Id",
+        "X-User-Activity",
       ],
     }),
   );

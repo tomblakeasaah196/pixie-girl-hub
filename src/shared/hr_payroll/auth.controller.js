@@ -35,6 +35,7 @@ async function login(req, res) {
       user: result.user,
       access_token: result.access_token,
       expires_in: result.expires_in,
+      idle_timeout_s: result.idle_timeout_s,
     },
   });
 }
@@ -58,6 +59,7 @@ async function loginPin(req, res) {
       user: result.user,
       access_token: result.access_token,
       expires_in: result.expires_in,
+      idle_timeout_s: result.idle_timeout_s,
     },
   });
 }
@@ -78,7 +80,13 @@ async function removePin(req, res) {
 
 async function refresh(req, res) {
   const token = req.cookies?.refresh_token;
-  const result = await service.refresh({ refresh_token: token });
+  const result = await service.refresh({
+    refresh_token: token,
+    // Only a refresh backed by recent human input re-arms the idle window —
+    // the admin app sets this header from real pointer/keyboard events, so
+    // background polling can't keep an abandoned session alive.
+    user_active: req.get("x-user-activity") === "1",
+  });
   res.cookie("refresh_token", result.refresh_token, {
     httpOnly: true,
     secure: true,
@@ -86,8 +94,22 @@ async function refresh(req, res) {
     maxAge: 14 * 24 * 60 * 60 * 1000,
   });
   res.json({
-    data: { access_token: result.access_token, expires_in: result.expires_in },
+    data: {
+      access_token: result.access_token,
+      expires_in: result.expires_in,
+      idle_timeout_s: result.idle_timeout_s,
+    },
   });
+}
+
+/**
+ * POST /auth/heartbeat — empty-body keep-alive. The idle window was already
+ * re-armed by authMiddleware when the request carried X-User-Activity; this
+ * endpoint exists so a user who is present but not generating API traffic
+ * (reading a long report) still counts as active.
+ */
+async function heartbeat(_req, res) {
+  res.status(204).end();
 }
 
 async function logout(req, res) {
@@ -206,6 +228,7 @@ module.exports = {
   setPin,
   removePin,
   refresh,
+  heartbeat,
   logout,
   forgotPassword,
   resetPassword,

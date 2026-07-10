@@ -18,6 +18,7 @@ const emailService = require("../../services/email.service");
 const staffRepo = require("./staff.repo");
 const { audit } = require("../../middleware/audit");
 const iamRepo = require("../iam/iam.repo");
+const sessionIdle = require("./session-idle");
 
 // ── Password-reset + one-time-code (OTP) helpers ───────────
 const RESET_PREFIX = "pwreset:";
@@ -103,13 +104,24 @@ function isWeakPin(pin) {
 async function issueTokens(user) {
   const access_jti = uuidv4();
   const refresh_jti = uuidv4();
-  const payload = { sub: user.user_id, jti: access_jti, email: user.email };
+  // Session id: stable across refresh rotations, keys the idle-timeout
+  // marker in redis (session-idle.js). auth_time (epoch seconds) pins the
+  // absolute session cap to the last real credential check — rotation
+  // carries both forward untouched.
+  const sid = uuidv4();
+  const auth_time = Math.floor(Date.now() / 1000);
+  const payload = {
+    sub: user.user_id,
+    jti: access_jti,
+    sid,
+    email: user.email,
+  };
 
   const access_token = jwt.sign(payload, config.JWT_SECRET, {
     expiresIn: config.JWT_ACCESS_EXPIRES_IN,
   });
   const refresh_token = jwt.sign(
-    { sub: user.user_id, jti: refresh_jti, type: "refresh" },
+    { sub: user.user_id, jti: refresh_jti, sid, auth_time, type: "refresh" },
     config.JWT_SECRET,
     { expiresIn: config.JWT_REFRESH_EXPIRES_IN },
   );
@@ -121,6 +133,7 @@ async function issueTokens(user) {
     "EX",
     14 * 24 * 60 * 60,
   );
+  await sessionIdle.seed(redis, sid, user.user_id);
 
   return {
     user: {
@@ -136,6 +149,7 @@ async function issueTokens(user) {
     access_token,
     refresh_token,
     expires_in: 45 * 60,
+    idle_timeout_s: config.SESSION_IDLE_TIMEOUT_S,
   };
 }
 /**
@@ -200,6 +214,9 @@ async function revokeAllSessions(redis, userId) {
       if (toDel.length) await redis.del(...toDel);
     }
   } while (cursor !== "0");
+  // Idle markers key by sid, not jti — sweep them the same way so a live
+  // access token can't ride out its remaining minutes after a revoke-all.
+  await sessionIdle.killAllForUser(redis, userId);
 }
 
 async function login({ email, password, ip, user_agent }) {
@@ -358,7 +375,7 @@ async function getPinStatus({ user_id }) {
   return { pin_set: !!(user && user.pin_hash) };
 }
 
-async function refresh({ refresh_token }) {
+async function refresh({ refresh_token, user_active = false }) {
   if (!refresh_token)
     throw new AppError("NO_REFRESH_TOKEN", "Refresh token missing", 401);
   let payload;
@@ -376,17 +393,64 @@ async function refresh({ refresh_token }) {
     throw new AppError("TOKEN_REVOKED", "Refresh token revoked", 401);
   }
 
-  // Rotate: revoke old, issue new
+  // Tokens minted before idle-session enforcement carry no sid/auth_time —
+  // they can't be idle-checked, so they don't survive the upgrade. Revoke
+  // and force a one-time re-login.
+  if (!payload.sid || !payload.auth_time) {
+    await redis.del(`refresh:${payload.jti}`);
+    throw new AppError(
+      "TOKEN_REVOKED",
+      "Session predates the current security policy — sign in again",
+      401,
+    );
+  }
+
+  // Absolute cap: rotation re-issues full-length refresh tokens, so without
+  // this check a session could slide forever without ever re-proving a
+  // credential. auth_time is carried from the original login, untouched.
+  const now = Math.floor(Date.now() / 1000);
+  if (now - payload.auth_time > config.SESSION_ABSOLUTE_MAX_S) {
+    await redis.del(`refresh:${payload.jti}`);
+    await sessionIdle.kill(redis, payload.sid);
+    throw new AppError(
+      "SESSION_EXPIRED",
+      "Session reached its maximum age — sign in again",
+      401,
+    );
+  }
+
+  // Idle window: only requests carrying proof of recent user input re-arm
+  // it; a background/silent refresh merely checks it. Once lapsed, the
+  // refresh jti is revoked too so the cookie can never be replayed later.
+  const alive = user_active
+    ? await sessionIdle.touch(redis, payload.sid)
+    : await sessionIdle.isAlive(redis, payload.sid);
+  if (!alive) {
+    await redis.del(`refresh:${payload.jti}`);
+    throw new AppError(
+      "SESSION_IDLE_TIMEOUT",
+      "Signed out after inactivity — sign in again",
+      401,
+    );
+  }
+
+  // Rotate: revoke old, issue new (sid + auth_time carry forward)
   await redis.del(`refresh:${payload.jti}`);
   const new_refresh_jti = uuidv4();
   const new_access_jti = uuidv4();
   const access_token = jwt.sign(
-    { sub: payload.sub, jti: new_access_jti },
+    { sub: payload.sub, jti: new_access_jti, sid: payload.sid },
     config.JWT_SECRET,
     { expiresIn: config.JWT_ACCESS_EXPIRES_IN },
   );
   const new_refresh_token = jwt.sign(
-    { sub: payload.sub, jti: new_refresh_jti, type: "refresh" },
+    {
+      sub: payload.sub,
+      jti: new_refresh_jti,
+      sid: payload.sid,
+      auth_time: payload.auth_time,
+      type: "refresh",
+    },
     config.JWT_SECRET,
     { expiresIn: config.JWT_REFRESH_EXPIRES_IN },
   );
@@ -401,6 +465,7 @@ async function refresh({ refresh_token }) {
     access_token,
     refresh_token: new_refresh_token,
     expires_in: 45 * 60,
+    idle_timeout_s: config.SESSION_IDLE_TIMEOUT_S,
   };
 }
 
@@ -410,6 +475,7 @@ async function logout({ refresh_token, user_id, ip, user_agent }) {
     const payload = jwt.verify(refresh_token, config.JWT_SECRET);
     const redis = getRedis();
     await redis.del(`refresh:${payload.jti}`);
+    if (payload.sid) await sessionIdle.kill(redis, payload.sid);
     if (user_id) {
       audit({
         business: "system",

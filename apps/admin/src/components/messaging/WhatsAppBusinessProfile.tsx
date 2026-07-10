@@ -133,7 +133,9 @@ export function WhatsAppBusinessProfile({ account }: Props) {
   });
 
   const currentPicture = previewUrl ?? profileQ.data?.profile_picture_url ?? null;
-  const canUpload = !!pickedFile && !!appId.trim() && !uploadPic.isPending;
+  // App ID is auto-detected from the access token server-side, so it's no
+  // longer required to upload — a picked file is enough.
+  const canUpload = !!pickedFile && !uploadPic.isPending;
 
   if (!account.is_active) {
     return (
@@ -249,37 +251,43 @@ export function WhatsAppBusinessProfile({ account }: Props) {
             </div>
           </div>
 
-          {/* Meta App ID — required for the resumable picture upload. */}
-          <label className="block">
-            <span className="block text-[11.5px] text-text-muted mb-1">
+          {/* Meta App ID — auto-detected from the access token; shown only
+              as an optional override in case detection ever fails. */}
+          <details className="rounded-xl border hairline bg-panel/40">
+            <summary className="cursor-pointer px-3 py-2 text-[11.5px] text-text-muted inline-flex items-center gap-1.5">
+              <Info className="w-3.5 h-3.5 text-accent-glow" />
               Meta App ID
-              <span className="text-text-faint ml-1.5">
-                (required to upload the picture)
+              <span className="text-text-faint">
+                (optional — detected automatically)
               </span>
-            </span>
-            <input
-              type="text"
-              value={appId}
-              onChange={(e) => setAppId(e.target.value)}
-              placeholder="e.g. 1234567890123456"
-              inputMode="numeric"
-              autoComplete="off"
-              data-1p-ignore=""
-              className="w-full rounded-xl bg-panel border hairline px-3 py-2 text-[13px] font-mono focus:outline-none focus:border-accent/40"
-            />
-            <p className="text-[10.5px] text-text-faint mt-1">
-              Find it on your app's{" "}
-              <a
-                href="https://developers.facebook.com/apps/"
-                target="_blank"
-                rel="noreferrer noopener"
-                className="text-accent-glow underline underline-offset-2 inline-flex items-center gap-0.5"
-              >
-                Meta dashboard <ExternalLink className="w-3 h-3" />
-              </a>{" "}
-              → Settings → Basic → App ID. Saved after the first upload.
-            </p>
-          </label>
+            </summary>
+            <div className="px-3 pb-3">
+              <input
+                type="text"
+                value={appId}
+                onChange={(e) => setAppId(e.target.value)}
+                placeholder="e.g. 1234567890123456"
+                inputMode="numeric"
+                autoComplete="off"
+                data-1p-ignore=""
+                className="w-full rounded-xl bg-panel border hairline px-3 py-2 text-[13px] font-mono focus:outline-none focus:border-accent/40"
+              />
+              <p className="text-[10.5px] text-text-faint mt-1">
+                We detect this from your access token, so you normally don't
+                need it. Only fill it in if an upload says it couldn't find your
+                App ID — it's on your app's{" "}
+                <a
+                  href="https://developers.facebook.com/apps/"
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="text-accent-glow underline underline-offset-2 inline-flex items-center gap-0.5"
+                >
+                  Meta dashboard <ExternalLink className="w-3 h-3" />
+                </a>{" "}
+                → Settings → Basic → App ID.
+              </p>
+            </div>
+          </details>
 
           {uploadPic.isError && (
             <div className="rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-[12px] text-danger flex items-start gap-1.5">
@@ -290,9 +298,17 @@ export function WhatsAppBusinessProfile({ account }: Props) {
             </div>
           )}
           {uploadPic.isSuccess && !pickedFile && (
-            <div className="rounded-lg border border-green-500/30 bg-green-500/5 px-3 py-2 text-[12px] text-green-300 inline-flex items-center gap-1.5">
-              <Check className="w-3.5 h-3.5" /> Display picture updated.
-            </div>
+            uploadPic.data?.picture_applied === false ? (
+              <div className="rounded-lg border border-amber-400/30 bg-amber-400/5 px-3 py-2 text-[12px] text-amber-300 inline-flex items-start gap-1.5">
+                <Info className="w-3.5 h-3.5 mt-[1px] shrink-0" />
+                Picture uploaded — it can take a few minutes to appear in
+                WhatsApp.
+              </div>
+            ) : (
+              <div className="rounded-lg border border-green-500/30 bg-green-500/5 px-3 py-2 text-[12px] text-green-300 inline-flex items-center gap-1.5">
+                <Check className="w-3.5 h-3.5" /> Display picture updated.
+              </div>
+            )
           )}
 
           <div className="h-px bg-border/40" />

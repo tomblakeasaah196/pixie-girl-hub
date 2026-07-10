@@ -46,6 +46,9 @@ router.post("/login", controller.login);
 router.post("/login-pin", controller.loginPin);
 router.post("/refresh", controller.refresh);
 router.post("/logout", controller.logout);
+// Idle-session keep-alive: authMiddleware re-arms the idle window when the
+// request carries X-User-Activity; the handler itself is a 204 no-op.
+router.post("/heartbeat", authMiddleware, controller.heartbeat);
 
 // PIN management for the authenticated caller. authMiddleware works
 // per-route even though this router is mounted without it globally.

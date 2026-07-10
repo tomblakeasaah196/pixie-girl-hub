@@ -14,9 +14,19 @@ import { api } from "@/lib/api";
 // control after the user accepts the update banner (which posts SKIP_WAITING),
 // so this reload is the final step of an explicit, user-initiated update — not
 // a surprise mid-task refresh. The guard prevents a reload loop.
+//
+// A FIRST install also fires controllerchange (nothing to wait behind, so the
+// worker activates and claims straight away) — but there's no old bundle to
+// drop, and the visitor may be mid-typing on the login form. Skip that one:
+// only reload when the page was already controlled by a previous worker.
 let swReloading = false;
 if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+  let hadController = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!hadController) {
+      hadController = true; // first install — adopt silently, no reload
+      return;
+    }
     if (swReloading) return;
     swReloading = true;
     window.location.reload();

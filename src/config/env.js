@@ -67,6 +67,22 @@ const schema = z.object({
   JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
   JWT_ACCESS_EXPIRES_IN: z.string().default("45m"),
   JWT_REFRESH_EXPIRES_IN: z.string().default("14d"),
+  // Idle-session timeout for staff/admin sessions: the session dies after
+  // this many seconds without proven user activity, enforced server-side in
+  // authMiddleware and /auth/refresh (see shared/hr_payroll/session-idle.js).
+  SESSION_IDLE_TIMEOUT_S: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(45 * 60),
+  // Hard cap on total session age since the last real credential check.
+  // Refresh rotation re-issues full-length tokens on every use, so without
+  // this cap a regularly-active user would never re-authenticate at all.
+  SESSION_ABSOLUTE_MAX_S: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(14 * 24 * 60 * 60),
   SESSION_SECRET: z.string().min(32),
   COOKIE_SECURE: zBool(false),
   COOKIE_DOMAIN: z.string().default("localhost"),

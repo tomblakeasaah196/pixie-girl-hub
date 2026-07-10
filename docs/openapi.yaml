@@ -13392,10 +13392,34 @@ paths:
   /auth/refresh:
     post:
       summary: Exchange a refresh token for a new access token
+      description: >-
+        Refresh tokens rotate on every use and are bound to a session whose
+        idle window (SESSION_IDLE_TIMEOUT_S, default 45 min) only re-arms on
+        requests carrying X-User-Activity. An idle-expired or over-age
+        session returns 401 (SESSION_IDLE_TIMEOUT / SESSION_EXPIRED) and the
+        refresh token is revoked. Response includes idle_timeout_s.
       security: []
       tags: [auth]
+      parameters:
+        - name: X-User-Activity
+          in: header
+          required: false
+          schema: { type: string, enum: ["1"] }
+          description: Present only when backed by recent human input; re-arms the idle window.
       responses:
         "200": { description: Refreshed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /auth/heartbeat:
+    post:
+      summary: Idle-session keep-alive (empty body, 204)
+      description: >-
+        Sent by the admin app while a user is present but quiet. With
+        X-User-Activity it re-arms the session idle window; without it, it is
+        a pure liveness probe that 401s (SESSION_IDLE_TIMEOUT) once the
+        45-minute idle window has lapsed.
+      tags: [auth]
+      responses:
+        "204": { description: Session alive }
         "401": { $ref: "#/components/responses/Unauthorized" }
   /auth/logout:
     post:

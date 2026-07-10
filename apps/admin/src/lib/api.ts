@@ -15,6 +15,8 @@
  * persisted business store without importing it (avoids a cycle).
  */
 
+import { isRecentlyActive, setIdleLimitSeconds } from "@/lib/activity";
+
 const API_BASE =
   (import.meta.env.VITE_API_URL as string | undefined) ?? "/api/v1";
 // Public endpoints are mounted at /api/public/* (no /v1). Derive the root.
@@ -53,6 +55,14 @@ interface Options {
   scope?: "v1" | "public";
   /** Internal: set when this is a retry after a silent refresh. */
   _retried?: boolean;
+}
+
+/** X-User-Activity marks requests backed by recent human input — the only
+ *  signal the backend accepts to re-arm the 45-minute idle window (see
+ *  session-idle.js). Background refetches carry no header, so an abandoned
+ *  tab's polling can never keep its session alive. */
+function activityHeader(): string | null {
+  return isRecentlyActive() ? "1" : null;
 }
 
 function brandContext(): string | null {
@@ -148,16 +158,24 @@ export function refreshAccessToken(): Promise<boolean> {
   if (refreshPromise) return refreshPromise;
   refreshPromise = (async () => {
     try {
+      const headers: Record<string, string> = { Accept: "application/json" };
+      // A refresh triggered by a real user re-arms the idle window; one
+      // triggered by background polling only passes if the window is open.
+      const active = activityHeader();
+      if (active) headers["X-User-Activity"] = active;
       const res = await fetch(`${API_BASE}/auth/refresh`, {
         method: "POST",
-        headers: { Accept: "application/json" },
+        headers,
         credentials: "include",
       });
       if (!res.ok) return false;
-      const json = (await res.json()) as { data?: { access_token?: string } };
+      const json = (await res.json()) as {
+        data?: { access_token?: string; idle_timeout_s?: number };
+      };
       const token = json?.data?.access_token ?? null;
       if (!token) return false;
       accessToken = token;
+      setIdleLimitSeconds(json?.data?.idle_timeout_s);
       return true;
     } catch {
       return false;
@@ -172,7 +190,12 @@ async function request<T>(path: string, opts: Options = {}): Promise<T> {
   const { method = "GET", body, scope = "v1", _retried = false } = opts;
   const base = scope === "public" ? `${API_ROOT}/public` : API_BASE;
   const url = `${base}${path}`;
-  const isAuthRoute = path.startsWith("/auth/");
+  // Auth routes are excluded from silent-refresh-and-retry (a 401 from
+  // login/refresh IS the failure) — except heartbeat, which is an ordinary
+  // authed call that just happens to live under /auth/: its 401 must run
+  // the refresh machinery so an idle-expired session locks the screen.
+  const isAuthRoute =
+    path.startsWith("/auth/") && path !== "/auth/heartbeat";
 
   const headers: Record<string, string> = { Accept: "application/json" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
@@ -180,6 +203,8 @@ async function request<T>(path: string, opts: Options = {}): Promise<T> {
     if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
     const brand = brandContext();
     if (brand) headers["X-Brand-Context"] = brand;
+    const active = activityHeader();
+    if (active) headers["X-User-Activity"] = active;
   }
 
   const res = await fetch(url, {
@@ -269,6 +294,8 @@ function postForm<T>(
     if (accessToken) xhr.setRequestHeader("Authorization", `Bearer ${accessToken}`);
     const brand = brandContext();
     if (brand) xhr.setRequestHeader("X-Brand-Context", brand);
+    const active = activityHeader();
+    if (active) xhr.setRequestHeader("X-User-Activity", active);
     // NB: never set Content-Type — the browser adds the multipart boundary.
 
     if (opts.onProgress && xhr.upload) {
@@ -339,6 +366,8 @@ async function download(path: string, fallbackName = "download"): Promise<void> 
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
   const brand = brandContext();
   if (brand) headers["X-Brand-Context"] = brand;
+  const active = activityHeader();
+  if (active) headers["X-User-Activity"] = active;
 
   const res = await fetch(`${API_BASE}${path}`, {
     headers,
@@ -381,6 +410,8 @@ async function getBlob(
     if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
     const brand = brandContext();
     if (brand) headers["X-Brand-Context"] = brand;
+    const active = activityHeader();
+    if (active) headers["X-User-Activity"] = active;
   }
   const res = await fetch(`${base}${path}`, { headers, credentials: "include" });
   if (res.status === 401 && scope === "v1" && !_retried) {

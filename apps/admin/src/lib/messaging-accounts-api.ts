@@ -84,6 +84,86 @@ export interface SecretReveal {
   email: string | null;
 }
 
+// ── WhatsApp business profile ─────────────────────────────
+// Meta's industry allow-list for the profile "vertical" (category).
+// Mirrors src/modules/messaging_accounts/messaging-accounts.validator.js.
+export const WA_VERTICALS = [
+  "UNDEFINED",
+  "OTHER",
+  "AUTO",
+  "BEAUTY",
+  "APPAREL",
+  "EDU",
+  "ENTERTAIN",
+  "EVENT_PLAN",
+  "FINANCE",
+  "GROCERY",
+  "GOVT",
+  "HOTEL",
+  "HEALTH",
+  "NONPROFIT",
+  "PROF_SERVICES",
+  "RETAIL",
+  "TRAVEL",
+  "RESTAURANT",
+  "ALCOHOL",
+  "ONLINE_GAMBLING",
+  "PHYSICAL_GAMBLING",
+  "OTC_DRUGS",
+  "NOT_A_BIZ",
+] as const;
+
+export type WaVertical = (typeof WA_VERTICALS)[number];
+
+/** Human labels for the vertical codes, for the select control. */
+export const WA_VERTICAL_LABELS: Record<string, string> = {
+  UNDEFINED: "Not set",
+  OTHER: "Other",
+  AUTO: "Automotive",
+  BEAUTY: "Beauty, Spa & Salon",
+  APPAREL: "Clothing & Apparel",
+  EDU: "Education",
+  ENTERTAIN: "Entertainment",
+  EVENT_PLAN: "Event Planning & Service",
+  FINANCE: "Finance & Banking",
+  GROCERY: "Food & Grocery",
+  GOVT: "Public Service",
+  HOTEL: "Hotel & Lodging",
+  HEALTH: "Medical & Health",
+  NONPROFIT: "Non-profit",
+  PROF_SERVICES: "Professional Services",
+  RETAIL: "Shopping & Retail",
+  TRAVEL: "Travel & Transportation",
+  RESTAURANT: "Restaurant",
+  ALCOHOL: "Alcohol",
+  ONLINE_GAMBLING: "Online Gambling & Gaming",
+  PHYSICAL_GAMBLING: "Physical Gambling & Gaming",
+  OTC_DRUGS: "Over-the-Counter Drugs",
+  NOT_A_BIZ: "Non-business",
+};
+
+export interface WhatsAppProfile {
+  about?: string;
+  address?: string;
+  description?: string;
+  email?: string;
+  vertical?: string;
+  websites?: string[];
+  /** Read-only — Meta's hosted URL for the current display picture. */
+  profile_picture_url?: string;
+  /** Stored Meta App ID (needed to upload a new display picture). */
+  app_id: string | null;
+}
+
+export interface WhatsAppProfilePatch {
+  about?: string;
+  address?: string;
+  description?: string;
+  email?: string;
+  vertical?: string;
+  websites?: string[];
+}
+
 export const messagingAccountsApi = {
   // Backend auto-unwraps `{ data }` — see api.ts. Types match the
   // inner payload.
@@ -104,6 +184,29 @@ export const messagingAccountsApi = {
   listReveals: (id: string) =>
     api.get<SecretReveal[]>(`/messaging-accounts/${id}/reveals`),
   remove: (id: string) => api.delete(`/messaging-accounts/${id}`),
+  // WhatsApp business profile
+  getWhatsAppProfile: (id: string) =>
+    api.get<WhatsAppProfile>(`/messaging-accounts/${id}/whatsapp-profile`),
+  updateWhatsAppProfile: (id: string, patch: WhatsAppProfilePatch) =>
+    api.post<{ success?: boolean }>(
+      `/messaging-accounts/${id}/whatsapp-profile`,
+      patch,
+    ),
+  setWhatsAppProfilePicture: (
+    id: string,
+    file: File,
+    appId: string,
+    onProgress?: (percent: number) => void,
+  ) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (appId) form.append("app_id", appId);
+    return api.postForm<WhatsAppProfile>(
+      `/messaging-accounts/${id}/whatsapp-profile/picture`,
+      form,
+      { onProgress },
+    );
+  },
 };
 
 export const PLATFORM_META: Record<

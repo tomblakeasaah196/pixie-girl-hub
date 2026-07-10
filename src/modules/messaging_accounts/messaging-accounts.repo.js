@@ -173,6 +173,23 @@ async function upsert({ brand, user_id, input, secrets }) {
   return rows[0];
 }
 
+// Persist the Meta App ID onto the row's metadata jsonb. The App ID is
+// public (not a secret) and is needed for the resumable upload used to
+// set the WhatsApp display picture. jsonb_set is surgical — it merges
+// the one key without disturbing anything else in metadata.
+async function setAppId({ id, app_id }) {
+  const { rows } = await query(
+    `UPDATE shared.messaging_accounts
+        SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb),
+                                 '{app_id}', to_jsonb($2::text), true),
+            updated_at = now()
+      WHERE account_id = $1
+      RETURNING account_id, metadata`,
+    [id, String(app_id)],
+  );
+  return rows[0] || null;
+}
+
 async function setActive({ id, is_active }) {
   const { rows } = await query(
     `UPDATE shared.messaging_accounts
@@ -223,6 +240,7 @@ module.exports = {
   findActiveByBrand,
   findByExternalId,
   upsert,
+  setAppId,
   setActive,
   remove,
   recordReveal,

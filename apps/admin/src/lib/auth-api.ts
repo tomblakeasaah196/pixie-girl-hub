@@ -14,6 +14,8 @@ export interface AuthUser {
   display_name: string;
   is_ceo: boolean;
   role_names: string[];
+  /** HR job title of the linked staff profile (e.g. "Chief Stylist"), if any. */
+  job_title?: string | null;
   available_businesses: string[];
   default_business_key: string | null;
   /** Whether the account has completed one-time email verification. */

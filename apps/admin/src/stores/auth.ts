@@ -67,6 +67,14 @@ interface AuthState {
   markEmailVerified: () => void;
 }
 
+/** Turn a raw role key like "chief_stylist" into "Chief Stylist". */
+function humanizeRole(name: string): string {
+  return name
+    .replace(/[_-]+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 /** Map the backend AuthUser onto the shell's User shape. */
 export function toUser(u: AuthUser): User {
   const roleNames = u.role_names ?? [];
@@ -74,11 +82,19 @@ export function toUser(u: AuthUser): User {
     id: u.user_id,
     name: u.display_name || u.email.split("@")[0],
     email: u.email,
+    // Prefer the most specific identity we have: CEO / Factory Manager keep
+    // their well-known labels; otherwise show a named RBAC role, then fall
+    // back to the HR job title (e.g. "Chief Stylist") so staff aren't all
+    // flattened to "Team Member". Only accounts with neither land there.
     role: u.is_ceo
       ? "CEO · Owner"
       : roleNames.includes("factory_manager")
         ? "Factory Manager"
-        : "Team Member",
+        : roleNames.length > 0
+          ? humanizeRole(roleNames[0])
+          : u.job_title && u.job_title.trim()
+            ? u.job_title.trim()
+            : "Team Member",
     // Until the permissions module lands, a CEO/super-admin gets "*"
     // (full access); everyone else relies on server-side enforcement.
     permissions: u.is_ceo ? ["*"] : [],

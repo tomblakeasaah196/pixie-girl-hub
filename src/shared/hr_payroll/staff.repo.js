@@ -36,6 +36,8 @@ async function findByEmail(email) {
             u.status, u.is_ceo,
             u.default_business_key, u.failed_login_count,
             COALESCE(u.email_verified, false) AS email_verified,
+            (SELECT sp.job_title FROM shared.staff_profiles sp
+              WHERE sp.profile_id = u.staff_profile_id) AS job_title,
             COALESCE((SELECT array_agg(r.role_name)
                         FROM shared.user_roles ur
                         JOIN shared.roles r ON r.role_id = ur.role_id

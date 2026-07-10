@@ -608,7 +608,13 @@ export function ProfileDrawer({
               )}
 
               {/* My HR link */}
-              <button className="mt-5 w-full flex items-center justify-between p-4 rounded-xl border border-line/50 bg-text-primary/[0.02] hover:bg-text-primary/[0.05] transition-all group">
+              <button
+                onClick={() => {
+                  onClose();
+                  navigate("/workspace?tab=my-hr");
+                }}
+                className="mt-5 w-full flex items-center justify-between p-4 rounded-xl border border-line/50 bg-text-primary/[0.02] hover:bg-text-primary/[0.05] transition-all group"
+              >
                 <div className="text-left">
                   <div className="text-[13px] font-semibold text-text-primary">
                     My HR records

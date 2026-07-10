@@ -31,7 +31,10 @@ export function useAccountMenu() {
   const onItem = (key: string) => {
     if (key === "photo") fileInputRef.current?.click();
     else if (key === "profile") setProfileOpen(true);
-    else if (key === "hr") navigate("/hr");
+    // "My HR" is the employee self-service surface, which lives as a tab in
+    // Workspace — not the admin "HR & Staff" console at /hr (that's permission
+    // -gated and a plain Team Member can't open it, so the click looked dead).
+    else if (key === "hr") navigate("/workspace?tab=my-hr");
     else if (key === "pin") setPinOpen(true);
     else if (key === "password") setPasswordOpen(true);
   };

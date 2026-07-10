@@ -658,8 +658,9 @@ function StylistPicker({
   if (stylists.length === 0) {
     return (
       <div className="glass p-3 rounded-lg text-sm text-text-muted">
-        No active stylists in this business yet. Add an employee whose title
-        contains &ldquo;Stylist&rdquo; in HR to populate this list.
+        No active stylists in this business yet. A stylist shows here once they
+        have an HR job title containing &ldquo;Stylist&rdquo;, an active login
+        account, and are assigned to the business you&rsquo;re currently viewing.
       </div>
     );
   }

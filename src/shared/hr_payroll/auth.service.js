@@ -142,6 +142,7 @@ async function issueTokens(user) {
       display_name: user.display_name,
       is_ceo: user.is_ceo,
       role_names: user.role_names || [],
+      job_title: user.job_title || null,
       available_businesses: user.available_businesses || [],
       default_business_key: user.default_business_key || null,
       email_verified: !!user.email_verified,

@@ -27,6 +27,7 @@ async function listOrders(req, res) {
         sales_campaign_id: req.query.sales_campaign_id,
         q: req.query.q,
         fee_pending: req.query.fee_pending === "true" ? true : undefined,
+        part_paid: req.query.part_paid === "true" ? true : undefined,
       },
       page,
       page_size,

@@ -124,6 +124,9 @@ export interface Campaign {
   /** Payment gateways this campaign offers at checkout. At least one stays on.
    *  USD always settles on Nomba regardless — dropping it only affects NGN. */
   allowed_payment_gateways: PaymentGateway[];
+  /** Flexi Pay (PR-3): does this sale offer the instalment plan? Off by
+   *  default; the channel-wide toggle in Sales → Payments must also be on. */
+  allow_instalments: boolean;
   public_state?: PublicState;
   approved_at: string | null;
   approved_by: string | null;
@@ -809,9 +812,7 @@ export function useAmbassadorContacts(q?: string) {
     enabled: Boolean(brand),
     queryKey: ["campaigns", "ambassadors", brand, q || ""],
     queryFn: () =>
-      getListEnvelope<AmbassadorContact>(
-        `/sales-campaigns/ambassadors?${qs}`,
-      ),
+      getListEnvelope<AmbassadorContact>(`/sales-campaigns/ambassadors?${qs}`),
   });
 }
 
@@ -873,9 +874,7 @@ export function useVipGrants(campaignId: string | undefined) {
     enabled: Boolean(brand && campaignId),
     queryKey: ["campaigns", "vip", brand, campaignId],
     queryFn: () =>
-      getListEnvelope<VipGrant>(
-        `/sales-campaigns/${campaignId}/vip-grants`,
-      ),
+      getListEnvelope<VipGrant>(`/sales-campaigns/${campaignId}/vip-grants`),
   });
 }
 

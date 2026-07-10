@@ -381,6 +381,13 @@ async function listOrders({
     );
     params.push(`%${filters.q}%`);
   }
+  if (filters.part_paid) {
+    // Flexi Pay (PR-3): committed-but-unsettled instalment orders — the buyer
+    // chose the plan and has paid something, with a balance still outstanding.
+    where.push(
+      `so.payment_plan = 'instalment' AND so.amount_paid_ngn > 0 AND so.balance_due_ngn > 0 AND so.status NOT IN ('cancelled','refunded')`,
+    );
+  }
   if (filters.fee_pending) {
     // internal_notes is a TEXT column that stores a JSON-stringified object
     // (written by the public checkout in campaigns.public.service), so jsonb
@@ -588,7 +595,11 @@ async function claimAbandonedNudge({ brand, id }) {
  * stock. Self-serve channels expire after `expiryHours`; every other channel
  * (staff-negotiated) expires on the slow lane after `staleDays`.
  */
-async function listExpiredAbandonedCheckouts({ brand, expiryHours, staleDays }) {
+async function listExpiredAbandonedCheckouts({
+  brand,
+  expiryHours,
+  staleDays,
+}) {
   const { rows } = await query(
     `SELECT order_id, order_number
        FROM ${t(brand, "sales_orders")}

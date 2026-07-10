@@ -1,6 +1,13 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ShoppingBag, Zap, FileText, Truck, FileSpreadsheet } from "lucide-react";
+import {
+  ShoppingBag,
+  Zap,
+  FileText,
+  Truck,
+  FileSpreadsheet,
+  CreditCard,
+} from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button, KpiTile } from "@/components/ui/primitives";
 import { ModuleInsights } from "@/components/insights/ModuleInsights";
@@ -11,14 +18,21 @@ import { QuickSaleForm } from "./QuickSaleForm";
 import { OrdersView } from "./OrdersView";
 import { QuotationsView } from "./QuotationsView";
 import { DeliveryPendingView } from "./DeliveryPendingView";
+import { PaymentSettingsView } from "./PaymentSettingsView";
 import { SalesReportExportModal } from "./SalesReportExportModal";
 
-type SalesTab = "quick-sale" | "orders" | "quotations" | "delivery-pending";
+type SalesTab =
+  | "quick-sale"
+  | "orders"
+  | "quotations"
+  | "delivery-pending"
+  | "payments";
 const TABS: { key: SalesTab; label: string; icon: typeof Zap }[] = [
   { key: "quick-sale", label: "Quick Sale", icon: Zap },
   { key: "orders", label: "Orders", icon: ShoppingBag },
   { key: "quotations", label: "Quotations", icon: FileText },
   { key: "delivery-pending", label: "Delivery Pending", icon: Truck },
+  { key: "payments", label: "Payments", icon: CreditCard },
 ];
 
 export function SalesPage() {
@@ -95,10 +109,12 @@ export function SalesPage() {
               <Icon className="w-4 h-4" />
               {t.label}
               {t.key === "delivery-pending" && pendingCount > 0 && (
-                <span className={cn(
-                  "inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold",
-                  on ? "bg-white/20 text-white" : "bg-warn text-black",
-                )}>
+                <span
+                  className={cn(
+                    "inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold",
+                    on ? "bg-white/20 text-white" : "bg-warn text-black",
+                  )}
+                >
                   {pendingCount > 99 ? "99+" : pendingCount}
                 </span>
               )}
@@ -111,6 +127,7 @@ export function SalesPage() {
       {tab === "orders" && <OrdersView />}
       {tab === "quotations" && <QuotationsView />}
       {tab === "delivery-pending" && <DeliveryPendingView />}
+      {tab === "payments" && <PaymentSettingsView />}
     </div>
   );
 }

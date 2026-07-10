@@ -98,6 +98,9 @@ const v2CampaignFields = {
   exit_intent_button: z.string().max(100).nullable().optional(),
   abandonment_recovery_enabled: z.boolean().optional(),
   allow_multi_currency_display: z.boolean().optional(),
+  // Flexi Pay (PR-3): per-campaign gate for the instalment plan. Off by
+  // default; the channel-wide toggle in Sales → Payments must also be on.
+  allow_instalments: z.boolean().optional(),
   // ── Sales Campaigns v3 (migration 000048) — deals engine ──
   delivery_weeks: z.coerce.number().int().min(1).max(52).nullable().optional(),
   preorder_extra_weeks: z.coerce.number().int().min(0).max(52).optional(),

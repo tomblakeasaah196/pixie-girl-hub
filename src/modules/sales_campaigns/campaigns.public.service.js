@@ -22,6 +22,8 @@ const salesRepo = require("../sales/sales.repo");
 const couponService = require("../retention/coupon.service");
 const zonesService = require("../logistics/zones.service");
 const paymentLink = require("../sales/payment-link.service");
+const paymentSettings = require("../sales/payment-settings.service");
+const brandUrls = require("../../utils/brand-urls");
 const contactsRepo = require("../../shared/contacts/contacts.repo");
 const styledRepo = require("../catalogue/styled.repo");
 const styledVariantsRepo = require("../catalogue/styled_variants.repo");
@@ -190,6 +192,21 @@ async function getLanding({ slug, brand, brandHint }) {
   payload.viewer_count_floor = campaign.viewer_count_floor || null;
   payload.last_call_surge_minutes = campaign.last_call_surge_minutes || 0;
   payload.vip_early_access_minutes = campaign.vip_early_access_minutes || 0;
+
+  // Flexi Pay (PR-2): whether THIS campaign offers the instalment plan — the
+  // storefront channel config AND the campaign's own allow_instalments toggle —
+  // plus the plan name, terms and minimum-first-payment pct, so the checkout
+  // renders the picker without a second round-trip. Never blocks the landing
+  // page: a lookup failure degrades to "no instalments".
+  try {
+    payload.flexi_pay = await paymentSettings.publicConfig({
+      brand: resolvedBrand,
+      channel: "sales_campaign",
+      campaign,
+    });
+  } catch {
+    payload.flexi_pay = { instalments_enabled: false };
+  }
 
   const brandInfo = await getBrandPublic(resolvedBrand);
   return withBrandInfo(payload, brandInfo);
@@ -1266,6 +1283,10 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
       // Server-resolved delivery fee (0 for pickup / unresolved zone). The
       // discount engine still honours a free_shipping coupon on top of this.
       shipping_fee_ngn: shippingFeeNgn,
+      // Flexi Pay (PR-2): the buyer's plan choice. createOrder re-validates
+      // instalment availability (channel config + this campaign's
+      // allow_instalments) and snapshots the deposit policy on the order.
+      payment_plan: input.payment_plan === "instalment" ? "instalment" : "full",
       coupon_code: input.coupon_code || null,
       client_idempotency_key: input.client_idempotency_key,
       utm_source: input.utm?.utm_source || null,
@@ -1366,10 +1387,25 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
     campaign,
   });
 
+  // Flexi Pay (PR-2): a full-plan order charges the whole balance; an
+  // instalment order charges the buyer's chosen first payment (or the
+  // snapshotted deposit when they picked "Pay deposit"). createPaymentLink
+  // enforces the plan minimum and clamps to the outstanding balance.
+  const hasVal = (v) => v !== null && v !== undefined;
+  const firstAmountNgn =
+    order.payment_plan === "instalment"
+      ? hasVal(input.first_payment_ngn)
+        ? String(input.first_payment_ngn)
+        : hasVal(order.required_deposit_ngn)
+          ? String(order.required_deposit_ngn)
+          : undefined
+      : undefined;
+
   try {
     const payResult = await paymentLink.createPaymentLink({
       brand: resolvedBrand,
       order_id: order.order_id,
+      amount_ngn: firstAmountNgn,
       currency: checkoutCurrency,
       return_url_base: returnUrlBase,
       // Resolved against the campaign's enabled gateways above; USD forces Nomba.
@@ -1382,9 +1418,29 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
       gateway: payResult.provider,
     });
     const preorder = preorderResponse(order, campaign);
+    // Flexi Pay (PR-2): thread the plan + permanent pay link back so the
+    // thank-you page can show the running balance and "save this link to pay
+    // the rest anytime". balance_ngn = total − whatever the first payment was
+    // (still unconfirmed until the webhook lands, so we show the total less the
+    // first charge as the expected remaining).
+    const flexi =
+      order.payment_plan === "instalment"
+        ? {
+            payment_plan: "instalment",
+            total_ngn: String(order.total_ngn),
+            first_payment_ngn: firstAmountNgn || String(order.total_ngn),
+            pay_url: order.public_tracking_token
+              ? await brandUrls.payLinkUrl(
+                  resolvedBrand,
+                  order.public_tracking_token,
+                )
+              : null,
+          }
+        : null;
     return {
       order_id: order.order_id,
       payment_url: payResult.checkout_url,
+      ...(flexi ? { flexi_pay: flexi } : {}),
       ...(preorder ? { preorder } : {}),
       ...(order._notices && order._notices.length
         ? { notices: order._notices }
@@ -1450,6 +1506,12 @@ async function getOrderStatus({ slug, brand, brandHint, orderId }) {
     status: order.status,
     total_ngn: order.total_ngn,
     currency: "NGN",
+    // Flexi Pay (PR-2): so the thank-you page can show the running balance and
+    // the permanent pay link even after the gateway round-trip.
+    payment_plan: order.payment_plan || "full",
+    amount_paid_ngn: order.amount_paid_ngn || "0",
+    balance_due_ngn: order.balance_due_ngn || "0",
+    pay_token: order.public_tracking_token || null,
   };
 }
 

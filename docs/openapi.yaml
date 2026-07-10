@@ -11807,16 +11807,16 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
   /pay/{token}:
     get:
-      summary: "PUBLIC: preview what an order owes — plan, terms, paid/balance, payment history, minimum next payment (served at /api/public/pay/{token})"
+      summary: "PUBLIC: preview what an order owes — plan, terms, paid/balance, payment history, minimum next payment, display currency + locked FX rate (backs the /pay/{token} page; served at /api/public/pay/{token})"
       tags: [sales, public]
       security: []
       parameters:
         [{ name: token, in: path, required: true, schema: { type: string } }]
       responses:
-        "200": { description: Outstanding + plan + history }
+        "200": { description: Outstanding + plan + history + display_fx_rate }
         "404": { $ref: "#/components/responses/NotFound" }
     post:
-      summary: "PUBLIC: generate a checkout link for an order by token (any amount ≥ the plan minimum; exact balance always allowed)"
+      summary: "PUBLIC: generate a checkout link for an order by token (any amount ≥ the plan minimum; exact balance always allowed). Returns the buyer to the pay page after the gateway."
       tags: [sales, public]
       security: []
       parameters:

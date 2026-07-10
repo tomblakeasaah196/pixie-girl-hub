@@ -18,6 +18,7 @@
 const salesRepo = require("./sales.repo");
 const campaignsRepo = require("../sales_campaigns/campaigns.repo");
 const paymentSettings = require("./payment-settings.service");
+const brandUrls = require("../../utils/brand-urls");
 const gateways = require("../business_setup/payment-gateways.service");
 const paystack = require("../../services/paystack.service");
 const opay = require("../../services/opay.service");
@@ -379,6 +380,14 @@ async function previewByToken({ token }) {
     plan_display_name: settings.plan_display_name,
     plan_terms: settings.plan_terms,
     display_currency: order.display_currency || "NGN",
+    // The rate locked on the order at placement (NGN per unit of the display
+    // currency). The pay page uses it to show USD/GBP figures at exactly the
+    // rate the buyer agreed to — never a live rate. 1.0 (or NGN) means no
+    // conversion. All amounts below stay NGN base; conversion is display-only.
+    display_fx_rate:
+      order.fx_rate_used !== null && order.fx_rate_used !== undefined
+        ? Number(order.fx_rate_used)
+        : null,
     total_ngn: toCurrencyString(money(order.total_ngn)),
     amount_paid_ngn: toCurrencyString(money(order.amount_paid_ngn || 0)),
     outstanding_ngn: toCurrencyString(
@@ -400,6 +409,16 @@ async function previewByToken({ token }) {
 async function createPublicPaymentLink({ token, amount_ngn, currency }) {
   const found = await resolveByToken(token);
   if (!found) throw new NotFoundError("Order");
+  // Return the buyer to THIS pay page after the gateway so they see the updated
+  // balance (the page re-fetches the preview on return). Resolved server-side
+  // from the brand's own public base — never a client-supplied URL — so this
+  // can't become an open redirect. The gateway appends ?ref & order_id.
+  let returnUrlBase;
+  try {
+    returnUrlBase = await brandUrls.payLinkUrl(found.brand, token);
+  } catch {
+    returnUrlBase = undefined;
+  }
   // Pass currency through as-is — when the caller omits it, createPaymentLink
   // settles in the order's own display_currency. Defaulting to "NGN" here would
   // force a USD order's public "pay any amount" link back into Naira, the same
@@ -409,6 +428,7 @@ async function createPublicPaymentLink({ token, amount_ngn, currency }) {
     order_id: found.order.order_id,
     amount_ngn,
     currency,
+    return_url_base: returnUrlBase,
   });
 }
 

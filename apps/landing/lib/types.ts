@@ -225,4 +225,15 @@ export interface LandingPayload {
   /** Cart goods subtotal (₦) at or above which delivery is automatically free.
    *  NULL = no threshold rule on this campaign. */
   free_shipping_threshold_ngn?: number | null;
+  /** Flexi Pay (PR-2): whether this campaign offers the instalment plan, plus
+   *  its name/terms/minimum-first-payment %, so the checkout can render the
+   *  plan picker. Absent/disabled → the checkout only offers pay-in-full. */
+  flexi_pay?: {
+    instalments_enabled: boolean;
+    plan_display_name?: string;
+    plan_terms?: string[];
+    min_first_payment_pct?: number;
+    min_topup_ngn?: number;
+    custom_order_deposit_pct?: number;
+  };
 }

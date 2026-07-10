@@ -622,6 +622,17 @@ const checkoutSchema = z.object({
   // then Paystack. The order is still stored in NGN base; this only picks
   // the rail and stamps display_currency / fx_rate_used at payment.
   display_currency: z.enum(["NGN", "USD"]).optional().default("NGN"),
+  // Flexi Pay (PR-2): the buyer's explicit plan choice. 'full' (default) pays
+  // the whole total now; 'instalment' opts into Flexi Pay and initialises the
+  // gateway for first_payment_ngn (or the snapshotted deposit when omitted).
+  // The server re-validates availability (channel + this campaign's
+  // allow_instalments) and the minimum first payment.
+  payment_plan: z.enum(["full", "instalment"]).optional().default("full"),
+  // First payment to charge for an instalment order, in NGN base. Omit to
+  // charge the required deposit (min_first_payment_pct of the total). Ignored
+  // for the full plan. The frontend converts from the display currency using
+  // the same rate it shows the buyer.
+  first_payment_ngn: z.coerce.number().positive().optional(),
   client_idempotency_key: z.string().min(1).max(120),
   coupon_code: z.string().max(60).optional(),
   // When the server returns POTENTIAL_DUPLICATE and the buyer confirms they

@@ -60,6 +60,7 @@ import {
 } from "@/lib/hr-api";
 import { OfficeGeofenceSettings } from "./OfficeGeofenceSettings";
 import { OnboardingSettings } from "./OnboardingSettings";
+import RecruitmentTab from "./RecruitmentTab";
 import { OnboardingArticlesTab } from "./OnboardingArticlesTab";
 import { RewardsTab } from "./RewardsTab";
 import { DevicesTab, LiveAttendanceStrip, UnknownDeviceFlag } from "./devices";
@@ -1034,6 +1035,7 @@ export default function HrStaffPage() {
           { key: "queries", label: "Queries", badge: c?.open_queries || undefined },
           { key: "targets", label: "Targets" },
           { key: "rewards", label: "Rewards" },
+          ...(can("recruitment", "view") ? [{ key: "recruitment", label: "Recruitment" }] : []),
           { key: "analytics", label: "Analytics" },
           { key: "settings", label: "Settings" },
           { key: "onboarding", label: "Onboarding" },
@@ -1092,6 +1094,9 @@ export default function HrStaffPage() {
       )}
       {tab === "targets" && <TargetsTab onAdd={() => setTargetOpen(true)} />}
       {tab === "rewards" && <RewardsTab />}
+      {tab === "recruitment" && can("recruitment", "view") && (
+        <RecruitmentTab canEdit={can("recruitment", "edit")} />
+      )}
       {tab === "analytics" && <AnalyticsTab />}
       {tab === "settings" && (
         can("hr_payroll", "edit")

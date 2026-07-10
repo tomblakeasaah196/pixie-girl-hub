@@ -109,6 +109,13 @@ const {
   publicRouter: walkinPublicRouter,
 } = require("../modules/storefront/walkin.routes");
 
+// Recruitment (HR & Staff → Recruitment): AI-drafted JD + offer letter, no-login
+// candidate offer packet + e-sign, contract-on-sign, provision & email creds.
+const {
+  adminRouter: recruitmentAdminRouter,
+  publicRouter: recruitmentPublicRouter,
+} = require("../modules/recruitment/recruitment.routes");
+
 // Customer onboarding (Online QR welcome form)
 const {
   adminRouter: onboardingAdminRouter,
@@ -289,6 +296,9 @@ function mountRoutes(app) {
     staffInvitationsPublicRouter,
   );
   publicRouter.use("/walk-in", publicWriteLimiter, walkinPublicRouter);
+  // Candidate offer packet — the emailed link opens this (no auth). GET reads the
+  // JD + offer letter; POST /:token/sign captures the e-signature.
+  publicRouter.use("/offer", publicWriteLimiter, recruitmentPublicRouter);
   // Customer Onboarding form — public, token-protected. The token
   // itself is sufficient auth; the per-IP write limiter blunts abuse.
   publicRouter.use("/onboarding", publicWriteLimiter, onboardingPublicRouter);
@@ -361,6 +371,7 @@ function mountRoutes(app) {
     ["/logistics", logisticsRouter],
     ["/hr", [hrOpsRouter, hrPayrollRouter, payrollRouter, rewardsRouter]],
     ["/staff-invitations", staffInvitationsAdminRouter],
+    ["/recruitment", recruitmentAdminRouter],
     ["/walk-in", walkinAdminRouter],
     ["/attendance", attendanceRouter],
     ["/contacts", contactsRouter],

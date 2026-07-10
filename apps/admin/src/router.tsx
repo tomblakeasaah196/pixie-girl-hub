@@ -256,6 +256,11 @@ const FeatureFlagsPage = lazyWithRetry(() =>
     default: m.FeatureFlagsPage,
   })),
 );
+const AiAccessPage = lazyWithRetry(() =>
+  import("@/pages/ai-control/AiAccessPage").then((m) => ({
+    default: m.AiAccessPage,
+  })),
+);
 const InvoicingPage = lazyWithRetry(() =>
   import("@/pages/invoicing/InvoicingPage").then((m) => ({
     default: m.InvoicingPage,
@@ -830,6 +835,14 @@ export const router = createBrowserRouter(
               element: (
                 <Suspense fallback={<RouteFallback />}>
                   <FeatureFlagsPage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "ai-control/access",
+              element: (
+                <Suspense fallback={<RouteFallback />}>
+                  <AiAccessPage />
                 </Suspense>
               ),
             },

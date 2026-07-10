@@ -51,6 +51,14 @@ const grantCreate = z
   })
   .strict();
 
+const grantBulk = z
+  .object({
+    user_id: z.string().uuid(),
+    feature_keys: z.array(z.string().min(1).max(80)).min(1).max(50),
+    monthly_cap_ngn: z.coerce.number().nonnegative().optional(),
+  })
+  .strict();
+
 const reasonBody = z
   .object({ reason: z.string().max(1000).optional() })
   .strict();
@@ -198,6 +206,7 @@ module.exports = {
   validateFlagUserCap: mk(flagUserCap),
   validateFlagRestingMessage: mk(flagRestingMessage),
   validateGrantCreate: mk(grantCreate),
+  validateGrantBulk: mk(grantBulk),
   validateReason: mk(reasonBody),
   validateVendorUpsert: mk(vendorUpsert),
   validateVendorRotate: mk(vendorRotate),

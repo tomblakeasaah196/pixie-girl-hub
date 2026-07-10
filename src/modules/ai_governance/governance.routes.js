@@ -49,7 +49,12 @@ router.post(
 
 // ── Access grants ──────────────────────────────────────────
 router.get("/grants", can("view"), c.listGrants);
+// Employee picker for the AI Access screen — search login users without
+// needing iam.view (AI Control admins aren't necessarily IAM admins).
+router.get("/grants/users", can("view"), c.searchGrantUsers);
 router.post("/grants", can("create"), v.validateGrantCreate, c.grant);
+// Grant one user several features at once ("give them the whole AI").
+router.post("/grants/bulk", can("create"), v.validateGrantBulk, c.grantBulk);
 router.delete(
   "/grants/:grant_id",
   can("delete"),

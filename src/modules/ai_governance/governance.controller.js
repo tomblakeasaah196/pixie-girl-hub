@@ -68,10 +68,23 @@ async function listGrants(req, res) {
     }),
   });
 }
+async function searchGrantUsers(req, res) {
+  res.json({
+    data: await service.searchGrantUsers({
+      search: req.query.search,
+      limit: req.query.limit,
+    }),
+  });
+}
 async function grant(req, res) {
   res
     .status(201)
     .json({ data: await service.grant({ ...base(req), input: req.body }) });
+}
+async function grantBulk(req, res) {
+  res
+    .status(201)
+    .json({ data: await service.grantBulk({ ...base(req), input: req.body }) });
 }
 async function revokeGrant(req, res) {
   await service.revokeGrant({
@@ -348,7 +361,9 @@ module.exports = {
   setFlagRestingMessage,
   recentFlagAudit,
   listGrants,
+  searchGrantUsers,
   grant,
+  grantBulk,
   revokeGrant,
   listVendors,
   upsertVendor,

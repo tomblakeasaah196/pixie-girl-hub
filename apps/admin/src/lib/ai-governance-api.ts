@@ -220,6 +220,35 @@ export interface AiFlagAuditRow {
   metadata: Record<string, unknown> | null;
 }
 
+// AI Access — per-user feature grants (shared.ai_access_grants). The CEO
+// bypasses grants entirely; everyone else needs an active grant per feature.
+export interface AiAccessGrant {
+  grant_id: string;
+  user_id: string;
+  feature_key: string;
+  monthly_cap_ngn: string | number | null;
+  granted_by: string | null;
+  granted_at: string;
+  // Joined for display
+  user_name: string;
+  user_email: string;
+  user_status: string;
+  user_is_ceo: boolean;
+  granted_by_name: string | null;
+  feature_name: string;
+  feature_scope: "internal" | "storefront";
+}
+
+export interface AiGrantUser {
+  user_id: string;
+  display_name: string;
+  email: string;
+  status: "active" | "invited";
+  profile_type: "staff" | "external";
+  is_ceo: boolean;
+  granted_feature_keys: string[];
+}
+
 export interface BudgetPeriod {
   period_id: string;
   period_start: string;
@@ -372,6 +401,34 @@ export const aiGovernanceApi = {
     },
   ) =>
     api.post<BudgetPeriod>(`/ai-governance/budget/${period_id}/caps`, input),
+
+  // AI Access page — per-user grants
+  listGrants: (params: { user_id?: string; feature_key?: string } = {}) => {
+    const u = new URLSearchParams();
+    if (params.user_id) u.set("user_id", params.user_id);
+    if (params.feature_key) u.set("feature_key", params.feature_key);
+    const qs = u.toString();
+    return api.get<AiAccessGrant[]>(
+      `/ai-governance/grants${qs ? `?${qs}` : ""}`,
+    );
+  },
+  searchGrantUsers: (params: { search?: string; limit?: number } = {}) => {
+    const u = new URLSearchParams();
+    if (params.search) u.set("search", params.search);
+    if (params.limit) u.set("limit", String(params.limit));
+    const qs = u.toString();
+    return api.get<AiGrantUser[]>(
+      `/ai-governance/grants/users${qs ? `?${qs}` : ""}`,
+    );
+  },
+  grantAccess: (input: {
+    user_id: string;
+    feature_keys: string[];
+    monthly_cap_ngn?: number;
+  }) =>
+    api.post<AiAccessGrant[]>("/ai-governance/grants/bulk", input),
+  revokeGrant: (grant_id: string) =>
+    api.delete<void>(`/ai-governance/grants/${grant_id}`),
 
   // Q8 — Feature Flags & Access page
   listFlags: () => api.get<AiFeatureFlag[]>("/ai-governance/flags"),

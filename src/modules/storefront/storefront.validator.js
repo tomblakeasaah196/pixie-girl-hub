@@ -47,6 +47,10 @@ const orderFormSchema = z
     client_idempotency_key: z.string().max(80).optional(),
     // Stylist Programme referral capture (§6.26 Q17).
     referral_code: z.string().max(80).optional(),
+    // Flexi Pay (PR-2): 'instalment' raises the order on the flexible plan so
+    // the deposit minimum + balance reminders apply. The customer pays via the
+    // pay link they receive. Defaults to 'full'.
+    payment_plan: z.enum(["full", "instalment"]).optional().default("full"),
   })
   .strict();
 

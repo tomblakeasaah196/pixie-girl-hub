@@ -318,6 +318,11 @@ async function submitOrderForm({ brand, input, request_id }) {
         coupon_code: input.coupon_code,
         redeem_points: input.redeem_points,
         bundle_id: input.bundle_id,
+        // Flexi Pay (PR-2): raise the order on the chosen plan. createOrder
+        // re-validates instalment availability for this channel + snapshots the
+        // deposit policy; the customer pays via the pay link they receive.
+        payment_plan:
+          input.payment_plan === "instalment" ? "instalment" : "full",
         client_idempotency_key: input.client_idempotency_key,
         stylist_referral_code: await resolveStylistReferral(
           input.referral_code,
@@ -330,6 +335,7 @@ async function submitOrderForm({ brand, input, request_id }) {
       order_number: order.order_number,
       total_ngn: order.total_ngn,
       payment_model: order.payment_model,
+      payment_plan: order.payment_plan,
       public_tracking_token: order.public_tracking_token || null,
       contact_id: contact.contact_id,
     };
@@ -342,9 +348,7 @@ async function submitOrderForm({ brand, input, request_id }) {
 async function resolveStylistReferral(code) {
   if (!code) return undefined;
   const stylistReferrals = require("../stylist_programme/referral.service");
-  const hit = await stylistReferrals
-    .validateCode({ code })
-    .catch(() => null);
+  const hit = await stylistReferrals.validateCode({ code }).catch(() => null);
   return hit ? String(code) : undefined;
 }
 
@@ -470,7 +474,10 @@ async function resolveStorefrontBundle({ brand, bundle_id, copies }) {
         }));
     }
     if (!variant_id && comp.product_id)
-      variant_id = await defaultVariantId({ brand, product_id: comp.product_id });
+      variant_id = await defaultVariantId({
+        brand,
+        product_id: comp.product_id,
+      });
     if (!variant_id)
       throw new AppError(
         "BUNDLE_COMPONENT_UNAVAILABLE",
@@ -722,9 +729,7 @@ async function checkout({ brand, cart_id, input = {} }) {
       );
   }
 
-  const stylistReferralCode = await resolveStylistReferral(
-    input.referral_code,
-  );
+  const stylistReferralCode = await resolveStylistReferral(input.referral_code);
 
   // 4. Create the sales order (same engine + outbox as every channel).
   const order = await salesService.createOrder({
@@ -737,6 +742,10 @@ async function checkout({ brand, cart_id, input = {} }) {
       order_type: isPickup ? "collection" : "dispatch",
       lines: orderLines,
       shipping_fee_ngn: shippingFeeNgn,
+      // Flexi Pay (PR-2): the buyer's plan choice. createOrder re-validates
+      // instalment availability (storefront channel config) and snapshots the
+      // deposit policy on the order.
+      payment_plan: input.payment_plan === "instalment" ? "instalment" : "full",
       coupon_code: input.coupon_code || null,
       stylist_referral_code: stylistReferralCode,
       // Loyalty points redemption (optional) — createOrder validates + caps it.
@@ -862,11 +871,29 @@ async function checkout({ brand, cart_id, input = {} }) {
       : input.payment_gateway && allowed.includes(input.payment_gateway)
         ? input.payment_gateway
         : "nomba";
+  // Flexi Pay (PR-2): full plan charges the whole balance; instalment charges
+  // the chosen first payment (or the snapshotted deposit). createPaymentLink
+  // enforces the minimum and clamps to the outstanding balance. The storefront
+  // checkout has no strict schema, so parse the amount defensively (a bad value
+  // falls back to the deposit rather than crashing the checkout).
+  const firstPaymentReq = Number(input.first_payment_ngn);
+  const hasDeposit =
+    order.required_deposit_ngn !== null &&
+    order.required_deposit_ngn !== undefined;
+  const firstAmountNgn =
+    order.payment_plan === "instalment"
+      ? Number.isFinite(firstPaymentReq) && firstPaymentReq > 0
+        ? String(firstPaymentReq)
+        : hasDeposit
+          ? String(order.required_deposit_ngn)
+          : undefined
+      : undefined;
   let payResult;
   try {
     payResult = await paymentLink.createPaymentLink({
       brand,
       order_id: order.order_id,
+      amount_ngn: firstAmountNgn,
       currency: checkoutCurrency,
       preferred_provider: preferredProvider,
       // Return the buyer to the storefront thank-you page (gateway appends
@@ -902,6 +929,17 @@ async function checkout({ brand, cart_id, input = {} }) {
     order_number: order.order_number,
     payment_url: payResult.checkout_url,
     public_tracking_token: order.public_tracking_token || null,
+    // Flexi Pay (PR-2): plan + balance summary so the thank-you page can show
+    // the running balance and the permanent pay link.
+    ...(order.payment_plan === "instalment"
+      ? {
+          flexi_pay: {
+            payment_plan: "instalment",
+            total_ngn: String(order.total_ngn),
+            first_payment_ngn: firstAmountNgn || String(order.total_ngn),
+          },
+        }
+      : {}),
   };
 }
 
@@ -942,7 +980,9 @@ async function quoteCart({
       const b = await bundleService
         .getBundle({ brand, id: ci.bundle_id })
         .catch(() => null);
-      unit = b ? money(b.effective_price_ngn || 0) : money(ci.unit_price_ngn || 0);
+      unit = b
+        ? money(b.effective_price_ngn || 0)
+        : money(ci.unit_price_ngn || 0);
     } else {
       unit = money(ci.unit_price_ngn || 0);
     }

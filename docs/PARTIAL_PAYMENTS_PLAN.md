@@ -93,14 +93,14 @@ silently dropped.
 
 ## PR-2 — Customer-facing UI
 
-- [ ] Campaign checkout (`apps/landing`): plan picker (only when campaign allows), terms modal (config copy), pass `payment_plan` + first amount; gateway initialised for the chosen amount
-- [ ] Campaign checkout API (`campaigns.public.service.js`): accept plan + amount, validate against config, init pay-link accordingly
-- [ ] Storefront checkout API (`storefront.service.js`): same; checkout response includes plan/balance summary
-- [ ] Public Order Form (`OrderCapturePublic`): plan choice
-- [ ] **`/pay/[token]` page** (`apps/landing`): brand-themed; items, progress (paid vs balance), "Pay balance / Pay half / Other amount (≥ min)", payment history, terms, WhatsApp support; gateway redirect + return handling
-- [ ] Thank-you pages: balance summary + permanent pay link ("save this link")
-- [ ] USD orders: display-currency figures at the order's locked rate on the pay page
-- [ ] Tests: checkout stage units updated; pay-page API contract test
+- [x] Campaign checkout (`apps/landing/CheckoutClient`): plan picker (only when the campaign enables instalments, surfaced via `payload.flexi_pay`), terms shown inline (config copy), passes `payment_plan`; the gateway is initialised for the deposit. **Initial-checkout picker is Full vs Deposit** — the server charges its exact deposit (computed on the true total incl. delivery) so the two never diverge; free custom-amount selection lives on the `/pay` page (avoids the delivery-fee mismatch of pricing a custom amount before the order total is final). Deliberate, capability preserved.
+- [x] Campaign checkout API (`campaigns.public.service.js`): accepts `payment_plan` + optional `first_payment_ngn`, re-validates availability (channel + this campaign's `allow_instalments`) in `createOrder`, inits the pay-link for the first payment, returns `flexi_pay` (plan + permanent pay link) + exposes `flexi_pay` on the landing payload.
+- [x] Storefront checkout API (`storefront.service.js`): accepts `payment_plan` + `first_payment_ngn` (defensively parsed — no strict schema), inits pay-link for the deposit, response includes `flexi_pay` plan/balance summary.
+- [x] Public Order Form (`OrderCapturePublic` + `order-form` schema/service): plan choice, shown only when the channel enables instalments (fetched from `/pay/config/:brand`).
+- [x] **`/pay/[token]` page** (`apps/landing/app/pay/[token]`): brand-themed (server page + `PayClient`); four states (loading / not-found / fully-paid / pay); progress bar (paid vs total), "Pay balance / Pay half / Choose amount (≥ min)", payment history, plan terms, WhatsApp support; gateway redirect + return-poll handling. Gateway callback resolved server-side back to the pay page (no open redirect).
+- [x] Thank-you page (`ThankYouClient`): instalment deposit is treated as confirmed (status stays `pending_payment` until settled); "Part-paid" framing, balance card + permanent pay link ("save this link"); Purchase pixel fires with the amount actually charged.
+- [x] USD orders: `previewByToken` returns `display_fx_rate` (locked at placement); the pay page renders display-currency figures at that rate; custom amounts convert display→NGN before charging.
+- [x] Tests: pay-page API contract test (`pay-preview.test.js`); existing deposit-policy/settings/validator suites still green; both frontends typecheck clean.
 
 ## PR-3 — Admin UI + polish
 

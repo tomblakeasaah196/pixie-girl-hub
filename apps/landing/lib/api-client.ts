@@ -100,6 +100,12 @@ export async function postCheckout(args: {
   /** Buyer-chosen display currency from the landing currency toggle. Drives
    *  gateway rail selection on the Hub (USD → Nomba). Order stays NGN-based. */
   display_currency?: "NGN" | "USD";
+  /** Flexi Pay (PR-2): 'full' pays the whole total now; 'instalment' opts into
+   *  the flexible plan and charges first_payment_ngn (or the deposit) now. */
+  payment_plan?: "full" | "instalment";
+  /** First payment to charge for an instalment order, in NGN base. Omit to
+   *  charge the required deposit. Ignored for the full plan. */
+  first_payment_ngn?: number;
   client_idempotency_key: string;
   coupon_code?: string;
   /** Bypass the near-duplicate guard after the buyer has confirmed intent. */
@@ -273,6 +279,10 @@ export async function fetchOrderStatus(
   status: string;
   total_ngn: string;
   currency: string;
+  payment_plan?: "full" | "instalment";
+  amount_paid_ngn?: string;
+  balance_due_ngn?: string;
+  pay_token?: string | null;
 } | null> {
   try {
     const res = await fetch(
@@ -285,4 +295,85 @@ export async function fetchOrderStatus(
   } catch {
     return null;
   }
+}
+
+// ── Flexi Pay balance page (/pay/[token]) ────────────────────────────────
+// Backs the permanent no-login pay link the customer receives in receipts and
+// reminders. previewByToken (Hub) returns every figure the page renders — the
+// page never does its own money math.
+
+export interface PayPreview {
+  brand: string;
+  order_number: string;
+  status: string;
+  payment_plan: "full" | "instalment";
+  plan_display_name: string;
+  plan_terms: string[];
+  display_currency: string;
+  /** NGN per unit of display_currency, locked at placement. null/1 = NGN. */
+  display_fx_rate: number | null;
+  total_ngn: string;
+  amount_paid_ngn: string;
+  outstanding_ngn: string;
+  min_next_payment_ngn: string;
+  payments: Array<{
+    payment_number: string;
+    amount_ngn: string;
+    method: string;
+    paid_at: string | null;
+  }>;
+}
+
+export async function fetchPayPreview(
+  token: string,
+): Promise<PayPreview | null> {
+  try {
+    const res = await fetch(`/api/public/pay/${encodeURIComponent(token)}`, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { data?: PayPreview };
+    return json?.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Generate a gateway checkout for an amount against a tokenised order. The Hub
+ * enforces the plan minimum + clamps to the outstanding balance, so a rejected
+ * amount surfaces as a 422 with a buyer-readable message.
+ */
+export async function postPayLink(args: {
+  token: string;
+  amount_ngn?: number;
+  currency?: string;
+}): Promise<{ checkout_url: string }> {
+  const res = await fetch(`/api/public/pay/${encodeURIComponent(args.token)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify({
+      ...(args.amount_ngn != null ? { amount_ngn: args.amount_ngn } : {}),
+      ...(args.currency ? { currency: args.currency } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    let parsed: { error?: { user_message?: string; message?: string } } = {};
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      /* raw text fallback */
+    }
+    const msg =
+      parsed?.error?.user_message ||
+      parsed?.error?.message ||
+      body ||
+      `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+  const json = (await res.json()) as { data?: { checkout_url: string } };
+  if (!json?.data?.checkout_url) throw new Error("No checkout URL returned");
+  return json.data;
 }

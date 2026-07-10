@@ -103,6 +103,15 @@ export function OrderCapturePublic() {
   const [errMsg, setErrMsg] = useState<string | null>(null);
 
   const [fulfilment, setFulfilment] = useState<Fulfilment>("delivery");
+  // Flexi Pay (PR-2): offer the instalment plan when the channel enables it.
+  // The customer receives a pay link and pays via the /pay/{token} page; the
+  // plan controls the deposit minimum + balance reminders.
+  const [flexi, setFlexi] = useState<{
+    instalments_enabled: boolean;
+    plan_display_name?: string;
+    plan_terms?: string[];
+  } | null>(null);
+  const [paymentPlan, setPaymentPlan] = useState<"full" | "instalment">("full");
   const [geo, setGeo] = useState<GeoOptions>(GEO_FALLBACK);
   const [address, setAddress] = useState({
     line1: "",
@@ -158,6 +167,30 @@ export function OrderCapturePublic() {
         fetchGeoOptions(data.brand).then((g) => {
           if (!cancelled) setGeo(g);
         });
+        // Flexi Pay availability for this channel (best-effort; a failure just
+        // hides the plan picker, defaulting to pay-in-full).
+        const ch =
+          data.sales_channel &&
+          ["public_form", "whatsapp", "instagram", "facebook"].includes(
+            data.sales_channel,
+          )
+            ? data.sales_channel
+            : "public_form";
+        api
+          .get<{
+            instalments_enabled: boolean;
+            plan_display_name?: string;
+            plan_terms?: string[];
+          }>(
+            `/pay/config/${encodeURIComponent(data.brand)}?channel=${encodeURIComponent(ch)}`,
+            "public",
+          )
+          .then((cfg) => {
+            if (!cancelled) setFlexi(cfg);
+          })
+          .catch(() => {
+            /* no picker on failure */
+          });
         setStage("form");
       } catch (e: unknown) {
         if (cancelled) return;
@@ -303,6 +336,11 @@ export function OrderCapturePublic() {
               : "public_form",
           items: resolvedItems.flatMap((i) => i.lines),
           bundle_id: bundleId || undefined,
+          // Flexi Pay (PR-2): only send 'instalment' when the channel offers it.
+          payment_plan:
+            flexi?.instalments_enabled && paymentPlan === "instalment"
+              ? "instalment"
+              : "full",
           client_idempotency_key: `capture:${token.slice(-24)}`,
         },
         "public",
@@ -603,6 +641,41 @@ export function OrderCapturePublic() {
             onChange={setEmail}
           />
         </Section>
+
+        {flexi?.instalments_enabled && (
+          <Section title="Payment plan">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setPaymentPlan("full")}
+                className={`rounded-xl border px-3 py-2.5 text-[13px] font-semibold transition-colors ${
+                  paymentPlan === "full"
+                    ? "border-accent bg-accent/10 text-accent-glow"
+                    : "border-border-c/20 text-text-muted"
+                }`}
+              >
+                Pay in full
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaymentPlan("instalment")}
+                className={`rounded-xl border px-3 py-2.5 text-[13px] font-semibold transition-colors ${
+                  paymentPlan === "instalment"
+                    ? "border-accent bg-accent/10 text-accent-glow"
+                    : "border-border-c/20 text-text-muted"
+                }`}
+              >
+                {flexi.plan_display_name || "Flexi Pay"}
+              </button>
+            </div>
+            {paymentPlan === "instalment" && (
+              <p className="mt-2 text-[12px] text-text-muted">
+                Pay a deposit now to reserve your order; pay the rest anytime
+                with the link we send you. Ships once fully paid.
+              </p>
+            )}
+          </Section>
+        )}
 
         {errMsg && (
           <p className="text-[12px] text-danger inline-flex items-center gap-2">

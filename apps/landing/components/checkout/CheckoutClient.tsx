@@ -155,6 +155,12 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const [terms, setTerms] = useState(false);
   const [honey, setHoney] = useState(""); // honeypot
   const [gateway, setGateway] = useState<Gateway>(allowedGateways[0]);
+  // Flexi Pay (PR-2): 'full' pays the whole total now; 'instalment' pays the
+  // deposit now (server-computed on the true total incl. delivery) and the rest
+  // later via the permanent pay link. Only offered when this campaign enables it.
+  const flexi = payload.flexi_pay;
+  const instalmentsEnabled = !!flexi?.instalments_enabled;
+  const [paymentPlan, setPaymentPlan] = useState<"full" | "instalment">("full");
   const [busy, setBusy] = useState(false);
   // Warm "we need an address we can ship to" modal. It opens when the buyer
   // taps Pay on a delivery order that hasn't resolved a real, positive fee. The
@@ -404,6 +410,17 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const total =
     discountedGoods + deliveryDue - exitIntentDiscount - couponDiscount;
 
+  // Flexi Pay (PR-2): the deposit shown as "≈ pay today". This is an ESTIMATE
+  // off the displayed total; the server charges its exact deposit (computed on
+  // the true order total) when payment_plan is 'instalment' and no explicit
+  // first payment is sent, so the two always reconcile at the gateway.
+  const depositPct = flexi?.min_first_payment_pct ?? 30;
+  const depositEstimate = Math.max(0, Math.round((total * depositPct) / 100));
+  const chargeNow =
+    instalmentsEnabled && paymentPlan === "instalment"
+      ? depositEstimate
+      : total;
+
   // Right-hand summary label for the delivery line. A delivery order must show a
   // real, positive fee. A ₦0 outcome of any kind — "free" promo, "pending"
   // config gap, or an unpriced/unserviceable location — reads as "not
@@ -576,6 +593,13 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
         // Drives gateway routing on the Hub (USD → Nomba). The order still
         // settles in NGN; this is the buyer's displayed-currency choice.
         display_currency: displayCurrency,
+        // Flexi Pay (PR-2): 'instalment' charges the server-computed deposit now
+        // (no explicit first_payment_ngn → the Hub uses the exact deposit on the
+        // true total). Only sent when the campaign offers instalments.
+        payment_plan:
+          instalmentsEnabled && paymentPlan === "instalment"
+            ? "instalment"
+            : "full",
         client_idempotency_key: idemKey,
         coupon_code: promoApplied && promoCode ? promoCode : undefined,
       };
@@ -953,6 +977,68 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                 </div>
               )}
             </Section>
+
+            {instalmentsEnabled && (
+              <Section title="Payment plan">
+                <div className="grid grid-cols-1 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentPlan("full")}
+                    className={`flex items-center justify-between p-3 rounded-xl border text-left ${
+                      paymentPlan === "full"
+                        ? "border-[rgb(var(--accent)/0.5)] bg-[rgb(var(--accent)/0.08)]"
+                        : "border-[rgb(var(--border-c)/0.1)]"
+                    }`}
+                  >
+                    <span className="text-[13px] font-semibold">
+                      Pay in full
+                    </span>
+                    <span className="font-mono text-[13px] text-[rgb(var(--text-muted))]">
+                      {fmt(total)}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentPlan("instalment")}
+                    className={`flex items-center justify-between p-3 rounded-xl border text-left ${
+                      paymentPlan === "instalment"
+                        ? "border-[rgb(var(--accent)/0.5)] bg-[rgb(var(--accent)/0.08)]"
+                        : "border-[rgb(var(--border-c)/0.1)]"
+                    }`}
+                  >
+                    <span className="text-[13px] font-semibold">
+                      {flexi?.plan_display_name || "Flexi Pay"} — pay part now
+                    </span>
+                    <span className="font-mono text-[13px] text-[rgb(var(--text-muted))]">
+                      ≈ {fmt(depositEstimate)} today
+                    </span>
+                  </button>
+                </div>
+                {paymentPlan === "instalment" && (
+                  <div className="mt-2 space-y-2 text-[12px] text-[rgb(var(--text-muted))]">
+                    <p>
+                      Pay <strong>≈ {fmt(depositEstimate)}</strong> now to
+                      reserve your order. Pay the rest (
+                      {fmt(total - depositEstimate)}) any time using the
+                      personal link we send you — your order ships once
+                      it&apos;s fully paid.
+                    </p>
+                    {flexi?.plan_terms?.length ? (
+                      <ul className="space-y-1">
+                        {flexi.plan_terms.map((t, i) => (
+                          <li key={i} className="flex gap-1.5">
+                            <span className="text-[rgb(var(--accent-glow))]">
+                              •
+                            </span>
+                            <span>{t}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </div>
+                )}
+              </Section>
+            )}
 
             <Section title="Pay with">
               <div
@@ -1389,7 +1475,10 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                   </>
                 ) : (
                   <>
-                    <Lock className="w-4 h-4" /> Pay {fmt(total)}
+                    <Lock className="w-4 h-4" /> Pay {fmt(chargeNow)}
+                    {instalmentsEnabled && paymentPlan === "instalment"
+                      ? " now"
+                      : ""}
                   </>
                 )}
               </motion.button>

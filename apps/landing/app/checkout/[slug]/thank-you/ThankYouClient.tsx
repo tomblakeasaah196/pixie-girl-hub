@@ -16,6 +16,10 @@ type OrderInfo = {
   status: string;
   total_ngn: string;
   currency: string;
+  payment_plan?: "full" | "instalment";
+  amount_paid_ngn?: string;
+  balance_due_ngn?: string;
+  pay_token?: string | null;
 };
 
 export function ThankYouClient({
@@ -46,19 +50,28 @@ export function ThankYouClient({
     const data = await fetchOrderStatus(payload.slug, resolvedId);
     if (data) {
       setOrder(data);
+      // An instalment order stays 'pending_payment' until fully paid, so a
+      // deposit is "confirmed" the moment a payment has landed on it. A full
+      // order confirms on the paid/processing status as before.
+      const depositLanded =
+        data.payment_plan === "instalment" &&
+        Number(data.amount_paid_ngn ?? 0) > 0;
       const paid =
         data.status === "paid" ||
         data.status === "processing" ||
-        data.status === "confirmed";
+        data.status === "confirmed" ||
+        depositLanded;
       if (paid) {
         setPolling(false);
         // Meta Pixel: Purchase — the funnel's terminal conversion. Deduped on
         // the order id (persisted) so a refresh of this polling page can never
-        // double-count the same sale. Value/currency come from the confirmed
-        // order, not the cart, so they match what was actually billed.
+        // double-count the same sale. Value = what was actually billed now (the
+        // deposit for an instalment order, the full total otherwise).
         fbTrackOnce(data.order_id, "Purchase", {
           content_type: "product",
-          value: Number(data.total_ngn) || 0,
+          value: depositLanded
+            ? Number(data.amount_paid_ngn) || 0
+            : Number(data.total_ngn) || 0,
           currency: data.currency || "NGN",
           transaction_id: data.order_number,
         });
@@ -90,10 +103,17 @@ export function ThankYouClient({
     };
   }, [polling, resolvedId, poll]);
 
+  const depositLanded =
+    order?.payment_plan === "instalment" &&
+    Number(order?.amount_paid_ngn ?? 0) > 0;
   const isPaid =
     order?.status === "paid" ||
     order?.status === "processing" ||
-    order?.status === "confirmed";
+    order?.status === "confirmed" ||
+    depositLanded;
+  // An instalment order that has taken a payment but isn't settled yet: show a
+  // "deposit received" framing rather than "paid in full".
+  const isDeposit = depositLanded && order?.status !== "paid";
 
   // Payment not confirmed and polling has stopped (failed / cancelled / timed
   // out). The cart is still intact, so offer a one-tap path back to pay again.
@@ -137,7 +157,9 @@ export function ThankYouClient({
 
         {isPaid ? (
           <p className="text-[rgb(var(--text-muted))]">
-            Your order is confirmed. A confirmation email is on its way.
+            {isDeposit
+              ? "Your first payment is in and your order is reserved. Pay the rest anytime with the link below — it ships once fully paid."
+              : "Your order is confirmed. A confirmation email is on its way."}
           </p>
         ) : (
           <p className="text-[rgb(var(--text-muted))]">
@@ -172,12 +194,39 @@ export function ThankYouClient({
                       : "bg-[rgb(var(--warn)/0.12)] text-[rgb(var(--warn))]"
                   }`}
                 >
-                  {isPaid ? "Paid" : "Processing"}
+                  {isDeposit ? "Part-paid" : isPaid ? "Paid" : "Processing"}
                 </span>
               </span>
             </div>
           </div>
         )}
+
+        {/* Flexi Pay balance — for an instalment order with a remaining
+            balance, surface the permanent pay link so the buyer can save it and
+            pay the rest anytime. */}
+        {order?.payment_plan === "instalment" &&
+          order.pay_token &&
+          Number(order.balance_due_ngn ?? 0) > 0 && (
+            <div className="glass rounded-xl p-5 text-left space-y-3">
+              <div className="flex items-center justify-between text-[13px]">
+                <span className="text-[rgb(var(--text-muted))]">
+                  Balance remaining
+                </span>
+                <span className="font-mono font-semibold">
+                  {money(Number(order.balance_due_ngn ?? 0))}
+                </span>
+              </div>
+              <Link
+                href={`/pay/${order.pay_token}`}
+                className="inline-flex items-center justify-center gap-2 w-full h-11 rounded-xl border border-[rgb(var(--accent)/0.4)] text-[rgb(var(--accent-glow))] font-semibold text-[14px]"
+              >
+                Pay your balance anytime <ArrowRight className="w-4 h-4" />
+              </Link>
+              <p className="text-[11px] text-[rgb(var(--text-faint))] text-center">
+                Save this link — your order ships once it&apos;s fully paid.
+              </p>
+            </div>
+          )}
 
         {!order && !resolvedId && (
           <p className="text-[rgb(var(--text-muted))] text-[14px]">
@@ -189,9 +238,9 @@ export function ThankYouClient({
         <div className="pt-2 space-y-3">
           {notConfirmed && (
             <p className="text-[13px] text-[rgb(var(--warn))]">
-              We couldn&apos;t confirm your payment. If you completed it,
-              a confirmation email is on its way — otherwise your cart is
-              saved, so you can try again.
+              We couldn&apos;t confirm your payment. If you completed it, a
+              confirmation email is on its way — otherwise your cart is saved,
+              so you can try again.
             </p>
           )}
           {notConfirmed ? (

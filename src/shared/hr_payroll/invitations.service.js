@@ -39,6 +39,18 @@ function inviteLink(rawToken) {
 
 // ── Admin ──────────────────────────────────────────────────
 async function createInvitation({ user, request_id, input }) {
+  // Refuse to invite a second login for a staff profile that already has one
+  // (duplicate accounts split role grants across logins).
+  if (input.staff_profile_id) {
+    const linked = await repo.activeUserForProfile({
+      profile_id: input.staff_profile_id,
+    });
+    if (linked)
+      throw new ConflictError(
+        `This staff profile already has a login account (${linked.email})`,
+      );
+  }
+
   const rawToken = crypto.randomBytes(32).toString("hex");
   const token_hash = sha256(rawToken);
   const days = input.expires_in_days || DEFAULT_EXPIRY_DAYS;
@@ -162,6 +174,21 @@ async function acceptInvitation({ token, password, display_name }) {
     if (await repo.userExistsByEmail({ client, email: invite.email }))
       throw new ConflictError("An account with this email already exists");
 
+    // Carry the staff-profile link through: without it the new login is
+    // orphaned from its HR profile, and org-position role grants
+    // (org.service.applyPositionAssignment → userIdForProfile) resolve to
+    // some OTHER login linked to the profile — or none at all.
+    if (invite.staff_profile_id) {
+      const linked = await repo.activeUserForProfile({
+        client,
+        profile_id: invite.staff_profile_id,
+      });
+      if (linked)
+        throw new ConflictError(
+          "This staff profile already has a login account",
+        );
+    }
+
     const newUser = await repo.createUser({
       client,
       user: {
@@ -171,6 +198,7 @@ async function acceptInvitation({ token, password, display_name }) {
         is_ceo: invite.is_ceo,
         default_business: invite.default_business,
         permitted_businesses: invite.business_keys || [],
+        staff_profile_id: invite.staff_profile_id,
       },
     });
 
@@ -263,6 +291,20 @@ async function provisionLogin({ user, request_id, input }) {
   const created = await transaction(async (client) => {
     if (await repo.userExistsByEmail({ client, email: emailAddr }))
       throw new ConflictError("An account with this email already exists");
+
+    // One login per staff profile — a second account for the same person
+    // splits role grants across accounts (position grants land on one,
+    // manual grants on the other) and neither works fully.
+    if (input.staff_profile_id) {
+      const linked = await repo.activeUserForProfile({
+        client,
+        profile_id: input.staff_profile_id,
+      });
+      if (linked)
+        throw new ConflictError(
+          `This staff profile already has a login account (${linked.email})`,
+        );
+    }
 
     const newUser = await repo.createUser({
       client,

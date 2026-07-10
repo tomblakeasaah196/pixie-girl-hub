@@ -17,6 +17,13 @@ function useBrand() {
 // ════════════════════════════════════════════════════════════
 // Types
 // ════════════════════════════════════════════════════════════
+export interface IamUserRole {
+  role_id: string;
+  role_name: string;
+  /** Brand key the grant applies to, or "*" for all businesses. */
+  business: string;
+}
+
 export interface IamUser {
   user_id: string;
   email: string;
@@ -27,6 +34,8 @@ export interface IamUser {
   totp_enabled: boolean;
   last_login_at: string | null;
   failed_login_count: number;
+  /** All role grants for this user (the list has one row per user, never per grant). */
+  roles: IamUserRole[];
   role_name: string | null;
   businesses: string[];
   profile_id: string | null;

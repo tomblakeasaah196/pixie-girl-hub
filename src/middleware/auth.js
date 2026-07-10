@@ -77,6 +77,10 @@ async function authMiddleware(req, _res, next) {
     email: user.email,
     display_name: user.display_name,
     role_ids: user.role_ids || [],
+    // Per-grant brand scope [{role_id, business}] — '*' = all brands. The
+    // RBAC middleware uses this to stop a role granted for one business
+    // from applying in another.
+    role_grants: user.role_grants || null,
     is_ceo: user.is_ceo === true,
     available_businesses: user.available_businesses || [],
     // The brand-context middleware documents a fallback to the user's home

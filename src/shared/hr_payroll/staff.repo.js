@@ -14,7 +14,13 @@ async function findById(userId) {
     `SELECT u.user_id, u.email, u.display_name, u.password_hash, u.pin_hash,
             u.status, u.is_ceo, u.default_business_key, u.failed_login_count,
             COALESCE(u.email_verified, false) AS email_verified,
-            COALESCE((SELECT array_agg(role_id) FROM shared.user_roles ur WHERE ur.user_id = u.user_id), '{}') AS role_ids,
+            COALESCE((SELECT array_agg(ur.role_id) FROM shared.user_roles ur
+                       WHERE ur.user_id = u.user_id
+                         AND (ur.expires_at IS NULL OR ur.expires_at > now())), '{}') AS role_ids,
+            COALESCE((SELECT json_agg(json_build_object('role_id', ur.role_id, 'business', ur.business))
+                        FROM shared.user_roles ur
+                       WHERE ur.user_id = u.user_id
+                         AND (ur.expires_at IS NULL OR ur.expires_at > now())), '[]'::json) AS role_grants,
             COALESCE((SELECT array_agg(business_key) FROM shared.user_business_access uba WHERE uba.user_id = u.user_id), '{}') AS available_businesses
        FROM shared.users u
       WHERE u.user_id = $1

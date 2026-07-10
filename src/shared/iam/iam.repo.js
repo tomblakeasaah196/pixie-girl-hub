@@ -179,6 +179,9 @@ async function listUsers({
   );
 
   const offset = (page - 1) * limit;
+  // Roles come from a LATERAL aggregate, not a JOIN: joining user_roles fans
+  // out one row per grant, so a user with N roles appeared N times in the
+  // Users & Access list (and pagination drifted from the un-joined count).
   const dataQ = query(
     `SELECT u.user_id, u.email,
             COALESCE(u.display_name, c.display_name) AS display_name,
@@ -188,13 +191,22 @@ async function listUsers({
             u.failed_login_count, u.is_ceo,
             u.permitted_businesses, u.default_business_key,
             sp.profile_id,
-            r.role_name,
-            r.role_id
+            ro.roles,
+            ro.roles->0->>'role_name' AS role_name,
+            ro.roles->0->>'role_id'   AS role_id
        FROM shared.users u
        LEFT JOIN shared.staff_profiles sp ON sp.profile_id = u.staff_profile_id
        LEFT JOIN shared.contacts c ON c.contact_id = sp.contact_id
-       LEFT JOIN shared.user_roles ur ON ur.user_id = u.user_id
-       LEFT JOIN shared.roles r ON r.role_id = ur.role_id
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(json_agg(json_build_object(
+                  'role_id', r.role_id,
+                  'role_name', r.role_name,
+                  'business', ur.business
+                ) ORDER BY r.role_name), '[]'::json) AS roles
+           FROM shared.user_roles ur
+           JOIN shared.roles r ON r.role_id = ur.role_id
+          WHERE ur.user_id = u.user_id
+       ) ro ON true
        ${w}
       ORDER BY u.created_at DESC
       LIMIT $${i} OFFSET $${i + 1}`,
@@ -241,6 +253,17 @@ async function getUserDetail(userId) {
        LEFT JOIN shared.contacts c ON c.contact_id = sp.contact_id
       WHERE u.user_id = $1`,
     [userId],
+  );
+  return rows[0] || null;
+}
+
+/** The non-disabled login already linked to a staff profile, if any. */
+async function findLoginForProfile(client, profileId) {
+  const { rows } = await client.query(
+    `SELECT user_id, email FROM shared.users
+      WHERE staff_profile_id = $1 AND status <> 'disabled'
+      LIMIT 1`,
+    [profileId],
   );
   return rows[0] || null;
 }
@@ -886,6 +909,7 @@ module.exports = {
   // Users
   listUsers,
   getUserDetail,
+  findLoginForProfile,
   provisionStaffLogin,
   provisionExternalUser,
   deactivateUser,

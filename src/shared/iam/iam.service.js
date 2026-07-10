@@ -181,6 +181,15 @@ async function provisionStaffLogin(ctx, profileId, input) {
   const password_hash = await argon2.hash(tempPassword, hashOptions);
 
   const user = await transaction(async (client) => {
+    // One login per staff profile: a second account for the same person
+    // splits role grants across logins (org-position grants resolve to only
+    // one of them) — the "granted a role but sees nothing" failure mode.
+    const existing = await repo.findLoginForProfile(client, profileId);
+    if (existing) {
+      throw new ConflictError(
+        `This staff profile already has a login account (${existing.email})`,
+      );
+    }
     const created = await repo.provisionStaffLogin(client, profileId, {
       email: input.email,
       password_hash,

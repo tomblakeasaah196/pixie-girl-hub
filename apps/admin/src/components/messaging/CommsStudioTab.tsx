@@ -16,7 +16,6 @@ import {
 } from "lucide-react";
 import { Button, Card, Pill } from "@/components/ui/primitives";
 import { ErrorState, Select, Toggle } from "@/components/ui/controls";
-import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useActiveBusiness } from "@/stores/business";
 import {
   commsStudioApi,
@@ -61,20 +60,16 @@ const EVENT_ICON: Record<string, LucideIcon> = {
 };
 
 /**
- * Communications Studio — CEO-editable control plane for every automated
- * outbound message the Hub sends. Each card is one automation: name,
- * channel, on/off, and a click into the edit drawer where the block
- * editor + live preview live.
+ * Automations tab (Communications Studio) — CEO-editable control plane for
+ * every automated outbound message the Hub sends. Each card is one
+ * automation: name, channel, on/off, and a click into the edit drawer where
+ * the block editor + live preview live.
  *
  * By default every automation is on email — the cost-safe posture.
  * The CEO opts into WhatsApp per automation from the channel selector,
  * respecting the block_whatsapp guardrail on marketing broadcasts.
  */
-export function CommsStudioPage() {
-  useBreadcrumbs([
-    { label: "Settings", href: "/settings" },
-    { label: "Communications Studio" },
-  ]);
+export function CommsStudioTab() {
   const biz = useActiveBusiness();
   const queryClient = useQueryClient();
   const q = useQuery({
@@ -110,21 +105,19 @@ export function CommsStudioPage() {
   }
 
   return (
-    <div className="max-w-[1280px] mx-auto pb-16">
-      <div className="mb-8">
-        <h2 className="font-display text-[26px] font-medium tracking-tight">
-          Communications Studio
-        </h2>
-        <p className="text-text-muted text-[13px] mt-2 max-w-[720px]">
+    <div className="space-y-5">
+      <header>
+        <h3 className="font-display text-[17px]">Automations</h3>
+        <p className="text-[12.5px] text-text-muted mt-0.5 max-w-[640px]">
           Every automated message the Hub sends to customers, in one place.
           Set the channel, edit the copy, preview the branded email — nothing
           hard-coded. Defaults are email; WhatsApp is opt-in per automation.
         </p>
-        <div className="mt-3 flex items-center gap-2 text-[12px] text-text-faint">
+        <div className="mt-2 flex items-center gap-2 text-[11.5px] text-text-faint">
           <ShieldOff className="w-3.5 h-3.5" />
           Broadcast automations (Marketing) hard-block WhatsApp by policy.
         </div>
-      </div>
+      </header>
 
       {q.isLoading ? (
         <div className="grid gap-4">
@@ -138,14 +131,14 @@ export function CommsStudioPage() {
           ))}
         </div>
       ) : (
-        <div className="space-y-10">
+        <div className="space-y-8">
           {CATEGORY_ORDER.map((cat) => {
             const rows = grouped.get(cat) ?? [];
             if (!rows.length) return null;
             return (
               <section key={cat}>
                 <div className="mb-3">
-                  <h3 className="font-display text-[16px] font-medium">
+                  <h3 className="font-display text-[15px] font-medium uppercase tracking-widest text-text-faint">
                     {CATEGORY_LABEL[cat]}
                   </h3>
                   <p className="text-[12px] text-text-faint mt-0.5">
@@ -180,6 +173,7 @@ export function CommsStudioPage() {
         <CommsStudioDrawer
           eventKey={editing}
           onClose={() => setEditing(null)}
+          elevated
         />
       )}
     </div>

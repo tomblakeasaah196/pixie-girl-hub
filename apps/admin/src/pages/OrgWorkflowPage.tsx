@@ -876,6 +876,7 @@ const MODULE_LABELS: Record<string, string> = {
   business_setup: "Biz Setup",
   calendar: "Calendar",
   catalogue: "Catalogue",
+  comms_studio: "Comms Studio",
   contacts: "Contacts",
   crm: "CRM",
   customer_onboarding: "Cust. Onb.",

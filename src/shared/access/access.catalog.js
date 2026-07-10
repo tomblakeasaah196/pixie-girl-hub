@@ -38,6 +38,7 @@ const MODULES = [
   "business_setup",
   "calendar",
   "catalogue",
+  "comms_studio",
   "contacts",
   "crm",
   "customer_onboarding",

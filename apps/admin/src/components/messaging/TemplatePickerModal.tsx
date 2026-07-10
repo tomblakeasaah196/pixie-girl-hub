@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import {
   Search,
   Loader2,
@@ -284,14 +283,10 @@ export function TemplatePickerModal({
                 <div>
                   No approved templates yet. Create one and get it approved by
                   Meta under{" "}
-                  <Link
-                    to="/settings/whatsapp-templates"
-                    onClick={close}
-                    className="underline underline-offset-2 inline-flex items-center gap-1"
-                  >
-                    <Settings2 className="w-3 h-3" /> WhatsApp Templates
-                  </Link>
-                  .
+                  <span className="inline-flex items-center gap-1 text-text-primary">
+                    <Settings2 className="w-3 h-3" /> Messaging settings → WhatsApp Templates
+                  </span>
+                  {" "}(the gear icon above the inbox).
                 </div>
               </div>
             </div>

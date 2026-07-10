@@ -13,7 +13,7 @@ import { useAuthStore } from "@/stores/auth";
 import { cn } from "@/lib/cn";
 import type { Channel, ExternalPlatform } from "@/lib/smartcomm-types";
 import { PlatformPill } from "./PlatformPill";
-import { WhatsAppConfigModal } from "./WhatsAppConfigModal";
+import { MessagingSettingsModal } from "./MessagingSettingsModal";
 
 interface Props {
   activeChannelId?: string | null;
@@ -76,9 +76,16 @@ export function ChannelList({
   const params = paramsForTab(tab);
   const { data, isLoading } = useChannels({ ...params, q: q || undefined });
 
-  // RBAC — the gear icon is invisible to users without messaging_accounts.
-  // edit (or CEO / super-admin, which resolve to "*" in the auth store).
-  const canConfigureIntegrations = can("messaging_accounts", "edit");
+  // RBAC — the gear icon opens Messaging settings (connections + channel
+  // policy + automations + quick replies + WhatsApp templates), so it's
+  // visible to anyone who can view at least one of those sections (or CEO /
+  // super-admin, which resolve to "*" in the auth store). Each section
+  // inside the modal is independently gated on its own permission.
+  const canConfigureIntegrations =
+    can("messaging_accounts", "edit") ||
+    can("outbound_policy", "view") ||
+    can("comms_studio", "view") ||
+    can("smartcomm", "view");
 
   const channels = (data ?? []).filter((c) =>
     tab === "unread" ? (c.unread_count ?? 0) > 0 : true,
@@ -105,8 +112,8 @@ export function ChannelList({
             <button
               onClick={() => setConfigOpen(true)}
               className="text-text-muted hover:text-accent-glow transition-colors"
-              title="Messaging integrations (WhatsApp, Instagram, …)"
-              aria-label="Messaging integrations"
+              title="Messaging settings (connections, channel policy, automations, quick replies, templates)"
+              aria-label="Messaging settings"
             >
               <Settings2 className="w-4 h-4" />
             </button>
@@ -131,7 +138,7 @@ export function ChannelList({
           form and autofills the saved login email into the search box —
           ignoring autocomplete="off". No password field in the DOM, no bait. */}
       {canConfigureIntegrations && configOpen && (
-        <WhatsAppConfigModal open onClose={() => setConfigOpen(false)} />
+        <MessagingSettingsModal open onClose={() => setConfigOpen(false)} />
       )}
 
       {/* Search */}

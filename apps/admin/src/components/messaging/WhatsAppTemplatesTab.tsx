@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  MessageSquare,
   Plus,
   Loader2,
   Trash2,
@@ -12,7 +11,6 @@ import {
   Coins,
   Pencil,
 } from "lucide-react";
-import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useActiveBusiness } from "@/stores/business";
 import { Card } from "@/components/ui/primitives";
 import { Modal } from "@/components/ui/Modal";
@@ -37,14 +35,13 @@ import {
 } from "@/components/messaging/TemplateEditor";
 
 /**
- * WhatsApp Templates admin — `/settings/whatsapp-templates`.
+ * WhatsApp Templates tab — Messaging settings → WhatsApp Templates.
  *
- * Sits beside Messaging Accounts (the WhatsApp/IG/FB/email key vault).
  * Meta blocks free-form replies after the 24-hour window; the only way
- * through is a pre-approved template. This page is where the CEO
- * authors them, submits them to Meta for review, watches their status,
- * and — critically — sees what each send will COST, since Marketing,
- * Utility and Authentication are billed at different rates.
+ * through is a pre-approved template. This tab is where the CEO authors
+ * them, submits them to Meta for review, watches their status, and —
+ * critically — sees what each send will COST, since Marketing, Utility
+ * and Authentication are billed at different rates.
  */
 
 const TONE_CLASS: Record<string, string> = {
@@ -55,11 +52,7 @@ const TONE_CLASS: Record<string, string> = {
   muted: "text-text-muted border-border/60 bg-panel-2",
 };
 
-export function WhatsAppTemplatesPage() {
-  useBreadcrumbs([
-    { label: "Settings", href: "/settings" },
-    { label: "WhatsApp Templates" },
-  ]);
+export function WhatsAppTemplatesTab() {
   const business = useActiveBusiness();
   const qc = useQueryClient();
   const [editing, setEditing] = useState<{
@@ -82,14 +75,14 @@ export function WhatsAppTemplatesPage() {
       qc.invalidateQueries({ queryKey: ["whatsapp-templates", business.key] });
       toast.success(`Synced ${res.synced} template(s) from Meta.`);
     },
-    onError: (e) => toastReport("Settings → WhatsApp Templates", "Sync from Meta", e),
+    onError: (e) => toastReport("Messaging → WhatsApp Templates", "Sync from Meta", e),
   });
 
   const remove = useMutation({
     mutationFn: (id: string) => whatsappTemplatesApi.remove(id),
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: ["whatsapp-templates", business.key] }),
-    onError: (e) => toastReport("Settings → WhatsApp Templates", "Delete template", e),
+    onError: (e) => toastReport("Messaging → WhatsApp Templates", "Delete template", e),
   });
 
   const submit = useMutation({
@@ -98,26 +91,21 @@ export function WhatsAppTemplatesPage() {
       qc.invalidateQueries({ queryKey: ["whatsapp-templates", business.key] });
       toast.success("Submitted to Meta for review.");
     },
-    onError: (e) => toastReport("Settings → WhatsApp Templates", "Submit template", e),
+    onError: (e) => toastReport("Messaging → WhatsApp Templates", "Submit template", e),
   });
 
   return (
-    <div className="max-w-[1100px]">
-      <header className="flex items-start gap-3 mb-5">
-        <span className="grid place-items-center w-11 h-11 rounded-xl bg-accent/10 text-accent-glow border border-accent/20">
-          <MessageSquare className="w-5 h-5" />
-        </span>
-        <div className="flex-1">
-          <h2 className="font-display text-[22px] font-medium">
-            WhatsApp Templates
-          </h2>
-          <p className="text-text-muted text-[13px]">
+    <div className="space-y-5">
+      <header className="flex items-start gap-3">
+        <div className="flex-1 min-w-0">
+          <h3 className="font-display text-[17px]">WhatsApp Templates</h3>
+          <p className="text-[12.5px] text-text-muted mt-0.5">
             Approved templates are the only way to reach a customer once the
             24-hour window closes. Author them here, submit to Meta, track
             approval — and see what each send costs.
           </p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           <button
             onClick={() => sync.mutate()}
             disabled={sync.isPending}
@@ -142,7 +130,7 @@ export function WhatsAppTemplatesPage() {
 
       <RatesCard rates={rates} businessKey={business.key} />
 
-      <div className="flex items-center justify-between mt-6 mb-2">
+      <div className="flex items-center justify-between">
         <h3 className="font-display text-[16px]">Templates</h3>
         <span className="text-text-faint text-[11.5px]">
           {templates.length} total
@@ -362,7 +350,7 @@ function RatesCard({
       qc.invalidateQueries({ queryKey: ["whatsapp-templates", businessKey] });
       toast.success("Rate updated.");
     },
-    onError: (e) => toastReport("Settings → WhatsApp Templates", "Update rate", e),
+    onError: (e) => toastReport("Messaging → WhatsApp Templates", "Update rate", e),
   });
 
   return (
@@ -476,7 +464,7 @@ function TemplateEditorModal({
       });
     },
     onSuccess: onSaved,
-    onError: (e) => toastReport("Settings → WhatsApp Templates", "Save template", e),
+    onError: (e) => toastReport("Messaging → WhatsApp Templates", "Save template", e),
   });
 
   const canSave = !!form.name.trim() && !!form.body.trim();

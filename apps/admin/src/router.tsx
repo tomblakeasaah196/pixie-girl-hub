@@ -137,16 +137,6 @@ const SmartCommPage = lazyWithRetry(() =>
     default: m.SmartCommPage,
   })),
 );
-const MessagingAccountsPage = lazyWithRetry(() =>
-  import("@/pages/settings/MessagingAccountsPage").then((m) => ({
-    default: m.MessagingAccountsPage,
-  })),
-);
-const WhatsAppTemplatesPage = lazyWithRetry(() =>
-  import("@/pages/settings/WhatsAppTemplatesPage").then((m) => ({
-    default: m.WhatsAppTemplatesPage,
-  })),
-);
 const CustomerOnboardingPublic = lazyWithRetry(() =>
   import("@/pages/onboarding/CustomerOnboardingPublic").then((m) => ({
     default: m.CustomerOnboardingPublic,
@@ -228,21 +218,6 @@ const StorefrontStudioPage = lazyWithRetry(() =>
 const ModelsAndVendorsPage = lazyWithRetry(() =>
   import("@/pages/ai-control/ModelsAndVendorsPage").then((m) => ({
     default: m.ModelsAndVendorsPage,
-  })),
-);
-const ChannelPolicyPage = lazyWithRetry(() =>
-  import("@/pages/settings/ChannelPolicyPage").then((m) => ({
-    default: m.ChannelPolicyPage,
-  })),
-);
-const CommsStudioPage = lazyWithRetry(() =>
-  import("@/pages/comms-studio/CommsStudioPage").then((m) => ({
-    default: m.CommsStudioPage,
-  })),
-);
-const QuickRepliesPage = lazyWithRetry(() =>
-  import("@/pages/settings/QuickRepliesPage").then((m) => ({
-    default: m.QuickRepliesPage,
   })),
 );
 const WorkspacePage = lazyWithRetry(() =>
@@ -855,48 +830,6 @@ export const router = createBrowserRouter(
               element: (
                 <Suspense fallback={<RouteFallback />}>
                   <FeatureFlagsPage />
-                </Suspense>
-              ),
-            },
-
-            // Channel Policy + Quick Replies (PR 3 — Settings).
-            {
-              path: "settings/channel-policy",
-              element: (
-                <Suspense fallback={<RouteFallback />}>
-                  <ChannelPolicyPage />
-                </Suspense>
-              ),
-            },
-            {
-              path: "settings/comms-studio",
-              element: (
-                <Suspense fallback={null}>
-                  <CommsStudioPage />
-                </Suspense>
-              ),
-            },
-            {
-              path: "settings/quick-replies",
-              element: (
-                <Suspense fallback={<RouteFallback />}>
-                  <QuickRepliesPage />
-                </Suspense>
-              ),
-            },
-            {
-              path: "settings/whatsapp-templates",
-              element: (
-                <Suspense fallback={<RouteFallback />}>
-                  <WhatsAppTemplatesPage />
-                </Suspense>
-              ),
-            },
-            {
-              path: "settings/messaging-accounts",
-              element: (
-                <Suspense fallback={<RouteFallback />}>
-                  <MessagingAccountsPage />
                 </Suspense>
               ),
             },

@@ -21,6 +21,10 @@ import {
   History,
   Info,
   Save,
+  Wallet,
+  MessagesSquare,
+  MessageCircle,
+  LayoutTemplate,
 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { useActiveBusiness } from "@/stores/business";
@@ -35,27 +39,39 @@ import {
   type SecretReveal,
 } from "@/lib/messaging-accounts-api";
 import { formatDateTime } from "@/lib/format";
+import { ChannelPolicyTab } from "./ChannelPolicyTab";
+import { CommsStudioTab } from "./CommsStudioTab";
+import { QuickRepliesTab } from "./QuickRepliesTab";
+import { WhatsAppTemplatesTab } from "./WhatsAppTemplatesTab";
 
 /**
- * Full-fat integration config for the messaging portal. Opens from
- * the gear icon in the ChannelList header. RBAC-gated at the caller.
+ * Messaging settings — every configuration concern the Messaging module
+ * owns, in one place. Opens from the gear icon in the ChannelList header.
+ * RBAC-gated per section at the caller AND per rail item below, since a
+ * role can hold some of these permissions without holding all of them
+ * (e.g. Channel Policy without messaging_accounts edit access).
  *
  * Layout:
- *  · left rail — platforms (WhatsApp first, then Instagram, Facebook,
- *    Email). Clicking a rail row swaps the pane on the right.
- *  · right pane — the account for the ACTIVE brand + platform:
- *    display name, provider IDs, secret vault (masked "EAAB••••"
- *    pills with a "Reveal / Edit" button that prompts for the
- *    caller's login password), Test button, Delete button, notes,
- *    and — at the bottom of the pane — the getting-started guide.
- *
- * The plaintext secret NEVER lives in the DOM after the reveal drawer
- * closes. Editing while revealed is fine — the caller has already
- * proved they know the login password.
+ *  · left rail, two groups —
+ *    CONNECTIONS: WhatsApp, Instagram, Facebook, Email account wiring
+ *      (the original "WhatsApp integrations" modal).
+ *    CONFIGURATION: Channel Policy, Automations (Comms Studio), Quick
+ *      Replies, WhatsApp Templates — folded in from Settings so each
+ *      module carries its own settings instead of Settings carrying
+ *      everything.
+ *  · right pane — whichever section is active.
  */
 
-const PLATFORM_ICON: Record<
-  MessagingPlatform,
+type ConnectionTab = MessagingPlatform;
+type ConfigTab =
+  | "channel-policy"
+  | "automations"
+  | "quick-replies"
+  | "whatsapp-templates";
+type ActiveTab = ConnectionTab | ConfigTab;
+
+const CONNECTION_ICON: Record<
+  ConnectionTab,
   React.FC<{ className?: string }>
 > = {
   whatsapp: MessageSquare,
@@ -64,44 +80,92 @@ const PLATFORM_ICON: Record<
   email: Mail,
 };
 
-const PLATFORMS: MessagingPlatform[] = [
-  "whatsapp",
-  "instagram",
-  "facebook",
-  "email",
+const CONNECTIONS: ConnectionTab[] = ["whatsapp", "instagram", "facebook", "email"];
+
+const CONFIG_ITEMS: {
+  key: ConfigTab;
+  label: string;
+  icon: React.FC<{ className?: string }>;
+  /** access.catalog.js module key this section's backend routes enforce. */
+  permissionModule: string;
+}[] = [
+  {
+    key: "channel-policy",
+    label: "Channel Policy",
+    icon: Wallet,
+    permissionModule: "outbound_policy",
+  },
+  {
+    key: "automations",
+    label: "Automations",
+    icon: MessagesSquare,
+    permissionModule: "comms_studio",
+  },
+  {
+    key: "quick-replies",
+    label: "Quick Replies",
+    icon: MessageCircle,
+    permissionModule: "smartcomm",
+  },
+  {
+    key: "whatsapp-templates",
+    label: "WhatsApp Templates",
+    icon: LayoutTemplate,
+    permissionModule: "messaging_accounts",
+  },
 ];
 
 interface Props {
   open: boolean;
   onClose: () => void;
-  /** Which platform tab should open first — defaults to whatsapp. */
-  initialPlatform?: MessagingPlatform;
+  /** Which tab should open first — defaults to whatsapp. */
+  initialTab?: ActiveTab;
 }
 
-export function WhatsAppConfigModal({
+export function MessagingSettingsModal({
   open,
   onClose,
-  initialPlatform = "whatsapp",
+  initialTab,
 }: Props) {
   const business = useActiveBusiness();
+  const can = useAuthStore((s) => s.can);
   const qc = useQueryClient();
-  const [platform, setPlatform] = useState<MessagingPlatform>(initialPlatform);
+
+  const canConnections = can("messaging_accounts", "edit");
+  const visibleConfigItems = useMemo(
+    () => CONFIG_ITEMS.filter((c) => can(c.permissionModule, "view")),
+    [can],
+  );
+
+  // Default to Connections if the caller can see it (the historical
+  // behaviour), otherwise the first visible Configuration item — never a
+  // tab the rail doesn't actually show.
+  const defaultTab: ActiveTab = canConnections
+    ? "whatsapp"
+    : (visibleConfigItems[0]?.key ?? "whatsapp");
+
+  const [tab, setTab] = useState<ActiveTab>(initialTab ?? defaultTab);
 
   useEffect(() => {
-    if (open) setPlatform(initialPlatform);
-  }, [open, initialPlatform]);
+    if (open) setTab(initialTab ?? defaultTab);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const isConnectionTab = (t: ActiveTab): t is ConnectionTab =>
+    (CONNECTIONS as string[]).includes(t);
 
   const accountsQ = useQuery({
     queryKey: ["messaging-accounts", business.key],
     queryFn: () => messagingAccountsApi.list(),
-    enabled: open,
+    enabled: open && canConnections,
   });
 
   const currentAccount = useMemo(() => {
+    if (!isConnectionTab(tab)) return undefined;
     return (accountsQ.data ?? []).find(
-      (a) => a.business === business.key && a.platform === platform,
+      (a) => a.business === business.key && a.platform === tab,
     );
-  }, [accountsQ.data, business.key, platform]);
+  }, [accountsQ.data, business.key, tab]);
 
   const invalidate = () =>
     qc.invalidateQueries({ queryKey: ["messaging-accounts", business.key] });
@@ -114,7 +178,7 @@ export function WhatsAppConfigModal({
       title={
         <span className="inline-flex items-center gap-2">
           <Plug className="w-[18px] h-[18px] text-accent-glow" />
-          Messaging integrations
+          Messaging settings
           <span className="text-text-faint text-[13px] ml-2">
             · {business.name}
           </span>
@@ -124,74 +188,128 @@ export function WhatsAppConfigModal({
       <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-5">
         {/* Rail */}
         <aside className="md:border-r hairline md:pr-4">
-          <ul className="space-y-1">
-            {PLATFORMS.map((p) => {
-              const Icon = PLATFORM_ICON[p];
-              const meta = PLATFORM_META[p];
-              const acc = (accountsQ.data ?? []).find(
-                (a) => a.business === business.key && a.platform === p,
-              );
-              const active = p === platform;
-              return (
-                <li key={p}>
-                  <button
-                    onClick={() => setPlatform(p)}
-                    className={
-                      "w-full flex items-center gap-2.5 rounded-xl px-3 py-2 text-left transition-colors " +
-                      (active
-                        ? "bg-accent/15 text-text-primary border hairline"
-                        : "text-text-muted hover:bg-panel-2")
-                    }
-                  >
-                    <span className="grid place-items-center w-8 h-8 rounded-lg bg-panel-2 border hairline text-accent-glow">
-                      <Icon className="w-4 h-4" />
-                    </span>
-                    <span className="flex-1 min-w-0">
-                      <span className="block text-[13px] font-medium truncate">
-                        {meta.label}
-                      </span>
-                      <span className="block text-[11px] text-text-faint truncate">
-                        {acc
-                          ? acc.is_active
-                            ? "Connected"
-                            : "Disabled"
-                          : "Not connected"}
-                      </span>
-                    </span>
-                    {acc?.has_access_token && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
-                    )}
-                    <ChevronRight className="w-3.5 h-3.5 text-text-faint" />
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-
-          <div className="mt-6 rounded-xl border border-accent/20 bg-accent/5 p-3">
-            <div className="flex items-start gap-2 text-[11.5px] text-text-muted">
-              <ShieldCheck className="w-3.5 h-3.5 mt-[2px] text-accent-glow shrink-0" />
-              <p>
-                Every secret is AES-256-GCM encrypted at rest. Only the
-                first 4 characters are ever shown here. To view or rotate a
-                secret, re-enter your login password.
-              </p>
+          {canConnections && (
+            <div className="mb-5">
+              <div className="text-[10px] uppercase tracking-widest text-text-faint mb-1.5 px-1">
+                Connections
+              </div>
+              <ul className="space-y-1">
+                {CONNECTIONS.map((p) => {
+                  const Icon = CONNECTION_ICON[p];
+                  const meta = PLATFORM_META[p];
+                  const acc = (accountsQ.data ?? []).find(
+                    (a) => a.business === business.key && a.platform === p,
+                  );
+                  const active = p === tab;
+                  return (
+                    <li key={p}>
+                      <button
+                        onClick={() => setTab(p)}
+                        className={
+                          "w-full flex items-center gap-2.5 rounded-xl px-3 py-2 text-left transition-colors " +
+                          (active
+                            ? "bg-accent/15 text-text-primary border hairline"
+                            : "text-text-muted hover:bg-panel-2")
+                        }
+                      >
+                        <span className="grid place-items-center w-8 h-8 rounded-lg bg-panel-2 border hairline text-accent-glow">
+                          <Icon className="w-4 h-4" />
+                        </span>
+                        <span className="flex-1 min-w-0">
+                          <span className="block text-[13px] font-medium truncate">
+                            {meta.label}
+                          </span>
+                          <span className="block text-[11px] text-text-faint truncate">
+                            {acc
+                              ? acc.is_active
+                                ? "Connected"
+                                : "Disabled"
+                              : "Not connected"}
+                          </span>
+                        </span>
+                        {acc?.has_access_token && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                        )}
+                        <ChevronRight className="w-3.5 h-3.5 text-text-faint" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
-          </div>
+          )}
+
+          {visibleConfigItems.length > 0 && (
+            <div>
+              <div className="text-[10px] uppercase tracking-widest text-text-faint mb-1.5 px-1">
+                Configuration
+              </div>
+              <ul className="space-y-1">
+                {visibleConfigItems.map((c) => {
+                  const Icon = c.icon;
+                  const active = c.key === tab;
+                  return (
+                    <li key={c.key}>
+                      <button
+                        onClick={() => setTab(c.key)}
+                        className={
+                          "w-full flex items-center gap-2.5 rounded-xl px-3 py-2 text-left transition-colors " +
+                          (active
+                            ? "bg-accent/15 text-text-primary border hairline"
+                            : "text-text-muted hover:bg-panel-2")
+                        }
+                      >
+                        <span className="grid place-items-center w-8 h-8 rounded-lg bg-panel-2 border hairline text-accent-glow">
+                          <Icon className="w-4 h-4" />
+                        </span>
+                        <span className="flex-1 min-w-0 text-[13px] font-medium truncate">
+                          {c.label}
+                        </span>
+                        <ChevronRight className="w-3.5 h-3.5 text-text-faint" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+
+          {canConnections && isConnectionTab(tab) && (
+            <div className="mt-6 rounded-xl border border-accent/20 bg-accent/5 p-3">
+              <div className="flex items-start gap-2 text-[11.5px] text-text-muted">
+                <ShieldCheck className="w-3.5 h-3.5 mt-[2px] text-accent-glow shrink-0" />
+                <p>
+                  Every secret is AES-256-GCM encrypted at rest. Only the
+                  first 4 characters are ever shown here. To view or rotate a
+                  secret, re-enter your login password.
+                </p>
+              </div>
+            </div>
+          )}
         </aside>
 
         {/* Pane */}
         <section className="min-w-0">
-          {accountsQ.isLoading ? (
-            <div className="grid place-items-center py-16">
-              <Loader2 className="w-5 h-5 animate-spin text-text-faint" />
-            </div>
+          {isConnectionTab(tab) ? (
+            accountsQ.isLoading ? (
+              <div className="grid place-items-center py-16">
+                <Loader2 className="w-5 h-5 animate-spin text-text-faint" />
+              </div>
+            ) : (
+              <PlatformEditor
+                platform={tab}
+                account={currentAccount}
+                onSaved={invalidate}
+              />
+            )
+          ) : tab === "channel-policy" ? (
+            <ChannelPolicyTab />
+          ) : tab === "automations" ? (
+            <CommsStudioTab />
+          ) : tab === "quick-replies" ? (
+            <QuickRepliesTab />
           ) : (
-            <PlatformEditor
-              platform={platform}
-              account={currentAccount}
-              onSaved={invalidate}
-            />
+            <WhatsAppTemplatesTab />
           )}
         </section>
       </div>

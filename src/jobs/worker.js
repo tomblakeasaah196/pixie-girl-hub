@@ -50,6 +50,7 @@ const queueNames = [
   "ai-embed",
   "report-generate",
   "cart-ttl",
+  "kaizen-backup",
 ];
 
 const queues = new Map();
@@ -88,6 +89,7 @@ async function startWorkers() {
     "ai-embed": require("./processors/ai-embed-processor"),
     "report-generate": require("./processors/report-processor"),
     "cart-ttl": require("./processors/cart-ttl-processor").processCartTtl,
+    "kaizen-backup": require("./processors/kaizen-backup-processor"),
   };
 
   for (const [name, processor] of Object.entries(handlers)) {
@@ -216,6 +218,28 @@ async function startWorkers() {
     "* * * * *",
     require("./schedulers/kaizen-health-tick").run,
   );
+  scheduleCron(
+    "kaizen-logical-backup",
+    "30 2 * * *",
+    require("./schedulers/kaizen-logical-backup").run,
+  );
+  scheduleCron(
+    "kaizen-fullvolume-backup",
+    "0 3 * * *",
+    require("./schedulers/kaizen-fullvolume-backup").run,
+  );
+  scheduleCron(
+    "kaizen-restore-drill",
+    "0 4 * * 0",
+    require("./schedulers/kaizen-restore-drill").run,
+  );
+  scheduleCron(
+    "kaizen-maintenance-tick",
+    "0 * * * *",
+    require("./schedulers/kaizen-maintenance-tick").run,
+  );
+  // Kaizen alert subscribers (this process emits backup/drill events).
+  require("../modules/kaizen/alerts/alerts.subscribers").init();
   scheduleCron(
     "daily-ai-briefing",
     config.CRON_DAILY_AI_BRIEFING,

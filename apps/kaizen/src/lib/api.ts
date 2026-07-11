@@ -262,3 +262,105 @@ export async function perfSummary(hours = 24) {
   );
   return r.data;
 }
+
+// ── Backups (Phase 3) ────────────────────────────────────
+export async function backupStatus() {
+  const r = await api<{ data: import("@/lib/types").BackupStatus }>("/backups/status");
+  return r.data;
+}
+
+export async function listBackupRuns(params: { kind?: string; status?: string; page?: number; page_size?: number } = {}) {
+  const p = new URLSearchParams();
+  if (params.kind) p.set("kind", params.kind);
+  if (params.status) p.set("status", params.status);
+  p.set("page", String(params.page ?? 1));
+  p.set("page_size", String(params.page_size ?? 30));
+  return api<{ data: import("@/lib/types").BackupRun[]; pagination: import("@/lib/types").Pagination }>(
+    `/backups/runs?${p.toString()}`,
+  );
+}
+
+export async function triggerBackup(kind: "logical_bundle" | "full_volume") {
+  const r = await api<{ data: { enqueued: boolean; job_id: string; kind: string } }>("/backups/run", {
+    method: "POST",
+    body: JSON.stringify({ kind }),
+  });
+  return r.data;
+}
+
+export async function rerunBackup(runId: string) {
+  const r = await api<{ data: { enqueued: boolean; job_id: string; kind: string } }>(
+    `/backups/runs/${runId}/rerun`,
+    { method: "POST", body: JSON.stringify({}) },
+  );
+  return r.data;
+}
+
+export async function listBackupDestinations() {
+  const r = await api<{ data: import("@/lib/types").BackupDestination[] }>("/backups/destinations");
+  return r.data;
+}
+
+
+// ── Restore drills (Phase 4) ─────────────────────────────
+export async function listRestoreDrills(page = 1, page_size = 20) {
+  return api<{ data: import("@/lib/types").RestoreDrill[]; pagination: import("@/lib/types").Pagination }>(
+    `/backups/drills?page=${page}&page_size=${page_size}`,
+  );
+}
+
+export async function runRestoreDrill() {
+  const r = await api<{ data: { enqueued: boolean; job_id: string } }>("/backups/drills/run", {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  return r.data;
+}
+
+// ── Alerts & Settings (Phase 5) ──────────────────────────
+export async function listAlerts(status?: string, page = 1, page_size = 30) {
+  const p = new URLSearchParams();
+  if (status) p.set("status", status);
+  p.set("page", String(page));
+  p.set("page_size", String(page_size));
+  return api<{ data: import("@/lib/types").Alert[]; pagination: import("@/lib/types").Pagination }>(
+    `/alerts?${p.toString()}`,
+  );
+}
+
+export async function acknowledgeAlert(id: string) {
+  const r = await api<{ data: { alert_id: string; status: string } | null }>(`/alerts/${id}/ack`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  return r.data;
+}
+
+export async function listAlertRules() {
+  const r = await api<{ data: import("@/lib/types").AlertRule[] }>("/alerts/rules");
+  return r.data;
+}
+
+export async function updateAlertRule(id: string, patch: { enabled?: boolean; channels?: string[] }) {
+  const r = await api<{ data: import("@/lib/types").AlertRule }>(`/alerts/rules/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+  return r.data;
+}
+
+export async function getSettings() {
+  const r = await api<{ data: import("@/lib/types").KaizenSettings }>("/settings");
+  return r.data;
+}
+
+export async function updateSettings(patch: {
+  retention?: { daily: number; weekly: number; monthly: number };
+  alert_recipients?: string[] | null;
+}) {
+  const r = await api<{ data: import("@/lib/types").KaizenSettings }>("/settings", {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
+  return r.data;
+}

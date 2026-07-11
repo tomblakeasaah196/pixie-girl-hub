@@ -8,7 +8,8 @@
 --
 -- NOTE ON NUMBERING: the guide (§6) proposed 000302–000306 for the later Kaizen
 -- migrations, but 000302–000304 were already taken by unrelated migrations by
--- the time Phase 1 started, so Kaizen Phase 1 begins at 000305. One number =
+-- the time Phase 1 started (and the repo later filled 000305-000318), the
+-- Kaizen errors/health/backups migrations are 000319-000321. One number =
 -- one migration from here on.
 --
 -- See docs/KAIZEN_MAINTENANCE_DASHBOARD_IMPLEMENTATION_GUIDE.md §6.2, §7.3.

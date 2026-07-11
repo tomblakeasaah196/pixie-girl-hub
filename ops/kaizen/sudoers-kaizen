@@ -1,0 +1,9 @@
+# Kaizen — least-privilege sudo rule.
+# Installed at /etc/sudoers.d/kaizen (chmod 440, root-owned).
+# Lets the app user run ONLY the full-backup wrapper as root, no password —
+# nothing else. Validate before/after install with:
+#     visudo -cf /etc/sudoers.d/kaizen
+#
+# Replace 'appuser' with the actual user the Node worker runs as (whoami in the
+# worker's PM2/systemd unit).
+appuser ALL=(root) NOPASSWD: /usr/local/bin/kaizen-fullbackup

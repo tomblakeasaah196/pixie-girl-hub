@@ -159,3 +159,119 @@ export interface PerfSummary {
   max_ms: number | null;
   slow_routes: SlowRoute[];
 }
+
+// ── Backups (Phase 3) ────────────────────────────────────
+export type BackupKind = "logical_db" | "logical_bundle" | "full_volume";
+export type BackupRunStatus = "running" | "success" | "failed" | "canceled";
+
+export interface BackupRun {
+  run_id: string;
+  kind: BackupKind;
+  destination_id: string | null;
+  status: BackupRunStatus;
+  trigger: "scheduled" | "manual" | "rerun";
+  retention_class: "daily" | "weekly" | "monthly";
+  started_at: string;
+  finished_at: string | null;
+  duration_ms: number | null;
+  size_bytes: number | null;
+  artifact_key: string | null;
+  checksum: string | null;
+  error: string | null;
+  created_at: string;
+}
+
+export interface BackupDestination {
+  destination_id: string;
+  name: string;
+  kind: "rclone" | "local";
+  rclone_remote: string | null;
+  path_prefix: string;
+  is_default: boolean;
+  is_active: boolean;
+}
+
+export interface BackupStatus {
+  last_success: {
+    kind: BackupKind;
+    run_id: string;
+    finished_at: string;
+    size_bytes: number | null;
+    duration_ms: number | null;
+    artifact_key: string | null;
+  }[];
+  destination: {
+    name: string;
+    kind: string;
+    rclone_remote: string | null;
+    path_prefix: string;
+  } | null;
+  storage: { total?: number; used?: number; free?: number } | null;
+  retention: { daily: number; weekly: number; monthly: number };
+  restore_drill: {
+    drill_id: string;
+    status: RestoreDrillStatus;
+    started_at: string;
+    finished_at: string | null;
+    duration_ms: number | null;
+  } | null;
+  schedule: { logical: string; full_volume: string; restore_drill?: string };
+}
+
+export type RestoreDrillStatus = "running" | "pass" | "fail";
+
+export interface RestoreAssertion {
+  check: string;
+  expected: string;
+  got: string | number;
+  ok: boolean;
+}
+
+export interface RestoreDrill {
+  drill_id: string;
+  backup_run_id: string | null;
+  started_at: string;
+  finished_at: string | null;
+  duration_ms: number | null;
+  status: RestoreDrillStatus;
+  assertions: RestoreAssertion[];
+  restored_row_counts: Record<string, number>;
+  error: string | null;
+}
+
+// ── Alerts & Settings (Phase 5) ──────────────────────────
+export type AlertSeverity = "info" | "warning" | "error" | "critical";
+export type AlertStatus = "active" | "acknowledged" | "resolved";
+
+export interface Alert {
+  alert_id: string;
+  rule_id: string | null;
+  kind: string;
+  severity: AlertSeverity;
+  title: string;
+  body: string | null;
+  source_ref: string | null;
+  status: AlertStatus;
+  channels_sent: Record<string, unknown>;
+  acknowledged_by: string | null;
+  acknowledged_at: string | null;
+  created_at: string;
+}
+
+export interface AlertRule {
+  rule_id: string;
+  name: string;
+  condition_type: string;
+  threshold: Record<string, unknown>;
+  channels: string[];
+  enabled: boolean;
+  updated_at: string;
+}
+
+export interface KaizenSettings {
+  retention: { daily: number; weekly: number; monthly: number };
+  alert_recipients: string[] | null;
+  default_destination: { name: string; kind: string; rclone_remote: string | null } | null;
+  ingest_key_configured: boolean;
+  ingest_allowed_origins: string | null;
+}

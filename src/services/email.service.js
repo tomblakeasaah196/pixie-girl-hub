@@ -65,6 +65,12 @@ async function brandSmtp(brand) {
         secure: dbConfig.secure,
         user: dbConfig.user,
         pass: dbConfig.pass,
+        // Carry the operator-configured sender identity through — getSender
+        // needs it so the From matches a mailbox this relay is allowed to
+        // send as (strict relays 553-reject a mismatched sender).
+        from_email: dbConfig.from_email,
+        from_name: dbConfig.from_name,
+        reply_to: dbConfig.reply_to,
       };
     }
   } catch (err) {
@@ -133,6 +139,13 @@ async function getTransporter(brand) {
 }
 
 async function getSender(brand) {
+  // Resolve the brand's outbound relay first — it carries the authenticated
+  // SMTP user plus any operator-set From/Reply-To (Messaging Settings →
+  // Connections → Outbound Email). Null when the brand uses the default relay.
+  const bs = await brandSmtp(brand);
+  const smtpUser = bs && bs.user ? bs.user : null;
+
+  let cfg = {};
   if (brand) {
     try {
       const { rows } = await query(
@@ -143,25 +156,41 @@ async function getSender(brand) {
          LIMIT 1`,
         [brand],
       );
-      if (rows.length) {
-        const r = rows[0];
-        return {
-          fromEmail: r.email_from_address || config.SMTP_FROM_EMAIL,
-          fromName: r.display_name || config.SMTP_FROM_NAME || brand,
-          // Reply-To = the monitored mailbox; falls back to the From address
-          // (never to noreply, which can't receive).
-          replyTo: r.support_email || r.email_from_address || null,
-          replyToName: r.support_email_display_name || r.display_name || null,
-        };
-      }
+      if (rows.length) cfg = rows[0];
     } catch (err) {
       logger.error({ err }, "email sender lookup failed");
     }
   }
-  return {
-    fromEmail: config.SMTP_FROM_EMAIL || "noreply@pixiegirlglobal.com",
-    fromName: config.SMTP_FROM_NAME || "Pixie Girl Hub",
-  };
+
+  // The From address MUST be a mailbox the authenticated SMTP user is allowed
+  // to send as, or strict relays reject the whole message with
+  // 553 "Sender address rejected: not owned by user". So prefer, in order:
+  //   1. the From explicitly configured on the outbound connection,
+  //   2. the authenticated SMTP user itself (always accepted by its own relay),
+  //   3. only then the business_config address (often a noreply@ the relay
+  //      does NOT own — the exact cause of the bounced invoices/receipts).
+  const fromEmail =
+    (bs && bs.from_email) ||
+    smtpUser ||
+    cfg.email_from_address ||
+    config.SMTP_FROM_EMAIL ||
+    "noreply@pixiegirlglobal.com";
+  const fromName =
+    (bs && bs.from_name) ||
+    cfg.display_name ||
+    config.SMTP_FROM_NAME ||
+    brand ||
+    "Pixie Girl Hub";
+  // Reply-To = the monitored mailbox; falls back to the From address
+  // (never to noreply, which can't receive).
+  const replyTo =
+    (bs && bs.reply_to) ||
+    cfg.support_email ||
+    cfg.email_from_address ||
+    null;
+  const replyToName = cfg.support_email_display_name || cfg.display_name || null;
+
+  return { fromEmail, fromName, replyTo, replyToName };
 }
 
 /** Conversational reply address: `sales@<domain-of-from-address>` so customer
@@ -185,7 +214,7 @@ async function send({
   const t = await getTransporter(brand);
   const sender = await getSender(brand);
   const fromEmail = from_email || sender.fromEmail;
-  const replyTo = reply_to || replyToFor(fromEmail);
+  const replyTo = reply_to || sender.replyTo || replyToFor(fromEmail);
 
   return t.sendMail({
     to,

@@ -14,7 +14,9 @@ import { ErrorsPage } from "@/pages/ErrorsPage";
 import { ErrorDetailPage } from "@/pages/ErrorDetailPage";
 import { HealthPage } from "@/pages/HealthPage";
 import { PerformancePage } from "@/pages/PerformancePage";
-import { ComingSoonPage } from "@/pages/ComingSoonPage";
+import { BackupsPage } from "@/pages/BackupsPage";
+import { AlertsPage } from "@/pages/AlertsPage";
+import { SettingsPage } from "@/pages/SettingsPage";
 
 function BootGate({ children }: { children: React.ReactNode }) {
   const clear = useAuth((s) => s.clear);
@@ -63,9 +65,9 @@ export default function App() {
               <Route path="/errors/:id" element={<ErrorDetailPage />} />
               <Route path="/health" element={<HealthPage />} />
               <Route path="/performance" element={<PerformancePage />} />
-              <Route path="/backups" element={<ComingSoonPage />} />
-              <Route path="/alerts" element={<ComingSoonPage />} />
-              <Route path="/settings" element={<ComingSoonPage />} />
+              <Route path="/backups" element={<BackupsPage />} />
+              <Route path="/alerts" element={<AlertsPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
             </Route>
           </Route>
 

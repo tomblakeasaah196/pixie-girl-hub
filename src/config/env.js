@@ -426,6 +426,21 @@ const schema = z.object({
   KAIZEN_INGEST_KEY: z.string().optional(),
   KAIZEN_INGEST_ALLOWED_ORIGINS: z.string().optional(), // comma-separated
   KAIZEN_CAPTURE_4XX: zBool(false), // capture 4xx as errors too (noisy — off by default)
+  // Phase 3 — backups (rclone/restic). All optional; the backup jobs no-op
+  // gracefully / fail a run with a clear error if the tools aren't configured.
+  KAIZEN_BACKUP_STAGING_DIR: z.string().optional(),
+  KAIZEN_LOCAL_BACKUP_DIR: z.string().optional(),
+  KAIZEN_PGDUMP_BIN: z.string().optional(),
+  KAIZEN_PGRESTORE_BIN: z.string().optional(),
+  KAIZEN_RCLONE_BIN: z.string().optional(),
+  KAIZEN_RCLONE_REMOTE: z.string().optional(),
+  KAIZEN_RCLONE_PATH_PREFIX: z.string().optional(),
+  KAIZEN_RESTIC_BIN: z.string().optional(),
+  KAIZEN_RESTIC_REPOSITORY: z.string().optional(),
+  KAIZEN_RESTIC_PASSWORD: z.string().optional(),
+  KAIZEN_RESTIC_STATUS_JSON: z.string().optional(),
+  KAIZEN_FULLBACKUP_CMD: z.string().optional(),
+  KAIZEN_SCRATCH_DB: z.string().default("kaizen_restore_scratch"),
 });
 
 let _config = null;

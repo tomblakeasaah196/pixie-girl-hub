@@ -72,6 +72,10 @@ async function initSocketIo(httpServer) {
     socket.emit("joined", { room: ROOMS.shade_session(brand, sid) });
   });
 
+  // KAIZEN namespace — JBS ops console, authorised by the Kaizen operator JWT
+  // (separate secret + aud:"kaizen"). Shares the Redis adapter.
+  require("../modules/kaizen/kaizen.realtime").initKaizenRealtime(io);
+
   // Register module realtime relays (lazy require to avoid an init cycle)
   const { registerCampaignRealtime } = require("../realtime/campaign-realtime");
   registerCampaignRealtime();

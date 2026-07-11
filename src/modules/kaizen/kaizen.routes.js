@@ -21,6 +21,9 @@ const operatorsController = require("./operators/operators.controller");
 const errorsController = require("./errors/errors.controller");
 const healthController = require("./health/health.controller");
 const perfController = require("./perf/perf.controller");
+const backupsController = require("./backups/backups.controller");
+const alertsController = require("./alerts/alerts.controller");
+const settingsController = require("./settings/settings.controller");
 
 const START_TIME = Date.now();
 
@@ -44,6 +47,9 @@ function mountKaizen(app) {
   r.use("/errors", errorsController.router);
   r.use("/health", healthController.router);
   r.use("/perf", perfController.router);
+  r.use("/backups", backupsController.router);
+  r.use("/alerts", alertsController.router);
+  r.use("/settings", settingsController.router);
 
   // Lightweight system summary for the Overview screen.
   r.get("/system/summary", async (req, res) => {

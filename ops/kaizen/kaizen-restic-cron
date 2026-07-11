@@ -1,0 +1,11 @@
+# Kaizen full-volume backup — system cron FALLBACK (DISABLED by default).
+# Installed at /etc/cron.d/kaizen-restic if you want the OS to run the wrapper
+# even when the Node worker is down.
+#
+# RECOMMENDATION: keep this COMMENTED. The Kaizen worker is the sole trigger
+# (kaizen-fullvolume-backup.js at 03:00) so Kaizen owns the schedule + status.
+# Running both is harmless (restic dedup) but produces two snapshots/day.
+# Uncomment ONLY if you deliberately want the belt-and-braces OS trigger.
+#
+# min hour dom mon dow user  command
+# 0   3    *   *   *   root  /usr/local/bin/kaizen-fullbackup

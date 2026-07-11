@@ -1,0 +1,10 @@
+# Cloudflare Email Worker for Pixie Girl Hub inbound mail.
+#   wrangler secret put INBOUND_SECRET   # paste the CF_EMAIL_INBOUND_SECRET value
+#   wrangler deploy
+name = "pixiegirl-email-inbound"
+main = "email-worker.js"
+compatibility_date = "2024-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+# INBOUND_SECRET is set as a secret (wrangler secret put INBOUND_SECRET),
+# not here — never commit the secret to the repo.

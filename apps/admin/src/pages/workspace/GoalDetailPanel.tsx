@@ -12,11 +12,14 @@ import {
   Link2,
   Unlink,
   Sparkles,
+  BookMarked,
+  CalendarClock,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button, Pill, Skeleton } from "@/components/ui/primitives";
 import { ErrorState, Select } from "@/components/ui/controls";
 import { ProgressRing } from "./ProgressRing";
+import { MeetingPrepCard } from "./MeetingPrepCard";
 import {
   useGoal,
   useAddMilestone,
@@ -41,6 +44,7 @@ import {
   useCosFollowups,
   useSnoozeFollowup,
   useDismissFollowup,
+  useSaveTemplate,
 } from "@/lib/cos-api";
 import type { Goal, MilestoneStatus } from "./goals-types";
 import type { Task } from "./types";
@@ -119,7 +123,9 @@ function GoalBody({ goal, onDeleted }: { goal: Goal; onDeleted: () => void }) {
   const health = GOAL_HEALTH_META[goal.health];
   const priority = GOAL_PRIORITY_META[goal.priority];
   const deleteGoal = useDeleteGoal();
+  const saveTemplate = useSaveTemplate();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [savedPlaybook, setSavedPlaybook] = useState(false);
 
   const handleDelete = async () => {
     try {
@@ -127,6 +133,15 @@ function GoalBody({ goal, onDeleted }: { goal: Goal; onDeleted: () => void }) {
       onDeleted();
     } catch (err) {
       toastReport("Workspace → Goal", "Delete goal", err);
+    }
+  };
+
+  const handleSavePlaybook = async () => {
+    try {
+      await saveTemplate.mutateAsync({ goal_id: goal.goal_id });
+      setSavedPlaybook(true);
+    } catch {
+      /* toasted by the mutation */
     }
   };
 
@@ -166,6 +181,26 @@ function GoalBody({ goal, onDeleted }: { goal: Goal; onDeleted: () => void }) {
       <LinkedTasksSection goal={goal} />
       <LinkedEventsSection goal={goal} />
       <GoalNotesSection goalId={goal.goal_id} />
+
+      {/* Save as playbook (wow #9) */}
+      <div className="pt-2 border-t hairline">
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={<BookMarked className="w-3.5 h-3.5" />}
+          onClick={handleSavePlaybook}
+          disabled={saveTemplate.isPending || savedPlaybook}
+        >
+          {savedPlaybook
+            ? "Saved as playbook ✓"
+            : saveTemplate.isPending
+              ? "Saving…"
+              : "Save as playbook"}
+        </Button>
+        <span className="ml-2 text-[11px] text-text-faint">
+          Reuse this goal's plan later with fresh dates.
+        </span>
+      </div>
 
       {/* Danger zone */}
       <div className="pt-2 border-t hairline">
@@ -522,6 +557,7 @@ function LinkedTasksSection({ goal }: { goal: Goal }) {
 
 function LinkedEventsSection({ goal }: { goal: Goal }) {
   const events = goal.calendar_events ?? [];
+  const [prepId, setPrepId] = useState<string | null>(null);
   if (events.length === 0) return null;
   return (
     <div>
@@ -543,9 +579,17 @@ function LinkedEventsSection({ goal }: { goal: Goal }) {
                 day: "numeric",
               })}
             </span>
+            <button
+              onClick={() => setPrepId(e.event_id)}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] text-text-faint hover:text-accent-glow hover:bg-accent/10 transition-colors shrink-0"
+              title="Meeting prep brief"
+            >
+              <CalendarClock className="w-3.5 h-3.5" /> Prep
+            </button>
           </div>
         ))}
       </div>
+      {prepId && <MeetingPrepCard eventId={prepId} onClose={() => setPrepId(null)} />}
     </div>
   );
 }

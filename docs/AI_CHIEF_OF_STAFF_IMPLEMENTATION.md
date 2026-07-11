@@ -1,6 +1,6 @@
 # AI Chief of Staff — Implementation Guide (6 PRs)
 
-> Status: **PR1–PR4 delivered · PR5–PR6 pending.** This document is the single source
+> Status: **PR1–PR5 delivered · PR6 pending.** This document is the single source
 > of truth for the Chief of Staff (CoS) feature. It is exhaustive by intent: every
 > table, column, endpoint, file, permission, job, and acceptance criterion is named.
 > No step is left to interpretation.
@@ -28,19 +28,31 @@ So:
 | 2 | Goals/Notes frontend | ✅ **Delivered** | — | `claude/cos-pr2-goals-frontend` (branched off `main` after PR1 merged in #447) |
 | 3 | CoS agent core + failover router | ✅ **Delivered** | `000324` | `claude/chief-of-staff-pr3-z9wmy7` (branched off `main` after PR2 merged in #450) |
 | 4 | Accountability loop | ✅ **Delivered** | `000325` | `claude/chief-of-staff-pr4-1uxza4` (branched off `main` after PR3 merged in #452) |
-| 5 | Intelligence (RAG, meetings, scheduling, cross-brand) | ⬜ pending | next free on `main` | " |
+| 5 | Intelligence (RAG, meetings, scheduling, cross-brand, templates) | ✅ **Delivered** | `000326` | `claude/chief-of-staff-pr5-mel34p` (branched off `main` after PR4 merged in #453) |
 | 6 | Personality, settings, polish, docs | ⬜ pending | next free on `main` | " |
 
-**Parallelisable now (PR1–PR3 merged):** a second engineer can start **PR4's
-backend** — the risk engine (`cos.risk.js`), the hourly `cos-accountability`
-scheduler, the follow-up state machine (respond/reason/snooze/dismiss), and the
-`cos_followups`/`cos_nudges` migrations — against PR1's data alone. Three seams
-must coordinate with a PR3 that is now merged (so they are unblocked, not
-blocking): the **re-plan-on-delay** path reuses `cos.plan-executor.js`; the
-briefing **LLM narrative** reuses `src/services/llm-router.js`; and the shared
-**migration sequence** (take the next free number above `000324` and bump
-`EXPECTED_SHARED`). PR4's UI (the `GoalDetailPanel` AI-Insights card) sits on
-PR2's components, already merged.
+**Parallelisable now (PR1–PR5 merged/in-flight):** a second engineer can start
+**PR6** today — its substantive work sits on PR1–PR4 (all merged), **not** on
+PR5. Unblocked now: `cos_settings` + the Settings UI + `GET/PUT /cos/settings`
+(needs only the PR3 agent), **naming propagation** (threads through the PR3
+persona + PR4 notifications/briefings), **adaptive nudge timing** (reads
+`cos_nudges.engaged_at` from PR4), **win celebrations** (goals events + PR4
+notifications), and hardening (rate-limit the CoS post, `ai_pending_plans`
+expiry sweep, a11y). The **one** piece that genuinely waits for PR5 is the
+**comprehensive docs pass** (`openapi.yaml` / `SCHEMA.md` must describe PR5's
+`/cos/prep|schedule|cross-brand|templates` endpoints + `goal_templates`) — do
+that sub-task last. Three seams to coordinate, none blocking: **migration
+number + `EXPECTED_SHARED`** (PR6 takes `000327`, bump above PR5's `000326`,
+keep both deltas); the additive shared files (`cos.routes/controller/service/
+validator.js`, `cos-api.ts` — mechanical merge); and the two files both PRs edit
+for behaviour (`cos-accountability.js`, `ai-briefing.js`). Recommended: merge
+PR5 first so PR6's naming naturally wraps PR5's new notification/briefing
+surfaces.
+
+*(Historical — the same note for PR4-against-PR3, now both merged: PR4's risk
+engine / hourly scheduler / follow-up state machine / `cos_followups`+
+`cos_nudges` migrations were built against PR1's data, coordinating the re-plan
+executor, the briefing narrative router, and the migration sequence with PR3.)*
 
 ---
 
@@ -618,10 +630,20 @@ Writes `goals.health` and emits per-subject follow-up candidates.
 - Template capture → instantiate round-trip with date recomputation.
 
 ### Definition of Done
-- [ ] "How is Pixie doing?" returns progress %, remaining, risks, recommendation from memory.
-- [ ] A voice note becomes a batch plan; meeting prep card renders for an event.
-- [ ] "Find me 2 hours this week" books a real slot; cross-brand overview shows both companies.
-- [ ] Saving and reusing a playbook works with correct future dates.
+- [x] "How is Pixie doing?" returns progress %, remaining, risks, recommendation from memory. *(The turn injects a live active-goals snapshot + RAG memory as grounding context; memory degrades to [] with no embeddings vendor, and the goals snapshot still grounds the answer.)*
+- [x] A voice note becomes a batch plan; meeting prep card renders for an event. *(Voice reuses the existing transcription→planner path; `GET /cos/prep/:eventId` + `MeetingPrepCard` render a deterministic brief, surfaced from `GoalDetailPanel`'s linked events.)*
+- [x] "Find me 2 hours this week" books a real slot; cross-brand overview shows both companies. *(Pure `findFreeSlots` → a create_event batch plan; `GET /cos/cross-brand/overview` aggregates both brands for the CEO.)*
+- [x] Saving and reusing a playbook works with correct future dates. *("Save as playbook" on a goal → `goal_templates`; instantiate re-dates offsets into a batch plan — unit-tested round-trip.)*
+
+### As-built notes (deviations from the sketch)
+- **Migration `000326`** (next free above `main`'s `000325`); `EXPECTED_SHARED` 195 → **196** (one new table, `goal_templates`; `goals.template_id` FK + the `ai_knowledge_chunks` source_type CHECK widen are ALTERs). The CHECK had to be widened to admit `cos_goal|cos_milestone|cos_note|cos_decision` — the guide's §1.8 source_types were not in the original constraint.
+- **RAG memory rides the shared corpus** (`cos.memory.repo`): one chunk per subject keyed by `(source_type, source_ref)` (stable `chunk_id`, so the embedding upserts cleanly), tagged `sensitivity='restricted'` + `metadata.user_id`. Praxis's `retrieveContext` floors at `normal`, so it never sees CoS memory; CoS retrieval (`retrieveCosChunks`) scopes to owner + brand. Indexing is a `goals`-events subscriber (`cos.memory.subscribers`, registered in socket + worker), **gated on an embeddings vendor** being configured to avoid write amplification while RAG is dormant. Retrieval + the goals snapshot are injected into the CoS turn as context.
+- **Deterministic-plan builder** (`cos.plan-builder.buildProposedPlan`): templates and batch-reschedule assemble steps in code, resolve each `action_key` against the workspace catalogue (same structural guard as the planner), and persist a proposed plan the CEO approves through the normal `BatchPlanCard`. `{{step:N.field}}` tokens work identically.
+- **Smart scheduling core is pure** (`findFreeSlots` / `computeLoad`): fixed Lagos offset (UTC+1, no DST) until PR6's `cos_settings`; no double-book, work + quiet hours, no past slots — all unit-tested.
+- **Cross-brand** is a CEO-only aggregate read (`business = ANY(ceoBrands)`), never a schema join; documented in `docs/ENTITY_ISOLATION.md` (CEO cross-brand exception).
+- **Frontend**: a Chat/Insights toggle in `ChiefOfStaffTab`; `CosIntelligencePanel` (cross-brand portfolio + focus/load + playbooks, reusing `BatchPlanCard` for returned plans); `MeetingPrepCard` + a per-event "Prep" button and a "Save as playbook" action in `GoalDetailPanel`. `cos-api.ts` gains the PR5 hooks.
+- **Tests**: `tests/unit/chief_of_staff/{scheduler,templates,overview,memory,meeting}.test.js` (30 new; 88 CoS/goals tests green). Live-DB integration (RAG isolation, plan execution) deferred to a migrated-DB pass, as in PR1/PR3/PR4.
+- **Docs pass is PR6's** (per §PR6) — PR5 touches only `ENTITY_ISOLATION.md` (the cross-brand exception) + this file + the module README; `openapi.yaml`/`SCHEMA.md` are updated in PR6 alongside PR6's own endpoints.
 
 ---
 

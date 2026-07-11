@@ -22,6 +22,13 @@ is byte-for-byte unchanged.
 | `cos.repo.js` | `ai_pending_plans` + plan-tagged `ai_pending_actions` SQL |
 | `cos.validator.js` | Zod input schemas |
 | `cos.events.js` | plan lifecycle events (PR4 realtime subscribes) |
+| `cos.risk.js` · `cos.followups.service.js` · `cos.accountability.repo.js` · `cos.briefing.js` | **PR4** — risk engine, follow-up state machine, accountability data, briefing section |
+| `cos.plan-builder.js` | **PR5** — build a PROPOSED batch plan from explicit steps (templates + reschedule reuse the approval gate) |
+| `cos.memory.js` · `cos.memory.repo.js` · `cos.memory.subscribers.js` | **PR5** — RAG memory over goals/notes/decisions (shared corpus, owner-scoped, `restricted`) |
+| `cos.templates.js` · `cos.templates.repo.js` | **PR5** — playbooks: capture a goal as day-offsets, re-date into a batch plan |
+| `cos.scheduler.js` | **PR5** — pure free-slot finder + load/overload; find-focus, today's load, batch reschedule |
+| `cos.meeting.js` | **PR5** — meeting prep brief for a calendar event |
+| `cos.overview.js` · `cos.overview.repo.js` | **PR5** — CEO cross-brand portfolio (documented isolation exception) |
 
 Reused as-is: `praxis.executor`, `praxis.repo` (conversations/messages, now
 `kind`-aware), `governance.service` (feature `cos_chat`, usage ledger),
@@ -54,7 +61,37 @@ POST   /api/v1/cos/conversations/:id/messages   → may return a plan
 GET    /api/v1/cos/plans/:planId
 POST   /api/v1/cos/plans/:planId/confirm         → approve → execute batch
 POST   /api/v1/cos/plans/:planId/reject
+
+# Accountability (PR4)
+GET    /api/v1/cos/followups
+POST   /api/v1/cos/followups/:id/respond|reason|act|snooze|dismiss
+
+# Intelligence (PR5)
+GET    /api/v1/cos/prep/:eventId                 → meeting prep brief
+POST   /api/v1/cos/schedule/focus                → find focus slots + a booking plan
+GET    /api/v1/cos/schedule/load?date=           → day load / overload
+POST   /api/v1/cos/schedule/reschedule           → shift matching tasks (batch plan)
+GET    /api/v1/cos/cross-brand/overview          → CEO portfolio across brands
+GET    /api/v1/cos/templates                     → list playbooks
+POST   /api/v1/cos/templates                     → save a goal as a playbook
+POST   /api/v1/cos/templates/:id/instantiate     → reuse a playbook → batch plan
 ```
+
+## Intelligence (PR5)
+
+- **Memory (wow #7)**: goal/note/decision changes are indexed into the shared
+  RAG corpus (`ai_knowledge_chunks` + `ai_embeddings`), owner-scoped via
+  `metadata.user_id` and `sensitivity='restricted'` so Praxis never retrieves
+  them. The CoS turn injects a live goals snapshot + nearest memory as context,
+  so "how is X doing?" is grounded. Degrades to [] with no embeddings vendor.
+- **Meetings (wow #4)**: `prep/:eventId` assembles a deterministic brief; voice
+  brain-dump → goal reuses the existing transcription + planner path.
+- **Scheduling (wow #5)**: a pure free-slot finder (no double-book, work + quiet
+  hours) and load/overload math; find-focus books via a create_event plan.
+- **Cross-brand (wow #6)**: a CEO-only aggregate read (see
+  `docs/ENTITY_ISOLATION.md` — CEO cross-brand exception).
+- **Playbooks (wow #9)**: capture a goal as day-offsets; reuse re-dates them into
+  a batch plan through the same one-tap approval gate.
 
 ## Gates & failover
 

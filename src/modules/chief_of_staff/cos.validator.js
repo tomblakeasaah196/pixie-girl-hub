@@ -55,6 +55,41 @@ const followupSnooze = z
   .object({ until: z.string().datetime({ offset: true }).optional() })
   .strict();
 
+// ── Intelligence (PR5) ─────────────────────────────────────
+// Accept a full ISO datetime OR a plain YYYY-MM-DD for date fields.
+const dateish = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}([T ].*)?$/, "expected YYYY-MM-DD or ISO datetime");
+
+const scheduleFocus = z
+  .object({
+    duration: z.number().int().min(15).max(480).optional(), // minutes
+    within: z.number().int().min(1).max(30).optional(), // days ahead to scan
+  })
+  .strict();
+
+const scheduleReschedule = z
+  .object({
+    match: z.string().min(1).max(200),
+    days: z.number().int().min(1).max(365).optional(),
+  })
+  .strict();
+
+const templateSave = z
+  .object({
+    goal_id: z.string().uuid(),
+    name: z.string().min(1).max(200).optional(),
+    description: z.string().max(2000).nullable().optional(),
+  })
+  .strict();
+
+const templateInstantiate = z
+  .object({
+    start_date: dateish.optional(),
+    name: z.string().min(1).max(200).optional(),
+  })
+  .strict();
+
 const mk = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body || {});
   next();
@@ -67,6 +102,10 @@ module.exports = {
   validateFollowupRespond: mk(followupRespond),
   validateFollowupAct: mk(followupAct),
   validateFollowupSnooze: mk(followupSnooze),
+  validateScheduleFocus: mk(scheduleFocus),
+  validateScheduleReschedule: mk(scheduleReschedule),
+  validateTemplateSave: mk(templateSave),
+  validateTemplateInstantiate: mk(templateInstantiate),
   schemas: {
     conversationCreate,
     messagePost,
@@ -74,5 +113,9 @@ module.exports = {
     followupRespond,
     followupAct,
     followupSnooze,
+    scheduleFocus,
+    scheduleReschedule,
+    templateSave,
+    templateInstantiate,
   },
 };

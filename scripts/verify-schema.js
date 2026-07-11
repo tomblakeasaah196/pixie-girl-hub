@@ -54,7 +54,9 @@ const pool = new Pool({
 //      plan_id/plan_step are ALTERs, not new tables.)
 //   - Chief of Staff accountability (000325): +2 (cos_followups, cos_nudges) → 195.
 //     (notifications.actions is an ALTER, not a new table.)
-const EXPECTED_SHARED = 195;
+//   - Chief of Staff intelligence (000326): +1 (goal_templates) → 196.
+//     (goals.template_id FK + ai_knowledge_chunks CHECK widen are ALTERs.)
+const EXPECTED_SHARED = 196;
 const EXPECTED_PER_BRAND = 203;
 
 async function countTables(schema) {

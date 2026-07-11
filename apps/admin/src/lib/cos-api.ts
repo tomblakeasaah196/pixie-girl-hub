@@ -79,15 +79,33 @@ export interface Plan {
   steps: PlanStep[];
 }
 
+export interface SavedNoteRef {
+  note_id: string;
+  title: string | null;
+  updated_at: string;
+}
+
 export interface CosConversationDetail extends CosConversation {
   messages: CosMessage[];
   plans: Plan[];
+  /** Populated when the CEO has already saved this conversation to Notes. */
+  saved_note: SavedNoteRef | null;
 }
 
 export interface CosTurnResult {
   user_message: CosMessage;
   assistant_message: CosMessage;
   plan: Plan | null;
+}
+
+export interface SaveConversationNoteResult {
+  note: {
+    note_id: string;
+    title: string | null;
+    body: string;
+    updated_at: string;
+  };
+  action: "created" | "updated";
 }
 
 // ── Query keys ─────────────────────────────────────────────
@@ -164,6 +182,41 @@ export function usePostCosMessage() {
       qc.invalidateQueries({ queryKey: cosKeys.conversations });
     },
     onError: (err) => toastReport("Chief of Staff", "Send message", err),
+  });
+}
+
+/**
+ * Summarise a CoS conversation and upsert it into Workspace Notes. Server
+ * enforces "one CoS note per conversation" — subsequent calls update the
+ * same note in place (see migration 000329). Refreshes the conversation
+ * detail (so saved_note reflects the new state) and the notes list.
+ */
+export function useSaveConversationToNotes() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (conversationId: string) =>
+      api.post<SaveConversationNoteResult>(
+        `/cos/conversations/${conversationId}/save-note`,
+      ),
+    onSuccess: (result, conversationId) => {
+      qc.setQueryData<CosConversationDetail | undefined>(
+        cosKeys.conversation(conversationId),
+        (prev) =>
+          prev
+            ? {
+                ...prev,
+                saved_note: {
+                  note_id: result.note.note_id,
+                  title: result.note.title,
+                  updated_at: result.note.updated_at,
+                },
+              }
+            : prev,
+      );
+      // The Notes tab reads from its own workspace query key namespace.
+      qc.invalidateQueries({ queryKey: ["workspace"] });
+    },
+    onError: (err) => toastReport("Chief of Staff", "Save to notes", err),
   });
 }
 

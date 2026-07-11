@@ -46,7 +46,7 @@ adminRouter.get("/offers/:id/pdf", P("export"), controller.exportPdf);
 adminRouter.patch("/offers/:id", P("edit"), validate.validateEdit, controller.edit);
 adminRouter.post("/offers/:id/regenerate", P("edit"), validate.validateRegenerate, controller.regenerate);
 adminRouter.post("/offers/:id/send", P("approve"), validate.validateApprove, controller.approve);
-adminRouter.post("/offers/:id/provision", P("approve"), controller.provision);
+adminRouter.post("/offers/:id/provision", P("approve"), validate.validateProvision, controller.provision);
 
 // ── Public (no auth) ───────────────────────────────────────
 const publicRouter = express.Router();

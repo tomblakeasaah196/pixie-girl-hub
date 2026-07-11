@@ -294,6 +294,20 @@ async function userIdByEmail({ email }) {
 }
 
 /**
+ * Minimal staff-profile lookup used when provisioning links the new login to
+ * the HR employee profile created by the onboarding wizard. Also feeds the
+ * contract-filing step (salary/type/start date come from the profile).
+ */
+async function staffProfileBrief({ profile_id }) {
+  const { rows } = await query(
+    `SELECT profile_id, business, employment_type, start_date, base_salary, is_deleted
+       FROM shared.staff_profiles WHERE profile_id = $1 LIMIT 1`,
+    [profile_id],
+  );
+  return rows[0] || null;
+}
+
+/**
  * The candidate's captured e-signature for an offer's signature request, if any.
  * The candidate is the sole external signer, so we take the signed signer row.
  * Returns the raw signature artifact (inline data URL or stored media path) plus
@@ -335,5 +349,6 @@ module.exports = {
   updateOffer,
   businessBranding,
   userIdByEmail,
+  staffProfileBrief,
   getOfferSignature,
 };

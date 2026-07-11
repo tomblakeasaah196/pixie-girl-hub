@@ -10,10 +10,14 @@
  * steps its chrome out and the chat takes the whole viewport — its own glass
  * header, a thread that scrolls under it, and a composer pinned above the home
  * indicator. Desktop/tablet keep the centered in-page column.
+ *
+ * Any conversation can be saved to Workspace Notes: the CoS offers it inline
+ * once it has replied, and a header button lets you save/refresh on demand.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useSearchParams } from "react-router-dom";
 import {
   Sparkles,
   MessagesSquare,
@@ -32,10 +36,12 @@ import {
   StickyNote,
   Trash2,
   X,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Markdown } from "@/components/help/Markdown";
 import { PraxisInput } from "@/components/praxis/PraxisInput";
+import { useToast } from "@/lib/toast";
 import { useAuthStore } from "@/stores/auth";
 import { useUiStore } from "@/stores/ui";
 import { useIsPhone } from "@/hooks/useMediaQuery";
@@ -49,6 +55,7 @@ import {
   useCreateCosConversation,
   useArchiveCosConversation,
   usePostCosMessage,
+  useSaveConversationToNotes,
   useCosSettings,
   type CosMessage,
 } from "@/lib/cos-api";
@@ -131,6 +138,110 @@ function Thinking({ name, avatarUrl }: { name: string; avatarUrl?: string | null
         </span>
         {name} is drafting your plan…
       </span>
+    </div>
+  );
+}
+
+/** Inline nudge — offer to save this chat to Notes once the CoS has replied. */
+function SaveNoteSuggestion({
+  busy,
+  onSave,
+  onDismiss,
+}: {
+  busy: boolean;
+  onSave: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <div className="pl-11">
+      <div className="rounded-[14px] border border-accent/25 bg-accent/[0.06] backdrop-blur-sm p-3.5 flex items-start gap-3">
+        <StickyNote className="w-4 h-4 mt-0.5 text-accent-glow shrink-0" />
+        <div className="min-w-0 flex-1">
+          <div className="text-[13px] text-text-primary font-medium">
+            Want me to save this to your Notes?
+          </div>
+          <div className="text-[12px] text-text-muted mt-0.5">
+            I'll write a short recap you can find and search later.
+          </div>
+          <div className="mt-2.5 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={busy}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-lg bg-accent-deep text-[#F4E9D9] px-3 py-1.5 text-[12px] font-medium transition-colors",
+                busy ? "opacity-70 cursor-wait" : "hover:bg-accent",
+              )}
+            >
+              {busy ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <StickyNote className="w-3.5 h-3.5" />
+              )}
+              Save to Notes
+            </button>
+            <button
+              type="button"
+              onClick={onDismiss}
+              disabled={busy}
+              className="inline-flex items-center gap-1 rounded-lg border hairline px-2.5 py-1.5 text-[12px] text-text-muted hover:text-text-primary"
+            >
+              Not now
+            </button>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Dismiss suggestion"
+          disabled={busy}
+          className="text-text-faint hover:text-text-primary p-1 -m-1 shrink-0"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Persistent footer once the chat is in Notes — refresh or jump across. */
+function SavedNoteFooter({
+  title,
+  onOpen,
+  onRefresh,
+  busy,
+}: {
+  title: string | null;
+  onOpen: () => void;
+  onRefresh: () => void;
+  busy: boolean;
+}) {
+  return (
+    <div className="pl-11">
+      <div className="rounded-[12px] border hairline bg-text-primary/[0.03] px-3 py-2 flex items-center gap-2 text-[12px]">
+        <StickyNote className="w-3.5 h-3.5 text-accent-glow shrink-0" />
+        <span className="text-text-muted min-w-0 truncate">
+          Saved to Notes{title ? ` · ${title}` : ""}
+        </span>
+        <div className="ml-auto flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={busy}
+            className="inline-flex items-center gap-1 rounded-[7px] px-2 py-0.5 text-text-muted hover:text-text-primary"
+          >
+            {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCw className="w-3 h-3" />}
+            Refresh
+          </button>
+          <button
+            type="button"
+            onClick={onOpen}
+            className="inline-flex items-center rounded-[7px] px-2 py-0.5 text-accent-glow hover:text-text-primary"
+          >
+            Open in Notes →
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -329,11 +440,13 @@ function HistorySheet({
 function HeaderIconButton({
   label,
   active,
+  disabled,
   onClick,
   children,
 }: {
   label: string;
   active?: boolean;
+  disabled?: boolean;
   onClick: () => void;
   children: React.ReactNode;
 }) {
@@ -341,6 +454,7 @@ function HeaderIconButton({
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       aria-label={label}
       title={label}
       className={cn(
@@ -348,11 +462,35 @@ function HeaderIconButton({
         active
           ? "bg-accent-deep/90 text-[#F4E9D9]"
           : "bg-text-primary/[0.05] text-text-muted hover:text-text-primary hover:bg-text-primary/10",
+        disabled && "opacity-40 cursor-not-allowed hover:bg-text-primary/[0.05] hover:text-text-muted",
       )}
     >
       {children}
     </button>
   );
+}
+
+// The suggestion card is per-conversation and one-shot. Once dismissed for a
+// given conversation, keep it dismissed across reloads — nobody wants a nag.
+const SUGGEST_DISMISS_KEY = "cos:save-note-dismissed";
+
+function readDismissed(): Set<string> {
+  try {
+    const raw = localStorage.getItem(SUGGEST_DISMISS_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return new Set(Array.isArray(parsed) ? (parsed as string[]) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function writeDismissed(set: Set<string>) {
+  try {
+    localStorage.setItem(SUGGEST_DISMISS_KEY, JSON.stringify([...set]));
+  } catch {
+    /* storage unavailable — accept the loss, the button is still there */
+  }
 }
 
 export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
@@ -361,7 +499,12 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
   const [pendingSend, setPendingSend] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(
+    () => readDismissed(),
+  );
   const endRef = useRef<HTMLDivElement>(null);
+  const [, setSearchParams] = useSearchParams();
+  const toast = useToast("Chief of Staff");
 
   const user = useAuthStore((s) => s.user);
   const isPhone = useIsPhone();
@@ -379,6 +522,7 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
   const detail = useCosConversation(activeId);
   const create = useCreateCosConversation();
   const post = usePostCosMessage();
+  const saveNote = useSaveConversationToNotes();
   const settings = useCosSettings();
   const cosName = settings.data?.assistant_name || DEFAULT_COS_NAME;
   const avatarUrl = settings.data?.avatar_url ?? null;
@@ -396,6 +540,8 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
     [detail.data?.plans],
   );
   const thinking = pendingSend || post.isPending;
+  const savedNote = detail.data?.saved_note ?? null;
+  const hasAssistantReply = messages.some((m) => m.role === "assistant");
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -424,11 +570,43 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
     void handleSend({ content: text, input_mode: "text" }).catch(() => {});
   };
 
+  const goToNotes = () => setSearchParams({ tab: "notes" });
+
+  async function handleSaveNote() {
+    if (!activeId) return;
+    try {
+      const result = await saveNote.mutateAsync(activeId);
+      toast.success(
+        result.action === "created" ? "Saved to Notes" : "Note updated",
+        result.note.title || "Open the Notes tab to review.",
+      );
+    } catch {
+      /* mutation onError already toasted */
+    }
+  }
+
+  function dismissSuggestion() {
+    if (!activeId) return;
+    setDismissedSuggestions((prev) => {
+      const next = new Set(prev);
+      next.add(activeId);
+      writeDismissed(next);
+      return next;
+    });
+  }
+
   const newChat = () => {
     setActiveId(null);
     setView("chat");
   };
   const hasThread = messages.length > 0 || plans.length > 0;
+  const canSaveNote = !!activeId && hasThread && !thinking && !saveNote.isPending;
+  const showSaveSuggestion =
+    !!activeId &&
+    hasAssistantReply &&
+    !savedNote &&
+    !thinking &&
+    !dismissedSuggestions.has(activeId);
 
   return (
     <div
@@ -479,6 +657,19 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
         <div className="flex items-center gap-1.5 shrink-0">
           {isPhone ? (
             <>
+              {view === "chat" && (
+                <HeaderIconButton
+                  label={savedNote ? "Update note" : "Save to Notes"}
+                  disabled={!canSaveNote}
+                  onClick={handleSaveNote}
+                >
+                  {saveNote.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <StickyNote className="w-4 h-4" />
+                  )}
+                </HeaderIconButton>
+              )}
               {view === "chat" && hasThread && (
                 <HeaderIconButton label="New chat" onClick={newChat}>
                   <SquarePen className="w-4 h-4" />
@@ -500,6 +691,32 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
             </>
           ) : (
             <>
+              {/* Save conversation → Workspace Notes (left of the Chat/Insights toggle) */}
+              {view === "chat" && (
+                <button
+                  type="button"
+                  onClick={handleSaveNote}
+                  disabled={!canSaveNote}
+                  title={
+                    savedNote
+                      ? "Refresh the note with the latest of this chat"
+                      : "Summarise this chat and add to Notes"
+                  }
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-lg border hairline px-2.5 py-1.5 text-[12px] transition-colors whitespace-nowrap",
+                    canSaveNote
+                      ? "text-text-muted hover:text-text-primary hover:border-accent/40"
+                      : "text-text-faint cursor-not-allowed",
+                  )}
+                >
+                  {saveNote.isPending ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <StickyNote className="w-3.5 h-3.5" />
+                  )}
+                  {savedNote ? "Update notes" : "Save to notes"}
+                </button>
+              )}
               {/* Chat / Insights toggle */}
               <div className="inline-flex rounded-lg border hairline p-0.5 bg-text-primary/[0.03]">
                 {([
@@ -609,6 +826,21 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
                     <BatchPlanCard plan={p} conversationId={activeId!} />
                   </div>
                 ))}
+                {showSaveSuggestion && (
+                  <SaveNoteSuggestion
+                    busy={saveNote.isPending}
+                    onSave={handleSaveNote}
+                    onDismiss={dismissSuggestion}
+                  />
+                )}
+                {savedNote && !thinking && (
+                  <SavedNoteFooter
+                    title={savedNote.title}
+                    onOpen={goToNotes}
+                    onRefresh={handleSaveNote}
+                    busy={saveNote.isPending}
+                  />
+                )}
                 {thinking && <Thinking name={cosName} avatarUrl={avatarUrl} />}
               </div>
             )}

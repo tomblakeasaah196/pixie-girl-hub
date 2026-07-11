@@ -103,7 +103,7 @@ async function dispatch({
     return { dispatched: false, channel: "in_app_only", reason: "in_app_only" };
   }
 
-  const contact = contact_id ? await loadContact(contact_id) : null;
+  const contact = contact_id ? await loadContact(contact_id, brand) : null;
 
   // Layaway-specific cost gate — configured on the automation, not
   // hardcoded in the cron. Reads min_amount_paid_ngn out of cadence_config
@@ -260,18 +260,43 @@ function defaultDedupKey({ event_key, contact_id, variables }) {
   return [event_key, contact_id || "anon", salt, bucket].join(":");
 }
 
-async function loadContact(contactId) {
+async function loadContact(contactId, brand) {
+  // IG recipient resolution mirrors smartcomm's outbound rule: IGSIDs are
+  // scoped per business account, so the id that opened THIS brand's
+  // customer thread (external_thread_ref, stamped by the inbound webhook)
+  // is the only one guaranteed deliverable on this brand's token — any
+  // other is bounced by Meta as "Invalid message id" (508 / 2534122).
+  // Contact-level handle rows are brand-blind (a merged contact carries
+  // one per brand plus id-less form-typed rows), so they're a fallback
+  // only, preferring rows that actually hold an external id.
   const { rows } = await query(
     `SELECT c.contact_id, c.display_name, c.first_name, c.last_name,
             c.email, c.primary_phone, c.whatsapp_number, c.preferred_channel,
             c.date_of_birth,
-            h.external_user_id AS ig_user_id
+            COALESCE(t.external_thread_ref, h.external_user_id) AS ig_user_id
        FROM shared.contacts c
-       LEFT JOIN shared.contact_social_handles h
-              ON h.contact_id = c.contact_id AND h.platform = 'instagram'
+       LEFT JOIN LATERAL (
+         SELECT mc.external_thread_ref
+           FROM shared.message_channels mc
+          WHERE mc.channel_type = 'customer_thread'
+            AND mc.external_platform = 'instagram'
+            AND mc.business = $2
+            AND mc.metadata->>'contact_id' = c.contact_id::text
+            AND mc.external_thread_ref IS NOT NULL
+          ORDER BY mc.last_message_at DESC NULLS LAST
+          LIMIT 1
+       ) t ON true
+       LEFT JOIN LATERAL (
+         SELECT sh.external_user_id
+           FROM shared.contact_social_handles sh
+          WHERE sh.contact_id = c.contact_id AND sh.platform = 'instagram'
+            AND sh.external_user_id IS NOT NULL
+          ORDER BY sh.updated_at DESC
+          LIMIT 1
+       ) h ON true
       WHERE c.contact_id = $1
       LIMIT 1`,
-    [contactId],
+    [contactId, brand || null],
   );
   return rows[0] || null;
 }

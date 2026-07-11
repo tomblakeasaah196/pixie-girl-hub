@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { StickyNote, Plus, Pin, Trash2, Search } from "lucide-react";
+import { StickyNote, Plus, Pin, Trash2, Search, Sparkles } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button, Card, Skeleton, EmptyState } from "@/components/ui/primitives";
 import { ErrorState } from "@/components/ui/controls";
@@ -158,12 +158,21 @@ function NoteCard({ note, onEdit }: { note: Note; onEdit: () => void }) {
         {note.body || <span className="italic text-text-faint">Empty</span>}
       </button>
       <div className="flex items-center gap-2 mt-2.5 pt-2 border-t hairline">
-        <span className="text-[10px] font-mono text-text-faint flex-1">
+        <span className="text-[10px] font-mono text-text-faint">
           {new Date(note.updated_at).toLocaleDateString([], {
             month: "short",
             day: "numeric",
           })}
         </span>
+        {note.source === "cos" && (
+          <span
+            className="inline-flex items-center gap-1 text-[9.5px] uppercase tracking-[0.1em] text-accent-glow/80"
+            title="Saved by your Chief of Staff"
+          >
+            <Sparkles className="w-2.5 h-2.5" /> Chief of Staff
+          </span>
+        )}
+        <span className="flex-1" />
         {confirm ? (
           <>
             <button

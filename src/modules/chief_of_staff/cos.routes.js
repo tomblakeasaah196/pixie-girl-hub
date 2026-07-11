@@ -65,6 +65,12 @@ router.post(
   v.validateMessagePost,
   c.postMessage,
 );
+// Summarise-to-note is also an LLM turn, so it shares the same burst guard.
+router.post(
+  "/conversations/:id/save-note",
+  cosTurnLimiter,
+  c.saveConversationToNote,
+);
 
 // ── Plans (batch-plan approval) ────────────────────────────
 router.get("/plans/:planId", c.getPlan);

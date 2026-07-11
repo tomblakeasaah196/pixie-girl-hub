@@ -58,6 +58,7 @@ POST   /api/v1/cos/conversations
 GET    /api/v1/cos/conversations/:id
 DELETE /api/v1/cos/conversations/:id
 POST   /api/v1/cos/conversations/:id/messages   → may return a plan
+POST   /api/v1/cos/conversations/:id/save-note   → summarise → upsert Workspace note
 GET    /api/v1/cos/plans/:planId
 POST   /api/v1/cos/plans/:planId/confirm         → approve → execute batch
 POST   /api/v1/cos/plans/:planId/reject

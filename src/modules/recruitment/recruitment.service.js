@@ -21,6 +21,7 @@ const pdf = require("../../services/pdf.service");
 const esign = require("../../shared/documents/documents.esign.service");
 const storage = require("../../services/storage.service");
 const invitations = require("../../shared/hr_payroll/invitations.service");
+const contractsRepo = require("../../shared/hr_payroll/contracts.repo");
 const email = require("../../services/email.service");
 const { audit } = require("../../middleware/audit");
 const { config } = require("../../config/env");
@@ -608,7 +609,18 @@ async function onOfferSigned({ offerId, business }) {
 }
 
 // ── Provision & email credentials (explicit admin button) ──
-async function provisionCredentials({ brand, user, request_id, id }) {
+/**
+ * `input` comes from the onboarding wizard (both optional):
+ *   • staff_profile_id — the HR employee profile created during onboarding.
+ *     Linking it here is what makes the hire a *full* employee: they appear in
+ *     the HR directory and their organigramme seat, and org-position role
+ *     grants resolve to this login instead of nothing.
+ *   • role_ids — replaces the offer's stored grants (e.g. the role of the
+ *     position the hire was seated in).
+ * When a profile is linked and the offer has a generated employment contract,
+ * the contract PDF is also filed under the employee's HR contracts.
+ */
+async function provisionCredentials({ brand, user, request_id, id, input = {} }) {
   const offer = await repo.getOffer({ brand, id });
   if (!offer) throw new NotFoundError("Offer");
   if (!["signed", "contracted"].includes(offer.status))
@@ -620,10 +632,23 @@ async function provisionCredentials({ brand, user, request_id, id }) {
   if (!offer.candidate_email)
     throw new AppError("CANDIDATE_EMAIL_REQUIRED", "No candidate email on this offer", 422);
 
+  let profile = null;
+  if (input.staff_profile_id) {
+    profile = await repo.staffProfileBrief({ profile_id: input.staff_profile_id });
+    if (!profile || profile.is_deleted)
+      throw new AppError(
+        "STAFF_PROFILE_NOT_FOUND",
+        "The employee profile to link was not found",
+        422,
+      );
+  }
+
   const businessKeys =
     offer.target_businesses && offer.target_businesses.length
       ? offer.target_businesses
       : [brand];
+  const roleIds =
+    input.role_ids && input.role_ids.length ? input.role_ids : offer.role_ids || [];
 
   // Reuse the HR login provisioner (temp password + force reset). It does NOT
   // email anything itself — we email the credentials straight to the candidate.
@@ -633,12 +658,39 @@ async function provisionCredentials({ brand, user, request_id, id }) {
     input: {
       email: offer.candidate_email,
       display_name: offer.candidate_name,
-      role_ids: offer.role_ids || [],
+      role_ids: roleIds,
       business_keys: businessKeys,
       default_business: businessKeys[0],
       is_ceo: offer.is_ceo || false,
+      staff_profile_id: profile ? profile.profile_id : null,
     },
   });
+
+  // File the countersigned employment contract under the employee's HR record
+  // (best-effort — a filing hiccup must not unwind a provisioned login).
+  if (profile && offer.contract_document_id) {
+    try {
+      const CONTRACT_TYPES = new Set(["full_time", "part_time", "contract"]);
+      await contractsRepo.createContract({
+        input: {
+          profile_id: profile.profile_id,
+          contract_type: CONTRACT_TYPES.has(profile.employment_type)
+            ? profile.employment_type
+            : "full_time",
+          effective_from: profile.start_date || new Date().toISOString().slice(0, 10),
+          gross_salary: profile.base_salary || 0,
+          document_id: offer.contract_document_id,
+          notes: `Recruitment offer — ${offer.title}`,
+          created_by: user.user_id,
+        },
+      });
+    } catch (err) {
+      logger.warn(
+        { err: err.message, offer_id: offer.offer_id },
+        "recruitment: could not file the employment contract on the HR profile",
+      );
+    }
+  }
 
   const newUserId = await repo.userIdByEmail({ email: offer.candidate_email });
   const company = await getCompany({ brand, targets: offer.target_businesses });

@@ -423,6 +423,7 @@ async function startWorkers() {
   require("../realtime/attendance-realtime").registerAttendanceRealtime();
   require("../shared/goals/goals.subscribers").registerGoalsSubscribers();
   require("../modules/chief_of_staff/cos.memory.subscribers").registerCosMemorySubscribers();
+  require("../modules/chief_of_staff/cos.celebrations").registerCosCelebrations();
   require("../modules/smartcomm/smartcomm.realtime"); // self-registers, guarded
   require("../modules/calls/calls.realtime"); // self-registers, guarded
 

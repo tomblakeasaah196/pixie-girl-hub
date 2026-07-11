@@ -349,6 +349,15 @@ async function respond({ user, brand, request_id, id, auth_header, answer }) {
     });
   }
 
+  // Adaptive-timing signal (PR6, wow #8): the CEO acted on this nudge, so mark
+  // its cos_nudges rows engaged. Best-effort — timing is a nicety, not a
+  // correctness path — so a failure here never fails the response.
+  try {
+    await repo.markNudgeEngaged({ reference_type: "cos_followup", reference_id: id });
+  } catch {
+    /* ignore */
+  }
+
   await audit({
     business: brand,
     user_id: user.user_id,

@@ -275,4 +275,11 @@ const publicWriteLimiter = lazyLimiter(() =>
   }),
 );
 
-module.exports = { applyGlobalMiddleware, publicWriteLimiter };
+module.exports = {
+  applyGlobalMiddleware,
+  publicWriteLimiter,
+  // Exposed so authenticated modules can build their own scoped limiter on the
+  // shared Redis store (e.g. the Chief of Staff post endpoint, PR6).
+  redisRateLimitStore,
+  lazyLimiter,
+};

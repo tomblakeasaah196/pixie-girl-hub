@@ -110,6 +110,7 @@ export const NOTIF_META: Record<
   stylist_assignment_accepted: { label: "Stylist accepted", category: "ops" },
   cos_followup: { label: "Chief of Staff", category: "ops" },
   cos_briefing: { label: "Chief of Staff", category: "ops" },
+  cos_celebration: { label: "Chief of Staff wins", category: "ops" },
   system: { label: "System", category: "system" },
 };
 

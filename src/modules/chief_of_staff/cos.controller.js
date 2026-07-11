@@ -10,6 +10,7 @@ const meeting = require("./cos.meeting");
 const scheduler = require("./cos.scheduler");
 const templates = require("./cos.templates");
 const overview = require("./cos.overview");
+const settings = require("./cos.settings.service");
 
 const base = (req) => ({
   user: req.user,
@@ -190,6 +191,16 @@ async function instantiateTemplate(req, res) {
   });
 }
 
+// ── Settings / personalisation (PR6) ───────────────────────
+async function getSettings(req, res) {
+  res.json({ data: await settings.get({ user: req.user }) });
+}
+async function updateSettings(req, res) {
+  res.json({
+    data: await settings.update({ ...base(req), patch: req.body }),
+  });
+}
+
 module.exports = {
   listConversations,
   getConversation,
@@ -214,4 +225,7 @@ module.exports = {
   listTemplates,
   saveTemplate,
   instantiateTemplate,
+  // settings (PR6)
+  getSettings,
+  updateSettings,
 };

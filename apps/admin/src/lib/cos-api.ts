@@ -526,3 +526,52 @@ export function useInstantiateTemplate() {
     onError: (err) => toastReport("Chief of Staff → Playbooks", "Use playbook", err),
   });
 }
+
+// ── Settings / personalisation (PR6) ───────────────────────
+
+export type CosTone = "warm" | "concise" | "formal";
+export type CosPronoun = "she" | "he" | "they" | "it";
+
+export interface CosSettings {
+  user_id: string;
+  assistant_name: string;
+  tone: CosTone;
+  avatar_url: string | null;
+  pronoun: CosPronoun;
+  work_start: string; // "HH:MM[:SS]"
+  work_end: string;
+  timezone: string;
+  morning_brief_at: string;
+  evening_review_at: string;
+  quiet_start: string;
+  quiet_end: string;
+  celebrate_wins: boolean;
+  adaptive_timing: boolean;
+}
+
+export type CosSettingsPatch = Partial<Omit<CosSettings, "user_id">>;
+
+export const cosSettingsKey = ["cos", "settings"] as const;
+
+/** The CEO's Chief of Staff personalisation (name/tone/hours/toggles). */
+export function useCosSettings(enabled = true) {
+  return useQuery({
+    queryKey: cosSettingsKey,
+    queryFn: () => api.get<CosSettings>("/cos/settings"),
+    enabled,
+    staleTime: 60_000,
+  });
+}
+
+export function useUpdateCosSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: CosSettingsPatch) => api.put<CosSettings>("/cos/settings", patch),
+    onSuccess: (updated) => {
+      qc.setQueryData(cosSettingsKey, updated);
+      // The assistant name drives the Workspace tab label + chat header.
+      qc.invalidateQueries({ queryKey: cosSettingsKey });
+    },
+    onError: (err) => toastReport("Chief of Staff → Settings", "Save settings", err),
+  });
+}

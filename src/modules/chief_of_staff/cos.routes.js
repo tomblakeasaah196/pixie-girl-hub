@@ -10,11 +10,37 @@
 "use strict";
 
 const express = require("express");
+const rateLimit = require("express-rate-limit");
 const c = require("./cos.controller");
 const v = require("./cos.validator");
 const { AppError } = require("../../utils/errors");
+const { redisRateLimitStore, lazyLimiter } = require("../../middleware");
 
 const router = express.Router();
+
+// Per-user burst guard on the CoS turn (PR6 hardening). The governance daily
+// cap (canUseFeature) already governs spend; this blunts a runaway client loop
+// or an accidental hammer on an expensive LLM turn. Keyed on the CEO's user_id
+// (not IP — one CEO behind one IP is the norm), on the shared Redis store so it
+// holds across API instances, failing OPEN if Redis is down (passOnStoreError).
+const cosTurnLimiter = lazyLimiter(() =>
+  rateLimit({
+    windowMs: 60 * 1000,
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    validate: { creationStack: false },
+    store: redisRateLimitStore("rl:cos:turn:"),
+    passOnStoreError: true,
+    keyGenerator: (req) => (req.user && req.user.user_id) || req.ip || "unknown",
+    message: {
+      error: {
+        code: "TOO_MANY_REQUESTS",
+        message: "Slow down — give your Chief of Staff a moment to catch up.",
+      },
+    },
+  }),
+);
 
 // v1 audience gate: CoS is the CEO's assistant only. The `goals` permission
 // module exists so this can open to execs later without a rework (§Appendix C).
@@ -33,7 +59,12 @@ router.get("/conversations", c.listConversations);
 router.post("/conversations", v.validateConversationCreate, c.createConversation);
 router.get("/conversations/:id", c.getConversation);
 router.delete("/conversations/:id", c.archiveConversation);
-router.post("/conversations/:id/messages", v.validateMessagePost, c.postMessage);
+router.post(
+  "/conversations/:id/messages",
+  cosTurnLimiter,
+  v.validateMessagePost,
+  c.postMessage,
+);
 
 // ── Plans (batch-plan approval) ────────────────────────────
 router.get("/plans/:planId", c.getPlan);
@@ -64,5 +95,9 @@ router.get("/cross-brand/overview", c.crossBrandOverview);
 router.get("/templates", c.listTemplates);
 router.post("/templates", v.validateTemplateSave, c.saveTemplate);
 router.post("/templates/:id/instantiate", v.validateTemplateInstantiate, c.instantiateTemplate);
+
+// ── Settings / personalisation (PR6) ───────────────────────
+router.get("/settings", c.getSettings);
+router.put("/settings", v.validateSettingsUpdate, c.updateSettings);
 
 module.exports = router;

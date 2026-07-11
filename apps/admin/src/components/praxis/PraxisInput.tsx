@@ -23,7 +23,7 @@ export function PraxisInput({
     content: string;
     input_mode: "text" | "voice";
     transcribed_text?: string;
-  }) => void;
+  }) => void | Promise<void>;
   autoFocus?: boolean;
   placeholder?: string;
   initialText?: string;
@@ -52,13 +52,31 @@ export function PraxisInput({
     },
   });
 
-  const sendText = () => {
+  const sendText = async () => {
     const content = text.trim();
     if (!content || disabled) return;
     setText("");
     if (taRef.current) taRef.current.style.height = "auto";
-    onSend({ content, input_mode: "text" });
     taRef.current?.focus();
+    try {
+      // If onSend returns a promise (async parent handler), a rejection means
+      // the turn didn't reach the server — restore the draft so the user
+      // doesn't have to retype a long message after a transient failure.
+      await onSend({ content, input_mode: "text" });
+    } catch {
+      const ta = taRef.current;
+      setText(content);
+      if (ta) {
+        // Wait for React to paint the restored value before we resize/focus.
+        requestAnimationFrame(() => {
+          ta.style.height = "auto";
+          ta.style.height = `${Math.min(ta.scrollHeight, 168)}px`;
+          const end = ta.value.length;
+          ta.focus();
+          ta.setSelectionRange(end, end);
+        });
+      }
+    }
   };
 
   const canSend = !!text.trim() && !disabled;

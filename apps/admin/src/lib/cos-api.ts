@@ -118,6 +118,7 @@ export function useCreateCosConversation() {
     mutationFn: (input?: { title?: string; is_voice_started?: boolean }) =>
       api.post<CosConversation>("/cos/conversations", input ?? {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: cosKeys.conversations }),
+    onError: (err) => toastReport("Chief of Staff", "Start conversation", err),
   });
 }
 
@@ -162,6 +163,7 @@ export function usePostCosMessage() {
       );
       qc.invalidateQueries({ queryKey: cosKeys.conversations });
     },
+    onError: (err) => toastReport("Chief of Staff", "Send message", err),
   });
 }
 

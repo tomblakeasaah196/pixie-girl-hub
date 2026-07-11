@@ -32,6 +32,14 @@ export interface OfferMeta {
   [k: string]: unknown;
 }
 
+/** The candidate's captured e-signature, present once the offer is signed. */
+export interface OfferSignature {
+  data_url: string;
+  signed_at: string | null;
+  verification_code: string | null;
+  signer_name: string | null;
+}
+
 export interface Offer {
   offer_id: string;
   business: string;
@@ -55,7 +63,12 @@ export interface Offer {
   signed_at: string | null;
   provisioned_at: string | null;
   created_at: string;
+  /** Attached by the API on GET /offers/:id once the offer is signed. */
+  signature?: OfferSignature | null;
 }
+
+/** Which document to export as a branded, page-numbered PDF. */
+export type OfferPdfDoc = "packet" | "jd" | "offer";
 
 export interface ContextRow {
   business: string;
@@ -101,6 +114,11 @@ export const recruitmentApi = {
     api.post<{ email: string; emailed: boolean; user_id: string; status: string }>(
       `/recruitment/offers/${id}/provision`,
     ),
+
+  // Branded, page-numbered PDF (rendered by headless Chromium on the server).
+  // Streams the bytes with auth + brand headers, then triggers a browser save.
+  downloadPdf: (id: string, doc: OfferPdfDoc = "packet", fallbackName = "offer.pdf") =>
+    api.download(`/recruitment/offers/${id}/pdf?doc=${doc}&download=1`, fallbackName),
 };
 
 // ── Public (no auth) ───────────────────────────────────────
@@ -115,6 +133,8 @@ export interface PublicOffer {
   company: { name: string; signatory_name: string; signatory_title: string };
   signed_at: string | null;
   verification_code: string | null;
+  /** The candidate's own captured signature image, once they've signed. */
+  signature_data_url: string | null;
 }
 
 export const publicOfferApi = {

@@ -59,6 +59,20 @@ async function get(req, res) {
 async function rendered(req, res) {
   res.json({ data: await service.getRenderedOffer({ brand: req.brand, id: req.params.id }) });
 }
+async function exportPdf(req, res) {
+  const { buffer, filename, mime_type } = await service.exportOfferPdf({
+    brand: req.brand,
+    id: req.params.id,
+    doc: req.query.doc,
+  });
+  // Default to an inline preview (the browser's PDF viewer); download=1 forces
+  // an attachment (save dialog). Either way the bytes are the same PDF.
+  const disposition = req.query.download ? "attachment" : "inline";
+  res.set("Content-Type", mime_type);
+  res.set("Content-Disposition", `${disposition}; filename="${filename}"`);
+  res.set("Cache-Control", "private, no-store");
+  res.send(buffer);
+}
 async function edit(req, res) {
   res.json({
     data: await service.editOffer({ brand: req.brand, id: req.params.id, input: req.body }),
@@ -128,6 +142,7 @@ module.exports = {
   list,
   get,
   rendered,
+  exportPdf,
   edit,
   regenerate,
   approve,

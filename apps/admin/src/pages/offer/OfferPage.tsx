@@ -106,6 +106,9 @@ export function OfferPage() {
   }
 
   if (stage === "signed") {
+    // Prefer the server-persisted signature; fall back to the one just drawn
+    // this session so it appears immediately after signing (before any reload).
+    const signatureImg = offer?.signature_data_url || signature;
     return (
       <Shell brandName={brandName}>
         <div className="text-center py-4">
@@ -117,8 +120,39 @@ export function OfferPage() {
             Thank you, and welcome aboard. Your signed offer has been recorded.
           </p>
         </div>
+
+        {/* The signed documents, still fully readable. */}
+        {offer?.jd_html && <DocumentCard label="Part A — Job Description" html={offer.jd_html} />}
+        {offer?.offer_letter_html && (
+          <DocumentCard label="Part B — Offer Letter" html={offer.offer_letter_html} />
+        )}
+
+        {/* The actual captured signature — not just "signed". */}
+        {signatureImg && (
+          <div className="mb-4 rounded-2xl border hairline bg-surface-2 p-4">
+            <div className="micro mb-2 flex items-center gap-1.5">
+              <PenLine className="h-3.5 w-3.5 text-accent-glow" /> Your signature
+            </div>
+            <div className="grid place-items-center rounded-xl bg-white p-3">
+              <img
+                src={signatureImg}
+                alt="Your signature"
+                className="max-h-[110px] w-auto max-w-full"
+              />
+            </div>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-1 text-[11.5px] text-text-muted">
+              <span>
+                {offer?.candidate_name || "Candidate"}
+                {offer?.signed_at
+                  ? ` · signed ${new Date(offer.signed_at).toLocaleDateString()}`
+                  : ""}
+              </span>
+            </div>
+          </div>
+        )}
+
         {code && (
-          <div className="mt-4 rounded-2xl border hairline bg-surface-2 p-4">
+          <div className="mt-1 rounded-2xl border hairline bg-surface-2 p-4">
             <div className="micro mb-2 flex items-center gap-1.5">
               <ShieldCheck className="h-3.5 w-3.5 text-success" /> Signature verification
             </div>

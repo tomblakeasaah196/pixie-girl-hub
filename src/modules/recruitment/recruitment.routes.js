@@ -37,6 +37,8 @@ adminRouter.get("/offers", P("view"), controller.list);
 adminRouter.post("/offers", P("create"), validate.validateDraft, controller.draft);
 adminRouter.get("/offers/:id", P("view"), controller.get);
 adminRouter.get("/offers/:id/rendered", P("view"), controller.rendered);
+// Branded, page-numbered PDF (?doc=packet|jd|offer, ?download=1 to force save).
+adminRouter.get("/offers/:id/pdf", P("export"), controller.exportPdf);
 adminRouter.patch("/offers/:id", P("edit"), validate.validateEdit, controller.edit);
 adminRouter.post("/offers/:id/regenerate", P("edit"), validate.validateRegenerate, controller.regenerate);
 adminRouter.post("/offers/:id/send", P("approve"), validate.validateApprove, controller.approve);

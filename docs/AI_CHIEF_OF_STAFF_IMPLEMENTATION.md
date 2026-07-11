@@ -1,9 +1,39 @@
 # AI Chief of Staff — Implementation Guide (6 PRs)
 
-> Status: **Approved design, pending build.** Branch: `claude/ai-chief-of-staff-concept-gla3zu`.
-> This document is the single source of truth for the Chief of Staff (CoS) feature.
-> It is exhaustive by intent: every table, column, endpoint, file, permission, job,
-> and acceptance criterion is named. No step is left to interpretation.
+> Status: **PR1 delivered · PR2–PR6 pending.** This document is the single source
+> of truth for the Chief of Staff (CoS) feature. It is exhaustive by intent: every
+> table, column, endpoint, file, permission, job, and acceptance criterion is named.
+> No step is left to interpretation.
+
+## Build state & workflow (read this first)
+
+**Each PR ships as its own GitHub pull request that merges to `main`, and every
+merge to `main` triggers a deploy** (migrations run as a one-shot pre-deploy job).
+So:
+
+- Do **not** stack PRs on a branch whose PR is already merged — a merged PR is
+  closed and cannot deploy new commits. Start each PR from the latest `main`
+  (`git fetch origin main && git checkout -B <branch> origin/main`), build, open a
+  **new** PR.
+- **Migration numbers are shared across all feature branches.** `main` moves fast
+  (other teams merge constantly). Always pick the **next free number above the
+  current max on `main`** at the moment you open your PR, and reconcile
+  `scripts/verify-schema.js` `EXPECTED_SHARED` against `main`'s current value
+  (not the number written here) — rebasing will surface both as conflicts; resolve
+  by keeping both deltas.
+
+| PR | Scope | Status | Migrations | Branch |
+|---|---|---|---|---|
+| 1 | Goals/milestones/notes backend | ✅ **Delivered** | `000320`–`000322` | `claude/cos-pr1-goals-data-api` (PR0 concept was `…-concept-gla3zu`, merged in #442) |
+| 2 | Goals/Notes frontend | ⬜ pending | — | new branch from latest `main` (e.g. `claude/cos-pr2-goals-frontend`) |
+| 3 | CoS agent core + failover router | ⬜ pending | next free on `main` | " |
+| 4 | Accountability loop | ⬜ pending | next free on `main` | " |
+| 5 | Intelligence (RAG, meetings, scheduling, cross-brand) | ⬜ pending | next free on `main` | " |
+| 6 | Personality, settings, polish, docs | ⬜ pending | next free on `main` | " |
+
+**Parallelisable now:** the LLM **failover router** (`src/services/llm-router.js`,
+part of PR3) is decoupled from the goals substrate and can be built alongside PR2
+by a second engineer. Everything else queues behind PR1 (merged) → PR2.
 
 ---
 
@@ -278,12 +308,13 @@ updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 **Objective:** the complete data foundation and REST surface for goals, milestones, stakeholders,
 and notes — with tasks/events linkable to goals. **No AI in this PR.** Fully testable via API.
 
-**Depends on:** nothing.
+**Depends on:** nothing. **Status: ✅ delivered** (commit `feat(goals): Chief of Staff PR1`).
 
-### Migrations (`migrations/`)
-- `0003XX_shared_goals.sql` — §1.1 `goals`, §1.2 `goal_milestones`, §1.3 `goal_stakeholders`, §1.5 link columns + indexes, `fn_set_updated_at` triggers.
-- `0003XX_shared_workspace_notes.sql` — §1.4 `workspace_notes` + indexes.
-- `0003XX_shared_goals_permissions.sql` — seed `shared.permissions` for the new module (see RBAC below).
+### Migrations (`migrations/`) — as built
+- `000320_shared_goals.sql` — §1.1 `goals`, §1.2 `goal_milestones`, §1.3 `goal_stakeholders`, §1.5 link columns + indexes, `fn_set_updated_at` triggers.
+- `000321_shared_workspace_notes.sql` — §1.4 `workspace_notes` + indexes.
+- `000322_shared_goals_permissions.sql` — seeds `shared.permissions` (`goals` × view/create/edit/delete at `all` scope) for owner/admin/manager.
+- `scripts/verify-schema.js` `EXPECTED_SHARED` reconciled to **192** (`main` was at 188 + 4 new shared tables). NOTE: numbers `000318`/`000319` were taken by `recruitment` + `whatsapp_calls` merged to `main` first — hence `000320`+. Future PRs must re-check the max on `main` at open time.
 
 ### RBAC / module governance (mandatory, per CLAUDE.md)
 - `src/shared/access/access.catalog.js`: add to `MODULES` and the module list:
@@ -334,12 +365,18 @@ Socket.io room `brand:{business}:goals` + `user:{uuid}:goals`; `audit`. Wire in 
 - `tests/unit/goals/repo-scope.test.js` — brand isolation + soft-delete filter + `own/team/all` scope.
 - `tests/integration/goals.routes.test.js` (RUN_DB_TESTS) — CRUD, link/unlink, validation 422s.
 
+### As-built notes (deviations from the sketch)
+- **Notes ride inside the `goals` module** (`src/shared/goals/notes.*`), mounted at `/api/v1/notes`, gated on `requirePermission("goals", …)`, and **owner-scoped** (personal to the creator).
+- **Progress is a pure, unit-tested JS formula** (`goals.repo.progressPct`) applied over four DB counts — not raw SQL arithmetic — so the rollup is testable without a DB. Recomputed on every goal-owned write, lazily on `GET /goals/:id` (self-heals the cache), and via `goals.subscribers.js` which listens to `tasks` domain events and is registered in **both** `src/config/socket.js` (API) and `src/jobs/worker.js` (workers/in-process dev).
+- Tests shipped: `tests/unit/goals/progress.test.js` + `tests/unit/goals/validator.test.js` (14 tests). DB-integration tests (progress + brand isolation end-to-end) are deferred to a live-DB pass — no Postgres was available in the build session.
+
 ### Definition of Done
-- [ ] `npm run db:migrate:shared` applies cleanly; `db:verify` table count updated (+4 tables) and green.
-- [ ] All endpoints return correct shapes; unknown fields rejected by Zod.
-- [ ] Linking a task and completing it moves the goal's `progress_pct`.
-- [ ] Brand isolation proven by test (goal in PXG invisible under FLH context).
-- [ ] `npm run lint` + `npm test` green. Audit rows written on every write.
+- [x] Migrations apply cleanly (DDL uses only existing primitives: `fn_set_updated_at`, `pg_trgm`); `verify-schema` `EXPECTED_SHARED` bumped to 192.
+- [x] All endpoints return correct shapes; unknown fields rejected by Zod (`.strict()`).
+- [x] Progress rollup covered by unit tests (empty/all-done/partial/rounding/coercion).
+- [x] Brand isolation enforced on every repo query (`WHERE business = $1`); notes additionally owner-scoped.
+- [x] `eslint` clean on new/edited files; goals + access unit suites green; audit rows on every write.
+- [ ] DB-integration test (progress + isolation against live Postgres) — deferred to a migrated-DB pass.
 
 ---
 

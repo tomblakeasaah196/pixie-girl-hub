@@ -15,7 +15,7 @@
 const express = require("express");
 const c = require("./smartcomm.controller");
 const v = require("./smartcomm.validator");
-const { requirePermission } = require("../../middleware/rbac");
+const { requirePermission, requireCeo } = require("../../middleware/rbac");
 
 // Side-effects:
 //   - sales.order.payment_reminder → customer dispatch (G-4)
@@ -33,6 +33,24 @@ router.get("/unread-count", can("view"), c.getUnreadCount);
 router.get("/starred", can("view"), c.listStarred);
 router.get("/search", can("view"), c.searchMessages);
 router.post("/send", can("edit"), v.validateSendToCustomer, c.sendToCustomer);
+
+// ── Colleague directory (internal people-picker) ───────────
+// smartcomm.view so any messaging user can start a group / add teammates,
+// rather than needing iam.view (the old /iam/users source most staff lacked).
+router.get("/colleagues", can("view"), c.listColleagues);
+
+// ── CEO channel-access matrix (SSOT) ───────────────────────
+// Owner-only: who may reach which channels (in-house/groups, WhatsApp,
+// Instagram, Facebook, email) per business. CEO decides; the service layer
+// enforces it on every read/reply/list.
+router.get("/channel-access", requireCeo, c.getChannelAccessMatrix);
+router.get("/channel-access/:user_id", requireCeo, c.getUserChannelAccess);
+router.put(
+  "/channel-access/:user_id",
+  requireCeo,
+  v.validateChannelAccessSet,
+  c.setUserChannelAccess,
+);
 
 // ── Customer 360 ───────────────────────────────────────────
 router.get("/customer-360/:contact_id", can("view"), c.getCustomer360);

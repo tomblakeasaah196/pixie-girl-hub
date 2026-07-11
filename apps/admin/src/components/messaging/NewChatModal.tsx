@@ -14,10 +14,9 @@ import {
   Phone,
 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
-import { listStaff, type StaffRow } from "@/lib/hr-api";
 import { listCrmClients } from "@/pages/crm/api";
 import type { CrmClient } from "@/pages/crm/types";
-import { smartcommApi } from "@/lib/smartcomm-api";
+import { smartcommApi, type Colleague } from "@/lib/smartcomm-api";
 import { useAuthStore } from "@/stores/auth";
 import { getAvatarColour, getInitials } from "@/lib/messaging-utils";
 import { toastReport } from "@/lib/error-report";
@@ -80,8 +79,8 @@ export function NewChatModal({ open, onClose, onStarted, initialMode = "chat" }:
   }, [open, initialMode]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["hr", "staff", "new-chat"],
-    queryFn: () => listStaff({ page_size: "200" }),
+    queryKey: ["smartcomm", "colleagues", "new-chat"],
+    queryFn: () => smartcommApi.listColleagues(),
     enabled: open && mode !== "customer",
   });
 
@@ -146,14 +145,11 @@ export function NewChatModal({ open, onClose, onStarted, initialMode = "chat" }:
       setError(e instanceof Error ? e.message : "Could not create the group"),
   });
 
-  // Staff with a login, minus the caller (self can't message self).
+  // Colleagues (the directory already excludes the caller server-side, but
+  // keep the guard so self never slips in).
   const staffWithLogin = useMemo(
-    () =>
-      (data?.data || []).filter(
-        (s): s is StaffRow & { user_id: string } =>
-          !!s.user_id && s.user_id !== meId,
-      ),
-    [data?.data, meId],
+    () => (data ?? []).filter((s): s is Colleague => !!s.user_id && s.user_id !== meId),
+    [data, meId],
   );
 
   const rows = useMemo(() => {
@@ -449,7 +445,7 @@ export function NewChatModal({ open, onClose, onStarted, initialMode = "chat" }:
                 };
                 return (
                   <button
-                    key={s.profile_id}
+                    key={s.user_id}
                     disabled={busy}
                     onClick={onRowClick}
                     className={cn(

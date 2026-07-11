@@ -218,6 +218,35 @@ const quickReplyUpdate = z
   })
   .strict();
 
+// CEO channel-access matrix — a full per-channel grant set for one user.
+const channelGrant = z
+  .object({
+    can_view: z.boolean().optional(),
+    can_reply: z.boolean().optional(),
+    can_send_template: z.boolean().optional(),
+    can_close: z.boolean().optional(),
+  })
+  .strict();
+
+const channelAccessSet = z
+  .object({
+    reset: z.boolean().optional(),
+    channels: z
+      .object({
+        internal: channelGrant.optional(),
+        whatsapp: channelGrant.optional(),
+        instagram: channelGrant.optional(),
+        facebook: channelGrant.optional(),
+        email: channelGrant.optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict()
+  .refine((v) => v.reset === true || !!v.channels, {
+    message: "channels map or reset:true is required",
+  });
+
 const mk = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body || {});
   next();
@@ -243,4 +272,5 @@ module.exports = {
   validateQuickReplyUpdate: mk(quickReplyUpdate),
   validateOrderCaptureCreate: mk(orderCaptureCreate),
   validateSendInvoiceCard: mk(sendInvoiceCard),
+  validateChannelAccessSet: mk(channelAccessSet),
 };

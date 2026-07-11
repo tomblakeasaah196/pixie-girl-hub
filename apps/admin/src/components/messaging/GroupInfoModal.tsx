@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Users, UserPlus, X, LogOut, Search, Loader2 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/primitives";
-import { useIamUsers } from "@/lib/iam";
 import { smartcommApi } from "@/lib/smartcomm-api";
 import { getAvatarColour, getInitials } from "@/lib/messaging-utils";
 import { cn } from "@/lib/cn";
@@ -35,10 +35,15 @@ export function GroupInfoModal({
     [members],
   );
 
-  const { data: usersResp } = useIamUsers(
-    adding && search.trim().length >= 2 ? { search: search.trim() } : {},
-  );
-  const candidates = (usersResp?.rows ?? []).filter(
+  // Colleague directory (smartcomm.view) — not /iam/users, which ordinary
+  // staff can't read, so the picker used to come up empty and adding a
+  // teammate was impossible.
+  const { data: colleagues } = useQuery({
+    queryKey: ["smartcomm", "colleagues", search.trim()],
+    queryFn: () => smartcommApi.listColleagues(search.trim()),
+    enabled: adding && search.trim().length >= 2,
+  });
+  const candidates = (colleagues ?? []).filter(
     (u) => !memberUserIds.has(u.user_id),
   );
 

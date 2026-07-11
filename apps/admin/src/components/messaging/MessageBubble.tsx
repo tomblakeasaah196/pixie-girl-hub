@@ -190,7 +190,9 @@ export function MessageBubble({
             <div className="mt-1 flex items-center gap-1 justify-end text-[10px] opacity-70">
               {message.edited_at && <span className="italic">edited</span>}
               <span>{fmtClockTime(message.created_at)}</span>
-              {isOwn && <DeliveryTick status={message.delivery_status} />}
+              {isOwn && (
+                <DeliveryTick status={message.delivery_status} isEmail={isEmail} />
+              )}
             </div>
           </div>
 
@@ -307,18 +309,20 @@ function aggregate(rs: { emoji: string; user_id: string }[]) {
   return Array.from(m.entries()).map(([emoji, count]) => ({ emoji, count }));
 }
 
-function DeliveryTick({ status }: { status?: string }) {
-  switch (status) {
-    case "queued":
-      return <Clock className="w-3 h-3 opacity-70" />;
-    case "failed":
-      return <AlertTriangle className="w-3 h-3 text-danger" />;
-    case "delivered":
-      return <CheckCheck className="w-3 h-3" />;
-    case "read":
-      return <CheckCheck className="w-3 h-3 text-accent" />;
-    case "sent":
-    default:
-      return <Check className="w-3 h-3" />;
-  }
+function DeliveryTick({
+  status,
+  isEmail,
+}: {
+  status?: string;
+  isEmail?: boolean;
+}) {
+  if (status === "queued") return <Clock className="w-3 h-3 opacity-70" />;
+  if (status === "failed") return <AlertTriangle className="w-3 h-3 text-danger" />;
+  // Plain SMTP has no delivery/read-receipt channel, so "sent" is the most
+  // truthful terminal state we can show for email — a stuck double-check
+  // would silently promise a delivered/read status we can never confirm.
+  if (isEmail) return <Check className="w-3 h-3" />;
+  if (status === "delivered") return <CheckCheck className="w-3 h-3" />;
+  if (status === "read") return <CheckCheck className="w-3 h-3 text-accent" />;
+  return <Check className="w-3 h-3" />;
 }

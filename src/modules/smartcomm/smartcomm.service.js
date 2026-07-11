@@ -1790,11 +1790,17 @@ async function sendToCustomer({
  */
 async function applyProviderStatus({ external_ref, status, error }) {
   if (!external_ref || !status) return;
-  await repo.setMessageDeliveryByExternalRef({
+  const updated = await repo.setMessageDeliveryByExternalRef({
     external_ref,
     delivery_status: status,
     delivery_error: error || null,
   });
+  if (updated) {
+    events.emit("message.edited", {
+      channel_id: updated.channel_id,
+      message_id: updated.message_id,
+    });
+  }
 }
 
 // ── Attachments ───────────────────────────────────────────

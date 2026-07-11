@@ -296,7 +296,7 @@ export function CosIntelligencePanel() {
   );
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto w-full max-w-[760px] mx-auto space-y-7 py-4 pr-1">
+    <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain w-full max-w-[760px] mx-auto space-y-7 py-4 px-4 md:px-0 md:pr-1 pb-[max(env(safe-area-inset-bottom,0px),16px)]">
       <CrossBrandSection />
       <SchedulingSection onPlan={setPlan} />
       <PlaybooksSection onPlan={setPlan} />

@@ -76,9 +76,17 @@ export function GoalDetailPanel({
       onClick={onClose}
     >
       <div
-        className="absolute right-0 top-0 bottom-0 w-[min(560px,100vw)] overflow-y-auto dropglass shadow-glass animate-fade-in"
+        className={cn(
+          // Phone: bottom sheet. Desktop/tablet: right drawer.
+          "absolute overflow-y-auto dropglass shadow-glass",
+          "inset-x-0 bottom-0 max-h-[90dvh] rounded-t-[22px] animate-slide-up pb-[max(env(safe-area-inset-bottom,0px),8px)]",
+          "md:inset-x-auto md:right-0 md:top-0 md:bottom-0 md:w-[min(560px,100vw)] md:max-h-none md:rounded-none md:animate-fade-in md:pb-0",
+        )}
         onClick={(e) => e.stopPropagation()}
       >
+        <div className="md:hidden grid place-items-center pt-2.5 -mb-1">
+          <span className="h-1 w-9 rounded-full bg-text-primary/20" aria-hidden />
+        </div>
         <div className="sticky top-0 z-10 flex items-center gap-2 p-4 border-b hairline dropglass">
           <span className="font-display text-[15px] font-medium flex-1 truncate">
             {(goal ?? summary).title}
@@ -399,11 +407,13 @@ function MilestonesSection({ goal }: { goal: Goal }) {
         {milestones.map((m) => (
           <div
             key={m.milestone_id}
-            className="flex items-center gap-2 p-2 rounded-xl bg-text-primary/[0.03]"
+            // flex-wrap: at 390px the status select + delete button drop to
+            // their own line instead of crushing the title to nothing.
+            className="flex flex-wrap items-center gap-2 p-2 rounded-xl bg-text-primary/[0.03]"
           >
             <span
               className={cn(
-                "text-[13px] flex-1 truncate",
+                "text-[13px] flex-1 min-w-[150px] truncate",
                 m.status === "done" && "line-through text-text-faint",
               )}
             >
@@ -414,25 +424,27 @@ function MilestonesSection({ goal }: { goal: Goal }) {
                 {formatDate(m.target_date)}
               </span>
             )}
-            <div className="w-[130px] shrink-0">
-              <Select
-                value={m.status}
-                onChange={(v: string) =>
-                  update.mutate({
-                    milestoneId: m.milestone_id,
-                    input: { status: v as MilestoneStatus },
-                  })
-                }
-                options={MILESTONE_STATUS_OPTIONS}
-              />
+            <div className="ml-auto flex items-center gap-1.5 shrink-0">
+              <div className="w-[130px]">
+                <Select
+                  value={m.status}
+                  onChange={(v: string) =>
+                    update.mutate({
+                      milestoneId: m.milestone_id,
+                      input: { status: v as MilestoneStatus },
+                    })
+                  }
+                  options={MILESTONE_STATUS_OPTIONS}
+                />
+              </div>
+              <button
+                onClick={() => del.mutate(m.milestone_id)}
+                className="w-7 h-7 grid place-items-center rounded-lg text-text-faint hover:text-danger hover:bg-danger/10 transition-colors shrink-0"
+                aria-label="Delete milestone"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
             </div>
-            <button
-              onClick={() => del.mutate(m.milestone_id)}
-              className="w-7 h-7 grid place-items-center rounded-lg text-text-faint hover:text-danger hover:bg-danger/10 transition-colors shrink-0"
-              aria-label="Delete milestone"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
           </div>
         ))}
         {milestones.length === 0 && (

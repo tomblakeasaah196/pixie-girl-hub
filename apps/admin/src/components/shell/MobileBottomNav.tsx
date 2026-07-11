@@ -221,7 +221,9 @@ export function MobileBottomNav() {
     <>
       <PinToast message={toast?.msg ?? ""} visible={!!toast} />
       <nav
-        className="flex lg:hidden fixed bottom-0 inset-x-0 z-[60] glass border-t pb-[max(8px,env(safe-area-inset-bottom,0px))]"
+        // Heavier glass than the default .glass (0.55 alpha): page content
+        // scrolling beneath must never fight the tab labels for legibility.
+        className="flex lg:hidden fixed bottom-0 inset-x-0 z-[60] bg-[rgb(var(--panel)/0.92)] backdrop-blur-[28px] backdrop-saturate-150 border-t hairline pb-[max(8px,env(safe-area-inset-bottom,0px))]"
         aria-label="Bottom navigation"
       >
         <div className="grid grid-cols-5 w-full">

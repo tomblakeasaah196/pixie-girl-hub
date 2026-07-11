@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router-dom";
 import {
@@ -199,6 +199,8 @@ export function WorkspacePage() {
   const user = useAuthStore((s) => s.user);
   const isMobile = useMediaQuery("(max-width: 767px)");
   const isDesktop = useMediaQuery("(min-width: 1024px)");
+  // Keep the active tab pill in view as the strip scrolls on phones.
+  const activeTabRef = useRef<HTMLButtonElement | null>(null);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const isCeo = !!user?.isCeo;
@@ -353,6 +355,16 @@ export function WorkspacePage() {
     ? allTasks.find((t) => t.task_id === activeDragId)
     : null;
 
+  // Bring the active tab pill into view on phones — with 7 tabs the strip
+  // scrolls, and a selected tab hidden off-screen reads as "missing".
+  useEffect(() => {
+    activeTabRef.current?.scrollIntoView({
+      behavior: "smooth",
+      inline: "center",
+      block: "nearest",
+    });
+  }, [activeTab]);
+
   function setTab(tab: WorkspaceTab) {
     setSearchParams({ tab });
     setSelectedTaskId(null);
@@ -401,32 +413,43 @@ export function WorkspacePage() {
 
   // ── Render ─────────────────────────────────────────────────────────────
 
+  // Phone + Chief of Staff → the chat goes immersive (full viewport, own
+  // header); rendering the page chrome behind it would only bleed through
+  // the glass. The tab returns via its back chevron.
+  if (isMobile && activeTab === "chief-of-staff") {
+    return <ChiefOfStaffTab onExit={() => setTab("my-day")} />;
+  }
+
   return (
     <div className="animate-fade-in">
       <ModuleInsights module="tasks" className="mb-4" />
-      {/* Tab bar — top on all sizes; mobile gets shell bottom nav */}
-      <div className="flex items-center gap-2 mb-6">
-        <div className="flex gap-0.5 p-0.5 rounded-[12px] bg-text-primary/[0.04] border hairline">
-          {visibleTabs.map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => setTab(key)}
-              className={cn(
-                "flex items-center gap-2 px-4 h-[36px] rounded-[10px] text-[13px] font-semibold transition-all",
-                activeTab === key
-                  ? "bg-accent-deep text-[#F4E9D9] shadow-sm"
-                  : "text-text-muted hover:text-text-primary hover:bg-text-primary/[0.06]",
-              )}
-            >
-              <Icon className="w-3.5 h-3.5" />
-              {key === "chief-of-staff" ? cosTabLabel : label}
-            </button>
-          ))}
+      {/* Tab bar — a swipeable strip on phones (7 tabs never fit), inline on
+          desktop. The active pill auto-centres itself into view. */}
+      <div className="flex items-center gap-2 mb-4 md:mb-6">
+        <div className="min-w-0 flex-1 md:flex-initial">
+          <div className="flex gap-0.5 p-0.5 rounded-[12px] bg-text-primary/[0.04] border hairline overflow-x-auto hide-scrollbar">
+            {visibleTabs.map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                ref={activeTab === key ? activeTabRef : undefined}
+                type="button"
+                onClick={() => setTab(key)}
+                className={cn(
+                  "flex items-center gap-2 px-4 h-[36px] rounded-[10px] text-[13px] font-semibold transition-all whitespace-nowrap shrink-0",
+                  activeTab === key
+                    ? "bg-accent-deep text-[#F4E9D9] shadow-sm"
+                    : "text-text-muted hover:text-text-primary hover:bg-text-primary/[0.06]",
+                )}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                {key === "chief-of-staff" ? cosTabLabel : label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {!isMobile && (
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-2 shrink-0">
             <Button
               variant="primary"
               size="sm"
@@ -559,9 +582,15 @@ export function WorkspacePage() {
             onClick={() => setSelectedTaskId(null)}
           >
             <div
-              className="absolute bottom-0 left-0 right-0 max-h-[80vh] overflow-y-auto dropglass rounded-t-[22px] animate-slide-up"
+              className="absolute bottom-0 left-0 right-0 max-h-[88dvh] overflow-y-auto dropglass rounded-t-[22px] animate-slide-up pb-[max(env(safe-area-inset-bottom,0px),8px)]"
               onClick={(e) => e.stopPropagation()}
             >
+              <div className="grid place-items-center pt-2.5 -mb-1">
+                <span
+                  className="h-1 w-9 rounded-full bg-text-primary/20"
+                  aria-hidden
+                />
+              </div>
               <TaskDetailPanel
                 taskId={selectedTaskId}
                 onClose={() => setSelectedTaskId(null)}
@@ -615,14 +644,17 @@ export function WorkspacePage() {
         event={editEvent}
       />
 
-      {/* Mobile FAB */}
-      {isMobile && (
+      {/* Mobile FAB — stacked directly above the global floating launcher
+          (matching its 52px footprint and right-6 gutter) so the two never
+          overlap. Only on tabs where "+" has an obvious meaning. */}
+      {isMobile && ["my-day", "tasks", "calendar"].includes(activeTab) && (
         <button
           onClick={() => {
             if (activeTab === "calendar") setShowCreateEvent(true);
             else openCreateTaskForDate();
           }}
-          className="fixed bottom-[80px] right-4 z-40 w-14 h-14 rounded-full bg-accent-deep text-[#F4E9D9] shadow-lg grid place-items-center hover:bg-accent transition-colors"
+          aria-label={activeTab === "calendar" ? "New event" : "New task"}
+          className="fixed right-6 bottom-[calc(132px+max(env(safe-area-inset-bottom,0px),8px))] z-40 w-[52px] h-[52px] rounded-[18px] bg-accent-deep text-[#F4E9D9] border border-white/10 shadow-[0_12px_30px_rgb(var(--accent-deep)/0.5)] grid place-items-center hover:bg-accent transition-colors"
         >
           <Plus className="w-6 h-6" />
         </button>
@@ -1282,7 +1314,7 @@ function EventDetailOverlay({
       onClick={onClose}
     >
       <div
-        className="absolute bottom-0 left-0 right-0 max-h-[70vh] overflow-y-auto dropglass rounded-t-[22px] p-5 lg:absolute lg:bottom-auto lg:top-1/2 lg:left-1/2 lg:-translate-x-1/2 lg:-translate-y-1/2 lg:w-[min(460px,94vw)] lg:rounded-[18px]"
+        className="absolute bottom-0 left-0 right-0 max-h-[78dvh] overflow-y-auto dropglass rounded-t-[22px] animate-slide-up p-5 pb-[calc(max(env(safe-area-inset-bottom,0px),8px)+12px)] lg:absolute lg:bottom-auto lg:top-1/2 lg:left-1/2 lg:-translate-x-1/2 lg:-translate-y-1/2 lg:w-[min(460px,94vw)] lg:rounded-[18px] lg:animate-fade-in lg:pb-5"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start gap-3 mb-4">

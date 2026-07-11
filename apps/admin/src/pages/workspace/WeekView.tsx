@@ -47,7 +47,10 @@ export function WeekView({
   }
 
   return (
+    // min-w floor: on phones the 7-day grid pans horizontally instead of
+    // crushing each day to an unusable ~47px sliver.
     <div className="overflow-x-auto">
+      <div className="min-w-[640px]">
       {/* Day headers */}
       <div className="grid grid-cols-[60px_repeat(7,1fr)] border-b hairline">
         <div className="p-2" />
@@ -109,6 +112,7 @@ export function WeekView({
             })}
           </div>
         ))}
+      </div>
       </div>
     </div>
   );

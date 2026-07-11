@@ -2,9 +2,13 @@
 <html lang="en" data-theme="dark" data-density="comfortable">
   <head>
     <meta charset="UTF-8" />
+    <!-- interactive-widget=resizes-content: when the on-screen keyboard opens,
+         the layout viewport shrinks with it, so bottom-pinned composers (CoS
+         chat, Messaging) stay visible above the keys instead of hiding under
+         them. Ignored by browsers that don't support the key. -->
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
     />
     <meta name="theme-color" content="#0f0809" />
     <meta name="apple-mobile-web-app-capable" content="yes" />

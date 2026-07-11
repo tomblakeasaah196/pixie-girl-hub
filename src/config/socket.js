@@ -107,6 +107,12 @@ async function initSocketIo(httpServer) {
   } = require("../modules/chief_of_staff/cos.memory.subscribers");
   registerCosMemorySubscribers();
 
+  // CoS win celebrations (PR6): congratulate the CEO on milestone/goal wins.
+  const {
+    registerCosCelebrations,
+  } = require("../modules/chief_of_staff/cos.celebrations");
+  registerCosCelebrations();
+
   const {
     registerServiceJobsRealtime,
   } = require("../realtime/service-jobs-realtime");

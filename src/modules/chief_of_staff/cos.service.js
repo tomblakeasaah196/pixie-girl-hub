@@ -21,6 +21,7 @@ const planExecutor = require("./cos.plan-executor");
 const persona = require("./cos.persona");
 const planner = require("./cos.planner");
 const memory = require("./cos.memory");
+const settingsRepo = require("./cos.settings.repo");
 const goalsRepo = require("../../shared/goals/goals.repo");
 const events = require("./cos.events");
 const governance = require("../ai_governance/governance.service");
@@ -206,10 +207,12 @@ async function runTurn({ client, user, brand, conversation, userMsg, userText })
     .map((m) => ({ role: m.role, content: m.content || "" }));
 
   // Ground the turn in the CEO's real goals + semantic memory (wow #7), so
-  // "how is X doing?" is answered from history, not invented.
-  const [goalsCtx, memCtx] = await Promise.all([
+  // "how is X doing?" is answered from history, not invented. Load the CEO's
+  // personalisation (PR6) so the persona speaks as her named assistant/tone.
+  const [goalsCtx, memCtx, settings] = await Promise.all([
     goalsSnapshot({ brand }),
     memorySnapshot({ user, brand, userText }),
+    settingsRepo.get({ user_id: user.user_id }).catch(() => null),
   ]);
   const contextBlock = [goalsCtx, memCtx].filter(Boolean).join("\n\n");
 
@@ -219,6 +222,7 @@ async function runTurn({ client, user, brand, conversation, userMsg, userText })
       content: persona.systemPrompt({
         brand,
         user,
+        settings,
         actionTitles: actions.map((a) => a.title),
       }),
     },

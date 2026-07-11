@@ -9,23 +9,34 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Sparkles, Plus, MessagesSquare, Target, CalendarClock, AlertCircle, RotateCw, MessageSquare, LayoutGrid } from "lucide-react";
+import { Sparkles, Plus, MessagesSquare, Target, CalendarClock, AlertCircle, RotateCw, MessageSquare, LayoutGrid, Settings2 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Markdown } from "@/components/help/Markdown";
 import { PraxisInput } from "@/components/praxis/PraxisInput";
 import { BatchPlanCard } from "./BatchPlanCard";
 import { CosIntelligencePanel } from "./CosIntelligencePanel";
+import { CosSettings } from "./CosSettings";
 import {
   useCosConversations,
   useCosConversation,
   useCreateCosConversation,
   usePostCosMessage,
+  useCosSettings,
   type CosMessage,
 } from "@/lib/cos-api";
 
-const COS_NAME = "Chief of Staff"; // PR6: from cos_settings.assistant_name
+const DEFAULT_COS_NAME = "Chief of Staff";
 
-function Avatar({ pulse }: { pulse?: boolean }) {
+function Avatar({ pulse, url }: { pulse?: boolean; url?: string | null }) {
+  if (url) {
+    return (
+      <img
+        src={url}
+        alt=""
+        className="mt-0.5 w-8 h-8 rounded-[11px] object-cover shrink-0 shadow-[0_4px_14px_rgb(var(--accent-deep)/0.4)]"
+      />
+    );
+  }
   return (
     <div className="mt-0.5 grid place-items-center w-8 h-8 rounded-[11px] bg-[linear-gradient(140deg,rgb(var(--accent)),var(--biz-2))] text-[#F4E9D9] shrink-0 shadow-[0_4px_14px_rgb(var(--accent-deep)/0.4)]">
       <Sparkles className={cn("w-4 h-4", pulse && "animate-pulse")} />
@@ -33,7 +44,7 @@ function Avatar({ pulse }: { pulse?: boolean }) {
   );
 }
 
-function Bubble({ msg }: { msg: CosMessage }) {
+function Bubble({ msg, avatarUrl }: { msg: CosMessage; avatarUrl?: string | null }) {
   const text = msg.content || msg.transcribed_text || "";
   if (msg.role === "user") {
     return (
@@ -49,7 +60,7 @@ function Bubble({ msg }: { msg: CosMessage }) {
   }
   return (
     <div className="flex gap-3">
-      <Avatar />
+      <Avatar url={avatarUrl} />
       <div className="min-w-0 flex-1 pt-0.5">
         <Markdown
           source={text}
@@ -60,10 +71,10 @@ function Bubble({ msg }: { msg: CosMessage }) {
   );
 }
 
-function Thinking() {
+function Thinking({ name, avatarUrl }: { name: string; avatarUrl?: string | null }) {
   return (
     <div className="flex gap-3 items-center">
-      <Avatar pulse />
+      <Avatar pulse url={avatarUrl} />
       <span className="inline-flex items-center gap-2 text-[12.5px] text-text-muted">
         <span className="inline-flex gap-1">
           {[0, 1, 2].map((i) => (
@@ -74,19 +85,19 @@ function Thinking() {
             />
           ))}
         </span>
-        {COS_NAME} is drafting your plan…
+        {name} is drafting your plan…
       </span>
     </div>
   );
 }
 
-function Welcome() {
+function Welcome({ name }: { name: string }) {
   return (
     <div className="max-w-[560px] mx-auto text-center pt-6 pb-2">
       <div className="w-[64px] h-[64px] rounded-[20px] mx-auto mb-4 grid place-items-center text-accent-glow bg-accent/10 border border-accent/20">
         <Sparkles className="w-7 h-7" />
       </div>
-      <h2 className="font-display text-xl font-medium mb-1.5">Meet your {COS_NAME}</h2>
+      <h2 className="font-display text-xl font-medium mb-1.5">Meet your {name}</h2>
       <p className="text-[13px] text-text-muted max-w-[440px] mx-auto mb-6">
         Just talk. Describe a goal in plain language and I'll draft the whole plan — milestones, tasks,
         deadlines and reminders — for you to approve in one tap.
@@ -112,12 +123,16 @@ export function ChiefOfStaffTab() {
   const [view, setView] = useState<"chat" | "insights">("chat");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [pendingSend, setPendingSend] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
   const convos = useCosConversations();
   const detail = useCosConversation(activeId);
   const create = useCreateCosConversation();
   const post = usePostCosMessage();
+  const settings = useCosSettings();
+  const cosName = settings.data?.assistant_name || DEFAULT_COS_NAME;
+  const avatarUrl = settings.data?.avatar_url ?? null;
 
   // Default to the most recent thread once conversations load.
   useEffect(() => {
@@ -164,7 +179,7 @@ export function ChiefOfStaffTab() {
       <div className="flex items-center justify-between pb-3 mb-1 border-b hairline">
         <div className="flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-accent-glow" />
-          <span className="font-display text-[15px] font-medium">{COS_NAME}</span>
+          <span className="font-display text-[15px] font-medium">{cosName}</span>
         </div>
         <div className="flex items-center gap-2">
           {/* Chat / Insights toggle */}
@@ -195,8 +210,19 @@ export function ChiefOfStaffTab() {
               <Plus className="w-3.5 h-3.5" /> New chat
             </button>
           )}
+          <button
+            type="button"
+            onClick={() => setShowSettings(true)}
+            aria-label={`${cosName} settings`}
+            title="Settings"
+            className="inline-flex items-center justify-center w-8 h-8 rounded-lg border hairline text-text-muted hover:text-text-primary"
+          >
+            <Settings2 className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
+
+      <CosSettings open={showSettings} onClose={() => setShowSettings(false)} />
 
       {view === "insights" ? (
         <CosIntelligencePanel />
@@ -223,18 +249,18 @@ export function ChiefOfStaffTab() {
             </button>
           </div>
         ) : !hasThread ? (
-          <Welcome />
+          <Welcome name={cosName} />
         ) : (
           <div className="flex flex-col gap-6">
             {messages.map((m) => (
-              <Bubble key={m.message_id} msg={m} />
+              <Bubble key={m.message_id} msg={m} avatarUrl={avatarUrl} />
             ))}
             {plans.map((p) => (
               <div key={p.plan_id} className="pl-11">
                 <BatchPlanCard plan={p} conversationId={activeId!} />
               </div>
             ))}
-            {thinking && <Thinking />}
+            {thinking && <Thinking name={cosName} avatarUrl={avatarUrl} />}
           </div>
         )}
         <div ref={endRef} />
@@ -245,7 +271,7 @@ export function ChiefOfStaffTab() {
         <PraxisInput
           onSend={handleSend}
           disabled={thinking}
-          placeholder={`Tell your ${COS_NAME} what you want to get done…`}
+          placeholder={`Tell your ${cosName} what you want to get done…`}
         />
       </div>
         </>

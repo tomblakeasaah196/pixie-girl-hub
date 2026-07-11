@@ -44,6 +44,7 @@ import {
 } from "@/components/ui/primitives";
 import { ErrorState } from "@/components/ui/controls";
 import MyHrPage from "@/pages/hr/MyHrPage";
+import { useCosSettings } from "@/lib/cos-api";
 import { GoalsTab } from "./GoalsTab";
 import { NotesTab } from "./NotesTab";
 import { ChiefOfStaffTab } from "./ChiefOfStaffTab";
@@ -210,6 +211,14 @@ export function WorkspacePage() {
   const activeTab: WorkspaceTab = visibleTabs.some((t) => t.key === rawTab)
     ? rawTab
     : "my-day";
+
+  // PR6: the CoS tab label follows the CEO's chosen assistant name (e.g. "Ada").
+  // Only the CoS entry is renamed; every other tab is fixed. Fetched only for
+  // the CEO (the only role that sees the tab).
+  const cosSettings = useCosSettings(isCeo);
+  const cosName = cosSettings.data?.assistant_name?.trim();
+  const cosTabLabel =
+    cosName && cosName !== "Chief of Staff" ? cosName : "AI Chief of Staff";
 
   // Calendar state
   const [calView, setCalView] = useState<CalendarViewMode>("month");
@@ -411,7 +420,7 @@ export function WorkspacePage() {
               )}
             >
               <Icon className="w-3.5 h-3.5" />
-              {label}
+              {key === "chief-of-staff" ? cosTabLabel : label}
             </button>
           ))}
         </div>

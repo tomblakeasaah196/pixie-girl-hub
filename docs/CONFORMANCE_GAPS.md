@@ -72,6 +72,27 @@ template column).
 
 ---
 
+### P4 — AI Chief of Staff (execution assistant) — ✅ SHIPPED 2026-07-11
+
+A "better Notion" execution assistant for the CEO, delivered across PR1–PR6 as a
+scoped persona of the Praxis runtime. Architecture: `docs/AI_CHIEF_OF_STAFF.md`;
+build plan: `docs/AI_CHIEF_OF_STAFF_IMPLEMENTATION.md`.
+
+| ID   | Item | State | What landed |
+| ---- | ---- | ----- | ----------- |
+| COS-1 | Goals/Notes data + REST + RBAC `goals` | ✅ done | `shared.goals`/`goal_milestones`/`goal_stakeholders`/`workspace_notes` + link columns; `/api/v1/goals` + `/notes`; cached progress rollup (000320–000322). |
+| COS-2 | Goals/Notes frontend | ✅ done | Workspace tabs (CEO-gated): My Goals dashboard, Goal detail, Notes, task/event goal pickers. |
+| COS-3 | CoS agent core + failover router | ✅ done | Scoped catalogue (`surface='workspace'`), conversation `kind`, batch-plan approval (`ai_pending_plans` + `{{step:N.field}}`), DeepSeek→Gemini→OpenAI router (000324). |
+| COS-4 | Proactive accountability | ✅ done | Pure risk engine → `goals.health`; hourly cron; Done/In-Progress/Delayed follow-ups; re-plan; morning/evening/Monday briefings (no new cron) (000325). |
+| COS-5 | Intelligence | ✅ done | RAG memory (shared corpus, owner-scoped), meeting prep, focus/overload scheduling, cross-brand overview (CEO exception), playbook templates (000326). |
+| COS-6 | Personality, settings, polish, docs | ✅ done | `cos_settings` + `GET/PUT /cos/settings` + Settings UI; naming propagation (CoS-only); adaptive timing; win celebrations; rate-limit + plan-expiry sweep + injection guard + a11y; full docs (000327–000328). |
+
+Guardrails hold across all six: catalogue is structurally workspace-only, the
+executor runs as the CEO over loopback (RBAC re-applies), every write audited,
+every turn metered under `cos_chat`, and Praxis behaviour is unchanged.
+
+---
+
 ## Part 3 — Doc hygiene (cheap, do alongside)
 
 - `SCHEMA.md` + `README.md` still say **35 migrations / 425 tables**.

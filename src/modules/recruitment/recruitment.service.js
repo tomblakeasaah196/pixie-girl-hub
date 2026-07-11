@@ -19,6 +19,7 @@ const render = require("./recruitment.render");
 const events = require("./recruitment.events");
 const pdf = require("../../services/pdf.service");
 const esign = require("../../shared/documents/documents.esign.service");
+const storage = require("../../services/storage.service");
 const invitations = require("../../shared/hr_payroll/invitations.service");
 const email = require("../../services/email.service");
 const { audit } = require("../../middleware/audit");
@@ -76,6 +77,39 @@ async function getCompany({ brand, targets }) {
     secondary_colour: branding?.secondary_colour || "#A81D1D",
     logo_base64: loadLogoBase64(branding?.logo_path || branding?.logo_alt_path),
     brand_key: brand,
+  };
+}
+
+/**
+ * Resolve the candidate's captured e-signature for an offer, as a base64 image
+ * data URL plus signing metadata — so it can be stamped into the PDF and shown
+ * on screen. Returns null when the offer isn't signed yet. Handles both the
+ * inline draw flow (signature_data_url) and the legacy media-path flow.
+ */
+async function resolveOfferSignature(offer) {
+  const sig = await repo.getOfferSignature({ request_id: offer.signature_request_id });
+  if (!sig) return null;
+  let data_url = sig.signature_data_url || null;
+  if (!data_url && sig.captured_signature_path) {
+    try {
+      const buf = await storage.get(sig.captured_signature_path);
+      const ext = String(sig.captured_signature_path).split(".").pop().toLowerCase();
+      const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "image/png";
+      data_url = `data:${mime};base64,${buf.toString("base64")}`;
+    } catch (err) {
+      logger.warn(
+        { err: err.message, offer_id: offer.offer_id },
+        "recruitment: could not load captured signature image",
+      );
+    }
+  }
+  if (!data_url) return null;
+  return {
+    data_url,
+    captured_signature_path: sig.captured_signature_path || null,
+    signed_at: sig.signed_at || offer.signed_at || null,
+    verification_code: sig.verification_code || null,
+    signer_name: sig.display_name_snapshot || offer.candidate_name || null,
   };
 }
 
@@ -209,6 +243,11 @@ const listOffers = ({ brand, status }) => repo.listOffers({ brand, status });
 async function getOffer({ brand, id }) {
   const offer = await repo.getOffer({ brand, id });
   if (!offer) throw new NotFoundError("Offer");
+  // Once accepted, surface the candidate's captured signature so the Studio can
+  // show the actual signature (not just "signed") beneath the document.
+  if (LOCKED.includes(offer.status)) {
+    offer.signature = await resolveOfferSignature(offer);
+  }
   return offer;
 }
 
@@ -218,6 +257,47 @@ async function getRenderedOffer({ brand, id }) {
   if (!offer) throw new NotFoundError("Offer");
   const company = await getCompany({ brand, targets: offer.target_businesses });
   return { ...render.renderForWeb(offer), company };
+}
+
+// ── PDF export (on-demand, branded, page-numbered) ─────────
+const EXPORT_KINDS = new Set(["packet", "jd", "offer"]);
+
+/**
+ * Render a branded, page-numbered PDF for an offer on demand and return the
+ * bytes (never persisted — this is a download). `doc` selects which document:
+ *   • 'packet' — Job Description + Offer Letter + execution block (default)
+ *   • 'jd'     — Job Description only
+ *   • 'offer'  — Offer Letter only (with execution block)
+ * When the offer is signed, the candidate's e-signature is stamped into the
+ * execution block so it rides in the PDF itself.
+ */
+async function exportOfferPdf({ brand, id, doc = "packet" }) {
+  const kind = EXPORT_KINDS.has(doc) ? doc : "packet";
+  const offer = await repo.getOffer({ brand, id });
+  if (!offer) throw new NotFoundError("Offer");
+
+  const company = await getCompany({ brand, targets: offer.target_businesses });
+  const signature = await resolveOfferSignature(offer); // null until signed
+
+  let html;
+  let label;
+  if (kind === "jd") {
+    html = render.jobDescriptionHtml({ offer, company });
+    label = "Job-Description";
+  } else if (kind === "offer") {
+    html = render.offerLetterHtml({ offer, company, signature });
+    label = "Offer-Letter";
+  } else {
+    html = render.offerPacketHtml({ offer, company, signature });
+    label = "Offer-Packet";
+  }
+
+  const buffer = await pdf.renderHtmlToPdf(html, render.pdfDocOptions(company));
+  const safe = (s) => String(s || "").replace(/[^\w.-]+/g, "_").replace(/^_+|_+$/g, "");
+  const filename = `${label}_${safe(offer.title) || "role"}_${
+    safe(offer.candidate_name || offer.candidate_email) || "candidate"
+  }.pdf`;
+  return { buffer, filename, mime_type: "application/pdf" };
 }
 
 // ── Approve & send ─────────────────────────────────────────
@@ -241,7 +321,8 @@ async function approveAndSend({ brand, user, request_id, id, input = {} }) {
 
   const company = await getCompany({ brand, targets: offer.target_businesses });
 
-  // 1) Render + store the offer packet PDF (JD + Offer Letter).
+  // 1) Render + store the offer packet PDF (JD + Offer Letter). Branded,
+  //    full-bleed and page-numbered via the shared document options.
   const html = render.offerPacketHtml({ offer, company });
   const doc = await pdf.renderAndStore({
     brand,
@@ -252,12 +333,7 @@ async function approveAndSend({ brand, user, request_id, id, input = {} }) {
     reference_type: "recruitment_offer",
     reference_id: offer.offer_id,
     request_id,
-    pdfOptions: {
-      displayHeaderFooter: true,
-      headerTemplate: "<span></span>",
-      footerTemplate: `<div style="font-size:8px;width:100%;text-align:center;color:#999;font-family:sans-serif;">
-        <span class="pageNumber"></span> of <span class="totalPages"></span></div>`,
-    },
+    pdfOptions: render.pdfDocOptions(company),
   });
 
   // 2) E-signature request (candidate = sole external signer). Created directly
@@ -358,6 +434,10 @@ async function getPublicOffer({ token, ip, ua }) {
   const web = render.renderForWeb(offer);
   const signed = signer ? signer.status === "signed" : LOCKED.includes(offer.status);
 
+  // Once signed, hand the candidate back their own captured signature so the
+  // signed offer page shows the actual signature (not just "signed").
+  const signature = signed ? await resolveOfferSignature(offer) : null;
+
   return {
     title: offer.title,
     candidate_name: offer.candidate_name,
@@ -371,8 +451,10 @@ async function getPublicOffer({ token, ip, ua }) {
       signatory_name: company.signatory_name,
       signatory_title: company.signatory_title,
     },
-    signed_at: signer ? signer.signed_at : offer.signed_at,
-    verification_code: signer ? signer.verification_code : null,
+    signed_at: (signature && signature.signed_at) || (signer ? signer.signed_at : offer.signed_at),
+    verification_code:
+      (signature && signature.verification_code) || (signer ? signer.verification_code : null),
+    signature_data_url: signature ? signature.data_url : null,
   };
 }
 
@@ -567,6 +649,7 @@ module.exports = {
   listOffers,
   getOffer,
   getRenderedOffer,
+  exportOfferPdf,
   approveAndSend,
   provisionCredentials,
   // public

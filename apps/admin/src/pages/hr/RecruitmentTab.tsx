@@ -7,7 +7,7 @@
  * link) → candidate signs → an admin clicks "Provision & email credentials".
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Sparkles,
@@ -20,6 +20,11 @@ import {
   Building2,
   FileSignature,
   Settings2,
+  Download,
+  FileDown,
+  PenLine,
+  ShieldCheck,
+  Loader2,
 } from "lucide-react";
 import { Card, Button, Pill, Skeleton, EmptyState } from "@/components/ui/primitives";
 import { Modal } from "@/components/ui/Modal";
@@ -28,6 +33,7 @@ import {
   recruitmentApi,
   type Offer,
   type OfferStatus,
+  type OfferPdfDoc,
   type ContextRow,
 } from "@/lib/recruitment-api";
 import { renderOfferMarkdown } from "@/lib/offer-markdown";
@@ -53,7 +59,13 @@ const input =
   "w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary";
 
 // ── Tab root ───────────────────────────────────────────────
-export function RecruitmentTab({ canEdit }: { canEdit: boolean }) {
+export function RecruitmentTab({
+  canEdit,
+  canExport = false,
+}: {
+  canEdit: boolean;
+  canExport?: boolean;
+}) {
   const qc = useQueryClient();
   const [selected, setSelected] = useState<string | null>(null);
   const [newOpen, setNewOpen] = useState(false);
@@ -69,6 +81,7 @@ export function RecruitmentTab({ canEdit }: { canEdit: boolean }) {
       <OfferStudio
         offerId={selected}
         canEdit={canEdit}
+        canExport={canExport}
         onBack={() => {
           setSelected(null);
           qc.invalidateQueries({ queryKey: ["recruitment", "offers"] });
@@ -342,10 +355,12 @@ function NewRoleModal({
 function OfferStudio({
   offerId,
   canEdit,
+  canExport,
   onBack,
 }: {
   offerId: string;
   canEdit: boolean;
+  canExport: boolean;
   onBack: () => void;
 }) {
   const qc = useQueryClient();
@@ -432,6 +447,7 @@ function OfferStudio({
           <Pill tone={STATUS_TONE[d.status]}>{d.status}</Pill>
         </div>
         <div className="flex flex-wrap gap-2">
+          {canExport && <DownloadMenu offerId={offerId} title={d.title} />}
           {!readOnly && (
             <>
               <Button size="sm" icon={<RefreshCw className="h-3.5 w-3.5" />}
@@ -561,6 +577,112 @@ function OfferStudio({
           `}</style>
         </div>
       </div>
+
+      {/* Executed signature — shown once the candidate has signed. */}
+      {locked && d.signature?.data_url && (
+        <Card className="p-4">
+          <div className="mb-3 flex items-center gap-1.5 text-xs text-text-muted">
+            <PenLine className="h-3.5 w-3.5 text-accent-glow" /> Candidate signature — executed copy
+          </div>
+          <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-stretch">
+            <div className="rounded-xl border hairline bg-white p-4">
+              <img
+                src={d.signature.data_url}
+                alt="Candidate signature"
+                className="max-h-[120px] w-auto max-w-full"
+              />
+              <div className="mt-2 border-t border-neutral-200 pt-2 text-[12px] text-neutral-700">
+                {d.signature.signer_name || d.candidate_name || "Candidate"}
+                {d.signature.signed_at
+                  ? ` · signed ${new Date(d.signature.signed_at).toLocaleDateString()}`
+                  : ""}
+              </div>
+            </div>
+            {d.signature.verification_code && (
+              <div className="grid content-center rounded-xl border hairline bg-surface-2 p-3">
+                <div className="micro mb-1 flex items-center gap-1.5">
+                  <ShieldCheck className="h-3.5 w-3.5 text-success" /> Verification
+                </div>
+                <span className="font-mono text-[12px] tracking-wide text-accent-glow">
+                  {d.signature.verification_code}
+                </span>
+              </div>
+            )}
+          </div>
+          <p className="mt-3 text-[11.5px] text-text-muted">
+            This signature is embedded in the downloaded PDF (Download PDF → Full offer packet /
+            Offer letter).
+          </p>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ── Download menu (branded PDF export) ─────────────────────
+function DownloadMenu({ offerId, title }: { offerId: string; title: string }) {
+  const notify = useNotify("Recruitment: download");
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState<OfferPdfDoc | null>(null);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  const slug = title.replace(/[^\w.-]+/g, "_").replace(/^_+|_+$/g, "") || "offer";
+  const run = async (doc: OfferPdfDoc, name: string) => {
+    setBusy(doc);
+    try {
+      await recruitmentApi.downloadPdf(offerId, doc, `${name}_${slug}.pdf`);
+      setOpen(false);
+    } catch (e) {
+      notify("Couldn't download", errMsg(e), "high");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const items: { doc: OfferPdfDoc; label: string; name: string }[] = [
+    { doc: "packet", label: "Full offer packet", name: "Offer-Packet" },
+    { doc: "jd", label: "Job description", name: "Job-Description" },
+    { doc: "offer", label: "Offer letter", name: "Offer-Letter" },
+  ];
+
+  return (
+    <div className="relative" ref={ref}>
+      <Button
+        size="sm"
+        icon={<Download className="h-3.5 w-3.5" />}
+        onClick={() => setOpen((o) => !o)}
+      >
+        Download PDF
+      </Button>
+      {open && (
+        <div className="glass absolute right-0 z-20 mt-1 w-52 overflow-hidden rounded-xl border hairline p-1 shadow-xl">
+          {items.map((it) => (
+            <button
+              key={it.doc}
+              type="button"
+              disabled={!!busy}
+              onClick={() => run(it.doc, it.name)}
+              className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-xs text-text-primary transition-colors hover:bg-text-primary/[0.06] disabled:opacity-60"
+            >
+              <span>{it.label}</span>
+              {busy === it.doc ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <FileDown className="h-3.5 w-3.5 text-text-faint" />
+              )}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

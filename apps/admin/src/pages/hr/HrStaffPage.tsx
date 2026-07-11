@@ -1095,7 +1095,10 @@ export default function HrStaffPage() {
       {tab === "targets" && <TargetsTab onAdd={() => setTargetOpen(true)} />}
       {tab === "rewards" && <RewardsTab />}
       {tab === "recruitment" && can("recruitment", "view") && (
-        <RecruitmentTab canEdit={can("recruitment", "edit")} />
+        <RecruitmentTab
+          canEdit={can("recruitment", "edit")}
+          canExport={can("recruitment", "export")}
+        />
       )}
       {tab === "analytics" && <AnalyticsTab />}
       {tab === "settings" && (

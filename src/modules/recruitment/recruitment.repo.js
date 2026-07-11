@@ -288,6 +288,26 @@ async function userIdByEmail({ email }) {
   return rows[0] ? rows[0].user_id : null;
 }
 
+/**
+ * The candidate's captured e-signature for an offer's signature request, if any.
+ * The candidate is the sole external signer, so we take the signed signer row.
+ * Returns the raw signature artifact (inline data URL or stored media path) plus
+ * the signing metadata; null when the request has no signed signer yet.
+ */
+async function getOfferSignature({ request_id }) {
+  if (!request_id) return null;
+  const { rows } = await query(
+    `SELECT signature_data_url, captured_signature_path, signed_at,
+            verification_code, display_name_snapshot
+       FROM shared.signature_request_signers
+      WHERE request_id = $1 AND status = 'signed'
+      ORDER BY signed_at ASC NULLS LAST
+      LIMIT 1`,
+    [request_id],
+  );
+  return rows[0] || null;
+}
+
 module.exports = {
   transaction,
   // context
@@ -310,4 +330,5 @@ module.exports = {
   updateOffer,
   businessBranding,
   userIdByEmail,
+  getOfferSignature,
 };

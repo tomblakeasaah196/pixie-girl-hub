@@ -507,7 +507,7 @@ async function usageDaily({ from, to, feature_key, vendor }) {
 }
 
 // ── Action catalogue ───────────────────────────────────────
-async function listActions({ module, category, ai_enabled, is_write }) {
+async function listActions({ module, category, ai_enabled, is_write, surface }) {
   const where = [];
   const params = [];
   let i = 1;
@@ -526,6 +526,12 @@ async function listActions({ module, category, ai_enabled, is_write }) {
   if (is_write !== undefined) {
     where.push(`is_write = $${i++}`);
     params.push(is_write);
+  }
+  // CoS (Chief of Staff) scopes its catalogue to surface='workspace'; Praxis
+  // passes no surface and sees its full set. A row's surface may be 'both'.
+  if (surface) {
+    where.push(`surface IN ($${i++}, 'both')`);
+    params.push(surface);
   }
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const { rows } = await query(

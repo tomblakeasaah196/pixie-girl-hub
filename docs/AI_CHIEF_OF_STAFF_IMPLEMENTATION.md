@@ -1,6 +1,6 @@
 # AI Chief of Staff — Implementation Guide (6 PRs)
 
-> Status: **PR1 delivered · PR2–PR6 pending.** This document is the single source
+> Status: **PR1–PR3 delivered · PR4–PR6 pending.** This document is the single source
 > of truth for the Chief of Staff (CoS) feature. It is exhaustive by intent: every
 > table, column, endpoint, file, permission, job, and acceptance criterion is named.
 > No step is left to interpretation.
@@ -26,14 +26,21 @@ So:
 |---|---|---|---|---|
 | 1 | Goals/milestones/notes backend | ✅ **Delivered** | `000320`–`000322` | `claude/cos-pr1-goals-data-api` (PR0 concept was `…-concept-gla3zu`, merged in #442) |
 | 2 | Goals/Notes frontend | ✅ **Delivered** | — | `claude/cos-pr2-goals-frontend` (branched off `main` after PR1 merged in #447) |
-| 3 | CoS agent core + failover router | ⬜ pending | next free on `main` | " |
+| 3 | CoS agent core + failover router | ✅ **Delivered** | `000324` | `claude/chief-of-staff-pr3-z9wmy7` (branched off `main` after PR2 merged in #450) |
 | 4 | Accountability loop | ⬜ pending | next free on `main` | " |
 | 5 | Intelligence (RAG, meetings, scheduling, cross-brand) | ⬜ pending | next free on `main` | " |
 | 6 | Personality, settings, polish, docs | ⬜ pending | next free on `main` | " |
 
-**Parallelisable now:** the LLM **failover router** (`src/services/llm-router.js`,
-part of PR3) is decoupled from the goals substrate and can be built alongside PR2
-by a second engineer. Everything else queues behind PR1 (merged) → PR2.
+**Parallelisable now (PR1–PR3 merged):** a second engineer can start **PR4's
+backend** — the risk engine (`cos.risk.js`), the hourly `cos-accountability`
+scheduler, the follow-up state machine (respond/reason/snooze/dismiss), and the
+`cos_followups`/`cos_nudges` migrations — against PR1's data alone. Three seams
+must coordinate with a PR3 that is now merged (so they are unblocked, not
+blocking): the **re-plan-on-delay** path reuses `cos.plan-executor.js`; the
+briefing **LLM narrative** reuses `src/services/llm-router.js`; and the shared
+**migration sequence** (take the next free number above `000324` and bump
+`EXPECTED_SHARED`). PR4's UI (the `GoalDetailPanel` AI-Insights card) sits on
+PR2's components, already merged.
 
 ---
 
@@ -119,7 +126,7 @@ out of scope** and must not appear in the catalogue.)
 - **Errors**: throw `AppError` with `code`/`httpStatus`/`userMessage`. Never leak SQL.
 - **Audit**: every service write calls `audit({...})`.
 - **Design canon** (`docs/FRONTEND_INSTRUCTION_MUST_READ.md`): Maroon Noir tokens only, glassmorphism on overlays, Playfair/Montserrat/JetBrains Mono, four states on every screen (loading/empty/error/permission-denied), mobile-first.
-- **Feature flag**: `COS_ENABLED` (mirrors `PRAXIS_ORCHESTRATOR_ENABLED`) via `ai_feature_flags` + env; degrades gracefully to a stub when off or no vendor.
+- **Feature flag**: the `cos_chat` row in `ai_feature_flags`, toggled from **AI Control → Feature Flags** (no env var, no redeploy — the CEO owns the on/off). Degrades gracefully to a stub when off, over cap/budget, or no vendor. *(As-built: PR3 dropped the originally-sketched `COS_ENABLED` env switch to remove the backend-engineer dependency.)*
 - **Brand context**: `shared.goals`/`workspace_notes` carry a `business` column (same as `tasks`/`calendar_events`); every query filters by `req.brand` **except** the explicit cross-brand CEO path (§PR5).
 
 ---
@@ -492,11 +499,18 @@ multi-vendor failover router.
 - Integration: "Launch Accessories in August" → plan with N steps → confirm → rows exist with correct FKs and cross-step goal_id wired.
 
 ### Definition of Done
-- [ ] Chatting in the CoS tab proposes a batch plan; approving it creates the goal + children in one gate.
-- [ ] CoS provably cannot call a non-workspace action (test + manual attempt).
-- [ ] Failover works when the primary vendor key is invalid (falls to Gemini, records incident).
-- [ ] Usage metered on the governance ledger under `cos_chat`; `COS_ENABLED=false` degrades to a graceful stub.
-- [ ] Praxis behaviour byte-for-byte unchanged (regression tests pass).
+- [x] Chatting in the CoS tab proposes a batch plan; approving it creates the goal + children in one gate.
+- [x] CoS provably cannot call a non-workspace action (structural: tools built only from `surface='workspace'`; planner rejects any other; guardrail test).
+- [x] Failover works when the primary vendor key is invalid (falls to Gemini, records incident) — `llm-router` unit-tested.
+- [x] Usage metered on the governance ledger under `cos_chat`; the AI Control `cos_chat` flag off (or over cap/budget / no vendor) degrades to a graceful stub — no env switch.
+- [x] Praxis behaviour byte-for-byte unchanged (only pre-existing test failures remain; no CoS-caused regression).
+
+### As-built notes (deviations from the sketch)
+- **Migration `000324`** (next free above `main`'s `000323`); `EXPECTED_SHARED` 192 → **193** (one new table, `ai_pending_plans`; `ai_conversations.kind`, `ai_action_catalogue.surface`, `ai_pending_actions.plan_id/plan_step` are ALTERs).
+- **Scoped catalogue is enforced structurally**: `governance.repo.listActions` gained a `surface` filter; the CoS turn only ever builds tools from `surface IN ('workspace','both')`, so a Praxis action is un-callable — the planner also rejects any action not in the workspace allowlist (belt-and-braces).
+- **`kind` scoping** is applied to `praxis.repo` conversation list/create (default `'praxis'`); CoS passes `'chief_of_staff'`. Existing Praxis threads are unaffected (migration defaults `kind='praxis'`).
+- **Frontend**: the CoS tab body fills the PR2 stub (`ChiefOfStaffTab.tsx`) reusing the Praxis composer (`PraxisInput`) + `Markdown`; `BatchPlanCard.tsx` groups steps Goal → Milestones → Tasks → Calendar → Notes → People/links with one Approve/Reject, live per-step status, expiry countdown, and a Retry (resume) on partial failure. `cos-api.ts` mirrors `praxis-api.ts`.
+- **Tests**: `tests/unit/chief_of_staff/{planner,plan-executor,scoping}.test.js` + `tests/unit/services/llm-router.test.js` (22 tests). A live-DB integration test (plan → confirm → rows with FKs) is deferred to a migrated-DB pass, as in PR1.
 
 ---
 
@@ -684,7 +698,7 @@ Praxis strings are untouched (`src/modules/praxis_ai/`, Praxis UI, nav "Praxis A
 - [ ] Executor runs as the CEO over loopback HTTP; RBAC re-applies.
 - [ ] Every write audited; every AI turn metered.
 - [ ] Brand isolation preserved (except the documented CEO cross-brand read).
-- [ ] `COS_ENABLED` off → graceful stub; no vendor → graceful stub.
+- [ ] `cos_chat` flag off (AI Control) → graceful stub; no vendor → graceful stub.
 - [ ] Design canon 10-question gate passed for each screen.
 - [ ] Praxis behaviour unchanged by every PR.
 

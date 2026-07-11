@@ -85,6 +85,7 @@ const orgWorkflowRouter = require("../shared/org_workflow/org.routes");
 const storefrontStudioRouter = require("../modules/storefront_studio/studio.routes");
 const intercompanyRouter = require("../modules/intercompany/intercompany.routes");
 const praxisRouter = require("../modules/praxis_ai/praxis.routes");
+const cosRouter = require("../modules/chief_of_staff/cos.routes");
 const aiInsightsRouter = require("../modules/ai_insights/insights.routes");
 const aiGovernanceRouter = require("../modules/ai_governance/governance.routes");
 const retailPartnersRouter = require("../modules/retail_partners/partners.routes");
@@ -415,6 +416,7 @@ function mountRoutes(app) {
     ["/storefront-studio", storefrontStudioRouter],
     ["/intercompany", intercompanyRouter],
     ["/praxis", praxisRouter],
+    ["/cos", cosRouter],
     ["/insights", aiInsightsRouter],
     ["/ai-governance", aiGovernanceRouter],
     ["/retail-partners", retailPartnersRouter],

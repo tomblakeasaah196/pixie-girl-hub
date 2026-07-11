@@ -23,6 +23,7 @@ const planner = require("./cos.planner");
 const memory = require("./cos.memory");
 const settingsRepo = require("./cos.settings.repo");
 const goalsRepo = require("../../shared/goals/goals.repo");
+const notesRepo = require("../../shared/goals/notes.repo");
 const events = require("./cos.events");
 const governance = require("../ai_governance/governance.service");
 const modelCatalogue = require("../ai_governance/model-catalogue.repo");
@@ -31,7 +32,7 @@ const transcription = require("../../services/transcription.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { logger } = require("../../config/logger");
-const { NotFoundError } = require("../../utils/errors");
+const { AppError, NotFoundError } = require("../../utils/errors");
 
 const KIND = "chief_of_staff";
 const FEATURE = "cos_chat";
@@ -77,9 +78,13 @@ async function getConversation({ user, id }) {
   const conv = await praxisRepo.findConversation({ id });
   if (!conv || conv.user_id !== user.user_id || conv.kind !== KIND)
     throw new NotFoundError("Conversation");
-  const [messages, plans] = await Promise.all([
+  const [messages, plans, savedNote] = await Promise.all([
     praxisRepo.listMessages({ conversation_id: id }),
     cosRepo.listPlansForConversation({ conversation_id: id }),
+    notesRepo.findNoteByCosConversation({
+      user_id: user.user_id,
+      conversation_id: id,
+    }),
   ]);
   const plansWithSteps = await Promise.all(
     plans.map(async (p) => ({
@@ -87,7 +92,16 @@ async function getConversation({ user, id }) {
       steps: await cosRepo.listPlanSteps({ plan_id: p.plan_id }),
     })),
   );
-  return { ...conv, messages, plans: plansWithSteps };
+  // saved_note lets the UI say "Update notes" instead of "Save to notes",
+  // deep-link to the note in the Notes tab, and skip the "Save this?" prompt.
+  const saved_note = savedNote
+    ? {
+        note_id: savedNote.note_id,
+        title: savedNote.title,
+        updated_at: savedNote.updated_at,
+      }
+    : null;
+  return { ...conv, messages, plans: plansWithSteps, saved_note };
 }
 
 async function createConversation({ user, brand, request_id, input }) {
@@ -405,6 +419,155 @@ function rejectPlan({ user, request_id, id, reason }) {
   return planExecutor.rejectPlan({ user, request_id, id, reason });
 }
 
+// ── Save conversation to Workspace Notes ──────────────────
+//
+// Produces a Markdown recap of the current thread and upserts it into
+// shared.workspace_notes with source='cos' + source_conversation_id.
+// Re-summarising updates the same row (migration 000329 enforces this via a
+// partial unique index). Overwrite is deliberate — the confirmed policy is
+// "CoS summary wins" even when the user has hand-edited the note in between.
+
+const NOTE_SAVE_HISTORY_TURNS = 40;
+const NOTE_SUMMARY_TEMPERATURE = 0.2;
+const NOTE_TITLE_MAX = 80;
+
+const NOTE_SYSTEM_PROMPT = [
+  "You are the Chief of Staff writing a personal note for the CEO.",
+  "Distil the conversation into a keepsake that will make sense weeks later.",
+  "",
+  "Return your response using EXACTLY this shape and nothing else:",
+  "",
+  "### TITLE",
+  "<one short title, plain text, no quotes, under 80 characters>",
+  "",
+  "### BODY",
+  "<Markdown body>",
+  "",
+  "The BODY MUST use Markdown with these sections (skip any that would be empty):",
+  "  ## Overview",
+  "  ## Decisions",
+  "  ## Next steps",
+  "  ## Open questions",
+  "",
+  "Rules:",
+  "  - Write in the CEO's voice ('I …'), not the assistant's.",
+  "  - Be concrete — dates, names, numbers over adjectives.",
+  "  - Use dash bullets ('- ') for lists, not numbered lists.",
+  "  - No preamble, no closing pleasantries, no code fences.",
+].join("\n");
+
+function buildConversationTranscript(messages) {
+  return messages
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .slice(-NOTE_SAVE_HISTORY_TURNS)
+    .map((m) => {
+      const who = m.role === "user" ? "CEO" : "Chief of Staff";
+      const text = (m.content || m.transcribed_text || "").trim();
+      return text ? `${who}: ${text}` : null;
+    })
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/**
+ * Split the model's response into { title, body }. Falls back to sensible
+ * defaults if the model ignores the shape — a saved note is better than a
+ * hard failure the CEO has to re-summarise their way out of.
+ */
+function parseNoteResponse(raw) {
+  const text = String(raw || "").trim();
+  const bodyMatch = /###\s*BODY\s*\n([\s\S]*)$/i.exec(text);
+  const body = bodyMatch ? bodyMatch[1].trim() : text;
+  // Title = the first non-empty line after the TITLE marker. Guard against an
+  // empty TITLE section, where the capture would otherwise grab the BODY
+  // marker (or the body's first heading) as the title.
+  const titleMatch = /###\s*TITLE\s*\n+([^\n]+)/i.exec(text);
+  let title = titleMatch ? titleMatch[1].trim() : "";
+  if (title.startsWith("#")) title = "";
+  title = title.replace(/^["'`]+|["'`]+$/g, "").slice(0, NOTE_TITLE_MAX);
+  if (!title) title = "Chief of Staff note";
+  return { title, body };
+}
+
+async function saveConversationAsNote({ user, brand, request_id, id }) {
+  const conv = await praxisRepo.findConversation({ id });
+  if (!conv || conv.user_id !== user.user_id || conv.kind !== KIND)
+    throw new NotFoundError("Conversation");
+
+  const messages = await praxisRepo.listMessages({ conversation_id: id });
+  const transcript = buildConversationTranscript(messages);
+  if (!transcript) {
+    throw new AppError(
+      "COS_NOTE_EMPTY",
+      "There's nothing in this conversation to save yet.",
+      422,
+      { user_message: "Say something first — then I can save it to Notes." },
+    );
+  }
+
+  // Governance guard reuses the CoS chat budget/flag — a note write is a chat
+  // completion in disguise, so it belongs to the same envelope.
+  const guard = await governance.canUseFeature({
+    user_id: user.user_id,
+    feature_key: FEATURE,
+    is_ceo: user.is_ceo,
+    business: brand,
+  });
+  if (!guard.ok) {
+    throw new AppError("AI_UNAVAILABLE", stubReply(guard), 409, {
+      user_message: stubReply(guard),
+    });
+  }
+
+  let completion;
+  try {
+    completion = await llmRouter.chatWithFailover({
+      capability: "chat",
+      messages: [
+        { role: "system", content: NOTE_SYSTEM_PROMPT },
+        { role: "user", content: transcript },
+      ],
+      user,
+      brand,
+      feature_key: FEATURE,
+      temperature: NOTE_SUMMARY_TEMPERATURE,
+    });
+  } catch (err) {
+    logger.error(
+      { err: err.message, conversation_id: id },
+      "cos: save-note llm-router failed",
+    );
+    throw new AppError(
+      "AI_UNAVAILABLE",
+      "Couldn't reach the AI to summarise this conversation.",
+      503,
+      { user_message: "Couldn't reach the AI just now — try again in a moment." },
+    );
+  }
+
+  await recordUsageSafe({ user, brand, convId: id, completion, ok: true });
+  const { title, body } = parseNoteResponse(completion.content);
+
+  const { note, action } = await notesRepo.upsertCosNote({
+    business: brand,
+    user_id: user.user_id,
+    conversation_id: id,
+    title,
+    body,
+  });
+
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: action === "created" ? "cos.note.create" : "cos.note.update",
+    target_type: "workspace_note",
+    target_id: note.note_id,
+    request_id,
+  });
+
+  return { note, action };
+}
+
 // Re-exported so a caller (or test) can assert the scoped catalogue directly.
 function listWorkspaceActions() {
   return governance.listActions({ ai_enabled: true, surface: "workspace" });
@@ -419,8 +582,10 @@ module.exports = {
   getPlan,
   confirmPlan,
   rejectPlan,
+  saveConversationAsNote,
   listWorkspaceActions,
   // internals exposed for tests
   buildTools,
   runTurn,
+  parseNoteResponse,
 };

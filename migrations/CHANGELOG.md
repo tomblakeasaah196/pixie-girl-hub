@@ -11,6 +11,31 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-11 — Chief of Staff: save conversation to Notes
+
+**Source:** user request — the CEO wants the Chief of Staff to summarise a
+chat and push (or refresh) a personal note in the Workspace Notes surface,
+searchable alongside manual notes.
+
+**Files (new):** `000329_shared_cos_notes_link.sql` — adds
+`shared.workspace_notes.source_conversation_id` (FK →
+`shared.ai_conversations`, `ON DELETE SET NULL`) plus a partial UNIQUE
+index `(user_id, source_conversation_id) WHERE source='cos' AND
+is_deleted=false AND source_conversation_id IS NOT NULL`. The unique index
+is what enforces "one CoS note per conversation" — re-summarising upserts
+the same row instead of duplicating. A second partial index backs the
+reverse "does this conversation already have a saved note?" lookup.
+
+**Related (no migration):** `src/modules/chief_of_staff/cos.service.js`
+(`saveConversationAsNote` — summarises the thread via the same failover LLM
+router + `cos_chat` governance envelope, then upserts), `notes.repo.js`
+(`upsertCosNote` / `findNoteByCosConversation`), the
+`POST /cos/conversations/:id/save-note` route, and the admin CoS tab
+("Save to notes" header button + inline suggestion; a "Chief of Staff" tag
+on the note card).
+
+---
+
 ## 2026-07-11 — Recruitment: countersignatory e-signature
 
 **Source:** user request — offer packets need one signature area (not two),

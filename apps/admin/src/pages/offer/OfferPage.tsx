@@ -121,10 +121,10 @@ export function OfferPage() {
           </p>
         </div>
 
-        {/* The signed documents, still fully readable. */}
-        {offer?.jd_html && <DocumentCard label="Part A — Job Description" html={offer.jd_html} />}
-        {offer?.offer_letter_html && (
-          <DocumentCard label="Part B — Offer Letter" html={offer.offer_letter_html} />
+        {/* The signed packet, still fully readable — same document that was
+            signed, same layout as the downloadable PDF. */}
+        {offer?.packet_html && (
+          <PacketFrame label="Signed offer packet" html={offer.packet_html} />
         )}
 
         {/* The actual captured signature — not just "signed". */}
@@ -183,9 +183,11 @@ export function OfferPage() {
         </p>
       </div>
 
-      {/* The two documents, rendered as branded "paper". */}
-      <DocumentCard label="Part A — Job Description" html={offer!.jd_html} />
-      <DocumentCard label="Part B — Offer Letter" html={offer!.offer_letter_html} />
+      {/* The full offer packet — Job Description, Offer Letter, and the
+          formal Execution block — as one branded document. This is literally
+          the HTML the PDF exporter uses, so what the candidate reads IS what
+          they'll download after signing. */}
+      <PacketFrame label="Offer packet — Job Description & Offer Letter" html={offer!.packet_html} />
 
       {/* Company countersignature note */}
       <div className="mb-5 rounded-xl border hairline bg-surface-2 p-3 text-[12px] text-text-muted">
@@ -242,29 +244,26 @@ export function OfferPage() {
   );
 }
 
-// ── Document "paper" ──────────────────────────────────────
-function DocumentCard({ label, html }: { label: string; html: string }) {
+// ── Packet "paper" ────────────────────────────────────────
+/**
+ * Sandboxed iframe rendering the full server-side offer packet HTML — brand
+ * shell, cover, Part A + Part B, single Execution block. This is the SAME
+ * document the PDF exporter produces, so the candidate is reading exactly
+ * what they'll download after signing (and what the admin sees in the studio
+ * preview pane). No frontend markdown re-implementation, no drift.
+ */
+function PacketFrame({ label, html }: { label: string; html: string }) {
   return (
     <div className="mb-4">
       <div className="micro mb-2">{label}</div>
-      <div
-        className="offer-doc max-h-[420px] overflow-y-auto rounded-xl border hairline bg-white p-5 text-[13px] leading-relaxed text-neutral-800"
-        // Content is server-rendered from markdown with all HTML escaped, so this
-        // is safe — no raw tags from the author survive the backend renderer.
-        dangerouslySetInnerHTML={{ __html: html }}
-      />
-      <style>{`
-        .offer-doc h1 { font-size: 18px; font-weight: 700; margin: 0 0 6px; }
-        .offer-doc h2 { font-size: 15px; font-weight: 700; margin: 16px 0 6px; }
-        .offer-doc h3 { font-size: 13.5px; font-weight: 700; margin: 12px 0 4px; }
-        .offer-doc p { margin: 0 0 8px; }
-        .offer-doc ul, .offer-doc ol { margin: 0 0 8px 18px; }
-        .offer-doc li { margin: 2px 0; }
-        .offer-doc table { width: 100%; border-collapse: collapse; margin: 8px 0; }
-        .offer-doc th, .offer-doc td { border: 1px solid #e5e5e5; padding: 5px 8px; text-align: left; font-size: 12px; }
-        .offer-doc hr { border: 0; border-top: 1px solid #e5e5e5; margin: 12px 0; }
-        .offer-doc strong { font-weight: 700; }
-      `}</style>
+      <div className="overflow-hidden rounded-xl border hairline bg-white">
+        <iframe
+          title="Offer packet"
+          srcDoc={html}
+          sandbox=""
+          className="block w-full h-[560px] bg-white"
+        />
+      </div>
     </div>
   );
 }

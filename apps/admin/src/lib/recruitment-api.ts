@@ -79,6 +79,13 @@ export interface ContextRow {
   non_negotiables: string | null;
   signatory_name: string | null;
   signatory_title: string | null;
+  /**
+   * The countersignatory's captured e-signature as a base64 PNG data URL.
+   * Drawn once in the Company-context modal, then stamped by the renderer on
+   * every offer packet's "For {brand}" line — same treatment as the
+   * candidate's signature. Null until captured.
+   */
+  signatory_signature_data_url: string | null;
   notes: string | null;
 }
 
@@ -108,6 +115,16 @@ export const recruitmentApi = {
     api.patch<Offer>(`/recruitment/offers/${id}`, patch),
   regenerate: (id: string, intake?: Record<string, unknown>) =>
     api.post<Offer>(`/recruitment/offers/${id}/regenerate`, { intake }),
+  /**
+   * Server-side WYSIWYG preview. Ships the studio's in-flight markdown to the
+   * backend and gets back the full packet HTML the PDF exporter would produce,
+   * so the preview pane, the candidate offer page, and the downloaded PDF are
+   * literally the same document.
+   */
+  previewPacket: (
+    id: string,
+    drafts: { jd_markdown?: string; offer_markdown?: string; title?: string; candidate_name?: string },
+  ) => api.post<{ packet_html: string }>(`/recruitment/offers/${id}/preview`, drafts),
   send: (id: string, body: Record<string, unknown>) =>
     api.post<Offer>(`/recruitment/offers/${id}/send`, body),
   provision: (id: string) =>
@@ -130,6 +147,13 @@ export interface PublicOffer {
   can_sign: boolean;
   jd_html: string;
   offer_letter_html: string;
+  /**
+   * Full offer-packet HTML — the same document the PDF exporter produces
+   * (brand shell, cover, Part A + Part B, single Execution block). The
+   * candidate reads this in a scrollable iframe so what they sign is
+   * literally what gets downloaded as a PDF.
+   */
+  packet_html: string;
   company: { name: string; signatory_name: string; signatory_title: string };
   signed_at: string | null;
   verification_code: string | null;

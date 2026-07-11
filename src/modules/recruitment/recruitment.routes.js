@@ -37,6 +37,10 @@ adminRouter.get("/offers", P("view"), controller.list);
 adminRouter.post("/offers", P("create"), validate.validateDraft, controller.draft);
 adminRouter.get("/offers/:id", P("view"), controller.get);
 adminRouter.get("/offers/:id/rendered", P("view"), controller.rendered);
+// Live-edit preview — accepts in-flight jd_markdown / offer_markdown drafts
+// from the studio and returns the same packet HTML the PDF exporter uses,
+// so the studio iframe is WYSIWYG. Never persists.
+adminRouter.post("/offers/:id/preview", P("view"), controller.preview);
 // Branded, page-numbered PDF (?doc=packet|jd|offer, ?download=1 to force save).
 adminRouter.get("/offers/:id/pdf", P("export"), controller.exportPdf);
 adminRouter.patch("/offers/:id", P("edit"), validate.validateEdit, controller.edit);

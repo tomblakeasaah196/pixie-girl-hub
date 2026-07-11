@@ -55,7 +55,7 @@ ${JSON.stringify(intake, null, 2)}
 Return ONLY a JSON object with these keys:
 {
   "jd_markdown": "<the full job description in markdown: overview, what success looks like, key responsibilities grouped by area, brand-specific mandates where relevant, KPIs, requirements, nice-to-haves>",
-  "offer_markdown": "<the full offer letter body in markdown, addressed to the candidate, covering position, reporting line, start, remuneration incl. probation vs post-probation, probation terms, confidentiality, and acceptance — use bracketed [placeholders] only for details not provided in the intake>",
+  "offer_markdown": "<the full offer letter body in markdown, addressed to the candidate, covering position, reporting line, start, remuneration incl. probation vs post-probation, probation terms, and confidentiality — use bracketed [placeholders] only for details not provided in the intake. DO NOT append an acceptance or signature block at the end of the letter (no 'Accepted and Agreed:', no ruled '____________ [Candidate Name]' / 'Date' placeholders, no 'Signed by the Candidate'). The system appends its own formal execution block with real e-signature slots for both the candidate and the countersignatory — anything you add here would produce a duplicate signature area. End with the sign-off only (e.g. 'Warm regards,\\n\\n{signatory_name}\\n{signatory_title}').>",
   "offer_meta": {
     "reporting_to": "", "employment_type": "", "location": "",
     "probation_months": 3, "review_days": 60,

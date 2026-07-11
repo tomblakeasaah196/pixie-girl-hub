@@ -363,3 +363,164 @@ export function followupIdFromEndpoint(endpoint: string): string | null {
   const m = endpoint.match(/followups\/([^/]+)\//);
   return m ? m[1] : null;
 }
+
+// ── Intelligence (PR5): memory, meetings, scheduling, cross-brand, templates ──
+
+export interface MeetingPrep {
+  event: {
+    event_id: string;
+    title: string;
+    event_type: string;
+    start_at: string;
+    end_at: string;
+    location: string | null;
+  };
+  goal: {
+    goal_id: string;
+    title: string;
+    status: string;
+    health: string;
+    progress_pct: number;
+    target_date: string | null;
+  } | null;
+  open_milestones: { milestone_id: string; title: string; status: string; target_date: string | null }[];
+  recent_notes: { note_id: string; title: string | null; excerpt: string; created_at: string }[];
+  participants: {
+    participant_id: string;
+    name: string;
+    email: string | null;
+    is_organiser: boolean;
+    status: string;
+    kind: "user" | "contact";
+  }[];
+  open_questions: string[];
+}
+
+export interface ScheduleSlot {
+  start_at: string;
+  end_at: string;
+}
+export interface FocusResult {
+  slots: ScheduleSlot[];
+  plan: Plan | null;
+}
+export interface LoadSummary {
+  date: string;
+  meeting_hours: number;
+  meetings: number;
+  high_priority_tasks: number;
+  overloaded: boolean;
+  thresholds: { meeting_hours: number; high_priority_tasks: number };
+}
+
+export interface CrossBrandBrand {
+  business: string;
+  display_name: string;
+  active_goals: number;
+  on_track: number;
+  at_risk: number;
+  behind: number;
+  achieved: number;
+  avg_progress: number;
+  overdue_milestones: number;
+  overdue_tasks: number;
+  overdue_total: number;
+  headline: string;
+}
+export interface CrossBrandOverview {
+  brands: CrossBrandBrand[];
+  totals: { active_goals: number; at_risk: number; behind: number; overdue_total: number };
+  generated_at: string;
+}
+
+export interface GoalTemplate {
+  template_id: string;
+  business: string | null;
+  name: string;
+  description: string | null;
+  structure: {
+    goal?: { priority?: string };
+    milestones?: { title: string; offset_days: number; tasks?: { title: string; offset_days: number }[] }[];
+    tasks?: { title: string; offset_days: number }[];
+  };
+  source_goal_id: string | null;
+  source_goal_title?: string | null;
+  usage_count: number;
+  created_at: string;
+}
+
+export const intelKeys = {
+  crossBrand: ["cos", "cross-brand"] as const,
+  templates: ["cos", "templates"] as const,
+  prep: (id: string) => ["cos", "prep", id] as const,
+  load: (d: string) => ["cos", "schedule", "load", d] as const,
+};
+
+export function useCrossBrandOverview(enabled = true) {
+  return useQuery({
+    queryKey: intelKeys.crossBrand,
+    queryFn: () => api.get<CrossBrandOverview>("/cos/cross-brand/overview"),
+    enabled,
+  });
+}
+
+export function useCosTemplates(enabled = true) {
+  return useQuery({
+    queryKey: intelKeys.templates,
+    queryFn: () => api.get<GoalTemplate[]>("/cos/templates"),
+    enabled,
+  });
+}
+
+export function useCosPrep(eventId: string | null) {
+  return useQuery({
+    queryKey: intelKeys.prep(eventId ?? "none"),
+    queryFn: () => api.get<MeetingPrep>(`/cos/prep/${eventId}`),
+    enabled: !!eventId,
+  });
+}
+
+export function useScheduleLoad(date?: string, enabled = true) {
+  const d = date ?? new Date().toISOString().slice(0, 10);
+  return useQuery({
+    queryKey: intelKeys.load(d),
+    queryFn: () => api.get<LoadSummary>(`/cos/schedule/load?date=${d}`),
+    enabled,
+  });
+}
+
+export function useFindFocus() {
+  return useMutation({
+    mutationFn: (input: { duration?: number; within?: number }) =>
+      api.post<FocusResult>("/cos/schedule/focus", input),
+    onError: (err) => toastReport("Chief of Staff → Scheduling", "Find focus time", err),
+  });
+}
+
+export function useBatchReschedule() {
+  return useMutation({
+    mutationFn: (input: { match: string; days?: number }) =>
+      api.post<Plan>("/cos/schedule/reschedule", input),
+    onError: (err) => toastReport("Chief of Staff → Scheduling", "Reschedule tasks", err),
+  });
+}
+
+export function useSaveTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { goal_id: string; name?: string; description?: string }) =>
+      api.post<GoalTemplate>("/cos/templates", input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: intelKeys.templates }),
+    onError: (err) => toastReport("Chief of Staff → Playbooks", "Save as playbook", err),
+  });
+}
+
+export function useInstantiateTemplate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ templateId, ...input }: { templateId: string; start_date?: string; name?: string }) =>
+      api.post<Plan>(`/cos/templates/${templateId}/instantiate`, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: intelKeys.templates }),
+    onError: (err) => toastReport("Chief of Staff → Playbooks", "Use playbook", err),
+  });
+}

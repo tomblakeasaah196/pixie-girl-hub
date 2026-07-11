@@ -9,11 +9,12 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Sparkles, Plus, MessagesSquare, Target, CalendarClock, AlertCircle, RotateCw } from "lucide-react";
+import { Sparkles, Plus, MessagesSquare, Target, CalendarClock, AlertCircle, RotateCw, MessageSquare, LayoutGrid } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Markdown } from "@/components/help/Markdown";
 import { PraxisInput } from "@/components/praxis/PraxisInput";
 import { BatchPlanCard } from "./BatchPlanCard";
+import { CosIntelligencePanel } from "./CosIntelligencePanel";
 import {
   useCosConversations,
   useCosConversation,
@@ -108,6 +109,7 @@ function Welcome() {
 }
 
 export function ChiefOfStaffTab() {
+  const [view, setView] = useState<"chat" | "insights">("chat");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [pendingSend, setPendingSend] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
@@ -163,17 +165,42 @@ export function ChiefOfStaffTab() {
           <Sparkles className="w-4 h-4 text-accent-glow" />
           <span className="font-display text-[15px] font-medium">{COS_NAME}</span>
         </div>
-        {hasThread && (
-          <button
-            type="button"
-            onClick={newChat}
-            className="inline-flex items-center gap-1.5 rounded-lg border hairline px-2.5 py-1.5 text-[12px] text-text-muted hover:text-text-primary"
-          >
-            <Plus className="w-3.5 h-3.5" /> New chat
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {/* Chat / Insights toggle */}
+          <div className="inline-flex rounded-lg border hairline p-0.5 bg-text-primary/[0.03]">
+            {([
+              { k: "chat", label: "Chat", icon: MessageSquare },
+              { k: "insights", label: "Insights", icon: LayoutGrid },
+            ] as const).map((v) => (
+              <button
+                key={v.k}
+                type="button"
+                onClick={() => setView(v.k)}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-[7px] px-2.5 py-1 text-[12px] font-medium transition-colors",
+                  view === v.k ? "bg-accent-deep/90 text-[#F4E9D9]" : "text-text-muted hover:text-text-primary",
+                )}
+              >
+                <v.icon className="w-3.5 h-3.5" /> {v.label}
+              </button>
+            ))}
+          </div>
+          {view === "chat" && hasThread && (
+            <button
+              type="button"
+              onClick={newChat}
+              className="inline-flex items-center gap-1.5 rounded-lg border hairline px-2.5 py-1.5 text-[12px] text-text-muted hover:text-text-primary"
+            >
+              <Plus className="w-3.5 h-3.5" /> New chat
+            </button>
+          )}
+        </div>
       </div>
 
+      {view === "insights" ? (
+        <CosIntelligencePanel />
+      ) : (
+        <>
       {/* Thread */}
       <div className="flex-1 overflow-y-auto py-4 pr-1">
         {detail.isLoading && activeId ? (
@@ -220,6 +247,8 @@ export function ChiefOfStaffTab() {
           placeholder={`Tell your ${COS_NAME} what you want to get done…`}
         />
       </div>
+        </>
+      )}
     </div>
   );
 }

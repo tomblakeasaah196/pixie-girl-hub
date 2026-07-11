@@ -20,6 +20,8 @@ const cosRepo = require("./cos.repo");
 const planExecutor = require("./cos.plan-executor");
 const persona = require("./cos.persona");
 const planner = require("./cos.planner");
+const memory = require("./cos.memory");
+const goalsRepo = require("../../shared/goals/goals.repo");
 const events = require("./cos.events");
 const governance = require("../ai_governance/governance.service");
 const modelCatalogue = require("../ai_governance/model-catalogue.repo");
@@ -156,6 +158,38 @@ async function recordUsageSafe({ user, brand, convId, completion, ok }) {
   return cost;
 }
 
+/** Compact snapshot of the brand's active goals, so status questions are grounded. */
+async function goalsSnapshot({ brand }) {
+  try {
+    const { data } = await goalsRepo.listGoals({ brand, status: "active", page: 1, page_size: 20 });
+    if (!data || !data.length) return "";
+    return [
+      "CURRENT ACTIVE GOALS (context — don't restate unless asked):",
+      ...data.map(
+        (g) =>
+          `• ${g.title} — ${g.health}, ${g.progress_pct ?? 0}% done` +
+          (g.target_date ? `, target ${String(g.target_date).slice(0, 10)}` : ""),
+      ),
+    ].join("\n");
+  } catch {
+    return "";
+  }
+}
+
+/** Nearest CoS memory (goals/notes/decisions) for the turn — [] when RAG is off. */
+async function memorySnapshot({ user, brand, userText }) {
+  try {
+    const chunks = await memory.retrieve({ user, brand, queryText: userText, topK: 4 });
+    if (!chunks || !chunks.length) return "";
+    return [
+      "RELEVANT MEMORY (from past goals, notes & decisions):",
+      ...chunks.map((c) => `• ${String(c.content).slice(0, 400)}`),
+    ].join("\n");
+  } catch {
+    return "";
+  }
+}
+
 /**
  * Live CoS turn. Returns { assistant_message, plan } or null to signal the
  * caller to fall back to the stub (no vendor / nothing to offer).
@@ -171,6 +205,14 @@ async function runTurn({ client, user, brand, conversation, userMsg, userText })
     .slice(-HISTORY_TURNS)
     .map((m) => ({ role: m.role, content: m.content || "" }));
 
+  // Ground the turn in the CEO's real goals + semantic memory (wow #7), so
+  // "how is X doing?" is answered from history, not invented.
+  const [goalsCtx, memCtx] = await Promise.all([
+    goalsSnapshot({ brand }),
+    memorySnapshot({ user, brand, userText }),
+  ]);
+  const contextBlock = [goalsCtx, memCtx].filter(Boolean).join("\n\n");
+
   const messages = [
     {
       role: "system",
@@ -180,6 +222,7 @@ async function runTurn({ client, user, brand, conversation, userMsg, userText })
         actionTitles: actions.map((a) => a.title),
       }),
     },
+    ...(contextBlock ? [{ role: "system", content: contextBlock }] : []),
     ...history,
     { role: "user", content: userText },
   ];

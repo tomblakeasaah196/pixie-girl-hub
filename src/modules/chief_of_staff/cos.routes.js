@@ -48,4 +48,21 @@ router.post("/followups/:id/act", v.validateFollowupAct, c.actFollowup);
 router.post("/followups/:id/snooze", v.validateFollowupSnooze, c.snoozeFollowup);
 router.post("/followups/:id/dismiss", c.dismissFollowup);
 
+// ── Intelligence (PR5) ─────────────────────────────────────
+// Meeting prep brief for a calendar event.
+router.get("/prep/:eventId", c.getPrep);
+
+// Smart scheduling & focus protection.
+router.post("/schedule/focus", v.validateScheduleFocus, c.findFocus);
+router.get("/schedule/load", c.scheduleLoad);
+router.post("/schedule/reschedule", v.validateScheduleReschedule, c.batchReschedule);
+
+// Cross-brand command (already behind requireCeo above).
+router.get("/cross-brand/overview", c.crossBrandOverview);
+
+// Playbook templates.
+router.get("/templates", c.listTemplates);
+router.post("/templates", v.validateTemplateSave, c.saveTemplate);
+router.post("/templates/:id/instantiate", v.validateTemplateInstantiate, c.instantiateTemplate);
+
 module.exports = router;

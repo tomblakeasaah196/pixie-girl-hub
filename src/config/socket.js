@@ -101,6 +101,12 @@ async function initSocketIo(httpServer) {
   } = require("../shared/goals/goals.subscribers");
   registerGoalsSubscribers();
 
+  // CoS RAG memory (PR5): re-index goals/notes into the semantic corpus on change.
+  const {
+    registerCosMemorySubscribers,
+  } = require("../modules/chief_of_staff/cos.memory.subscribers");
+  registerCosMemorySubscribers();
+
   const {
     registerServiceJobsRealtime,
   } = require("../realtime/service-jobs-realtime");

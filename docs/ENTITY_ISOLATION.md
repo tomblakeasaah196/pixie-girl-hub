@@ -134,6 +134,32 @@ just flipping a flag:
 Proof/guard artifacts: `tests/integration/entity-isolation.test.js`,
 `scripts/rls/force-rls.sql`, and the superuser warning in `config/database.js`.
 
+## CEO cross-brand exception — Chief of Staff (PR5)
+
+The AI Chief of Staff is the CEO's single assistant across **all** her brands, so
+its **cross-brand overview** is a deliberate, documented exception to the
+one-brand-per-request rule:
+
+- **Endpoint**: `GET /api/v1/cos/cross-brand/overview`, guarded by `requireCeo`
+  (the whole `/cos` router is CEO-only in v1). No other role can reach it.
+- **Read-only, aggregate-only**: it returns per-brand *counts* (active goals,
+  health mix, average progress, overdue milestones/tasks) — never row-level data
+  joined across brands. The SQL filters `business = ANY($1)` where `$1` is the
+  CEO's brand set (`user.available_businesses`, else all active brands), so it is
+  a **filter relaxation**, not a schema join. It never joins `pixiegirl.*` to
+  `faitlynhair.*` (see "never do" below — still holds).
+- **Why it's safe**: `shared.goals` / `goal_milestones` / `tasks` are
+  shared-schema and `business`-tagged, so "cross-brand" here means *not* pinning
+  the query to one `business` value — the same mechanism as the `crossBrand:
+  true` / `/api/v1/group/*` escape hatch above. Every *write* the CoS performs
+  still goes through the single-brand executor as the CEO (RBAC + brand context
+  re-apply per step), so this exception is confined to one read path.
+- **CoS memory** (`shared.ai_knowledge_chunks`) is additionally scoped to the
+  owning user (`metadata.user_id`) and tagged `sensitivity='restricted'`, so it
+  never surfaces in Praxis's own RAG retrieval (which floors at `normal`).
+
+Code: `src/modules/chief_of_staff/cos.overview.{js,repo.js}`.
+
 ## What to never, ever do
 
 - **Never** join `pixiegirl.foo` to `faitlynhair.bar` in one query

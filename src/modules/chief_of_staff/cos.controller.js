@@ -6,6 +6,10 @@
 
 const service = require("./cos.service");
 const followups = require("./cos.followups.service");
+const meeting = require("./cos.meeting");
+const scheduler = require("./cos.scheduler");
+const templates = require("./cos.templates");
+const overview = require("./cos.overview");
 
 const base = (req) => ({
   user: req.user,
@@ -121,6 +125,71 @@ async function dismissFollowup(req, res) {
   });
 }
 
+// ── Intelligence (PR5) ─────────────────────────────────────
+// Meeting prep brief for a calendar event.
+async function getPrep(req, res) {
+  res.json({
+    data: await meeting.prep({ user: req.user, brand: req.brand, event_id: req.params.eventId }),
+  });
+}
+
+// Smart scheduling.
+async function findFocus(req, res) {
+  res.json({
+    data: await scheduler.findFocus({
+      user: req.user,
+      brand: req.brand,
+      duration: req.body.duration,
+      within: req.body.within,
+    }),
+  });
+}
+async function scheduleLoad(req, res) {
+  res.json({
+    data: await scheduler.load({ user: req.user, brand: req.brand, date: req.query.date }),
+  });
+}
+async function batchReschedule(req, res) {
+  res.json({
+    data: await scheduler.batchReschedule({
+      user: req.user,
+      brand: req.brand,
+      match: req.body.match,
+      days: req.body.days,
+    }),
+  });
+}
+
+// Cross-brand overview (CEO-only; the router guard already enforces requireCeo).
+async function crossBrandOverview(req, res) {
+  res.json({ data: await overview.crossBrand({ user: req.user }) });
+}
+
+// Playbook templates.
+async function listTemplates(req, res) {
+  res.json({ data: await templates.list({ user: req.user }) });
+}
+async function saveTemplate(req, res) {
+  res.status(201).json({
+    data: await templates.saveFromGoal({
+      ...base(req),
+      goal_id: req.body.goal_id,
+      name: req.body.name,
+      description: req.body.description,
+    }),
+  });
+}
+async function instantiateTemplate(req, res) {
+  res.status(201).json({
+    data: await templates.instantiate({
+      ...base(req),
+      template_id: req.params.id,
+      start_date: req.body.start_date,
+      name: req.body.name,
+    }),
+  });
+}
+
 module.exports = {
   listConversations,
   getConversation,
@@ -136,4 +205,13 @@ module.exports = {
   actFollowup,
   snoozeFollowup,
   dismissFollowup,
+  // intelligence (PR5)
+  getPrep,
+  findFocus,
+  scheduleLoad,
+  batchReschedule,
+  crossBrandOverview,
+  listTemplates,
+  saveTemplate,
+  instantiateTemplate,
 };

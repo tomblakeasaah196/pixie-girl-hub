@@ -44,6 +44,8 @@ const ROOMS = {
   user_ai_pending: (userId) => `user:${userId}:ai_pending`,
   user_tasks: (userId) => `user:${userId}:tasks`,
   user_messages: (userId) => `user:${userId}:messages`,
+  // Chief of Staff — goal health + accountability follow-up updates (PR4).
+  user_goals: (userId) => `user:${userId}:goals`,
 
   // Smartcomm — one room per channel for typing/presence/new-message
   // fanout, plus a per-brand inbox room for unread-count and per-platform

@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { getSocket, joinRoom, leaveRoom, rooms } from "@/lib/socket";
 import { useBusinessStore } from "@/stores/business";
+import { useAuthStore } from "@/stores/auth";
 
 /**
  * Live-updates the high-traffic operational boards by turning backend domain
@@ -19,6 +20,7 @@ import { useBusinessStore } from "@/stores/business";
 export function useRealtimeInvalidation() {
   const queryClient = useQueryClient();
   const brand = useBusinessStore((s) => s.activeKey);
+  const userId = useAuthStore((s) => s.user?.id);
 
   useEffect(() => {
     if (!brand) return;
@@ -30,6 +32,8 @@ export function useRealtimeInvalidation() {
       rooms.sales(brand),
       rooms.serviceJobs(brand),
     ];
+    // Chief of Staff pushes goal-health + follow-up updates per-user (PR4).
+    if (userId) joined.push(rooms.userGoals(userId));
     joined.forEach(joinRoom);
 
     const onStock = () =>
@@ -49,17 +53,25 @@ export function useRealtimeInvalidation() {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
     };
 
+    // CoS follow-up / goal-health push → refresh goals + follow-ups.
+    const onCos = () => {
+      queryClient.invalidateQueries({ queryKey: ["workspace"] });
+      queryClient.invalidateQueries({ queryKey: ["cos", "followups"] });
+    };
+
     window.addEventListener("pgh:stock:changed", onStock);
     window.addEventListener("pgh:sales:changed", onSales);
     window.addEventListener("pgh:service_jobs:changed", onServiceJobs);
     window.addEventListener("pgh:notification:new", onNotification);
+    window.addEventListener("pgh:cos:changed", onCos);
 
     return () => {
       window.removeEventListener("pgh:stock:changed", onStock);
       window.removeEventListener("pgh:sales:changed", onSales);
       window.removeEventListener("pgh:service_jobs:changed", onServiceJobs);
       window.removeEventListener("pgh:notification:new", onNotification);
+      window.removeEventListener("pgh:cos:changed", onCos);
       joined.forEach(leaveRoom);
     };
-  }, [brand, queryClient]);
+  }, [brand, userId, queryClient]);
 }

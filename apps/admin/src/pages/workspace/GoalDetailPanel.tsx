@@ -11,6 +11,7 @@ import {
   StickyNote,
   Link2,
   Unlink,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button, Pill, Skeleton } from "@/components/ui/primitives";
@@ -36,6 +37,11 @@ import {
 } from "./goals-constants";
 import { TASK_STATUS_META, TASK_PRIORITY_META } from "./constants";
 import { toastReport } from "@/lib/error-report";
+import {
+  useCosFollowups,
+  useSnoozeFollowup,
+  useDismissFollowup,
+} from "@/lib/cos-api";
 import type { Goal, MilestoneStatus } from "./goals-types";
 import type { Task } from "./types";
 
@@ -155,6 +161,7 @@ function GoalBody({ goal, onDeleted }: { goal: Goal; onDeleted: () => void }) {
         </p>
       )}
 
+      <AiInsightsSection goal={goal} />
       <MilestonesSection goal={goal} />
       <LinkedTasksSection goal={goal} />
       <LinkedEventsSection goal={goal} />
@@ -217,6 +224,113 @@ function SectionHeader({
         <span className="text-[11px] text-text-faint font-mono">{count}</span>
       )}
       <span className="ml-auto">{action}</span>
+    </div>
+  );
+}
+
+const HEALTH_NOTE: Record<string, string> = {
+  on_track: "On track — progressing well against the target.",
+  at_risk: "At risk — this may slip past its target date.",
+  behind: "Behind — something is overdue or projected to miss the target.",
+  achieved: "Achieved 🎉",
+};
+
+const TRIGGER_LABEL: Record<string, string> = {
+  no_progress: "No progress",
+  slippage: "Projected to slip",
+  overdue: "Overdue",
+  due_today: "Due today",
+  due_tomorrow: "Due tomorrow",
+  weekly_review: "Weekly review",
+};
+
+/**
+ * AI Insights (PR4) — the CoS accountability read-out for a goal: health with a
+ * plain-language note, and the goal's open follow-ups (snooze / dismiss). Fills
+ * the PR2 placeholder.
+ */
+function AiInsightsSection({ goal }: { goal: Goal }) {
+  const health = GOAL_HEALTH_META[goal.health];
+  const { data: followups = [], isLoading } = useCosFollowups({
+    subject_type: "goal",
+    subject_id: goal.goal_id,
+  });
+  const snooze = useSnoozeFollowup();
+  const dismiss = useDismissFollowup();
+
+  const open = followups.filter(
+    (f) => f.state === "open" || f.state === "asked" || f.state === "answered",
+  );
+
+  return (
+    <div>
+      <SectionHeader
+        icon={<Sparkles className="w-4 h-4" />}
+        title="AI Insights"
+        count={open.length || undefined}
+      />
+      <div className="rounded-xl bg-accent/[0.04] border hairline p-3 space-y-3">
+        <div className="flex items-center gap-2">
+          <Pill tone={health.tone} dot={false}>
+            {health.label}
+          </Pill>
+          <span className="text-[12px] text-text-muted">
+            {HEALTH_NOTE[goal.health] ?? ""}
+          </span>
+        </div>
+
+        {isLoading ? (
+          <Skeleton className="h-4 w-2/3" />
+        ) : open.length === 0 ? (
+          <p className="text-[12px] text-text-faint italic">
+            No open follow-ups — your Chief of Staff has nothing to chase here.
+          </p>
+        ) : (
+          <div className="space-y-1.5">
+            {open.map((f) => (
+              <div
+                key={f.followup_id}
+                className="flex items-start gap-2 rounded-lg bg-text-primary/[0.03] p-2"
+              >
+                <Pill tone="warn" dot={false}>
+                  {TRIGGER_LABEL[f.trigger] ?? f.trigger}
+                </Pill>
+                <span className="flex-1 text-[12px] text-text-muted">
+                  {f.question || "Follow-up"}
+                  {f.reason && (
+                    <span className="block text-[11px] text-text-faint mt-0.5">
+                      Reason: {f.reason}
+                    </span>
+                  )}
+                </span>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    onClick={() =>
+                      snooze.mutate({
+                        id: f.followup_id,
+                        until: new Date(Date.now() + 86_400_000).toISOString(),
+                      })
+                    }
+                    disabled={snooze.isPending}
+                    className="px-2 py-0.5 rounded-lg text-[11px] text-text-faint hover:text-accent hover:bg-accent/10 transition-colors"
+                    title="Snooze 1 day"
+                  >
+                    Snooze
+                  </button>
+                  <button
+                    onClick={() => dismiss.mutate({ id: f.followup_id })}
+                    disabled={dismiss.isPending}
+                    className="px-2 py-0.5 rounded-lg text-[11px] text-text-faint hover:text-danger hover:bg-danger/10 transition-colors"
+                    title="Dismiss"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -423,6 +423,9 @@ const schema = z.object({
   CRON_LAYAWAY_ABANDONMENT_CHECK: z.string().default("0 2 * * *"),
   CRON_FX_RATE_REFRESH: z.string().default("0 6 * * *"),
   CRON_LOW_STOCK_ALERTS: z.string().default("0 8,14 * * *"),
+  // Chief of Staff accountability sweep — hourly risk radar + follow-up nudges
+  // + evening review (PR4). Cheap + deterministic; quiet-hours aware.
+  CRON_COS_ACCOUNTABILITY: z.string().default("0 * * * *"),
 
   // ── Kaizen (maintenance/ops console) ─────────────────────────────────────
   // All optional/defaulted so the main app boots even when Kaizen isn't wired.

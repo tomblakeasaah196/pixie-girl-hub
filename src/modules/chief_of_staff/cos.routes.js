@@ -40,4 +40,12 @@ router.get("/plans/:planId", c.getPlan);
 router.post("/plans/:planId/confirm", c.confirmPlan);
 router.post("/plans/:planId/reject", v.validateReason, c.rejectPlan);
 
+// ── Follow-ups (accountability state machine, PR4) ─────────
+router.get("/followups", c.listFollowups);
+router.post("/followups/:id/respond", v.validateFollowupRespond, c.respondFollowup);
+router.post("/followups/:id/reason", v.validateReason, c.reasonFollowup);
+router.post("/followups/:id/act", v.validateFollowupAct, c.actFollowup);
+router.post("/followups/:id/snooze", v.validateFollowupSnooze, c.snoozeFollowup);
+router.post("/followups/:id/dismiss", c.dismissFollowup);
+
 module.exports = router;

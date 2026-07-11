@@ -109,6 +109,9 @@ async function initSocketIo(httpServer) {
   const { registerPraxisRealtime } = require("../realtime/praxis-realtime");
   registerPraxisRealtime();
 
+  const { registerCosRealtime } = require("../realtime/cos-realtime");
+  registerCosRealtime();
+
   const {
     registerInsightsRealtime,
   } = require("../realtime/insights-realtime");

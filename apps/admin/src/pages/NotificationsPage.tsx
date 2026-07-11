@@ -35,6 +35,7 @@ import {
   NOTIF_META,
 } from "@/lib/notifications-api";
 import { Card, Button, EmptyState } from "@/components/ui/primitives";
+import { FollowupActions } from "@/components/notifications/FollowupActions";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { formatDate } from "@/lib/format";
 
@@ -179,7 +180,8 @@ function NotifRow({
       </span>
 
       {/* Content */}
-      <button onClick={handleClick} className="flex-1 min-w-0 text-left">
+      <div className="flex-1 min-w-0">
+      <button onClick={handleClick} className="w-full text-left">
         <div className="flex items-start justify-between gap-4">
           <p
             className={cn(
@@ -218,6 +220,8 @@ function NotifRow({
           )}
         </div>
       </button>
+        {n.actions && n.actions.length > 0 && <FollowupActions n={n} />}
+      </div>
 
       {/* Row actions (visible on hover) */}
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">

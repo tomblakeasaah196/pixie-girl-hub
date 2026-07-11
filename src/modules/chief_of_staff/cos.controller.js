@@ -35,6 +35,13 @@ async function archiveConversation(req, res) {
   await service.archiveConversation({ user: req.user, id: req.params.id });
   res.status(204).end();
 }
+async function saveConversationToNote(req, res) {
+  const result = await service.saveConversationAsNote({
+    ...base(req),
+    id: req.params.id,
+  });
+  res.status(result.action === "created" ? 201 : 200).json({ data: result });
+}
 async function postMessage(req, res) {
   res.status(201).json({
     data: await service.postMessage({
@@ -196,6 +203,7 @@ module.exports = {
   createConversation,
   archiveConversation,
   postMessage,
+  saveConversationToNote,
   getPlan,
   confirmPlan,
   rejectPlan,

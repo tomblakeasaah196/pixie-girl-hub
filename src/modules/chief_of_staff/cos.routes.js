@@ -34,6 +34,7 @@ router.post("/conversations", v.validateConversationCreate, c.createConversation
 router.get("/conversations/:id", c.getConversation);
 router.delete("/conversations/:id", c.archiveConversation);
 router.post("/conversations/:id/messages", v.validateMessagePost, c.postMessage);
+router.post("/conversations/:id/save-note", c.saveConversationToNote);
 
 // ── Plans (batch-plan approval) ────────────────────────────
 router.get("/plans/:planId", c.getPlan);

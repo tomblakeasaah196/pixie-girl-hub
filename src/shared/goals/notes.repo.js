@@ -11,8 +11,8 @@ const { query } = require("../../config/database");
 async function createNote({ n }) {
   const { rows } = await query(
     `INSERT INTO shared.workspace_notes
-       (business, user_id, title, body, goal_id, milestone_id, pinned, source)
-     VALUES ($1,$2,$3,COALESCE($4,''),$5,$6,COALESCE($7,false),COALESCE($8,'manual'))
+       (business, user_id, title, body, goal_id, milestone_id, pinned, source, source_conversation_id)
+     VALUES ($1,$2,$3,COALESCE($4,''),$5,$6,COALESCE($7,false),COALESCE($8,'manual'),$9)
      RETURNING *`,
     [
       n.business,
@@ -23,9 +23,59 @@ async function createNote({ n }) {
       n.milestone_id || null,
       n.pinned,
       n.source || null,
+      n.source_conversation_id || null,
     ],
   );
   return rows[0];
+}
+
+/**
+ * Find the CoS-sourced note for this conversation, if any. Ignores manual
+ * notes (a user might have created one that links the same goal); only
+ * source='cos' + matching conversation counts, per migration 000327's
+ * partial unique index.
+ */
+async function findNoteByCosConversation({ user_id, conversation_id }) {
+  const { rows } = await query(
+    `SELECT * FROM shared.workspace_notes
+      WHERE user_id = $1
+        AND source_conversation_id = $2
+        AND source = 'cos'
+        AND is_deleted = false`,
+    [user_id, conversation_id],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Upsert a Chief-of-Staff note bound to a conversation. If a live CoS note
+ * already exists for the pair (user, conversation), refresh its title and
+ * body in place; otherwise insert one. Returns { note, action }.
+ */
+async function upsertCosNote({ business, user_id, conversation_id, title, body }) {
+  const existing = await findNoteByCosConversation({ user_id, conversation_id });
+  if (existing) {
+    const { rows } = await query(
+      `UPDATE shared.workspace_notes
+          SET title = $1, body = $2, updated_at = now()
+        WHERE note_id = $3
+        RETURNING *`,
+      [title || null, body, existing.note_id],
+    );
+    return { note: rows[0], action: "updated" };
+  }
+  const note = await createNote({
+    n: {
+      business,
+      user_id,
+      title,
+      body,
+      pinned: false,
+      source: "cos",
+      source_conversation_id: conversation_id,
+    },
+  });
+  return { note, action: "created" };
 }
 
 async function listNotes({
@@ -117,4 +167,6 @@ module.exports = {
   findNote,
   updateNote,
   softDeleteNote,
+  findNoteByCosConversation,
+  upsertCosNote,
 };

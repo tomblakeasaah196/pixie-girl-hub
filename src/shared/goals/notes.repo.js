@@ -32,7 +32,7 @@ async function createNote({ n }) {
 /**
  * Find the CoS-sourced note for this conversation, if any. Ignores manual
  * notes (a user might have created one that links the same goal); only
- * source='cos' + matching conversation counts, per migration 000327's
+ * source='cos' + matching conversation counts, per migration 000329's
  * partial unique index.
  */
 async function findNoteByCosConversation({ user_id, conversation_id }) {

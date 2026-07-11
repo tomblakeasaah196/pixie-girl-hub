@@ -423,7 +423,7 @@ function rejectPlan({ user, request_id, id, reason }) {
 //
 // Produces a Markdown recap of the current thread and upserts it into
 // shared.workspace_notes with source='cos' + source_conversation_id.
-// Re-summarising updates the same row (migration 000327 enforces this via a
+// Re-summarising updates the same row (migration 000329 enforces this via a
 // partial unique index). Overwrite is deliberate — the confirmed policy is
 // "CoS summary wins" even when the user has hand-edited the note in between.
 

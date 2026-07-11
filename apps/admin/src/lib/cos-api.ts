@@ -188,7 +188,7 @@ export function usePostCosMessage() {
 /**
  * Summarise a CoS conversation and upsert it into Workspace Notes. Server
  * enforces "one CoS note per conversation" — subsequent calls update the
- * same note in place (see migration 000327). Refreshes the conversation
+ * same note in place (see migration 000329). Refreshes the conversation
  * detail (so saved_note reflects the new state) and the notes list.
  */
 export function useSaveConversationToNotes() {

@@ -47,7 +47,7 @@ const METADATA_WHITELIST = {
   // can render a story-preview card in the inbox.
   ig_story_mention: ["story_url", "story_id"],
   ig_story_reply:   ["story_url", "story_id"],
-  // WhatsApp voice-call timeline card (calls module, migration 000318).
+  // WhatsApp voice-call timeline card (calls module, migration 000319).
   // Stamped server-side only — there is no HTTP path that posts a 'call'
   // message (the composer's validator doesn't accept the type).
   call: [
@@ -978,7 +978,7 @@ async function buildProductShareCards({ business, message }) {
   if (capture_url) {
     cards.push({
       type: "text",
-      body: `🛍️ Ready to order? Tap to confirm & pay:\n${capture_url}`,
+      body: `🛍️ Like anything? Pick your items & order here:\n${capture_url}`,
     });
   }
   return cards;
@@ -1491,7 +1491,7 @@ async function recordInboundFromCustomer({
 
 /**
  * Record a WhatsApp voice call as a 'call' card on the customer's thread
- * (calls module — migration 000318). Internal only: no HTTP path posts a
+ * (calls module — migration 000319). Internal only: no HTTP path posts a
  * 'call' message; the calls service stamps the card when a call ends and
  * updates it when the agent records the outcome. The card counts as
  * customer activity so the thread surfaces with an unread badge (a missed

@@ -188,6 +188,24 @@ function register() {
     });
   });
 
+  // Customer touched an order link (opened / cart change / ordered) —
+  // the sidebar's activity panel refetches on this ping.
+  events.on("order_link.activity", (p) => {
+    if (!p.channel_id) return;
+    emit(`channel:${p.channel_id}`, "order_link.activity", {
+      channel_id: p.channel_id,
+      link_id: p.link_id,
+      status: p.status,
+    });
+    if (p.brand) {
+      emit(`brand:${p.brand}:smartcomm`, "order_link.activity", {
+        channel_id: p.channel_id,
+        link_id: p.link_id,
+        status: p.status,
+      });
+    }
+  });
+
   events.on("message.deleted", (p) => {
     emit(`channel:${p.channel_id}`, "message.deleted", {
       channel_id: p.channel_id,

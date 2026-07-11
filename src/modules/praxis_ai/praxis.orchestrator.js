@@ -1034,9 +1034,20 @@ const FALLBACK_VENDOR = () => config.PRAXIS_LLM_FALLBACK_VENDOR || "gemini";
 function buildSmartcommPrompt(ctx) {
   const lines = [];
   lines.push(
-    `You are drafting a customer-service reply on behalf of the ${ctx.brand} business.`,
-    "Write ONE concise message ready to send — no preamble, no quotation marks, no 'Sure, here is...'. Just the reply text.",
+    `You are drafting a customer-service message on behalf of the ${ctx.brand} business.`,
+    "Write ONE concise message ready to send — no preamble, no quotation marks, no 'Sure, here is...'. Just the message text.",
+    // Two hard rules, learned the hard way: with staff as the last
+    // speaker the model once continued the conversation AS the customer
+    // ("Thanks! Just filled the form..."), inventing an action the
+    // customer never took. Both failure modes are banned explicitly.
+    "You are ALWAYS the business speaking TO the customer — never write as the customer, never write the customer's side of the conversation.",
+    "Never invent facts or events: do not claim a form was filled, a payment was made, or an order was placed unless the transcript explicitly shows it happened.",
   );
+  if (ctx.draft_mode === "followup") {
+    lines.push(
+      "The customer has not replied since the business's last message. Draft a short, warm follow-up nudge from the business — check in, offer help, or gently move things toward the next step. Do not repeat the previous message verbatim, and do not pressure.",
+    );
+  }
   // Name the recipient explicitly. Without this the model can only guess from
   // the transcript and may greet a staff member by name instead of the
   // customer. "Staff" turns in the transcript are the business, not the person
@@ -1108,12 +1119,15 @@ function transcriptToMessages(transcript, customerName) {
       content: m[2],
     });
   }
-  // Ensure the last message is from the customer so the model knows to
-  // reply, not echo us.
+  // The chat API needs the final turn on the user side. When staff spoke
+  // last, close with an explicit stage direction. The old wording —
+  // "write the next reply from <customer>'s brand" — put the customer's
+  // name in the instruction and the model answered AS the customer;
+  // this phrasing keeps the roles unambiguous.
   if (out.length && out[out.length - 1].role !== "user") {
     out.push({
       role: "user",
-      content: `(Now write the next reply from ${customerName}'s brand.)`,
+      content: `(${customerName} has not replied yet. Write the business's follow-up message to ${customerName}. You are the business — do not write anything on ${customerName}'s behalf.)`,
     });
   }
   return out;

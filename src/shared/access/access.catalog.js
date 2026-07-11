@@ -84,6 +84,7 @@ const MODULE_CATALOG = [
 
   // ── People ───────────────────────────────────────────────
   { key: "hr_payroll", group: "people", label: "HR & Payroll", description: "Staff records, attendance admin & pay" },
+  { key: "recruitment", group: "people", label: "Recruitment", description: "Hiring — AI-drafted JDs, offers, e-sign & onboarding" },
   { key: "performance", group: "people", label: "Performance", description: "Appraisals — score & review your team" },
   { key: "contacts", group: "people", label: "Contacts", description: "Shared contact directory" },
   { key: "retention", group: "people", label: "Retention", description: "Loyalty, referrals & win-back" },

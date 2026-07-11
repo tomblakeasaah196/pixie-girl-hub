@@ -232,7 +232,11 @@ async function getContent({ brand, type, slug }) {
 
 // ── Public Order Form ──────────────────────────────────────
 async function submitOrderForm({ brand, input, request_id }) {
-  if (!Array.isArray(input.items) || input.items.length === 0)
+  const productItems = Array.isArray(input.items) ? input.items : [];
+  const serviceBookings = Array.isArray(input.service_bookings)
+    ? input.service_bookings
+    : [];
+  if (productItems.length === 0 && serviceBookings.length === 0)
     throw new AppError("NO_ITEMS", "At least one item is required", 422);
 
   // Never trust a client-supplied shipping_fee_ngn for a delivery order —
@@ -240,8 +244,10 @@ async function submitOrderForm({ brand, input, request_id }) {
   // main storefront checkout (sale/:slug/checkout). Pickup is the only
   // ₦0 fulfilment; a delivery order with no resolvable zone or a
   // "pending" (unconfigured) fee is rejected rather than silently
-  // shipped for free or at a client-chosen price.
-  const fulfilmentType = input.fulfilment_type || "delivery";
+  // shipped for free or at a client-chosen price. Service-only
+  // checkouts ship nothing, so no zone/fee applies.
+  const fulfilmentType =
+    productItems.length === 0 ? "pickup" : input.fulfilment_type || "delivery";
   let shipping_fee_ngn = 0;
   if (fulfilmentType === "delivery") {
     if (!input.zone_code)
@@ -291,9 +297,18 @@ async function submitOrderForm({ brand, input, request_id }) {
       });
     }
 
-    // 2. Raise the order through the Sales engine (pricing/VAT/stock are its
-    //    responsibility). Tag the channel for attribution.
-    const order = await salesService.createOrder({
+    // 1b. Inline welcome-form mirror (order links for threads with no
+    //     linked customer): social handles + default delivery address
+    //     land in the same tables the Online QR form writes.
+    await upsertCheckoutContactExtras({ client, contact, input });
+
+    // 2. Raise the order through the Sales engine (pricing/VAT/stock are
+    //    its responsibility). Tag the channel for attribution. Service-
+    //    only checkouts raise no product order — bookings carry the value.
+    const order =
+      productItems.length === 0
+        ? null
+        : await salesService.createOrder({
       brand,
       user: SYSTEM_USER,
       request_id,
@@ -330,16 +345,144 @@ async function submitOrderForm({ brand, input, request_id }) {
       },
     });
 
+    // 3. Order-link completion: mark the link used (single-use), file the
+    //    service booking requests, and announce everything in the thread.
+    //    A bad/expired token never breaks a checkout that already worked.
+    let bookings = [];
+    if (input.capture_token) {
+      try {
+        const orderCapture = require("../smartcomm/smartcomm.order-capture");
+        const orderLinks = require("../smartcomm/smartcomm.order-links.service");
+        const decoded = orderCapture.verifyCaptureToken(input.capture_token);
+        if (decoded.link_id) {
+          const done = await orderLinks.completeOrder({
+            client,
+            link_id: decoded.link_id,
+            order_id: order ? order.order_id : null,
+            order_number: order ? order.order_number : null,
+            total_ngn: order ? order.total_ngn : null,
+            contact_id: contact.contact_id,
+            bookings: serviceBookings,
+          });
+          bookings = done ? done.bookings : [];
+        }
+      } catch (err) {
+        logger.warn(
+          { err: err.message },
+          "order-form: capture link completion failed (order stands)",
+        );
+      }
+    } else if (serviceBookings.length) {
+      // Service bookings can also arrive without a link (direct form use).
+      const orderLinks = require("../smartcomm/smartcomm.order-links.repo");
+      for (const b of serviceBookings) {
+        bookings.push(
+          await orderLinks.createBookingRequest({
+            client,
+            booking: {
+              business: brand,
+              contact_id: contact.contact_id,
+              service_id: b.service_id,
+              order_id: order ? order.order_id : null,
+              qty: b.qty,
+              price_ngn: b.price_ngn,
+              requested_for: b.requested_for,
+              note: b.note,
+            },
+          }),
+        );
+      }
+    }
+
     return {
-      order_id: order.order_id,
-      order_number: order.order_number,
-      total_ngn: order.total_ngn,
-      payment_model: order.payment_model,
-      payment_plan: order.payment_plan,
-      public_tracking_token: order.public_tracking_token || null,
+      order_id: order ? order.order_id : null,
+      order_number: order ? order.order_number : null,
+      total_ngn: order ? order.total_ngn : null,
+      payment_model: order ? order.payment_model : null,
+      payment_plan: order ? order.payment_plan : null,
+      public_tracking_token: (order && order.public_tracking_token) || null,
       contact_id: contact.contact_id,
+      booking_count: bookings.length,
     };
   });
+}
+
+/**
+ * Checkout-side mirror of the Online QR welcome form: WhatsApp +
+ * Instagram handles and the structured delivery address land in
+ * shared.contact_social_handles / shared.contact_addresses exactly like
+ * an onboarding submission. Best-effort — never fails the order.
+ */
+async function upsertCheckoutContactExtras({ client, contact, input }) {
+  const run = client ? client.query.bind(client) : query;
+  try {
+    const handles = [
+      input.whatsapp_number
+        ? { platform: "whatsapp", handle: String(input.whatsapp_number).trim() }
+        : null,
+      input.instagram_handle
+        ? {
+            platform: "instagram",
+            handle: String(input.instagram_handle).trim().replace(/^@/, ""),
+          }
+        : null,
+    ].filter(Boolean);
+    for (const h of handles) {
+      if (!h.handle) continue;
+      await run(
+        `INSERT INTO shared.contact_social_handles (contact_id, platform, handle)
+         SELECT $1, $2, $3
+          WHERE NOT EXISTS (
+            SELECT 1 FROM shared.contact_social_handles
+             WHERE contact_id = $1 AND platform = $2)`,
+        [contact.contact_id, h.platform, h.handle],
+      );
+    }
+    if (input.whatsapp_number && !contact.whatsapp_number) {
+      await run(
+        `UPDATE shared.contacts SET whatsapp_number = $2
+          WHERE contact_id = $1 AND whatsapp_number IS NULL`,
+        [contact.contact_id, String(input.whatsapp_number).trim()],
+      );
+    }
+    // Structured address (from the capture/checkout page) → default
+    // delivery row, only when the contact has none yet — checkout must
+    // never silently overwrite an address the team already verified.
+    const a = input.address;
+    if (a && a.line1) {
+      const { rows: existing } = await run(
+        `SELECT 1 FROM shared.contact_addresses
+          WHERE contact_id = $1 AND address_type = 'delivery' LIMIT 1`,
+        [contact.contact_id],
+      );
+      if (!existing.length) {
+        await run(
+          `INSERT INTO shared.contact_addresses
+             (contact_id, address_type, line1, line2, area, city, state,
+              country, country_code, landmark, is_default)
+           VALUES ($1,'delivery',$2,$3,$4,COALESCE($5,'Lagos'),
+                   COALESCE($6,'Lagos'),COALESCE($7,'Nigeria'),
+                   COALESCE($8,'NG'),$9,true)`,
+          [
+            contact.contact_id,
+            a.line1,
+            a.line2 || null,
+            a.area || null,
+            a.city || null,
+            a.state || null,
+            a.country || null,
+            a.country_code || null,
+            a.landmark || null,
+          ],
+        );
+      }
+    }
+  } catch (err) {
+    logger.warn(
+      { err: err.message, contact_id: contact.contact_id },
+      "order-form: contact extras upsert failed (order stands)",
+    );
+  }
 }
 
 // Stylist referral capture (§6.26 Q17): only a code that resolves to an

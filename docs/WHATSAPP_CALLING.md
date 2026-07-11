@@ -55,7 +55,7 @@ Key modules: `src/modules/calls/` (state machine + HTTP),
 settings), `src/jobs/processors/calls-processor.js` (escalate /
 stale-sweep on the `calls-lifecycle` queue),
 `apps/admin/src/components/calls/` (CallLayer: ring toasts, active-call
-HUD, outcome dialog), migration `000318_shared_whatsapp_calls.sql`.
+HUD, outcome dialog), migration `000319_shared_whatsapp_calls.sql`.
 
 ## Meta setup (per brand / phone number)
 

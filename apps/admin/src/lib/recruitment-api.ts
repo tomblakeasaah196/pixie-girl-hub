@@ -1,0 +1,129 @@
+/**
+ * Recruitment API (HR & Staff → Recruitment).
+ *
+ * Admin surface (brand-scoped, authed): company context pack, AI drafting,
+ * the Offer Studio edits, approve & send, provision & email credentials.
+ * Public surface (no auth, token): the candidate offer packet + signing.
+ */
+
+import { api } from "@/lib/api";
+
+export type OfferStatus =
+  | "draft"
+  | "sent"
+  | "viewed"
+  | "signed"
+  | "contracted"
+  | "provisioned"
+  | "declined"
+  | "withdrawn";
+
+export interface OfferMeta {
+  reporting_to?: string;
+  employment_type?: string;
+  location?: string;
+  probation_months?: number;
+  review_days?: number;
+  salary_probation?: string;
+  salary_post_probation?: string;
+  variable_pay?: string;
+  start_date?: string;
+  additional_terms?: string;
+  [k: string]: unknown;
+}
+
+export interface Offer {
+  offer_id: string;
+  business: string;
+  title: string;
+  candidate_name: string | null;
+  candidate_email: string | null;
+  target_businesses: string[];
+  jd_markdown: string;
+  offer_markdown: string;
+  offer_meta: OfferMeta;
+  status: OfferStatus;
+  public_token: string | null;
+  role_ids: string[];
+  is_ceo: boolean;
+  ai_provider: string | null;
+  provisioned_user_id: string | null;
+  offer_document_id: string | null;
+  contract_document_id: string | null;
+  expires_at: string | null;
+  sent_at: string | null;
+  signed_at: string | null;
+  provisioned_at: string | null;
+  created_at: string;
+}
+
+export interface ContextRow {
+  business: string;
+  display_name: string | null;
+  summary: string | null;
+  tone: string | null;
+  target_markets: string | null;
+  non_negotiables: string | null;
+  signatory_name: string | null;
+  signatory_title: string | null;
+  notes: string | null;
+}
+
+export interface DraftIntake {
+  title: string;
+  target_businesses?: string[];
+  candidate_name?: string;
+  candidate_email?: string;
+  role_ids?: string[];
+  is_ceo?: boolean;
+  use_ai?: boolean;
+  intake?: Record<string, unknown>;
+}
+
+export const recruitmentApi = {
+  // Context pack
+  getContext: () => api.get<ContextRow[]>("/recruitment/context"),
+  updateContext: (business: string, patch: Partial<ContextRow>) =>
+    api.put<ContextRow>(`/recruitment/context/${business}`, patch),
+
+  // Offers
+  listOffers: (status?: string) =>
+    api.get<Offer[]>(`/recruitment/offers${status ? `?status=${status}` : ""}`),
+  getOffer: (id: string) => api.get<Offer>(`/recruitment/offers/${id}`),
+  draftOffer: (body: DraftIntake) => api.post<Offer>("/recruitment/offers", body),
+  editOffer: (id: string, patch: Partial<Offer>) =>
+    api.patch<Offer>(`/recruitment/offers/${id}`, patch),
+  regenerate: (id: string, intake?: Record<string, unknown>) =>
+    api.post<Offer>(`/recruitment/offers/${id}/regenerate`, { intake }),
+  send: (id: string, body: Record<string, unknown>) =>
+    api.post<Offer>(`/recruitment/offers/${id}/send`, body),
+  provision: (id: string) =>
+    api.post<{ email: string; emailed: boolean; user_id: string; status: string }>(
+      `/recruitment/offers/${id}/provision`,
+    ),
+};
+
+// ── Public (no auth) ───────────────────────────────────────
+export interface PublicOffer {
+  title: string;
+  candidate_name: string | null;
+  status: OfferStatus;
+  signed: boolean;
+  can_sign: boolean;
+  jd_html: string;
+  offer_letter_html: string;
+  company: { name: string; signatory_name: string; signatory_title: string };
+  signed_at: string | null;
+  verification_code: string | null;
+}
+
+export const publicOfferApi = {
+  view: (token: string) =>
+    api.get<PublicOffer>(`/offer/${token}`, "public"),
+  sign: (token: string, signature_data_url: string) =>
+    api.post<{ signed: boolean; verification_code: string | null; signed_at: string | null }>(
+      `/offer/${token}/sign`,
+      { signature_data_url },
+      "public",
+    ),
+};

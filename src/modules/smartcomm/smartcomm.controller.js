@@ -285,6 +285,16 @@ async function createOrderCapture(req, res) {
   res.status(201).json(data);
 }
 
+// Sidebar activity panel: a channel's order links with live cart state.
+async function listOrderLinks(req, res) {
+  const orderLinks = require("./smartcomm.order-links.service");
+  const data = await orderLinks.listForChannel({
+    channel_id: req.params.id,
+    limit: 10,
+  });
+  res.json({ data });
+}
+
 async function sendInvoiceIntoThread(req, res) {
   const data = await service.sendInvoiceIntoThread({
     brand: req.brand,
@@ -372,6 +382,7 @@ module.exports = {
   discardDraft,
   draftWithPraxis,
   createOrderCapture,
+  listOrderLinks,
   sendInvoiceIntoThread,
   listQuickReplies,
   createQuickReply,

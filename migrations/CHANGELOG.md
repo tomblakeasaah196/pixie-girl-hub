@@ -17,7 +17,7 @@ patches; only the in-order `.sql` files.
 inbound (customer→business) calling via Meta's Cloud API Calling, answered
 by staff in the Hub browser over WebRTC.
 
-**Files (new):** `000318_shared_whatsapp_calls.sql` — adds
+**Files (new):** `000319_shared_whatsapp_calls.sql` — adds
 `shared.whatsapp_calls` (one row per call: ringing → in_progress →
 completed / missed / rejected / failed, agent, duration, outcome,
 missed-call follow-up flags) and `shared.whatsapp_call_events` (raw
@@ -31,7 +31,8 @@ choreography: conversation owner first, everyone after 15 s),
 `src/services/whatsapp-calling.service.js` (Graph /calls edge +
 per-number calling settings), the `calls-lifecycle` BullMQ queue, and the
 CallLayer in the admin app. `scripts/verify-schema.js` EXPECTED_SHARED
-179 → 181.
+179 → 188 (also counts 000317 order links +2 and 000318 recruitment +5,
+which had shipped without bumping it).
 
 ---
 

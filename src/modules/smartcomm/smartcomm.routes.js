@@ -44,6 +44,8 @@ router.post(
   v.validateOrderCaptureCreate,
   c.createOrderCapture,
 );
+// A channel's order links + live customer activity (sidebar panel).
+router.get("/channels/:id/order-links", can("view"), c.listOrderLinks);
 
 // Send an existing invoice as a card into the chat thread (Customer-360
 // quick-action). Requires both smartcomm.edit and invoicing.view.

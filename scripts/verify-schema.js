@@ -42,8 +42,12 @@ const pool = new Pool({
 //   - Signer page (000260_shared_esign_signer_pin): +1 (signer_signatures).
 //     175 + 1 + 1 = 177.
 //   - AI vendor health (000309): +2 (ai_vendor_health_pings, ai_incidents) → 179.
-//   - WhatsApp calling (000318): +2 (whatsapp_calls, whatsapp_call_events) → 181.
-const EXPECTED_SHARED = 181;
+//   - Smartcomm order links (000317): +2 (smartcomm_order_links,
+//     service_booking_requests) → 181.
+//   - Recruitment (000318): +5 (recruitment_context, role_templates,
+//     job_openings, candidates, recruitment_offers) → 186.
+//   - WhatsApp calling (000319): +2 (whatsapp_calls, whatsapp_call_events) → 188.
+const EXPECTED_SHARED = 188;
 const EXPECTED_PER_BRAND = 203;
 
 async function countTables(schema) {

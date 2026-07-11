@@ -145,22 +145,31 @@ const draftSave = z
 
 const sendInvoiceCard = z.object({ invoice_id: z.string().uuid() }).strict();
 
+// One id field per item; `kind` disambiguates (the modal always sends it,
+// older callers may omit it and send only product_id).
+const orderCaptureItem = z
+  .object({
+    kind: z.enum(["base", "styled", "bundle", "service"]).optional(),
+    product_id: z.string().uuid().optional(),
+    styled_id: z.string().uuid().optional(),
+    bundle_id: z.string().uuid().optional(),
+    service_id: z.string().uuid().optional(),
+    qty: z.number().positive().max(100),
+    price_ngn: z.union([z.string(), z.number()]).optional(),
+    note: z.string().max(280).optional(),
+  })
+  .strict()
+  .refine(
+    (it) => it.product_id || it.styled_id || it.bundle_id || it.service_id,
+    { message: "item needs a product_id, styled_id, bundle_id, or service_id" },
+  );
+
 const orderCaptureCreate = z
   .object({
-    contact_id: z.string().uuid(),
-    items: z
-      .array(
-        z
-          .object({
-            product_id: z.string().uuid(),
-            qty: z.number().positive().max(100),
-            price_ngn: z.union([z.string(), z.number()]).optional(),
-            note: z.string().max(280).optional(),
-          })
-          .strict(),
-      )
-      .min(1)
-      .max(20),
+    contact_id: z.string().uuid().optional(),
+    channel_id: z.string().uuid().optional(),
+    mode: z.enum(["capture", "shop"]).optional(),
+    items: z.array(orderCaptureItem).min(1).max(20),
     sales_channel: z
       .enum([
         "whatsapp",
@@ -177,7 +186,7 @@ const orderCaptureCreate = z
       .number()
       .int()
       .positive()
-      .max(7 * 24 * 3600)
+      .max(30 * 24 * 3600)
       .optional(),
   })
   .strict();

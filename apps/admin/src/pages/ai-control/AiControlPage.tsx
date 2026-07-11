@@ -8,6 +8,7 @@ import {
   GraduationCap,
   ChevronRight,
   Activity,
+  Users,
 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { Card } from "@/components/ui/primitives";
@@ -52,6 +53,13 @@ const TILES = [
     title: "Spend & budget",
     body: "Tiered caps: internal AI blocks first, storefront stays online under its own cap. Per-feature & per-vendor spend.",
     href: "/ai-control/budget",
+    ready: true,
+  },
+  {
+    icon: Users,
+    title: "AI access",
+    body: "Grant Praxis & the AI features to any staff member — search, pick, done. Applies on their next request; the CEO always has full access.",
+    href: "/ai-control/access",
     ready: true,
   },
   {

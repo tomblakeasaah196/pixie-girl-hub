@@ -5,6 +5,8 @@ import {
   Instagram,
   Facebook,
   Mail,
+  Send,
+  Server,
   Lock,
   Eye,
   EyeOff,
@@ -25,6 +27,7 @@ import {
   MessagesSquare,
   MessageCircle,
   LayoutTemplate,
+  Copy,
 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { useActiveBusiness } from "@/stores/business";
@@ -80,12 +83,16 @@ const CONNECTION_ICON: Record<
   instagram: Instagram,
   facebook: Facebook,
   email: Mail,
-  // Not shown in CONNECTIONS (managed inside the email tab) but the
-  // record is keyed by every MessagingPlatform, so TS requires it.
-  email_outbound: Mail,
+  email_outbound: Send,
 };
 
-const CONNECTIONS: ConnectionTab[] = ["whatsapp", "instagram", "facebook", "email"];
+const CONNECTIONS: ConnectionTab[] = [
+  "whatsapp",
+  "instagram",
+  "facebook",
+  "email",
+  "email_outbound",
+];
 
 const CONFIG_ITEMS: {
   key: ConfigTab;
@@ -232,7 +239,9 @@ export function MessagingSettingsModal({
                               : "Not connected"}
                           </span>
                         </span>
-                        {acc?.has_access_token && (
+                        {(p === "email_outbound"
+                          ? acc?.has_smtp_password || acc?.smtp_host
+                          : acc?.has_access_token) && (
                           <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
                         )}
                         <ChevronRight className="w-3.5 h-3.5 text-text-faint" />
@@ -342,6 +351,11 @@ function PlatformEditor({ platform, account, onSaved }: EditorProps) {
     display_name: account?.display_name ?? "",
     is_active: account?.is_active ?? true,
     notes: account?.notes ?? "",
+    smtp_host: account?.smtp_host ?? "",
+    smtp_port: account?.smtp_port ?? 587,
+    smtp_secure: account?.smtp_secure ?? false,
+    smtp_user: account?.smtp_user ?? "",
+    reply_to_email: account?.reply_to_email ?? "",
   }));
   const [dirtyFields, setDirtyFields] = useState<Set<string>>(new Set());
 
@@ -352,6 +366,11 @@ function PlatformEditor({ platform, account, onSaved }: EditorProps) {
       display_name: account?.display_name ?? "",
       is_active: account?.is_active ?? true,
       notes: account?.notes ?? "",
+      smtp_host: account?.smtp_host ?? "",
+      smtp_port: account?.smtp_port ?? 587,
+      smtp_secure: account?.smtp_secure ?? false,
+      smtp_user: account?.smtp_user ?? "",
+      reply_to_email: account?.reply_to_email ?? "",
     });
     setDirtyFields(new Set());
   }, [platform, account]);
@@ -384,6 +403,19 @@ function PlatformEditor({ platform, account, onSaved }: EditorProps) {
         payload.verify_token = form.verify_token;
       if (dirtyFields.has("business_account_id") && form.business_account_id)
         payload.business_account_id = form.business_account_id;
+      if (platform === "email_outbound") {
+        payload.smtp_host = form.smtp_host;
+        payload.smtp_port = form.smtp_port;
+        payload.smtp_secure = form.smtp_secure;
+        payload.smtp_user = form.smtp_user;
+        payload.reply_to_email = form.reply_to_email || undefined;
+        // From address/name mirror the identity fields above so a
+        // brand doesn't have to fill the same address in twice.
+        payload.from_email = form.external_account_id;
+        payload.from_name = form.display_name;
+        if (dirtyFields.has("smtp_password") && form.smtp_password)
+          payload.smtp_password = form.smtp_password;
+      }
       return messagingAccountsApi.upsert(payload);
     },
     onSuccess: () => {
@@ -396,6 +428,7 @@ function PlatformEditor({ platform, account, onSaved }: EditorProps) {
         app_secret: "",
         verify_token: "",
         business_account_id: "",
+        smtp_password: "",
       }));
     },
   });
@@ -413,6 +446,7 @@ function PlatformEditor({ platform, account, onSaved }: EditorProps) {
   const canSave =
     !!form.external_account_id &&
     !!form.display_name &&
+    (platform !== "email_outbound" || !!form.smtp_host) &&
     (dirtyFields.size > 0 || !account);
 
   return (
@@ -461,11 +495,13 @@ function PlatformEditor({ platform, account, onSaved }: EditorProps) {
       {test.isSuccess && (
         <div className="rounded-lg border border-green-500/30 bg-green-500/5 px-3 py-2 text-[12px] text-green-300 inline-flex items-start gap-1.5">
           <Check className="w-3.5 h-3.5 mt-[1px] shrink-0" />
-          {test.data?.provider_name
-            ? `Authenticated as "${test.data.provider_name}" (${test.data.provider_id ?? "ok"}).`
-            : test.data?.mx_records?.length
-              ? `MX OK — primary: ${test.data.mx_records[0].exchange}`
-              : "Provider responded."}
+          {platform === "email_outbound" && test.data?.provider_name
+            ? `SMTP connected — ${test.data.provider_name}.`
+            : test.data?.provider_name
+              ? `Authenticated as "${test.data.provider_name}" (${test.data.provider_id ?? "ok"}).`
+              : test.data?.mx_records?.length
+                ? `MX OK — primary: ${test.data.mx_records[0].exchange}`
+                : "Provider responded."}
         </div>
       )}
       {test.isError && (
@@ -484,7 +520,9 @@ function PlatformEditor({ platform, account, onSaved }: EditorProps) {
                 ? "IG Business Account ID"
                 : platform === "facebook"
                   ? "Page ID"
-                  : "Inbound mailbox"
+                  : platform === "email_outbound"
+                    ? "From address"
+                    : "Inbound mailbox"
           }
           required
           value={form.external_account_id}
@@ -507,7 +545,9 @@ function PlatformEditor({ platform, account, onSaved }: EditorProps) {
         />
       </div>
 
-      {platform !== "email" && (
+      {(platform === "whatsapp" ||
+        platform === "instagram" ||
+        platform === "facebook") && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <SecretField
             label="Access Token"
@@ -551,6 +591,59 @@ function PlatformEditor({ platform, account, onSaved }: EditorProps) {
               onDraftChange={(v) => markDirty("business_account_id", v)}
             />
           )}
+        </div>
+      )}
+
+      {platform === "email_outbound" && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Field
+            label="SMTP host"
+            required
+            value={form.smtp_host ?? ""}
+            onChange={(v) => markDirty("smtp_host", v)}
+            placeholder="smtp.hostinger.com"
+            mono
+          />
+          <Field
+            label="SMTP port"
+            value={String(form.smtp_port ?? 587)}
+            onChange={(v) => markDirty("smtp_port", Number(v) || 587)}
+            placeholder="587"
+            mono
+          />
+          <Field
+            label="SMTP username"
+            value={form.smtp_user ?? ""}
+            onChange={(v) => markDirty("smtp_user", v)}
+            placeholder="Usually the same as the From address"
+            mono
+          />
+          <SecretField
+            label="SMTP password"
+            field="smtp_password"
+            account={account}
+            valueDraft={form.smtp_password ?? ""}
+            firstFour={account?.smtp_password_first4 ?? null}
+            hasStored={account?.has_smtp_password ?? false}
+            placeholder="Mailbox password / SMTP app password"
+            onDraftChange={(v) => markDirty("smtp_password", v)}
+          />
+          <label className="flex items-center gap-2 text-[12.5px] text-text-muted lg:col-span-2">
+            <input
+              type="checkbox"
+              checked={form.smtp_secure ?? false}
+              onChange={(e) => markDirty("smtp_secure", e.target.checked)}
+              className="accent-accent"
+            />
+            Use implicit TLS (port 465). Leave unchecked for STARTTLS on 587.
+          </label>
+          <Field
+            label="Reply-To address"
+            value={form.reply_to_email ?? ""}
+            onChange={(v) => markDirty("reply_to_email", v)}
+            placeholder="sales@yourbrand.com — defaults to the From address"
+            hint="Every outbound mail — even noreply@ transactional mail — carries this Reply-To, so a customer's reply always lands on a monitored, webhook-ingested mailbox."
+          />
         </div>
       )}
 
@@ -614,7 +707,7 @@ function PlatformEditor({ platform, account, onSaved }: EditorProps) {
 
       {account && <RevealHistory accountId={account.account_id} />}
 
-      <GettingStarted platform={platform} />
+      <GettingStarted platform={platform} mailbox={form.external_account_id} />
     </div>
   );
 }
@@ -908,11 +1001,253 @@ function RevealHistory({ accountId }: { accountId: string }) {
 
 // ── Getting-started guide ─────────────────────────────────
 
-function GettingStarted({ platform }: { platform: MessagingPlatform }) {
-  if (platform === "email") return null;
+function GettingStarted({
+  platform,
+  mailbox,
+}: {
+  platform: MessagingPlatform;
+  mailbox: string;
+}) {
+  if (platform === "email") return <InboundEmailGuide mailbox={mailbox} />;
+  if (platform === "email_outbound") return <OutboundEmailGuide />;
   if (platform === "whatsapp") return <WhatsAppGuide />;
   if (platform === "instagram") return <InstagramGuide />;
   return <FacebookGuide />;
+}
+
+/**
+ * Inbound email setup, computed live for whatever mailbox the operator
+ * is typing into the "Inbound mailbox" field above — no need to go
+ * copy records out of docs/EMAIL_TWO_WAY_SETUP.md by hand. Backed by
+ * GET /messaging-accounts/dns-records (messaging-accounts.service.js
+ * getInboundDnsRecords), which returns the same records that runbook
+ * documents, so if you change one, check the other stays in sync.
+ */
+function InboundEmailGuide({ mailbox }: { mailbox: string }) {
+  const domain = mailbox.includes("@") ? mailbox.split("@")[1] : "";
+  const dnsQ = useQuery({
+    queryKey: ["messaging-accounts-dns", mailbox],
+    queryFn: () => messagingAccountsApi.dnsRecords(mailbox),
+    enabled: !!domain,
+  });
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const copy = (value: string, key: string) => {
+    navigator.clipboard?.writeText(value).catch(() => {});
+    setCopied(key);
+    setTimeout(() => setCopied((c) => (c === key ? null : c)), 1500);
+  };
+
+  return (
+    <div className="rounded-2xl border hairline bg-panel-2 overflow-hidden">
+      <div className="px-4 py-3 border-b hairline flex items-start gap-2">
+        <Info className="w-4 h-4 mt-[2px] text-accent-glow" />
+        <div>
+          <h4 className="text-[13px] font-medium">
+            Two-way email — DNS &amp; webhook setup
+          </h4>
+          <p className="text-[11.5px] text-text-faint mt-0.5">
+            Inbound rides Cloudflare Email Routing → an Email Worker → our
+            webhook. Enter the mailbox above and every record below is
+            computed for that exact domain.
+          </p>
+        </div>
+      </div>
+
+      {!domain ? (
+        <p className="p-4 text-[12.5px] text-text-faint">
+          Type the inbound mailbox above (e.g.{" "}
+          <span className="font-mono">sales@yourbrand.com</span>) to generate
+          its DNS records.
+        </p>
+      ) : dnsQ.isLoading ? (
+        <div className="grid place-items-center py-8">
+          <Loader2 className="w-4 h-4 animate-spin text-text-faint" />
+        </div>
+      ) : dnsQ.data ? (
+        <div className="p-4 space-y-4">
+          <div>
+            <p className="text-[11px] uppercase tracking-widest text-text-faint mb-2">
+              Webhook (paste into your Cloudflare Email Worker)
+            </p>
+            <DnsRow
+              label="POST URL"
+              value={dnsQ.data.webhook_url}
+              onCopy={() => copy(dnsQ.data!.webhook_url, "url")}
+              copied={copied === "url"}
+            />
+            <DnsRow
+              label="Signature header"
+              value={`${dnsQ.data.webhook_header}: sha256=<hex>`}
+              onCopy={() => copy(dnsQ.data!.webhook_header, "header")}
+              copied={copied === "header"}
+            />
+            <p className="text-[10.5px] text-text-faint mt-1.5 inline-flex items-center gap-1">
+              {dnsQ.data.webhook_secret_configured ? (
+                <>
+                  <Check className="w-3 h-3 text-green-400" /> Shared HMAC
+                  secret is configured on this server.
+                </>
+              ) : (
+                <>
+                  <AlertCircle className="w-3 h-3 text-danger" />{" "}
+                  CF_EMAIL_INBOUND_SECRET isn't set yet — set it before this
+                  domain's mail can be verified.
+                </>
+              )}
+            </p>
+          </div>
+
+          <div>
+            <p className="text-[11px] uppercase tracking-widest text-text-faint mb-2">
+              DNS records for {domain}
+            </p>
+            <div className="space-y-2">
+              {dnsQ.data.records.map((r) => (
+                <div
+                  key={`${r.type}-${r.name}`}
+                  className="rounded-xl border hairline bg-panel px-3 py-2"
+                >
+                  <div className="flex items-center gap-2 text-[11.5px]">
+                    <span className="rounded-md bg-accent/15 text-accent-glow px-1.5 py-0.5 font-mono text-[10.5px]">
+                      {r.type}
+                    </span>
+                    <span className="font-mono text-text-muted">
+                      {r.name}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex items-start justify-between gap-2">
+                    <p className="font-mono text-[11.5px] text-text-primary break-all">
+                      {r.value}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => copy(r.value, `${r.type}-${r.name}`)}
+                      className="shrink-0 rounded-md p-1 hover:bg-panel-2"
+                      title="Copy"
+                    >
+                      {copied === `${r.type}-${r.name}` ? (
+                        <Check className="w-3.5 h-3.5 text-green-400" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5 text-text-faint" />
+                      )}
+                    </button>
+                  </div>
+                  {r.note && (
+                    <p className="text-[10.5px] text-text-faint mt-1">
+                      {r.note}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-[11px] uppercase tracking-widest text-text-faint mb-2">
+              Steps
+            </p>
+            <ol className="space-y-1.5 text-[12.5px] text-text-muted list-decimal ml-5">
+              {dnsQ.data.instructions.map((step, i) => (
+                <li key={i}>{step}</li>
+              ))}
+            </ol>
+          </div>
+        </div>
+      ) : (
+        <p className="p-4 text-[12.5px] text-danger">
+          Couldn't compute DNS records for this mailbox.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function DnsRow({
+  label,
+  value,
+  onCopy,
+  copied,
+}: {
+  label: string;
+  value: string;
+  onCopy: () => void;
+  copied: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-xl border hairline bg-panel px-3 py-2 mb-1.5">
+      <div className="min-w-0">
+        <p className="text-[10.5px] text-text-faint">{label}</p>
+        <p className="font-mono text-[11.5px] text-text-primary truncate">
+          {value}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onCopy}
+        className="shrink-0 rounded-md p-1 hover:bg-panel-2"
+        title="Copy"
+      >
+        {copied ? (
+          <Check className="w-3.5 h-3.5 text-green-400" />
+        ) : (
+          <Copy className="w-3.5 h-3.5 text-text-faint" />
+        )}
+      </button>
+    </div>
+  );
+}
+
+function OutboundEmailGuide() {
+  return (
+    <div className="rounded-2xl border hairline bg-panel-2 overflow-hidden">
+      <div className="px-4 py-3 border-b hairline flex items-start gap-2">
+        <Server className="w-4 h-4 mt-[2px] text-accent-glow" />
+        <div>
+          <h4 className="text-[13px] font-medium">
+            Outbound relay — what this brand sends through
+          </h4>
+          <p className="text-[11.5px] text-text-faint mt-0.5">
+            This is the SMTP relay used for every outbound email this brand
+            sends — transactional notifications and in-app chat replies
+            alike. Saving here takes effect on the very next send; no
+            restart needed.
+          </p>
+        </div>
+      </div>
+      <ol className="p-4 space-y-3 text-[12.5px] text-text-muted list-decimal ml-5">
+        <li>
+          Ask your mailbox/relay provider for SMTP submission settings —
+          typically <span className="font-mono text-accent-glow">host</span>,{" "}
+          <span className="font-mono text-accent-glow">port 587</span>{" "}
+          (STARTTLS) or <span className="font-mono text-accent-glow">465</span>{" "}
+          (implicit TLS), plus a username + password.
+        </li>
+        <li>
+          Set the <strong>From address</strong> above to the mailbox you're
+          sending as (e.g. <span className="font-mono">sales@yourbrand.com</span>).
+          It doubles as the display name's email identity.
+        </li>
+        <li>
+          Set a <strong>Reply-To address</strong> — every outbound message
+          carries it, even transactional mail whose From is{" "}
+          <span className="font-mono">noreply@</span>, so a customer's reply
+          always lands on a monitored mailbox your Inbound Email webhook
+          ingests.
+        </li>
+        <li>
+          Hit <strong>Test</strong> — it opens the SMTP connection (and
+          authenticates, if credentials are set) without sending a real
+          message.
+        </li>
+        <li>
+          Confirm delivery end-to-end: send yourself a message from the app,
+          then reply from your personal inbox and check it threads back into
+          the same conversation in the Hub.
+        </li>
+      </ol>
+    </div>
+  );
 }
 
 function WhatsAppGuide() {

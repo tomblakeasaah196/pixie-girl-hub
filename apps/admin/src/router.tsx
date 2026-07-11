@@ -162,6 +162,11 @@ const VerifyDocumentPage = lazyWithRetry(() =>
     default: m.VerifyDocumentPage,
   })),
 );
+const OfferPage = lazyWithRetry(() =>
+  import("@/pages/offer/OfferPage").then((m) => ({
+    default: m.OfferPage,
+  })),
+);
 const AiControlPage = lazyWithRetry(() =>
   import("@/pages/ai-control/AiControlPage").then((m) => ({
     default: m.AiControlPage,
@@ -254,6 +259,11 @@ const SpendBudgetPage = lazyWithRetry(() =>
 const FeatureFlagsPage = lazyWithRetry(() =>
   import("@/pages/ai-control/FeatureFlagsPage").then((m) => ({
     default: m.FeatureFlagsPage,
+  })),
+);
+const AiAccessPage = lazyWithRetry(() =>
+  import("@/pages/ai-control/AiAccessPage").then((m) => ({
+    default: m.AiAccessPage,
   })),
 );
 const InvoicingPage = lazyWithRetry(() =>
@@ -351,6 +361,16 @@ export const router = createBrowserRouter(
       element: (
         <Suspense fallback={<RouteFallback />}>
           <SignDocumentPage />
+        </Suspense>
+      ),
+    },
+    // Public candidate offer packet (emailed token link; no auth). Reads the
+    // JD + offer letter and signs at the bottom via the e-sign engine.
+    {
+      path: "/offer/:token",
+      element: (
+        <Suspense fallback={<RouteFallback />}>
+          <OfferPage />
         </Suspense>
       ),
     },
@@ -830,6 +850,14 @@ export const router = createBrowserRouter(
               element: (
                 <Suspense fallback={<RouteFallback />}>
                   <FeatureFlagsPage />
+                </Suspense>
+              ),
+            },
+            {
+              path: "ai-control/access",
+              element: (
+                <Suspense fallback={<RouteFallback />}>
+                  <AiAccessPage />
                 </Suspense>
               ),
             },

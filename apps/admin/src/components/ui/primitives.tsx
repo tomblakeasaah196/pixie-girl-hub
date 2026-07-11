@@ -27,7 +27,9 @@ export const Button = forwardRef<HTMLButtonElement, BtnProps>(function Button(
     <button
       ref={ref}
       className={cn(
-        "inline-flex items-center justify-center gap-2 font-semibold rounded-xl border transition-all duration-300 active:translate-y-px disabled:opacity-50 disabled:pointer-events-none",
+        // whitespace-nowrap: a squeezed flex row must push a button aside or
+        // wrap the ROW, never fold the label itself ("New\nGoal" on phones).
+        "inline-flex items-center justify-center gap-2 font-semibold rounded-xl border whitespace-nowrap transition-all duration-300 active:translate-y-px disabled:opacity-50 disabled:pointer-events-none",
         size === "sm"
           ? "h-[33px] px-3 text-xs rounded-[10px]"
           : "h-10 px-4 text-[13px]",

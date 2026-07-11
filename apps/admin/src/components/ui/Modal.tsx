@@ -58,7 +58,8 @@ export function Modal({
       data-modal-root
       data-modal-open={open ? "true" : "false"}
       className={cn(
-        "fixed inset-0 z-[92] grid place-items-center p-4 bg-black/50 backdrop-blur-[3px] transition-[opacity,visibility] duration-300",
+        // Phone: bottom sheet (native-app dialogs). md+: centered glass modal.
+        "fixed inset-0 z-[92] flex items-end justify-center md:items-center md:p-4 bg-black/50 backdrop-blur-[3px] transition-[opacity,visibility] duration-300",
         open
           ? "opacity-100 visible"
           : "opacity-0 invisible pointer-events-none",
@@ -70,15 +71,21 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
-        style={{ width: `min(94vw, ${SIZE_PX[size]}px)` }}
+        style={{ "--modal-w": `${SIZE_PX[size]}px` } as React.CSSProperties}
         className={cn(
           // Height-capped flex column: header/footer pinned, body scrolls.
-          "max-h-[calc(100dvh-2rem)] flex flex-col dropglass rounded-[18px] overflow-hidden transition-transform duration-300 ease-brand",
-          open ? "scale-100" : "scale-95",
+          "w-full md:w-[min(94vw,var(--modal-w))] max-h-[92dvh] md:max-h-[calc(100dvh-2rem)] flex flex-col dropglass overflow-hidden transition-transform duration-300 ease-brand",
+          "rounded-t-[22px] rounded-b-none md:rounded-[18px]",
+          open
+            ? "translate-y-0 scale-100"
+            : "translate-y-full md:translate-y-0 md:scale-95",
         )}
       >
+        <div className="md:hidden grid place-items-center pt-2.5 -mb-1 shrink-0">
+          <span className="h-1 w-9 rounded-full bg-text-primary/20" aria-hidden />
+        </div>
         {title && (
-          <div className="flex items-center gap-3 p-5 border-b hairline shrink-0">
+          <div className="flex items-center gap-3 p-5 max-md:py-4 border-b hairline shrink-0">
             <h2 className="font-display text-lg font-medium flex-1 min-w-0 truncate">
               {title}
             </h2>
@@ -87,9 +94,16 @@ export function Modal({
             </IconButton>
           </div>
         )}
-        <div className="p-5 overflow-y-auto">{children}</div>
+        <div
+          className={cn(
+            "p-5 overflow-y-auto",
+            !footer && "max-md:pb-[max(env(safe-area-inset-bottom,0px),20px)]",
+          )}
+        >
+          {children}
+        </div>
         {footer && (
-          <div className="p-[14px_20px] border-t hairline flex flex-wrap items-center gap-2 justify-end shrink-0">
+          <div className="p-[14px_20px] pb-[max(env(safe-area-inset-bottom,0px),14px)] md:pb-[14px] border-t hairline flex flex-wrap items-center gap-2 justify-end shrink-0">
             {footer}
           </div>
         )}

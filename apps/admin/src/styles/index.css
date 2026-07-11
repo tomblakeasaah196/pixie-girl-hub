@@ -677,4 +677,14 @@ body.session-locked #root {
   textarea:not(.no-min-h) {
     min-height: 44px;
   }
+
+  /* iOS Safari auto-zooms the page when a focused control's font-size is
+     under 16px — the single biggest "this is a website, not an app" tell.
+     Hold every text-entry control at 16px on phones; utility text-* classes
+     lose to this on purpose. */
+  input,
+  select,
+  textarea {
+    font-size: max(16px, 1em) !important;
+  }
 }

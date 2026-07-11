@@ -87,7 +87,7 @@ export function SalesPage() {
       )}
 
       <div
-        className="flex gap-1 p-1 rounded-[13px] glass shadow-glass overflow-x-auto"
+        className="flex gap-1 p-1 rounded-[13px] glass shadow-glass overflow-x-auto hide-scrollbar"
         role="tablist"
       >
         {TABS.map((t) => {

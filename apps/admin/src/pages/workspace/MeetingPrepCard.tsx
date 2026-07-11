@@ -36,11 +36,17 @@ export function MeetingPrepCard({ eventId, onClose }: { eventId: string; onClose
   const { data, isLoading, isError, refetch } = useCosPrep(eventId);
 
   return createPortal(
-    <div className="fixed inset-0 z-[90] bg-black/50 backdrop-blur-[3px] grid place-items-center p-4" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-[110] bg-black/50 backdrop-blur-[3px] flex items-end justify-center md:items-center md:p-4"
+      onClick={onClose}
+    >
       <div
-        className="w-[min(520px,100vw)] max-h-[85vh] overflow-y-auto dropglass shadow-glass rounded-2xl animate-fade-in"
+        className="w-full md:w-[min(520px,94vw)] max-h-[85dvh] overflow-y-auto dropglass shadow-glass rounded-t-[22px] md:rounded-2xl animate-slide-up md:animate-fade-in pb-[max(env(safe-area-inset-bottom,0px),8px)] md:pb-0"
         onClick={(e) => e.stopPropagation()}
       >
+        <div className="md:hidden grid place-items-center pt-2.5 -mb-1">
+          <span className="h-1 w-9 rounded-full bg-text-primary/20" aria-hidden />
+        </div>
         <div className="sticky top-0 z-10 flex items-center gap-2 p-4 border-b hairline dropglass">
           <CalendarClock className="w-4 h-4 text-accent-glow" />
           <span className="font-display text-[15px] font-medium flex-1">Meeting prep</span>

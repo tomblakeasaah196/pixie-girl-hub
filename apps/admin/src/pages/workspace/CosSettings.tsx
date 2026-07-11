@@ -158,16 +158,20 @@ export function CosSettings({ open, onClose }: { open: boolean; onClose: () => v
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[90] bg-black/50 backdrop-blur-[3px] flex md:justify-end"
+      // z-[120]: must clear the CoS immersive layer (z-[100]) on phones.
+      className="fixed inset-0 z-[120] bg-black/50 backdrop-blur-[3px] flex md:justify-end"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-label="Chief of Staff settings"
     >
       <div
-        className="mt-auto md:mt-0 w-full md:w-[440px] max-h-[88vh] md:max-h-none md:h-full overflow-y-auto dropglass rounded-t-[22px] md:rounded-none md:rounded-l-[22px] animate-slide-up md:animate-none"
+        className="mt-auto md:mt-0 w-full md:w-[440px] max-h-[92dvh] md:max-h-none md:h-full overflow-y-auto dropglass rounded-t-[22px] md:rounded-none md:rounded-l-[22px] animate-slide-up md:animate-none"
         onClick={(e) => e.stopPropagation()}
       >
+        <div className="md:hidden grid place-items-center pt-2.5 -mb-1">
+          <span className="h-1 w-9 rounded-full bg-text-primary/20" aria-hidden />
+        </div>
         {/* Header */}
         <div className="sticky top-0 z-10 flex items-center gap-2 p-4 border-b hairline dropglass">
           <Sparkles className="w-4 h-4 text-accent-glow" />
@@ -308,7 +312,7 @@ export function CosSettings({ open, onClose }: { open: boolean; onClose: () => v
 
         {/* Footer */}
         {form && !q.isError && (
-          <div className="sticky bottom-0 flex items-center justify-end gap-2 p-4 border-t hairline dropglass">
+          <div className="sticky bottom-0 flex items-center justify-end gap-2 p-4 pb-[max(env(safe-area-inset-bottom,0px),16px)] md:pb-4 border-t hairline dropglass">
             <Button variant="ghost" size="sm" onClick={onClose}>
               Cancel
             </Button>

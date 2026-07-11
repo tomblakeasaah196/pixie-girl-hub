@@ -487,9 +487,12 @@ export function ContactsPage() {
 
   return (
     <div className="animate-fade-in">
-      {/* Header + page-level CTAs (no longer teleported to the top bar) */}
-      <div className="flex items-center mb-4 gap-3">
-        <div className="flex-1 min-w-0">
+      {/* Header + page-level CTAs (no longer teleported to the top bar).
+          flex-wrap: on phones the CTA cluster is wider than what's left
+          beside the title, so it drops to its own row instead of painting
+          over the heading. */}
+      <div className="flex flex-wrap items-center mb-4 gap-3">
+        <div className="min-w-0 mr-auto">
           <h1 className="font-display text-2xl text-text-primary">Contacts</h1>
           {totalCount != null && (
             <p className="text-[12px] text-text-faint mt-0.5">

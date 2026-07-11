@@ -187,7 +187,7 @@ export function BatchPlanCard({
               disabled={isBusy}
               onClick={() => confirm.mutate(plan.plan_id)}
               aria-label={`Approve plan “${plan.title}”`}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-accent text-bg px-4 py-2 text-[13px] font-semibold hover:bg-accent-glow disabled:opacity-50"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl bg-accent text-bg px-4 py-2 text-[13px] font-semibold hover:bg-accent-glow disabled:opacity-50 whitespace-nowrap"
             >
               {confirm.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
               Approve plan
@@ -197,7 +197,7 @@ export function BatchPlanCard({
               disabled={isBusy}
               onClick={() => reject.mutate({ planId: plan.plan_id })}
               aria-label={`Reject plan “${plan.title}”`}
-              className="inline-flex items-center gap-1.5 rounded-xl border hairline px-3.5 py-2 text-[13px] text-text-muted hover:text-text-primary hover:border-line disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl border hairline px-3.5 py-2 text-[13px] text-text-muted hover:text-text-primary hover:border-line disabled:opacity-50 whitespace-nowrap"
             >
               <X className="w-3.5 h-3.5" />
               Reject

@@ -25,7 +25,19 @@ candidate opens /offer/<token> (no auth)          GET  /api/public/offer/:token
 admin provisions the login (explicit)             POST /offers/:id/provision
         · reuses hr_payroll invitations.provisionLogin (temp password)
         · emails the credentials straight to the candidate
+        · body (optional, from the onboarding wizard):
+            staff_profile_id — links the login to the HR employee profile so
+              the hire shows in the directory + organigramme seat, and the
+              generated contract PDF is filed under their HR contracts
+            role_ids — replaces the offer's stored grants (e.g. the seated
+              position's role)
 ```
+
+The admin UI drives provisioning through the staff-onboarding wizard
+(`/contacts/staff/new?offer_id=…`), prefilled from the offer: it creates the
+contact + HR employee profile, seats the hire in an organigramme position
+(creating the department/position inline if needed), then calls
+`/offers/:id/provision` with the new `staff_profile_id`.
 
 ## Files
 

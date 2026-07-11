@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronLeft,
   ChevronRight,
@@ -11,6 +11,8 @@ import {
   AlertTriangle,
   Copy,
   UserPlus,
+  FileSignature,
+  Plus,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { toastReport } from "@/lib/error-report";
@@ -25,8 +27,9 @@ import { useCreateContact } from "./hooks";
 import { listContacts, getContact } from "./api";
 import { DIAL_CODES } from "./ContactFormModal";
 import type { Contact, ContactCreateInput } from "./types";
-import { orgApi } from "@/lib/org-api";
-import { accessApi } from "@/lib/access-api";
+import { orgApi, type OrgPosition } from "@/lib/org-api";
+import { accessApi, type Role } from "@/lib/access-api";
+import { recruitmentApi } from "@/lib/recruitment-api";
 
 // ──────────────────────────────────────────────────────────────────────────
 // Staff onboarding — full 4-step wizard (Person · Employment · Financial ·
@@ -78,8 +81,50 @@ interface StaffProfileResult {
   employee_number: string;
 }
 
+// ── Offer-prefill helpers ───────────────────────────────────────────────────
+// offer_meta fields are free text in the Offer Studio, so parse tolerantly.
+
+/** Accepts ISO (2026-07-14…) or dd/mm/yyyy → yyyy-mm-dd, else null. */
+function parseOfferDate(v: unknown): string | null {
+  if (!v || typeof v !== "string") return null;
+  const s = v.trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const m = s.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
+  if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  return null;
+}
+
+/** "₦220,000/month" → "220000"; null when no usable number. */
+function parseOfferMoney(v: unknown): string | null {
+  if (!v || typeof v !== "string") return null;
+  const digits = v.replace(/[^\d.]/g, "");
+  let n = Number(digits);
+  if (!Number.isFinite(n)) n = Number(digits.replace(/\./g, ""));
+  return Number.isFinite(n) && n > 0 ? String(n) : null;
+}
+
+/** yyyy-mm-dd plus N months (probation end from the offer terms). */
+function addMonthsIso(iso: string, months: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCMonth(d.getUTCMonth() + months);
+  return d.toISOString().slice(0, 10);
+}
+
+/** "Human Resources" → "human_resources" (org unit/position keys). */
+function slugKey(s: string): string {
+  return (
+    s
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 60) || "unit"
+  );
+}
+
 export function EmployeeOnboardingPage() {
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const [params] = useSearchParams();
   const businesses = useBusinesses();
   const activeKey = useBusinessStore((s) => s.activeKey);
@@ -97,8 +142,23 @@ export function EmployeeOnboardingPage() {
     contactId: string;
     employeeNumber: string;
     credentials?: { email: string; temp_password: string } | null;
+    /** Offer mode: credentials were emailed straight to the candidate. */
+    emailedTo?: string | null;
   } | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // ── Recruitment offer mode (?offer_id=) ─────────────────
+  // "Onboard & provision" on a signed offer lands here: the wizard is
+  // prefilled from the offer/contract, and the final step provisions the
+  // login through the recruitment endpoint (credentials emailed to the
+  // candidate, offer marked provisioned, HR profile linked).
+  const offerId = params.get("offer_id");
+  const offerMode = !!offerId;
+  const { data: offer } = useQuery({
+    queryKey: ["recruitment", "offer", offerId],
+    queryFn: () => recruitmentApi.getOffer(offerId!),
+    enabled: offerMode,
+  });
 
   // ── Person ──────────────────────────────────────────────
   const [linked, setLinked] = useState<Contact | null>(null);
@@ -127,6 +187,7 @@ export function EmployeeOnboardingPage() {
   // Job title + department come from the organigramme (no free text). Picking a
   // position sets both, and assigns the new hire to that seat after creation.
   const [positionId, setPositionId] = useState("");
+  const [newPositionOpen, setNewPositionOpen] = useState(false);
   const [employmentType, setEmploymentType] = useState("full_time");
   const [startDate, setStartDate] = useState(
     new Date().toISOString().slice(0, 10),
@@ -159,6 +220,33 @@ export function EmployeeOnboardingPage() {
   const [createLogin, setCreateLogin] = useState(true);
   const [permitted, setPermitted] = useState<string[]>([activeKey]);
   const [roleId, setRoleId] = useState("");
+
+  // Prefill from the signed offer — once, when it loads. Everything stays
+  // editable; the wizard only fills what the contract already knows.
+  const offerPrefilled = useRef(false);
+  useEffect(() => {
+    if (!offer || offerPrefilled.current) return;
+    offerPrefilled.current = true;
+    const parts = (offer.candidate_name || "").trim().split(/\s+/).filter(Boolean);
+    if (parts.length) {
+      setFirstName(parts[0]);
+      setLastName(parts.slice(1).join(" "));
+    }
+    if (offer.candidate_email) setEmail(offer.candidate_email);
+    if (offer.business) setBusiness(offer.business);
+    if (offer.target_businesses?.length) setPermitted(offer.target_businesses);
+    const start = parseOfferDate(offer.offer_meta?.start_date);
+    if (start) setStartDate(start);
+    const et = offer.offer_meta?.employment_type;
+    if (typeof et === "string" && EMPLOYMENT_TYPES.some((t) => t.value === et))
+      setEmploymentType(et);
+    // The hire starts on the probation salary; fall back to post-probation.
+    const salary =
+      parseOfferMoney(offer.offer_meta?.salary_probation) ??
+      parseOfferMoney(offer.offer_meta?.salary_post_probation);
+    if (salary) setBaseSalary(salary);
+    if (offer.role_ids?.length) setRoleId((r) => r || offer.role_ids[0]);
+  }, [offer]);
 
   // Organigramme sources: positions drive title/department/role; roles gate
   // the login (required — no permission-less accounts).
@@ -206,7 +294,9 @@ export function EmployeeOnboardingPage() {
       if (!startDate) return "Start date is required.";
     }
     if (step === 3 && createLogin) {
-      if (!roleId) return "Pick a role for the login (no permission-less accounts).";
+      // In offer mode the offer's stored role grants are an acceptable source.
+      if (!roleId && !(offerMode && offer?.role_ids?.length))
+        return "Pick a role for the login (no permission-less accounts).";
     }
     return null;
   };
@@ -222,12 +312,17 @@ export function EmployeeOnboardingPage() {
     else submit();
   };
 
+  // Keep what a failed submit already created, so retrying never duplicates
+  // the contact or the HR profile (it resumes from where it stopped).
+  const createdContactRef = useRef<string | null>(null);
+  const createdProfileRef = useRef<StaffProfileResult | null>(null);
+
   const submit = async () => {
     setError("");
     setBusy(true);
     try {
       // 1. Resolve the contact — link existing or create fresh, typed staff.
-      let contactId = linked?.contact_id;
+      let contactId = linked?.contact_id || createdContactRef.current;
       const displayName =
         linked?.display_name ||
         [firstName, lastName].filter(Boolean).join(" ").trim();
@@ -244,34 +339,50 @@ export function EmployeeOnboardingPage() {
         };
         const c = await createContact.mutateAsync(payload);
         contactId = c.contact_id;
+        createdContactRef.current = contactId;
       }
 
       // 2. Create the HR employee profile (incl. work schedule). Title +
-      //    department are taken from the chosen organigramme position.
-      const profile = await api.post<StaffProfileResult>("/hr/employees", {
-        contact_id: contactId,
-        job_title: selectedPosition?.display_name ?? "Unassigned",
-        employment_type: employmentType,
-        start_date: startDate,
-        ...(selectedPosition?.unit_name
-          ? { department: selectedPosition.unit_name }
-          : {}),
-        ...(reportsTo ? { reports_to: reportsTo } : {}),
-        ...(baseSalary ? { base_salary: Number(baseSalary) } : {}),
-        ...(bankName.trim() ? { bank_name: bankName.trim() } : {}),
-        ...(bankAccount.trim()
-          ? { bank_account_number: bankAccount.trim() }
-          : {}),
-        ...(bankSort.trim() ? { bank_sort_code: bankSort.trim() } : {}),
-        ...(nin.trim() ? { nin: nin.trim() } : {}),
-        ...(bvn.trim() ? { bvn: bvn.trim() } : {}),
-        ...(pensionPin.trim() ? { pension_pin: pensionPin.trim() } : {}),
-        ...(nhf.trim() ? { nhf_number: nhf.trim() } : {}),
-        ...(taxId.trim() ? { tax_id: taxId.trim() } : {}),
-        work_schedule: schedule,
-        ...(expectedStart ? { work_expected_start_time: expectedStart } : {}),
-        work_grace_minutes: Number(grace) || 0,
-      });
+      //    department are taken from the chosen organigramme position. In
+      //    offer mode the contract's probation terms seed probation tracking.
+      const probationMonths = offerMode
+        ? Number(offer?.offer_meta?.probation_months) || 0
+        : 0;
+      let profile = createdProfileRef.current;
+      if (!profile) {
+        profile = await api.post<StaffProfileResult>("/hr/employees", {
+          contact_id: contactId,
+          job_title: selectedPosition?.display_name ?? "Unassigned",
+          employment_type: employmentType,
+          start_date: startDate,
+          ...(probationMonths > 0
+            ? {
+                probation_status: "active",
+                probation_start_date: startDate,
+                probation_end_date: addMonthsIso(startDate, probationMonths),
+              }
+            : {}),
+          ...(selectedPosition?.unit_name
+            ? { department: selectedPosition.unit_name }
+            : {}),
+          ...(reportsTo ? { reports_to: reportsTo } : {}),
+          ...(baseSalary ? { base_salary: Number(baseSalary) } : {}),
+          ...(bankName.trim() ? { bank_name: bankName.trim() } : {}),
+          ...(bankAccount.trim()
+            ? { bank_account_number: bankAccount.trim() }
+            : {}),
+          ...(bankSort.trim() ? { bank_sort_code: bankSort.trim() } : {}),
+          ...(nin.trim() ? { nin: nin.trim() } : {}),
+          ...(bvn.trim() ? { bvn: bvn.trim() } : {}),
+          ...(pensionPin.trim() ? { pension_pin: pensionPin.trim() } : {}),
+          ...(nhf.trim() ? { nhf_number: nhf.trim() } : {}),
+          ...(taxId.trim() ? { tax_id: taxId.trim() } : {}),
+          work_schedule: schedule,
+          ...(expectedStart ? { work_expected_start_time: expectedStart } : {}),
+          work_grace_minutes: Number(grace) || 0,
+        });
+        createdProfileRef.current = profile;
+      }
 
       // 2b. Slot the new hire into their organigramme seat — this grants the
       //     position's role and confirms their title + department.
@@ -285,11 +396,27 @@ export function EmployeeOnboardingPage() {
         }
       }
 
-      // 3. Optionally provision a Hub login instantly — returns a one-time
-      //    temporary password to hand to the new hire. A role is required.
+      // 3. Provision the Hub login.
+      //    • Offer mode: through the recruitment endpoint — it links the login
+      //      to the HR profile just created, emails the credentials straight
+      //      to the candidate, files the contract, and marks the offer
+      //      provisioned.
+      //    • Otherwise: instant provisioning — returns a one-time temporary
+      //      password to hand to the new hire. A role is required.
       let credentials: { email: string; temp_password: string } | null = null;
+      let emailedTo: string | null = null;
       const loginEmail = email.trim() || linked?.email || "";
-      if (createLogin && loginEmail) {
+      if (offerMode && offerId && createLogin) {
+        const roleIds = Array.from(
+          new Set([...(roleId ? [roleId] : []), ...(offer?.role_ids ?? [])]),
+        );
+        const r = await recruitmentApi.provision(offerId, {
+          staff_profile_id: profile.profile_id,
+          ...(roleIds.length ? { role_ids: roleIds } : {}),
+        });
+        emailedTo = r.email;
+        qc.invalidateQueries({ queryKey: ["recruitment"] });
+      } else if (createLogin && loginEmail) {
         try {
           credentials = await api.post<{
             email: string;
@@ -310,6 +437,7 @@ export function EmployeeOnboardingPage() {
         contactId: contactId!,
         employeeNumber: profile.employee_number,
         credentials,
+        emailedTo,
       });
     } catch (e) {
       toastReport("Contacts → Employee onboarding", "Onboard employee", e);
@@ -342,6 +470,18 @@ export function EmployeeOnboardingPage() {
           Cancel
         </Button>
       </div>
+
+      {offerMode && offer && (
+        <div className="mb-5 flex items-start gap-2.5 rounded-[12px] border border-accent-deep/40 bg-accent-deep/[0.08] p-3.5 text-[12.5px] text-text-primary">
+          <FileSignature className="w-4 h-4 mt-0.5 shrink-0 text-accent-glow" />
+          <span>
+            Onboarding from the signed offer <strong>{offer.title}</strong>
+            {offer.candidate_name ? ` — ${offer.candidate_name}` : ""}. The form
+            is prefilled from the contract; login credentials will be emailed to{" "}
+            <strong>{offer.candidate_email}</strong> at the final step.
+          </span>
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-[260px_1fr] gap-5 items-start">
         {/* Step rail */}
@@ -453,12 +593,25 @@ export function EmployeeOnboardingPage() {
                         : "Sets job title, department & role"}
                     </span>
                     <button type="button"
-                      onClick={() => navigate("/org-workflow")}
+                      onClick={() => setNewPositionOpen((o) => !o)}
                       className="text-accent-glow hover:underline">
-                      + Create position
+                      {newPositionOpen ? "Close" : "+ New department / position"}
                     </button>
                   </div>
                 </Field>
+                {newPositionOpen && (
+                  <div className="sm:col-span-2">
+                    <InlinePositionCreator
+                      roles={roles}
+                      positions={positions}
+                      onCreated={(p) => {
+                        qc.invalidateQueries({ queryKey: ["org-positions"] });
+                        setPositionId(p.position_id);
+                        setNewPositionOpen(false);
+                      }}
+                    />
+                  </div>
+                )}
                 <Field label="Employment type">
                   <Select
                     value={employmentType}
@@ -564,7 +717,11 @@ export function EmployeeOnboardingPage() {
             <div className="space-y-6">
               <StepHeader
                 title="Access"
-                subtitle="Optionally provision a Hub login now. A temporary password is generated and shown once."
+                subtitle={
+                  offerMode
+                    ? "Provision the Hub login and email the credentials straight to the candidate."
+                    : "Optionally provision a Hub login now. A temporary password is generated and shown once."
+                }
               />
               <label className="flex items-start gap-3 p-4 rounded-[12px] bg-text-primary/[0.04] border hairline cursor-pointer">
                 <input
@@ -578,15 +735,16 @@ export function EmployeeOnboardingPage() {
                     Provision a Hub login for this person
                   </span>
                   <span className="block text-[12px] text-text-faint">
-                    Sends an invitation to their email. Skip if they don&rsquo;t
-                    need to sign in.
+                    {offerMode
+                      ? `A one-time password is generated and emailed to ${offer?.candidate_email ?? "the candidate"}; they set a new one at first sign-in.`
+                      : "Sends an invitation to their email. Skip if they don't need to sign in."}
                   </span>
                 </span>
               </label>
 
               {createLogin && (
                 <>
-                  {!(email.trim() || linked?.email) && (
+                  {!offerMode && !(email.trim() || linked?.email) && (
                     <div className="px-3 py-2.5 rounded-[10px] bg-warn/[0.1] border border-warn/30 text-[12px] text-warn">
                       No email captured in step 1 — add one so a login can be
                       provisioned.
@@ -718,7 +876,17 @@ export function EmployeeOnboardingPage() {
               </span>{" "}
               created with their work schedule.
             </p>
-            {done.credentials ? (
+            {done.emailedTo ? (
+              <div className="px-3 py-2.5 rounded-[10px] bg-success/[0.08] border border-success/30 text-[12px] text-text-primary flex items-start gap-2">
+                <Check className="w-3.5 h-3.5 text-success mt-0.5 shrink-0" />
+                <span>
+                  Login provisioned — credentials emailed to{" "}
+                  <strong>{done.emailedTo}</strong>. The offer is now marked
+                  provisioned, and the new hire appears in the HR directory,
+                  their organigramme seat, and Users &amp; Access.
+                </span>
+              </div>
+            ) : done.credentials ? (
               <div className="space-y-3">
                 <div className="px-3 py-2.5 rounded-[10px] bg-warn/[0.1] border border-warn/30 text-[12px] text-warn flex items-start gap-2">
                   <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
@@ -982,6 +1150,153 @@ function ContactPicker({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Inline department + position creator ───────────────────────────────────
+// New hires sometimes open a brand-new seat. Create the department (org unit)
+// and position right here — same wiring the Org & Workflow builder uses — then
+// the wizard selects the fresh position so title/department/role flow from it.
+
+function InlinePositionCreator({
+  roles,
+  positions,
+  onCreated,
+}: {
+  roles: Role[];
+  positions: OrgPosition[];
+  onCreated: (p: OrgPosition) => void;
+}) {
+  const NEW_UNIT = "__new__";
+  const { data: units = [] } = useQuery({
+    queryKey: ["org-units"],
+    queryFn: () => orgApi.listUnits(),
+  });
+  const [unitId, setUnitId] = useState("");
+  const [newUnitName, setNewUnitName] = useState("");
+  const [title, setTitle] = useState("");
+  const [posRoleId, setPosRoleId] = useState("");
+  const [reportsToPositionId, setReportsToPositionId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const create = async () => {
+    if (!title.trim()) {
+      setErr("Give the position a title.");
+      return;
+    }
+    if (!unitId || (unitId === NEW_UNIT && !newUnitName.trim())) {
+      setErr("Pick a department, or name the new one.");
+      return;
+    }
+    setErr("");
+    setBusy(true);
+    try {
+      let targetUnitId = unitId;
+      if (unitId === NEW_UNIT) {
+        const unit = await orgApi.createUnit({
+          unit_key: slugKey(newUnitName),
+          display_name: newUnitName.trim(),
+        });
+        targetUnitId = unit.unit_id;
+      }
+      const position = await orgApi.createPosition({
+        unit_id: targetUnitId,
+        position_key: slugKey(title),
+        display_name: title.trim(),
+        ...(posRoleId ? { role_id: posRoleId } : {}),
+        ...(reportsToPositionId
+          ? { reports_to_position_id: reportsToPositionId }
+          : {}),
+      });
+      onCreated(position);
+    } catch (e) {
+      toastReport("Contacts → Employee onboarding", "Create position", e);
+      setErr(
+        e instanceof Error ? e.message : "Could not create the position.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="rounded-[12px] border border-accent-deep/40 bg-accent-deep/[0.06] p-4 space-y-3">
+      <div className="text-[12.5px] font-semibold text-text-primary">
+        New department / position
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Department *">
+          <Select
+            value={unitId}
+            onChange={setUnitId}
+            options={[
+              { value: "", label: "— Select a department —" },
+              ...units.map((u) => ({
+                value: u.unit_id,
+                label: u.display_name,
+              })),
+              { value: NEW_UNIT, label: "＋ New department…" },
+            ]}
+          />
+        </Field>
+        {unitId === NEW_UNIT ? (
+          <Field label="New department name *">
+            <TextInput
+              value={newUnitName}
+              onChange={(e) => setNewUnitName(e.target.value)}
+              placeholder="e.g. Marketing"
+            />
+          </Field>
+        ) : (
+          <div className="hidden sm:block" />
+        )}
+        <Field label="Position title *">
+          <TextInput
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="e.g. Marketing & BD Officer"
+          />
+        </Field>
+        <Field label="Role the seat grants (optional)">
+          <Select
+            value={posRoleId}
+            onChange={setPosRoleId}
+            options={[
+              { value: "", label: "— Structure only —" },
+              ...roles.map((r) => ({ value: r.role_id, label: r.role_name })),
+            ]}
+          />
+        </Field>
+        <div className="sm:col-span-2">
+          <Field label="Reports to position (optional)">
+            <Select
+              value={reportsToPositionId}
+              onChange={setReportsToPositionId}
+              options={[
+                { value: "", label: "— None —" },
+                ...positions.map((p) => ({
+                  value: p.position_id,
+                  label: `${p.display_name}${p.unit_name ? ` · ${p.unit_name}` : ""}`,
+                })),
+              ]}
+            />
+          </Field>
+        </div>
+      </div>
+      {err && <div className="text-[12px] text-danger">{err}</div>}
+      <div className="flex justify-end">
+        <Button
+          variant="secondary"
+          size="sm"
+          icon={<Plus className="w-3.5 h-3.5" />}
+          disabled={busy}
+          onClick={create}
+        >
+          {busy ? "Creating…" : "Create & select"}
+        </Button>
+      </div>
     </div>
   );
 }

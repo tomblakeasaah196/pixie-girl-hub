@@ -127,9 +127,19 @@ export const recruitmentApi = {
   ) => api.post<{ packet_html: string }>(`/recruitment/offers/${id}/preview`, drafts),
   send: (id: string, body: Record<string, unknown>) =>
     api.post<Offer>(`/recruitment/offers/${id}/send`, body),
-  provision: (id: string) =>
+  /**
+   * Provision the candidate's Hub login (credentials are emailed to them).
+   * `staff_profile_id` links the login to the HR employee profile created by
+   * the onboarding wizard — that's what puts the hire in the directory and
+   * their organigramme seat. `role_ids` overrides the offer's stored grants.
+   */
+  provision: (
+    id: string,
+    body?: { staff_profile_id?: string; role_ids?: string[] },
+  ) =>
     api.post<{ email: string; emailed: boolean; user_id: string; status: string }>(
       `/recruitment/offers/${id}/provision`,
+      body ?? {},
     ),
 
   // Branded, page-numbered PDF (rendered by headless Chromium on the server).

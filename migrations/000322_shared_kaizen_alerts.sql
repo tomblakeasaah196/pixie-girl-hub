@@ -9,7 +9,7 @@
 -- See docs/KAIZEN_MAINTENANCE_DASHBOARD_IMPLEMENTATION_GUIDE.md §6.5, §7.8.
 -- ============================================================================
 
-CREATE TABLE shared.kaizen_alert_rules (
+CREATE TABLE IF NOT EXISTS shared.kaizen_alert_rules (
   rule_id        UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   name           TEXT        NOT NULL,
   condition_type TEXT        NOT NULL
@@ -23,9 +23,9 @@ CREATE TABLE shared.kaizen_alert_rules (
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 -- One rule per condition_type (the seed set); UI toggles/edits rather than dupes.
-CREATE UNIQUE INDEX uq_kaizen_rule_condition ON shared.kaizen_alert_rules (condition_type);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_kaizen_rule_condition ON shared.kaizen_alert_rules (condition_type);
 
-CREATE TABLE shared.kaizen_alerts (
+CREATE TABLE IF NOT EXISTS shared.kaizen_alerts (
   alert_id        UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   rule_id         UUID        REFERENCES shared.kaizen_alert_rules(rule_id),
   kind            TEXT        NOT NULL,
@@ -41,8 +41,8 @@ CREATE TABLE shared.kaizen_alerts (
   acknowledged_at TIMESTAMPTZ,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX ix_kaizen_alerts_status_time ON shared.kaizen_alerts (status, created_at DESC);
-CREATE INDEX ix_kaizen_alerts_dedupe ON shared.kaizen_alerts (dedupe_key, created_at DESC);
+CREATE INDEX IF NOT EXISTS ix_kaizen_alerts_status_time ON shared.kaizen_alerts (status, created_at DESC);
+CREATE INDEX IF NOT EXISTS ix_kaizen_alerts_dedupe ON shared.kaizen_alerts (dedupe_key, created_at DESC);
 
 -- Seed the default rule set (idempotent). Thresholds are the guide's defaults.
 INSERT INTO shared.kaizen_alert_rules (name, condition_type, threshold) VALUES

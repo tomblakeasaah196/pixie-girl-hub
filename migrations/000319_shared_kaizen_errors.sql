@@ -16,7 +16,7 @@
 -- ============================================================================
 
 -- One row per unique bug (grouped by fingerprint).
-CREATE TABLE shared.kaizen_error_groups (
+CREATE TABLE IF NOT EXISTS shared.kaizen_error_groups (
   group_id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   fingerprint       TEXT        NOT NULL,                 -- sha256 of normalised signature
   title             TEXT        NOT NULL,                 -- human summary (normalised message)
@@ -41,15 +41,15 @@ CREATE TABLE shared.kaizen_error_groups (
   created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE UNIQUE INDEX uq_kaizen_error_fingerprint ON shared.kaizen_error_groups (fingerprint);
-CREATE INDEX ix_kaizen_error_status_last ON shared.kaizen_error_groups (status, last_seen_at DESC);
-CREATE INDEX ix_kaizen_error_severity   ON shared.kaizen_error_groups (severity, last_seen_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_kaizen_error_fingerprint ON shared.kaizen_error_groups (fingerprint);
+CREATE INDEX IF NOT EXISTS ix_kaizen_error_status_last ON shared.kaizen_error_groups (status, last_seen_at DESC);
+CREATE INDEX IF NOT EXISTS ix_kaizen_error_severity   ON shared.kaizen_error_groups (severity, last_seen_at DESC);
 -- Partial index for the default (open) list — the hot query path.
-CREATE INDEX ix_kaizen_error_open_last  ON shared.kaizen_error_groups (last_seen_at DESC)
+CREATE INDEX IF NOT EXISTS ix_kaizen_error_open_last  ON shared.kaizen_error_groups (last_seen_at DESC)
   WHERE status = 'open';
 
 -- Individual occurrences (retained bounded — pruned by the maintenance tick).
-CREATE TABLE shared.kaizen_error_occurrences (
+CREATE TABLE IF NOT EXISTS shared.kaizen_error_occurrences (
   occurrence_id  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   group_id       UUID        NOT NULL REFERENCES shared.kaizen_error_groups(group_id) ON DELETE CASCADE,
   occurred_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -63,4 +63,4 @@ CREATE TABLE shared.kaizen_error_occurrences (
   stack          TEXT,
   context        JSONB       NOT NULL DEFAULT '{}'::jsonb  -- redacted (see §7.3 redaction rules)
 );
-CREATE INDEX ix_kaizen_occ_group_time ON shared.kaizen_error_occurrences (group_id, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS ix_kaizen_occ_group_time ON shared.kaizen_error_occurrences (group_id, occurred_at DESC);

@@ -11,7 +11,7 @@
 -- ============================================================================
 
 -- Operators: JBS Praxis staff who can log into Kaizen.
-CREATE TABLE shared.kaizen_operators (
+CREATE TABLE IF NOT EXISTS shared.kaizen_operators (
   operator_id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   email                CITEXT      NOT NULL UNIQUE,           -- case-insensitive
   display_name         TEXT        NOT NULL,
@@ -28,7 +28,7 @@ CREATE TABLE shared.kaizen_operators (
 
 -- Pending invites (email + one-time token). The token is stored HASHED
 -- (sha256 of the raw token); the raw token only ever lives in the invite link.
-CREATE TABLE shared.kaizen_operator_invites (
+CREATE TABLE IF NOT EXISTS shared.kaizen_operator_invites (
   invite_id    UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   email        CITEXT      NOT NULL,
   token_hash   TEXT        NOT NULL,
@@ -37,12 +37,12 @@ CREATE TABLE shared.kaizen_operator_invites (
   accepted_at  TIMESTAMPTZ,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX ix_kaizen_invites_email ON shared.kaizen_operator_invites (email);
-CREATE INDEX ix_kaizen_invites_token ON shared.kaizen_operator_invites (token_hash);
+CREATE INDEX IF NOT EXISTS ix_kaizen_invites_email ON shared.kaizen_operator_invites (email);
+CREATE INDEX IF NOT EXISTS ix_kaizen_invites_token ON shared.kaizen_operator_invites (token_hash);
 
 -- Refresh-token sessions so tokens can be revoked. The access token is a
 -- short-lived JWT; the refresh token is opaque and stored HASHED.
-CREATE TABLE shared.kaizen_operator_sessions (
+CREATE TABLE IF NOT EXISTS shared.kaizen_operator_sessions (
   session_id         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   operator_id        UUID        NOT NULL REFERENCES shared.kaizen_operators(operator_id) ON DELETE CASCADE,
   jti                UUID        NOT NULL,
@@ -53,11 +53,11 @@ CREATE TABLE shared.kaizen_operator_sessions (
   expires_at         TIMESTAMPTZ NOT NULL,
   revoked_at         TIMESTAMPTZ
 );
-CREATE INDEX ix_kaizen_sessions_operator ON shared.kaizen_operator_sessions (operator_id);
-CREATE INDEX ix_kaizen_sessions_token ON shared.kaizen_operator_sessions (refresh_token_hash);
+CREATE INDEX IF NOT EXISTS ix_kaizen_sessions_operator ON shared.kaizen_operator_sessions (operator_id);
+CREATE INDEX IF NOT EXISTS ix_kaizen_sessions_token ON shared.kaizen_operator_sessions (refresh_token_hash);
 
 -- Audit: who did what in Kaizen. No RBAC, but full accountability.
-CREATE TABLE shared.kaizen_audit_log (
+CREATE TABLE IF NOT EXISTS shared.kaizen_audit_log (
   audit_id     UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   operator_id  UUID        REFERENCES shared.kaizen_operators(operator_id),
   action       TEXT        NOT NULL,          -- 'auth.login','operator.invite','operator.disable', ...
@@ -67,5 +67,5 @@ CREATE TABLE shared.kaizen_audit_log (
   ip           INET,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX ix_kaizen_audit_created ON shared.kaizen_audit_log (created_at DESC);
-CREATE INDEX ix_kaizen_audit_operator ON shared.kaizen_audit_log (operator_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS ix_kaizen_audit_created ON shared.kaizen_audit_log (created_at DESC);
+CREATE INDEX IF NOT EXISTS ix_kaizen_audit_operator ON shared.kaizen_audit_log (operator_id, created_at DESC);

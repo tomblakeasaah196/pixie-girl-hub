@@ -9,7 +9,7 @@
 -- See docs/KAIZEN_MAINTENANCE_DASHBOARD_IMPLEMENTATION_GUIDE.md §6.3, §7.4, §7.5.
 -- ============================================================================
 
-CREATE TABLE shared.kaizen_health_snapshots (
+CREATE TABLE IF NOT EXISTS shared.kaizen_health_snapshots (
   snapshot_id  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   captured_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   component    TEXT        NOT NULL,   -- db,redis,queue,disk,memory,cpu,backup,restore_drill
@@ -17,9 +17,9 @@ CREATE TABLE shared.kaizen_health_snapshots (
   latency_ms   INTEGER,
   detail       JSONB       NOT NULL DEFAULT '{}'::jsonb
 );
-CREATE INDEX ix_kaizen_health_comp_time ON shared.kaizen_health_snapshots (component, captured_at DESC);
+CREATE INDEX IF NOT EXISTS ix_kaizen_health_comp_time ON shared.kaizen_health_snapshots (component, captured_at DESC);
 
-CREATE TABLE shared.kaizen_perf_rollups (
+CREATE TABLE IF NOT EXISTS shared.kaizen_perf_rollups (
   rollup_id     UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   window_start  TIMESTAMPTZ NOT NULL,
   window_end    TIMESTAMPTZ NOT NULL,
@@ -32,5 +32,5 @@ CREATE TABLE shared.kaizen_perf_rollups (
   p99_ms        INTEGER,
   max_ms        INTEGER
 );
-CREATE INDEX ix_kaizen_perf_window ON shared.kaizen_perf_rollups (window_start DESC);
-CREATE INDEX ix_kaizen_perf_route  ON shared.kaizen_perf_rollups (route_pattern, window_start DESC);
+CREATE INDEX IF NOT EXISTS ix_kaizen_perf_window ON shared.kaizen_perf_rollups (window_start DESC);
+CREATE INDEX IF NOT EXISTS ix_kaizen_perf_route  ON shared.kaizen_perf_rollups (route_pattern, window_start DESC);

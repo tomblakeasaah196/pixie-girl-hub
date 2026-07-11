@@ -16,7 +16,7 @@
 -- See docs/KAIZEN_MAINTENANCE_DASHBOARD_IMPLEMENTATION_GUIDE.md §6.4, §7.6, §7.7.
 -- ============================================================================
 
-CREATE TABLE shared.kaizen_backup_destinations (
+CREATE TABLE IF NOT EXISTS shared.kaizen_backup_destinations (
   destination_id UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   name           TEXT        NOT NULL,               -- 'Google Drive (Tom)'
   kind           TEXT        NOT NULL CHECK (kind IN ('rclone','local')),
@@ -29,10 +29,10 @@ CREATE TABLE shared.kaizen_backup_destinations (
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 -- Only one default destination at a time.
-CREATE UNIQUE INDEX uq_kaizen_dest_default
+CREATE UNIQUE INDEX IF NOT EXISTS uq_kaizen_dest_default
   ON shared.kaizen_backup_destinations (is_default) WHERE is_default;
 
-CREATE TABLE shared.kaizen_backup_runs (
+CREATE TABLE IF NOT EXISTS shared.kaizen_backup_runs (
   run_id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   kind            TEXT        NOT NULL CHECK (kind IN ('logical_db','logical_bundle','full_volume')),
   destination_id  UUID        REFERENCES shared.kaizen_backup_destinations(destination_id),
@@ -53,10 +53,10 @@ CREATE TABLE shared.kaizen_backup_runs (
   created_by      UUID        REFERENCES shared.kaizen_operators(operator_id),  -- null when scheduled
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX ix_kaizen_backup_kind_time ON shared.kaizen_backup_runs (kind, started_at DESC);
-CREATE INDEX ix_kaizen_backup_status    ON shared.kaizen_backup_runs (status, started_at DESC);
+CREATE INDEX IF NOT EXISTS ix_kaizen_backup_kind_time ON shared.kaizen_backup_runs (kind, started_at DESC);
+CREATE INDEX IF NOT EXISTS ix_kaizen_backup_status    ON shared.kaizen_backup_runs (status, started_at DESC);
 
-CREATE TABLE shared.kaizen_restore_drills (
+CREATE TABLE IF NOT EXISTS shared.kaizen_restore_drills (
   drill_id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   backup_run_id       UUID        REFERENCES shared.kaizen_backup_runs(run_id),
   started_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -69,10 +69,10 @@ CREATE TABLE shared.kaizen_restore_drills (
   error               TEXT,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX ix_kaizen_drill_time ON shared.kaizen_restore_drills (started_at DESC);
+CREATE INDEX IF NOT EXISTS ix_kaizen_drill_time ON shared.kaizen_restore_drills (started_at DESC);
 
 -- Small settings store (retention, alert recipients, drill expectations, …).
-CREATE TABLE shared.kaizen_settings (
+CREATE TABLE IF NOT EXISTS shared.kaizen_settings (
   key        TEXT        PRIMARY KEY,
   value      JSONB       NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()

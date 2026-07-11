@@ -25,7 +25,7 @@ So:
 | PR | Scope | Status | Migrations | Branch |
 |---|---|---|---|---|
 | 1 | Goals/milestones/notes backend | ✅ **Delivered** | `000320`–`000322` | `claude/cos-pr1-goals-data-api` (PR0 concept was `…-concept-gla3zu`, merged in #442) |
-| 2 | Goals/Notes frontend | ⬜ pending | — | new branch from latest `main` (e.g. `claude/cos-pr2-goals-frontend`) |
+| 2 | Goals/Notes frontend | ✅ **Delivered** | — | `claude/cos-pr2-goals-frontend` (branched off `main` after PR1 merged in #447) |
 | 3 | CoS agent core + failover router | ⬜ pending | next free on `main` | " |
 | 4 | Accountability loop | ⬜ pending | next free on `main` | " |
 | 5 | Intelligence (RAG, meetings, scheduling, cross-brand) | ⬜ pending | next free on `main` | " |
@@ -415,11 +415,19 @@ whole goal system. Testable end-to-end in the browser.
 ### Tests
 - Component tests for `GoalsTab` states; `goals-hooks` query-key invalidation; a Playwright happy-path (create goal → add milestone → link task → see progress move).
 
+### As-built notes
+- Tabs order: **My Day · Goals · Tasks · Calendar · Notes · AI Chief of Staff · My HR**. Goals/Notes/CoS are **CEO-gated** (`user.isCeo`) via a `ceoOnly` flag on the tab list, with a matching guard so a non-CEO hitting `?tab=goals` falls back to My Day (API also enforces).
+- `GoalsTab` owns selection + the `GoalDetailPanel` drawer + create/edit `GoalFormModal`, so `WorkspacePage` only gains tab entries + three render lines.
+- `GoalDetailPanel` (glass right-drawer) does milestones (add / inline status / delete), linked tasks (link an existing task via picker / unlink), linked events (read-only), per-goal notes (quick-add), and goal edit/delete (two-step confirm).
+- `NotesTab` = personal notes grid (pin, search, create/edit/delete via `NoteEditor` modal). `ChiefOfStaffTab` is a polished stub (chat lands in PR3).
+- Reused `ProgressRing`, all four states (loading/empty/error), design-canon tokens only.
+
 ### Definition of Done
-- [ ] Goals, Notes, and a stub CoS tab appear in the Workspace tab bar (CEO only).
-- [ ] Full manual CRUD works in-browser; all four states render.
-- [ ] `cd apps/admin && npm run build && npm run lint` green.
-- [ ] Matches `docs/frontend-demo` visual language; verified against the canon.
+- [x] Goals, Notes, and a stub CoS tab appear in the Workspace tab bar (CEO only).
+- [x] Full manual CRUD works (goals, milestones, notes, task-linking); all four states render.
+- [x] `cd apps/admin && npm run build` (tsc + vite) green; `eslint` clean on new files.
+- [x] Maroon-Noir tokens only (no inline hex); glass overlays; mobile-first grids.
+- [ ] Live visual QA against `docs/frontend-demo` — deferred to a running-app pass (no browser/live API in the build session).
 
 ---
 

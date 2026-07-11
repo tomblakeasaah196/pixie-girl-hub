@@ -14,6 +14,9 @@ import {
   CheckCircle2,
   Calendar,
   Wallet,
+  Target,
+  StickyNote,
+  Sparkles,
 } from "lucide-react";
 import {
   DndContext,
@@ -41,6 +44,9 @@ import {
 } from "@/components/ui/primitives";
 import { ErrorState } from "@/components/ui/controls";
 import MyHrPage from "@/pages/hr/MyHrPage";
+import { GoalsTab } from "./GoalsTab";
+import { NotesTab } from "./NotesTab";
+import { ChiefOfStaffTab } from "./ChiefOfStaffTab";
 
 import { useTaskBoard, useCalendarEvents, useMoveTask } from "./hooks";
 import { TaskCard } from "./TaskCard";
@@ -71,10 +77,23 @@ import type {
 
 // ── Tab config ───────────────────────────────────────────────────────────
 
-const TABS: { key: WorkspaceTab; label: string; icon: typeof Sun }[] = [
+const TABS: {
+  key: WorkspaceTab;
+  label: string;
+  icon: typeof Sun;
+  ceoOnly?: boolean;
+}[] = [
   { key: "my-day", label: "My Day", icon: Sun },
-  { key: "calendar", label: "Calendar", icon: CalendarDays },
+  { key: "goals", label: "Goals", icon: Target, ceoOnly: true },
   { key: "tasks", label: "Tasks", icon: ListTodo },
+  { key: "calendar", label: "Calendar", icon: CalendarDays },
+  { key: "notes", label: "Notes", icon: StickyNote, ceoOnly: true },
+  {
+    key: "chief-of-staff",
+    label: "AI Chief of Staff",
+    icon: Sparkles,
+    ceoOnly: true,
+  },
   { key: "my-hr", label: "My HR", icon: Wallet },
 ];
 
@@ -181,7 +200,16 @@ export function WorkspacePage() {
   const isDesktop = useMediaQuery("(min-width: 1024px)");
 
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = (searchParams.get("tab") as WorkspaceTab) ?? "my-day";
+  const isCeo = !!user?.isCeo;
+  // CoS surfaces (Goals / Notes / Chief of Staff) are CEO-only for v1.
+  const visibleTabs = useMemo(
+    () => TABS.filter((t) => !t.ceoOnly || isCeo),
+    [isCeo],
+  );
+  const rawTab = (searchParams.get("tab") as WorkspaceTab) ?? "my-day";
+  const activeTab: WorkspaceTab = visibleTabs.some((t) => t.key === rawTab)
+    ? rawTab
+    : "my-day";
 
   // Calendar state
   const [calView, setCalView] = useState<CalendarViewMode>("month");
@@ -370,7 +398,7 @@ export function WorkspacePage() {
       {/* Tab bar — top on all sizes; mobile gets shell bottom nav */}
       <div className="flex items-center gap-2 mb-6">
         <div className="flex gap-0.5 p-0.5 rounded-[12px] bg-text-primary/[0.04] border hairline">
-          {TABS.map(({ key, label, icon: Icon }) => (
+          {visibleTabs.map(({ key, label, icon: Icon }) => (
             <button
               key={key}
               type="button"
@@ -490,6 +518,12 @@ export function WorkspacePage() {
                 }}
               />
             ))}
+
+          {activeTab === "goals" && <GoalsTab />}
+
+          {activeTab === "notes" && <NotesTab />}
+
+          {activeTab === "chief-of-staff" && <ChiefOfStaffTab />}
 
           {activeTab === "my-hr" && <MyHrPage />}
         </div>

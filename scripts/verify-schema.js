@@ -47,7 +47,9 @@ const pool = new Pool({
 //   - Recruitment (000318): +5 (recruitment_context, role_templates,
 //     job_openings, candidates, recruitment_offers) → 186.
 //   - WhatsApp calling (000319): +2 (whatsapp_calls, whatsapp_call_events) → 188.
-const EXPECTED_SHARED = 188;
+//   - Chief of Staff goals (000320-000321): +4 (goals, goal_milestones,
+//     goal_stakeholders, workspace_notes) → 192.
+const EXPECTED_SHARED = 192;
 const EXPECTED_PER_BRAND = 203;
 
 async function countTables(schema) {

@@ -54,6 +54,8 @@ const emailCampaignsRouter = require("../modules/email_campaigns/email-campaigns
 const smartcommRouter = require("../modules/smartcomm/smartcomm.routes");
 const calendarRouter = require("../shared/calendar/calendar.routes");
 const tasksRouter = require("../shared/tasks/tasks.routes");
+const goalsRouter = require("../shared/goals/goals.routes");
+const notesRouter = require("../shared/goals/notes.routes");
 const dashboardsRouter = require("../modules/dashboards/dashboards.routes");
 // Kaizen — JBS Praxis maintenance/ops console. Self-authenticating (its own
 // operator identity + JWT); mounted outside the brand-scoped `api` router.
@@ -393,6 +395,8 @@ function mountRoutes(app) {
     ["/help", helpCenterRouter],
     ["/calendar", calendarRouter],
     ["/tasks", tasksRouter],
+    ["/goals", goalsRouter],
+    ["/notes", notesRouter],
     ["/dashboards", dashboardsRouter],
     ["/business-setup", businessSetupRouter],
     ["/settings", settingsRouter],

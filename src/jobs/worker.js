@@ -392,6 +392,7 @@ async function startWorkers() {
   require("../realtime/praxis-realtime").registerPraxisRealtime();
   require("../realtime/insights-realtime").registerInsightsRealtime();
   require("../realtime/attendance-realtime").registerAttendanceRealtime();
+  require("../shared/goals/goals.subscribers").registerGoalsSubscribers();
   require("../modules/smartcomm/smartcomm.realtime"); // self-registers, guarded
   require("../modules/calls/calls.realtime"); // self-registers, guarded
 

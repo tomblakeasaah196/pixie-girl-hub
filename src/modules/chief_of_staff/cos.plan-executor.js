@@ -149,10 +149,17 @@ async function confirmPlan({ user, request_id, id, auth_header }) {
       fields: { confirmed_by_user_id: user.user_id, confirmed_at: nowIso() },
     });
     // Flip the still-proposed steps to 'confirmed' so the board reflects intent.
+    // Stamp the confirming user on each step too: it mirrors the single-action
+    // confirm gate's data, keeps the audit trail complete, and satisfies the
+    // ai_pending_actions confirm trigger for any DB not yet on migration 000330.
     const steps = await repo.listPlanSteps({ plan_id: id });
     for (const s of steps) {
       if (s.status === "proposed")
-        await repo.setStepStatus({ id: s.pending_id, status: "confirmed" });
+        await repo.setStepStatus({
+          id: s.pending_id,
+          status: "confirmed",
+          fields: { confirmed_by_user_id: user.user_id, confirmed_at: nowIso() },
+        });
     }
   }
 

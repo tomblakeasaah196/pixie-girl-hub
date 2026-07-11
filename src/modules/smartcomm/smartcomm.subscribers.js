@@ -313,6 +313,21 @@ function stripHtml(html) {
     .trim();
 }
 
+// Contacts auto-created from an inbound DM before we knew who the
+// sender was carry one of these placeholder display names. Once the
+// platform profile resolves (IG User Profile API), the real name is
+// written over the placeholder — but NEVER over a name a human typed.
+function isPlaceholderName(name, sender) {
+  if (!name) return true;
+  const n = String(name).trim().toLowerCase();
+  return (
+    n === "new contact" ||
+    n === (sender.phone || "").toLowerCase() ||
+    n === (sender.email || "").toLowerCase() ||
+    n === (sender.external_user_id || "").toLowerCase()
+  );
+}
+
 /**
  * Match the inbound sender to a contact, creating a lead-priority
  * contact if no match. Always returns { contact_id, was_created }.
@@ -325,7 +340,40 @@ async function resolveOrCreateContact({ client, brand, platform, sender }) {
       platform,
       external_user_id: sender.external_user_id,
     });
-    if (c) return { contact: c, was_created: false };
+    if (c) {
+      // Refresh the handle row with whatever identity the platform just
+      // told us (display name / @handle / profile picture) — the upsert
+      // COALESCEs so a fetch miss never blanks stored values.
+      await repo.upsertSocialHandle({
+        client,
+        h: {
+          contact_id: c.contact_id,
+          platform,
+          handle: sender.handle || sender.phone || sender.email,
+          external_user_id: sender.external_user_id,
+          display_name: sender.display_name,
+          profile_picture_url: sender.profile_picture_url,
+        },
+      });
+      // Heal the "New contact" placeholder once the real name is known.
+      if (sender.display_name && isPlaceholderName(c.display_name, sender)) {
+        await client.query(
+          `UPDATE shared.contacts
+              SET display_name = $2,
+                  first_name = COALESCE(first_name, $3),
+                  last_name  = COALESCE(last_name, NULLIF($4, ''))
+            WHERE contact_id = $1`,
+          [
+            c.contact_id,
+            sender.display_name,
+            sender.display_name.split(" ")[0] || null,
+            sender.display_name.split(" ").slice(1).join(" "),
+          ],
+        );
+        c.display_name = sender.display_name;
+      }
+      return { contact: c, was_created: false };
+    }
   }
   // Then natural keys (phone for WA, email for inbound mail).
   if (sender.phone) {
@@ -339,6 +387,7 @@ async function resolveOrCreateContact({ client, brand, platform, sender }) {
           handle: sender.phone,
           external_user_id: sender.external_user_id || sender.phone,
           display_name: sender.display_name,
+          profile_picture_url: sender.profile_picture_url,
         },
       });
       return { contact: c, was_created: false };
@@ -355,6 +404,7 @@ async function resolveOrCreateContact({ client, brand, platform, sender }) {
           handle: sender.email,
           external_user_id: sender.external_user_id || sender.email,
           display_name: sender.display_name,
+          profile_picture_url: sender.profile_picture_url,
         },
       });
       return { contact: c, was_created: false };
@@ -389,12 +439,67 @@ async function resolveOrCreateContact({ client, brand, platform, sender }) {
     h: {
       contact_id: created.contact_id,
       platform,
-      handle: sender.phone || sender.email || sender.external_user_id,
+      handle: sender.handle || sender.phone || sender.email || sender.external_user_id,
       external_user_id: sender.external_user_id || sender.phone || sender.email,
       display_name: sender.display_name,
+      profile_picture_url: sender.profile_picture_url,
     },
   });
   return { contact: created, was_created: true };
+}
+
+/**
+ * Instagram webhooks carry only the IGSID — no name, no picture — which
+ * is why every DM used to land as a faceless "New contact". Resolve the
+ * sender's real identity via the IG User Profile API (name, @username,
+ * profile picture) and stamp it onto the event's sender before the
+ * contact is matched/created. Best-effort: a fetch miss records the
+ * message exactly as before.
+ */
+async function enrichInstagramSender({ brand, sender }) {
+  if (!sender || !sender.external_user_id) return;
+  // One profile fetch per sender per week, not per message: when the
+  // handle row already carries a name + picture refreshed recently,
+  // reuse it instead of a Graph round-trip on every inbound DM.
+  const { query } = require("../../config/database");
+  const { rows } = await query(
+    `SELECT display_name, handle, profile_picture_url, updated_at
+       FROM shared.contact_social_handles
+      WHERE platform = $1 AND external_user_id = $2
+      LIMIT 1`,
+    [META_IG_PLATFORM, sender.external_user_id],
+  );
+  const existing = rows[0];
+  const fresh =
+    existing &&
+    existing.display_name &&
+    existing.profile_picture_url &&
+    Date.now() - new Date(existing.updated_at).getTime() <
+      7 * 24 * 3600 * 1000;
+  if (fresh) {
+    sender.display_name = sender.display_name || existing.display_name;
+    sender.handle = sender.handle || existing.handle;
+    sender.profile_picture_url = existing.profile_picture_url;
+    return;
+  }
+  const instagram = require("../../services/instagram.service");
+  const profile = await instagram.fetchUserProfile({
+    brand,
+    igsid: sender.external_user_id,
+  });
+  if (!profile) {
+    // Keep whatever we knew before the failed fetch.
+    if (existing) {
+      sender.display_name = sender.display_name || existing.display_name;
+      sender.handle = sender.handle || existing.handle;
+      sender.profile_picture_url = existing.profile_picture_url || null;
+    }
+    return;
+  }
+  sender.display_name =
+    sender.display_name || profile.name || profile.username || null;
+  sender.handle = profile.username || sender.handle || null;
+  sender.profile_picture_url = profile.profile_pic || null;
 }
 
 async function ingestInbound(evt) {
@@ -411,6 +516,9 @@ async function ingestInbound(evt) {
       "smartcomm: no messaging_accounts row — message dropped",
     );
     return;
+  }
+  if (evt.platform === META_IG_PLATFORM) {
+    await enrichInstagramSender({ brand, sender: evt.sender });
   }
   // The contact must be COMMITTED before recordInboundFromCustomer runs:
   // that call opens its own transaction on a different pool connection, so

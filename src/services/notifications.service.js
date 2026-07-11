@@ -191,12 +191,25 @@ async function unreadCount({ user_id, business }) {
   return rows[0].unread;
 }
 
+// Tell every open tab/device of this user that notifications were
+// consumed, so bell badges and toast stacks drop without a poll.
+function emitRead(user_id, payload) {
+  try {
+    getBroadcaster()
+      .to(ROOMS.user_notifications(user_id))
+      .emit("notification:read", payload || {});
+  } catch {
+    // redis not ready (tests/scripts); skip silently
+  }
+}
+
 async function markRead({ user_id, id }) {
   const { rows } = await query(
     `UPDATE shared.notifications SET is_read = true, read_at = now()
       WHERE notification_id = $1 AND user_id = $2 RETURNING *`,
     [id, user_id],
   );
+  if (rows[0]) emitRead(user_id, { ids: [id] });
   return rows[0] || null;
 }
 
@@ -211,7 +224,33 @@ async function markAllRead({ user_id, business }) {
     `UPDATE shared.notifications SET is_read = true, read_at = now() WHERE ${where.join(" AND ")}`,
     params,
   );
+  if (rowCount > 0) emitRead(user_id, { all: true, business: business || null });
   return { marked: rowCount };
+}
+
+/**
+ * Mark every unread notification pointing at one reference read — e.g.
+ * opening a chat thread consumes its 'smartcomm_channel' notifications
+ * so the bell count matches what the user has actually seen. Emits
+ * notification:read so every connected client updates in realtime.
+ */
+async function markReadByReference({ user_id, reference_type, reference_id }) {
+  if (!user_id || !reference_type || !reference_id) return { marked: 0 };
+  const { rows } = await query(
+    `UPDATE shared.notifications SET is_read = true, read_at = now()
+      WHERE user_id = $1 AND reference_type = $2 AND reference_id = $3
+        AND is_read = false
+      RETURNING notification_id`,
+    [user_id, reference_type, reference_id],
+  );
+  if (rows.length > 0) {
+    emitRead(user_id, {
+      ids: rows.map((r) => r.notification_id),
+      reference_type,
+      reference_id,
+    });
+  }
+  return { marked: rows.length };
 }
 
 async function deleteOne({ user_id, id }) {
@@ -293,6 +332,7 @@ module.exports = {
   unreadCount,
   markRead,
   markAllRead,
+  markReadByReference,
   deleteOne,
   bulkDelete,
   getPreferences,

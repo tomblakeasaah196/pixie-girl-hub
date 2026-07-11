@@ -80,20 +80,80 @@ async function channelBrand(channel_id) {
   }
 }
 
-async function messageSender(message_id) {
+/**
+ * One round-trip of everything the notification needs: sender identity
+ * (staff name / contact name / platform handle), the message body +
+ * type for the preview line, and the channel's platform + brand.
+ * Called AFTER the posting transaction commits (the service emits its
+ * events post-commit), so the row is always visible here.
+ */
+async function messageContext(message_id) {
   try {
     const { rows } = await query(
-      `SELECT m.sender_user_id,
-              COALESCE(u.display_name, con.display_name) AS sender_name
+      `SELECT m.sender_user_id, m.sender_contact_id, m.content, m.message_type,
+              m.channel_id,
+              COALESCE(u.display_name,
+                       NULLIF(con.display_name, 'New contact'),
+                       h.display_name, h.handle,
+                       con.display_name) AS sender_name,
+              c.channel_type, c.external_platform, c.business, c.name AS channel_name,
+              c.assigned_to
          FROM shared.messages m
+         JOIN shared.message_channels c ON c.channel_id = m.channel_id
          LEFT JOIN shared.users u ON u.user_id = m.sender_user_id
          LEFT JOIN shared.contacts con ON con.contact_id = m.sender_contact_id
+         LEFT JOIN LATERAL (
+           SELECT sh.display_name, sh.handle
+             FROM shared.contact_social_handles sh
+            WHERE sh.contact_id = m.sender_contact_id
+              AND (c.external_platform IS NULL OR sh.platform = c.external_platform)
+            ORDER BY sh.updated_at DESC
+            LIMIT 1
+         ) h ON m.sender_contact_id IS NOT NULL
         WHERE m.message_id = $1`,
       [message_id],
     );
     return rows[0] || null;
   } catch {
     return null;
+  }
+}
+
+const PLATFORM_LABEL = {
+  whatsapp: "WhatsApp",
+  instagram: "Instagram",
+  facebook: "Facebook",
+  email: "Email",
+};
+
+// A one-line "heads-up of what's in the message" per message type. Text
+// bodies are trimmed to keep the toast/panel row readable.
+function previewOf(ctx) {
+  const text = (ctx.content || "").replace(/\s+/g, " ").trim();
+  const clip = (s) => (s.length > 140 ? `${s.slice(0, 139)}…` : s);
+  switch (ctx.message_type) {
+    case "image":
+      return text ? `📷 ${clip(text)}` : "📷 Photo";
+    case "video":
+      return text ? `🎥 ${clip(text)}` : "🎥 Video";
+    case "voice_note":
+      return "🎤 Voice note";
+    case "document":
+      return text ? `📄 ${clip(text)}` : "📄 File";
+    case "product_share":
+      return "🛍️ Shared products from the catalogue";
+    case "send_invoice":
+      return "🧾 Invoice";
+    case "template":
+      return text ? clip(text) : "Template message";
+    case "ig_story_mention":
+      return "📖 Mentioned you in a story";
+    case "ig_story_reply":
+      return text ? `📖 Story reply: ${clip(text)}` : "📖 Replied to your story";
+    case "call":
+      return `📞 ${clip(text) || "Call"}`;
+    default:
+      return clip(text) || "New message";
   }
 }
 
@@ -113,26 +173,91 @@ async function hasUnreadNotification({ user_id, channel_id }) {
 }
 
 /**
+ * Who should hear about a new CUSTOMER message on this thread? Customer
+ * threads carry no staff membership rows until someone opens them, so
+ * "notify the members" notified nobody on a brand-new conversation.
+ * The audience is: staff who've engaged the thread (member rows),
+ * the assigned agent, every CEO, and every user the CEO explicitly
+ * granted can_view on this platform × brand — minus anyone who muted
+ * the thread. Inactive accounts never receive anything.
+ */
+async function customerThreadAudience({ channel_id, brand, platform }) {
+  try {
+    const { rows } = await query(
+      `SELECT u.user_id
+         FROM shared.users u
+        WHERE u.is_active = true
+          AND (
+            u.is_ceo = true
+            OR EXISTS (SELECT 1 FROM shared.channel_members cm
+                        WHERE cm.channel_id = $1 AND cm.user_id = u.user_id)
+            OR EXISTS (SELECT 1 FROM shared.message_channels mc
+                        WHERE mc.channel_id = $1 AND mc.assigned_to = u.user_id)
+            OR ($3::text IS NOT NULL AND EXISTS (
+                  SELECT 1 FROM shared.smartcomm_platform_permissions p
+                   WHERE p.user_id = u.user_id AND p.business = $2
+                     AND p.platform = $3 AND p.can_view = true))
+          )
+          AND NOT EXISTS (SELECT 1 FROM shared.channel_members mm
+                           WHERE mm.channel_id = $1 AND mm.user_id = u.user_id
+                             AND mm.muted_until IS NOT NULL
+                             AND mm.muted_until > now())`,
+      [channel_id, brand, platform || null],
+    );
+    return rows.map((r) => r.user_id);
+  } catch (err) {
+    logger.warn(
+      { err: err.message, channel_id },
+      "smartcomm: audience lookup failed",
+    );
+    return [];
+  }
+}
+
+/**
  * Fan a "new message" notification out through the shared notifications
- * pipeline (toast/sound/push/tab-badge) — chat previously bypassed it
- * entirely, so unread messages never surfaced outside the Messaging page.
+ * pipeline (toast/sound/push/tab-badge). The title carries the SENDER +
+ * CHANNEL ("Ada Obi · Instagram"), the body a preview of the message —
+ * no more anonymous "New message from Someone". The sender themself is
+ * never notified (self-toasts on send were the old inverted behaviour).
  * Deduped to one unread notification per channel per user so a burst of
- * messages doesn't fire a sound/push per message; it clears (and a new one
- * can fire again) once the existing one is read.
+ * messages doesn't fire a sound/push per message; opening the thread
+ * marks it read (smartcomm.markRead), re-arming the next one.
  */
 async function notifyNewMessage({ channel_id, brand, members, message_id }) {
-  const sender = await messageSender(message_id);
-  const senderName = sender?.sender_name || "Someone";
-  for (const uid of members) {
-    if (!uid || uid === sender?.sender_user_id) continue;
+  const ctx = await messageContext(message_id);
+  if (!ctx) return;
+  const senderName =
+    ctx.sender_name ||
+    (ctx.sender_contact_id ? "Customer" : ctx.sender_user_id ? "A teammate" : "System");
+  const channelLabel =
+    ctx.channel_type === "customer_thread"
+      ? PLATFORM_LABEL[ctx.external_platform] || "Customer chat"
+      : ctx.channel_name || (ctx.channel_type === "group" ? "Group chat" : "Direct message");
+
+  let recipients;
+  if (ctx.channel_type === "customer_thread" && ctx.sender_contact_id) {
+    // Inbound from the customer — widen beyond the (often empty) member
+    // list so the team actually hears about it.
+    recipients = await customerThreadAudience({
+      channel_id,
+      brand: brand || ctx.business,
+      platform: ctx.external_platform,
+    });
+  } else {
+    recipients = members;
+  }
+
+  for (const uid of recipients) {
+    if (!uid || uid === ctx.sender_user_id) continue;
     try {
       if (await hasUnreadNotification({ user_id: uid, channel_id })) continue;
       await notifications.notify({
         user_id: uid,
-        business: brand,
+        business: brand || ctx.business,
         type: "message",
-        title: "SmartComm",
-        body: `New message from ${senderName}`,
+        title: `${senderName} · ${channelLabel}`,
+        body: previewOf(ctx),
         priority: "normal",
         reference_type: "smartcomm_channel",
         reference_id: channel_id,

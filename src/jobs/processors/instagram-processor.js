@@ -23,8 +23,14 @@
 "use strict";
 
 const instagram = require("../../services/instagram.service");
-const repo = require("../../modules/smartcomm/smartcomm.repo");
 const { logger } = require("../../config/logger");
+
+// Delivery outcomes route through the service (not the repo) so the
+// status change also emits message.edited — the operator's open thread
+// flips the tick/error icon live instead of on the next poll.
+function smartcomm() {
+  return require("../../modules/smartcomm/smartcomm.service");
+}
 
 module.exports = async function process(job) {
   const data = job.data || {};
@@ -41,7 +47,7 @@ module.exports = async function process(job) {
       "instagram-send: missing 'brand' — every send needs a brand context",
     );
     if (data.smartcomm_message_id) {
-      await repo.setMessageDelivery({
+      await smartcomm().applyDeliveryResult({
         message_id: data.smartcomm_message_id,
         delivery_status: "failed",
         delivery_error: "IG_SEND_BRAND_REQUIRED",
@@ -55,7 +61,7 @@ module.exports = async function process(job) {
       "instagram-send: brand has no IG config on file — skipping",
     );
     if (data.smartcomm_message_id) {
-      await repo.setMessageDelivery({
+      await smartcomm().applyDeliveryResult({
         message_id: data.smartcomm_message_id,
         delivery_status: "failed",
         delivery_error: "IG_NOT_CONFIGURED",
@@ -91,7 +97,7 @@ module.exports = async function process(job) {
     }
     const mid = res && (res.message_id || res.recipient_id);
     if (data.smartcomm_message_id) {
-      await repo.setMessageDelivery({
+      await smartcomm().applyDeliveryResult({
         message_id: data.smartcomm_message_id,
         delivery_status: "sent",
         external_ref: mid ? String(mid) : null,
@@ -103,8 +109,12 @@ module.exports = async function process(job) {
     );
     return { mid };
   } catch (err) {
+    // instagram.service already unwrapped Meta's structured error, so
+    // err.message names the real cause ("Invalid OAuth access token",
+    // "(#10) … outside of allowed window", …) — that's what the operator
+    // sees on the failed bubble.
     if (data.smartcomm_message_id) {
-      await repo.setMessageDelivery({
+      await smartcomm().applyDeliveryResult({
         message_id: data.smartcomm_message_id,
         delivery_status: "failed",
         delivery_error: String(err.message || err).slice(0, 1000),

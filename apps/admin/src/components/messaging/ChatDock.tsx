@@ -37,9 +37,17 @@ export function ChatDock() {
 
   useEffect(() => {
     if (!open) return;
+    // Any open portalled dialog (Order Capture, Share Catalogue, Forward,
+    // Template picker, …) parks itself under document.body — NOT inside the
+    // dock's DOM. Without this check, the first click inside such a modal
+    // read as "outside the dock", closed the dock, and unmounted the modal
+    // mid-interaction (the long-standing "capture order closes itself" bug).
+    const modalIsOpen = () =>
+      !!document.querySelector('[data-modal-root][data-modal-open="true"]');
     function onKey(e: KeyboardEvent) {
       if (e.key !== "Escape") return;
       if (newChatOpen) return; // let the modal own the key
+      if (modalIsOpen()) return; // Esc closes the modal, not the dock
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
       closeDock();
@@ -49,6 +57,9 @@ export function ChatDock() {
       const t = e.target as HTMLElement | null;
       if (!t || ref.current?.contains(t)) return;
       if (t.closest("[data-chat-dock-keep]")) return;
+      // Clicks inside any portalled dialog (or its backdrop) belong to the
+      // dialog — the backdrop click closes the dialog itself, never the dock.
+      if (t.closest("[data-modal-root]")) return;
       closeDock();
     }
     document.addEventListener("keydown", onKey);

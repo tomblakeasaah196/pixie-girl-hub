@@ -112,6 +112,24 @@ async function createCaptureLink({ brand, user, request_id, input }) {
   const expiresIn = Number(input.expires_in) || DEFAULT_EXPIRY_SECONDS;
   const expires_at = new Date(Date.now() + expiresIn * 1000).toISOString();
 
+  // Resolve every item to its sellable variant NOW — the same resolution
+  // the customer's checkout will run. An item that can't resolve (product
+  // deactivated, no active variant, styled product not live, broken
+  // bundle component) used to be discovered only by the CUSTOMER, who saw
+  // "Unavailable right now" and an order with the product missing. Warn
+  // the staffer at mint time instead so they can fix the catalogue or
+  // drop the item before sending the link.
+  const resolvers = require("./smartcomm.order-capture.resolvers");
+  const resolved = await resolvers.resolveItems(brand, normalisedItems);
+  const warnings = resolved
+    .filter((r) => r.kind !== "service" && r.lines.length === 0)
+    .map((r) => ({
+      kind: r.kind,
+      ref_id: r.ref_id,
+      name: r.name,
+      reason: r.unresolved_reason || "Can't be sold automatically",
+    }));
+
   // Persist first: the row is what makes the link single-use and feeds
   // the activity panel. The JWT carries the link_id so the public
   // verifier can find the row without a lookup table.
@@ -164,7 +182,14 @@ async function createCaptureLink({ brand, user, request_id, input }) {
     request_id,
   });
 
-  return { url, token, expires_at, link_id: linkRow.link_id, mode: linkRow.mode };
+  return {
+    url,
+    token,
+    expires_at,
+    link_id: linkRow.link_id,
+    mode: linkRow.mode,
+    warnings,
+  };
 }
 
 /**

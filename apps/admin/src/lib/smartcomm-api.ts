@@ -141,6 +141,16 @@ export const smartcommApi = {
       `/smartcomm/messages/${message_id}/react`,
       { emoji },
     ),
+  // Re-queue a failed outbound send (the "Retry" affordance on a failed
+  // bubble). Response carries the fresh delivery state so the thread can
+  // show whether the requeue itself already failed (e.g. still no handle).
+  retryMessage: (message_id: string) =>
+    api.post<{
+      message_id: string;
+      delivery_status: string;
+      delivery_error: string | null;
+      requeued: boolean;
+    }>(`/smartcomm/messages/${message_id}/retry`),
   starMessage: (message_id: string) =>
     api.post<{ starred: boolean }>(`/smartcomm/messages/${message_id}/star`),
   listStarred: () => api.get<Message[]>("/smartcomm/starred"),
@@ -214,6 +224,16 @@ export const smartcommApi = {
       expires_at: string;
       link_id?: string;
       mode?: "capture" | "shop";
+      // Items that couldn't resolve to a sellable variant (inactive
+      // product, no active variant, non-live styled product, broken
+      // bundle) — surfaced at mint time so staff aren't surprised later
+      // by an order that's missing products.
+      warnings?: {
+        kind: string;
+        ref_id: string | null;
+        name: string | null;
+        reason: string;
+      }[];
     }>("/smartcomm/order-capture", input),
 
   // Sidebar activity panel: a channel's order links + live cart state.

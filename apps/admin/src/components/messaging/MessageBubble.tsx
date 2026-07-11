@@ -11,6 +11,7 @@ import {
   Clock,
   AlertTriangle,
   LayoutTemplate,
+  RotateCcw,
 } from "lucide-react";
 import {
   fmtClockTime,
@@ -32,6 +33,34 @@ interface Actions {
   onForward: (m: Message) => void;
   onStar: (m: Message) => void;
   onReact: (m: Message, emoji: string) => void;
+  /** Re-queue a failed outbound send (customer threads only). */
+  onRetry?: (m: Message) => void | Promise<void>;
+}
+
+// Translate stored delivery_error codes (and common Meta phrases) into a
+// sentence the operator can act on. Unknown errors show verbatim — Meta's
+// own message is usually the most precise thing we have.
+function friendlyDeliveryError(err?: string | null): string | null {
+  if (!err) return null;
+  const MAP: Record<string, string> = {
+    IG_NOT_CONFIGURED:
+      "Instagram isn't connected for this brand — connect it in Messaging → Settings.",
+    IG_NO_TOKEN:
+      "Instagram has no access token on file — rotate it in Messaging → Settings.",
+    NO_IG_HANDLE_ON_FILE:
+      "This customer has no Instagram ID on file, so Meta can't be told who to send to.",
+    NO_WHATSAPP_NUMBER_ON_FILE:
+      "This customer has no WhatsApp number on file.",
+    WA_NOT_CONFIGURED:
+      "WhatsApp isn't connected for this brand — connect it in Messaging → Settings.",
+    MEDIA_URL_UNAVAILABLE:
+      "The file can't be given a public URL for Meta to fetch — check CDN/ADMIN_BASE_URL configuration.",
+    NOTHING_TO_SEND: "The message had no sendable content.",
+    IG_SEND_BRAND_REQUIRED: "Internal error: send was queued without a brand.",
+    WA_SEND_BRAND_REQUIRED: "Internal error: send was queued without a brand.",
+    NO_RECIPIENT: "No recipient on the send job.",
+  };
+  return MAP[err] ?? err;
 }
 
 const QUICK = ["👍", "❤️", "😂", "😮", "🙏", "✅"];
@@ -194,6 +223,29 @@ export function MessageBubble({
                 <DeliveryTick status={message.delivery_status} isEmail={isEmail} />
               )}
             </div>
+            {/* Failed sends explain WHY + offer a one-tap retry, instead of
+                a bare warning triangle the operator can't act on. */}
+            {isOwn && message.delivery_status === "failed" && (
+              <div className="mt-1 flex items-start gap-1.5 rounded-lg border border-danger/30 bg-danger/5 px-2 py-1.5 text-[11px] text-danger">
+                <AlertTriangle className="w-3 h-3 mt-[1px] shrink-0" />
+                <span className="flex-1 min-w-0 break-words">
+                  Not delivered
+                  {message.delivery_error
+                    ? ` — ${friendlyDeliveryError(message.delivery_error)}`
+                    : ""}
+                </span>
+                {actions.onRetry && (
+                  <button
+                    onClick={() => void actions.onRetry?.(message)}
+                    className="shrink-0 inline-flex items-center gap-1 rounded-md border border-danger/40 px-1.5 py-0.5 font-semibold hover:bg-danger/10"
+                    title="Try sending again"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    Retry
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Reactions */}

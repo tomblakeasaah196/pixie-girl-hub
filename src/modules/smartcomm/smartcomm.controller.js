@@ -180,6 +180,14 @@ async function reactToMessage(req, res) {
   res.json(data);
 }
 
+async function retryMessage(req, res) {
+  const data = await service.retryOutboundMessage({
+    ...ctx(req),
+    message_id: req.params.message_id,
+  });
+  res.json(data);
+}
+
 async function starMessage(req, res) {
   const data = await service.starMessage({
     user: req.user,
@@ -407,6 +415,7 @@ module.exports = {
   deleteMessage,
   forwardMessage,
   reactToMessage,
+  retryMessage,
   starMessage,
   listStarred,
   searchMessages,

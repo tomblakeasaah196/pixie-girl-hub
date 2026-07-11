@@ -52,6 +52,10 @@ export interface ChannelMember {
   user_avatar_url?: string | null;
   user_phone?: string | null;
   contact_display_name?: string | null;
+  /** Platform profile picture from contact_social_handles (IG/WA/email). */
+  contact_avatar_url?: string | null;
+  /** Platform handle (e.g. the IG @username) from contact_social_handles. */
+  contact_handle?: string | null;
   primary_phone?: string | null;
   whatsapp_number?: string | null;
   email?: string | null;

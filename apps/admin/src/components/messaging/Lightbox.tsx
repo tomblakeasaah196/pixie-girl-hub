@@ -22,6 +22,8 @@ export function Lightbox({
 
   return createPortal(
     <div
+      data-modal-root
+      data-modal-open="true"
       className="fixed inset-0 z-[120] grid place-items-center bg-black/85 backdrop-blur-sm p-4"
       onClick={onClose}
     >

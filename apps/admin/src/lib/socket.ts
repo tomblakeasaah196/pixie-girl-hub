@@ -36,6 +36,12 @@ export function getSocket(): Socket {
   socket.on("notification:new", (detail) => {
     window.dispatchEvent(new CustomEvent("pgh:notification:new", { detail }));
   });
+  // Notifications consumed elsewhere (thread opened → its message
+  // notifications auto-read; another tab hit "All read") — the bell badge
+  // and toast stack drop everywhere without waiting for the next poll.
+  socket.on("notification:read", (detail) => {
+    window.dispatchEvent(new CustomEvent("pgh:notification:read", { detail }));
+  });
   // Praxis pending-action pushes (user:{id}:ai_pending — §6.29 confirm gate).
   socket.on("ai_pending:created", (detail) => {
     window.dispatchEvent(new CustomEvent("pgh:ai_pending:created", { detail }));

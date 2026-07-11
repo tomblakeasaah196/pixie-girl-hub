@@ -54,6 +54,8 @@ export function Drawer({
   return createPortal(
     <>
       <div
+        data-modal-root
+        data-modal-open={open ? "true" : "false"}
         onClick={onClose}
         className={cn(
           "fixed inset-0 bg-black/50 backdrop-blur-[3px] transition-opacity duration-300",
@@ -65,6 +67,8 @@ export function Drawer({
         ref={panelRef}
         role="dialog"
         aria-modal="true"
+        data-modal-root
+        data-modal-open={open ? "true" : "false"}
         className={cn(
           // `visibility` rides the same transition as the transform so the
           // panel stays visible while it slides out, then flips to hidden —

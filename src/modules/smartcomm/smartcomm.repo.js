@@ -145,8 +145,16 @@ async function listChannelsForUser({
       ON cm.channel_id = c.channel_id AND cm.user_id = $1
     LEFT JOIN LATERAL (
       SELECT
-        COALESCE(u.display_name, con.display_name) AS display_name,
-        u.avatar_url,
+        -- A social-platform customer whose contact still carries the
+        -- auto-created "New contact" placeholder renders under their
+        -- platform identity (IG name/@handle) instead of the placeholder.
+        COALESCE(u.display_name,
+                 NULLIF(con.display_name, 'New contact'),
+                 h.display_name, h.handle,
+                 con.display_name)                 AS display_name,
+        -- Customer threads have no users-table avatar — fall back to the
+        -- platform profile picture captured on the social handle.
+        COALESCE(u.avatar_url, h.profile_picture_url) AS avatar_url,
         COALESCE(con.primary_phone, u.phone)       AS phone,
         con.whatsapp_number,
         con.email,
@@ -155,6 +163,14 @@ async function listChannelsForUser({
       FROM shared.channel_members m2
       LEFT JOIN shared.users    u   ON u.user_id     = m2.user_id
       LEFT JOIN shared.contacts con ON con.contact_id = m2.contact_id
+      LEFT JOIN LATERAL (
+        SELECT sh.display_name, sh.handle, sh.profile_picture_url
+          FROM shared.contact_social_handles sh
+         WHERE sh.contact_id = m2.contact_id
+           AND (c.external_platform IS NULL OR sh.platform = c.external_platform)
+         ORDER BY sh.updated_at DESC
+         LIMIT 1
+      ) h ON m2.contact_id IS NOT NULL
       WHERE m2.channel_id = c.channel_id
         AND (
           (c.channel_type = 'direct'
@@ -315,11 +331,22 @@ async function listMembers({ channel_id }) {
     `SELECT cm.*, u.display_name AS user_display_name,
             u.avatar_url AS user_avatar_url,
             u.phone      AS user_phone,
-            con.display_name AS contact_display_name,
+            COALESCE(NULLIF(con.display_name, 'New contact'),
+                     h.display_name, h.handle,
+                     con.display_name) AS contact_display_name,
+            h.profile_picture_url      AS contact_avatar_url,
+            h.handle                   AS contact_handle,
             con.primary_phone, con.whatsapp_number, con.email
        FROM shared.channel_members cm
        LEFT JOIN shared.users    u   ON u.user_id    = cm.user_id
        LEFT JOIN shared.contacts con ON con.contact_id = cm.contact_id
+       LEFT JOIN LATERAL (
+         SELECT sh.display_name, sh.handle, sh.profile_picture_url
+           FROM shared.contact_social_handles sh
+          WHERE sh.contact_id = cm.contact_id
+          ORDER BY sh.updated_at DESC
+          LIMIT 1
+       ) h ON cm.contact_id IS NOT NULL
       WHERE cm.channel_id = $1
       ORDER BY cm.joined_at`,
     [channel_id],
@@ -400,12 +427,18 @@ async function setMessageExternalRef({ client, message_id, external_ref }) {
 }
 
 async function setMessageDelivery({
+  client,
   message_id,
   delivery_status,
   delivery_error,
   external_ref,
 }) {
-  const { rows } = await query(
+  // Accepts the in-flight transaction's client: a failure marked while
+  // the posting transaction is still open (e.g. "no IG handle on file")
+  // must update the row THAT transaction inserted — a pool connection
+  // can't see it yet, so the old pool-only version was a silent no-op
+  // and the message sat on "queued" forever.
+  const { rows } = await ex(client)(
     `UPDATE shared.messages
         SET delivery_status = COALESCE($2, delivery_status),
             delivery_error  = $3,
@@ -1028,14 +1061,17 @@ async function createLeadContact({ client, c }) {
 }
 
 async function upsertSocialHandle({ client, h }) {
+  // COALESCE on update: a webhook that arrives without a resolved name/
+  // picture (profile fetch failed, WA payload without contacts[]) must
+  // never blank identity a previous ingest already stored.
   const { rows } = await ex(client)(
     `INSERT INTO shared.contact_social_handles
        (contact_id, platform, handle, external_user_id, display_name, profile_picture_url, verified_at)
      VALUES ($1,$2,$3,$4,$5,$6,now())
      ON CONFLICT (platform, external_user_id) WHERE external_user_id IS NOT NULL
-       DO UPDATE SET handle              = EXCLUDED.handle,
-                     display_name        = EXCLUDED.display_name,
-                     profile_picture_url = EXCLUDED.profile_picture_url,
+       DO UPDATE SET handle              = COALESCE(EXCLUDED.handle, shared.contact_social_handles.handle),
+                     display_name        = COALESCE(EXCLUDED.display_name, shared.contact_social_handles.display_name),
+                     profile_picture_url = COALESCE(EXCLUDED.profile_picture_url, shared.contact_social_handles.profile_picture_url),
                      verified_at         = COALESCE(shared.contact_social_handles.verified_at, now()),
                      updated_at          = now()
      RETURNING *`,

@@ -9,8 +9,10 @@
 jest.mock("../../../src/modules/chief_of_staff/cos.repo", () => ({
   createPlan: jest.fn(),
   createPlanStep: jest.fn(),
+  supersedeOtherProposedPlans: jest.fn(),
 }));
 
+const repo = require("../../../src/modules/chief_of_staff/cos.repo");
 const planner = require("../../../src/modules/chief_of_staff/cos.planner");
 
 describe("resolveTokens", () => {
@@ -112,5 +114,70 @@ describe("buildSteps (scope guardrail)", () => {
       byName,
     });
     expect(steps[0].payload).toEqual({});
+  });
+});
+
+describe("planFromCompletion (supersession + build state)", () => {
+  const goalAction = {
+    action_id: "a-goal",
+    action_key: "workspace.create_goal",
+    method: "POST",
+    route: "/api/v1/goals",
+    surface: "workspace",
+    title: "Create a goal",
+    min_confidence: 0.7,
+  };
+  const byName = new Map([["workspace_create_goal", goalAction]]);
+  const args = {
+    client: null,
+    byName,
+    conversation: { conversation_id: "c1" },
+    userMsg: { message_id: "m1" },
+    user: { user_id: "u1" },
+    brand: "faitlynhair",
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    repo.createPlan.mockResolvedValue({ plan_id: "p-new" });
+    repo.createPlanStep.mockImplementation(async ({ s }) => ({ ...s, pending_id: `pd-${s.plan_step}` }));
+    repo.supersedeOtherProposedPlans.mockResolvedValue(["p-old"]);
+  });
+
+  it("cancels every OTHER proposed plan in the conversation (no stale duplicates)", async () => {
+    const out = await planner.planFromCompletion({
+      ...args,
+      completion: {
+        content: "One goal.",
+        tool_calls: [{ function: { name: "workspace_create_goal", arguments: '{"title":"G"}' } }],
+      },
+    });
+    expect(repo.supersedeOtherProposedPlans).toHaveBeenCalledWith({
+      client: null,
+      conversation_id: "c1",
+      except_plan_id: "p-new",
+    });
+    expect(out.superseded).toEqual(["p-old"]);
+  });
+
+  it("persists the build state (is_complete=false for a truncated plan)", async () => {
+    await planner.planFromCompletion({
+      ...args,
+      complete: false,
+      completion: {
+        content: "Partial.",
+        tool_calls: [{ function: { name: "workspace_create_goal", arguments: '{"title":"G"}' } }],
+      },
+    });
+    expect(repo.createPlan.mock.calls[0][0].p.is_complete).toBe(false);
+  });
+
+  it("returns null (and supersedes nothing) for a plain chat reply", async () => {
+    const out = await planner.planFromCompletion({
+      ...args,
+      completion: { content: "Just chatting.", tool_calls: [] },
+    });
+    expect(out).toBeNull();
+    expect(repo.supersedeOtherProposedPlans).not.toHaveBeenCalled();
   });
 });

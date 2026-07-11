@@ -10,6 +10,9 @@ jest.mock("../../../src/modules/chief_of_staff/cos.repo");
 jest.mock("../../../src/modules/praxis_ai/praxis.executor", () => ({
   executeAction: jest.fn(),
 }));
+jest.mock("../../../src/shared/goals/goals.repo", () => ({
+  findActiveByTitle: jest.fn(),
+}));
 jest.mock("../../../src/middleware/audit", () => ({ audit: jest.fn() }));
 jest.mock("../../../src/config/logger", () => ({
   logger: { error: jest.fn(), warn: jest.fn(), info: jest.fn(), debug: jest.fn() },
@@ -17,6 +20,7 @@ jest.mock("../../../src/config/logger", () => ({
 
 const repo = require("../../../src/modules/chief_of_staff/cos.repo");
 const executor = require("../../../src/modules/praxis_ai/praxis.executor");
+const goalsRepo = require("../../../src/shared/goals/goals.repo");
 const planExec = require("../../../src/modules/chief_of_staff/cos.plan-executor");
 
 const PLAN = { plan_id: "plan-1", proposed_by_user_id: "u1", business: "pixiegirl" };
@@ -129,6 +133,56 @@ test("confirmPlan stamps confirmed_by_user_id on each proposed step (no 409)", a
   expect(confirmCall).toBeTruthy();
   expect(confirmCall[0].fields.confirmed_by_user_id).toBe("u1");
   expect(confirmCall[0].fields.confirmed_at).toBeTruthy();
+});
+
+test("duplicate-goal guard: a create_goal step matching a live goal fails with an actionable error", async () => {
+  const steps = [
+    { pending_id: "p0", plan_step: 0, status: "confirmed", action_key: "workspace.create_goal", method: "POST", route: "/api/v1/goals", business: "faitlynhair", payload: { title: "UK Popup Pilot" } },
+    { pending_id: "p1", plan_step: 1, status: "confirmed", action_key: "workspace.add_milestone", method: "POST", route: "/api/v1/goals/:id/milestones", business: "faitlynhair", payload: { id: "{{step:0.goal_id}}", title: "M1" } },
+  ];
+  wireRepo(steps);
+  goalsRepo.findActiveByTitle.mockResolvedValue({
+    goal_id: "g-existing",
+    title: "UK Popup Pilot",
+    status: "active",
+  });
+
+  const out = await planExec.executePlan({ plan: { ...PLAN }, auth_header: "Bearer x" });
+
+  expect(out.status).toBe("partially_failed");
+  expect(executor.executeAction).not.toHaveBeenCalled(); // twin never minted
+  expect(steps[0].status).toBe("failed");
+  expect(steps[0].execution_error).toMatch(/already exists/i);
+  expect(steps[0].execution_error).toMatch(/edit this step/i);
+});
+
+test("duplicate-goal guard: unique titles pass, and non-goal steps skip the lookup", async () => {
+  const steps = [
+    { pending_id: "p0", plan_step: 0, status: "confirmed", action_key: "workspace.create_goal", method: "POST", route: "/api/v1/goals", business: "faitlynhair", payload: { title: "Fresh goal" } },
+    { pending_id: "p1", plan_step: 1, status: "confirmed", action_key: "workspace.create_task", method: "POST", route: "/api/v1/tasks", business: "faitlynhair", payload: { title: "T" } },
+  ];
+  wireRepo(steps);
+  goalsRepo.findActiveByTitle.mockResolvedValue(null);
+  executor.executeAction
+    .mockResolvedValueOnce({ ok: true, result: { data: { goal_id: "g-1" } } })
+    .mockResolvedValueOnce({ ok: true, result: { data: { task_id: "t-1" } } });
+
+  const out = await planExec.executePlan({ plan: { ...PLAN }, auth_header: "Bearer x" });
+
+  expect(out.status).toBe("executed");
+  expect(goalsRepo.findActiveByTitle).toHaveBeenCalledTimes(1); // only the goal step
+});
+
+test("duplicate-goal guard fails open when the lookup itself throws", async () => {
+  const steps = [
+    { pending_id: "p0", plan_step: 0, status: "confirmed", action_key: "workspace.create_goal", method: "POST", route: "/api/v1/goals", business: "faitlynhair", payload: { title: "G" } },
+  ];
+  wireRepo(steps);
+  goalsRepo.findActiveByTitle.mockRejectedValue(new Error("db down"));
+  executor.executeAction.mockResolvedValueOnce({ ok: true, result: { data: { goal_id: "g-1" } } });
+
+  const out = await planExec.executePlan({ plan: { ...PLAN }, auth_header: "Bearer x" });
+  expect(out.status).toBe("executed"); // guard is best-effort, never blocks the run
 });
 
 test("resume skips already-executed steps and re-seeds their results", async () => {

@@ -13,11 +13,19 @@
 
 "use strict";
 
-const { Pool } = require("pg");
+const { Pool, types } = require("pg");
 const { registerType } = require("pgvector/pg");
 const { config } = require("./env");
 const { logger } = require("./logger");
 const requestContext = require("./request-context");
+
+// DATE columns (OID 1082) stay plain 'YYYY-MM-DD' strings. Without this, pg
+// parses DATE into a JS Date at *server-local* midnight, and res.json turns it
+// into a shifted UTC timestamp (stored 2026-08-08 left the API as
+// "2026-08-07T23:00:00.000Z" on a UTC+1 server) — the "Invalid Date" /
+// off-by-one-day bug on goal cards. API_CONVENTIONS: date-only values are
+// ISO 8601 calendar dates, not timestamps.
+types.setTypeParser(types.builtins.DATE, (v) => v);
 
 let pool = null;
 

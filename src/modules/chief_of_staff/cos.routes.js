@@ -76,6 +76,15 @@ router.post(
 router.get("/plans/:planId", c.getPlan);
 router.post("/plans/:planId/confirm", c.confirmPlan);
 router.post("/plans/:planId/reject", v.validateReason, c.rejectPlan);
+// Resume building a truncated plan (is_complete=false) — an LLM turn, so it
+// shares the chat burst guard.
+router.post("/plans/:planId/continue", cosTurnLimiter, c.continuePlan);
+// Edit a step's payload while the plan is still proposed (review-before-fire).
+router.patch(
+  "/plans/:planId/steps/:stepId",
+  v.validateStepPayloadUpdate,
+  c.updatePlanStep,
+);
 
 // ── Follow-ups (accountability state machine, PR4) ─────────
 router.get("/followups", c.listFollowups);

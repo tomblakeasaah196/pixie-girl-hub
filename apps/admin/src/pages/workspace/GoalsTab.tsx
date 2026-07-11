@@ -23,14 +23,21 @@ import type { Goal } from "./goals-types";
 
 const DAY = 86_400_000;
 
+// The API serialises DATE columns as plain "YYYY-MM-DD"; tolerate a full ISO
+// timestamp too (older cached payloads) by keeping only the calendar date, so
+// we never build "…ZT00:00:00" → Invalid Date.
+function dateOnly(v: string): string {
+  return String(v).slice(0, 10);
+}
+
 function daysUntil(date: string): number {
-  const d = new Date(date + "T00:00:00");
+  const d = new Date(dateOnly(date) + "T00:00:00");
   return Math.ceil((d.getTime() - Date.now()) / DAY);
 }
 
 function formatTarget(date: string | null | undefined): string | null {
   if (!date) return null;
-  return new Date(date + "T00:00:00").toLocaleDateString([], {
+  return new Date(dateOnly(date) + "T00:00:00").toLocaleDateString([], {
     month: "short",
     day: "numeric",
     year: "numeric",

@@ -61,6 +61,7 @@ const MODULE_CATALOG = [
   // ── Workspace (personal — on for everyone) ───────────────
   { key: "calendar", group: "workspace", label: "Calendar", description: "Your calendar & shared business events" },
   { key: "tasks", group: "workspace", label: "Tasks", description: "Your to-dos & tasks assigned to you" },
+  { key: "goals", group: "workspace", label: "Goals", description: "Goals, milestones & notes (Chief of Staff)" },
   { key: "attendance", group: "workspace", label: "Attendance", description: "Clock in/out & your attendance (My HR)" },
 
   // ── Operate ──────────────────────────────────────────────

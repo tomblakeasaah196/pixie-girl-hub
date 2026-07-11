@@ -153,9 +153,28 @@ async function resolveMetaAppSecret(source, payload) {
   const platform = source === "meta_whatsapp" ? "whatsapp" : "instagram";
   const maRepo = require("../messaging_accounts/messaging-accounts.repo");
   const crypto2 = require("../../services/encryption.service");
-  const row = await maRepo.findByExternalId({ platform, external_account_id });
+  let row = await maRepo.findByExternalId({ platform, external_account_id });
+  let fallback = false;
+  // Instagram fallback: operators routinely save the wrong id (the
+  // Business-Manager asset id instead of the Graph user id Meta actually
+  // sends as entry.id). When no row matches but exactly ONE active IG row
+  // exists, it can only be that row — try its app_secret. The HMAC check
+  // stays the real gate: a match proves the payload was signed with that
+  // row's App Secret, at which point the stored id is auto-healed below.
+  if (!row && platform === "instagram") {
+    const candidates = await maRepo.listActiveByPlatform({ platform });
+    if (candidates.length === 1) {
+      row = candidates[0];
+      fallback = true;
+    }
+  }
   if (!row || !row.app_secret_enc) return null;
-  return { app_secret: crypto2.decrypt(row.app_secret_enc), row };
+  return {
+    app_secret: crypto2.decrypt(row.app_secret_enc),
+    row,
+    fallback,
+    external_account_id,
+  };
 }
 
 async function verifyMetaHmac(source, rawBody, headers, parsedPayload) {
@@ -166,7 +185,37 @@ async function verifyMetaHmac(source, rawBody, headers, parsedPayload) {
   const expected =
     "sha256=" +
     crypto.createHmac("sha256", resolved.app_secret).update(rawBody).digest("hex");
-  return safeEqual(expected, sig);
+  const ok = safeEqual(expected, sig);
+  // Auto-heal: a valid signature via the single-row fallback proves this
+  // payload belongs to that row — fix the stored id so brand routing
+  // (which matches on external_account_id) works from now on, including
+  // for THIS payload when the outbox processes it post-commit.
+  if (ok && resolved.fallback) {
+    const maRepo = require("../messaging_accounts/messaging-accounts.repo");
+    try {
+      const healed = await maRepo.updateExternalId({
+        id: resolved.row.account_id,
+        external_account_id: resolved.external_account_id,
+      });
+      if (healed) {
+        logger.warn(
+          {
+            source,
+            account_id: resolved.row.account_id,
+            previous: resolved.row.external_account_id,
+            corrected: resolved.external_account_id,
+          },
+          "meta webhook: auto-healed messaging account provider id",
+        );
+      }
+    } catch (err) {
+      logger.error(
+        { err: err.message, account_id: resolved.row.account_id },
+        "meta webhook: provider-id auto-heal failed (routing may drop inbounds)",
+      );
+    }
+  }
+  return ok;
 }
 
 // Cloudflare Email Routing posts to the inbound webhook via an Email

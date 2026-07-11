@@ -86,6 +86,8 @@ export interface TestResult {
   provider_id?: string;
   provider_name?: string;
   mx_records?: { exchange: string; priority: number }[];
+  /** IG only: the stored account id didn't match Meta's and was corrected. */
+  healed?: boolean;
 }
 
 export type RevealableField =

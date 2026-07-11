@@ -8,7 +8,8 @@
  * Expected job.data:
  *   { brand, recipient_id, text }                          — free-form (in 24h window)
  *   { brand, recipient_id, text, tag: 'HUMAN_AGENT' }      — outside-window
- *   { brand, recipient_id, image_url }                     — image attachment
+ *   { brand, recipient_id, image_url }                     — image (legacy shape)
+ *   { brand, recipient_id, media_kind, media_url }         — image|audio|video
  *
  * `brand` is REQUIRED — every send resolves the per-brand IG token
  * from shared.messaging_accounts. A job missing brand fails fast
@@ -63,19 +64,31 @@ module.exports = async function process(job) {
     return { skipped: true };
   }
   try {
-    const res = data.image_url
-      ? await instagram.sendImage({
-          brand: data.brand,
-          recipient_id: data.recipient_id,
-          image_url: data.image_url,
-          tag: data.tag,
-        })
-      : await instagram.sendText({
-          brand: data.brand,
-          recipient_id: data.recipient_id,
-          text: data.text,
-          tag: data.tag,
-        });
+    let res;
+    if (data.media_url) {
+      res = await instagram.sendMedia({
+        brand: data.brand,
+        recipient_id: data.recipient_id,
+        kind: data.media_kind || "image",
+        media_url: data.media_url,
+        tag: data.tag,
+      });
+    } else if (data.image_url) {
+      // Legacy job shape (pre media_kind) — jobs already queued keep working.
+      res = await instagram.sendImage({
+        brand: data.brand,
+        recipient_id: data.recipient_id,
+        image_url: data.image_url,
+        tag: data.tag,
+      });
+    } else {
+      res = await instagram.sendText({
+        brand: data.brand,
+        recipient_id: data.recipient_id,
+        text: data.text,
+        tag: data.tag,
+      });
+    }
     const mid = res && (res.message_id || res.recipient_id);
     if (data.smartcomm_message_id) {
       await repo.setMessageDelivery({

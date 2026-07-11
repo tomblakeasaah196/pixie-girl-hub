@@ -144,6 +144,27 @@ export function MessageBubble({
                 <LayoutTemplate className="w-3 h-3" /> Approved template
               </div>
             )}
+            {(message.message_type === "ig_story_mention" ||
+              message.message_type === "ig_story_reply") && (
+              <div className="mb-1">
+                <div className="inline-flex items-center gap-1 text-[10px] uppercase tracking-widest text-accent-glow/90">
+                  {message.message_type === "ig_story_mention"
+                    ? "📣 Story mention"
+                    : "💬 Story reply"}
+                </div>
+                {message.metadata?.story_url && (
+                  <a
+                    href={message.metadata.story_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block text-[11.5px] text-accent-glow underline underline-offset-2 truncate max-w-[240px]"
+                    title="Open the story media (Meta links expire after ~24h)"
+                  >
+                    View story media
+                  </a>
+                )}
+              </div>
+            )}
             {message.message_type !== "text" &&
               message.message_type !== "product_share" &&
               message.message_type !== "send_invoice" &&

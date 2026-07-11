@@ -1174,7 +1174,12 @@ async function enqueueOutboundForChannel({
       channel.ig_window_expires_at &&
       new Date(channel.ig_window_expires_at) < new Date();
     let jobPayloads;
-    if (message.message_type === "image") {
+    if (
+      message.message_type === "image" ||
+      message.message_type === "video" ||
+      message.message_type === "voice_note" ||
+      message.message_type === "document"
+    ) {
       const media = await resolveOutboundMedia(message, client);
       // Instagram only supports the link method here, so it still needs a
       // publicly-fetchable URL (unlike WhatsApp's upload-first path).
@@ -1186,22 +1191,24 @@ async function enqueueOutboundForChannel({
         });
         return;
       }
-      jobPayloads = [{ image_url: media.media_url }];
-    } else if (
-      message.message_type === "video" ||
-      message.message_type === "document" ||
-      message.message_type === "voice_note"
-    ) {
-      // Instagram Messenger doesn't support arbitrary document/video/audio
-      // sends through this client yet — fail loud instead of silently
-      // dropping so ops see it in the tick rather than a customer
-      // wondering why nothing arrived.
-      await repo.setMessageDelivery({
-        message_id: message.message_id,
-        delivery_status: "failed",
-        delivery_error: "IG_MEDIA_TYPE_UNSUPPORTED",
-      });
-      return;
+      // IG attachments carry no caption field (unlike WhatsApp) — any
+      // typed caption goes out as its own text bubble first so it isn't
+      // silently dropped.
+      jobPayloads = content ? [{ text: content }] : [];
+      if (message.message_type === "document") {
+        // IG DMs have no document attachment type. Send the file as a
+        // downloadable link instead of failing the whole message.
+        jobPayloads.push({
+          text: `📄 ${media.filename || "File"}: ${media.media_url}`,
+        });
+      } else {
+        // image | video | voice_note → native IG attachment bubble.
+        const kind =
+          message.message_type === "voice_note"
+            ? "audio"
+            : message.message_type;
+        jobPayloads.push({ media_kind: kind, media_url: media.media_url });
+      }
     } else if (message.message_type === "product_share") {
       // IG image attachments carry no caption field, unlike WhatsApp —
       // each card becomes its own text bubble (name/description/price)
@@ -1319,19 +1326,61 @@ async function findOrCreateCustomerThread({
   return created;
 }
 
+// Meta CDN hosts an inbound Instagram attachment URL may point at. The
+// URL arrives inside a signature-verified webhook so it's trusted in
+// principle, but pinning to Meta's CDNs keeps the fetch from ever being
+// pointed at internal infrastructure (defence in depth, not the gate).
+const META_CDN_HOST_RE =
+  /(^|\.)((cdninstagram\.com)|(fbcdn\.net)|(fbsbx\.com)|(instagram\.com)|(facebook\.com))$/i;
+
 /**
- * Download an inbound media descriptor (WhatsApp media id) and persist it
- * through the documents gateway. Returns { document_id, display_name } to
- * attach to the recorded message, or null when the media can't be fetched
- * — in which case the message is still recorded (caption/placeholder
- * preserved) so a media hiccup never blocks the inbox.
+ * Fetch an Instagram attachment's bytes from Meta's CDN. IG webhooks
+ * carry a short-lived signed URL (unlike WhatsApp's media id), so this
+ * is a plain GET — https-only, Meta-CDN-only, size-capped.
+ */
+async function downloadUrlMedia(url) {
+  const axios = require("axios");
+  const parsed = new URL(url);
+  if (parsed.protocol !== "https:") {
+    throw new Error(`refusing non-https media url (${parsed.protocol})`);
+  }
+  if (!META_CDN_HOST_RE.test(parsed.hostname)) {
+    throw new Error(`refusing non-Meta media host (${parsed.hostname})`);
+  }
+  const res = await axios.get(url, {
+    responseType: "arraybuffer",
+    timeout: 30000,
+    maxContentLength: 50 * 1024 * 1024, // IG caps well below this
+    maxRedirects: 3,
+  });
+  return {
+    buffer: Buffer.from(res.data),
+    mime_type:
+      (res.headers["content-type"] || "").split(";")[0].trim() || null,
+  };
+}
+
+/**
+ * Download an inbound media descriptor and persist it through the
+ * documents gateway. WhatsApp descriptors carry a `media_id` (fetched
+ * via the Graph media endpoint with the brand token); Instagram
+ * descriptors carry a direct CDN `url`. Returns { document_id,
+ * display_name } to attach to the recorded message, or null when the
+ * media can't be fetched — in which case the message is still recorded
+ * (caption/placeholder preserved) so a media hiccup never blocks the
+ * inbox.
  */
 async function downloadInboundMediaToDocument({ brand, media }) {
-  if (!media || !media.media_id) return null;
+  if (!media || (!media.media_id && !media.url)) return null;
   try {
-    const whatsapp = require("../../services/whatsapp.service");
     const documents = require("../../shared/documents/documents.service");
-    const dl = await whatsapp.downloadMedia({ brand, media_id: media.media_id });
+    let dl;
+    if (media.media_id) {
+      const whatsapp = require("../../services/whatsapp.service");
+      dl = await whatsapp.downloadMedia({ brand, media_id: media.media_id });
+    } else {
+      dl = await downloadUrlMedia(media.url);
+    }
     const mime = media.mime_type || dl.mime_type || "application/octet-stream";
     const filename = media.filename || defaultMediaFilename(media.kind, mime);
     const doc = await documents.store({
@@ -1348,7 +1397,13 @@ async function downloadInboundMediaToDocument({ brand, media }) {
   } catch (err) {
     const { logger } = require("../../config/logger");
     logger.error(
-      { err: err.message, media_id: media.media_id, kind: media.kind, brand },
+      {
+        err: err.message,
+        media_id: media.media_id || null,
+        has_url: !!media.url,
+        kind: media.kind,
+        brand,
+      },
       "smartcomm: inbound media download failed — recording message without attachment",
     );
     return null;

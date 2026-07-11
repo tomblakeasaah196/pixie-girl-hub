@@ -167,6 +167,15 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
     return new Date(channel.wa_window_expires_at).getTime() > Date.now();
   }, [channel?.wa_window_expires_at, platform]);
 
+  // Instagram's 24h window closing doesn't lock the composer the way
+  // WhatsApp's does — Meta still accepts replies tagged HUMAN_AGENT
+  // (requires app approval), so sends just carry that tag + a banner
+  // tells the operator what's happening.
+  const igWindowClosed = useMemo(() => {
+    if (!isInstagram || !channel?.ig_window_expires_at) return false;
+    return new Date(channel.ig_window_expires_at).getTime() <= Date.now();
+  }, [isInstagram, channel?.ig_window_expires_at]);
+
   const composerLocked = isWhatsapp && !windowOpen && !editing;
 
   // Scroll to bottom on new messages
@@ -217,6 +226,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
           content: text,
           message_type: "text",
           reply_to_id: replyTo?.message_id,
+          is_human_agent: igWindowClosed || undefined,
         });
         setReplyTo(null);
       }
@@ -375,6 +385,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
           message_type: type,
           attachments: [{ document_id, display_name: file.name }],
           content: content.trim() || undefined,
+          is_human_agent: igWindowClosed || undefined,
         });
       }
       resetTextarea();
@@ -600,6 +611,12 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
             </p>
             {isWhatsapp && channel.wa_window_expires_at && (
               <WhatsAppWindowBadge expiresAt={channel.wa_window_expires_at} />
+            )}
+            {isInstagram && channel.ig_window_expires_at && (
+              <WhatsAppWindowBadge
+                expiresAt={channel.ig_window_expires_at}
+                label="Instagram"
+              />
             )}
           </div>
         </div>
@@ -853,6 +870,17 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
         </div>
       ) : (
         <div className="border-t hairline px-3 sm:px-4 pt-2.5 pb-safe">
+          {igWindowClosed && !editing && (
+            <div className="mb-2 flex items-start gap-2 rounded-xl border border-amber-400/30 bg-amber-400/5 px-3 py-2.5 text-[12px] text-amber-200">
+              <AlertTriangle className="w-3.5 h-3.5 mt-[2px] shrink-0" />
+              <div>
+                Instagram's 24-hour window has closed. Replies will be sent
+                with Meta's <strong>HUMAN_AGENT</strong> tag (allowed up to 7
+                days after the customer's last message; requires the tag to be
+                approved on the Meta app).
+              </div>
+            </div>
+          )}
           {composerLocked && (
             <div className="mb-2 flex flex-col gap-2 rounded-xl border border-amber-400/30 bg-amber-400/5 px-3 py-2.5 text-[12px] text-amber-200 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-start gap-2">

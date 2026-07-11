@@ -3,10 +3,14 @@ import { fmtCountdown } from "@/lib/messaging-utils";
 
 interface Props {
   expiresAt?: string | null;
+  /** Platform name in the tooltip — WhatsApp (default) or Instagram. */
+  label?: string;
 }
 
 /**
- * The live 24-hour WhatsApp service-window indicator (canon §6.17).
+ * The live 24-hour Meta service-window indicator (canon §6.17) — used by
+ * both WhatsApp and Instagram threads (same 24h rule, different escape
+ * hatch: templates for WA, HUMAN_AGENT tag for IG).
  * Green/amber/red dot when open/closing-soon/expired.
  *
  * Deliberately tiny and boxless (no border, no fill) — this rides right
@@ -14,11 +18,11 @@ interface Props {
  * lose the space contest to a status pill. Text stays muted regardless of
  * urgency; the dot alone carries the colour signal.
  *
- * If `expiresAt` is null and the thread is a WhatsApp customer thread, we
- * render nothing — the customer hasn't initiated yet, so there's no window
- * to track.
+ * If `expiresAt` is null and the thread is a WhatsApp/IG customer thread,
+ * we render nothing — the customer hasn't initiated yet, so there's no
+ * window to track.
  */
-export function WhatsAppWindowBadge({ expiresAt }: Props) {
+export function WhatsAppWindowBadge({ expiresAt, label = "WhatsApp" }: Props) {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -37,8 +41,10 @@ export function WhatsAppWindowBadge({ expiresAt }: Props) {
     <span
       title={
         expired
-          ? "WhatsApp 24-hour window expired — only templates allowed"
-          : `WhatsApp window open · ${fmtCountdown(expiresAt)} left`
+          ? label === "Instagram"
+            ? "Instagram 24-hour window expired — replies go out HUMAN_AGENT-tagged"
+            : "WhatsApp 24-hour window expired — only templates allowed"
+          : `${label} window open · ${fmtCountdown(expiresAt)} left`
       }
       className="inline-flex items-center gap-1 min-w-0 shrink-0 text-[10px] text-text-faint"
     >

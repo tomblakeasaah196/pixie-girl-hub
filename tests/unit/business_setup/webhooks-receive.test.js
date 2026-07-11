@@ -36,11 +36,18 @@ jest.mock(
   "../../../src/modules/messaging_accounts/messaging-accounts.repo",
   () => ({
     findByExternalId: jest.fn().mockResolvedValue(null),
-    listByPlatform: jest.fn().mockResolvedValue([]),
+    listActiveByPlatform: jest.fn().mockResolvedValue([]),
+    updateExternalId: jest.fn().mockResolvedValue(null),
   }),
 );
+jest.mock("../../../src/services/encryption.service", () => ({
+  encrypt: jest.fn((s) => `enc:${s}`),
+  decrypt: jest.fn((s) => String(s).replace(/^enc:/, "")),
+}));
 
+const nodeCrypto = require("crypto");
 const repo = require("../../../src/modules/business_setup/webhooks.repo");
+const maRepo = require("../../../src/modules/messaging_accounts/messaging-accounts.repo");
 const service = require("../../../src/modules/business_setup/webhooks.service");
 
 describe("webhooks.receive event_type derivation", () => {
@@ -94,5 +101,97 @@ describe("webhooks.receive event_type derivation", () => {
     expect(r.status).toBe(200);
     const arg = repo.insertLog.mock.calls[0][1];
     expect(arg.event_type).toBe("charge.success");
+  });
+});
+
+describe("meta_instagram signature verification with sole-active-row fallback", () => {
+  const IG_ROW = {
+    account_id: "acc-ig-1",
+    business: "faitlynhair",
+    platform: "instagram",
+    external_account_id: "1309705977894720", // mistyped by the operator
+    app_secret_enc: "enc:shhh-app-secret",
+    is_active: true,
+  };
+  const payload = {
+    object: "instagram",
+    entry: [
+      {
+        id: "17841401903263911", // the id Meta ACTUALLY sends
+        messaging: [
+          { sender: { id: "IGSID_1" }, message: { mid: "m.1", text: "hi" } },
+        ],
+      },
+    ],
+  };
+  const rawBody = Buffer.from(JSON.stringify(payload));
+  const goodSig =
+    "sha256=" +
+    nodeCrypto
+      .createHmac("sha256", "shhh-app-secret")
+      .update(rawBody)
+      .digest("hex");
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    repo.insertLog.mockResolvedValue({ webhook_id: "wh-9", duplicate: false });
+  });
+
+  test("valid HMAC via fallback row → accepted + provider id auto-healed", async () => {
+    maRepo.findByExternalId.mockResolvedValue(null); // wrong stored id
+    maRepo.listActiveByPlatform.mockResolvedValue([IG_ROW]);
+    maRepo.updateExternalId.mockResolvedValue({
+      account_id: "acc-ig-1",
+      external_account_id: "17841401903263911",
+    });
+
+    const r = await service.receive("meta_instagram", {
+      rawBody,
+      headers: { "x-hub-signature-256": goodSig },
+      ip: "127.0.0.1",
+    });
+
+    expect(r.status).toBe(200);
+    expect(maRepo.updateExternalId).toHaveBeenCalledWith({
+      id: "acc-ig-1",
+      external_account_id: "17841401903263911",
+    });
+    // Logged as signature-valid so the outbox processes it.
+    const arg = repo.insertLog.mock.calls[0][1];
+    expect(arg.signature_valid).toBe(true);
+  });
+
+  test("invalid HMAC via fallback row → 401, no heal", async () => {
+    maRepo.findByExternalId.mockResolvedValue(null);
+    maRepo.listActiveByPlatform.mockResolvedValue([IG_ROW]);
+
+    const r = await service.receive("meta_instagram", {
+      rawBody,
+      headers: { "x-hub-signature-256": "sha256=deadbeef" },
+      ip: "127.0.0.1",
+    });
+
+    expect(r.status).toBe(401);
+    expect(maRepo.updateExternalId).not.toHaveBeenCalled();
+  });
+
+  test("two active IG rows → no fallback (cannot guess between brands)", async () => {
+    maRepo.findByExternalId.mockResolvedValue(null);
+    maRepo.listActiveByPlatform.mockResolvedValue([
+      IG_ROW,
+      { ...IG_ROW, account_id: "acc-ig-2", business: "pixiegirl" },
+    ]);
+
+    const r = await service.receive("meta_instagram", {
+      rawBody,
+      headers: { "x-hub-signature-256": goodSig },
+      ip: "127.0.0.1",
+    });
+
+    // No verifier resolvable → logged unverified (200) but never processed.
+    expect(r.status).toBe(200);
+    const arg = repo.insertLog.mock.calls[0][1];
+    expect(arg.signature_valid).toBe(false);
+    expect(maRepo.updateExternalId).not.toHaveBeenCalled();
   });
 });

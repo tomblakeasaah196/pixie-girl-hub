@@ -183,6 +183,7 @@ async function startWorkers() {
   } = require("./schedulers/chemical-reconciliation");
   const { runMissingWigCheck } = require("./schedulers/missing-wig-check");
   const { runWebhookReplaySweep } = require("./schedulers/webhook-replay");
+  const { runIgTokenRefreshSweep } = require("./schedulers/ig-token-refresh");
   const { runAdSpendSync } = require("./schedulers/ad-spend-sync");
   const { runGeoIpDatabaseUpdate } = require("./schedulers/geoip-updater");
   const {
@@ -334,6 +335,9 @@ async function startWorkers() {
   );
   scheduleCron("invoice-reminders", "*/30 * * * *", runInvoiceReminderSweep);
   scheduleCron("webhook-replay", "*/30 * * * *", runWebhookReplaySweep);
+  // IG long-lived tokens die after ~60 days; rotate weekly so the two
+  // brands' Instagram inboxes never silently disconnect.
+  scheduleCron("ig-token-refresh", "20 3 * * *", runIgTokenRefreshSweep);
   scheduleCron("soft-fk-reconciliation", "0 3 * * *", runSoftFkReconciliation);
   // Daily 03:30 — purge catalogue Trash past its 15-day grace window.
   scheduleCron("catalogue-trash-purge", "30 3 * * *", runCatalogueTrashPurge);

@@ -164,6 +164,114 @@ describe("smartcomm webhook parsers", () => {
     });
   });
 
+  test("parseMetaInstagram captures an inbound photo as image + media url", () => {
+    const payload = {
+      entry: [
+        {
+          id: "IG_BIZ_999",
+          messaging: [
+            {
+              sender: { id: "IGSID_42" },
+              message: {
+                mid: "m.photo",
+                attachments: [
+                  {
+                    type: "image",
+                    payload: { url: "https://lookaside.fbsbx.com/ig/photo.jpg" },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const events = parseMetaInstagram(payload);
+    expect(events).toHaveLength(1);
+    expect(events[0].message_type).toBe("image");
+    expect(events[0].media).toEqual({
+      kind: "image",
+      url: "https://lookaside.fbsbx.com/ig/photo.jpg",
+    });
+  });
+
+  test("parseMetaInstagram maps an inbound audio DM to voice_note", () => {
+    const payload = {
+      entry: [
+        {
+          id: "IG_BIZ_999",
+          messaging: [
+            {
+              sender: { id: "IGSID_42" },
+              message: {
+                mid: "m.audio",
+                attachments: [
+                  {
+                    type: "audio",
+                    payload: { url: "https://lookaside.fbsbx.com/ig/note.m4a" },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const events = parseMetaInstagram(payload);
+    expect(events[0].message_type).toBe("voice_note");
+    expect(events[0].media).toEqual({
+      kind: "audio",
+      url: "https://lookaside.fbsbx.com/ig/note.m4a",
+    });
+  });
+
+  test("parseMetaInstagram surfaces a shared post as text with the link", () => {
+    const payload = {
+      entry: [
+        {
+          id: "IG_BIZ_999",
+          messaging: [
+            {
+              sender: { id: "IGSID_42" },
+              message: {
+                mid: "m.share",
+                attachments: [
+                  {
+                    type: "share",
+                    payload: { url: "https://www.instagram.com/p/xyz/" },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const events = parseMetaInstagram(payload);
+    expect(events[0].message_type).toBe("text");
+    expect(events[0].media).toBeNull();
+    expect(events[0].body).toContain("https://www.instagram.com/p/xyz/");
+  });
+
+  test("parseMetaInstagram keeps a plain text DM without a media descriptor", () => {
+    const payload = {
+      entry: [
+        {
+          id: "IG_BIZ_999",
+          messaging: [
+            {
+              sender: { id: "IGSID_42" },
+              message: { mid: "m.text", text: "hello" },
+            },
+          ],
+        },
+      ],
+    };
+    const events = parseMetaInstagram(payload);
+    expect(events[0].message_type).toBe("text");
+    expect(events[0].media).toBeFalsy();
+  });
+
   test("parseCloudflareEmail strips HTML when text is absent", () => {
     const payload = {
       to: "support@pixiegirl.ng",

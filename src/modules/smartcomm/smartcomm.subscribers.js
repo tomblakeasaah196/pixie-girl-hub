@@ -38,16 +38,38 @@ const META_IG_PLATFORM = "instagram";
 const EMAIL_PLATFORM = "email";
 
 /**
- * Resolve which brand owns an inbound provider account. Defaults to
- * the first business in shared.business_config if no messaging_accounts
- * row exists yet (single-tenant fallback so dev still works).
+ * Resolve which brand owns an inbound provider account.
+ *
+ * Instagram belt-and-braces: when the exact id doesn't match but exactly
+ * ONE active IG row exists, route to it — the payload already passed
+ * HMAC verification against that row's App Secret (see webhooks.service),
+ * so this can't misroute across brands; it only rescues messages whose
+ * stored id hasn't been auto-healed yet (e.g. replayed older webhooks).
  */
 async function resolveBrand({ platform, external_account_id }) {
   const account = await repo.findMessagingAccount({
     platform,
     external_account_id,
   });
-  return account ? account.business : null;
+  if (account) return account.business;
+  if (platform === META_IG_PLATFORM) {
+    const maRepo = require("../messaging_accounts/messaging-accounts.repo");
+    const candidates = await maRepo.listActiveByPlatform({
+      platform: META_IG_PLATFORM,
+    });
+    if (candidates.length === 1) {
+      logger.warn(
+        {
+          platform,
+          external_account_id,
+          routed_to: candidates[0].business,
+        },
+        "smartcomm: inbound routed via sole-active-IG-account fallback",
+      );
+      return candidates[0].business;
+    }
+  }
+  return null;
 }
 
 // Map WhatsApp's inbound message type to the message_type our inbox
@@ -157,6 +179,15 @@ function parseMetaWhatsAppStatuses(payload) {
   return statuses;
 }
 
+// Map an IG DM attachment type to our inbox message_type. IG audio DMs
+// are voice notes; `file` renders as a document.
+const IG_MEDIA_TYPE = {
+  image: "image",
+  video: "video",
+  audio: "voice_note",
+  file: "document",
+};
+
 /**
  * Parse a Meta Instagram Messenger payload. Each entry is a page; each
  * `messaging` row is a single DM either from a user or an echo of one
@@ -180,28 +211,50 @@ function parseMetaInstagram(payload) {
       //   msg.reply_to.story          — the story we're being replied
       //                                 to (present on reply-to-story)
       // Route them into the inbox as first-class events so the
-      // operator sees them alongside DMs.
+      // operator sees them alongside DMs. Plain media DMs (photo,
+      // video, voice note, file) also arrive as attachments — the
+      // payload.url is a short-lived Meta CDN link whose bytes are
+      // downloaded on ingest.
       const att = Array.isArray(msg.attachments) ? msg.attachments[0] : null;
-      const isStoryMention = att && att.type === "story_mention";
+      const attType = att && att.type;
+      const attUrl = att && att.payload && att.payload.url;
+      const isStoryMention = attType === "story_mention";
       const isStoryReply = !!(msg.reply_to && msg.reply_to.story);
+      const isShare = attType === "share";
+      const mediaKind = !isStoryMention && IG_MEDIA_TYPE[attType];
 
       const messageType = isStoryMention
         ? "ig_story_mention"
         : isStoryReply
           ? "ig_story_reply"
-          : "text";
+          : mediaKind || "text";
 
       // Metadata carries the story URL + id so the UI can render a
       // preview card. The service whitelists card metadata by
       // message_type so this stays safe.
       const metadata = {};
       if (isStoryMention) {
-        metadata.story_url = att.payload && att.payload.url;
+        metadata.story_url = attUrl;
       }
       if (isStoryReply) {
         metadata.story_id = msg.reply_to.story.id;
         metadata.story_url = msg.reply_to.story.url;
       }
+
+      // Media descriptor for real media DMs: IG hands us a CDN URL
+      // (unlike WhatsApp's media id) — the ingest step downloads it.
+      const media =
+        mediaKind && attUrl && !isStoryReply
+          ? { kind: attType, url: attUrl }
+          : null;
+
+      // A shared post/reel has no stable media URL worth mirroring —
+      // surface it as a text bubble with the link so staff can open it.
+      const body = isShare
+        ? `(shared a post)${attUrl ? ` ${attUrl}` : ""}`
+        : msg.text ||
+          (isStoryMention ? "(mentioned you in a story)" : "") ||
+          (isStoryReply ? "(replied to your story)" : "");
 
       events.push({
         platform: META_IG_PLATFORM,
@@ -212,11 +265,9 @@ function parseMetaInstagram(payload) {
           external_user_id: senderId,
           display_name: null,
         },
-        body:
-          msg.text ||
-          (isStoryMention ? "(mentioned you in a story)" : "") ||
-          (isStoryReply ? "(replied to your story)" : ""),
-        message_type: messageType,
+        body,
+        message_type: isShare ? "text" : messageType,
+        media: isShare ? null : media,
         metadata: Object.keys(metadata).length ? metadata : undefined,
       });
     }

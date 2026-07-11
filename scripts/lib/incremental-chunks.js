@@ -55,7 +55,7 @@ async function syncSlice({ query, prefixes, chunks }) {
         `UPDATE shared.ai_knowledge_chunks
             SET source_type = $2, business = $3, title = $4, content = $5,
                 token_count = $6, sensitivity = $7, content_hash = $8,
-                is_active = true, updated_at = now()
+                is_active = true, ingested_at = now()
           WHERE chunk_id = $1`,
         [
           ex.chunk_id,

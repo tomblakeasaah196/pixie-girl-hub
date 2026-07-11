@@ -110,22 +110,18 @@ function parseBlocks(src: string): Block[] {
       blocks.push({ kind: "table", head, rows });
       continue;
     }
-    // Lists
+    // Lists — LLMs (and CommonMark loose lists) put blank lines between
+    // items; without swallowing them each item became its own single-item
+    // <ol>, so every marker rendered as "1." instead of 1, 2, 3, …
     if (/^[-*]\s+/.test(line)) {
       const items: string[] = [];
-      while (i < lines.length && /^[-*]\s+/.test(lines[i])) {
-        items.push(lines[i].replace(/^[-*]\s+/, ""));
-        i++;
-      }
+      i = consumeList(lines, i, /^[-*]\s+/, items, (l) => l.replace(/^[-*]\s+/, ""));
       blocks.push({ kind: "ul", items });
       continue;
     }
     if (/^\d+\.\s+/.test(line)) {
       const items: string[] = [];
-      while (i < lines.length && /^\d+\.\s+/.test(lines[i])) {
-        items.push(lines[i].replace(/^\d+\.\s+/, ""));
-        i++;
-      }
+      i = consumeList(lines, i, /^\d+\.\s+/, items, (l) => l.replace(/^\d+\.\s+/, ""));
       blocks.push({ kind: "ol", items });
       continue;
     }
@@ -150,6 +146,38 @@ function splitRow(line: string): string[] {
     .slice(1, line.endsWith("|") ? -1 : undefined)
     .split("|")
     .map((c) => c.trim());
+}
+
+/**
+ * Walk consecutive list items, treating blank lines between items as part of
+ * the same list as long as the next non-blank line is another marker of the
+ * same kind. Stops when the list ends (non-list, non-blank content, or EOF).
+ */
+function consumeList(
+  lines: string[],
+  start: number,
+  marker: RegExp,
+  items: string[],
+  strip: (line: string) => string,
+): number {
+  let i = start;
+  while (i < lines.length) {
+    if (marker.test(lines[i])) {
+      items.push(strip(lines[i]));
+      i++;
+    } else if (!lines[i].trim()) {
+      let j = i + 1;
+      while (j < lines.length && !lines[j].trim()) j++;
+      if (j < lines.length && marker.test(lines[j])) {
+        i = j;
+      } else {
+        break;
+      }
+    } else {
+      break;
+    }
+  }
+  return i;
 }
 
 // ── Inline renderer ───────────────────────────────────────

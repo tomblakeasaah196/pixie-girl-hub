@@ -19,11 +19,42 @@ const repo = require("./cos.repo");
 const planner = require("./cos.planner");
 const events = require("./cos.events");
 const executor = require("../praxis_ai/praxis.executor");
+const goalsRepo = require("../../shared/goals/goals.repo");
 const { audit } = require("../../middleware/audit");
 const { logger } = require("../../config/logger");
 const { NotFoundError, AppError } = require("../../utils/errors");
 
 const nowIso = () => new Date().toISOString();
+
+/**
+ * Duplicate-goal guard: a create_goal step whose title matches a live goal
+ * fails with an actionable message INSTEAD of minting a twin — the CEO edits
+ * the step's payload (rename) and hits "Retry remaining", or rejects the
+ * plan. Lookup failures never block the run (guard is best-effort).
+ * @returns {Promise<string|null>} an error message, or null to proceed
+ */
+async function duplicateGoalError({ step, payload }) {
+  if (step.action_key !== "workspace.create_goal") return null;
+  const title = payload && payload.title;
+  if (!title || !step.business) return null;
+  try {
+    const dup = await goalsRepo.findActiveByTitle({
+      business: step.business,
+      title,
+    });
+    if (dup)
+      return (
+        `A goal titled “${dup.title}” already exists (status: ${dup.status}). ` +
+        "Edit this step's title and retry the remaining steps, or reject the plan."
+      );
+  } catch (err) {
+    logger.warn(
+      { err: err.message, plan_step: step.plan_step },
+      "cos: duplicate-goal guard lookup failed — proceeding",
+    );
+  }
+  return null;
+}
 
 /**
  * Execute (or resume) a confirmed plan. Runs steps in order; returns the final
@@ -57,6 +88,17 @@ async function executePlan({ plan, auth_header, request_id }) {
           execution_error:
             "Unresolved cross-step reference — a prior step did not produce the referenced value.",
         },
+      });
+      anyFailed = true;
+      break;
+    }
+
+    const dupError = await duplicateGoalError({ step, payload });
+    if (dupError) {
+      await repo.setStepStatus({
+        id: step.pending_id,
+        status: "failed",
+        fields: { executed_at: nowIso(), execution_error: dupError },
       });
       anyFailed = true;
       break;

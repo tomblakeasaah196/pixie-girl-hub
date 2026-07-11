@@ -11,6 +11,30 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-11 — Chief of Staff: resumable plan building
+
+**Source:** user bug report — the CoS narrated full plans ("goal + 4
+milestones + 6 tasks + 3 events + a note") but the proposed plan carried
+only the steps one truncated completion managed to emit (usually just the
+goal), then celebrated "Plan completed" over a 1-step plan.
+
+**Files (new):** `000331_shared_cos_plan_build_state.sql` — adds
+`shared.ai_pending_plans.is_complete BOOLEAN NOT NULL DEFAULT true`.
+`false` marks a plan whose per-turn build budget ran out with steps still
+owed; the admin UI offers "Continue building" (POST
+`/api/v1/cos/plans/:id/continue`) which appends the remaining steps to the
+SAME plan. Backfill: existing plans default to complete.
+
+**Related (no migration):** `src/modules/chief_of_staff/cos.plan-rounds.js`
+(bounded multi-round plan building with truncation continuation, a
+broken-promise retry, and a narrated-kind check), plan supersession + the
+duplicate-goal guard in `cos.planner.js` / `cos.plan-executor.js`, editable
+step payloads (PATCH `/api/v1/cos/plans/:planId/steps/:stepId`), and the
+DATE type parser in `src/config/database.js` (date columns now serialise as
+plain `YYYY-MM-DD`, fixing the "Invalid Date" / off-by-one goal cards).
+
+---
+
 ## 2026-07-11 — Chief of Staff: save conversation to Notes
 
 **Source:** user request — the CEO wants the Chief of Staff to summarise a

@@ -28,6 +28,17 @@ const messagePost = z
 
 const reason = z.object({ reason: z.string().max(2000).optional() }).strict();
 
+// Step payload edit — a plain JSON object (the step's tool arguments), bounded
+// so a paste bomb can't land in ai_pending_actions.payload.
+const stepPayloadUpdate = z
+  .object({
+    payload: z.record(z.any()),
+  })
+  .strict()
+  .refine((v) => JSON.stringify(v.payload).length <= 20000, {
+    message: "payload too large (max 20000 characters as JSON)",
+  });
+
 // ── Follow-up state machine (PR4) ──────────────────────────
 const followupRespond = z
   .object({ answer: z.enum(["done", "in_progress", "delayed"]) })
@@ -126,6 +137,7 @@ module.exports = {
   validateConversationCreate: mk(conversationCreate),
   validateMessagePost: mk(messagePost),
   validateReason: mk(reason),
+  validateStepPayloadUpdate: mk(stepPayloadUpdate),
   validateFollowupRespond: mk(followupRespond),
   validateFollowupAct: mk(followupAct),
   validateFollowupSnooze: mk(followupSnooze),
@@ -138,6 +150,7 @@ module.exports = {
     conversationCreate,
     messagePost,
     reason,
+    stepPayloadUpdate,
     followupRespond,
     followupAct,
     followupSnooze,

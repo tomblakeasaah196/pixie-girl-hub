@@ -78,6 +78,21 @@ async function rejectPlan(req, res) {
     }),
   });
 }
+async function continuePlan(req, res) {
+  res.json({
+    data: await service.continuePlan({ ...base(req), id: req.params.planId }),
+  });
+}
+async function updatePlanStep(req, res) {
+  res.json({
+    data: await service.updatePlanStep({
+      ...base(req),
+      planId: req.params.planId,
+      stepId: req.params.stepId,
+      payload: req.body.payload,
+    }),
+  });
+}
 
 // Follow-ups (accountability state machine)
 async function listFollowups(req, res) {
@@ -218,6 +233,8 @@ module.exports = {
   getPlan,
   confirmPlan,
   rejectPlan,
+  continuePlan,
+  updatePlanStep,
   listFollowups,
   respondFollowup,
   reasonFollowup,

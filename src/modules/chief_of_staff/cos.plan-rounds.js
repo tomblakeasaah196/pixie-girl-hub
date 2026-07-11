@@ -1,0 +1,243 @@
+/**
+ * Chief of Staff — multi-round plan building.
+ *
+ * One completion cannot reliably carry a whole plan: long narration plus a
+ * dozen tool-call payloads hits the output-token cap (finish_reason='length')
+ * and every remaining step silently vanishes — the "promised 4 milestones and
+ * 6 tasks, created only the goal" bug. Some vendors also under-emit parallel
+ * tool calls even without truncation.
+ *
+ * runPlanRounds() therefore loops the model over BOUNDED rounds within one
+ * turn: after each round its tool calls are acknowledged with queued-step
+ * stubs (so cross-step `{{step:N.field}}` numbering stays global) and the
+ * model is asked to continue until it replies with no further tool calls.
+ * Two extra guards ride along:
+ *
+ *   - broken promise: a reply that says "let me fire it all in now" with NO
+ *     tool calls gets ONE corrective retry; if the retry still proposes
+ *     nothing, the caller is told (broken_promise) so it can append an honest
+ *     "nothing was queued" note instead of shipping the empty promise.
+ *   - narrated-kind check: when the reply describes milestones/tasks/events/
+ *     notes but no tool call of that kind was emitted, a continuation round
+ *     is forced even without truncation.
+ *
+ * When the round/step budget runs out before the model finishes, the caller
+ * persists the plan with is_complete=false and the CEO can resume it via
+ * POST /cos/plans/:id/continue (which calls this loop again with stepOffset).
+ * Pure orchestration — no DB, no HTTP; `chat` is injected (llm-router shaped).
+ */
+
+"use strict";
+
+// 1 opening call + up to 3 continuations per invocation. Each call is metered
+// on the governance ledger by the caller, so the ceiling also bounds spend.
+const MAX_PLAN_ROUNDS = 4;
+// Hard ceiling on steps accumulated in one invocation (mirrors the tool cap).
+const MAX_PLAN_STEPS = 40;
+
+// First-person commitment with nothing attached — "Let me fire it all in
+// now", "I'll set this up", "Let me start building". Deliberately requires a
+// commitment verb so plain chat ("let me know", "let me think") never trips.
+const PROMISE_RE =
+  /\b(let me|i(?:'|’)ll|i will|i am going to|i(?:'|’)m going to)\s+(now\s+)?(go ahead and\s+)?(fire|fir(?:e|ing)|set(?:ting)? (?:this|that|it|everything) up|set up|build|start building|creat|draft|add|queue|schedul|put (?:this|that|it) (?:in|together)|lay (?:it|this|that) (?:all )?(?:in|out))/i;
+
+// Narrated step kinds vs the tool calls actually emitted. Tool names are the
+// safeName'd catalogue keys (workspace_add_milestone, workspace_create_task,
+// workspace_create_event, workspace_create_note, …) so a substring match on
+// the kind is enough.
+const KINDS = [
+  { name: "milestones", narrated: /\bmilestones?\b/i, tool: "milestone" },
+  { name: "tasks", narrated: /\btasks?\b/i, tool: "task" },
+  { name: "calendar events", narrated: /\bcalendar\b|\bevents?\b|\bcheck-?ins?\b/i, tool: "event" },
+  { name: "notes", narrated: /\bnotes?\b/i, tool: "note" },
+];
+
+/** True when the reply commits to acting ("let me fire it all in now"). */
+function promisesAction(content) {
+  return PROMISE_RE.test(String(content || ""));
+}
+
+/** Kinds the narration describes but no emitted tool call covers. */
+function missingKinds(content, toolCalls) {
+  const names = (toolCalls || []).map(
+    (c) => (c && c.function && c.function.name) || "",
+  );
+  return KINDS.filter(
+    (k) => k.narrated.test(String(content || "")) && !names.some((n) => n.includes(k.tool)),
+  ).map((k) => k.name);
+}
+
+/** Copy calls, guaranteeing each has an id (tool replay needs matching ids). */
+function normaliseCalls(calls, startIndex) {
+  return (calls || [])
+    .filter((c) => c && c.function && c.function.name)
+    .map((c, i) => ({ ...c, id: c.id || `plan_step_${startIndex + i}` }));
+}
+
+/**
+ * The replayed assistant turn + queued-step stubs + continue nudge appended
+ * between rounds. Stubs carry the GLOBAL step index so `{{step:N.field}}`
+ * tokens written in later rounds point at the right earlier step.
+ */
+function continuationMessages({ completion, calls, startIndex, missing }) {
+  const assistant = {
+    role: "assistant",
+    content: completion.content || "",
+    tool_calls: calls,
+  };
+  // DeepSeek reasoner models 400 unless reasoning_content is round-tripped.
+  if (completion.reasoning_content) assistant.reasoning_content = completion.reasoning_content;
+
+  const stubs = calls.map((call, i) => ({
+    role: "tool",
+    tool_call_id: call.id,
+    content: JSON.stringify({
+      queued: true,
+      plan_step: startIndex + i,
+      note:
+        `Queued for the CEO's approval as plan step ${startIndex + i}. ` +
+        `Reference its future result with {{step:${startIndex + i}.field}} tokens ` +
+        `(e.g. {{step:${startIndex + i}.goal_id}}).`,
+    }),
+  }));
+
+  const nudge = {
+    role: "user",
+    content:
+      "Continue building the SAME plan: emit the remaining steps as tool calls now" +
+      (missing && missing.length
+        ? ` — you described ${missing.join(", ")} that are not queued yet`
+        : "") +
+      ". Never repeat a step that is already queued; keep using the step numbering above for cross-step tokens. " +
+      "If every step is queued, reply with exactly DONE and no tool calls.",
+  };
+
+  return [assistant, ...stubs, nudge];
+}
+
+const RETRY_NUDGE =
+  "You said you would set that up, but your reply contained no tool calls, so NOTHING was queued. " +
+  "Emit the tool calls for the WHOLE plan now. If you are genuinely still missing information, " +
+  "ask for it plainly instead — without promising action.";
+
+/**
+ * Run the bounded plan-building loop.
+ *
+ * @param {object}  args
+ * @param {(messages: Array) => Promise<object>} args.chat
+ *        One llm-router-shaped completion call ({content, tool_calls,
+ *        finish_reason, reasoning_content, usage, …}).
+ * @param {Array}   args.messages     the turn's opening messages
+ * @param {number}  [args.stepOffset=0]
+ *        Global index of the first step this invocation will queue — 0 for a
+ *        fresh turn, `existing step count` when continuing a saved plan.
+ * @param {boolean} [args.detectFromContent=true]
+ *        Apply the narrated-kind check (on for chat turns, off for /continue
+ *        where the narration lives in an earlier turn).
+ * @returns {Promise<{content:string, tool_calls:Array, complete:boolean,
+ *                    completions:Array, broken_promise:boolean}>}
+ *          `tool_calls` is the ACCUMULATED, id-normalised list across rounds;
+ *          `complete=false` means the budget ran out with steps still owed;
+ *          every entry of `completions` must be usage-metered by the caller.
+ */
+async function runPlanRounds({ chat, messages, stepOffset = 0, detectFromContent = true }) {
+  const completions = [];
+  const allCalls = [];
+  let msgs = [...messages];
+  let content = "";
+  let complete = true;
+
+  for (let round = 0; round < MAX_PLAN_ROUNDS; round++) {
+    let completion;
+    try {
+      completion = await chat(msgs);
+    } catch (err) {
+      // Round 0 failing is the caller's stub path. A CONTINUATION round
+      // failing must not torch the steps already gathered — salvage them as
+      // an incomplete (resumable) plan instead.
+      if (round === 0 || !allCalls.length) throw err;
+      complete = false;
+      break;
+    }
+    completions.push(completion);
+
+    if (round === 0) {
+      content = String(completion.content || "").trim();
+
+      // Broken-promise retry: committed to act, attached nothing.
+      if (!(completion.tool_calls || []).length && promisesAction(content)) {
+        msgs = [
+          ...msgs,
+          { role: "assistant", content },
+          { role: "user", content: RETRY_NUDGE },
+        ];
+        const retry = await chat(msgs);
+        completions.push(retry);
+        if ((retry.tool_calls || []).length) {
+          completion = retry;
+          const t = String(retry.content || "").trim();
+          if (t && t.toUpperCase() !== "DONE") content = t;
+        } else {
+          const t = String(retry.content || "").trim();
+          if (t) content = t; // the retry was asked to rephrase honestly
+          return {
+            content,
+            tool_calls: [],
+            complete: true,
+            completions,
+            broken_promise: promisesAction(content),
+          };
+        }
+      }
+    }
+
+    let calls = normaliseCalls(completion.tool_calls, stepOffset + allCalls.length);
+    if (!calls.length) break; // plain chat turn (round 0) or DONE (later)
+
+    let droppedByCap = false;
+    if (allCalls.length + calls.length > MAX_PLAN_STEPS) {
+      calls = calls.slice(0, MAX_PLAN_STEPS - allCalls.length);
+      droppedByCap = true; // steps were cut — the plan cannot be complete
+    }
+
+    const owed =
+      droppedByCap ||
+      completion.finish_reason === "length" ||
+      (detectFromContent && missingKinds(content, [...allCalls, ...calls]).length > 0);
+
+    if (!owed) {
+      allCalls.push(...calls);
+      break;
+    }
+    if (round === MAX_PLAN_ROUNDS - 1 || allCalls.length + calls.length >= MAX_PLAN_STEPS) {
+      // Budget spent with steps still owed — persist what we have, resumable.
+      allCalls.push(...calls);
+      complete = false;
+      break;
+    }
+
+    msgs = [
+      ...msgs,
+      ...continuationMessages({
+        completion,
+        calls,
+        startIndex: stepOffset + allCalls.length,
+        missing: detectFromContent ? missingKinds(content, [...allCalls, ...calls]) : [],
+      }),
+    ];
+    allCalls.push(...calls);
+  }
+
+  return { content, tool_calls: allCalls, complete, completions, broken_promise: false };
+}
+
+module.exports = {
+  runPlanRounds,
+  // internals exposed for tests
+  promisesAction,
+  missingKinds,
+  continuationMessages,
+  normaliseCalls,
+  MAX_PLAN_ROUNDS,
+  MAX_PLAN_STEPS,
+};

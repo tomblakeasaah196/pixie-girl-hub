@@ -108,6 +108,24 @@ async function listGoals({
   return { data: rows, page, page_size, total: c[0].total };
 }
 
+/**
+ * Case-insensitive live-goal title lookup — the Chief-of-Staff duplicate
+ * guard. Only active/on_hold goals count: re-using the title of an archived
+ * or achieved goal is legitimate.
+ */
+async function findActiveByTitle({ client, business, title }) {
+  const { rows } = await ex(client)(
+    `SELECT goal_id, title, status, created_at
+       FROM shared.goals
+      WHERE business = $1 AND lower(title) = lower($2)
+        AND is_deleted = false AND status IN ('active','on_hold')
+      ORDER BY created_at ASC
+      LIMIT 1`,
+    [business, title],
+  );
+  return rows[0] || null;
+}
+
 async function findGoal({ client, brand, id }) {
   const { rows } = await ex(client)(
     `SELECT g.*, uo.display_name AS owner_name
@@ -397,6 +415,7 @@ module.exports = {
   createGoal,
   listGoals,
   findGoal,
+  findActiveByTitle,
   updateGoal,
   softDeleteGoal,
   recomputeProgress,

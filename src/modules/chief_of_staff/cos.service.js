@@ -20,6 +20,7 @@ const cosRepo = require("./cos.repo");
 const planExecutor = require("./cos.plan-executor");
 const persona = require("./cos.persona");
 const planner = require("./cos.planner");
+const planRounds = require("./cos.plan-rounds");
 const memory = require("./cos.memory");
 const settingsRepo = require("./cos.settings.repo");
 const goalsRepo = require("../../shared/goals/goals.repo");
@@ -245,59 +246,86 @@ async function runTurn({ client, user, brand, conversation, userMsg, userText })
     { role: "user", content: userText },
   ];
 
-  let completion;
+  // Bounded multi-round build: keeps asking the model for the remaining steps
+  // (truncation, under-emitting vendors) so "goal + milestones + tasks +
+  // events + note" actually arrives as one plan, not a lone create_goal.
+  let rounds;
   try {
-    completion = await llmRouter.chatWithFailover({
-      capability: "chat",
+    rounds = await planRounds.runPlanRounds({
+      chat: (msgs) =>
+        llmRouter.chatWithFailover({
+          capability: "chat",
+          messages: msgs,
+          tools,
+          user,
+          brand,
+          feature_key: FEATURE,
+        }),
       messages,
-      tools,
-      user,
-      brand,
-      feature_key: FEATURE,
     });
   } catch (err) {
     logger.error({ err: err.message }, "cos: llm-router failed — falling back to stub");
     return null;
   }
 
-  await recordUsageSafe({ user, brand, convId: conversation.conversation_id, completion, ok: true });
+  for (const completion of rounds.completions) {
+    await recordUsageSafe({
+      user,
+      brand,
+      convId: conversation.conversation_id,
+      completion,
+      ok: true,
+    });
+  }
 
   let plan = null;
-  if (completion.tool_calls && completion.tool_calls.length) {
+  if (rounds.tool_calls.length) {
     const built = await planner.planFromCompletion({
       client,
-      completion,
+      completion: { content: rounds.content, tool_calls: rounds.tool_calls },
       byName,
       conversation,
       userMsg,
       user,
       brand,
+      complete: rounds.complete,
     });
     if (built) plan = built;
   }
 
-  const replyText =
-    (completion.content && completion.content.trim()) ||
+  let replyText =
+    rounds.content ||
     (plan
       ? "Here's the plan I've put together — review the steps and approve to run them."
       : "Okay.");
+  // The model promised action twice and still queued nothing — say so plainly
+  // rather than shipping "let me fire it all in now" over an empty turn.
+  if (!plan && rounds.broken_promise) {
+    replyText +=
+      "\n\n_(Nothing has been queued yet — no steps were proposed. Say “go ahead” and I'll lay out the full plan for your approval.)_";
+  }
 
+  const last = rounds.completions[rounds.completions.length - 1];
+  const totalTokens = rounds.completions.reduce(
+    (s, c) => s + ((c.usage && c.usage.total_tokens) || 0),
+    0,
+  );
   const assistant = await praxisRepo.insertMessage({
     client,
     m: {
       conversation_id: conversation.conversation_id,
       role: "assistant",
       content: replyText,
-      provider: completion.vendor,
-      model: completion.model,
-      input_tokens: completion.usage.prompt_tokens || null,
-      output_tokens: completion.usage.completion_tokens || null,
+      provider: last.vendor,
+      model: last.model,
+      input_tokens: (last.usage && last.usage.prompt_tokens) || null,
+      output_tokens: (last.usage && last.usage.completion_tokens) || null,
     },
   });
   await praxisRepo.touchConversation({
     client,
     id: conversation.conversation_id,
-    tokens: completion.usage.total_tokens || 0,
+    tokens: totalTokens,
   });
   return { assistant_message: assistant, plan };
 }
@@ -393,6 +421,13 @@ async function postMessage({ user, brand, request_id, id, input }) {
         user_id: user.user_id,
         conversation_id: id,
       });
+      for (const supersededId of plan.superseded || []) {
+        events.emit("plan.resolved", {
+          plan_id: supersededId,
+          user_id: user.user_id,
+          status: "cancelled",
+        });
+      }
     }
     return {
       user_message: userMsg,
@@ -417,6 +452,192 @@ function confirmPlan({ user, request_id, id, auth_header }) {
 
 function rejectPlan({ user, request_id, id, reason }) {
   return planExecutor.rejectPlan({ user, request_id, id, reason });
+}
+
+/**
+ * Resume building a truncated plan (is_complete=false): another bounded round
+ * loop appends the owed steps to the SAME plan. LLM calls run OUTSIDE the DB
+ * transaction; only the append is transactional. Idempotent-friendly — a plan
+ * already marked complete returns as-is with no model call.
+ */
+async function continuePlan({ user, brand, request_id, id }) {
+  const plan = await cosRepo.findPlan({ id });
+  if (!plan || plan.proposed_by_user_id !== user.user_id)
+    throw new NotFoundError("Plan");
+  if (plan.status !== "proposed")
+    throw new AppError(
+      "BAD_STATE",
+      `Plan is ${plan.status} — only a proposed plan can keep building`,
+      422,
+      { user_message: "This plan can no longer be extended — ask me to re-plan instead." },
+    );
+  if (new Date(plan.expires_at) < new Date()) {
+    await cosRepo.setPlanStatus({ id, status: "expired" });
+    events.emit("plan.resolved", { plan_id: id, user_id: user.user_id, status: "expired" });
+    throw new AppError("EXPIRED", "This plan has expired — ask me to re-plan.", 410);
+  }
+
+  const existing = await cosRepo.listPlanSteps({ plan_id: id });
+  if (plan.is_complete) return { ...plan, steps: existing };
+
+  const guard = await governance.canUseFeature({
+    user_id: user.user_id,
+    feature_key: FEATURE,
+    is_ceo: user.is_ceo,
+    business: brand,
+  });
+  if (!guard.ok) {
+    throw new AppError("AI_UNAVAILABLE", stubReply(guard), 409, {
+      user_message: stubReply(guard),
+    });
+  }
+
+  const conversation = await praxisRepo.findConversation({ id: plan.conversation_id });
+  if (!conversation || conversation.user_id !== user.user_id)
+    throw new NotFoundError("Conversation");
+
+  const actions = await governance.listActions({ ai_enabled: true, surface: "workspace" });
+  const { tools, byName } = buildTools(actions);
+  if (!tools.length)
+    throw new AppError("AI_UNAVAILABLE", "No workspace actions are enabled.", 409, {
+      user_message: "No workspace actions are enabled right now — check AI Control.",
+    });
+
+  const prior = await praxisRepo.listMessages({ conversation_id: plan.conversation_id });
+  const history = prior
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .slice(-HISTORY_TURNS)
+    .map((m) => ({ role: m.role, content: m.content || "" }));
+
+  const settings = await settingsRepo.get({ user_id: user.user_id }).catch(() => null);
+  const queued = existing
+    .map((s) => `${s.plan_step}. ${s.human_summary || s.action_key}`)
+    .join("\n");
+  const messages = [
+    {
+      role: "system",
+      content: persona.systemPrompt({
+        brand,
+        user,
+        settings,
+        actionTitles: actions.map((a) => a.title),
+      }),
+    },
+    ...history,
+    {
+      role: "user",
+      content:
+        `Continue building the plan titled “${plan.title}”. Steps already queued (keep their numbering for {{step:N.field}} tokens):\n` +
+        `${queued}\n\n` +
+        `Emit ONLY the remaining steps as tool calls, continuing from step ${existing.length}. ` +
+        "Never repeat a queued step. If nothing is missing, reply with exactly DONE and no tool calls.",
+    },
+  ];
+
+  const rounds = await planRounds.runPlanRounds({
+    chat: (msgs) =>
+      llmRouter.chatWithFailover({
+        capability: "chat",
+        messages: msgs,
+        tools,
+        user,
+        brand,
+        feature_key: FEATURE,
+      }),
+    messages,
+    stepOffset: existing.length,
+    detectFromContent: false,
+  });
+  for (const completion of rounds.completions) {
+    await recordUsageSafe({ user, brand, convId: plan.conversation_id, completion, ok: true });
+  }
+
+  const built = planner.buildSteps({ toolCalls: rounds.tool_calls, byName });
+  const updated = await transaction(async (client) => {
+    if (built.length) {
+      await planner.persistSteps({
+        client,
+        plan_id: id,
+        conversation_id: plan.conversation_id,
+        message_id: null,
+        user,
+        brand,
+        steps: built,
+        startIndex: existing.length,
+      });
+    }
+    return cosRepo.setPlanBuildState({ client, id, is_complete: rounds.complete });
+  });
+
+  await audit({
+    business: plan.business,
+    user_id: user.user_id,
+    action_key: "cos.plan.continue",
+    target_type: "ai_pending_plan",
+    target_id: id,
+    after: { steps_added: built.length, is_complete: rounds.complete },
+    request_id,
+  });
+
+  const steps = await cosRepo.listPlanSteps({ plan_id: id });
+  return { ...updated, steps };
+}
+
+/**
+ * Edit a step's payload while it can still change — during review before
+ * approval ('proposed'), or after a step failure ('partially_failed', e.g.
+ * rename a duplicate goal title, then "Retry remaining"). The summary is
+ * regenerated so the card reflects the edit.
+ */
+const STEP_EDITABLE_PLAN_STATES = ["proposed", "partially_failed"];
+
+async function updatePlanStep({ user, request_id, planId, stepId, payload }) {
+  const plan = await cosRepo.findPlan({ id: planId });
+  if (!plan || plan.proposed_by_user_id !== user.user_id)
+    throw new NotFoundError("Plan");
+  if (!STEP_EDITABLE_PLAN_STATES.includes(plan.status))
+    throw new AppError(
+      "BAD_STATE",
+      `Plan is ${plan.status} — steps are only editable while the plan is proposed or after a step failure`,
+      422,
+      { user_message: "This plan is already running or resolved — its steps can't be edited." },
+    );
+
+  const steps = await cosRepo.listPlanSteps({ plan_id: planId });
+  const step = steps.find((s) => s.pending_id === stepId);
+  if (!step) throw new NotFoundError("Plan step");
+
+  const actions = await governance.listActions({ ai_enabled: true, surface: "workspace" });
+  const action =
+    actions.find((a) => a.action_key === step.action_key) || { title: step.action_key };
+  const human_summary = planner.summariseStep(action, payload);
+
+  const updated = await cosRepo.updateStepPayload({
+    id: stepId,
+    plan_id: planId,
+    payload,
+    human_summary,
+  });
+  if (!updated)
+    throw new AppError(
+      "BAD_STATE",
+      "Step is no longer editable (already confirmed or executed)",
+      422,
+      { user_message: "That step already ran — it can't be edited any more." },
+    );
+
+  await audit({
+    business: plan.business,
+    user_id: user.user_id,
+    action_key: "cos.plan.step.update",
+    target_type: "ai_pending_action",
+    target_id: stepId,
+    after: { payload, human_summary },
+    request_id,
+  });
+
+  const refreshed = await cosRepo.listPlanSteps({ plan_id: planId });
+  return { ...plan, steps: refreshed };
 }
 
 // ── Save conversation to Workspace Notes ──────────────────
@@ -582,6 +803,8 @@ module.exports = {
   getPlan,
   confirmPlan,
   rejectPlan,
+  continuePlan,
+  updatePlanStep,
   saveConversationAsNote,
   listWorkspaceActions,
   // internals exposed for tests

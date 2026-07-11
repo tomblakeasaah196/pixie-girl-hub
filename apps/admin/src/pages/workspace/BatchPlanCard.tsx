@@ -23,11 +23,15 @@ import {
   ChevronDown,
   Clock,
   RotateCw,
+  Pencil,
+  ListPlus,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import {
   useConfirmCosPlan,
+  useContinueCosPlan,
   useRejectCosPlan,
+  useUpdateCosPlanStep,
   type Plan,
   type PlanStep,
   type StepStatus,
@@ -67,10 +71,45 @@ const STEP_CHIP: Record<StepStatus, { label: string; cls: string }> = {
   expired: { label: "Expired", cls: "text-text-faint bg-text-primary/[0.06]" },
 };
 
-function StepRow({ step }: { step: PlanStep }) {
+function StepRow({
+  step,
+  editable,
+  saving,
+  onSavePayload,
+}: {
+  step: PlanStep;
+  editable: boolean;
+  saving: boolean;
+  onSavePayload: (stepId: string, payload: Record<string, unknown>) => void;
+}) {
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [parseError, setParseError] = useState<string | null>(null);
   const chip = STEP_CHIP[step.status] ?? STEP_CHIP.proposed;
   const hasPayload = step.payload && Object.keys(step.payload).length > 0;
+
+  function startEdit() {
+    setDraft(JSON.stringify(step.payload ?? {}, null, 2));
+    setParseError(null);
+    setEditing(true);
+  }
+
+  function saveEdit() {
+    try {
+      const parsed: unknown = JSON.parse(draft);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        setParseError("The payload must be a JSON object.");
+        return;
+      }
+      setParseError(null);
+      onSavePayload(step.pending_id, parsed as Record<string, unknown>);
+      setEditing(false);
+    } catch {
+      setParseError("That isn't valid JSON — check quotes, commas and braces.");
+    }
+  }
+
   return (
     <div className="rounded-[12px] bg-text-primary/[0.02] border hairline px-3 py-2">
       <div className="flex items-start gap-2">
@@ -80,7 +119,17 @@ function StepRow({ step }: { step: PlanStep }) {
         <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold", chip.cls)}>
           {chip.label}
         </span>
-        {hasPayload && (
+        {editable && !editing && (
+          <button
+            type="button"
+            onClick={startEdit}
+            className="shrink-0 text-text-faint hover:text-accent-glow"
+            aria-label="Edit this step before running it"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+          </button>
+        )}
+        {hasPayload && !editing && (
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
@@ -95,10 +144,45 @@ function StepRow({ step }: { step: PlanStep }) {
       {step.status === "failed" && step.execution_error && (
         <div className="mt-1 text-[11px] text-danger">{step.execution_error}</div>
       )}
-      {open && hasPayload && (
-        <pre className="mt-2 overflow-x-auto rounded-lg bg-black/30 border border-line p-2 text-[11px] leading-relaxed text-text-muted">
-          {JSON.stringify(step.payload, null, 2)}
-        </pre>
+      {editing ? (
+        <div className="mt-2">
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            rows={Math.min(14, Math.max(4, draft.split("\n").length))}
+            spellCheck={false}
+            aria-label="Step payload (JSON)"
+            className="w-full rounded-lg bg-black/30 border border-line p-2 font-mono text-[11px] leading-relaxed text-text-primary focus:outline-none focus:border-accent/50"
+          />
+          {parseError && <div className="mt-1 text-[11px] text-danger">{parseError}</div>}
+          <div className="mt-1.5 flex items-center gap-2">
+            <button
+              type="button"
+              disabled={saving}
+              onClick={saveEdit}
+              className="inline-flex items-center gap-1 rounded-lg bg-accent/15 border border-accent/30 px-2.5 py-1 text-[11.5px] font-semibold text-accent-glow hover:bg-accent/25 disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+              Save step
+            </button>
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => setEditing(false)}
+              className="inline-flex items-center gap-1 rounded-lg border hairline px-2.5 py-1 text-[11.5px] text-text-muted hover:text-text-primary disabled:opacity-50"
+            >
+              <X className="w-3 h-3" />
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        open &&
+        hasPayload && (
+          <pre className="mt-2 overflow-x-auto rounded-lg bg-black/30 border border-line p-2 text-[11px] leading-relaxed text-text-muted">
+            {JSON.stringify(step.payload, null, 2)}
+          </pre>
+        )
       )}
     </div>
   );
@@ -128,6 +212,8 @@ export function BatchPlanCard({
 }) {
   const confirm = useConfirmCosPlan(conversationId);
   const reject = useRejectCosPlan(conversationId);
+  const continueBuild = useContinueCosPlan(conversationId);
+  const updateStep = useUpdateCosPlanStep(conversationId);
 
   const grouped = useMemo(() => {
     const steps = [...plan.steps].sort((a, b) => a.plan_step - b.plan_step);
@@ -138,8 +224,21 @@ export function BatchPlanCard({
   }, [plan.steps]);
 
   const isProposed = plan.status === "proposed";
-  const isBusy = confirm.isPending || reject.isPending || plan.status === "executing";
+  const isBusy =
+    confirm.isPending ||
+    reject.isPending ||
+    continueBuild.isPending ||
+    plan.status === "executing";
   const doneCount = plan.steps.filter((s) => s.status === "executed").length;
+
+  // A step is editable while under review (proposed) or after it failed —
+  // fix the payload (e.g. rename a duplicate goal), then "Retry remaining".
+  const stepEditable = (s: PlanStep) =>
+    (plan.status === "proposed" && s.status === "proposed") ||
+    (plan.status === "partially_failed" && s.status === "failed");
+
+  const savePayload = (stepId: string, payload: Record<string, unknown>) =>
+    updateStep.mutate({ planId: plan.plan_id, stepId, payload });
 
   return (
     <div className="rounded-[18px] border border-accent/25 bg-[linear-gradient(160deg,rgb(var(--accent)/0.06),transparent)] backdrop-blur-xl overflow-hidden">
@@ -171,7 +270,13 @@ export function BatchPlanCard({
             </div>
             <div className="space-y-1.5">
               {g.steps.map((s) => (
-                <StepRow key={s.pending_id} step={s} />
+                <StepRow
+                  key={s.pending_id}
+                  step={s}
+                  editable={stepEditable(s)}
+                  saving={updateStep.isPending}
+                  onSavePayload={savePayload}
+                />
               ))}
             </div>
           </div>
@@ -181,27 +286,50 @@ export function BatchPlanCard({
       {/* Footer — one Approve / one Reject, or live status */}
       <div className="px-4 py-3 border-t hairline">
         {isProposed ? (
-          <div className="flex items-center gap-2" role="group" aria-label={`Approve or reject: ${plan.title}`}>
-            <button
-              type="button"
-              disabled={isBusy}
-              onClick={() => confirm.mutate(plan.plan_id)}
-              aria-label={`Approve plan “${plan.title}”`}
-              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl bg-accent text-bg px-4 py-2 text-[13px] font-semibold hover:bg-accent-glow disabled:opacity-50 whitespace-nowrap"
-            >
-              {confirm.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-              Approve plan
-            </button>
-            <button
-              type="button"
-              disabled={isBusy}
-              onClick={() => reject.mutate({ planId: plan.plan_id })}
-              aria-label={`Reject plan “${plan.title}”`}
-              className="inline-flex items-center justify-center gap-1.5 rounded-xl border hairline px-3.5 py-2 text-[13px] text-text-muted hover:text-text-primary hover:border-line disabled:opacity-50 whitespace-nowrap"
-            >
-              <X className="w-3.5 h-3.5" />
-              Reject
-            </button>
+          <div className="space-y-2.5">
+            {plan.is_complete === false && (
+              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-warn/30 bg-warn/[0.06] px-3 py-2">
+                <AlertTriangle className="w-3.5 h-3.5 text-warn shrink-0" />
+                <span className="flex-1 min-w-[180px] text-[12px] text-text-muted">
+                  This plan isn't fully built yet — more steps are still owed.
+                </span>
+                <button
+                  type="button"
+                  disabled={isBusy}
+                  onClick={() => continueBuild.mutate(plan.plan_id)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-warn/40 px-3 py-1.5 text-[12px] font-semibold text-warn hover:bg-warn/10 disabled:opacity-50 whitespace-nowrap"
+                >
+                  {continueBuild.isPending ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : (
+                    <ListPlus className="w-3 h-3" />
+                  )}
+                  Continue building
+                </button>
+              </div>
+            )}
+            <div className="flex items-center gap-2" role="group" aria-label={`Approve or reject: ${plan.title}`}>
+              <button
+                type="button"
+                disabled={isBusy}
+                onClick={() => confirm.mutate(plan.plan_id)}
+                aria-label={`Approve plan “${plan.title}”`}
+                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 rounded-xl bg-accent text-bg px-4 py-2 text-[13px] font-semibold hover:bg-accent-glow disabled:opacity-50 whitespace-nowrap"
+              >
+                {confirm.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                {plan.is_complete === false ? "Approve as-is" : "Approve plan"}
+              </button>
+              <button
+                type="button"
+                disabled={isBusy}
+                onClick={() => reject.mutate({ planId: plan.plan_id })}
+                aria-label={`Reject plan “${plan.title}”`}
+                className="inline-flex items-center justify-center gap-1.5 rounded-xl border hairline px-3.5 py-2 text-[13px] text-text-muted hover:text-text-primary hover:border-line disabled:opacity-50 whitespace-nowrap"
+              >
+                <X className="w-3.5 h-3.5" />
+                Reject
+              </button>
+            </div>
           </div>
         ) : plan.status === "executing" ? (
           <span role="status" aria-live="polite" className="inline-flex items-center gap-2 text-[12.5px] text-accent-glow">
@@ -209,7 +337,8 @@ export function BatchPlanCard({
           </span>
         ) : plan.status === "executed" ? (
           <span role="status" className="inline-flex items-center gap-1.5 text-[12.5px] text-green-300">
-            <Check className="w-3.5 h-3.5" /> Plan completed — all {plan.steps.length} steps done.
+            <Check className="w-3.5 h-3.5" /> Plan completed —{" "}
+            {plan.steps.length === 1 ? "1 step" : `all ${plan.steps.length} steps`} done.
           </span>
         ) : plan.status === "partially_failed" ? (
           <div className="flex items-center gap-3" role="status">
@@ -226,6 +355,8 @@ export function BatchPlanCard({
               Retry remaining
             </button>
           </div>
+        ) : plan.status === "cancelled" ? (
+          <span className="text-[12px] text-text-faint">Superseded by a newer plan.</span>
         ) : (
           <span className="text-[12px] text-text-faint capitalize">{plan.status}</span>
         )}

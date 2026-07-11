@@ -143,8 +143,14 @@ function buildSteps({ toolCalls, byName }) {
 
 /**
  * Persist a plan + its steps inside the caller's transaction. Returns
- * { plan, steps } or null when the completion proposed no actions (a plain
- * chat reply). `completion.content` becomes the plan summary.
+ * { plan, steps, superseded } or null when the completion proposed no actions
+ * (a plain chat reply). `completion.content` becomes the plan summary.
+ *
+ * Proposing a plan CANCELS every other still-proposed plan in the same
+ * conversation (superseded ids are returned so the caller can emit events):
+ * stale duplicate cards staying approvable is how the CEO ended up with two
+ * identical goals. `complete=false` marks a plan whose build budget ran out —
+ * the CEO can append the owed steps via POST /cos/plans/:id/continue.
  */
 async function planFromCompletion({
   client,
@@ -154,6 +160,7 @@ async function planFromCompletion({
   userMsg,
   user,
   brand,
+  complete = true,
 }) {
   const steps = buildSteps({ toolCalls: completion.tool_calls, byName });
   if (!steps.length) return null;
@@ -171,18 +178,52 @@ async function planFromCompletion({
       proposed_by_user_id: user.user_id,
       title,
       summary,
+      is_complete: complete,
     },
   });
 
+  const superseded = await repo.supersedeOtherProposedPlans({
+    client,
+    conversation_id: conversation.conversation_id,
+    except_plan_id: plan.plan_id,
+  });
+
+  const persisted = await persistSteps({
+    client,
+    plan_id: plan.plan_id,
+    conversation_id: conversation.conversation_id,
+    message_id: userMsg ? userMsg.message_id : null,
+    user,
+    brand,
+    steps,
+    startIndex: 0,
+  });
+  return { plan, steps: persisted, superseded };
+}
+
+/**
+ * Persist built steps under an existing plan, numbering from `startIndex` —
+ * shared by the fresh-plan path (startIndex 0) and /continue (append).
+ */
+async function persistSteps({
+  client,
+  plan_id,
+  conversation_id,
+  message_id,
+  user,
+  brand,
+  steps,
+  startIndex,
+}) {
   const persisted = [];
-  for (let step = 0; step < steps.length; step++) {
-    const s = steps[step];
+  for (let i = 0; i < steps.length; i++) {
+    const s = steps[i];
     persisted.push(
       await repo.createPlanStep({
         client,
         s: {
-          conversation_id: conversation.conversation_id,
-          message_id: userMsg ? userMsg.message_id : null,
+          conversation_id,
+          message_id: message_id || null,
           proposed_by_user_id: user.user_id,
           business: brand,
           action_id: s.action_id,
@@ -192,13 +233,13 @@ async function planFromCompletion({
           payload: s.payload,
           human_summary: s.human_summary,
           confidence: s.confidence,
-          plan_id: plan.plan_id,
-          plan_step: step,
+          plan_id,
+          plan_step: startIndex + i,
         },
       }),
     );
   }
-  return { plan, steps: persisted };
+  return persisted;
 }
 
 module.exports = {
@@ -208,5 +249,6 @@ module.exports = {
   buildSteps,
   summariseStep,
   planFromCompletion,
+  persistSteps,
   TOKEN_RE,
 };

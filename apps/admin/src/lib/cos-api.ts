@@ -74,6 +74,8 @@ export interface Plan {
   title: string;
   summary: string;
   status: PlanStatus;
+  /** false while the model still owes steps — the card offers "Continue building". */
+  is_complete: boolean;
   expires_at: string;
   created_at: string;
   steps: PlanStep[];
@@ -261,6 +263,39 @@ export function useRejectCosPlan(conversationId: string) {
       api.post<Plan>(`/cos/plans/${planId}/reject`, { reason }),
     onSuccess: (updated) => patchPlan(qc, conversationId, updated),
     onError: (err) => toastReport("Chief of Staff → Plan", "Reject plan", err),
+  });
+}
+
+/**
+ * Resume building a truncated plan (is_complete=false): the CoS appends the
+ * owed steps to the SAME plan. Returns the refreshed plan incl. all steps.
+ */
+export function useContinueCosPlan(conversationId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (planId: string) =>
+      api.post<Plan>(`/cos/plans/${planId}/continue`),
+    onSuccess: (updated) => patchPlan(qc, conversationId, updated),
+    onError: (err) =>
+      toastReport("Chief of Staff → Plan", "Continue building", err),
+  });
+}
+
+/** Edit a step's payload before firing (or after a failure, then retry). */
+export function useUpdateCosPlanStep(conversationId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      planId,
+      stepId,
+      payload,
+    }: {
+      planId: string;
+      stepId: string;
+      payload: Record<string, unknown>;
+    }) => api.patch<Plan>(`/cos/plans/${planId}/steps/${stepId}`, { payload }),
+    onSuccess: (updated) => patchPlan(qc, conversationId, updated),
+    onError: (err) => toastReport("Chief of Staff → Plan", "Edit step", err),
   });
 }
 

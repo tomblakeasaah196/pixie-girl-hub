@@ -51,6 +51,41 @@ type Block =
   | { kind: "code"; lang?: string; text: string }
   | { kind: "table"; head: string[]; rows: string[][] };
 
+const UL_RE = /^[-*]\s+/;
+const OL_RE = /^\d+\.\s+/;
+
+/**
+ * Collect a list starting at `start`, tolerating blank lines between items
+ * (a "loose" list) as long as the next non-blank line is another item of the
+ * same kind. Returns the stripped item texts and the index just past the list.
+ */
+function collectList(
+  lines: string[],
+  start: number,
+  re: RegExp,
+): { items: string[]; next: number } {
+  const items: string[] = [];
+  let i = start;
+  while (i < lines.length) {
+    if (re.test(lines[i])) {
+      items.push(lines[i].replace(re, ""));
+      i++;
+      continue;
+    }
+    if (!lines[i].trim()) {
+      // Peek past blank line(s): another item of the same kind ⇒ same list.
+      let j = i;
+      while (j < lines.length && !lines[j].trim()) j++;
+      if (j < lines.length && re.test(lines[j])) {
+        i = j;
+        continue;
+      }
+    }
+    break;
+  }
+  return { items, next: i };
+}
+
 function parseBlocks(src: string): Block[] {
   const lines = src.replace(/\r\n/g, "\n").split("\n");
   const blocks: Block[] = [];
@@ -110,23 +145,21 @@ function parseBlocks(src: string): Block[] {
       blocks.push({ kind: "table", head, rows });
       continue;
     }
-    // Lists
-    if (/^[-*]\s+/.test(line)) {
-      const items: string[] = [];
-      while (i < lines.length && /^[-*]\s+/.test(lines[i])) {
-        items.push(lines[i].replace(/^[-*]\s+/, ""));
-        i++;
-      }
+    // Lists — coalesce "loose" lists (items separated by a blank line) into a
+    // single block, so an ordered list renders 1, 2, 3… rather than a run of
+    // separate one-item lists each restarting at 1. The model commonly emits
+    // `1.` for every item and spaces them with blank lines; grouping them here
+    // lets `list-decimal` number them sequentially regardless.
+    if (UL_RE.test(line)) {
+      const { items, next } = collectList(lines, i, UL_RE);
       blocks.push({ kind: "ul", items });
+      i = next;
       continue;
     }
-    if (/^\d+\.\s+/.test(line)) {
-      const items: string[] = [];
-      while (i < lines.length && /^\d+\.\s+/.test(lines[i])) {
-        items.push(lines[i].replace(/^\d+\.\s+/, ""));
-        i++;
-      }
+    if (OL_RE.test(line)) {
+      const { items, next } = collectList(lines, i, OL_RE);
       blocks.push({ kind: "ol", items });
+      i = next;
       continue;
     }
     // Paragraph (consume until blank line).

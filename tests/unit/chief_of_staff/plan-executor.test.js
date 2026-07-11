@@ -88,6 +88,49 @@ test("fails a step whose token cannot resolve (no such prior result)", async () 
   expect(steps[0].execution_error).toMatch(/cross-step reference/i);
 });
 
+test("confirmPlan stamps confirmed_by_user_id on each proposed step (no 409)", async () => {
+  // Regression for the ACTION_BLOCKED (P0001) 409 on Approve plan: flipping a
+  // step proposed → confirmed must carry confirmed_by_user_id, or the
+  // ai_pending_actions confirm trigger raises.
+  const plan = {
+    plan_id: "plan-9",
+    proposed_by_user_id: "u1",
+    business: "pixiegirl",
+    status: "proposed",
+    expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  };
+  const steps = [
+    { pending_id: "p0", plan_step: 0, status: "proposed", method: "POST", route: "/api/v1/goals", business: "pixiegirl", payload: { title: "Launch" } },
+  ];
+  repo.findPlan.mockImplementation(async () => ({ ...plan }));
+  repo.listPlanSteps.mockImplementation(async () => steps);
+  repo.setPlanStatus.mockImplementation(async ({ status, fields = {} }) => {
+    Object.assign(plan, { status, ...fields });
+    return { ...plan };
+  });
+  repo.setStepStatus.mockImplementation(async ({ id, status, fields = {} }) => {
+    const s = steps.find((x) => x.pending_id === id);
+    Object.assign(s, { status, ...fields });
+    return s;
+  });
+  executor.executeAction.mockResolvedValue({ ok: true, http_status: 201, result: { data: { goal_id: "g-9" } } });
+
+  const out = await planExec.confirmPlan({
+    user: { user_id: "u1" },
+    request_id: "r9",
+    id: "plan-9",
+    auth_header: "Bearer x",
+  });
+
+  expect(out.status).toBe("executed");
+  const confirmCall = repo.setStepStatus.mock.calls.find(
+    ([a]) => a.id === "p0" && a.status === "confirmed",
+  );
+  expect(confirmCall).toBeTruthy();
+  expect(confirmCall[0].fields.confirmed_by_user_id).toBe("u1");
+  expect(confirmCall[0].fields.confirmed_at).toBeTruthy();
+});
+
 test("resume skips already-executed steps and re-seeds their results", async () => {
   const steps = [
     { pending_id: "p0", plan_step: 0, status: "executed", method: "POST", route: "/api/v1/goals", business: "pixiegirl", payload: { title: "Launch" }, execution_result: { data: { goal_id: "g-1" } } },

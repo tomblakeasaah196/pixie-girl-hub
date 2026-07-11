@@ -22,8 +22,57 @@
 
 "use strict";
 
+const os = require("os");
+const path = require("path");
+const fs = require("fs/promises");
+const crypto = require("crypto");
 const instagram = require("../../services/instagram.service");
+const storage = require("../../services/storage.service");
+const ffmpeg = require("./media.ffmpeg");
 const { logger } = require("../../config/logger");
+
+// Audio formats Instagram DM attachments accept as-is (aac/m4a/wav/mp4).
+// Anything else (notably the browser's webm/opus voice note) must be
+// transcoded or Meta rejects it with code 100, subcode 2534080.
+const IG_AUDIO_OK = new Set([
+  "audio/aac",
+  "audio/mp4",
+  "audio/m4a",
+  "audio/x-m4a",
+  "audio/wav",
+  "audio/x-wav",
+  "audio/wave",
+  "audio/vnd.wave",
+]);
+
+/**
+ * Transcode a stored voice note to m4a (AAC) and re-host it, returning the
+ * new public URL that Meta can fetch. Returns null when the source is
+ * already an accepted format (send as-is) or when we don't hold the
+ * storage key. Throws only if the transcode itself fails — the caller
+ * falls back to sending the note as a downloadable link.
+ */
+async function transcodeIgAudio({ media_key, source_mime }) {
+  if (!media_key) return null;
+  if (source_mime && IG_AUDIO_OK.has(String(source_mime).toLowerCase())) {
+    return null;
+  }
+  const stamp = crypto.randomBytes(8).toString("hex");
+  const inAbs = path.join(os.tmpdir(), `igaudio-${stamp}.in`);
+  const outAbs = path.join(os.tmpdir(), `igaudio-${stamp}.m4a`);
+  try {
+    const buf = await storage.get(media_key);
+    await fs.writeFile(inAbs, buf);
+    await ffmpeg.transcodeAudioToAac(inAbs, outAbs);
+    const outBuf = await fs.readFile(outAbs);
+    const outKey = `${media_key}.m4a`;
+    await storage.put(outBuf, { key: outKey, contentType: "audio/mp4" });
+    return storage.absoluteUrl(outKey) || null;
+  } finally {
+    fs.unlink(inAbs).catch(() => {});
+    fs.unlink(outAbs).catch(() => {});
+  }
+}
 
 // Delivery outcomes route through the service (not the repo) so the
 // status change also emits message.edited — the operator's open thread
@@ -69,6 +118,28 @@ module.exports = async function process(job) {
     }
     return { skipped: true };
   }
+  // Voice notes: convert the browser's webm/opus recording to an
+  // Instagram-accepted m4a before sending. If transcoding isn't available
+  // (no ffmpeg), degrade gracefully to a downloadable link so the note
+  // still reaches the customer instead of failing outright.
+  if (data.media_kind === "audio" && data.media_url) {
+    const originalUrl = data.media_url;
+    try {
+      const converted = await transcodeIgAudio({
+        media_key: data.media_key,
+        source_mime: data.source_mime,
+      });
+      if (converted) data.media_url = converted;
+    } catch (err) {
+      logger.warn(
+        { jobId: job.id, brand: data.brand, err: err.message },
+        "instagram-send: voice-note transcode failed — sending as link",
+      );
+      data.media_url = null;
+      data.media_key = undefined;
+      data.text = `🎤 Voice note: ${originalUrl}`;
+    }
+  }
   try {
     let res;
     if (data.media_url) {
@@ -112,7 +183,23 @@ module.exports = async function process(job) {
     // instagram.service already unwrapped Meta's structured error, so
     // err.message names the real cause ("Invalid OAuth access token",
     // "(#10) … outside of allowed window", …) — that's what the operator
-    // sees on the failed bubble.
+    // sees on the failed bubble. Log the FULL Meta error body (code,
+    // subcode, fbtrace_id) alongside the recipient so ambiguous rejections
+    // (e.g. code 508 / subcode 2534122 "Invalid message id") are
+    // diagnosable from the logs instead of guessed at.
+    logger.error(
+      {
+        jobId: job.id,
+        brand: data.brand,
+        recipient: data.recipient_id,
+        media_kind: data.media_kind || null,
+        had_tag: data.tag || null,
+        meta_error: err.meta_error || null,
+        fbtrace_id: (err.meta_error && err.meta_error.fbtrace_id) || null,
+        err: err.message,
+      },
+      "instagram-send: delivery failed",
+    );
     if (data.smartcomm_message_id) {
       await smartcomm().applyDeliveryResult({
         message_id: data.smartcomm_message_id,

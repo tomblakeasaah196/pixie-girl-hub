@@ -200,6 +200,9 @@ async function startWorkers() {
   } = require("./schedulers/stylist-programme-sweep");
   const { runChurnRiskScoring } = require("./schedulers/churn-risk-scoring");
   const { runSegmentPresetRefresh } = require("./schedulers/segment-presets");
+  const {
+    runCosAccountabilitySweep,
+  } = require("./schedulers/cos-accountability");
 
   // Re-sync the brand registry so a business provisioned by the API process
   // reaches this worker's crons without a restart. Per-instance: it refreshes
@@ -251,6 +254,12 @@ async function startWorkers() {
     "weekly-customer-report",
     config.CRON_WEEKLY_CUSTOMER_REPORT,
     runWeeklyCustomerReport,
+  );
+  // Chief of Staff (PR4): hourly risk radar + follow-up nudges + evening review.
+  scheduleCron(
+    "cos-accountability",
+    config.CRON_COS_ACCOUNTABILITY,
+    runCosAccountabilitySweep,
   );
   scheduleCron(
     "layaway-abandonment",
@@ -409,6 +418,7 @@ async function startWorkers() {
   require("../realtime/workflow-realtime").registerWorkflowRealtime();
   require("../realtime/campaign-realtime").registerCampaignRealtime();
   require("../realtime/praxis-realtime").registerPraxisRealtime();
+  require("../realtime/cos-realtime").registerCosRealtime();
   require("../realtime/insights-realtime").registerInsightsRealtime();
   require("../realtime/attendance-realtime").registerAttendanceRealtime();
   require("../shared/goals/goals.subscribers").registerGoalsSubscribers();

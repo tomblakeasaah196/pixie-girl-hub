@@ -28,6 +28,33 @@ const messagePost = z
 
 const reason = z.object({ reason: z.string().max(2000).optional() }).strict();
 
+// ── Follow-up state machine (PR4) ──────────────────────────
+const followupRespond = z
+  .object({ answer: z.enum(["done", "in_progress", "delayed"]) })
+  .strict();
+
+const followupAct = z
+  .object({
+    action: z
+      .object({
+        kind: z.enum([
+          "move_deadline",
+          "reschedule_dependents",
+          "notify_stakeholder",
+        ]),
+        payload: z
+          .object({ days: z.number().int().positive().max(365).optional() })
+          .strict()
+          .optional(),
+      })
+      .strict(),
+  })
+  .strict();
+
+const followupSnooze = z
+  .object({ until: z.string().datetime({ offset: true }).optional() })
+  .strict();
+
 const mk = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body || {});
   next();
@@ -37,5 +64,15 @@ module.exports = {
   validateConversationCreate: mk(conversationCreate),
   validateMessagePost: mk(messagePost),
   validateReason: mk(reason),
-  schemas: { conversationCreate, messagePost, reason },
+  validateFollowupRespond: mk(followupRespond),
+  validateFollowupAct: mk(followupAct),
+  validateFollowupSnooze: mk(followupSnooze),
+  schemas: {
+    conversationCreate,
+    messagePost,
+    reason,
+    followupRespond,
+    followupAct,
+    followupSnooze,
+  },
 };

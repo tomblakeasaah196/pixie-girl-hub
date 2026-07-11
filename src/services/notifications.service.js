@@ -26,6 +26,16 @@ const CHANNEL_COLUMN = {
 /**
  * Create an in-app notification for a user (+ realtime push). Safe to call
  * from request or worker context; a socket gap is ignored.
+ *
+ * `actions` (optional) is a `[{label, value, endpoint}]` array persisted on the
+ * row and surfaced as inline buttons in the notifications UI — used by the CoS
+ * accountability loop (Done / In-Progress / Delayed). Defaults to [] so every
+ * existing caller is unaffected.
+ *
+ * `email` (optional, default false) opts THIS notification into an email copy,
+ * still gated by the user's per-type email preference. It is off by default so
+ * enabling it here never turns on email for every notification in the app —
+ * only callers that explicitly ask (CoS) fan out to email.
  */
 async function notify({
   user_id,
@@ -37,6 +47,8 @@ async function notify({
   reference_type,
   reference_id,
   action_url,
+  actions = [],
+  email = false,
 }) {
   if (!user_id) return null;
   // Honour the user's in-app opt-out for this notification type (F-14).
@@ -50,10 +62,11 @@ async function notify({
     if (!allowed) return null;
   }
   const prio = VALID_PRIORITY.has(priority) ? priority : "normal";
+  const actionsArr = Array.isArray(actions) ? actions : [];
   const { rows } = await query(
     `INSERT INTO shared.notifications
-       (user_id, business, type, priority, title, body, reference_type, reference_id, action_url)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+       (user_id, business, type, priority, title, body, reference_type, reference_id, action_url, actions)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb)
      RETURNING notification_id, created_at`,
     [
       user_id,
@@ -65,6 +78,7 @@ async function notify({
       reference_type || null,
       reference_id || null,
       action_url || null,
+      JSON.stringify(actionsArr),
     ],
   );
   const notif = {
@@ -74,6 +88,7 @@ async function notify({
     body,
     priority: prio,
     action_url: action_url || null,
+    actions: actionsArr,
     created_at: rows[0].created_at,
   };
   try {
@@ -102,6 +117,34 @@ async function notify({
     }
   } catch {
     // push service may not be configured; skip silently
+  }
+  // Opt-in email copy (CoS), gated by the user's per-type email preference.
+  if (email) {
+    try {
+      const emailAllowed = await isChannelEnabled({
+        user_id,
+        notification_type: type,
+        channel: "email",
+      });
+      if (emailAllowed) {
+        const { rows: u } = await query(
+          `SELECT email, display_name FROM shared.users WHERE user_id = $1`,
+          [user_id],
+        );
+        if (u[0] && u[0].email) {
+          const emailService = require("./email.service");
+          await emailService.send({
+            to: u[0].email,
+            subject: title,
+            text: body || title,
+            html: `<p>${body || title}</p>`,
+            brand: business || undefined,
+          });
+        }
+      }
+    } catch {
+      // SMTP not configured / send failed — the in-app + push copy still landed.
+    }
   }
   return rows[0];
 }

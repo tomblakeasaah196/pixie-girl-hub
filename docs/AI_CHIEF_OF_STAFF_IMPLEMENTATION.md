@@ -1,6 +1,6 @@
 # AI Chief of Staff — Implementation Guide (6 PRs)
 
-> Status: **PR1–PR3 delivered · PR4–PR6 pending.** This document is the single source
+> Status: **PR1–PR4 delivered · PR5–PR6 pending.** This document is the single source
 > of truth for the Chief of Staff (CoS) feature. It is exhaustive by intent: every
 > table, column, endpoint, file, permission, job, and acceptance criterion is named.
 > No step is left to interpretation.
@@ -27,7 +27,7 @@ So:
 | 1 | Goals/milestones/notes backend | ✅ **Delivered** | `000320`–`000322` | `claude/cos-pr1-goals-data-api` (PR0 concept was `…-concept-gla3zu`, merged in #442) |
 | 2 | Goals/Notes frontend | ✅ **Delivered** | — | `claude/cos-pr2-goals-frontend` (branched off `main` after PR1 merged in #447) |
 | 3 | CoS agent core + failover router | ✅ **Delivered** | `000324` | `claude/chief-of-staff-pr3-z9wmy7` (branched off `main` after PR2 merged in #450) |
-| 4 | Accountability loop | ⬜ pending | next free on `main` | " |
+| 4 | Accountability loop | ✅ **Delivered** | `000325` | `claude/chief-of-staff-pr4-1uxza4` (branched off `main` after PR3 merged in #452) |
 | 5 | Intelligence (RAG, meetings, scheduling, cross-brand) | ⬜ pending | next free on `main` | " |
 | 6 | Personality, settings, polish, docs | ⬜ pending | next free on `main` | " |
 
@@ -562,10 +562,21 @@ Writes `goals.health` and emits per-subject follow-up candidates.
 - Notification `actions` round-trip; email + push fan-out (mock transports).
 
 ### Definition of Done
-- [ ] A task due tomorrow produces exactly one follow-up + a 3-button notification across in-app/push/email.
-- [ ] Answering "Delayed" → "why?" → a suggestion that, when accepted, reschedules dependents via an approved batch re-plan.
-- [ ] Morning briefing and Monday review include the goals section; no new cron beyond `cos-accountability`.
-- [ ] `goals.health` reflects slippage; visible on the dashboard + detail panel.
+- [x] A task due tomorrow produces exactly one follow-up + a 3-button notification across in-app/push/email.
+- [x] Answering "Delayed" → "why?" → a suggestion that, when accepted, reschedules dependents via an approved batch re-plan.
+- [x] Morning briefing and Monday review include the goals section; no new cron beyond `cos-accountability`.
+- [x] `goals.health` reflects slippage; visible on the dashboard + detail panel.
+
+### As-built notes (deviations from the sketch)
+- **Migration `000325`** (next free above `main`'s `000324`); `EXPECTED_SHARED` 193 → **195** (two new tables, `cos_followups` + `cos_nudges`; `notifications.actions` is an ALTER). The `trigger` column is quoted (`"trigger"`) — it's a SQL keyword.
+- **Risk engine (`cos.risk.js`) is pure** (no DB/LLM): `assessGoal` takes plain rows + a `now` and returns `{ health, slip, candidates }`. The hourly scheduler fetches, calls it, persists `goals.health` (new `goals.repo.setHealth`, writes only on change), and turns candidates into follow-ups. Fully unit-tested (`tests/unit/chief_of_staff/risk.test.js`).
+- **Scheduler `cos-accountability.js`** is **one** new hourly cron (`CRON_COS_ACCOUNTABILITY`, default `0 * * * *`), cron-locked, registered in `worker.js`. It scans per brand for the CEO, raises follow-ups (partial-unique + cooldown dedupe), sends the 3-button notification (in-app + push + **email opt-in**), logs `cos_nudges`, and fires the **evening review** at 18:00 — all quiet-hours aware (defaults until `cos_settings`/PR6). Health still updates during quiet hours; only the nudge is suppressed.
+- **Notifications**: `notifications.service.notify()` gained a backward-compatible `actions` param (persisted to the new `notifications.actions` JSONB, echoed over socket) and an **opt-in `email` flag** — off by default so this never turns on email for every notification type; only CoS asks for it, still gated by the user's per-type email pref.
+- **Follow-up state machine** lives in `cos.followups.service.js` (respond/reason/act/snooze/dismiss under `/api/v1/cos/followups/:id/*`). `done` marks the subject done and `reschedule_dependents` builds a **batch re-plan** — both reuse the PR3 `praxis.executor` / `cos.plan-executor` (loopback as the CEO, RBAC re-applies). Action `endpoint`s are client-relative (`/cos/...`) so the admin API client can post them directly.
+- **Briefings**: the CoS goals section is appended in `ai-briefing.js` (deterministic Tier-1 always; optional Tier-2 narrative via `llm-router`, metered, degrading on any miss). The **Monday executive review** folds into Monday's morning briefing (weekday-detected) rather than a new Monday cron — honouring "extend, don't multiply" + "no new cron". `weekly-reports.js` (Saturday) is left untouched to avoid a `report_templates` dependency.
+- **Realtime**: `cos-realtime.js` pushes `followup.*` + `goal.health_changed` to `user:{id}:goals` (new room), registered in both socket init + worker. The frontend joins the room and invalidates goals/follow-ups on `pgh:cos:changed`.
+- **Frontend**: `FollowupActions.tsx` drives the answer → why? → suggestion-chips flow inline in `NotificationsPage`; `GoalDetailPanel` gains the **AI Insights** card (health + note + open follow-ups with snooze/dismiss), filling the PR2 placeholder. `cos-api.ts` adds the follow-up hooks.
+- **Tests**: `tests/unit/chief_of_staff/{risk,followups,accountability}.test.js` (22 new tests). A live-DB integration test (scan → follow-up → respond → re-plan against real Postgres) is deferred to a migrated-DB pass, as in PR1/PR3.
 
 ---
 

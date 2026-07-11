@@ -49,6 +49,17 @@ export function getSocket(): Socket {
   socket.on("insights:changed", (detail) => {
     window.dispatchEvent(new CustomEvent("pgh:insights:changed", { detail }));
   });
+  // Chief of Staff — follow-up + goal-health pushes (user:{id}:goals, PR4).
+  for (const evt of [
+    "cos_followup:created",
+    "cos_followup:updated",
+    "cos_followup:resolved",
+    "cos_goal:health",
+  ]) {
+    socket.on(evt, (detail) => {
+      window.dispatchEvent(new CustomEvent("pgh:cos:changed", { detail }));
+    });
+  }
   // Live attendance punch (brand:{brand}:attendance — device binding 000304).
   socket.on("attendance:punch", (detail) => {
     window.dispatchEvent(new CustomEvent("pgh:attendance:punch", { detail }));
@@ -105,6 +116,7 @@ export const rooms = {
   brandCalls: (brand: string) => `brand:${brand}:calls`,
   userCalls: (userId: string) => `user:${userId}:calls`,
   userAiPending: (userId: string) => `user:${userId}:ai_pending`,
+  userGoals: (userId: string) => `user:${userId}:goals`,
   insights: (brand: string) => `brand:${brand}:insights`,
   attendance: (brand: string) => `brand:${brand}:attendance`,
   hrDevices: (brand: string) => `brand:${brand}:hr_devices`,

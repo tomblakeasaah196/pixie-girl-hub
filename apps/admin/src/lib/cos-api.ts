@@ -208,3 +208,158 @@ export function useRejectCosPlan(conversationId: string) {
     onError: (err) => toastReport("Chief of Staff → Plan", "Reject plan", err),
   });
 }
+
+// ── Follow-ups (accountability loop, PR4) ──────────────────
+
+export type FollowupState =
+  | "open"
+  | "asked"
+  | "answered"
+  | "resolved"
+  | "snoozed"
+  | "dismissed";
+export type FollowupAnswer = "done" | "in_progress" | "delayed";
+export type FollowupTrigger =
+  | "due_tomorrow"
+  | "due_today"
+  | "overdue"
+  | "no_progress"
+  | "slippage"
+  | "weekly_review";
+export type SuggestionKind =
+  | "move_deadline"
+  | "reschedule_dependents"
+  | "notify_stakeholder";
+
+export interface SuggestedAction {
+  label: string;
+  kind: SuggestionKind;
+  payload?: { days?: number };
+}
+
+export interface CosFollowup {
+  followup_id: string;
+  business: string;
+  user_id: string;
+  subject_type: "goal" | "milestone" | "task";
+  subject_id: string;
+  trigger: FollowupTrigger;
+  state: FollowupState;
+  question: string | null;
+  answer: FollowupAnswer | null;
+  reason: string | null;
+  suggested_actions: SuggestedAction[];
+  notification_id: string | null;
+  snooze_until: string | null;
+  resolved_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RespondResult {
+  followup: CosFollowup;
+  question: string | null;
+  subject_result?: unknown;
+}
+export interface ReasonResult {
+  followup: CosFollowup;
+  suggested_actions: SuggestedAction[];
+}
+export interface ActResult {
+  followup: CosFollowup;
+  plan?: Plan | null;
+  notified?: number;
+}
+
+export const followupKeys = {
+  list: ["cos", "followups"] as const,
+  forSubject: (t?: string, id?: string) =>
+    ["cos", "followups", t ?? "all", id ?? "all"] as const,
+};
+
+/** Open follow-ups, optionally scoped to a subject (goal/milestone/task). */
+export function useCosFollowups(params?: {
+  subject_type?: string;
+  subject_id?: string;
+  enabled?: boolean;
+}) {
+  return useQuery({
+    queryKey: followupKeys.forSubject(params?.subject_type, params?.subject_id),
+    queryFn: () => {
+      const qs = new URLSearchParams();
+      if (params?.subject_type) qs.set("subject_type", params.subject_type);
+      if (params?.subject_id) qs.set("subject_id", params.subject_id);
+      const q = qs.toString();
+      return api.get<CosFollowup[]>(`/cos/followups${q ? `?${q}` : ""}`);
+    },
+    enabled: params?.enabled ?? true,
+  });
+}
+
+function invalidateFollowups(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: followupKeys.list });
+  qc.invalidateQueries({ queryKey: ["notifications"] });
+  qc.invalidateQueries({ queryKey: ["workspace"] });
+}
+
+/** POST an answer to a follow-up (via the endpoint carried on the action). */
+export function useRespondFollowup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      endpoint,
+      answer,
+    }: {
+      endpoint: string;
+      answer: FollowupAnswer;
+    }) => api.post<RespondResult>(endpoint, { answer }),
+    onSuccess: () => invalidateFollowups(qc),
+    onError: (err) => toastReport("Chief of Staff → Follow-up", "Respond", err),
+  });
+}
+
+export function useReasonFollowup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      api.post<ReasonResult>(`/cos/followups/${id}/reason`, { reason }),
+    onSuccess: () => invalidateFollowups(qc),
+    onError: (err) => toastReport("Chief of Staff → Follow-up", "Reason", err),
+  });
+}
+
+export function useActFollowup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, action }: { id: string; action: SuggestedAction }) =>
+      api.post<ActResult>(`/cos/followups/${id}/act`, { action }),
+    onSuccess: () => invalidateFollowups(qc),
+    onError: (err) => toastReport("Chief of Staff → Follow-up", "Act", err),
+  });
+}
+
+export function useSnoozeFollowup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, until }: { id: string; until?: string }) =>
+      api.post<{ followup: CosFollowup }>(`/cos/followups/${id}/snooze`, { until }),
+    onSuccess: () => invalidateFollowups(qc),
+    onError: (err) => toastReport("Chief of Staff → Follow-up", "Snooze", err),
+  });
+}
+
+export function useDismissFollowup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id }: { id: string }) =>
+      api.post<{ followup: CosFollowup }>(`/cos/followups/${id}/dismiss`),
+    onSuccess: () => invalidateFollowups(qc),
+    onError: (err) => toastReport("Chief of Staff → Follow-up", "Dismiss", err),
+  });
+}
+
+/** Pull the follow-up id out of a respond endpoint (…/followups/:id/respond). */
+export function followupIdFromEndpoint(endpoint: string): string | null {
+  const m = endpoint.match(/followups\/([^/]+)\//);
+  return m ? m[1] : null;
+}

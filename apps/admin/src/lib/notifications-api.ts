@@ -31,6 +31,13 @@ export type NotifType =
   | "low_stock_warning"
   | "sale_campaign_milestone";
 
+/** Inline action button carried on a notification (CoS Done/In-Progress/Delayed). */
+export interface NotificationAction {
+  label: string;
+  value: string;
+  endpoint: string;
+}
+
 export interface AppNotification {
   notification_id: string;
   user_id: string;
@@ -42,6 +49,7 @@ export interface AppNotification {
   reference_type: string | null;
   reference_id: string | null;
   action_url: string | null;
+  actions?: NotificationAction[] | null;
   is_read: boolean;
   read_at: string | null;
   created_at: string;
@@ -100,6 +108,8 @@ export const NOTIF_META: Record<
   message: { label: "Message", category: "ops" },
   stylist_offer: { label: "Stylist offer", category: "ops" },
   stylist_assignment_accepted: { label: "Stylist accepted", category: "ops" },
+  cos_followup: { label: "Chief of Staff", category: "ops" },
+  cos_briefing: { label: "Chief of Staff", category: "ops" },
   system: { label: "System", category: "system" },
 };
 

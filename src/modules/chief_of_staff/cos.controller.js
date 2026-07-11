@@ -5,6 +5,7 @@
 "use strict";
 
 const service = require("./cos.service");
+const followups = require("./cos.followups.service");
 
 const base = (req) => ({
   user: req.user,
@@ -66,6 +67,60 @@ async function rejectPlan(req, res) {
   });
 }
 
+// Follow-ups (accountability state machine)
+async function listFollowups(req, res) {
+  res.json({
+    data: await followups.listOpen({
+      user: req.user,
+      subject_type: req.query.subject_type,
+      subject_id: req.query.subject_id,
+    }),
+  });
+}
+async function respondFollowup(req, res) {
+  res.json({
+    data: await followups.respond({
+      ...base(req),
+      id: req.params.id,
+      answer: req.body.answer,
+      auth_header: req.headers.authorization,
+    }),
+  });
+}
+async function reasonFollowup(req, res) {
+  res.json({
+    data: await followups.reason({
+      ...base(req),
+      id: req.params.id,
+      reason: req.body.reason,
+    }),
+  });
+}
+async function actFollowup(req, res) {
+  res.json({
+    data: await followups.act({
+      ...base(req),
+      id: req.params.id,
+      action: req.body.action,
+      auth_header: req.headers.authorization,
+    }),
+  });
+}
+async function snoozeFollowup(req, res) {
+  res.json({
+    data: await followups.snooze({
+      ...base(req),
+      id: req.params.id,
+      until: req.body.until,
+    }),
+  });
+}
+async function dismissFollowup(req, res) {
+  res.json({
+    data: await followups.dismiss({ ...base(req), id: req.params.id }),
+  });
+}
+
 module.exports = {
   listConversations,
   getConversation,
@@ -75,4 +130,10 @@ module.exports = {
   getPlan,
   confirmPlan,
   rejectPlan,
+  listFollowups,
+  respondFollowup,
+  reasonFollowup,
+  actFollowup,
+  snoozeFollowup,
+  dismissFollowup,
 };

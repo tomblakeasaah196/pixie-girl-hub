@@ -201,6 +201,22 @@ async function recomputeProgress({ client, goal_id }) {
   return rows[0] ? rows[0].progress_pct : null;
 }
 
+/**
+ * Persist the risk-engine's computed health for a goal (PR4). Only writes when
+ * the value actually changes, and returns the row when it did (so the caller
+ * can emit a health-changed event) or null when unchanged / gone.
+ */
+async function setHealth({ brand, goal_id, health }) {
+  const { rows } = await query(
+    `UPDATE shared.goals SET health = $3, updated_at = now()
+      WHERE goal_id = $1 AND business = $2 AND is_deleted = false
+        AND health IS DISTINCT FROM $3
+      RETURNING goal_id, health`,
+    [goal_id, brand, health],
+  );
+  return rows[0] || null;
+}
+
 /** Which goal (if any) a task belongs to — used by the progress subscriber. */
 async function goalIdForTask({ task_id }) {
   const { rows } = await query(
@@ -384,6 +400,7 @@ module.exports = {
   updateGoal,
   softDeleteGoal,
   recomputeProgress,
+  setHealth,
   goalIdForTask,
   listMilestones,
   addMilestone,

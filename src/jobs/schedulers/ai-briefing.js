@@ -23,6 +23,8 @@ const insights = require("../../modules/ai_insights/insights.service");
 const insightsRepo = require("../../modules/ai_insights/insights.repo");
 const governance = require("../../modules/ai_governance/governance.service");
 const llm = require("../../services/llm.service");
+const cosBriefing = require("../../modules/chief_of_staff/cos.briefing");
+const accountabilityRepo = require("../../modules/chief_of_staff/cos.accountability.repo");
 const { money, toCurrencyString } = require("../../utils/money");
 
 const { BRANDS } = require("../../config/brands");
@@ -174,8 +176,45 @@ async function narrate({ brand, counts, total, ceoId }) {
   }
 }
 
+// True on a Monday in Africa/Lagos — the morning briefing then also carries the
+// weekly executive review (folded in here so PR4 adds NO new cron).
+function isLagosMonday(at = new Date()) {
+  const wd = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Africa/Lagos",
+    weekday: "short",
+  }).format(at);
+  return wd === "Mon";
+}
+
+/**
+ * Chief of Staff goals section appended to the CEO's morning briefing (PR4).
+ * Deterministic always; an optional narrative degrades to Tier-1. Returns the
+ * section text (or "" when there's nothing to say), plus whether it had content.
+ */
+async function cosGoalsSection({ brand, recipient, weekly }) {
+  try {
+    const digest = await cosBriefing.goalsDigest({ brand, weekly });
+    if (!digest.hasContent) return { text: "", hasContent: false };
+    let section = digest.text;
+    if (recipient) {
+      const narrative = await cosBriefing.narrate({
+        brand,
+        ceoId: recipient,
+        facts: digest.text,
+        weekly,
+      });
+      if (narrative) section = `${narrative}\n\n${digest.text}`;
+    }
+    return { text: section, hasContent: true };
+  } catch (err) {
+    logger.warn({ err: err.message, brand }, "cos goals section failed; omitted");
+    return { text: "", hasContent: false };
+  }
+}
+
 async function runDailyAiBriefing() {
   const recipient = await findCeoUserId();
+  const weekly = isLagosMonday();
   let made = 0;
   let narrated = 0;
   for (const brand of BRANDS) {
@@ -186,6 +225,13 @@ async function runDailyAiBriefing() {
       // Tier-2 narration (falls back to the deterministic text on any miss).
       const ai = await narrate({ brand, counts, total, ceoId: recipient });
       if (ai) narrated += 1;
+
+      // Append the CoS goals section (+ weekly review on Mondays).
+      const cos = await cosGoalsSection({ brand, recipient, weekly });
+      const baseText = ai ? ai.text : text;
+      const briefingText = cos.hasContent
+        ? `${baseText}\n\n${cos.text}`
+        : baseText;
 
       const { rows: inserted } = await query(
         `INSERT INTO shared.ai_briefings
@@ -199,7 +245,7 @@ async function runDailyAiBriefing() {
           brand,
           recipient,
           JSON.stringify(counts),
-          ai ? ai.text : text,
+          briefingText,
           total,
           ai ? ai.provider : "deterministic",
           ai ? ai.model : "rules",
@@ -208,6 +254,22 @@ async function runDailyAiBriefing() {
         ],
       );
       made += 1;
+
+      // Log the goals nudge so adaptive timing (PR6) and dedupe can see it.
+      if (recipient && cos.hasContent) {
+        try {
+          await accountabilityRepo.logNudge({
+            n: {
+              user_id: recipient,
+              business: brand,
+              type: weekly ? "weekly_review" : "morning_briefing",
+              channel: "in_app",
+            },
+          });
+        } catch (err) {
+          logger.warn({ err: err.message, brand }, "cos briefing nudge log failed");
+        }
+      }
 
       // Link the briefing to the findings behind it (paragraph → alert refs,
       // top open items by severity at generation time). Best-effort.

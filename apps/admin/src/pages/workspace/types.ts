@@ -30,6 +30,8 @@ export interface Task {
   reminder_minutes?: number | null;
   is_personal?: boolean;
   calendar_event_id?: string | null;
+  goal_id?: string | null;
+  milestone_id?: string | null;
   reference_type?: string | null;
   reference_id?: string | null;
   completed_at?: string | null;
@@ -125,5 +127,12 @@ export interface EventUpdateInput {
 
 // ── Workspace tab ───────────────────────────────────────────────────────
 
-export type WorkspaceTab = "my-day" | "calendar" | "tasks" | "my-hr";
+export type WorkspaceTab =
+  | "my-day"
+  | "goals"
+  | "tasks"
+  | "calendar"
+  | "notes"
+  | "chief-of-staff"
+  | "my-hr";
 export type CalendarViewMode = "month" | "week" | "day" | "agenda";

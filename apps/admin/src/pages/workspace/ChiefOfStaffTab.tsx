@@ -140,6 +140,9 @@ export function ChiefOfStaffTab() {
   async function handleSend(input: { content: string; input_mode: "text" | "voice"; transcribed_text?: string }) {
     setPendingSend(true);
     try {
+      // Rejections propagate to PraxisInput, which restores the draft — a
+      // long message shouldn't be lost to a transient failure (502, dropped
+      // connection). The mutation's onError has already surfaced a toast.
       let id = activeId;
       if (!id) {
         const conv = await create.mutateAsync({ title: input.content.slice(0, 60) });
@@ -147,8 +150,6 @@ export function ChiefOfStaffTab() {
         setActiveId(id);
       }
       await post.mutateAsync({ conversationId: id, ...input });
-    } catch {
-      /* ApiError is toasted by the mutation; keep the composer usable */
     } finally {
       setPendingSend(false);
     }

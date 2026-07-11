@@ -71,11 +71,26 @@ async function getCompany({ brand, targets }) {
   return {
     display_name: displayName,
     legal_name: branding?.legal_name || displayName,
-    signatory_name: ctx.signatory_name || glob.signatory_name || "Faith",
+    // Countersignatory: per-brand row wins over the '*' shared row; either can
+    // carry the captured signature image so the rendered packet stamps a real
+    // hand-drawn signature next to the candidate's — never a bare ruled line.
+    signatory_name: ctx.signatory_name || glob.signatory_name || "Faitlyn Alex",
     signatory_title: ctx.signatory_title || glob.signatory_title || "Chief Executive Officer",
+    signatory_signature_data_url:
+      ctx.signatory_signature_data_url || glob.signatory_signature_data_url || null,
     accent_colour: branding?.accent_colour || "#690909",
     secondary_colour: branding?.secondary_colour || "#A81D1D",
     logo_base64: loadLogoBase64(branding?.logo_path || branding?.logo_alt_path),
+    // Business Setup contact strip — populated fields show on the cover; empty
+    // fields are simply skipped by the renderer so a partly-configured brand
+    // still looks intentional, not broken.
+    address: branding?.address || null,
+    phone: branding?.phone || null,
+    email: branding?.email || null,
+    website: branding?.website || null,
+    tin: branding?.tin || null,
+    cac_number: branding?.cac_number || null,
+    mission_statement: branding?.mission_statement || null,
     brand_key: brand,
   };
 }
@@ -256,7 +271,38 @@ async function getRenderedOffer({ brand, id }) {
   const offer = await repo.getOffer({ brand, id });
   if (!offer) throw new NotFoundError("Offer");
   const company = await getCompany({ brand, targets: offer.target_businesses });
-  return { ...render.renderForWeb(offer), company };
+  const signature = LOCKED.includes(offer.status)
+    ? await resolveOfferSignature(offer)
+    : null;
+  // The full packet HTML is the *same* HTML the PDF exporter uses. The admin
+  // studio and the candidate offer page both iframe this so the preview and
+  // the downloadable PDF are literally the same document — zero drift.
+  const packet_html = render.offerPacketHtml({ offer, company, signature });
+  return { ...render.renderForWeb(offer), packet_html, company };
+}
+
+/**
+ * Live-edit preview: re-render the packet HTML using the studio's in-flight
+ * markdown drafts (jd_markdown / offer_markdown) instead of the persisted row.
+ * Falls back silently to the persisted values when a field isn't provided.
+ * Never mutates the offer.
+ */
+async function previewOffer({ brand, id, drafts = {} }) {
+  const offer = await repo.getOffer({ brand, id });
+  if (!offer) throw new NotFoundError("Offer");
+  const company = await getCompany({ brand, targets: offer.target_businesses });
+  const merged = {
+    ...offer,
+    jd_markdown: drafts.jd_markdown ?? offer.jd_markdown,
+    offer_markdown: drafts.offer_markdown ?? offer.offer_markdown,
+    title: drafts.title ?? offer.title,
+    candidate_name: drafts.candidate_name ?? offer.candidate_name,
+  };
+  const signature = LOCKED.includes(offer.status)
+    ? await resolveOfferSignature(offer)
+    : null;
+  const packet_html = render.offerPacketHtml({ offer: merged, company, signature });
+  return { packet_html };
 }
 
 // ── PDF export (on-demand, branded, page-numbered) ─────────
@@ -437,6 +483,11 @@ async function getPublicOffer({ token, ip, ua }) {
   // Once signed, hand the candidate back their own captured signature so the
   // signed offer page shows the actual signature (not just "signed").
   const signature = signed ? await resolveOfferSignature(offer) : null;
+  // The candidate reads the SAME packet HTML the PDF exporter produces — so
+  // "what you see is what you sign is what you download". The renderer stamps
+  // the countersignatory's captured signature (if configured) and, once the
+  // candidate has signed, their own signature too.
+  const packet_html = render.offerPacketHtml({ offer, company, signature });
 
   return {
     title: offer.title,
@@ -446,6 +497,7 @@ async function getPublicOffer({ token, ip, ua }) {
     can_sign: canSign && !signed,
     jd_html: web.jd_html,
     offer_letter_html: web.offer_letter_html,
+    packet_html,
     company: {
       name: company.display_name,
       signatory_name: company.signatory_name,
@@ -649,6 +701,7 @@ module.exports = {
   listOffers,
   getOffer,
   getRenderedOffer,
+  previewOffer,
   exportOfferPdf,
   approveAndSend,
   provisionCredentials,

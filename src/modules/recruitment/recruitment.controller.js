@@ -59,6 +59,15 @@ async function get(req, res) {
 async function rendered(req, res) {
   res.json({ data: await service.getRenderedOffer({ brand: req.brand, id: req.params.id }) });
 }
+async function preview(req, res) {
+  res.json({
+    data: await service.previewOffer({
+      brand: req.brand,
+      id: req.params.id,
+      drafts: req.body || {},
+    }),
+  });
+}
 async function exportPdf(req, res) {
   const { buffer, filename, mime_type } = await service.exportOfferPdf({
     brand: req.brand,
@@ -142,6 +151,7 @@ module.exports = {
   list,
   get,
   rendered,
+  preview,
   exportPdf,
   edit,
   regenerate,

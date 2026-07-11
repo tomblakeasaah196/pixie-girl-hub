@@ -29,6 +29,42 @@ const esc = (s) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
+/**
+ * Strip the AI's trailing "Accepted and Agreed" / signature block from an
+ * offer-letter markdown draft before rendering. The renderer appends a single
+ * formal Execution block downstream, so any acceptance/signature block the LLM
+ * added at the end of the letter would leave the candidate with two places to
+ * sign — confusing at best, wrong at worst. This is a belt-and-braces
+ * complement to the AI-prompt instruction that says "don't write one".
+ *
+ * Matches (case-insensitive) common closing markers — "Accepted and Agreed",
+ * "Acknowledged and accepted", "Signed by the Candidate", "Signature" — plus
+ * the ruled-line / date placeholders that usually follow, and trims from the
+ * first such marker to end of document. Body copy that merely mentions the
+ * word "accept" (e.g. "To accept, please sign below") is untouched because
+ * the marker has to sit on its own line.
+ */
+function stripTrailingAcceptanceBlock(md) {
+  if (!md) return md;
+  const lines = String(md).replace(/\r\n/g, "\n").split("\n");
+  const isMarker = (raw) => {
+    const s = raw.trim().replace(/[*_`>#\s]+$/g, "").replace(/^[*_`>#\s]+/g, "");
+    if (!s) return false;
+    return /^(accepted\s*(?:and|&|and\/or)?\s*agreed\b|acknowledged\s+and\s+accepted\b|signed\s+by\s+the\s+candidate\b|candidate\s+signature\b|signature\s*:?\s*$|\bsign\s+here\b)/i.test(
+      s,
+    );
+  };
+  let cut = -1;
+  for (let i = 0; i < lines.length; i += 1) {
+    if (isMarker(lines[i])) { cut = i; break; }
+  }
+  if (cut === -1) return md;
+  // Also drop the blank line immediately before the marker, if any, to avoid a
+  // dangling gap at the end of the letter.
+  while (cut > 0 && !lines[cut - 1].trim()) cut -= 1;
+  return lines.slice(0, cut).join("\n").trimEnd();
+}
+
 /** Inline formatting on ALREADY-escaped text: **bold**, *italic*, `code`. */
 function inline(escaped) {
   return escaped
@@ -139,7 +175,11 @@ function markdownToHtml(md) {
 function renderForWeb(offer) {
   return {
     jd_html: markdownToHtml(offer.jd_markdown || ""),
-    offer_letter_html: markdownToHtml(offer.offer_markdown || ""),
+    // The offer letter loses any AI-generated signature/acceptance block first
+    // — the packet always ends with the single, formal Execution block below.
+    offer_letter_html: markdownToHtml(
+      stripTrailingAcceptanceBlock(offer.offer_markdown || ""),
+    ),
   };
 }
 
@@ -155,10 +195,17 @@ function humanDate(value) {
 }
 
 // ── Brand-styled print shell (shared by all three documents) ─────────
-/** The full <style> block, tinted to the issuing brand's palette. */
+/**
+ * The full <style> block, tinted to the issuing brand's palette.
+ *
+ * Print margins deliberately leave headroom top and bottom so continuation
+ * pages start with a proper gutter and the last line of body copy can't
+ * slam into Puppeteer's footer template (the original 0mm top / 16mm bottom
+ * was the "content overwrites the footer" bug on multi-page packets).
+ */
 function docStyles({ accent, secondary }) {
   return `
-  @page { size: A4; margin: 0; }
+  @page { size: A4; margin: 14mm 0 20mm 0; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
     font-family: Georgia, 'Times New Roman', serif;
@@ -194,6 +241,13 @@ function docStyles({ accent, secondary }) {
   .brand-tagline {
     font-size: 9px; letter-spacing: 3px; text-transform: uppercase;
     color: #888; margin-top: 4px;
+  }
+  .brand-contacts {
+    margin-top: 10px; font-size: 8.5px; letter-spacing: 0.4px; color: #8a8171;
+    display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;
+  }
+  .brand-contacts span + span::before {
+    content: '\\2022'; margin-right: 10px; color: ${accent};
   }
 
   /* ── Cover block ──────────────────────────────────── */
@@ -320,6 +374,10 @@ function docStyles({ accent, secondary }) {
     margin-top: 28px; padding: 16px 0; border-top: 1px solid #e0e0e0; text-align: center;
   }
   .doc-footer p { font-size: 8px; color: #999; letter-spacing: 0.5px; line-height: 1.5; }
+  .doc-footer .mission {
+    display: block; margin-top: 6px; font-style: italic; letter-spacing: 0.3px;
+    color: #b5b5b5; font-size: 8px; max-width: 460px; margin-left: auto; margin-right: auto;
+  }
   .page-break { page-break-before: always; }
   `;
 }
@@ -354,16 +412,30 @@ function executionBlock({ company, candidateName, signature }) {
         <div class="sig-title-text">&nbsp;</div>
         <div class="sig-date">Date: _______________</div>`;
 
+  // Company countersignatory. If the countersignatory has captured her
+  // signature in the Company-context modal, stamp the actual signature image
+  // onto the ruled line; otherwise show the empty ruled line so the packet
+  // still executes cleanly for wet countersignature.
+  const countersignImg = company.signatory_signature_data_url;
+  const companySide = countersignImg
+    ? `
+        <div class="sig-signed"><img src="${countersignImg}" alt="${esc(company.signatory_name || "Signatory")} signature" class="sig-image" /></div>
+        <div class="sig-name">${esc(company.signatory_name || "For the Company")}</div>
+        <div class="sig-title-text">${esc(company.signatory_title || "")}</div>
+        <div class="sig-date">Signed electronically &middot; ${esc(today)}</div>`
+    : `
+        <div class="sig-line"></div>
+        <div class="sig-name">${esc(company.signatory_name || "For the Company")}</div>
+        <div class="sig-title-text">${esc(company.signatory_title || "")}</div>
+        <div class="sig-date">Signed electronically &middot; ${esc(today)}</div>`;
+
   return `
     <div class="signatures">
       <div class="sig-section-title">Execution</div>
       <div class="sig-grid">
         <div class="sig-block">
           <div class="sig-label">For ${esc(company.display_name || "the Company")}</div>
-          <div class="sig-line"></div>
-          <div class="sig-name">${esc(company.signatory_name || "For the Company")}</div>
-          <div class="sig-title-text">${esc(company.signatory_title || "")}</div>
-          <div class="sig-date">Signed electronically &middot; ${esc(today)}</div>
+          ${companySide}
         </div>
         <div class="sig-block">
           <div class="sig-label">Candidate</div>
@@ -390,6 +462,26 @@ function docShell({ company, headTitle, coverKicker, coverTitle, coverRole, cove
   const accent = esc(company.accent_colour || "#690909");
   const secondary = esc(company.secondary_colour || accent);
   const legalName = esc(company.legal_name || company.display_name || "");
+  // Contact strip and footer identity are populated ONLY from fields the admin
+  // actually filled in on Business Setup — an empty TIN / CAC / VAT is simply
+  // dropped so a partly-configured brand still looks intentional, not broken.
+  const contactBits = [
+    company.address && esc(company.address),
+    company.phone && esc(company.phone),
+    company.email && esc(company.email),
+    company.website && esc(company.website),
+  ].filter(Boolean);
+  const contactStripHtml = contactBits.length
+    ? `<div class="brand-contacts">${contactBits.map((c) => `<span>${c}</span>`).join("")}</div>`
+    : "";
+  const footerBits = [
+    legalName,
+    company.cac_number && `CAC ${esc(company.cac_number)}`,
+    company.tin && `TIN ${esc(company.tin)}`,
+  ].filter(Boolean);
+  const missionHtml = company.mission_statement
+    ? `<span class="mission">${esc(company.mission_statement)}</span>`
+    : "";
 
   return `<!doctype html>
 <html>
@@ -402,6 +494,7 @@ function docShell({ company, headTitle, coverKicker, coverTitle, coverRole, cove
   <div class="brand-header">
     ${logoBlock(company)}
     <div class="brand-tagline">${legalName}</div>
+    ${contactStripHtml}
   </div>
 
   <div class="cover-block">
@@ -417,8 +510,9 @@ function docShell({ company, headTitle, coverKicker, coverTitle, coverRole, cove
     ${bodyHtml}
 
     <div class="doc-footer">
-      <p>${esc(company.display_name || "")} &middot; ${legalName}<br/>
+      <p>${footerBits.join(" &middot; ")}<br/>
       This document is confidential and intended solely for the named recipient.</p>
+      ${missionHtml}
     </div>
   </div>
 </body>
@@ -533,19 +627,30 @@ function offerLetterHtml({ offer, company, signature = null }) {
 
 /**
  * PDF options for the branded recruitment documents. Full-bleed brand banners
- * need zero left/right page margin (the HTML uses `@page{margin:0}` + negative
- * margins); a bottom margin gives the page-number footer room to render. The
- * footer carries the legal name and "Page X of Y" in the brand accent.
+ * span the whole page width (zero L/R page margin, using the CSS `@page`
+ * declaration for top/bottom). Puppeteer's own `margin` mirrors what `@page`
+ * carves out so the header template can render into the top strip and the
+ * footer template into the bottom strip without overlapping body content.
+ * The footer carries the legal name (+ CAC / TIN when configured) and
+ * "Page X of Y" in the brand accent.
  */
 function pdfDocOptions(company) {
   const accent = esc(company.accent_colour || "#690909");
   const legalName = esc(company.legal_name || company.display_name || "");
+  const idBits = [
+    legalName,
+    company.cac_number && `CAC ${esc(company.cac_number)}`,
+    company.tin && `TIN ${esc(company.tin)}`,
+  ].filter(Boolean).join(" &middot; ");
   return {
     format: "A4",
-    margin: { top: "0", bottom: "16mm", left: "0", right: "0" },
+    // Match the `@page` declaration in docStyles() so body content never
+    // crashes into the header/footer templates on continuation pages.
+    margin: { top: "14mm", bottom: "20mm", left: "0", right: "0" },
+    displayHeaderFooter: true,
     headerTemplate: "<span></span>",
     footerTemplate: `<div style="width:100%;padding:0 14mm;font-family:Georgia,'Times New Roman',serif;font-size:8px;color:#9a9a9a;display:flex;justify-content:space-between;align-items:center;-webkit-print-color-adjust:exact;">
-      <span style="color:${accent};letter-spacing:1px;">${legalName}</span>
+      <span style="color:${accent};letter-spacing:1px;">${idBits}</span>
       <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
     </div>`,
   };

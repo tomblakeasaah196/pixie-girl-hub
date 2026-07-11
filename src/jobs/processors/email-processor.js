@@ -17,6 +17,7 @@
 const email = require("../../services/email.service");
 const commsLog = require("../../services/comms-log.service");
 const { logger } = require("../../config/logger");
+const smartcommEvents = require("../../modules/smartcomm/smartcomm.events");
 
 module.exports = async function process(job) {
   const { to, subject } = job.data || {};
@@ -35,11 +36,17 @@ module.exports = async function process(job) {
     if (job.data.smartcomm_message_id) {
       try {
         const smartcommRepo = require("../../modules/smartcomm/smartcomm.repo");
-        await smartcommRepo.setMessageDelivery({
+        const updated = await smartcommRepo.setMessageDelivery({
           message_id: job.data.smartcomm_message_id,
           delivery_status: "failed",
           delivery_error: err.message,
         });
+        if (updated) {
+          smartcommEvents.emit("message.edited", {
+            channel_id: updated.channel_id,
+            message_id: job.data.smartcomm_message_id,
+          });
+        }
       } catch (e) {
         logger.warn({ e: e.message }, "email-send: delivery stamp (failed) failed");
       }
@@ -67,11 +74,17 @@ module.exports = async function process(job) {
   if (job.data.smartcomm_message_id) {
     try {
       const smartcommRepo = require("../../modules/smartcomm/smartcomm.repo");
-      await smartcommRepo.setMessageDelivery({
+      const updated = await smartcommRepo.setMessageDelivery({
         message_id: job.data.smartcomm_message_id,
         delivery_status: "sent",
         external_ref: messageId ? String(messageId) : undefined,
       });
+      if (updated) {
+        smartcommEvents.emit("message.edited", {
+          channel_id: updated.channel_id,
+          message_id: job.data.smartcomm_message_id,
+        });
+      }
     } catch (e) {
       logger.warn({ e: e.message }, "email-send: delivery stamp (sent) failed");
     }

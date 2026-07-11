@@ -405,12 +405,13 @@ async function setMessageDelivery({
   delivery_error,
   external_ref,
 }) {
-  await query(
+  const { rows } = await query(
     `UPDATE shared.messages
         SET delivery_status = COALESCE($2, delivery_status),
             delivery_error  = $3,
             external_ref    = COALESCE($4, external_ref)
-      WHERE message_id = $1`,
+      WHERE message_id = $1
+      RETURNING channel_id`,
     [
       message_id,
       delivery_status || null,
@@ -418,6 +419,7 @@ async function setMessageDelivery({
       external_ref || null,
     ],
   );
+  return rows[0] || null;
 }
 
 // Ranks the WhatsApp/Instagram delivery lifecycle so an out-of-order
@@ -443,14 +445,16 @@ async function setMessageDeliveryByExternalRef({
   delivery_status,
   delivery_error,
 }) {
-  await query(
+  const { rows } = await query(
     `UPDATE shared.messages
         SET delivery_status = $2,
             delivery_error  = $3
       WHERE external_ref = $1
-        AND ${deliveryRankCase("delivery_status")} <= ${deliveryRankCase("$2::text")}`,
+        AND ${deliveryRankCase("delivery_status")} <= ${deliveryRankCase("$2::text")}
+      RETURNING channel_id, message_id`,
     [external_ref, delivery_status, delivery_error || null],
   );
+  return rows[0] || null;
 }
 
 async function editMessageContent({ client, message_id, content }) {

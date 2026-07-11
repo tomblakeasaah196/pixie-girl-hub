@@ -32,6 +32,7 @@
 
 const whatsapp = require("../../services/whatsapp.service");
 const { logger } = require("../../config/logger");
+const smartcommEvents = require("../../modules/smartcomm/smartcomm.events");
 
 module.exports = async function process(job) {
   const data = job.data || {};
@@ -40,10 +41,16 @@ module.exports = async function process(job) {
   async function markDelivery(patch) {
     if (!data.smartcomm_message_id) return;
     try {
-      await smartcommRepo.setMessageDelivery({
+      const updated = await smartcommRepo.setMessageDelivery({
         message_id: data.smartcomm_message_id,
         ...patch,
       });
+      if (updated) {
+        smartcommEvents.emit("message.edited", {
+          channel_id: updated.channel_id,
+          message_id: data.smartcomm_message_id,
+        });
+      }
     } catch (e) {
       logger.warn({ e: e.message }, "whatsapp-send: delivery-status stamp failed");
     }

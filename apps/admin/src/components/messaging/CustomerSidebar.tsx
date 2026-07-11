@@ -192,7 +192,7 @@ export function CustomerSidebar({ channel }: Props) {
             data.orders.slice(0, 4).map((o) => (
               <button
                 key={o.order_id}
-                onClick={() => navigate(`/sales/${o.order_id}`)}
+                onClick={() => navigate(`/sales/orders/${o.order_id}`)}
                 className="w-full flex items-center justify-between rounded-lg px-3 py-1.5 hover:bg-panel-2/70 text-left"
               >
                 <div>

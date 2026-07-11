@@ -86,6 +86,9 @@ export function OrderCaptureModal({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [generatedUrl, setGeneratedUrl] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<
+    { name: string | null; reason: string }[]
+  >([]);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -165,6 +168,7 @@ export function OrderCaptureModal({
         notes: notes || undefined,
       });
       setGeneratedUrl(r.url);
+      setWarnings(r.warnings ?? []);
     } catch (e: unknown) {
       toastReport("Messaging → Order capture", "Create order link", e);
       setError(
@@ -187,6 +191,7 @@ export function OrderCaptureModal({
       setItems([]);
       setNotes("");
       setGeneratedUrl(null);
+      setWarnings([]);
       setSearch("");
       setHits([]);
     } finally {
@@ -363,6 +368,37 @@ export function OrderCaptureModal({
             <AlertCircle className="w-3.5 h-3.5" />
             {error}
           </p>
+        )}
+
+        {/* Items the customer's checkout will NOT be able to sell — the
+            same resolution the public order page runs, surfaced at mint
+            time so the staffer can fix the product or drop it instead of
+            the customer hitting "Unavailable" and the order arriving
+            without it. */}
+        {warnings.length > 0 && (
+          <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3 text-[12px] text-amber-200">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-3.5 h-3.5 mt-[2px] shrink-0" />
+              <div className="min-w-0">
+                <p className="font-semibold mb-1">
+                  {warnings.length === 1
+                    ? "1 item can't be ordered automatically:"
+                    : `${warnings.length} items can't be ordered automatically:`}
+                </p>
+                <ul className="space-y-0.5">
+                  {warnings.map((w, i) => (
+                    <li key={i} className="truncate">
+                      • {w.name || "Unknown item"} — {w.reason}
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-1 text-amber-200/80">
+                  They'll show as “unavailable” on the customer's page and
+                  won't be added to the order.
+                </p>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Generated link */}

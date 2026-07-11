@@ -50,7 +50,13 @@ export function Modal({
   useFocusTrap(panelRef, open);
 
   return createPortal(
+    // data-modal-root / data-modal-open let ancestors with outside-click
+    // dismissal (ChatDock and friends) recognise that a click landed in a
+    // portalled dialog rather than "outside" — the dialog lives under
+    // document.body, so a DOM containment check alone can't tell.
     <div
+      data-modal-root
+      data-modal-open={open ? "true" : "false"}
       className={cn(
         "fixed inset-0 z-[92] grid place-items-center p-4 bg-black/50 backdrop-blur-[3px] transition-[opacity,visibility] duration-300",
         open

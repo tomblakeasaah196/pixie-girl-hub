@@ -516,7 +516,11 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
       : channel.channel_type === "customer_thread"
         ? (channel.members ?? []).find((m) => m.contact_id)
         : undefined;
-  const peerAvatarUrl = peer?.user_avatar_url ?? channel.peer_avatar_url ?? null;
+  const peerAvatarUrl =
+    peer?.user_avatar_url ??
+    peer?.contact_avatar_url ??
+    channel.peer_avatar_url ??
+    null;
   const peerPhoneRaw =
     peer?.primary_phone ??
     peer?.user_phone ??
@@ -743,6 +747,22 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
                     },
                     onReact: async (msg, emoji) => {
                       await smartcommApi.reactToMessage(msg.message_id, emoji);
+                      invalidate();
+                    },
+                    onRetry: async (msg) => {
+                      try {
+                        const r = await smartcommApi.retryMessage(
+                          msg.message_id,
+                        );
+                        if (!r.requeued && r.delivery_error) {
+                          setError(r.delivery_error);
+                        }
+                      } catch (e: unknown) {
+                        toastReport("Messaging → Thread", "Retry send", e);
+                        setError(
+                          e instanceof Error ? e.message : "Retry failed",
+                        );
+                      }
                       invalidate();
                     },
                   }}

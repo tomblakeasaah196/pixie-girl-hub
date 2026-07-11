@@ -190,6 +190,9 @@ router.post(
   v.validateReactToMessage,
   c.reactToMessage,
 );
+// Re-queue a failed outbound send (the "Retry" affordance on a failed
+// bubble). Same gate as posting: smartcomm.edit + per-platform reply.
+router.post("/messages/:message_id/retry", can("edit"), c.retryMessage);
 router.post("/messages/:message_id/star", can("view"), c.starMessage);
 router.post(
   "/messages/:message_id/attachments",

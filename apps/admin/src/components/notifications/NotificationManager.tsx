@@ -60,8 +60,14 @@ export function NotificationManager() {
       const notif = (e as CustomEvent<AppNotification>).detail;
       if (!notif) return;
 
-      // Refresh notification feed + unread count.
+      // Refresh notification feed + unread count. The feed and badge live
+      // under their own root keys ("notifications:feed"/":unread"), which
+      // the bare ["notifications"] prefix does NOT match — invalidating
+      // only that left the bell badge lagging a full poll interval behind
+      // the toast.
       qc.invalidateQueries({ queryKey: ["notifications"] });
+      qc.invalidateQueries({ queryKey: ["notifications:feed"] });
+      qc.invalidateQueries({ queryKey: ["notifications:unread"] });
 
       // Skip sounds/toasts during DND.
       if (isDndActive()) return;
@@ -88,9 +94,28 @@ export function NotificationManager() {
       addToast(toastNotif);
     };
 
+    // Notifications consumed on another surface (opening the chat thread
+    // marks its notifications read; "All read" in another tab): refresh
+    // the feed + badge and drop any toast that's now stale.
+    const readHandler = (e: Event) => {
+      const detail = (e as CustomEvent<{ ids?: string[] }>).detail;
+      qc.invalidateQueries({ queryKey: ["notifications"] });
+      qc.invalidateQueries({ queryKey: ["notifications:feed"] });
+      qc.invalidateQueries({ queryKey: ["notifications:unread"] });
+      const ids = detail?.ids;
+      if (Array.isArray(ids) && ids.length) {
+        const { items, remove } = useToastStore.getState();
+        for (const t of items) {
+          if (ids.includes(t.id)) remove(t.id);
+        }
+      }
+    };
+
     window.addEventListener("pgh:notification:new", handler);
+    window.addEventListener("pgh:notification:read", readHandler);
     return () => {
       window.removeEventListener("pgh:notification:new", handler);
+      window.removeEventListener("pgh:notification:read", readHandler);
       socket.emit("leave", room);
     };
   }, [userId, qc, isDndActive, addToast, business]);

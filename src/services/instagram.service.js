@@ -43,6 +43,28 @@ function resolveSendConfig({ brand }) {
 }
 
 /**
+ * Re-throw an axios failure as an error carrying Meta's OWN message.
+ * Axios collapses a structured Graph error body into the opaque
+ * "Request failed with status code 400", which is what used to land in
+ * shared.messages.delivery_error — telling the operator nothing. Meta's
+ * message ("Invalid OAuth access token", "(#10) This message is sent
+ * outside of allowed window", …) names the actual cause.
+ */
+function rethrowMetaError(err) {
+  const metaErr = err.response && err.response.data && err.response.data.error;
+  if (metaErr && metaErr.message) {
+    const parts = [metaErr.message];
+    if (metaErr.code) parts.push(`code ${metaErr.code}`);
+    if (metaErr.error_subcode) parts.push(`subcode ${metaErr.error_subcode}`);
+    const wrapped = new Error(parts.join(" — "));
+    wrapped.meta_error = metaErr;
+    wrapped.status = err.response.status;
+    throw wrapped;
+  }
+  throw err;
+}
+
+/**
  * Send a text DM to an Instagram user (IGSID).
  *
  * @param {object} args
@@ -68,11 +90,15 @@ async function sendText({ brand, recipient_id, text, tag }) {
     body.messaging_type = "MESSAGE_TAG";
     body.tag = tag;
   }
-  const { data } = await axios.post(url, body, {
-    headers: { Authorization: `Bearer ${cfg.access_token}` },
-    timeout: 15000,
-  });
-  return data;
+  try {
+    const { data } = await axios.post(url, body, {
+      headers: { Authorization: `Bearer ${cfg.access_token}` },
+      timeout: 15000,
+    });
+    return data;
+  } catch (err) {
+    rethrowMetaError(err);
+  }
 }
 
 // Attachment types the IG Messaging API accepts on /me/messages.
@@ -115,11 +141,15 @@ async function sendMedia({ brand, recipient_id, kind, media_url, tag }) {
     body.messaging_type = "MESSAGE_TAG";
     body.tag = tag;
   }
-  const { data } = await axios.post(url, body, {
-    headers: { Authorization: `Bearer ${cfg.access_token}` },
-    timeout: 15000,
-  });
-  return data;
+  try {
+    const { data } = await axios.post(url, body, {
+      headers: { Authorization: `Bearer ${cfg.access_token}` },
+      timeout: 15000,
+    });
+    return data;
+  } catch (err) {
+    rethrowMetaError(err);
+  }
 }
 
 /** Back-compat wrapper — image is just sendMedia(kind: 'image'). */
@@ -148,4 +178,55 @@ async function isConfigured({ brand }) {
   }
 }
 
-module.exports = { sendText, sendImage, sendMedia, isConfigured };
+/**
+ * Fetch the public profile of an Instagram user (IGSID) — the person
+ * behind an inbound DM. The webhook payload only carries the IGSID, so
+ * without this call every new customer lands in the inbox as a
+ * faceless "New contact". Requires the app to have the User Profile API
+ * permission (granted with instagram_business_manage_messages).
+ *
+ * Best-effort: any failure (profile-scope not approved, user blocked
+ * the business, expired URL, …) returns null — the inbound message must
+ * always be recorded regardless.
+ *
+ * @returns {{name: string|null, username: string|null, profile_pic: string|null,
+ *            follower_count: number|null}|null}
+ */
+async function fetchUserProfile({ brand, igsid }) {
+  if (!brand || !igsid) return null;
+  try {
+    const cfg = await resolveSendConfig({ brand });
+    const { data } = await axios.get(
+      `${GRAPH()}/${encodeURIComponent(igsid)}`,
+      {
+        params: { fields: "name,username,profile_pic,follower_count" },
+        headers: { Authorization: `Bearer ${cfg.access_token}` },
+        timeout: 10000,
+      },
+    );
+    if (!data) return null;
+    return {
+      name: data.name || null,
+      username: data.username || null,
+      profile_pic: data.profile_pic || null,
+      follower_count:
+        data.follower_count !== undefined ? data.follower_count : null,
+    };
+  } catch (err) {
+    const { logger } = require("../config/logger");
+    const metaErr = err.response && err.response.data && err.response.data.error;
+    logger.warn(
+      { igsid, brand, err: err.message, meta_error: metaErr || null },
+      "instagram: user profile fetch failed — contact stays unnamed",
+    );
+    return null;
+  }
+}
+
+module.exports = {
+  sendText,
+  sendImage,
+  sendMedia,
+  isConfigured,
+  fetchUserProfile,
+};

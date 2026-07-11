@@ -18,7 +18,7 @@ const repo = require("./smartcomm.repo");
 const events = require("./smartcomm.events");
 const { enqueue } = require("../../jobs/queue-producer");
 const { audit } = require("../../middleware/audit");
-const { transaction, query } = require("../../config/database");
+const { transaction, query, ex } = require("../../config/database");
 const { NotFoundError, AppError, ValidationError } = require("../../utils/errors");
 
 // ── Helpers ───────────────────────────────────────────────
@@ -470,7 +470,7 @@ async function listMessages({ user, brand, id, before, limit }) {
 
 /** Post a message into a channel. */
 async function postMessage({ brand, user, request_id, id, input }) {
-  return transaction(async (client) => {
+  const posted = await transaction(async (client) => {
     const channel = await repo.getChannel({ client, id });
     if (!channel) throw new NotFoundError("Channel");
     // External-thread reply gate
@@ -549,24 +549,34 @@ async function postMessage({ brand, user, request_id, id, input }) {
       target_id: msg.message_id,
       request_id,
     });
-    events.emit("message.posted", {
-      brand,
-      channel_id: id,
-      message_id: msg.message_id,
-      external_platform: channel.external_platform,
-    });
-    // For external customer threads, queue an outbound provider send.
+    // For external customer threads, build the outbound provider jobs.
+    // They are ENQUEUED after commit (see below) — a BullMQ worker used
+    // to grab the job while this transaction was still open, so the
+    // processor's "sent" update couldn't see the row, and a rollback
+    // could leave a message already delivered to the customer.
+    let jobs = [];
     if (channel.channel_type === "customer_thread") {
-      await enqueueOutboundForChannel({
+      jobs = await buildOutboundJobsForChannel({
         channel,
         message: msg,
         content: input.content,
-        attachments: input.attachments,
         client,
       });
     }
-    return msg;
+    return { msg, channel, jobs };
   });
+  // Post-commit: real rows are visible to every connection now — safe to
+  // fan out sockets/notifications (the realtime layer re-reads the
+  // message) and hand jobs to the worker.
+  events.emit("message.posted", {
+    brand,
+    channel_id: id,
+    message_id: posted.msg.message_id,
+    sender_user_id: user.user_id,
+    external_platform: posted.channel.external_platform,
+  });
+  await flushOutboundJobs(posted.jobs);
+  return posted.msg;
 }
 
 async function editMessage({ brand, user, request_id, message_id, content }) {
@@ -670,7 +680,7 @@ async function forwardMessage({
           403,
         );
     }
-    await transaction(async (client) => {
+    const fwd = await transaction(async (client) => {
       const msg = await repo.insertMessage({
         client,
         message: {
@@ -696,21 +706,23 @@ async function forwardMessage({
           },
         });
       }
-      events.emit("message.forwarded", {
-        from_message_id: src.message_id,
-        to_channel_id: target_channel_id,
-        new_message_id: msg.message_id,
-      });
+      let jobs = [];
       if (dest.channel_type === "customer_thread") {
-        await enqueueOutboundForChannel({
+        jobs = await buildOutboundJobsForChannel({
           channel: dest,
           message: msg,
           content: src.content,
-          attachments: atts,
           client,
         });
       }
+      return { msg, jobs };
     });
+    events.emit("message.forwarded", {
+      from_message_id: src.message_id,
+      to_channel_id: target_channel_id,
+      new_message_id: fwd.msg.message_id,
+    });
+    await flushOutboundJobs(fwd.jobs);
     forwarded += 1;
   }
   await audit({
@@ -762,7 +774,7 @@ function searchMessages({ user, q, channel_id, limit }) {
 // ── Read receipts ─────────────────────────────────────────
 
 async function markRead({ user, id, up_to_id }) {
-  return transaction(async (client) => {
+  const result = await transaction(async (client) => {
     const channel = await repo.getChannel({ client, id });
     if (!channel) throw new NotFoundError("Channel");
     await repo.markChannelRead({
@@ -798,6 +810,22 @@ async function markRead({ user, id, up_to_id }) {
     });
     return { channel_id: id, read_at: new Date().toISOString() };
   });
+  // Reading the thread consumes its "new message" notifications too —
+  // otherwise the bell keeps counting conversations you've already read
+  // AND the one-unread-per-channel dedupe in the realtime layer stays
+  // latched, silencing every future inbound sound for this thread.
+  // Best-effort: a notification hiccup must never fail the read receipt.
+  try {
+    const notifications = require("../../services/notifications.service");
+    await notifications.markReadByReference({
+      user_id: user.user_id,
+      reference_type: "smartcomm_channel",
+      reference_id: id,
+    });
+  } catch {
+    /* non-fatal */
+  }
+  return result;
 }
 
 function getUnreadCount({ user, brand }) {
@@ -1148,22 +1176,27 @@ async function buildWhatsAppSends(message, content, client, business) {
 }
 
 /**
- * Translate a posted message on a customer_thread into a provider-
- * specific send job. The processor stamps `external_ref` and updates
- * delivery_status on completion.
+ * Translate a posted message on a customer_thread into provider-
+ * specific send jobs. Runs INSIDE the posting transaction (all reads
+ * and failure markings ride `client`), but returns the jobs instead of
+ * enqueueing them — the caller hands them to `flushOutboundJobs` AFTER
+ * commit, so a worker can never race the still-open transaction (which
+ * used to leave "sent" updates as silent no-ops) and a rollback can
+ * never leave a message already delivered to the customer.
  */
-async function enqueueOutboundForChannel({
+async function buildOutboundJobsForChannel({
   channel,
   message,
   content,
-  attachments: _attachments,
   client,
 }) {
   const platform = channel.external_platform;
   const meta = channel.metadata || {};
   // Reachability of the customer is captured on the contact, not the
-  // channel — channels only know who is in them.
-  const member = await query(
+  // channel — channels only know who is in them. Rides `client` so a
+  // thread + member created earlier in THIS transaction (first-touch
+  // outbound via sendToCustomer) is visible.
+  const member = await ex(client)(
     `SELECT con.contact_id, con.primary_phone, con.whatsapp_number, con.email,
             h.handle AS ig_handle, h.external_user_id AS ig_user_id
        FROM shared.channel_members cm
@@ -1176,49 +1209,42 @@ async function enqueueOutboundForChannel({
   );
   const c = member.rows[0] || {};
 
+  const fail = async (delivery_error) => {
+    await repo.setMessageDelivery({
+      client,
+      message_id: message.message_id,
+      delivery_status: "failed",
+      delivery_error,
+    });
+    return [];
+  };
+
   if (platform === "whatsapp") {
     const to = c.whatsapp_number || c.primary_phone;
-    if (!to) {
-      await repo.setMessageDelivery({
-        message_id: message.message_id,
-        delivery_status: "failed",
-        delivery_error: "NO_WHATSAPP_NUMBER_ON_FILE",
-      });
-      return;
-    }
+    if (!to) return fail("NO_WHATSAPP_NUMBER_ON_FILE");
     const sends = await buildWhatsAppSends(message, content, client, channel.business);
-    if (sends.length === 0) {
-      await repo.setMessageDelivery({
-        message_id: message.message_id,
-        delivery_status: "failed",
-        delivery_error: "NOTHING_TO_SEND",
-      });
-      return;
-    }
+    if (sends.length === 0) return fail("NOTHING_TO_SEND");
     // A product_share fans out into several native bubbles (one photo
     // per product + a closing link) — every job carries the same
     // smartcomm_message_id so any one of them completing marks the
     // message "sent"; only the last to complete's provider ref sticks
     // (fine — the tick reflects the overall share, not one bubble).
-    for (const send of sends) {
-      await enqueue("whatsapp-send", "customer-whatsapp", {
+    return sends.map((send) => ({
+      queue: "whatsapp-send",
+      name: "customer-whatsapp",
+      data: {
         brand: channel.business,
         to,
         ...send,
         smartcomm_message_id: message.message_id,
         channel_id: channel.channel_id,
-      });
-    }
-  } else if (platform === "instagram") {
+      },
+    }));
+  }
+
+  if (platform === "instagram") {
     const recipient_id = c.ig_user_id || meta.ig_user_id;
-    if (!recipient_id) {
-      await repo.setMessageDelivery({
-        message_id: message.message_id,
-        delivery_status: "failed",
-        delivery_error: "NO_IG_HANDLE_ON_FILE",
-      });
-      return;
-    }
+    if (!recipient_id) return fail("NO_IG_HANDLE_ON_FILE");
     // The 24h-window guard in postMessage marks the message with
     // is_template === true when the operator has opted into a
     // HUMAN_AGENT-tagged reply outside the window — pass that
@@ -1236,14 +1262,7 @@ async function enqueueOutboundForChannel({
       const media = await resolveOutboundMedia(message, client);
       // Instagram only supports the link method here, so it still needs a
       // publicly-fetchable URL (unlike WhatsApp's upload-first path).
-      if (!media || !media.media_url) {
-        await repo.setMessageDelivery({
-          message_id: message.message_id,
-          delivery_status: "failed",
-          delivery_error: "MEDIA_URL_UNAVAILABLE",
-        });
-        return;
-      }
+      if (!media || !media.media_url) return fail("MEDIA_URL_UNAVAILABLE");
       // IG attachments carry no caption field (unlike WhatsApp) — any
       // typed caption goes out as its own text bubble first so it isn't
       // silently dropped.
@@ -1276,50 +1295,54 @@ async function enqueueOutboundForChannel({
           ? [{ text: card.caption }, { image_url: card.media_url }]
           : [{ text: card.body }],
       );
-      if (jobPayloads.length === 0) {
-        await repo.setMessageDelivery({
-          message_id: message.message_id,
-          delivery_status: "failed",
-          delivery_error: "NOTHING_TO_SEND",
-        });
-        return;
-      }
+      if (jobPayloads.length === 0) return fail("NOTHING_TO_SEND");
     } else {
       const body = composeCardText(message, content);
-      if (!body) {
-        await repo.setMessageDelivery({
-          message_id: message.message_id,
-          delivery_status: "failed",
-          delivery_error: "NOTHING_TO_SEND",
-        });
-        return;
-      }
+      if (!body) return fail("NOTHING_TO_SEND");
       jobPayloads = [{ text: body }];
     }
-    for (const jobPayload of jobPayloads) {
-      await enqueue("instagram-send", "customer-ig", {
+    return jobPayloads.map((jobPayload) => ({
+      queue: "instagram-send",
+      name: "customer-ig",
+      data: {
         brand: channel.business,
         recipient_id,
         ...jobPayload,
         tag: outsideWindow ? "HUMAN_AGENT" : undefined,
         smartcomm_message_id: message.message_id,
         channel_id: channel.channel_id,
-      });
-    }
-  } else if (platform === "email") {
+      },
+    }));
+  }
+
+  if (platform === "email") {
     const to = c.email;
-    if (!to) return;
-    await enqueue("email-send", "customer-email", {
-      to,
-      subject: meta.subject || "A message from us",
-      html: content,
-      in_reply_to: meta.in_reply_to,
-      smartcomm_message_id: message.message_id,
-      channel_id: channel.channel_id,
-      brand: channel.business,
-      contact_id: c.contact_id,
-      event_key: "smartcomm.email_reply",
-    });
+    if (!to) return [];
+    return [
+      {
+        queue: "email-send",
+        name: "customer-email",
+        data: {
+          to,
+          subject: meta.subject || "A message from us",
+          html: content,
+          in_reply_to: meta.in_reply_to,
+          smartcomm_message_id: message.message_id,
+          channel_id: channel.channel_id,
+          brand: channel.business,
+          contact_id: c.contact_id,
+          event_key: "smartcomm.email_reply",
+        },
+      },
+    ];
+  }
+  return [];
+}
+
+/** Enqueue the jobs built inside a (now committed) transaction. */
+async function flushOutboundJobs(jobs) {
+  for (const job of jobs || []) {
+    await enqueue(job.queue, job.name, job.data);
   }
 }
 
@@ -1511,7 +1534,7 @@ async function recordInboundFromCustomer({
   // DB connection isn't held open while we talk to Meta.
   const storedDoc = await downloadInboundMediaToDocument({ brand, media });
 
-  return transaction(async (client) => {
+  const result = await transaction(async (client) => {
     // Authoritative idempotency: a concurrent delivery may have inserted
     // between the pre-check and here.
     if (external_ref) {
@@ -1586,15 +1609,22 @@ async function recordInboundFromCustomer({
         },
       });
     }
+    return { channel_id: thread.channel_id, message: msg, duplicate: false };
+  });
+  // Post-commit: the realtime layer + notification fanout re-read the
+  // message row, so the event must never fire while the insert is still
+  // invisible to other connections (it used to fire mid-transaction,
+  // which made the sender lookup race and misfire notifications).
+  if (!result.duplicate) {
     events.emit("customer.message_received", {
       brand,
       contact_id,
-      channel_id: thread.channel_id,
-      message_id: msg.message_id,
+      channel_id: result.channel_id,
+      message_id: result.message.message_id,
       platform,
     });
-    return { channel_id: thread.channel_id, message: msg, duplicate: false };
-  });
+  }
+  return result;
 }
 
 /**
@@ -1612,7 +1642,7 @@ async function recordCallActivity({
   content,
   metadata,
 }) {
-  return transaction(async (client) => {
+  const result = await transaction(async (client) => {
     const thread = await findOrCreateCustomerThread({
       client,
       brand,
@@ -1631,15 +1661,16 @@ async function recordCallActivity({
         metadata: sanitiseMessageMetadata("call", metadata),
       },
     });
-    events.emit("customer.message_received", {
-      brand,
-      contact_id,
-      channel_id: thread.channel_id,
-      message_id: msg.message_id,
-      platform: "whatsapp",
-    });
     return { channel_id: thread.channel_id, message: msg };
   });
+  events.emit("customer.message_received", {
+    brand,
+    contact_id,
+    channel_id: result.channel_id,
+    message_id: result.message.message_id,
+    platform: "whatsapp",
+  });
+  return result;
 }
 
 /**
@@ -1735,7 +1766,7 @@ async function sendToCustomer({
   // racing a manual send) must not both pass the "does a thread already
   // exist?" check before either INSERT commits, which would create
   // duplicate customer_thread channels for the same contact/platform.
-  const { thread, msg } = await transaction(async (client) => {
+  const { thread, msg, jobs } = await transaction(async (client) => {
     const th = await findOrCreateCustomerThread({
       client,
       brand,
@@ -1752,15 +1783,15 @@ async function sendToCustomer({
         delivery_status: "queued",
       },
     });
-    await enqueueOutboundForChannel({
+    const outboundJobs = await buildOutboundJobsForChannel({
       channel: th,
       message: m,
       content: body,
-      attachments: [],
       client,
     });
-    return { thread: th, msg: m };
+    return { thread: th, msg: m, jobs: outboundJobs };
   });
+  await flushOutboundJobs(jobs);
   events.emit("customer.message_sent", {
     brand,
     contact_id,
@@ -1778,6 +1809,102 @@ async function sendToCustomer({
     );
   }
   return { channel_id: thread.channel_id, message: msg, queued: true };
+}
+
+/**
+ * Delivery outcome from a queue processor (sent/failed + provider ref).
+ * One entry point so every processor both persists the status AND emits
+ * message.edited — the open thread used to keep showing the hourglass
+ * until the next poll because processors wrote the row silently.
+ */
+async function applyDeliveryResult({
+  message_id,
+  delivery_status,
+  delivery_error,
+  external_ref,
+}) {
+  const updated = await repo.setMessageDelivery({
+    message_id,
+    delivery_status,
+    delivery_error,
+    external_ref,
+  });
+  if (updated) {
+    events.emit("message.edited", {
+      channel_id: updated.channel_id,
+      message_id,
+    });
+  }
+  return updated;
+}
+
+/**
+ * Re-queue a failed outbound message (staff hit "Retry" on the bubble).
+ * Rebuilds the provider jobs from the stored message + attachments, so
+ * a fix in Messaging Settings (fresh token, re-connected account) or on
+ * the contact (handle back-filled) is picked up by the retry.
+ */
+async function retryOutboundMessage({ brand, user, request_id, message_id }) {
+  const msg = await repo.getMessage({ id: message_id });
+  if (!msg || msg.is_deleted) throw new NotFoundError("Message");
+  const channel = await repo.getChannel({ id: msg.channel_id });
+  if (!channel) throw new NotFoundError("Channel");
+  if (channel.channel_type !== "customer_thread") {
+    throw new AppError(
+      "NOT_RETRYABLE",
+      "Only customer-thread messages can be re-sent",
+      400,
+    );
+  }
+  if (msg.delivery_status !== "failed" && msg.delivery_status !== "queued") {
+    throw new AppError(
+      "NOT_RETRYABLE",
+      "This message already reached the provider",
+      409,
+    );
+  }
+  if (channel.external_platform) {
+    await assertPlatformAccess({
+      user,
+      brand,
+      platform: channel.external_platform,
+      action: "reply",
+    });
+  }
+  const jobs = await buildOutboundJobsForChannel({
+    channel,
+    message: msg,
+    content: msg.content,
+  });
+  if (jobs.length > 0) {
+    await repo.setMessageDelivery({
+      message_id,
+      delivery_status: "queued",
+      delivery_error: null,
+    });
+    await flushOutboundJobs(jobs);
+  }
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "smartcomm.message.retry",
+    target_type: "message",
+    target_id: message_id,
+    request_id,
+  });
+  events.emit("message.edited", {
+    channel_id: msg.channel_id,
+    message_id,
+  });
+  // When the job build itself failed (e.g. still no handle on file), the
+  // fresh delivery_error is already on the row — surface it to the caller.
+  const after = await repo.getMessage({ id: message_id });
+  return {
+    message_id,
+    delivery_status: after.delivery_status,
+    delivery_error: after.delivery_error,
+    requeued: jobs.length > 0,
+  };
 }
 
 /**
@@ -2046,9 +2173,12 @@ module.exports = {
   // exposed for the calls module (voice-call timeline cards):
   recordCallActivity,
   updateCallActivity,
-  // exposed for webhook subscriber:
-  enqueueOutboundForChannel,
+  // exposed for webhook subscriber + queue processors:
+  buildOutboundJobsForChannel,
+  flushOutboundJobs,
   applyProviderStatus,
+  applyDeliveryResult,
+  retryOutboundMessage,
   assertPlatformAccess,
   // colleague directory + CEO channel-access matrix
   listColleagues,

@@ -1,132 +1,27 @@
-import { useEffect, useRef, useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Clock, MapPin, LogOut, Loader2, AlertTriangle, Check } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { getMyToday, clock as clockApi } from "@/lib/hr-api";
-import { captureGeo } from "@/lib/geo-capture";
-import { getDeviceFingerprint } from "@/lib/device-fingerprint";
-import { useToastStore } from "@/components/notifications/NotificationToast";
-import { toastReport } from "@/lib/error-report";
+import { useClockPunch } from "./useClockPunch";
 
 /**
- * Top-bar clock in/out (canon §3.2). Captures the device location + reverse-
- * geocoded address at punch and sends it to the server, which compares the
- * point to the office geofences and flags off-site clock-ins. Hidden for
+ * Top-bar clock in/out pill (canon §3.2). Captures the device location +
+ * reverse-geocoded address at punch and sends it to the server, which compares
+ * the point to the office geofences and flags off-site clock-ins. Hidden for
  * accounts not linked to a staff profile.
+ *
+ * All punch logic lives in `useClockPunch`; this is just the desktop skin. On
+ * mobile the same state machine is rendered by `ClockFanItem` in the floating
+ * launcher so the tight mobile top bar can stay clean.
  */
 export function ClockWidget({ compact = false }: { compact?: boolean }) {
-  const qc = useQueryClient();
-  const toast = useToastStore();
-  const [elapsed, setElapsed] = useState(0);
+  const { view, hhmmss, isOffsite, geofenceRequired, busy, isFetching, clockIn, clockOut, retry } =
+    useClockPunch();
 
-  const { data, isError, error, refetch, isFetching } = useQuery({
-    queryKey: ["hr", "me", "today"],
-    queryFn: getMyToday,
-    retry: false,
-    staleTime: 60_000,
-    refetchOnWindowFocus: true,
-  });
+  if (view === "hidden" || view === "loading") return null;
 
-  const startRef = useRef(0);
-  useEffect(() => {
-    if (!data?.clocked_in || !data.clocked_in_at) return;
-    startRef.current = new Date(data.clocked_in_at).getTime();
-    const tick = () =>
-      setElapsed(Math.max(0, Math.floor((Date.now() - startRef.current) / 1000)));
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [data?.clocked_in, data?.clocked_in_at]);
-
-  const notify = (title: string, body = "", priority: "low" | "normal" | "high" = "normal") => {
-    if (priority === "high") {
-      toastReport("HR → Clock in/out", title, body || "Something went wrong.");
-      return;
-    }
-    toast.add({
-      notification_id: crypto.randomUUID(),
-      user_id: "",
-      business: null,
-      type: "hr",
-      priority,
-      title,
-      body,
-      reference_type: null,
-      reference_id: null,
-      action_url: null,
-      is_read: false,
-      read_at: null,
-      created_at: new Date().toISOString(),
-    });
-  };
-
-  const punch = useMutation({
-    mutationFn: async (event_type: "clock_in" | "clock_out") => {
-      const geo = await captureGeo();
-      // Location is mandatory for BOTH clock-in and clock-out — a punch is
-      // never recorded without it. Refusing on clock-in means the day is
-      // marked absent (no clock-in exists to reconcile).
-      const noFix = geo.denied || geo.latitude == null || geo.longitude == null;
-      if (noFix) {
-        throw new Error(
-          event_type === "clock_out"
-            ? "Confirm your location to clock out. Enable location access on your device and try again."
-            : "Confirm your location to clock in. Enable location access on your device and try again — without it you'll be marked absent for the day.",
-        );
-      }
-      return clockApi({
-        event_type,
-        latitude: geo.latitude,
-        longitude: geo.longitude,
-        accuracy_m: geo.accuracy_m,
-        address: geo.address,
-        device_fingerprint: getDeviceFingerprint(),
-      });
-    },
-    onSuccess: (rec) => {
-      qc.invalidateQueries({ queryKey: ["hr", "me"] });
-      if (rec.device_recognized === false) {
-        notify(
-          "Clocked in — unrecognised device",
-          "This device isn't enrolled for attendance, so this clock-in is flagged for HR. Enrol it in My HR → My devices.",
-          "high",
-        );
-      } else if (rec.event_type === "clock_out") {
-        notify("Clocked out", "Have a good one.");
-      } else if (rec.is_offsite) {
-        notify(
-          "Clocked in — off-site",
-          "You're outside the office perimeter; this will need an explanation.",
-          "high",
-        );
-      } else if (rec.status === "late") {
-        notify("Clocked in — late", `${rec.late_minutes} min late.`, "high");
-      } else {
-        notify("Clocked in", rec.address || "Have a great day.");
-      }
-    },
-    onError: (e) => {
-      const msg = e instanceof Error ? e.message : "";
-      // Location prompts and "already clocked" conflicts are expected user
-      // states — surface them as a normal toast, not the report-to-admin path.
-      const benign = /location|already clocked/i.test(msg);
-      notify(
-        benign ? "Confirm your location" : "Clock in/out failed",
-        msg,
-        benign ? "normal" : "high",
-      );
-    },
-  });
-
-  // A 404 means this account isn't linked to a staff profile — render nothing.
-  // Any other failure is transient (a 500/network blip); keep a retry
-  // affordance rather than silently removing the clock (audit M9).
-  if (isError) {
-    const status = (error as { status?: number } | null)?.status;
-    if (status === 404) return null;
+  if (view === "error") {
     return (
       <button
-        onClick={() => refetch()}
+        onClick={retry}
         disabled={isFetching}
         title="Couldn't load your clock status — tap to retry"
         className="inline-flex items-center gap-2 h-[38px] px-[13px] rounded-[11px] border border-warn/40 bg-warn/10 font-semibold text-xs text-warn transition-all"
@@ -136,32 +31,23 @@ export function ClockWidget({ compact = false }: { compact?: boolean }) {
       </button>
     );
   }
-  if (!data) return null;
-  // Day off and not currently clocked in — no control needed.
-  if (data.expected_mode === "off" && !data.clocked_in) return null;
 
-  const hhmmss = [elapsed / 3600, (elapsed % 3600) / 60, elapsed % 60]
-    .map((n) => String(Math.floor(n)).padStart(2, "0"))
-    .join(":");
-
-  const busy = punch.isPending;
-
-  if (data.clocked_in) {
+  if (view === "in") {
     return (
       <button
-        onClick={() => !busy && punch.mutate("clock_out")}
+        onClick={() => !busy && clockOut()}
         disabled={busy}
-        title={data.is_offsite ? "Clocked in (off-site) — clock out" : "Clock out"}
+        title={isOffsite ? "Clocked in (off-site) — clock out" : "Clock out"}
         className={cn(
           "inline-flex items-center gap-2 h-[38px] px-[13px] rounded-[11px] border font-semibold text-xs transition-all",
-          data.is_offsite
+          isOffsite
             ? "text-warn border-warn/40 bg-warn/10"
             : "text-success border-success/40 bg-success/10",
         )}
       >
         {busy ? (
           <Loader2 className="w-[15px] animate-spin" />
-        ) : data.is_offsite ? (
+        ) : isOffsite ? (
           <AlertTriangle className="w-[15px]" />
         ) : (
           <LogOut className="w-[15px]" />
@@ -173,7 +59,7 @@ export function ClockWidget({ compact = false }: { compact?: boolean }) {
 
   // Already clocked in AND out today — one cycle per day, so lock the control
   // to a "Done" state rather than inviting a second clock-in.
-  if (data.clocked_out) {
+  if (view === "done") {
     return (
       <span
         title="You've clocked in and out today"
@@ -187,7 +73,7 @@ export function ClockWidget({ compact = false }: { compact?: boolean }) {
 
   return (
     <button
-      onClick={() => !busy && punch.mutate("clock_in")}
+      onClick={() => !busy && clockIn()}
       disabled={busy}
       title="Clock in"
       className={cn(
@@ -196,7 +82,7 @@ export function ClockWidget({ compact = false }: { compact?: boolean }) {
     >
       {busy ? (
         <Loader2 className="w-[15px] animate-spin" />
-      ) : data.geofence_required ? (
+      ) : geofenceRequired ? (
         <MapPin className="w-[15px]" />
       ) : (
         <Clock className="w-[15px]" />

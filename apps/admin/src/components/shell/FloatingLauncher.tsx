@@ -13,6 +13,8 @@ import { useIsDesktop } from "@/hooks/useMediaQuery";
 import { useChatDockStore } from "@/stores/chat-dock";
 import { usePraxisDockStore } from "@/stores/praxis-dock";
 import { useUnreadMessages } from "@/hooks/useSmartcomm";
+import { useClockPunch } from "./useClockPunch";
+import { ClockFanItem } from "./ClockFanItem";
 
 /**
  * Floating launcher (canon §3.4) — fans to Praxis · Messages · Help.
@@ -41,7 +43,7 @@ const DRAG_THRESHOLD = 6;
 const BUTTON = 52;
 const EDGE_PAD = 12;
 const MOBILE_BOTTOM_RESERVE = 68;
-const FAN_HEIGHT = 176; // three 44px minis + gaps
+const FAN_ITEM = 54; // a 44px mini + the 10px column gap
 
 interface Pos {
   left: number;
@@ -84,6 +86,12 @@ export function FloatingLauncher() {
   const openDock = useChatDockStore((s) => s.openDock);
   const openPraxis = usePraxisDockStore((s) => s.openDock);
   const unread = messagesUnread?.unread_count ?? 0;
+  // Clock in/out rides the launcher on mobile (the desktop top bar keeps its
+  // own pill — canon §3.2). One hook instance drives both the fan item and the
+  // at-a-glance attendance pip on the closed FAB.
+  const clock = useClockPunch();
+  const showClock =
+    !isDesktop && clock.view !== "hidden" && clock.view !== "loading";
   const ref = useRef<HTMLDivElement>(null);
   const suppressClick = useRef(false);
   const drag = useRef<{
@@ -214,10 +222,25 @@ export function FloatingLauncher() {
     } else setOpen((v) => !v);
   }
 
-  const fanBelow = pos != null && pos.top < FAN_HEIGHT + EDGE_PAD;
+  // Height the open fan needs, so we know whether to flip it below the button
+  // when it's parked near the top of the screen. Grows by one row when the
+  // clock item is present.
+  const fanHeight = (showClock ? 4 : 3) * FAN_ITEM + EDGE_PAD;
+  const fanBelow = pos != null && pos.top < fanHeight + EDGE_PAD;
   const containerStyle: CSSProperties = pos
     ? { left: pos.left, top: pos.top, right: "auto", bottom: "auto" }
     : {};
+
+  // At-a-glance attendance state on the closed FAB, so the reminder to punch in
+  // isn't lost now that the clock isn't sitting in the mobile top bar. Only the
+  // states worth a passive nudge light up; hidden while the fan is open (the
+  // full control is right there) or mid-drag.
+  const pip =
+    showClock && clock.view === "idle"
+      ? { color: "bg-warn", pulse: true }
+      : showClock && clock.view === "in"
+        ? { color: clock.isOffsite ? "bg-warn" : "bg-success", pulse: false }
+        : null;
 
   const mini = (
     label: string,
@@ -270,6 +293,12 @@ export function FloatingLauncher() {
             fanBelow ? "top-full pt-2.5 flex-col-reverse" : "bottom-full pb-2.5",
           )}
         >
+          {/* Clock in/out — topmost, just above Help (mobile only; the desktop
+              top bar keeps its own pill). Self-labelling so it reads without a
+              hover the phone can't give. */}
+          {showClock && (
+            <ClockFanItem clock={clock} onPunch={() => setOpen(false)} />
+          )}
           <div className="group/m">
             {mini("Help", <HelpCircle className="w-5 h-5" />, () =>
               navigate("/help"),
@@ -335,6 +364,18 @@ export function FloatingLauncher() {
           <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1.5 rounded-[10px] bg-danger text-white text-[10px] font-bold grid place-items-center border-2 border-bg">
             {unread > 99 ? "99+" : unread}
           </span>
+        )}
+        {/* Attendance pip — sits opposite the unread badge so the two never
+            collide. Hidden while the fan is open or being dragged. */}
+        {pip && !open && !dragging && (
+          <span
+            aria-hidden
+            className={cn(
+              "absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-bg",
+              pip.color,
+              pip.pulse && "animate-pulse",
+            )}
+          />
         )}
       </button>
     </div>

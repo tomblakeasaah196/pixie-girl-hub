@@ -10,7 +10,7 @@ import { cn } from "@/lib/cn";
 import { useNotifStore } from "@/stores/notifications";
 import { useUnreadCount } from "@/lib/notifications-api";
 import { NotificationsPanel } from "./NotificationsPanel";
-import { NotificationBottomSheet } from "./NotificationBottomSheet";
+import { NotificationMobileDropdown } from "./NotificationMobileDropdown";
 import { useIsDesktop } from "@/hooks/useMediaQuery";
 
 export function NotificationBell() {
@@ -19,7 +19,9 @@ export function NotificationBell() {
   const isDesktop = useIsDesktop();
   const wrapRef = useRef<HTMLDivElement>(null);
 
-  // Close on outside click (desktop panel only).
+  // Close on outside click (desktop panel only). The mobile dropdown is
+  // portaled to <body>, so it lives outside this wrapper and can't rely on a
+  // wrapper-scoped check — it manages its own scrim / tap-to-close instead.
   useEffect(() => {
     if (!panelOpen || !isDesktop) return;
     const handler = (e: MouseEvent) => {
@@ -66,7 +68,10 @@ export function NotificationBell() {
         <NotificationsPanel onClose={() => setPanelOpen(false)} />
       )}
       {panelOpen && !isDesktop && (
-        <NotificationBottomSheet onClose={() => setPanelOpen(false)} />
+        <NotificationMobileDropdown
+          anchorRef={wrapRef}
+          onClose={() => setPanelOpen(false)}
+        />
       )}
     </div>
   );

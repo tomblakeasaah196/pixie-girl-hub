@@ -59,8 +59,9 @@ POST   /api/v1/cos/plans/:planId/reject
 ## Gates & failover
 
 - **Audience**: `requireCeo` (v1). RBAC re-applies on every executed step.
-- **Governance**: `canUseFeature('cos_chat')` (flag + grant + budget).
-- **Master switch**: `COS_ENABLED` (env) — off ⇒ graceful stub even with a vendor.
+- **On/off switch**: the `cos_chat` feature flag, toggled from **AI Control →
+  Feature Flags** (`canUseFeature('cos_chat')`; also enforces per-user cap +
+  budget). No env var, no redeploy — the CEO owns it. Off ⇒ graceful stub.
 - **LLM routing**: `llm-router.chatWithFailover` — DeepSeek → Gemini → OpenAI,
   skips `red`/unconfigured vendors, records a `failover_engaged` incident when a
   fallback engages. Usage metered on the governance ledger under `cos_chat`.

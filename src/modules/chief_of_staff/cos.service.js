@@ -7,9 +7,10 @@
  * action), and the failover router for the model call. Reuses praxis.repo for
  * conversations/messages and praxis.executor (via the plan executor) for writes.
  *
- * Degrades to a graceful stub when COS_ENABLED is off, the 'cos_chat' feature
- * is disabled/ungranted/over-budget, or no LLM vendor is configured — the
- * conversation + usage flow stays intact either way.
+ * Degrades to a graceful stub when the 'cos_chat' feature is disabled (from AI
+ * Control → Feature Flags), over its cap/budget, or no LLM vendor is configured
+ * — the conversation + usage flow stays intact either way. There is no env
+ * switch: enablement is owned entirely by AI Control.
  */
 
 "use strict";
@@ -26,7 +27,6 @@ const llmRouter = require("../../services/llm-router");
 const transcription = require("../../services/transcription.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
-const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
 const { NotFoundError } = require("../../utils/errors");
 
@@ -241,15 +241,19 @@ async function runTurn({ client, user, brand, conversation, userMsg, userText })
   return { assistant_message: assistant, plan };
 }
 
+// The CoS is gated entirely from AI Control (no env switch): the 'cos_chat'
+// feature flag turns it on/off, and a configured vendor lets it actually run.
 function stubReply(guard) {
-  if (!config.COS_ENABLED)
-    return "Your Chief of Staff isn't switched on in this environment yet. Once an AI vendor is configured and COS is enabled in AI Control, I'll turn what you tell me into goals, tasks and a schedule you can approve in one tap.";
-  if (guard && !guard.ok)
-    return (
-      guard.resting_message ||
-      "The Chief of Staff is resting right now — it's been switched off or is over its budget for this period. Try again later, or check AI Control."
-    );
-  return "I couldn't reach the AI service just now. Please try again in a moment.";
+  if (guard && !guard.ok) {
+    if (guard.resting_message) return guard.resting_message;
+    if (guard.reason === "USER_DAILY_CAP")
+      return "You've reached today's Chief of Staff limit. It resets tomorrow — or raise the cap in AI Control.";
+    if (guard.reason === "BUDGET_HARD_CAP")
+      return "The AI budget for this period is spent, so the Chief of Staff is paused. Raise the cap in AI Control → Spend & Budget.";
+    return "Your Chief of Staff is switched off. Turn it on in AI Control → Feature Flags (enable “Chief of Staff”) and I'll start planning with you — no redeploy needed.";
+  }
+  // Enabled, but no usable AI vendor is configured.
+  return "Your Chief of Staff is enabled, but no AI vendor is configured yet. Add a vendor key in AI Control → Vendors & Models and I'll get to work.";
 }
 
 async function postMessage({ user, brand, request_id, id, input }) {
@@ -287,7 +291,7 @@ async function postMessage({ user, brand, request_id, id, input }) {
 
     let assistantMsg = null;
     let plan = null;
-    if (config.COS_ENABLED && guard.ok) {
+    if (guard.ok) {
       try {
         const r = await runTurn({
           client,

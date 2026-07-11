@@ -250,10 +250,11 @@ ON CONFLICT (action_key) DO UPDATE SET
   updated_at          = now();
 
 -- ── 6. Governance feature flag for the CoS chat turn ────────
--- canUseFeature('cos_chat') gates every CoS turn (flag + grant + budget).
--- Default OFF: a fresh deploy leaves CoS resting until the CEO enables it in
--- AI Control — matching COS_ENABLED=false → graceful stub. DO NOTHING on
--- conflict so a redeploy never re-disables an already-enabled feature.
+-- canUseFeature('cos_chat') gates every CoS turn (flag + grant + budget) and is
+-- the ONLY on/off switch — toggled from AI Control → Feature Flags, no env var
+-- and no redeploy. Default OFF: a fresh deploy leaves CoS resting until the CEO
+-- enables it; off ⇒ graceful stub. DO NOTHING on conflict so a redeploy never
+-- re-disables an already-enabled feature.
 INSERT INTO shared.ai_feature_flags (
   feature_key, display_name, description, is_enabled,
   default_provider, default_model, feature_scope,

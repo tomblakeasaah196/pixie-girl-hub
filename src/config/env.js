@@ -335,11 +335,10 @@ const schema = z.object({
   EMBEDDINGS_API_BASE_URL: z.string().url().optional(),
   EMBEDDINGS_MODEL: z.string().default("text-embedding-3-small"),
   PRAXIS_ORCHESTRATOR_ENABLED: zBool(false),
-  // Chief of Staff (CoS) master switch — mirrors PRAXIS_ORCHESTRATOR_ENABLED but
-  // for the CoS persona. Off → the CoS chat degrades to a graceful stub even
-  // when a vendor is configured. The ai_feature_flags 'cos_chat' row + vendor
-  // availability are the other two gates (see chief_of_staff module).
-  COS_ENABLED: zBool(false),
+  // NOTE: the Chief of Staff has NO env switch by design — it is enabled entirely
+  // from AI Control (the 'cos_chat' feature flag in ai_feature_flags) so the CEO
+  // can turn it on/off without a backend engineer or redeploy. Vendor
+  // availability is the other gate; both are checked in the chief_of_staff module.
   // Which ai_vendor_credentials row backs Praxis's chat LLM (creds live in DB /
   // AI Control, not env). RAG retrieval depth + answer token budget.
   PRAXIS_LLM_VENDOR: z.string().default("deepseek"),

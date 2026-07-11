@@ -126,7 +126,7 @@ out of scope** and must not appear in the catalogue.)
 - **Errors**: throw `AppError` with `code`/`httpStatus`/`userMessage`. Never leak SQL.
 - **Audit**: every service write calls `audit({...})`.
 - **Design canon** (`docs/FRONTEND_INSTRUCTION_MUST_READ.md`): Maroon Noir tokens only, glassmorphism on overlays, Playfair/Montserrat/JetBrains Mono, four states on every screen (loading/empty/error/permission-denied), mobile-first.
-- **Feature flag**: `COS_ENABLED` (mirrors `PRAXIS_ORCHESTRATOR_ENABLED`) via `ai_feature_flags` + env; degrades gracefully to a stub when off or no vendor.
+- **Feature flag**: the `cos_chat` row in `ai_feature_flags`, toggled from **AI Control → Feature Flags** (no env var, no redeploy — the CEO owns the on/off). Degrades gracefully to a stub when off, over cap/budget, or no vendor. *(As-built: PR3 dropped the originally-sketched `COS_ENABLED` env switch to remove the backend-engineer dependency.)*
 - **Brand context**: `shared.goals`/`workspace_notes` carry a `business` column (same as `tasks`/`calendar_events`); every query filters by `req.brand` **except** the explicit cross-brand CEO path (§PR5).
 
 ---
@@ -502,7 +502,7 @@ multi-vendor failover router.
 - [x] Chatting in the CoS tab proposes a batch plan; approving it creates the goal + children in one gate.
 - [x] CoS provably cannot call a non-workspace action (structural: tools built only from `surface='workspace'`; planner rejects any other; guardrail test).
 - [x] Failover works when the primary vendor key is invalid (falls to Gemini, records incident) — `llm-router` unit-tested.
-- [x] Usage metered on the governance ledger under `cos_chat`; `COS_ENABLED=false` (or flag off / no vendor) degrades to a graceful stub.
+- [x] Usage metered on the governance ledger under `cos_chat`; the AI Control `cos_chat` flag off (or over cap/budget / no vendor) degrades to a graceful stub — no env switch.
 - [x] Praxis behaviour byte-for-byte unchanged (only pre-existing test failures remain; no CoS-caused regression).
 
 ### As-built notes (deviations from the sketch)
@@ -698,7 +698,7 @@ Praxis strings are untouched (`src/modules/praxis_ai/`, Praxis UI, nav "Praxis A
 - [ ] Executor runs as the CEO over loopback HTTP; RBAC re-applies.
 - [ ] Every write audited; every AI turn metered.
 - [ ] Brand isolation preserved (except the documented CEO cross-brand read).
-- [ ] `COS_ENABLED` off → graceful stub; no vendor → graceful stub.
+- [ ] `cos_chat` flag off (AI Control) → graceful stub; no vendor → graceful stub.
 - [ ] Design canon 10-question gate passed for each screen.
 - [ ] Praxis behaviour unchanged by every PR.
 

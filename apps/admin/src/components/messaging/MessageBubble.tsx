@@ -22,6 +22,7 @@ import type { Message } from "@/lib/smartcomm-types";
 import { MessageAttachments } from "./MessageAttachments";
 import { ProductCarousel } from "./ProductCarousel";
 import { InvoiceCard } from "./InvoiceCard";
+import { CallCard } from "./CallCard";
 import { EmailBody } from "./EmailBody";
 
 interface Actions {
@@ -71,6 +72,11 @@ export function MessageBubble({
         </div>
       </div>
     );
+  }
+
+  // Voice-call timeline entry — centred chip, not a chat bubble.
+  if (message.message_type === "call") {
+    return <CallCard message={message} />;
   }
 
   const sender = message.sender_name ?? "Unknown";

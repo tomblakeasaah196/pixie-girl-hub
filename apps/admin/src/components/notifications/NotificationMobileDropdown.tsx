@@ -1,10 +1,20 @@
 /**
- * NotificationBottomSheet — mobile variant of the bell dropdown.
- * Full-width sheet that slides up from the bottom, glass background,
- * swipe-down or tap-backdrop to close.
+ * NotificationMobileDropdown — mobile variant of the bell dropdown.
+ *
+ * Drops DOWN from directly beneath the bell, as a near-full-width glass card
+ * (a right-aligned 400px card from the tablet tier up).
+ *
+ * Why portal to <body>: the bell lives inside the sticky TopBar `<header>`,
+ * which carries a `.glass` `backdrop-filter`. A `backdrop-filter` ancestor
+ * becomes the containing block for `position: fixed` descendants, so a fixed
+ * panel rendered in place would be trapped inside the ~58px-tall header box
+ * (only its footer peeking out — the "just the View all button" bug). Portaling
+ * to <body> escapes that containing block so `fixed` resolves against the
+ * viewport. Same fix documented in `components/ui/Drawer.tsx`.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import {
   Bell,
@@ -53,20 +63,36 @@ function NotifIcon({ type }: { type: string }) {
 }
 
 interface Props {
+  /** The bell's wrapper — the dropdown drops down from just below it. */
+  anchorRef: RefObject<HTMLElement | null>;
   onClose: () => void;
 }
 
-export function NotificationBottomSheet({ onClose }: Props) {
+export function NotificationMobileDropdown({ anchorRef, onClose }: Props) {
   const navigate = useNavigate();
   const { data, isLoading } = useNotifFeed();
   const markRead = useMarkRead();
   const markAll = useMarkAllRead();
-  const sheetRef = useRef<HTMLDivElement>(null);
 
-  const all = data?.data ?? [];
-  const unreadCount = all.filter((n) => !n.is_read).length;
+  // Anchor the panel just beneath the bell. Measured from the live rect so it
+  // tracks the TopBar's real height (no hardcoded offset) and stays correct
+  // across orientation / resize.
+  const [top, setTop] = useState(() => {
+    const r = anchorRef.current?.getBoundingClientRect();
+    return (r?.bottom ?? 56) + 8;
+  });
+  useLayoutEffect(() => {
+    const measure = () => {
+      const r = anchorRef.current?.getBoundingClientRect();
+      if (r) setTop(r.bottom + 8);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [anchorRef]);
 
   // Close on Escape.
+  const sheetRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -75,42 +101,39 @@ export function NotificationBottomSheet({ onClose }: Props) {
     return () => document.removeEventListener("keydown", h);
   }, [onClose]);
 
+  const all = data?.data ?? [];
+  const unreadCount = all.filter((n) => !n.is_read).length;
+
   function handleClick(n: AppNotification) {
     if (!n.is_read) markRead.mutate(n.notification_id);
     onClose();
     navigate(n.action_url ?? "/notifications");
   }
 
-  return (
+  return createPortal(
     <>
-      {/* Backdrop */}
+      {/* Transparent scrim — tap anywhere outside to dismiss. Kept clear (no
+          dark backdrop) so this reads as a dropdown, not a modal sheet. */}
       <div
-        className="fixed inset-0 z-[90] bg-black/50 backdrop-blur-sm animate-[fade-in_0.18s_ease-out]"
+        className="fixed inset-0 z-[90]"
         onClick={onClose}
         aria-hidden
       />
 
-      {/* Sheet */}
+      {/* Panel — full-width with side gutters on phone; a right-aligned 400px
+          card from the tablet tier (sm) up. */}
       <div
         ref={sheetRef}
         role="dialog"
         aria-label="Notifications"
+        style={{ top }}
         className={cn(
-          "fixed bottom-0 left-0 right-0 z-[91]",
-          // `h-[85dvh]` gives the sheet a concrete height (not just a cap), so
-          // the inner `flex-1` scroll region can compute its space. Without a
-          // definite height, the body collapsed and only the footer button was
-          // visible — the "View all notifications" bug.
-          "dropglass rounded-t-[22px] h-[85dvh] max-h-[85dvh] flex flex-col",
-          "animate-[slide-up_0.25s_ease-out]",
-          "safe-area-bottom",
+          "fixed left-3 right-3 sm:left-auto sm:w-[400px] z-[91]",
+          "max-h-[72vh] flex flex-col overflow-hidden",
+          "dropglass rounded-[18px]",
+          "animate-[slide-up_0.2s_ease-out]",
         )}
       >
-        {/* Drag handle */}
-        <div className="flex justify-center pt-3 pb-1 shrink-0">
-          <div className="w-10 h-1 rounded-full bg-text-primary/20" />
-        </div>
-
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b hairline shrink-0">
           <div className="flex items-center gap-2">
@@ -144,9 +167,8 @@ export function NotificationBottomSheet({ onClose }: Props) {
           </div>
         </div>
 
-        {/* Body — `min-h-0` is required so the flex child can shrink below
-            its content and let `overflow-y-auto` scroll instead of pushing
-            the footer off screen. */}
+        {/* Body — `min-h-0` lets this flex child shrink below its content so
+            `overflow-y-auto` scrolls instead of pushing the footer off. */}
         <div className="flex-1 min-h-0 overflow-y-auto">
           {isLoading ? (
             <div className="space-y-3 p-5">
@@ -225,6 +247,7 @@ export function NotificationBottomSheet({ onClose }: Props) {
           </button>
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }

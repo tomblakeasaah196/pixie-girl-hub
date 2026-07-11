@@ -745,6 +745,47 @@ async function resolveWhatsAppInboundSecrets({ external_account_id }) {
   };
 }
 
+/**
+ * Read the number's voice-calling settings from Meta (Cloud API Calling).
+ * { status: 'ENABLED'|'DISABLED', call_icon_visibility?, … }.
+ */
+async function getWhatsAppCalling({ id }) {
+  const row = assertWhatsApp(await repo.getRaw({ id }));
+  const calling = require("../../services/whatsapp-calling.service");
+  return calling.getCallingSettings({ brand: row.business });
+}
+
+/**
+ * Toggle voice calling on the number. Enabling shows the call icon in the
+ * customer's chat header; inbound calls then land in the Hub (calls module).
+ */
+async function updateWhatsAppCalling({
+  brand,
+  user,
+  request_id,
+  id,
+  enabled,
+  icon_visibility,
+}) {
+  const row = assertWhatsApp(await repo.getRaw({ id }));
+  const calling = require("../../services/whatsapp-calling.service");
+  const result = await calling.updateCallingSettings({
+    brand: row.business,
+    enabled,
+    icon_visibility,
+  });
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "messaging_accounts.whatsapp_calling_update",
+    target_type: "messaging_account",
+    target_id: id,
+    after: { enabled, icon_visibility: icon_visibility || null },
+    request_id,
+  });
+  return result;
+}
+
 module.exports = {
   listAccounts,
   getAccount,
@@ -758,6 +799,9 @@ module.exports = {
   getWhatsAppProfile,
   updateWhatsAppProfile,
   setWhatsAppProfilePicture,
+  // WhatsApp voice calling (Cloud API Calling):
+  getWhatsAppCalling,
+  updateWhatsAppCalling,
   getInboundDnsRecords,
   // internal — for whatsapp.service + webhooks:
   resolveWhatsAppSendConfig,

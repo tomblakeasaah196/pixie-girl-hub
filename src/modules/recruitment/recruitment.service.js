@@ -26,6 +26,9 @@ const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
 const { NotFoundError, ConflictError, AppError } = require("../../utils/errors");
 
+const fs = require("fs");
+const path = require("path");
+
 const LOCKED = ["signed", "contracted", "provisioned"];
 
 const escHtml = (s) =>
@@ -37,17 +40,42 @@ const escHtml = (s) =>
 const appUrl = () => (config.APP_URL || "").replace(/\/$/, "");
 const offerLink = (token) => `${appUrl()}/offer/${token}`;
 
-/** Resolve the issuing brand's display name + who countersigns offers. */
+function loadLogoBase64(logoPath) {
+  if (!logoPath) return null;
+  const rel = logoPath.replace(/^\/+/, "");
+  const candidates = [
+    path.resolve(process.cwd(), rel),
+    path.resolve(process.cwd(), "media", rel),
+  ];
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) {
+        const ext = path.extname(p).toLowerCase().replace(".", "");
+        const mime = ext === "svg" ? "image/svg+xml" : `image/${ext || "png"}`;
+        return `data:${mime};base64,${fs.readFileSync(p).toString("base64")}`;
+      }
+    } catch { /* skip */ }
+  }
+  return null;
+}
+
+/** Resolve the issuing brand's display name, branding, and who countersigns offers. */
 async function getCompany({ brand, targets }) {
   const rows = await repo.getContext({ businesses: [brand, ...(targets || [])] });
   const byKey = Object.fromEntries(rows.map((r) => [r.business, r]));
   const ctx = byKey[brand] || byKey["*"] || {};
   const glob = byKey["*"] || {};
-  const displayName = (await repo.businessName({ brand })) || ctx.display_name || brand;
+  const branding = await repo.businessBranding({ brand });
+  const displayName = branding?.display_name || ctx.display_name || brand;
   return {
     display_name: displayName,
+    legal_name: branding?.legal_name || displayName,
     signatory_name: ctx.signatory_name || glob.signatory_name || "Faith",
     signatory_title: ctx.signatory_title || glob.signatory_title || "Chief Executive Officer",
+    accent_colour: branding?.accent_colour || "#690909",
+    secondary_colour: branding?.secondary_colour || "#A81D1D",
+    logo_base64: loadLogoBase64(branding?.logo_path || branding?.logo_alt_path),
+    brand_key: brand,
   };
 }
 
@@ -224,6 +252,12 @@ async function approveAndSend({ brand, user, request_id, id, input = {} }) {
     reference_type: "recruitment_offer",
     reference_id: offer.offer_id,
     request_id,
+    pdfOptions: {
+      displayHeaderFooter: true,
+      headerTemplate: "<span></span>",
+      footerTemplate: `<div style="font-size:8px;width:100%;text-align:center;color:#999;font-family:sans-serif;">
+        <span class="pageNumber"></span> of <span class="totalPages"></span></div>`,
+    },
   });
 
   // 2) E-signature request (candidate = sole external signer). Created directly

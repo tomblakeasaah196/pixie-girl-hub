@@ -5,6 +5,7 @@ import { PressStrip } from "@/components/site/PressStrip";
 import { FounderNote } from "@/components/site/FounderNote";
 import { SITE_IMAGES } from "@/lib/site-assets";
 import { usePageSlots, withSlots } from "@/lib/site-config";
+import { DEFAULT_HOME } from "@/lib/home-content";
 
 export const Route = createFileRoute("/about")({
   head: () => ({ meta: [{ title: "The Maison — Our Story · Faitlyn Hair" }] }),
@@ -12,6 +13,13 @@ export const Route = createFileRoute("/about")({
 });
 
 function AboutPage() {
+  const slots = usePageSlots("about");
+  const isObj = (v: unknown): v is Record<string, unknown> =>
+    !!v && typeof v === "object" && !Array.isArray(v);
+  const editorialSlot = isObj(slots.editorial) ? slots.editorial : {};
+  const pressSlot = isObj(slots.press) ? slots.press : {};
+  const founderSlot = isObj(slots.founder) ? slots.founder : {};
+
   const s = withSlots(
     {
       eyebrow: "Est. Lagos · 2021",
@@ -20,8 +28,20 @@ function AboutPage() {
       headingAfter: ".",
       imageUrl: SITE_IMAGES.models,
     },
-    usePageSlots("about"),
+    slots,
   );
+  const editorial = { ...DEFAULT_HOME.editorial, ...editorialSlot };
+  const press = {
+    eyebrow:
+      typeof pressSlot.eyebrow === "string"
+        ? pressSlot.eyebrow
+        : DEFAULT_HOME.press.eyebrow,
+    items: Array.isArray(pressSlot.items)
+      ? (pressSlot.items as string[])
+      : DEFAULT_HOME.press.items,
+  };
+  const founder = { ...DEFAULT_HOME.founder, ...founderSlot };
+
   return (
     <main className="bg-ink text-cream pt-32 lg:pt-36">
       <section className="relative h-[80vh] overflow-hidden">
@@ -47,9 +67,9 @@ function AboutPage() {
         </div>
       </section>
 
-      <EditorialSplit />
-      <PressStrip />
-      <FounderNote />
+      <EditorialSplit content={editorial} />
+      <PressStrip eyebrow={press.eyebrow} items={press.items} />
+      <FounderNote content={founder} />
     </main>
   );
 }

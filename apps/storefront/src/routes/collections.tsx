@@ -2,6 +2,7 @@ import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-r
 import { useQuery } from "@tanstack/react-query";
 import { getCollections } from "@/lib/storefront";
 import { Section, LoadingGrid, EmptyState, ErrorState } from "@/components/parts";
+import { usePageSlots, withSlots } from "@/lib/site-config";
 
 export const Route = createFileRoute("/collections")({
   component: CollectionsIndex,
@@ -14,22 +15,28 @@ function CollectionsIndex() {
     queryFn: () => getCollections(),
   });
   const collections = data ?? [];
+  const s = withSlots(
+    {
+      heading: "Collections",
+      body: "Edits and stories, grouped.",
+      emptyTitle: "No collections yet.",
+    },
+    usePageSlots("collections"),
+  );
 
   if (pathname !== "/collections" && pathname !== "/collections/") return <Outlet />;
 
   return (
     <Section>
-      <h1 className="text-h2 font-display">Collections</h1>
-      <p className="mt-2 text-body text-muted-foreground">
-        Edits and stories, grouped.
-      </p>
+      <h1 className="text-h2 font-display">{s.heading}</h1>
+      <p className="mt-2 text-body text-muted-foreground">{s.body}</p>
       <div className="mt-10">
         {isLoading ? (
           <LoadingGrid />
         ) : isError ? (
           <ErrorState onRetry={() => refetch()} />
         ) : collections.length === 0 ? (
-          <EmptyState title="No collections yet." />
+          <EmptyState title={s.emptyTitle} />
         ) : (
           <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
             {collections.map((c) => (

@@ -37,9 +37,7 @@ const { logger } = require("../config/logger");
 const { getClient: getRedisClient } = require("../config/redis");
 const { refreshBrands } = require("../config/brands");
 const { withCronLock } = require("./cron-lock");
-const {
-  captureError,
-} = require("../modules/kaizen/errors/errors.capture");
+const { captureError } = require("../modules/kaizen/errors/errors.capture");
 
 const queueNames = [
   "media-processing",
@@ -51,6 +49,7 @@ const queueNames = [
   "report-generate",
   "cart-ttl",
   "kaizen-backup",
+  "calls-lifecycle",
 ];
 
 const queues = new Map();
@@ -90,6 +89,7 @@ async function startWorkers() {
     "report-generate": require("./processors/report-processor"),
     "cart-ttl": require("./processors/cart-ttl-processor").processCartTtl,
     "kaizen-backup": require("./processors/kaizen-backup-processor"),
+    "calls-lifecycle": require("./processors/calls-processor"),
   };
 
   for (const [name, processor] of Object.entries(handlers)) {
@@ -197,12 +197,8 @@ async function startWorkers() {
     runStylistOfferSweep,
     runStylistCertificationSweep,
   } = require("./schedulers/stylist-programme-sweep");
-  const {
-    runChurnRiskScoring,
-  } = require("./schedulers/churn-risk-scoring");
-  const {
-    runSegmentPresetRefresh,
-  } = require("./schedulers/segment-presets");
+  const { runChurnRiskScoring } = require("./schedulers/churn-risk-scoring");
+  const { runSegmentPresetRefresh } = require("./schedulers/segment-presets");
 
   // Re-sync the brand registry so a business provisioned by the API process
   // reaches this worker's crons without a restart. Per-instance: it refreshes
@@ -279,11 +275,7 @@ async function startWorkers() {
   // Abandoned checkouts (Flexi Pay D10): nudge at ~2h, expire self-serve at
   // ~48h (staff channels on the slow lane) — windows read live from
   // installment_settings each run.
-  scheduleCron(
-    "abandoned-checkout",
-    "*/30 * * * *",
-    runAbandonedCheckoutSweep,
-  );
+  scheduleCron("abandoned-checkout", "*/30 * * * *", runAbandonedCheckoutSweep);
   // Birthday wishes — Communications Studio `birthday_wish` automation.
   // 09:00 Africa/Lagos = 08:00 UTC. Dispatcher deduplicates per year, so
   // a restart, retry, or manual re-trigger the same day is a no-op.
@@ -304,8 +296,9 @@ async function startWorkers() {
     "ai-vendor-health-ping",
     config.CRON_AI_VENDOR_HEALTH_PING,
     async () => {
-      require("../modules/ai_governance/health.service")
-        .pingAllVendorsInBackground({ source: "cron" });
+      require("../modules/ai_governance/health.service").pingAllVendorsInBackground(
+        { source: "cron" },
+      );
     },
   );
   scheduleCron("retention-workflows", "* * * * *", runRetentionWorkflows);
@@ -395,6 +388,9 @@ async function startWorkers() {
   // outbox event with only webhook-dispatch registered and inbound messages
   // silently never reach the inbox (events are marked done, not retried).
   require("../modules/smartcomm/smartcomm.subscribers");
+  // webhook.received → WhatsApp voice-call ingest (durable leg of the calls
+  // fast path — same "must register in THIS process" reasoning as above).
+  require("../modules/calls/calls.subscribers");
 
   // ── Realtime relays (DEFECT-3) ──────────────────────────
   // The outbox consumers and cron sweeps above emit domain events IN THIS
@@ -412,6 +408,7 @@ async function startWorkers() {
   require("../realtime/insights-realtime").registerInsightsRealtime();
   require("../realtime/attendance-realtime").registerAttendanceRealtime();
   require("../modules/smartcomm/smartcomm.realtime"); // self-registers, guarded
+  require("../modules/calls/calls.realtime"); // self-registers, guarded
 
   outboxTimer = setInterval(() => {
     outbox

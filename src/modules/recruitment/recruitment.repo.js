@@ -270,12 +270,14 @@ async function updateOffer({ id, fields, client }) {
   return rows[0] || null;
 }
 
-async function businessName({ brand }) {
+async function businessBranding({ brand }) {
   const { rows } = await query(
-    `SELECT display_name FROM shared.business_config WHERE business_key = $1`,
+    `SELECT display_name, legal_name, accent_colour, secondary_colour,
+            logo_path, logo_alt_path, brand_theme
+       FROM shared.business_config WHERE business_key = $1`,
     [brand],
   );
-  return rows[0] ? rows[0].display_name : null;
+  return rows[0] || null;
 }
 
 async function userIdByEmail({ email }) {
@@ -306,6 +308,6 @@ module.exports = {
   getOfferByToken,
   listOffers,
   updateOffer,
-  businessName,
+  businessBranding,
   userIdByEmail,
 };

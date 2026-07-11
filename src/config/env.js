@@ -192,6 +192,15 @@ const schema = z.object({
   // Social posting (V2.2 §6.14). Per-platform publish creds; blank → that
   // platform's publish/metrics calls are skipped with a clear error.
   META_GRAPH_VERSION: z.string().default("v21.0"),
+  // WhatsApp Business Calling rides newer Graph versions (the /calls edge
+  // and calling settings shipped with v23). Kept separate from the global
+  // Graph pin so upgrading calling never touches the battle-tested message
+  // send paths.
+  META_GRAPH_VERSION_CALLING: z.string().default("v23.0"),
+  // STUN servers handed to the answering browser's RTCPeerConnection
+  // (comma-separated). Meta's SDP supplies its own media candidates; STUN
+  // lets the browser discover its public candidate behind NAT.
+  WEBRTC_STUN_URLS: z.string().default("stun:stun.l.google.com:19302"),
   META_IG_USER_ID: z.string().optional(), // IG Business account id (publish target)
   META_FB_PAGE_ID: z.string().optional(),
   META_FB_PAGE_TOKEN: z.string().optional(), // page access token (FB + IG publish)

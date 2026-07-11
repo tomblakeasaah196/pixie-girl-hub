@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { priceFor } from "@/lib/storefront";
 import { useCurrency } from "@/lib/useStore";
+import { usePageSlots, withSlots } from "@/lib/site-config";
 import {
   analyzePhoto,
   connectShadeSocket,
@@ -77,12 +78,6 @@ type ChatItem =
 let seq = 0;
 const cid = () => `c${Date.now()}_${seq++}`;
 
-const STAGE_COPY: Record<string, string> = {
-  reading_photo: "Praxis is looking at your photo…",
-  matching_shades: "Matching you against our shades…",
-  picking_styles: "Picking the styles that will love you back…",
-  thinking: "Praxis is thinking…",
-};
 // Local fallback when the socket isn't connected — same story, timed.
 const FALLBACK_STAGES: ShadeStage[] = [
   "reading_photo",
@@ -90,7 +85,7 @@ const FALLBACK_STAGES: ShadeStage[] = [
   "picking_styles",
 ];
 
-const WELCOME =
+const DEFAULT_WELCOME =
   "Hi, I'm Praxis — your personal stylist and concierge. Share a clear photo in natural light and I'll read your undertone, find your shade, and pull the exact styles that carry it. Or just talk to me — the occasion you're dressing for, wig care, our salon services, delivery, anything about the brand.";
 
 const SESSION_KEY = "sf_session";
@@ -98,7 +93,7 @@ const SESSION_KEY = "sf_session";
 // Tap-to-start prompts (Gemini/Claude-style) — cut typing and aimless
 // scrolling by handing the visitor a clear first move. Spans the full
 // consultant range, not just shade tweaks.
-const SUGGESTIONS = [
+const DEFAULT_SUGGESTIONS = [
   "Something warmer",
   "Deep & rich",
   "Under ₦200k",
@@ -109,6 +104,51 @@ const SUGGESTIONS = [
 // ── Page ────────────────────────────────────────────────────
 
 function ShadeFinderPage() {
+  const slots = usePageSlots("shade_finder");
+  const s = withSlots(
+    {
+      welcome: DEFAULT_WELCOME,
+      suggestions: DEFAULT_SUGGESTIONS,
+      stageReadingPhoto: "Praxis is looking at your photo…",
+      stageMatchingShades: "Matching you against our shades…",
+      stagePickingStyles: "Picking the styles that will love you back…",
+      stageThinking: "Praxis is thinking…",
+      agentName: "Praxis",
+      agentRole: "Stylist & concierge",
+      quotaLabel: "{remaining} of {limit} looks left today",
+      quotaTitle: "Photo analyses reset at midnight",
+      endLabel: "End & delete",
+      endTitle: "End the session and delete everything now",
+      eyebrow: "Praxis · AI stylist",
+      heading: "Find your shade",
+      subheading:
+        "One photo finds your shade — and I'm here for everything else too: styles, care, services, delivery.",
+      shareCta: "Share a photo",
+      consentLine:
+        "I'm happy for Praxis to analyse this photo. It's never saved — discarded the moment the analysis ends.",
+      analyseCta: "Analyse",
+      composerPlaceholder: "Ask Praxis anything — shades, care, delivery…",
+      composerPhotoPlaceholder: "Add a note with your photo (optional)…",
+      exhaustedBody: "You've used today's free looks — Praxis resets at midnight ✨ You can still browse ",
+      exhaustedLinkLabel: "all shades",
+      exhaustedTail: ".",
+      privacyFooter: "Photos are analysed in memory and never saved.",
+      errorBody: "Praxis couldn't come to the phone — please try again.",
+      errorRetry: "Retry",
+      endedHeading: "All cleared away",
+      endedBody:
+        "Your chat and colour notes are deleted. Photos were never stored in the first place.",
+      endedCta: "Start a new session",
+      expiredToast: "That session had expired — I've started you a fresh one.",
+    },
+    slots,
+  );
+  const stageCopy: Record<string, string> = {
+    reading_photo: s.stageReadingPhoto,
+    matching_shades: s.stageMatchingShades,
+    picking_styles: s.stagePickingStyles,
+    thinking: s.stageThinking,
+  };
   const [phase, setPhase] = useState<"boot" | "ready" | "error">("boot");
   const [bootError, setBootError] = useState<string | null>(null);
   const [session, setSession] = useState<ShadeSession | null>(null);
@@ -165,7 +205,7 @@ function ShadeFinderPage() {
             }
           }
           const restored: ChatItem[] = [
-            { id: cid(), role: "praxis", kind: "text", text: WELCOME },
+            { id: cid(), role: "praxis", kind: "text", text: s.welcome },
             ...history,
           ];
           if (state.last_result?.shade) {
@@ -204,7 +244,7 @@ function ShadeFinderPage() {
       );
       setSession(fresh);
       setQuota(fresh.quota);
-      setItems([{ id: cid(), role: "praxis", kind: "text", text: WELCOME }]);
+      setItems([{ id: cid(), role: "praxis", kind: "text", text: s.welcome }]);
       setPhase("ready");
     } catch (e) {
       setBootError(
@@ -298,7 +338,7 @@ function ShadeFinderPage() {
   const handleFailure = (e: unknown, context?: { text?: string; photo?: boolean }) => {
     if (isSessionExpired(e)) {
       sessionStorage.removeItem(SESSION_KEY);
-      toast("That session had expired — I've started you a fresh one.");
+      toast(s.expiredToast);
       void boot();
       return;
     }
@@ -422,13 +462,13 @@ function ShadeFinderPage() {
       <FrameShell>
         <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
           <p className="max-w-md text-body text-destructive">
-            {bootError || "Praxis couldn't come to the phone — please try again."}
+            {bootError || s.errorBody}
           </p>
           <button
             onClick={() => void boot()}
             className="mt-6 inline-flex items-center gap-2 rounded-full border border-border px-5 py-2 text-body-sm hover:bg-secondary"
           >
-            <RefreshCcw className="h-4 w-4" /> Retry
+            <RefreshCcw className="h-4 w-4" /> {s.errorRetry}
           </button>
         </div>
       </FrameShell>
@@ -438,16 +478,15 @@ function ShadeFinderPage() {
       <FrameShell>
         <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
           <ShieldCheck className="h-8 w-8 text-champagne" />
-          <h1 className="mt-4 text-h2 font-couture">All cleared away</h1>
+          <h1 className="mt-4 text-h2 font-couture">{s.endedHeading}</h1>
           <p className="mt-3 max-w-md text-body text-muted-foreground">
-            Your chat and colour notes are deleted. Photos were never stored in
-            the first place.
+            {s.endedBody}
           </p>
           <button
             onClick={() => void boot()}
             className="mt-8 rounded-full bg-primary px-6 py-2.5 text-body-sm text-primary-foreground hover:opacity-90"
           >
-            Start a new session
+            {s.endedCta}
           </button>
         </div>
       </FrameShell>
@@ -470,10 +509,8 @@ function ShadeFinderPage() {
           </Link>
           <PraxisAvatar />
           <div className="min-w-0">
-            <p className="truncate text-body-sm font-medium">Praxis</p>
-            <p className="text-caption text-muted-foreground">
-              Stylist &amp; concierge
-            </p>
+            <p className="truncate text-body-sm font-medium">{s.agentName}</p>
+            <p className="text-caption text-muted-foreground">{s.agentRole}</p>
           </div>
         </div>
         <div className="flex items-center gap-2.5">
@@ -484,18 +521,20 @@ function ShadeFinderPage() {
                   ? "border-destructive/40 text-destructive"
                   : "border-border text-muted-foreground"
               }`}
-              title="Photo analyses reset at midnight"
+              title={s.quotaTitle}
             >
-              {quota.remaining} of {quota.limit} looks left today
+              {s.quotaLabel
+                .replace("{remaining}", String(quota.remaining))
+                .replace("{limit}", String(quota.limit))}
             </span>
           ) : null}
           <button
             onClick={() => void finish()}
             className="inline-flex items-center gap-1.5 text-caption text-muted-foreground transition-colors hover:text-destructive"
-            title="End the session and delete everything now"
+            title={s.endTitle}
           >
             <Trash2 className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">End &amp; delete</span>
+            <span className="hidden sm:inline">{s.endLabel}</span>
           </button>
         </div>
       </header>
@@ -506,11 +545,10 @@ function ShadeFinderPage() {
           {/* Title lives at the top of the thread, so it scrolls away and
               never permanently eats the viewport. */}
           <div className="pb-4 text-center">
-            <p className="text-caption text-muted-foreground">Praxis · AI stylist</p>
-            <h1 className="mt-2 text-h3 font-couture md:text-h2">Find your shade</h1>
+            <p className="text-caption text-muted-foreground">{s.eyebrow}</p>
+            <h1 className="mt-2 text-h3 font-couture md:text-h2">{s.heading}</h1>
             <p className="mx-auto mt-2 max-w-md text-body-sm text-muted-foreground">
-              One photo finds your shade — and I'm here for everything else
-              too: styles, care, services, delivery.
+              {s.subheading}
             </p>
           </div>
 
@@ -543,21 +581,21 @@ function ShadeFinderPage() {
                 onClick={() => fileInputRef.current?.click()}
                 className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card/60 px-3.5 py-2 text-body-sm text-foreground transition-colors hover:bg-secondary"
               >
-                <Camera className="h-3.5 w-3.5" /> Share a photo
+                <Camera className="h-3.5 w-3.5" /> {s.shareCta}
               </button>
-              {SUGGESTIONS.map((s) => (
+              {s.suggestions.map((sg: string) => (
                 <button
-                  key={s}
-                  onClick={() => void ask(s)}
+                  key={sg}
+                  onClick={() => void ask(sg)}
                   className="rounded-full border border-border bg-card/60 px-3.5 py-2 text-body-sm text-foreground transition-colors hover:bg-secondary"
                 >
-                  {s}
+                  {sg}
                 </button>
               ))}
             </div>
           ) : null}
 
-          {busy ? <ThinkingBubble stage={stage} /> : null}
+          {busy ? <ThinkingBubble stage={stage} stageCopy={stageCopy} /> : null}
           <div ref={bottomRef} />
         </div>
       </div>
@@ -577,10 +615,7 @@ function ShadeFinderPage() {
               onChange={(e) => setConsent(e.target.checked)}
               className="mt-0.5 accent-current"
             />
-            <span className="text-[0.72rem] leading-snug">
-              I'm happy for Praxis to analyse this photo. It's never saved —
-              discarded the moment the analysis ends.
-            </span>
+            <span className="text-[0.72rem] leading-snug">{s.consentLine}</span>
           </label>
           <button
             onClick={() => pickFile(null)}
@@ -599,7 +634,7 @@ function ShadeFinderPage() {
             ) : (
               <Sparkles className="h-4 w-4" />
             )}
-            Analyse
+            {s.analyseCta}
           </button>
         </div>
       ) : null}
@@ -609,12 +644,11 @@ function ShadeFinderPage() {
         <div className="mx-auto max-w-2xl">
           {exhausted ? (
             <p className="py-1 text-center text-body-sm text-muted-foreground">
-              You've used today's free looks — Praxis resets at midnight ✨ You
-              can still browse{" "}
+              {s.exhaustedBody}
               <Link to="/shades" className="underline underline-offset-4">
-                all shades
+                {s.exhaustedLinkLabel}
               </Link>
-              .
+              {s.exhaustedTail}
             </p>
           ) : (
             <div className="flex items-center gap-2">
@@ -648,9 +682,7 @@ function ShadeFinderPage() {
                   }
                 }}
                 placeholder={
-                  pendingFile
-                    ? "Add a note with your photo (optional)…"
-                    : "Ask Praxis anything — shades, care, delivery…"
+                  pendingFile ? s.composerPhotoPlaceholder : s.composerPlaceholder
                 }
                 disabled={busy}
                 className="min-w-0 flex-1 rounded-full border border-border bg-card px-4 py-2.5 text-body-sm outline-none placeholder:text-muted-foreground/70 focus:border-ring"
@@ -667,7 +699,7 @@ function ShadeFinderPage() {
           )}
           <p className="mt-2.5 flex items-center justify-center gap-1.5 text-center text-[0.68rem] text-muted-foreground">
             <ShieldCheck className="h-3 w-3 shrink-0" />
-            Photos are analysed in memory and never saved.
+            {s.privacyFooter}
           </p>
         </div>
       </div>
@@ -798,8 +830,14 @@ function UserBubble({ item }: { item: Extract<ChatItem, { role: "user" }> }) {
   );
 }
 
-function ThinkingBubble({ stage }: { stage: ShadeStage | null }) {
-  const label = (stage && STAGE_COPY[stage]) || "Praxis is thinking…";
+function ThinkingBubble({
+  stage,
+  stageCopy,
+}: {
+  stage: ShadeStage | null;
+  stageCopy: Record<string, string>;
+}) {
+  const label = (stage && stageCopy[stage]) || stageCopy.thinking || "Praxis is thinking…";
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}

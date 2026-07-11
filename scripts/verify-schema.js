@@ -49,7 +49,10 @@ const pool = new Pool({
 //   - WhatsApp calling (000319): +2 (whatsapp_calls, whatsapp_call_events) → 188.
 //   - Chief of Staff goals (000320-000321): +4 (goals, goal_milestones,
 //     goal_stakeholders, workspace_notes) → 192.
-const EXPECTED_SHARED = 192;
+//   - Chief of Staff agent (000324): +1 (ai_pending_plans) → 193.
+//     (ai_conversations.kind, ai_action_catalogue.surface, ai_pending_actions
+//      plan_id/plan_step are ALTERs, not new tables.)
+const EXPECTED_SHARED = 193;
 const EXPECTED_PER_BRAND = 203;
 
 async function countTables(schema) {

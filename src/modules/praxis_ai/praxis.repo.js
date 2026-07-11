@@ -13,23 +13,26 @@ const { query, ex } = require("../../config/database");
 // ── Conversations ──────────────────────────────────────────
 async function createConversation({ c }) {
   const { rows } = await query(
-    `INSERT INTO shared.ai_conversations (user_id, business, title, is_voice_started)
-     VALUES ($1,$2,$3,COALESCE($4,false)) RETURNING *`,
+    `INSERT INTO shared.ai_conversations (user_id, business, title, is_voice_started, kind)
+     VALUES ($1,$2,$3,COALESCE($4,false),COALESCE($5,'praxis')) RETURNING *`,
     [
       c.user_id,
       c.business || null,
       c.title || null,
       c.is_voice_started === undefined ? null : c.is_voice_started,
+      c.kind || null,
     ],
   );
   return rows[0];
 }
-async function listConversations({ user_id }) {
+// `kind` scopes the thread list to a persona (default 'praxis'). CoS passes
+// 'chief_of_staff' so the two personas never see each other's conversations.
+async function listConversations({ user_id, kind = "praxis" }) {
   const { rows } = await query(
     `SELECT * FROM shared.ai_conversations
-      WHERE user_id = $1 AND is_archived = false
+      WHERE user_id = $1 AND is_archived = false AND kind = $2
       ORDER BY last_activity_at DESC`,
-    [user_id],
+    [user_id, kind],
   );
   return rows;
 }

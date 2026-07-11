@@ -1,0 +1,375 @@
+/**
+ * Chief of Staff (PR3) — business logic.
+ *
+ * A scoped persona over the Praxis runtime: its own conversation `kind`, its
+ * own governance feature ('cos_chat'), a catalogue filtered to surface=
+ * 'workspace', a batch-plan proposal (instead of Praxis's single pending
+ * action), and the failover router for the model call. Reuses praxis.repo for
+ * conversations/messages and praxis.executor (via the plan executor) for writes.
+ *
+ * Degrades to a graceful stub when COS_ENABLED is off, the 'cos_chat' feature
+ * is disabled/ungranted/over-budget, or no LLM vendor is configured — the
+ * conversation + usage flow stays intact either way.
+ */
+
+"use strict";
+
+const praxisRepo = require("../praxis_ai/praxis.repo");
+const cosRepo = require("./cos.repo");
+const planExecutor = require("./cos.plan-executor");
+const persona = require("./cos.persona");
+const planner = require("./cos.planner");
+const events = require("./cos.events");
+const governance = require("../ai_governance/governance.service");
+const modelCatalogue = require("../ai_governance/model-catalogue.repo");
+const llmRouter = require("../../services/llm-router");
+const transcription = require("../../services/transcription.service");
+const { audit } = require("../../middleware/audit");
+const { transaction } = require("../../config/database");
+const { config } = require("../../config/env");
+const { logger } = require("../../config/logger");
+const { NotFoundError } = require("../../utils/errors");
+
+const KIND = "chief_of_staff";
+const FEATURE = "cos_chat";
+const HISTORY_TURNS = 10;
+const PRAXIS_MAX_TOOLS = 40;
+
+const safeName = (key) =>
+  String(key).replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
+
+function normalizeParams(schema) {
+  if (schema && typeof schema === "object" && !Array.isArray(schema) && schema.type === "object") {
+    return { properties: {}, ...schema };
+  }
+  return { type: "object", properties: {} };
+}
+
+/** OpenAI-style tools from the CoS catalogue rows, keyed by tool name. */
+function buildTools(actions) {
+  const byName = new Map();
+  const tools = [];
+  for (const a of actions.slice(0, PRAXIS_MAX_TOOLS)) {
+    const name = safeName(a.action_key);
+    if (byName.has(name)) continue;
+    byName.set(name, a);
+    tools.push({
+      type: "function",
+      function: {
+        name,
+        description: a.description || a.title || a.action_key,
+        parameters: normalizeParams(a.payload_schema),
+      },
+    });
+  }
+  return { tools, byName };
+}
+
+// ── Conversations ──────────────────────────────────────────
+function listConversations({ user }) {
+  return praxisRepo.listConversations({ user_id: user.user_id, kind: KIND });
+}
+
+async function getConversation({ user, id }) {
+  const conv = await praxisRepo.findConversation({ id });
+  if (!conv || conv.user_id !== user.user_id || conv.kind !== KIND)
+    throw new NotFoundError("Conversation");
+  const [messages, plans] = await Promise.all([
+    praxisRepo.listMessages({ conversation_id: id }),
+    cosRepo.listPlansForConversation({ conversation_id: id }),
+  ]);
+  const plansWithSteps = await Promise.all(
+    plans.map(async (p) => ({
+      ...p,
+      steps: await cosRepo.listPlanSteps({ plan_id: p.plan_id }),
+    })),
+  );
+  return { ...conv, messages, plans: plansWithSteps };
+}
+
+async function createConversation({ user, brand, request_id, input }) {
+  const conv = await praxisRepo.createConversation({
+    c: {
+      user_id: user.user_id,
+      business: brand,
+      title: input.title,
+      is_voice_started: input.is_voice_started,
+      kind: KIND,
+    },
+  });
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "cos.conversation.create",
+    target_type: "ai_conversation",
+    target_id: conv.conversation_id,
+    request_id,
+  });
+  return conv;
+}
+
+async function archiveConversation({ user, id }) {
+  const conv = await praxisRepo.findConversation({ id });
+  if (!conv || conv.user_id !== user.user_id || conv.kind !== KIND)
+    throw new NotFoundError("Conversation");
+  await praxisRepo.archiveConversation({ id, user_id: user.user_id });
+}
+
+// ── The CoS turn ───────────────────────────────────────────
+async function recordUsageSafe({ user, brand, convId, completion, ok }) {
+  let cost = "0";
+  try {
+    const model = await modelCatalogue.resolveActiveModel({
+      vendor: completion.vendor,
+      capability: "chat",
+    });
+    if (model)
+      cost = modelCatalogue.computeCost({
+        model,
+        input_tokens: completion.usage.prompt_tokens || 0,
+        output_tokens: completion.usage.completion_tokens || 0,
+      });
+  } catch {
+    /* best-effort cost */
+  }
+  try {
+    await governance.recordUsage({
+      usage: {
+        user_id: user.user_id,
+        feature_key: FEATURE,
+        business: brand,
+        conversation_id: convId,
+        provider: completion.vendor,
+        model: completion.model,
+        call_type: "chat_completion",
+        input_tokens: completion.usage.prompt_tokens || 0,
+        output_tokens: completion.usage.completion_tokens || 0,
+        total_tokens: completion.usage.total_tokens || 0,
+        cost_native: cost,
+        cost_ngn: cost,
+        was_successful: ok,
+      },
+    });
+  } catch (err) {
+    logger.error({ err: err.message }, "cos: usage record failed");
+  }
+  return cost;
+}
+
+/**
+ * Live CoS turn. Returns { assistant_message, plan } or null to signal the
+ * caller to fall back to the stub (no vendor / nothing to offer).
+ */
+async function runTurn({ client, user, brand, conversation, userMsg, userText }) {
+  const actions = await governance.listActions({ ai_enabled: true, surface: "workspace" });
+  const { tools, byName } = buildTools(actions);
+  if (!tools.length) return null;
+
+  const prior = await praxisRepo.listMessages({ conversation_id: conversation.conversation_id });
+  const history = prior
+    .filter((m) => (m.role === "user" || m.role === "assistant") && m.message_id !== userMsg.message_id)
+    .slice(-HISTORY_TURNS)
+    .map((m) => ({ role: m.role, content: m.content || "" }));
+
+  const messages = [
+    {
+      role: "system",
+      content: persona.systemPrompt({
+        brand,
+        user,
+        actionTitles: actions.map((a) => a.title),
+      }),
+    },
+    ...history,
+    { role: "user", content: userText },
+  ];
+
+  let completion;
+  try {
+    completion = await llmRouter.chatWithFailover({
+      capability: "chat",
+      messages,
+      tools,
+      user,
+      brand,
+      feature_key: FEATURE,
+    });
+  } catch (err) {
+    logger.error({ err: err.message }, "cos: llm-router failed — falling back to stub");
+    return null;
+  }
+
+  await recordUsageSafe({ user, brand, convId: conversation.conversation_id, completion, ok: true });
+
+  let plan = null;
+  if (completion.tool_calls && completion.tool_calls.length) {
+    const built = await planner.planFromCompletion({
+      client,
+      completion,
+      byName,
+      conversation,
+      userMsg,
+      user,
+      brand,
+    });
+    if (built) plan = built;
+  }
+
+  const replyText =
+    (completion.content && completion.content.trim()) ||
+    (plan
+      ? "Here's the plan I've put together — review the steps and approve to run them."
+      : "Okay.");
+
+  const assistant = await praxisRepo.insertMessage({
+    client,
+    m: {
+      conversation_id: conversation.conversation_id,
+      role: "assistant",
+      content: replyText,
+      provider: completion.vendor,
+      model: completion.model,
+      input_tokens: completion.usage.prompt_tokens || null,
+      output_tokens: completion.usage.completion_tokens || null,
+    },
+  });
+  await praxisRepo.touchConversation({
+    client,
+    id: conversation.conversation_id,
+    tokens: completion.usage.total_tokens || 0,
+  });
+  return { assistant_message: assistant, plan };
+}
+
+function stubReply(guard) {
+  if (!config.COS_ENABLED)
+    return "Your Chief of Staff isn't switched on in this environment yet. Once an AI vendor is configured and COS is enabled in AI Control, I'll turn what you tell me into goals, tasks and a schedule you can approve in one tap.";
+  if (guard && !guard.ok)
+    return (
+      guard.resting_message ||
+      "The Chief of Staff is resting right now — it's been switched off or is over its budget for this period. Try again later, or check AI Control."
+    );
+  return "I couldn't reach the AI service just now. Please try again in a moment.";
+}
+
+async function postMessage({ user, brand, request_id, id, input }) {
+  const conv = await praxisRepo.findConversation({ id });
+  if (!conv || conv.user_id !== user.user_id || conv.kind !== KIND)
+    throw new NotFoundError("Conversation");
+
+  const guard = await governance.canUseFeature({
+    user_id: user.user_id,
+    feature_key: FEATURE,
+    is_ceo: user.is_ceo,
+    business: brand,
+  });
+
+  // Voice → text up front (network call, outside the DB transaction).
+  let transcribed = input.transcribed_text || null;
+  if (!transcribed && input.source_audio_url) {
+    transcribed = await transcription.transcribe({ audioUrl: input.source_audio_url });
+  }
+  const userText = input.content || transcribed || "";
+
+  return transaction(async (client) => {
+    const userMsg = await praxisRepo.insertMessage({
+      client,
+      m: {
+        conversation_id: id,
+        role: "user",
+        input_mode: input.input_mode || "text",
+        transcribed_text: transcribed,
+        source_audio_url: input.source_audio_url || null,
+        content: userText,
+      },
+    });
+    await praxisRepo.touchConversation({ client, id });
+
+    let assistantMsg = null;
+    let plan = null;
+    if (config.COS_ENABLED && guard.ok) {
+      try {
+        const r = await runTurn({
+          client,
+          user,
+          brand,
+          conversation: conv,
+          userMsg,
+          userText,
+        });
+        if (r) {
+          assistantMsg = r.assistant_message;
+          plan = r.plan;
+        }
+      } catch (err) {
+        logger.error({ err: err.message }, "cos turn failed — falling back to stub");
+      }
+    }
+
+    if (!assistantMsg) {
+      assistantMsg = await praxisRepo.insertMessage({
+        client,
+        m: { conversation_id: id, role: "assistant", content: stubReply(guard) },
+      });
+      await praxisRepo.touchConversation({ client, id });
+    }
+
+    await audit({
+      business: brand,
+      user_id: user.user_id,
+      action_key: "cos.message.post",
+      target_type: "ai_conversation",
+      target_id: id,
+      request_id,
+    });
+    if (plan) {
+      events.emit("plan.proposed", {
+        plan_id: plan.plan.plan_id,
+        user_id: user.user_id,
+        conversation_id: id,
+      });
+    }
+    return {
+      user_message: userMsg,
+      assistant_message: assistantMsg,
+      plan: plan ? { ...plan.plan, steps: plan.steps } : null,
+    };
+  });
+}
+
+// ── Plans ──────────────────────────────────────────────────
+async function getPlan({ user, id }) {
+  const plan = await cosRepo.findPlan({ id });
+  if (!plan || plan.proposed_by_user_id !== user.user_id)
+    throw new NotFoundError("Plan");
+  const steps = await cosRepo.listPlanSteps({ plan_id: id });
+  return { ...plan, steps };
+}
+
+function confirmPlan({ user, request_id, id, auth_header }) {
+  return planExecutor.confirmPlan({ user, request_id, id, auth_header });
+}
+
+function rejectPlan({ user, request_id, id, reason }) {
+  return planExecutor.rejectPlan({ user, request_id, id, reason });
+}
+
+// Re-exported so a caller (or test) can assert the scoped catalogue directly.
+function listWorkspaceActions() {
+  return governance.listActions({ ai_enabled: true, surface: "workspace" });
+}
+
+module.exports = {
+  listConversations,
+  getConversation,
+  createConversation,
+  archiveConversation,
+  postMessage,
+  getPlan,
+  confirmPlan,
+  rejectPlan,
+  listWorkspaceActions,
+  // internals exposed for tests
+  buildTools,
+  runTurn,
+};

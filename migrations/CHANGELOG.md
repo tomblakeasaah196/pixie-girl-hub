@@ -11,6 +11,31 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-10 — WhatsApp Business Calling (inbound voice)
+
+**Source:** user request — customers close deals on WhatsApp calls;
+inbound (customer→business) calling via Meta's Cloud API Calling, answered
+by staff in the Hub browser over WebRTC.
+
+**Files (new):** `000319_shared_whatsapp_calls.sql` — adds
+`shared.whatsapp_calls` (one row per call: ringing → in_progress →
+completed / missed / rejected / failed, agent, duration, outcome,
+missed-call follow-up flags) and `shared.whatsapp_call_events` (raw
+webhook/action audit, deduped per (call, event)); widens
+`messages_message_type_check` with `'call'` and teaches
+`fn_smartcomm_touch_channel` the 📞 preview so calls land as timeline
+cards on the customer's SmartComm thread.
+
+**Related (no migration):** `src/modules/calls/` (state machine, ring
+choreography: conversation owner first, everyone after 15 s),
+`src/services/whatsapp-calling.service.js` (Graph /calls edge +
+per-number calling settings), the `calls-lifecycle` BullMQ queue, and the
+CallLayer in the admin app. `scripts/verify-schema.js` EXPECTED_SHARED
+179 → 188 (also counts 000317 order links +2 and 000318 recruitment +5,
+which had shipped without bumping it).
+
+---
+
 ## 2026-07-09 — Email account activation + OTP password reset
 
 **Source:** user request — every account must verify ownership of its email

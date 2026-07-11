@@ -47,6 +47,17 @@ const METADATA_WHITELIST = {
   // can render a story-preview card in the inbox.
   ig_story_mention: ["story_url", "story_id"],
   ig_story_reply:   ["story_url", "story_id"],
+  // WhatsApp voice-call timeline card (calls module, migration 000319).
+  // Stamped server-side only — there is no HTTP path that posts a 'call'
+  // message (the composer's validator doesn't accept the type).
+  call: [
+    "call_id",
+    "call_status",
+    "duration_seconds",
+    "answered_by_name",
+    "outcome",
+    "outcome_notes",
+  ],
 };
 
 function sanitiseMessageMetadata(messageType, metadata) {
@@ -1479,6 +1490,74 @@ async function recordInboundFromCustomer({
 }
 
 /**
+ * Record a WhatsApp voice call as a 'call' card on the customer's thread
+ * (calls module — migration 000319). Internal only: no HTTP path posts a
+ * 'call' message; the calls service stamps the card when a call ends and
+ * updates it when the agent records the outcome. The card counts as
+ * customer activity so the thread surfaces with an unread badge (a missed
+ * call must never be silently buried).
+ */
+async function recordCallActivity({
+  brand,
+  contact_id,
+  external_thread_ref,
+  content,
+  metadata,
+}) {
+  return transaction(async (client) => {
+    const thread = await findOrCreateCustomerThread({
+      client,
+      brand,
+      contact_id,
+      platform: "whatsapp",
+      external_thread_ref,
+    });
+    const msg = await repo.insertMessage({
+      client,
+      message: {
+        channel_id: thread.channel_id,
+        sender_contact_id: contact_id,
+        message_type: "call",
+        content,
+        delivery_status: "delivered",
+        metadata: sanitiseMessageMetadata("call", metadata),
+      },
+    });
+    events.emit("customer.message_received", {
+      brand,
+      contact_id,
+      channel_id: thread.channel_id,
+      message_id: msg.message_id,
+      platform: "whatsapp",
+    });
+    return { channel_id: thread.channel_id, message: msg };
+  });
+}
+
+/**
+ * Refresh a call card after the fact (outcome recorded, duration settled).
+ * Merges sanitised metadata and emits message.edited so open threads
+ * re-render the card live.
+ */
+async function updateCallActivity({ message_id, content, metadata }) {
+  const clean = sanitiseMessageMetadata("call", metadata);
+  const { rows } = await query(
+    `UPDATE shared.messages
+        SET content = COALESCE($2, content),
+            metadata = COALESCE(metadata, '{}'::jsonb) || COALESCE($3::jsonb, '{}'::jsonb)
+      WHERE message_id = $1 AND message_type = 'call'
+      RETURNING channel_id`,
+    [message_id, content || null, clean ? JSON.stringify(clean) : null],
+  );
+  if (rows[0]) {
+    events.emit("message.edited", {
+      channel_id: rows[0].channel_id,
+      message_id,
+    });
+  }
+}
+
+/**
  * Send an outbound message to a customer over WhatsApp / IG / email,
  * record it on their thread, and queue the provider send. Used by
  * subscribers (G-4 layaway reminder etc.) and by the staff composer.
@@ -1712,6 +1791,9 @@ module.exports = {
   recordInboundFromCustomer,
   findOrCreateCustomerThread,
   addAttachment,
+  // exposed for the calls module (voice-call timeline cards):
+  recordCallActivity,
+  updateCallActivity,
   // exposed for webhook subscriber:
   enqueueOutboundForChannel,
   applyProviderStatus,

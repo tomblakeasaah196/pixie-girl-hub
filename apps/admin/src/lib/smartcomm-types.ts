@@ -22,7 +22,8 @@ export type MessageType =
   | "system"
   | "product_share"
   | "send_invoice"
-  | "template";
+  | "template"
+  | "call";
 export type ChannelStatus = "open" | "resolved";
 export type ParticipantRole = "member" | "admin";
 export type SenderKind = "staff" | "customer" | "system";
@@ -158,6 +159,13 @@ export interface Message {
     amount_due?: string;
     due_date?: string;
     url?: string;
+    // 'call' cards (WhatsApp voice calls — calls module)
+    call_id?: string;
+    call_status?: "completed" | "missed" | "rejected" | "failed";
+    duration_seconds?: number | null;
+    answered_by_name?: string | null;
+    outcome?: string | null;
+    outcome_notes?: string | null;
   } | null;
 }
 

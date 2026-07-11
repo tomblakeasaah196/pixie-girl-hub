@@ -91,6 +91,21 @@ async function getDnsRecords(req, res) {
   });
 }
 
+async function getWhatsAppCalling(req, res) {
+  res.json({ data: await service.getWhatsAppCalling({ id: req.params.id }) });
+}
+
+async function updateWhatsAppCalling(req, res) {
+  res.json({
+    data: await service.updateWhatsAppCalling({
+      ...ctx(req),
+      id: req.params.id,
+      enabled: req.body.enabled,
+      icon_visibility: req.body.icon_visibility,
+    }),
+  });
+}
+
 module.exports = {
   listAccounts,
   getAccount,
@@ -103,5 +118,7 @@ module.exports = {
   getWhatsAppProfile,
   updateWhatsAppProfile,
   setWhatsAppProfilePicture,
+  getWhatsAppCalling,
+  updateWhatsAppCalling,
   getDnsRecords,
 };

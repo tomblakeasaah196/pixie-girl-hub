@@ -47,6 +47,7 @@ import { CommsStudioTab } from "./CommsStudioTab";
 import { QuickRepliesTab } from "./QuickRepliesTab";
 import { WhatsAppTemplatesTab } from "./WhatsAppTemplatesTab";
 import { WhatsAppBusinessProfile } from "./WhatsAppBusinessProfile";
+import { WhatsAppCallingSettings } from "./WhatsAppCallingSettings";
 
 /**
  * Messaging settings — every configuration concern the Messaging module
@@ -698,7 +699,10 @@ function PlatformEditor({ platform, account, onSaved }: EditorProps) {
       </div>
 
       {platform === "whatsapp" && account && (
-        <WhatsAppBusinessProfile account={account} />
+        <>
+          <WhatsAppBusinessProfile account={account} />
+          <WhatsAppCallingSettings account={account} />
+        </>
       )}
 
       {account && <RevealHistory accountId={account.account_id} />}

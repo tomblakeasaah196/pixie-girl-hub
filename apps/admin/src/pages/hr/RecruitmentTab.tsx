@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Sparkles,
@@ -364,6 +365,7 @@ function OfferStudio({
   onBack: () => void;
 }) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const notify = useNotify("Recruitment: studio");
   const { data: offer, isLoading } = useQuery({
     queryKey: ["recruitment", "offer", offerId],
@@ -418,11 +420,11 @@ function OfferStudio({
     onSuccess: (o) => { setD(o); inval(); notify("Offer sent", "The candidate has been emailed a signing link."); },
     onError: (e) => notify("Couldn't send", errMsg(e), "high"),
   });
-  const provision = useMutation({
-    mutationFn: () => recruitmentApi.provision(offerId),
-    onSuccess: (r) => { inval(); notify("Login provisioned", `Credentials emailed to ${r.email}.`); },
-    onError: (e) => notify("Couldn't provision", errMsg(e), "high"),
-  });
+  // Provisioning goes through the staff-onboarding wizard (prefilled from this
+  // offer): contact → HR employee profile → organigramme seat → login. That is
+  // what makes the hire visible in the directory, org chart and Users & Access.
+  const startOnboarding = () =>
+    navigate(`/contacts/staff/new?offer_id=${offerId}`);
 
   if (isLoading || !d) {
     return (
@@ -466,8 +468,8 @@ function OfferStudio({
           )}
           {canEdit && ["signed", "contracted"].includes(d.status) && !d.provisioned_user_id && (
             <Button size="sm" variant="primary" icon={<KeyRound className="h-3.5 w-3.5" />}
-              disabled={provision.isPending} onClick={() => provision.mutate()}>
-              {provision.isPending ? "Provisioning…" : "Provision & email credentials"}
+              onClick={startOnboarding}>
+              Onboard &amp; provision
             </Button>
           )}
           {d.provisioned_user_id && (
@@ -478,8 +480,10 @@ function OfferStudio({
 
       {locked && (
         <div className="rounded-xl border hairline bg-surface-2 p-3 text-xs text-text-muted">
-          This offer has been {d.status} — the documents are locked. Use “Provision &amp; email
-          credentials” to create the candidate’s login.
+          This offer has been {d.status} — the documents are locked.
+          {d.provisioned_user_id
+            ? " The candidate's employee record and login have been created."
+            : " Use “Onboard & provision” to create the employee record, place them in the organigramme, and email their login."}
         </div>
       )}
 

@@ -193,7 +193,12 @@ async function getChannelEnriched({ id, user_id }) {
     listMessages({ channel_id: id, limit: 50, user_id }),
     user_id ? findMember({ channel_id: id, user_id }) : Promise.resolve(null),
   ]);
-  return { ...channel, members, messages, my_member: me };
+  // `my_role` is the caller's membership role (admin/member). The list
+  // endpoint exposes it via a join, but this single-channel read builds
+  // the channel from getChannel (SELECT *), which has no per-user columns —
+  // so surface it here explicitly. The group-info UI gates the "Add / remove
+  // people" affordance on it; without it every group looked read-only.
+  return { ...channel, members, messages, my_member: me, my_role: me?.role ?? null };
 }
 
 async function findCustomerThread({ client, brand, contact_id }) {
@@ -1163,6 +1168,144 @@ async function customer360({ contact_id, brand }) {
   };
 }
 
+// ── Colleague directory ───────────────────────────────────
+// The internal people-picker source (new group, add-to-group). Any staffer
+// with smartcomm.view can search it — unlike /iam/users (iam.view) or
+// /hr/employees (hr_payroll.view), which most staff lack, so the pickers
+// backed by those endpoints came up empty for ordinary users. Internal chat
+// is cross-brand (migration 000309), so this is NOT brand-filtered: it lists
+// every active staff login account, enriched with their HR job title /
+// department for display.
+async function listColleagues({ q, exclude_user_id, limit = 200 }) {
+  const params = [];
+  const where = [
+    "u.is_active = true",
+    "u.user_class = 'staff'",
+    "u.staff_profile_id IS NOT NULL",
+  ];
+  let i = 1;
+  if (exclude_user_id) {
+    where.push(`u.user_id <> $${i++}`);
+    params.push(exclude_user_id);
+  }
+  if (q && q.trim()) {
+    where.push(
+      `(u.display_name ILIKE $${i} OR sp.job_title ILIKE $${i} OR sp.department ILIKE $${i})`,
+    );
+    params.push(`%${q.trim()}%`);
+    i++;
+  }
+  const { rows } = await query(
+    `SELECT u.user_id,
+            u.staff_profile_id AS profile_id,
+            u.display_name,
+            u.avatar_url,
+            sp.job_title,
+            sp.department
+       FROM shared.users u
+       LEFT JOIN shared.staff_profiles sp ON sp.profile_id = u.staff_profile_id
+      WHERE ${where.join(" AND ")}
+      ORDER BY u.display_name ASC NULLS LAST
+      LIMIT $${i}`,
+    [...params, limit],
+  );
+  return rows;
+}
+
+// ── Platform (channel) permissions — the CEO's per-user access matrix ─
+// Backing table shared.smartcomm_platform_permissions (migration 000213).
+// platform ∈ whatsapp | instagram | facebook | email | internal.
+
+/** All grant rows for one user in one brand. */
+async function listPlatformPermissionsForUser({ user_id, business }) {
+  const { rows } = await query(
+    `SELECT * FROM shared.smartcomm_platform_permissions
+      WHERE user_id = $1 AND business = $2`,
+    [user_id, business],
+  );
+  return rows;
+}
+
+/**
+ * Every managed user in a brand (one row per user) with their grants folded
+ * into a { platform: {can_view,...} } map — powers the CEO SSOT overview.
+ */
+async function listManagedUsers({ business }) {
+  const { rows } = await query(
+    `SELECT p.user_id,
+            u.display_name,
+            u.avatar_url,
+            u.staff_profile_id AS profile_id,
+            sp.job_title,
+            sp.department,
+            json_agg(
+              json_build_object(
+                'platform', p.platform,
+                'can_view', p.can_view,
+                'can_reply', p.can_reply,
+                'can_send_template', p.can_send_template,
+                'can_close', p.can_close
+              ) ORDER BY p.platform
+            ) AS grants
+       FROM shared.smartcomm_platform_permissions p
+       JOIN shared.users u ON u.user_id = p.user_id
+       LEFT JOIN shared.staff_profiles sp ON sp.profile_id = u.staff_profile_id
+      WHERE p.business = $1
+      GROUP BY p.user_id, u.display_name, u.avatar_url, u.staff_profile_id,
+               sp.job_title, sp.department
+      ORDER BY u.display_name ASC NULLS LAST`,
+    [business],
+  );
+  return rows;
+}
+
+/** Upsert one user × brand × platform grant (unique key handles the merge). */
+async function upsertPlatformPermission({
+  user_id,
+  business,
+  platform,
+  can_view,
+  can_reply,
+  can_send_template,
+  can_close,
+  updated_by,
+}) {
+  const { rows } = await query(
+    `INSERT INTO shared.smartcomm_platform_permissions
+       (user_id, business, platform, can_view, can_reply,
+        can_send_template, can_close, updated_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+     ON CONFLICT (user_id, business, platform) DO UPDATE
+       SET can_view          = EXCLUDED.can_view,
+           can_reply         = EXCLUDED.can_reply,
+           can_send_template = EXCLUDED.can_send_template,
+           can_close         = EXCLUDED.can_close,
+           updated_by        = EXCLUDED.updated_by,
+           updated_at        = now()
+     RETURNING *`,
+    [
+      user_id,
+      business,
+      platform,
+      !!can_view,
+      !!can_reply,
+      !!can_send_template,
+      !!can_close,
+      updated_by || null,
+    ],
+  );
+  return rows[0];
+}
+
+/** Clear every grant for a user in a brand — resets them to the default. */
+async function deletePlatformPermissionsForUser({ user_id, business }) {
+  await query(
+    `DELETE FROM shared.smartcomm_platform_permissions
+      WHERE user_id = $1 AND business = $2`,
+    [user_id, business],
+  );
+}
+
 module.exports = {
   // Channels
   listChannelsForUser,
@@ -1226,4 +1369,11 @@ module.exports = {
   listMessagingAccounts,
   // Customer 360
   customer360,
+  // Colleague directory
+  listColleagues,
+  // Platform (channel) permissions
+  listPlatformPermissionsForUser,
+  listManagedUsers,
+  upsertPlatformPermission,
+  deletePlatformPermissionsForUser,
 };

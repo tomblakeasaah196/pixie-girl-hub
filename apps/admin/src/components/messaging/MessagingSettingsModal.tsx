@@ -43,6 +43,7 @@ import {
 } from "@/lib/messaging-accounts-api";
 import { formatDateTime } from "@/lib/format";
 import { ChannelPolicyTab } from "./ChannelPolicyTab";
+import { ChannelAccessTab } from "./ChannelAccessTab";
 import { CommsStudioTab } from "./CommsStudioTab";
 import { QuickRepliesTab } from "./QuickRepliesTab";
 import { WhatsAppTemplatesTab } from "./WhatsAppTemplatesTab";
@@ -70,6 +71,7 @@ import { WhatsAppCallingSettings } from "./WhatsAppCallingSettings";
 type ConnectionTab = MessagingPlatform;
 type ConfigTab =
   | "channel-policy"
+  | "channel-access"
   | "automations"
   | "quick-replies"
   | "whatsapp-templates";
@@ -100,7 +102,16 @@ const CONFIG_ITEMS: {
   icon: React.FC<{ className?: string }>;
   /** access.catalog.js module key this section's backend routes enforce. */
   permissionModule: string;
+  /** CEO-only sections (backend routes gated by requireCeo). */
+  ceoOnly?: boolean;
 }[] = [
+  {
+    key: "channel-access",
+    label: "Channel Access",
+    icon: ShieldCheck,
+    permissionModule: "smartcomm",
+    ceoOnly: true,
+  },
   {
     key: "channel-policy",
     label: "Channel Policy",
@@ -141,12 +152,16 @@ export function MessagingSettingsModal({
 }: Props) {
   const business = useActiveBusiness();
   const can = useAuthStore((s) => s.can);
+  const isCeo = useAuthStore((s) => !!s.user?.isCeo);
   const qc = useQueryClient();
 
   const canConnections = can("messaging_accounts", "edit");
   const visibleConfigItems = useMemo(
-    () => CONFIG_ITEMS.filter((c) => can(c.permissionModule, "view")),
-    [can],
+    () =>
+      CONFIG_ITEMS.filter((c) =>
+        c.ceoOnly ? isCeo : can(c.permissionModule, "view"),
+      ),
+    [can, isCeo],
   );
 
   // Default to Connections if the caller can see it (the historical
@@ -316,6 +331,8 @@ export function MessagingSettingsModal({
                 onSaved={invalidate}
               />
             )
+          ) : tab === "channel-access" ? (
+            <ChannelAccessTab />
           ) : tab === "channel-policy" ? (
             <ChannelPolicyTab />
           ) : tab === "automations" ? (

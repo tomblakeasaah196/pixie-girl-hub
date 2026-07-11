@@ -27,6 +27,58 @@ function isCeo(user) {
   return !!(user && (user.is_ceo || user.role === "ceo"));
 }
 
+// The channels the CEO's access matrix governs. `internal` is in-house DMs +
+// staff groups; the rest are the customer-facing platforms.
+const EXTERNAL_PLATFORMS = ["whatsapp", "instagram", "facebook", "email"];
+const ACCESS_PLATFORMS = [...EXTERNAL_PLATFORMS, "internal"];
+
+/**
+ * Load a user's channel-access posture for a brand, from the CEO-managed
+ * matrix (shared.smartcomm_platform_permissions). Returns:
+ *   { managed, byPlatform: { <platform>: {can_view,can_reply,...} } }
+ *
+ * `managed` is true once the CEO has configured ANY grant for this user in
+ * this brand — that flips external platforms from the legacy "view-all"
+ * default to an explicit allowlist (default deny unless granted). Users the
+ * CEO never touched stay unmanaged and keep the old default. Internal chat
+ * always defaults to allowed and is only cut by an explicit can_view=false.
+ */
+async function loadPlatformAccess({ user, brand }) {
+  if (!user || !brand) return { managed: false, byPlatform: {} };
+  const rows = await repo.listPlatformPermissionsForUser({
+    user_id: user.user_id,
+    business: brand,
+  });
+  const byPlatform = {};
+  for (const r of rows) byPlatform[r.platform] = r;
+  return { managed: rows.length > 0, byPlatform };
+}
+
+/**
+ * Given a loaded access map, may this user perform `action` on `platform`?
+ * Pure decision function so both the request-time gate and the inbox list
+ * filter share one rule.
+ */
+function platformAllows({ managed, byPlatform }, platform, action = "view") {
+  const p = byPlatform[platform];
+  if (platform === "internal") {
+    // Baseline for everyone; only an explicit revoke removes it.
+    return !(p && p.can_view === false);
+  }
+  if (p) {
+    const map = {
+      view: p.can_view,
+      reply: p.can_reply,
+      send_template: p.can_send_template,
+      close: p.can_close,
+    };
+    return !!map[action];
+  }
+  // No explicit row for this external platform.
+  if (managed) return false; // allowlist: not granted
+  return action === "view"; // legacy default: view-all, but no reply/close
+}
+
 // Allowed metadata keys per card-type. Clients can submit any JSON, but only
 // these fields make it onto the message row — this prevents trojan keys (e.g.
 // "is_admin", "delivery_status") from leaking in via the open metadata channel.
@@ -69,39 +121,23 @@ function sanitiseMessageMetadata(messageType, metadata) {
   return Object.keys(out).length ? out : null;
 }
 
-/** Resolve whether the user is allowed to act on a platform for a brand. */
+/**
+ * Resolve whether the user is allowed to act on a platform for a brand.
+ * The rule lives in platformAllows() so the inbox list filter agrees with
+ * this request-time gate. `access` may be pre-loaded by the caller to avoid
+ * a duplicate lookup; otherwise it's fetched here.
+ */
 async function assertPlatformAccess({
   user,
   brand,
   platform,
   action = "view",
+  access,
 }) {
   if (isCeo(user)) return;
-  if (!platform || platform === "internal") return; // internal channels gated by smartcomm perm key
-  const { rows } = await query(
-    `SELECT * FROM shared.smartcomm_platform_permissions
-      WHERE user_id = $1 AND business = $2 AND platform = $3`,
-    [user.user_id, brand, platform],
-  );
-  const p = rows[0];
-  // No row means "follow smartcomm default" — staff can view everything
-  // they have smartcomm.view on, but not reply/template/close without
-  // an explicit grant.
-  if (!p) {
-    if (action === "view") return;
-    throw new AppError(
-      "PLATFORM_FORBIDDEN",
-      `You don't have ${action} permission on ${platform}`,
-      403,
-    );
-  }
-  const map = {
-    view: p.can_view,
-    reply: p.can_reply,
-    send_template: p.can_send_template,
-    close: p.can_close,
-  };
-  if (!map[action]) {
+  if (!platform) return;
+  const map = access ?? (await loadPlatformAccess({ user, brand }));
+  if (!platformAllows(map, platform, action)) {
     throw new AppError(
       "PLATFORM_FORBIDDEN",
       `You don't have ${action} permission on ${platform}`,
@@ -132,6 +168,8 @@ async function assertChannelReadable({ user, brand, channel }) {
     }
     return;
   }
+  // Internal direct/group channel: membership is required, and the CEO may
+  // have revoked in-house access entirely for this user (matrix "internal").
   const member = await repo.findMember({
     channel_id: channel.channel_id,
     user_id: user.user_id,
@@ -142,11 +180,12 @@ async function assertChannelReadable({ user, brand, channel }) {
       "You are not a member of this channel",
       403,
     );
+  await assertPlatformAccess({ user, brand, platform: "internal", action: "view" });
 }
 
 // ── Channels ──────────────────────────────────────────────
 
-function listChannels({
+async function listChannels({
   user,
   brand,
   channel_type,
@@ -158,7 +197,7 @@ function listChannels({
   limit,
   offset,
 }) {
-  return repo.listChannelsForUser({
+  const rows = await repo.listChannelsForUser({
     user_id: user.user_id,
     brand,
     channel_type,
@@ -170,6 +209,20 @@ function listChannels({
     include_archived,
     limit,
     offset,
+  });
+  if (isCeo(user)) return rows;
+  // Apply the CEO's channel-access matrix to the inbox so a user only ever
+  // sees the channels they were granted — matching the read/reply gates.
+  // Unmanaged users (the common case) get no extra filtering.
+  const access = await loadPlatformAccess({ user, brand });
+  if (!access.managed) return rows;
+  return rows.filter((c) => {
+    if (c.channel_type === "customer_thread") {
+      if (!c.external_platform) return true;
+      return platformAllows(access, c.external_platform, "view");
+    }
+    // internal direct/group
+    return platformAllows(access, "internal", "view");
   });
 }
 
@@ -1809,6 +1862,144 @@ async function sendInvoiceIntoThread({
   });
 }
 
+// ── Colleague directory ───────────────────────────────────
+
+/** Internal people-picker source (new group / add-to-group). */
+function listColleagues({ user, q }) {
+  return repo.listColleagues({ q, exclude_user_id: user.user_id });
+}
+
+// ── CEO channel-access matrix (SSOT) ──────────────────────
+//
+// The CEO decides, per employee, which channels they can reach. Backed by
+// shared.smartcomm_platform_permissions; enforced by loadPlatformAccess /
+// platformAllows above. CEO-only at the route layer.
+
+/**
+ * Overview for the settings tab: every colleague plus the grants the CEO has
+ * already set (managed users carry a grant map; everyone else shows as
+ * "default access" so the picker is a full directory, not just the managed
+ * subset).
+ */
+async function getChannelAccessMatrix({ brand }) {
+  const [colleagues, managed] = await Promise.all([
+    repo.listColleagues({ limit: 500 }),
+    repo.listManagedUsers({ business: brand }),
+  ]);
+  const managedById = new Map(managed.map((m) => [m.user_id, m.grants]));
+  const users = colleagues.map((c) => ({
+    user_id: c.user_id,
+    display_name: c.display_name,
+    avatar_url: c.avatar_url,
+    job_title: c.job_title,
+    department: c.department,
+    managed: managedById.has(c.user_id),
+    channels: normaliseGrants(managedById.get(c.user_id)),
+  }));
+  return { platforms: ACCESS_PLATFORMS, users };
+}
+
+/** One user's effective per-channel grants (for the editor). */
+async function getUserChannelAccess({ brand, user_id }) {
+  const rows = await repo.listPlatformPermissionsForUser({
+    user_id,
+    business: brand,
+  });
+  return {
+    user_id,
+    managed: rows.length > 0,
+    channels: normaliseGrants(
+      rows.map((r) => ({
+        platform: r.platform,
+        can_view: r.can_view,
+        can_reply: r.can_reply,
+        can_send_template: r.can_send_template,
+        can_close: r.can_close,
+      })),
+    ),
+  };
+}
+
+/**
+ * Turn a sparse grant list into the full { platform: {…} } shape the UI
+ * renders, filling defaults for platforms the CEO hasn't set yet. Internal
+ * defaults to granted; external platforms default to granted ONLY when the
+ * user is unmanaged (mirrors platformAllows so the UI shows the truth).
+ */
+function normaliseGrants(grants) {
+  const managed = Array.isArray(grants) && grants.length > 0;
+  const byPlatform = {};
+  for (const g of grants || []) byPlatform[g.platform] = g;
+  const out = {};
+  for (const platform of ACCESS_PLATFORMS) {
+    const g = byPlatform[platform];
+    if (g) {
+      out[platform] = {
+        can_view: !!g.can_view,
+        can_reply: !!g.can_reply,
+        can_send_template: !!g.can_send_template,
+        can_close: !!g.can_close,
+      };
+    } else {
+      const on = platform === "internal" ? true : !managed;
+      out[platform] = {
+        can_view: on,
+        can_reply: on,
+        can_send_template: false,
+        can_close: on,
+      };
+    }
+  }
+  return out;
+}
+
+/**
+ * Persist a user's full channel-access state (all platforms at once). Writing
+ * explicit rows makes the user "managed", flipping external channels to the
+ * allowlist. Passing reset=true clears every grant, returning them to the
+ * default (view-all) posture.
+ */
+async function setUserChannelAccess({
+  brand,
+  actor,
+  request_id,
+  user_id,
+  channels,
+  reset,
+}) {
+  if (reset) {
+    await repo.deletePlatformPermissionsForUser({ user_id, business: brand });
+  } else {
+    for (const platform of ACCESS_PLATFORMS) {
+      const g = (channels && channels[platform]) || {};
+      const can_view = !!g.can_view;
+      await repo.upsertPlatformPermission({
+        user_id,
+        business: brand,
+        platform,
+        can_view,
+        // Sub-permissions only make sense when the channel is visible.
+        can_reply: can_view && !!g.can_reply,
+        can_send_template: can_view && !!g.can_send_template,
+        can_close: can_view && !!g.can_close,
+        updated_by: actor.user_id,
+      });
+    }
+  }
+  await audit({
+    business: brand,
+    user_id: actor.user_id,
+    action_key: "smartcomm.channel_access.set",
+    target_type: "user",
+    target_id: user_id,
+    after: reset ? { reset: true } : channels,
+    request_id,
+    is_sensitive: true,
+  });
+  events.emit("channel_access.changed", { brand, user_id });
+  return getUserChannelAccess({ brand, user_id });
+}
+
 module.exports = {
   listChannels,
   getChannel,
@@ -1853,4 +2044,9 @@ module.exports = {
   enqueueOutboundForChannel,
   applyProviderStatus,
   assertPlatformAccess,
+  // colleague directory + CEO channel-access matrix
+  listColleagues,
+  getChannelAccessMatrix,
+  getUserChannelAccess,
+  setUserChannelAccess,
 };

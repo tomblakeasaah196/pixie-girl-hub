@@ -104,4 +104,19 @@ function requirePermission(moduleKey, action) {
   };
 }
 
-module.exports = { requirePermission };
+/**
+ * Hard CEO-only gate — for the handful of surfaces reserved to the owner
+ * (e.g. the messaging channel-access matrix). Unlike requirePermission, no
+ * role grant can satisfy this: the caller must be the CEO.
+ */
+function requireCeo(req, _res, next) {
+  if (!req.user) {
+    throw new AppError("AUTH_REQUIRED", "Authentication required", 401);
+  }
+  if (!req.user.is_ceo) {
+    throw new AppError("PERMISSION_DENIED", "This action is reserved to the CEO", 403);
+  }
+  return next();
+}
+
+module.exports = { requirePermission, requireCeo };

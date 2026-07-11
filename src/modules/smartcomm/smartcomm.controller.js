@@ -341,6 +341,43 @@ async function deleteQuickReply(req, res) {
   res.status(204).end();
 }
 
+// ── Colleague directory ───────────────────────────────────
+
+async function listColleagues(req, res) {
+  const data = await service.listColleagues({
+    user: req.user,
+    q: req.query.q || req.query.search,
+  });
+  res.json({ data });
+}
+
+// ── CEO channel-access matrix (SSOT) ──────────────────────
+
+async function getChannelAccessMatrix(req, res) {
+  const data = await service.getChannelAccessMatrix({ brand: req.brand });
+  res.json(data);
+}
+
+async function getUserChannelAccess(req, res) {
+  const data = await service.getUserChannelAccess({
+    brand: req.brand,
+    user_id: req.params.user_id,
+  });
+  res.json(data);
+}
+
+async function setUserChannelAccess(req, res) {
+  const data = await service.setUserChannelAccess({
+    brand: req.brand,
+    actor: req.user,
+    request_id: req.request_id,
+    user_id: req.params.user_id,
+    channels: req.body.channels,
+    reset: req.body.reset === true,
+  });
+  res.json(data);
+}
+
 // ── Customer 360 ──────────────────────────────────────────
 
 async function getCustomer360(req, res) {
@@ -389,4 +426,8 @@ module.exports = {
   updateQuickReply,
   deleteQuickReply,
   getCustomer360,
+  listColleagues,
+  getChannelAccessMatrix,
+  getUserChannelAccess,
+  setUserChannelAccess,
 };

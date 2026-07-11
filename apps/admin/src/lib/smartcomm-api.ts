@@ -221,7 +221,71 @@ export const smartcommApi = {
     api.get<{ data: OrderLinkRow[] }>(
       `/smartcomm/channels/${channelId}/order-links`,
     ),
+
+  // Colleague directory — internal people-picker (new group / add-to-group).
+  // smartcomm.view, so every messaging user can reach it.
+  listColleagues: (q?: string) =>
+    api.get<Colleague[]>(`/smartcomm/colleagues${qs({ q })}`),
+
+  // CEO channel-access matrix (owner-only endpoints).
+  getChannelAccessMatrix: () =>
+    api.get<ChannelAccessMatrix>("/smartcomm/channel-access"),
+  getUserChannelAccess: (userId: string) =>
+    api.get<UserChannelAccess>(`/smartcomm/channel-access/${userId}`),
+  setUserChannelAccess: (
+    userId: string,
+    body: { channels?: Partial<ChannelGrantMap>; reset?: boolean },
+  ) =>
+    api.put<UserChannelAccess>(`/smartcomm/channel-access/${userId}`, body),
 };
+
+// ── Colleague directory + CEO channel-access types ─────────
+
+export interface Colleague {
+  user_id: string;
+  profile_id: string | null;
+  display_name: string;
+  avatar_url: string | null;
+  job_title: string | null;
+  department: string | null;
+}
+
+export type AccessPlatform =
+  | "internal"
+  | "whatsapp"
+  | "instagram"
+  | "facebook"
+  | "email";
+
+export interface ChannelGrant {
+  can_view: boolean;
+  can_reply: boolean;
+  can_send_template: boolean;
+  can_close: boolean;
+}
+
+export type ChannelGrantMap = Record<AccessPlatform, ChannelGrant>;
+
+export interface ChannelAccessUser {
+  user_id: string;
+  display_name: string;
+  avatar_url: string | null;
+  job_title: string | null;
+  department: string | null;
+  managed: boolean;
+  channels: ChannelGrantMap;
+}
+
+export interface ChannelAccessMatrix {
+  platforms: AccessPlatform[];
+  users: ChannelAccessUser[];
+}
+
+export interface UserChannelAccess {
+  user_id: string;
+  managed: boolean;
+  channels: ChannelGrantMap;
+}
 
 export interface OrderLinkRow {
   link_id: string;

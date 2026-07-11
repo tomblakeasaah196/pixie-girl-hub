@@ -29,6 +29,21 @@ module.exports = async function process(job) {
   try {
     info = await email.send(job.data);
   } catch (err) {
+    // Flip the originating smartcomm message queued → failed so the thread
+    // stops showing it "stuck in queue". Mirrors the whatsapp/instagram
+    // processors, which stamp delivery on both success and failure.
+    if (job.data.smartcomm_message_id) {
+      try {
+        const smartcommRepo = require("../../modules/smartcomm/smartcomm.repo");
+        await smartcommRepo.setMessageDelivery({
+          message_id: job.data.smartcomm_message_id,
+          delivery_status: "failed",
+          delivery_error: err.message,
+        });
+      } catch (e) {
+        logger.warn({ e: e.message }, "email-send: delivery stamp (failed) failed");
+      }
+    }
     await commsLog.record({
       business: job.data.brand,
       contact_id: job.data.contact_id,
@@ -45,16 +60,20 @@ module.exports = async function process(job) {
   }
 
   const messageId = info && info.messageId;
-  // H-8: stamp the provider ref onto the originating smartcomm message.
-  if (job.data.smartcomm_message_id && messageId) {
+  // H-8: stamp the provider ref onto the originating smartcomm message AND
+  // flip delivery_status queued → sent. Without the status flip the message
+  // sits at "queued" forever and the inbox shows it stuck in the queue even
+  // though the email was delivered.
+  if (job.data.smartcomm_message_id) {
     try {
       const smartcommRepo = require("../../modules/smartcomm/smartcomm.repo");
-      await smartcommRepo.setMessageExternalRef({
+      await smartcommRepo.setMessageDelivery({
         message_id: job.data.smartcomm_message_id,
-        external_ref: String(messageId),
+        delivery_status: "sent",
+        external_ref: messageId ? String(messageId) : undefined,
       });
     } catch (e) {
-      logger.warn({ e: e.message }, "email-send: external_ref stamp failed");
+      logger.warn({ e: e.message }, "email-send: delivery stamp (sent) failed");
     }
   }
   await commsLog.record({

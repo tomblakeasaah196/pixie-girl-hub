@@ -262,6 +262,50 @@ async function nudgeSentSince({ user_id, business, type, since }) {
   return rows.length > 0;
 }
 
+/**
+ * Mark the nudges behind a reference as engaged (the CEO acted on the nudge).
+ * Only the first engagement sticks (engaged_at IS NULL guard), so the timing
+ * signal reflects when she first responded. Best-effort — never throws for the
+ * caller (adaptive timing is a nicety, not a correctness path).
+ */
+async function markNudgeEngaged({ reference_type, reference_id }) {
+  if (!reference_id) return 0;
+  const { rowCount } = await query(
+    `UPDATE shared.cos_nudges
+        SET engaged_at = now()
+      WHERE reference_type = $1 AND reference_id = $2 AND engaged_at IS NULL`,
+    [reference_type, reference_id],
+  );
+  return rowCount;
+}
+
+/**
+ * The engaged_at timestamps for a user over the last `days`, for adaptive
+ * timing (wow #8, PR6). The scheduler converts each to the CEO's local hour.
+ */
+async function recentEngagedNudges({ user_id, days = 45 }) {
+  const { rows } = await query(
+    `SELECT engaged_at FROM shared.cos_nudges
+      WHERE user_id = $1 AND engaged_at IS NOT NULL
+        AND engaged_at >= now() - ($2 || ' days')::interval
+      ORDER BY engaged_at DESC
+      LIMIT 200`,
+    [user_id, String(days)],
+  );
+  return rows.map((r) => r.engaged_at);
+}
+
+/** Has a celebration nudge already fired for this subject? (dedupe, PR6) */
+async function celebrationExists({ reference_type, reference_id }) {
+  const { rows } = await query(
+    `SELECT 1 FROM shared.cos_nudges
+      WHERE type = 'celebration' AND reference_type = $1 AND reference_id = $2
+      LIMIT 1`,
+    [reference_type, reference_id],
+  );
+  return rows.length > 0;
+}
+
 module.exports = {
   // scan reads
   listGoalsForRisk,
@@ -282,4 +326,7 @@ module.exports = {
   // nudges
   logNudge,
   nudgeSentSince,
+  markNudgeEngaged,
+  recentEngagedNudges,
+  celebrationExists,
 };

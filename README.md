@@ -162,6 +162,13 @@ RBAC in the same PR:**
    to modules a user can't open. **A feature isn't "done" until its permission
    is wired.**
 
+   Current example: the **`goals`** module (group `workspace`) gates both
+   `/api/v1/goals` and `/api/v1/notes` (Notes ride under `goals` — no separate
+   key) for the AI Chief of Staff. The CoS agent itself (`/api/v1/cos/*`) is not
+   a permission module — it's guarded by a `requireCeo` middleware and re-enters
+   the real endpoints as the CEO, so RBAC re-applies. See `docs/RBAC.md` and
+   `docs/AI_CHIEF_OF_STAFF.md`.
+
 ### Naming
 
 - Files: `kebab-case.js` or `snake_case.js` (consistent within a module)

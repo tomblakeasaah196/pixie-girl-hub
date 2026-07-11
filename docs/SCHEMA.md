@@ -71,6 +71,38 @@ Critical invariants enforced at the DB level:
 | `fn_production_run_recompute_totals`     | Rolls cost_components up to production_runs           |
 | `fn_service_job_create_task`             | Auto-creates staff task on service job assignment     |
 
+## AI Chief of Staff tables (shared)
+
+The Chief of Staff feature (migrations `000320`–`000322`, `000324`–`000327`) is
+entirely in the `shared` schema, business-tagged like `tasks`/`calendar_events`.
+The authoritative shared table count lives in `scripts/verify-schema.js`
+(`EXPECTED_SHARED`, currently **197**).
+
+| Table | Migration | Purpose |
+|---|---|---|
+| `shared.goals` | 000320 | Top-level objectives; cached `progress_pct` + `health`, `source`, `template_id` |
+| `shared.goal_milestones` | 000320 | Ordered milestones (`display_order`) + `depends_on_milestone_id` chain |
+| `shared.goal_stakeholders` | 000320 | Users **or** contacts on a goal (XOR CHECK, partial-unique) |
+| `shared.workspace_notes` | 000321 | Personal markdown notes, optional goal/milestone link, trigram search |
+| `shared.ai_pending_plans` | 000324 | Batch-plan parent for one-tap approval |
+| `shared.cos_followups` | 000325 | Accountability state machine (partial-unique: one open per subject/trigger) |
+| `shared.cos_nudges` | 000325 | Dedupe + adaptive-timing log (`engaged_at`) |
+| `shared.goal_templates` | 000326 | Reusable playbooks (day-offset `structure` JSONB) |
+| `shared.cos_settings` | 000327 | Per-user CoS personalisation (name/tone/pronoun/hours/toggles) |
+
+**Link columns (000320):** `shared.tasks` and `shared.calendar_events` each gain
+nullable `goal_id` + `milestone_id` (ON DELETE SET NULL) so existing items link
+to goals without moving.
+
+**ALTERs (no new table):** `ai_conversations.kind`,
+`ai_action_catalogue.surface`, `ai_pending_actions.plan_id/plan_step` (000324);
+`notifications.actions` (000325); `goals.template_id` FK +
+`ai_knowledge_chunks.source_type` CHECK widened to admit
+`cos_goal|cos_milestone|cos_note|cos_decision` (000326).
+
+RAG memory reuses `shared.ai_embeddings` + `shared.ai_knowledge_chunks` — no new
+embedding table. See `docs/AI_CHIEF_OF_STAFF.md`.
+
 ## Audit log
 
 `shared.audit_log` captures every state-changing action. The table has:

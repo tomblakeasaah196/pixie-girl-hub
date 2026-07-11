@@ -1,5 +1,5 @@
 -- ============================================================
--- MIGRATION 000327 — Chief of Staff: Save conversation to Notes
+-- MIGRATION 000329 — Chief of Staff: Save conversation to Notes
 -- Pixie Girl Hub · V2.2 · AI Chief of Staff
 --
 -- Links a workspace note to the CoS conversation that produced it, so

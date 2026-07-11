@@ -8,6 +8,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Sparkles,
@@ -36,7 +37,7 @@ import {
   type OfferPdfDoc,
   type ContextRow,
 } from "@/lib/recruitment-api";
-import { renderOfferMarkdown } from "@/lib/offer-markdown";
+import { SignaturePad } from "@/components/sign/SignaturePad";
 import { useNotify, errMsg } from "./hr-shared";
 
 const BRANDS = [
@@ -364,6 +365,7 @@ function OfferStudio({
   onBack: () => void;
 }) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const notify = useNotify("Recruitment: studio");
   const { data: offer, isLoading } = useQuery({
     queryKey: ["recruitment", "offer", offerId],
@@ -418,11 +420,11 @@ function OfferStudio({
     onSuccess: (o) => { setD(o); inval(); notify("Offer sent", "The candidate has been emailed a signing link."); },
     onError: (e) => notify("Couldn't send", errMsg(e), "high"),
   });
-  const provision = useMutation({
-    mutationFn: () => recruitmentApi.provision(offerId),
-    onSuccess: (r) => { inval(); notify("Login provisioned", `Credentials emailed to ${r.email}.`); },
-    onError: (e) => notify("Couldn't provision", errMsg(e), "high"),
-  });
+  // Provisioning goes through the staff-onboarding wizard (prefilled from this
+  // offer): contact → HR employee profile → organigramme seat → login. That is
+  // what makes the hire visible in the directory, org chart and Users & Access.
+  const startOnboarding = () =>
+    navigate(`/contacts/staff/new?offer_id=${offerId}`);
 
   if (isLoading || !d) {
     return (
@@ -435,7 +437,6 @@ function OfferStudio({
 
   const setMeta = (patch: Record<string, unknown>) =>
     setD({ ...d, offer_meta: { ...d.offer_meta, ...patch } });
-  const previewHtml = renderOfferMarkdown(d.jd_markdown) + renderOfferMarkdown(d.offer_markdown);
   const readOnly = locked || !canEdit;
 
   return (
@@ -467,8 +468,8 @@ function OfferStudio({
           )}
           {canEdit && ["signed", "contracted"].includes(d.status) && !d.provisioned_user_id && (
             <Button size="sm" variant="primary" icon={<KeyRound className="h-3.5 w-3.5" />}
-              disabled={provision.isPending} onClick={() => provision.mutate()}>
-              {provision.isPending ? "Provisioning…" : "Provision & email credentials"}
+              onClick={startOnboarding}>
+              Onboard &amp; provision
             </Button>
           )}
           {d.provisioned_user_id && (
@@ -479,8 +480,10 @@ function OfferStudio({
 
       {locked && (
         <div className="rounded-xl border hairline bg-surface-2 p-3 text-xs text-text-muted">
-          This offer has been {d.status} — the documents are locked. Use “Provision &amp; email
-          credentials” to create the candidate’s login.
+          This offer has been {d.status} — the documents are locked.
+          {d.provisioned_user_id
+            ? " The candidate's employee record and login have been created."
+            : " Use “Onboard & provision” to create the employee record, place them in the organigramme, and email their login."}
         </div>
       )}
 
@@ -554,27 +557,20 @@ function OfferStudio({
             onChange={(v) => setD({ ...d, offer_markdown: v })} />
         </div>
 
-        {/* Right — live preview */}
+        {/* Right — live preview. Iframe of the server-rendered packet HTML,
+            so the preview, the candidate offer page, and the downloaded PDF
+            are literally the same document — zero drift. */}
         <div className="lg:sticky lg:top-4 lg:self-start">
           <div className="mb-2 flex items-center gap-1.5 text-xs text-text-muted">
-            <Building2 className="h-3.5 w-3.5" /> Live preview — what the candidate sees
+            <Building2 className="h-3.5 w-3.5" /> Live preview — what the candidate sees &amp; the PDF looks like
           </div>
-          <div
-            className="offer-doc max-h-[75vh] overflow-y-auto rounded-xl border hairline bg-white p-6 text-[13px] leading-relaxed text-neutral-800"
-            dangerouslySetInnerHTML={{ __html: previewHtml || "<p>Nothing to preview yet.</p>" }}
+          <LivePacketPreview
+            offerId={offerId}
+            jdMarkdown={d.jd_markdown}
+            offerMarkdown={d.offer_markdown}
+            title={d.title}
+            candidateName={d.candidate_name}
           />
-          <style>{`
-            .offer-doc h1 { font-size: 18px; font-weight: 700; margin: 0 0 6px; }
-            .offer-doc h2 { font-size: 15px; font-weight: 700; margin: 16px 0 6px; }
-            .offer-doc h3 { font-size: 13.5px; font-weight: 700; margin: 12px 0 4px; }
-            .offer-doc p { margin: 0 0 8px; }
-            .offer-doc ul, .offer-doc ol { margin: 0 0 8px 18px; }
-            .offer-doc li { margin: 2px 0; }
-            .offer-doc table { width: 100%; border-collapse: collapse; margin: 8px 0; }
-            .offer-doc th, .offer-doc td { border: 1px solid #e5e5e5; padding: 5px 8px; text-align: left; font-size: 12px; }
-            .offer-doc hr { border: 0; border-top: 1px solid #e5e5e5; margin: 12px 0; }
-            .offer-doc strong { font-weight: 700; }
-          `}</style>
         </div>
       </div>
 
@@ -614,6 +610,68 @@ function OfferStudio({
             Offer letter).
           </p>
         </Card>
+      )}
+    </div>
+  );
+}
+
+// ── Live packet preview (iframe of server-rendered HTML) ───
+/**
+ * Renders the server-authoritative packet HTML in a sandboxed iframe. Sends
+ * the studio's in-flight markdown to `/recruitment/offers/:id/preview` with a
+ * short debounce so edits feel live but we don't hammer the endpoint. On
+ * transient error we keep the last-good HTML on screen and quietly retry on
+ * the next edit — the preview should never flash blank.
+ */
+function LivePacketPreview({
+  offerId,
+  jdMarkdown,
+  offerMarkdown,
+  title,
+  candidateName,
+}: {
+  offerId: string;
+  jdMarkdown: string;
+  offerMarkdown: string;
+  title: string;
+  candidateName: string | null;
+}) {
+  const [html, setHtml] = useState<string>("");
+  const [pending, setPending] = useState(true);
+  useEffect(() => {
+    setPending(true);
+    const handle = window.setTimeout(async () => {
+      try {
+        const { packet_html } = await recruitmentApi.previewPacket(offerId, {
+          jd_markdown: jdMarkdown,
+          offer_markdown: offerMarkdown,
+          title,
+          candidate_name: candidateName || undefined,
+        });
+        setHtml(packet_html);
+      } catch {
+        // Keep the last-good render on screen. Next successful edit refreshes.
+      } finally {
+        setPending(false);
+      }
+    }, 350);
+    return () => window.clearTimeout(handle);
+  }, [offerId, jdMarkdown, offerMarkdown, title, candidateName]);
+
+  return (
+    <div className="relative">
+      <div className="relative overflow-hidden rounded-xl border hairline bg-white">
+        <iframe
+          title="Offer packet preview"
+          srcDoc={html || "<p style='padding:20px;font-family:sans-serif;color:#888'>Preparing preview…</p>"}
+          sandbox=""
+          className="block w-full h-[78vh] bg-white"
+        />
+      </div>
+      {pending && html && (
+        <div className="absolute right-2 top-2 flex items-center gap-1.5 rounded-full bg-black/55 px-2 py-1 text-[10.5px] text-white">
+          <Loader2 className="h-3 w-3 animate-spin" /> Updating
+        </div>
       )}
     </div>
   );
@@ -723,14 +781,23 @@ function ContextModal({ open, onClose }: { open: boolean; onClose: () => void })
   });
   const [biz, setBiz] = useState("*");
   const [row, setRow] = useState<Partial<ContextRow>>({});
+  // Local flag: has the admin drawn a NEW signature in this session? If so the
+  // pad's data URL replaces the stored one on save; if not we leave the stored
+  // signature untouched (drawing nothing must never wipe an existing signature).
+  const [sigDraft, setSigDraft] = useState<string | null>(null);
 
   useEffect(() => {
     const found = data?.find((r) => r.business === biz);
     setRow(found ? { ...found } : { business: biz });
+    setSigDraft(null);
   }, [data, biz]);
 
   const save = useMutation({
-    mutationFn: () => recruitmentApi.updateContext(biz, row),
+    mutationFn: () =>
+      recruitmentApi.updateContext(biz, {
+        ...row,
+        ...(sigDraft !== null ? { signatory_signature_data_url: sigDraft } : {}),
+      }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["recruitment", "context"] }); notify("Context saved"); },
     onError: (e) => notify("Couldn't save", errMsg(e), "high"),
   });
@@ -739,6 +806,8 @@ function ContextModal({ open, onClose }: { open: boolean; onClose: () => void })
     { key: "*", label: "Group (shared)" },
     ...BRANDS,
   ];
+
+  const storedSig = row.signatory_signature_data_url || null;
 
   return (
     <Modal
@@ -756,7 +825,8 @@ function ContextModal({ open, onClose }: { open: boolean; onClose: () => void })
     >
       <div className="space-y-3">
         <p className="text-xs text-text-muted">
-          What the AI reads before drafting. Keep it accurate — better context, better drafts.
+          What the AI reads before drafting, plus who countersigns offers on the
+          Company's behalf. Keep it accurate — better context, better drafts.
         </p>
         <div className="flex gap-2">
           {options.map((o) => (
@@ -775,7 +845,7 @@ function ContextModal({ open, onClose }: { open: boolean; onClose: () => void })
             ["tone", "Brand voice"],
             ["target_markets", "Target markets"],
             ["non_negotiables", "Non-negotiables for any hire"],
-            ["signatory_name", "Who countersigns offers"],
+            ["signatory_name", "Signatory — full name"],
             ["signatory_title", "Signatory title"],
             ["notes", "Extra notes"],
           ] as [keyof ContextRow, string][]
@@ -790,6 +860,47 @@ function ContextModal({ open, onClose }: { open: boolean; onClose: () => void })
             )}
           </Field>
         ))}
+
+        {/* Countersignatory e-signature. Drawn once and reused on every offer
+            packet — same treatment as the candidate's own signature. Leaving
+            the pad blank preserves the stored signature; clicking Remove
+            explicitly wipes it. */}
+        <div className="rounded-xl border hairline bg-surface-2 p-3">
+          <div className="mb-1 flex items-center gap-1.5 text-[11.5px] font-medium text-text-muted">
+            <FileSignature className="h-3.5 w-3.5 text-accent-glow" /> Signatory signature
+          </div>
+          <p className="mb-3 text-[11px] leading-relaxed text-text-faint">
+            Draw the signature that will be stamped on the "For {row.display_name || biz}"
+            side of every offer packet's Execution block.
+            {biz === "*" ? " Per-brand rows can override this shared signature." : ""}
+          </p>
+          {storedSig && sigDraft === null && (
+            <div className="mb-3 rounded-lg border hairline bg-white p-3">
+              <img
+                src={storedSig}
+                alt="Current signatory signature"
+                className="max-h-[110px] w-auto max-w-full"
+              />
+              <div className="mt-2 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => { setRow({ ...row, signatory_signature_data_url: null }); setSigDraft(""); }}
+                  className="text-[12px] text-text-muted hover:text-danger"
+                >
+                  Remove
+                </button>
+              </div>
+            </div>
+          )}
+          <SignaturePad onChange={setSigDraft} />
+          <p className="mt-2 text-[10.5px] text-text-faint">
+            {sigDraft
+              ? "New signature will replace the stored one on save."
+              : storedSig
+                ? "Leaving the pad blank keeps the stored signature."
+                : "Draw once — used on every future offer packet."}
+          </p>
+        </div>
       </div>
     </Modal>
   );

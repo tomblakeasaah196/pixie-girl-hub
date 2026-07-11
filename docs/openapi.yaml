@@ -13584,3 +13584,438 @@ paths:
       tags: [webhooks]
       responses:
         "200": { description: Acknowledged }
+
+  # ============================================================
+  # AI Chief of Staff — Goals, Notes & the CoS agent (PR1–PR6)
+  # Goals/Notes are brand-scoped under the `goals` permission module;
+  # notes ride under `goals` and are owner-scoped. The /cos/* agent is
+  # CEO-only (requireCeo) — a scoped persona of the Praxis runtime that
+  # can only touch goals/tasks/calendar/notes/contacts (surface='workspace').
+  # See docs/AI_CHIEF_OF_STAFF.md.
+  # ============================================================
+  /goals:
+    get:
+      summary: List goals (filters status, owner, priority, target range, q)
+      tags: [goals]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: status, in: query, schema: { type: string } }
+        - { name: owner, in: query, schema: { type: string } }
+        - { name: priority, in: query, schema: { type: string } }
+        - { name: q, in: query, schema: { type: string } }
+      x-required-permission: "goals.view"
+      x-entity-scope: brand
+      x-is-write: false
+      responses: { "200": { description: A page of goals } }
+    post:
+      summary: Create a goal (optionally with inline milestones)
+      tags: [goals]
+      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
+      x-required-permission: "goals.create"
+      x-entity-scope: brand
+      x-is-write: true
+      responses: { "201": { description: Created } }
+  /goals/{id}:
+    get:
+      summary: Goal detail (milestones, tasks, events, notes, stakeholders, progress)
+      tags: [goals]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      x-required-permission: "goals.view"
+      x-entity-scope: brand
+      x-is-write: false
+      responses: { "200": { description: Goal }, "404": { description: Not found } }
+    patch:
+      summary: Update a goal
+      tags: [goals]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      x-required-permission: "goals.edit"
+      x-entity-scope: brand
+      x-is-write: true
+      responses: { "200": { description: Updated } }
+    delete:
+      summary: Soft-delete a goal
+      tags: [goals]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      x-required-permission: "goals.delete"
+      x-entity-scope: brand
+      x-is-write: true
+      responses: { "204": { description: Deleted } }
+  /goals/{id}/milestones:
+    post:
+      summary: Add a milestone to a goal
+      tags: [goals]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      x-required-permission: "goals.edit"
+      x-is-write: true
+      responses: { "201": { description: Created } }
+  /goals/{id}/milestones/{mid}:
+    patch:
+      summary: Update a milestone (status, date, order, dependency)
+      tags: [goals]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: mid, in: path, required: true, schema: { type: string, format: uuid } }
+      x-required-permission: "goals.edit"
+      x-is-write: true
+      responses: { "200": { description: Updated } }
+    delete:
+      summary: Remove a milestone
+      tags: [goals]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: mid, in: path, required: true, schema: { type: string, format: uuid } }
+      x-required-permission: "goals.edit"
+      x-is-write: true
+      responses: { "204": { description: Deleted } }
+  /goals/{id}/stakeholders:
+    post:
+      summary: Attach a user or contact as a goal stakeholder (exactly one)
+      tags: [goals]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      x-required-permission: "goals.edit"
+      x-is-write: true
+      responses: { "201": { description: Attached } }
+  /goals/{id}/stakeholders/{sid}:
+    delete:
+      summary: Detach a stakeholder
+      tags: [goals]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: sid, in: path, required: true, schema: { type: string, format: uuid } }
+      x-required-permission: "goals.edit"
+      x-is-write: true
+      responses: { "204": { description: Detached } }
+  /goals/{id}/tasks/{taskId}/link:
+    post:
+      summary: Link an existing task to a goal (and optionally a milestone)
+      tags: [goals]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: taskId, in: path, required: true, schema: { type: string, format: uuid } }
+      x-required-permission: "goals.edit"
+      x-is-write: true
+      responses: { "200": { description: Linked } }
+    delete:
+      summary: Unlink a task from its goal
+      tags: [goals]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: taskId, in: path, required: true, schema: { type: string, format: uuid } }
+      x-required-permission: "goals.edit"
+      x-is-write: true
+      responses: { "200": { description: Unlinked } }
+  /goals/{id}/events/{eventId}/link:
+    post:
+      summary: Link an existing calendar event to a goal
+      tags: [goals]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: eventId, in: path, required: true, schema: { type: string, format: uuid } }
+      x-required-permission: "goals.edit"
+      x-is-write: true
+      responses: { "200": { description: Linked } }
+    delete:
+      summary: Unlink a calendar event from its goal
+      tags: [goals]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: eventId, in: path, required: true, schema: { type: string, format: uuid } }
+      x-required-permission: "goals.edit"
+      x-is-write: true
+      responses: { "200": { description: Unlinked } }
+  /notes:
+    get:
+      summary: List personal workspace notes (filters goal_id, pinned, q)
+      tags: [goals]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: goal_id, in: query, schema: { type: string, format: uuid } }
+        - { name: pinned, in: query, schema: { type: boolean } }
+        - { name: q, in: query, schema: { type: string } }
+      x-required-permission: "goals.view"
+      x-entity-scope: own
+      x-is-write: false
+      responses: { "200": { description: Notes (owner-scoped) } }
+    post:
+      summary: Create a personal note (markdown; optional goal/milestone link)
+      tags: [goals]
+      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
+      x-required-permission: "goals.create"
+      x-entity-scope: own
+      x-is-write: true
+      responses: { "201": { description: Created } }
+  /notes/{id}:
+    get:
+      summary: Note detail
+      tags: [goals]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      x-required-permission: "goals.view"
+      x-entity-scope: own
+      x-is-write: false
+      responses: { "200": { description: Note }, "404": { description: Not found } }
+    patch:
+      summary: Update a note
+      tags: [goals]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      x-required-permission: "goals.edit"
+      x-entity-scope: own
+      x-is-write: true
+      responses: { "200": { description: Updated } }
+    delete:
+      summary: Soft-delete a note
+      tags: [goals]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      x-required-permission: "goals.delete"
+      x-entity-scope: own
+      x-is-write: true
+      responses: { "204": { description: Deleted } }
+  /cos/conversations:
+    get:
+      summary: List Chief of Staff threads (kind=chief_of_staff)
+      tags: [chief_of_staff]
+      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
+      x-guard: requireCeo
+      x-is-write: false
+      responses: { "200": { description: CoS conversations } }
+    post:
+      summary: New Chief of Staff thread
+      tags: [chief_of_staff]
+      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
+      x-guard: requireCeo
+      x-is-write: true
+      responses: { "201": { description: Created } }
+  /cos/conversations/{id}:
+    get:
+      summary: Thread + messages + pending plans/actions
+      tags: [chief_of_staff]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      x-guard: requireCeo
+      x-is-write: false
+      responses: { "200": { description: Conversation detail } }
+    delete:
+      summary: Archive a thread
+      tags: [chief_of_staff]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      x-guard: requireCeo
+      x-is-write: true
+      responses: { "204": { description: Archived } }
+  /cos/conversations/{id}/messages:
+    post:
+      summary: Post a message → a CoS turn (may return a batch plan). Rate-limited per user.
+      tags: [chief_of_staff]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      x-guard: requireCeo
+      x-is-write: true
+      x-metered: cos_chat
+      responses:
+        "201": { description: "Turn result { user_message, assistant_message, plan }" }
+        "429": { description: Too many requests (per-user CoS burst limit) }
+  /cos/plans/{planId}:
+    get:
+      summary: A batch plan + its ordered steps
+      tags: [chief_of_staff]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: planId, in: path, required: true, schema: { type: string, format: uuid } }
+      x-guard: requireCeo
+      x-is-write: false
+      responses: { "200": { description: Plan } }
+  /cos/plans/{planId}/confirm:
+    post:
+      summary: Approve → execute the batch as the CEO (loopback, RBAC re-applies)
+      tags: [chief_of_staff]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: planId, in: path, required: true, schema: { type: string, format: uuid } }
+      x-guard: requireCeo
+      x-is-write: true
+      responses:
+        "200": { description: Executed / partially_failed plan }
+        "410": { description: Plan expired }
+  /cos/plans/{planId}/reject:
+    post:
+      summary: Reject a plan (optional reason)
+      tags: [chief_of_staff]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: planId, in: path, required: true, schema: { type: string, format: uuid } }
+      x-guard: requireCeo
+      x-is-write: true
+      responses: { "200": { description: Rejected } }
+  /cos/followups:
+    get:
+      summary: Open accountability follow-ups (optionally scoped to a subject)
+      tags: [chief_of_staff]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: subject_type, in: query, schema: { type: string, enum: [goal, milestone, task] } }
+        - { name: subject_id, in: query, schema: { type: string, format: uuid } }
+      x-guard: requireCeo
+      x-is-write: false
+      responses: { "200": { description: Follow-ups } }
+  /cos/followups/{id}/respond:
+    post:
+      summary: Answer a follow-up (done | in_progress | delayed)
+      tags: [chief_of_staff]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      x-guard: requireCeo
+      x-is-write: true
+      responses: { "200": { description: "State advanced (+question on delayed)" } }
+  /cos/followups/{id}/reason:
+    post:
+      summary: Capture a delay reason → generate suggested actions
+      tags: [chief_of_staff]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      x-guard: requireCeo
+      x-is-write: true
+      responses: { "200": { description: "Follow-up + suggested_actions" } }
+  /cos/followups/{id}/act:
+    post:
+      summary: Execute a suggestion (move deadline / reschedule dependents / notify)
+      tags: [chief_of_staff]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      x-guard: requireCeo
+      x-is-write: true
+      responses: { "200": { description: "Follow-up (+ re-plan for reschedule_dependents)" } }
+  /cos/followups/{id}/snooze:
+    post:
+      summary: Snooze a follow-up (optional until)
+      tags: [chief_of_staff]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      x-guard: requireCeo
+      x-is-write: true
+      responses: { "200": { description: Snoozed } }
+  /cos/followups/{id}/dismiss:
+    post:
+      summary: Dismiss (close) a follow-up
+      tags: [chief_of_staff]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      x-guard: requireCeo
+      x-is-write: true
+      responses: { "200": { description: Dismissed } }
+  /cos/prep/{eventId}:
+    get:
+      summary: Meeting prep brief for a calendar event
+      tags: [chief_of_staff]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: eventId, in: path, required: true, schema: { type: string, format: uuid } }
+      x-guard: requireCeo
+      x-is-write: false
+      responses: { "200": { description: Prep brief } }
+  /cos/schedule/focus:
+    post:
+      summary: Find focus time → propose a create_event batch plan
+      tags: [chief_of_staff]
+      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
+      x-guard: requireCeo
+      x-is-write: true
+      responses: { "200": { description: "{ slots, plan }" } }
+  /cos/schedule/load:
+    get:
+      summary: Day load / overload detection
+      tags: [chief_of_staff]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: date, in: query, schema: { type: string, description: "YYYY-MM-DD" } }
+      x-guard: requireCeo
+      x-is-write: false
+      responses: { "200": { description: Load summary } }
+  /cos/schedule/reschedule:
+    post:
+      summary: Batch-reschedule matching tasks → a re-plan through the approval gate
+      tags: [chief_of_staff]
+      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
+      x-guard: requireCeo
+      x-is-write: true
+      responses: { "200": { description: Plan } }
+  /cos/cross-brand/overview:
+    get:
+      summary: "Cross-brand goal portfolio (CEO-only exception to brand isolation)"
+      tags: [chief_of_staff]
+      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
+      x-guard: requireCeo
+      x-entity-scope: cross-brand
+      x-is-write: false
+      responses: { "200": { description: Per-brand health + totals } }
+  /cos/templates:
+    get:
+      summary: List playbook templates (brand + globals)
+      tags: [chief_of_staff]
+      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
+      x-guard: requireCeo
+      x-is-write: false
+      responses: { "200": { description: Templates } }
+    post:
+      summary: Save a goal as a playbook (day-offsets)
+      tags: [chief_of_staff]
+      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
+      x-guard: requireCeo
+      x-is-write: true
+      responses: { "201": { description: Created } }
+  /cos/templates/{id}/instantiate:
+    post:
+      summary: Instantiate a playbook → a re-dated batch plan
+      tags: [chief_of_staff]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      x-guard: requireCeo
+      x-is-write: true
+      responses: { "201": { description: Plan } }
+  /cos/settings:
+    get:
+      summary: The CEO's Chief of Staff personalisation (name/tone/pronoun/hours/toggles)
+      tags: [chief_of_staff]
+      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
+      x-guard: requireCeo
+      x-is-write: false
+      responses: { "200": { description: cos_settings (defaults when unset) } }
+    put:
+      summary: Update Chief of Staff settings (partial; strict)
+      tags: [chief_of_staff]
+      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
+      x-guard: requireCeo
+      x-is-write: true
+      responses:
+        "200": { description: Updated settings }
+        "422": { description: Validation error }

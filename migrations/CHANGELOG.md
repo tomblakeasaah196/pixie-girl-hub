@@ -17,7 +17,7 @@ patches; only the in-order `.sql` files.
 chat and push (or refresh) a personal note in the Workspace Notes surface,
 searchable alongside manual notes.
 
-**Files (new):** `000327_shared_cos_notes_link.sql` — adds
+**Files (new):** `000329_shared_cos_notes_link.sql` — adds
 `shared.workspace_notes.source_conversation_id` (FK →
 `shared.ai_conversations`, `ON DELETE SET NULL`) plus a partial UNIQUE
 index `(user_id, source_conversation_id) WHERE source='cos' AND
@@ -33,6 +33,32 @@ router + `cos_chat` governance envelope, then upserts), `notes.repo.js`
 `POST /cos/conversations/:id/save-note` route, and the admin CoS tab
 ("Save to notes" header button + inline suggestion; a "Chief of Staff" tag
 on the note card).
+
+---
+
+## 2026-07-11 — Recruitment: countersignatory e-signature
+
+**Source:** user request — offer packets need one signature area (not two),
+and the person who countersigns the offer on the Company's behalf needs a
+real captured signature that rides on every packet, side-by-side with the
+candidate's.
+
+**Files (new):** `000326_shared_recruitment_signatory.sql` — adds
+`shared.recruitment_context.signatory_signature_data_url` (base64 data
+URL of the captured countersignatory signature, drawn once in the
+Company-context modal); nudges the seeded default `signatory_name`
+from `'Faith'` to `'Faitlyn Alex'` only where the row is still on the
+literal seed default.
+
+**Related (no migration):** `src/modules/recruitment/recruitment.render.js`
+(strips the AI's trailing "Accepted and Agreed" block; brand contact strip
+on the cover; footer shows CAC only when set + optional italic mission
+statement; proper `@page` top/bottom margins; stamps the countersignatory
+signature onto the "For {brand}" side of the Execution block),
+`apps/admin/src/pages/hr/RecruitmentTab.tsx` (SignaturePad for Faith in
+the Company-context modal; live preview pane is now an iframe of the
+server-rendered packet HTML), `apps/admin/src/pages/offer/OfferPage.tsx`
+(candidate reads the same packet HTML in an iframe).
 
 ---
 

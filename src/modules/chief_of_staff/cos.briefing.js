@@ -23,14 +23,23 @@ const FEATURE = "cos_chat";
 const HEALTH_LABEL = { behind: "behind", at_risk: "at risk", on_track: "on track", achieved: "achieved" };
 
 /** Compose the deterministic goals section from pre-fetched rows (pure). */
-function composeGoalsSection({ brand, goals, overdueMilestones, overdueTasks, priorities, weekly }) {
+function composeGoalsSection({
+  brand,
+  goals,
+  overdueMilestones,
+  overdueTasks,
+  priorities,
+  weekly,
+  assistantName = "Chief of Staff",
+}) {
+  const header = `🎯 ${assistantName} — Goals (${brand})`;
   const active = goals.length;
   if (!active && !overdueMilestones && !overdueTasks) {
-    return { text: `🎯 Goals (${brand}): nothing active right now.`, hasContent: false };
+    return { text: `${header}: nothing active right now.`, hasContent: false };
   }
   const behind = goals.filter((g) => g.health === "behind");
   const atRisk = goals.filter((g) => g.health === "at_risk");
-  const lines = [`🎯 Goals (${brand}): ${active} active`];
+  const lines = [`${header}: ${active} active`];
 
   if (behind.length)
     lines.push(
@@ -61,7 +70,7 @@ function composeGoalsSection({ brand, goals, overdueMilestones, overdueTasks, pr
 }
 
 /** Fetch + compose the goals digest for a brand. `weekly` adds the focus list. */
-async function goalsDigest({ brand, weekly = false }) {
+async function goalsDigest({ brand, weekly = false, assistantName = "Chief of Staff" }) {
   const goals = await query(
     `SELECT goal_id, title, progress_pct, health, target_date
        FROM shared.goals
@@ -104,6 +113,7 @@ async function goalsDigest({ brand, weekly = false }) {
     overdueTasks: overdue.rows[0].overdue_tasks,
     priorities: priorities.rows,
     weekly,
+    assistantName,
   });
   return {
     ...section,
@@ -120,7 +130,7 @@ async function goalsDigest({ brand, weekly = false }) {
  * router. Metered under cos_chat. Returns text or null (caller keeps Tier-1).
  * Never throws.
  */
-async function narrate({ brand, ceoId, facts, weekly = false }) {
+async function narrate({ brand, ceoId, facts, weekly = false, assistantName = "Chief of Staff" }) {
   try {
     if (!ceoId || !facts) return null;
     const guard = await governance.canUseFeature({
@@ -132,7 +142,7 @@ async function narrate({ brand, ceoId, facts, weekly = false }) {
     if (!guard.ok) return null;
 
     const system = [
-      `You are the CEO's Chief of Staff, writing the goals part of the ${weekly ? "Monday executive review" : "morning briefing"} for the ${brand} business.`,
+      `You are ${assistantName}, the CEO's Chief of Staff, writing the goals part of the ${weekly ? "Monday executive review" : "morning briefing"} for the ${brand} business.`,
       "You are given a deterministic summary of goals, risks and priorities.",
       "Write 2–3 short sentences: what needs attention today and why. Warm, direct, specific. No greeting, no bullet points, no markdown.",
     ].join("\n");

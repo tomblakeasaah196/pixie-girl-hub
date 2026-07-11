@@ -85,7 +85,8 @@ function StepRow({ step }: { step: PlanStep }) {
             type="button"
             onClick={() => setOpen((v) => !v)}
             className="shrink-0 text-text-faint hover:text-text-primary"
-            aria-label="Show details"
+            aria-label={open ? "Hide step details" : "Show step details"}
+            aria-expanded={open}
           >
             <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", open && "rotate-180")} />
           </button>
@@ -180,11 +181,12 @@ export function BatchPlanCard({
       {/* Footer — one Approve / one Reject, or live status */}
       <div className="px-4 py-3 border-t hairline">
         {isProposed ? (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2" role="group" aria-label={`Approve or reject: ${plan.title}`}>
             <button
               type="button"
               disabled={isBusy}
               onClick={() => confirm.mutate(plan.plan_id)}
+              aria-label={`Approve plan “${plan.title}”`}
               className="inline-flex items-center gap-1.5 rounded-xl bg-accent text-bg px-4 py-2 text-[13px] font-semibold hover:bg-accent-glow disabled:opacity-50"
             >
               {confirm.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
@@ -194,6 +196,7 @@ export function BatchPlanCard({
               type="button"
               disabled={isBusy}
               onClick={() => reject.mutate({ planId: plan.plan_id })}
+              aria-label={`Reject plan “${plan.title}”`}
               className="inline-flex items-center gap-1.5 rounded-xl border hairline px-3.5 py-2 text-[13px] text-text-muted hover:text-text-primary hover:border-line disabled:opacity-50"
             >
               <X className="w-3.5 h-3.5" />
@@ -201,15 +204,15 @@ export function BatchPlanCard({
             </button>
           </div>
         ) : plan.status === "executing" ? (
-          <span className="inline-flex items-center gap-2 text-[12.5px] text-accent-glow">
+          <span role="status" aria-live="polite" className="inline-flex items-center gap-2 text-[12.5px] text-accent-glow">
             <Loader2 className="w-3.5 h-3.5 animate-spin" /> Running your plan…
           </span>
         ) : plan.status === "executed" ? (
-          <span className="inline-flex items-center gap-1.5 text-[12.5px] text-green-300">
+          <span role="status" className="inline-flex items-center gap-1.5 text-[12.5px] text-green-300">
             <Check className="w-3.5 h-3.5" /> Plan completed — all {plan.steps.length} steps done.
           </span>
         ) : plan.status === "partially_failed" ? (
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3" role="status">
             <span className="inline-flex items-center gap-1.5 text-[12.5px] text-warn">
               <AlertTriangle className="w-3.5 h-3.5" /> Some steps didn't complete.
             </span>

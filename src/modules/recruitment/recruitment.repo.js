@@ -33,19 +33,21 @@ async function upsertContext({ business, fields, user_id }) {
   const { rows } = await query(
     `INSERT INTO shared.recruitment_context
        (business, display_name, summary, tone, target_markets,
-        non_negotiables, signatory_name, signatory_title, notes, updated_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        non_negotiables, signatory_name, signatory_title,
+        signatory_signature_data_url, notes, updated_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
      ON CONFLICT (business) DO UPDATE SET
-        display_name    = EXCLUDED.display_name,
-        summary         = EXCLUDED.summary,
-        tone            = EXCLUDED.tone,
-        target_markets  = EXCLUDED.target_markets,
-        non_negotiables = EXCLUDED.non_negotiables,
-        signatory_name  = EXCLUDED.signatory_name,
-        signatory_title = EXCLUDED.signatory_title,
-        notes           = EXCLUDED.notes,
-        updated_by      = EXCLUDED.updated_by,
-        updated_at      = now()
+        display_name                 = EXCLUDED.display_name,
+        summary                      = EXCLUDED.summary,
+        tone                         = EXCLUDED.tone,
+        target_markets               = EXCLUDED.target_markets,
+        non_negotiables              = EXCLUDED.non_negotiables,
+        signatory_name               = EXCLUDED.signatory_name,
+        signatory_title              = EXCLUDED.signatory_title,
+        signatory_signature_data_url = EXCLUDED.signatory_signature_data_url,
+        notes                        = EXCLUDED.notes,
+        updated_by                   = EXCLUDED.updated_by,
+        updated_at                   = now()
      RETURNING *`,
     [
       business,
@@ -56,6 +58,7 @@ async function upsertContext({ business, fields, user_id }) {
       fields.non_negotiables || null,
       fields.signatory_name || null,
       fields.signatory_title || null,
+      fields.signatory_signature_data_url || null,
       fields.notes || null,
       user_id || null,
     ],
@@ -273,7 +276,9 @@ async function updateOffer({ id, fields, client }) {
 async function businessBranding({ brand }) {
   const { rows } = await query(
     `SELECT display_name, legal_name, accent_colour, secondary_colour,
-            logo_path, logo_alt_path, brand_theme
+            logo_path, logo_alt_path, brand_theme,
+            address, phone, email, website,
+            tin, cac_number, vat_number, mission_statement
        FROM shared.business_config WHERE business_key = $1`,
     [brand],
   );
@@ -286,6 +291,20 @@ async function userIdByEmail({ email }) {
     [email],
   );
   return rows[0] ? rows[0].user_id : null;
+}
+
+/**
+ * Minimal staff-profile lookup used when provisioning links the new login to
+ * the HR employee profile created by the onboarding wizard. Also feeds the
+ * contract-filing step (salary/type/start date come from the profile).
+ */
+async function staffProfileBrief({ profile_id }) {
+  const { rows } = await query(
+    `SELECT profile_id, business, employment_type, start_date, base_salary, is_deleted
+       FROM shared.staff_profiles WHERE profile_id = $1 LIMIT 1`,
+    [profile_id],
+  );
+  return rows[0] || null;
 }
 
 /**
@@ -330,5 +349,6 @@ module.exports = {
   updateOffer,
   businessBranding,
   userIdByEmail,
+  staffProfileBrief,
   getOfferSignature,
 };

@@ -114,3 +114,19 @@ the last active owner cannot be revoked. Only the owner/CEO can do these.
 
 **Live effect.** The middleware reads `shared.permissions` with no cache, so
 matrix/grant changes apply on the user's next request.
+
+## The `goals` module (AI Chief of Staff)
+
+The Chief of Staff feature adds one catalog module, **`goals`** (group
+`workspace`), enforcing `view` / `create` / `edit` / `delete`. It gates both the
+`/api/v1/goals` and `/api/v1/notes` routes — **Notes ride under `goals`** rather
+than carrying their own key. Seeded to the executive tier (owner/admin/manager)
+at `all` scope in migration `000322`; notes are additionally **owner-scoped**
+(`own`) in the repo.
+
+The CoS **agent** (`/api/v1/cos/*`) is not a permission module — it is guarded
+by a **`requireCeo`** middleware for v1 (`req.user.is_ceo`). It never bypasses
+RBAC: its executor re-enters the real `/goals`, `/tasks`, `/calendar`, `/notes`
+endpoints over loopback **as the CEO**, so `requirePermission` re-applies on
+every write. The `goals` module exists so the surface can open to execs later
+without a rework. See `docs/AI_CHIEF_OF_STAFF.md`.

@@ -1,5 +1,6 @@
 /**
- * Chief of Staff accountability sweep (PR4). Runs hourly, cron-locked.
+ * Chief of Staff accountability sweep (PR4, personalised in PR6). Runs hourly,
+ * cron-locked.
  *
  * Each tick, for the CEO and every brand:
  *   1. Risk scan — cos.risk assesses every active/on-hold goal, the computed
@@ -8,15 +9,17 @@
  *   2. Follow-ups — a candidate with no live follow-up (partial-unique guard +
  *      cooldown) becomes a cos_followups row + a 3-button notification
  *      (✅ Done / 🟡 In Progress / 🔴 Delayed) delivered in-app + push + email
- *      per the user's prefs. Logged to cos_nudges.
- *   3. Evening review — at cos_settings.evening_review_at (default 18:00) a
- *      once-a-day end-of-day summary (no separate cron), quiet-hours aware.
+ *      per the user's prefs. Logged to cos_nudges. The notification is titled
+ *      with the CEO's chosen assistant name (PR6).
+ *   3. Evening review — a once-a-day end-of-day summary (no separate cron),
+ *      fired at the CEO's evening_review_at, or — when adaptive_timing is on —
+ *      nudged toward the hour she actually engages (bounded to work hours).
  *
- * Deterministic and cheap: no LLM here. Quiet hours + dedupe are respected so
- * the CEO is never pinged at night or twice for the same thing.
- *
- * cos_settings (PR6) will make timezone / quiet hours / review time
- * per-user; until then these defaults stand.
+ * PR6: timezone, quiet hours, review time, assistant name and adaptive timing
+ * now come from shared.cos_settings (falling back to sensible defaults when the
+ * CEO hasn't saved any). Deterministic and cheap: no LLM here. Quiet hours +
+ * dedupe are respected so the CEO is never pinged at night or twice for the
+ * same thing.
  */
 
 "use strict";
@@ -26,33 +29,14 @@ const { logger } = require("../../config/logger");
 const { BRANDS } = require("../../config/brands");
 const goalsRepo = require("../../shared/goals/goals.repo");
 const repo = require("../../modules/chief_of_staff/cos.accountability.repo");
+const settingsRepo = require("../../modules/chief_of_staff/cos.settings.repo");
+const adaptive = require("../../modules/chief_of_staff/cos.adaptive");
+const { parseHour, localHour, isQuietHour } = require("../../modules/chief_of_staff/cos.time");
 const risk = require("../../modules/chief_of_staff/cos.risk");
 const events = require("../../modules/chief_of_staff/cos.events");
 const notifications = require("../../services/notifications.service");
 
-// Defaults until cos_settings (PR6) makes these per-user.
-const TZ = "Africa/Lagos";
-const QUIET_START = 21; // 21:00 — no nudges from here…
-const QUIET_END = 6; // …until 06:00
-const EVENING_REVIEW_HOUR = 18;
 const EVENING_DEDUPE_HOURS = 20;
-
-/** Local wall-clock hour (0–23) in a timezone. */
-function localHour(tz = TZ, at = new Date()) {
-  const h = new Intl.DateTimeFormat("en-US", {
-    timeZone: tz,
-    hour: "2-digit",
-    hour12: false,
-  }).format(at);
-  return Number(h) % 24;
-}
-
-function isQuietHour(hour) {
-  // Window wraps midnight (21 → 06).
-  return QUIET_START > QUIET_END
-    ? hour >= QUIET_START || hour < QUIET_END
-    : hour >= QUIET_START && hour < QUIET_END;
-}
 
 function respondActions(followupId) {
   // Client-relative path — the admin API client prepends /api/v1.
@@ -75,8 +59,30 @@ async function findCeo() {
   }
 }
 
+/**
+ * The hour the evening review should fire for this CEO. With adaptive_timing on
+ * and enough engagement evidence, it drifts toward when she actually acts in
+ * the afternoon/evening; otherwise it's her configured evening_review_at.
+ */
+async function eveningReviewHour({ ceoId, settings }) {
+  const configured = parseHour(settings.evening_review_at, 18);
+  if (!settings.adaptive_timing) return configured;
+  try {
+    const stamps = await repo.recentEngagedNudges({ user_id: ceoId });
+    const hours = stamps.map((ts) => localHour(settings.timezone, new Date(ts)));
+    return adaptive.preferredHour(hours, {
+      defaultHour: configured,
+      workStart: parseHour(settings.work_start, 8),
+      workEnd: parseHour(settings.work_end, 18),
+      floorHour: 12, // an "evening" review only drifts within the afternoon+
+    });
+  } catch {
+    return configured;
+  }
+}
+
 /** Create a follow-up + action-button notification for one candidate. */
-async function raiseFollowup({ brand, ceoId, goal, cand }) {
+async function raiseFollowup({ brand, ceoId, goal, cand, assistantName }) {
   const blocking = await repo.findBlockingFollowup({
     subject_type: cand.subject_type,
     subject_id: cand.subject_id,
@@ -107,7 +113,7 @@ async function raiseFollowup({ brand, ceoId, goal, cand }) {
     user_id: ceoId,
     business: brand,
     type: "cos_followup",
-    title: "Chief of Staff",
+    title: assistantName,
     body: cand.question,
     priority: cand.priority === "high" ? "high" : "normal",
     reference_type: cand.subject_type,
@@ -148,7 +154,7 @@ async function raiseFollowup({ brand, ceoId, goal, cand }) {
   return true;
 }
 
-async function scanBrandForCeo({ brand, ceoId, now, quiet }) {
+async function scanBrandForCeo({ brand, ceoId, now, quiet, assistantName }) {
   const goals = await repo.listGoalsForRisk({ brand });
   let made = 0;
   for (const goal of goals) {
@@ -181,7 +187,7 @@ async function scanBrandForCeo({ brand, ceoId, now, quiet }) {
     if (quiet) continue; // scan + health still update; just don't ping at night
     for (const cand of candidates) {
       try {
-        if (await raiseFollowup({ brand, ceoId, goal, cand })) made += 1;
+        if (await raiseFollowup({ brand, ceoId, goal, cand, assistantName })) made += 1;
       } catch (err) {
         logger.error(
           { err: err.message, subject: cand.subject_id },
@@ -193,8 +199,8 @@ async function scanBrandForCeo({ brand, ceoId, now, quiet }) {
   return made;
 }
 
-async function maybeEveningReview({ brand, ceoId, hour, quiet }) {
-  if (hour !== EVENING_REVIEW_HOUR || quiet) return false;
+async function maybeEveningReview({ brand, ceoId, hour, quiet, reviewHour, assistantName }) {
+  if (hour !== reviewHour || quiet) return false;
   const since = new Date(
     Date.now() - EVENING_DEDUPE_HOURS * 3600 * 1000,
   ).toISOString();
@@ -220,7 +226,7 @@ async function maybeEveningReview({ brand, ceoId, hour, quiet }) {
     user_id: ceoId,
     business: brand,
     type: "cos_briefing",
-    title: "Evening review",
+    title: `${assistantName} — evening review`,
     body,
     action_url: "/workspace?tab=goals",
   });
@@ -241,9 +247,21 @@ async function runCosAccountabilitySweep() {
     logger.info("cos-accountability: no CEO user — nothing to do");
     return { followups: 0, reviews: 0 };
   }
+
+  // PR6: per-user personalisation (name, timezone, quiet/work/review hours,
+  // adaptive timing). A missing row resolves to defaults, so this is safe on a
+  // fresh deploy before the CEO opens Settings.
+  const settings = await settingsRepo.get({ user_id: ceo.user_id }).catch(() => null);
+  const s = settings || settingsRepo.DEFAULTS;
+  const tz = s.timezone || "Africa/Lagos";
+  const assistantName = s.assistant_name || "Chief of Staff";
+  const quietStart = parseHour(s.quiet_start, 21);
+  const quietEnd = parseHour(s.quiet_end, 6);
+
   const now = new Date();
-  const hour = localHour();
-  const quiet = isQuietHour(hour);
+  const hour = localHour(tz);
+  const quiet = isQuietHour(hour, quietStart, quietEnd);
+  const reviewHour = await eveningReviewHour({ ceoId: ceo.user_id, settings: s });
 
   let followups = 0;
   let reviews = 0;
@@ -254,14 +272,27 @@ async function runCosAccountabilitySweep() {
         ceoId: ceo.user_id,
         now,
         quiet,
+        assistantName,
       });
-      if (await maybeEveningReview({ brand, ceoId: ceo.user_id, hour, quiet }))
+      if (
+        await maybeEveningReview({
+          brand,
+          ceoId: ceo.user_id,
+          hour,
+          quiet,
+          reviewHour,
+          assistantName,
+        })
+      )
         reviews += 1;
     } catch (err) {
       logger.error({ err: err.message, brand }, "cos-accountability brand failed");
     }
   }
-  logger.info({ followups, reviews, quiet, hour }, "cos accountability sweep complete");
+  logger.info(
+    { followups, reviews, quiet, hour, reviewHour },
+    "cos accountability sweep complete",
+  );
   return { followups, reviews };
 }
 
@@ -270,5 +301,7 @@ module.exports = {
   // exposed for tests
   localHour,
   isQuietHour,
+  parseHour,
   respondActions,
+  eveningReviewHour,
 };

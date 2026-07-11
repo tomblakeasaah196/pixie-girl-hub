@@ -56,4 +56,25 @@ module.exports = [
       "no-console": "off",
     },
   },
+  {
+    // Cloudflare Email Worker — runs on the Workers runtime and MUST be an ES
+    // module (the email() handler only exists in `export default`). Lint it as
+    // a module and declare the Web/Workers globals it uses so `import` and
+    // crypto/TextEncoder/fetch don't false-positive as parse/undef errors.
+    files: ["cloudflare/**/*.js"],
+    languageOptions: {
+      ecmaVersion: 2024,
+      sourceType: "module",
+      globals: {
+        crypto: "readonly",
+        TextEncoder: "readonly",
+        Uint8Array: "readonly",
+        fetch: "readonly",
+        console: "readonly",
+      },
+    },
+    rules: {
+      "no-console": "off",
+    },
+  },
 ];

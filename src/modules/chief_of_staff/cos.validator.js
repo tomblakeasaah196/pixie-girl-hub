@@ -90,6 +90,33 @@ const templateInstantiate = z
   })
   .strict();
 
+// ── Settings / personalisation (PR6) ───────────────────────
+// A 24h HH:MM (or HH:MM:SS) wall-clock time, matching the TIME columns.
+const hhmm = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/, "expected HH:MM (24h)");
+
+const settingsUpdate = z
+  .object({
+    assistant_name: z.string().min(1).max(60).optional(),
+    tone: z.enum(["warm", "concise", "formal"]).optional(),
+    avatar_url: z.string().url().max(2000).nullable().optional(),
+    pronoun: z.enum(["she", "he", "they", "it"]).optional(),
+    work_start: hhmm.optional(),
+    work_end: hhmm.optional(),
+    timezone: z.string().min(1).max(64).optional(),
+    morning_brief_at: hhmm.optional(),
+    evening_review_at: hhmm.optional(),
+    quiet_start: hhmm.optional(),
+    quiet_end: hhmm.optional(),
+    celebrate_wins: z.boolean().optional(),
+    adaptive_timing: z.boolean().optional(),
+  })
+  .strict()
+  .refine((v) => Object.keys(v).length > 0, {
+    message: "provide at least one field to update",
+  });
+
 const mk = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body || {});
   next();
@@ -106,6 +133,7 @@ module.exports = {
   validateScheduleReschedule: mk(scheduleReschedule),
   validateTemplateSave: mk(templateSave),
   validateTemplateInstantiate: mk(templateInstantiate),
+  validateSettingsUpdate: mk(settingsUpdate),
   schemas: {
     conversationCreate,
     messagePost,
@@ -117,5 +145,6 @@ module.exports = {
     scheduleReschedule,
     templateSave,
     templateInstantiate,
+    settingsUpdate,
   },
 };

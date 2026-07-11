@@ -25,6 +25,7 @@ const governance = require("../../modules/ai_governance/governance.service");
 const llm = require("../../services/llm.service");
 const cosBriefing = require("../../modules/chief_of_staff/cos.briefing");
 const accountabilityRepo = require("../../modules/chief_of_staff/cos.accountability.repo");
+const cosSettingsRepo = require("../../modules/chief_of_staff/cos.settings.repo");
 const { money, toCurrencyString } = require("../../utils/money");
 
 const { BRANDS } = require("../../config/brands");
@@ -191,9 +192,9 @@ function isLagosMonday(at = new Date()) {
  * Deterministic always; an optional narrative degrades to Tier-1. Returns the
  * section text (or "" when there's nothing to say), plus whether it had content.
  */
-async function cosGoalsSection({ brand, recipient, weekly }) {
+async function cosGoalsSection({ brand, recipient, weekly, assistantName = "Chief of Staff" }) {
   try {
-    const digest = await cosBriefing.goalsDigest({ brand, weekly });
+    const digest = await cosBriefing.goalsDigest({ brand, weekly, assistantName });
     if (!digest.hasContent) return { text: "", hasContent: false };
     let section = digest.text;
     if (recipient) {
@@ -202,6 +203,7 @@ async function cosGoalsSection({ brand, recipient, weekly }) {
         ceoId: recipient,
         facts: digest.text,
         weekly,
+        assistantName,
       });
       if (narrative) section = `${narrative}\n\n${digest.text}`;
     }
@@ -215,6 +217,17 @@ async function cosGoalsSection({ brand, recipient, weekly }) {
 async function runDailyAiBriefing() {
   const recipient = await findCeoUserId();
   const weekly = isLagosMonday();
+  // The CEO's chosen assistant name (PR6) — signs the CoS goals section. Falls
+  // back to "Chief of Staff" when no settings row / no recipient.
+  let assistantName = "Chief of Staff";
+  if (recipient) {
+    try {
+      const s = await cosSettingsRepo.get({ user_id: recipient });
+      if (s && s.assistant_name) assistantName = s.assistant_name;
+    } catch {
+      /* keep default */
+    }
+  }
   let made = 0;
   let narrated = 0;
   for (const brand of BRANDS) {
@@ -227,7 +240,7 @@ async function runDailyAiBriefing() {
       if (ai) narrated += 1;
 
       // Append the CoS goals section (+ weekly review on Mondays).
-      const cos = await cosGoalsSection({ brand, recipient, weekly });
+      const cos = await cosGoalsSection({ brand, recipient, weekly, assistantName });
       const baseText = ai ? ai.text : text;
       const briefingText = cos.hasContent
         ? `${baseText}\n\n${cos.text}`

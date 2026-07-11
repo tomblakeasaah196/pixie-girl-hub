@@ -499,16 +499,25 @@ async function postMessage({ brand, user, request_id, id, input }) {
       // the window Meta only accepts messages tagged HUMAN_AGENT (which
       // your Meta app must be approved for). `is_human_agent` on the
       // input signals "operator explicitly approved a HUMAN_AGENT reply".
+      //
+      // A NULL window means the customer has NEVER messaged this thread on
+      // Instagram — Meta has no conversation to attach to, so a business-
+      // initiated free-form send is rejected server-side with a confusing
+      // "Invalid message id" (code 508, subcode 2534122). Treat NULL the
+      // same as an expired window and block it here with a clear reason,
+      // instead of letting it fail opaquely at Meta.
       if (
         channel.external_platform === "instagram" &&
-        channel.ig_window_expires_at &&
-        new Date(channel.ig_window_expires_at) < new Date() &&
         input.message_type !== "system" &&
-        !input.is_human_agent
+        !input.is_human_agent &&
+        (!channel.ig_window_expires_at ||
+          new Date(channel.ig_window_expires_at) < new Date())
       ) {
         throw new AppError(
           "IG_WINDOW_CLOSED",
-          "Instagram 24-hour service window has expired. Reply with a HUMAN_AGENT-tagged message (needs Meta app approval).",
+          channel.ig_window_expires_at
+            ? "Instagram 24-hour service window has expired. Reply with a HUMAN_AGENT-tagged message (needs Meta app approval)."
+            : "You can't message this person on Instagram yet — Instagram only lets you reply within 24 hours of a message they send you. Wait for them to message first.",
           409,
         );
       }
@@ -1196,13 +1205,26 @@ async function buildOutboundJobsForChannel({
   // channel — channels only know who is in them. Rides `client` so a
   // thread + member created earlier in THIS transaction (first-touch
   // outbound via sendToCustomer) is visible.
+  //
+  // The IG handle is picked via LATERAL because a contact can carry
+  // SEVERAL instagram rows: one IGSID per brand account the person has
+  // DMed (they get a different id per account), plus id-less rows typed
+  // into the storefront/onboarding forms. The old bare join returned an
+  // arbitrary one (LIMIT 1, no ORDER BY) — prefer a row that actually
+  // has an external id, newest first, so the fallback is deterministic.
   const member = await ex(client)(
     `SELECT con.contact_id, con.primary_phone, con.whatsapp_number, con.email,
             h.handle AS ig_handle, h.external_user_id AS ig_user_id
        FROM shared.channel_members cm
        LEFT JOIN shared.contacts con ON con.contact_id = cm.contact_id
-       LEFT JOIN shared.contact_social_handles h
-              ON h.contact_id = cm.contact_id AND h.platform = $2
+       LEFT JOIN LATERAL (
+         SELECT sh.handle, sh.external_user_id
+           FROM shared.contact_social_handles sh
+          WHERE sh.contact_id = cm.contact_id AND sh.platform = $2
+          ORDER BY (sh.external_user_id IS NOT NULL) DESC,
+                   sh.updated_at DESC
+          LIMIT 1
+       ) h ON true
       WHERE cm.channel_id = $1 AND cm.contact_id IS NOT NULL
       LIMIT 1`,
     [channel.channel_id, "instagram"],
@@ -1243,14 +1265,28 @@ async function buildOutboundJobsForChannel({
   }
 
   if (platform === "instagram") {
-    const recipient_id = c.ig_user_id || meta.ig_user_id;
+    // IGSIDs are scoped to ONE Instagram business account: the same
+    // customer has a DIFFERENT id for every brand account they message,
+    // and Meta rejects an id minted for another account (or a username /
+    // form-typed handle) with the opaque "Invalid message id" — code 508,
+    // subcode 2534122 — regardless of message content. The thread's own
+    // external_thread_ref IS the IGSID that DMed this brand (the inbound
+    // webhook stamps it — "IGSID = thread"), so it's the one id
+    // guaranteed deliverable on this thread's token. The contact-level
+    // handle row is brand-blind (a merged or cross-brand contact carries
+    // several) and only serves as a fallback for legacy threads created
+    // before the ref was stamped.
+    const recipient_id =
+      channel.external_thread_ref || c.ig_user_id || meta.ig_user_id;
     if (!recipient_id) return fail("NO_IG_HANDLE_ON_FILE");
     // The 24h-window guard in postMessage marks the message with
     // is_template === true when the operator has opted into a
     // HUMAN_AGENT-tagged reply outside the window — pass that
-    // through to the processor so it stamps the Meta MESSAGE_TAG.
+    // through to the processor so it stamps the Meta MESSAGE_TAG. A NULL
+    // window (customer never messaged) counts as outside — an explicit
+    // HUMAN_AGENT override still needs the tag.
     const outsideWindow =
-      channel.ig_window_expires_at &&
+      !channel.ig_window_expires_at ||
       new Date(channel.ig_window_expires_at) < new Date();
     let jobPayloads;
     if (
@@ -1279,7 +1315,16 @@ async function buildOutboundJobsForChannel({
           message.message_type === "voice_note"
             ? "audio"
             : message.message_type;
-        jobPayloads.push({ media_kind: kind, media_url: media.media_url });
+        const jp = { media_kind: kind, media_url: media.media_url };
+        // Instagram DM audio only accepts aac/m4a/wav/mp4; browser voice
+        // notes are webm/opus, which Meta rejects (code 100, subcode
+        // 2534080). Hand the worker the storage key + source mime so it can
+        // transcode to m4a before the send (see instagram-processor).
+        if (kind === "audio") {
+          jp.media_key = media.media_key;
+          jp.source_mime = media.mime_type;
+        }
+        jobPayloads.push(jp);
       }
     } else if (message.message_type === "product_share") {
       // IG image attachments carry no caption field, unlike WhatsApp —

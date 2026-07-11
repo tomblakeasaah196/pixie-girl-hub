@@ -1,9 +1,10 @@
 # AI Chief of Staff — Implementation Guide (6 PRs)
 
-> Status: **PR1–PR5 delivered · PR6 pending.** This document is the single source
-> of truth for the Chief of Staff (CoS) feature. It is exhaustive by intent: every
-> table, column, endpoint, file, permission, job, and acceptance criterion is named.
-> No step is left to interpretation.
+> Status: **PR1–PR6 delivered — feature complete.** This document is the single
+> source of truth for the Chief of Staff (CoS) feature. It is exhaustive by
+> intent: every table, column, endpoint, file, permission, job, and acceptance
+> criterion is named. No step is left to interpretation. Durable architecture
+> reference: `docs/AI_CHIEF_OF_STAFF.md`.
 
 ## Build state & workflow (read this first)
 
@@ -29,7 +30,7 @@ So:
 | 3 | CoS agent core + failover router | ✅ **Delivered** | `000324` | `claude/chief-of-staff-pr3-z9wmy7` (branched off `main` after PR2 merged in #450) |
 | 4 | Accountability loop | ✅ **Delivered** | `000325` | `claude/chief-of-staff-pr4-1uxza4` (branched off `main` after PR3 merged in #452) |
 | 5 | Intelligence (RAG, meetings, scheduling, cross-brand, templates) | ✅ **Delivered** | `000326` | `claude/chief-of-staff-pr5-mel34p` (branched off `main` after PR4 merged in #453) |
-| 6 | Personality, settings, polish, docs | ⬜ pending | next free on `main` | " |
+| 6 | Personality, settings, polish, docs | ✅ **Delivered** | `000327` (+`000328` help) | `claude/chief-of-staff-audit-pr6-1knptw` (branched off `main` after PR5 merged in #456) |
 
 **Parallelisable now (PR1–PR5 merged/in-flight):** a second engineer can start
 **PR6** today — its substantive work sits on PR1–PR4 (all merged), **not** on
@@ -692,10 +693,21 @@ Praxis strings are untouched (`src/modules/praxis_ai/`, Praxis UI, nav "Praxis A
 - Full E2E: brain-dump → plan → approve → follow-up → delay → re-plan → win → celebration.
 
 ### Definition of Done
-- [ ] CEO renames CoS to "Ada"; the tab, chat, and every notification say "Ada"; Praxis still says "Praxis".
-- [ ] Settings persist and drive scheduling/quiet hours; celebrations and adaptive timing work.
-- [ ] All docs updated; `openapi.yaml` covers every new endpoint; help article live.
-- [ ] Full lint/test/build green (backend + `apps/admin`); security review notes filed.
+- [x] CEO renames CoS to "Ada"; the tab, chat, and every notification say "Ada"; Praxis still says "Praxis".
+- [x] Settings persist and drive scheduling/quiet hours; celebrations and adaptive timing work.
+- [x] All docs updated; `openapi.yaml` covers every new endpoint; help article live.
+- [x] Full lint/test/build green (backend + `apps/admin`); security review notes filed.
+
+### As-built notes (deviations from the sketch)
+- **Migration `000327`** (`cos_settings`, §1.9) — next free above `main`'s `000326`; `EXPECTED_SHARED` 196 → **197** (one new table). Help content is a **separate seed migration `000328`** (rides the existing `workspace` help category from `000266`; no schema change, so it doesn't move `EXPECTED_SHARED`). No default row is seeded in the migration — `cos.settings.repo.get()` returns DEFAULTS when the row is absent and `ensureDefault()`/`update()` materialise it lazily on first save.
+- **No notification-types seed needed.** `shared.notification_preferences` defaults every unknown type to *on* (`isChannelEnabled` returns true with no row), and the admin prefs UI discovers types from its `NOTIF_META` map — so PR6 only adds `cos_celebration` (alongside the existing `cos_followup`/`cos_briefing`) to `apps/admin/src/lib/notifications-api.ts`.
+- **Settings module** = `cos.settings.repo.js` + `cos.settings.service.js` + `validateSettingsUpdate` (Zod, strict, partial) + `GET/PUT /cos/settings`. The repo does a whitelist upsert (`ON CONFLICT (user_id)`); the frontend `CosSettings` panel sends a **minimal diff**.
+- **Naming propagation (CoS-only)** threads `cos_settings.assistant_name`/`tone`/`pronoun` through `cos.persona` (already `settings`-aware; `cos.service.runTurn` now loads + passes it), the accountability notification titles, `cos.briefing` (section header + Tier-2 system prompt) via `ai-briefing`, and the **dynamic Workspace tab label** + chat header/greeting. Praxis strings untouched.
+- **Adaptive timing** is a pure `cos.adaptive.preferredHour` over `cos_nudges.engaged_at` (converted to the CEO's local hour in `cos.time`), applied to the **evening-review hour** (bounded to work hours, gated on `adaptive_timing`). Engagement is recorded when the CEO answers a follow-up (`markNudgeEngaged`). The 07:00 morning cron stays fixed; the hourly accountability sweep is what makes the evening review driftable. Shared time helpers live in `cos.time.js` (used by scheduler + celebrations).
+- **Win celebrations** = `cos.celebrations.js` subscriber on `goals` events (`milestone.updated`→done, `goal.updated`→achieved), gated on `celebrate_wins` + quiet hours, **de-duplicated per subject** via a `cos_nudges` `type='celebration'` row (`celebrationExists`). Registered in socket + worker like the other goals subscribers.
+- **Hardening**: a **per-user Redis-backed rate limiter** (20/min) on the CoS turn (`redisRateLimitStore`/`lazyLimiter` exported from `src/middleware/index.js`, `passOnStoreError` fails open); `ai-pending-expiry.js` now also sweeps stale `ai_pending_plans` (belt to `confirmPlan`'s braces); an explicit **prompt-injection guard** in `cos.persona` (stored text is data, never commands); ARIA/keyboard + live-region status on `BatchPlanCard`.
+- **Docs**: new `docs/AI_CHIEF_OF_STAFF.md`; `openapi.yaml` gains **30 path items** for `/goals` + `/notes` + `/cos/*`; `SCHEMA.md`/`RBAC.md`/`CONFORMANCE_GAPS.md`/`README` updated; `ENTITY_ISOLATION.md` cross-brand exception was already added in PR5.
+- **Tests**: `tests/unit/chief_of_staff/{settings,adaptive,celebrations}.test.js` (+29). Full CoS/goals suite **112 green**; backend + `apps/admin` eslint clean; `apps/admin` `tsc -b && vite build` green. Live-DB integration deferred to a migrated-DB pass, as in PR1/PR3/PR4/PR5.
 
 ---
 

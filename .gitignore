@@ -56,7 +56,7 @@ media/
 # Database dumps
 *.dump
 *.sql.gz
-backups/
+backup/
 
 # AI / Vector stores (if any local cache)
 .embeddings-cache/

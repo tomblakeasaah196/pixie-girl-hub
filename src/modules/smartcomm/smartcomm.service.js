@@ -499,16 +499,25 @@ async function postMessage({ brand, user, request_id, id, input }) {
       // the window Meta only accepts messages tagged HUMAN_AGENT (which
       // your Meta app must be approved for). `is_human_agent` on the
       // input signals "operator explicitly approved a HUMAN_AGENT reply".
+      //
+      // A NULL window means the customer has NEVER messaged this thread on
+      // Instagram — Meta has no conversation to attach to, so a business-
+      // initiated free-form send is rejected server-side with a confusing
+      // "Invalid message id" (code 508, subcode 2534122). Treat NULL the
+      // same as an expired window and block it here with a clear reason,
+      // instead of letting it fail opaquely at Meta.
       if (
         channel.external_platform === "instagram" &&
-        channel.ig_window_expires_at &&
-        new Date(channel.ig_window_expires_at) < new Date() &&
         input.message_type !== "system" &&
-        !input.is_human_agent
+        !input.is_human_agent &&
+        (!channel.ig_window_expires_at ||
+          new Date(channel.ig_window_expires_at) < new Date())
       ) {
         throw new AppError(
           "IG_WINDOW_CLOSED",
-          "Instagram 24-hour service window has expired. Reply with a HUMAN_AGENT-tagged message (needs Meta app approval).",
+          channel.ig_window_expires_at
+            ? "Instagram 24-hour service window has expired. Reply with a HUMAN_AGENT-tagged message (needs Meta app approval)."
+            : "You can't message this person on Instagram yet — Instagram only lets you reply within 24 hours of a message they send you. Wait for them to message first.",
           409,
         );
       }
@@ -1248,9 +1257,11 @@ async function buildOutboundJobsForChannel({
     // The 24h-window guard in postMessage marks the message with
     // is_template === true when the operator has opted into a
     // HUMAN_AGENT-tagged reply outside the window — pass that
-    // through to the processor so it stamps the Meta MESSAGE_TAG.
+    // through to the processor so it stamps the Meta MESSAGE_TAG. A NULL
+    // window (customer never messaged) counts as outside — an explicit
+    // HUMAN_AGENT override still needs the tag.
     const outsideWindow =
-      channel.ig_window_expires_at &&
+      !channel.ig_window_expires_at ||
       new Date(channel.ig_window_expires_at) < new Date();
     let jobPayloads;
     if (
@@ -1279,7 +1290,16 @@ async function buildOutboundJobsForChannel({
           message.message_type === "voice_note"
             ? "audio"
             : message.message_type;
-        jobPayloads.push({ media_kind: kind, media_url: media.media_url });
+        const jp = { media_kind: kind, media_url: media.media_url };
+        // Instagram DM audio only accepts aac/m4a/wav/mp4; browser voice
+        // notes are webm/opus, which Meta rejects (code 100, subcode
+        // 2534080). Hand the worker the storage key + source mime so it can
+        // transcode to m4a before the send (see instagram-processor).
+        if (kind === "audio") {
+          jp.media_key = media.media_key;
+          jp.source_mime = media.mime_type;
+        }
+        jobPayloads.push(jp);
       }
     } else if (message.message_type === "product_share") {
       // IG image attachments carry no caption field, unlike WhatsApp —

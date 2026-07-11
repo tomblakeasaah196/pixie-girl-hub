@@ -84,6 +84,30 @@ async function transcodeVideo(inAbs, outAbs) {
   ]);
 }
 
+/**
+ * Transcode any audio input (typically a browser voice note recorded as
+ * webm/opus) to AAC in an MP4/M4A container. Instagram DM audio
+ * attachments only accept aac/m4a/wav/mp4 — a webm/opus note is rejected
+ * with "attachment format is not supported" (code 100, subcode 2534080).
+ * `-vn` drops any video track; 96 kbps mono-friendly AAC is plenty for
+ * speech and stays well under Meta's 25 MB cap.
+ */
+async function transcodeAudioToAac(inAbs, outAbs) {
+  await run(config.FFMPEG_PATH, [
+    "-y",
+    "-i",
+    inAbs,
+    "-vn",
+    "-acodec",
+    "aac",
+    "-b:a",
+    "96k",
+    "-movflags",
+    "+faststart",
+    outAbs,
+  ]);
+}
+
 /** Extract a single still frame (used for poster + thumbnail). */
 async function extractFrame(inAbs, outAbs, { atSec = 1, height = 720 } = {}) {
   await run(config.FFMPEG_PATH, [
@@ -100,4 +124,4 @@ async function extractFrame(inAbs, outAbs, { atSec = 1, height = 720 } = {}) {
   ]);
 }
 
-module.exports = { run, probe, transcodeVideo, extractFrame };
+module.exports = { run, probe, transcodeVideo, transcodeAudioToAac, extractFrame };

@@ -226,6 +226,9 @@ function applyGlobalMiddleware(app) {
         max: 300,
         standardHeaders: true,
         legacyHeaders: false,
+        // Created lazily on first request (Redis must be up first); silence
+        // express-rate-limit v7's ERR_ERL_CREATED_IN_REQUEST_HANDLER for that.
+        validate: { creationStack: false },
         store: redisRateLimitStore("rl:api:"),
         passOnStoreError: true,
         // Skip rate limiting for internal SSR requests from the storefront
@@ -260,6 +263,7 @@ const publicWriteLimiter = lazyLimiter(() =>
     max: config.PUBLIC_WRITE_RATE_MAX,
     standardHeaders: true,
     legacyHeaders: false,
+    validate: { creationStack: false },
     store: redisRateLimitStore("rl:pubw:"),
     passOnStoreError: true,
     message: {

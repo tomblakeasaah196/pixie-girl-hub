@@ -89,8 +89,13 @@ async function bootstrap() {
   app.use(perfMiddleware);
   startPerfFlush();
   mountRoutes(app);
-  // Kaizen alert subscribers (this process emits error events).
-  require("./modules/kaizen/alerts/alerts.subscribers").init();
+  // Kaizen alert subscribers (this process emits error events). Guarded: Kaizen
+  // must never break the main app boot.
+  try {
+    require("./modules/kaizen/alerts/alerts.subscribers").init();
+  } catch (err) {
+    logger.warn({ err: err.message }, "kaizen subscribers init failed (non-fatal)");
+  }
 
   // ── ERP frontend (Vite + React build) ────────────────────
   // The ERP frontend is served from the SAME origin as the

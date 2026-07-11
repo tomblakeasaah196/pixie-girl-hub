@@ -23,6 +23,7 @@ import { NotificationManager } from "@/components/notifications/NotificationMana
 import { NotificationToastContainer } from "@/components/notifications/NotificationToast";
 import { Toaster } from "@/components/feedback/Toaster";
 import { ChatDock } from "@/components/messaging/ChatDock";
+import { CallLayer } from "@/components/calls/CallLayer";
 import { PraxisDrawer } from "@/components/praxis/PraxisDrawer";
 import { IosInstallHint } from "./IosInstallHint";
 import { PwaInstallBanner } from "./PwaInstallBanner";
@@ -146,6 +147,9 @@ export function AppShell() {
         </>
       )}
       <ChatDock />
+      {/* WhatsApp calls ring globally — an agent shouldn't miss a customer
+          because they were on the Sales board instead of Messaging. */}
+      <CallLayer />
       <PraxisDrawer />
       {paletteOpen && <CommandPalette />}
       <BusinessSwitchOverlay />

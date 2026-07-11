@@ -102,6 +102,15 @@ const reveal = z
   })
   .strict();
 
+const whatsappCalling = z
+  .object({
+    enabled: z.boolean(),
+    // DEFAULT shows the call icon in the chat header; DISABLE_ALL keeps
+    // calling reachable only via deep links.
+    icon_visibility: z.enum(["DEFAULT", "DISABLE_ALL"]).optional(),
+  })
+  .strict();
+
 const mk = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body || {});
   next();
@@ -112,5 +121,6 @@ module.exports = {
   validateSetActive: mk(setActive),
   validateReveal: mk(reveal),
   validateWhatsAppProfile: mk(whatsappProfile),
+  validateWhatsAppCalling: mk(whatsappCalling),
   WA_VERTICALS,
 };

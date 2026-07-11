@@ -208,6 +208,13 @@ export interface InboundDnsRecords {
   instructions: string[];
 }
 
+/** Meta's per-number calling settings (Cloud API Calling). */
+export interface WhatsAppCallingSettings {
+  status?: "ENABLED" | "DISABLED";
+  call_icon_visibility?: string;
+  [key: string]: unknown;
+}
+
 export const messagingAccountsApi = {
   // Backend auto-unwraps `{ data }` — see api.ts. Types match the
   // inner payload.
@@ -251,6 +258,19 @@ export const messagingAccountsApi = {
       { onProgress },
     );
   },
+  // WhatsApp voice calling (Cloud API Calling) — per-number toggle.
+  getWhatsAppCalling: (id: string) =>
+    api.get<WhatsAppCallingSettings>(
+      `/messaging-accounts/${id}/whatsapp-calling`,
+    ),
+  updateWhatsAppCalling: (
+    id: string,
+    input: { enabled: boolean; icon_visibility?: "DEFAULT" | "DISABLE_ALL" },
+  ) =>
+    api.post<{ success?: boolean }>(
+      `/messaging-accounts/${id}/whatsapp-calling`,
+      input,
+    ),
   // Computed on the fly from the mailbox typed into the Inbound Email
   // form — works even before the account row is saved.
   dnsRecords: (mailbox: string) =>

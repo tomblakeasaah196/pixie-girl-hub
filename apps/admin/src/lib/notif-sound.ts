@@ -96,3 +96,37 @@ export function playOnce(
   played.add(id);
   playNotifSound(priority);
 }
+
+// ── Ringtone (WhatsApp calls) ─────────────────────────────
+// A gentle two-note ring repeated every ~2.4s while a call is ringing.
+// Same synthesised-tone approach as the notification chimes (no assets),
+// honouring the same on/off preference.
+
+let ringTimer: ReturnType<typeof setInterval> | null = null;
+
+function ringBurst(ac: AudioContext) {
+  tone(ac, 880, 0, 0.28, 0.1);
+  tone(ac, 1174.7, 0.32, 0.34, 0.09);
+}
+
+export function startRingtone() {
+  if (ringTimer || !isNotifSoundEnabled()) return;
+  const ac = ctx();
+  if (!ac) return;
+  if (ac.state === "suspended") void ac.resume();
+  try {
+    ringBurst(ac);
+  } catch {}
+  ringTimer = setInterval(() => {
+    try {
+      ringBurst(ac);
+    } catch {}
+  }, 2400);
+}
+
+export function stopRingtone() {
+  if (ringTimer) {
+    clearInterval(ringTimer);
+    ringTimer = null;
+  }
+}

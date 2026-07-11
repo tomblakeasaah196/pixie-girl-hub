@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ExternalLink,
   Mail,
   Package,
   Phone,
+  PhoneMissed,
   Truck,
   User,
   FileText,
@@ -15,7 +16,10 @@ import {
 } from "lucide-react";
 import { useCustomer360 } from "@/hooks/useSmartcomm";
 import { smartcommApi } from "@/lib/smartcomm-api";
+import { callsApi, fmtCallDuration, OUTCOME_LABELS } from "@/lib/calls-api";
+import { useBusinessStore } from "@/stores/business";
 import type { Channel } from "@/lib/smartcomm-types";
+import type { CallOutcome } from "@/lib/calls-api";
 import { PlatformPill } from "./PlatformPill";
 
 interface Props {
@@ -32,9 +36,17 @@ const ngnShort = (n: number) => {
 export function CustomerSidebar({ channel }: Props) {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const activeBrand = useBusinessStore((s) => s.activeKey);
   const customer = channel.members?.find((m) => m.contact_id);
   const contactId = customer?.contact_id ?? undefined;
   const { data, isLoading } = useCustomer360(contactId);
+  // WhatsApp call history for this contact (calls module).
+  const { data: calls } = useQuery({
+    queryKey: ["calls", activeBrand, "contact", contactId],
+    queryFn: () => callsApi.list({ contact_id: contactId!, limit: 6 }),
+    enabled: !!contactId && channel.external_platform === "whatsapp",
+    staleTime: 30_000,
+  });
   const [sendingInvoice, setSendingInvoice] = useState<string | null>(null);
 
   async function sendInvoice(invoiceId: string) {
@@ -248,6 +260,68 @@ export function CustomerSidebar({ channel }: Props) {
             ))
           )}
         </Section>
+
+        {/* WhatsApp calls — who called, who answered, how it went */}
+        {channel.external_platform === "whatsapp" && (
+          <Section
+            title="Calls"
+            icon={<Phone className="w-3.5 h-3.5" />}
+            count={calls?.length ?? 0}
+          >
+            {!calls || calls.length === 0 ? (
+              <Empty>No WhatsApp calls yet</Empty>
+            ) : (
+              calls.map((c) => {
+                const missed = c.status === "missed" || c.status === "rejected";
+                return (
+                  <div
+                    key={c.call_id}
+                    className="flex items-center gap-2 rounded-lg px-3 py-1.5"
+                  >
+                    <span
+                      className={`grid place-items-center w-5 h-5 rounded-full shrink-0 ${
+                        missed
+                          ? "bg-danger/15 text-danger"
+                          : "bg-success/15 text-success"
+                      }`}
+                    >
+                      {missed ? (
+                        <PhoneMissed className="w-3 h-3" />
+                      ) : (
+                        <Phone className="w-3 h-3" />
+                      )}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[12px] text-text-primary truncate">
+                        {missed
+                          ? "Missed call"
+                          : `${fmtCallDuration(c.duration_seconds)}${
+                              c.answered_by_name ? ` · ${c.answered_by_name}` : ""
+                            }`}
+                        {c.outcome && (
+                          <span className="ml-1 text-[10.5px] text-accent-glow">
+                            {OUTCOME_LABELS[c.outcome as CallOutcome] ??
+                              c.outcome}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-text-faint">
+                        {new Date(c.started_at).toLocaleDateString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                        })}{" "}
+                        {new Date(c.started_at).toLocaleTimeString(undefined, {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </Section>
+        )}
 
         {/* Comms log — "did she get her receipt?" */}
         <Section

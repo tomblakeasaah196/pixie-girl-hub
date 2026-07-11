@@ -44,6 +44,7 @@ import { CommsStudioTab } from "./CommsStudioTab";
 import { QuickRepliesTab } from "./QuickRepliesTab";
 import { WhatsAppTemplatesTab } from "./WhatsAppTemplatesTab";
 import { WhatsAppBusinessProfile } from "./WhatsAppBusinessProfile";
+import { WhatsAppCallingSettings } from "./WhatsAppCallingSettings";
 
 /**
  * Messaging settings — every configuration concern the Messaging module
@@ -79,6 +80,9 @@ const CONNECTION_ICON: Record<
   instagram: Instagram,
   facebook: Facebook,
   email: Mail,
+  // Not shown in CONNECTIONS (managed inside the email tab) but the
+  // record is keyed by every MessagingPlatform, so TS requires it.
+  email_outbound: Mail,
 };
 
 const CONNECTIONS: ConnectionTab[] = ["whatsapp", "instagram", "facebook", "email"];
@@ -602,7 +606,10 @@ function PlatformEditor({ platform, account, onSaved }: EditorProps) {
       </div>
 
       {platform === "whatsapp" && account && (
-        <WhatsAppBusinessProfile account={account} />
+        <>
+          <WhatsAppBusinessProfile account={account} />
+          <WhatsAppCallingSettings account={account} />
+        </>
       )}
 
       {account && <RevealHistory accountId={account.account_id} />}

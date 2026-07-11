@@ -57,6 +57,18 @@ export function getSocket(): Socket {
   socket.on("device:changed", (detail) => {
     window.dispatchEvent(new CustomEvent("pgh:device:changed", { detail }));
   });
+  // WhatsApp voice calls (brand:{brand}:calls + user:{id}:calls) — the
+  // CallLayer subscribes to these to ring, stop ringing, and settle.
+  for (const evt of [
+    "call:ringing",
+    "call:claimed",
+    "call:ended",
+    "call:outcome_recorded",
+  ]) {
+    socket.on(evt, (detail) => {
+      window.dispatchEvent(new CustomEvent(`pgh:${evt}`, { detail }));
+    });
+  }
 
   // Stock / Sales / Service-jobs lifecycle signals. These fan out many thin
   // sub-events (stock:moved, sales:order.paid, service_jobs:completed, …); we
@@ -90,6 +102,8 @@ export const rooms = {
   channel: (channelId: string) => `channel:${channelId}`,
   channelTyping: (channelId: string) => `channel:${channelId}:typing`,
   brandSmartcomm: (brand: string) => `brand:${brand}:smartcomm`,
+  brandCalls: (brand: string) => `brand:${brand}:calls`,
+  userCalls: (userId: string) => `user:${userId}:calls`,
   userAiPending: (userId: string) => `user:${userId}:ai_pending`,
   insights: (brand: string) => `brand:${brand}:insights`,
   attendance: (brand: string) => `brand:${brand}:attendance`,

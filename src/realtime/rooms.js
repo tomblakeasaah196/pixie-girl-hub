@@ -53,6 +53,12 @@ const ROOMS = {
   channel_typing: (channelId) => `channel:${channelId}:typing`,
   brand_smartcomm: (brand) => `brand:${brand}:smartcomm`,
 
+  // WhatsApp voice calls — brand-wide ring/stop fanout, plus a per-user
+  // channel for the owner-first ring window. Agents with Messaging access
+  // join both while authenticated (see the frontend CallLayer).
+  brand_calls: (brand) => `brand:${brand}:calls`,
+  user_calls: (userId) => `user:${userId}:calls`,
+
   // System-wide (CEO/admin)
   ai_usage_meter: "system:ai_usage_meter",
   health: "system:health",

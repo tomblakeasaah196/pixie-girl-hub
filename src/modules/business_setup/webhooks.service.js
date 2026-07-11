@@ -357,6 +357,31 @@ async function receive(source, { rawBody, headers, ip }) {
     return { duplicate: false };
   });
 
+  // Fast path for voice calls: the outbox poller ticks every ~5s, which is
+  // fine for messages but an eternity for a ringing phone. Kick the calls
+  // ingest inline (post-commit, off the response path) so agents ring
+  // near-instantly; the durable outbox consumer re-runs the same idempotent
+  // ingest for crash safety, so a failure here is only a latency loss.
+  if (signature_valid && !result.duplicate && source === "meta_whatsapp") {
+    try {
+      const callsService = require("../calls/calls.service");
+      if (callsService.payloadHasCalls(payload)) {
+        // Not awaited — the 200 to Meta must not wait on the ingest.
+        callsService.ingestCallsPayload(payload).catch((err) => {
+          logger.warn(
+            { err: err.message },
+            "calls: inline webhook ingest failed (outbox will retry)",
+          );
+        });
+      }
+    } catch (err) {
+      logger.warn(
+        { err: err.message },
+        "calls: inline webhook fast-path unavailable",
+      );
+    }
+  }
+
   return { status: 200, body: { received: true, duplicate: result.duplicate } };
 }
 

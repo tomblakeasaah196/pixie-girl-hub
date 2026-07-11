@@ -50,6 +50,7 @@ const queueNames = [
   "ai-embed",
   "report-generate",
   "cart-ttl",
+  "calls-lifecycle",
 ];
 
 const queues = new Map();
@@ -88,6 +89,7 @@ async function startWorkers() {
     "ai-embed": require("./processors/ai-embed-processor"),
     "report-generate": require("./processors/report-processor"),
     "cart-ttl": require("./processors/cart-ttl-processor").processCartTtl,
+    "calls-lifecycle": require("./processors/calls-processor"),
   };
 
   for (const [name, processor] of Object.entries(handlers)) {
@@ -371,6 +373,9 @@ async function startWorkers() {
   // outbox event with only webhook-dispatch registered and inbound messages
   // silently never reach the inbox (events are marked done, not retried).
   require("../modules/smartcomm/smartcomm.subscribers");
+  // webhook.received → WhatsApp voice-call ingest (durable leg of the calls
+  // fast path — same "must register in THIS process" reasoning as above).
+  require("../modules/calls/calls.subscribers");
 
   // ── Realtime relays (DEFECT-3) ──────────────────────────
   // The outbox consumers and cron sweeps above emit domain events IN THIS
@@ -388,6 +393,7 @@ async function startWorkers() {
   require("../realtime/insights-realtime").registerInsightsRealtime();
   require("../realtime/attendance-realtime").registerAttendanceRealtime();
   require("../modules/smartcomm/smartcomm.realtime"); // self-registers, guarded
+  require("../modules/calls/calls.realtime"); // self-registers, guarded
 
   outboxTimer = setInterval(() => {
     outbox

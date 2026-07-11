@@ -128,6 +128,9 @@ const messagingAccountsRouter = require("../modules/messaging_accounts/messaging
 // WhatsApp approved templates + per-category send-cost rates
 const whatsappTemplatesRouter = require("../modules/whatsapp_templates/whatsapp-templates.routes");
 
+// WhatsApp inbound voice calls (Cloud API Calling — answered in-browser)
+const callsRouter = require("../modules/calls/calls.routes");
+
 // Outbound Channel Policy (cost discipline — PR 2)
 const outboundPolicyRouter = require("../modules/outbound_policy/outbound-policy.routes");
 
@@ -373,6 +376,7 @@ function mountRoutes(app) {
     ["/service-catalogue", serviceCatalogueRouter],
     ["/messaging-accounts", messagingAccountsRouter],
     ["/whatsapp-templates", whatsappTemplatesRouter],
+    ["/calls", callsRouter],
     ["/outbound-policy", outboundPolicyRouter],
     ["/comms-studio", commsStudioRouter],
     ["/help", helpCenterRouter],

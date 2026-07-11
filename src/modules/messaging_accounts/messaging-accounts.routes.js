@@ -47,6 +47,14 @@ router.post(
   upload.single("file"),
   c.setWhatsAppProfilePicture,
 );
+// WhatsApp voice calling (Cloud API Calling) — per-number enable toggle.
+router.get("/:id/whatsapp-calling", can("view"), c.getWhatsAppCalling);
+router.post(
+  "/:id/whatsapp-calling",
+  can("edit"),
+  v.validateWhatsAppCalling,
+  c.updateWhatsAppCalling,
+);
 router.delete("/:id", can("delete"), c.removeAccount);
 
 module.exports = router;

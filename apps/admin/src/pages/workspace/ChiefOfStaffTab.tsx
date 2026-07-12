@@ -475,7 +475,9 @@ function HeaderIconButton({
         active
           ? "bg-accent-deep/90 text-[#F4E9D9]"
           : "bg-text-primary/[0.05] text-text-muted hover:text-text-primary hover:bg-text-primary/10",
-        disabled && "opacity-45 pointer-events-none",
+        // cursor-not-allowed (not pointer-events-none) so the title tooltip
+        // still explains why the control is unavailable.
+        disabled && "opacity-40 cursor-not-allowed hover:bg-text-primary/[0.05] hover:text-text-muted",
       )}
     >
       {children}

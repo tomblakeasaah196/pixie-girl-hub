@@ -169,14 +169,13 @@ export function FloatingToolbar() {
               aria-pressed={active}
               aria-label={`Show prices in ${c.code}`}
               title={c.code}
-              className={`flex items-center justify-center gap-1.5 px-3 py-2 text-[0.6rem] tracking-[0.18em] uppercase transition-colors focus-visible:outline-none ${
+              className={`flex items-center justify-center px-3 py-2 transition-colors focus-visible:outline-none ${
                 active
                   ? "bg-taupe text-ink font-semibold"
                   : "text-cream/55 hover:text-cream"
               }`}
             >
-              <span className="font-couture text-[0.95rem] leading-none">{c.symbol}</span>
-              <span>{c.code}</span>
+              <span className="font-couture text-[1.1rem] leading-none">{c.symbol}</span>
             </button>
           );
         })}

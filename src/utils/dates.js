@@ -33,6 +33,15 @@ function formatTz(date, fmt = "yyyy-MM-dd HH:mm:ss zzz") {
  */
 const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
 
+// Timezone for the DISPLAY helpers below. Read straight from process.env with
+// an Africa/Lagos fallback instead of through the validating `config` Proxy:
+// touching `config.TZ` runs full env validation, which process.exit(1)s on a
+// bare env (e.g. a pure-module unit test rendering a PDF), and process.exit
+// can't be caught. Both businesses operate in Lagos (UTC+1), so the fallback
+// is exact when TZ is unset, and dotenv puts the .env TZ on process.env in
+// production — so this resolves to the same value `config.TZ` would.
+const displayTz = () => process.env.TZ || "Africa/Lagos";
+
 // → { date: "dd/MM/yyyy", time: "HH:mm" } | null. A bare calendar date (a DATE
 // column, no time or zone) is reformatted verbatim so timezone conversion can
 // never shift the day; a full timestamp is converted into the display TZ.
@@ -44,9 +53,10 @@ function displayParts(value) {
   }
   const d = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(d.getTime())) return null;
+  const zone = displayTz();
   return {
-    date: formatInTimeZone(d, tz(), "dd/MM/yyyy"),
-    time: formatInTimeZone(d, tz(), "HH:mm"),
+    date: formatInTimeZone(d, zone, "dd/MM/yyyy"),
+    time: formatInTimeZone(d, zone, "HH:mm"),
   };
 }
 

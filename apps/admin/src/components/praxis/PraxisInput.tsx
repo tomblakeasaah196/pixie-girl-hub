@@ -1,15 +1,20 @@
 /**
  * Praxis composer (§6.29) — a floating glass "pill" (the Claude/Gemini
- * composer): rounded, elevated, auto-growing textarea with a mic (Web Speech,
- * hidden when unsupported) and a send affordance. Enter sends, Shift+Enter
- * breaks. While listening, the live interim transcript previews in-place; the
- * final transcript sends as a voice-mode turn.
+ * composer): rounded, elevated, auto-growing textarea with a mic (hidden when
+ * unsupported) and a send affordance. Enter sends, Shift+Enter breaks.
+ *
+ * Voice goes through useVoiceInput: server-side Whisper (groq vendor from AI
+ * Control) records-then-transcribes as the primary engine, with the browser's
+ * Web Speech API as fallback. Either way the final transcript is staged in
+ * the textarea for review/editing (recognition mishears), and the send still
+ * goes out as a voice-mode turn carrying the raw transcript in
+ * `transcribed_text`.
  */
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, Mic, Square } from "lucide-react";
+import { ArrowUp, Loader2, Mic, Square } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { useSpeechInput } from "@/hooks/useSpeechInput";
+import { useVoiceInput } from "@/hooks/useVoiceInput";
 
 export function PraxisInput({
   disabled,
@@ -31,6 +36,22 @@ export function PraxisInput({
   const [text, setText] = useState(initialText ?? "");
   const [focused, setFocused] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  // Raw speech transcript(s) backing the current draft. Non-empty means the
+  // draft originated from voice — the send is tagged input_mode "voice" and
+  // carries this untouched transcript even after the user edits the text.
+  const voiceTranscriptRef = useRef("");
+
+  const resizeAndFocus = () => {
+    const ta = taRef.current;
+    if (!ta) return;
+    requestAnimationFrame(() => {
+      ta.style.height = "auto";
+      ta.style.height = `${Math.min(ta.scrollHeight, 168)}px`;
+      const end = ta.value.length;
+      ta.focus();
+      ta.setSelectionRange(end, end);
+    });
+  };
 
   useEffect(() => {
     if (initialText && taRef.current) {
@@ -42,19 +63,22 @@ export function PraxisInput({
     }
   }, [initialText]);
 
-  const { supported, listening, interim, start, stop } = useSpeechInput({
+  const voice = useVoiceInput({
     onFinal: (transcript) => {
-      onSend({
-        content: transcript,
-        input_mode: "voice",
-        transcribed_text: transcript,
-      });
+      voiceTranscriptRef.current = [voiceTranscriptRef.current, transcript]
+        .filter(Boolean)
+        .join(" ");
+      setText((prev) => (prev.trim() ? `${prev.trimEnd()} ${transcript}` : transcript));
+      resizeAndFocus();
     },
   });
+  const micBusy = voice.active || voice.transcribing;
 
   const sendText = async () => {
     const content = text.trim();
     if (!content || disabled) return;
+    const transcript = voiceTranscriptRef.current;
+    voiceTranscriptRef.current = "";
     setText("");
     if (taRef.current) taRef.current.style.height = "auto";
     taRef.current?.focus();
@@ -62,20 +86,16 @@ export function PraxisInput({
       // If onSend returns a promise (async parent handler), a rejection means
       // the turn didn't reach the server — restore the draft so the user
       // doesn't have to retype a long message after a transient failure.
-      await onSend({ content, input_mode: "text" });
+      await onSend(
+        transcript
+          ? { content, input_mode: "voice", transcribed_text: transcript }
+          : { content, input_mode: "text" },
+      );
     } catch {
-      const ta = taRef.current;
       setText(content);
-      if (ta) {
-        // Wait for React to paint the restored value before we resize/focus.
-        requestAnimationFrame(() => {
-          ta.style.height = "auto";
-          ta.style.height = `${Math.min(ta.scrollHeight, 168)}px`;
-          const end = ta.value.length;
-          ta.focus();
-          ta.setSelectionRange(end, end);
-        });
-      }
+      voiceTranscriptRef.current = transcript;
+      // Wait for React to paint the restored value before we resize/focus.
+      resizeAndFocus();
     }
   };
 
@@ -91,14 +111,37 @@ export function PraxisInput({
           : "border-line",
       )}
     >
-      {listening && (
+      {voice.active && (
         <div className="px-4 pt-3 text-[12.5px] text-accent-glow">
           <span className="inline-flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-danger animate-pulse" />
-            Listening…{" "}
-            {interim && <em className="text-text-muted not-italic">{interim}</em>}
+            {voice.mode === "server" ? (
+              <>
+                Recording… {Math.floor(voice.seconds / 60)}:
+                {String(voice.seconds % 60).padStart(2, "0")}{" "}
+                <span className="text-text-faint">— tap ■ when done</span>
+              </>
+            ) : (
+              <>
+                Listening…{" "}
+                {voice.interim && (
+                  <em className="text-text-muted not-italic">{voice.interim}</em>
+                )}
+              </>
+            )}
           </span>
         </div>
+      )}
+      {voice.transcribing && (
+        <div className="px-4 pt-3 text-[12.5px] text-text-muted">
+          <span className="inline-flex items-center gap-1.5">
+            <Loader2 className="w-3 h-3 animate-spin" />
+            Transcribing…
+          </span>
+        </div>
+      )}
+      {voice.error && !micBusy && (
+        <div className="px-4 pt-3 text-[12px] text-danger">{voice.error}</div>
       )}
       <div className="flex items-end gap-2 p-2">
         <textarea
@@ -106,11 +149,13 @@ export function PraxisInput({
           autoFocus={autoFocus}
           rows={1}
           value={text}
-          disabled={disabled || listening}
+          disabled={disabled || voice.active}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           onChange={(e) => {
             setText(e.target.value);
+            // A fully cleared draft is a fresh start — drop the voice origin.
+            if (!e.target.value.trim()) voiceTranscriptRef.current = "";
             e.target.style.height = "auto";
             e.target.style.height = `${Math.min(e.target.scrollHeight, 168)}px`;
           }}
@@ -120,23 +165,31 @@ export function PraxisInput({
               sendText();
             }
           }}
-          placeholder={listening ? "Speak your request…" : placeholder}
+          placeholder={voice.active ? "Speak your request…" : placeholder}
           className="flex-1 resize-none bg-transparent outline-none px-3 py-2.5 text-[14px] leading-relaxed placeholder:text-text-faint max-h-[168px] no-min-h"
         />
-        {supported && (
+        {voice.supported && (
           <button
             type="button"
-            aria-label={listening ? "Stop listening" : "Speak to Praxis"}
-            disabled={disabled && !listening}
-            onClick={() => (listening ? stop() : start())}
+            aria-label={
+              voice.transcribing
+                ? "Transcribing"
+                : voice.active
+                  ? "Stop recording"
+                  : "Speak to Praxis"
+            }
+            disabled={(disabled && !voice.active) || voice.transcribing}
+            onClick={() => (voice.active ? voice.stop() : voice.start())}
             className={cn(
               "grid place-items-center w-10 h-10 rounded-full border transition-all shrink-0 no-min-h",
-              listening
+              voice.active
                 ? "bg-danger/15 border-danger/40 text-danger"
                 : "border-transparent text-text-muted hover:text-text-primary hover:bg-text-primary/[0.08]",
             )}
           >
-            {listening ? (
+            {voice.transcribing ? (
+              <Loader2 className="w-[18px] h-[18px] animate-spin" />
+            ) : voice.active ? (
               <Square className="w-4 h-4 fill-current" />
             ) : (
               <Mic className="w-[18px] h-[18px]" />

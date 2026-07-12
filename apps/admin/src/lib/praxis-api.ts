@@ -274,6 +274,37 @@ export function useEnabledActions() {
   });
 }
 
+// ── Voice transcription (server-side Whisper) ──────────────
+
+export const praxisTranscribeStatusKey = [
+  "praxis",
+  "transcribe-status",
+] as const;
+
+/** Is server-side transcription (the groq vendor configured in AI Control,
+ *  .env fallback) usable? Decides the composer's mic mode: record-and-upload
+ *  when available, browser Web Speech recognition otherwise. */
+export function useTranscriptionStatus() {
+  return useQuery({
+    queryKey: praxisTranscribeStatusKey,
+    queryFn: () =>
+      api.get<{ available: boolean }>("/praxis/transcribe/status"),
+    staleTime: 5 * 60_000,
+    retry: 1,
+  });
+}
+
+/** Upload a recorded clip for Whisper transcription. A 503
+ *  (TRANSCRIPTION_UNAVAILABLE) means: fall back to the browser recognizer. */
+export function transcribeAudio(blob: Blob, filename: string) {
+  const fd = new FormData();
+  fd.append("audio", blob, filename);
+  return api.postForm<{ text: string; provider: string; model: string }>(
+    "/praxis/transcribe",
+    fd,
+  );
+}
+
 // ── Self-learning ──────────────────────────────────────────
 
 /** Rate an assistant answer. A 👎 with a `comment` from the CEO is stored as a

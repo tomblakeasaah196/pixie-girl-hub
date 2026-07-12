@@ -6,6 +6,8 @@
 
 const service = require("./praxis.service");
 const learning = require("./learning.service");
+const transcription = require("../../services/transcription.service");
+const { AppError } = require("../../utils/errors");
 
 const base = (req) => ({
   user: req.user,
@@ -116,6 +118,39 @@ async function recordFeedback(req, res) {
   });
 }
 
+// Voice transcription (§6.29) — the composer records a clip and sends it
+// here; server-side Whisper (groq vendor from AI Control, .env fallback) is
+// the primary path, the browser's Web Speech API the client-side fallback.
+async function transcribeStatus(req, res) {
+  res.json({ data: { available: await transcription.isAvailable() } });
+}
+async function transcribeAudio(req, res) {
+  if (!req.file || !req.file.buffer || !req.file.buffer.length) {
+    throw new AppError("VALIDATION_ERROR", "No audio file uploaded.", 400, {
+      user_message: "No audio was recorded — try again.",
+    });
+  }
+  const result = await transcription.transcribeBuffer({
+    buffer: req.file.buffer,
+    contentType: req.file.mimetype,
+    filename: req.file.originalname,
+  });
+  if (!result) {
+    // Unconfigured vendor, exhausted quota, or provider outage — the client
+    // treats this as "switch the mic to browser recognition".
+    throw new AppError(
+      "TRANSCRIPTION_UNAVAILABLE",
+      "Server-side transcription is unavailable.",
+      503,
+      {
+        user_message:
+          "Transcription is unavailable right now — the mic will use your browser's recognition instead.",
+      },
+    );
+  }
+  res.json({ data: result });
+}
+
 // Training material (uploads)
 async function uploadTraining(req, res) {
   res.status(201).json({
@@ -151,6 +186,8 @@ module.exports = {
   confirmAction,
   rejectAction,
   listActions,
+  transcribeStatus,
+  transcribeAudio,
   teach,
   recordFeedback,
   uploadTraining,

@@ -23,7 +23,9 @@ import { cn } from "@/lib/cn";
 import { Markdown } from "@/components/help/Markdown";
 import { useAuthStore } from "@/stores/auth";
 import { useSendFeedback } from "@/lib/praxis-api";
+import { useReadAloud, type ReadAloudApi } from "@/hooks/useReadAloud";
 import { PendingActionCard } from "./PendingActionCard";
+import { ReadAloudButton, VoiceSettingsButton } from "./ReadAloud";
 import type { PendingAction, PraxisMessage } from "@/lib/praxis-api";
 
 /** 👍/👎 on an assistant answer. For the CEO, a 👎 opens a correction box that
@@ -185,7 +187,7 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-function Bubble({ msg }: { msg: PraxisMessage }) {
+function Bubble({ msg, tts }: { msg: PraxisMessage; tts: ReadAloudApi }) {
   const isUser = msg.role === "user";
   const text = msg.content || msg.transcribed_text || "";
 
@@ -217,6 +219,8 @@ function Bubble({ msg }: { msg: PraxisMessage }) {
           <div className="mt-2 flex flex-col gap-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
             <div className="flex items-center gap-3">
               <CopyButton text={text} />
+              <ReadAloudButton id={msg.message_id} text={text} tts={tts} />
+              <VoiceSettingsButton tts={tts} />
               <FeedbackBar msg={msg} />
             </div>
           </div>
@@ -335,6 +339,7 @@ export function ChatThread({
   onDismiss?: (localId: string) => void;
 }) {
   const endRef = useRef<HTMLDivElement>(null);
+  const tts = useReadAloud();
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [
@@ -364,7 +369,7 @@ export function ChatThread({
     <div className="flex flex-col gap-6">
       {messages.map((m) => (
         <div key={m.message_id} className="flex flex-col gap-2.5">
-          <Bubble msg={m} />
+          <Bubble msg={m} tts={tts} />
           {(byMessage.map.get(m.message_id) ?? []).map((p) => (
             <div key={p.pending_id} className="pl-11">
               <PendingActionCard action={p} />

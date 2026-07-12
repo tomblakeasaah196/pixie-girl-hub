@@ -27,6 +27,23 @@ const upload = multer({
 // ── Action catalogue (literal before /:id) ─────────────────
 router.get("/actions", can("view"), c.listActions);
 
+// ── Voice transcription (§6.29) ────────────────────────────
+// Whisper via the AI Control groq vendor (.env fallback). The composer checks
+// /status to pick its mic mode; 503 on POST tells it to fall back to the
+// browser recognizer. 15 MB ≈ well past the 5-minute recording cap at opus
+// bitrates. CoS reuses this endpoint (CEO bypasses permission checks).
+const audioUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 15 * 1024 * 1024 },
+});
+router.get("/transcribe/status", can("view"), c.transcribeStatus);
+router.post(
+  "/transcribe",
+  can("edit"),
+  audioUpload.single("audio"),
+  c.transcribeAudio,
+);
+
 // ── Pending actions (confirm gate) ─────────────────────────
 router.get("/pending-actions", can("view"), c.listPendingActions);
 router.get("/pending-actions/:id", can("view"), c.getPendingAction);

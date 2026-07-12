@@ -74,6 +74,17 @@ const templateSchema = z
   })
   .strip();
 
+// Provisioning options from the onboarding wizard. staff_profile_id links the
+// new login to the HR employee profile created during onboarding; role_ids
+// (when present) replace the offer's stored grants — e.g. the role of the
+// organigramme position the hire was seated in.
+const provisionSchema = z
+  .object({
+    staff_profile_id: uuid.optional(),
+    role_ids: z.array(uuid).max(50).optional(),
+  })
+  .strip();
+
 const signSchema = z
   .object({
     signature_data_url: z
@@ -94,6 +105,7 @@ module.exports = {
   validateEdit: mk(editSchema),
   validateRegenerate: mk(regenerateSchema),
   validateApprove: mk(approveSchema),
+  validateProvision: mk(provisionSchema),
   validateContext: mk(contextSchema),
   validateTemplate: mk(templateSchema),
   validateSign: mk(signSchema),

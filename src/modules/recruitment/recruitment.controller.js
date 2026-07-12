@@ -116,6 +116,7 @@ async function provision(req, res) {
       user: req.user,
       request_id: req.request_id,
       id: req.params.id,
+      input: req.body,
     }),
   });
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router-dom";
 import {
@@ -44,10 +44,13 @@ import {
 } from "@/components/ui/primitives";
 import { ErrorState } from "@/components/ui/controls";
 import MyHrPage from "@/pages/hr/MyHrPage";
-import { useCosSettings } from "@/lib/cos-api";
+import { useCosSettings, useCosFollowups, type CosFollowup } from "@/lib/cos-api";
 import { GoalsTab } from "./GoalsTab";
 import { NotesTab } from "./NotesTab";
 import { ChiefOfStaffTab } from "./ChiefOfStaffTab";
+import { useGoals } from "./goals-hooks";
+import { GOAL_HEALTH_META } from "./goals-constants";
+import type { Goal } from "./goals-types";
 
 import { useTaskBoard, useCalendarEvents, useMoveTask } from "./hooks";
 import { TaskCard } from "./TaskCard";
@@ -104,6 +107,30 @@ const CAL_VIEWS: { key: CalendarViewMode; label: string }[] = [
   { key: "day", label: "Day" },
   { key: "agenda", label: "Agenda" },
 ];
+
+// Goals still in play — mirrors GoalsTab's filter so the "At Risk / Behind"
+// KPI counts the same population the Goals tab shows.
+const ACTIVE_GOAL_STATUSES = new Set(["active", "on_hold"]);
+
+// Chief-of-Staff follow-up trigger → human label + severity tone, for the
+// "Open Follow-ups" KPI drill-down.
+const FOLLOWUP_TRIGGER_META: Record<
+  string,
+  { label: string; tone: "danger" | "warn" | "info" | "neutral" }
+> = {
+  overdue: { label: "Overdue", tone: "danger" },
+  slippage: { label: "Slipping", tone: "danger" },
+  no_progress: { label: "No progress", tone: "warn" },
+  due_today: { label: "Due today", tone: "warn" },
+  due_tomorrow: { label: "Due tomorrow", tone: "info" },
+  weekly_review: { label: "Weekly review", tone: "neutral" },
+};
+
+const FOLLOWUP_SUBJECT_LABEL: Record<string, string> = {
+  goal: "Goal",
+  milestone: "Milestone",
+  task: "Task",
+};
 
 // ── Droppable column ─────────────────────────────────────────────────────
 
@@ -332,6 +359,26 @@ export function WorkspacePage() {
     [allTasks, todayStr],
   );
 
+  // CoS-access (CEO) users trade the backward-looking "Overdue / Completed"
+  // tiles for two strategic signals: goal health and the Chief-of-Staff
+  // accountability queue. Both fetch only when the tiles are shown.
+  const { data: goals = [], isLoading: goalsLoading } = useGoals(
+    {},
+    { enabled: isCeo },
+  );
+  const atRiskGoals = useMemo(
+    () =>
+      goals.filter(
+        (g) =>
+          ACTIVE_GOAL_STATUSES.has(g.status) &&
+          (g.health === "at_risk" || g.health === "behind"),
+      ),
+    [goals],
+  );
+  const { data: followups = [], isLoading: followupsLoading } = useCosFollowups({
+    enabled: isCeo,
+  });
+
   // Filtered tasks for kanban search
   const filteredBoard = useMemo(() => {
     if (!board) return null;
@@ -480,10 +527,15 @@ export function WorkspacePage() {
           {activeTab === "my-day" && (
             <MyDayView
               userName={user?.name ?? "there"}
+              isCeo={isCeo}
               todayEvents={todayEvents}
               dueTodayTasks={dueTodayTasks}
               overdueTasks={overdueTasks}
               completedToday={completedToday}
+              atRiskGoals={atRiskGoals}
+              goalsLoading={goalsLoading}
+              followups={followups}
+              followupsLoading={followupsLoading}
               eventsLoading={eventsLoading}
               boardLoading={boardLoading}
               boardError={boardError}
@@ -494,6 +546,7 @@ export function WorkspacePage() {
               onSelectEvent={setSelectedEvent}
               onCreateTask={() => openCreateTaskForDate()}
               onCreateEvent={() => setShowCreateEvent(true)}
+              onOpenTab={setTab}
             />
           )}
 
@@ -647,14 +700,296 @@ export function WorkspacePage() {
   );
 }
 
-// ── My Day sub-view ──────────────────────────────────────────────────────
+// ── My Day KPI drill-down ────────────────────────────────────────────────
 
-function MyDayView({
-  userName,
+type MyDayKpiKey =
+  | "events"
+  | "due"
+  | "overdue"
+  | "completed"
+  | "atRisk"
+  | "followups";
+
+/** Wraps a KpiTile so the whole tile is a button that opens its drill-down. */
+function KpiButton({
+  onClick,
+  children,
+}: {
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="block w-full text-left rounded-[var(--radius)] transition-transform hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 active:scale-[0.99]"
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Goal target dates arrive as "YYYY-MM-DD"; render a short, safe label. */
+function fmtTargetDate(v?: string | null): string | null {
+  if (!v) return null;
+  const d = new Date(String(v).slice(0, 10) + "T00:00:00");
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString([], {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+/**
+ * Bottom-sheet (mobile) / centered modal (desktop) that expands one My Day KPI
+ * into the list of items behind the number. Rows are tappable and route the
+ * user to the full surface (task/event detail, or the Goals / Chief-of-Staff
+ * tab). Mirrors EventDetailOverlay's glass + portal treatment.
+ */
+function MyDayKpiDetail({
+  kpi,
+  today,
   todayEvents,
   dueTodayTasks,
   overdueTasks,
   completedToday,
+  atRiskGoals,
+  followups,
+  onClose,
+  onSelectTask,
+  onSelectEvent,
+  onOpenTab,
+}: {
+  kpi: MyDayKpiKey;
+  today: Date;
+  todayEvents: CalendarEvent[];
+  dueTodayTasks: Task[];
+  overdueTasks: Task[];
+  completedToday: Task[];
+  atRiskGoals: Goal[];
+  followups: CosFollowup[];
+  onClose: () => void;
+  onSelectTask: (t: Task) => void;
+  onSelectEvent: (e: CalendarEvent) => void;
+  onOpenTab: (tab: WorkspaceTab) => void;
+}) {
+  const dateLabel = today.toLocaleDateString([], {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+
+  const emptyRow = (text: string) => (
+    <p className="text-[13px] text-text-muted text-center py-8">{text}</p>
+  );
+
+  let title = "";
+  let subtitle: string | undefined;
+  let body: ReactNode = null;
+  let jump: { label: string; tab: WorkspaceTab } | null = null;
+
+  if (kpi === "events") {
+    title = "Today's Events";
+    subtitle = dateLabel;
+    jump = { label: "Open Calendar", tab: "calendar" };
+    body =
+      todayEvents.length === 0
+        ? emptyRow("No events today — your day is clear.")
+        : todayEvents.map((ev) => (
+            <button
+              key={ev.event_id}
+              onClick={() => onSelectEvent(ev)}
+              className="w-full text-left flex items-center gap-3 p-2.5 rounded-xl hover:bg-text-primary/[0.04] transition-colors"
+            >
+              <div className="w-1 h-9 rounded-full bg-accent/40 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-[13px] font-semibold text-text-primary truncate">
+                  {ev.title}
+                </div>
+                <div className="text-[11px] text-text-faint">
+                  {ev.all_day
+                    ? "All day"
+                    : `${formatTime(ev.start_at)} - ${formatTime(ev.end_at)}`}
+                </div>
+              </div>
+            </button>
+          ));
+  } else if (kpi === "due" || kpi === "overdue" || kpi === "completed") {
+    const cfg = {
+      due: {
+        title: "Tasks Due Today",
+        subtitle: dateLabel,
+        list: dueTodayTasks,
+        empty: "Nothing due today.",
+        overdue: false,
+      },
+      overdue: {
+        title: "Overdue Tasks",
+        subtitle: "Past their due date and still open",
+        list: overdueTasks,
+        empty: "No overdue tasks — nicely done.",
+        overdue: true,
+      },
+      completed: {
+        title: "Completed Today",
+        subtitle: dateLabel,
+        list: completedToday,
+        empty: "Nothing completed yet today.",
+        overdue: false,
+      },
+    }[kpi];
+    title = cfg.title;
+    subtitle = cfg.subtitle;
+    jump = { label: "Open Tasks", tab: "tasks" };
+    body =
+      cfg.list.length === 0
+        ? emptyRow(cfg.empty)
+        : cfg.list.map((t) => (
+            <TaskRow
+              key={t.task_id}
+              task={t}
+              overdue={cfg.overdue}
+              onClick={() => onSelectTask(t)}
+            />
+          ));
+  } else if (kpi === "atRisk") {
+    title = "Goals At Risk / Behind";
+    subtitle = "Active goals that need your attention";
+    jump = { label: "Open Goals", tab: "goals" };
+    body =
+      atRiskGoals.length === 0
+        ? emptyRow("Every active goal is on track.")
+        : atRiskGoals.map((g) => {
+            const target = fmtTargetDate(g.target_date);
+            return (
+              <button
+                key={g.goal_id}
+                onClick={() => onOpenTab("goals")}
+                className="w-full text-left flex items-center gap-3 p-2.5 rounded-xl hover:bg-text-primary/[0.04] transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-semibold text-text-primary truncate">
+                    {g.title}
+                  </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Pill tone={GOAL_HEALTH_META[g.health].tone} dot={false}>
+                      {GOAL_HEALTH_META[g.health].label}
+                    </Pill>
+                    <span className="text-[11px] text-text-faint font-mono">
+                      {g.progress_pct}%
+                    </span>
+                    {target && (
+                      <span className="text-[11px] text-text-faint">
+                        · due {target}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-text-faint shrink-0" />
+              </button>
+            );
+          });
+  } else {
+    title = "Open Follow-ups";
+    subtitle = "Nudges from your Chief of Staff";
+    jump = { label: "Open Chief of Staff", tab: "chief-of-staff" };
+    body =
+      followups.length === 0
+        ? emptyRow("No open follow-ups. You're all caught up.")
+        : followups.map((f) => {
+            const trig = FOLLOWUP_TRIGGER_META[f.trigger] ?? {
+              label: f.trigger,
+              tone: "neutral" as const,
+            };
+            const subject = FOLLOWUP_SUBJECT_LABEL[f.subject_type] ?? "Item";
+            return (
+              <button
+                key={f.followup_id}
+                onClick={() => onOpenTab("chief-of-staff")}
+                className="w-full text-left flex items-start gap-3 p-2.5 rounded-xl hover:bg-text-primary/[0.04] transition-colors"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] text-text-primary">
+                    {f.question || `Check in on this ${subject.toLowerCase()}`}
+                  </div>
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <Pill tone={trig.tone} dot={false}>
+                      {trig.label}
+                    </Pill>
+                    <span className="text-[11px] text-text-faint">
+                      {subject}
+                    </span>
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-text-faint shrink-0 mt-0.5" />
+              </button>
+            );
+          });
+  }
+
+  const footerJump = jump;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[80] bg-black/50 backdrop-blur-[3px]"
+      onClick={onClose}
+    >
+      <div
+        className="absolute bottom-0 left-0 right-0 max-h-[82dvh] overflow-y-auto dropglass rounded-t-[22px] animate-slide-up p-5 pb-[calc(max(env(safe-area-inset-bottom,0px),8px)+12px)] lg:absolute lg:bottom-auto lg:top-1/2 lg:left-1/2 lg:-translate-x-1/2 lg:-translate-y-1/2 lg:w-[min(480px,94vw)] lg:max-h-[78vh] lg:rounded-[18px] lg:animate-fade-in lg:pb-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start gap-3 mb-4">
+          <div className="flex-1 min-w-0">
+            <h3 className="font-display text-lg font-medium">{title}</h3>
+            {subtitle && (
+              <p className="text-[12px] text-text-muted mt-0.5">{subtitle}</p>
+            )}
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="w-8 h-8 grid place-items-center rounded-lg text-text-faint hover:text-text-primary hover:bg-text-primary/[0.06] transition-colors shrink-0"
+          >
+            <span className="text-lg">&times;</span>
+          </button>
+        </div>
+
+        <div className="space-y-0.5">{body}</div>
+
+        <div className="flex justify-end gap-2 mt-5">
+          <Button variant="secondary" size="sm" onClick={onClose}>
+            Close
+          </Button>
+          {footerJump && (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => onOpenTab(footerJump.tab)}
+            >
+              {footerJump.label}
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+// ── My Day sub-view ──────────────────────────────────────────────────────
+
+function MyDayView({
+  userName,
+  isCeo,
+  todayEvents,
+  dueTodayTasks,
+  overdueTasks,
+  completedToday,
+  atRiskGoals,
+  goalsLoading,
+  followups,
+  followupsLoading,
   eventsLoading,
   boardLoading,
   boardError,
@@ -665,12 +1000,18 @@ function MyDayView({
   onSelectEvent,
   onCreateTask,
   onCreateEvent,
+  onOpenTab,
 }: {
   userName: string;
+  isCeo: boolean;
   todayEvents: CalendarEvent[];
   dueTodayTasks: Task[];
   overdueTasks: Task[];
   completedToday: Task[];
+  atRiskGoals: Goal[];
+  goalsLoading: boolean;
+  followups: CosFollowup[];
+  followupsLoading: boolean;
   eventsLoading: boolean;
   boardLoading: boolean;
   boardError: boolean;
@@ -681,8 +1022,10 @@ function MyDayView({
   onSelectEvent: (e: CalendarEvent) => void;
   onCreateTask: () => void;
   onCreateEvent: () => void;
+  onOpenTab: (tab: WorkspaceTab) => void;
 }) {
   const today = new Date();
+  const [activeKpi, setActiveKpi] = useState<MyDayKpiKey | null>(null);
 
   return (
     <div className="space-y-6">
@@ -701,29 +1044,85 @@ function MyDayView({
         </p>
       </div>
 
-      {/* KPI row */}
+      {/* KPI row — each tile opens a drill-down modal. CoS-access users get
+          goal-health + follow-ups in place of the Overdue/Completed tiles. */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiTile
-          label="Today's Events"
-          value={eventsLoading ? "--" : String(todayEvents.length)}
-          tone="accent"
-        />
-        <KpiTile
-          label="Tasks Due Today"
-          value={boardLoading ? "--" : String(dueTodayTasks.length)}
-          tone="accent"
-        />
-        <KpiTile
-          label="Overdue"
-          value={boardLoading ? "--" : String(overdueTasks.length)}
-          tone={overdueTasks.length > 0 ? "warn" : "accent"}
-        />
-        <KpiTile
-          label="Completed Today"
-          value={boardLoading ? "--" : String(completedToday.length)}
-          tone="accent"
-        />
+        <KpiButton onClick={() => setActiveKpi("events")}>
+          <KpiTile
+            label="Today's Events"
+            value={eventsLoading ? "--" : String(todayEvents.length)}
+            tone="accent"
+          />
+        </KpiButton>
+        <KpiButton onClick={() => setActiveKpi("due")}>
+          <KpiTile
+            label="Tasks Due Today"
+            value={boardLoading ? "--" : String(dueTodayTasks.length)}
+            tone="accent"
+          />
+        </KpiButton>
+        {isCeo ? (
+          <>
+            <KpiButton onClick={() => setActiveKpi("atRisk")}>
+              <KpiTile
+                label="At Risk / Behind"
+                value={goalsLoading ? "--" : String(atRiskGoals.length)}
+                tone={atRiskGoals.length > 0 ? "warn" : "accent"}
+              />
+            </KpiButton>
+            <KpiButton onClick={() => setActiveKpi("followups")}>
+              <KpiTile
+                label="Open Follow-ups"
+                value={followupsLoading ? "--" : String(followups.length)}
+                tone={followups.length > 0 ? "warn" : "accent"}
+              />
+            </KpiButton>
+          </>
+        ) : (
+          <>
+            <KpiButton onClick={() => setActiveKpi("overdue")}>
+              <KpiTile
+                label="Overdue"
+                value={boardLoading ? "--" : String(overdueTasks.length)}
+                tone={overdueTasks.length > 0 ? "warn" : "accent"}
+              />
+            </KpiButton>
+            <KpiButton onClick={() => setActiveKpi("completed")}>
+              <KpiTile
+                label="Completed Today"
+                value={boardLoading ? "--" : String(completedToday.length)}
+                tone="accent"
+              />
+            </KpiButton>
+          </>
+        )}
       </div>
+
+      {activeKpi && (
+        <MyDayKpiDetail
+          kpi={activeKpi}
+          today={today}
+          todayEvents={todayEvents}
+          dueTodayTasks={dueTodayTasks}
+          overdueTasks={overdueTasks}
+          completedToday={completedToday}
+          atRiskGoals={atRiskGoals}
+          followups={followups}
+          onClose={() => setActiveKpi(null)}
+          onSelectTask={(t) => {
+            setActiveKpi(null);
+            onSelectTask(t);
+          }}
+          onSelectEvent={(e) => {
+            setActiveKpi(null);
+            onSelectEvent(e);
+          }}
+          onOpenTab={(tab) => {
+            setActiveKpi(null);
+            onOpenTab(tab);
+          }}
+        />
+      )}
 
       {/* Two-column layout */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

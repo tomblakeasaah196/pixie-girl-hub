@@ -39,6 +39,10 @@ trim/crop studio on every hero section (`VideoField`), and the storefront
 `Hero` plays the result like a GIF — autoplay, muted, looping, poster-first
 so slow networks still paint instantly.
 
+The route accepts up to 200MB, but on a live deploy the proxy in front must
+allow that too — a raw `HTTP 413` on upload means nginx/Cloudflare rejected
+the body before it reached the app. See `docs/UPLOAD_SIZE_LIMITS.md`.
+
 ## Files
 
 | File                   | Purpose                              |

@@ -17,6 +17,7 @@ import { SiteHeader } from "@/components/site/SiteHeader";
 import { SiteFooter } from "@/components/site/SiteFooter";
 import { PageTransition } from "@/components/site/PageTransition";
 import { NewsletterModal } from "@/components/site/NewsletterModal";
+import { StudioPopups } from "@/components/site/StudioPopups";
 import { CartDrawer } from "@/components/site/CartDrawer";
 import { FloatingToolbar } from "@/components/site/FloatingToolbar";
 import { SiteConfigProvider, type StudioPage } from "@/lib/site-config";
@@ -209,6 +210,7 @@ function RootComponent() {
         {immersive ? null : <FloatingToolbar />}
         <CartDrawer />
         {immersive ? null : <NewsletterModal />}
+        {immersive ? null : <StudioPopups />}
         <Toaster position="bottom-center" theme="dark" />
       </SiteConfigProvider>
     </QueryClientProvider>

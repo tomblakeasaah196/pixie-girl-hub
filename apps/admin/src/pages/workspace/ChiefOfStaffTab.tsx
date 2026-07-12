@@ -41,6 +41,11 @@ import {
 import { cn } from "@/lib/cn";
 import { Markdown } from "@/components/help/Markdown";
 import { PraxisInput } from "@/components/praxis/PraxisInput";
+import {
+  ReadAloudButton,
+  VoiceSettingsButton,
+} from "@/components/praxis/ReadAloud";
+import { useReadAloud, type ReadAloudApi } from "@/hooks/useReadAloud";
 import { useToast } from "@/lib/toast";
 import { useAuthStore } from "@/stores/auth";
 import { useUiStore } from "@/stores/ui";
@@ -95,7 +100,15 @@ function Avatar({
   );
 }
 
-function Bubble({ msg, avatarUrl }: { msg: CosMessage; avatarUrl?: string | null }) {
+function Bubble({
+  msg,
+  avatarUrl,
+  tts,
+}: {
+  msg: CosMessage;
+  avatarUrl?: string | null;
+  tts: ReadAloudApi;
+}) {
   const text = msg.content || msg.transcribed_text || "";
   if (msg.role === "user") {
     return (
@@ -117,6 +130,13 @@ function Bubble({ msg, avatarUrl }: { msg: CosMessage; avatarUrl?: string | null
           source={text}
           className="text-[14px] leading-[1.7] text-text-primary space-y-3 [&_ul]:my-1.5 [&_ol]:my-1.5"
         />
+        {/* Always visible (not hover-gated) — this surface is phone-first. */}
+        {text.trim() && tts.supported && (
+          <div className="mt-2 flex items-center gap-3">
+            <ReadAloudButton id={msg.message_id} text={text} tts={tts} />
+            <VoiceSettingsButton tts={tts} />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -561,6 +581,7 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
   const thinking = pendingSend || post.isPending;
   const savedNote = detail.data?.saved_note ?? null;
   const hasAssistantReply = messages.some((m) => m.role === "assistant");
+  const tts = useReadAloud();
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -839,7 +860,7 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
               <div className="flex flex-col gap-6">
                 {messages.map((m) => (
                   <div key={m.message_id} className="flex flex-col gap-6">
-                    <Bubble msg={m} avatarUrl={avatarUrl} />
+                    <Bubble msg={m} avatarUrl={avatarUrl} tts={tts} />
                     {(plansByMessage.get(m.message_id) ?? []).map((p) => (
                       <div key={p.plan_id} className="md:pl-11">
                         <BatchPlanCard plan={p} conversationId={activeId!} />

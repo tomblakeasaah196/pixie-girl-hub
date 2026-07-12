@@ -25,6 +25,7 @@ export interface StudioPopup {
   audience?: string;
   content?: Record<string, unknown>;
   display_rules?: Record<string, unknown>;
+  display_order?: number;
 }
 
 export interface NavItem {
@@ -111,6 +112,13 @@ export function useToolbar(): ToolbarConfig {
 export function usePopup(popupKey: string): StudioPopup | undefined {
   const popups = useContext(PopupsCtx);
   return popups.find((p) => p.popup_key === popupKey);
+}
+
+/** Every published popup, in display order (empty when unseeded). The generic
+ *  StudioPopups renderer reads this so any Studio-created popup shows up — not
+ *  just the bespoke ones (newsletter) that have their own component. */
+export function usePopups(): StudioPopup[] {
+  return useContext(PopupsCtx);
 }
 
 /** Published slots for a page_key (empty object when unseeded). */

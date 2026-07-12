@@ -19,6 +19,7 @@ import { cn } from "@/lib/cn";
 import { Button } from "@/components/ui/primitives";
 import { Modal } from "@/components/ui/Modal";
 import { toast } from "@/stores/toast";
+import { ApiError } from "@/lib/api";
 import { describeError } from "@/lib/error-report";
 import {
   uploadStorefrontVideo,
@@ -313,6 +314,31 @@ function ClipStudio({
       );
       onDone(result);
     } catch (err) {
+      // A 413 with no platform error code never reached the app: the web
+      // server in front (nginx client_max_body_size, or Cloudflare's
+      // plan-level upload cap) refused the body outright and answered with
+      // its own error page. The app's own too-big rejection (>200MB) arrives
+      // as a FILE_TOO_LARGE AppError carrying a friendly message, so it takes
+      // the generic path below. See docs/UPLOAD_SIZE_LIMITS.md.
+      if (err instanceof ApiError && err.status === 413 && !err.code) {
+        const sizeMB = Math.max(1, Math.round(file.size / (1024 * 1024)));
+        toast.error("The server refused this upload", {
+          description:
+            `Your ${sizeMB}MB video was blocked by the web server before it ` +
+            "reached Pixie Girl Hub — its upload limit is set lower than the " +
+            "app's 200MB. A shorter or lower-resolution clip will go " +
+            "through; please also report this so the server limit gets raised.",
+          report: {
+            area: "Storefront Studio → Looping video",
+            action: "Upload video",
+            message: `HTTP 413 from the proxy for a ${sizeMB}MB file (below the app's 200MB cap)`,
+            detail:
+              "Raise client_max_body_size on the hub's nginx block — see docs/UPLOAD_SIZE_LIMITS.md",
+          },
+        });
+        setPhase("edit");
+        return;
+      }
       const { message, detail } = describeError(err);
       toast.error("Couldn't process the video", {
         description: message,

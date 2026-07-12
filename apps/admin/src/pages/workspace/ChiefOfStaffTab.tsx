@@ -28,7 +28,11 @@ import {
   Settings2,
   ChevronLeft,
   ChevronRight,
-  SquarePen,
+  Plus,
+  PanelLeft,
+  PanelLeftClose,
+  PanelRight,
+  PanelRightClose,
   History,
   Target,
   CalendarClock,
@@ -44,7 +48,7 @@ import { PraxisInput } from "@/components/praxis/PraxisInput";
 import { useToast } from "@/lib/toast";
 import { useAuthStore } from "@/stores/auth";
 import { useUiStore } from "@/stores/ui";
-import { useIsPhone } from "@/hooks/useMediaQuery";
+import { useIsPhone, useIsDesktop } from "@/hooks/useMediaQuery";
 import { BatchPlanCard } from "./BatchPlanCard";
 import { CosIntelligencePanel } from "./CosIntelligencePanel";
 import { CosSettings } from "./CosSettings";
@@ -326,7 +330,79 @@ function relTime(iso: string): string {
   return new Date(iso).toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
-/** Past conversations — bottom sheet on phones, centered panel on desktop. */
+/** The scrollable list of past conversations — shared by the mobile history
+ *  sheet and the desktop left pane. Handles its own loading/empty states. */
+function ConversationRows({
+  activeId,
+  onPick,
+}: {
+  activeId: string | null;
+  onPick: (id: string) => void;
+}) {
+  const convos = useCosConversations();
+  const archive = useArchiveCosConversation();
+  const items = convos.data ?? [];
+
+  if (convos.isLoading) {
+    return (
+      <div className="space-y-2 p-2">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="h-[52px] rounded-[12px] bg-text-primary/[0.05] animate-pulse" />
+        ))}
+      </div>
+    );
+  }
+
+  if (items.length === 0) {
+    return (
+      <div className="py-10 text-center">
+        <MessagesSquare className="w-6 h-6 text-text-faint mx-auto mb-2" />
+        <p className="text-[12.5px] text-text-muted">No conversations yet.</p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {items.map((c) => (
+        <div
+          key={c.conversation_id}
+          className={cn(
+            "group flex items-center gap-2 rounded-[12px] transition-colors",
+            c.conversation_id === activeId
+              ? "bg-accent/[0.08]"
+              : "hover:bg-text-primary/[0.04]",
+          )}
+        >
+          <button
+            type="button"
+            onClick={() => onPick(c.conversation_id)}
+            className="flex-1 min-w-0 text-left px-3 py-2.5"
+          >
+            <div className="text-[13px] font-medium text-text-primary truncate">
+              {c.title || "Untitled conversation"}
+            </div>
+            <div className="text-[10.5px] text-text-faint mt-0.5">
+              {relTime(c.last_activity_at)}
+              {c.message_count != null && ` · ${c.message_count} message${c.message_count === 1 ? "" : "s"}`}
+            </div>
+          </button>
+          <button
+            type="button"
+            aria-label="Archive conversation"
+            disabled={archive.isPending}
+            onClick={() => archive.mutate(c.conversation_id)}
+            className="w-9 h-9 mr-1.5 grid place-items-center rounded-lg text-text-faint hover:text-danger hover:bg-danger/10 transition-colors shrink-0"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ))}
+    </>
+  );
+}
+
+/** Past conversations — bottom sheet on phones, centered panel on tablet. */
 function HistorySheet({
   open,
   activeId,
@@ -338,9 +414,6 @@ function HistorySheet({
   onPick: (id: string) => void;
   onClose: () => void;
 }) {
-  const convos = useCosConversations();
-  const archive = useArchiveCosConversation();
-
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -349,8 +422,6 @@ function HistorySheet({
   }, [open, onClose]);
 
   if (!open) return null;
-
-  const items = convos.data ?? [];
 
   return createPortal(
     <div
@@ -380,60 +451,128 @@ function HistorySheet({
           </button>
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto p-2 pb-[max(env(safe-area-inset-bottom,0px),10px)]">
-          {convos.isLoading ? (
-            <div className="space-y-2 p-2">
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="h-[52px] rounded-[12px] bg-text-primary/[0.05] animate-pulse" />
-              ))}
-            </div>
-          ) : items.length === 0 ? (
-            <div className="py-10 text-center">
-              <MessagesSquare className="w-6 h-6 text-text-faint mx-auto mb-2" />
-              <p className="text-[12.5px] text-text-muted">No conversations yet.</p>
-            </div>
-          ) : (
-            items.map((c) => (
-              <div
-                key={c.conversation_id}
-                className={cn(
-                  "group flex items-center gap-2 rounded-[12px] transition-colors",
-                  c.conversation_id === activeId
-                    ? "bg-accent/[0.08]"
-                    : "hover:bg-text-primary/[0.04]",
-                )}
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    onPick(c.conversation_id);
-                    onClose();
-                  }}
-                  className="flex-1 min-w-0 text-left px-3 py-2.5"
-                >
-                  <div className="text-[13px] font-medium text-text-primary truncate">
-                    {c.title || "Untitled conversation"}
-                  </div>
-                  <div className="text-[10.5px] text-text-faint mt-0.5">
-                    {relTime(c.last_activity_at)}
-                    {c.message_count != null && ` · ${c.message_count} message${c.message_count === 1 ? "" : "s"}`}
-                  </div>
-                </button>
-                <button
-                  type="button"
-                  aria-label="Archive conversation"
-                  disabled={archive.isPending}
-                  onClick={() => archive.mutate(c.conversation_id)}
-                  className="w-9 h-9 mr-1.5 grid place-items-center rounded-lg text-text-faint hover:text-danger hover:bg-danger/10 transition-colors shrink-0"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ))
-          )}
+          <ConversationRows
+            activeId={activeId}
+            onPick={(id) => {
+              onPick(id);
+              onClose();
+            }}
+          />
         </div>
       </div>
     </div>,
     document.body,
+  );
+}
+
+/** Desktop left pane — past conversations, collapsible to a slim icon rail so
+ *  the chat can reclaim the width. */
+function ConversationsPane({
+  open,
+  activeId,
+  onPick,
+  onNewChat,
+  onToggle,
+}: {
+  open: boolean;
+  activeId: string | null;
+  onPick: (id: string) => void;
+  onNewChat: () => void;
+  onToggle: () => void;
+}) {
+  if (!open) {
+    return (
+      <div className="w-[52px] shrink-0 border-r hairline flex flex-col items-center gap-2 py-3">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-label="Show conversations"
+          title="Show conversations"
+          className="w-9 h-9 grid place-items-center rounded-[11px] text-text-muted hover:text-text-primary hover:bg-text-primary/[0.06] transition-colors"
+        >
+          <PanelLeft className="w-[18px] h-[18px]" />
+        </button>
+        <button
+          type="button"
+          onClick={onNewChat}
+          aria-label="New chat"
+          title="New chat"
+          className="w-9 h-9 grid place-items-center rounded-[11px] bg-accent-deep/90 text-[#F4E9D9] hover:bg-accent transition-colors"
+        >
+          <Plus className="w-[18px] h-[18px]" />
+        </button>
+      </div>
+    );
+  }
+  return (
+    <aside className="w-[264px] shrink-0 border-r hairline flex flex-col min-h-0">
+      <div className="flex items-center gap-2 px-3 h-[52px] shrink-0 border-b hairline">
+        <History className="w-4 h-4 text-accent-glow shrink-0" />
+        <span className="font-display text-[14px] font-medium flex-1 truncate">Conversations</span>
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-label="Collapse conversations"
+          title="Collapse"
+          className="w-8 h-8 grid place-items-center rounded-lg text-text-faint hover:text-text-primary hover:bg-text-primary/[0.06] transition-colors"
+        >
+          <PanelLeftClose className="w-4 h-4" />
+        </button>
+      </div>
+      <div className="p-2 shrink-0">
+        <button
+          type="button"
+          onClick={onNewChat}
+          className="w-full inline-flex items-center justify-center gap-2 rounded-[12px] bg-accent-deep/90 text-[#F4E9D9] px-3 py-2.5 text-[13px] font-medium hover:bg-accent transition-colors"
+        >
+          <Plus className="w-4 h-4" /> New chat
+        </button>
+      </div>
+      <div className="flex-1 min-h-0 overflow-y-auto p-2 pt-0">
+        <ConversationRows activeId={activeId} onPick={onPick} />
+      </div>
+    </aside>
+  );
+}
+
+/** Desktop right pane — always-on insights, collapsible to a slim icon rail. */
+function InsightsPane({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  if (!open) {
+    return (
+      <div className="w-[52px] shrink-0 border-l hairline flex flex-col items-center gap-2 py-3">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-label="Show insights"
+          title="Show insights"
+          className="w-9 h-9 grid place-items-center rounded-[11px] text-text-muted hover:text-text-primary hover:bg-text-primary/[0.06] transition-colors"
+        >
+          <PanelRight className="w-[18px] h-[18px]" />
+        </button>
+        <LayoutGrid className="w-4 h-4 text-text-faint mt-1" />
+      </div>
+    );
+  }
+  return (
+    <aside className="w-[360px] xl:w-[400px] shrink-0 border-l hairline flex flex-col min-h-0">
+      <div className="flex items-center gap-2 px-3 h-[52px] shrink-0 border-b hairline">
+        <LayoutGrid className="w-4 h-4 text-accent-glow shrink-0" />
+        <span className="font-display text-[14px] font-medium flex-1 truncate">Insights</span>
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-label="Collapse insights"
+          title="Collapse"
+          className="w-8 h-8 grid place-items-center rounded-lg text-text-faint hover:text-text-primary hover:bg-text-primary/[0.06] transition-colors"
+        >
+          <PanelRightClose className="w-4 h-4" />
+        </button>
+      </div>
+      <CosIntelligencePanel
+        dense
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain w-full space-y-6 p-4"
+      />
+    </aside>
   );
 }
 
@@ -493,12 +632,37 @@ function writeDismissed(set: Set<string>) {
   }
 }
 
+// Desktop pane collapse state is sticky per browser — the CEO who lives with
+// the insights pane open keeps it open; a focused writer collapses both.
+const LEFT_PANE_KEY = "cos:pane-left-open";
+const RIGHT_PANE_KEY = "cos:pane-right-open";
+
+function readPaneOpen(key: string, fallback: boolean): boolean {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw == null ? fallback : raw === "1";
+  } catch {
+    return fallback;
+  }
+}
+
+function writePaneOpen(key: string, open: boolean) {
+  try {
+    localStorage.setItem(key, open ? "1" : "0");
+  } catch {
+    /* storage unavailable — pane state simply won't persist */
+  }
+}
+
 export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
   const [view, setView] = useState<"chat" | "insights">("chat");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [pendingSend, setPendingSend] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  // Desktop only — the two collapsible side panes (conversations, insights).
+  const [leftOpen, setLeftOpen] = useState(() => readPaneOpen(LEFT_PANE_KEY, true));
+  const [rightOpen, setRightOpen] = useState(() => readPaneOpen(RIGHT_PANE_KEY, true));
   const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(
     () => readDismissed(),
   );
@@ -508,6 +672,7 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
 
   const user = useAuthStore((s) => s.user);
   const isPhone = useIsPhone();
+  const isDesktop = useIsDesktop();
   const setImmersive = useUiStore((s) => s.setImmersive);
 
   // Phone → take the whole viewport WhatsApp-style: the shell reads the same
@@ -527,9 +692,14 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
   const cosName = settings.data?.assistant_name || DEFAULT_COS_NAME;
   const avatarUrl = settings.data?.avatar_url ?? null;
 
-  // Default to the most recent thread once conversations load.
+  // Default to the most recent thread ONCE, on first load. Guarded by a ref so
+  // that deliberately clearing activeId ("New chat" → blank composer) isn't
+  // instantly undone by this effect snapping back to the latest conversation.
+  const didAutoSelect = useRef(false);
   useEffect(() => {
+    if (didAutoSelect.current) return;
     if (!activeId && convos.data && convos.data.length > 0) {
+      didAutoSelect.current = true;
       setActiveId(convos.data[0].conversation_id);
     }
   }, [convos.data, activeId]);
@@ -627,6 +797,178 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
     !thinking &&
     !dismissedSuggestions.has(activeId);
 
+  const pickConversation = (id: string) => {
+    setActiveId(id);
+    setView("chat");
+  };
+  const toggleLeft = () =>
+    setLeftOpen((v) => {
+      const next = !v;
+      writePaneOpen(LEFT_PANE_KEY, next);
+      return next;
+    });
+  const toggleRight = () =>
+    setRightOpen((v) => {
+      const next = !v;
+      writePaneOpen(RIGHT_PANE_KEY, next);
+      return next;
+    });
+
+  // ── Shared chat body ─────────────────────────────────────────────────────
+  // The thread's four states and the composer are identical whether they sit
+  // in the phone/tablet column or the desktop centre pane — build them once.
+  const threadInner =
+    detail.isLoading && activeId ? (
+      <div className="space-y-4">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="h-16 rounded-2xl bg-text-primary/[0.04] animate-pulse" />
+        ))}
+      </div>
+    ) : detail.isError ? (
+      <div className="flex flex-col items-center gap-3 pt-10 text-center">
+        <AlertCircle className="w-6 h-6 text-danger" />
+        <p className="text-[13px] text-text-muted">Couldn't load this conversation.</p>
+        <button
+          type="button"
+          onClick={() => detail.refetch()}
+          className="inline-flex items-center gap-1.5 rounded-lg border hairline px-3 py-1.5 text-[12.5px] hover:text-text-primary"
+        >
+          <RotateCw className="w-3.5 h-3.5" /> Retry
+        </button>
+      </div>
+    ) : !hasThread ? (
+      <Welcome
+        name={cosName}
+        userName={(user?.name ?? "there").split(" ")[0]}
+        avatarUrl={avatarUrl}
+        onSuggest={suggest}
+        disabled={thinking}
+      />
+    ) : (
+      <div className="flex flex-col gap-6">
+        {messages.map((m) => (
+          <div key={m.message_id} className="flex flex-col gap-6">
+            <Bubble msg={m} avatarUrl={avatarUrl} />
+            {(plansByMessage.get(m.message_id) ?? []).map((p) => (
+              <div key={p.plan_id} className="md:pl-11">
+                <BatchPlanCard plan={p} conversationId={activeId!} />
+              </div>
+            ))}
+          </div>
+        ))}
+        {unanchoredPlans.map((p) => (
+          <div key={p.plan_id} className="md:pl-11">
+            <BatchPlanCard plan={p} conversationId={activeId!} />
+          </div>
+        ))}
+        {showSaveSuggestion && (
+          <SaveNoteSuggestion
+            busy={saveNote.isPending}
+            onSave={handleSaveNote}
+            onDismiss={dismissSuggestion}
+          />
+        )}
+        {savedNote && !thinking && (
+          <SavedNoteFooter
+            title={savedNote.title}
+            onOpen={goToNotes}
+            onRefresh={handleSaveNote}
+            busy={saveNote.isPending}
+          />
+        )}
+        {thinking && <Thinking name={cosName} avatarUrl={avatarUrl} />}
+      </div>
+    );
+
+  const composerBody = (
+    <>
+      <PraxisInput
+        onSend={handleSend}
+        disabled={thinking}
+        placeholder="What needs to get done?"
+      />
+      <p className="mt-1.5 text-center text-[10px] text-text-faint">
+        Plans only run after you approve them.
+      </p>
+    </>
+  );
+
+  // ── Desktop: three panes (conversations · chat · insights) ────────────────
+  // Both side panes collapse to a slim icon rail; "New chat" is the "+" that
+  // starts a fresh thread, Gemini-style. Phone/tablet keep the drawer layout.
+  if (isDesktop) {
+    return (
+      <div className="flex h-[calc(100dvh-235px)] min-h-[520px] w-full overflow-hidden rounded-[18px] border hairline bg-[rgb(var(--panel)/0.35)]">
+        <ConversationsPane
+          open={leftOpen}
+          activeId={activeId}
+          onPick={pickConversation}
+          onNewChat={newChat}
+          onToggle={toggleLeft}
+        />
+
+        {/* Centre — the live chat */}
+        <div className="flex-1 min-w-0 flex flex-col">
+          <div className="flex items-center gap-2 shrink-0 px-4 h-[52px] border-b hairline">
+            <Sparkles className="w-4 h-4 text-accent-glow shrink-0" />
+            <div className="min-w-0 flex-1">
+              <div className="font-display text-[15px] font-medium leading-tight truncate">{cosName}</div>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={handleSaveNote}
+                disabled={!canSaveNote}
+                title={
+                  savedNote
+                    ? "Refresh the note with the latest of this chat"
+                    : "Summarise this chat and add to Notes"
+                }
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-lg border hairline px-2.5 py-1.5 text-[12px] transition-colors whitespace-nowrap",
+                  canSaveNote
+                    ? "text-text-muted hover:text-text-primary hover:border-accent/40"
+                    : "text-text-faint cursor-not-allowed",
+                )}
+              >
+                {saveNote.isPending ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <StickyNote className="w-3.5 h-3.5" />
+                )}
+                {savedNote ? "Update notes" : "Save to notes"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowSettings(true)}
+                aria-label={`${cosName} settings`}
+                title="Settings"
+                className="inline-flex items-center justify-center w-8 h-8 rounded-lg border hairline text-text-muted hover:text-text-primary"
+              >
+                <Settings2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain py-5">
+            <div className="w-full max-w-[720px] mx-auto px-5">
+              {threadInner}
+              <div ref={endRef} />
+            </div>
+          </div>
+
+          <div className="shrink-0 pt-2 pb-3">
+            <div className="w-full max-w-[720px] mx-auto px-5">{composerBody}</div>
+          </div>
+        </div>
+
+        <InsightsPane open={rightOpen} onToggle={toggleRight} />
+
+        <CosSettings open={showSettings} onClose={() => setShowSettings(false)} />
+      </div>
+    );
+  }
+
   return (
     <div
       className={cn(
@@ -691,7 +1033,7 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
               )}
               {view === "chat" && hasThread && (
                 <HeaderIconButton label="New chat" onClick={newChat}>
-                  <SquarePen className="w-4 h-4" />
+                  <Plus className="w-[18px] h-[18px]" />
                 </HeaderIconButton>
               )}
               <HeaderIconButton label="Past conversations" onClick={() => setShowHistory(true)}>
@@ -761,7 +1103,7 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
                   onClick={newChat}
                   className="inline-flex items-center gap-1.5 rounded-lg border hairline px-2.5 py-1.5 text-[12px] text-text-muted hover:text-text-primary whitespace-nowrap"
                 >
-                  <SquarePen className="w-3.5 h-3.5" /> New chat
+                  <Plus className="w-4 h-4" /> New chat
                 </button>
               )}
               <button
@@ -809,67 +1151,7 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
               isPhone ? "px-4" : "pr-1",
             )}
           >
-            {detail.isLoading && activeId ? (
-              <div className="space-y-4">
-                {[0, 1, 2].map((i) => (
-                  <div key={i} className="h-16 rounded-2xl bg-text-primary/[0.04] animate-pulse" />
-                ))}
-              </div>
-            ) : detail.isError ? (
-              <div className="flex flex-col items-center gap-3 pt-10 text-center">
-                <AlertCircle className="w-6 h-6 text-danger" />
-                <p className="text-[13px] text-text-muted">Couldn't load this conversation.</p>
-                <button
-                  type="button"
-                  onClick={() => detail.refetch()}
-                  className="inline-flex items-center gap-1.5 rounded-lg border hairline px-3 py-1.5 text-[12.5px] hover:text-text-primary"
-                >
-                  <RotateCw className="w-3.5 h-3.5" /> Retry
-                </button>
-              </div>
-            ) : !hasThread ? (
-              <Welcome
-                name={cosName}
-                userName={(user?.name ?? "there").split(" ")[0]}
-                avatarUrl={avatarUrl}
-                onSuggest={suggest}
-                disabled={thinking}
-              />
-            ) : (
-              <div className="flex flex-col gap-6">
-                {messages.map((m) => (
-                  <div key={m.message_id} className="flex flex-col gap-6">
-                    <Bubble msg={m} avatarUrl={avatarUrl} />
-                    {(plansByMessage.get(m.message_id) ?? []).map((p) => (
-                      <div key={p.plan_id} className="md:pl-11">
-                        <BatchPlanCard plan={p} conversationId={activeId!} />
-                      </div>
-                    ))}
-                  </div>
-                ))}
-                {unanchoredPlans.map((p) => (
-                  <div key={p.plan_id} className="md:pl-11">
-                    <BatchPlanCard plan={p} conversationId={activeId!} />
-                  </div>
-                ))}
-                {showSaveSuggestion && (
-                  <SaveNoteSuggestion
-                    busy={saveNote.isPending}
-                    onSave={handleSaveNote}
-                    onDismiss={dismissSuggestion}
-                  />
-                )}
-                {savedNote && !thinking && (
-                  <SavedNoteFooter
-                    title={savedNote.title}
-                    onOpen={goToNotes}
-                    onRefresh={handleSaveNote}
-                    busy={saveNote.isPending}
-                  />
-                )}
-                {thinking && <Thinking name={cosName} avatarUrl={avatarUrl} />}
-              </div>
-            )}
+            {threadInner}
             <div ref={endRef} />
           </div>
 
@@ -880,14 +1162,7 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
               isPhone && "px-3 pb-[max(env(safe-area-inset-bottom,0px),10px)]",
             )}
           >
-            <PraxisInput
-              onSend={handleSend}
-              disabled={thinking}
-              placeholder="What needs to get done?"
-            />
-            <p className="mt-1.5 text-center text-[10px] text-text-faint">
-              Plans only run after you approve them.
-            </p>
+            {composerBody}
           </div>
         </>
       )}

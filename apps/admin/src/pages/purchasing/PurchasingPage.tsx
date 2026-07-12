@@ -14,6 +14,7 @@ import {
 import { useAuthStore } from "@/stores/auth";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { ModuleInsights } from "@/components/insights/ModuleInsights";
+import { formatDate } from "@/lib/format";
 import {
   Button,
   Card,
@@ -60,11 +61,7 @@ type Tab = "overview" | "purchase-orders" | "suppliers" | "grn-invoices";
 type GrnTab = "grns" | "invoices";
 
 function fmt(d: string) {
-  return new Date(d).toLocaleDateString("en-NG", {
-    day: "numeric",
-    month: "short",
-    year: "2-digit",
-  });
+  return formatDate(d);
 }
 
 export function PurchasingPage() {

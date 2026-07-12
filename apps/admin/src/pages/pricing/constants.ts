@@ -1,4 +1,5 @@
 import type { Tone } from "@/components/ui/primitives";
+import { formatDate } from "@/lib/format";
 import type {
   Basis,
   Channel,
@@ -186,10 +187,5 @@ export function marginTone(pct: number | null | undefined): Tone {
 }
 
 export function fmtDate(d: string | null | undefined): string {
-  if (!d) return "—";
-  return new Date(d).toLocaleDateString("en-NG", {
-    day: "numeric",
-    month: "short",
-    year: "2-digit",
-  });
+  return formatDate(d);
 }

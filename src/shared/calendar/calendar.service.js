@@ -115,6 +115,27 @@ async function createEvent({ brand, user, request_id, input }) {
 async function updateEvent({ brand, user, request_id, id, patch }) {
   const before = await repo.findEvent({ brand, id });
   if (!before) throw new NotFoundError("Event");
+  // Keep the reminder honest: unless the caller pinned an explicit remind_at,
+  // recompute it whenever the start time or the relative offset changes —
+  // otherwise a rescheduled event fires its reminder at the old time.
+  if (
+    patch.remind_at === undefined &&
+    (patch.start_at !== undefined || patch.reminder_minutes !== undefined)
+  ) {
+    const start = patch.start_at !== undefined ? patch.start_at : before.start_at;
+    const mins =
+      patch.reminder_minutes !== undefined
+        ? patch.reminder_minutes
+        : before.reminder_minutes;
+    const hasBoth =
+      start !== null &&
+      start !== undefined &&
+      mins !== null &&
+      mins !== undefined;
+    patch.remind_at = hasBoth
+      ? new Date(new Date(start).getTime() - mins * 60000).toISOString()
+      : null;
+  }
   const updated = await repo.updateEvent({ brand, id, patch });
   await A(
     brand,

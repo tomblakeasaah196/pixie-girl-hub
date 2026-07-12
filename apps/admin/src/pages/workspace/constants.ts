@@ -50,14 +50,18 @@ export const TASK_PRIORITY_OPTIONS: { value: TaskPriority; label: string }[] = [
 ];
 
 // ── Calendar event type metadata ────────────────────────────────────────
+// Values MUST match the backend enum (src/shared/calendar/calendar.validator.js)
+// — "deadline"/"personal" used to be offered here and every save failed Zod.
 
 export const EVENT_TYPE_OPTIONS: { value: string; label: string }[] = [
   { value: "meeting", label: "Meeting" },
   { value: "call", label: "Call" },
   { value: "appointment", label: "Appointment" },
-  { value: "deadline", label: "Deadline" },
+  { value: "task_deadline", label: "Deadline" },
   { value: "reminder", label: "Reminder" },
-  { value: "personal", label: "Personal" },
+  { value: "follow_up", label: "Follow-up" },
+  { value: "review", label: "Review" },
+  { value: "training", label: "Training" },
   { value: "other", label: "Other" },
 ];
 
@@ -65,21 +69,22 @@ export const EVENT_TYPE_COLOURS: Record<string, string> = {
   meeting: "bg-info/20 text-info",
   call: "bg-success/20 text-success",
   appointment: "bg-accent/20 text-accent-glow",
-  deadline: "bg-danger/20 text-danger",
+  task_deadline: "bg-danger/20 text-danger",
   reminder: "bg-warn/20 text-warn",
-  personal: "bg-text-primary/10 text-text-muted",
+  follow_up: "bg-info/20 text-info",
+  review: "bg-accent/20 text-accent-glow",
+  training: "bg-success/20 text-success",
+  delivery: "bg-info/20 text-info",
+  pickup: "bg-info/20 text-info",
+  fitting: "bg-accent/20 text-accent-glow",
+  photoshoot: "bg-accent/20 text-accent-glow",
+  viewing: "bg-warn/20 text-warn",
+  leave: "bg-text-primary/10 text-text-muted",
+  service_booking: "bg-success/20 text-success",
+  production_milestone: "bg-warn/20 text-warn",
+  stylist_appointment: "bg-accent/20 text-accent-glow",
   other: "bg-text-primary/10 text-text-muted",
 };
-
-// ── Reminder options ────────────────────────────────────────────────────
-
-export const REMINDER_OPTIONS: { value: string; label: string }[] = [
-  { value: "", label: "No reminder" },
-  { value: "0", label: "At time of event" },
-  { value: "15", label: "15 minutes before" },
-  { value: "60", label: "1 hour before" },
-  { value: "1440", label: "1 day before" },
-];
 
 // ── Calendar helpers ────────────────────────────────────────────────────
 

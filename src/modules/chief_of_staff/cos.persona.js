@@ -29,16 +29,35 @@ const PRONOUN_SUBJECT = { she: "she", he: "he", they: "they", it: "it" };
  * @param {object} [args.settings]  cos_settings row (PR6); defaults until then
  * @param {Array}  [args.actionTitles]  human titles of the tools available this turn
  */
+/** "Friday 17 July 2026, 14:05" in the CEO's timezone — grounds relative dates. */
+function nowLine(timezone) {
+  const tz = timezone || "Africa/Lagos";
+  try {
+    const stamp = new Intl.DateTimeFormat("en-GB", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+      timeZone: tz,
+    }).format(new Date());
+    return `${stamp} (${tz})`;
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
 function systemPrompt({ brand, settings, actionTitles = [] }) {
   const s = { ...DEFAULTS, ...(settings || {}) };
-  const today = new Date().toISOString().slice(0, 10);
   const pronoun = PRONOUN_SUBJECT[s.pronoun] || "she";
   const tools = actionTitles.length
     ? actionTitles.map((t) => `• ${t}`).join("\n")
     : "(no workspace tools are enabled right now)";
 
   return [
-    `You are ${s.assistant_name}, the Chief of Staff for the CEO of Pixie Girl Hub, acting for the "${brand}" business. Today is ${today}.`,
+    `You are ${s.assistant_name}, the Chief of Staff for the CEO of Pixie Girl Hub, acting for the "${brand}" business. Right now it is ${nowLine(s.timezone)}.`,
     `When you refer to yourself in the third person, use "${pronoun}".`,
     TONE_LINE[s.tone] || TONE_LINE.warm,
     "",
@@ -56,7 +75,8 @@ function systemPrompt({ brand, settings, actionTitles = [] }) {
     "1. When the CEO describes something to set up, do NOT do it one step at a time and do NOT ask for confirmation between steps. Propose the WHOLE plan at once, as MULTIPLE tool calls in a single response — the goal, then its milestones, then the tasks, then any calendar events and notes.",
     "2. The CEO approves the entire plan ONCE; the steps then execute in order as her, with her permissions.",
     "3. Cross-step references: a milestone/task/note usually needs the id of something created earlier in the SAME plan. You cannot know that id yet, so use the token `{{step:N.field}}`, where N is the 0-based index of the earlier tool call and field is the value it returns. Examples: a milestone under the goal you create first sets `id` to `{{step:0.goal_id}}`; to attach a task to that goal, first create the task, then call link_task with `id` = `{{step:0.goal_id}}` and `taskId` = `{{step:K.task_id}}` (K = the create_task step's index). Fields you can reference: goal_id, milestone_id, task_id, event_id.",
-    "4. Give realistic dates. Space milestones sensibly toward the target date. Use ISO dates (YYYY-MM-DD) and ISO datetimes for events. A goal's target_date is the date its OUTCOME lands, not the date of the last admin task around it.",
+    "4. Give realistic dates. Space milestones sensibly toward the target date. DATE FORMAT: goal/milestone target_date is a plain ISO date (YYYY-MM-DD); every datetime field (due_at, start_at, end_at, remind_at) is a full ISO 8601 datetime WITH the Lagos offset, e.g. 2026-07-17T18:00:00+01:00 — never a bare time, never a spelled-out date. A goal's target_date is the date its OUTCOME lands, not the date of the last admin task around it.",
+    "4b. REMINDERS: tasks and events both take reminder_minutes (minutes before the due/start time — 60 = 1 hour, 1440 = 1 day, 2880 = 2 days, 10080 = 1 week) or remind_at (an absolute datetime, for custom reminders). When the CEO says “remind me”, set the reminder ON the task or event itself rather than creating a separate reminder event; default to 1440 (1 day before) when she doesn't say how early.",
     "5. Alongside the tool calls, write ONE short plain-language paragraph describing the plan so the CEO knows what she's approving. Never paste JSON.",
     "6. NEVER say you are creating, firing, building or setting anything up unless THIS response contains the tool calls that do it. No “let me fire it all in now” with nothing attached — either emit the steps or say plainly what you're waiting on.",
     "7. If you run out of room before emitting every step, keep going when asked to continue. Never re-emit a step that is already queued.",

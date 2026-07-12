@@ -12,14 +12,17 @@
 const { query, ex } = require("../../config/database");
 // ── Tasks ──────────────────────────────────────────────────
 async function createTask({ client, task }) {
+  // Explicit remind_at (custom reminder) wins; else derive from
+  // reminder_minutes before the due date.
   const remind_at =
-    task.reminder_minutes !== null &&
+    task.remind_at ||
+    (task.reminder_minutes !== null &&
     task.reminder_minutes !== undefined &&
     task.due_at
       ? new Date(
           new Date(task.due_at).getTime() - task.reminder_minutes * 60000,
         ).toISOString()
-      : null;
+      : null);
   const { rows } = await ex(client)(
     `INSERT INTO shared.tasks
        (business, title, description, status, priority, assigned_to, due_at,
@@ -126,6 +129,7 @@ async function updateTask({ brand, id, patch }) {
     "reference_id",
     "is_personal",
     "reminder_minutes",
+    "remind_at",
   ];
   const sets = [];
   const params = [];
@@ -136,6 +140,8 @@ async function updateTask({ brand, id, patch }) {
       params.push(patch[k]);
     }
   }
+  // A moved reminder must fire again — re-arm the sweep's sent flag.
+  if (patch.remind_at !== undefined) sets.push("reminder_sent_at = NULL");
   if (!sets.length) return findTask({ brand, id });
   params.push(id, brand);
   const { rows } = await query(

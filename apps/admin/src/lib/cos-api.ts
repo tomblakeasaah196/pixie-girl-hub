@@ -96,10 +96,26 @@ export interface CosConversationDetail extends CosConversation {
   saved_note: SavedNoteRef | null;
 }
 
+/**
+ * Attached to a turn whose reply stopped short of finishing the work, so the
+ * UI can offer one-tap continuation instead of making the CEO type "go ahead":
+ *   - reprompt: the model promised action but queued nothing — the button
+ *     re-sends `suggested_reply` as the next message.
+ *   - continue_plan: the plan persisted incomplete — the plan card's
+ *     "Continue building" (POST /plans/:id/continue) picks it up.
+ */
+export interface CosContinuation {
+  kind: "reprompt" | "continue_plan";
+  label: string;
+  suggested_reply?: string;
+  plan_id?: string;
+}
+
 export interface CosTurnResult {
   user_message: CosMessage;
   assistant_message: CosMessage;
   plan: Plan | null;
+  continuation?: CosContinuation | null;
 }
 
 export interface SaveConversationNoteResult {

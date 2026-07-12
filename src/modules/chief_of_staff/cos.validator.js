@@ -14,11 +14,15 @@ const conversationCreate = z
   })
   .strict();
 
+// 60k chars ≈ 15k tokens — roomy enough for a pasted brief or meeting notes
+// without letting a paste bomb pin the vendor call.
+const MESSAGE_MAX_CHARS = 60000;
+
 const messagePost = z
   .object({
-    content: z.string().max(20000).optional(),
+    content: z.string().max(MESSAGE_MAX_CHARS).optional(),
     input_mode: z.enum(["text", "voice"]).optional(),
-    transcribed_text: z.string().max(20000).nullable().optional(),
+    transcribed_text: z.string().max(MESSAGE_MAX_CHARS).nullable().optional(),
     source_audio_url: z.string().url().nullable().optional(),
   })
   .strict()
@@ -35,8 +39,8 @@ const stepPayloadUpdate = z
     payload: z.record(z.any()),
   })
   .strict()
-  .refine((v) => JSON.stringify(v.payload).length <= 20000, {
-    message: "payload too large (max 20000 characters as JSON)",
+  .refine((v) => JSON.stringify(v.payload).length <= 40000, {
+    message: "payload too large (max 40000 characters as JSON)",
   });
 
 // ── Follow-up state machine (PR4) ──────────────────────────

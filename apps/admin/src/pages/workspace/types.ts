@@ -28,6 +28,7 @@ export interface Task {
   assigned_to_name?: string | null;
   due_at?: string | null;
   reminder_minutes?: number | null;
+  remind_at?: string | null;
   is_personal?: boolean;
   calendar_event_id?: string | null;
   goal_id?: string | null;
@@ -58,7 +59,8 @@ export interface TaskCreateInput {
   priority?: TaskPriority;
   assigned_to?: string;
   due_at?: string;
-  reminder_minutes?: number;
+  reminder_minutes?: number | null;
+  remind_at?: string | null;
   is_personal?: boolean;
 }
 
@@ -70,6 +72,7 @@ export interface TaskUpdateInput {
   assigned_to?: string | null;
   due_at?: string | null;
   reminder_minutes?: number | null;
+  remind_at?: string | null;
   is_personal?: boolean;
 }
 
@@ -97,6 +100,8 @@ export interface CalendarEvent {
   reference_type?: string | null;
   reference_id?: string | null;
   is_private?: boolean;
+  reminder_minutes?: number | null;
+  remind_at?: string | null;
   created_by: string;
   created_by_name?: string | null;
   created_at: string;
@@ -112,6 +117,8 @@ export interface EventCreateInput {
   location?: string;
   description?: string;
   is_private?: boolean;
+  reminder_minutes?: number | null;
+  remind_at?: string | null;
 }
 
 export interface EventUpdateInput {
@@ -123,6 +130,8 @@ export interface EventUpdateInput {
   location?: string | null;
   description?: string | null;
   is_private?: boolean;
+  reminder_minutes?: number | null;
+  remind_at?: string | null;
 }
 
 // ── Workspace tab ───────────────────────────────────────────────────────

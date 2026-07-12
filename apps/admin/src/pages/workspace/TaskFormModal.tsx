@@ -6,11 +6,14 @@ import { Select } from "@/components/ui/controls";
 import { Toggle } from "@/components/ui/controls";
 import { useCreateTask, useUpdateTask } from "./hooks";
 import { toastReport } from "@/lib/error-report";
+import { TASK_STATUS_OPTIONS, TASK_PRIORITY_OPTIONS } from "./constants";
 import {
-  TASK_STATUS_OPTIONS,
-  TASK_PRIORITY_OPTIONS,
-  REMINDER_OPTIONS,
-} from "./constants";
+  ReminderField,
+  reminderStateFrom,
+  reminderPayload,
+  EMPTY_REMINDER,
+  type ReminderState,
+} from "./ReminderField";
 import type { Task, TaskCreateInput, TaskStatus, TaskPriority } from "./types";
 
 interface Props {
@@ -38,7 +41,7 @@ export function TaskFormModal({ open, onClose, task, defaultDate }: Props) {
   const [status, setStatus] = useState<TaskStatus>("to_do");
   const [priority, setPriority] = useState<TaskPriority>("normal");
   const [dueAt, setDueAt] = useState("");
-  const [reminderMinutes, setReminderMinutes] = useState("");
+  const [reminder, setReminder] = useState<ReminderState>(EMPTY_REMINDER);
   const [isPersonal, setIsPersonal] = useState(false);
   const [error, setError] = useState("");
 
@@ -51,9 +54,7 @@ export function TaskFormModal({ open, onClose, task, defaultDate }: Props) {
       setStatus(task.status);
       setPriority(task.priority);
       setDueAt(toDatetimeLocal(task.due_at));
-      setReminderMinutes(
-        task.reminder_minutes != null ? String(task.reminder_minutes) : "",
-      );
+      setReminder(reminderStateFrom(task));
       setIsPersonal(task.is_personal ?? false);
     } else {
       setTitle("");
@@ -61,7 +62,7 @@ export function TaskFormModal({ open, onClose, task, defaultDate }: Props) {
       setStatus("to_do");
       setPriority("normal");
       setDueAt(defaultDate ? toDatetimeLocal(defaultDate) : "");
-      setReminderMinutes("");
+      setReminder(EMPTY_REMINDER);
       setIsPersonal(false);
     }
     setError("");
@@ -88,9 +89,7 @@ export function TaskFormModal({ open, onClose, task, defaultDate }: Props) {
       status,
       priority,
       ...(dueAt ? { due_at: new Date(dueAt).toISOString() } : {}),
-      ...(reminderMinutes !== ""
-        ? { reminder_minutes: Number(reminderMinutes) }
-        : {}),
+      ...reminderPayload(reminder, dueAt),
       is_personal: isPersonal,
     };
 
@@ -196,13 +195,12 @@ export function TaskFormModal({ open, onClose, task, defaultDate }: Props) {
                 onChange={(e) => setDueAt(e.target.value)}
               />
             </Field>
-            <Field label="Reminder">
-              <Select
-                value={reminderMinutes}
-                onChange={setReminderMinutes}
-                options={REMINDER_OPTIONS}
-              />
-            </Field>
+            <ReminderField
+              value={reminder}
+              onChange={setReminder}
+              anchorLocal={dueAt}
+              anchorLabel="due date"
+            />
           </div>
         </FormSection>
 

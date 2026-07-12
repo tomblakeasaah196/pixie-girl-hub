@@ -6,6 +6,13 @@ import { Select, Toggle } from "@/components/ui/controls";
 import { useCreateEvent, useUpdateEvent } from "./hooks";
 import { toastReport } from "@/lib/error-report";
 import { EVENT_TYPE_OPTIONS } from "./constants";
+import {
+  ReminderField,
+  reminderStateFrom,
+  reminderPayload,
+  EMPTY_REMINDER,
+  type ReminderState,
+} from "./ReminderField";
 import type { CalendarEvent, EventCreateInput } from "./types";
 
 interface Props {
@@ -45,6 +52,7 @@ export function EventFormModal({ open, onClose, event, defaultDate }: Props) {
   const [location, setLocation] = useState("");
   const [description, setDescription] = useState("");
   const [isPrivate, setIsPrivate] = useState(false);
+  const [reminder, setReminder] = useState<ReminderState>(EMPTY_REMINDER);
   const [error, setError] = useState("");
 
   // Reset form state when modal opens or event changes
@@ -59,6 +67,7 @@ export function EventFormModal({ open, onClose, event, defaultDate }: Props) {
       setLocation(event.location ?? "");
       setDescription(event.description ?? "");
       setIsPrivate(event.is_private ?? false);
+      setReminder(reminderStateFrom(event));
     } else {
       setTitle("");
       setEventType("meeting");
@@ -69,6 +78,7 @@ export function EventFormModal({ open, onClose, event, defaultDate }: Props) {
       setLocation("");
       setDescription("");
       setIsPrivate(false);
+      setReminder(EMPTY_REMINDER);
     }
     setError("");
   }, [open, event, defaultDate]);
@@ -109,6 +119,7 @@ export function EventFormModal({ open, onClose, event, defaultDate }: Props) {
       ...(location.trim() ? { location: location.trim() } : {}),
       ...(description.trim() ? { description: description.trim() } : {}),
       is_private: isPrivate,
+      ...reminderPayload(reminder, startAt),
     };
 
     try {
@@ -222,6 +233,16 @@ export function EventFormModal({ open, onClose, event, defaultDate }: Props) {
               label="Private (visible only to you)"
             />
           </div>
+        </FormSection>
+
+        {/* Reminder */}
+        <FormSection>
+          <ReminderField
+            value={reminder}
+            onChange={setReminder}
+            anchorLocal={startAt}
+            anchorLabel="start time"
+          />
         </FormSection>
 
         {/* Description */}

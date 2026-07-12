@@ -29,6 +29,19 @@ async function createPlan({ client, p }) {
 }
 
 /**
+ * Anchor a plan to the assistant message that proposed it, so the chat UI
+ * renders the card directly under that bubble instead of at thread end.
+ */
+async function setPlanAnchor({ client, id, message_id }) {
+  const { rows } = await ex(client)(
+    `UPDATE shared.ai_pending_plans SET anchor_message_id = $2
+      WHERE plan_id = $1 RETURNING *`,
+    [id, message_id],
+  );
+  return rows[0] || null;
+}
+
+/**
  * Flip a plan's build state after a /continue round. Extends the approval
  * window too — a plan the CEO is actively building must not expire under her.
  */
@@ -188,6 +201,7 @@ module.exports = {
   findPlan,
   listPlansForConversation,
   setPlanStatus,
+  setPlanAnchor,
   setPlanBuildState,
   supersedeOtherProposedPlans,
   createPlanStep,

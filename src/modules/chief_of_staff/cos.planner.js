@@ -85,6 +85,56 @@ function parseArgs(raw) {
   }
 }
 
+// ── Card title + summary ───────────────────────────────────
+// The plan card used to repeat the ENTIRE assistant message as its summary
+// (and its first markdown line as the title — "Exactly — let me lay out the
+// **full plan** now." became a plan title). The narration already sits in the
+// chat bubble right above the card, so the card gets a deterministic digest.
+
+const STEP_GROUPS = [
+  { label: "goal", match: /^workspace\.(create|update|delete)_goal$/ },
+  { label: "milestone", match: /^workspace\.(add|update|delete)_milestone$/ },
+  { label: "task", match: /^workspace\.(create_task|update_task|move_task|add_subtask|delete_task)$/ },
+  { label: "calendar event", match: /^workspace\.(create|update|reschedule|delete)_event$/ },
+  { label: "note", match: /^workspace\.(create|update|delete)_note$/ },
+  { label: "link", match: /^workspace\.(attach_stakeholder|link_task|link_event)$/ },
+];
+
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/** Strip markdown decoration for use in a plain-text title. */
+function stripMarkdown(text) {
+  return String(text || "")
+    .replace(/[*_`#>]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Deterministic card title + summary from the built steps. Title prefers the
+ * goal being created; summary is a step-count digest ("6 steps — 1 goal,
+ * 4 milestones, 1 note"), never the chat narration.
+ */
+function deriveTitleSummary({ content, steps }) {
+  const goalStep = steps.find((s) => s.action_key === "workspace.create_goal");
+  const goalTitle = goalStep && goalStep.payload && goalStep.payload.title;
+  const title = (
+    goalTitle ||
+    stripMarkdown(content).split(". ")[0] ||
+    "Proposed plan"
+  ).slice(0, 120);
+
+  const parts = STEP_GROUPS.map((g) => {
+    const n = steps.filter((s) => g.match.test(s.action_key)).length;
+    return n ? plural(n, g.label) : null;
+  }).filter(Boolean);
+  const summary =
+    `${plural(steps.length, "step")}` +
+    (parts.length ? ` — ${parts.join(", ")}` : "") +
+    ". Review each step (✎ to edit), then approve to run.";
+  return { title, summary };
+}
+
 /** A short human-readable line for a step, shown on the plan card. */
 function summariseStep(action, payload) {
   const label = action.title || action.action_key;
@@ -165,10 +215,10 @@ async function planFromCompletion({
   const steps = buildSteps({ toolCalls: completion.tool_calls, byName });
   if (!steps.length) return null;
 
-  const summary =
-    (completion.content && completion.content.trim()) ||
-    `A ${steps.length}-step plan across your goals, tasks, calendar and notes.`;
-  const title = summary.split("\n")[0].slice(0, 120) || "Proposed plan";
+  const { title, summary } = deriveTitleSummary({
+    content: completion.content,
+    steps,
+  });
 
   const plan = await repo.createPlan({
     client,
@@ -248,6 +298,7 @@ module.exports = {
   pickField,
   buildSteps,
   summariseStep,
+  deriveTitleSummary,
   planFromCompletion,
   persistSteps,
   TOKEN_RE,

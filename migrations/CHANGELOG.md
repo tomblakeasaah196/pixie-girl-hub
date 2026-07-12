@@ -11,6 +11,36 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-12 — Chief of Staff: plan anchoring + workspace catalogue v2
+
+**Source:** user bug report (PR 2 of the CoS audit) — plan cards rendered
+detached at the bottom of the thread repeating the whole message as their
+summary; the 15-action allowlist had no reads, no deletes and no note
+update, so the CoS couldn't check for duplicates, clean up after itself,
+or look up people.
+
+**Files (new):**
+- `000332_shared_cos_plan_anchor.sql` — adds
+  `shared.ai_pending_plans.anchor_message_id` (FK → `shared.ai_messages`,
+  `ON DELETE SET NULL`): the assistant reply that proposed the plan; the
+  chat UI renders the card directly under that bubble.
+- `000333_shared_cos_catalogue_v2.sql` — 12 more surface='workspace'
+  actions: READS (list_goals, get_goal, list_tasks, list_events,
+  list_notes, search_contacts — is_write=false, no confirmation, executed
+  IMMEDIATELY during the turn over the loopback executor so RBAC applies)
+  and WRITES (update_note, delete_note, delete_task, delete_event,
+  delete_milestone, delete_goal — queued as plan steps). 27 workspace
+  actions total.
+
+**Related (no migration):** `cos.plan-rounds.js` executes read tool calls
+inline and feeds real data back to the model; deterministic plan card
+title/summary (`cos.planner.deriveTitleSummary`); chat history window
+10 → 40 messages with feature-off stub replies excluded and a back-online
+pickup note; `postMessage` transaction split (user message commits before
+any LLM work).
+
+---
+
 ## 2026-07-11 — Chief of Staff: resumable plan building
 
 **Source:** user bug report — the CoS narrated full plans ("goal + 4

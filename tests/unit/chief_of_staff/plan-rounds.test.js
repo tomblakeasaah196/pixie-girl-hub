@@ -232,6 +232,89 @@ describe("runPlanRounds", () => {
   });
 });
 
+describe("immediate reads", () => {
+  const isRead = (c) => c.function.name.startsWith("workspace_list") || c.function.name.startsWith("workspace_search");
+
+  test("read calls execute now, results feed the next round, and only writes queue", async () => {
+    const executeRead = jest.fn().mockResolvedValue({ data: [{ goal_id: "g-1", title: "Existing" }] });
+    const chat = jest
+      .fn()
+      .mockResolvedValueOnce(
+        completion({
+          content: "Let me check the current goals.",
+          tool_calls: [call("workspace_list_goals", { status: "active" }, "r1")],
+        }),
+      )
+      .mockResolvedValueOnce(
+        completion({
+          tool_calls: [call("workspace_create_goal", { title: "New goal" }, "w1")],
+        }),
+      );
+
+    const out = await rounds.runPlanRounds({ chat, messages: MESSAGES, isRead, executeRead });
+
+    expect(executeRead).toHaveBeenCalledTimes(1);
+    expect(out.tool_calls.map((c) => c.function.name)).toEqual(["workspace_create_goal"]);
+    expect(out.complete).toBe(true);
+    // The second call saw the REAL read result, not a queued stub.
+    const msgs = chat.mock.calls[1][0];
+    const toolMsg = msgs.find((m) => m.role === "tool");
+    expect(toolMsg.content).toContain("Existing");
+    expect(toolMsg.content).not.toContain("queued");
+  });
+
+  test("a failing read feeds an error back instead of killing the turn", async () => {
+    const executeRead = jest.fn().mockRejectedValue(new Error("403 nope"));
+    const chat = jest
+      .fn()
+      .mockResolvedValueOnce(
+        completion({ tool_calls: [call("workspace_list_tasks", {}, "r1")] }),
+      )
+      .mockResolvedValueOnce(completion({ content: "DONE" }));
+
+    const out = await rounds.runPlanRounds({ chat, messages: MESSAGES, isRead, executeRead });
+
+    expect(out.complete).toBe(true);
+    expect(out.tool_calls).toEqual([]);
+    const toolMsg = chat.mock.calls[1][0].find((m) => m.role === "tool");
+    expect(toolMsg.content).toContain("403 nope");
+  });
+
+  test("without an executeRead, read-looking calls are treated as ordinary queued writes", async () => {
+    const chat = jest.fn().mockResolvedValue(
+      completion({ tool_calls: [call("workspace_list_goals", {}, "r1")] }),
+    );
+    const out = await rounds.runPlanRounds({ chat, messages: MESSAGES, isRead });
+    expect(out.tool_calls).toHaveLength(1); // queued, since nothing can run it now
+    expect(chat).toHaveBeenCalledTimes(1);
+  });
+
+  test("mixed round: writes get stubs with correct global numbering alongside read results", async () => {
+    const executeRead = jest.fn().mockResolvedValue({ data: [] });
+    const chat = jest
+      .fn()
+      .mockResolvedValueOnce(
+        completion({
+          tool_calls: [
+            call("workspace_create_goal", { title: "G" }, "w1"),
+            call("workspace_list_goals", {}, "r1"),
+            call("workspace_create_task", { title: "T" }, "w2"),
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(completion({ content: "DONE" }));
+
+    const out = await rounds.runPlanRounds({ chat, messages: MESSAGES, isRead, executeRead });
+
+    expect(out.tool_calls.map((c) => c.id)).toEqual(["w1", "w2"]);
+    const toolMsgs = chat.mock.calls[1][0].filter((m) => m.role === "tool");
+    const byId = Object.fromEntries(toolMsgs.map((m) => [m.tool_call_id, m.content]));
+    expect(byId.w1).toContain('"plan_step":0');
+    expect(byId.w2).toContain('"plan_step":1');
+    expect(byId.r1).not.toContain("plan_step");
+  });
+});
+
 describe("helpers", () => {
   test("promisesAction matches commitment language, not plain chat", () => {
     expect(rounds.promisesAction("Let me fire it all in now.")).toBe(true);

@@ -76,6 +76,8 @@ export interface Plan {
   status: PlanStatus;
   /** false while the model still owes steps — the card offers "Continue building". */
   is_complete: boolean;
+  /** Assistant message this plan is rendered under; null → end of thread. */
+  anchor_message_id?: string | null;
   expires_at: string;
   created_at: string;
   steps: PlanStep[];

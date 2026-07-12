@@ -80,7 +80,12 @@ async function rejectPlan(req, res) {
 }
 async function continuePlan(req, res) {
   res.json({
-    data: await service.continuePlan({ ...base(req), id: req.params.planId }),
+    data: await service.continuePlan({
+      ...base(req),
+      id: req.params.planId,
+      // Read tools execute over loopback AS this user during the build.
+      auth_header: req.headers.authorization,
+    }),
   });
 }
 async function updatePlanStep(req, res) {

@@ -117,6 +117,40 @@ describe("buildSteps (scope guardrail)", () => {
   });
 });
 
+describe("deriveTitleSummary", () => {
+  it("titles the plan after the goal being created and digests the steps", () => {
+    const { title, summary } = planner.deriveTitleSummary({
+      content: "Exactly — let me lay out the **full plan** now.",
+      steps: [
+        { action_key: "workspace.create_goal", payload: { title: "UK Popup Pilot" } },
+        { action_key: "workspace.add_milestone", payload: {} },
+        { action_key: "workspace.add_milestone", payload: {} },
+        { action_key: "workspace.create_task", payload: {} },
+        { action_key: "workspace.create_event", payload: {} },
+        { action_key: "workspace.create_note", payload: {} },
+      ],
+    });
+    expect(title).toBe("UK Popup Pilot");
+    expect(summary).toContain("6 steps");
+    expect(summary).toContain("1 goal");
+    expect(summary).toContain("2 milestones");
+    expect(summary).toContain("1 task");
+    expect(summary).toContain("1 calendar event");
+    expect(summary).toContain("1 note");
+    // Never the raw narration (that lives in the chat bubble above the card).
+    expect(summary).not.toContain("full plan");
+  });
+
+  it("falls back to a markdown-stripped first sentence when no goal is created", () => {
+    const { title } = planner.deriveTitleSummary({
+      content: "**Rescheduling** your check-ins around the trip. Then we review.",
+      steps: [{ action_key: "workspace.reschedule_event", payload: {} }],
+    });
+    expect(title).toBe("Rescheduling your check-ins around the trip");
+    expect(title).not.toContain("*");
+  });
+});
+
 describe("planFromCompletion (supersession + build state)", () => {
   const goalAction = {
     action_id: "a-goal",

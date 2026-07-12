@@ -534,11 +534,30 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
     }
   }, [convos.data, activeId]);
 
-  const messages = detail.data?.messages ?? [];
+  const messages = useMemo(() => detail.data?.messages ?? [], [detail.data?.messages]);
   const plans = useMemo(
     () => [...(detail.data?.plans ?? [])].sort((a, b) => a.created_at.localeCompare(b.created_at)),
     [detail.data?.plans],
   );
+  // Anchor each plan card under the assistant bubble that proposed it (#5);
+  // plans without a resolvable anchor (legacy / system-built) fall back to
+  // the end of the thread.
+  const { plansByMessage, unanchoredPlans } = useMemo(() => {
+    const ids = new Set(messages.map((m) => m.message_id));
+    const byMsg = new Map<string, typeof plans>();
+    const loose: typeof plans = [];
+    for (const p of plans) {
+      const anchor = p.anchor_message_id;
+      if (anchor && ids.has(anchor)) {
+        const arr = byMsg.get(anchor) ?? [];
+        arr.push(p);
+        byMsg.set(anchor, arr);
+      } else {
+        loose.push(p);
+      }
+    }
+    return { plansByMessage: byMsg, unanchoredPlans: loose };
+  }, [messages, plans]);
   const thinking = pendingSend || post.isPending;
   const savedNote = detail.data?.saved_note ?? null;
   const hasAssistantReply = messages.some((m) => m.role === "assistant");
@@ -819,9 +838,16 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
             ) : (
               <div className="flex flex-col gap-6">
                 {messages.map((m) => (
-                  <Bubble key={m.message_id} msg={m} avatarUrl={avatarUrl} />
+                  <div key={m.message_id} className="flex flex-col gap-6">
+                    <Bubble msg={m} avatarUrl={avatarUrl} />
+                    {(plansByMessage.get(m.message_id) ?? []).map((p) => (
+                      <div key={p.plan_id} className="md:pl-11">
+                        <BatchPlanCard plan={p} conversationId={activeId!} />
+                      </div>
+                    ))}
+                  </div>
                 ))}
-                {plans.map((p) => (
+                {unanchoredPlans.map((p) => (
                   <div key={p.plan_id} className="md:pl-11">
                     <BatchPlanCard plan={p} conversationId={activeId!} />
                   </div>

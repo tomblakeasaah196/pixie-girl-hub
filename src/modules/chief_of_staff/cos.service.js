@@ -16,6 +16,7 @@
 "use strict";
 
 const praxisRepo = require("../praxis_ai/praxis.repo");
+const praxisExecutor = require("../praxis_ai/praxis.executor");
 const cosRepo = require("./cos.repo");
 const planExecutor = require("./cos.plan-executor");
 const persona = require("./cos.persona");
@@ -37,8 +38,23 @@ const { AppError, NotFoundError } = require("../../utils/errors");
 
 const KIND = "chief_of_staff";
 const FEATURE = "cos_chat";
-const HISTORY_TURNS = 10;
+// Messages of context per turn. 10 starved long brainstorms — the model
+// re-asked answered questions once early turns fell off. 40 (≈20 exchanges)
+// with per-message clamping keeps the token cost bounded.
+const HISTORY_TURNS = 40;
+const HISTORY_MSG_MAX_CHARS = 4000;
 const PRAXIS_MAX_TOOLS = 40;
+
+// Stub replies (see stubReply) must not consume history slots nor read as
+// things "the assistant said" — they're feature-gate noise, not conversation.
+const STUB_PREFIXES = [
+  "Your Chief of Staff is switched off",
+  "Your Chief of Staff is enabled, but no AI vendor",
+  "You've reached today's Chief of Staff limit",
+  "The AI budget for this period is spent",
+];
+const isStubText = (text) =>
+  STUB_PREFIXES.some((p) => String(text || "").startsWith(p));
 
 const safeName = (key) =>
   String(key).replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
@@ -207,19 +223,66 @@ async function memorySnapshot({ user, brand, userText }) {
 }
 
 /**
- * Live CoS turn. Returns { assistant_message, plan } or null to signal the
- * caller to fall back to the stub (no vendor / nothing to offer).
+ * READ tool support: a call whose catalogue action is is_write=false runs
+ * IMMEDIATELY during the turn over the same loopback executor the plan uses —
+ * auth/brand/RBAC/Zod re-apply, so a read can never see more than the CEO.
  */
-async function runTurn({ client, user, brand, conversation, userMsg, userText }) {
+function makeReadHelpers({ byName, brand, auth_header, request_id }) {
+  const actionFor = (call) =>
+    byName.get((call && call.function && call.function.name) || "");
+  const isRead = (call) => {
+    const a = actionFor(call);
+    return !!a && a.is_write === false;
+  };
+  const executeRead = async (call) => {
+    const a = actionFor(call);
+    if (!a || a.is_write !== false)
+      throw new AppError("COS_NOT_A_READ", "Only read actions execute immediately", 422);
+    let payload = {};
+    try {
+      payload = JSON.parse(call.function.arguments || "{}");
+    } catch {
+      payload = {};
+    }
+    const exec = await praxisExecutor.executeAction({
+      pending: { method: a.method, route: a.route, payload, business: brand },
+      authHeader: auth_header,
+      requestId: request_id,
+    });
+    return exec.ok ? exec.result : { error: exec.result, http_status: exec.http_status };
+  };
+  return { isRead, executeRead: auth_header ? executeRead : null };
+}
+
+/**
+ * Live CoS turn. The LLM loop (and any immediate reads) runs OUTSIDE any DB
+ * transaction — only the final persistence (plan + assistant message) is
+ * transactional, so a slow vendor chain never pins a pooled connection.
+ * Returns { assistant_message, plan } or null to signal the caller to fall
+ * back to the stub (no vendor / nothing to offer).
+ */
+async function runTurn({ user, brand, conversation, userMsg, userText, auth_header, request_id }) {
   const actions = await governance.listActions({ ai_enabled: true, surface: "workspace" });
   const { tools, byName } = buildTools(actions);
   if (!tools.length) return null;
 
   const prior = await praxisRepo.listMessages({ conversation_id: conversation.conversation_id });
-  const history = prior
-    .filter((m) => (m.role === "user" || m.role === "assistant") && m.message_id !== userMsg.message_id)
+  const usable = prior.filter(
+    (m) =>
+      m.message_id !== userMsg.message_id &&
+      (m.role === "user" || (m.role === "assistant" && !isStubText(m.content))),
+  );
+  const history = usable
     .slice(-HISTORY_TURNS)
-    .map((m) => ({ role: m.role, content: m.content || "" }));
+    .map((m) => ({ role: m.role, content: (m.content || "").slice(0, HISTORY_MSG_MAX_CHARS) }));
+
+  // Stub replay (#9): if the last assistant reply before this turn was a
+  // feature-off stub, the CEO's earlier messages were never actually
+  // answered — tell the model so it picks them up instead of ignoring them.
+  const priorAssistant = prior
+    .filter((m) => m.role === "assistant" && m.message_id !== userMsg.message_id)
+    .pop();
+  const wasResting = priorAssistant && isStubText(priorAssistant.content);
 
   // Ground the turn in the CEO's real goals + semantic memory (wow #7), so
   // "how is X doing?" is answered from history, not invented. Load the CEO's
@@ -242,13 +305,24 @@ async function runTurn({ client, user, brand, conversation, userMsg, userText })
       }),
     },
     ...(contextBlock ? [{ role: "system", content: contextBlock }] : []),
+    ...(wasResting
+      ? [
+          {
+            role: "system",
+            content:
+              "NOTE: Until now you were offline (feature disabled) and your earlier replies in this conversation were automatic stubs — the CEO's earlier messages were never really answered. You are online now. If her current message is brief or refers back, pick up her most recent substantive request and respond to it fully.",
+          },
+        ]
+      : []),
     ...history,
     { role: "user", content: userText },
   ];
 
-  // Bounded multi-round build: keeps asking the model for the remaining steps
-  // (truncation, under-emitting vendors) so "goal + milestones + tasks +
-  // events + note" actually arrives as one plan, not a lone create_goal.
+  const { isRead, executeRead } = makeReadHelpers({ byName, brand, auth_header, request_id });
+
+  // Bounded multi-round build: reads execute immediately and feed real data
+  // back; writes accumulate until the whole narrated plan is emitted — so
+  // "goal + milestones + tasks + events + note" actually arrives as one plan.
   let rounds;
   try {
     rounds = await planRounds.runPlanRounds({
@@ -262,6 +336,8 @@ async function runTurn({ client, user, brand, conversation, userMsg, userText })
           feature_key: FEATURE,
         }),
       messages,
+      isRead,
+      executeRead,
     });
   } catch (err) {
     logger.error({ err: err.message }, "cos: llm-router failed — falling back to stub");
@@ -278,29 +354,14 @@ async function runTurn({ client, user, brand, conversation, userMsg, userText })
     });
   }
 
-  let plan = null;
-  if (rounds.tool_calls.length) {
-    const built = await planner.planFromCompletion({
-      client,
-      completion: { content: rounds.content, tool_calls: rounds.tool_calls },
-      byName,
-      conversation,
-      userMsg,
-      user,
-      brand,
-      complete: rounds.complete,
-    });
-    if (built) plan = built;
-  }
-
   let replyText =
     rounds.content ||
-    (plan
+    (rounds.tool_calls.length
       ? "Here's the plan I've put together — review the steps and approve to run them."
       : "Okay.");
   // The model promised action twice and still queued nothing — say so plainly
   // rather than shipping "let me fire it all in now" over an empty turn.
-  if (!plan && rounds.broken_promise) {
+  if (!rounds.tool_calls.length && rounds.broken_promise) {
     replyText +=
       "\n\n_(Nothing has been queued yet — no steps were proposed. Say “go ahead” and I'll lay out the full plan for your approval.)_";
   }
@@ -310,24 +371,52 @@ async function runTurn({ client, user, brand, conversation, userMsg, userText })
     (s, c) => s + ((c.usage && c.usage.total_tokens) || 0),
     0,
   );
-  const assistant = await praxisRepo.insertMessage({
-    client,
-    m: {
-      conversation_id: conversation.conversation_id,
-      role: "assistant",
-      content: replyText,
-      provider: last.vendor,
-      model: last.model,
-      input_tokens: (last.usage && last.usage.prompt_tokens) || null,
-      output_tokens: (last.usage && last.usage.completion_tokens) || null,
-    },
+
+  // Persistence only — short transaction, no network inside.
+  return transaction(async (client) => {
+    let plan = null;
+    if (rounds.tool_calls.length) {
+      const built = await planner.planFromCompletion({
+        client,
+        completion: { content: rounds.content, tool_calls: rounds.tool_calls },
+        byName,
+        conversation,
+        userMsg,
+        user,
+        brand,
+        complete: rounds.complete,
+      });
+      if (built) plan = built;
+    }
+
+    const assistant = await praxisRepo.insertMessage({
+      client,
+      m: {
+        conversation_id: conversation.conversation_id,
+        role: "assistant",
+        content: replyText,
+        provider: last.vendor,
+        model: last.model,
+        input_tokens: (last.usage && last.usage.prompt_tokens) || null,
+        output_tokens: (last.usage && last.usage.completion_tokens) || null,
+      },
+    });
+    if (plan) {
+      // Anchor the card under the reply that proposed it (#5).
+      const anchored = await cosRepo.setPlanAnchor({
+        client,
+        id: plan.plan.plan_id,
+        message_id: assistant.message_id,
+      });
+      if (anchored) plan.plan = anchored;
+    }
+    await praxisRepo.touchConversation({
+      client,
+      id: conversation.conversation_id,
+      tokens: totalTokens,
+    });
+    return { assistant_message: assistant, plan };
   });
-  await praxisRepo.touchConversation({
-    client,
-    id: conversation.conversation_id,
-    tokens: totalTokens,
-  });
-  return { assistant_message: assistant, plan };
 }
 
 // The CoS is gated entirely from AI Control (no env switch): the 'cos_chat'
@@ -345,7 +434,7 @@ function stubReply(guard) {
   return "Your Chief of Staff is enabled, but no AI vendor is configured yet. Add a vendor key in AI Control → Vendors & Models and I'll get to work.";
 }
 
-async function postMessage({ user, brand, request_id, id, input }) {
+async function postMessage({ user, brand, request_id, id, input, auth_header }) {
   const conv = await praxisRepo.findConversation({ id });
   if (!conv || conv.user_id !== user.user_id || conv.kind !== KIND)
     throw new NotFoundError("Conversation");
@@ -364,8 +453,12 @@ async function postMessage({ user, brand, request_id, id, input }) {
   }
   const userText = input.content || transcribed || "";
 
-  return transaction(async (client) => {
-    const userMsg = await praxisRepo.insertMessage({
+  // Transaction split (#13): the user's message commits in its own short
+  // transaction BEFORE any LLM work, so a slow vendor chain never pins a
+  // pooled connection and a mid-turn crash can no longer lose what the CEO
+  // typed. runTurn opens a second short transaction for the reply + plan.
+  const userMsg = await transaction(async (client) => {
+    const m = await praxisRepo.insertMessage({
       client,
       m: {
         conversation_id: id,
@@ -377,64 +470,69 @@ async function postMessage({ user, brand, request_id, id, input }) {
       },
     });
     await praxisRepo.touchConversation({ client, id });
+    return m;
+  });
 
-    let assistantMsg = null;
-    let plan = null;
-    if (guard.ok) {
-      try {
-        const r = await runTurn({
-          client,
-          user,
-          brand,
-          conversation: conv,
-          userMsg,
-          userText,
-        });
-        if (r) {
-          assistantMsg = r.assistant_message;
-          plan = r.plan;
-        }
-      } catch (err) {
-        logger.error({ err: err.message }, "cos turn failed — falling back to stub");
+  let assistantMsg = null;
+  let plan = null;
+  if (guard.ok) {
+    try {
+      const r = await runTurn({
+        user,
+        brand,
+        conversation: conv,
+        userMsg,
+        userText,
+        auth_header,
+        request_id,
+      });
+      if (r) {
+        assistantMsg = r.assistant_message;
+        plan = r.plan;
       }
+    } catch (err) {
+      logger.error({ err: err.message }, "cos turn failed — falling back to stub");
     }
+  }
 
-    if (!assistantMsg) {
-      assistantMsg = await praxisRepo.insertMessage({
+  if (!assistantMsg) {
+    assistantMsg = await transaction(async (client) => {
+      const m = await praxisRepo.insertMessage({
         client,
         m: { conversation_id: id, role: "assistant", content: stubReply(guard) },
       });
       await praxisRepo.touchConversation({ client, id });
-    }
-
-    await audit({
-      business: brand,
-      user_id: user.user_id,
-      action_key: "cos.message.post",
-      target_type: "ai_conversation",
-      target_id: id,
-      request_id,
+      return m;
     });
-    if (plan) {
-      events.emit("plan.proposed", {
-        plan_id: plan.plan.plan_id,
-        user_id: user.user_id,
-        conversation_id: id,
-      });
-      for (const supersededId of plan.superseded || []) {
-        events.emit("plan.resolved", {
-          plan_id: supersededId,
-          user_id: user.user_id,
-          status: "cancelled",
-        });
-      }
-    }
-    return {
-      user_message: userMsg,
-      assistant_message: assistantMsg,
-      plan: plan ? { ...plan.plan, steps: plan.steps } : null,
-    };
+  }
+
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "cos.message.post",
+    target_type: "ai_conversation",
+    target_id: id,
+    request_id,
   });
+  if (plan) {
+    events.emit("plan.proposed", {
+      plan_id: plan.plan.plan_id,
+      user_id: user.user_id,
+      conversation_id: id,
+    });
+    for (const supersededId of plan.superseded || []) {
+      events.emit("plan.resolved", {
+        plan_id: supersededId,
+        user_id: user.user_id,
+        status: "cancelled",
+      });
+    }
+  }
+  return {
+    user_message: userMsg,
+    assistant_message: assistantMsg,
+    plan: plan ? { ...plan.plan, steps: plan.steps } : null,
+  };
 }
 
 // ── Plans ──────────────────────────────────────────────────
@@ -460,7 +558,7 @@ function rejectPlan({ user, request_id, id, reason }) {
  * transaction; only the append is transactional. Idempotent-friendly — a plan
  * already marked complete returns as-is with no model call.
  */
-async function continuePlan({ user, brand, request_id, id }) {
+async function continuePlan({ user, brand, request_id, id, auth_header }) {
   const plan = await cosRepo.findPlan({ id });
   if (!plan || plan.proposed_by_user_id !== user.user_id)
     throw new NotFoundError("Plan");
@@ -505,9 +603,11 @@ async function continuePlan({ user, brand, request_id, id }) {
 
   const prior = await praxisRepo.listMessages({ conversation_id: plan.conversation_id });
   const history = prior
-    .filter((m) => m.role === "user" || m.role === "assistant")
+    .filter(
+      (m) => m.role === "user" || (m.role === "assistant" && !isStubText(m.content)),
+    )
     .slice(-HISTORY_TURNS)
-    .map((m) => ({ role: m.role, content: m.content || "" }));
+    .map((m) => ({ role: m.role, content: (m.content || "").slice(0, HISTORY_MSG_MAX_CHARS) }));
 
   const settings = await settingsRepo.get({ user_id: user.user_id }).catch(() => null);
   const queued = existing
@@ -534,6 +634,7 @@ async function continuePlan({ user, brand, request_id, id }) {
     },
   ];
 
+  const { isRead, executeRead } = makeReadHelpers({ byName, brand, auth_header, request_id });
   const rounds = await planRounds.runPlanRounds({
     chat: (msgs) =>
       llmRouter.chatWithFailover({
@@ -547,6 +648,8 @@ async function continuePlan({ user, brand, request_id, id }) {
     messages,
     stepOffset: existing.length,
     detectFromContent: false,
+    isRead,
+    executeRead,
   });
   for (const completion of rounds.completions) {
     await recordUsageSafe({ user, brand, convId: plan.conversation_id, completion, ok: true });

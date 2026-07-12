@@ -109,7 +109,10 @@ const checks = [
     () =>
       enumSet("TRANSCRIPTION_PROVIDER") && has("TRANSCRIPTION_API_KEY")
         ? [PASS, env.TRANSCRIPTION_PROVIDER]
-        : [NO, "optional — set TRANSCRIPTION_PROVIDER + TRANSCRIPTION_API_KEY"],
+        : [
+            NO,
+            "env fallback unset — primary config is the groq vendor in AI Control → Vendors & Models",
+          ],
   ],
   [
     "Praxis LLM orchestrator",

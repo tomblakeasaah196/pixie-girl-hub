@@ -1,13 +1,12 @@
 /**
- * Voice input via the browser's Web Speech API (§6.29 voice v1).
+ * Voice input via the browser's Web Speech API (§6.29 voice).
  *
+ * FALLBACK engine — useVoiceInput prefers server-side Whisper (groq vendor
+ * from AI Control) and drops to this when that's unconfigured or failing.
  * Transcribes locally — free, instant, no server config — and hands the
  * final transcript to the caller, who stages it in the composer for the user
- * to review/edit, then sends it as `transcribed_text` with input_mode "voice"
- * (the backend accepts either a transcript or an audio
- * URL). Where SpeechRecognition is unavailable (Firefox, some WebViews),
- * `supported` is false and the mic button simply doesn't render; server-side
- * Whisper upload can slot in later without touching callers.
+ * to review/edit before sending. Where SpeechRecognition is unavailable
+ * (Firefox, some WebViews), `supported` is false.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";

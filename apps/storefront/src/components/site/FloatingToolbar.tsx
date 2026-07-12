@@ -157,8 +157,8 @@ export function FloatingToolbar() {
         <GripHorizontal size={15} strokeWidth={1.75} />
       </div>
 
-      {/* Currency segments — selected is bright/filled, the other dim */}
-      <div className="flex overflow-hidden rounded-full border border-taupe/25 bg-ink/50 backdrop-blur-xl shadow-[0_10px_28px_rgba(0,0,0,0.35)]">
+      {/* Currency segments — stacked vertically; selected is bright/filled, the other dim */}
+      <div className="flex flex-col overflow-hidden rounded-[22px] border border-taupe/25 bg-ink/50 backdrop-blur-xl shadow-[0_10px_28px_rgba(0,0,0,0.35)]">
         {list.map((c) => {
           const active = c.code === currency;
           return (
@@ -169,7 +169,7 @@ export function FloatingToolbar() {
               aria-pressed={active}
               aria-label={`Show prices in ${c.code}`}
               title={c.code}
-              className={`flex items-center gap-1.5 px-3 py-2 text-[0.6rem] tracking-[0.18em] uppercase transition-colors focus-visible:outline-none ${
+              className={`flex items-center justify-center gap-1.5 px-3 py-2 text-[0.6rem] tracking-[0.18em] uppercase transition-colors focus-visible:outline-none ${
                 active
                   ? "bg-taupe text-ink font-semibold"
                   : "text-cream/55 hover:text-cream"

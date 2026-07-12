@@ -140,6 +140,27 @@
 
 html, body { transition: background-color 0.35s ease, color 0.35s ease; }
 
+/* Image scrim for cards where product/model photos sit under text.
+ * Dark mode keeps the original tall ink curtain (blends into the page).
+ * Light mode uses a short, subtler scrim so the photo stays readable
+ * instead of fogging out. Consumers use `absolute inset-0 sf-image-scrim`. */
+.sf-image-scrim {
+  background-image: linear-gradient(
+    to top,
+    color-mix(in oklch, var(--ink) 78%, transparent) 0%,
+    color-mix(in oklch, var(--ink) 20%, transparent) 32%,
+    transparent 55%
+  );
+}
+.dark .sf-image-scrim {
+  background-image: linear-gradient(
+    to top,
+    var(--ink) 0%,
+    color-mix(in oklch, var(--ink) 30%, transparent) 50%,
+    transparent 100%
+  );
+}
+
 @layer base {
   * { border-color: var(--color-border); }
   html { background: var(--background); }

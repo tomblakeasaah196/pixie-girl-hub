@@ -29,11 +29,14 @@
 
 "use strict";
 
-// 1 opening call + up to 3 continuations per invocation. Each call is metered
-// on the governance ledger by the caller, so the ceiling also bounds spend.
-const MAX_PLAN_ROUNDS = 4;
+// 1 opening call + up to 5 continuations per invocation (read round-trips
+// share the budget). Each call is metered on the governance ledger by the
+// caller, so the ceiling also bounds spend.
+const MAX_PLAN_ROUNDS = 6;
 // Hard ceiling on steps accumulated in one invocation (mirrors the tool cap).
 const MAX_PLAN_STEPS = 40;
+// Hard ceiling on immediately-executed READ tool calls per invocation.
+const MAX_READS = 8;
 
 // First-person commitment with nothing attached — "Let me fire it all in
 // now", "I'll set this up", "Let me start building". Deliberately requires a
@@ -74,12 +77,26 @@ function normaliseCalls(calls, startIndex) {
     .map((c, i) => ({ ...c, id: c.id || `plan_step_${startIndex + i}` }));
 }
 
+/** The queued-step acknowledgement for one WRITE call at global index N. */
+function queuedStub(stepIndex) {
+  return JSON.stringify({
+    queued: true,
+    plan_step: stepIndex,
+    note:
+      `Queued for the CEO's approval as plan step ${stepIndex}. ` +
+      `Reference its future result with {{step:${stepIndex}.field}} tokens ` +
+      `(e.g. {{step:${stepIndex}.goal_id}}).`,
+  });
+}
+
 /**
- * The replayed assistant turn + queued-step stubs + continue nudge appended
- * between rounds. Stubs carry the GLOBAL step index so `{{step:N.field}}`
- * tokens written in later rounds point at the right earlier step.
+ * The replayed assistant turn + per-call tool results + continue nudge
+ * appended between rounds. WRITE calls are acknowledged with queued-step
+ * stubs carrying the GLOBAL step index (so `{{step:N.field}}` tokens written
+ * in later rounds point at the right earlier step); READ calls carry the
+ * real data returned by the immediately-executed endpoint.
  */
-function continuationMessages({ completion, calls, startIndex, missing }) {
+function continuationMessages({ completion, calls, results, missing, hadReads }) {
   const assistant = {
     role: "assistant",
     content: completion.content || "",
@@ -88,23 +105,18 @@ function continuationMessages({ completion, calls, startIndex, missing }) {
   // DeepSeek reasoner models 400 unless reasoning_content is round-tripped.
   if (completion.reasoning_content) assistant.reasoning_content = completion.reasoning_content;
 
-  const stubs = calls.map((call, i) => ({
+  const toolMsgs = calls.map((call, i) => ({
     role: "tool",
     tool_call_id: call.id,
-    content: JSON.stringify({
-      queued: true,
-      plan_step: startIndex + i,
-      note:
-        `Queued for the CEO's approval as plan step ${startIndex + i}. ` +
-        `Reference its future result with {{step:${startIndex + i}.field}} tokens ` +
-        `(e.g. {{step:${startIndex + i}.goal_id}}).`,
-    }),
+    content: results[i],
   }));
 
   const nudge = {
     role: "user",
     content:
-      "Continue building the SAME plan: emit the remaining steps as tool calls now" +
+      (hadReads
+        ? "The read results are above. Now continue: emit the plan's remaining WRITE steps as tool calls"
+        : "Continue building the SAME plan: emit the remaining steps as tool calls now") +
       (missing && missing.length
         ? ` — you described ${missing.join(", ")} that are not queued yet`
         : "") +
@@ -112,7 +124,7 @@ function continuationMessages({ completion, calls, startIndex, missing }) {
       "If every step is queued, reply with exactly DONE and no tool calls.",
   };
 
-  return [assistant, ...stubs, nudge];
+  return [assistant, ...toolMsgs, nudge];
 }
 
 const RETRY_NUDGE =
@@ -134,18 +146,34 @@ const RETRY_NUDGE =
  * @param {boolean} [args.detectFromContent=true]
  *        Apply the narrated-kind check (on for chat turns, off for /continue
  *        where the narration lives in an earlier turn).
+ * @param {(call: object) => boolean} [args.isRead]
+ *        True for a tool call that is a READ (immediately executable). No
+ *        isRead/executeRead → every call is treated as a write (queued).
+ * @param {(call: object) => Promise<any>} [args.executeRead]
+ *        Execute a READ call now (loopback as the CEO, RBAC applies) and
+ *        return the endpoint's response body. Errors are caught per call.
  * @returns {Promise<{content:string, tool_calls:Array, complete:boolean,
  *                    completions:Array, broken_promise:boolean}>}
- *          `tool_calls` is the ACCUMULATED, id-normalised list across rounds;
- *          `complete=false` means the budget ran out with steps still owed;
- *          every entry of `completions` must be usage-metered by the caller.
+ *          `tool_calls` is the ACCUMULATED, id-normalised list of WRITE calls
+ *          across rounds (reads never queue); `complete=false` means the
+ *          budget ran out with steps still owed; every entry of `completions`
+ *          must be usage-metered by the caller.
  */
-async function runPlanRounds({ chat, messages, stepOffset = 0, detectFromContent = true }) {
+async function runPlanRounds({
+  chat,
+  messages,
+  stepOffset = 0,
+  detectFromContent = true,
+  isRead = () => false,
+  executeRead = null,
+}) {
   const completions = [];
-  const allCalls = [];
+  const allCalls = []; // accumulated WRITE calls only
   let msgs = [...messages];
   let content = "";
   let complete = true;
+  let seenCalls = 0; // uniqueness seed for fallback tool_call ids
+  let readsDone = 0;
 
   for (let round = 0; round < MAX_PLAN_ROUNDS; round++) {
     let completion;
@@ -191,28 +219,58 @@ async function runPlanRounds({ chat, messages, stepOffset = 0, detectFromContent
       }
     }
 
-    let calls = normaliseCalls(completion.tool_calls, stepOffset + allCalls.length);
+    const calls = normaliseCalls(completion.tool_calls, seenCalls);
+    seenCalls += calls.length;
     if (!calls.length) break; // plain chat turn (round 0) or DONE (later)
 
+    // Partition: READS execute now (real data back to the model); WRITES
+    // queue as plan steps. Reads never consume the step budget.
+    const canRead = typeof executeRead === "function";
+    const reads = canRead ? calls.filter((c) => isRead(c)) : [];
+    let writes = canRead ? calls.filter((c) => !isRead(c)) : calls;
+
     let droppedByCap = false;
-    if (allCalls.length + calls.length > MAX_PLAN_STEPS) {
-      calls = calls.slice(0, MAX_PLAN_STEPS - allCalls.length);
+    if (allCalls.length + writes.length > MAX_PLAN_STEPS) {
+      writes = writes.slice(0, MAX_PLAN_STEPS - allCalls.length);
       droppedByCap = true; // steps were cut — the plan cannot be complete
     }
+
+    // Per-call tool results, in the completion's call order.
+    const kept = new Set(writes);
+    const readResults = new Map();
+    for (const call of reads) {
+      if (readsDone >= MAX_READS) {
+        readResults.set(call, JSON.stringify({ error: "Read budget for this turn is spent — plan with what you already know." }));
+        continue;
+      }
+      readsDone++;
+      try {
+        const data = await executeRead(call);
+        readResults.set(call, JSON.stringify(data === undefined ? null : data));
+      } catch (err) {
+        readResults.set(call, JSON.stringify({ error: String(err.user_message || err.message).slice(0, 500) }));
+      }
+    }
+    let nextStep = stepOffset + allCalls.length;
+    const results = calls.map((call) => {
+      if (readResults.has(call)) return readResults.get(call);
+      if (kept.has(call)) return queuedStub(nextStep++);
+      return JSON.stringify({ dropped: true, note: "Step budget exhausted — not queued." });
+    });
 
     const owed =
       droppedByCap ||
       completion.finish_reason === "length" ||
-      (detectFromContent && missingKinds(content, [...allCalls, ...calls]).length > 0);
+      (detectFromContent && missingKinds(content, [...allCalls, ...writes]).length > 0);
 
-    if (!owed) {
-      allCalls.push(...calls);
+    if (!owed && !reads.length) {
+      allCalls.push(...writes);
       break;
     }
-    if (round === MAX_PLAN_ROUNDS - 1 || allCalls.length + calls.length >= MAX_PLAN_STEPS) {
-      // Budget spent with steps still owed — persist what we have, resumable.
-      allCalls.push(...calls);
-      complete = false;
+    if (round === MAX_PLAN_ROUNDS - 1 || allCalls.length + writes.length >= MAX_PLAN_STEPS) {
+      // Budget spent — persist what we have; resumable when steps are owed.
+      allCalls.push(...writes);
+      complete = !owed;
       break;
     }
 
@@ -221,11 +279,12 @@ async function runPlanRounds({ chat, messages, stepOffset = 0, detectFromContent
       ...continuationMessages({
         completion,
         calls,
-        startIndex: stepOffset + allCalls.length,
-        missing: detectFromContent ? missingKinds(content, [...allCalls, ...calls]) : [],
+        results,
+        missing: detectFromContent ? missingKinds(content, [...allCalls, ...writes]) : [],
+        hadReads: reads.length > 0,
       }),
     ];
-    allCalls.push(...calls);
+    allCalls.push(...writes);
   }
 
   return { content, tool_calls: allCalls, complete, completions, broken_promise: false };
@@ -238,6 +297,8 @@ module.exports = {
   missingKinds,
   continuationMessages,
   normaliseCalls,
+  queuedStub,
   MAX_PLAN_ROUNDS,
   MAX_PLAN_STEPS,
+  MAX_READS,
 };

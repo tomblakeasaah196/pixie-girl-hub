@@ -71,6 +71,27 @@ export function useCartDrawer(): { open: boolean; setOpen: (o: boolean) => void 
   return { open, setOpen };
 }
 
+const HELP_OPEN_EVENT = "sf:help-open";
+
+/** Open the "How to shop" help guide from anywhere (header icon, footer link). */
+export function openHelp() {
+  if (typeof window !== "undefined")
+    window.dispatchEvent(new CustomEvent(HELP_OPEN_EVENT, { detail: true }));
+}
+
+/** Shared open state for the help guide — event-backed so any trigger syncs. */
+export function useHelpOpen(): { open: boolean; setOpen: (o: boolean) => void } {
+  const [open, setOpenState] = useState(false);
+  useEffect(() => {
+    const h = (e: Event) => setOpenState(Boolean((e as CustomEvent).detail));
+    window.addEventListener(HELP_OPEN_EVENT, h);
+    return () => window.removeEventListener(HELP_OPEN_EVENT, h);
+  }, []);
+  const setOpen = (o: boolean) =>
+    window.dispatchEvent(new CustomEvent(HELP_OPEN_EVENT, { detail: o }));
+  return { open, setOpen };
+}
+
 export function useCartCount(): number {
   const [count, setCount] = useState(0);
   const refresh = useCallback(() => {

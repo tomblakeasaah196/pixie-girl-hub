@@ -9,14 +9,17 @@ import {
   Copy,
   Facebook,
   Gift,
+  HelpCircle,
   Instagram,
   Menu,
   MessageCircle,
+  Moon,
   ShoppingBag,
+  Sun,
   Twitter,
   X,
 } from "lucide-react";
-import { useCartCount, useCurrency, openCart } from "@/lib/useStore";
+import { useCartCount, useCurrency, openCart, openHelp } from "@/lib/useStore";
 import { PromoBar } from "./PromoBar";
 import { BrandLogo } from "./BrandLogo";
 import { useNavigation, useBranding, useToolbar, type NavItem } from "@/lib/site-config";
@@ -26,6 +29,7 @@ import { getShades } from "@/lib/storefront";
 import { mapShades } from "@/lib/home-content";
 import { bootstrapAuth, getReferral } from "@/lib/auth";
 import { useCurrencyFeed } from "@/lib/useCurrencyFeed";
+import { useTheme } from "@/lib/theme";
 
 const SOCIAL_ICON: Record<string, typeof Instagram> = {
   instagram: Instagram,
@@ -91,6 +95,9 @@ export function SiteHeader() {
   const count = useCartCount();
   const nav = useNavigation();
   const { name } = useBranding();
+  const toolbar = useToolbar();
+  const showHelp = toolbar.buttons.help;
+  const showTheme = toolbar.buttons.theme;
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   // Prefer a Studio nav only when it actually carries groups; otherwise use the
@@ -192,19 +199,21 @@ export function SiteHeader() {
               </button>
             </div>
 
-            {/* Center — logo */}
+            {/* Center — help · logo · theme (help left, theme right of the logo) */}
             <motion.div
               initial={{ opacity: 0, scale: 0.94 }}
               animate={ready ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.94 }}
               transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-              className="justify-self-center"
+              className="justify-self-center flex items-center gap-3 md:gap-5"
             >
+              {showHelp ? <HeaderHelpButton /> : null}
               <Link to="/" className="flex items-center shrink-0" aria-label={`${name || "Home"} — home`}>
                 <BrandLogo
                   imgClassName={logoImg}
                   fallback={<span className={wordmark}>{name || "Faitlyn Hair"}</span>}
                 />
               </Link>
+              {showTheme ? <HeaderThemeButton /> : null}
             </motion.div>
 
             {/* Right — desktop actions / mobile bag */}
@@ -254,6 +263,52 @@ export function SiteHeader() {
         cartCount={count}
       />
     </>
+  );
+}
+
+// ── Header logo-flanking icons (desktop; mobile has them in the drawer) ──────
+
+const HEADER_ICON_BTN =
+  "hidden md:inline-flex group relative h-11 w-11 -m-2 items-center justify-center rounded-full text-taupe hover:text-cream transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cream/70 focus-visible:ring-offset-2 focus-visible:ring-offset-ink";
+
+function HeaderHelpButton() {
+  return (
+    <button
+      type="button"
+      onClick={openHelp}
+      aria-label="How to shop"
+      title="How to shop"
+      className={HEADER_ICON_BTN}
+    >
+      <HelpCircle size={17} strokeWidth={1.6} aria-hidden="true" />
+    </button>
+  );
+}
+
+function HeaderThemeButton() {
+  const { toggle } = useTheme();
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      aria-label="Toggle colour theme"
+      title="Light / dark"
+      suppressHydrationWarning
+      className={HEADER_ICON_BTN}
+    >
+      <Sun
+        size={16}
+        strokeWidth={1.6}
+        aria-hidden="true"
+        className="absolute hidden dark:block transition-transform duration-300 ease-out group-hover:rotate-12"
+      />
+      <Moon
+        size={16}
+        strokeWidth={1.6}
+        aria-hidden="true"
+        className="absolute dark:hidden transition-transform duration-300 ease-out group-hover:-rotate-12"
+      />
+    </button>
   );
 }
 
@@ -433,6 +488,18 @@ function MobileDrawer({
               <div className="my-4 h-px bg-taupe/15" />
               <DrawerLink to="/contact" label="Contact" onNavigate={onClose} small />
               <DrawerLink to="/auth" label="Sign in" onNavigate={onClose} small />
+              {toolbar.buttons.help ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    openHelp();
+                    onClose();
+                  }}
+                  className="block w-full py-2.5 text-left text-base font-display text-cream hover:text-taupe transition-colors"
+                >
+                  How to shop
+                </button>
+              ) : null}
 
               {/* Bag → checkout — jump straight to purchase when the bag has items */}
               {cartCount > 0 ? (
@@ -505,23 +572,26 @@ function MobileDrawer({
                 </Link>
               )}
 
-              {/* Currency toggle · socials · maison signature */}
+              {/* Currency toggle · theme · socials · maison signature */}
               <div className="mt-7 flex items-center justify-between">
-                <div className="inline-flex flex-wrap overflow-hidden rounded-full border border-taupe/25">
-                  {currencies.map((c) => (
-                    <button
-                      key={c.code}
-                      type="button"
-                      onClick={() => setCurrency(c.code)}
-                      aria-pressed={currency === c.code}
-                      title={c.name}
-                      className={`px-3.5 py-1.5 text-[0.6rem] tracking-[0.24em] uppercase transition-colors ${
-                        currency === c.code ? "bg-taupe/90 text-ink" : "text-taupe hover:text-cream"
-                      }`}
-                    >
-                      {c.code}
-                    </button>
-                  ))}
+                <div className="flex items-center gap-3">
+                  <div className="inline-flex flex-wrap overflow-hidden rounded-full border border-taupe/25">
+                    {currencies.map((c) => (
+                      <button
+                        key={c.code}
+                        type="button"
+                        onClick={() => setCurrency(c.code)}
+                        aria-pressed={currency === c.code}
+                        title={c.name}
+                        className={`px-3.5 py-1.5 text-[0.6rem] tracking-[0.24em] uppercase transition-colors ${
+                          currency === c.code ? "bg-taupe/90 text-ink" : "text-taupe hover:text-cream"
+                        }`}
+                      >
+                        {c.code}
+                      </button>
+                    ))}
+                  </div>
+                  {toolbar.buttons.theme ? <DrawerThemeToggle /> : null}
                 </div>
                 {socialEntries.length ? (
                   <div className="flex gap-2.5">
@@ -575,6 +645,23 @@ function DrawerLink({
     >
       {label}
     </Link>
+  );
+}
+
+function DrawerThemeToggle() {
+  const { toggle } = useTheme();
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      aria-label="Toggle colour theme"
+      title="Light / dark"
+      suppressHydrationWarning
+      className="grid h-9 w-9 place-items-center rounded-full border border-taupe/25 text-taupe transition-colors hover:border-taupe hover:text-cream"
+    >
+      <Sun size={15} strokeWidth={1.6} aria-hidden="true" className="hidden dark:block" />
+      <Moon size={15} strokeWidth={1.6} aria-hidden="true" className="dark:hidden" />
+    </button>
   );
 }
 

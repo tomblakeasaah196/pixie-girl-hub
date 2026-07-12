@@ -1,7 +1,8 @@
-import { Instagram, Facebook, Twitter, MessageCircle } from "lucide-react";
+import { Instagram, Facebook, Twitter, MessageCircle, Sparkles, HelpCircle } from "lucide-react";
 import { useNavigation, useBranding, type FooterColumn } from "@/lib/site-config";
 import { BrandLogo } from "@/components/site/BrandLogo";
 import { SmartLink } from "@/components/site/SmartLink";
+import { openHelp } from "@/lib/useStore";
 
 // Fallback columns (used when Studio navigation isn't published yet).
 const FALLBACK_COLUMNS: FooterColumn[] = [
@@ -98,6 +99,24 @@ export function SiteFooter() {
             </ul>
           </div>
         ))}
+      </div>
+      {/* Utility row — always present, independent of the Studio columns */}
+      <div className="border-t border-taupe/15">
+        <div className="mx-auto flex max-w-[1400px] flex-wrap items-center justify-center gap-x-8 gap-y-3 px-6 py-6 lg:px-10 text-[0.65rem] tracking-[0.3em] uppercase text-taupe">
+          <SmartLink
+            to="/shade-finder"
+            className="inline-flex items-center gap-2 transition-colors hover:text-cream"
+          >
+            <Sparkles size={14} strokeWidth={1.6} aria-hidden="true" /> Shop with AI
+          </SmartLink>
+          <button
+            type="button"
+            onClick={openHelp}
+            className="inline-flex items-center gap-2 uppercase tracking-[0.3em] transition-colors hover:text-cream"
+          >
+            <HelpCircle size={14} strokeWidth={1.6} aria-hidden="true" /> Help center
+          </button>
+        </div>
       </div>
       <div className="border-t border-taupe/15 py-6 text-center text-[0.65rem] tracking-[0.35em] uppercase text-muted-foreground">
         © {new Date().getFullYear()} Faitlyn Hair · <span className="font-couture italic normal-case tracking-normal text-taupe text-sm">Maison Faitlyn — fait à la main à Lagos</span>

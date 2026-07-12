@@ -20,6 +20,8 @@ import { NewsletterModal } from "@/components/site/NewsletterModal";
 import { StudioPopups } from "@/components/site/StudioPopups";
 import { CartDrawer } from "@/components/site/CartDrawer";
 import { FloatingToolbar } from "@/components/site/FloatingToolbar";
+import { ConciergeDock } from "@/components/site/ConciergeDock";
+import { HelpGuide } from "@/components/site/HelpGuide";
 import { SiteConfigProvider, type StudioPage } from "@/lib/site-config";
 import { resolveToolbar } from "@/lib/toolbar";
 import { useCurrencyFeed } from "@/lib/useCurrencyFeed";
@@ -208,9 +210,11 @@ function RootComponent() {
         </PageTransition>
         {immersive ? null : <SiteFooter />}
         {immersive ? null : <FloatingToolbar />}
+        {immersive ? null : <ConciergeDock />}
         <CartDrawer />
         {immersive ? null : <NewsletterModal />}
         {immersive ? null : <StudioPopups />}
+        {immersive ? null : <HelpGuide />}
         <Toaster position="bottom-center" theme="dark" />
       </SiteConfigProvider>
     </QueryClientProvider>

@@ -556,6 +556,12 @@ async function postMessage({ brand, user, request_id, id, input }) {
       action_key: "smartcomm.message.post",
       target_type: "message",
       target_id: msg.message_id,
+      // Persist the channel/platform so the audit + activity feeds can render a
+      // friendly line ("You sent a message on Instagram to …") instead of a
+      // bare "message.post". external_platform is only set on customer threads.
+      metadata: channel.external_platform
+        ? { platform: channel.external_platform, channel_name: channel.name || undefined }
+        : undefined,
       request_id,
     });
     // For external customer threads, build the outbound provider jobs.

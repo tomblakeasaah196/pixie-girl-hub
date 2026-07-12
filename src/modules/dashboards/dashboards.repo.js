@@ -45,6 +45,29 @@ async function salesKpis({ brand, from, to }) {
   return { ...rows[0], open_quotes: q[0].open_quotes };
 }
 
+// ── Overview snapshots (point-in-time, not window-scoped) ──
+// "Outstanding" = money customers still owe (unpaid invoice balances).
+// "Pending orders" = the live count of orders awaiting payment — a current
+// backlog figure, deliberately NOT filtered to the month so it reflects the
+// true outstanding order count the owner sees, regardless of when each order
+// was placed.
+async function overviewSnapshots({ brand }) {
+  const { rows: ar } = await query(
+    `SELECT COALESCE(SUM(balance_due_ngn),0)::text AS outstanding_ngn
+       FROM ${t(brand, "invoices")}
+      WHERE status NOT IN ('paid','void','refunded') AND balance_due_ngn > 0`,
+  );
+  const { rows: po } = await query(
+    `SELECT count(*)::int AS pending_orders
+       FROM ${t(brand, "sales_orders")}
+      WHERE status = 'pending_payment'`,
+  );
+  return {
+    outstanding_ngn: ar[0].outstanding_ngn,
+    pending_orders: po[0].pending_orders,
+  };
+}
+
 // ── Ops KPIs ───────────────────────────────────────────────
 async function opsKpis({ brand }) {
   const { rows: sj } = await query(
@@ -475,6 +498,7 @@ async function confirmReportRun({ brand, id, user_id, notes }) {
 module.exports = {
   salesKpis,
   opsKpis,
+  overviewSnapshots,
   listBriefings,
   getBriefing,
   markBriefingRead,

@@ -363,6 +363,9 @@ export function ProfileDrawer({
   const [loading, setLoading] = useState(false);
   const [cropFile, setCropFile] = useState<File | null>(null);
   const [avatarLoading, setAvatarLoading] = useState(false);
+  // If the avatar URL 404s (e.g. the stored file was cleared on the server),
+  // fall back to initials instead of a broken-image glyph.
+  const [avatarFailed, setAvatarFailed] = useState(false);
   const { progress: avatarProgress, run: runAvatar } = useUploadProgress();
   const [toast, setToast] = useState<{
     type: "ok" | "err";
@@ -434,6 +437,9 @@ export function ProfileDrawer({
   const displayName = profile?.display_name ?? user?.name ?? "";
   const av = initials(displayName || "?");
 
+  // A fresh URL (new upload) should get another chance to load.
+  useEffect(() => setAvatarFailed(false), [avatarUrl]);
+
   const content = (
     <>
       {/* Scrim */}
@@ -498,10 +504,11 @@ export function ProfileDrawer({
               {/* Avatar */}
               <div className="flex flex-col items-center pb-6 border-b hairline mb-1">
                 <div className="relative mb-4">
-                  {avatarUrl ? (
+                  {avatarUrl && !avatarFailed ? (
                     <img
                       src={avatarUrl}
                       alt={displayName}
+                      onError={() => setAvatarFailed(true)}
                       className="w-24 h-24 rounded-full object-cover ring-2 ring-accent/30"
                     />
                   ) : (

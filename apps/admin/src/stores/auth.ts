@@ -103,6 +103,7 @@ export function toUser(u: AuthUser): User {
     availableBusinesses: u.available_businesses,
     defaultBusinessKey: u.default_business_key,
     isFactoryManager: roleNames.includes("factory_manager"),
+    avatarUrl: u.avatar_url ?? null,
     emailVerified: !!u.email_verified,
   };
 }

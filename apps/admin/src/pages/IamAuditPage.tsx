@@ -2,17 +2,28 @@ import { useState } from "react";
 import {
   ScrollText,
   Download,
-  ChevronDown,
-  ChevronUp,
   AlertTriangle,
+  CheckCircle2,
+  Pencil,
+  Trash2,
+  Send,
+  MessageCircle,
+  ShieldCheck,
+  ThumbsUp,
+  ThumbsDown,
+  Banknote,
+  FileDown,
+  Eye,
+  Activity,
+  ChevronRight,
 } from "lucide-react";
-import { Button, Card, Pill, Skeleton } from "@/components/ui/primitives";
-import type { Tone } from "@/components/ui/primitives";
+import { Button, Card, Skeleton } from "@/components/ui/primitives";
 import { Select, Toggle, ErrorState } from "@/components/ui/controls";
 import { TextInput } from "@/components/ui/Form";
-import { cn } from "@/lib/cn";
 import { formatDateTime } from "@/lib/format";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
+import { humanizeAudit, type AuditKind } from "@/lib/audit-humanize";
+import { AuditDetailModal } from "@/components/audit/AuditDetailModal";
 import {
   useAuditLog,
   downloadAuditExport,
@@ -52,175 +63,76 @@ const ACTION_OPTIONS = [
   { value: "export", label: "Export" },
 ];
 
-/* ── Helpers ───────────────────────────────────────────────── */
+/* ── Kind → icon + tone (drives the row leading badge) ─────── */
 
-function getActionTone(
-  action: string,
-): "success" | "warn" | "danger" | "info" | "accent" | "neutral" {
-  if (
-    [
-      "login",
-      "logout",
-      "password_change",
-      "permission_change",
-      "provision_login",
-      "deactivate_login",
-      "failed_login",
-      "secret_rotation",
-    ].includes(action)
-  )
-    return "accent";
-  if (["create", "account_created"].includes(action)) return "info";
-  if (["delete"].includes(action)) return "danger";
-  if (["update", "export"].includes(action)) return "warn";
-  return "neutral";
-}
+const KIND_ICON: Record<AuditKind, typeof CheckCircle2> = {
+  security: ShieldCheck,
+  message: MessageCircle,
+  send: Send,
+  create: CheckCircle2,
+  update: Pencil,
+  delete: Trash2,
+  approve: ThumbsUp,
+  reject: ThumbsDown,
+  money: Banknote,
+  export: FileDown,
+  view: Eye,
+  generic: Activity,
+};
 
-function isSecurityAction(action: string): boolean {
-  return [
-    "login",
-    "logout",
-    "failed_login",
-    "password_change",
-    "permission_change",
-    "provision_login",
-    "deactivate_login",
-    "invite_sent",
-    "account_created",
-    "secret_rotation",
-  ].includes(action);
-}
-
-/* ── DetailCell ────────────────────────────────────────────── */
-
-function DetailCell({
-  label,
-  value,
-  mono,
-}: {
-  label: string;
-  value: string;
-  mono?: boolean;
-}) {
-  return (
-    <div className="bg-text-primary/[0.03] rounded-xl p-2.5 border border-line">
-      <div className="text-[10px] uppercase tracking-wide font-bold text-text-faint mb-0.5">
-        {label}
-      </div>
-      <div className={cn("text-[12px] truncate", mono && "font-mono")}>
-        {value}
-      </div>
-    </div>
-  );
-}
+const KIND_TONE: Record<AuditKind, string> = {
+  security: "bg-accent/[0.14] text-accent-glow",
+  message: "bg-info/[0.14] text-info",
+  send: "bg-info/[0.14] text-info",
+  create: "bg-success/[0.14] text-success",
+  update: "bg-warn/[0.14] text-warn",
+  delete: "bg-danger/[0.14] text-danger",
+  approve: "bg-success/[0.14] text-success",
+  reject: "bg-danger/[0.14] text-danger",
+  money: "bg-accent/[0.14] text-accent-glow",
+  export: "bg-warn/[0.14] text-warn",
+  view: "bg-text-primary/[0.06] text-text-muted",
+  generic: "bg-text-primary/[0.06] text-text-muted",
+};
 
 /* ── AuditRow ──────────────────────────────────────────────── */
 
 function AuditRow({
   entry,
-  expanded,
-  onToggle,
+  onOpen,
 }: {
   entry: AuditEntry;
-  expanded: boolean;
-  onToggle: () => void;
+  onOpen: () => void;
 }) {
-  const actionTone: Tone = getActionTone(entry.action);
+  const h = humanizeAudit(entry, { self: false });
+  const Icon = KIND_ICON[h.kind];
 
   return (
-    <div>
-      <button
-        onClick={onToggle}
-        className="w-full flex items-center gap-3 p-[12px_18px] text-left hover:bg-text-primary/[0.03] transition-colors"
+    <button
+      onClick={onOpen}
+      className="w-full flex items-center gap-3.5 p-[14px_18px] text-left hover:bg-text-primary/[0.03] transition-colors"
+    >
+      <span
+        className={`w-[38px] h-[38px] rounded-[11px] grid place-items-center shrink-0 ${KIND_TONE[h.kind]}`}
       >
-        <div className="flex-1 min-w-0 flex items-center gap-3">
-          <span className="text-[12px] text-text-faint tabular-nums w-[140px] shrink-0">
-            {formatDateTime(entry.occurred_at)}
-          </span>
-          <span className="text-[13px] font-medium truncate w-[120px] shrink-0">
-            {entry.user_name}
-          </span>
-          <Pill tone={actionTone} dot={false}>
-            {entry.module}
-          </Pill>
-          <Pill
-            tone={isSecurityAction(entry.action) ? "accent" : "neutral"}
-            dot={false}
-          >
-            {entry.action.replace(/_/g, " ")}
-          </Pill>
-          {entry.is_sensitive && (
-            <AlertTriangle className="w-3.5 h-3.5 text-warn shrink-0" />
-          )}
+        <Icon className="w-[17px] h-[17px]" />
+      </span>
+      <div className="flex-1 min-w-0">
+        <div className="text-[13.5px] font-medium text-text-primary truncate">
+          {h.text}
+        </div>
+        <div className="text-[11.5px] text-text-faint truncate">
+          {formatDateTime(entry.occurred_at)}
           {entry.ip_address && (
-            <span className="text-[11px] text-text-faint font-mono ml-auto shrink-0">
-              {entry.ip_address}
-            </span>
+            <span className="font-mono"> · {entry.ip_address}</span>
           )}
         </div>
-        {expanded ? (
-          <ChevronUp className="w-4 h-4 text-text-faint shrink-0" />
-        ) : (
-          <ChevronDown className="w-4 h-4 text-text-faint shrink-0" />
-        )}
-      </button>
-
-      {expanded && (
-        <div className="px-[18px] pb-4 space-y-3">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {entry.table_name && (
-              <DetailCell label="Table" value={entry.table_name} />
-            )}
-            {entry.record_id && (
-              <DetailCell label="Record ID" value={entry.record_id} mono />
-            )}
-            {entry.session_id && (
-              <DetailCell
-                label="Session"
-                value={entry.session_id.slice(0, 12) + "..."}
-                mono
-              />
-            )}
-            {entry.business && (
-              <DetailCell label="Business" value={entry.business} />
-            )}
-          </div>
-
-          {entry.before_state && (
-            <div>
-              <div className="text-[10.5px] uppercase tracking-[0.1em] font-bold text-danger/80 mb-1">
-                Before
-              </div>
-              <pre className="text-[11px] font-mono p-3 rounded-xl bg-danger/5 border border-danger/20 overflow-x-auto max-h-[200px] text-text-muted">
-                {JSON.stringify(entry.before_state, null, 2)}
-              </pre>
-            </div>
-          )}
-
-          {entry.after_state && (
-            <div>
-              <div className="text-[10.5px] uppercase tracking-[0.1em] font-bold text-success/80 mb-1">
-                After
-              </div>
-              <pre className="text-[11px] font-mono p-3 rounded-xl bg-success/5 border border-success/20 overflow-x-auto max-h-[200px] text-text-muted">
-                {JSON.stringify(entry.after_state, null, 2)}
-              </pre>
-            </div>
-          )}
-
-          {Object.keys(entry.metadata).length > 0 && (
-            <div>
-              <div className="text-[10.5px] uppercase tracking-[0.1em] font-bold text-text-muted mb-1">
-                Metadata
-              </div>
-              <pre className="text-[11px] font-mono p-3 rounded-xl bg-text-primary/[0.03] border border-line overflow-x-auto max-h-[200px] text-text-muted">
-                {JSON.stringify(entry.metadata, null, 2)}
-              </pre>
-            </div>
-          )}
-        </div>
+      </div>
+      {entry.is_sensitive && (
+        <AlertTriangle className="w-3.5 h-3.5 text-warn shrink-0" />
       )}
-    </div>
+      <ChevronRight className="w-4 h-4 text-text-faint shrink-0" />
+    </button>
   );
 }
 
@@ -242,7 +154,7 @@ export function IamAuditPage() {
     undefined,
   );
   const [page, setPage] = useState(1);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<AuditEntry | null>(null);
   const [exporting, setExporting] = useState(false);
 
   /* filters + query */
@@ -291,7 +203,7 @@ export function IamAuditPage() {
           <div>
             <h2 className="font-display text-[22px] font-medium">Audit Log</h2>
             <p className="text-text-muted text-[13px]">
-              Append-only trail of every action
+              Every action, in plain English — tap any entry for the details
             </p>
           </div>
         </div>
@@ -420,12 +332,7 @@ export function IamAuditPage() {
               <AuditRow
                 key={entry.log_id}
                 entry={entry}
-                expanded={expandedId === entry.log_id}
-                onToggle={() =>
-                  setExpandedId(
-                    expandedId === entry.log_id ? null : entry.log_id,
-                  )
-                }
+                onOpen={() => setSelected(entry)}
               />
             ))}
         </div>
@@ -462,6 +369,9 @@ export function IamAuditPage() {
           </div>
         </div>
       )}
+
+      {/* ── Detail popup ── */}
+      <AuditDetailModal entry={selected} onClose={() => setSelected(null)} />
     </div>
   );
 }

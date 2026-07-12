@@ -40,10 +40,17 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
-  TrendingUp,
   Clock,
-  PackageCheck,
-  Star,
+  MessageCircle,
+  Send,
+  ShieldCheck,
+  Banknote,
+  Pencil,
+  Trash2,
+  ThumbsUp,
+  ThumbsDown,
+  Eye,
+  Activity,
 } from "lucide-react";
 import { useGreeting } from "@/hooks/useGreeting";
 import { useIsDesktop } from "@/hooks/useMediaQuery";
@@ -67,6 +74,12 @@ import {
 } from "@/hooks/useCommandCenter";
 import { money } from "@/lib/format";
 import {
+  humanizeAudit,
+  friendlyModule,
+  type AuditKind,
+} from "@/lib/audit-humanize";
+import { AuditDetailModal } from "@/components/audit/AuditDetailModal";
+import {
   requestPushPermission,
   hasPushBeenPrompted,
   markPushPrompted,
@@ -85,27 +98,34 @@ function fmtRelative(iso: string): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-function humaniseAudit(e: AuditFeedEntry): string {
-  const mod = (e.module ?? "").replace(/_/g, " ");
-  const act = e.action ?? "updated";
-  const tbl = (e.table_name ?? "").replace(/_/g, " ");
-  return `${act.charAt(0).toUpperCase()}${act.slice(1)} ${tbl || mod}`;
-}
-
-const AUDIT_ICON: Record<string, typeof CheckCircle2> = {
+const KIND_ICON: Record<AuditKind, typeof CheckCircle2> = {
+  security: ShieldCheck,
+  message: MessageCircle,
+  send: Send,
   create: CheckCircle2,
-  update: Star,
-  delete: AlertTriangle,
-  approve: PackageCheck,
+  update: Pencil,
+  delete: Trash2,
+  approve: ThumbsUp,
+  reject: ThumbsDown,
+  money: Banknote,
   export: FileText,
+  view: Eye,
+  generic: Activity,
 };
 
-const AUDIT_TONE: Record<string, string> = {
+const KIND_TONE: Record<AuditKind, string> = {
+  security: "bg-accent/[0.14] text-accent-glow",
+  message: "bg-info/[0.14] text-info",
+  send: "bg-info/[0.14] text-info",
   create: "bg-success/[0.14] text-success",
-  update: "bg-info/[0.14] text-info",
+  update: "bg-warn/[0.14] text-warn",
   delete: "bg-danger/[0.14] text-danger",
-  approve: "bg-accent/[0.14] text-accent-glow",
+  approve: "bg-success/[0.14] text-success",
+  reject: "bg-danger/[0.14] text-danger",
+  money: "bg-accent/[0.14] text-accent-glow",
   export: "bg-warn/[0.14] text-warn",
+  view: "bg-text-primary/[0.06] text-text-muted",
+  generic: "bg-text-primary/[0.06] text-text-muted",
 };
 
 /** Insight module → nav module key, where the two differ (identity otherwise).
@@ -208,7 +228,7 @@ function KpiStrip({
   }[] = isCeo
     ? [
         {
-          label: "Revenue MTD",
+          label: "Revenue this month",
           value: money(parseFloat(d?.sales.revenue_ngn ?? "0"), "NGN"),
           tone: "accent" as const,
         },
@@ -225,7 +245,7 @@ function KpiStrip({
       ]
     : [
         {
-          label: "Today's revenue",
+          label: "Revenue this month",
           value: money(parseFloat(d?.sales.revenue_ngn ?? "0"), "NGN"),
           tone: "accent" as const,
         },
@@ -358,7 +378,7 @@ function PraxisInsightsCard({
   const prefill = buildPraxisPrefill(summary.data, urgent, open);
 
   return (
-    <div className="glass rounded-[var(--radius)] p-4 md:p-[18px_20px] mb-5 border border-warn/25 bg-warn/[0.06] animate-rise-in relative overflow-hidden">
+    <div className="glass rounded-[var(--radius)] p-4 md:p-[18px_20px] mb-5 max-md:mt-6 border border-warn/25 bg-warn/[0.06] animate-rise-in relative overflow-hidden">
       <span
         aria-hidden
         className="pointer-events-none absolute -right-6 -top-8 w-[120px] h-[120px] rounded-full opacity-25 blur-[26px]"
@@ -457,10 +477,12 @@ function ActivityFeed({
   feed,
   page,
   setPage,
+  onSelect,
 }: {
   feed: ReturnType<typeof useMyAuditFeed>;
   page: number;
   setPage: (p: number) => void;
+  onSelect: (e: AuditFeedEntry) => void;
 }) {
   if (feed.isLoading && !feed.data) {
     return (
@@ -517,13 +539,14 @@ function ActivityFeed({
   return (
     <Card className="overflow-hidden">
       {entries.map((e) => {
-        const Icon = AUDIT_ICON[e.action] ?? TrendingUp;
-        const tone =
-          AUDIT_TONE[e.action] ?? "bg-text-primary/[0.06] text-text-muted";
+        const h = humanizeAudit(e, { self: true });
+        const Icon = KIND_ICON[h.kind];
+        const tone = KIND_TONE[h.kind];
         return (
-          <div
+          <button
             key={e.log_id}
-            className="flex items-center gap-3.5 p-[14px_18px] border-b hairline last:border-0 hover:bg-text-primary/[0.03] transition-colors"
+            onClick={() => onSelect(e)}
+            className="w-full text-left flex items-center gap-3.5 p-[14px_18px] border-b hairline last:border-0 hover:bg-text-primary/[0.03] transition-colors"
           >
             <span
               className={`w-[38px] h-[38px] rounded-[11px] grid place-items-center shrink-0 ${tone}`}
@@ -532,16 +555,16 @@ function ActivityFeed({
             </span>
             <div className="flex-1 min-w-0">
               <div className="text-[13px] font-semibold text-text-primary truncate">
-                {humaniseAudit(e)}
+                {h.text}
               </div>
-              <div className="text-[11px] text-text-faint capitalize">
-                {e.module?.replace(/_/g, " ")}
+              <div className="text-[11px] text-text-faint">
+                {friendlyModule(e.module)}
               </div>
             </div>
             <div className="text-[11px] text-text-faint tabular-nums whitespace-nowrap">
               {fmtRelative(e.occurred_at)}
             </div>
-          </div>
+          </button>
         );
       })}
       {pageCount > 1 && (
@@ -643,6 +666,8 @@ export function CommandCenter() {
   const insights = useInsightSummary();
   const [activityPage, setActivityPage] = useState(1);
   const myFeed = useMyAuditFeed(activityPage);
+  const [selectedActivity, setSelectedActivity] =
+    useState<AuditFeedEntry | null>(null);
 
   // Urgent-insight badges for the App Grid: one per module tile (mapped to its
   // nav key) plus the total on the Insights tile itself.
@@ -802,9 +827,16 @@ export function CommandCenter() {
             feed={myFeed}
             page={activityPage}
             setPage={setActivityPage}
+            onSelect={setSelectedActivity}
           />
         </div>
       </div>
+
+      {/* Activity detail popup — friendly summary + facts on tap */}
+      <AuditDetailModal
+        entry={selectedActivity}
+        onClose={() => setSelectedActivity(null)}
+      />
     </div>
   );
 }

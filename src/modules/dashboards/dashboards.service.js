@@ -13,26 +13,46 @@ const repo = require("./dashboards.repo");
 const insights = require("../ai_insights/insights.service");
 const { NotFoundError } = require("../../utils/errors");
 
-function defaultRange() {
-  const to = new Date();
-  const from = new Date(to.getTime() - 30 * 24 * 3600 * 1000);
-  return { from: from.toISOString(), to: to.toISOString() };
+/**
+ * Month-to-date window in the business timezone (Africa/Lagos, fixed UTC+1).
+ * The overview "Revenue this month" tile is genuinely month-to-date so the
+ * figure matches the label — a prior 30-day rolling default was silently shown
+ * under an "MTD" label, and (separately) the sales object exposed *_mtd field
+ * names the client never read. Both are fixed here.
+ */
+function monthToDateRange() {
+  const now = new Date();
+  const lagos = new Date(now.getTime() + 60 * 60 * 1000); // shift into Lagos
+  // 00:00 Lagos on the 1st == 23:00 UTC on the last day of the prior month.
+  const from = new Date(
+    Date.UTC(lagos.getUTCFullYear(), lagos.getUTCMonth(), 1) - 60 * 60 * 1000,
+  );
+  return { from: from.toISOString(), to: now.toISOString() };
 }
 
 async function overview({ brand, user, from, to }) {
-  const range = {
-    from: from || defaultRange().from,
-    to: to || defaultRange().to,
-  };
-  const [sales, ops, insightCounts, briefings] = await Promise.all([
+  const mtd = monthToDateRange();
+  const range = { from: from || mtd.from, to: to || mtd.to };
+  const [sales, ops, snapshots, insightCounts, briefings] = await Promise.all([
     repo.salesKpis({ brand, from: range.from, to: range.to }),
     repo.opsKpis({ brand }),
+    repo.overviewSnapshots({ brand }),
     insights.summary({ brand }),
     repo.listBriefings({ brand, recipient_user_id: user.user_id, limit: 1 }),
   ]);
   return {
     period: range,
-    sales,
+    // The client reads paid_orders / revenue_ngn / pending_orders /
+    // outstanding_ngn (see apps/admin useCommandCenter DashboardOverview).
+    // The KPI repo returns *_mtd / pending_payment_count and no outstanding,
+    // so map them here — otherwise every money/count tile silently renders 0.
+    sales: {
+      ...sales,
+      paid_orders: sales.orders_mtd,
+      revenue_ngn: sales.revenue_mtd,
+      pending_orders: snapshots.pending_orders,
+      outstanding_ngn: snapshots.outstanding_ngn,
+    },
     operations: ops,
     insights: insightCounts,
     latest_briefing: briefings[0] || null,

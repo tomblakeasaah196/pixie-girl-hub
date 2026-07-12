@@ -55,7 +55,7 @@ export function BentoGrid({
                   className="w-full h-full object-cover transition-transform duration-[1400ms] ease-out group-hover:scale-110"
                 />
               )}
-              <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/30 to-transparent" />
+              <div className="absolute inset-0 sf-image-scrim" />
               {b.savingsPct > 0 ? (
                 <span className="absolute top-5 left-5 bg-rose text-ink text-[0.6rem] tracking-[0.4em] uppercase px-3 py-1.5">
                   Save {b.savingsPct}%

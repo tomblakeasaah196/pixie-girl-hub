@@ -33,6 +33,7 @@ const PUBLIC_COLUMNS = `
   smtp_password_first4,
   smtp_host, smtp_port, smtp_secure, smtp_user,
   from_email, from_name, reply_to_email,
+  imap_host, imap_port, imap_secure, inbound_poll_enabled, imap_last_polled_at,
   created_at, updated_at
 `;
 
@@ -112,6 +113,37 @@ async function listActiveByPlatform({ platform }) {
   return rows;
 }
 
+// Every active outbound-email row that has inbound IMAP polling switched
+// on. Raw rows (include smtp_password_enc + imap cursor) — the poller
+// decrypts and reads the mailbox. One row per brand at most in practice.
+async function listActiveInboundImap() {
+  const { rows } = await query(
+    `SELECT * FROM shared.messaging_accounts
+      WHERE platform = 'email_outbound'
+        AND is_active = true
+        AND inbound_poll_enabled = true
+        AND smtp_user IS NOT NULL
+        AND smtp_password_enc IS NOT NULL
+      ORDER BY business`,
+  );
+  return rows;
+}
+
+// Advance the IMAP fetch cursor after a successful poll. uidvalidity is
+// stored alongside last_uid so the poller can detect a mailbox UID reset
+// (server bumped UIDVALIDITY) and re-baseline instead of missing mail.
+async function updateImapCursor({ id, last_uid, uidvalidity }) {
+  await query(
+    `UPDATE shared.messaging_accounts
+        SET imap_last_uid       = $2,
+            imap_uidvalidity    = COALESCE($3, imap_uidvalidity),
+            imap_last_polled_at = now(),
+            updated_at          = now()
+      WHERE account_id = $1`,
+    [id, last_uid == null ? null : String(last_uid), uidvalidity == null ? null : String(uidvalidity)],
+  );
+}
+
 /**
  * Correct a row's provider id in place (auto-heal). Instagram operators
  * routinely paste the wrong id (Business-Manager asset id instead of the
@@ -160,6 +192,7 @@ async function upsert({ brand, user_id, input, secrets }) {
         webhook_verify_token, is_active, connected_by, metadata, notes,
         smtp_host, smtp_port, smtp_secure, smtp_user,
         from_email, from_name, reply_to_email,
+        imap_host, imap_port, imap_secure, inbound_poll_enabled,
         secrets_last_rotated_at)
      VALUES ($1,$2,$3,$4,
              $5,$6,$7,$8,$9,
@@ -167,6 +200,7 @@ async function upsert({ brand, user_id, input, secrets }) {
              $15,COALESCE($16,true),$17,COALESCE($18,'{}'::jsonb),$19,
              $20,$21,COALESCE($22,false),$23,
              $24,$25,$26,
+             $27,$28,COALESCE($29,true),COALESCE($30,false),
              CASE WHEN COALESCE($5,$6,$7,$8,$9) IS NOT NULL THEN now() ELSE NULL END)
      ON CONFLICT (platform, external_account_id) DO UPDATE
        SET business                = EXCLUDED.business,
@@ -209,6 +243,12 @@ async function upsert({ brand, user_id, input, secrets }) {
                                               shared.messaging_accounts.from_name),
            reply_to_email          = COALESCE(EXCLUDED.reply_to_email,
                                               shared.messaging_accounts.reply_to_email),
+           imap_host               = COALESCE(EXCLUDED.imap_host,
+                                              shared.messaging_accounts.imap_host),
+           imap_port               = COALESCE(EXCLUDED.imap_port,
+                                              shared.messaging_accounts.imap_port),
+           imap_secure             = COALESCE($29, shared.messaging_accounts.imap_secure, true),
+           inbound_poll_enabled    = COALESCE($30, shared.messaging_accounts.inbound_poll_enabled, false),
            secrets_last_rotated_at = CASE
              WHEN EXCLUDED.access_token_enc        IS NOT NULL
                OR EXCLUDED.app_secret_enc          IS NOT NULL
@@ -247,6 +287,10 @@ async function upsert({ brand, user_id, input, secrets }) {
       input.from_email      || null,
       input.from_name       || null,
       input.reply_to_email  || null,
+      input.imap_host       || null,
+      input.imap_port       || null,
+      input.imap_secure === undefined ? null : input.imap_secure,
+      input.inbound_poll_enabled === undefined ? null : input.inbound_poll_enabled,
     ],
   );
   return rows[0];
@@ -346,6 +390,8 @@ module.exports = {
   findActiveByBrand,
   findByExternalId,
   listActiveByPlatform,
+  listActiveInboundImap,
+  updateImapCursor,
   updateExternalId,
   rotateAccessToken,
   upsert,

@@ -1,0 +1,20 @@
+{
+  "name": "cloudflare",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "email-worker.js",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "Cloudflare Email Routing Worker — inbound customer mail → Pixie Girl Hub inbound webhook.",
+  "devDependencies": {
+    "wrangler": "^4.86.0"
+  },
+  "dependencies": {
+    "postal-mime": "^2.7.5"
+  }
+}

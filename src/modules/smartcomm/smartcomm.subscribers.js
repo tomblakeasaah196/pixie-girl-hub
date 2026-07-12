@@ -502,11 +502,16 @@ async function enrichInstagramSender({ brand, sender }) {
   sender.profile_picture_url = profile.profile_pic || null;
 }
 
-async function ingestInbound(evt) {
-  const brand = await resolveBrand({
-    platform: evt.platform,
-    external_account_id: evt.external_account_id,
-  });
+async function ingestInbound(evt, brandOverride) {
+  // The IMAP poller already knows the brand (it iterates each brand's own
+  // mailbox), so it passes brandOverride and skips the messaging_accounts
+  // lookup that webhook-sourced events need.
+  const brand =
+    brandOverride ||
+    (await resolveBrand({
+      platform: evt.platform,
+      external_account_id: evt.external_account_id,
+    }));
   if (!brand) {
     logger.warn(
       {
@@ -556,6 +561,24 @@ async function ingestInbound(evt) {
     media: evt.media,
     metadata,
   });
+}
+
+/**
+ * Ingest one already-parsed inbound email for a KNOWN brand — the entry
+ * point for the IMAP poller (jobs/schedulers/email-imap-poll). `message`
+ * is the same normalised shape parseCloudflareEmail expects:
+ *   { to, from:{email,name}, subject, text, html, message_id, in_reply_to,
+ *     thread_id }
+ * Reuses the exact contact-resolve + record pipeline as the Cloudflare
+ * webhook path, so IMAP and webhook inbound behave identically. Dedup on
+ * external_ref (Message-ID) makes re-polling the same message a no-op.
+ */
+async function ingestInboundEmail({ brand, message }) {
+  const events = parseCloudflareEmail(message);
+  for (const evt of events) {
+    await ingestInbound(evt, brand);
+  }
+  return events.length;
 }
 
 async function onWebhookReceived({ webhook_id, source }) {
@@ -627,6 +650,8 @@ register();
 
 module.exports = {
   register,
+  // used by the inbound IMAP poller (jobs/schedulers/email-imap-poll)
+  ingestInboundEmail,
   // exported for tests
   parseMetaWhatsApp,
   parseMetaWhatsAppStatuses,

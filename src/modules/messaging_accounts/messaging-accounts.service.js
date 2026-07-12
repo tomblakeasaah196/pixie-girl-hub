@@ -421,10 +421,41 @@ async function testAccount({ id }) {
         auth: row.smtp_user ? { user: row.smtp_user, pass } : undefined,
       });
       await transporter.verify();
+      // When inbound polling is on, also prove the IMAP login works —
+      // reusing the same mailbox credentials — so a failed test names
+      // whichever leg (send vs receive) is misconfigured.
+      let imap = null;
+      if (row.inbound_poll_enabled) {
+        const cfg = buildImapConfig(row);
+        if (!cfg) {
+          imap = {
+            ok: false,
+            error:
+              "Set an IMAP host (couldn't derive one from the SMTP host).",
+          };
+        } else {
+          try {
+            const { ImapFlow } = require("imapflow");
+            const client = new ImapFlow({
+              host: cfg.host,
+              port: cfg.port,
+              secure: cfg.secure,
+              auth: { user: cfg.user, pass: cfg.pass },
+              logger: false,
+            });
+            await client.connect();
+            await client.logout();
+            imap = { ok: true, host: `${cfg.host}:${cfg.port}` };
+          } catch (e) {
+            imap = { ok: false, error: e.message };
+          }
+        }
+      }
       return {
         ok: true,
         platform: "email_outbound",
         provider_name: `${row.smtp_host}:${port}`,
+        imap,
       };
     }
   } catch (err) {
@@ -817,6 +848,56 @@ function getInboundDnsRecords({ external_account_id }) {
  * SMTP_* / SMTP_<BRAND>_* environment variables. Returns null if
  * nothing is configured anywhere so callers can fall back cleanly.
  */
+// Derive the IMAP host from the SMTP host when the operator didn't set
+// one explicitly. Hostinger (and most providers) mirror smtp.<domain> ↔
+// imap.<domain>, so this covers the common case; anything non-standard
+// requires an explicit imap_host and returns null here.
+function deriveImapHost(smtpHost) {
+  if (!smtpHost) return null;
+  return /^smtp\./i.test(smtpHost)
+    ? smtpHost.replace(/^smtp\./i, "imap.")
+    : null;
+}
+
+// Build a ready-to-use IMAP config from a raw email_outbound row,
+// reusing the SMTP username + decrypted password (same Hostinger
+// mailbox). Returns null when the row can't produce a usable config.
+function buildImapConfig(row) {
+  if (!row || !row.smtp_user || !row.smtp_password_enc) return null;
+  const host = row.imap_host || deriveImapHost(row.smtp_host);
+  if (!host) return null;
+  return {
+    account_id: row.account_id,
+    business: row.business,
+    host,
+    port: row.imap_port || 993,
+    secure: row.imap_secure !== false, // default TLS
+    user: row.smtp_user,
+    pass: crypto.decrypt(row.smtp_password_enc),
+    // The address customer replies arrive `to` — used as the inbound
+    // event's external_account_id so threads route to the right brand.
+    mailbox: row.external_account_id || row.smtp_user,
+    last_uid: row.imap_last_uid ? Number(row.imap_last_uid) : 0,
+    uidvalidity: row.imap_uidvalidity ? Number(row.imap_uidvalidity) : null,
+  };
+}
+
+/** Single brand's inbound IMAP config, or null when polling is off. */
+async function resolveInboundImapConfig({ brand }) {
+  const row = await repo.findActiveByBrand({
+    brand,
+    platform: "email_outbound",
+  });
+  if (!row || !row.inbound_poll_enabled) return null;
+  return buildImapConfig(row);
+}
+
+/** Every brand with inbound IMAP polling enabled — used by the poller. */
+async function listInboundImapConfigs() {
+  const rows = await repo.listActiveInboundImap();
+  return rows.map(buildImapConfig).filter(Boolean);
+}
+
 async function resolveOutboundEmailConfig({ brand }) {
   const row = await repo.findActiveByBrand({
     brand,
@@ -923,4 +1004,8 @@ module.exports = {
   resolveInstagramSendConfig,
   // internal — for email.service.js outbound sends:
   resolveOutboundEmailConfig,
+  // internal — for the inbound IMAP poller:
+  resolveInboundImapConfig,
+  listInboundImapConfigs,
+  updateImapCursor: (args) => repo.updateImapCursor(args),
 };

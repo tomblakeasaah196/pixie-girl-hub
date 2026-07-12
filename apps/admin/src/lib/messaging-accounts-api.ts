@@ -46,6 +46,12 @@ export interface MessagingAccount {
   from_email: string | null;
   from_name: string | null;
   reply_to_email: string | null;
+  // 'email_outbound' inbound-polling (IMAP) — reuses smtp_user/password
+  imap_host: string | null;
+  imap_port: number | null;
+  imap_secure: boolean;
+  inbound_poll_enabled: boolean;
+  imap_last_polled_at: string | null;
   // Ops metadata
   connected_by: string | null;
   connected_at: string;
@@ -78,6 +84,11 @@ export interface UpsertInput {
   from_email?: string;
   from_name?: string;
   reply_to_email?: string;
+  // 'email_outbound' inbound-polling (IMAP)
+  imap_host?: string;
+  imap_port?: number;
+  imap_secure?: boolean;
+  inbound_poll_enabled?: boolean;
 }
 
 export interface TestResult {
@@ -88,6 +99,8 @@ export interface TestResult {
   mx_records?: { exchange: string; priority: number }[];
   /** IG only: the stored account id didn't match Meta's and was corrected. */
   healed?: boolean;
+  /** email_outbound with inbound polling on: result of the IMAP login check. */
+  imap?: { ok: boolean; host?: string; error?: string } | null;
 }
 
 export type RevealableField =

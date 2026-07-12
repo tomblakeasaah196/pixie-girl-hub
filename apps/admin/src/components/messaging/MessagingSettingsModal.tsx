@@ -373,6 +373,10 @@ function PlatformEditor({ platform, account, onSaved }: EditorProps) {
     smtp_secure: account?.smtp_secure ?? false,
     smtp_user: account?.smtp_user ?? "",
     reply_to_email: account?.reply_to_email ?? "",
+    imap_host: account?.imap_host ?? "",
+    imap_port: account?.imap_port ?? 993,
+    imap_secure: account?.imap_secure ?? true,
+    inbound_poll_enabled: account?.inbound_poll_enabled ?? false,
   }));
   const [dirtyFields, setDirtyFields] = useState<Set<string>>(new Set());
 
@@ -432,6 +436,14 @@ function PlatformEditor({ platform, account, onSaved }: EditorProps) {
         payload.from_name = form.display_name;
         if (dirtyFields.has("smtp_password") && form.smtp_password)
           payload.smtp_password = form.smtp_password;
+        // Inbound polling (IMAP) — reuses smtp_user/password, so only the
+        // IMAP host/port/security + the toggle are sent.
+        payload.inbound_poll_enabled = form.inbound_poll_enabled;
+        if (form.inbound_poll_enabled) {
+          payload.imap_host = form.imap_host || undefined;
+          payload.imap_port = form.imap_port;
+          payload.imap_secure = form.imap_secure;
+        }
       }
       return messagingAccountsApi.upsert(payload);
     },
@@ -532,6 +544,16 @@ function PlatformEditor({ platform, account, onSaved }: EditorProps) {
                 corrected automatically so inbound DMs route properly.
               </span>
             )}
+            {test.data?.imap &&
+              (test.data.imap.ok ? (
+                <span className="block text-green-200/80">
+                  Inbound IMAP login OK — {test.data.imap.host}.
+                </span>
+              ) : (
+                <span className="block text-amber-300/90">
+                  Inbound IMAP check failed: {test.data.imap.error}
+                </span>
+              ))}
           </span>
         </div>
       )}
@@ -675,6 +697,53 @@ function PlatformEditor({ platform, account, onSaved }: EditorProps) {
             placeholder="sales@yourbrand.com — defaults to the From address"
             hint="Every outbound mail — even noreply@ transactional mail — carries this Reply-To, so a customer's reply always lands on a monitored, webhook-ingested mailbox."
           />
+
+          {/* ── Inbound polling (IMAP) ──────────────────────── */}
+          <div className="lg:col-span-2 mt-1 rounded-xl border hairline bg-panel-2/40 p-3 space-y-3">
+            <label className="flex items-center gap-2 text-[12.5px] text-text-primary">
+              <input
+                type="checkbox"
+                checked={form.inbound_poll_enabled ?? false}
+                onChange={(e) =>
+                  markDirty("inbound_poll_enabled", e.target.checked)
+                }
+                className="accent-accent"
+              />
+              Poll this mailbox for customer replies (IMAP)
+            </label>
+            <p className="text-[11px] text-text-faint">
+              Reuses the SMTP username &amp; password above — same mailbox. The
+              Hub checks for new replies every couple of minutes and threads
+              them into the inbox. No DNS changes needed.
+            </p>
+            {form.inbound_poll_enabled && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                <Field
+                  label="IMAP host"
+                  value={form.imap_host ?? ""}
+                  onChange={(v) => markDirty("imap_host", v)}
+                  placeholder="imap.hostinger.com — auto-derived from SMTP host if blank"
+                  mono
+                />
+                <Field
+                  label="IMAP port"
+                  value={String(form.imap_port ?? 993)}
+                  onChange={(v) => markDirty("imap_port", Number(v) || 993)}
+                  placeholder="993"
+                  mono
+                />
+                <label className="flex items-center gap-2 text-[12.5px] text-text-muted lg:col-span-2">
+                  <input
+                    type="checkbox"
+                    checked={form.imap_secure ?? true}
+                    onChange={(e) => markDirty("imap_secure", e.target.checked)}
+                    className="accent-accent"
+                  />
+                  Use TLS (port 993). Leave checked for Hostinger.
+                </label>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

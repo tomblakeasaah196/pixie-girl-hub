@@ -41,6 +41,13 @@ const upsert = z
     from_email: z.string().email().optional(),
     from_name: z.string().max(160).optional(),
     reply_to_email: z.string().email().optional(),
+    // 'email_outbound' only — optional inbound polling over IMAP. Reuses
+    // smtp_user + smtp_password for auth (same mailbox), so only the
+    // IMAP host/port/security + the poll toggle are configured here.
+    imap_host: z.string().max(255).optional(),
+    imap_port: z.coerce.number().int().min(1).max(65535).optional(),
+    imap_secure: z.boolean().optional(),
+    inbound_poll_enabled: z.boolean().optional(),
   })
   .strict();
 

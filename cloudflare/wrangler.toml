@@ -6,5 +6,11 @@ main = "email-worker.js"
 compatibility_date = "2024-11-01"
 compatibility_flags = ["nodejs_compat"]
 
+# This Worker is triggered by Email Routing, not HTTP — it needs no public
+# *.workers.dev URL. Disabling it also stops `wrangler deploy` from prompting
+# "register a workers.dev subdomain?", which would hang the non-interactive CI
+# deploy. Set explicitly so behaviour never depends on account defaults.
+workers_dev = false
+
 # INBOUND_SECRET is set as a secret (wrangler secret put INBOUND_SECRET),
 # not here — never commit the secret to the repo.

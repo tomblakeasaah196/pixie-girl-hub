@@ -164,6 +164,9 @@ async function startWorkers() {
   const {
     runScheduledEmailSends,
   } = require("./schedulers/email-campaign-send");
+  const {
+    runInboundEmailPoll,
+  } = require("./schedulers/email-imap-poll");
   const { runAiInsightsSweep } = require("./schedulers/ai-insights-sweep");
   const { runRetentionWorkflows } = require("./schedulers/retention-workflows");
   const {
@@ -310,6 +313,11 @@ async function startWorkers() {
     runWorkspaceReminderSweep,
   );
   scheduleCron("email-campaign-send", "* * * * *", runScheduledEmailSends);
+  // Inbound email: poll each brand's Hostinger mailbox over IMAP every 2 min
+  // and thread customer replies into the Smartcomm inbox (two-way email
+  // without Cloudflare Email Routing). Under the cron lock so a second worker
+  // instance can't double-poll.
+  scheduleCron("inbound-email-poll", "*/2 * * * *", runInboundEmailPoll);
   scheduleCron("ai-insights-sweep", "*/30 * * * *", runAiInsightsSweep);
   // Hourly synthetic ping against every active AI vendor: green/red status
   // chip on AI Control turns red within an hour of a real outage instead of

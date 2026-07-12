@@ -15,12 +15,16 @@ function useBiz() {
 
 // ── Goal queries ─────────────────────────────────────────────────────────
 
-export function useGoals(params: g.GoalListParams = {}) {
+export function useGoals(
+  params: g.GoalListParams = {},
+  options: { enabled?: boolean } = {},
+) {
   const biz = useBiz();
   return useQuery({
     queryKey: ["workspace", biz, "goals", params],
     queryFn: () => g.listGoals(params),
     staleTime: 30_000,
+    enabled: options.enabled ?? true,
   });
 }
 

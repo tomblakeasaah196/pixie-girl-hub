@@ -33,7 +33,7 @@ async function findById(userId) {
 async function findByEmail(email) {
   const { rows } = await query(
     `SELECT u.user_id, u.email, u.display_name, u.password_hash, u.pin_hash,
-            u.status, u.is_ceo,
+            u.status, u.is_ceo, u.avatar_url,
             u.default_business_key, u.failed_login_count,
             COALESCE(u.email_verified, false) AS email_verified,
             (SELECT sp.job_title FROM shared.staff_profiles sp

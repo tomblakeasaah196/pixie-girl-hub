@@ -12,6 +12,8 @@ export interface AuthUser {
   user_id: string;
   email: string;
   display_name: string;
+  /** Profile photo URL, if set — carried on login so the header shows it immediately. */
+  avatar_url?: string | null;
   is_ceo: boolean;
   role_names: string[];
   /** HR job title of the linked staff profile (e.g. "Chief Stylist"), if any. */

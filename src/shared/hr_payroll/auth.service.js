@@ -140,6 +140,10 @@ async function issueTokens(user) {
       user_id: user.user_id,
       email: user.email,
       display_name: user.display_name,
+      // Carried on the login/refresh user so the header avatar survives a fresh
+      // sign-in and a reload — previously it was only ever loaded when the
+      // Profile drawer was opened, so it "disappeared" after re-login.
+      avatar_url: user.avatar_url || null,
       is_ceo: user.is_ceo,
       role_names: user.role_names || [],
       job_title: user.job_title || null,
@@ -703,8 +707,13 @@ async function uploadAvatar({ user_id, buffer, mimetype }) {
     key,
     contentType: shrunk.mime_type,
   });
-  await staffRepo.updateUserProfile(user_id, { avatar_url: stored.public_url });
-  return { avatar_url: stored.public_url };
+  // The storage key is deterministic (avatars/<uid>.<ext>), so a re-upload
+  // overwrites the same file at the same URL — browsers then keep serving the
+  // cached OLD image and the new photo "doesn't take". Append a version query
+  // so each upload produces a fresh URL that busts the cache.
+  const versioned = `${stored.public_url}?v=${Date.now()}`;
+  await staffRepo.updateUserProfile(user_id, { avatar_url: versioned });
+  return { avatar_url: versioned };
 }
 
 // ── Email change (authed, OTP to new address) ─────────────

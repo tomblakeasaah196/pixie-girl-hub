@@ -61,6 +61,7 @@ import { toast } from "@/stores/toast";
 import { describeError } from "@/lib/error-report";
 import { formatDateTime } from "@/lib/format";
 import { ContentTab } from "./ContentTab";
+import { VideoField } from "./VideoField";
 
 /**
  * Run a Studio mutation with unmissable feedback. Success shows a toast (plus
@@ -1507,6 +1508,9 @@ function humanize(k: string): string {
 const AREA_HINT = /(body|description|desc|note|message|answer|quote|excerpt|content)/i;
 const IMAGE_HINT = /(image|img|url|logo|photo|cover|banner|avatar|hero)/i;
 const IMAGE_LIST_HINT = /(image|photo|gallery|slide|banner)/i;
+// A `video` slot holds the looping-clip object the upload endpoint returns —
+// it gets the trim/crop studio, never the generic object editor.
+const VIDEO_HINT = /video/i;
 
 function SlotValue({
   fieldKey,
@@ -1518,6 +1522,10 @@ function SlotValue({
   onChange: (v: unknown) => void;
 }) {
   const label = humanize(fieldKey);
+
+  if (!Array.isArray(value) && VIDEO_HINT.test(fieldKey)) {
+    return <VideoField label={label} value={value} onChange={onChange} />;
+  }
 
   if (
     value === null ||
@@ -1559,6 +1567,9 @@ function SlotValue({
 
   // Plain object -> collapsible group of sub-fields.
   const obj = value as Record<string, unknown>;
+  // Hero sections always offer the looping-video upload, even on pages saved
+  // before the feature existed (their slots have no `video` key yet).
+  const offerHeroVideo = /hero/i.test(fieldKey) && !("video" in obj);
   return (
     <Section title={label}>
       {Object.entries(obj).map(([k, v]) => (
@@ -1569,6 +1580,13 @@ function SlotValue({
           onChange={(nv) => onChange({ ...obj, [k]: nv })}
         />
       ))}
+      {offerHeroVideo ? (
+        <VideoField
+          label="Looping Video"
+          value={undefined}
+          onChange={(nv) => onChange({ ...obj, video: nv })}
+        />
+      ) : null}
     </Section>
   );
 }

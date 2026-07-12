@@ -1,18 +1,86 @@
+import { useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 import { SmartLink } from "@/components/site/SmartLink";
-import { DEFAULT_HOME, type HeroContent } from "@/lib/home-content";
+import {
+  DEFAULT_HOME,
+  heroVideo,
+  type HeroContent,
+  type HeroVideo,
+} from "@/lib/home-content";
+
+/**
+ * The hero's GIF-style looping clip. Layered ON TOP of the poster image so
+ * the page paints instantly, then fades in only once the browser can actually
+ * play it — a viewer on a poor connection simply keeps the poster and never
+ * sees a black box or a stalled player.
+ *
+ * - mounts client-side only (src picked after hydration → SSR-safe)
+ * - silent + `playsInline` + `muted` = autoplays everywhere, loops like a GIF
+ * - picks the SD rendition when the connection says it's constrained
+ *   (Save-Data or 2g/3g effective type)
+ * - honours prefers-reduced-motion by never starting playback
+ */
+function HeroLoop({ video }: { video: HeroVideo }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  const [src, setSrc] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const conn = (
+      navigator as Navigator & {
+        connection?: { saveData?: boolean; effectiveType?: string };
+      }
+    ).connection;
+    const constrained =
+      Boolean(conn?.saveData) ||
+      /(^|\b)(slow-2g|2g|3g)\b/.test(conn?.effectiveType || "");
+    setSrc(constrained && video.sd_url ? video.sd_url : video.url);
+  }, [video.url, video.sd_url]);
+
+  // Some browsers won't honour the autoPlay attribute on a late-mounted
+  // element — nudge playback explicitly and ignore a refusal (poster stays).
+  useEffect(() => {
+    if (src) ref.current?.play().catch(() => {});
+  }, [src]);
+
+  if (!src) return null;
+  return (
+    <video
+      ref={ref}
+      src={src}
+      poster={video.poster_url}
+      autoPlay
+      muted
+      loop
+      playsInline
+      preload="auto"
+      disablePictureInPicture
+      aria-hidden
+      onCanPlay={() => setReady(true)}
+      className={`absolute inset-0 h-full w-full object-cover object-center transition-opacity duration-1000 ${
+        ready ? "opacity-80" : "opacity-0"
+      }`}
+    />
+  );
+}
 
 export function Hero({ content = DEFAULT_HOME.hero }: { content?: HeroContent }) {
+  const video = heroVideo(content.video);
+  // With a clip configured, the base layer is its poster frame so the video
+  // takeover is seamless; otherwise the classic hero still.
+  const baseImage = (video && video.poster_url) || content.imageUrl;
   return (
     <section className="relative min-h-[100dvh] overflow-hidden bg-ink">
-      {/* Background image */}
+      {/* Background image + optional looping clip */}
       <motion.div
         initial={{ scale: 1.15, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ duration: 2.2, ease: [0.22, 1, 0.36, 1], delay: 0.1 }}
         className="absolute inset-0"
       >
-        <img src={content.imageUrl} alt="Faitlyn signature pixie" className="w-full h-full object-cover object-center opacity-80" />
+        <img src={baseImage} alt="Faitlyn signature pixie" className="w-full h-full object-cover object-center opacity-80" />
+        {video ? <HeroLoop video={video} /> : null}
         <div className="absolute inset-0 bg-ink/45" />
         <div className="absolute inset-0 bg-gradient-to-b from-ink/90 via-ink/55 to-ink" />
         <div className="absolute inset-0 bg-gradient-to-r from-ink/85 via-ink/20 to-transparent" />

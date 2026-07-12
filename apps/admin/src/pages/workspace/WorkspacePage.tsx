@@ -643,22 +643,6 @@ export function WorkspacePage() {
         onClose={() => setEditEvent(null)}
         event={editEvent}
       />
-
-      {/* Mobile FAB — stacked directly above the global floating launcher
-          (matching its 52px footprint and right-6 gutter) so the two never
-          overlap. Only on tabs where "+" has an obvious meaning. */}
-      {isMobile && ["my-day", "tasks", "calendar"].includes(activeTab) && (
-        <button
-          onClick={() => {
-            if (activeTab === "calendar") setShowCreateEvent(true);
-            else openCreateTaskForDate();
-          }}
-          aria-label={activeTab === "calendar" ? "New event" : "New task"}
-          className="fixed right-6 bottom-[calc(132px+max(env(safe-area-inset-bottom,0px),8px))] z-40 w-[52px] h-[52px] rounded-[18px] bg-accent-deep text-[#F4E9D9] border border-white/10 shadow-[0_12px_30px_rgb(var(--accent-deep)/0.5)] grid place-items-center hover:bg-accent transition-colors"
-        >
-          <Plus className="w-6 h-6" />
-        </button>
-      )}
     </div>
   );
 }

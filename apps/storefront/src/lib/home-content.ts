@@ -52,6 +52,20 @@ export interface ShadeItem {
 
 /* ── marketing section content (from Studio slots) ───────────── */
 
+/**
+ * The Studio-produced looping hero clip ("living image"). `url` is the HD
+ * MP4 loop, `sd_url` the small poor-network rendition, `poster_url` the
+ * matching first frame that paints before (or instead of) the video.
+ */
+export interface HeroVideo {
+  url: string;
+  sd_url?: string;
+  poster_url?: string;
+  width?: number;
+  height?: number;
+  duration_sec?: number;
+}
+
 export interface HeroContent {
   eyebrow: string;
   eyebrowAccent?: string;
@@ -66,6 +80,29 @@ export interface HeroContent {
   cta2Label: string;
   cta2Href: string;
   imageUrl: string;
+  /** Raw `video` slot from Studio — normalize with heroVideo() before use. */
+  video?: unknown;
+}
+
+/**
+ * Normalize the hero `video` slot into a playable HeroVideo, or null when
+ * the slot is missing/cleared/garbage — the hero then stays a still image.
+ */
+export function heroVideo(raw: unknown): HeroVideo | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const url = typeof o.url === "string" ? o.url : "";
+  if (!url) return null;
+  const s = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+  const n = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : undefined);
+  return {
+    url,
+    sd_url: s(o.sd_url),
+    poster_url: s(o.poster_url),
+    width: n(o.width),
+    height: n(o.height),
+    duration_sec: n(o.duration_sec),
+  };
 }
 export interface HeadContent {
   eyebrow?: string;

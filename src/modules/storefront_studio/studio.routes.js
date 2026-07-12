@@ -9,11 +9,15 @@
 
 "use strict";
 
+const os = require("os");
+const path = require("path");
+const crypto = require("crypto");
 const express = require("express");
 const multer = require("multer");
 const controller = require("./studio.controller");
 const validator = require("./studio.validator");
 const { requirePermission } = require("../../middleware/rbac");
+const { AppError } = require("../../utils/errors");
 
 const router = express.Router();
 const can = (action) => requirePermission("storefront_studio", action);
@@ -23,6 +27,41 @@ const imageUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 8 * 1024 * 1024 },
 });
+
+// Video uploads stream to disk — a raw phone clip can be 100MB+, which must
+// never sit in the Node heap. FFmpeg reads the temp file; the service unlinks
+// it when done.
+const VIDEO_MAX_BYTES = 200 * 1024 * 1024;
+const videoUpload = multer({
+  storage: multer.diskStorage({
+    destination: os.tmpdir(),
+    filename: (_req, file, cb) => {
+      const ext = (path.extname(file.originalname || "") || ".mp4")
+        .toLowerCase()
+        .replace(/[^.a-z0-9]/g, "")
+        .slice(0, 6);
+      cb(null, `sf-video-${crypto.randomBytes(12).toString("hex")}${ext}`);
+    },
+  }),
+  limits: { fileSize: VIDEO_MAX_BYTES },
+});
+
+// Translate multer's size error into the platform error shape (otherwise a
+// too-big file surfaces as an opaque 500).
+function acceptVideoUpload(req, res, next) {
+  videoUpload.single("file")(req, res, (err) => {
+    if (err && err.code === "LIMIT_FILE_SIZE") {
+      next(
+        new AppError("FILE_TOO_LARGE", "Video exceeds the upload limit", 413, {
+          user_message:
+            "That video is over 200MB. Trim it shorter (the loop only keeps 10 seconds) and try again.",
+        }),
+      );
+      return;
+    }
+    next(err);
+  });
+}
 
 // Theme
 router.get("/theme", can("view"), controller.getThemes);
@@ -75,6 +114,16 @@ router.post(
   can("edit"),
   imageUpload.single("file"),
   controller.uploadImage,
+);
+
+// Looping-video upload (hero "living image"). Multipart fields: file +
+// trim_start/trim_end (sec), aspect, focus. Trims to ≤10s, compresses and
+// cleans the picture into HD/SD MP4 loops + a poster; returns their URLs.
+router.post(
+  "/upload-video",
+  can("edit"),
+  acceptVideoUpload,
+  controller.uploadVideo,
 );
 
 // Content posts (FAQ / care guide / journal / policy) — the storefront CMS

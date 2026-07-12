@@ -29,14 +29,16 @@
 
 "use strict";
 
-// 1 opening call + up to 5 continuations per invocation (read round-trips
+// 1 opening call + up to 9 continuations per invocation (read round-trips
 // share the budget). Each call is metered on the governance ledger by the
-// caller, so the ceiling also bounds spend.
-const MAX_PLAN_ROUNDS = 6;
+// caller, so the ceiling also bounds spend. Raised from 6/40/8 — big plans
+// (goal + milestones + weekly events for months) were exhausting the budget
+// and forcing manual "Continue building" taps.
+const MAX_PLAN_ROUNDS = 10;
 // Hard ceiling on steps accumulated in one invocation (mirrors the tool cap).
-const MAX_PLAN_STEPS = 40;
+const MAX_PLAN_STEPS = 60;
 // Hard ceiling on immediately-executed READ tool calls per invocation.
-const MAX_READS = 8;
+const MAX_READS = 12;
 
 // First-person commitment with nothing attached — "Let me fire it all in
 // now", "I'll set this up", "Let me start building". Deliberately requires a

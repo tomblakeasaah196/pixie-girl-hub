@@ -12,11 +12,23 @@
 const { query, ex } = require("../../config/database");
 // ── Events ─────────────────────────────────────────────────
 async function createEvent({ client, e }) {
+  // Explicit remind_at (custom reminder) wins; else derive from
+  // reminder_minutes before the start time.
+  const remind_at =
+    e.remind_at ||
+    (e.reminder_minutes !== null &&
+    e.reminder_minutes !== undefined &&
+    e.start_at
+      ? new Date(
+          new Date(e.start_at).getTime() - e.reminder_minutes * 60000,
+        ).toISOString()
+      : null);
   const { rows } = await ex(client)(
     `INSERT INTO shared.calendar_events
        (business, title, event_type, start_at, end_at, all_day, location,
-        description, recurrence_rule, reference_type, reference_id, created_by, is_private)
-     VALUES ($1,$2,$3,$4,$5,COALESCE($6,false),$7,$8,$9,$10,$11,$12,COALESCE($13,false))
+        description, recurrence_rule, reference_type, reference_id, created_by,
+        is_private, reminder_minutes, remind_at)
+     VALUES ($1,$2,$3,$4,$5,COALESCE($6,false),$7,$8,$9,$10,$11,$12,COALESCE($13,false),$14,$15)
      RETURNING *`,
     [
       e.business,
@@ -32,6 +44,8 @@ async function createEvent({ client, e }) {
       e.reference_id || null,
       e.created_by || null,
       e.is_private === undefined ? null : e.is_private,
+      e.reminder_minutes ?? null,
+      remind_at,
     ],
   );
   return rows[0];
@@ -103,6 +117,8 @@ async function updateEvent({ brand, id, patch }) {
     "description",
     "recurrence_rule",
     "is_private",
+    "reminder_minutes",
+    "remind_at",
   ];
   const sets = [];
   const params = [];
@@ -113,6 +129,8 @@ async function updateEvent({ brand, id, patch }) {
       params.push(patch[k]);
     }
   }
+  // A moved reminder must fire again — re-arm the sweep's sent flag.
+  if (patch.remind_at !== undefined) sets.push("reminder_sent_at = NULL");
   if (!sets.length) return findEvent({ brand, id });
   params.push(id, brand);
   const { rows } = await query(

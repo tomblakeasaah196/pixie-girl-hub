@@ -67,6 +67,7 @@ import {
   useSaveConversationToNotes,
   useCosSettings,
   type CosMessage,
+  type CosContinuation,
 } from "@/lib/cos-api";
 
 const DEFAULT_COS_NAME = "Chief of Staff";
@@ -161,6 +162,36 @@ function Thinking({ name, avatarUrl }: { name: string; avatarUrl?: string | null
           ))}
         </span>
         {name} is drafting your plan…
+      </span>
+    </div>
+  );
+}
+
+/** One-tap continuation — shown when the last reply stopped short (promised
+ *  action with nothing queued). Sends the canned "go ahead" so the CoS picks
+ *  up exactly where it ended, instead of making the CEO type it. */
+function ContinueNudge({
+  continuation,
+  disabled,
+  onContinue,
+}: {
+  continuation: CosContinuation;
+  disabled: boolean;
+  onContinue: () => void;
+}) {
+  return (
+    <div className="pl-11 flex items-center gap-3">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onContinue}
+        className="inline-flex items-center gap-1.5 rounded-xl bg-accent-deep/90 text-[#F4E9D9] px-3.5 py-2 text-[12.5px] font-semibold hover:bg-accent transition-colors disabled:opacity-50"
+      >
+        <ChevronRight className="w-3.5 h-3.5" />
+        {continuation.label || "Continue"}
+      </button>
+      <span className="text-[11px] text-text-faint">
+        Picks up exactly where the last reply stopped.
       </span>
     </div>
   );
@@ -678,6 +709,9 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
   const [view, setView] = useState<"chat" | "insights">("chat");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [pendingSend, setPendingSend] = useState(false);
+  // Continuation hint from the LAST turn (reprompt kind only — incomplete
+  // plans carry their own "Continue building" on the plan card).
+  const [continuation, setContinuation] = useState<CosContinuation | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   // Desktop only — the two collapsible side panes (conversations, insights).
@@ -759,6 +793,7 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
 
   async function handleSend(input: { content: string; input_mode: "text" | "voice"; transcribed_text?: string }) {
     setPendingSend(true);
+    setContinuation(null);
     navigator.vibrate?.(8);
     try {
       // Rejections propagate to PraxisInput, which restores the draft — a
@@ -770,11 +805,19 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
         id = conv.conversation_id;
         setActiveId(id);
       }
-      await post.mutateAsync({ conversationId: id, ...input });
+      const turn = await post.mutateAsync({ conversationId: id, ...input });
+      if (turn.continuation?.kind === "reprompt") setContinuation(turn.continuation);
     } finally {
       setPendingSend(false);
     }
   }
+
+  const handleContinue = () => {
+    const reply =
+      continuation?.suggested_reply ??
+      "Go ahead — continue exactly where you left off.";
+    void handleSend({ content: reply, input_mode: "text" }).catch(() => {});
+  };
 
   const suggest = (text: string) => {
     void handleSend({ content: text, input_mode: "text" }).catch(() => {});
@@ -807,6 +850,7 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
 
   const newChat = () => {
     setActiveId(null);
+    setContinuation(null);
     setView("chat");
   };
   const hasThread = messages.length > 0 || plans.length > 0;
@@ -820,6 +864,7 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
 
   const pickConversation = (id: string) => {
     setActiveId(id);
+    setContinuation(null);
     setView("chat");
   };
   const toggleLeft = () =>
@@ -882,6 +927,13 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
             <BatchPlanCard plan={p} conversationId={activeId!} />
           </div>
         ))}
+        {continuation && !thinking && (
+          <ContinueNudge
+            continuation={continuation}
+            disabled={thinking}
+            onContinue={handleContinue}
+          />
+        )}
         {showSaveSuggestion && (
           <SaveNoteSuggestion
             busy={saveNote.isPending}

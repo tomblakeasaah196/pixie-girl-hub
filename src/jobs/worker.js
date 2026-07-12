@@ -22,6 +22,7 @@
  *   every 15m        — Pending action expiry sweep (Praxis)
  *   every 30m        — Layaway gentle payment reminder
  *   every 30m        — Invoice reminder sweep (F-10)
+ *   every 2m         — Workspace task/event reminder sweep (remind_at)
  *   every 30m        — Webhook replay sweep (H-4 — re-drive stuck webhooks)
  *   daily 03:00      — Soft-FK reconciliation sweep (F-13)
  *   daily 03:30      — Catalogue Trash purge (15-day grace window)
@@ -195,6 +196,9 @@ async function startWorkers() {
   } = require("./schedulers/hr-appraisal-autoscore");
   const { runEsignReminderSweep } = require("./schedulers/esign-reminders");
   const {
+    runWorkspaceReminderSweep,
+  } = require("./schedulers/workspace-reminders");
+  const {
     runStylistOfferSweep,
     runStylistCertificationSweep,
   } = require("./schedulers/stylist-programme-sweep");
@@ -297,6 +301,14 @@ async function startWorkers() {
   scheduleCron("hr-attendance-sweep", "0 21 * * *", runHrAttendanceSweep);
   scheduleCron("hr-appraisal-autoscore", "30 2 * * *", runAppraisalAutoScore);
   scheduleCron("esign-reminder-sweep", "0 9 * * *", runEsignReminderSweep);
+  // Task/event reminders (remind_at) — every 2 min so a "15 minutes before"
+  // nudge lands close to on time; the sweep is a cheap indexed no-op when
+  // nothing is due.
+  scheduleCron(
+    "workspace-reminders",
+    "*/2 * * * *",
+    runWorkspaceReminderSweep,
+  );
   scheduleCron("email-campaign-send", "* * * * *", runScheduledEmailSends);
   scheduleCron("ai-insights-sweep", "*/30 * * * *", runAiInsightsSweep);
   // Hourly synthetic ping against every active AI vendor: green/red status

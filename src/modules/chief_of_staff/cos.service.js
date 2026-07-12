@@ -39,11 +39,13 @@ const { AppError, NotFoundError } = require("../../utils/errors");
 const KIND = "chief_of_staff";
 const FEATURE = "cos_chat";
 // Messages of context per turn. 10 starved long brainstorms — the model
-// re-asked answered questions once early turns fell off. 40 (≈20 exchanges)
-// with per-message clamping keeps the token cost bounded.
-const HISTORY_TURNS = 40;
-const HISTORY_MSG_MAX_CHARS = 4000;
-const PRAXIS_MAX_TOOLS = 40;
+// re-asked answered questions once early turns fell off. 60 (≈30 exchanges)
+// with per-message clamping keeps the token cost bounded; worst case
+// 60 × 8000 chars ≈ 120k tokens, comfortably inside modern context windows
+// and far below it in practice.
+const HISTORY_TURNS = 60;
+const HISTORY_MSG_MAX_CHARS = 8000;
+const PRAXIS_MAX_TOOLS = 60;
 
 // Stub replies (see stubReply) must not consume history slots nor read as
 // things "the assistant said" — they're feature-gate noise, not conversation.
@@ -360,10 +362,13 @@ async function runTurn({ user, brand, conversation, userMsg, userText, auth_head
       ? "Here's the plan I've put together — review the steps and approve to run them."
       : "Okay.");
   // The model promised action twice and still queued nothing — say so plainly
-  // rather than shipping "let me fire it all in now" over an empty turn.
-  if (!rounds.tool_calls.length && rounds.broken_promise) {
+  // rather than shipping "let me fire it all in now" over an empty turn. The
+  // needs_reprompt flag rides back to the UI, which renders a one-tap
+  // "Continue" button instead of making the CEO type "go ahead" herself.
+  const needsReprompt = !rounds.tool_calls.length && rounds.broken_promise;
+  if (needsReprompt) {
     replyText +=
-      "\n\n_(Nothing has been queued yet — no steps were proposed. Say “go ahead” and I'll lay out the full plan for your approval.)_";
+      "\n\n_(Nothing has been queued yet — no steps were proposed. Tap Continue (or say “go ahead”) and I'll lay out the full plan for your approval.)_";
   }
 
   const last = rounds.completions[rounds.completions.length - 1];
@@ -415,7 +420,7 @@ async function runTurn({ user, brand, conversation, userMsg, userText, auth_head
       id: conversation.conversation_id,
       tokens: totalTokens,
     });
-    return { assistant_message: assistant, plan };
+    return { assistant_message: assistant, plan, needs_reprompt: needsReprompt };
   });
 }
 
@@ -475,6 +480,7 @@ async function postMessage({ user, brand, request_id, id, input, auth_header }) 
 
   let assistantMsg = null;
   let plan = null;
+  let needsReprompt = false;
   if (guard.ok) {
     try {
       const r = await runTurn({
@@ -489,6 +495,7 @@ async function postMessage({ user, brand, request_id, id, input, auth_header }) 
       if (r) {
         assistantMsg = r.assistant_message;
         plan = r.plan;
+        needsReprompt = !!r.needs_reprompt;
       }
     } catch (err) {
       logger.error({ err: err.message }, "cos turn failed — falling back to stub");
@@ -528,10 +535,33 @@ async function postMessage({ user, brand, request_id, id, input, auth_header }) 
       });
     }
   }
+  // A response that stopped short always carries a machine-readable way to
+  // pick up where it ended, so the UI can offer one-tap continuation:
+  //   - reprompt: the model promised action but queued nothing → the button
+  //     re-sends a canned "go ahead" for the CEO.
+  //   - continue_plan: the plan persisted incomplete (round/step budget) →
+  //     the plan card's "Continue building" targets POST /plans/:id/continue.
+  let continuation = null;
+  if (needsReprompt) {
+    continuation = {
+      kind: "reprompt",
+      label: "Continue",
+      suggested_reply:
+        "Go ahead — continue exactly where you left off and queue every remaining step.",
+    };
+  } else if (plan && plan.plan.is_complete === false) {
+    continuation = {
+      kind: "continue_plan",
+      label: "Continue building",
+      plan_id: plan.plan.plan_id,
+    };
+  }
+
   return {
     user_message: userMsg,
     assistant_message: assistantMsg,
     plan: plan ? { ...plan.plan, steps: plan.steps } : null,
+    continuation,
   };
 }
 

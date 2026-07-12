@@ -11,6 +11,38 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-12 — Workspace reminders that fire + CoS catalogue v3
+
+**Source:** user bug report — CoS task/event writes failed Zod with
+"Invalid datetime" (the model emits `+01:00` Lagos offsets; the task
+validator only accepted UTC and the calendar validator refused zoneless
+datetimes), task reminders were written once and never swept or re-derived
+when a due date moved, calendar events had no reminders at all, and the
+CoS schemas never exposed reminder fields so "remind me the day before"
+was silently dropped.
+
+**Files (new):**
+- `000334_shared_workspace_reminders.sql` — `shared.tasks.reminder_sent_at`
+  plus `shared.calendar_events.{reminder_minutes,remind_at,reminder_sent_at}`
+  and partial sweep indexes on both tables (armed, live reminders only).
+  The new `workspace-reminders` scheduler notifies the owner when
+  `remind_at <= now()` and stamps `reminder_sent_at`; editing a reminder
+  clears the stamp so it re-fires.
+- `000335_shared_cos_catalogue_v3.sql` — updates
+  `workspace.{create,update}_task`, `workspace.{create,update}_event` and
+  `workspace.reschedule_event`: datetime descriptions now spell out the
+  ISO-8601-with-Lagos-offset shape (with examples), payload schemas gain
+  `reminder_minutes`/`remind_at`, and the event_type enum widens to the
+  full calendar vocabulary.
+
+**Related (no migration):** `flexDatetime` in `src/utils/validation.js` —
+task/calendar validators now accept UTC, any offset, zoneless local
+(business TZ) and bare-date shapes, normalising to UTC; task/calendar
+services re-derive `remind_at` whenever the anchor datetime or the
+relative offset changes.
+
+---
+
 ## 2026-07-12 — Chief of Staff: plan anchoring + workspace catalogue v2
 
 **Source:** user bug report (PR 2 of the CoS audit) — plan cards rendered

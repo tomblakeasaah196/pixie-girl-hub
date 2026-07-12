@@ -116,6 +116,24 @@ async function createTask({ brand, user, request_id, input }) {
 async function updateTask({ brand, user, request_id, id, patch }) {
   const before = await repo.findTask({ brand, id });
   if (!before) throw new NotFoundError("Task");
+  // Keep the reminder honest: unless the caller pinned an explicit remind_at,
+  // recompute it whenever the due date or the relative offset changes —
+  // otherwise a moved deadline silently fires the reminder at the old time.
+  if (
+    patch.remind_at === undefined &&
+    (patch.due_at !== undefined || patch.reminder_minutes !== undefined)
+  ) {
+    const due = patch.due_at !== undefined ? patch.due_at : before.due_at;
+    const mins =
+      patch.reminder_minutes !== undefined
+        ? patch.reminder_minutes
+        : before.reminder_minutes;
+    const hasBoth =
+      due !== null && due !== undefined && mins !== null && mins !== undefined;
+    patch.remind_at = hasBoth
+      ? new Date(new Date(due).getTime() - mins * 60000).toISOString()
+      : null;
+  }
   const task = await repo.updateTask({ brand, id, patch });
   await A(brand, user, "tasks.update", "task", id, task, request_id);
   if (patch.assigned_to && patch.assigned_to !== before.assigned_to)

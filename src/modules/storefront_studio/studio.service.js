@@ -17,6 +17,8 @@ const storage = require("../../services/storage.service");
 const {
   normalizeImageInput,
 } = require("../../services/media-compression.service");
+const videoClip = require("../../services/video-clip.service");
+const fs = require("fs/promises");
 const {
   uniqueSlug,
   buildPostFields,
@@ -323,6 +325,45 @@ async function uploadImage({ brand, file }) {
   return { url: stored.public_url };
 }
 
+// ── Looping-video upload (hero "living image") ─────────────
+// The raw clip lands on disk via multer; FFmpeg trims it to the operator's
+// window (≤10s), applies the chosen crop, then compresses + cleans it into
+// HD/SD MP4 loops and a poster frame. The returned object is what the page
+// slot stores and the storefront Hero plays.
+const VIDEO_EXT = new Set([".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi"]);
+
+function looksLikeVideo(file) {
+  if (/^video\//i.test(file.mimetype || "")) return true;
+  const ext = String(file.originalname || "")
+    .toLowerCase()
+    .replace(/^.*(\.[a-z0-9]+)$/, "$1");
+  return VIDEO_EXT.has(ext);
+}
+
+async function uploadVideo({ brand, file, options = {} }) {
+  if (!file || !file.path)
+    throw new AppError("NO_FILE", "No video was uploaded", 400);
+  try {
+    if (!looksLikeVideo(file)) {
+      throw new AppError("BAD_FILE_TYPE", "Only video files are allowed", 400, {
+        user_message:
+          "That file isn't a video. Upload an MP4, MOV or WebM clip.",
+      });
+    }
+    // Multipart fields arrive as strings; the clip service clamps/validates.
+    return await videoClip.processClip({
+      brand,
+      inputPath: file.path,
+      trim_start: options.trim_start,
+      trim_end: options.trim_end,
+      aspect: options.aspect,
+      focus: options.focus,
+    });
+  } finally {
+    await fs.unlink(file.path).catch(() => {});
+  }
+}
+
 // ── Preview (draft preview token + storefront URL) ─────────
 // Mints a short-lived signed token the storefront accepts on ?preview= to
 // render the DRAFT site for this brand. Also returns the brand's storefront
@@ -607,6 +648,7 @@ module.exports = {
   deletePopup,
   listSectionTemplates,
   uploadImage,
+  uploadVideo,
   previewInfo,
   listRevisions,
   rollbackRevision,

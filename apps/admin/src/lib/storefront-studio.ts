@@ -213,6 +213,53 @@ export async function uploadStorefrontImage(file: File): Promise<string> {
   return res.url;
 }
 
+// -- Looping-video upload (hero "living image") -------------
+/** What the backend clip pipeline returns and the page slot stores. */
+export interface StorefrontVideo {
+  /** HD MP4 loop (long edge ≤1280). */
+  url: string;
+  /** Small poor-network rendition (long edge ≤720). */
+  sd_url?: string;
+  /** First frame of the clip — instant paint + reduced-motion fallback. */
+  poster_url?: string;
+  width?: number;
+  height?: number;
+  duration_sec?: number;
+  bytes?: { hd?: number; sd?: number; poster?: number };
+}
+
+export interface VideoClipOptions {
+  /** Trim window in seconds (server clamps the clip to ≤10s). */
+  trim_start: number;
+  trim_end: number;
+  /** original | 16:9 | 4:3 | 1:1 | 4:5 | 9:16 */
+  aspect: string;
+  /** 0..1 along the cropped axis (0.5 = centre). */
+  focus: number;
+}
+
+/**
+ * Upload a raw video and let the backend trim/crop/compress it into the
+ * storefront loop set. `onProgress` reports upload percent; after 100% the
+ * server is still transcoding, so keep showing an "optimizing" state until
+ * the promise resolves.
+ */
+export async function uploadStorefrontVideo(
+  file: File,
+  opts: VideoClipOptions,
+  onProgress?: (pct: number) => void,
+): Promise<StorefrontVideo> {
+  const form = new FormData();
+  form.append("trim_start", String(opts.trim_start));
+  form.append("trim_end", String(opts.trim_end));
+  form.append("aspect", opts.aspect);
+  form.append("focus", String(opts.focus));
+  form.append("file", file);
+  return api.postForm<StorefrontVideo>("/storefront-studio/upload-video", form, {
+    onProgress,
+  });
+}
+
 // -- Preview (draft preview token + storefront URL) ---------
 export interface PreviewInfo {
   token: string;

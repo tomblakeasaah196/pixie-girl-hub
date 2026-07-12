@@ -177,6 +177,15 @@ async function deleteContent(req, res) {
 async function uploadImage(req, res) {
   res.json({ data: await service.uploadImage({ brand: req.brand, file: req.file }) });
 }
+async function uploadVideo(req, res) {
+  res.json({
+    data: await service.uploadVideo({
+      brand: req.brand,
+      file: req.file,
+      options: req.body || {},
+    }),
+  });
+}
 async function previewInfo(req, res) {
   res.json({ data: await service.previewInfo({ brand: req.brand }) });
 }
@@ -210,6 +219,7 @@ module.exports = {
   deletePopup,
   listSectionTemplates,
   uploadImage,
+  uploadVideo,
   previewInfo,
   listRevisions,
   rollbackRevision,

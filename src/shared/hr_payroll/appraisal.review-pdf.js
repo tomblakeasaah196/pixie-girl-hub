@@ -15,6 +15,7 @@ const pdf = require("../../services/pdf.service");
 const { query } = require("../../config/database");
 const { audit } = require("../../middleware/audit");
 const { NotFoundError } = require("../../utils/errors");
+const { formatDate } = require("../../utils/dates");
 
 const esc = (s) =>
   String(s ?? "")
@@ -52,7 +53,7 @@ function reviewPdfHtml({ brand, review, cycle, scores, staffName }) {
 
   const ack = review.acknowledged_by_employee
     ? `<div class="ack ack-ok">Acknowledged by ${esc(staffName)}${
-        review.acknowledged_at ? ` on ${new Date(review.acknowledged_at).toDateString()}` : ""
+        review.acknowledged_at ? ` on ${formatDate(review.acknowledged_at)}` : ""
       }${review.employee_response ? `<div class="ack-note">“${esc(review.employee_response)}”</div>` : ""}</div>`
     : `<div class="ack ack-pending">Awaiting employee acknowledgement.</div>`;
 
@@ -111,7 +112,7 @@ function reviewPdfHtml({ brand, review, cycle, scores, staffName }) {
 
   ${ack}
 
-  <div class="foot">Generated ${new Date().toDateString()} · Pixie Girl Hub HR</div>
+  <div class="foot">Generated ${formatDate(new Date())} · Pixie Girl Hub HR</div>
 </body></html>`;
 }
 

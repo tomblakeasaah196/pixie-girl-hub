@@ -20,6 +20,7 @@ const businessConfig = require("../business_setup/business-config.repo");
 const commsStudio = require("../comms_studio/comms-studio.service");
 const documents = require("../../shared/documents/documents.service");
 const { logger } = require("../../config/logger");
+const { formatDate, formatDateTime } = require("../../utils/dates");
 
 async function fireGoLiveBlast({ brand, campaign_id }) {
   const campaign = await repo.findById({ brand, id: campaign_id });
@@ -121,7 +122,7 @@ async function renderReportPdf(data) {
       .fillColor("#666")
       .text(`/${data.campaign.slug}`)
       .text(
-        `${new Date(data.campaign.starts_at).toDateString()} → ${new Date(data.campaign.ends_at).toDateString()}`,
+        `${formatDate(data.campaign.starts_at)} → ${formatDate(data.campaign.ends_at)}`,
       )
       .text(`Status: ${data.campaign.status}`);
     doc.moveDown();
@@ -160,7 +161,7 @@ async function renderReportPdf(data) {
     doc
       .fontSize(8)
       .fillColor("#999")
-      .text(`Generated ${new Date().toISOString()} — Pixie Girl Hub`, {
+      .text(`Generated ${formatDateTime(new Date())} — Pixie Girl Hub`, {
         align: "center",
       });
     doc.end();

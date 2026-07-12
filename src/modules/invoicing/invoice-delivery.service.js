@@ -25,6 +25,7 @@ const whatsapp = require("../../services/whatsapp.service");
 const { enqueue } = require("../../jobs/queue");
 const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
+const { formatDate } = require("../../utils/dates");
 
 const EVENT_KEY = "invoice.sent";
 const REFERENCE_TYPE = "invoice";
@@ -57,16 +58,7 @@ function firstName(name) {
 }
 
 function dayLabel(value) {
-  if (!value) return "";
-  try {
-    return new Date(value).toLocaleDateString("en-NG", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    });
-  } catch {
-    return String(value).slice(0, 10);
-  }
+  return formatDate(value);
 }
 
 /** Compose the branded invoice email (reuses the premium skin + brand tokens). */

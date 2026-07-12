@@ -6,6 +6,7 @@
  */
 
 import type { Channel, ChannelMember } from "@/lib/smartcomm-types";
+import { formatDate } from "@/lib/format";
 
 // ── Platform meta (label + colour + icon) ────────────────
 
@@ -163,7 +164,7 @@ export function fmtRelativeTime(iso?: string | null): string {
   if (hrs < 24) return `${hrs}h`;
   const days = Math.floor(hrs / 24);
   if (days < 7) return `${days}d`;
-  return d.toLocaleDateString("en-NG", { month: "short", day: "numeric" });
+  return formatDate(iso);
 }
 
 export function fmtClockTime(iso?: string | null): string {
@@ -187,11 +188,7 @@ export function fmtDayLabel(iso?: string | null): string {
     a.getDate() === b.getDate();
   if (sameDay(date, today)) return "Today";
   if (sameDay(date, yesterday)) return "Yesterday";
-  return date.toLocaleDateString("en-NG", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+  return formatDate(iso);
 }
 
 export function isSameDay(isoA?: string | null, isoB?: string | null): boolean {

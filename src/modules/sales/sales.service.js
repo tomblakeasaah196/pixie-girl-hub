@@ -25,6 +25,7 @@ const campaignsRepo = require("../sales_campaigns/campaigns.repo");
 const campaignsService = require("../sales_campaigns/campaigns.service");
 const pdf = require("../../services/pdf.service");
 const brandDocs = require("../../services/pdf.brand-docs");
+const { formatDate } = require("../../utils/dates");
 const docCopy = require("../../services/document-copy");
 const emailRender = require("../email_campaigns/email-render");
 const stockService = require("../stock/stock.service");
@@ -2133,7 +2134,8 @@ function paymentMethodLabel(p) {
   return [provider, kind].filter(Boolean).join(" — ") || provider || "Card";
 }
 
-const _dayISO = (v) => (v ? String(v).slice(0, 10) : "");
+// Human-facing day label on receipt/quotation PDF meta rows → DD/MM/YYYY.
+const _dayISO = (v) => formatDate(v);
 
 /**
  * Map a paid sales order (header + lines + payments + contact) → the normalised

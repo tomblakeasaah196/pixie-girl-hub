@@ -18,6 +18,7 @@
 "use strict";
 
 const programmeRepo = require("../../modules/stylist_programme/programme.repo");
+const { formatDate } = require("../../utils/dates");
 const notify = require("../../modules/stylist_programme/stylist.notify");
 const events = require("../../modules/stylist_programme/stylist.events");
 const { logger } = require("../../config/logger");
@@ -75,12 +76,12 @@ async function runStylistCertificationSweep() {
           stylist_id: c.stylist_id,
           type: "certification",
           title: `Certification expires in ${days} days`,
-          body: `Your ${c.tier_key} certification expires on ${new Date(c.expires_at).toLocaleDateString("en-GB")}. Contact the programme team to re-validate before it lapses.`,
+          body: `Your ${c.tier_key} certification expires on ${formatDate(c.expires_at)}. Contact the programme team to re-validate before it lapses.`,
           data: { certification_id: c.certification_id },
           email: {
             subject: `Your Pixie Girl certification expires in ${days} days`,
             bodyHtml: `<p>Your <strong>${c.tier_key}</strong> certification
-              expires on ${new Date(c.expires_at).toLocaleDateString("en-GB")}.
+              expires on ${formatDate(c.expires_at)}.
               Re-validate before then to keep your badge and routing active.</p>`,
             ctaLabel: "Open your dashboard",
             ctaPath: "/dashboard",

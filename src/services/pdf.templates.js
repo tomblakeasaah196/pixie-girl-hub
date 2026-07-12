@@ -19,6 +19,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { formatDate, formatDateTime } = require("../utils/dates");
 
 const TEMPLATE_DIR = path.join(__dirname, "templates");
 const cache = new Map();
@@ -37,7 +38,8 @@ function esc(s) {
 const ngn = (v) =>
   `₦${Number(v || 0).toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
 
-const day = (v) => (present(v) ? String(v).slice(0, 10) : "");
+// Human-facing day label on documents → canonical DD/MM/YYYY.
+const day = (v) => formatDate(v);
 
 function load(name) {
   if (!cache.has(name)) {
@@ -113,7 +115,10 @@ function reportHtml({ title, subtitle, generated_at, sections = [] }) {
   return render("report", title || "Report", {
     title: title || "Report",
     subtitle: subtitle ? `<div class="meta">${esc(subtitle)}</div>` : "",
-    generated_at: generated_at || new Date().toISOString(),
+    generated_at: formatDateTime(
+      generated_at || new Date(),
+      String(generated_at || ""),
+    ),
     sections: reportSections(sections),
   });
 }
@@ -382,7 +387,7 @@ function contractHtml({ brand, contract, staff }) {
       <tr><td>For the Company: ____________________</td><td>Date: __________</td></tr>
     </table>
     <p class="muted">Contract ${esc(c.contract_number || c.contract_id || "")} ·
-       generated ${esc(new Date().toISOString().slice(0, 10))}</p>`;
+       generated ${esc(formatDate(new Date()))}</p>`;
   return shell("Employment Contract", body);
 }
 

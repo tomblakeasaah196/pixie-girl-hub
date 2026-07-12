@@ -13,7 +13,7 @@
 "use strict";
 
 const ExcelJS = require("exceljs");
-const { formatTz } = require("../../utils/dates");
+const { formatDateTime, formatDate } = require("../../utils/dates");
 
 // House style
 const ACCENT = "FF690909"; // Maroon Noir deep-red
@@ -28,8 +28,9 @@ const PCT_FMT = '#,##0.0"%"';
 /** Postgres NUMERIC comes back as a string — coerce for an Excel number cell. */
 const num = (v) =>
   v === null || v === undefined || v === "" ? null : Number(v);
-const fmtDate = (v) => (v ? formatTz(new Date(v), "yyyy-MM-dd HH:mm") : "");
-const fmtDay = (v) => (v ? formatTz(new Date(v), "yyyy-MM-dd") : "");
+// Canonical human-facing labels in exported cells: "23:57, 11/07/2026" / "11/07/2026".
+const fmtDate = (v) => formatDateTime(v);
+const fmtDay = (v) => formatDate(v);
 
 /** numFmt + coercer for the manifest formats used across dashboards. */
 function cellSpec(format) {

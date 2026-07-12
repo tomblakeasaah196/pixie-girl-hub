@@ -9,6 +9,7 @@ import { useToastStore } from "@/components/notifications/NotificationToast";
 import { Card, Pill, type Tone } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
 import { toastReport } from "@/lib/error-report";
+import { formatDate, formatTime } from "@/lib/format";
 import type { AttendanceDay, WorkSchedule } from "@/lib/hr-api";
 
 /**
@@ -92,12 +93,9 @@ export function WeekScheduleView({ schedule }: { schedule: WorkSchedule }) {
   );
 }
 
-/** Short local-time label from an ISO timestamp (e.g. "8:57 AM"). */
+/** Short local-time label from an ISO timestamp (canonical 24-hour "08:57"). */
 export function clockTime(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  return formatTime(iso);
 }
 
 /**
@@ -109,11 +107,7 @@ export function workDateLabel(dateStr: string | null | undefined): string {
   if (!dateStr) return "—";
   const [y, m, d] = dateStr.slice(0, 10).split("-").map(Number);
   if (!y || !m || !d) return "—";
-  return new Date(y, m - 1, d).toLocaleDateString([], {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
+  return formatDate(new Date(y, m - 1, d));
 }
 
 /** "8:10 AM" from minutes-since-midnight (workplace-local, from insights). */

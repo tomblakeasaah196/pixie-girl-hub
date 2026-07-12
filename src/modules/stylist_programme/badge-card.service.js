@@ -16,6 +16,7 @@ const programmeRepo = require("./programme.repo");
 const notify = require("./stylist.notify");
 const pdf = require("../../services/pdf.service");
 const { NotFoundError, AppError } = require("../../utils/errors");
+const { formatDate } = require("../../utils/dates");
 
 async function verifyUrl(partner) {
   const base = await notify.portalBaseUrl();
@@ -25,12 +26,7 @@ async function verifyUrl(partner) {
 function cardHtml({ partner, tier, qrDataUrl, url }) {
   const tierLabel = tier ? tier.label : "Partner";
   const tierColor = (tier && tier.badge_color) || "#690909";
-  const expiry = partner.current_tier_expires_at
-    ? new Date(partner.current_tier_expires_at).toLocaleDateString("en-GB", {
-        month: "short",
-        year: "numeric",
-      })
-    : "—";
+  const expiry = formatDate(partner.current_tier_expires_at, "—");
   return `<!doctype html><html><head><meta charset="utf-8"><style>
     body { margin: 0; font-family: Montserrat, Helvetica, Arial, sans-serif;
            display: flex; justify-content: center; padding-top: 24px; }

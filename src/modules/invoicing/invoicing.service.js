@@ -13,6 +13,7 @@ const accounting = require("../accounting/accounting.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { money, toCurrencyString } = require("../../utils/money");
+const { formatDate } = require("../../utils/dates");
 const { NotFoundError, AppError } = require("../../utils/errors");
 const { logger } = require("../../config/logger");
 const pdf = require("../../services/pdf.service");
@@ -416,7 +417,8 @@ async function send({ brand, user, request_id, id, input = {} }) {
 function firstName(name) {
   return String(name || "").trim().split(/\s+/)[0] || "";
 }
-const dayISO = (v) => (v ? String(v).slice(0, 10) : "");
+// Human-facing day label on PDF meta rows → canonical DD/MM/YYYY.
+const dayISO = (v) => formatDate(v);
 
 const INVOICE_STATUS_LABEL = {
   draft: "Draft",
@@ -968,14 +970,7 @@ async function sendDueReminders({ brand }) {
       // Route through the Communications Studio. Channel, subject, body all
       // come from the payment_reminder automation row — the CEO edits copy
       // from the Studio; this cron only supplies the variables.
-      const due = r.due_date ? new Date(r.due_date) : null;
-      const dueLabel = due
-        ? due.toLocaleDateString("en-NG", {
-            day: "numeric",
-            month: "long",
-            year: "numeric",
-          })
-        : "";
+      const dueLabel = formatDate(r.due_date);
       const result = await commsStudio.dispatch({
         brand,
         event_key: "payment_reminder",

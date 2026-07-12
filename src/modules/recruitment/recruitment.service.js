@@ -27,6 +27,7 @@ const { audit } = require("../../middleware/audit");
 const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
 const { NotFoundError, ConflictError, AppError } = require("../../utils/errors");
+const { formatDate } = require("../../utils/dates");
 
 const fs = require("fs");
 const path = require("path");
@@ -448,7 +449,7 @@ async function approveAndSend({ brand, user, request_id, id, input = {} }) {
              <p>We're delighted to share your offer for the role of <b>${escHtml(offer.title)}</b> at ${escHtml(company.display_name)}.</p>
              <p>Please review the full job description and offer letter, and sign at the bottom of the page:</p>
              <p><a href="${link}">Open your offer</a></p>
-             <p>This link expires on ${new Date(expires_at).toDateString()}.</p>`,
+             <p>This link expires on ${formatDate(expires_at)}.</p>`,
       text: `Your offer for ${offer.title} at ${company.display_name}. Review and sign: ${link}`,
     });
   } catch (err) {

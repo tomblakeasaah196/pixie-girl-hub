@@ -1,4 +1,5 @@
 import type { Tone } from "@/components/ui/primitives";
+import { formatDate as fmtDateCanon, formatTime as fmtTimeCanon } from "@/lib/format";
 import type { TaskStatus, TaskPriority, TaskBoard } from "./types";
 
 // ── Task status metadata ────────────────────────────────────────────────
@@ -173,20 +174,14 @@ export function isSameDay(a: Date, b: Date): boolean {
   );
 }
 
-/** Format time as HH:mm. */
+/** Format time as canonical 24-hour HH:mm. */
 export function formatTime(dateStr: string): string {
-  const d = new Date(dateStr);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return fmtTimeCanon(dateStr);
 }
 
-/** Format a date as readable string. */
+/** Format a date as the canonical DD/MM/YYYY. */
 export function formatDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString([], {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  return fmtDateCanon(dateStr);
 }
 
 /** Returns hours array for time grids. */

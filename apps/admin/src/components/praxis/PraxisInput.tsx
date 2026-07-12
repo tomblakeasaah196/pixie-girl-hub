@@ -3,7 +3,9 @@
  * composer): rounded, elevated, auto-growing textarea with a mic (Web Speech,
  * hidden when unsupported) and a send affordance. Enter sends, Shift+Enter
  * breaks. While listening, the live interim transcript previews in-place; the
- * final transcript sends as a voice-mode turn.
+ * final transcript is staged in the textarea for review/editing (browser
+ * recognition mishears), and the send still goes out as a voice-mode turn
+ * carrying the raw transcript in `transcribed_text`.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -31,6 +33,22 @@ export function PraxisInput({
   const [text, setText] = useState(initialText ?? "");
   const [focused, setFocused] = useState(false);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  // Raw speech transcript(s) backing the current draft. Non-empty means the
+  // draft originated from voice — the send is tagged input_mode "voice" and
+  // carries this untouched transcript even after the user edits the text.
+  const voiceTranscriptRef = useRef("");
+
+  const resizeAndFocus = () => {
+    const ta = taRef.current;
+    if (!ta) return;
+    requestAnimationFrame(() => {
+      ta.style.height = "auto";
+      ta.style.height = `${Math.min(ta.scrollHeight, 168)}px`;
+      const end = ta.value.length;
+      ta.focus();
+      ta.setSelectionRange(end, end);
+    });
+  };
 
   useEffect(() => {
     if (initialText && taRef.current) {
@@ -44,17 +62,19 @@ export function PraxisInput({
 
   const { supported, listening, interim, start, stop } = useSpeechInput({
     onFinal: (transcript) => {
-      onSend({
-        content: transcript,
-        input_mode: "voice",
-        transcribed_text: transcript,
-      });
+      voiceTranscriptRef.current = [voiceTranscriptRef.current, transcript]
+        .filter(Boolean)
+        .join(" ");
+      setText((prev) => (prev.trim() ? `${prev.trimEnd()} ${transcript}` : transcript));
+      resizeAndFocus();
     },
   });
 
   const sendText = async () => {
     const content = text.trim();
     if (!content || disabled) return;
+    const transcript = voiceTranscriptRef.current;
+    voiceTranscriptRef.current = "";
     setText("");
     if (taRef.current) taRef.current.style.height = "auto";
     taRef.current?.focus();
@@ -62,20 +82,16 @@ export function PraxisInput({
       // If onSend returns a promise (async parent handler), a rejection means
       // the turn didn't reach the server — restore the draft so the user
       // doesn't have to retype a long message after a transient failure.
-      await onSend({ content, input_mode: "text" });
+      await onSend(
+        transcript
+          ? { content, input_mode: "voice", transcribed_text: transcript }
+          : { content, input_mode: "text" },
+      );
     } catch {
-      const ta = taRef.current;
       setText(content);
-      if (ta) {
-        // Wait for React to paint the restored value before we resize/focus.
-        requestAnimationFrame(() => {
-          ta.style.height = "auto";
-          ta.style.height = `${Math.min(ta.scrollHeight, 168)}px`;
-          const end = ta.value.length;
-          ta.focus();
-          ta.setSelectionRange(end, end);
-        });
-      }
+      voiceTranscriptRef.current = transcript;
+      // Wait for React to paint the restored value before we resize/focus.
+      resizeAndFocus();
     }
   };
 
@@ -111,6 +127,8 @@ export function PraxisInput({
           onBlur={() => setFocused(false)}
           onChange={(e) => {
             setText(e.target.value);
+            // A fully cleared draft is a fresh start — drop the voice origin.
+            if (!e.target.value.trim()) voiceTranscriptRef.current = "";
             e.target.style.height = "auto";
             e.target.style.height = `${Math.min(e.target.scrollHeight, 168)}px`;
           }}

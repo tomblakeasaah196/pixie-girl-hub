@@ -82,13 +82,16 @@ function BrandCard({ b }: { b: CrossBrandBrand }) {
   );
 }
 
-function CrossBrandSection() {
+function CrossBrandSection({ dense }: { dense?: boolean }) {
   const q = useCrossBrandOverview();
+  // In the narrow desktop right pane the two-up grid gets cramped, so a dense
+  // host stacks the brand cards single-column.
+  const grid = cn("grid gap-3", dense ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2");
   return (
     <section>
       <SectionHeader icon={Building2} title="Across your companies" hint="CEO view" />
       {q.isLoading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className={grid}>
           {[0, 1].map((i) => (
             <div key={i} className="h-[150px] rounded-[14px] bg-text-primary/[0.04] animate-pulse" />
           ))}
@@ -98,7 +101,7 @@ function CrossBrandSection() {
       ) : !q.data || q.data.brands.length === 0 ? (
         <Empty text="No brands to show yet." />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className={grid}>
           {q.data.brands.map((b) => (
             <BrandCard key={b.business} b={b} />
           ))}
@@ -284,7 +287,19 @@ function ErrorRetry({ onRetry, label }: { onRetry: () => void; label: string }) 
   );
 }
 
-export function CosIntelligencePanel() {
+/**
+ * @param className  Override the scroll container styling. Defaults to the
+ *   centered full-view column; the desktop right pane passes a flush, dense
+ *   variant.
+ * @param dense  Narrow host (desktop right pane) — stack multi-column grids.
+ */
+export function CosIntelligencePanel({
+  className,
+  dense = false,
+}: {
+  className?: string;
+  dense?: boolean;
+} = {}) {
   const [plan, setPlan] = useState<Plan | null>(null);
 
   const banner = useMemo(
@@ -296,8 +311,13 @@ export function CosIntelligencePanel() {
   );
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain w-full max-w-[760px] mx-auto space-y-7 py-4 px-4 md:px-0 md:pr-1 pb-[max(env(safe-area-inset-bottom,0px),16px)]">
-      <CrossBrandSection />
+    <div
+      className={
+        className ??
+        "flex-1 min-h-0 overflow-y-auto overscroll-contain w-full max-w-[760px] mx-auto space-y-7 py-4 px-4 md:px-0 md:pr-1 pb-[max(env(safe-area-inset-bottom,0px),16px)]"
+      }
+    >
+      <CrossBrandSection dense={dense} />
       <SchedulingSection onPlan={setPlan} />
       <PlaybooksSection onPlan={setPlan} />
 

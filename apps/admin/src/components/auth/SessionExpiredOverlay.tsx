@@ -62,6 +62,11 @@ export function SessionExpiredOverlay() {
       setError(null);
       setPassword("");
       setPin("");
+      // The overlay stays mounted for the lifetime of the app; the previous
+      // successful sign-in left `loading` at true (submit* never resets it on
+      // the success path since we head straight into resume()), which parks
+      // the button in its spinner state the next time the session expires.
+      setLoading(false);
     };
     window.addEventListener(SESSION_EXPIRED_EVENT, onExpired);
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired);

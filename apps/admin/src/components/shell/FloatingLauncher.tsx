@@ -236,7 +236,7 @@ export function FloatingLauncher() {
   // states worth a passive nudge light up; hidden while the fan is open (the
   // full control is right there) or mid-drag.
   const pip =
-    showClock && clock.view === "idle"
+    showClock && clock.view === "idle" && !clock.offDay
       ? { color: "bg-warn", pulse: true }
       : showClock && clock.view === "in"
         ? { color: clock.isOffsite ? "bg-warn" : "bg-success", pulse: false }

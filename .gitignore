@@ -57,6 +57,7 @@ media/
 *.dump
 *.sql.gz
 backup/
+nullpixiegirl-hub/
 
 # AI / Vector stores (if any local cache)
 .embeddings-cache/

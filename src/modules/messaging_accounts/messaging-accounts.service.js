@@ -800,44 +800,31 @@ async function resolveInstagramSendConfig({ brand }) {
  */
 function getInboundDnsRecords({ external_account_id }) {
   const domain = String(external_account_id || "").split("@")[1] || "";
-  const webhookUrl = `${config.APP_URL}/api/webhooks/email/inbound`;
-  const secretConfigured = Boolean(config.CF_EMAIL_INBOUND_SECRET);
-
+  // Inbound is handled by IMAP polling on the brand's Outbound Email
+  // connection (reusing the SMTP mailbox) — no DNS records, no webhook, no
+  // Cloudflare. This payload just guides the operator to that toggle and
+  // pre-fills the IMAP details for a Hostinger-hosted mailbox.
+  const imapHost = domain ? `imap.${domain}` : "";
   return {
+    mode: "imap",
     domain,
-    webhook_url: webhookUrl,
-    webhook_header: "x-cf-email-signature",
-    webhook_secret_configured: secretConfigured,
-    records: domain
-      ? [
-          {
-            type: "MX",
-            name: "@",
-            value:
-              "Added automatically when you enable Cloudflare Email Routing for this domain",
-            note: "Cloudflare → domain → Email → Email Routing → Enable",
-          },
-          {
-            type: "TXT (SPF)",
-            name: "@",
-            value:
-              "Added automatically by Cloudflare Email Routing — merge with any SPF record this domain already publishes for outbound sending (a domain can only have one).",
-            note: "Check Cloudflare DNS after enabling Email Routing; merge manually if an SPF TXT already exists.",
-          },
-          {
-            type: "TXT",
-            name: "_dmarc",
-            value: `v=DMARC1; p=quarantine; rua=mailto:dmarc@${domain}; fo=1`,
-            note: "DMARC — reporting address can be any mailbox you monitor.",
-          },
-        ]
-      : [],
+    imap: {
+      // Both brands are on Hostinger, whose IMAP host is imap.hostinger.com.
+      // The poller also auto-derives smtp.<host> → imap.<host> when left
+      // blank, so this is a hint, not a hard requirement.
+      host: "imap.hostinger.com",
+      host_derived: imapHost,
+      port: 993,
+      security: "SSL/TLS",
+      username: external_account_id || "the full mailbox address",
+    },
     instructions: [
-      `In Cloudflare, add ${domain || "the domain"} and enable Email Routing.`,
-      `Route ${external_account_id || "the mailbox"} (and ideally a catch-all) to an Email Worker.`,
-      `The Worker should HMAC-SHA256 the raw message with the shared secret and POST it to ${webhookUrl} with header x-cf-email-signature: sha256=<hex>.`,
-      "Publish the SPF and DMARC TXT records above (merge SPF with any existing record).",
-      "Send yourself a test email and confirm it appears as an inbound message in the Hub.",
+      "Open this brand's Outbound Email connection under Connections above.",
+      'Tick "Poll this mailbox for customer replies (IMAP)".',
+      "Leave IMAP host blank to auto-derive it from the SMTP host, or enter imap.hostinger.com. Port 993, TLS on.",
+      "It reuses the SMTP username + password already saved — no new credentials to enter.",
+      "Hit Test (it checks SMTP send and IMAP login), then Save.",
+      "Reply to a test email and confirm it appears in the inbox within ~2 minutes.",
     ],
   };
 }

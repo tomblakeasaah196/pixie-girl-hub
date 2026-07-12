@@ -309,35 +309,35 @@ jobs:
             npm run build
             cd ../..
 
-            # ── Cloudflare inbound-email Worker ────────────────────
-            # Deploy the Email Routing Worker that pipes customer replies into
-            # the Smartcomm inbox. Fully non-interactive: auth via
-            # CLOUDFLARE_API_TOKEN (no `wrangler login`), and the shared HMAC
-            # secret pushed straight from the SAME .env the backend verifies
-            # against (CF_EMAIL_INBOUND_SECRET) — no manual prompt. This is the
-            # ongoing deploy only; the one-time `wrangler login` / Email Routing
-            # wiring in the Cloudflare dashboard is deliberately NOT automated.
-            # Best-effort like Kaizen above: a Cloudflare hiccup, or a box that
-            # simply hasn't set the token yet, must never fail the core deploy.
-            echo "--- Deploying Cloudflare inbound-email Worker"
-            CF_TOKEN=$(grep -E '^CLOUDFLARE_API_TOKEN=' .env | head -1 | cut -d '=' -f2- | tr -d ' "')
-            CF_ACCOUNT=$(grep -E '^CLOUDFLARE_ACCOUNT_ID=' .env | head -1 | cut -d '=' -f2- | tr -d ' "')
-            CF_SECRET=$(grep -E '^CF_EMAIL_INBOUND_SECRET=' .env | head -1 | cut -d '=' -f2- | tr -d ' "')
-            if [ -n "$CF_TOKEN" ] && [ -n "$CF_SECRET" ]; then
-              (
-                set -e
-                cd cloudflare
-                npm install --no-audit --no-fund
-                export CLOUDFLARE_API_TOKEN="$CF_TOKEN"
-                [ -n "$CF_ACCOUNT" ] && export CLOUDFLARE_ACCOUNT_ID="$CF_ACCOUNT"
-                # Deploy first so the script exists, then (re)set the secret —
-                # `secret put` requires the Worker to already be published.
-                npx --yes wrangler deploy
-                printf '%s' "$CF_SECRET" | npx --yes wrangler secret put INBOUND_SECRET
-              ) && echo "Cloudflare Worker deployed ✓" \
-                || echo "WARNING: Cloudflare Worker deploy did not complete — run 'npm install && npx wrangler deploy' in ./cloudflare on the VPS by hand."
-            else
-              echo "Skipping Cloudflare Worker deploy — set CLOUDFLARE_API_TOKEN (and optionally CLOUDFLARE_ACCOUNT_ID) plus CF_EMAIL_INBOUND_SECRET in .env to enable."
-            fi
+            # # ── Cloudflare inbound-email Worker ────────────────────
+            # # Deploy the Email Routing Worker that pipes customer replies into
+            # # the Smartcomm inbox. Fully non-interactive: auth via
+            # # CLOUDFLARE_API_TOKEN (no `wrangler login`), and the shared HMAC
+            # # secret pushed straight from the SAME .env the backend verifies
+            # # against (CF_EMAIL_INBOUND_SECRET) — no manual prompt. This is the
+            # # ongoing deploy only; the one-time `wrangler login` / Email Routing
+            # # wiring in the Cloudflare dashboard is deliberately NOT automated.
+            # # Best-effort like Kaizen above: a Cloudflare hiccup, or a box that
+            # # simply hasn't set the token yet, must never fail the core deploy.
+            # echo "--- Deploying Cloudflare inbound-email Worker"
+            # CF_TOKEN=$(grep -E '^CLOUDFLARE_API_TOKEN=' .env | head -1 | cut -d '=' -f2- | tr -d ' "')
+            # CF_ACCOUNT=$(grep -E '^CLOUDFLARE_ACCOUNT_ID=' .env | head -1 | cut -d '=' -f2- | tr -d ' "')
+            # CF_SECRET=$(grep -E '^CF_EMAIL_INBOUND_SECRET=' .env | head -1 | cut -d '=' -f2- | tr -d ' "')
+            # if [ -n "$CF_TOKEN" ] && [ -n "$CF_SECRET" ]; then
+            #   (
+            #     set -e
+            #     cd cloudflare
+            #     npm install --no-audit --no-fund
+            #     export CLOUDFLARE_API_TOKEN="$CF_TOKEN"
+            #     [ -n "$CF_ACCOUNT" ] && export CLOUDFLARE_ACCOUNT_ID="$CF_ACCOUNT"
+            #     # Deploy first so the script exists, then (re)set the secret —
+            #     # `secret put` requires the Worker to already be published.
+            #     npx --yes wrangler deploy
+            #     printf '%s' "$CF_SECRET" | npx --yes wrangler secret put INBOUND_SECRET
+            #   ) && echo "Cloudflare Worker deployed ✓" \
+            #     || echo "WARNING: Cloudflare Worker deploy did not complete — run 'npm install && npx wrangler deploy' in ./cloudflare on the VPS by hand."
+            # else
+            #   echo "Skipping Cloudflare Worker deploy — set CLOUDFLARE_API_TOKEN (and optionally CLOUDFLARE_ACCOUNT_ID) plus CF_EMAIL_INBOUND_SECRET in .env to enable."
+            # fi
 
             echo "Production deploy complete ✓"

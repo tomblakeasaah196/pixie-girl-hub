@@ -207,19 +207,19 @@ export interface WhatsAppProfilePatch {
   websites?: string[];
 }
 
-export interface InboundDnsRecord {
-  type: string;
-  name: string;
-  value: string;
-  note?: string;
-}
-
-export interface InboundDnsRecords {
+// Inbound email is now IMAP polling on the Outbound Email connection —
+// no DNS records or webhook. This payload guides the operator to the
+// toggle and pre-fills the IMAP details for the mailbox's domain.
+export interface InboundImapGuide {
+  mode: "imap";
   domain: string;
-  webhook_url: string;
-  webhook_header: string;
-  webhook_secret_configured: boolean;
-  records: InboundDnsRecord[];
+  imap: {
+    host: string;
+    host_derived: string;
+    port: number;
+    security: string;
+    username: string;
+  };
   instructions: string[];
 }
 
@@ -289,7 +289,7 @@ export const messagingAccountsApi = {
   // Computed on the fly from the mailbox typed into the Inbound Email
   // form — works even before the account row is saved.
   dnsRecords: (mailbox: string) =>
-    api.get<InboundDnsRecords>(
+    api.get<InboundImapGuide>(
       `/messaging-accounts/dns-records?mailbox=${encodeURIComponent(mailbox)}`,
     ),
 };

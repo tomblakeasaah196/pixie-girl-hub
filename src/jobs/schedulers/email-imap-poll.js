@@ -48,6 +48,9 @@ async function pollOneMailbox(cfg) {
   });
 
   let ingested = 0;
+  // imapflow requires an explicit connect before any mailbox operation —
+  // getMailboxLock otherwise throws "Connection not available".
+  await client.connect();
   const lock = await client.getMailboxLock("INBOX").catch((err) => {
     throw new Error(`INBOX open failed: ${err.message}`);
   });

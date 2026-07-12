@@ -392,6 +392,10 @@ function PlatformEditor({ platform, account, onSaved }: EditorProps) {
       smtp_secure: account?.smtp_secure ?? false,
       smtp_user: account?.smtp_user ?? "",
       reply_to_email: account?.reply_to_email ?? "",
+      imap_host: account?.imap_host ?? "",
+      imap_port: account?.imap_port ?? 993,
+      imap_secure: account?.imap_secure ?? true,
+      inbound_poll_enabled: account?.inbound_poll_enabled ?? false,
     });
     setDirtyFields(new Set());
   }, [platform, account]);
@@ -1116,12 +1120,12 @@ function GettingStarted({
 }
 
 /**
- * Inbound email setup, computed live for whatever mailbox the operator
- * is typing into the "Inbound mailbox" field above — no need to go
- * copy records out of docs/EMAIL_TWO_WAY_SETUP.md by hand. Backed by
+ * Inbound email guide, computed live for whatever mailbox the operator is
+ * typing above. Inbound now works via IMAP polling on the brand's Outbound
+ * Email connection (reusing the same mailbox login) — this panel shows the
+ * IMAP settings + steps and points the operator to that toggle. Backed by
  * GET /messaging-accounts/dns-records (messaging-accounts.service.js
- * getInboundDnsRecords), which returns the same records that runbook
- * documents, so if you change one, check the other stays in sync.
+ * getInboundDnsRecords).
  */
 function InboundEmailGuide({ mailbox }: { mailbox: string }) {
   const domain = mailbox.includes("@") ? mailbox.split("@")[1] : "";
@@ -1144,12 +1148,12 @@ function InboundEmailGuide({ mailbox }: { mailbox: string }) {
         <Info className="w-4 h-4 mt-[2px] text-accent-glow" />
         <div>
           <h4 className="text-[13px] font-medium">
-            Two-way email — DNS &amp; webhook setup
+            Two-way email — inbound via IMAP
           </h4>
           <p className="text-[11.5px] text-text-faint mt-0.5">
-            Inbound rides Cloudflare Email Routing → an Email Worker → our
-            webhook. Enter the mailbox above and every record below is
-            computed for that exact domain.
+            Customer replies are pulled from your mailbox over IMAP and threaded
+            into the inbox — no DNS changes, no Cloudflare. Set it up on this
+            brand's Outbound Email connection (it reuses the same mailbox login).
           </p>
         </div>
       </div>
@@ -1157,8 +1161,8 @@ function InboundEmailGuide({ mailbox }: { mailbox: string }) {
       {!domain ? (
         <p className="p-4 text-[12.5px] text-text-faint">
           Type the inbound mailbox above (e.g.{" "}
-          <span className="font-mono">sales@yourbrand.com</span>) to generate
-          its DNS records.
+          <span className="font-mono">support@yourbrand.com</span>) to see its
+          IMAP settings.
         </p>
       ) : dnsQ.isLoading ? (
         <div className="grid place-items-center py-8">
@@ -1168,79 +1172,36 @@ function InboundEmailGuide({ mailbox }: { mailbox: string }) {
         <div className="p-4 space-y-4">
           <div>
             <p className="text-[11px] uppercase tracking-widest text-text-faint mb-2">
-              Webhook (paste into your Cloudflare Email Worker)
+              IMAP settings for {domain}
             </p>
             <DnsRow
-              label="POST URL"
-              value={dnsQ.data.webhook_url}
-              onCopy={() => copy(dnsQ.data!.webhook_url, "url")}
-              copied={copied === "url"}
+              label="Host"
+              value={dnsQ.data.imap.host}
+              onCopy={() => copy(dnsQ.data!.imap.host, "host")}
+              copied={copied === "host"}
             />
             <DnsRow
-              label="Signature header"
-              value={`${dnsQ.data.webhook_header}: sha256=<hex>`}
-              onCopy={() => copy(dnsQ.data!.webhook_header, "header")}
-              copied={copied === "header"}
+              label="Port"
+              value={String(dnsQ.data.imap.port)}
+              onCopy={() => copy(String(dnsQ.data!.imap.port), "port")}
+              copied={copied === "port"}
             />
-            <p className="text-[10.5px] text-text-faint mt-1.5 inline-flex items-center gap-1">
-              {dnsQ.data.webhook_secret_configured ? (
-                <>
-                  <Check className="w-3 h-3 text-green-400" /> Shared HMAC
-                  secret is configured on this server.
-                </>
-              ) : (
-                <>
-                  <AlertCircle className="w-3 h-3 text-danger" />{" "}
-                  CF_EMAIL_INBOUND_SECRET isn't set yet — set it before this
-                  domain's mail can be verified.
-                </>
-              )}
+            <DnsRow
+              label="Security"
+              value={dnsQ.data.imap.security}
+              onCopy={() => copy(dnsQ.data!.imap.security, "sec")}
+              copied={copied === "sec"}
+            />
+            <DnsRow
+              label="Username"
+              value={dnsQ.data.imap.username}
+              onCopy={() => copy(dnsQ.data!.imap.username, "user")}
+              copied={copied === "user"}
+            />
+            <p className="text-[10.5px] text-text-faint mt-1.5">
+              Password is the same one saved on the Outbound Email connection —
+              nothing new to enter.
             </p>
-          </div>
-
-          <div>
-            <p className="text-[11px] uppercase tracking-widest text-text-faint mb-2">
-              DNS records for {domain}
-            </p>
-            <div className="space-y-2">
-              {dnsQ.data.records.map((r) => (
-                <div
-                  key={`${r.type}-${r.name}`}
-                  className="rounded-xl border hairline bg-panel px-3 py-2"
-                >
-                  <div className="flex items-center gap-2 text-[11.5px]">
-                    <span className="rounded-md bg-accent/15 text-accent-glow px-1.5 py-0.5 font-mono text-[10.5px]">
-                      {r.type}
-                    </span>
-                    <span className="font-mono text-text-muted">
-                      {r.name}
-                    </span>
-                  </div>
-                  <div className="mt-1 flex items-start justify-between gap-2">
-                    <p className="font-mono text-[11.5px] text-text-primary break-all">
-                      {r.value}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => copy(r.value, `${r.type}-${r.name}`)}
-                      className="shrink-0 rounded-md p-1 hover:bg-panel-2"
-                      title="Copy"
-                    >
-                      {copied === `${r.type}-${r.name}` ? (
-                        <Check className="w-3.5 h-3.5 text-green-400" />
-                      ) : (
-                        <Copy className="w-3.5 h-3.5 text-text-faint" />
-                      )}
-                    </button>
-                  </div>
-                  {r.note && (
-                    <p className="text-[10.5px] text-text-faint mt-1">
-                      {r.note}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
           </div>
 
           <div>
@@ -1256,7 +1217,7 @@ function InboundEmailGuide({ mailbox }: { mailbox: string }) {
         </div>
       ) : (
         <p className="p-4 text-[12.5px] text-danger">
-          Couldn't compute DNS records for this mailbox.
+          Couldn't load IMAP settings for this mailbox.
         </p>
       )}
     </div>

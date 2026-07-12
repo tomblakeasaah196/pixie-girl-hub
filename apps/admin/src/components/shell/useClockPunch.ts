@@ -15,10 +15,10 @@ import { toastReport } from "@/lib/error-report";
  * elapsed timer. Renderers only decide how to skin the result.
  *
  * `view` is the single derived status the skins switch on:
- *   hidden  → not linked to a staff profile (404) or a day off — render nothing
+ *   hidden  → not linked to a staff profile (404) — render nothing
  *   loading → first fetch in flight, no data yet
  *   error   → transient failure (500 / network) — offer a retry
- *   idle    → on the clock today, not yet punched in — can clock in
+ *   idle    → not yet punched in — can clock in (incl. an off day, see `offDay`)
  *   in      → clocked in — running timer, can clock out
  *   done    → clocked in AND out today — locked (one cycle per day)
  */
@@ -28,6 +28,8 @@ export interface ClockPunch {
   view: ClockView;
   /** HH:MM:SS since clock-in, live once `view === "in"`. */
   hhmmss: string;
+  /** Today is scheduled off — clocking in is optional (extra / weekend hours). */
+  offDay: boolean;
   isOffsite: boolean;
   geofenceRequired: boolean;
   /** A punch (or retry) is in flight — locating the device / awaiting the API. */
@@ -155,13 +157,15 @@ export function useClockPunch(): ClockPunch {
     view = status === 404 ? "hidden" : "error";
   } else if (!data) {
     view = "loading";
-  } else if (data.expected_mode === "off" && !data.clocked_in) {
-    view = "hidden";
   } else if (data.clocked_in) {
     view = "in";
   } else if (data.clocked_out) {
     view = "done";
   } else {
+    // Idle even on a day off: the server records AND pays an off-day punch
+    // (lateness.calc), so someone working a weekend / extra hours must be able
+    // to clock in. We surface it as an optional "off day" clock-in (see
+    // `offDay`) rather than hiding the control and silently losing the hours.
     view = "idle";
   }
 
@@ -172,6 +176,7 @@ export function useClockPunch(): ClockPunch {
   return {
     view,
     hhmmss,
+    offDay: data?.expected_mode === "off",
     isOffsite: !!data?.is_offsite,
     geofenceRequired: !!data?.geofence_required,
     busy: punch.isPending,

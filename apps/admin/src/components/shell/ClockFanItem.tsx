@@ -22,7 +22,7 @@ export function ClockFanItem({
   clock: ClockPunch;
   onPunch?: () => void;
 }) {
-  const { view, hhmmss, isOffsite, geofenceRequired, busy } = clock;
+  const { view, hhmmss, offDay, isOffsite, geofenceRequired, busy } = clock;
 
   // Not a staff account, a day off, or still loading — occupy no slot in the fan.
   if (view === "hidden" || view === "loading") return null;
@@ -78,6 +78,12 @@ export function ClockFanItem({
       : "text-success ring-1 ring-success/50 shadow-[0_0_0_4px_rgb(var(--success)/0.12)]";
     label = chip(hhmmss, busy ? "Clocking out…" : isOffsite ? "Off-site · clock out" : "Tap to clock out");
     aria = isOffsite ? "Clocked in (off-site) — tap to clock out" : "Clocked in — tap to clock out";
+  } else if (offDay) {
+    // idle on a scheduled day off — optional punch for extra / weekend hours
+    icon = busy ? spinner : <Clock className="w-5 h-5" />;
+    tint = "text-text-primary";
+    label = chip(busy ? "Locating…" : "Clock in", "Day off · extra hours");
+    aria = "You're off today — clock in to log extra hours";
   } else {
     // idle — on the clock today, not yet punched in
     icon = busy ? spinner : geofenceRequired ? <MapPin className="w-5 h-5" /> : <Clock className="w-5 h-5" />;

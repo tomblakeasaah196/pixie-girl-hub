@@ -13,7 +13,7 @@ import { useClockPunch } from "./useClockPunch";
  * launcher so the tight mobile top bar can stay clean.
  */
 export function ClockWidget({ compact = false }: { compact?: boolean }) {
-  const { view, hhmmss, isOffsite, geofenceRequired, busy, isFetching, clockIn, clockOut, retry } =
+  const { view, hhmmss, offDay, isOffsite, geofenceRequired, busy, isFetching, clockIn, clockOut, retry } =
     useClockPunch();
 
   if (view === "hidden" || view === "loading") return null;
@@ -71,13 +71,17 @@ export function ClockWidget({ compact = false }: { compact?: boolean }) {
     );
   }
 
+  // Idle — can clock in. On a scheduled day off the punch is optional (extra /
+  // weekend hours), so we still show it but read it as "log extra hours" and
+  // dashed to signal it isn't expected today.
   return (
     <button
       onClick={() => !busy && clockIn()}
       disabled={busy}
-      title="Clock in"
+      title={offDay ? "You're off today — clock in to log extra hours" : "Clock in"}
       className={cn(
-        "inline-flex items-center gap-2 h-[38px] px-[13px] rounded-[11px] border border-line bg-text-primary/[0.04] font-semibold text-xs text-text-muted transition-all hover:text-text-primary",
+        "inline-flex items-center gap-2 h-[38px] px-[13px] rounded-[11px] border font-semibold text-xs text-text-muted transition-all hover:text-text-primary",
+        offDay ? "border-dashed border-line/70 bg-text-primary/[0.02]" : "border-line bg-text-primary/[0.04]",
       )}
     >
       {busy ? (
@@ -87,7 +91,7 @@ export function ClockWidget({ compact = false }: { compact?: boolean }) {
       ) : (
         <Clock className="w-[15px]" />
       )}
-      {!compact && <span>{busy ? "Locating…" : "Clock in"}</span>}
+      {!compact && <span>{busy ? "Locating…" : offDay ? "Log extra hours" : "Clock in"}</span>}
     </button>
   );
 }

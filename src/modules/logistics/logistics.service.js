@@ -16,6 +16,7 @@ const crypto = require("crypto");
 const { transaction, query } = require("../../config/database");
 const { audit } = require("../../middleware/audit");
 const { money, toCurrencyString } = require("../../utils/money");
+const { formatDate, formatDateTime } = require("../../utils/dates");
 const accounting = require("../accounting/accounting.service");
 const { ACCOUNTS } = require("../accounting/posting-map");
 const brandDocs = require("../../services/pdf.brand-docs");
@@ -1021,12 +1022,7 @@ async function sendDeliveredEmail({ brand, delivery_id }) {
       return { sent: false, reason: "no_customer_email" };
     const firstName =
       String(order.contact_name || "").trim().split(/\s+/)[0] || "there";
-    const deliveredAtText = delivery.delivered_at
-      ? new Date(delivery.delivered_at).toLocaleString("en-NG", {
-          dateStyle: "medium",
-          timeStyle: "short",
-        })
-      : "just now";
+    const deliveredAtText = formatDateTime(delivery.delivered_at, "just now");
     await emailService.send({
       to: order.contact_email,
       subject: `Delivered: order ${order.order_number}`,
@@ -1071,7 +1067,8 @@ async function notifyDelivered({ brand, user, request_id, id }) {
  * the Documents gateway. Generated at packing/dispatch time; the document is
  * linked to the delivery (reference_type 'delivery').
  */
-const _dDay = (v) => (v ? String(v).slice(0, 10) : "");
+// Human-facing day label on the delivery-note PDF → DD/MM/YYYY.
+const _dDay = (v) => formatDate(v);
 
 /** Map a delivery (+ items + address snapshot) → the brand-doc renderer shape
  *  in delivery-note mode (no money; Item/Qty + signature panel). */

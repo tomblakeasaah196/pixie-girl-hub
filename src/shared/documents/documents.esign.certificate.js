@@ -10,6 +10,8 @@
 
 "use strict";
 
+const { formatDateTime } = require("../../utils/dates");
+
 const esc = (s) =>
   String(s ?? "")
     .replace(/&/g, "&amp;")
@@ -37,20 +39,9 @@ function fmtWat(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  const date = d.toLocaleString("en-GB", {
-    timeZone: "Africa/Lagos",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-  const time = d.toLocaleString("en-GB", {
-    timeZone: "Africa/Lagos",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
-  return `${date} · ${time} WAT`;
+  // Canonical "23:57, 11/07/2026" in the operating timezone, tagged WAT so the
+  // legal record keeps its explicit West Africa Time reference.
+  return `${formatDateTime(d)} WAT`;
 }
 
 const brandLabel = (b) =>

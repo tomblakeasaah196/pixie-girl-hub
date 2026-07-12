@@ -18,7 +18,7 @@
 "use strict";
 
 const ExcelJS = require("exceljs");
-const { formatTz } = require("../../utils/dates");
+const { formatDateTime } = require("../../utils/dates");
 
 // ── House style ────────────────────────────────────────────
 const ACCENT = "FF690909"; // Maroon Noir deep-red
@@ -75,7 +75,7 @@ const labelChannel = (c) => CHANNEL_LABELS[c] || c || "—";
 /** Postgres NUMERIC comes back as a string — coerce for an Excel number cell. */
 const num = (v) =>
   v === null || v === undefined || v === "" ? null : Number(v);
-const fmtDate = (v) => (v ? formatTz(new Date(v), "yyyy-MM-dd HH:mm") : "");
+const fmtDate = (v) => formatDateTime(v);
 
 // ── Styling helpers ────────────────────────────────────────
 function styleHeader(ws, rowNumber = 1) {

@@ -1,24 +1,17 @@
 /** Date helpers for the retail-partners module (kept out of parts.tsx so
- *  that file only exports components — react-refresh rule). */
+ *  that file only exports components — react-refresh rule). Delegates to the
+ *  app-wide canon so every surface reads the same "HH:MM, DD/MM/YYYY". */
 
+import { formatDate, formatDateTime } from "@/lib/format";
+
+/** Canonical "11/07/2026" (— for empty/invalid). */
 export function fmtDate(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+  return formatDate(iso);
 }
 
+/** Canonical "23:57, 11/07/2026". */
 export function fmtDateTime(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDateTime(iso);
 }
 
 /** Today (or a given day) as the YYYY-MM-DD the Zod .date() schemas want. */

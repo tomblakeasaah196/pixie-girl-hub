@@ -18,6 +18,7 @@ const repo = require("./stylist.repo");
 const programmeRepo = require("./programme.repo");
 const notify = require("./stylist.notify");
 const events = require("./stylist.events");
+const { formatDate } = require("../../utils/dates");
 const documents = require("../../shared/documents/documents.service");
 const esign = require("../../shared/documents/documents.esign.service");
 const pdf = require("../../services/pdf.service");
@@ -88,11 +89,7 @@ async function buildContractHtml({ partner, cfg }) {
     partner_code: partner.partner_code,
     city: partner.city || "",
     country: partner.country_code || "",
-    date: new Date().toLocaleDateString("en-GB", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    }),
+    date: formatDate(new Date()),
     commission_pct: String(commission),
   };
   return html.replace(/\{\{(\w+)\}\}/g, (m, k) =>

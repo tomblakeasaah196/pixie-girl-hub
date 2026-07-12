@@ -27,6 +27,7 @@ const {
   ValidationError,
   ConflictError,
 } = require("../../utils/errors");
+const { formatDate } = require("../../utils/dates");
 
 const sha256 = (s) =>
   crypto.createHash("sha256").update(String(s)).digest("hex");
@@ -219,7 +220,7 @@ async function sendSigningInvites({ request, invites: signers }) {
       ? `<p>${escHtml(request.message)}</p>`
       : "";
     const expiresLine = request.expires_at
-      ? `<p>Please sign by ${new Date(request.expires_at).toDateString()}.</p>`
+      ? `<p>Please sign by ${formatDate(request.expires_at)}.</p>`
       : "";
     try {
       await enqueue("email-send", "esign-invite", {
@@ -861,7 +862,7 @@ async function runReminders({ gapHours = 48 } = {}) {
         html: `<p>Hi ${escHtml(s.display_name_snapshot || "there")},</p>
                <p>This is a friendly reminder to sign <b>${escHtml(s.subject)}</b>.</p>
                <p><a href="${link}">Open and sign the document</a></p>
-               ${s.expires_at ? `<p>This link expires on ${new Date(s.expires_at).toDateString()}.</p>` : ""}`,
+               ${s.expires_at ? `<p>This link expires on ${formatDate(s.expires_at)}.</p>` : ""}`,
         text: `Reminder to sign "${s.subject}": ${link}`,
       });
     } catch (err) {
@@ -901,7 +902,7 @@ async function runExpiry() {
           to: r.creator_email,
           subject: `Signature request expired: "${r.subject}"`,
           html: `<p>Hi ${escHtml(r.creator_name || "there")},</p>
-                 <p>The signature request <b>${escHtml(r.subject)}</b> expired on ${new Date(r.expires_at).toDateString()} before all parties signed.</p>
+                 <p>The signature request <b>${escHtml(r.subject)}</b> expired on ${formatDate(r.expires_at)} before all parties signed.</p>
                  <p>You can send a fresh request from Documents → E-signatures.</p>`,
           text: `Signature request "${r.subject}" expired before completion.`,
         });

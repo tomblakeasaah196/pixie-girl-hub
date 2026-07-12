@@ -20,6 +20,7 @@ const smartcommRepo = require("./smartcomm.repo");
 const events = require("./smartcomm.events");
 const { query } = require("../../config/database");
 const { logger } = require("../../config/logger");
+const { formatDateTime } = require("../../utils/dates");
 
 function ngn(v) {
   const n = Number(v || 0);
@@ -154,7 +155,7 @@ async function completeOrder({
   }
   if (bookingRows.length) {
     const when = bookings[0]?.requested_for
-      ? ` (requested for ${new Date(bookings[0].requested_for).toLocaleString("en-NG", { dateStyle: "medium", timeStyle: "short" })})`
+      ? ` (requested for ${formatDateTime(bookings[0].requested_for)})`
       : "";
     bits.push(
       `💇 ${who} requested ${bookingRows.length} service booking${bookingRows.length === 1 ? "" : "s"}${when} — confirm from the thread.`,

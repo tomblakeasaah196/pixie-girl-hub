@@ -18,6 +18,7 @@ const repo = require("./styled.repo");
 const variantsRepo = require("./styled_variants.repo");
 const events = require("./catalogue.events");
 const { audit } = require("../../middleware/audit");
+const { formatDate } = require("../../utils/dates");
 const { transaction } = require("../../config/database");
 const { NotFoundError, AppError } = require("../../utils/errors");
 
@@ -41,14 +42,10 @@ function availabilityState(available, base) {
   if (base && base.preorder_enabled) {
     let message;
     if (base.expected_ready_date) {
-      const d = new Date(base.expected_ready_date);
-      const when = Number.isNaN(d.getTime())
-        ? String(base.expected_ready_date)
-        : d.toLocaleDateString("en-GB", {
-            day: "numeric",
-            month: "short",
-            year: "numeric",
-          });
+      const when = formatDate(
+        base.expected_ready_date,
+        String(base.expected_ready_date),
+      );
       message = `In production · ready ~${when}`;
     } else if (base.production_lead_days) {
       message = `Made to order · ~${base.production_lead_days} days in production`;

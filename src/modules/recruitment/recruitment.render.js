@@ -21,6 +21,7 @@
 "use strict";
 
 const templates = require("../../services/pdf.templates");
+const { formatDate } = require("../../utils/dates");
 
 const esc = (s) =>
   String(s === null || s === undefined ? "" : s)
@@ -183,15 +184,11 @@ function renderForWeb(offer) {
   };
 }
 
-/** Human date (e.g. "11 July 2026") from an ISO string / Date; today if empty. */
+/** Human date (canonical "11/07/2026") from an ISO string / Date; today if empty. */
 function humanDate(value) {
   const d = value ? new Date(value) : new Date();
   if (Number.isNaN(d.getTime())) return String(value || "");
-  return d.toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
+  return formatDate(d);
 }
 
 // ── Brand-styled print shell (shared by all three documents) ─────────
@@ -660,7 +657,7 @@ function pdfDocOptions(company) {
 function countersignBlock(company) {
   const name = esc(company.signatory_name || "For the Company");
   const title = esc(company.signatory_title || "");
-  const today = new Date().toISOString().slice(0, 10);
+  const today = formatDate(new Date());
   return `
     <div class="sig-company">
       <p class="muted">Executed on behalf of ${esc(company.display_name || "the Company")}:</p>
@@ -725,7 +722,7 @@ function contractHtml({ offer, company }) {
 
     <h2>Signatures</h2>
     <p class="muted">This contract is generated from the offer the Employee signed electronically on
-       ${esc((offer.signed_at || "").toString().slice(0, 10))}. The Employee's e-signature and its
+       ${esc(formatDate(offer.signed_at))}. The Employee's e-signature and its
        verification code are recorded on the signed offer packet.</p>
     ${countersignBlock(company)}
     <table>

@@ -23,6 +23,7 @@ const events = require("./stylist.events");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { config } = require("../../config/env");
+const { formatDateTime } = require("../../utils/dates");
 const { money, toCurrencyString } = require("../../utils/money");
 const { NotFoundError, AppError } = require("../../utils/errors");
 const { logger } = require("../../config/logger");
@@ -438,7 +439,7 @@ async function openAssignment({ brand, user, request_id, input }) {
         email: {
           subject: "New Pixie Girl job offer",
           bodyHtml: `<p>A <strong>${input.service_key}</strong> assignment is
-            open to you. Offers close ${new Date(result.offer_expires_at).toLocaleString("en-GB")} — first to accept wins.</p>`,
+            open to you. Offers close ${formatDateTime(result.offer_expires_at)} — first to accept wins.</p>`,
           ctaLabel: "View the offer",
           ctaPath: "/offers",
         },

@@ -1981,6 +1981,29 @@ async function applyProviderStatus({ external_ref, status, error }) {
   }
 }
 
+/**
+ * A customer reacted to (or un-reacted from) one of our messages on
+ * WhatsApp / Instagram. These webhook events carry no message body of
+ * their own — they used to be ingested as EMPTY inbound bubbles. Stamp
+ * the emoji onto the target message's metadata instead, so the thread
+ * shows a reaction badge on the bubble the customer actually touched.
+ * Keyed by the provider message id (shared.messages.external_ref); a
+ * miss (reaction to a message predating the inbox) is a silent no-op.
+ */
+async function applyCustomerReaction({ external_ref, emoji, action }) {
+  if (!external_ref) return;
+  const updated = await repo.setCustomerReactionByExternalRef({
+    external_ref,
+    emoji: action === "unreact" ? null : emoji || "❤️",
+  });
+  if (updated) {
+    events.emit("message.edited", {
+      channel_id: updated.channel_id,
+      message_id: updated.message_id,
+    });
+  }
+}
+
 // ── Attachments ───────────────────────────────────────────
 
 async function addAttachment({ brand, user, request_id, message_id, input }) {
@@ -2228,6 +2251,7 @@ module.exports = {
   buildOutboundJobsForChannel,
   flushOutboundJobs,
   applyProviderStatus,
+  applyCustomerReaction,
   applyDeliveryResult,
   retryOutboundMessage,
   assertPlatformAccess,

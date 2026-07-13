@@ -29,7 +29,10 @@ jest.mock("../../../src/modules/smartcomm/smartcomm.service", () => ({
 
 const {
   parseMetaWhatsApp,
+  parseMetaWhatsAppReactions,
   parseMetaInstagram,
+  parseMetaInstagramStatuses,
+  parseMetaInstagramReactions,
   parseCloudflareEmail,
 } = require("../../../src/modules/smartcomm/smartcomm.subscribers");
 
@@ -426,5 +429,248 @@ describe("smartcomm webhook parsers", () => {
     };
     const events = parseMetaWhatsApp(payload);
     expect(events[0].media).toBeNull();
+  });
+
+  // ── Empty-bubble regressions ──────────────────────────────
+  // Read receipts / reactions / unknown types used to be recorded as
+  // blank inbound messages ("the client sent us an empty message").
+
+  test("a WhatsApp reaction is NOT an inbound message — it's parsed as a reaction", () => {
+    const payload = {
+      entry: [
+        {
+          changes: [
+            {
+              value: {
+                metadata: { phone_number_id: "PID" },
+                messages: [
+                  {
+                    id: "wamid.R",
+                    from: "234801",
+                    type: "reaction",
+                    reaction: { message_id: "wamid.SENT", emoji: "👍" },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    };
+    expect(parseMetaWhatsApp(payload)).toHaveLength(0);
+    expect(parseMetaWhatsAppReactions(payload)).toEqual([
+      { external_ref: "wamid.SENT", emoji: "👍", action: "react" },
+    ]);
+  });
+
+  test("removing a WhatsApp reaction parses as unreact", () => {
+    const payload = {
+      entry: [
+        {
+          changes: [
+            {
+              value: {
+                messages: [
+                  {
+                    id: "wamid.R2",
+                    from: "234801",
+                    type: "reaction",
+                    reaction: { message_id: "wamid.SENT" },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    };
+    expect(parseMetaWhatsAppReactions(payload)).toEqual([
+      { external_ref: "wamid.SENT", emoji: null, action: "unreact" },
+    ]);
+  });
+
+  test("a WhatsApp message with nothing renderable is skipped, unsupported gets a label", () => {
+    const payload = {
+      entry: [
+        {
+          changes: [
+            {
+              value: {
+                metadata: { phone_number_id: "PID" },
+                messages: [
+                  { id: "wamid.E", from: "234801", type: "order" },
+                  {
+                    id: "wamid.U",
+                    from: "234801",
+                    type: "unsupported",
+                    errors: [{ code: 131051 }],
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const events = parseMetaWhatsApp(payload);
+    expect(events).toHaveLength(1);
+    expect(events[0].external_ref).toBe("wamid.U");
+    expect(events[0].body).toMatch(/Unsupported message/);
+    expect(events[0].message_type).toBe("text");
+  });
+
+  test("a WhatsApp location pin becomes a readable text line with a maps link", () => {
+    const payload = {
+      entry: [
+        {
+          changes: [
+            {
+              value: {
+                messages: [
+                  {
+                    id: "wamid.L",
+                    from: "234801",
+                    type: "location",
+                    location: {
+                      latitude: 6.45,
+                      longitude: 3.39,
+                      name: "Lekki Phase 1",
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const events = parseMetaWhatsApp(payload);
+    expect(events[0].body).toContain("Lekki Phase 1");
+    expect(events[0].body).toContain("maps.google.com");
+  });
+
+  test("an Instagram read receipt produces a read status, never an empty message", () => {
+    const payload = {
+      entry: [
+        {
+          id: "IG_BIZ_999",
+          messaging: [
+            {
+              sender: { id: "IGSID_1" },
+              recipient: { id: "IG_BIZ_999" },
+              read: { mid: "m.SENT" },
+            },
+          ],
+        },
+      ],
+    };
+    expect(parseMetaInstagram(payload)).toHaveLength(0);
+    expect(parseMetaInstagramStatuses(payload)).toEqual([
+      { external_ref: "m.SENT", status: "read", error: null },
+    ]);
+  });
+
+  test("an Instagram reaction produces a reaction event, never an empty message", () => {
+    const payload = {
+      entry: [
+        {
+          id: "IG_BIZ_999",
+          messaging: [
+            {
+              sender: { id: "IGSID_1" },
+              reaction: {
+                mid: "m.SENT",
+                action: "react",
+                reaction: "love",
+                emoji: "❤️",
+              },
+            },
+          ],
+        },
+      ],
+    };
+    expect(parseMetaInstagram(payload)).toHaveLength(0);
+    expect(parseMetaInstagramReactions(payload)).toEqual([
+      { external_ref: "m.SENT", emoji: "❤️", action: "react" },
+    ]);
+  });
+
+  test("an Instagram unreact clears the reaction", () => {
+    const payload = {
+      entry: [
+        {
+          id: "IG_BIZ_999",
+          messaging: [
+            {
+              sender: { id: "IGSID_1" },
+              reaction: { mid: "m.SENT", action: "unreact" },
+            },
+          ],
+        },
+      ],
+    };
+    expect(parseMetaInstagramReactions(payload)).toEqual([
+      { external_ref: "m.SENT", emoji: null, action: "unreact" },
+    ]);
+  });
+
+  test("the Instagram ❤️ quick-tap (like_heart) renders as a heart, not a blank", () => {
+    const payload = {
+      entry: [
+        {
+          id: "IG_BIZ_999",
+          messaging: [
+            {
+              sender: { id: "IGSID_1" },
+              message: {
+                mid: "m.heart",
+                attachments: [{ type: "like_heart" }],
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const events = parseMetaInstagram(payload);
+    expect(events).toHaveLength(1);
+    expect(events[0].body).toBe("❤️");
+  });
+
+  test("an Instagram message with no content at all is skipped", () => {
+    const payload = {
+      entry: [
+        {
+          id: "IG_BIZ_999",
+          messaging: [
+            { sender: { id: "IGSID_1" }, message: { mid: "m.empty" } },
+            {
+              sender: { id: "IGSID_1" },
+              message: { mid: "m.del", is_deleted: true },
+            },
+            { sender: { id: "IGSID_1" } }, // postback-style row, no message
+          ],
+        },
+      ],
+    };
+    expect(parseMetaInstagram(payload)).toHaveLength(0);
+  });
+
+  test("an unsupported Instagram message gets a readable placeholder", () => {
+    const payload = {
+      entry: [
+        {
+          id: "IG_BIZ_999",
+          messaging: [
+            {
+              sender: { id: "IGSID_1" },
+              message: { mid: "m.unsup", is_unsupported: true },
+            },
+          ],
+        },
+      ],
+    };
+    const events = parseMetaInstagram(payload);
+    expect(events).toHaveLength(1);
+    expect(events[0].body).toMatch(/Unsupported message/);
   });
 });

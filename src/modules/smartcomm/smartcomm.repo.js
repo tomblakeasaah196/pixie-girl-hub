@@ -490,6 +490,29 @@ async function setMessageDeliveryByExternalRef({
   return rows[0] || null;
 }
 
+/**
+ * Stamp (or clear, emoji = null) a customer reaction onto the message
+ * with this provider id. Lives in metadata.customer_reaction — customer
+ * reactions can't ride shared.message_reactions, whose rows require a
+ * staff user_id.
+ */
+async function setCustomerReactionByExternalRef({ external_ref, emoji }) {
+  const { rows } = await query(
+    emoji
+      ? `UPDATE shared.messages
+            SET metadata = COALESCE(metadata, '{}'::jsonb)
+                           || jsonb_build_object('customer_reaction', $2::text)
+          WHERE external_ref = $1
+          RETURNING channel_id, message_id`
+      : `UPDATE shared.messages
+            SET metadata = COALESCE(metadata, '{}'::jsonb) - 'customer_reaction'
+          WHERE external_ref = $1
+          RETURNING channel_id, message_id`,
+    emoji ? [external_ref, emoji] : [external_ref],
+  );
+  return rows[0] || null;
+}
+
 async function editMessageContent({ client, message_id, content }) {
   const { rows } = await ex(client)(
     `UPDATE shared.messages
@@ -1370,6 +1393,7 @@ module.exports = {
   setMessageExternalRef,
   setMessageDelivery,
   setMessageDeliveryByExternalRef,
+  setCustomerReactionByExternalRef,
   editMessageContent,
   listMessages,
   getMessage,

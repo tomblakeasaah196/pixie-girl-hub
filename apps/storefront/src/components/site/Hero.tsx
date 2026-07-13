@@ -210,13 +210,13 @@ function HeroCopy({
       >
         <SmartLink
           to={content.cta1Href}
-          className="group relative overflow-hidden px-7 py-4 sm:px-9 text-center bg-taupe text-ink text-[0.68rem] tracking-[0.35em] sm:tracking-[0.4em] uppercase font-medium hover:bg-cream transition-colors"
+          className="group relative overflow-hidden px-7 py-4 sm:px-9 text-center bg-taupe text-ink text-[0.68rem] tracking-[0.35em] sm:tracking-[0.4em] uppercase font-medium hover:bg-cream transition-colors rounded-lg"
         >
           {content.cta1Label}
         </SmartLink>
         <SmartLink
           to={content.cta2Href}
-          className="px-7 py-4 sm:px-9 text-center border border-taupe/40 text-taupe text-[0.68rem] tracking-[0.35em] sm:tracking-[0.4em] uppercase hover:bg-taupe/10 transition-colors"
+          className="px-7 py-4 sm:px-9 text-center border border-taupe/40 text-taupe text-[0.68rem] tracking-[0.35em] sm:tracking-[0.4em] uppercase hover:bg-taupe/10 transition-colors rounded-lg"
         >
           {content.cta2Label}
         </SmartLink>

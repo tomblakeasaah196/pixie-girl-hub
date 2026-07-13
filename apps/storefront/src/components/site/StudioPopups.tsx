@@ -266,7 +266,7 @@ function StudioPopupModal({
         role="dialog"
         aria-modal="true"
         className={cn(
-          "fixed inset-4 z-[96] overflow-hidden border border-taupe/30 bg-ink md:inset-auto md:left-1/2 md:top-1/2 md:w-[min(900px,92vw)] md:-translate-x-1/2 md:-translate-y-1/2",
+          "fixed inset-4 z-[96] overflow-hidden border border-taupe/30 bg-ink md:inset-auto md:left-1/2 md:top-1/2 md:w-[min(900px,92vw)] md:-translate-x-1/2 md:-translate-y-1/2 rounded-lg",
           image ? "grid md:grid-cols-2" : "",
         )}
       >
@@ -295,7 +295,7 @@ function StudioPopupModal({
             <button
               type="button"
               onClick={copyCode}
-              className="mt-6 flex items-center gap-3 self-start border border-dashed border-taupe/50 px-4 py-2 transition-colors hover:border-taupe"
+              className="mt-6 flex items-center gap-3 self-start border border-dashed border-taupe/50 px-4 py-2 transition-colors hover:border-taupe rounded-sm"
             >
               <span className="font-mono text-sm tracking-[0.2em] text-cream">
                 {code}
@@ -309,7 +309,7 @@ function StudioPopupModal({
             <a
               href={href}
               onClick={onClose}
-              className="mt-8 self-start bg-taupe px-8 py-4 text-[0.7rem] uppercase tracking-[0.4em] text-ink transition-colors hover:bg-cream"
+              className="mt-8 self-start bg-taupe px-8 py-4 text-[0.7rem] uppercase tracking-[0.4em] text-ink transition-colors hover:bg-cream rounded-lg"
             >
               {label}
             </a>

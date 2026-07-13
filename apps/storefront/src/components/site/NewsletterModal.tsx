@@ -75,7 +75,7 @@ export function NewsletterModal() {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96 }}
             transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-            className="fixed inset-4 md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-[min(900px,92vw)] z-[96] bg-ink border border-taupe/30 grid md:grid-cols-2 overflow-hidden"
+            className="fixed inset-4 md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-[min(900px,92vw)] z-[96] bg-ink border border-taupe/30 grid md:grid-cols-2 overflow-hidden rounded-lg"
           >
             <div className="hidden md:block relative">
               <img src={image} alt="" className="w-full h-full object-cover" />
@@ -117,9 +117,9 @@ export function NewsletterModal() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder={placeholder}
-                    className="bg-transparent border-b border-taupe/40 py-3 text-cream placeholder:text-cream/35 focus:outline-none focus:border-taupe text-sm"
+                    className="bg-transparent border-b border-taupe/40 py-3 text-cream placeholder:text-cream/35 focus:outline-none focus:border-taupe text-sm rounded-sm"
                   />
-                  <button type="submit" className="mt-2 py-4 bg-taupe text-ink text-[0.7rem] tracking-[0.4em] uppercase hover:bg-cream transition-colors">
+                  <button type="submit" className="mt-2 py-4 bg-taupe text-ink text-[0.7rem] tracking-[0.4em] uppercase hover:bg-cream transition-colors rounded-lg">
                     {ctaLabel}
                   </button>
                 </form>

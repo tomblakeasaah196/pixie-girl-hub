@@ -53,7 +53,7 @@ export function SiteFooter() {
   const socialEntries = Object.entries(socials).filter(([, href]) => href);
 
   return (
-    <footer className="bg-ink border-t border-taupe/15 mt-32">
+    <footer className="bg-ink border-t border-taupe/15 mt-32 rounded-t-lg">
       <div className="mx-auto max-w-[1400px] px-6 lg:px-10 py-20 grid gap-12 md:grid-cols-4">
         <div>
           <BrandLogo

@@ -43,7 +43,7 @@ export function SignatureCarousel({
               key={p.slug}
               to="/product/$slug"
               params={{ slug: p.slug }}
-              className="group flex-[0_0_75%] sm:flex-[0_0_45%] lg:flex-[0_0_28%] relative aspect-[3/4] overflow-hidden bg-card"
+              className="group flex-[0_0_75%] sm:flex-[0_0_45%] lg:flex-[0_0_28%] relative aspect-[3/4] overflow-hidden bg-card rounded-lg"
             >
               {p.image ? (
                 <img src={p.image} alt={p.name} loading="lazy" className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110" />

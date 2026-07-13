@@ -22,7 +22,7 @@ export function WhyChooseFaitlyn({
         ) : null}
       </Reveal>
 
-      <RevealGroup className="grid sm:grid-cols-2 lg:grid-cols-5 gap-px bg-taupe/15 border border-taupe/15">
+      <RevealGroup className="grid sm:grid-cols-2 lg:grid-cols-5 gap-px bg-taupe/15 border border-taupe/15 rounded-lg overflow-hidden">
         {content.pillars.map((p) => (
           <RevealItem
             key={p.n}

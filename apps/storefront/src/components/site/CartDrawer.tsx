@@ -85,7 +85,7 @@ export function CartDrawer() {
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-            className="fixed top-0 right-0 bottom-0 w-full max-w-md bg-ink text-cream border-l border-taupe/20 z-[96] flex flex-col"
+            className="fixed top-0 right-0 bottom-0 w-full max-w-md bg-ink text-cream border-l border-taupe/20 z-[96] flex flex-col rounded-l-lg"
           >
             <header className="flex items-center justify-between p-6 border-b border-taupe/15">
               <h2 className="font-display text-2xl">Your bag</h2>
@@ -98,7 +98,7 @@ export function CartDrawer() {
               {items.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center gap-6 p-10 text-center">
                   <p className="text-cream/50">Your bag is empty.</p>
-                  <button onClick={keepShopping} className="border border-taupe/40 text-taupe px-8 py-3.5 text-[0.7rem] tracking-[0.4em] uppercase hover:bg-taupe/10 transition-colors">
+                  <button onClick={keepShopping} className="border border-taupe/40 text-taupe px-8 py-3.5 text-[0.7rem] tracking-[0.4em] uppercase hover:bg-taupe/10 transition-colors rounded-lg">
                     Continue shopping
                   </button>
                 </div>
@@ -106,7 +106,7 @@ export function CartDrawer() {
                 <div className="p-6 space-y-6">
                   {items.map((it) => (
                     <div key={it.cart_item_id} className="flex gap-4">
-                      <div className="w-20 h-24 shrink-0 overflow-hidden bg-card">
+                      <div className="w-20 h-24 shrink-0 overflow-hidden bg-card rounded-sm">
                         {it.thumbnail_url_snapshot ? (
                           <img src={it.thumbnail_url_snapshot} alt={it.product_name_snapshot} className="h-full w-full object-cover" />
                         ) : null}
@@ -122,7 +122,7 @@ export function CartDrawer() {
                           <p className="text-[0.62rem] tracking-[0.2em] uppercase text-cream/50 mt-1">{it.variant_label_snapshot}</p>
                         ) : null}
                         <div className="mt-auto flex items-center justify-between pt-3">
-                          <div className="flex items-center border border-taupe/30">
+                          <div className="flex items-center border border-taupe/30 rounded-sm">
                             <button onClick={() => setQty(it.cart_item_id, (Number(it.quantity) || 1) - 1)} className="px-3 py-1 hover:bg-taupe/10 transition-colors">−</button>
                             <span className="px-3 text-sm">{it.quantity}</span>
                             <button onClick={() => setQty(it.cart_item_id, (Number(it.quantity) || 1) + 1)} className="px-3 py-1 hover:bg-taupe/10 transition-colors">+</button>
@@ -154,7 +154,7 @@ export function CartDrawer() {
               <button
                 disabled={items.length === 0}
                 onClick={checkout}
-                className="w-full py-4 bg-taupe text-ink text-[0.7rem] tracking-[0.4em] uppercase disabled:opacity-40 hover:bg-cream transition-colors"
+                className="w-full py-4 bg-taupe text-ink text-[0.7rem] tracking-[0.4em] uppercase disabled:opacity-40 hover:bg-cream transition-colors rounded-lg"
               >
                 Continue
               </button>

@@ -44,7 +44,7 @@ export function BentoGrid({
             <Link
               to="/bundles/$slug"
               params={{ slug: b.slug }}
-              className="group relative block w-full h-[420px] md:h-[520px] overflow-hidden bg-card"
+              className="group relative block w-full h-[420px] md:h-[520px] overflow-hidden bg-card rounded-lg"
             >
               {b.cover && (
                 <img
@@ -56,7 +56,7 @@ export function BentoGrid({
                 />
               )}
               {b.savingsPct > 0 ? (
-                <span className="absolute top-5 left-5 bg-rose text-ink text-[0.6rem] tracking-[0.4em] uppercase px-3 py-1.5">
+                <span className="absolute top-5 left-5 bg-rose text-ink text-[0.6rem] tracking-[0.4em] uppercase px-3 py-1.5 rounded-sm">
                   Save {b.savingsPct}%
                 </span>
               ) : null}

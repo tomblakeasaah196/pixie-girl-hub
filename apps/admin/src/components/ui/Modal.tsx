@@ -59,7 +59,13 @@ export function Modal({
       data-modal-open={open ? "true" : "false"}
       className={cn(
         // Phone: bottom sheet (native-app dialogs). md+: centered glass modal.
-        "fixed inset-0 z-[92] flex items-end justify-center md:items-center md:p-4 bg-black/50 backdrop-blur-[3px] transition-[opacity,visibility] duration-300",
+        // z-[110]: the modal portals to <body>, and the immersive full-screen
+        // pages (Messaging + Chief-of-Staff) cover the app shell at z-[100] on
+        // phones. At the old z-[92] a modal opened FROM inside messaging (Share
+        // catalogue / Capture an order) rendered BEHIND that page and only
+        // appeared once you left the thread. Clear the immersive layer — same
+        // band CustomerPanelDrawer (z-105/110) and the Lightbox (z-120) use.
+        "fixed inset-0 z-[110] flex items-end justify-center md:items-center md:p-4 bg-black/50 backdrop-blur-[3px] transition-[opacity,visibility] duration-300",
         open
           ? "opacity-100 visible"
           : "opacity-0 invisible pointer-events-none",

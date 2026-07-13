@@ -11,6 +11,36 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-13 — Reconcile shared.service_booking_requests
+
+**Source:** production 500 on `GET /api/v1/smartcomm/channels/:id/order-links`
+—
+```
+column b.link_id does not exist
+hint: Perhaps you meant to reference the column "l.link_id".
+```
+The order-links sidebar (`listForChannel` in
+`smartcomm.order-links.repo.js`) joins `shared.service_booking_requests`
+on `link_id` to count bookings per link. Production had an older-shape
+copy of the table sitting there before migration 000317 ran, and 000317
+uses `CREATE TABLE IF NOT EXISTS` — the whole new schema, including
+`link_id`, was silently skipped. Every catalogue-share thread that
+opened the sidebar 500'd.
+
+**Files (new):**
+- `000337_shared_service_booking_requests_reconcile.sql` — idempotent
+  `ADD COLUMN IF NOT EXISTS` for every column 000317 declared, guarded
+  FKs + CHECKs added via a DO-block, indexes and the updated-at trigger
+  re-created via IF NOT EXISTS. A DB where 000317 landed cleanly (or a
+  first-time deployment) is a no-op.
+
+**No change to 000317.** A first-time `migrations/` apply still lands
+the correct schema — 000317's `CREATE TABLE` builds it directly. This
+patch exists purely to reconcile deployed databases that got the older
+shape.
+
+---
+
 ## 2026-07-12 — Workspace reminders that fire + CoS catalogue v3
 
 **Source:** user bug report — CoS task/event writes failed Zod with

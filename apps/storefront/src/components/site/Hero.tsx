@@ -294,24 +294,27 @@ function VitrineHero({
 
   return (
     <section className="relative isolate overflow-hidden bg-ink">
-      {/* Ambient room — desktop only: the film's poster, blurred into a lit
-          interior. Left stays ink (copy legibility), right glows (the arch). */}
+      {/* Desktop background "room": the Studio Background Image, kept clearly
+          visible with only a light softness. The scrim is weighted to the LEFT
+          (behind the headline) and fades away before the vitrine, so the image
+          reads on the right while the copy stays legible — in both themes. */}
       <div aria-hidden className="absolute inset-0 z-0 hidden md:block">
         <img
           src={roomImage}
           alt=""
-          className="absolute inset-0 h-full w-full scale-110 object-cover opacity-60 blur-2xl"
+          className="absolute inset-0 h-full w-full scale-105 object-cover blur-[3px]"
         />
-        <div className="absolute inset-0 bg-ink/50" />
-        <div className="absolute inset-0 bg-gradient-to-r from-ink/80 via-ink/45 to-ink/15" />
-        <div className="absolute inset-0 bg-gradient-to-b from-ink/50 via-transparent to-ink/65" />
-        {/* Corner vignette — darkens the room's periphery so the arch
-            reads as the natural focal point, not a pasted-on cutout. */}
+        {/* Left scrim for the headline — solid at the edge, gone by mid-frame. */}
+        <div className="absolute inset-0 bg-gradient-to-r from-ink via-ink/68 to-transparent" />
+        {/* Faint floor + ceiling to seat the image without flattening it. */}
+        <div className="absolute inset-0 bg-gradient-to-b from-ink/25 via-transparent to-ink/50" />
+        {/* A whisper of periphery shading keeps the vitrine the focal point
+            without hiding the background (transparent through most of the frame). */}
         <div
-          className="absolute inset-0 rounded-full"
+          className="absolute inset-0"
           style={{
             background:
-              "radial-gradient(ellipse 70% 65% at 62% 50%, transparent 50%, color-mix(in oklab, var(--ink) 60%, transparent) 100%)",
+              "radial-gradient(ellipse 78% 72% at 60% 50%, transparent 66%, color-mix(in oklab, var(--ink) 26%, transparent) 100%)",
           }}
         />
         {/* warm interior glow behind the vitrine, on the right */}
@@ -319,7 +322,7 @@ function VitrineHero({
           className="absolute right-[8%] top-1/2 h-[75vh] w-[42vw] -translate-y-1/2 rounded-full blur-3xl"
           style={{
             background:
-              "radial-gradient(closest-side, color-mix(in oklab, var(--champagne) 34%, transparent), transparent 72%)",
+              "radial-gradient(closest-side, color-mix(in oklab, var(--champagne) 22%, transparent), transparent 72%)",
           }}
         />
         {lit ? (

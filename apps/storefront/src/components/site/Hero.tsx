@@ -305,6 +305,15 @@ function VitrineHero({
         <div className="absolute inset-0 bg-ink/50" />
         <div className="absolute inset-0 bg-gradient-to-r from-ink/80 via-ink/45 to-ink/15" />
         <div className="absolute inset-0 bg-gradient-to-b from-ink/50 via-transparent to-ink/65" />
+        {/* Corner vignette — darkens the room's periphery so the arch
+            reads as the natural focal point, not a pasted-on cutout. */}
+        <div
+          className="absolute inset-0 rounded-full"
+          style={{
+            background:
+              "radial-gradient(ellipse 70% 65% at 62% 50%, transparent 50%, color-mix(in oklab, var(--ink) 60%, transparent) 100%)",
+          }}
+        />
         {/* warm interior glow behind the vitrine, on the right */}
         <div
           className="absolute right-[8%] top-1/2 h-[75vh] w-[42vw] -translate-y-1/2 rounded-full blur-3xl"
@@ -340,12 +349,18 @@ function VitrineHero({
             : "md:grid-cols-[1.05fr_0.95fr]"
         }`}
       >
+        {/* Animated arch ring — desktop only, same grid cell as the film */}
+        <div
+          aria-hidden
+          className={`pointer-events-none hidden md:block md:[grid-row:1] md:[grid-column:2] md:self-center md:justify-self-center md:mx-auto md:z-[9] md:scale-[1.015] vitrine-ring ${boxShape}`}
+        />
+
         {/* The film — single element, full-bleed on mobile, framed on desktop. */}
         <FilmStage
           video={video}
           poster={filmPoster}
           onReady={lightUp}
-          className={`absolute inset-0 z-0 overflow-hidden md:relative md:inset-auto md:z-10 md:order-2 md:mx-auto md:self-center md:justify-self-center md:overflow-hidden md:border md:border-taupe/25 md:shadow-2xl md:shadow-ink/60 ${boxShape}`}
+          className={`absolute inset-x-0 top-14 bottom-0 z-0 overflow-hidden md:relative md:inset-auto md:top-auto md:z-10 md:order-2 md:mx-auto md:self-center md:justify-self-center md:overflow-hidden md:border md:border-taupe/25 vitrine-glow ${boxShape}`}
           mediaClassName="absolute inset-0 h-full w-full object-cover object-center"
         >
           {/* Desktop-only vignette, clipped to the arch/medallion shape. */}

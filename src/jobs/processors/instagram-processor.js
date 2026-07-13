@@ -139,47 +139,67 @@ const LINK_BLOCKED_ERROR =
  * Send an ordered sequence of IG bubbles under one BullMQ job. Each
  * step is either { text } or { image_url, media_kind? } — the same
  * per-bubble shape a single-send job carries. Awaits each provider
- * call so the customer sees the bubbles in the composer's order,
- * matches the single-send delivery/status side-effects (link-rejection
- * button-template retry, smartcomm status update, per-step logging),
- * and stops on the first failure so the customer never gets a
- * mid-share truncation with the tap-to-order link missing.
+ * call so the customer sees the bubbles in the composer's order.
+ *
+ * The sequence job is enqueued with attempts=1 (see
+ * smartcomm.service.buildOutboundJobsForChannel) — a retry would re-send
+ * every bubble that already landed and spam the customer with duplicate
+ * product images. Retries come from the operator's Retry button, not
+ * from BullMQ.
+ *
+ * Text steps run the same raw-URL → button-template fallback as the
+ * single-send path: Meta blocks plain-text DMs carrying a link with
+ * "Invalid message id" (code 508 / subcode 2534122), so the catalogue-
+ * share tap-to-order card (which IS a URL) bounced hard. When a text
+ * step trips the block, the URL(s) get re-sent as a tappable button
+ * template and the sequence continues — the customer gets the order
+ * link as an "Order here" button instead of a bounced bubble.
  */
+async function sendSequenceStep(step, data) {
+  const stepData = {
+    brand: data.brand,
+    recipient_id: data.recipient_id,
+    tag: data.tag,
+    ...step,
+  };
+  if (stepData.image_url && !stepData.media_url) {
+    stepData.media_url = stepData.image_url;
+    stepData.media_kind = stepData.media_kind || "image";
+  }
+  if (stepData.media_url) {
+    const res = await instagram.sendMedia({
+      brand: stepData.brand,
+      recipient_id: stepData.recipient_id,
+      kind: stepData.media_kind || "image",
+      media_url: stepData.media_url,
+      tag: stepData.tag,
+    });
+    return res && (res.message_id || res.recipient_id);
+  }
+  try {
+    const res = await instagram.sendText({
+      brand: stepData.brand,
+      recipient_id: stepData.recipient_id,
+      text: stepData.text,
+      tag: stepData.tag,
+    });
+    return res && (res.message_id || res.recipient_id);
+  } catch (err) {
+    // Same fallback the single-send path uses. Only fires on genuine
+    // link-blocks; anything else (bad token, expired window) bubbles
+    // up so the sequence stops and the operator sees the real cause.
+    const urls = extractUrls(stepData.text || "");
+    if (urls.length === 0 || !isLinkRejection(err)) throw err;
+    const res = await resendAsLinkButtons({ data: stepData, urls });
+    return res && (res.message_id || res.recipient_id);
+  }
+}
+
 async function sendSequence(job, data) {
   let lastMid = null;
-  const send_one = async (step) => {
-    const stepData = {
-      brand: data.brand,
-      recipient_id: data.recipient_id,
-      tag: data.tag,
-      // The whole sequence shares one smartcomm row; the status update
-      // lives on the LAST step so an in-flight sequence isn't marked
-      // "sent" halfway through.
-      ...step,
-    };
-    if (stepData.image_url && !stepData.media_url) {
-      stepData.media_url = stepData.image_url;
-      stepData.media_kind = stepData.media_kind || "image";
-    }
-    const res = stepData.media_url
-      ? await instagram.sendMedia({
-          brand: stepData.brand,
-          recipient_id: stepData.recipient_id,
-          kind: stepData.media_kind || "image",
-          media_url: stepData.media_url,
-          tag: stepData.tag,
-        })
-      : await instagram.sendText({
-          brand: stepData.brand,
-          recipient_id: stepData.recipient_id,
-          text: stepData.text,
-          tag: stepData.tag,
-        });
-    return res && (res.message_id || res.recipient_id);
-  };
   try {
     for (const step of data.sequence) {
-      lastMid = await send_one(step);
+      lastMid = await sendSequenceStep(step, data);
     }
     if (data.smartcomm_message_id) {
       await smartcomm().applyDeliveryResult({

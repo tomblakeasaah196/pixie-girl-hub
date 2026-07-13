@@ -207,4 +207,60 @@ describe("instagram-send multi-bubble sequence", () => {
       }),
     );
   });
+
+  test("a text step with a URL that Meta 508-bounces continues via the link-button fallback", async () => {
+    // Real-world catalogue share: [image1, name1, order-link]. Meta blocks
+    // the raw URL bubble as "Invalid message id" (code 508) — the whole
+    // send used to fail and BullMQ retried 5×, spamming the customer with
+    // duplicate product images. The fallback must convert the raw URL to
+    // a tappable button, land the order link, and mark the row "sent".
+    instagram.sendMedia.mockResolvedValueOnce({ message_id: "mid.img.1" });
+    instagram.sendText
+      .mockResolvedValueOnce({ message_id: "mid.name.1" })
+      // The order-link text bounces with 508.
+      .mockRejectedValueOnce(linkBounceError());
+    instagram.sendButtonTemplate.mockResolvedValueOnce({
+      message_id: "mid.button",
+    });
+
+    const sequence = [
+      { image_url: "https://cdn/x/1.jpg" },
+      { text: "*Nala Sleek Signature Black*\nPrice: ₦435,000" },
+      { text: "🛍️ Order here: https://order.test/x" },
+    ];
+
+    const res = await process(job({ sequence }));
+
+    expect(instagram.sendButtonTemplate).toHaveBeenCalledTimes(1);
+    const btn = instagram.sendButtonTemplate.mock.calls[0][0];
+    expect(btn.buttons).toEqual([
+      expect.objectContaining({ url: "https://order.test/x" }),
+    ]);
+    expect(smartcomm.applyDeliveryResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message_id: "msg-1",
+        delivery_status: "sent",
+        external_ref: "mid.button",
+      }),
+    );
+    expect(res).toMatchObject({ steps: 3, mid: "mid.button" });
+  });
+
+  test("a 508 on a text step WITHOUT any URL is not treated as a link-block", async () => {
+    instagram.sendMedia.mockResolvedValueOnce({ message_id: "mid.img.1" });
+    instagram.sendText.mockRejectedValueOnce(linkBounceError());
+
+    const sequence = [
+      { image_url: "https://cdn/x/1.jpg" },
+      { text: "*Nala Sleek Signature Black*" },
+    ];
+
+    await expect(process(job({ sequence }))).rejects.toThrow(
+      /Invalid message id/,
+    );
+    expect(instagram.sendButtonTemplate).not.toHaveBeenCalled();
+    expect(smartcomm.applyDeliveryResult).toHaveBeenCalledWith(
+      expect.objectContaining({ delivery_status: "failed" }),
+    );
+  });
 });

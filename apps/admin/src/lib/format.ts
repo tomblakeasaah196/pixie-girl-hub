@@ -42,25 +42,34 @@ export function hexToTriplet(hex: string): string {
  * Canonical human-friendly timestamp format across the admin app.
  * Renders a machine ISO string (e.g. "2026-07-06T23:00:00.000Z") as
  * "19:17, 07/04/2026" — 24-hour local time, then day/month/year.
- * Returns "—" for null/undefined/invalid values.
+ * Returns `fallback` ("—" by default) for null/undefined/invalid values.
  */
-export function formatDateTime(value: string | number | Date | null | undefined): string {
+export function formatDateTime(
+  value: string | number | Date | null | undefined,
+  fallback = "—",
+): string {
   const d = toDate(value);
-  if (!d) return "—";
+  if (!d) return fallback;
   return `${hhmm(d)}, ${ddmmyyyy(d)}`;
 }
 
-/** "07/04/2026" — date only, DD/MM/YYYY. */
-export function formatDate(value: string | number | Date | null | undefined): string {
+/** "07/04/2026" — date only, DD/MM/YYYY. `fallback` for empty/invalid. */
+export function formatDate(
+  value: string | number | Date | null | undefined,
+  fallback = "—",
+): string {
   const d = toDate(value);
-  if (!d) return "—";
+  if (!d) return fallback;
   return ddmmyyyy(d);
 }
 
-/** "19:17" — 24-hour local time only. */
-export function formatTime(value: string | number | Date | null | undefined): string {
+/** "19:17" — 24-hour local time only. `fallback` for empty/invalid. */
+export function formatTime(
+  value: string | number | Date | null | undefined,
+  fallback = "—",
+): string {
   const d = toDate(value);
-  if (!d) return "—";
+  if (!d) return fallback;
   return hhmm(d);
 }
 

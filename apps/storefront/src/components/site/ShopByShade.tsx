@@ -52,6 +52,7 @@ export function ShopByShade({
                     className="absolute inset-0 w-full h-full object-cover transition-transform duration-[1200ms] ease-out group-hover:scale-[1.06]"
                   />
                 ) : null}
+                <div className="absolute inset-0 sf-image-scrim" />
                 <div className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-cream/15 to-transparent transition-transform duration-1000 ease-out group-hover:translate-x-full" />
 
                 <div className="absolute inset-x-0 bottom-0 p-4 md:p-5">

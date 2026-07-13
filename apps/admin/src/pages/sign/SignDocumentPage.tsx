@@ -20,6 +20,7 @@ import {
 } from "@/lib/public-sign-api";
 import { SignaturePad } from "@/components/sign/SignaturePad";
 import { formatDateTime } from "@/lib/format";
+import { PublicBrandShell } from "@/components/public/PublicBrandShell";
 
 type Stage =
   | "loading"
@@ -38,13 +39,6 @@ interface SignedInfo {
   saved_signature?: boolean;
   signed_document_ready?: boolean;
 }
-
-const brandName = (b?: string | null) =>
-  b === "faitlynhair"
-    ? "Faitlyn Hair"
-    : b === "pixiegirl"
-      ? "Pixie Girl Global"
-      : "Pixie Girl Hub";
 
 const fmtWat = (iso: string) => `${formatDateTime(iso)} WAT`;
 
@@ -664,26 +658,13 @@ function Shell({
   brand?: string | null;
   children: React.ReactNode;
 }) {
-  const name = brandName(brand);
   return (
-    <div className="h-[100dvh] overflow-y-auto overscroll-contain bg-bg text-text-primary px-4 py-6 sm:px-6 sm:py-10">
-      <div className="max-w-[560px] mx-auto">
-        <div className="flex items-center gap-2.5 mb-5">
-          <div className="grid place-items-center w-10 h-10 rounded-xl bg-accent text-bg font-display text-[18px]">
-            {name[0]}
-          </div>
-          <div>
-            <p className="font-display text-[17px] leading-none">{name}</p>
-            <p className="text-[11px] text-text-faint mt-0.5">
-              Document signing
-            </p>
-          </div>
-        </div>
-        <div className="glass rounded-2xl p-5 sm:p-6">{children}</div>
-        <p className="text-center text-[10.5px] text-text-faint mt-4">
-          Secured by Pixie Girl Hub · e-signature
-        </p>
-      </div>
-    </div>
+    <PublicBrandShell
+      brand={brand}
+      subtitle="Document signing"
+      footer="Secured by Pixie Girl Hub · e-signature"
+    >
+      {children}
+    </PublicBrandShell>
   );
 }

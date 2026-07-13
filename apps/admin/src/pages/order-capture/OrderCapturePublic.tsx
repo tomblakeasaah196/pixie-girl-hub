@@ -10,19 +10,14 @@ import {
   Store,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import {
-  formatDateTime,
-  formatDate,
-  hexToTriplet,
-  initials,
-} from "@/lib/format";
+import { formatDateTime, formatDate } from "@/lib/format";
 import {
   fetchGeoOptions,
   fetchDeliveryQuote,
   GEO_FALLBACK,
   type GeoOptions,
 } from "@/lib/order-capture-geo";
-import { useBranding, type BusinessBranding } from "@/lib/branding";
+import { PublicBrandShell } from "@/components/public/PublicBrandShell";
 import { cn } from "@/lib/cn";
 
 /**
@@ -1009,14 +1004,9 @@ export function OrderCapturePublic() {
 // ── Layout shell ──────────────────────────────────────────
 
 /**
- * Chrome for the shared public order page. Fetches the DB-driven brand
- * row (display_name + logo + Layer-B colours) via /api/public/branding so
- * every business — Pixie Girl today, Faitlyn Hair today, any new brand
- * added tomorrow — automatically gets its full name, real logo, and its
- * own accent tint on the page. Falls back to the seed values from
- * migration 000208 while the branding query is in flight so the page
- * never flashes generic chrome, and to the brand key itself for a
- * brand-new business whose branding row hasn't been filled in yet.
+ * Thin wrapper over the shared PublicBrandShell so this page stays on the
+ * one branded, glassmorphic, per-brand chrome used by every public
+ * token-linked page (order / welcome / sign / offer).
  */
 function Shell({
   brand,
@@ -1025,119 +1015,11 @@ function Shell({
   brand?: string;
   children: React.ReactNode;
 }) {
-  const { data } = useBranding();
-  const row = brand
-    ? data?.businesses?.find((b) => b.business_key === brand) ?? null
-    : null;
-  const identity = resolveBrandIdentity(brand, row);
   return (
-    <div
-      className="h-[100dvh] overflow-y-auto overscroll-contain bg-bg text-text-primary px-4 py-6 sm:px-6 sm:py-10"
-      style={identity.style}
-    >
-      <div className="max-w-[560px] mx-auto">
-        <div className="flex items-center gap-2 mb-5">
-          {identity.logoUrl ? (
-            <img
-              src={identity.logoUrl}
-              alt={identity.name}
-              className="w-10 h-10 rounded-xl object-contain bg-panel border hairline p-1.5"
-            />
-          ) : (
-            <div
-              className="grid place-items-center w-10 h-10 rounded-xl font-display text-[15px] tracking-wide text-bg"
-              style={{
-                background: `linear-gradient(135deg, ${identity.grad1}, ${identity.grad2})`,
-              }}
-            >
-              {identity.monogram}
-            </div>
-          )}
-          <div>
-            <p className="font-display text-[18px] leading-none">
-              {identity.name}
-            </p>
-            <p className="text-[11.5px] text-text-faint">Confirm your order</p>
-          </div>
-        </div>
-        <div className="rounded-2xl bg-panel border hairline p-5 sm:p-6">
-          {children}
-        </div>
-      </div>
-    </div>
+    <PublicBrandShell brand={brand} subtitle="Confirm your order">
+      {children}
+    </PublicBrandShell>
   );
-}
-
-interface BrandIdentity {
-  name: string;
-  monogram: string;
-  logoUrl: string | null;
-  grad1: string;
-  grad2: string;
-  accent: string;
-  style: React.CSSProperties;
-}
-
-// Fallback colours for brand keys whose branding row hasn't loaded yet
-// (or hasn't been filled in for a brand-new business). Mirrors the seed
-// values from migration 000208 so the visual identity matches the rest
-// of the app while the branding query is still in flight.
-const BRAND_FALLBACK: Record<
-  string,
-  { name: string; grad1: string; grad2: string; accent: string }
-> = {
-  pixiegirl: {
-    name: "Pixie Girl",
-    grad1: "#a81d1d",
-    grad2: "#690909",
-    accent: "#690909",
-  },
-  faitlynhair: {
-    name: "Faitlyn Hair",
-    grad1: "#7f703d",
-    grad2: "#d5b8a4",
-    accent: "#7f703d",
-  },
-};
-
-function resolveBrandIdentity(
-  brand: string | undefined,
-  row: BusinessBranding | null,
-): BrandIdentity {
-  const fallback = brand ? BRAND_FALLBACK[brand] : undefined;
-  const name = row?.display_name || fallback?.name || "Order";
-  const accent =
-    row?.brand_theme?.accent || row?.accent_colour || fallback?.accent || "#690909";
-  const grad1 =
-    row?.brand_theme?.grad1 ||
-    row?.secondary_colour ||
-    fallback?.grad1 ||
-    accent;
-  const grad2 = row?.brand_theme?.grad2 || fallback?.grad2 || accent;
-  const accentDeep =
-    row?.brand_theme?.accent_deep ||
-    (row?.brand_theme?.accent ?? row?.accent_colour) ||
-    accent;
-  // Repaint the Layer-A + Layer-B accent tokens so every button, chip,
-  // check, focus ring and glow on the page picks up THIS brand's tint
-  // — the header no longer says "Pixie maroon on Faitlyn's page".
-  const style: React.CSSProperties = {
-    ["--accent" as string]: hexToTriplet(accent),
-    ["--accent-deep" as string]: hexToTriplet(accentDeep),
-    ["--accent-glow" as string]: hexToTriplet(accent),
-    ["--biz-1" as string]: grad1,
-    ["--biz-2" as string]: grad2,
-    ["--biz-accent" as string]: accent,
-  };
-  return {
-    name,
-    monogram: initials(name).slice(0, 2) || "•",
-    logoUrl: row?.logo_path || null,
-    grad1,
-    grad2,
-    accent,
-    style,
-  };
 }
 
 function Section({

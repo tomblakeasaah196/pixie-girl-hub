@@ -501,6 +501,10 @@ async function getPublicOffer({ token, ip, ua }) {
     offer_letter_html: web.offer_letter_html,
     packet_html,
     company: {
+      // business_key so the public offer page can resolve the brand's
+      // logo + Layer-B colours from /api/public/branding (the branded
+      // PublicBrandShell). `name` stays the display string used in copy.
+      business: offer.business,
       name: company.display_name,
       signatory_name: company.signatory_name,
       signatory_title: company.signatory_title,

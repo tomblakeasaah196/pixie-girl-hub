@@ -30,7 +30,7 @@ describe("video-clip — clampTrim", () => {
     expect(t.duration).toBe(4);
   });
   test("garbage start/end never escapes the source", () => {
-    const t = clampTrim({ duration_sec: 12, trim_start: -3, trim_end: "nope" });
+    const t = clampTrim({ duration_sec: 30, trim_start: -3, trim_end: "nope" });
     expect(t.start).toBe(0);
     expect(t.duration).toBe(MAX_CLIP_SECONDS);
   });

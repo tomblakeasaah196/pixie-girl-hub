@@ -2,6 +2,7 @@ import { useState } from "react";
 import { StickyNote, Plus, Pin, Trash2, Search, Sparkles } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button, Card, Skeleton, EmptyState } from "@/components/ui/primitives";
+import { formatDate } from "@/lib/format";
 import { ErrorState } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
 import { Field, TextInput, FormSection } from "@/components/ui/Form";
@@ -159,10 +160,7 @@ function NoteCard({ note, onEdit }: { note: Note; onEdit: () => void }) {
       </button>
       <div className="flex items-center gap-2 mt-2.5 pt-2 border-t hairline">
         <span className="text-[10px] font-mono text-text-faint">
-          {new Date(note.updated_at).toLocaleDateString([], {
-            month: "short",
-            day: "numeric",
-          })}
+          {formatDate(note.updated_at)}
         </span>
         {note.source === "cos" && (
           <span

@@ -2,6 +2,7 @@ import { useDraggable } from "@dnd-kit/core";
 import { Calendar, User } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Pill } from "@/components/ui/primitives";
+import { formatDate } from "@/lib/format";
 import type { Task } from "./types";
 import { TASK_PRIORITY_META, isPast } from "./constants";
 
@@ -61,10 +62,7 @@ export function TaskCard({ task, isDragging, onClick }: TaskCardProps) {
             )}
           >
             <Calendar className="w-3.5 h-3.5" />
-            {new Date(task.due_at).toLocaleDateString([], {
-              month: "short",
-              day: "numeric",
-            })}
+            {formatDate(task.due_at)}
           </span>
         )}
 

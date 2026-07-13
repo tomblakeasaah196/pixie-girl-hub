@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { formatDate, formatDateTime } from "@/lib/format";
 import {
   ExternalLink,
   Mail,
@@ -317,14 +318,7 @@ export function CustomerSidebar({ channel }: Props) {
                         )}
                       </div>
                       <div className="text-[10px] text-text-faint">
-                        {new Date(c.started_at).toLocaleDateString(undefined, {
-                          month: "short",
-                          day: "numeric",
-                        })}{" "}
-                        {new Date(c.started_at).toLocaleTimeString(undefined, {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
+                        {formatDateTime(c.started_at)}
                       </div>
                     </div>
                   </div>
@@ -365,7 +359,7 @@ export function CustomerSidebar({ channel }: Props) {
                 </div>
                 <div className="text-[11px] text-text-faint mt-0.5">
                   {l.status === "ordered"
-                    ? `Ordered ${l.ordered_at ? new Date(l.ordered_at).toLocaleDateString() : ""}`
+                    ? `Ordered ${formatDate(l.ordered_at, "")}`
                     : l.opened_at
                       ? l.cart && l.cart.length
                         ? `Picking now: ${l.cart
@@ -414,10 +408,7 @@ export function CustomerSidebar({ channel }: Props) {
                     {m.subject || m.event_key || m.channel}
                   </div>
                   <div className="text-[10px] text-text-faint">
-                    {new Date(m.created_at).toLocaleDateString(undefined, {
-                      month: "short",
-                      day: "numeric",
-                    })}
+                    {formatDate(m.created_at)}
                     {m.status === "failed" && " · failed"}
                   </div>
                 </div>

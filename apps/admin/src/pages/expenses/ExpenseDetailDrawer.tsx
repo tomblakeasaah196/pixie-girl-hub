@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Receipt, CheckCircle, XCircle } from "lucide-react";
 import { Drawer } from "@/components/ui/Drawer";
 import { Button, Card, Pill, MoneyText } from "@/components/ui/primitives";
+import { formatDate } from "@/lib/format";
 import { useAuthStore } from "@/stores/auth";
 import { useExpense, useExpenseMutations } from "./hooks";
 import { EXPENSE_STATUS_META } from "./constants";
@@ -109,11 +110,7 @@ function ExpenseDetailContent({ d }: { d: ExpenseDetail }) {
         <DetailRow label="Type" value={e.expense_type.replace(/_/g, " ")} />
         <DetailRow
           label="Date"
-          value={new Date(e.expense_date).toLocaleDateString("en-NG", {
-            day: "numeric",
-            month: "long",
-            year: "numeric",
-          })}
+          value={formatDate(e.expense_date)}
         />
         {e.description && (
           <DetailRow label="Description" value={e.description} />
@@ -128,7 +125,7 @@ function ExpenseDetailContent({ d }: { d: ExpenseDetail }) {
         {e.approved_at && (
           <DetailRow
             label="Approved At"
-            value={new Date(e.approved_at).toLocaleDateString("en-NG")}
+            value={formatDate(e.approved_at)}
           />
         )}
       </Card>

@@ -9,6 +9,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { ShoppingBag, Search } from "lucide-react";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Pill, MoneyText } from "@/components/ui/primitives";
+import { formatDate, formatTime } from "@/lib/format";
 import { Select, ErrorState } from "@/components/ui/controls";
 import { useOrders } from "./hooks";
 import {
@@ -26,20 +27,14 @@ const columns: Column<SalesOrder>[] = [
     key: "date",
     header: "Date & Time",
     width: "140px",
-    render: (o) => {
-      const d = new Date(o.created_at);
-      return (
-        <span className="text-[12px] text-text-muted">
-          <span className="block">{d.toLocaleDateString()}</span>
-          <span className="block text-[11px] opacity-70">
-            {d.toLocaleTimeString(undefined, {
-              hour: "2-digit",
-              minute: "2-digit",
-            })}
-          </span>
+    render: (o) => (
+      <span className="text-[12px] text-text-muted">
+        <span className="block">{formatDate(o.created_at)}</span>
+        <span className="block text-[11px] opacity-70">
+          {formatTime(o.created_at)}
         </span>
-      );
-    },
+      </span>
+    ),
   },
   {
     key: "number",

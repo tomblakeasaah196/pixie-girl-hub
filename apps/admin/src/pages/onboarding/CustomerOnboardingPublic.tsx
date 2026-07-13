@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { CheckCircle2, Loader2, AlertCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import { GooglePlacesAutocomplete } from "@/components/common/GooglePlacesAutocomplete";
+import { PublicBrandShell } from "@/components/public/PublicBrandShell";
 
 /**
  * Public Customer Onboarding form (the "Online QR" link customers fill).
@@ -465,34 +466,14 @@ function Shell({
   business: string;
   children: React.ReactNode;
 }) {
-  const brandName =
-    business === "faitlynhair"
-      ? "Faitlyn"
-      : business === "pixiegirl"
-        ? "Pixie Girl"
-        : "Welcome";
   return (
-    // h-[100dvh] + own scroll: the app pins `body { overflow:hidden }` for the
-    // authenticated shell, so this standalone public page must scroll itself or
-    // tall content (and the submit button) is unreachable on a phone.
-    <div className="h-[100dvh] overflow-y-auto overscroll-contain bg-bg text-text-primary px-4 py-6 sm:px-6 sm:py-10">
-      <div className="max-w-[520px] mx-auto">
-        <div className="flex items-center gap-2 mb-5">
-          <div className="grid place-items-center w-10 h-10 rounded-xl bg-accent text-bg font-display text-[18px]">
-            {brandName[0]}
-          </div>
-          <div>
-            <p className="font-display text-[18px] leading-none">{brandName}</p>
-            <p className="text-[11.5px] text-text-faint">
-              Welcome — let&rsquo;s get you set up
-            </p>
-          </div>
-        </div>
-        <div className="rounded-2xl bg-panel border hairline p-5 sm:p-6">
-          {children}
-        </div>
-      </div>
-    </div>
+    <PublicBrandShell
+      brand={business}
+      subtitle="Welcome — let's get you set up"
+      maxWidth={520}
+    >
+      {children}
+    </PublicBrandShell>
   );
 }
 

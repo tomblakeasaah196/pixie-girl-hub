@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { SignaturePad } from "@/components/sign/SignaturePad";
 import { publicOfferApi, type PublicOffer } from "@/lib/recruitment-api";
+import { PublicBrandShell } from "@/components/public/PublicBrandShell";
 
 type Stage = "loading" | "error" | "sign" | "signed" | "closed";
 
@@ -71,10 +72,11 @@ export function OfferPage() {
   }
 
   const brandName = offer?.company?.name || "Pixie Girl Hub";
+  const brandKey = offer?.company?.business;
 
   if (stage === "loading") {
     return (
-      <Shell brandName={brandName}>
+      <Shell brand={brandKey} brandName={brandName}>
         <div className="grid place-items-center py-20">
           <Loader2 className="h-6 w-6 animate-spin text-accent-glow" />
         </div>
@@ -84,7 +86,7 @@ export function OfferPage() {
 
   if (stage === "error") {
     return (
-      <Shell brandName={brandName}>
+      <Shell brand={brandKey} brandName={brandName}>
         <Centered
           icon={<AlertCircle className="h-8 w-8 text-danger" />}
           title="This offer link doesn't work"
@@ -96,7 +98,7 @@ export function OfferPage() {
 
   if (stage === "closed") {
     return (
-      <Shell brandName={brandName}>
+      <Shell brand={brandKey} brandName={brandName}>
         <Centered
           icon={<CheckCircle2 className="h-8 w-8 text-text-faint" />}
           title="This offer is already complete"
@@ -111,7 +113,7 @@ export function OfferPage() {
     // this session so it appears immediately after signing (before any reload).
     const signatureImg = offer?.signature_data_url || signature;
     return (
-      <Shell brandName={brandName}>
+      <Shell brand={brandKey} brandName={brandName}>
         <div className="text-center py-4">
           <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-full bg-success/15">
             <CheckCircle2 className="h-8 w-8 text-success" />
@@ -172,7 +174,7 @@ export function OfferPage() {
 
   // ── Sign flow ───────────────────────────────────────────
   return (
-    <Shell brandName={brandName}>
+    <Shell brand={brandKey} brandName={brandName}>
       <div className="mb-4">
         <div className="mb-2 text-[11px] uppercase tracking-widest text-warn">
           Your offer of employment
@@ -287,25 +289,25 @@ function Centered({
   );
 }
 
-function Shell({ brandName, children }: { brandName: string; children: React.ReactNode }) {
+function Shell({
+  brand,
+  brandName,
+  children,
+}: {
+  brand?: string;
+  brandName: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="h-[100dvh] overflow-y-auto overscroll-contain bg-bg px-4 py-6 text-text-primary sm:px-6 sm:py-10">
-      <div className="mx-auto max-w-[620px]">
-        <div className="mb-5 flex items-center gap-2.5">
-          <div className="grid h-10 w-10 place-items-center rounded-xl bg-accent font-display text-[18px] text-bg">
-            {brandName[0]}
-          </div>
-          <div>
-            <p className="font-display text-[17px] leading-none">{brandName}</p>
-            <p className="mt-0.5 text-[11px] text-text-faint">Offer of employment</p>
-          </div>
-        </div>
-        <div className="glass rounded-2xl p-5 sm:p-6">{children}</div>
-        <p className="mt-4 text-center text-[10.5px] text-text-faint">
-          Secured by Pixie Girl Hub · e-signature
-        </p>
-      </div>
-    </div>
+    <PublicBrandShell
+      brand={brand}
+      brandNameFallback={brandName}
+      subtitle="Offer of employment"
+      maxWidth={620}
+      footer="Secured by Pixie Girl Hub · e-signature"
+    >
+      {children}
+    </PublicBrandShell>
   );
 }
 

@@ -164,7 +164,13 @@ export interface PublicOffer {
    * literally what gets downloaded as a PDF.
    */
   packet_html: string;
-  company: { name: string; signatory_name: string; signatory_title: string };
+  company: {
+    /** business_key ("faitlynhair" | "pixiegirl" | …) for brand chrome. */
+    business?: string;
+    name: string;
+    signatory_name: string;
+    signatory_title: string;
+  };
   signed_at: string | null;
   verification_code: string | null;
   /** The candidate's own captured signature image, once they've signed. */

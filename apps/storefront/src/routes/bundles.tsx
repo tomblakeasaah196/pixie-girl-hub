@@ -91,9 +91,26 @@ function BundlesPage() {
                   {cover ? (
                     <img src={cover} alt={b.display_name} className="absolute inset-0 h-full w-full object-cover transition-transform duration-[1400ms] ease-out group-hover:scale-105" />
                   ) : null}
-                  {savePct > 0 ? (
-                    <span className="absolute top-5 left-5 bg-rose text-ink text-[0.6rem] tracking-[0.4em] uppercase px-3 py-1.5 rounded-sm">
-                      Save {savePct}%
+                  {(savePct > 0 || price > 0) ? (
+                    <span
+                      className="absolute top-5 left-5 flex flex-col items-start bg-burgundy/85 backdrop-blur-sm text-cream px-3 py-1.5 rounded-sm"
+                      style={{ animation: "bundle-pill-glow 3s ease-in-out infinite" }}
+                    >
+                      {savePct > 0 && (
+                        <span className="text-[0.6rem] tracking-[0.4em] uppercase">
+                          Save {savePct}%
+                        </span>
+                      )}
+                      <span className="flex items-baseline gap-2">
+                        <span className="text-[0.6rem] tracking-[0.2em]">
+                          {fmt(price, "NGN")}
+                        </span>
+                        {compareAt > price && (
+                          <span className="text-[0.5rem] tracking-[0.1em] text-cream/50 line-through">
+                            {fmt(compareAt, "NGN")}
+                          </span>
+                        )}
+                      </span>
                     </span>
                   ) : null}
                 </div>

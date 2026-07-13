@@ -8,11 +8,6 @@ import {
   type HeadContent,
 } from "@/lib/home-content";
 
-/**
- * Bundles ensemble grid. `items` come live from the Hub (/bundles); falls back
- * to the ported demo bundles so the look is identical before the catalogue is
- * seeded. Bundles are NGN-only on the backend (no USD column).
- */
 export function BentoGrid({
   head = DEFAULT_HOME.bundlesHead,
   items,
@@ -44,7 +39,7 @@ export function BentoGrid({
             <Link
               to="/bundles/$slug"
               params={{ slug: b.slug }}
-              className="group relative block w-full h-[420px] md:h-[520px] overflow-hidden bg-card rounded-lg"
+              className="group relative block w-full aspect-[4/5] overflow-hidden bg-card rounded-lg"
             >
               {b.cover && (
                 <img
@@ -55,31 +50,50 @@ export function BentoGrid({
                   className="w-full h-full object-cover transition-transform duration-[1400ms] ease-out group-hover:scale-110"
                 />
               )}
-              <div className="absolute inset-0 sf-image-scrim" />
-              {b.savingsPct > 0 ? (
-                <span className="absolute top-5 left-5 bg-rose text-ink text-[0.6rem] tracking-[0.4em] uppercase px-3 py-1.5 rounded-sm">
-                  Save {b.savingsPct}%
-                </span>
-              ) : null}
-              <div className="absolute inset-x-0 bottom-0 p-6 md:p-8">
-                <p className="text-[0.6rem] tracking-[0.4em] uppercase text-taupe mb-2">
-                  {b.members}-piece bundle
-                </p>
-                <h3 className="font-display text-3xl md:text-4xl text-cream leading-tight">{b.name}</h3>
-                <div className="mt-3 flex items-baseline gap-3">
-                  <span className="text-xl font-display text-taupe">{fmt(b.priceNgn, "NGN")}</span>
-                  {b.compareAtNgn > b.priceNgn ? (
-                    <span className="text-sm text-cream/40 line-through">{fmt(b.compareAtNgn, "NGN")}</span>
-                  ) : null}
-                  <span className="ml-auto text-[0.6rem] tracking-[0.4em] uppercase text-taupe opacity-0 group-hover:opacity-100 translate-x-[-8px] group-hover:translate-x-0 transition-all duration-500">
-                    See bundle →
-                  </span>
-                </div>
-              </div>
+              <BundlePill
+                savingsPct={b.savingsPct}
+                priceNgn={b.priceNgn}
+                compareAtNgn={b.compareAtNgn}
+              />
             </Link>
           </RevealItem>
         ))}
       </RevealGroup>
     </section>
+  );
+}
+
+function BundlePill({
+  savingsPct,
+  priceNgn,
+  compareAtNgn,
+}: {
+  savingsPct: number;
+  priceNgn: number;
+  compareAtNgn: number;
+}) {
+  const hasDiscount = savingsPct > 0;
+  if (!hasDiscount && priceNgn <= 0) return null;
+  return (
+    <span
+      className="absolute top-5 left-5 flex flex-col items-start bg-burgundy/85 backdrop-blur-sm text-cream px-3 py-1.5 rounded-sm"
+      style={{ animation: "bundle-pill-glow 3s ease-in-out infinite" }}
+    >
+      {hasDiscount && (
+        <span className="text-[0.6rem] tracking-[0.4em] uppercase">
+          Save {savingsPct}%
+        </span>
+      )}
+      <span className="flex items-baseline gap-2">
+        <span className="text-[0.6rem] tracking-[0.2em]">
+          {fmt(priceNgn, "NGN")}
+        </span>
+        {compareAtNgn > priceNgn && (
+          <span className="text-[0.5rem] tracking-[0.1em] text-cream/50 line-through">
+            {fmt(compareAtNgn, "NGN")}
+          </span>
+        )}
+      </span>
+    </span>
   );
 }

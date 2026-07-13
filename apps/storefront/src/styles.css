@@ -374,6 +374,11 @@ html, body { transition: background-color 0.35s ease, color 0.35s ease; }
   animation: hero-lightup 2.8s ease-out 1 both;
 }
 
+@keyframes bundle-pill-glow {
+  0%, 100% { box-shadow: 0 0 6px color-mix(in oklch, var(--champagne) 25%, transparent); }
+  50% { box-shadow: 0 0 14px color-mix(in oklch, var(--champagne) 45%, transparent), 0 0 4px color-mix(in oklch, var(--gold) 20%, transparent); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.001ms !important;

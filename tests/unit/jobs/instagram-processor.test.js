@@ -143,3 +143,68 @@ describe("instagram-send link-button fallback", () => {
     expect(instagram.sendButtonTemplate).not.toHaveBeenCalled();
   });
 });
+
+describe("instagram-send multi-bubble sequence", () => {
+  test("sends each step in order and stamps 'sent' only after the last one lands", async () => {
+    instagram.sendMedia
+      .mockResolvedValueOnce({ message_id: "mid.img.1" })
+      .mockResolvedValueOnce({ message_id: "mid.img.2" });
+    instagram.sendText
+      .mockResolvedValueOnce({ message_id: "mid.name.1" })
+      .mockResolvedValueOnce({ message_id: "mid.name.2" })
+      .mockResolvedValueOnce({ message_id: "mid.link" });
+
+    const sequence = [
+      { image_url: "https://cdn/x/1.jpg" },
+      { text: "*Teyena Taylor Light Grey*\nPrice: ₦435,000" },
+      { image_url: "https://cdn/x/2.jpg" },
+      { text: "*Teyena Taylor Dark Grey*\nPrice: ₦435,000" },
+      { text: "🛍️ Order here: https://order.test/x" },
+    ];
+
+    const res = await process(job({ sequence }));
+
+    // Every step ran; images and texts alternate as the composer emitted.
+    const kinds = [
+      ...instagram.sendMedia.mock.calls.map(() => "media"),
+      ...instagram.sendText.mock.calls.map(() => "text"),
+    ];
+    expect(kinds).toHaveLength(sequence.length);
+    // Delivery status flips exactly once, on the LAST provider mid.
+    expect(smartcomm.applyDeliveryResult).toHaveBeenCalledTimes(1);
+    expect(smartcomm.applyDeliveryResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message_id: "msg-1",
+        delivery_status: "sent",
+        external_ref: "mid.link",
+      }),
+    );
+    expect(res).toMatchObject({ steps: sequence.length, mid: "mid.link" });
+  });
+
+  test("a mid-sequence failure marks the message failed and stops the send", async () => {
+    instagram.sendMedia.mockResolvedValueOnce({ message_id: "mid.img.1" });
+    instagram.sendText.mockRejectedValueOnce(
+      Object.assign(new Error("Instagram: message is over 1000 characters"), {
+        meta_error: { code: 100, error_subcode: 2534038 },
+      }),
+    );
+
+    const sequence = [
+      { image_url: "https://cdn/x/1.jpg" },
+      { text: "long body that would be caption" },
+      { image_url: "https://cdn/x/2.jpg" },
+      { text: "🛍️ Order here" },
+    ];
+
+    await expect(process(job({ sequence }))).rejects.toThrow(/1000 characters/);
+    // Third + fourth steps never fire.
+    expect(instagram.sendMedia).toHaveBeenCalledTimes(1);
+    expect(smartcomm.applyDeliveryResult).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message_id: "msg-1",
+        delivery_status: "failed",
+      }),
+    );
+  });
+});

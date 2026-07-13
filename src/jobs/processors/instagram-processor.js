@@ -10,6 +10,15 @@
  *   { brand, recipient_id, text, tag: 'HUMAN_AGENT' }      — outside-window
  *   { brand, recipient_id, image_url }                     — image (legacy shape)
  *   { brand, recipient_id, media_kind, media_url }         — image|audio|video
+ *   { brand, recipient_id, sequence: [{...step}, ...] }    — multi-bubble send
+ *
+ * The `sequence` shape sends every step in ORDER on a single job so IG
+ * can't shuffle the bubbles the way it did when each bubble rode its own
+ * concurrent job (catalogue shares dropped the tap-to-order link mid-way
+ * through the product list). Each step is either { text } or
+ * { image_url } / { media_kind, media_url }. The message row is stamped
+ * "sent" only after the last step lands; a failed intermediate step
+ * marks the row failed and stops the sequence.
  *
  * `brand` is REQUIRED — every send resolves the per-brand IG token
  * from shared.messaging_accounts. A job missing brand fails fast
@@ -126,6 +135,94 @@ const LINK_BLOCKED_ERROR =
   "AND as a link button. This usually clears once the customer follows the " +
   "account or replies again; otherwise move the conversation to WhatsApp.";
 
+/**
+ * Send an ordered sequence of IG bubbles under one BullMQ job. Each
+ * step is either { text } or { image_url, media_kind? } — the same
+ * per-bubble shape a single-send job carries. Awaits each provider
+ * call so the customer sees the bubbles in the composer's order,
+ * matches the single-send delivery/status side-effects (link-rejection
+ * button-template retry, smartcomm status update, per-step logging),
+ * and stops on the first failure so the customer never gets a
+ * mid-share truncation with the tap-to-order link missing.
+ */
+async function sendSequence(job, data) {
+  let lastMid = null;
+  const send_one = async (step) => {
+    const stepData = {
+      brand: data.brand,
+      recipient_id: data.recipient_id,
+      tag: data.tag,
+      // The whole sequence shares one smartcomm row; the status update
+      // lives on the LAST step so an in-flight sequence isn't marked
+      // "sent" halfway through.
+      ...step,
+    };
+    if (stepData.image_url && !stepData.media_url) {
+      stepData.media_url = stepData.image_url;
+      stepData.media_kind = stepData.media_kind || "image";
+    }
+    const res = stepData.media_url
+      ? await instagram.sendMedia({
+          brand: stepData.brand,
+          recipient_id: stepData.recipient_id,
+          kind: stepData.media_kind || "image",
+          media_url: stepData.media_url,
+          tag: stepData.tag,
+        })
+      : await instagram.sendText({
+          brand: stepData.brand,
+          recipient_id: stepData.recipient_id,
+          text: stepData.text,
+          tag: stepData.tag,
+        });
+    return res && (res.message_id || res.recipient_id);
+  };
+  try {
+    for (const step of data.sequence) {
+      lastMid = await send_one(step);
+    }
+    if (data.smartcomm_message_id) {
+      await smartcomm().applyDeliveryResult({
+        message_id: data.smartcomm_message_id,
+        delivery_status: "sent",
+        external_ref: lastMid ? String(lastMid) : null,
+      });
+    }
+    logger.info(
+      {
+        jobId: job.id,
+        brand: data.brand,
+        recipient: data.recipient_id,
+        steps: data.sequence.length,
+        mid: lastMid,
+      },
+      "instagram sent (sequence)",
+    );
+    return { mid: lastMid, steps: data.sequence.length };
+  } catch (err) {
+    logger.error(
+      {
+        jobId: job.id,
+        brand: data.brand,
+        recipient: data.recipient_id,
+        sequence_len: data.sequence.length,
+        meta_error: err.meta_error || null,
+        fbtrace_id: (err.meta_error && err.meta_error.fbtrace_id) || null,
+        err: err.message,
+      },
+      "instagram-send: sequence step failed",
+    );
+    if (data.smartcomm_message_id) {
+      await smartcomm().applyDeliveryResult({
+        message_id: data.smartcomm_message_id,
+        delivery_status: "failed",
+        delivery_error: String(err.message || err).slice(0, 1000),
+      });
+    }
+    throw err;
+  }
+}
+
 module.exports = async function process(job) {
   const data = job.data || {};
   if (!data.recipient_id) {
@@ -162,6 +259,14 @@ module.exports = async function process(job) {
       });
     }
     return { skipped: true };
+  }
+  // Multi-bubble catalogue share: send each step in order on this one
+  // job so the customer receives image → name → image → name → order-
+  // link in the sequence the composer emitted. See the `sequence` block
+  // in smartcomm.service.buildOutboundJobsForChannel for why per-bubble
+  // jobs were shuffling.
+  if (Array.isArray(data.sequence) && data.sequence.length > 0) {
+    return await sendSequence(job, data);
   }
   // Voice notes: convert the browser's webm/opus recording to an
   // Instagram-accepted m4a before sending. If transcoding isn't available

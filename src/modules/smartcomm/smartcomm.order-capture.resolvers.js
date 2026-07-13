@@ -32,6 +32,24 @@ async function defaultVariant(schema, product_id) {
   return rows[0] || null;
 }
 
+/** True when the variant exists in this brand's schema AND is active.
+ *  Pinned variants (a styled product's `base_variant_id`, a bundle
+ *  component's `variant_id`) can rot silently — the referenced variant
+ *  is deleted/deactivated in POS while the pin stays put. The customer
+ *  used to only find out at Place Order (Sales rejects "Variant … not
+ *  found" — REFERENCE_INVALID). Verifying up front lets the resolver
+ *  fall back to defaultVariant instead. */
+async function isVariantSellable(schema, variant_id) {
+  if (!variant_id) return false;
+  const { rows } = await query(
+    `SELECT 1 FROM ${schema}.product_variants
+      WHERE variant_id = $1 AND is_active = true
+      LIMIT 1`,
+    [variant_id],
+  );
+  return rows.length > 0;
+}
+
 /** Resolve a `kind: 'base'` item into one sellable line. */
 async function resolveBaseItem(schema, it) {
   const { rows } = await query(
@@ -88,8 +106,19 @@ async function resolveStyledItem(business, it) {
       lines: [],
     };
   }
-  let variant_id = styled.base_variant_id || null;
-  if (!variant_id) {
+  // The pinned `base_variant_id` may point at a variant that has since
+  // been deleted/deactivated in POS — Sales rejects the order with
+  // "Variant … not found" the moment the customer taps Place Order.
+  // Verify the pin is still sellable in THIS brand's schema; if not,
+  // fall back to the base product's default variant (matches how POS +
+  // storefront checkout resolve the styled product themselves).
+  let variant_id = null;
+  if (
+    styled.base_variant_id &&
+    (await isVariantSellable(schema, styled.base_variant_id))
+  ) {
+    variant_id = styled.base_variant_id;
+  } else {
     const v = await defaultVariant(schema, styled.base_product_id);
     variant_id = v ? v.variant_id : null;
   }
@@ -142,8 +171,17 @@ async function resolveBundleItem(business, it) {
   const lines = [];
   let allResolved = true;
   for (const comp of bundle.components || []) {
-    let variant_id = comp.variant_id || null;
-    if (!variant_id && comp.product_id) {
+    // Same rot as styled products: a component's pinned variant_id can
+    // outlive the variant itself. Verify each pin against the brand's
+    // schema; fall back to the component product's default variant when
+    // the pin is stale so the bundle doesn't dead-end at Place Order.
+    let variant_id = null;
+    if (
+      comp.variant_id &&
+      (await isVariantSellable(schema, comp.variant_id))
+    ) {
+      variant_id = comp.variant_id;
+    } else if (comp.product_id) {
       const v = await defaultVariant(schema, comp.product_id);
       variant_id = v ? v.variant_id : null;
     }

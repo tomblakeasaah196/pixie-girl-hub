@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -140,7 +141,15 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const lastTyping = useRef(0);
+  // Tracks which channel we've already jumped to the bottom for. On a
+  // channel switch (or the first render with messages) we do an INSTANT
+  // jump; subsequent new messages get the smooth animation. Storing the
+  // channelId (not a boolean) so switching to a different channel and
+  // back still triggers the initial jump.
+  const initialJumpedRef = useRef<string | null>(null);
+  const lastLenRef = useRef(0);
 
   // Quick replies — slash-command trigger.
   const { data: quickReplies = [] } = useQuickReplies();
@@ -193,10 +202,45 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
 
   const composerLocked = isWhatsapp && !windowOpen && !editing;
 
-  // Scroll to bottom on new messages
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length]);
+  // Opening a thread should land on the newest message — the customer
+  // just wrote it. The old effect scrolled smoothly on messages.length
+  // changes only, so (a) switching between two channels that both hold
+  // N messages left the pane pinned to the top, and (b) even on the 0→N
+  // transition the smooth animation raced image lazy-loading and the
+  // newest bubble stayed below the fold. Reset the "have we jumped"
+  // tracker on every channelId change so the transition below always
+  // fires an instant jump.
+  useLayoutEffect(() => {
+    initialJumpedRef.current = null;
+    lastLenRef.current = 0;
+  }, [channelId]);
+
+  // Then, in a useLayoutEffect (so it runs BEFORE paint), pin the
+  // scroll container to its bottom on the first render carrying any
+  // messages for this channel, and smooth-scroll on any further
+  // append. A rAF nudge follows the instant jump so late-arriving
+  // image heights don't leave the operator scrolled above the bottom.
+  useLayoutEffect(() => {
+    if (!messages.length) return;
+    const container = scrollRef.current;
+    if (initialJumpedRef.current !== channelId) {
+      if (container) container.scrollTop = container.scrollHeight;
+      requestAnimationFrame(() => {
+        if (scrollRef.current)
+          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      });
+      initialJumpedRef.current = channelId;
+      lastLenRef.current = messages.length;
+      return;
+    }
+    // Only smooth-scroll when a NEW message was appended so an unrelated
+    // re-render (edit, reaction, read-receipt) doesn't yank the operator
+    // away from a message they scrolled up to read.
+    if (messages.length > lastLenRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+    lastLenRef.current = messages.length;
+  }, [channelId, messages.length]);
 
   // Mark read when the thread opens / new messages arrive. Invalidate both
   // the global unread counter AND the channel list — the list is what
@@ -770,7 +814,10 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-3 sm:px-4 py-4 space-y-2.5">
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto px-3 sm:px-4 py-4 space-y-2.5"
+      >
         {isLoading ? (
           <div className="space-y-3">
             {Array.from({ length: 4 }).map((_, i) => (

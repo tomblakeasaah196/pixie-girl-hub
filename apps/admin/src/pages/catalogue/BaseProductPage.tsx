@@ -4,6 +4,7 @@ import { ArrowLeft, Plus, Boxes, Factory, Trash2 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
 import { Button, Card, MoneyText, Pill } from "@/components/ui/primitives";
+import { formatDate } from "@/lib/format";
 import {
   ErrorState,
   ConfirmDialog,
@@ -427,12 +428,7 @@ function BaseEditor({
                 <p className="text-[11px] text-text-faint">
                   When stock hits zero, styled listings show “In production ·
                   ready ~
-                  {readyDate
-                    ? new Date(readyDate).toLocaleDateString("en-GB", {
-                        day: "numeric",
-                        month: "short",
-                      })
-                    : "{date}"}
+                  {readyDate ? formatDate(readyDate) : "{date}"}
                   ”.
                 </p>
               </div>

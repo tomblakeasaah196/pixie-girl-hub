@@ -12,6 +12,7 @@ import {
   Info,
 } from "lucide-react";
 import { Button, Card, Skeleton } from "@/components/ui/primitives";
+import { formatDate } from "@/lib/format";
 import { ErrorState, NumberField, Select } from "@/components/ui/controls";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Drawer } from "@/components/ui/Drawer";
@@ -422,11 +423,7 @@ export default function ReceiveTab() {
       header: "Date",
       render: (r) => (
         <span className="text-[12px] text-text-muted tabular-nums">
-          {new Date(r.received_at || r.created_at).toLocaleDateString("en-NG", {
-            day: "2-digit",
-            month: "short",
-            year: "2-digit",
-          })}
+          {formatDate(r.received_at || r.created_at)}
         </span>
       ),
     },

@@ -3,7 +3,7 @@ import { ArrowDownUp, Package, TrendingDown } from "lucide-react";
 import { Card, KpiTile, MoneyText, Skeleton } from "@/components/ui/primitives";
 import { ErrorState } from "@/components/ui/controls";
 import { DataTable, type Column } from "@/components/ui/DataTable";
-import { moneyCompact } from "@/lib/format";
+import { moneyCompact, formatDate } from "@/lib/format";
 import {
   useStockValuation,
   useStockLocations,
@@ -218,11 +218,7 @@ export default function OverviewTab() {
       align: "right",
       render: (r) => (
         <span className="text-[12px] text-text-muted tabular-nums">
-          {new Date(r.performed_at).toLocaleDateString("en-NG", {
-            day: "2-digit",
-            month: "short",
-            year: "2-digit",
-          })}
+          {formatDate(r.performed_at)}
         </span>
       ),
     },

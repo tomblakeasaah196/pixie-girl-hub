@@ -19,6 +19,7 @@ import {
   type SignPayload,
 } from "@/lib/public-sign-api";
 import { SignaturePad } from "@/components/sign/SignaturePad";
+import { formatDateTime } from "@/lib/format";
 
 type Stage =
   | "loading"
@@ -45,15 +46,7 @@ const brandName = (b?: string | null) =>
       ? "Pixie Girl Global"
       : "Pixie Girl Hub";
 
-const fmtWat = (iso: string) =>
-  new Date(iso).toLocaleString("en-GB", {
-    timeZone: "Africa/Lagos",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }) + " WAT";
+const fmtWat = (iso: string) => `${formatDateTime(iso)} WAT`;
 
 const humanType = (t: string) =>
   t

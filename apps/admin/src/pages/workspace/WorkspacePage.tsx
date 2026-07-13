@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useMemo, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router-dom";
+import { formatDate } from "@/lib/format";
 import {
   Sun,
   CalendarDays,
@@ -732,13 +733,7 @@ function KpiButton({
 /** Goal target dates arrive as "YYYY-MM-DD"; render a short, safe label. */
 function fmtTargetDate(v?: string | null): string | null {
   if (!v) return null;
-  const d = new Date(String(v).slice(0, 10) + "T00:00:00");
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleDateString([], {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  return formatDate(String(v).slice(0, 10));
 }
 
 /**
@@ -774,11 +769,7 @@ function MyDayKpiDetail({
   onSelectEvent: (e: CalendarEvent) => void;
   onOpenTab: (tab: WorkspaceTab) => void;
 }) {
-  const dateLabel = today.toLocaleDateString([], {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
+  const dateLabel = formatDate(today);
 
   const emptyRow = (text: string) => (
     <p className="text-[13px] text-text-muted text-center py-8">{text}</p>
@@ -1035,12 +1026,7 @@ function MyDayView({
           {getGreeting()}, {userName.split(" ")[0]}
         </h2>
         <p className="text-[13px] text-text-muted mt-1">
-          {today.toLocaleDateString([], {
-            weekday: "long",
-            month: "long",
-            day: "numeric",
-            year: "numeric",
-          })}
+          {formatDate(today)}
         </p>
       </div>
 
@@ -1313,10 +1299,7 @@ function TaskRow({
             overdue ? "text-danger" : "text-text-faint",
           )}
         >
-          {new Date(task.due_at).toLocaleDateString([], {
-            month: "short",
-            day: "numeric",
-          })}
+          {formatDate(task.due_at)}
         </span>
       )}
     </button>
@@ -1665,10 +1648,7 @@ function TaskListMobile({
                         : "text-text-faint",
                     )}
                   >
-                    {new Date(task.due_at).toLocaleDateString([], {
-                      month: "short",
-                      day: "numeric",
-                    })}
+                    {formatDate(task.due_at)}
                   </span>
                 )}
               </div>
@@ -1720,11 +1700,7 @@ function EventDetailOverlay({
             <Calendar className="w-4 h-4 text-text-faint" />
             <span className="text-text-primary">
               {event.all_day
-                ? new Date(event.start_at).toLocaleDateString([], {
-                    weekday: "long",
-                    month: "long",
-                    day: "numeric",
-                  })
+                ? formatDate(event.start_at)
                 : `${formatTime(event.start_at)} - ${formatTime(event.end_at)}`}
             </span>
           </div>

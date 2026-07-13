@@ -18,6 +18,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router-dom";
+import { formatDate } from "@/lib/format";
 import {
   Sparkles,
   MessagesSquare,
@@ -378,7 +379,7 @@ function relTime(iso: string): string {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.round(hrs / 24);
   if (days < 7) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString([], { month: "short", day: "numeric" });
+  return formatDate(iso);
 }
 
 /** The scrollable list of past conversations — shared by the mobile history

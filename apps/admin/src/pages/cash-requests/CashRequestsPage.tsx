@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { cn } from "@/lib/cn";
-import { moneyCompact } from "@/lib/format";
+import { moneyCompact, formatDate as fmtDateCanon } from "@/lib/format";
 import { useCashRequests, useCashRequestKpis } from "./hooks";
 import { CR_STATUS_META, CR_STATUS_TABS, URGENCY_META } from "./constants";
 import type { CashRequest, CashRequestStatus } from "./types";
@@ -305,12 +305,7 @@ function crStatusPill(status: CashRequestStatus) {
 }
 
 function formatDate(d: string | null) {
-  if (!d) return "-";
-  return new Date(d).toLocaleDateString("en-NG", {
-    day: "numeric",
-    month: "short",
-    year: "2-digit",
-  });
+  return fmtDateCanon(d, "-");
 }
 
 function RequestsTab({

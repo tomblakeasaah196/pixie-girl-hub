@@ -9,6 +9,7 @@ import {
   CreditCard,
 } from "lucide-react";
 import { Drawer } from "@/components/ui/Drawer";
+import { formatDate } from "@/lib/format";
 import {
   Button,
   Card,
@@ -238,11 +239,7 @@ function CashRequestDetailContent({ d }: { d: CashRequestDetail }) {
         {r.needed_by_date && (
           <DetailRow
             label="Needed By"
-            value={new Date(r.needed_by_date).toLocaleDateString("en-NG", {
-              day: "numeric",
-              month: "long",
-              year: "numeric",
-            })}
+            value={formatDate(r.needed_by_date)}
           />
         )}
         <DetailRow
@@ -275,9 +272,7 @@ function CashRequestDetailContent({ d }: { d: CashRequestDetail }) {
           {r.bank_transaction_date && (
             <DetailRow
               label="Date"
-              value={new Date(r.bank_transaction_date).toLocaleDateString(
-                "en-NG",
-              )}
+              value={formatDate(r.bank_transaction_date)}
             />
           )}
           {r.disbursement_notes && (

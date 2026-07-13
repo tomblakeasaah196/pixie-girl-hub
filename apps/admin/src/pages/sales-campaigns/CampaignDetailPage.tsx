@@ -30,7 +30,7 @@ import { useToastStore } from "@/components/notifications/NotificationToast";
 import { toastReport } from "@/lib/error-report";
 import type { AppNotification } from "@/lib/notifications-api";
 import { cn } from "@/lib/cn";
-import { money } from "@/lib/format";
+import { money, formatDateTime } from "@/lib/format";
 import {
   type Campaign,
   type CampaignStatus,
@@ -250,7 +250,7 @@ function LivePanel({ campaign, aov }: { campaign: Campaign; aov: number }) {
             {String(mins).padStart(2, "0")}
           </div>
           <div className="text-[12px] text-text-faint mt-1">
-            Starts {start.toLocaleString()} → Ends {end.toLocaleString()}
+            Starts {formatDateTime(start)} → Ends {formatDateTime(end)}
           </div>
         </div>
       </div>
@@ -292,7 +292,7 @@ function SignupsPanel({ campaignId }: { campaignId: string }) {
             </span>
             <span className="col-span-3 text-[11px] text-text-faint font-mono">
               {s.signed_up_at
-                ? new Date(String(s.signed_up_at)).toLocaleString()
+                ? formatDateTime(String(s.signed_up_at))
                 : ""}
             </span>
           </div>

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { formatDate } from "@/lib/format";
 import {
   Cake,
   Heart,
@@ -459,10 +460,7 @@ function BucketGrid({
             meta={
               <>
                 {d.display_name ?? d.deal_number} · closes{" "}
-                {new Date(d.expected_close_date).toLocaleDateString(undefined, {
-                  day: "numeric",
-                  month: "short",
-                })}
+                {formatDate(d.expected_close_date)}
               </>
             }
             onClick={() => navigate(`/crm/deals/${d.deal_id}`)}

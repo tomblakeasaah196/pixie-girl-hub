@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/primitives";
+import { formatDate } from "@/lib/format";
 import { NumberField, Select } from "@/components/ui/controls";
 import {
   useApplyUsdReprice,
@@ -167,11 +168,7 @@ export function UsdRepriceModal({
                 ₦{Number(lastRun.rate).toLocaleString()}/$1
               </span>{" "}
               ·{" "}
-              {new Date(lastRun.applied_at).toLocaleDateString("en-GB", {
-                day: "numeric",
-                month: "short",
-                year: "numeric",
-              })}
+              {formatDate(lastRun.applied_at)}
               {lastRun.applied_by_email ? ` · ${lastRun.applied_by_email}` : ""}
             </div>
           )}

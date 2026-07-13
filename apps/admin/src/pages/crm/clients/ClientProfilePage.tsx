@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { formatDate } from "@/lib/format";
 import {
   ArrowLeft,
   Phone,
@@ -63,12 +64,7 @@ function initials(name: string) {
 }
 
 function fmtDate(iso: string | null | undefined) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString(undefined, {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  return formatDate(iso);
 }
 
 function relTime(iso: string | null | undefined) {

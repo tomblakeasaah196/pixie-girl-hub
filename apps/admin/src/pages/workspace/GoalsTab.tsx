@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Target, Plus, Flag, CalendarClock } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { formatDate } from "@/lib/format";
 import {
   Button,
   Card,
@@ -37,11 +38,7 @@ function daysUntil(date: string): number {
 
 function formatTarget(date: string | null | undefined): string | null {
   if (!date) return null;
-  return new Date(dateOnly(date) + "T00:00:00").toLocaleDateString([], {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  return formatDate(dateOnly(date));
 }
 
 const ACTIVE_STATUSES = new Set(["active", "on_hold"]);

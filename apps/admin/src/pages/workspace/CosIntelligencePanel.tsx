@@ -23,6 +23,7 @@ import {
   Play,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { formatDateTime } from "@/lib/format";
 import { BatchPlanCard } from "./BatchPlanCard";
 import {
   useCrossBrandOverview,
@@ -112,8 +113,7 @@ function CrossBrandSection({ dense }: { dense?: boolean }) {
 }
 
 function fmtSlot(iso: string) {
-  const d = new Date(iso);
-  return d.toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" });
+  return formatDateTime(iso);
 }
 
 function SchedulingSection({ onPlan }: { onPlan: (p: Plan) => void }) {

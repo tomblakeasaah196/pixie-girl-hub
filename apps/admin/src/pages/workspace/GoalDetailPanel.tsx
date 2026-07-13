@@ -48,14 +48,11 @@ import {
 } from "@/lib/cos-api";
 import type { Goal, MilestoneStatus } from "./goals-types";
 import type { Task } from "./types";
+import { formatDate as fmtDateCanon } from "@/lib/format";
 
 function formatDate(v: string | null | undefined): string | null {
   if (!v) return null;
-  return new Date(String(v).slice(0, 10) + "T00:00:00").toLocaleDateString([], {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  return fmtDateCanon(String(v).slice(0, 10));
 }
 
 export function GoalDetailPanel({
@@ -586,10 +583,7 @@ function LinkedEventsSection({ goal }: { goal: Goal }) {
           >
             <span className="text-[13px] flex-1 truncate">{e.title}</span>
             <span className="text-[10px] font-mono text-text-faint shrink-0">
-              {new Date(e.start_at).toLocaleDateString([], {
-                month: "short",
-                day: "numeric",
-              })}
+              {formatDate(e.start_at)}
             </span>
             <button
               onClick={() => setPrepId(e.event_id)}

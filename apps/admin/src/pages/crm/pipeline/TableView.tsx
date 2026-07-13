@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronUp, ChevronDown, MoreVertical } from "lucide-react";
 import { MoneyText, Pill, Skeleton } from "@/components/ui/primitives";
+import { formatDate } from "@/lib/format";
 import { StagePill } from "../shared/StagePill";
 import { WonLostModal } from "./WonLostModal";
 import type { Deal } from "@/pages/contacts/types";
@@ -196,15 +197,7 @@ export function TableView({ columns, isLoading }: TableViewProps) {
                       )}
                     </td>
                     <td className="px-3 py-2.5 text-[12px] text-text-muted whitespace-nowrap">
-                      {deal.expected_close_date
-                        ? new Date(deal.expected_close_date).toLocaleDateString(
-                            "en-NG",
-                            {
-                              day: "numeric",
-                              month: "short",
-                            },
-                          )
-                        : "—"}
+                      {formatDate(deal.expected_close_date)}
                     </td>
                     <td className="px-3 py-2.5 text-[12px] text-text-faint whitespace-nowrap">
                       {daysSince === null

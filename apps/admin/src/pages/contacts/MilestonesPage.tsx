@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useBusinessStore } from "@/stores/business";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { Button, Pill, Skeleton, type Tone } from "@/components/ui/primitives";
+import { formatDate } from "@/lib/format";
 import * as contactsApi from "./api";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -290,13 +291,7 @@ export function MilestonesPage() {
                           </span>
                           <span className="text-text-faint">·</span>
                           <span className="text-[11px] text-text-faint">
-                            {new Date(m.event_date).toLocaleDateString(
-                              "en-NG",
-                              {
-                                day: "numeric",
-                                month: "short",
-                              },
-                            )}
+                            {formatDate(m.event_date)}
                           </span>
                         </div>
                       </div>

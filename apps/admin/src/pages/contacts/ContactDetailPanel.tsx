@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { formatDate } from "@/lib/format";
 import {
   MessageCircle,
   Phone,
@@ -141,10 +142,7 @@ function relativeTime(iso: string) {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   if (days < 30) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString("en-NG", {
-    day: "numeric",
-    month: "short",
-  });
+  return formatDate(iso);
 }
 
 // ── Message button ────────────────────────────────────────────────────────
@@ -651,14 +649,7 @@ function PreferencesTab({ contactId }: { contactId: string }) {
             {latestMeasurement.measured_at && (
               <div className="text-[10.5px] text-text-faint mt-2">
                 Measured{" "}
-                {new Date(latestMeasurement.measured_at).toLocaleDateString(
-                  "en-NG",
-                  {
-                    day: "numeric",
-                    month: "short",
-                    year: "numeric",
-                  },
-                )}
+                {formatDate(latestMeasurement.measured_at)}
               </div>
             )}
           </div>
@@ -710,13 +701,12 @@ function OverviewTab({ contact }: { contact: Contact }) {
     [
       "Birthday",
       contact.date_of_birth
-        ? new Date(contact.date_of_birth).toLocaleDateString("en-NG", {
-            day: "numeric",
-            month: "long",
-            year: contact.date_of_birth.startsWith("1900")
-              ? undefined
-              : "numeric",
-          })
+        ? contact.date_of_birth.startsWith("1900")
+          ? new Date(contact.date_of_birth).toLocaleDateString("en-NG", {
+              day: "numeric",
+              month: "long",
+            })
+          : formatDate(contact.date_of_birth)
         : null,
     ],
     ["WhatsApp", contact.whatsapp_number],
@@ -1264,12 +1254,7 @@ function ProgSection({
 }
 
 function fmtShort(d?: string | null): string {
-  if (!d) return "—";
-  return new Date(d).toLocaleDateString("en-NG", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  return formatDate(d);
 }
 
 // ── Ambassador overlay tab ─────────────────────────────────────────────────

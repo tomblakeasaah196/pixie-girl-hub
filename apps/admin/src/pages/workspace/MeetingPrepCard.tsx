@@ -20,16 +20,11 @@ import {
   RotateCw,
 } from "lucide-react";
 import { Pill, Skeleton } from "@/components/ui/primitives";
+import { formatDateTime } from "@/lib/format";
 import { useCosPrep } from "@/lib/cos-api";
 
 function when(iso: string) {
-  return new Date(iso).toLocaleString([], {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDateTime(iso);
 }
 
 export function MeetingPrepCard({ eventId, onClose }: { eventId: string; onClose: () => void }) {

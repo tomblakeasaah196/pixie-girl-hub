@@ -8,6 +8,7 @@ import {
   EmptyState,
   MoneyText,
 } from "@/components/ui/primitives";
+import { formatDate, formatDateTime } from "@/lib/format";
 import { Drawer } from "@/components/ui/Drawer";
 import { Select } from "@/components/ui/controls";
 import { ErrorState } from "@/components/ui/controls";
@@ -198,10 +199,7 @@ function JobCard({
         </span>
         {job.scheduled_for && (
           <span className="text-xs font-mono text-text-muted">
-            {new Date(job.scheduled_for).toLocaleDateString("en-NG", {
-              month: "short",
-              day: "numeric",
-            })}
+            {formatDate(job.scheduled_for)}
           </span>
         )}
       </div>
@@ -840,7 +838,7 @@ function JobDetailDrawer({
                 <>
                   <span className="text-text-muted">Scheduled</span>
                   <span className="font-mono">
-                    {new Date(job.scheduled_for).toLocaleString("en-NG")}
+                    {formatDateTime(job.scheduled_for)}
                   </span>
                 </>
               )}
@@ -848,9 +846,7 @@ function JobDetailDrawer({
                 <>
                   <span className="text-text-muted">Due</span>
                   <span className="font-mono">
-                    {new Date(job.expected_completion_at).toLocaleString(
-                      "en-NG",
-                    )}
+                    {formatDateTime(job.expected_completion_at)}
                   </span>
                 </>
               )}

@@ -12,6 +12,7 @@ import { Drawer } from "@/components/ui/Drawer";
 import { Field } from "@/components/ui/Form";
 import { Select, NumberField } from "@/components/ui/controls";
 import { cn } from "@/lib/cn";
+import { formatDate } from "@/lib/format";
 import { useLedger, useAddLedgerEntry, useReconcileEntries } from "./hooks";
 import { ENTRY_TYPE_META, PAYMENT_METHOD_LABELS } from "./constants";
 import type { EntryType, PaymentMethod, FactoryAccount } from "./types";
@@ -27,11 +28,7 @@ const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] =
   }));
 
 function fmt(d: string) {
-  return new Date(d).toLocaleDateString("en-NG", {
-    day: "numeric",
-    month: "short",
-    year: "2-digit",
-  });
+  return formatDate(d);
 }
 
 function cny(n: number) {

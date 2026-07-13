@@ -764,9 +764,7 @@ export function OrderDetailPage() {
                         <span className="inline-flex items-center gap-1 ml-1 text-success normal-case">
                           <Eye className="w-3 h-3" />
                           opened{" "}
-                          {new Date(
-                            invoice.first_viewed_at,
-                          ).toLocaleDateString()}
+                          {formatDate(invoice.first_viewed_at)}
                         </span>
                       ) : invoice.sent_at ? (
                         <span className="ml-1 normal-case">

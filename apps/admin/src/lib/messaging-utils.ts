@@ -6,7 +6,7 @@
  */
 
 import type { Channel, ChannelMember } from "@/lib/smartcomm-types";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatTime } from "@/lib/format";
 
 // ── Platform meta (label + colour + icon) ────────────────
 
@@ -168,12 +168,7 @@ export function fmtRelativeTime(iso?: string | null): string {
 }
 
 export function fmtClockTime(iso?: string | null): string {
-  if (!iso) return "";
-  return new Date(iso).toLocaleTimeString("en-NG", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
+  return formatTime(iso, "");
 }
 
 export function fmtDayLabel(iso?: string | null): string {

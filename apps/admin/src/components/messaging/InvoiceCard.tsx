@@ -1,20 +1,12 @@
 import { FileText, CreditCard, Calendar } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { formatDate } from "@/lib/format";
 import type { Message } from "@/lib/smartcomm-types";
 
 const ngn = (v: string | number | null | undefined) =>
   v == null ? "—" : `₦${Number(v).toLocaleString()}`;
 
-const fmtDate = (iso?: string | null) => {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return "";
-  return d.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-};
+const fmtDate = (iso?: string | null) => formatDate(iso, "");
 
 /** Bubble renderer for `send_invoice` messages — a tappable card linking
  *  an invoice into the thread so the customer can view + pay. */

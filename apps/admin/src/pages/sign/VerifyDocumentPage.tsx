@@ -7,16 +7,9 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { signApi, type VerifyResult } from "@/lib/public-sign-api";
+import { formatDateTime } from "@/lib/format";
 
-const fmtWat = (iso: string) =>
-  new Date(iso).toLocaleString("en-GB", {
-    timeZone: "Africa/Lagos",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  }) + " WAT";
+const fmtWat = (iso: string) => `${formatDateTime(iso)} WAT`;
 
 const humanType = (t: string) =>
   t.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());

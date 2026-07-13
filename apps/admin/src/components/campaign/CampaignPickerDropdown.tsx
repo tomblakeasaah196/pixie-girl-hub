@@ -10,16 +10,13 @@ import { createPortal } from "react-dom";
 import { ChevronDown, Megaphone } from "lucide-react";
 import { useCampaignList, type Campaign } from "@/lib/campaigns";
 import { Button } from "@/components/ui/primitives";
+import { formatDate } from "@/lib/format";
 
 /** Desktop panel width (w-72). Phones clamp to the viewport. */
 const PANEL_W = 288;
 
 function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  return formatDate(iso);
 }
 
 /**

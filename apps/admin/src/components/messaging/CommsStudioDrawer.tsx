@@ -11,6 +11,7 @@ import {
   ShieldOff,
 } from "lucide-react";
 import { Button, Card, Pill } from "@/components/ui/primitives";
+import { formatDateTime } from "@/lib/format";
 import { Drawer } from "@/components/ui/Drawer";
 import { Field, TextInput, TextArea } from "@/components/ui/Form";
 import { Select, Toggle } from "@/components/ui/controls";
@@ -791,7 +792,7 @@ function ActivityTab({ eventKey }: { eventKey: string }) {
           {rows.map((r) => (
             <tr key={r.send_id} className="border-t border-line/60">
               <td className="px-3 py-2 whitespace-nowrap">
-                {new Date(r.sent_at).toLocaleString()}
+                {formatDateTime(r.sent_at)}
               </td>
               <td className="px-3 py-2">{r.channel}</td>
               <td className="px-3 py-2">{r.status}</td>

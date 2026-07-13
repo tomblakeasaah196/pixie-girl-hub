@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { cn } from "@/lib/cn";
-import { moneyCompact } from "@/lib/format";
+import { moneyCompact, formatDate as fmtDateCanon } from "@/lib/format";
 import { useExpenses, useExpenseKpis } from "./hooks";
 import { EXPENSE_STATUS_META, EXPENSE_STATUS_TABS } from "./constants";
 import type { Expense, ExpenseStatus } from "./types";
@@ -202,12 +202,7 @@ function exStatusPill(status: ExpenseStatus) {
 }
 
 function formatDate(d: string | null) {
-  if (!d) return "-";
-  return new Date(d).toLocaleDateString("en-NG", {
-    day: "numeric",
-    month: "short",
-    year: "2-digit",
-  });
+  return fmtDateCanon(d, "-");
 }
 
 function ExpensesTable({

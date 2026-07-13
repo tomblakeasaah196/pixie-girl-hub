@@ -19,6 +19,7 @@ import { Drawer } from "@/components/ui/Drawer";
 import { Field } from "@/components/ui/Form";
 import { NumberField } from "@/components/ui/controls";
 import { cn } from "@/lib/cn";
+import { formatDate } from "@/lib/format";
 import {
   useShipments,
   useCreateShipment,
@@ -37,12 +38,7 @@ const STATUS_ORDER: ShipmentStatus[] = [
 ];
 
 function fmt(d: string | null) {
-  if (!d) return "—";
-  return new Date(d).toLocaleDateString("en-NG", {
-    day: "numeric",
-    month: "short",
-    year: "2-digit",
-  });
+  return formatDate(d);
 }
 
 function cny(n: number | null) {

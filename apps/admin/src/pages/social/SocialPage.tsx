@@ -54,7 +54,7 @@ import {
   type PostType,
   type SocialAccount,
 } from "@/lib/social-api";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, formatDate } from "@/lib/format";
 
 /**
  * Social Media Management (`/social`, canon §6.14).
@@ -571,7 +571,7 @@ function Composer({
       title="New post"
       subtitle={
         initialDate
-          ? initialDate.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })
+          ? formatDate(initialDate)
           : "Compose & schedule across channels"
       }
     >

@@ -29,6 +29,7 @@ import { Drawer } from "@/components/ui/Drawer";
 import { Field } from "@/components/ui/Form";
 import { NumberField } from "@/components/ui/controls";
 import { cn } from "@/lib/cn";
+import { formatDate } from "@/lib/format";
 import {
   useFactoryAccounts,
   useShipments,
@@ -55,11 +56,7 @@ type MainTab = "overview" | "factory" | "runs";
 type FactoryTab = "ledger" | "shipments";
 
 function fmt(d: string) {
-  return new Date(d).toLocaleDateString("en-NG", {
-    day: "numeric",
-    month: "short",
-    year: "2-digit",
-  });
+  return formatDate(d);
 }
 
 export function ProductionPage() {

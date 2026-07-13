@@ -8,6 +8,7 @@ import {
   PauseCircle,
 } from "lucide-react";
 import { MoneyText, Pill } from "@/components/ui/primitives";
+import { formatDate } from "@/lib/format";
 import type { Deal } from "@/pages/contacts/types";
 
 const AVATAR_COLORS = ["#8b9d77", "#7a8fa8", "#b76e79", "#9c7ad9", "#5aa0a8"];
@@ -117,10 +118,7 @@ export function DealCard({
             ].join(" ")}
           >
             <Calendar className="w-3 h-3" />
-            {new Date(deal.expected_close_date).toLocaleDateString("en-NG", {
-              day: "numeric",
-              month: "short",
-            })}
+            {formatDate(deal.expected_close_date)}
           </span>
         )}
         {deal.assigned_to_name && (

@@ -1115,10 +1115,17 @@ async function resolveProductForShare({ business, kind, ref_id }) {
  * closing card carries the tap-to-order link (every product in one
  * catalogue share points at the same capture link) so it isn't
  * repeated on every card.
+ *
+ * `platform` is used to trim what carries in the caption: Instagram DMs
+ * cap a message at 1000 characters (code 100, subcode 2534038) and a
+ * 3+ item share with descriptions can push a single bubble over the
+ * cap. IG therefore ships just *name* + Price, and the description is
+ * dropped. WhatsApp has no such cap so the full card stays.
  */
-async function buildProductShareCards({ business, message }) {
+async function buildProductShareCards({ business, message, platform }) {
   const meta = message.metadata || {};
   const products = Array.isArray(meta.products) ? meta.products : [];
+  const trimForIg = platform === "instagram";
   const cards = [];
   if (meta.intro) cards.push({ type: "text", body: meta.intro });
 
@@ -1130,7 +1137,7 @@ async function buildProductShareCards({ business, message }) {
       ref_id: p.id,
     });
     const name = fresh?.name || p.name;
-    const description = fresh?.description || null;
+    const description = trimForIg ? null : fresh?.description || null;
     const price_ngn = fresh ? fresh.price_ngn : p.price;
     const image_url = fresh?.image_url || p.image_url || null;
     if (p.capture_url && !capture_url) capture_url = p.capture_url;
@@ -1234,7 +1241,11 @@ async function buildWhatsAppSends(message, content, client, business) {
       ];
     }
     case "product_share": {
-      const cards = await buildProductShareCards({ business, message });
+      const cards = await buildProductShareCards({
+        business,
+        message,
+        platform: "whatsapp",
+      });
       return cards.map((c) =>
         c.type === "image"
           ? { kind: "image", media_url: c.media_url, caption: c.caption }
@@ -1409,12 +1420,16 @@ async function buildOutboundJobsForChannel({
       }
     } else if (message.message_type === "product_share") {
       // IG image attachments carry no caption field, unlike WhatsApp —
-      // each card becomes its own text bubble (name/description/price)
-      // immediately followed by the photo, rather than one combined
-      // bubble.
+      // each card becomes its own image bubble immediately followed by
+      // a name+price text bubble, with the tap-to-order link at the
+      // very bottom. Descriptions are dropped because IG DMs cap a
+      // single bubble at 1000 chars (code 100 / subcode 2534038) and
+      // a fuller card blew that cap on 3+ item shares; buildProduct-
+      // ShareCards handles the trim when platform === 'instagram'.
       const cards = await buildProductShareCards({
         business: channel.business,
         message,
+        platform: "instagram",
       });
       // Catalogue image URLs are the stored `cdn_url`, which is a RELATIVE
       // `/media/...` path when no CDN is configured. Instagram fetches the
@@ -1425,15 +1440,22 @@ async function buildOutboundJobsForChannel({
       // WhatsApp worked because it uploads the bytes instead of handing
       // Meta a link. Resolve to an absolute URL here so Meta can fetch it.
       const storage = require("../../services/storage.service");
-      jobPayloads = cards.flatMap((card) =>
+      // Bubble order (top → bottom): [intro?, image1, name1, image2,
+      // name2, …, order-link]. The BullMQ worker's concurrency=4 used to
+      // race the per-bubble jobs so the customer saw them jumbled — one
+      // multi-step job (data.sequence[]) fixes that, the processor sends
+      // each step in order and only marks the smartcomm message "sent"
+      // after the last step lands.
+      const sequence = cards.flatMap((card) =>
         card.type === "image"
           ? [
-              { text: card.caption },
               { image_url: storage.toAbsoluteMediaUrl(card.media_url) },
+              { text: card.caption },
             ]
           : [{ text: card.body }],
       );
-      if (jobPayloads.length === 0) return fail("NOTHING_TO_SEND");
+      if (sequence.length === 0) return fail("NOTHING_TO_SEND");
+      jobPayloads = [{ sequence }];
     } else {
       const body = composeCardText(message, content);
       if (!body) return fail("NOTHING_TO_SEND");

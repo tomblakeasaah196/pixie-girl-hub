@@ -10,6 +10,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { formatDate } from "@/lib/format";
 import {
   Sparkles,
   Plus,
@@ -590,7 +591,7 @@ function OfferStudio({
               <div className="mt-2 border-t border-neutral-200 pt-2 text-[12px] text-neutral-700">
                 {d.signature.signer_name || d.candidate_name || "Candidate"}
                 {d.signature.signed_at
-                  ? ` · signed ${new Date(d.signature.signed_at).toLocaleDateString()}`
+                  ? ` · signed ${formatDate(d.signature.signed_at)}`
                   : ""}
               </div>
             </div>

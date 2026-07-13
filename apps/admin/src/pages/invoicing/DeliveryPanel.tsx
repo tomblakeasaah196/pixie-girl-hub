@@ -11,17 +11,12 @@
 
 import { Send, MailCheck, Eye, AlertCircle, Clock } from "lucide-react";
 import { Card, Pill } from "@/components/ui/primitives";
+import { formatDateTime } from "@/lib/format";
 import { COMMS_STATUS } from "./constants";
 import type { DeliveryView, CommsLogEntry } from "./types";
 
 function fmt(ts: string | null | undefined) {
-  if (!ts) return "";
-  return new Date(ts).toLocaleString(undefined, {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDateTime(ts, "");
 }
 
 function channelLabel(c: string | null | undefined) {

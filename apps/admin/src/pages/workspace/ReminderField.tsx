@@ -16,6 +16,7 @@
 
 import { Field, TextInput } from "@/components/ui/Form";
 import { Select } from "@/components/ui/controls";
+import { formatDateTime } from "@/lib/format";
 
 export type ReminderPreset =
   | ""
@@ -128,13 +129,7 @@ export function reminderPayload(
 }
 
 function fmtInstant(d: Date): string {
-  return d.toLocaleString([], {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDateTime(d);
 }
 
 export function ReminderField({

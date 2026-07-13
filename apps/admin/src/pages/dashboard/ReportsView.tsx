@@ -7,6 +7,7 @@
  */
 
 import { useState } from "react";
+import { formatDateTime } from "@/lib/format";
 import {
   CalendarClock,
   CheckCircle2,
@@ -128,12 +129,7 @@ export function ReportsView({ canApprove, canExport }: { canApprove: boolean; ca
     {
       key: "created",
       header: "Generated",
-      render: (r) => new Date(r.created_at).toLocaleString(undefined, {
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
+      render: (r) => formatDateTime(r.created_at),
     },
     actionCol,
   ];

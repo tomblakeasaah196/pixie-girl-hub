@@ -10,6 +10,7 @@ import {
   Undo2,
   Archive,
 } from "lucide-react";
+import { formatDate } from "@/lib/format";
 import { Button, Card, MoneyText, Pill } from "@/components/ui/primitives";
 import { cn } from "@/lib/cn";
 import {
@@ -895,11 +896,7 @@ function VariantRow({
 
 /* ── Per-product trash (trashed colours + variants) ────── */
 function formatPurge(iso: string) {
-  const d = new Date(iso);
-  return d.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
+  return formatDate(iso);
 }
 
 function ProductTrashCard({ styledId }: { styledId: string }) {

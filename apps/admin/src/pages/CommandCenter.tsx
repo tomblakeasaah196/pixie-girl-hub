@@ -72,7 +72,7 @@ import {
   type AuditFeedEntry,
   type InsightSummary,
 } from "@/hooks/useCommandCenter";
-import { money } from "@/lib/format";
+import { money, formatDate, formatTime } from "@/lib/format";
 import {
   humanizeAudit,
   friendlyModule,
@@ -685,16 +685,8 @@ export function CommandCenter() {
     return out;
   }, [insights.data]);
 
-  const hh = time.toLocaleTimeString("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-  const dd = time.toLocaleDateString("en-GB", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-  });
+  const hh = formatTime(time);
+  const dd = formatDate(time);
 
   // Whether this user has access to dashboard KPIs
   const canSeeDashboard = user?.isCeo || can("dashboards", "view");

@@ -10,7 +10,7 @@ import {
   Store,
 } from "lucide-react";
 import { api } from "@/lib/api";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, formatDate } from "@/lib/format";
 import {
   fetchGeoOptions,
   fetchDeliveryQuote,
@@ -545,7 +545,7 @@ export function OrderCapturePublic() {
             This link was used to place
             {ctx?.order_number ? ` order ${ctx.order_number}` : " your order"}
             {ctx?.ordered_at
-              ? ` on ${new Date(ctx.ordered_at).toLocaleDateString("en-NG", { dateStyle: "medium" })}`
+              ? ` on ${formatDate(ctx.ordered_at)}`
               : ""}
             . Message us on WhatsApp if you&rsquo;d like to order again —
             we&rsquo;ll send a fresh link.

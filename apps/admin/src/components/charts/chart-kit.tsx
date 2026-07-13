@@ -10,7 +10,7 @@
  */
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { money, moneyCompact } from "@/lib/format";
+import { money, moneyCompact, formatDate, formatDateTime } from "@/lib/format";
 import type { TileFormat } from "@/lib/dashboards-api";
 
 export interface ChartPalette {
@@ -98,18 +98,9 @@ export function fmtValue(value: unknown, format: TileFormat | undefined): string
     case "hours":
       return `${value}h`;
     case "date":
-      return String(value).slice(0, 10);
-    case "datetime": {
-      const d = new Date(String(value));
-      return Number.isNaN(d.getTime())
-        ? String(value)
-        : d.toLocaleString(undefined, {
-            month: "short",
-            day: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-          });
-    }
+      return formatDate(String(value).slice(0, 10));
+    case "datetime":
+      return formatDateTime(String(value), String(value));
     case "bool":
       return value === true ? "Yes" : value === false ? "No" : String(value);
     default:

@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import { formatDate } from "@/lib/format";
 import {
   Loader2,
   AlertCircle,
@@ -144,7 +145,7 @@ export function OfferPage() {
               <span>
                 {offer?.candidate_name || "Candidate"}
                 {offer?.signed_at
-                  ? ` · signed ${new Date(offer.signed_at).toLocaleDateString()}`
+                  ? ` · signed ${formatDate(offer.signed_at)}`
                   : ""}
               </span>
             </div>

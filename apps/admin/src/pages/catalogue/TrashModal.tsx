@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Undo2, Trash2 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/primitives";
+import { formatDate } from "@/lib/format";
 import {
   useStyledTrash,
   useRestoreStyled,
@@ -103,12 +104,7 @@ function BaseTrash({ open }: { open: boolean }) {
 }
 
 function formatPurge(iso: string) {
-  const d = new Date(iso);
-  return d.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  return formatDate(iso);
 }
 
 function Row({

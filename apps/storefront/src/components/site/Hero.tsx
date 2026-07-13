@@ -297,9 +297,9 @@ function VitrineHero({
           alt=""
           className="absolute inset-0 h-full w-full scale-110 object-cover opacity-60 blur-2xl"
         />
-        <div className="absolute inset-0 bg-ink/70" />
-        <div className="absolute inset-0 bg-gradient-to-r from-ink via-ink/65 to-ink/25" />
-        <div className="absolute inset-0 bg-gradient-to-b from-ink/70 via-transparent to-ink/85" />
+        <div className="absolute inset-0 bg-ink/50" />
+        <div className="absolute inset-0 bg-gradient-to-r from-ink/80 via-ink/45 to-ink/15" />
+        <div className="absolute inset-0 bg-gradient-to-b from-ink/50 via-transparent to-ink/65" />
         {/* warm interior glow behind the vitrine, on the right */}
         <div
           className="absolute right-[8%] top-1/2 h-[75vh] w-[42vw] -translate-y-1/2 rounded-full blur-3xl"
@@ -358,11 +358,11 @@ function VitrineHero({
             legibility (bottom). The face-safe middle is never dimmed. */}
         <div
           aria-hidden
-          className="absolute inset-x-0 top-0 z-[5] h-40 bg-gradient-to-b from-ink/85 via-ink/35 to-transparent md:hidden"
+          className="absolute inset-x-0 top-0 z-[5] h-40 bg-gradient-to-b from-ink/65 via-ink/25 to-transparent md:hidden"
         />
         <div
           aria-hidden
-          className="absolute inset-x-0 bottom-0 z-[5] h-[66%] bg-gradient-to-t from-ink from-[8%] via-ink/80 via-[46%] to-transparent md:hidden"
+          className="absolute inset-x-0 bottom-0 z-[5] h-[66%] bg-gradient-to-t from-ink from-[8%] via-ink/60 via-[46%] to-transparent md:hidden"
         />
 
         {/* Copy — bottom-anchored on mobile, first column on desktop. */}
@@ -416,9 +416,9 @@ function CinemaHero({
         )}
         {/* Disciplined scrims: darken the bottom-left where the copy lives,
             leave the top-right (the face) alone. All --ink → theme-adaptive. */}
-        <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/40 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-r from-ink/85 via-ink/25 to-transparent" />
-        <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-ink/70 to-transparent md:from-ink/50" />
+        <div className="absolute inset-0 bg-gradient-to-t from-ink/60 via-ink/20 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-ink/65 via-ink/10 to-transparent" />
+        <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-ink/50 to-transparent md:from-ink/35" />
       </motion.div>
 
       <div className="relative z-10 mx-auto flex min-h-[100svh] max-w-[1400px] flex-col justify-end px-6 pb-24 pt-40 md:justify-center md:pb-24 md:pt-48 lg:px-10">

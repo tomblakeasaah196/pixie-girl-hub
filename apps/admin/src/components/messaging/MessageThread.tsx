@@ -46,6 +46,7 @@ import {
 import {
   useChannel,
   useChannelRealtime,
+  useComposerSettings,
   useMessages,
   useQuickReplies,
   useTypingIndicator,
@@ -71,6 +72,7 @@ import { ThreadSearch } from "./ThreadSearch";
 import { VoiceRecorder } from "./VoiceRecorder";
 import { CataloguePickerModal } from "./CataloguePickerModal";
 import { QuickReplyVarsModal } from "./QuickReplyVarsModal";
+import { EmojiPicker } from "./EmojiPicker";
 import {
   TemplatePickerModal,
   type TemplateSendPayload,
@@ -114,6 +116,18 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
   const [groupOpen, setGroupOpen] = useState(false);
   const [recording, setRecording] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  // After a stock message (Online form link / WhatsApp handoff) is
+  // inserted into the composer, this chip lets the operator persist any
+  // edits as the new brand default. `token`/`value` let us swap the
+  // live URL/number back to its {placeholder} before saving.
+  const [templateChip, setTemplateChip] = useState<{
+    kind: "onboarding" | "whatsapp";
+    token: string;
+    value: string;
+    saving?: boolean;
+    saved?: boolean;
+  } | null>(null);
   const [mention, setMention] = useState<{
     query: string;
     start: number;
@@ -121,6 +135,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
   } | null>(null);
 
   const canPraxis = useAuthStore((s) => s.can);
+  const { data: composerSettings } = useComposerSettings();
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -209,6 +224,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
 
   function resetTextarea() {
     setContent("");
+    setTemplateChip(null);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
   }
 
@@ -420,7 +436,11 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
     insertReplyBody(r.body);
   }
 
-  async function sendOnboardingLink() {
+  // Insert the Online welcome-form link into the composer (NOT send it) so
+  // the operator can soften/edit the wording before sending. The template
+  // body is the CEO-editable one (with a {link} placeholder); we swap in
+  // the freshly-minted URL and stage a "save as default" chip.
+  async function insertOnboardingLink() {
     if (!channel || !businessKey) return;
     try {
       setBusy("sending");
@@ -429,20 +449,90 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
         channel_id: channel.channel_id,
         source: "online",
       });
-      const body = `Welcome 🌹 We'd love to make sure your order reaches you exactly the way you want. Could you fill in this quick form (60 sec) — it covers your delivery address & preferences:\n\n${url}`;
-      await smartcommApi.postMessage(channelId, {
-        content: body,
-        message_type: "text",
-      });
-      invalidate();
+      const template =
+        composerSettings?.onboarding_template ||
+        "Welcome 🌹 We'd love to make sure your order reaches you exactly the way you want. Could you fill in this quick form (60 sec) — it covers your delivery address & preferences:\n\n{link}";
+      const body = template.includes("{link}")
+        ? template.replace("{link}", url)
+        : `${template}\n\n${url}`;
+      insertReplyBody(body);
+      setTemplateChip({ kind: "onboarding", token: "{link}", value: url });
     } catch (e: unknown) {
-      toastReport("Messaging → Thread", "Send onboarding link", e);
+      toastReport("Messaging → Thread", "Prepare onboarding link", e);
       setError(
-        e instanceof Error ? e.message : "Could not send onboarding link",
+        e instanceof Error ? e.message : "Could not prepare onboarding link",
       );
     } finally {
       setBusy(null);
     }
+  }
+
+  // Insert a "follow up on WhatsApp" handoff into the composer, sharing the
+  // brand's WhatsApp number (from Messaging/Business settings). Editable
+  // before sending, and the wording is savable as the new default.
+  function insertWhatsAppHandoff() {
+    const number = composerSettings?.whatsapp_share_number;
+    if (!number) {
+      setError(
+        "No WhatsApp number is set for this brand yet — add it in Settings → Business Setup (phone).",
+      );
+      return;
+    }
+    const template =
+      composerSettings?.whatsapp_handoff_template ||
+      "Lovely! You can follow up with us on WhatsApp here:\n{number}";
+    const body = template.includes("{number}")
+      ? template.replace("{number}", number)
+      : `${template}\n${number}`;
+    insertReplyBody(body);
+    setTemplateChip({ kind: "whatsapp", token: "{number}", value: number });
+  }
+
+  // Persist the current composer text as this brand's new default for the
+  // staged template. The live URL/number is swapped back to its
+  // {placeholder} so the saved template stays reusable.
+  async function saveTemplateAsDefault() {
+    if (!templateChip) return;
+    const withToken = content
+      .split(templateChip.value)
+      .join(templateChip.token);
+    setTemplateChip((c) => (c ? { ...c, saving: true } : c));
+    try {
+      const field =
+        templateChip.kind === "onboarding"
+          ? "onboarding_template"
+          : "whatsapp_handoff_template";
+      const saved = await smartcommApi.updateComposerSettings({
+        [field]: withToken,
+      });
+      qc.setQueryData(["smartcomm", "composer-settings"], saved);
+      setTemplateChip((c) => (c ? { ...c, saving: false, saved: true } : c));
+    } catch (e: unknown) {
+      toastReport("Messaging → Thread", "Save default message", e);
+      setError(e instanceof Error ? e.message : "Could not save default");
+      setTemplateChip((c) => (c ? { ...c, saving: false } : c));
+    }
+  }
+
+  // Insert an emoji at the caret (falling back to append), then restore
+  // focus + caret so the operator can keep typing.
+  function insertEmoji(emoji: string) {
+    const el = textareaRef.current;
+    if (!el) {
+      setContent((c) => c + emoji);
+      return;
+    }
+    const start = el.selectionStart ?? content.length;
+    const end = el.selectionEnd ?? content.length;
+    const next = content.slice(0, start) + emoji + content.slice(end);
+    setContent(next);
+    requestAnimationFrame(() => {
+      el.focus();
+      const caret = start + emoji.length;
+      el.setSelectionRange(caret, caret);
+      el.style.height = "auto";
+      el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+    });
   }
 
   async function handleDraftWithPraxis() {
@@ -824,6 +914,43 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
         </div>
       )}
 
+      {/* Stock-message chip — insert a form/WhatsApp template, edit it in
+          the composer, then optionally make the edit the new default. */}
+      {templateChip && content && (
+        <div className="mx-3 sm:mx-4 mb-1 flex items-center gap-2 rounded-xl border border-accent/30 bg-accent/5 px-3 py-1.5 text-[11.5px] text-text-muted">
+          <MessageCircle className="w-3.5 h-3.5 text-accent-glow shrink-0" />
+          <span className="flex-1 min-w-0">
+            {templateChip.kind === "onboarding"
+              ? "Welcome-form message ready — edit & send, or save your wording as the default."
+              : "WhatsApp follow-up ready — edit & send, or save your wording as the default."}
+          </span>
+          {templateChip.saved ? (
+            <span className="shrink-0 inline-flex items-center gap-1 text-accent-glow">
+              <CheckCircle2 className="w-3.5 h-3.5" /> Saved
+            </span>
+          ) : (
+            <button
+              onClick={saveTemplateAsDefault}
+              disabled={templateChip.saving || !content.trim()}
+              className="shrink-0 inline-flex items-center gap-1 rounded-md border border-accent/40 px-2 py-0.5 font-semibold text-accent-glow hover:bg-accent/10 disabled:opacity-50"
+              title="Replace the automated text with this wording next time"
+            >
+              {templateChip.saving ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : null}
+              Save as default
+            </button>
+          )}
+          <button
+            onClick={() => setTemplateChip(null)}
+            className="shrink-0 text-text-faint hover:text-text-primary"
+            title="Dismiss"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Slash quick-reply menu */}
       {slashOpen && slashMatches.length > 0 && (
         <div className="mx-3 sm:mx-4 mb-1 rounded-xl border hairline bg-panel-2 max-h-44 overflow-y-auto">
@@ -976,11 +1103,25 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
                   </button>
                   {isCustomerThread && (
                     <button
-                      onClick={sendOnboardingLink}
-                      className="p-1 text-text-faint hover:text-text-primary"
-                      title="Send Online QR welcome form"
+                      onClick={insertOnboardingLink}
+                      disabled={busy === "sending"}
+                      className="p-1 text-text-faint hover:text-text-primary disabled:opacity-50"
+                      title="Insert Online welcome form link (edit before sending)"
                     >
-                      <Link2 className="w-4 h-4" />
+                      {busy === "sending" ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Link2 className="w-4 h-4" />
+                      )}
+                    </button>
+                  )}
+                  {isCustomerThread && (
+                    <button
+                      onClick={insertWhatsAppHandoff}
+                      className="p-1 text-text-faint hover:text-[#25D366]"
+                      title="Insert WhatsApp follow-up (shares your number)"
+                    >
+                      <MessageCircle className="w-4 h-4" />
                     </button>
                   )}
                   {isCustomerThread && (
@@ -1024,17 +1165,24 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
                       )}
                     </button>
                   )}
-                  <button
-                    onClick={() => {
-                      const e = "👍";
-                      setContent((c) => c + e);
-                      textareaRef.current?.focus();
-                    }}
-                    className="p-1 text-text-faint hover:text-text-primary"
-                    title="Emoji"
-                  >
-                    <Smile className="w-4 h-4" />
-                  </button>
+                  <div className="relative">
+                    <button
+                      onClick={() => setEmojiOpen((v) => !v)}
+                      className={cn(
+                        "p-1 hover:text-text-primary",
+                        emojiOpen ? "text-accent-glow" : "text-text-faint",
+                      )}
+                      title="Emoji"
+                    >
+                      <Smile className="w-4 h-4" />
+                    </button>
+                    {emojiOpen && (
+                      <EmojiPicker
+                        onPick={insertEmoji}
+                        onClose={() => setEmojiOpen(false)}
+                      />
+                    )}
+                  </div>
                   <span className="ml-1 text-[10px] text-text-faint">
                     / = quick reply
                   </span>

@@ -396,8 +396,23 @@ async function getCustomer360(req, res) {
   res.json(data);
 }
 
+async function getComposerSettings(req, res) {
+  const data = await service.getComposerSettings({ brand: req.brand });
+  res.json({ data });
+}
+
+async function updateComposerSettings(req, res) {
+  const data = await service.updateComposerSettings({
+    ...ctx(req),
+    input: req.body,
+  });
+  res.json({ data });
+}
+
 module.exports = {
   startDirect,
+  getComposerSettings,
+  updateComposerSettings,
   listChannels,
   getChannel,
   createChannel,

@@ -247,12 +247,25 @@ const channelAccessSet = z
     message: "channels map or reset:true is required",
   });
 
+// Composer settings — all optional so the UI can PATCH one field at a
+// time (e.g. "save the WhatsApp handoff wording" without touching the
+// number). Empty string is allowed: the service reads it as "clear the
+// override, fall back to the default".
+const composerSettingsUpdate = z
+  .object({
+    onboarding_template: z.string().max(4000).optional(),
+    whatsapp_handoff_template: z.string().max(4000).optional(),
+    whatsapp_share_number: z.string().max(40).optional(),
+  })
+  .strict();
+
 const mk = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body || {});
   next();
 };
 
 module.exports = {
+  validateComposerSettingsUpdate: mk(composerSettingsUpdate),
   validateChannelCreate: mk(channelCreate),
   validateStartDirect: mk(startDirect),
   validateArchiveChannel: mk(archiveChannel),

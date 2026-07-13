@@ -940,6 +940,81 @@ async function getCustomer360({ brand, contact_id }) {
   return c360;
 }
 
+// ── Composer settings ─────────────────────────────────────
+// The two "insert stock copy" composer buttons (Online welcome form +
+// WhatsApp handoff) read editable per-brand templates. {link}/{number}
+// are substituted by the frontend at insert time. These are the
+// defaults shown before the CEO saves their own wording — kept here so
+// an empty settings row degrades to sensible copy, not a blank insert.
+const DEFAULT_ONBOARDING_TEMPLATE =
+  "Welcome 🌹 We'd love to make sure your order reaches you exactly the " +
+  "way you want. Could you fill in this quick form (60 sec) — it covers " +
+  "your delivery address & preferences:\n\n{link}";
+const DEFAULT_WHATSAPP_HANDOFF_TEMPLATE =
+  "Lovely! You can follow up with us on WhatsApp here:\n{number}";
+
+/**
+ * Resolve the brand's composer settings, filling every field with its
+ * default so the frontend always has usable copy + a number. The
+ * WhatsApp number falls back to the brand's Business-Setup phone.
+ */
+async function getComposerSettings({ brand }) {
+  const [row, phone] = await Promise.all([
+    repo.getComposerSettings({ brand }),
+    repo.getBrandPhone({ brand }),
+  ]);
+  return {
+    onboarding_template:
+      (row && row.onboarding_template) || DEFAULT_ONBOARDING_TEMPLATE,
+    whatsapp_handoff_template:
+      (row && row.whatsapp_handoff_template) ||
+      DEFAULT_WHATSAPP_HANDOFF_TEMPLATE,
+    // Explicit override wins; else the Business-Setup phone.
+    whatsapp_share_number:
+      (row && row.whatsapp_share_number) || phone || null,
+    // Surface whether each field is CEO-set vs a code/settings default,
+    // so the UI can hint "using your saved wording" etc. if it wants.
+    onboarding_is_custom: !!(row && row.onboarding_template),
+    whatsapp_is_custom: !!(row && row.whatsapp_handoff_template),
+    whatsapp_number_is_custom: !!(row && row.whatsapp_share_number),
+  };
+}
+
+/**
+ * Persist edited composer settings for a brand. Empty strings clear the
+ * override (back to the default). Returns the resolved settings.
+ */
+async function updateComposerSettings({ brand, user, request_id, input }) {
+  const patch = {};
+  const norm = (v) => {
+    if (v === undefined) return undefined;
+    const t = String(v).trim();
+    return t === "" ? null : t;
+  };
+  if ("onboarding_template" in input)
+    patch.onboarding_template = norm(input.onboarding_template);
+  if ("whatsapp_handoff_template" in input)
+    patch.whatsapp_handoff_template = norm(input.whatsapp_handoff_template);
+  if ("whatsapp_share_number" in input)
+    patch.whatsapp_share_number = norm(input.whatsapp_share_number);
+  await repo.upsertComposerSettings({
+    brand,
+    patch,
+    user_id: user ? user.user_id : null,
+  });
+  if (user) {
+    await audit({
+      business: brand,
+      user_id: user.user_id,
+      action_key: "smartcomm.composer_settings.update",
+      target_type: "composer_settings",
+      target_id: brand,
+      request_id,
+    });
+  }
+  return getComposerSettings({ brand });
+}
+
 // ── Outbound dispatch ─────────────────────────────────────
 
 const ngn = (v) => `₦${Number(v || 0).toLocaleString()}`;
@@ -2239,6 +2314,8 @@ module.exports = {
   updateQuickReply,
   deleteQuickReply,
   getCustomer360,
+  getComposerSettings,
+  updateComposerSettings,
   sendToCustomer,
   sendInvoiceIntoThread,
   recordInboundFromCustomer,

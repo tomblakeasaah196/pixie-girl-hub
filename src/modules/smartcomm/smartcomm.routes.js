@@ -55,6 +55,17 @@ router.put(
 // ── Customer 360 ───────────────────────────────────────────
 router.get("/customer-360/:contact_id", can("view"), c.getCustomer360);
 
+// ── Composer settings (editable per-brand templates + WA number) ──
+// Reading needs only view; editing the stock copy rides smartcomm.edit
+// (same gate as sending — any rep who can reply can tweak the wording).
+router.get("/composer-settings", can("view"), c.getComposerSettings);
+router.put(
+  "/composer-settings",
+  can("edit"),
+  v.validateComposerSettingsUpdate,
+  c.updateComposerSettings,
+);
+
 // ── Order capture (signed pre-fill link sent into a chat) ──
 router.post(
   "/order-capture",

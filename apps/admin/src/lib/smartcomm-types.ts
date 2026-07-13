@@ -209,10 +209,14 @@ export interface Customer360 {
   contact: {
     contact_id: string;
     display_name: string;
+    first_name?: string | null;
+    last_name?: string | null;
     company_name?: string | null;
     primary_phone?: string | null;
     whatsapp_number?: string | null;
     email?: string | null;
+    date_of_birth?: string | null;
+    instagram_handle?: string | null;
     priority_level?: string | null;
     source?: string | null;
     notes?: string | null;
@@ -267,6 +271,23 @@ export interface QuickReply {
   category?: string | null;
   sort_order: number;
   is_active: boolean;
+}
+
+/** Editable per-brand composer stock messages + WhatsApp share number.
+ *  {link} / {number} placeholders are substituted at insert time. */
+export interface ComposerSettings {
+  onboarding_template: string;
+  whatsapp_handoff_template: string;
+  whatsapp_share_number: string | null;
+  onboarding_is_custom: boolean;
+  whatsapp_is_custom: boolean;
+  whatsapp_number_is_custom: boolean;
+}
+
+export interface ComposerSettingsInput {
+  onboarding_template: string;
+  whatsapp_handoff_template: string;
+  whatsapp_share_number: string;
 }
 
 export interface MessageDraft {

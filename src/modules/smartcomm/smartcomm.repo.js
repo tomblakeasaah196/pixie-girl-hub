@@ -1147,8 +1147,9 @@ async function listMessagingAccounts({ brand }) {
 
 async function customer360({ contact_id, brand }) {
   const contactRow = await query(
-    `SELECT contact_id, display_name, company_name, primary_phone,
-            whatsapp_number, email, priority_level, source,
+    `SELECT contact_id, display_name, first_name, last_name, company_name,
+            primary_phone, whatsapp_number, email, priority_level, source,
+            date_of_birth, instagram_handle,
             COALESCE(notes,'') AS notes
        FROM shared.contacts WHERE contact_id = $1`,
     [contact_id],
@@ -1229,6 +1230,57 @@ async function customer360({ contact_id, brand }) {
     deliveries,
     comms,
   };
+}
+
+// ── Composer settings (per-brand editable templates) ──────
+
+async function getComposerSettings({ brand }) {
+  const { rows } = await query(
+    `SELECT onboarding_template, whatsapp_handoff_template, whatsapp_share_number
+       FROM shared.smartcomm_composer_settings WHERE business = $1`,
+    [brand],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Upsert the brand's composer settings. Only the keys present in
+ * `patch` are written; a key set to null clears it (falls back to the
+ * code default / business_config.phone at read time).
+ */
+async function upsertComposerSettings({ brand, patch, user_id }) {
+  const cols = [
+    "onboarding_template",
+    "whatsapp_handoff_template",
+    "whatsapp_share_number",
+  ];
+  const present = cols.filter((c) => c in patch);
+  if (present.length === 0) return getComposerSettings({ brand });
+  const setList = present
+    .map((c, i) => `${c} = $${i + 3}`)
+    .join(", ");
+  const insertCols = present.join(", ");
+  const insertVals = present.map((_, i) => `$${i + 3}`).join(", ");
+  const params = [brand, user_id, ...present.map((c) => patch[c])];
+  const { rows } = await query(
+    `INSERT INTO shared.smartcomm_composer_settings
+       (business, updated_by, ${insertCols})
+     VALUES ($1, $2, ${insertVals})
+     ON CONFLICT (business) DO UPDATE
+        SET ${setList}, updated_by = $2, updated_at = now()
+     RETURNING onboarding_template, whatsapp_handoff_template, whatsapp_share_number`,
+    params,
+  );
+  return rows[0] || null;
+}
+
+/** The brand's Business-Setup phone — the WhatsApp number fallback. */
+async function getBrandPhone({ brand }) {
+  const { rows } = await query(
+    `SELECT phone FROM shared.business_config WHERE business_key = $1`,
+    [brand],
+  );
+  return (rows[0] && rows[0].phone) || null;
 }
 
 // ── Colleague directory ───────────────────────────────────
@@ -1395,6 +1447,10 @@ module.exports = {
   setMessageDeliveryByExternalRef,
   setCustomerReactionByExternalRef,
   editMessageContent,
+  // Composer settings (editable per-brand templates + WA share number)
+  getComposerSettings,
+  upsertComposerSettings,
+  getBrandPhone,
   listMessages,
   getMessage,
   softDeleteMessage,

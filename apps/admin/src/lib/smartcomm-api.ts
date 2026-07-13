@@ -15,6 +15,8 @@ import type {
   MessageDraft,
   ExternalPlatform,
   MessageType,
+  ComposerSettings,
+  ComposerSettingsInput,
 } from "@/lib/smartcomm-types";
 
 // ── Channels ─────────────────────────────────────────────
@@ -165,6 +167,16 @@ export const smartcommApi = {
   // Customer 360
   getCustomer360: (contact_id: string) =>
     api.get<Customer360>(`/smartcomm/customer-360/${contact_id}`),
+
+  // Composer settings — editable per-brand stock messages + WA number.
+  getComposerSettings: () =>
+    api
+      .get<{ data: ComposerSettings }>("/smartcomm/composer-settings")
+      .then((r) => r.data),
+  updateComposerSettings: (patch: Partial<ComposerSettingsInput>) =>
+    api
+      .put<{ data: ComposerSettings }>("/smartcomm/composer-settings", patch)
+      .then((r) => r.data),
 
   // Send to customer (outbound dispatch, ignores existing channel) — used
   // both by system reminders and by the "message a customer" contact

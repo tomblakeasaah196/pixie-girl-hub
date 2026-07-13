@@ -2,7 +2,6 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ExternalLink,
   Mail,
   Package,
   Phone,
@@ -21,7 +20,7 @@ import { callsApi, fmtCallDuration, OUTCOME_LABELS } from "@/lib/calls-api";
 import { useBusinessStore } from "@/stores/business";
 import type { Channel } from "@/lib/smartcomm-types";
 import type { CallOutcome } from "@/lib/calls-api";
-import { PlatformPill } from "./PlatformPill";
+import { ContactInfoEditor } from "./ContactInfoEditor";
 
 interface Props {
   channel: Channel;
@@ -100,52 +99,22 @@ export function CustomerSidebar({ channel }: Props) {
   const c = data.contact;
   return (
     <div className="flex h-full flex-col bg-panel/40 border-l hairline overflow-hidden">
-      {/* Identity */}
-      <div className="p-4 border-b hairline space-y-3">
-        <div className="flex items-start gap-3">
-          <div className="grid place-items-center w-10 h-10 rounded-full bg-panel-2 border hairline text-[13px] font-semibold text-text-primary shrink-0">
-            {(c.display_name?.[0] ?? "?").toUpperCase()}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="font-display text-[14.5px] truncate">
-              {c.display_name}
-            </p>
-            {c.company_name && (
-              <p className="text-[11.5px] text-text-muted truncate">
-                {c.company_name}
-              </p>
-            )}
-          </div>
-          <button
-            onClick={() => navigate(`/contacts/${c.contact_id}`)}
-            className="text-text-muted hover:text-accent-glow"
-            title="Open full contact"
-          >
-            <ExternalLink className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="space-y-1.5 text-[12px] text-text-muted">
-          {c.primary_phone && (
-            <div className="flex items-center gap-2">
-              <Phone className="w-3.5 h-3.5 text-text-faint" />
-              {c.primary_phone}
-            </div>
-          )}
-          {c.email && (
-            <div className="flex items-center gap-2 truncate">
-              <Mail className="w-3.5 h-3.5 text-text-faint shrink-0" />
-              <span className="truncate">{c.email}</span>
-            </div>
-          )}
-        </div>
-        {data.handles?.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {data.handles.map((h) => (
-              <PlatformPill key={h.platform} platform={h.platform} showLabel />
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Identity — editable (name/phone/WhatsApp always; "More" opens the
+          rest of the online-form fields). Invalidate customer360 on save so
+          the edited name/handle flow through to the header + thread. */}
+      <ContactInfoEditor
+        contact={c}
+        handles={data.handles ?? []}
+        onSaved={() => {
+          qc.invalidateQueries({
+            queryKey: ["smartcomm", "customer360", contactId],
+          });
+          qc.invalidateQueries({ queryKey: ["smartcomm", "channels"] });
+          qc.invalidateQueries({
+            queryKey: ["smartcomm", "channel", channel.channel_id],
+          });
+        }}
+      />
 
       {/* Lifetime snapshot */}
       <div className="grid grid-cols-2 border-b hairline">

@@ -19,6 +19,16 @@ export function useChannels(params: ChannelListParams = {}) {
   });
 }
 
+/** Editable per-brand composer stock messages (onboarding + WhatsApp
+ *  handoff templates) and the WhatsApp share number. Brand-scoped key. */
+export function useComposerSettings() {
+  return useQuery({
+    queryKey: ["smartcomm", "composer-settings"],
+    queryFn: () => smartcommApi.getComposerSettings(),
+    staleTime: 5 * 60_000,
+  });
+}
+
 /** Full channel detail (members + my read pointer). */
 export function useChannel(channelId: string | null | undefined) {
   return useQuery({

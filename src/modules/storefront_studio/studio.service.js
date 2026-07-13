@@ -327,7 +327,7 @@ async function uploadImage({ brand, file }) {
 
 // ── Looping-video upload (hero "living image") ─────────────
 // The raw clip lands on disk via multer; FFmpeg trims it to the operator's
-// window (≤10s), applies the chosen crop, then compresses + cleans it into
+// window (≤20s), applies the chosen crop, then compresses + cleans it into
 // HD/SD MP4 loops and a poster frame. The returned object is what the page
 // slot stores and the storefront Hero plays.
 const VIDEO_EXT = new Set([".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi"]);

@@ -54,7 +54,7 @@ function acceptVideoUpload(req, res, next) {
       next(
         new AppError("FILE_TOO_LARGE", "Video exceeds the upload limit", 413, {
           user_message:
-            "That video is over 200MB. Trim it shorter (the loop only keeps 10 seconds) and try again.",
+            "That video is over 200MB. Trim it shorter (the loop only keeps 20 seconds) and try again.",
         }),
       );
       return;
@@ -117,7 +117,7 @@ router.post(
 );
 
 // Looping-video upload (hero "living image"). Multipart fields: file +
-// trim_start/trim_end (sec), aspect, focus. Trims to ≤10s, compresses and
+// trim_start/trim_end (sec), aspect, focus. Trims to ≤20s, compresses and
 // cleans the picture into HD/SD MP4 loops + a poster; returns their URLs.
 router.post(
   "/upload-video",

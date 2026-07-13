@@ -2,7 +2,7 @@
  * Storefront Studio — looping-video field ("living image").
  *
  * The operator drops in any video (phone MP4/MOV, screen capture…) and gets a
- * small clip studio: scrub and trim to a ≤10s window, pick a crop aspect and
+ * small clip studio: scrub and trim to a ≤20s window, pick a crop aspect and
  * where the crop sits, all against a live looping preview of exactly what the
  * storefront will play. On confirm the raw file goes to the backend, which
  * trims, crops, compresses and cleans it into HD/SD MP4 loops + a poster —
@@ -26,7 +26,7 @@ import {
   type StorefrontVideo,
 } from "@/lib/storefront-studio";
 
-const MAX_SECONDS = 10;
+const MAX_SECONDS = 20;
 const MIN_SECONDS = 0.5;
 const MAX_UPLOAD_BYTES = 200 * 1024 * 1024;
 
@@ -81,7 +81,7 @@ export function VideoField({
     if (file.size > MAX_UPLOAD_BYTES) {
       toast.error("That video is over 200MB", {
         description:
-          "Trim it shorter before uploading — the loop only keeps 10 seconds.",
+          "Trim it shorter before uploading — the loop only keeps 20 seconds.",
       });
       return;
     }
@@ -143,7 +143,7 @@ export function VideoField({
               Upload a looping video
             </span>
             <span className="block text-[11px] text-text-muted">
-              MP4 or MOV — you'll trim it to 10 seconds and we'll compress it
+              MP4 or MOV — you'll trim it to 20 seconds and we'll compress it
               so it loads fast everywhere.
             </span>
           </span>
@@ -193,7 +193,7 @@ function ClipStudio({
   useEffect(() => () => URL.revokeObjectURL(src), [src]);
 
   // null until metadata loads; stays null for streams with no known length
-  // (the server still clamps to the first 10s in that case).
+  // (the server still clamps to the first 20s in that case).
   const [duration, setDuration] = useState<number | null>(null);
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
   const [start, setStart] = useState(0);
@@ -411,7 +411,7 @@ function ClipStudio({
         {duration != null ? (
           <div>
             <div className="mb-1 flex items-baseline justify-between">
-              <span className={labelCls}>Trim — keep up to 10 seconds</span>
+              <span className={labelCls}>Trim — keep up to 20 seconds</span>
               <span className="font-mono text-[12px] text-text-primary">
                 {fmtSec(start)} – {fmtSec(end)}
                 <span className="text-text-muted"> · {fmtSec(windowLen)} loop</span>
@@ -452,7 +452,7 @@ function ClipStudio({
           <p className="text-[12px] text-text-muted">
             <Play className="mr-1 inline h-3.5 w-3.5" />
             We couldn't read this file's length in the browser — we'll keep its
-            first 10 seconds.
+            first 20 seconds.
           </p>
         )}
 

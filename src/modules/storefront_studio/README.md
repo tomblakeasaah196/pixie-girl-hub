@@ -32,7 +32,7 @@ operator only types a title and the answer/body.
 `POST /upload-video` takes one raw clip (multipart `file` + `trim_start`,
 `trim_end`, `aspect`, `focus`) and returns the storefront loop set the page
 slot stores: an HD MP4 loop, an SD loop for poor connections, and a poster
-frame. FFmpeg trims to ≤10s, crops to the operator's aspect/focus, then
+frame. FFmpeg trims to ≤20s, crops to the operator's aspect/focus, then
 denoises + sharpens while compressing (see
 `src/services/video-clip.service.js`). The Pages editor offers the
 trim/crop studio on every hero section (`VideoField`), and the storefront

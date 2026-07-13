@@ -33,8 +33,14 @@ const { logger } = require("../config/logger");
 const { AppError } = require("../utils/errors");
 const storage = require("./storage.service");
 
-/** Hard cap on the loop length — "about 10 seconds" is the product brief. */
-const MAX_CLIP_SECONDS = 10;
+/**
+ * Hard cap on the loop length. The storefront hero plays the full clip on
+ * desktop (fat bandwidth) and trims playback to the first ~12s on mobile, so
+ * 20s gives the cinematic desktop loop without bloating the mobile first paint
+ * (which also has the SD rendition). Kept in one place so the trim clamp, the
+ * admin trim studio and the copy stay in agreement.
+ */
+const MAX_CLIP_SECONDS = 20;
 /** Shortest clip that still reads as a loop rather than a flicker. */
 const MIN_CLIP_SECONDS = 0.5;
 

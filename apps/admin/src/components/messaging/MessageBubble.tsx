@@ -60,7 +60,19 @@ function friendlyDeliveryError(err?: string | null): string | null {
     WA_SEND_BRAND_REQUIRED: "Internal error: send was queued without a brand.",
     NO_RECIPIENT: "No recipient on the send job.",
   };
-  return MAP[err] ?? err;
+  if (MAP[err]) return MAP[err];
+  // Meta's opaque link bounce (code 508 "Invalid message id") — stored
+  // verbatim on messages that failed before the button-template fallback
+  // shipped. Retry re-sends the link as a tappable button.
+  if (/invalid message id/i.test(err) || /code 508/i.test(err)) {
+    return (
+      "Instagram refused this message (Meta code 508). If it contained a " +
+      "link, Instagram blocked the raw URL — hit Retry and the link will go " +
+      "out as a tappable button instead. Otherwise the messaging window may " +
+      "have closed (the customer needs to message first)."
+    );
+  }
+  return err;
 }
 
 const QUICK = ["👍", "❤️", "😂", "😮", "🙏", "✅"];
@@ -110,6 +122,7 @@ export function MessageBubble({
 
   const sender = message.sender_name ?? "Unknown";
   const reactions = aggregate(message.reactions ?? []);
+  const customerReaction = message.metadata?.customer_reaction;
 
   return (
     <div
@@ -248,14 +261,22 @@ export function MessageBubble({
             )}
           </div>
 
-          {/* Reactions */}
-          {reactions.length > 0 && (
+          {/* Reactions (staff) + the customer's own reaction badge */}
+          {(reactions.length > 0 || customerReaction) && (
             <div
               className={cn(
                 "absolute -bottom-2.5 flex gap-1",
                 isOwn ? "left-1" : "right-1",
               )}
             >
+              {customerReaction && (
+                <span
+                  className="px-1.5 py-[1px] rounded-full bg-accent/20 border border-accent/40 text-[10px]"
+                  title="Customer reacted"
+                >
+                  {customerReaction}
+                </span>
+              )}
               {reactions.map((r) => (
                 <span
                   key={r.emoji}

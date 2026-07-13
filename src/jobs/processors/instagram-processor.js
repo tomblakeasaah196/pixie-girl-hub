@@ -30,6 +30,11 @@ const instagram = require("../../services/instagram.service");
 const storage = require("../../services/storage.service");
 const ffmpeg = require("./media.ffmpeg");
 const { logger } = require("../../config/logger");
+const {
+  extractUrls,
+  stripUrls,
+  buttonTitleForUrl,
+} = require("../../utils/urls");
 
 // Audio formats Instagram DM attachments accept as-is (aac/m4a/wav/mp4).
 // Anything else (notably the browser's webm/opus voice note) must be
@@ -80,6 +85,46 @@ async function transcodeIgAudio({ media_key, source_mime }) {
 function smartcomm() {
   return require("../../modules/smartcomm/smartcomm.service");
 }
+
+/**
+ * True when Meta's rejection looks like the raw-URL bounce. Meta reuses
+ * code 508 ("Invalid message id") for both a bad recipient id AND a
+ * text message whose body carries a link its filter dislikes, so the
+ * caller must ALSO confirm the text contained a URL before treating
+ * this as link-blocking (a genuinely bad IGSID fails every send).
+ */
+function isLinkRejection(err) {
+  const metaErr = err && err.meta_error;
+  if (metaErr && Number(metaErr.code) === 508) return true;
+  return /invalid message id/i.test(String((err && err.message) || ""));
+}
+
+/**
+ * Re-send a link-carrying text that Meta bounced as a button template —
+ * the prose stays as the template text and each URL becomes a tappable
+ * web_url button (max 3). Returns the provider response; throws when
+ * the template send is rejected too.
+ */
+async function resendAsLinkButtons({ data, urls }) {
+  return instagram.sendButtonTemplate({
+    brand: data.brand,
+    recipient_id: data.recipient_id,
+    text: stripUrls(data.text, urls),
+    buttons: urls.slice(0, 3).map((u) => ({
+      url: u,
+      title: buttonTitleForUrl(u),
+    })),
+    tag: data.tag,
+  });
+}
+
+// What the operator reads on the bubble when even the button-template
+// fallback is rejected. Kept explicit — the raw Meta line ("Invalid
+// message id — code 508…") told them nothing actionable.
+const LINK_BLOCKED_ERROR =
+  "Instagram blocked the link in this message — Meta rejected it as raw text " +
+  "AND as a link button. This usually clears once the customer follows the " +
+  "account or replies again; otherwise move the conversation to WhatsApp.";
 
 module.exports = async function process(job) {
   const data = job.data || {};
@@ -180,6 +225,57 @@ module.exports = async function process(job) {
     );
     return { mid };
   } catch (err) {
+    // Raw-URL bounce: Meta rejects plain text DMs that carry a link
+    // (code 508 / "Invalid message id" — the customer's YouTube tip or
+    // our own onboarding-form link). Links ARE deliverable as button
+    // templates, so retry the same message once with the URL(s) as
+    // tappable buttons before declaring failure.
+    const wasTextSend = !data.media_url && !data.image_url && data.text;
+    const urls = wasTextSend ? extractUrls(data.text) : [];
+    if (urls.length > 0 && isLinkRejection(err)) {
+      try {
+        const res = await resendAsLinkButtons({ data, urls });
+        const mid = res && (res.message_id || res.recipient_id);
+        if (data.smartcomm_message_id) {
+          await smartcomm().applyDeliveryResult({
+            message_id: data.smartcomm_message_id,
+            delivery_status: "sent",
+            external_ref: mid ? String(mid) : null,
+          });
+        }
+        logger.info(
+          {
+            jobId: job.id,
+            brand: data.brand,
+            recipient: data.recipient_id,
+            urls,
+            mid,
+          },
+          "instagram-send: raw link bounced — delivered as button template",
+        );
+        return { mid, link_button_fallback: true };
+      } catch (err2) {
+        logger.error(
+          {
+            jobId: job.id,
+            brand: data.brand,
+            recipient: data.recipient_id,
+            urls,
+            meta_error: err2.meta_error || null,
+            err: err2.message,
+          },
+          "instagram-send: button-template fallback rejected too",
+        );
+        if (data.smartcomm_message_id) {
+          await smartcomm().applyDeliveryResult({
+            message_id: data.smartcomm_message_id,
+            delivery_status: "failed",
+            delivery_error: LINK_BLOCKED_ERROR,
+          });
+        }
+        throw err2;
+      }
+    }
     // instagram.service already unwrapped Meta's structured error, so
     // err.message names the real cause ("Invalid OAuth access token",
     // "(#10) … outside of allowed window", …) — that's what the operator

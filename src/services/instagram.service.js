@@ -152,6 +152,76 @@ async function sendMedia({ brand, recipient_id, kind, media_url, tag }) {
   }
 }
 
+// Meta caps for the button template (documented on the IG Platform
+// button-template reference): 640 chars of text, 3 buttons, 20-char titles.
+const TEMPLATE_TEXT_MAX = 640;
+const TEMPLATE_BUTTONS_MAX = 3;
+const TEMPLATE_TITLE_MAX = 20;
+
+/**
+ * Send a button-template DM: text plus up to 3 tappable web_url buttons.
+ *
+ * This is Meta's sanctioned way to put a link in an Instagram DM. A raw
+ * URL inside a plain text message is routinely bounced by Meta's filter
+ * with the opaque "Invalid message id" (code 508, subcode 2534122 — the
+ * same code used for a bad recipient id), while the identical link sent
+ * as a template button delivers. The instagram-send processor falls back
+ * to this automatically when a text send carrying a URL is rejected.
+ *
+ * @param {object} args
+ * @param {string} args.brand
+ * @param {string} args.recipient_id — IGSID from the inbound webhook
+ * @param {string} args.text         — body text (≤640 chars, truncated)
+ * @param {{url: string, title?: string}[]} args.buttons — 1..3 links
+ * @param {string} [args.tag]        — 'HUMAN_AGENT' outside the 24h window
+ */
+async function sendButtonTemplate({ brand, recipient_id, text, buttons, tag }) {
+  const list = (buttons || []).filter((b) => b && b.url);
+  if (list.length === 0) {
+    throw new AppError(
+      "IG_TEMPLATE_NO_BUTTONS",
+      "A button template needs at least one link button",
+      400,
+    );
+  }
+  const cfg = await resolveSendConfig({ brand });
+  const url = `${GRAPH()}/me/messages`;
+  let body_text = String(text || "").trim();
+  if (body_text.length > TEMPLATE_TEXT_MAX) {
+    body_text = `${body_text.slice(0, TEMPLATE_TEXT_MAX - 1)}…`;
+  }
+  const body = {
+    recipient: { id: recipient_id },
+    message: {
+      attachment: {
+        type: "template",
+        payload: {
+          template_type: "button",
+          text: body_text || "Tap below to open the link 👇",
+          buttons: list.slice(0, TEMPLATE_BUTTONS_MAX).map((b) => ({
+            type: "web_url",
+            url: b.url,
+            title: String(b.title || "Open link").slice(0, TEMPLATE_TITLE_MAX),
+          })),
+        },
+      },
+    },
+  };
+  if (tag) {
+    body.messaging_type = "MESSAGE_TAG";
+    body.tag = tag;
+  }
+  try {
+    const { data } = await axios.post(url, body, {
+      headers: { Authorization: `Bearer ${cfg.access_token}` },
+      timeout: 15000,
+    });
+    return data;
+  } catch (err) {
+    rethrowMetaError(err);
+  }
+}
+
 /** Back-compat wrapper — image is just sendMedia(kind: 'image'). */
 function sendImage({ brand, recipient_id, image_url, tag }) {
   return sendMedia({
@@ -227,6 +297,7 @@ module.exports = {
   sendText,
   sendImage,
   sendMedia,
+  sendButtonTemplate,
   isConfigured,
   fetchUserProfile,
 };

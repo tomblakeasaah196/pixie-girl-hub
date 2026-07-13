@@ -122,8 +122,44 @@ function parseMetaWhatsApp(payload) {
         value.metadata && value.metadata.phone_number_id;
       const contacts = value.contacts || [];
       for (const m of value.messages || []) {
+        // Reactions ride the same messages[] array but have no body of
+        // their own — they used to be recorded as EMPTY inbound bubbles.
+        // parseMetaWhatsAppReactions turns them into a badge on the
+        // original message instead.
+        if (m.type === "reaction") continue;
         const c = contacts.find((x) => x.wa_id === m.from) || {};
         const media = extractWhatsAppMedia(m);
+        let body =
+          (m.text && m.text.body) ||
+          (m.image && m.image.caption) ||
+          (m.video && m.video.caption) ||
+          (m.document && m.document.caption) ||
+          "";
+        // Types that carry no text/media payload get a readable line
+        // instead of landing as a blank bubble.
+        if (!body && m.type === "location" && m.location) {
+          const loc = m.location;
+          const label = [loc.name, loc.address].filter(Boolean).join(", ");
+          const pin =
+            loc.latitude !== undefined && loc.longitude !== undefined
+              ? `https://maps.google.com/?q=${loc.latitude},${loc.longitude}`
+              : "";
+          body = `📍 Shared a location${label ? `: ${label}` : ""}${pin ? `\n${pin}` : ""}`;
+        }
+        if (!body && m.type === "contacts" && Array.isArray(m.contacts)) {
+          const names = m.contacts
+            .map((ct) => (ct.name && ct.name.formatted_name) || null)
+            .filter(Boolean)
+            .join(", ");
+          body = `👤 Shared a contact${names ? `: ${names}` : ""}`;
+        }
+        if (!body && m.type === "unsupported") {
+          body = "(Unsupported message — open WhatsApp to view it)";
+        }
+        // Never record a bubble with nothing to show: no text, no
+        // caption, no downloadable media. (Read receipts/system events
+        // don't reach this array, but unknown future types might.)
+        if (!body && !media) continue;
         events.push({
           platform: META_WA_PLATFORM,
           external_account_id: externalAccountId,
@@ -134,15 +170,11 @@ function parseMetaWhatsApp(payload) {
             display_name: (c.profile && c.profile.name) || null,
             external_user_id: c.wa_id || m.from,
           },
-          body:
-            (m.text && m.text.body) ||
-            (m.image && m.image.caption) ||
-            (m.video && m.video.caption) ||
-            (m.document && m.document.caption) ||
-            "",
+          body,
           // Normalise the display type: WhatsApp's `audio` renders as a
-          // voice note and `sticker` as an image in our inbox.
-          message_type: waMessageType(m.type),
+          // voice note and `sticker` as an image in our inbox. Text-only
+          // fallbacks (location/contacts/unsupported) render as text.
+          message_type: media ? waMessageType(m.type) : "text",
           // Media messages carry only a provider media *id* on the webhook
           // — the bytes are downloaded on ingest (see recordInboundFromCustomer).
           media,
@@ -179,6 +211,32 @@ function parseMetaWhatsAppStatuses(payload) {
   return statuses;
 }
 
+/**
+ * Parse customer reactions off a Meta WhatsApp payload: `messages[]`
+ * rows with `type: 'reaction'` carrying `{ reaction: { message_id,
+ * emoji? } }` — emoji absent means the customer REMOVED their
+ * reaction. `message_id` is the provider id of OUR message they
+ * reacted to (shared.messages.external_ref).
+ */
+function parseMetaWhatsAppReactions(payload) {
+  const reactions = [];
+  for (const entry of payload.entry || []) {
+    for (const change of entry.changes || []) {
+      const value = change.value || {};
+      for (const m of value.messages || []) {
+        if (m.type !== "reaction" || !m.reaction || !m.reaction.message_id)
+          continue;
+        reactions.push({
+          external_ref: m.reaction.message_id,
+          emoji: m.reaction.emoji || null,
+          action: m.reaction.emoji ? "react" : "unreact",
+        });
+      }
+    }
+  }
+  return reactions;
+}
+
 // Map an IG DM attachment type to our inbox message_type. IG audio DMs
 // are voice notes; `file` renders as a document.
 const IG_MEDIA_TYPE = {
@@ -200,8 +258,17 @@ function parseMetaInstagram(payload) {
     // The Instagram Business Account ID is the entry id for IG.
     const externalAccountId = entry.id;
     for (const m of entry.messaging || []) {
-      const msg = m.message || {};
+      // Instagram delivers read receipts (`m.read`), reactions
+      // (`m.reaction`) and postbacks on the same messaging[] array with
+      // NO message payload. They used to fall through as msg = {} and
+      // be recorded as empty inbound text bubbles — one blank "message"
+      // from the customer every time they read or ❤️'d a reply. They're
+      // handled by parseMetaInstagramStatuses / -Reactions instead.
+      const msg = m.message;
+      if (!msg) continue;
       if (msg.is_echo) continue;
+      // A deletion notice carries no content — nothing to record.
+      if (msg.is_deleted) continue;
       const senderId = m.sender && m.sender.id;
 
       // Meta signals story mentions + story replies through the
@@ -250,11 +317,21 @@ function parseMetaInstagram(payload) {
 
       // A shared post/reel has no stable media URL worth mirroring —
       // surface it as a text bubble with the link so staff can open it.
-      const body = isShare
+      let body = isShare
         ? `(shared a post)${attUrl ? ` ${attUrl}` : ""}`
         : msg.text ||
           (isStoryMention ? "(mentioned you in a story)" : "") ||
           (isStoryReply ? "(replied to your story)" : "");
+      // The ❤️ quick-tap arrives as a `like_heart` attachment with no
+      // text; unsupported content arrives flagged is_unsupported. Both
+      // used to record as blank bubbles.
+      if (!body && attType === "like_heart") body = "❤️";
+      if (!body && !media && msg.is_unsupported) {
+        body = "(Unsupported message — open Instagram to view it)";
+      }
+      // Whatever still has no text AND no downloadable media would
+      // render as an empty bubble — skip it.
+      if (!body && !media) continue;
 
       events.push({
         platform: META_IG_PLATFORM,
@@ -273,6 +350,50 @@ function parseMetaInstagram(payload) {
     }
   }
   return events;
+}
+
+/**
+ * Parse read receipts off a Meta Instagram payload: `messaging[]` rows
+ * carrying `read: { mid }` — the customer opened the thread and `mid`
+ * is the last message of OURS they've seen. Applied through the same
+ * delivery-status pipeline as WhatsApp's `statuses[]`, so the operator
+ * gets a read tick instead of (as before) a phantom empty message.
+ */
+function parseMetaInstagramStatuses(payload) {
+  const statuses = [];
+  for (const entry of payload.entry || []) {
+    for (const m of entry.messaging || []) {
+      if (m.read && m.read.mid) {
+        statuses.push({ external_ref: m.read.mid, status: "read", error: null });
+      }
+    }
+  }
+  return statuses;
+}
+
+/**
+ * Parse customer reactions off a Meta Instagram payload: `messaging[]`
+ * rows carrying `reaction: { mid, action: react|unreact, emoji? }`.
+ * `mid` is the provider id of the message being reacted to.
+ */
+function parseMetaInstagramReactions(payload) {
+  const reactions = [];
+  for (const entry of payload.entry || []) {
+    for (const m of entry.messaging || []) {
+      const r = m.reaction;
+      if (!r || !r.mid) continue;
+      const removing = r.action === "unreact";
+      reactions.push({
+        external_ref: r.mid,
+        // Meta sends the literal emoji when available, else a named
+        // reaction ('love'). Hearts are the only named reaction IG
+        // currently emits, so that's the fallback glyph.
+        emoji: removing ? null : r.emoji || "❤️",
+        action: removing ? "unreact" : "react",
+      });
+    }
+  }
+  return reactions;
 }
 
 /**
@@ -595,12 +716,17 @@ async function onWebhookReceived({ webhook_id, source }) {
   const payload = log.payload || {};
   let events = [];
   let statuses = [];
+  let reactions = [];
   try {
     if (source === "meta_whatsapp") {
       events = parseMetaWhatsApp(payload);
       statuses = parseMetaWhatsAppStatuses(payload);
-    } else if (source === "meta_instagram") events = parseMetaInstagram(payload);
-    else if (source === "cloudflare_email")
+      reactions = parseMetaWhatsAppReactions(payload);
+    } else if (source === "meta_instagram") {
+      events = parseMetaInstagram(payload);
+      statuses = parseMetaInstagramStatuses(payload);
+      reactions = parseMetaInstagramReactions(payload);
+    } else if (source === "cloudflare_email")
       events = parseCloudflareEmail(payload);
   } catch (err) {
     logger.error(
@@ -616,6 +742,17 @@ async function onWebhookReceived({ webhook_id, source }) {
       logger.error(
         { err: err.message, source, webhook_id, external_ref: st.external_ref },
         "smartcomm: delivery-status webhook apply failed",
+      );
+      throw err; // let outbox retry the whole batch
+    }
+  }
+  for (const r of reactions) {
+    try {
+      await service.applyCustomerReaction(r);
+    } catch (err) {
+      logger.error(
+        { err: err.message, source, webhook_id, external_ref: r.external_ref },
+        "smartcomm: customer-reaction webhook apply failed",
       );
       throw err; // let outbox retry the whole batch
     }
@@ -655,7 +792,10 @@ module.exports = {
   // exported for tests
   parseMetaWhatsApp,
   parseMetaWhatsAppStatuses,
+  parseMetaWhatsAppReactions,
   parseMetaInstagram,
+  parseMetaInstagramStatuses,
+  parseMetaInstagramReactions,
   parseCloudflareEmail,
   resolveOrCreateContact,
   onWebhookReceived,

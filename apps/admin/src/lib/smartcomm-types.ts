@@ -176,6 +176,9 @@ export interface Message {
     /** IG story surfaces (ig_story_mention / ig_story_reply). */
     story_url?: string;
     story_id?: string;
+    /** Emoji the customer reacted with on WhatsApp/Instagram (stamped
+     *  server-side from the reaction webhook; absent once un-reacted). */
+    customer_reaction?: string;
   } | null;
 }
 

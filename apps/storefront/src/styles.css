@@ -307,6 +307,18 @@ html, body { transition: background-color 0.35s ease, color 0.35s ease; }
   100% { transform: translateX(-50%); }
 }
 
+/* Hero vitrine "light-up": a one-shot warm bloom as the film takes over the
+ * ambient room on desktop. Fired once per session; reduced-motion neutralises
+ * it via the global rule below. */
+@keyframes hero-lightup {
+  0%   { opacity: 0; transform: scale(0.96); }
+  30%  { opacity: 0.9; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.05); }
+}
+@utility hero-lightup {
+  animation: hero-lightup 2.8s ease-out 1 both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.001ms !important;

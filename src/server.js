@@ -32,6 +32,7 @@ const { applyGlobalMiddleware } = require("./middleware");
 const { mountRoutes } = require("./routes");
 const { startWorkers, stopWorkers } = require("./jobs/worker");
 const { errorHandler, notFoundHandler } = require("./middleware/error-handler");
+const { isStaticAssetPath } = require("./utils/spa-fallback");
 const { captureError } = require("./modules/kaizen/errors/errors.capture");
 const {
   perfMiddleware,
@@ -143,11 +144,18 @@ async function bootstrap() {
       return next();
     }
     // Never return the HTML shell for a static asset request. If a hashed
-    // file under /assets/ (or any file with an extension) wasn't found by
+    // file under /assets/ (or a real web-asset extension) wasn't found by
     // express.static above, it's a missing/partial deploy — answer 404 so the
     // browser gets a clean error instead of index.html served as text/html
     // (which triggers "MIME type ('text/html') is not a supported stylesheet").
-    if (req.path.startsWith("/assets/") || /\.[a-z0-9]+$/i.test(req.path)) {
+    //
+    // isStaticAssetPath uses an extension ALLOW-LIST, not "any trailing
+    // dotted segment" — a JWT in the path (/order/capture/<a.b.c>,
+    // /welcome/:token, /sign/:token, /offer/:token) is NOT a file, and the
+    // old broad regex 404'd ~26% of those links at random (a base64url
+    // signature with no '-'/'_' looked like a file extension). See
+    // src/utils/spa-fallback.js.
+    if (isStaticAssetPath(req.path)) {
       return next();
     }
     // The SPA shell must always be revalidated so a new build is picked up

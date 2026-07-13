@@ -267,16 +267,22 @@ function StudioPopupModal({
         aria-modal="true"
         className={cn(
           "fixed inset-4 z-[96] overflow-hidden border border-taupe/30 bg-ink md:inset-auto md:left-1/2 md:top-1/2 md:w-[min(900px,92vw)] md:-translate-x-1/2 md:-translate-y-1/2 rounded-lg",
-          image ? "grid md:grid-cols-2" : "",
+          image ? "md:grid md:grid-cols-2" : "",
         )}
       >
         {image ? (
-          <div className="relative hidden md:block">
-            <img src={image} alt="" className="h-full w-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-r from-transparent to-ink/40" />
-          </div>
+          <>
+            <div className="absolute inset-0 md:hidden">
+              <img src={image} alt="" className="h-full w-full object-cover" />
+              <div className="absolute inset-0 bg-ink/60" />
+            </div>
+            <div className="relative hidden md:block">
+              <img src={image} alt="" className="h-full w-full object-cover" />
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent to-ink/40" />
+            </div>
+          </>
         ) : null}
-        <div className="relative flex flex-col justify-center p-8 md:p-12">
+        <div className="relative z-10 flex flex-col justify-center p-8 md:p-12">
           <button
             onClick={onClose}
             className="absolute right-4 top-4 text-xs uppercase tracking-[0.3em] text-taupe hover:text-cream"

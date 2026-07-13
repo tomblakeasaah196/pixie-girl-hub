@@ -75,13 +75,17 @@ export function NewsletterModal() {
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96 }}
             transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-            className="fixed inset-4 md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-[min(900px,92vw)] z-[96] bg-ink border border-taupe/30 grid md:grid-cols-2 overflow-hidden rounded-lg"
+            className="fixed inset-4 md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-[min(900px,92vw)] z-[96] bg-ink border border-taupe/30 md:grid md:grid-cols-2 overflow-hidden rounded-lg"
           >
+            <div className="absolute inset-0 md:hidden">
+              <img src={image} alt="" className="w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-ink/60" />
+            </div>
             <div className="hidden md:block relative">
               <img src={image} alt="" className="w-full h-full object-cover" />
               <div className="absolute inset-0 bg-gradient-to-r from-transparent to-ink/40" />
             </div>
-            <div className="p-8 md:p-12 flex flex-col justify-center relative">
+            <div className="relative z-10 p-8 md:p-12 flex flex-col justify-center">
               <button onClick={close} className="absolute top-4 right-4 text-taupe text-xs tracking-[0.3em] uppercase">Close</button>
               <p className="text-[0.65rem] tracking-[0.5em] uppercase text-taupe mb-4">{eyebrow}</p>
               <h3 className="font-display text-3xl md:text-5xl leading-tight text-balance">

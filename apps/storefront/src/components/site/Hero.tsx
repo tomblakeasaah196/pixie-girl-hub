@@ -349,30 +349,35 @@ function VitrineHero({
             : "md:grid-cols-[1.05fr_0.95fr]"
         }`}
       >
-        {/* Animated arch ring — desktop only, same grid cell as the film */}
-        <div
-          aria-hidden
-          className={`pointer-events-none hidden md:block md:[grid-row:1] md:[grid-column:2] md:self-center md:justify-self-center md:mx-auto md:z-[9] md:scale-[1.015] vitrine-ring ${boxShape}`}
-        />
-
-        {/* The film — single element, full-bleed on mobile, framed on desktop. */}
-        <FilmStage
-          video={video}
-          poster={filmPoster}
-          onReady={lightUp}
-          className={`absolute inset-x-0 top-14 bottom-0 z-0 overflow-hidden md:relative md:inset-auto md:top-auto md:z-10 md:order-2 md:mx-auto md:self-center md:justify-self-center md:overflow-hidden md:border md:border-taupe/25 vitrine-glow ${boxShape}`}
-          mediaClassName="absolute inset-0 h-full w-full object-cover object-center"
-        >
-          {/* Desktop-only vignette, clipped to the arch/medallion shape. */}
+        {/* Vitrine column — `contents` on mobile so the film stays absolutely
+            positioned relative to the section; a real box on desktop so the
+            ring and glow can sit around the film without breaking the grid. */}
+        <div className={`contents md:relative md:order-2 md:block md:mx-auto md:self-center md:justify-self-center md:z-10 ${boxShape}`}>
+          {/* Animated arch ring — desktop only, sits behind the film */}
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-0 hidden md:block"
-            style={{
-              background:
-                "radial-gradient(125% 90% at 50% 32%, transparent 55%, color-mix(in oklab, var(--ink) 55%, transparent) 100%)",
-            }}
+            className="pointer-events-none absolute -inset-[3px] z-0 hidden md:block md:[border-radius:inherit] vitrine-ring"
           />
-        </FilmStage>
+
+          {/* The film — single element, full-bleed on mobile, framed on desktop. */}
+          <FilmStage
+            video={video}
+            poster={filmPoster}
+            onReady={lightUp}
+            className="absolute inset-x-0 top-14 bottom-0 z-0 overflow-hidden md:relative md:inset-auto md:top-auto md:z-[1] md:h-full md:w-full md:overflow-hidden md:border md:border-taupe/25 md:[border-radius:inherit] vitrine-glow"
+            mediaClassName="absolute inset-0 h-full w-full object-cover object-center"
+          >
+            {/* Desktop-only vignette, clipped to the arch/medallion shape. */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 hidden md:block"
+              style={{
+                background:
+                  "radial-gradient(125% 90% at 50% 32%, transparent 55%, color-mix(in oklab, var(--ink) 55%, transparent) 100%)",
+              }}
+            />
+          </FilmStage>
+        </div>
 
         {/* Mobile scrims — header legibility (top, theme-adaptive) and copy
             legibility (bottom). The face-safe middle is never dimmed. */}

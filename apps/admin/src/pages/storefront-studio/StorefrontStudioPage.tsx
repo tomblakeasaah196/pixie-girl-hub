@@ -1567,9 +1567,13 @@ function SlotValue({
 
   // Plain object -> collapsible group of sub-fields.
   const obj = value as Record<string, unknown>;
-  // Hero sections always offer the looping-video upload, even on pages saved
-  // before the feature existed (their slots have no `video` key yet).
-  const offerHeroVideo = /hero/i.test(fieldKey) && !("video" in obj);
+  // Hero sections always offer the looping-video upload AND a background-image
+  // upload, even on pages saved before those fields existed (their slots have
+  // no `video` / `imageUrl` key yet). The background image fills the desktop
+  // "room" behind the video vitrine; on mobile the video plays full-bleed.
+  const isHero = /hero/i.test(fieldKey);
+  const offerHeroVideo = isHero && !("video" in obj);
+  const offerHeroImage = isHero && !("imageUrl" in obj);
   return (
     <Section title={label}>
       {Object.entries(obj).map(([k, v]) => (
@@ -1580,6 +1584,13 @@ function SlotValue({
           onChange={(nv) => onChange({ ...obj, [k]: nv })}
         />
       ))}
+      {offerHeroImage ? (
+        <ImageField
+          label="Background Image (desktop room behind the video)"
+          value=""
+          onChange={(nv) => onChange({ ...obj, imageUrl: nv })}
+        />
+      ) : null}
       {offerHeroVideo ? (
         <VideoField
           label="Looping Video"

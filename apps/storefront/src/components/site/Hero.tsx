@@ -278,7 +278,12 @@ function VitrineHero({
   video: HeroVideo;
   variant: "portrait" | "square";
 }) {
-  const poster = video.poster_url || content.imageUrl;
+  // Two distinct images on desktop: the FILM's own first frame drives the
+  // in-vitrine poster (so the crossfade to the clip is seamless), while the
+  // ambient ROOM behind it is the Studio "Background Image" (hero imageUrl)
+  // when set — falling back to the film's poster so the room is never empty.
+  const filmPoster = video.poster_url || content.imageUrl;
+  const roomImage = content.imageUrl || video.poster_url;
   const [lit, lightUp] = useSessionLightUp();
   const isSquare = variant === "square";
 
@@ -293,7 +298,7 @@ function VitrineHero({
           interior. Left stays ink (copy legibility), right glows (the arch). */}
       <div aria-hidden className="absolute inset-0 z-0 hidden md:block">
         <img
-          src={poster}
+          src={roomImage}
           alt=""
           className="absolute inset-0 h-full w-full scale-110 object-cover opacity-60 blur-2xl"
         />
@@ -338,7 +343,7 @@ function VitrineHero({
         {/* The film — single element, full-bleed on mobile, framed on desktop. */}
         <FilmStage
           video={video}
-          poster={poster}
+          poster={filmPoster}
           onReady={lightUp}
           className={`absolute inset-0 z-0 overflow-hidden md:relative md:inset-auto md:z-10 md:order-2 md:mx-auto md:self-center md:justify-self-center md:overflow-hidden md:border md:border-taupe/25 md:shadow-2xl md:shadow-ink/60 ${boxShape}`}
           mediaClassName="absolute inset-0 h-full w-full object-cover object-center"

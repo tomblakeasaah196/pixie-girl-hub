@@ -1472,6 +1472,12 @@ async function buildOutboundJobsForChannel({
         smartcomm_message_id: message.message_id,
         channel_id: channel.channel_id,
       },
+      // A multi-bubble catalogue sequence is user-visible and NOT
+      // idempotent: every retry re-sends every step (customer sees the
+      // same product image 3-5 times). Opt out of BullMQ's 5-attempt
+      // default; the operator's Retry button on the failed message is
+      // the sanctioned re-send path.
+      opts: jobPayload.sequence ? { attempts: 1 } : undefined,
     }));
   }
 
@@ -1499,10 +1505,14 @@ async function buildOutboundJobsForChannel({
   return [];
 }
 
-/** Enqueue the jobs built inside a (now committed) transaction. */
+/** Enqueue the jobs built inside a (now committed) transaction.
+ *  `job.opts` (when set) is passed to the BullMQ producer — used, e.g.,
+ *  to opt a job out of the default 5-attempt auto-retry when the payload
+ *  is user-visible and NOT idempotent (a catalogue-share sequence would
+ *  spam the customer with duplicate bubbles on every retry). */
 async function flushOutboundJobs(jobs) {
   for (const job of jobs || []) {
-    await enqueue(job.queue, job.name, job.data);
+    await enqueue(job.queue, job.name, job.data, job.opts);
   }
 }
 

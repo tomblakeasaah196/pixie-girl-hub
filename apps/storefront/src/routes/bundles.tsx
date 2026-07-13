@@ -93,7 +93,7 @@ function BundlesPage() {
                   ) : null}
                   {(savePct > 0 || price > 0) ? (
                     <span
-                      className="absolute top-5 left-5 flex flex-col items-start bg-burgundy/85 backdrop-blur-sm text-cream px-3 py-1.5 rounded-sm"
+                      className="absolute top-5 left-5 flex flex-col items-start bg-taupe/85 backdrop-blur-sm text-ink px-3 py-1.5 rounded-sm"
                       style={{ animation: "bundle-pill-glow 3s ease-in-out infinite" }}
                     >
                       {savePct > 0 && (
@@ -106,7 +106,7 @@ function BundlesPage() {
                           {fmt(price, "NGN")}
                         </span>
                         {compareAt > price && (
-                          <span className="text-[0.5rem] tracking-[0.1em] text-cream/50 line-through">
+                          <span className="text-[0.5rem] tracking-[0.1em] text-ink/50 line-through">
                             {fmt(compareAt, "NGN")}
                           </span>
                         )}

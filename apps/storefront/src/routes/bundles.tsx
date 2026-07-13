@@ -67,7 +67,7 @@ function BundlesPage() {
 
       <section className="mx-auto max-w-[1400px] px-6 lg:px-10 pb-32 space-y-6">
         {isLoading ? (
-          <div className="h-[520px] w-full animate-pulse bg-card" />
+          <div className="h-[520px] w-full animate-pulse bg-card rounded-lg" />
         ) : bundles.length === 0 ? (
           <p className="py-24 text-center text-cream/50">No bundles available right now.</p>
         ) : (
@@ -85,14 +85,14 @@ function BundlesPage() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true, margin: "-100px" }}
                 transition={{ duration: 0.8, delay: (i % 2) * 0.1, ease: [0.22, 1, 0.36, 1] }}
-                className="grid lg:grid-cols-2 border border-taupe/15 bg-card overflow-hidden"
+                className="grid lg:grid-cols-2 border border-taupe/15 bg-card overflow-hidden rounded-lg"
               >
                 <div className="relative min-h-[320px] lg:min-h-[520px] overflow-hidden group">
                   {cover ? (
                     <img src={cover} alt={b.display_name} className="absolute inset-0 h-full w-full object-cover transition-transform duration-[1400ms] ease-out group-hover:scale-105" />
                   ) : null}
                   {savePct > 0 ? (
-                    <span className="absolute top-5 left-5 bg-rose text-ink text-[0.6rem] tracking-[0.4em] uppercase px-3 py-1.5">
+                    <span className="absolute top-5 left-5 bg-rose text-ink text-[0.6rem] tracking-[0.4em] uppercase px-3 py-1.5 rounded-sm">
                       Save {savePct}%
                     </span>
                   ) : null}
@@ -123,14 +123,14 @@ function BundlesPage() {
                     <button
                       onClick={() => add(b.bundle_id)}
                       disabled={busy === b.bundle_id}
-                      className="bg-taupe text-ink px-9 py-4 text-[0.7rem] tracking-[0.4em] uppercase font-medium hover:bg-cream transition-colors disabled:opacity-60"
+                      className="bg-taupe text-ink px-9 py-4 text-[0.7rem] tracking-[0.4em] uppercase font-medium hover:bg-cream transition-colors disabled:opacity-60 rounded-lg"
                     >
                       {busy === b.bundle_id ? "Adding…" : "Add to bag"}
                     </button>
                     <Link
                       to="/bundles/$slug"
                       params={{ slug: b.bundle_code }}
-                      className="border border-taupe/40 text-taupe px-9 py-4 text-[0.7rem] tracking-[0.4em] uppercase hover:bg-taupe/10 transition-colors"
+                      className="border border-taupe/40 text-taupe px-9 py-4 text-[0.7rem] tracking-[0.4em] uppercase hover:bg-taupe/10 transition-colors rounded-lg"
                     >
                       See bundle
                     </Link>

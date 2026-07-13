@@ -4,16 +4,7 @@ import { Sparkles, X } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useToolbar } from "@/lib/site-config";
 import { waDigits } from "@/lib/toolbar";
-
-/**
- * Bottom-right concierge dock. A single WhatsApp button that, when tapped, opens
- * two choices — "Shop with AI" (the shade finder) and "Chat on WhatsApp" — so
- * the AI stylist gets its own prominent home instead of being buried in the
- * draggable toolbar. Which choices appear follows the Studio toolbar config
- * (AI ← buttons.shade, WhatsApp ← buttons.whatsapp + a configured number). If
- * no WhatsApp number is set the chat choice falls back to the Contact page so
- * the button is never a dead end.
- */
+import { clientBrand } from "@/lib/brand";
 
 function WhatsAppIcon({ size = 22 }: { size?: number }) {
   return (
@@ -32,6 +23,11 @@ export function ConciergeDock() {
   const reduceMotion = useReducedMotion();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const orbitRef = useRef<HTMLDivElement>(null);
+  const [hovered, setHovered] = useState(false);
+
+  const brand = typeof document !== "undefined" ? clientBrand() : "faitlynhair";
+  const isFaitlyn = brand === "faitlynhair";
 
   const showAI = cfg.buttons.shade;
   const waNumber = waDigits(cfg.whatsapp.number);
@@ -66,6 +62,28 @@ export function ConciergeDock() {
     },
     exit: { opacity: 0, y: 12, scale: 0.9, transition: { duration: 0.12 } },
   });
+
+  const glowColor = isFaitlyn
+    ? "oklch(0.78 0.11 75)"
+    : "oklch(0.45 0.18 25)";
+  const glow20 = isFaitlyn
+    ? "oklch(0.78 0.11 75 / 0.2)"
+    : "oklch(0.45 0.18 25 / 0.2)";
+  const glow40 = isFaitlyn
+    ? "oklch(0.78 0.11 75 / 0.4)"
+    : "oklch(0.45 0.18 25 / 0.4)";
+  const glow15 = isFaitlyn
+    ? "oklch(0.78 0.11 75 / 0.15)"
+    : "oklch(0.45 0.18 25 / 0.15)";
+  const glow35 = isFaitlyn
+    ? "oklch(0.78 0.11 75 / 0.35)"
+    : "oklch(0.45 0.18 25 / 0.35)";
+  const glow10 = isFaitlyn
+    ? "oklch(0.78 0.11 75 / 0.1)"
+    : "oklch(0.45 0.18 25 / 0.1)";
+  const iconColor = isFaitlyn
+    ? "oklch(0.78 0.11 75 / 0.85)"
+    : "oklch(0.45 0.18 25 / 0.85)";
 
   return (
     <div
@@ -111,7 +129,10 @@ export function ConciergeDock() {
                 className={`${OPTION_PILL} border-taupe/25 bg-ink/60 text-cream`}
               >
                 <span>{waHref ? "Chat on WhatsApp" : "Contact us"}</span>
-                <span className="grid h-8 w-8 place-items-center rounded-full bg-[#25D366] text-white">
+                <span
+                  className="grid h-8 w-8 place-items-center rounded-full"
+                  style={{ color: iconColor }}
+                >
                   <WhatsAppIcon size={17} />
                 </span>
               </motion.a>
@@ -120,39 +141,204 @@ export function ConciergeDock() {
         )}
       </AnimatePresence>
 
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        aria-haspopup="menu"
-        aria-label={open ? "Close contact options" : "Contact us — shop with AI or WhatsApp"}
-        title="Shop with AI · WhatsApp"
-        className="grid h-14 w-14 place-items-center rounded-full bg-[#25D366] text-white shadow-[0_12px_30px_rgba(0,0,0,0.4)] transition-transform duration-150 hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cream/70"
-      >
-        <AnimatePresence mode="wait" initial={false}>
-          {open ? (
-            <motion.span
-              key="x"
-              initial={{ rotate: -90, opacity: 0 }}
-              animate={{ rotate: 0, opacity: 1 }}
-              exit={{ rotate: 90, opacity: 0 }}
-              transition={{ duration: 0.15 }}
-            >
-              <X size={24} strokeWidth={2} />
-            </motion.span>
-          ) : (
-            <motion.span
-              key="wa"
-              initial={{ rotate: 90, opacity: 0 }}
-              animate={{ rotate: 0, opacity: 1 }}
-              exit={{ rotate: -90, opacity: 0 }}
-              transition={{ duration: 0.15 }}
-            >
-              <WhatsAppIcon size={26} />
-            </motion.span>
-          )}
-        </AnimatePresence>
-      </button>
+      {/* The Concierge Beacon */}
+      <div className="concierge-beacon-wrap" data-brand={brand}>
+        {/* Orbit particles — visible on hover (desktop only) */}
+        <div
+          ref={orbitRef}
+          className="concierge-orbit"
+          aria-hidden
+          style={{ opacity: hovered && !reduceMotion ? 1 : 0 }}
+        >
+          <span className="concierge-particle" style={{ ["--delay" as string]: "0s" }} />
+          <span className="concierge-particle" style={{ ["--delay" as string]: "-1.5s" }} />
+          <span className="concierge-particle" style={{ ["--delay" as string]: "-3s" }} />
+          <span className="concierge-particle" style={{ ["--delay" as string]: "-4.5s" }} />
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+          aria-expanded={open}
+          aria-haspopup="menu"
+          aria-label={open ? "Close contact options" : "Concierge — shop with AI or WhatsApp"}
+          title="Concierge"
+          className="concierge-beacon"
+          style={{
+            ["--beacon-glow" as string]: glowColor,
+            ["--beacon-glow-20" as string]: glow20,
+            ["--beacon-glow-40" as string]: glow40,
+            ["--beacon-glow-15" as string]: glow15,
+            ["--beacon-glow-35" as string]: glow35,
+            ["--beacon-glow-10" as string]: glow10,
+            ["--beacon-icon" as string]: iconColor,
+          }}
+        >
+          <AnimatePresence mode="wait" initial={false}>
+            {open ? (
+              <motion.span
+                key="x"
+                initial={{ rotate: -90, opacity: 0 }}
+                animate={{ rotate: 0, opacity: 1 }}
+                exit={{ rotate: 90, opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                style={{ color: "var(--taupe)" }}
+              >
+                <X size={22} strokeWidth={2} />
+              </motion.span>
+            ) : (
+              <motion.span
+                key="wa"
+                initial={{ rotate: 90, opacity: 0 }}
+                animate={{ rotate: 0, opacity: 1 }}
+                exit={{ rotate: -90, opacity: 0 }}
+                transition={{ duration: 0.15 }}
+              >
+                <WhatsAppIcon size={24} />
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </button>
+
+        {/* Concierge label — permanent on mobile, hover on desktop */}
+        <span className="concierge-label">
+          {open ? "" : "Chat"}
+        </span>
+      </div>
+
+      <style>{`
+        .concierge-beacon-wrap {
+          position: relative;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .concierge-beacon {
+          position: relative;
+          display: grid;
+          place-items: center;
+          width: 56px;
+          height: 56px;
+          border-radius: 50%;
+          border: 1px solid oklch(0.82 0.045 60 / 0.25);
+          background: oklch(0.14 0.012 60 / 0.6);
+          backdrop-filter: blur(24px) saturate(1.4);
+          -webkit-backdrop-filter: blur(24px) saturate(1.4);
+          color: var(--beacon-icon);
+          box-shadow:
+            0 12px 30px rgba(0, 0, 0, 0.35),
+            0 0 16px var(--beacon-glow-20),
+            inset 0 1px 0 oklch(1 0 0 / 0.04);
+          transition: transform 0.2s ease, box-shadow 0.4s ease;
+          outline: none;
+          animation: concierge-breathe 4s ease-in-out infinite;
+        }
+        .concierge-beacon:hover {
+          transform: scale(1.08);
+          animation-play-state: paused;
+          box-shadow:
+            0 12px 30px rgba(0, 0, 0, 0.35),
+            0 0 28px var(--beacon-glow-40),
+            0 0 48px var(--beacon-glow-15),
+            inset 0 1px 0 oklch(1 0 0 / 0.04);
+        }
+        .concierge-beacon:active {
+          transform: scale(0.94);
+        }
+        .concierge-beacon:focus-visible {
+          box-shadow:
+            0 0 0 2px oklch(0.96 0.018 80 / 0.5),
+            0 12px 30px rgba(0, 0, 0, 0.35);
+        }
+
+        @keyframes concierge-breathe {
+          0%, 100% {
+            box-shadow:
+              0 12px 30px rgba(0, 0, 0, 0.35),
+              0 0 12px var(--beacon-glow-15),
+              inset 0 1px 0 oklch(1 0 0 / 0.04);
+          }
+          50% {
+            box-shadow:
+              0 12px 30px rgba(0, 0, 0, 0.35),
+              0 0 24px var(--beacon-glow-35),
+              0 0 40px var(--beacon-glow-10),
+              inset 0 1px 0 oklch(1 0 0 / 0.04);
+          }
+        }
+
+        /* Orbit ring — each particle is a wrapper that rotates, with the dot
+           offset 36px from centre via translateX. */
+        .concierge-orbit {
+          position: absolute;
+          inset: -10px;
+          pointer-events: none;
+          transition: opacity 0.4s ease;
+        }
+        .concierge-particle {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          width: 0;
+          height: 0;
+          animation: concierge-orbit-spin 6s linear infinite;
+          animation-delay: var(--delay, 0s);
+        }
+        .concierge-particle::after {
+          content: '';
+          position: absolute;
+          width: 3px;
+          height: 3px;
+          border-radius: 50%;
+          background: var(--beacon-glow, oklch(0.78 0.11 75));
+          box-shadow: 0 0 6px var(--beacon-glow, oklch(0.78 0.11 75));
+          transform: translateX(36px) translateY(-1.5px);
+        }
+
+        @keyframes concierge-orbit-spin {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
+        }
+
+        .concierge-label {
+          font-size: 0.5rem;
+          letter-spacing: 0.2em;
+          text-transform: uppercase;
+          color: oklch(0.82 0.045 60 / 0.6);
+          transition: opacity 0.3s ease;
+          min-height: 0.7rem;
+        }
+
+        /* Desktop: label visible only on hover */
+        @media (hover: hover) {
+          .concierge-label {
+            opacity: 0;
+          }
+          .concierge-beacon-wrap:hover .concierge-label {
+            opacity: 1;
+          }
+        }
+
+        /* Light mode overrides */
+        :root .concierge-beacon {
+          background: oklch(0.97 0.014 80 / 0.6);
+          border-color: oklch(0.42 0.04 55 / 0.25);
+        }
+
+
+        @media (prefers-reduced-motion: reduce) {
+          .concierge-beacon {
+            animation: none !important;
+          }
+          .concierge-particle {
+            display: none;
+          }
+        }
+      `}</style>
     </div>
   );
 }

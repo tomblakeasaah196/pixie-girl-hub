@@ -15,7 +15,7 @@ export function EditorialSplit({
           whileInView={{ opacity: 1, x: 0 }}
           viewport={{ once: true, margin: "-150px" }}
           transition={{ duration: 1, ease: [0.22, 1, 0.36, 1] }}
-          className="relative min-h-[60vh] lg:min-h-[80vh] overflow-hidden"
+          className="relative min-h-[60vh] lg:min-h-[80vh] overflow-hidden rounded-lg"
         >
           <img src={content.imageUrl} alt="Inside the Faitlyn atelier" loading="lazy" className="w-full h-full object-cover" />
         </motion.div>
@@ -33,7 +33,7 @@ export function EditorialSplit({
             {content.headingAfter}
           </h2>
           <p className="mt-8 text-cream/70 leading-relaxed max-w-md">{content.body}</p>
-          <SmartLink to={content.ctaHref} className="mt-10 self-start px-9 py-4 border border-taupe/40 text-taupe text-[0.7rem] tracking-[0.4em] uppercase hover:bg-taupe hover:text-ink transition-colors">
+          <SmartLink to={content.ctaHref} className="mt-10 self-start px-9 py-4 border border-taupe/40 text-taupe text-[0.7rem] tracking-[0.4em] uppercase hover:bg-taupe hover:text-ink transition-colors rounded-lg">
             {content.ctaLabel}
           </SmartLink>
         </motion.div>

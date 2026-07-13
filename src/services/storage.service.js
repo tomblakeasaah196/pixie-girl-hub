@@ -40,6 +40,26 @@ function absoluteUrl(key) {
   return base ? `${base}/media/${key}` : null;
 }
 
+/**
+ * Coerce a stored-media reference — which may be a bare key, a relative
+ * `/media/<key>` path (what publicUrl/cdn_url produce when no CDN is
+ * configured), or an already-absolute URL — into an ABSOLUTE,
+ * internet-reachable URL. This is what an outbound provider that FETCHES
+ * the URL itself (Instagram DM media) needs: it can't resolve a relative
+ * path the way a browser can. Already-absolute inputs pass through
+ * unchanged; if no base is configured the original value is returned so
+ * behaviour is never worse than before.
+ */
+function toAbsoluteMediaUrl(urlOrKey) {
+  if (!urlOrKey) return urlOrKey;
+  const s = String(urlOrKey);
+  if (/^https?:\/\//i.test(s)) return s; // already absolute
+  const key = s.startsWith("/media/")
+    ? s.slice("/media/".length)
+    : s.replace(/^\/+/, "");
+  return absoluteUrl(key) || s;
+}
+
 async function put(buffer, { key, contentType }) {
   const finalKey = key || crypto.randomBytes(16).toString("hex");
   const filePath = path.join(config.STORAGE_LOCAL_ROOT, finalKey);
@@ -61,4 +81,11 @@ async function del(key) {
   await fs.unlink(path.join(config.STORAGE_LOCAL_ROOT, key));
 }
 
-module.exports = { put, get, delete: del, publicUrl, absoluteUrl };
+module.exports = {
+  put,
+  get,
+  delete: del,
+  publicUrl,
+  absoluteUrl,
+  toAbsoluteMediaUrl,
+};

@@ -1416,9 +1416,21 @@ async function buildOutboundJobsForChannel({
         business: channel.business,
         message,
       });
+      // Catalogue image URLs are the stored `cdn_url`, which is a RELATIVE
+      // `/media/...` path when no CDN is configured. Instagram fetches the
+      // URL from Meta's servers, and a relative path is unreachable there —
+      // it bounced every catalogue share with "Upload failed" (code 100,
+      // subcode 2018007) while the same photo sent as a plain attachment
+      // (which already runs through storage.absoluteUrl) went fine, and
+      // WhatsApp worked because it uploads the bytes instead of handing
+      // Meta a link. Resolve to an absolute URL here so Meta can fetch it.
+      const storage = require("../../services/storage.service");
       jobPayloads = cards.flatMap((card) =>
         card.type === "image"
-          ? [{ text: card.caption }, { image_url: card.media_url }]
+          ? [
+              { text: card.caption },
+              { image_url: storage.toAbsoluteMediaUrl(card.media_url) },
+            ]
           : [{ text: card.body }],
       );
       if (jobPayloads.length === 0) return fail("NOTHING_TO_SEND");

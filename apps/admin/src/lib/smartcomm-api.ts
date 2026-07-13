@@ -169,14 +169,14 @@ export const smartcommApi = {
     api.get<Customer360>(`/smartcomm/customer-360/${contact_id}`),
 
   // Composer settings — editable per-brand stock messages + WA number.
+  // `api.get`/`api.put` already unwrap the `{ data }` envelope, so the
+  // returned value IS the settings object — no second `.data` (that used
+  // to yield undefined, so the WhatsApp button saw "no number" and the
+  // saved custom wording never loaded).
   getComposerSettings: () =>
-    api
-      .get<{ data: ComposerSettings }>("/smartcomm/composer-settings")
-      .then((r) => r.data),
+    api.get<ComposerSettings>("/smartcomm/composer-settings"),
   updateComposerSettings: (patch: Partial<ComposerSettingsInput>) =>
-    api
-      .put<{ data: ComposerSettings }>("/smartcomm/composer-settings", patch)
-      .then((r) => r.data),
+    api.put<ComposerSettings>("/smartcomm/composer-settings", patch),
 
   // Send to customer (outbound dispatch, ignores existing channel) — used
   // both by system reminders and by the "message a customer" contact

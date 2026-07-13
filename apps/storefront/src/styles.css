@@ -140,6 +140,10 @@
 
 html, body { transition: background-color 0.35s ease, color 0.35s ease; }
 
+@media (pointer: fine) {
+  *, *::before, *::after { cursor: none !important; }
+}
+
 /* Image scrim for cards where product/model photos sit under text.
  * Dark mode keeps the original tall ink curtain (blends into the page).
  * Light mode uses a short, subtler scrim so the photo stays readable

@@ -331,6 +331,10 @@ html, body { transition: background-color 0.35s ease, color 0.35s ease; }
   0% { transform: translateX(0); }
   100% { transform: translateX(-50%); }
 }
+@keyframes marquee-scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
 
 /* Hero vitrine "light-up": a one-shot warm bloom as the film takes over the
  * ambient room on desktop. Fired once per session; reduced-motion neutralises

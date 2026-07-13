@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Button } from "@/components/ui/primitives";
+import { formatDateTime } from "@/lib/format";
 import {
   ErrorState,
   Select,
@@ -49,13 +50,7 @@ const STATUS_OPTIONS = [
 ] as const;
 
 function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDateTime(iso);
 }
 
 /* ── Create Transfer Drawer ────────────────────────────────────────── */

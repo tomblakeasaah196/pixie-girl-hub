@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
+import { formatDate } from "@/lib/format";
 import {
   Plus,
   CheckCircle2,
@@ -50,12 +51,7 @@ function asArray<T>(res: unknown): T[] {
 }
 
 function fmtDate(d?: string | null): string {
-  if (!d) return "—";
-  return new Date(d).toLocaleDateString("en-NG", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  return formatDate(d);
 }
 
 function fmtBytes(n?: number): string {
@@ -567,12 +563,13 @@ const RISK_TONE: Record<string, Tone> = {
 
 function birthdayLabel(c: Contact): string | null {
   if (!c.date_of_birth) return null;
-  const d = new Date(c.date_of_birth);
+  // Known year → canonical DD/MM/YYYY; unknown year (the "1900" placeholder) →
+  // day + month only, so we never surface the placeholder year.
   const yearKnown = !c.date_of_birth.startsWith("1900");
-  return d.toLocaleDateString("en-NG", {
+  if (yearKnown) return formatDate(c.date_of_birth);
+  return new Date(c.date_of_birth).toLocaleDateString("en-NG", {
     day: "numeric",
     month: "long",
-    ...(yearKnown ? { year: "numeric" } : {}),
   });
 }
 

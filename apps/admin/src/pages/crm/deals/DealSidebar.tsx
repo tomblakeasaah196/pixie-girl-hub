@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { Calendar, User, Link2, ExternalLink, Building } from "lucide-react";
 import { MoneyText, Pill } from "@/components/ui/primitives";
+import { formatDate } from "@/lib/format";
 import { StagePill } from "../shared/StagePill";
 import { AiNextActionsCard } from "../shared/AiInsightCard";
 import { useAiNextActions, useContact } from "../hooks";
@@ -78,14 +79,7 @@ export function DealSidebar({ deal }: DealSidebarProps) {
             <SidebarRow label="Expected close">
               <span className="flex items-center gap-1.5">
                 <Calendar className="w-3 h-3 text-text-faint" />
-                {new Date(deal.expected_close_date).toLocaleDateString(
-                  "en-NG",
-                  {
-                    day: "numeric",
-                    month: "long",
-                    year: "numeric",
-                  },
-                )}
+                {formatDate(deal.expected_close_date)}
               </span>
             </SidebarRow>
           )}
@@ -109,21 +103,13 @@ export function DealSidebar({ deal }: DealSidebarProps) {
 
           {deal.won_at && (
             <SidebarRow label="Won on">
-              {new Date(deal.won_at).toLocaleDateString("en-NG", {
-                day: "numeric",
-                month: "short",
-                year: "numeric",
-              })}
+              {formatDate(deal.won_at)}
             </SidebarRow>
           )}
 
           {deal.lost_at && (
             <SidebarRow label="Lost on">
-              {new Date(deal.lost_at).toLocaleDateString("en-NG", {
-                day: "numeric",
-                month: "short",
-                year: "numeric",
-              })}
+              {formatDate(deal.lost_at)}
             </SidebarRow>
           )}
 

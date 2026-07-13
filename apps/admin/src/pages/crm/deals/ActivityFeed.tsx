@@ -1,4 +1,5 @@
 import { Skeleton } from "@/components/ui/primitives";
+import { formatDate, formatDateTime } from "@/lib/format";
 import { ActivityIcon, activityLabel } from "../shared/ActivityIcon";
 import type { CrmActivity } from "@/pages/contacts/types";
 
@@ -11,11 +12,7 @@ function relTime(iso: string) {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   if (days < 30) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString("en-NG", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  return formatDate(iso);
 }
 
 const OUTCOME_LABELS: Record<string, string> = {
@@ -114,10 +111,7 @@ export function ActivityFeed({ activities, isLoading }: ActivityFeedProps) {
               {act.scheduled_at && (
                 <div className="text-[10.5px] text-warn mt-1">
                   Scheduled:{" "}
-                  {new Date(act.scheduled_at).toLocaleString("en-NG", {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                  })}
+                  {formatDateTime(act.scheduled_at)}
                 </div>
               )}
 

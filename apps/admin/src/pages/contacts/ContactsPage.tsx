@@ -14,6 +14,7 @@ import {
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Button, Pill, KpiTile, type Tone } from "@/components/ui/primitives";
+import { formatDate } from "@/lib/format";
 import { Select } from "@/components/ui/controls";
 import { useContacts, useContactStats } from "./hooks";
 import {
@@ -280,11 +281,7 @@ export function ContactsPage() {
       align: "right",
       render: (c) => (
         <span className="text-[11px] text-text-faint">
-          {new Date(c.created_at).toLocaleDateString("en-NG", {
-            day: "numeric",
-            month: "short",
-            year: "numeric",
-          })}
+          {formatDate(c.created_at)}
         </span>
       ),
     },

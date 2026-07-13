@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback } from "react";
 import { ArrowUpDown, Download, Plus } from "lucide-react";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Button } from "@/components/ui/primitives";
+import { formatDateTime } from "@/lib/format";
 import { ErrorState, Select, NumberField } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
 import { VariantPicker } from "@/components/catalogue/VariantPicker";
@@ -53,13 +54,7 @@ const MANUAL_MOVEMENT_TYPES = [
 const PAGE_SIZE = 25;
 
 function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDateTime(iso);
 }
 
 function relativeTime(iso: string): string {

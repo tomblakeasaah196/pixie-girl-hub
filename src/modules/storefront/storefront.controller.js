@@ -138,10 +138,17 @@ async function getContent(req, res) {
 
 // ── Public Order Form ──────────────────────────────────────
 async function submitOrderForm(req, res) {
+  // Build the storefront return URL from the incoming host so the gateway
+  // sends the buyer back to OUR thank-you page after paying (same as the cart
+  // checkout). Computed server-side from headers — never trusted from the body
+  // (the schema is .strict()), so it can't become an open redirect.
+  const host = req.headers["x-forwarded-host"] || req.headers.host;
+  const proto = req.headers["x-forwarded-proto"] || "https";
+  const return_url_base = host ? `${proto}://${host}/checkout/thank-you` : undefined;
   res.status(201).json({
     data: await service.submitOrderForm({
       brand: brandHint(req),
-      input: req.body,
+      input: { ...req.body, return_url_base },
       request_id: req.request_id,
     }),
   });

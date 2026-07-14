@@ -307,7 +307,7 @@ async function submitOrderForm({ brand, input, request_id }) {
     order_link_slug: input.order_link_slug,
   });
 
-  return transaction(async (client) => {
+  const result = await transaction(async (client) => {
     // 1. Upsert the customer as a contact.
     let contact = await repo.findContactByEmailOrPhone({
       client,
@@ -472,6 +472,37 @@ async function submitOrderForm({ brand, input, request_id }) {
       booking_count: bookings.length,
     };
   });
+
+  // Straight to the payment gateway for an order-link checkout: mint the
+  // gateway checkout link server-side (exactly like the cart checkout) and
+  // return it, so the /o page redirects the buyer to Nomba in ONE step — no
+  // "we'll WhatsApp you a link" detour. Runs AFTER the transaction commits
+  // (never hold the DB open across an external gateway call). A gateway hiccup
+  // never fails the confirmed order — payment_url stays null and the page
+  // retries via the public pay link (keyed by the tracking token, so no
+  // duplicate order). Full plan charges the whole balance; instalment charges
+  // the deposit. Nomba is preferred (Paystack/Stripe only if it's down).
+  let payment_url = null;
+  if (input.order_link_slug && result.order_id && result.public_tracking_token) {
+    try {
+      const pay = await paymentLink.createPaymentLink({
+        brand,
+        order_id: result.order_id,
+        amount_ngn:
+          result.payment_plan === "instalment" ? result.pay_now_ngn : undefined,
+        preferred_provider: "nomba",
+        return_url_base: input.return_url_base || undefined,
+      });
+      payment_url = pay.checkout_url || null;
+    } catch (err) {
+      logger.error(
+        { err: err.message, order_id: result.order_id },
+        "order-link payment init failed after order (order stands; page will retry)",
+      );
+    }
+  }
+
+  return { ...result, payment_url };
 }
 
 /**

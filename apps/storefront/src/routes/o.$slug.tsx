@@ -351,9 +351,15 @@ function CheckoutForm({
         client_idempotency_key: `order:${slug}`,
       });
 
-      // Straight to the gateway (Nomba). A product order carries a tracking
-      // token → mint a checkout for the full balance and redirect. If no
-      // gateway is configured / init fails, show the confirmation instead.
+      // Straight to the gateway (Nomba). The order-form mints the checkout
+      // link server-side and returns it — redirect in one step.
+      if (result?.payment_url) {
+        window.location.href = result.payment_url;
+        return;
+      }
+      // Backup only (gateway hiccup): retry via the tracking token — no
+      // re-order, since the order already exists. Confirmation is the last
+      // resort so a paid-capable order never dead-ends.
       const token = result?.public_tracking_token;
       if (result?.order_id && token) {
         try {

@@ -59,9 +59,9 @@ function isStyled(h: ProductHit) {
  * Multi-select catalogue picker — kind tabs (Base / Styled / Bundle / Service),
  * search per kind, image thumbnails. The selected items render as a small
  * cart at the bottom; sending posts a `product_share` message into the chat.
- * Product cards (not service) get a tap-to-order JWT link minted from the
- * existing /smartcomm/order-capture endpoint, so the customer can pay
- * without retyping their address.
+ * The whole selection is minted as ONE short `/o/<slug>` order link (via
+ * /smartcomm/order-link) so the customer opens a mini-shop, picks what they
+ * want, and pays — without retyping their address.
  */
 export function CataloguePickerModal({
   open,
@@ -204,18 +204,17 @@ export function CataloguePickerModal({
     );
   }
 
-  async function mintCaptureUrl(cards: Selected[]): Promise<string | null> {
-    // Shared catalogues mint a "shop" link: one mini-shop page with the
-    // curated picks where the CUSTOMER chooses items + quantities.
-    // Services are orderable too (they become booking requests). Works
-    // without a linked contact — checkout collects the customer inline.
-    // Mint failures are surfaced, not swallowed: silent 'Browse only'
-    // fallbacks hid a broken validator for weeks.
+  async function mintOrderLinkUrl(cards: Selected[]): Promise<string | null> {
+    // Shared catalogues mint a short `/o/<slug>` order link: one mini-shop
+    // page with the curated picks where the CUSTOMER chooses items +
+    // quantities and pays. Services are orderable too (they become booking
+    // requests). Works without a linked contact — checkout collects the
+    // customer inline. Mint failures are surfaced, not swallowed: silent
+    // 'Browse only' fallbacks hid a broken validator for weeks.
     if (cards.length === 0) return null;
-    const r = await smartcommApi.createOrderCapture({
+    const r = await smartcommApi.createOrderLink({
       contact_id: contactId ?? undefined,
       channel_id: channel.channel_id,
-      mode: "shop",
       items: cards.map((c) => ({
         kind: c.kind as "base" | "styled" | "bundle" | "service",
         product_id: c.kind === "base" ? c.id : undefined,
@@ -242,7 +241,7 @@ export function CataloguePickerModal({
     setBusy(true);
     setError(null);
     try {
-      const capture_url = await mintCaptureUrl(selected);
+      const capture_url = await mintOrderLinkUrl(selected);
       const cards: ProductCard[] = selected.map((s) => ({
         kind: s.kind,
         id: s.id,

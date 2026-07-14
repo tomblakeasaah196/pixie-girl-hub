@@ -37,7 +37,7 @@ export function ChatDock() {
 
   useEffect(() => {
     if (!open) return;
-    // Any open portalled dialog (Order Capture, Share Catalogue, Forward,
+    // Any open portalled dialog (Share Catalogue, Forward,
     // Template picker, …) parks itself under document.body — NOT inside the
     // dock's DOM. Without this check, the first click inside such a modal
     // read as "outside the dock", closed the dock, and unmounted the modal

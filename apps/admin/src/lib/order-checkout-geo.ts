@@ -1,6 +1,6 @@
 /**
- * Geo options + delivery-quote helpers for the public Order Capture
- * consumer page (apps/admin/src/pages/order-capture/OrderCapturePublic).
+ * Geo options + delivery-quote helpers for the public order checkout
+ * page (apps/admin/src/pages/order/OrderCheckoutPublic).
  *
  * Mirrors apps/landing/lib/geo.ts (the full storefront checkout's geo
  * picker) against the SAME public endpoints

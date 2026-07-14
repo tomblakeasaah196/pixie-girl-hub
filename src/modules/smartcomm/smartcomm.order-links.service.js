@@ -1,5 +1,6 @@
 /**
- * Order-link lifecycle + customer-activity glue.
+ * Order-link lifecycle: mint (staff share a catalogue), public checkout
+ * context (customer opens `/o/<slug>`), and customer-activity glue.
  *
  * Owner decision (2026-07-10, visibility level "c"): staff see what the
  * customer does with an order link — opened (once), selection changes
@@ -7,24 +8,299 @@
  * live), and the placed order — as system lines in the originating
  * thread, fanned out over the existing smartcomm realtime bridge.
  *
- * Public callers (the /order/capture page) are token-authenticated: the
- * signed JWT carries the link_id, so a forged id never reaches these
- * functions. Everything here is best-effort from the customer's point
- * of view — a failed system message must never break their checkout.
+ * The link is a persisted row keyed by a short, unguessable `public_slug`
+ * (the `/o/<slug>` URL). The slug IS the authorisation boundary — a
+ * forged/expired slug simply doesn't resolve to a row. The full cart
+ * lives in the row (never in the URL), which is what let us shrink the
+ * ~1.4 KB signed-JWT link down to ~40 chars for Instagram DMs.
+ *
+ * Everything activity-related is best-effort from the customer's point of
+ * view — a failed system message must never break their checkout.
  */
 
 "use strict";
 
 const repo = require("./smartcomm.order-links.repo");
+const resolvers = require("./smartcomm.order-links.resolvers");
 const smartcommRepo = require("./smartcomm.repo");
 const events = require("./smartcomm.events");
+const brandUrls = require("../../utils/brand-urls");
+const currencyService = require("../../services/currency.service");
+const { audit } = require("../../middleware/audit");
 const { query } = require("../../config/database");
 const { logger } = require("../../config/logger");
 const { formatDateTime } = require("../../utils/dates");
+const { AppError } = require("../../utils/errors");
+
+// Owner decision (2026-07): order links live 7 days by default and die
+// after a successful order (enforced via shared.smartcomm_order_links).
+const DEFAULT_EXPIRY_SECONDS = 7 * 24 * 3600;
 
 function ngn(v) {
   const n = Number(v || 0);
   return `₦${n.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+// ── Item normalisation (shared by the minter) ──────────────
+// Items may reference a base product, a styled product, a bundle, or a
+// service; `kind` picks the field (inferred from whichever id is present
+// when omitted). Styled products additionally carry the staff-picked
+// head-size × lace × colour so the order is priced + fulfilled for that
+// exact combination.
+function itemKind(it) {
+  return (
+    it.kind ||
+    (it.styled_id
+      ? "styled"
+      : it.bundle_id
+        ? "bundle"
+        : it.service_id
+          ? "service"
+          : "base")
+  );
+}
+function itemId(it) {
+  return it.product_id || it.styled_id || it.bundle_id || it.service_id || it.id;
+}
+function normaliseItems(items) {
+  return items.map((it) => {
+    const kind = itemKind(it);
+    const id = itemId(it);
+    return {
+      kind,
+      product_id: kind === "base" ? id : undefined,
+      styled_id: kind === "styled" ? id : undefined,
+      bundle_id: kind === "bundle" ? id : undefined,
+      service_id: kind === "service" ? id : undefined,
+      qty: Number(it.qty),
+      price_ngn:
+        it.price_ngn !== undefined && it.price_ngn !== null
+          ? String(it.price_ngn)
+          : undefined,
+      note: it.note || undefined,
+      styled_variant_id: kind === "styled" ? it.styled_variant_id : undefined,
+      size_code: kind === "styled" ? it.size_code : undefined,
+      lace_code: kind === "styled" ? it.lace_code : undefined,
+      colour_id: kind === "styled" ? it.colour_id : undefined,
+      spec: kind === "styled" ? it.spec : undefined,
+    };
+  });
+}
+
+/**
+ * Mint a shared-catalogue order link. Staff pick products in the composer's
+ * catalogue picker; we persist the cart as a row, mint a short slug, and
+ * return the `/o/<slug>` URL (on the brand's own domain) to drop into the
+ * chat. The cart lives in the row — the URL only carries the slug.
+ *
+ * @param {object} args
+ * @param {string} args.brand
+ * @param {object} args.user
+ * @param {string} args.request_id
+ * @param {object} args.input   { contact_id?, channel_id?, items[], sales_channel?, notes?, expires_in? }
+ */
+async function createLink({ brand, user, request_id, input }) {
+  const items = input && Array.isArray(input.items) ? input.items : [];
+  if (items.length === 0) {
+    throw new AppError("ITEMS_REQUIRED", "At least one item required", 422);
+  }
+  for (const it of items) {
+    if (!itemId(it)) {
+      throw new AppError(
+        "ITEM_INVALID",
+        "Every item needs a product_id, styled_id, bundle_id, or service_id",
+        422,
+      );
+    }
+    if (!it.qty || it.qty <= 0) {
+      throw new AppError("ITEM_INVALID", "Every item needs a positive qty", 422);
+    }
+  }
+
+  const normalisedItems = normaliseItems(items);
+  const expiresIn = Number(input.expires_in) || DEFAULT_EXPIRY_SECONDS;
+  const expires_at = new Date(Date.now() + expiresIn * 1000).toISOString();
+
+  // Resolve every item to its sellable variant NOW — the same resolution the
+  // customer's checkout runs — so staff are warned at share time about an item
+  // that can't be sold (deactivated product, non-live styled product, broken
+  // bundle) instead of the customer discovering it at checkout.
+  const resolved = await resolvers.resolveItems(brand, normalisedItems);
+  const warnings = resolved
+    .filter((r) => r.kind !== "service" && r.lines.length === 0)
+    .map((r) => ({
+      kind: r.kind,
+      ref_id: r.ref_id,
+      name: r.name,
+      reason: r.unresolved_reason || "Can't be sold automatically",
+    }));
+
+  const linkRow = await repo.createOrderLink({
+    link: {
+      business: brand,
+      channel_id: input.channel_id || null,
+      contact_id: input.contact_id || null,
+      created_by: user.user_id,
+      mode: "shop",
+      sales_channel: input.sales_channel || "whatsapp",
+      items: normalisedItems,
+      notes: input.notes || null,
+      expires_at,
+    },
+  });
+
+  const url = await brandUrls.orderLinkUrl(brand, linkRow.public_slug);
+
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "smartcomm.order_link.create",
+    target_type: "order_link",
+    target_id: linkRow.link_id,
+    after: {
+      items_count: items.length,
+      contact_id: input.contact_id || null,
+      sales_channel: input.sales_channel || "whatsapp",
+      expires_at,
+    },
+    request_id,
+  });
+
+  return {
+    url,
+    slug: linkRow.public_slug,
+    link_id: linkRow.link_id,
+    expires_at,
+    warnings,
+  };
+}
+
+/**
+ * Public checkout context for a slug — everything the `/o/<slug>` page
+ * renders: brand, resolved items, contact + delivery-address pre-fill, the
+ * catalogue USD rate (so the page can show a $ equivalent), and expiry.
+ * Records the open (single "customer opened your link" thread line) and
+ * short-circuits ordered/revoked/expired links.
+ */
+async function getPublicContext(slug) {
+  const link = await repo.getBySlug({ slug });
+  if (!link) {
+    throw new AppError("LINK_INVALID", "This order link isn't valid.", 404);
+  }
+  if (link.status === "ordered") {
+    return {
+      status: "ordered",
+      brand: link.business,
+      order_number: link.order_number || null,
+      ordered_at: link.ordered_at || null,
+    };
+  }
+  if (link.status === "revoked") {
+    throw new AppError(
+      "LINK_REVOKED",
+      "This order link was cancelled. Ask the team for a fresh one.",
+      410,
+    );
+  }
+  const timedOut =
+    link.expires_at && new Date(link.expires_at).getTime() < Date.now();
+  if (link.status === "expired" || timedOut) {
+    throw new AppError(
+      "LINK_EXPIRED",
+      "This order link has expired. Ask the team for a fresh one.",
+      410,
+    );
+  }
+
+  // First open drops a thread line; refreshes only bump the counter.
+  await recordOpen({ link_id: link.link_id }).catch(() => null);
+
+  const ctx = await buildPrefillContext(link);
+  return ctx;
+}
+
+/** Hydrate a link row into the public checkout payload. */
+async function buildPrefillContext(link) {
+  // Contact is optional: no-contact links collect the customer inline
+  // (mirroring the Online QR welcome form) and back-fill on submit.
+  let contact = null;
+  if (link.contact_id) {
+    const { rows } = await query(
+      `SELECT contact_id, display_name, first_name, last_name,
+              primary_phone, whatsapp_number, email
+         FROM shared.contacts WHERE contact_id = $1 AND is_deleted = false`,
+      [link.contact_id],
+    );
+    contact = rows[0] || null;
+  }
+
+  const { rows: addresses } = contact
+    ? await query(
+        `SELECT line1, line2, area, city, state, country, country_code,
+                postal_code, landmark, recipient_name, recipient_phone,
+                latitude, longitude
+           FROM shared.contact_addresses
+          WHERE contact_id = $1 AND address_type = 'delivery'
+          ORDER BY is_default DESC, updated_at DESC
+          LIMIT 1`,
+        [contact.contact_id],
+      )
+    : { rows: [] };
+
+  const items = Array.isArray(link.items)
+    ? await resolvers.resolveItems(link.business, link.items)
+    : [];
+
+  // Catalogue USD rate (NGN per $1) so the page can show "≈ $X". This is
+  // the same rate the storefront settles at — set in Catalogue → Config
+  // ("Apply USD exchange rate"). Null when never configured (page then
+  // shows Naira only).
+  let fx_rate_ngn_per_usd = null;
+  try {
+    fx_rate_ngn_per_usd = await currencyService.systemFxRate({
+      brand: link.business,
+      currency: "USD",
+    });
+  } catch {
+    fx_rate_ngn_per_usd = null;
+  }
+
+  return {
+    status: "active",
+    brand: link.business,
+    slug: link.public_slug,
+    link_id: link.link_id,
+    sales_channel: link.sales_channel,
+    expires_at: link.expires_at
+      ? new Date(link.expires_at).toISOString()
+      : null,
+    fx_rate_ngn_per_usd,
+    contact: contact
+      ? {
+          contact_id: contact.contact_id,
+          first_name:
+            contact.first_name ||
+            (contact.display_name || "").split(" ")[0] ||
+            null,
+          last_name: contact.last_name || null,
+          display_name: contact.display_name,
+          primary_phone: contact.primary_phone,
+          whatsapp_number: contact.whatsapp_number,
+          email: contact.email,
+        }
+      : null,
+    require_contact_form: !contact,
+    delivery_address: addresses[0] || null,
+    items,
+    notes: link.notes || null,
+  };
+}
+
+/** Live-cart activity from the public page, resolved by slug. Best-effort. */
+async function recordCartBySlug({ slug, cart }) {
+  const link = await repo.getBySlug({ slug });
+  if (!link) return null;
+  return recordCart({ link_id: link.link_id, cart });
 }
 
 async function postSystemLine({ business, channel_id, content, client }) {
@@ -187,4 +463,12 @@ async function listForChannel({ channel_id, limit }) {
   return repo.listForChannel({ channel_id, limit });
 }
 
-module.exports = { recordOpen, recordCart, completeOrder, listForChannel };
+module.exports = {
+  createLink,
+  getPublicContext,
+  recordCartBySlug,
+  recordOpen,
+  recordCart,
+  completeOrder,
+  listForChannel,
+};

@@ -1,8 +1,8 @@
 /**
- * Order-capture item resolvers — shared by the public verifier route
- * (customer opening the link) AND the authenticated minter (staff
- * generating it). One implementation so what the staff modal warns
- * about is exactly what the customer's checkout will refuse to sell.
+ * Order-link item resolvers — shared by the public checkout route
+ * (customer opening the `/o/<slug>` link) AND the authenticated minter
+ * (staff sharing a catalogue). One implementation so what the staff
+ * picker warns about is exactly what the customer's checkout will sell.
  *
  * Every resolver returns the same shape:
  *   { kind, ref_id, name, product_code, image_url, qty, price_ngn,
@@ -252,9 +252,9 @@ async function resolveServiceItem(business, it) {
 }
 
 /**
- * Resolve a normalised item list (the shape createCaptureLink signs into
- * the JWT) for a brand. Any single item failing never takes the batch
- * down — it surfaces as `lines: []` + `unresolved_reason`.
+ * Resolve a normalised item list (the shape persisted on the order-link
+ * row) for a brand. Any single item failing never takes the batch down —
+ * it surfaces as `lines: []` + `unresolved_reason`.
  */
 async function resolveItems(business, items) {
   const schema = `"${business}"`;

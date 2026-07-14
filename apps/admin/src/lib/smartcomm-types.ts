@@ -183,8 +183,8 @@ export interface Message {
 }
 
 /** A card inside a product_share carousel. `kind` matches the catalogue
- * picker domain (base/styled/bundle/service). `capture_url` is the
- * tap-to-order JWT link for product kinds; service cards skip it. */
+ * picker domain (base/styled/bundle/service). `capture_url` is the shared
+ * `/o/<slug>` order-link URL (same link for every card in the share). */
 export interface ProductCard {
   kind: "base" | "styled" | "bundle" | "service";
   id: string;

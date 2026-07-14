@@ -1,12 +1,159 @@
 import { useEffect, useMemo, useState } from "react";
-import { CreditCard, Plus, X, Save, Loader2 } from "lucide-react";
+import { Link } from "react-router-dom";
+import {
+  CreditCard,
+  Plus,
+  X,
+  Save,
+  Loader2,
+  Plug,
+  CheckCircle2,
+  KeyRound,
+} from "lucide-react";
 import { Button, Card } from "@/components/ui/primitives";
 import { Field, TextInput } from "@/components/ui/Form";
 import { Toggle } from "@/components/ui/controls";
 import { toast } from "@/stores/toast";
 import { useAuthStore } from "@/stores/auth";
+import {
+  usePaymentGateways,
+  useSetGatewayActive,
+  type PaymentGateway,
+} from "@/lib/settings";
 import { usePaymentSettings, useSavePaymentSettings } from "./hooks";
 import type { FlexiPaySettings, FlexiPaySettingsPatch } from "./types";
+
+const GATEWAY_PROVIDERS: PaymentGateway["provider"][] = [
+  "nomba",
+  "paystack",
+  "opay",
+  "stripe",
+];
+const GATEWAY_LABEL: Record<PaymentGateway["provider"], string> = {
+  nomba: "Nomba",
+  paystack: "Paystack",
+  opay: "OPay",
+  stripe: "Stripe",
+};
+
+/**
+ * Payment gateways card — turn a provider on/off for this business right from
+ * the Sales → Payments tab. Toggling active is one click (no save button); a
+ * checkout picks the active provider (Nomba first for NGN). Providers need
+ * credentials before they can go live — the "Configure" link opens the full
+ * Settings → Payment Gateways screen where secrets are entered.
+ */
+function GatewaysCard() {
+  const can = useAuthStore((s) => s.can);
+  const canEdit = can("sales", "approve");
+  const query = usePaymentGateways();
+  const setActive = useSetGatewayActive();
+
+  const byProvider = new Map(
+    (query.data ?? []).map((g) => [g.provider, g]),
+  );
+
+  return (
+    <Card className="p-5 space-y-4">
+      <div className="flex items-center gap-2">
+        <Plug className="w-4 h-4 text-accent-glow" />
+        <h2 className="font-display text-lg">Payment gateways</h2>
+      </div>
+      <p className="text-[13px] text-text-muted">
+        Choose which providers can take payment for this business. Turning a
+        gateway on makes it available at checkout (order links, the storefront,
+        pay links). Nomba is live today; switch others on once their
+        credentials are configured.
+      </p>
+
+      {query.isLoading ? (
+        <div className="flex items-center gap-2 text-text-muted text-[13px] py-2">
+          <Loader2 className="w-4 h-4 animate-spin" /> Loading gateways…
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          {GATEWAY_PROVIDERS.map((provider) => {
+            const row = byProvider.get(provider);
+            const hasCreds = row?.has_credentials ?? false;
+            const configured = !!row;
+            // A gateway can only be switched on once it has credentials.
+            const canActivate = canEdit && hasCreds;
+            return (
+              <div
+                key={provider}
+                className="flex items-center justify-between gap-3 rounded-[11px] border border-line px-3.5 py-3"
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[13.5px] font-semibold">
+                      {GATEWAY_LABEL[provider]}
+                    </span>
+                    {hasCreds ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-success">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Ready
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-text-faint">
+                        Needs credentials
+                      </span>
+                    )}
+                  </div>
+                  {configured && row?.supported_currencies?.length ? (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {row.supported_currencies.map((c) => (
+                        <span
+                          key={c}
+                          className="px-1.5 py-0.5 rounded-[6px] text-[10px] font-mono border border-line text-text-muted"
+                        >
+                          {c}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  {hasCreds ? (
+                    <Toggle
+                      checked={row!.is_active}
+                      disabled={!canActivate || setActive.isPending}
+                      ariaLabel={`${GATEWAY_LABEL[provider]} active`}
+                      onChange={(v) =>
+                        setActive.mutate({ provider, is_active: v })
+                      }
+                    />
+                  ) : (
+                    <Link
+                      to="/settings/payment-gateways"
+                      className="inline-flex items-center gap-1.5 text-[12.5px] text-accent-glow hover:underline"
+                    >
+                      <KeyRound className="w-3.5 h-3.5" /> Configure
+                    </Link>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="flex items-center justify-between pt-1">
+        {setActive.isError ? (
+          <span className="text-[12px] text-danger">
+            Couldn't update the gateway. Try again.
+          </span>
+        ) : (
+          <span />
+        )}
+        <Link
+          to="/settings/payment-gateways"
+          className="text-[12px] text-text-muted hover:text-text-primary"
+        >
+          Manage credentials & fees →
+        </Link>
+      </div>
+    </Card>
+  );
+}
 
 // Channels the buyer can start an instalment on, in display order. Keep in sync
 // with payment-settings.service DEFAULTS.channels on the Hub.
@@ -120,6 +267,8 @@ export function PaymentSettingsView() {
 
   return (
     <div className="space-y-4 max-w-3xl">
+      <GatewaysCard />
+
       <Card className="p-5 space-y-4">
         <div className="flex items-center gap-2">
           <CreditCard className="w-4 h-4 text-accent-glow" />

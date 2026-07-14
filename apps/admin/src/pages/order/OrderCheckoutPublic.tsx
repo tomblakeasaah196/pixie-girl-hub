@@ -16,25 +16,25 @@ import {
   fetchDeliveryQuote,
   GEO_FALLBACK,
   type GeoOptions,
-} from "@/lib/order-capture-geo";
+} from "@/lib/order-checkout-geo";
 import { PublicBrandShell } from "@/components/public/PublicBrandShell";
 import { cn } from "@/lib/cn";
 
 /**
- * Public Order Capture consumer (`/order/capture/:token`).
+ * Public order checkout (`/o/:slug`).
  *
- * The customer lands here from a link a staffer generated inside a
- * Smartcomm chat. We verify the signed JWT via the public verifier
- * endpoint, hydrate the item list + their delivery address from
- * `contact_addresses`, let them confirm / edit the address (with the
- * same country → state → LGA delivery-fee gating as the main storefront
- * checkout), then post to the public order-form endpoint to create a
- * real order. The server re-quotes the delivery fee itself from the
- * chosen zone — it never trusts a client-side number.
+ * The customer lands here from a short link a staffer shared inside a
+ * Smartcomm chat. We resolve the slug via the public order-link endpoint,
+ * hydrate the item list + their delivery address from `contact_addresses`,
+ * let them pick items + confirm / edit the address (with the same country →
+ * state → LGA delivery-fee gating as the main storefront checkout), then
+ * post to the public order-form endpoint to create a real order and
+ * redirect them straight to the payment gateway (Nomba). The server
+ * re-quotes the delivery fee + prices the order itself — it never trusts a
+ * client-side number.
  *
- * The customer never has to retype their address — it's pre-filled
- * from the Online QR form they completed earlier (or the contact
- * record we already had).
+ * The customer never has to retype their address — it's pre-filled from the
+ * Online QR form they completed earlier (or the contact we already had).
  */
 
 interface PrefillLine {
@@ -80,9 +80,12 @@ interface PrefillAddress {
 interface PrefillContext {
   status?: "active" | "ordered";
   brand: string;
-  mode?: "capture" | "shop";
+  slug?: string;
   sales_channel: string | null;
   expires_at: string;
+  // NGN per $1 from the brand's Catalogue → Config USD rate, so the page can
+  // show a "≈ $X" equivalent next to the Naira total. Null when unset.
+  fx_rate_ngn_per_usd?: number | null;
   // Null on no-contact links: the page shows the inline "your details"
   // block (welcome-form mirror) and the contact is created at submit.
   contact: {
@@ -103,13 +106,26 @@ interface PrefillContext {
   ordered_at?: string | null;
 }
 
+interface OrderFormResult {
+  order_id: string | null;
+  order_number: string | null;
+  total_ngn: string | null;
+  payment_plan: "full" | "instalment" | null;
+  // Amount to charge now (server-computed): the plan deposit for instalment,
+  // else the full balance. Null for service-only checkouts.
+  pay_now_ngn: string | null;
+  public_tracking_token: string | null;
+  contact_id: string;
+  booking_count: number;
+}
+
 type Stage = "loading" | "form" | "submitting" | "done" | "used" | "error";
 type Fulfilment = "delivery" | "pickup";
 
 const norm = (s: string) => s.trim().toLowerCase();
 
-export function OrderCapturePublic() {
-  const { token = "" } = useParams<{ token: string }>();
+export function OrderCheckoutPublic() {
+  const { slug = "" } = useParams<{ slug: string }>();
   const [stage, setStage] = useState<Stage>("loading");
   const [ctx, setCtx] = useState<PrefillContext | null>(null);
   const [errMsg, setErrMsg] = useState<string | null>(null);
@@ -144,8 +160,8 @@ export function OrderCapturePublic() {
     whatsapp: "",
     instagram: "",
   });
-  // Per-item state keyed by item index: included? + qty (shop mode lets
-  // the customer choose; capture mode starts with everything included).
+  // Per-item state keyed by item index: included? + qty (the customer
+  // includes/excludes and re-quantities the curated picks).
   const [picks, setPicks] = useState<Record<number, { on: boolean; qty: number }>>({});
   const [svcTimes, setSvcTimes] = useState<Record<number, string>>({});
 
@@ -162,9 +178,8 @@ export function OrderCapturePublic() {
     let cancelled = false;
     (async () => {
       try {
-        const data = await api.post<PrefillContext>(
-          "/order-capture/verify",
-          { token },
+        const data = await api.get<PrefillContext>(
+          `/order-link/${encodeURIComponent(slug)}`,
           "public",
         );
         if (cancelled) return;
@@ -173,8 +188,8 @@ export function OrderCapturePublic() {
           setStage("used");
           return;
         }
-        // Everything starts selected (capture links are staff-set carts;
-        // shop links let the customer prune + adjust below).
+        // Everything starts selected; the customer can prune + re-quantity
+        // the curated picks below.
         setPicks(
           Object.fromEntries(
             (data.items ?? []).map((it, idx) => [idx, { on: true, qty: it.qty || 1 }]),
@@ -244,11 +259,12 @@ export function OrderCapturePublic() {
     return () => {
       cancelled = true;
     };
-  }, [token]);
+  }, [slug]);
 
-  const isShop = ctx?.mode === "shop";
-  // The customer's live pick: item + chosen qty (shop mode lets them
-  // include/exclude and re-quantity; capture mode keeps staff's qty).
+  // The curated mini-shop always lets the customer include/exclude and
+  // re-quantity the picks the team shared.
+  const isShop = true;
+  // The customer's live pick: item + chosen qty.
   const picked = useMemo(
     () =>
       (ctx?.items ?? [])
@@ -302,9 +318,8 @@ export function OrderCapturePublic() {
     const t = setTimeout(() => {
       api
         .post(
-          "/order-capture/activity",
+          `/order-link/${encodeURIComponent(slug)}/activity`,
           {
-            token,
             cart: picked.map((c) => ({
               kind: c.kind,
               ref_id: c.ref_id,
@@ -318,10 +333,10 @@ export function OrderCapturePublic() {
         .catch(() => {});
     }, 1500);
     return () => clearTimeout(t);
-  }, [ctx, stage, picked, token]);
+  }, [ctx, stage, picked, slug]);
   // The public order-form accepts a single bundle_id per order (matches
   // every other bundle-purchase path today) — if the staffer somehow put
-  // two different bundles in one capture link, only the first carries
+  // two different bundles in one order link, only the first carries
   // the bundle attribution; both still fully expand into real lines.
   const bundleId = useMemo(
     () => resolvedItems.find((i) => i.kind === "bundle")?.bundle_id,
@@ -374,6 +389,20 @@ export function OrderCapturePublic() {
   const deliveryDue =
     fulfilment === "delivery" && deliveryFee != null ? deliveryFee : 0;
 
+  // Order totals shown to the customer before they pay. Prices are the
+  // staff-picked snapshots the server also charges, so this preview matches
+  // the gateway amount. Unsupported items are excluded (they never join the
+  // order). The USD figure uses the brand's Catalogue → Config exchange rate.
+  const itemsSubtotal = useMemo(() => {
+    const sum = (arr: typeof resolvedItems | typeof serviceItems) =>
+      arr.reduce((s, i) => s + (Number(i.price_ngn) || 0) * i.qty, 0);
+    return sum(resolvedItems) + sum(serviceItems);
+  }, [resolvedItems, serviceItems]);
+  const orderTotal = itemsSubtotal + deliveryDue;
+  const usdRate = ctx?.fx_rate_ngn_per_usd ?? null;
+  const orderTotalUsd =
+    usdRate && usdRate > 0 ? orderTotal / usdRate : null;
+
   const needsWho = !!ctx?.require_contact_form;
   const canSubmit =
     !!phone &&
@@ -415,7 +444,7 @@ export function OrderCapturePublic() {
     setStage("submitting");
     try {
       const wantsDelivery = !serviceOnly && fulfilment === "delivery";
-      await api.post(
+      const result = await api.post<OrderFormResult>(
         "/order-form",
         {
           first_name:
@@ -439,8 +468,9 @@ export function OrderCapturePublic() {
                 landmark: address.landmark || undefined,
               }
             : undefined,
-          // Marks the link used + posts order/booking events in the thread.
-          capture_token: token || undefined,
+          // Marks the link used, applies staff-picked prices, and posts
+          // order/booking events in the thread.
+          order_link_slug: slug || undefined,
           service_bookings: serviceItems.length
             ? serviceItems.map((s) => ({
                 service_id: s.service_id as string,
@@ -480,10 +510,38 @@ export function OrderCapturePublic() {
             flexi?.instalments_enabled && paymentPlan === "instalment"
               ? "instalment"
               : "full",
-          client_idempotency_key: `capture:${token.slice(-24)}`,
+          client_idempotency_key: `order:${slug}`,
         },
         "public",
       );
+
+      // Straight to the payment gateway. A product order carries a
+      // public_tracking_token — mint a checkout on the brand's active gateway
+      // (Nomba) and redirect the buyer to pay. Pay-in-full charges the whole
+      // balance (amount omitted → server uses the outstanding total);
+      // instalment charges the plan deposit the server computed (pay_now_ngn).
+      // If no gateway is configured / init fails, fall back to the "we'll send
+      // you a link" confirmation rather than dead-ending the buyer.
+      const payToken = result?.public_tracking_token;
+      if (result?.order_id && payToken) {
+        try {
+          const amountBody =
+            result.payment_plan === "instalment" && result.pay_now_ngn
+              ? { amount_ngn: Number(result.pay_now_ngn) }
+              : {};
+          const pay = await api.post<{ checkout_url?: string }>(
+            `/pay/${encodeURIComponent(payToken)}`,
+            amountBody,
+            "public",
+          );
+          if (pay?.checkout_url) {
+            window.location.href = pay.checkout_url;
+            return; // navigating away — stay on "submitting" until unload
+          }
+        } catch {
+          // No active gateway / init failed — show the confirmation screen.
+        }
+      }
       setStage("done");
     } catch (e: unknown) {
       setErrMsg(
@@ -561,10 +619,9 @@ export function OrderCapturePublic() {
   return (
     <Shell brand={ctx.brand}>
       <p className="text-[13px] text-text-muted leading-relaxed mb-5">
-        Hi {ctx.contact?.first_name || who.first_name || "there"} —{" "}
-        {isShop
-          ? "here's a selection we picked for you. Choose what you'd like and place your order."
-          : "your selection is below. Confirm your details and place the order."}
+        Hi {ctx.contact?.first_name || who.first_name || "there"} — here's a
+        selection we picked for you. Choose what you'd like and place your
+        order.
       </p>
 
       {/* Items */}
@@ -572,7 +629,7 @@ export function OrderCapturePublic() {
         <div className="flex items-center gap-2 mb-2.5">
           <ShoppingBag className="w-4 h-4 text-accent-glow" />
           <span className="text-[12px] uppercase tracking-widest text-text-faint font-semibold">
-            {isShop ? "Pick your items" : `Your selection (${ctx.items.length})`}
+            Pick your items
           </span>
         </div>
         <div className="space-y-2">
@@ -968,12 +1025,41 @@ export function OrderCapturePublic() {
           </p>
         )}
 
-        {fulfilment === "delivery" && deliveryDue > 0 && (
-          <div className="flex items-center justify-between text-[13px] px-1">
-            <span className="text-text-muted">Delivery fee</span>
-            <span className="font-mono font-semibold">
-              ₦{deliveryDue.toLocaleString()}
-            </span>
+        {/* Order summary — what they'll be charged, before the gateway */}
+        {(hasProducts || serviceItems.length > 0) && (
+          <div className="rounded-2xl bg-bg/50 border hairline p-3.5 space-y-2">
+            <div className="flex items-center justify-between text-[12.5px]">
+              <span className="text-text-muted">Subtotal</span>
+              <span className="font-mono tabular-nums">
+                ₦{itemsSubtotal.toLocaleString()}
+              </span>
+            </div>
+            {!serviceOnly && fulfilment === "delivery" && (
+              <div className="flex items-center justify-between text-[12.5px]">
+                <span className="text-text-muted">Delivery</span>
+                <span className="font-mono tabular-nums">
+                  {deliveryDue > 0 ? `₦${deliveryDue.toLocaleString()}` : "—"}
+                </span>
+              </div>
+            )}
+            <div className="h-px bg-text-primary/10 my-1" />
+            <div className="flex items-end justify-between">
+              <span className="text-[13px] font-semibold">Total</span>
+              <div className="text-right">
+                <div className="font-mono font-semibold tabular-nums text-[17px] leading-none">
+                  ₦{orderTotal.toLocaleString()}
+                </div>
+                {orderTotalUsd != null && (
+                  <div className="text-[11px] text-text-faint mt-1 font-mono tabular-nums">
+                    ≈ $
+                    {orderTotalUsd.toLocaleString(undefined, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
@@ -984,8 +1070,10 @@ export function OrderCapturePublic() {
         >
           {stage === "submitting" ? (
             <Loader2 className="w-4 h-4 animate-spin" />
+          ) : serviceOnly ? (
+            "Place booking request"
           ) : (
-            "Place order"
+            `Place order & pay ₦${orderTotal.toLocaleString()}`
           )}
         </button>
 

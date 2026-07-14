@@ -66,12 +66,12 @@ router.put(
   c.updateComposerSettings,
 );
 
-// ── Order capture (signed pre-fill link sent into a chat) ──
+// ── Order link (short shared-catalogue checkout link into a chat) ──
 router.post(
-  "/order-capture",
+  "/order-link",
   can("edit"),
-  v.validateOrderCaptureCreate,
-  c.createOrderCapture,
+  v.validateOrderLinkCreate,
+  c.createOrderLink,
 );
 // A channel's order links + live customer activity (sidebar panel).
 router.get("/channels/:id/order-links", can("view"), c.listOrderLinks);

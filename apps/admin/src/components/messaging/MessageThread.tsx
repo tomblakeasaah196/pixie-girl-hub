@@ -27,7 +27,6 @@ import {
   Loader2,
   AlertTriangle,
   Sparkles,
-  ShoppingCart,
   Mic,
   Search,
   Users,
@@ -66,7 +65,6 @@ import { MessageBubble } from "./MessageBubble";
 import { WhatsAppWindowBadge } from "./WhatsAppWindowBadge";
 import { PlatformPill } from "./PlatformPill";
 import { CostInfoModal } from "./CostInfoModal";
-import { OrderCaptureModal } from "./OrderCaptureModal";
 import { ForwardModal } from "./ForwardModal";
 import { GroupInfoModal } from "./GroupInfoModal";
 import { ThreadSearch } from "./ThreadSearch";
@@ -99,7 +97,6 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [editing, setEditing] = useState<Message | null>(null);
   const [costOpen, setCostOpen] = useState(false);
-  const [orderCaptureOpen, setOrderCaptureOpen] = useState(false);
   const [catalogueOpen, setCatalogueOpen] = useState(false);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [sendingTemplate, setSendingTemplate] = useState(false);
@@ -604,15 +601,6 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
     } finally {
       setBusy(null);
     }
-  }
-
-  async function sendOrderCaptureLink(url: string) {
-    const body = `Here's your order link — just confirm your address and pay 🛍️\n\n${url}`;
-    await smartcommApi.postMessage(channelId, {
-      content: body,
-      message_type: "text",
-    });
-    invalidate();
   }
 
   async function handleReopen() {
@@ -1173,15 +1161,6 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
                   )}
                   {isCustomerThread && (
                     <button
-                      onClick={() => setOrderCaptureOpen(true)}
-                      className="p-1 text-text-faint hover:text-text-primary"
-                      title="Capture an order"
-                    >
-                      <ShoppingCart className="w-4 h-4" />
-                    </button>
-                  )}
-                  {isCustomerThread && (
-                    <button
                       onClick={() => setCatalogueOpen(true)}
                       className="p-1 text-text-faint hover:text-text-primary"
                       title="Share catalogue"
@@ -1292,14 +1271,6 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
           onLeft={onBack}
         />
       )}
-
-      {/* Order Capture modal */}
-      <OrderCaptureModal
-        open={orderCaptureOpen}
-        onClose={() => setOrderCaptureOpen(false)}
-        channel={channel}
-        onSentLink={sendOrderCaptureLink}
-      />
 
       {/* Catalogue carousel picker */}
       <CataloguePickerModal

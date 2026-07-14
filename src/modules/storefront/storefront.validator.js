@@ -66,8 +66,9 @@ const orderFormSchema = z
         landmark: z.string().max(240).optional(),
       })
       .optional(),
-    // Signed order-link token — marks the link used + posts thread events.
-    capture_token: z.string().max(4000).optional(),
+    // Short order-link slug (the `/o/<slug>` checkout) — marks the link used,
+    // applies the staff-picked styled prices, and posts thread events.
+    order_link_slug: z.string().max(64).optional(),
     utm_source: z.string().max(80).optional(),
     utm_medium: z.string().max(80).optional(),
     utm_campaign: z.string().max(120).optional(),

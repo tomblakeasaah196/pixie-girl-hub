@@ -16,10 +16,13 @@ const convert = require("heic-convert");
 const {
   compressImage,
   compressUpload,
+  compressUploadChecked,
   normalizeImageInput,
   isCompressibleImage,
   isHeic,
   filenameForMime,
+  MAX_RAW_UPLOAD_BYTES,
+  MAX_STORED_IMAGE_BYTES,
 } = require("../../../src/services/media-compression.service");
 
 // A real JPEG the mocked HEIC decoder "produces", so the sharp step downstream
@@ -172,6 +175,56 @@ describe("compressUpload", () => {
     });
     expect(out.converted).toBe(false);
     expect(out.filename).toBe("pic.jpg");
+  });
+});
+
+describe("compressUploadChecked", () => {
+  test("rejects a raw upload above the raw ceiling before attempting compression", async () => {
+    const huge = Buffer.alloc(MAX_RAW_UPLOAD_BYTES + 1);
+    await expect(
+      compressUploadChecked({
+        buffer: huge,
+        mimetype: "image/jpeg",
+        originalname: "huge.jpg",
+      }),
+    ).rejects.toMatchObject({ code: "IMAGE_TOO_LARGE" });
+  });
+
+  test("lets a 14MB-class phone photo through — compression shrinks it under the stored ceiling", async () => {
+    // Large noisy JPEG standing in for an uncompressed phone-camera shot:
+    // well over the old 10MB rule, comfortably under the new 20MB raw cap.
+    const big = await sharp({
+      create: {
+        width: 4000,
+        height: 3000,
+        channels: 3,
+        noise: { type: "gaussian", mean: 128, sigma: 40 },
+      },
+    })
+      .jpeg({ quality: 100 })
+      .toBuffer();
+    expect(big.length).toBeLessThan(MAX_RAW_UPLOAD_BYTES);
+
+    const out = await compressUploadChecked({
+      buffer: big,
+      mimetype: "image/jpeg",
+      originalname: "phone.jpg",
+    });
+    expect(out.compressed).toBe(true);
+    expect(out.buffer.length).toBeLessThan(MAX_STORED_IMAGE_BYTES);
+  });
+
+  test("rejects a non-compressible file that is still oversized after the (no-op) compression step", async () => {
+    // GIF isn't in the compressible raster set, so compressUpload passes it
+    // through untouched — the post-compression check is what catches it.
+    const big = Buffer.alloc(MAX_STORED_IMAGE_BYTES + 1);
+    await expect(
+      compressUploadChecked({
+        buffer: big,
+        mimetype: "image/gif",
+        originalname: "big.gif",
+      }),
+    ).rejects.toMatchObject({ code: "IMAGE_TOO_LARGE" });
   });
 });
 

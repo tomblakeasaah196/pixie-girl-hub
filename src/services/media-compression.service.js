@@ -32,6 +32,16 @@ const MAX_EDGE = 2400;
 // High enough that re-encode is visually lossless for product photography.
 const QUALITY = 85;
 
+// Raw upload ceiling, checked BEFORE compression — generous enough for an
+// uncompressed phone-camera JPEG (routinely 8-18MB straight off a modern
+// phone) to reach the compressor instead of being turned away untried.
+const MAX_RAW_UPLOAD_BYTES = 20 * 1024 * 1024;
+// Ceiling on what we're willing to store, checked AFTER compression. A
+// legitimate photo almost never lands here — resize + re-encode gets it
+// well under this — so hitting it means the file resists compression
+// (e.g. a huge PNG/GIF) rather than that it was simply "too big".
+const MAX_STORED_IMAGE_BYTES = 10 * 1024 * 1024;
+
 const RASTER = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 // HEIC/HEIF — accepted by mime, by extension (browsers often send an empty or
@@ -222,6 +232,39 @@ async function compressUpload(file) {
   };
 }
 
+function assertImageWithinLimit(buffer, maxBytes, userMessage) {
+  if (Buffer.isBuffer(buffer) && buffer.length > maxBytes) {
+    throw new AppError("IMAGE_TOO_LARGE", userMessage, 413, {
+      user_message: userMessage,
+    });
+  }
+}
+
+/**
+ * compressUpload(), but with size gates on both sides: the raw upload is
+ * rejected outright only if it's implausibly large (MAX_RAW_UPLOAD_BYTES),
+ * then the *compressed* result is what's actually held to the storage
+ * ceiling (MAX_STORED_IMAGE_BYTES). This lets a normal 14-18MB phone photo
+ * through to the compressor instead of bouncing it before it gets a chance
+ * to shrink.
+ *
+ * @returns {Promise<{buffer, mime_type, filename, compressed, converted}>}
+ */
+async function compressUploadChecked(file) {
+  assertImageWithinLimit(
+    file && file.buffer,
+    MAX_RAW_UPLOAD_BYTES,
+    `Images must be ${MAX_RAW_UPLOAD_BYTES / (1024 * 1024)} MB or smaller.`,
+  );
+  const shrunk = await compressUpload(file);
+  assertImageWithinLimit(
+    shrunk.buffer,
+    MAX_STORED_IMAGE_BYTES,
+    `That image is still over ${MAX_STORED_IMAGE_BYTES / (1024 * 1024)} MB after compression — try a smaller photo.`,
+  );
+  return shrunk;
+}
+
 /**
  * Normalise an upload so downstream sharp pipelines / raster allow-lists can
  * read it, WITHOUT the full resize+re-encode. HEIC is decoded to JPEG; other
@@ -246,10 +289,13 @@ async function normalizeImageInput(file) {
 module.exports = {
   compressImage,
   compressUpload,
+  compressUploadChecked,
   normalizeImageInput,
   isCompressibleImage,
   isHeic,
   filenameForMime,
   MAX_EDGE,
   QUALITY,
+  MAX_RAW_UPLOAD_BYTES,
+  MAX_STORED_IMAGE_BYTES,
 };

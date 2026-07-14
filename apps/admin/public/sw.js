@@ -5,8 +5,14 @@
 // Bump this version on any change that should evict the old shell cache.
 // The activate handler deletes every cache that isn't CACHE_NAME, so a new
 // version guarantees clients drop stale assets on next activation.
-const CACHE_NAME = "pixie-hub-shell-v3";
-const SHELL_ASSETS = ["/favicon.svg", "/pwa-icon.svg", "/pwa-icon-192.svg"];
+const CACHE_NAME = "pixie-hub-shell-v4";
+const OFFLINE_URL = "/offline.html";
+const SHELL_ASSETS = [
+  "/favicon.svg",
+  "/pwa-icon.svg",
+  "/pwa-icon-192.svg",
+  OFFLINE_URL,
+];
 
 self.addEventListener("install", (event) => {
   // NOTE: we deliberately do NOT call self.skipWaiting() here. A newly
@@ -50,12 +56,15 @@ self.addEventListener("fetch", (event) => {
   // Only handle same-origin requests
   if (url.origin !== self.location.origin) return;
 
-  // For navigation requests, always go to network (SPA handles routing)
+  // For navigation requests, always go to network first (SPA handles
+  // routing) — only fall back to the precached offline page once the
+  // network request itself has failed (offline, DNS failure, unreachable
+  // server). We don't retry the network here: an immediate re-fetch of the
+  // same failed request essentially never succeeds and just delays the
+  // friendly fallback from appearing.
   if (event.request.mode === "navigate") {
     event.respondWith(
-      fetch(event.request).catch(() =>
-        caches.match("/index.html").then((r) => r || fetch(event.request)),
-      ),
+      fetch(event.request).catch(() => caches.match(OFFLINE_URL)),
     );
     return;
   }

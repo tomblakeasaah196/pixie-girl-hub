@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>You're offline — Pixie Hub</title>
+    <!--
+      Standalone static page — deliberately outside the Vite/Tailwind build.
+      The service worker serves this from cache when a page navigation fails
+      offline, so it must render with zero network dependencies: no Google
+      Fonts request, no JS bundle, no reference to the design-token CSS. The
+      colors below are a hand-copied snapshot of the "Maroon Noir" tokens in
+      src/styles/index.css — if that palette changes, update both.
+    -->
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: #0f0809;
+        color: #f4e9d9;
+        font-family:
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+        text-align: center;
+      }
+      .card {
+        max-width: 380px;
+      }
+      .icon {
+        width: 56px;
+        height: 56px;
+        margin: 0 auto 20px;
+        display: grid;
+        place-items: center;
+        border-radius: 16px;
+        background: rgba(168, 29, 29, 0.15);
+        color: #d85c57;
+      }
+      h1 {
+        font-size: 19px;
+        font-weight: 600;
+        margin: 0 0 8px;
+      }
+      p {
+        font-size: 13.5px;
+        line-height: 1.55;
+        color: #b3a49b;
+        margin: 0 0 4px;
+      }
+      .tips {
+        text-align: left;
+        margin: 18px 0 0;
+        padding: 14px 16px;
+        border-radius: 12px;
+        background: rgba(244, 233, 217, 0.04);
+        border: 1px solid rgba(244, 233, 217, 0.08);
+        font-size: 12.5px;
+        color: #b3a49b;
+      }
+      .tips li {
+        margin: 4px 0;
+      }
+      button {
+        margin-top: 20px;
+        height: 40px;
+        padding: 0 20px;
+        border-radius: 10px;
+        border: none;
+        background: #690909;
+        color: #f4e9d9;
+        font-size: 13.5px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:active {
+        opacity: 0.85;
+      }
+      #status {
+        margin-top: 14px;
+        font-size: 12px;
+        color: #807065;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="icon" aria-hidden="true">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 2l20 20" />
+          <path d="M8.5 16.5a5 5 0 0 1 7 0" />
+          <path d="M5 12.5a10 10 0 0 1 5.5-3.5" />
+          <path d="M13.5 9a10 10 0 0 1 5.5 3.5" />
+          <path d="M1.5 8.5a15 15 0 0 1 4-2.7" />
+          <path d="M18.5 5.8a15 15 0 0 1 4 2.7" />
+          <circle cx="12" cy="20" r="1" fill="currentColor" stroke="none" />
+        </svg>
+      </div>
+      <h1 id="heading">You're offline</h1>
+      <p id="message">
+        Pixie Hub can't reach the internet right now. This isn't a problem with
+        your account or your data — it's just your connection.
+      </p>
+      <ul class="tips">
+        <li>Not connected? Turn on Wi-Fi or mobile data.</li>
+        <li>Connected but stuck? Try switching networks — e.g. Wi-Fi to
+          mobile data — or moving closer to your router.</li>
+        <li>We'll reconnect automatically once your connection is back.</li>
+      </ul>
+      <div>
+        <button id="retry" type="button">Try again</button>
+      </div>
+      <div id="status"></div>
+    </div>
+    <script>
+      // No bundler here — this file must boot with nothing but itself.
+      var statusEl = document.getElementById("status");
+      var headingEl = document.getElementById("heading");
+      var messageEl = document.getElementById("message");
+
+      function reload() {
+        location.reload();
+      }
+
+      document.getElementById("retry").addEventListener("click", reload);
+
+      // The moment the browser confirms a connection, reload straight into
+      // the app rather than making the user notice and click "Try again".
+      window.addEventListener("online", reload);
+
+      if (navigator.onLine) {
+        // Browser thinks it's online but we still landed here — the earlier
+        // request itself failed (slow/unstable link, DNS hiccup, server
+        // unreachable), not a flat-out disconnection.
+        headingEl.textContent = "Having trouble connecting";
+        messageEl.textContent =
+          "Pixie Hub can't load right now. Your connection looks slow or unstable — this isn't a problem with your account or your data.";
+        statusEl.textContent = "Checking your connection…";
+      } else {
+        statusEl.textContent = "Waiting for a connection…";
+      }
+    </script>
+  </body>
+</html>

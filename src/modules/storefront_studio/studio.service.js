@@ -16,7 +16,7 @@ const axios = require("axios");
 const { config } = require("../../config/env");
 const storage = require("../../services/storage.service");
 const {
-  normalizeImageInput,
+  compressUploadChecked,
 } = require("../../services/media-compression.service");
 const videoClip = require("../../services/video-clip.service");
 const fs = require("fs/promises");
@@ -305,14 +305,15 @@ function listSectionTemplates() {
 async function uploadImage({ brand, file }) {
   if (!file || !file.buffer || !file.buffer.length)
     throw new AppError("NO_FILE", "No image was uploaded", 400);
-  // iPhone HEIC → JPEG up front, so the image guard below accepts a phone
-  // photo (whose browser mime is often empty) and we never store an
-  // unrenderable .heic logo / OG banner. Non-HEIC images pass through.
-  const img = await normalizeImageInput(file);
-  if (!/^image\//.test(img.mimetype || ""))
+  // iPhone HEIC → JPEG, then resize + re-encode (media-compression.service.js)
+  // so the image guard below accepts a phone photo (whose browser mime is
+  // often empty) and a full-size photo shrinks instead of bloating the CDN.
+  // Size is gated on both sides of compression; see compressUploadChecked.
+  const img = await compressUploadChecked(file);
+  if (!/^image\//.test(img.mime_type || ""))
     throw new AppError("BAD_FILE_TYPE", "Only image files are allowed", 400);
   const ext =
-    String(img.originalname || "")
+    String(img.filename || "")
       .split(".")
       .pop()
       ?.toLowerCase()
@@ -321,7 +322,7 @@ async function uploadImage({ brand, file }) {
   const key = `storefront/${brand}/${crypto.randomBytes(12).toString("hex")}.${ext}`;
   const stored = await storage.put(img.buffer, {
     key,
-    contentType: img.mimetype,
+    contentType: img.mime_type,
   });
   return { url: stored.public_url };
 }

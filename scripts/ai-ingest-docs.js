@@ -42,6 +42,12 @@ const MANIFEST = [
   { file: "API_CONVENTIONS.md", type: "product_description" },
   { file: "FRONTEND_SCREEN_REQUIREMENTS.md", type: "product_description" },
   { file: "SCHEMA.md", type: "schema_doc" },
+  // The whole-system navigation guide: every module → route → permission → tabs
+  // → "how do I…" tasks. This is what lets Praxis answer "where do I create a
+  // cash request?" with a real in-app link. Kept in this manifest so every
+  // deploy re-embeds it (ai:reindex) and it never drifts from the codebase —
+  // see README "Praxis knowledge base (keep it seeded)".
+  { file: "PRAXIS_KNOWLEDGE_BASE.md", type: "product_description" },
 ];
 
 // A hand-written orientation chunk so the model always has the big picture even

@@ -123,6 +123,40 @@ describe("smartcomm order-capture", () => {
     );
   });
 
+  test("createCaptureLink signs a staff-picked styled variant into the token", async () => {
+    const r = await orderCapture.createCaptureLink({
+      ...baseArgs,
+      input: {
+        items: [
+          {
+            kind: "styled",
+            styled_id: "55555555-5555-5555-5555-555555555555",
+            qty: 1,
+            price_ngn: "435000",
+            styled_variant_id: "66666666-6666-6666-6666-666666666666",
+            size_code: "M",
+            lace_code: "6X6",
+            colour_id: "77777777-7777-7777-7777-777777777777",
+            spec: "Medium · 6×6 Frontal · Spicy Copper",
+          },
+        ],
+      },
+    });
+    const decoded = jwt.verify(
+      r.token,
+      "test-secret-must-be-at-least-32-chars-long-XYZ",
+      { issuer: "smartcomm", audience: "order-capture" },
+    );
+    const it = decoded.items[0];
+    expect(it.styled_id).toBe("55555555-5555-5555-5555-555555555555");
+    expect(it.styled_variant_id).toBe("66666666-6666-6666-6666-666666666666");
+    expect(it.size_code).toBe("M");
+    expect(it.lace_code).toBe("6X6");
+    expect(it.colour_id).toBe("77777777-7777-7777-7777-777777777777");
+    expect(it.spec).toBe("Medium · 6×6 Frontal · Spicy Copper");
+    expect(it.price_ngn).toBe("435000");
+  });
+
   test("verifyCaptureToken rejects tampered tokens", () => {
     const bad = jwt.sign(
       { foo: "bar" },

@@ -483,7 +483,12 @@ async function submitOrderForm({ brand, input, request_id }) {
   // duplicate order). Full plan charges the whole balance; instalment charges
   // the deposit. Nomba is preferred (Paystack/Stripe only if it's down).
   let payment_url = null;
-  if (input.order_link_slug && result.order_id && result.public_tracking_token) {
+  // Gate on the ORDER (not public_tracking_token). The token column has no
+  // default and is null at creation, so requiring it here skipped the gateway
+  // step entirely — the /o page fell back to "we'll WhatsApp you a link"
+  // instead of redirecting to Nomba. createPaymentLink resolves the order by
+  // order_id (exactly like the cart checkout), so the token isn't needed here.
+  if (input.order_link_slug && result.order_id) {
     try {
       const pay = await paymentLink.createPaymentLink({
         brand,

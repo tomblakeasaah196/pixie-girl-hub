@@ -40,6 +40,15 @@ interface Props {
   onSettle: (cr: CashRequest) => void;
 }
 
+/** Pre-disbursement states the CEO can disburse from in a single click. */
+const CEO_DISBURSABLE_STATUSES: CashRequestStatus[] = [
+  "draft",
+  "pending_finance",
+  "pending_ceo",
+  "sent_back",
+  "approved",
+];
+
 /* ── Shared hook: detail data + approval / disbursement state ───────────────
    Drives both the drawer (phone/tablet) and the inline panel (desktop
    master-detail) so the body + footer actions stay byte-identical. */
@@ -49,6 +58,7 @@ function useCashRequestDetail(
   onSettle: (cr: CashRequest) => void,
 ) {
   const can = useAuthStore((s) => s.can);
+  const isCeo = useAuthStore((s) => s.user?.isCeo ?? false);
   const { data: cr } = useCashRequest(initial.cash_request_id);
   const { data: history, isLoading: historyLoading } = useCashRequestHistory(
     initial.cash_request_id,
@@ -124,15 +134,25 @@ function useCashRequestDetail(
         ? "ceo"
         : null;
 
+  // The CEO can disburse in a single action from any pre-disbursement state
+  // (the backend fast-forwards the skipped approvals); everyone else disburses
+  // only a fully-approved request.
+  const canDisburseNow =
+    (r.status === "approved" && canApprove) ||
+    (isCeo && CEO_DISBURSABLE_STATUSES.includes(r.status));
+
   // Whether the footer renders any actions at all (mirrors DrawerActions gate).
   const hasActions =
-    canApprove || ["draft", "sent_back", "disbursed"].includes(r.status);
+    canApprove ||
+    canDisburseNow ||
+    ["draft", "sent_back", "disbursed"].includes(r.status);
 
   return {
     r,
     history,
     historyLoading,
     canApprove,
+    canDisburseNow,
     isBusy,
     decisionNotes,
     setDecisionNotes,
@@ -504,6 +524,7 @@ function DrawerActions({ d }: { d: CashRequestDetail }) {
   const {
     r,
     canApprove,
+    canDisburseNow,
     isBusy,
     activeStage,
     setShowRejectModal,
@@ -516,7 +537,11 @@ function DrawerActions({ d }: { d: CashRequestDetail }) {
   const status = r.status;
   const requiresSettlement = r.requires_settlement;
 
-  if (!canApprove && !["draft", "sent_back", "disbursed"].includes(status))
+  if (
+    !canApprove &&
+    !canDisburseNow &&
+    !["draft", "sent_back", "disbursed"].includes(status)
+  )
     return null;
 
   return (
@@ -568,8 +593,10 @@ function DrawerActions({ d }: { d: CashRequestDetail }) {
         </>
       )}
 
-      {/* Disbursement action */}
-      {status === "approved" && canApprove && (
+      {/* Disbursement action. The CEO can disburse in a single click from any
+          pre-disbursement state (backend fast-forwards the approvals); the
+          label reflects whether an approval is being folded in. */}
+      {canDisburseNow && (
         <Button
           variant="primary"
           size="sm"
@@ -577,7 +604,7 @@ function DrawerActions({ d }: { d: CashRequestDetail }) {
           onClick={() => setShowDisburse(true)}
           icon={<Send className="w-3.5 h-3.5" />}
         >
-          Disburse
+          {status === "approved" ? "Disburse" : "Approve & Disburse"}
         </Button>
       )}
 

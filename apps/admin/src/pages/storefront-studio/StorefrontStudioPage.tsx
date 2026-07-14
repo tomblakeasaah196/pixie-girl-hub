@@ -192,6 +192,38 @@ function Section({
   );
 }
 
+function BooleanField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-0.5">
+      <span className="text-[12px] font-medium text-text-muted">{label}</span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={value}
+        aria-label={label}
+        onClick={() => onChange(!value)}
+        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+          value ? "bg-accent-deep" : "bg-text-primary/20"
+        }`}
+      >
+        <span
+          className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
+            value ? "translate-x-[22px]" : "translate-x-[2px]"
+          }`}
+        />
+      </button>
+    </div>
+  );
+}
+
 function TextField({
   label,
   value,
@@ -1512,6 +1544,17 @@ const IMAGE_LIST_HINT = /(image|photo|gallery|slide|banner)/i;
 // it gets the trim/crop studio, never the generic object editor.
 const VIDEO_HINT = /video/i;
 
+// The Instagram identity shown under the home "Gallery" rotating showcase. It's
+// injected into the Gallery group (like the hero video/image below) so it's
+// editable even on pages published before the field existed. Keep in sync with
+// the storefront default in apps/storefront/src/lib/home-content.ts.
+const GALLERY_PROFILE_DEFAULT = {
+  handle: "@faitlynhair",
+  followers: "84.9K",
+  bio: "Most Realistic Pixie Wigs · Luxury Hair + Premium HD Lace",
+  verified: true,
+};
+
 function SlotValue({
   fieldKey,
   value,
@@ -1527,12 +1570,15 @@ function SlotValue({
     return <VideoField label={label} value={value} onChange={onChange} />;
   }
 
+  if (typeof value === "boolean") {
+    return <BooleanField label={label} value={value} onChange={onChange} />;
+  }
+
   if (
     value === null ||
     value === undefined ||
     typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
+    typeof value === "number"
   ) {
     const s = value == null ? "" : String(value);
     if (IMAGE_HINT.test(fieldKey))
@@ -1574,6 +1620,10 @@ function SlotValue({
   const isHero = /hero/i.test(fieldKey);
   const offerHeroVideo = isHero && !("video" in obj);
   const offerHeroImage = isHero && !("imageUrl" in obj);
+  // The home Gallery gets an Instagram "Profile" group (handle, followers,
+  // tagline, verified badge) shown under the rotating showcase — offered even
+  // on pages saved before the field existed.
+  const offerGalleryProfile = /gallery/i.test(fieldKey) && !("profile" in obj);
   return (
     <Section title={label}>
       {Object.entries(obj).map(([k, v]) => (
@@ -1596,6 +1646,13 @@ function SlotValue({
           label="Looping Video"
           value={undefined}
           onChange={(nv) => onChange({ ...obj, video: nv })}
+        />
+      ) : null}
+      {offerGalleryProfile ? (
+        <SlotValue
+          fieldKey="profile"
+          value={GALLERY_PROFILE_DEFAULT}
+          onChange={(nv) => onChange({ ...obj, profile: nv })}
         />
       ) : null}
     </Section>

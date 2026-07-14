@@ -379,6 +379,166 @@ html, body { transition: background-color 0.35s ease, color 0.35s ease; }
   50% { box-shadow: 0 0 14px color-mix(in oklch, var(--champagne) 45%, transparent), 0 0 4px color-mix(in oklch, var(--gold) 20%, transparent); }
 }
 
+/* ============================================================
+ * Auto-scrolling strips (bundles, mobile testimonials).
+ * Duplicate the content once in markup and translate -50% so the
+ * loop is seamless. `--marquee-duration` is set inline per strip;
+ * hovering pauses so a shopper can read/click. Reduced-motion (global
+ * rule below) snaps it to the end state — content stays fully visible
+ * because it's duplicated.
+ * ============================================================ */
+.marquee-track {
+  animation: marquee-scroll var(--marquee-duration, 42s) linear infinite;
+  will-change: transform;
+}
+.marquee-track:hover { animation-play-state: paused; }
+
+/* ============================================================
+ * Instagram "rotating showcase" — a gold-framed ring of tagged photos
+ * orbiting a central medallion whose featured image cross-fades every
+ * few seconds. The ring rotates while each tile counter-rotates the same
+ * amount, so photos orbit but always stay upright. One `--stage` variable
+ * drives every dimension via calc(), so the whole piece scales fluidly
+ * from phone to desktop. Themes light/dark through brand tokens.
+ * ============================================================ */
+@keyframes ig-orbit { to { transform: rotate(360deg); } }
+@keyframes ig-orbit-rev { to { transform: rotate(-360deg); } }
+@keyframes ig-halo {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 0.9; transform: scale(1.05); }
+}
+@keyframes ig-kenburns { from { transform: scale(1.12); } to { transform: scale(1); } }
+
+.ig-stage {
+  --tile: clamp(3rem, 12.5vw, 5.75rem);
+  --stage: clamp(18rem, 84vw, 39rem);
+  --r: calc(var(--stage) / 2 - var(--tile) / 2 - clamp(0.25rem, 1vw, 0.5rem));
+  --center: calc(var(--stage) * 0.42);
+  position: relative;
+  width: var(--stage);
+  height: var(--stage);
+  margin: 0 auto;
+  isolation: isolate;
+}
+
+.ig-halo {
+  position: absolute;
+  inset: -14%;
+  z-index: 0;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle at center,
+    color-mix(in oklch, var(--gold) 24%, transparent) 0%,
+    color-mix(in oklch, var(--champagne) 10%, transparent) 38%,
+    transparent 64%
+  );
+  filter: blur(6px);
+  animation: ig-halo 7s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.ig-ring {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  transform-origin: center;
+  animation: ig-orbit 64s linear infinite;
+}
+
+.ig-tile {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--tile);
+  height: var(--tile);
+  margin: calc(var(--tile) / -2);
+  transform: rotate(var(--a)) translate(var(--r)) rotate(calc(-1 * var(--a)));
+  transform-origin: center;
+}
+
+.ig-tile-media {
+  width: 100%;
+  height: 100%;
+  border-radius: clamp(0.5rem, 1.6vw, 0.9rem);
+  overflow: hidden;
+  transform-origin: center;
+  animation: ig-orbit-rev 64s linear infinite;
+  border: 1px solid color-mix(in oklch, var(--gold) 55%, transparent);
+  box-shadow: 0 6px 18px color-mix(in oklch, var(--ink) 30%, transparent);
+  background: var(--card);
+  transition: box-shadow 0.5s ease, border-color 0.5s ease;
+}
+.ig-tile-media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* The photo currently featured in the centre gets a brighter gold seam. */
+.ig-tile[data-active="true"] .ig-tile-media {
+  border-color: var(--gold);
+  box-shadow:
+    0 0 0 1px var(--gold),
+    0 0 20px color-mix(in oklch, var(--gold) 55%, transparent),
+    0 8px 24px color-mix(in oklch, var(--ink) 35%, transparent);
+}
+
+/* Hover anywhere on the stage freezes the orbit (ring + counter together, so
+ * tiles stay upright) so a shopper can aim at a photo. */
+.ig-stage:hover .ig-ring,
+.ig-stage:hover .ig-tile-media { animation-play-state: paused; }
+
+.ig-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--center);
+  height: var(--center);
+  margin: calc(var(--center) / -2);
+  z-index: 2;
+  border-radius: 9999px;
+  overflow: hidden;
+  background: var(--card);
+  border: clamp(2px, 0.5vw, 4px) solid color-mix(in oklch, var(--gold) 72%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--cream) 12%, transparent),
+    0 0 60px color-mix(in oklch, var(--gold) 28%, transparent),
+    0 20px 60px color-mix(in oklch, var(--ink) 45%, transparent);
+}
+.ig-center-media {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 1.1s ease;
+}
+.ig-center-media[data-active="true"] { opacity: 1; }
+.ig-center-media[data-active="true"] img { animation: ig-kenburns 8s ease-out both; }
+.ig-center-media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* Instagram logo medallion badge, seated on the centre's lower edge. */
+.ig-logo {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 3;
+  transform: translate(-50%, calc(var(--center) / 2 - 50%));
+  width: clamp(2.1rem, 7vw, 3rem);
+  height: clamp(2.1rem, 7vw, 3rem);
+  border-radius: 9999px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  border: 2px solid var(--card);
+  box-shadow: 0 6px 18px color-mix(in oklch, var(--ink) 40%, transparent);
+}
+
+/* Instagram brand gradient — used for the logo disc and the handle link. */
+.ig-gradient-bg {
+  background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
+}
+.ig-gradient-text {
+  background: linear-gradient(45deg, #f09433 0%, #e6683c 22%, #dc2743 48%, #cc2366 74%, #bc1888 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.001ms !important;

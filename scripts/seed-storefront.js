@@ -172,9 +172,11 @@ const HOME_SLOTS = {
   // Each tile carries a photo plus an optional Instagram link + handle. Paste
   // the tagger's post URL into `instagram_link` (Studio → Pages → Home →
   // Gallery) to make the tile clickable and credit the `handle` on hover.
+  // `profile` is the Instagram identity shown under the rotating showcase —
+  // handle (gradient link + verified seal), tagline and follower count.
   gallery: {
-    eyebrow: "@faitlynhair",
-    heading: "Tagged on Instagram",
+    eyebrow: "We love to see it — how do you wear your pixie?",
+    heading: "Tag @faitlynhair on IG to be featured",
     items: [
       { image: IMG.pixie, instagram_link: "", handle: "" },
       { image: IMG.bob, instagram_link: "", handle: "" },
@@ -185,6 +187,12 @@ const HOME_SLOTS = {
       { image: IMG.hero, instagram_link: "", handle: "" },
       { image: IMG.pixie, instagram_link: "", handle: "" },
     ],
+    profile: {
+      handle: "@faitlynhair",
+      followers: "84.9K",
+      bio: "Most Realistic Pixie Wigs · Luxury Hair + Premium HD Lace",
+      verified: true,
+    },
   },
   founder: {
     eyebrow: "A note from Faitlyn",

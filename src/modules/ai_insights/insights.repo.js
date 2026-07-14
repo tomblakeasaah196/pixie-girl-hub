@@ -593,7 +593,6 @@ module.exports = {
   wastefulAdCampaigns,
   unansweredThreads,
   failedSocialPosts,
-  expiringSocialTokens,
   failedStorefrontPayments,
   overdueAccessReviews,
   expiringContracts,
@@ -601,29 +600,17 @@ module.exports = {
   unbuyableProducts,
 };
 
-// Social: posts that failed to publish, or are scheduled but overdue.
+// Social: posts flagged (deadline missed, no proof), or overdue with no proof yet.
+// (Social Studio is manual-first/proof-of-publish — there is no publish API call
+// any more to "fail", and no OAuth token to expire.)
 async function failedSocialPosts({ limit = 500 }) {
   const { rows } = await query(
     `SELECT post_id, business, status, scheduled_for
        FROM shared.social_posts
-      WHERE status = 'failed'
-         OR (status = 'scheduled' AND scheduled_for IS NOT NULL
+      WHERE status = 'flagged'
+         OR (status IN ('scheduled', 'assigned') AND scheduled_for IS NOT NULL
              AND scheduled_for < now() - interval '15 minutes')
       ORDER BY scheduled_for ASC NULLS LAST LIMIT $1`,
-    [limit],
-  );
-  return rows;
-}
-// Social: active accounts whose access token expires within a week.
-async function expiringSocialTokens({ limit = 500 }) {
-  const { rows } = await query(
-    `SELECT account_id, business, platform, token_expires_at,
-            (token_expires_at::date - CURRENT_DATE) AS days_left
-       FROM shared.social_accounts
-      WHERE is_active = true
-        AND token_expires_at IS NOT NULL
-        AND token_expires_at < now() + interval '7 days'
-      ORDER BY token_expires_at ASC LIMIT $1`,
     [limit],
   );
   return rows;

@@ -373,20 +373,20 @@ describe("service.runDetectorSweep — auto-resolve (Wave 4)", () => {
 });
 
 describe("registry — Wave-3 batch 5 detectors (final 6 modules)", () => {
-  test("social_media/post_failed: failed status", async () => {
+  test("social_media/post_failed: flagged status", async () => {
     repo.failedSocialPosts.mockResolvedValue([
-      { post_id: "sp-1", business: "pixiegirl", status: "failed", scheduled_for: "x" },
+      { post_id: "sp-1", business: "pixiegirl", status: "flagged", scheduled_for: "x" },
     ]);
     const [f] = await det("social_media", "post_failed").run();
     expect(f).toMatchObject({ module: "social_media", detector: "post_failed", business: "pixiegirl", suppression_key: "post:sp-1" });
   });
 
-  test("social_media/token_expiring: <=1 day → high", async () => {
-    repo.expiringSocialTokens.mockResolvedValue([
-      { account_id: "sa-1", business: "faitlynhair", platform: "instagram", token_expires_at: "x", days_left: 1 },
+  test("social_media/post_failed: overdue (not yet flagged) status", async () => {
+    repo.failedSocialPosts.mockResolvedValue([
+      { post_id: "sp-2", business: "pixiegirl", status: "scheduled", scheduled_for: "x" },
     ]);
-    const [f] = await det("social_media", "token_expiring").run();
-    expect(f).toMatchObject({ detector: "token_expiring", severity: "high", suppression_key: "token:sa-1" });
+    const [f] = await det("social_media", "post_failed").run();
+    expect(f).toMatchObject({ detector: "post_overdue", suppression_key: "post:sp-2" });
   });
 
   test("storefront/payment_failed: recent → high, drills to order", async () => {

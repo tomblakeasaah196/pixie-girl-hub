@@ -210,6 +210,9 @@ async function startWorkers() {
   const {
     runCosAccountabilitySweep,
   } = require("./schedulers/cos-accountability");
+  const {
+    runSocialDeadlineSweep,
+  } = require("./schedulers/social-deadline-sweep");
 
   // Re-sync the brand registry so a business provisioned by the API process
   // reaches this worker's crons without a restart. Per-instance: it refreshes
@@ -267,6 +270,12 @@ async function startWorkers() {
     "cos-accountability",
     config.CRON_COS_ACCOUNTABILITY,
     runCosAccountabilitySweep,
+  );
+  // Social Studio: hourly nudge/escalate for overdue proof-of-publish posts.
+  scheduleCron(
+    "social-deadline-sweep",
+    config.CRON_SOCIAL_DEADLINE_SWEEP,
+    runSocialDeadlineSweep,
   );
   scheduleCron(
     "layaway-abandonment",

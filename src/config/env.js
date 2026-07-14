@@ -428,6 +428,9 @@ const schema = z.object({
   // Social Studio deadline sweep — hourly nudge/escalate for overdue proof-
   // of-publish posts (§6.14). Quiet-hours aware.
   CRON_SOCIAL_DEADLINE_SWEEP: z.string().default("15 * * * *"),
+  // Social Studio Apify metrics sync — pull follower count + bio for every
+  // connected account twice a day (09:00 & 18:00 Africa/Lagos).
+  CRON_SOCIAL_METRICS_SYNC: z.string().default("0 9,18 * * *"),
 
   // ── Kaizen (maintenance/ops console) ─────────────────────────────────────
   // All optional/defaulted so the main app boots even when Kaizen isn't wired.

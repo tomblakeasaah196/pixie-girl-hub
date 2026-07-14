@@ -33,6 +33,7 @@ router.post(
   c.connectAccount,
 );
 router.delete("/accounts/:id", can("delete"), c.revokeAccount);
+router.post("/accounts/:id/sync", can("edit"), c.syncAccount);
 
 // Content plans
 router.get("/plans", can("view"), c.listPlans);

@@ -23,11 +23,23 @@ function buildSet(fields, startAt) {
 }
 
 // ── Accounts (handle registry — no OAuth tokens) ────────────
+// Every SELECT here joins shared.social_platforms so the dashboard gets a
+// card's display name/brand color/glyph without a second round trip.
+const ACCOUNT_COLUMNS = `
+  a.account_id, a.business, a.platform, a.handle, a.profile_url,
+  a.is_active, a.connected_at, a.follower_count, a.bio, a.avatar_url,
+  a.metrics, a.scrape_enabled, a.last_scraped_at, a.last_scrape_status,
+  a.last_scrape_error,
+  p.display_name AS platform_display_name, p.brand_color AS platform_brand_color,
+  p.icon_glyph AS platform_icon_glyph, p.supports_bio AS platform_supports_bio,
+  p.metrics_schema AS platform_metrics_schema
+`;
+
 async function createAccount({ brand, account, connected_by }) {
   const { rows } = await query(
     `INSERT INTO shared.social_accounts
        (business, platform, handle, profile_url, connected_by)
-     VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+     VALUES ($1,$2,$3,$4,$5) RETURNING account_id`,
     [
       brand,
       account.platform,
@@ -36,12 +48,25 @@ async function createAccount({ brand, account, connected_by }) {
       connected_by || null,
     ],
   );
-  return rows[0];
+  return getAccount({ brand, id: rows[0].account_id });
+}
+async function getAccount({ brand, id }) {
+  const { rows } = await query(
+    `SELECT ${ACCOUNT_COLUMNS}
+       FROM shared.social_accounts a
+       JOIN shared.social_platforms p ON p.platform_key = a.platform
+      WHERE a.account_id = $1 AND a.business = $2`,
+    [id, brand],
+  );
+  return rows[0] || null;
 }
 async function listAccounts({ brand }) {
   const { rows } = await query(
-    `SELECT account_id, business, platform, handle, profile_url, is_active, connected_at
-       FROM shared.social_accounts WHERE business = $1 ORDER BY platform, handle`,
+    `SELECT ${ACCOUNT_COLUMNS}
+       FROM shared.social_accounts a
+       JOIN shared.social_platforms p ON p.platform_key = a.platform
+      WHERE a.business = $1
+      ORDER BY p.sort_order, a.handle`,
     [brand],
   );
   return rows;
@@ -59,6 +84,71 @@ async function deactivateAccount({ brand, id }) {
     `UPDATE shared.social_accounts SET is_active = false
       WHERE account_id = $1 AND business = $2 RETURNING account_id`,
     [id, brand],
+  );
+  return rows[0] || null;
+}
+
+/** Every active, scrape-enabled account across every brand, joined with its
+ *  platform's Apify config — the cron sweep's + manual sync's data source.
+ *  Accounts on a platform with no apify_actor_id are still returned (the
+ *  caller records a soft "no actor configured" failure per account, same as
+ *  any other scrape error) rather than filtered here, so the account still
+ *  shows up as attention-needed instead of silently never being tried. */
+async function listAccountsForScrape({ id, brand } = {}) {
+  const where = ["a.scrape_enabled = true", "a.is_active = true", "p.is_active = true"];
+  const params = [];
+  if (id) {
+    params.push(id);
+    where.push(`a.account_id = $${params.length}`);
+  }
+  if (brand) {
+    params.push(brand);
+    where.push(`a.business = $${params.length}`);
+  }
+  const { rows } = await query(
+    `SELECT a.account_id, a.business, a.platform, a.handle, a.profile_url,
+            p.display_name AS platform_display_name, p.apify_actor_id,
+            p.apify_input_template, p.metrics_schema
+       FROM shared.social_accounts a
+       JOIN shared.social_platforms p ON p.platform_key = a.platform
+      WHERE ${where.join(" AND ")}
+      ORDER BY a.business, p.sort_order`,
+    params,
+  );
+  return rows;
+}
+
+async function recordScrapeResult({ account_id, result }) {
+  if (result.ok) {
+    const { rows } = await query(
+      `UPDATE shared.social_accounts
+          SET follower_count = COALESCE($2, follower_count),
+              bio = COALESCE($3, bio),
+              avatar_url = COALESCE($4, avatar_url),
+              metrics = COALESCE($5::jsonb, metrics),
+              last_scraped_at = now(),
+              last_scrape_status = 'ok',
+              last_scrape_error = NULL
+        WHERE account_id = $1
+        RETURNING account_id`,
+      [
+        account_id,
+        result.follower_count,
+        result.bio,
+        result.avatar_url,
+        result.metrics ? JSON.stringify(result.metrics) : null,
+      ],
+    );
+    return rows[0] || null;
+  }
+  const { rows } = await query(
+    `UPDATE shared.social_accounts
+        SET last_scraped_at = now(),
+            last_scrape_status = 'error',
+            last_scrape_error = $2
+      WHERE account_id = $1
+      RETURNING account_id`,
+    [account_id, result.error || "Scrape failed"],
   );
   return rows[0] || null;
 }
@@ -453,8 +543,11 @@ async function listAssignableStaff({ brand }) {
 
 module.exports = {
   createAccount,
+  getAccount,
   listAccounts,
   listActiveAccounts,
+  listAccountsForScrape,
+  recordScrapeResult,
   deactivateAccount,
   createPlan,
   getPlan,

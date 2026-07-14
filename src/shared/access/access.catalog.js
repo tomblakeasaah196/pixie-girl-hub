@@ -112,6 +112,7 @@ const MODULE_CATALOG = [
   { key: "ai_governance", group: "system", label: "AI Control", description: "AI governance & guardrails" },
   { key: "outbound_policy", group: "system", label: "Outbound Policy", description: "Rules for outbound customer messages" },
   { key: "help_center", group: "system", label: "Help Center", description: "Guides & FAQs" },
+  { key: "apify_settings", group: "system", label: "Apify Integration", description: "Public social-metrics scraper credentials (Social Studio)" },
 ];
 
 // The distinct requirePermission keys enforced across src/ (46 modules).

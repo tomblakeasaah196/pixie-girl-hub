@@ -135,6 +135,11 @@ const serviceCatalogueRouter = require("../modules/service_catalogue/service-cat
 // Messaging Accounts (PR 6) — admin surface for inbound routing rows
 const messagingAccountsRouter = require("../modules/messaging_accounts/messaging-accounts.routes");
 
+// Apify Settings — encrypted key for the Social Studio public metrics scraper
+const apifySettingsRouter = require("../modules/apify_settings/apify-settings.routes");
+// Social platform registry — extensible list of scrapeable networks
+const socialPlatformsRouter = require("../modules/social_platforms/social-platforms.routes");
+
 // WhatsApp approved templates + per-category send-cost rates
 const whatsappTemplatesRouter = require("../modules/whatsapp_templates/whatsapp-templates.routes");
 
@@ -385,6 +390,8 @@ function mountRoutes(app) {
     ["/customer-onboarding", onboardingAdminRouter],
     ["/service-catalogue", serviceCatalogueRouter],
     ["/messaging-accounts", messagingAccountsRouter],
+    ["/apify-settings", apifySettingsRouter],
+    ["/social-platforms", socialPlatformsRouter],
     ["/whatsapp-templates", whatsappTemplatesRouter],
     ["/calls", callsRouter],
     ["/outbound-policy", outboundPolicyRouter],

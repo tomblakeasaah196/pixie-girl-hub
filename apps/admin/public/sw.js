@@ -5,7 +5,7 @@
 // Bump this version on any change that should evict the old shell cache.
 // The activate handler deletes every cache that isn't CACHE_NAME, so a new
 // version guarantees clients drop stale assets on next activation.
-const CACHE_NAME = "pixie-hub-shell-v4";
+const CACHE_NAME = "pixie-hub-shell-v5";
 const OFFLINE_URL = "/offline.html";
 const SHELL_ASSETS = [
   "/favicon.svg",

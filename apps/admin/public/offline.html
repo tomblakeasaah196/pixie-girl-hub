@@ -90,6 +90,10 @@
       button:active {
         opacity: 0.85;
       }
+      button:disabled {
+        opacity: 0.55;
+        cursor: default;
+      }
       #status {
         margin-top: 14px;
         font-size: 12px;
@@ -124,23 +128,108 @@
       <div>
         <button id="retry" type="button">Try again</button>
       </div>
-      <div id="status"></div>
+      <div id="status" aria-live="polite" role="status"></div>
     </div>
     <script>
       // No bundler here — this file must boot with nothing but itself.
       var statusEl = document.getElementById("status");
       var headingEl = document.getElementById("heading");
       var messageEl = document.getElementById("message");
+      var retryBtn = document.getElementById("retry");
+
+      var checking = false; // a probe is currently in flight
+      var attempt = 0; // consecutive failures, drives the backoff
+      var countdownTimer = null; // 1s tick that renders the "retrying in Ns" text
+
+      function clearTimers() {
+        if (countdownTimer) {
+          clearInterval(countdownTimer);
+          countdownTimer = null;
+        }
+      }
+
+      function setButton(disabled, label) {
+        retryBtn.disabled = disabled;
+        retryBtn.textContent = label;
+      }
+
+      // A real reachability test — NOT a blind location.reload(). We hit our
+      // own origin root with a cache-busting query and no-store, so:
+      //   • the service worker passes it straight to the network (it isn't a
+      //     navigation and isn't a precached shell asset), and
+      //   • the HTTP cache can't answer it.
+      // A resolved response (any status) means the origin is reachable again;
+      // only a network-layer failure rejects. That's exactly the condition
+      // under which a reload will actually load the app instead of bouncing
+      // back here. navigator.onLine alone can't tell us this — it only knows
+      // whether a network interface exists, not whether the server answers.
+      function probe() {
+        return fetch(location.origin + "/?_connprobe=" + Date.now(), {
+          method: "HEAD",
+          cache: "no-store",
+        });
+      }
 
       function reload() {
         location.reload();
       }
 
-      document.getElementById("retry").addEventListener("click", reload);
+      function attemptCheck() {
+        if (checking) return;
+        clearTimers();
+        checking = true;
+        setButton(true, "Checking…");
+        statusEl.textContent = "Checking your connection…";
+        probe()
+          .then(function () {
+            // Reachable again — reload into the app. Leave the button disabled
+            // so a stray click can't fire a second navigation mid-reload.
+            statusEl.textContent = "Back online — loading…";
+            setTimeout(reload, 250);
+          })
+          .catch(function () {
+            checking = false;
+            setButton(false, "Try again");
+            scheduleRetry();
+          });
+      }
 
-      // The moment the browser confirms a connection, reload straight into
-      // the app rather than making the user notice and click "Try again".
-      window.addEventListener("online", reload);
+      function scheduleRetry() {
+        // Exponential backoff, capped at 30s: 5, 10, 20, 30, 30…
+        var secs = Math.min(30, 5 * Math.pow(2, attempt));
+        attempt += 1;
+        var remaining = secs;
+        var render = function () {
+          statusEl.textContent =
+            "Still can't connect — retrying in " + remaining + "s…";
+        };
+        render();
+        countdownTimer = setInterval(function () {
+          remaining -= 1;
+          if (remaining <= 0) {
+            clearInterval(countdownTimer);
+            countdownTimer = null;
+            attemptCheck();
+          } else {
+            render();
+          }
+        }, 1000);
+      }
+
+      // Manual retry: check immediately and reset the backoff so a
+      // user-initiated attempt is as responsive as possible.
+      retryBtn.addEventListener("click", function () {
+        attempt = 0;
+        attemptCheck();
+      });
+
+      // The OS reported a connection came back. Don't trust it blindly
+      // (navigator.onLine lies about server reachability) — probe, then reload
+      // only if the probe actually succeeds. Reset the backoff first.
+      window.addEventListener("online", function () {
+        attempt = 0;
+        attemptCheck();
+      });
 
       if (navigator.onLine) {
         // Browser thinks it's online but we still landed here — the earlier
@@ -149,10 +238,11 @@
         headingEl.textContent = "Having trouble connecting";
         messageEl.textContent =
           "Pixie Hub can't load right now. Your connection looks slow or unstable — this isn't a problem with your account or your data.";
-        statusEl.textContent = "Checking your connection…";
-      } else {
-        statusEl.textContent = "Waiting for a connection…";
       }
+
+      // Kick off the automatic retry loop immediately. The button stays live
+      // throughout so the user can force an instant check at any point.
+      attemptCheck();
     </script>
   </body>
 </html>

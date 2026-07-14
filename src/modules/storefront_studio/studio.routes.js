@@ -18,15 +18,38 @@ const controller = require("./studio.controller");
 const validator = require("./studio.validator");
 const { requirePermission } = require("../../middleware/rbac");
 const { AppError } = require("../../utils/errors");
+const {
+  MAX_RAW_UPLOAD_BYTES,
+} = require("../../services/media-compression.service");
 
 const router = express.Router();
 const can = (action) => requirePermission("storefront_studio", action);
 
-// In-memory upload for branding images (logo/favicon/OG). 8MB cap.
+// In-memory upload for branding/page images (logo/favicon/OG/section
+// images). Capped comfortably above media-compression.service.js's own
+// MAX_RAW_UPLOAD_BYTES ceiling, so that ceiling's friendly IMAGE_TOO_LARGE
+// error — not multer's raw LIMIT_FILE_SIZE — is what an over-limit upload
+// sees.
 const imageUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 8 * 1024 * 1024 },
+  limits: { fileSize: MAX_RAW_UPLOAD_BYTES + 5 * 1024 * 1024 },
 });
+
+// Translate multer's size error into the platform error shape (otherwise a
+// too-big file surfaces as an opaque 500) — mirrors acceptVideoUpload below.
+function acceptImageUpload(req, res, next) {
+  imageUpload.single("file")(req, res, (err) => {
+    if (err && err.code === "LIMIT_FILE_SIZE") {
+      next(
+        new AppError("FILE_TOO_LARGE", "Image exceeds the upload limit", 413, {
+          user_message: "That image is too large. Try a smaller photo and upload again.",
+        }),
+      );
+      return;
+    }
+    next(err);
+  });
+}
 
 // Video uploads stream to disk — a raw phone clip can be 100MB+, which must
 // never sit in the Node heap. FFmpeg reads the temp file; the service unlinks
@@ -108,11 +131,12 @@ router.post(
 );
 router.delete("/popups/:popupKey", can("approve"), controller.deletePopup);
 
-// Branding image upload (logo / favicon / OG) -> returns { url }.
+// Branding/page image upload (logo / favicon / OG / section images) ->
+// returns { url }.
 router.post(
   "/upload-image",
   can("edit"),
-  imageUpload.single("file"),
+  acceptImageUpload,
   controller.uploadImage,
 );
 

@@ -163,6 +163,11 @@ Field/endpoint truth: migration SQL → `docs/openapi.yaml` → `docs/Frontend_E
 - `docs/PDF_RENDERING_SETUP.md` — how PDF generation works + how to set up headless Chrome on any deploy target (the "works locally, fails live" gotcha)
 - `docs/UPLOAD_SIZE_LIMITS.md` — fixing HTTP 413 on uploads: the Cloudflare → nginx `client_max_body_size` → multer cap chain (the upload "works locally, fails live" gotcha)
 - `docs/WHATSAPP_CALLING.md` — inbound WhatsApp voice calls (Cloud API Calling): Meta setup, ring choreography, WebRTC answer flow, missed-call follow-ups
+- `docs/PRAXIS_KNOWLEDGE_BASE.md` — the whole-system navigation guide Praxis is trained on (module → route → permission → tabs → "how do I…" tasks). **Keep it seeded — see below.**
+
+## Praxis knowledge base must stay seeded
+
+`docs/PRAXIS_KNOWLEDGE_BASE.md` is what Praxis retrieves to answer "how do I… / where do I…" questions and hand users a direct in-app link. It's generated from the live codebase (`apps/admin/src/router.tsx`, `apps/admin/src/lib/modules.ts`, `src/shared/access/access.catalog.js`), so if the code changes and the doc doesn't, Praxis starts giving **dead links and wrong steps**. **Any user-facing change — a new/renamed/re-routed page, a module add/remove, a new or renamed tab or primary action button, a changed task flow, or a new public-link shape — must update this doc in the SAME PR.** Seeding is then **automatic**: the file is in the RAG ingest manifest (`scripts/ai-ingest-docs.js` `MANIFEST`), so every deploy runs `npm run ai:reindex` (`.github/workflows/ci.yml`) and re-embeds the changed chunks — merge to `main` and Praxis re-learns it. (A *new* nav doc file must be added to that manifest; for an immediate refresh without deploying, run `npm run ai:reindex` on the VPS or upload the file at **AI Control → Knowledge & Training** `/ai-control/training`.) Pure backend/test/style/copy changes that don't alter navigation or task steps don't need it. Treat it like the RBAC catalog: a feature isn't "done" until the knowledge base reflects it. See README "Praxis knowledge base (keep it seeded)".
 
 ## RBAC model (5 layers)
 

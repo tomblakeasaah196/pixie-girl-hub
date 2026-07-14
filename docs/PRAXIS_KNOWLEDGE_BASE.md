@@ -871,5 +871,18 @@ Use this as the fast lookup. Format: **task → module (group) → link**.
 ---
 
 *This guide is generated from the live Pixie Girl Hub codebase (the admin app's
-route map, the module catalogue, and the RBAC permission catalog). If a screen or
-link changes in the product, regenerate this file so Praxis stays accurate.*
+route map `apps/admin/src/router.tsx`, the module catalogue
+`apps/admin/src/lib/modules.ts`, and the RBAC permission catalog
+`src/shared/access/access.catalog.js`).*
+
+**Maintenance (do not skip).** Any user-facing change — a new/renamed/re-routed
+page, a module added or removed, a new or renamed tab or primary action button, a
+changed task flow, or a new public-link shape — **must update this file in the
+same PR**. Re-seeding is then automatic: this file is in the RAG ingest manifest
+(`scripts/ai-ingest-docs.js`), so every production deploy runs `npm run
+ai:reindex` and re-embeds the changed sections — merge to `main` and Praxis
+re-learns it. For an immediate refresh without deploying, run `npm run ai:reindex`
+on the server or upload this file at **AI Control → Knowledge & Training**
+(`/ai-control/training`). A user-facing change isn't "done" until this doc
+reflects it. Full rules: README → "Praxis knowledge base (keep it seeded)" and
+CLAUDE.md → "Praxis knowledge base must stay seeded".*

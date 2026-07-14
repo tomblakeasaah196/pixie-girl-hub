@@ -301,10 +301,26 @@ async function ceoDecision({ brand, user, request_id, id, decision, notes }) {
 }
 
 // ── Stage 4: disburse (approved → disbursed) ───────────────
+// States the CEO may disburse from in a single action. The CEO is the
+// ultimate authoriser (RBAC-bypass, V2.2 §3), so they can short-circuit the
+// staged finance→CEO approval and pay out directly — any skipped approvals are
+// stamped as part of the disbursement so the record and the DB invariant stay
+// consistent. Terminal states (rejected/cancelled/disbursed/settled) are never
+// disbursable.
+const CEO_DISBURSABLE = [
+  "draft",
+  "pending_finance",
+  "pending_ceo",
+  "sent_back",
+  "approved",
+];
+
 async function disburse({ brand, user, request_id, id, input }) {
   return transaction(async (client) => {
     const cr = await load({ client, brand, id });
-    ensureStatus(cr, ["approved"]);
+    // Finance disburses a fully-approved request; the CEO can disburse in one
+    // click from any pre-disbursement state.
+    ensureStatus(cr, user.is_ceo ? CEO_DISBURSABLE : ["approved"]);
     if (!input.bank_transaction_id)
       throw new AppError(
         "TRANSACTION_ID_REQUIRED",
@@ -315,6 +331,23 @@ async function disburse({ brand, user, request_id, id, input }) {
     const amountDisbursed = money(
       input.amount_disbursed_ngn ?? cr.amount_requested_ngn,
     );
+
+    // CEO single-click disbursement of a not-yet-approved request: stamp the
+    // finance + CEO approvals now (preserving any real finance review already
+    // on file) so the disbursed record shows who authorised the spend.
+    const nowIso = new Date().toISOString();
+    const ceoFastForward = user.is_ceo && cr.status !== "approved";
+    const approvalStamp = ceoFastForward
+      ? {
+          finance_reviewed_by: cr.finance_reviewed_by || user.user_id,
+          finance_reviewed_at: cr.finance_reviewed_at || nowIso,
+          finance_decision: cr.finance_decision || "approve",
+          requires_ceo_approval: cr.requires_ceo_approval ?? true,
+          ceo_decided_by: user.user_id,
+          ceo_decided_at: nowIso,
+          ceo_decision: "approve",
+        }
+      : {};
 
     // GL: money leaves the bank. A settlement-bound advance is held as an
     // asset (Cash Advances Issued); a direct spend hits its category expense
@@ -384,8 +417,9 @@ async function disburse({ brand, user, request_id, id, input }) {
       cr,
       to_status: "disbursed",
       fields: {
+        ...approvalStamp,
         disbursed_by: user.user_id,
-        disbursed_at: new Date().toISOString(),
+        disbursed_at: nowIso,
         bank_transaction_id: input.bank_transaction_id,
         bank_transaction_date: input.bank_transaction_date || null,
         bank_name: input.bank_name || null,
@@ -394,8 +428,12 @@ async function disburse({ brand, user, request_id, id, input }) {
         linked_journal_entry_id: journal.entry_id,
         linked_expense_id: linkedExpenseId,
       },
-      notes: input.disbursement_notes,
-      action_key: "cash_request.disburse",
+      notes:
+        input.disbursement_notes ||
+        (ceoFastForward ? "Approved & disbursed by CEO" : null),
+      action_key: ceoFastForward
+        ? "cash_request.ceo_disburse"
+        : "cash_request.disburse",
     });
     events.emit("disbursed", {
       brand,

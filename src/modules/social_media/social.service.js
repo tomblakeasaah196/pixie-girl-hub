@@ -16,6 +16,7 @@
 
 const crypto = require("crypto");
 const repo = require("./social.repo");
+const platformsRepo = require("../social_platforms/social-platforms.repo");
 const events = require("./social.events");
 const smartcomm = require("../smartcomm/smartcomm.service");
 const proof = require("../../services/social-proof.service");
@@ -61,6 +62,14 @@ function listAssignableStaff({ brand }) {
   return repo.listAssignableStaff({ brand });
 }
 async function connectAccount({ brand, user, request_id, input }) {
+  const platform = await platformsRepo.get({ key: input.platform });
+  if (!platform || !platform.is_active) {
+    throw new AppError(
+      "UNKNOWN_PLATFORM",
+      `"${input.platform}" isn't a registered platform yet — add it under Social Studio → Accounts → Add platform.`,
+      422,
+    );
+  }
   const account = await repo.createAccount({
     brand,
     account: input,
@@ -77,6 +86,39 @@ async function connectAccount({ brand, user, request_id, input }) {
   );
   events.emit("account.connected", { brand, account_id: account.account_id });
   return account;
+}
+
+/** Manually trigger a single account's Apify scrape right now — the
+ *  dashboard's "Sync now" action. Shares its scrape logic with the
+ *  twice-daily cron sweep (jobs/schedulers/social-metrics-sync.js) via
+ *  social-scraper.service, so both paths behave identically. */
+async function syncAccount({ brand, user, request_id, id }) {
+  const account = await repo.getAccount({ brand, id });
+  if (!account) throw new NotFoundError("Social account");
+
+  const apifySettings = require("../apify_settings/apify-settings.service");
+  const scraper = require("../../services/social-scraper.service");
+  const apiKey = await apifySettings.resolveActiveApiKey();
+  if (!apiKey) {
+    throw new AppError(
+      "APIFY_NOT_CONFIGURED",
+      "Apify isn't configured yet — add an API key under Configure Apify.",
+      412,
+    );
+  }
+  const platform = await platformsRepo.get({ key: account.platform });
+  const result = await scraper.scrapeAccount({ account, platform, apiKey });
+  await repo.recordScrapeResult({ account_id: id, result });
+  await A(
+    brand,
+    user,
+    "social.account.sync",
+    "social_account",
+    id,
+    { ok: result.ok, error: result.ok ? undefined : result.error },
+    request_id,
+  );
+  return repo.getAccount({ brand, id });
 }
 async function revokeAccount({ brand, user, request_id, id }) {
   const ok = await repo.deactivateAccount({ brand, id });
@@ -845,6 +887,7 @@ module.exports = {
   listAssignableStaff,
   connectAccount,
   revokeAccount,
+  syncAccount,
   createPlan,
   listPlans,
   getPlan,

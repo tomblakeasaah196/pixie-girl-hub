@@ -13,9 +13,15 @@ const MONTH = z
   .regex(/^\d{4}-\d{2}$/, "Expected YYYY-MM")
   .transform((v) => `${v}-01`);
 
+// Accounts can be registered on any platform in the (admin-extensible)
+// shared.social_platforms registry — not just the four the Board/Calendar
+// posting workflow still hardcodes below — so this isn't `z.enum(PLATFORM)`.
+// social.service.js#connectAccount checks the key against the registry.
 const accountConnect = z
   .object({
-    platform: z.enum(PLATFORM),
+    platform: z
+      .string()
+      .regex(/^[a-z][a-z0-9_]{0,40}$/, "Unknown platform"),
     handle: z.string().min(1).max(120),
     profile_url: z.string().url().max(300).optional(),
   })

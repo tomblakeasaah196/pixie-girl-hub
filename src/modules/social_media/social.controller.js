@@ -35,6 +35,11 @@ async function revokeAccount(req, res) {
   await service.revokeAccount({ ...base(req), id: req.params.id });
   res.status(204).end();
 }
+async function syncAccount(req, res) {
+  res.json({
+    data: await service.syncAccount({ ...base(req), id: req.params.id }),
+  });
+}
 
 // ── Content plans ────────────────────────────────────────────
 async function createPlan(req, res) {
@@ -222,6 +227,7 @@ module.exports = {
   listAssignableStaff,
   connectAccount,
   revokeAccount,
+  syncAccount,
   createPlan,
   listPlans,
   getPlan,

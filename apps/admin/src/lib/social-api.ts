@@ -51,12 +51,31 @@ export type PlanStatus =
 export interface SocialAccount {
   account_id: string;
   business: string;
-  platform: SocialPlatform;
+  // Not SocialPlatform: the Accounts registry can carry any key from the
+  // (admin-extensible) social platform registry — see social-platforms-api.ts
+  // — while SocialPlatform below stays the narrower set Board/Calendar
+  // posting still supports.
+  platform: string;
   handle: string;
   profile_url: string | null;
   is_active?: boolean;
   connected_at?: string;
   created_at?: string;
+  // Apify metrics (migration 000342)
+  follower_count: number | null;
+  bio: string | null;
+  avatar_url: string | null;
+  metrics: Record<string, number>;
+  scrape_enabled: boolean;
+  last_scraped_at: string | null;
+  last_scrape_status: "ok" | "error" | null;
+  last_scrape_error: string | null;
+  // Joined from shared.social_platforms (social.repo.js#ACCOUNT_COLUMNS)
+  platform_display_name: string;
+  platform_brand_color: string;
+  platform_icon_glyph: string;
+  platform_supports_bio: boolean;
+  platform_metrics_schema: { key: string; label: string; aliases: string[] }[];
 }
 
 export interface SocialPost {
@@ -178,7 +197,7 @@ export interface PostCreateInput extends PostRowInput {
 export type PostUpdateInput = Partial<Omit<PostCreateInput, "plan_id" | "status">>;
 
 export interface AccountConnectInput {
-  platform: SocialPlatform;
+  platform: string;
   handle: string;
   profile_url?: string;
 }
@@ -243,6 +262,19 @@ export function useRevokeAccount() {
   const brand = useBrand();
   return useMutation({
     mutationFn: (id: string) => api.delete<void>(`/social/accounts/${id}`),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["social", "accounts", brand] }),
+  });
+}
+
+/** "Sync now" — trigger this one account's Apify scrape immediately instead
+ *  of waiting for the twice-daily cron. */
+export function useSyncAccount() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post<SocialAccount>(`/social/accounts/${id}/sync`),
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: ["social", "accounts", brand] }),
   });

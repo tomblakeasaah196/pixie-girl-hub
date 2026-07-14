@@ -30,7 +30,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { cn } from "@/lib/cn";
 import { Button, Card, Pill } from "@/components/ui/primitives";
-import { Toggle, Select } from "@/components/ui/controls";
+import { Toggle, Select, ConfirmDialog } from "@/components/ui/controls";
 import { Tabs } from "@/pages/stock/parts";
 import { useBusinessStore } from "@/stores/business";
 import {
@@ -1823,6 +1823,7 @@ function PopupsTab() {
   const del = useDeletePopup();
   const [sel, setSel] = useState<PopupRow | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const popups = useMemo(() => {
     const byKey: Record<string, PopupRow> = {};
@@ -2033,19 +2034,33 @@ function PopupsTab() {
             <Button
               variant="danger"
               disabled={!sel.popup_key || del.isPending}
-              onClick={() =>
-                runStudio(() => del.mutateAsync(sel.popup_key), {
-                  area: `${STUDIO_AREA} → Popups (${sel.popup_key})`,
-                  action: "Delete popup",
-                  success: "Popup deleted.",
-                  onOk: () => setSel(null),
-                })
-              }
+              onClick={() => setConfirmDelete(true)}
             >
               Delete
             </Button>
           </div>
           <Status msg={msg} />
+
+          <ConfirmDialog
+            open={confirmDelete}
+            onClose={() => setConfirmDelete(false)}
+            onConfirm={() =>
+              runStudio(() => del.mutateAsync(sel.popup_key), {
+                area: `${STUDIO_AREA} → Popups (${sel.popup_key})`,
+                action: "Delete popup",
+                success: "Popup deleted.",
+                onOk: () => {
+                  setConfirmDelete(false);
+                  setSel(null);
+                },
+              })
+            }
+            title="Delete popup"
+            message={`Delete the "${sel.popup_key}" popup? This removes both the draft and published versions and can't be undone.`}
+            confirmLabel="Delete"
+            tone="danger"
+            busy={del.isPending}
+          />
         </Card>
       ) : (
         <p className="text-[13px] text-text-muted">

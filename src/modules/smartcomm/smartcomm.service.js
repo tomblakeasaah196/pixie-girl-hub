@@ -1138,11 +1138,22 @@ async function buildProductShareCards({ business, message, platform }) {
     });
     const name = fresh?.name || p.name;
     const description = trimForIg ? null : fresh?.description || null;
-    const price_ngn = fresh ? fresh.price_ngn : p.price;
+    // A staff-picked styled variant (head size × lace × colour) sets its own
+    // price, snapshotted onto the card at pick time — prefer it over the live
+    // anchor lookup so the customer sees the price for THEIR size/lace. `spec`
+    // is the short combo label; show it on every platform (it's the point of
+    // the pick) even when the description is trimmed for Instagram.
+    const hasPickedVariant = Boolean(p.spec || p.styled_variant_id);
+    const price_ngn = hasPickedVariant
+      ? p.price
+      : fresh
+        ? fresh.price_ngn
+        : p.price;
     const image_url = fresh?.image_url || p.image_url || null;
     if (p.capture_url && !capture_url) capture_url = p.capture_url;
 
     const bits = [`*${name}*`];
+    if (p.spec) bits.push(p.spec);
     if (description) bits.push(description);
     if (price_ngn !== null && price_ngn !== undefined) {
       bits.push(`Price: ${ngn(price_ngn)}`);

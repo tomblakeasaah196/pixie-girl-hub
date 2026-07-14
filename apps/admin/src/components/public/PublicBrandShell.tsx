@@ -167,11 +167,15 @@ export function PublicBrandShell({
 }: PublicBrandShellProps) {
   const id = useBrandIdentity(brand, brandNameFallback);
   return (
-    // Own scroll: the app pins `body { overflow:hidden }` for the authed
-    // shell, so this standalone page must scroll itself or tall content is
-    // unreachable on a phone.
+    // Own scroll: the app pins `body { overflow:hidden }` globally, so this
+    // standalone page must scroll ITSELF. The height must be CONSTRAINED
+    // (h-[100dvh], not min-h) — a min-height container grows past the
+    // viewport and, with body overflow hidden, its lower half (the form
+    // fields + submit button) becomes unreachable: the "form is locked at
+    // the top, can't scroll" bug. h-[100dvh] caps it to the viewport so
+    // overflow-y-auto scrolls the content internally.
     <div
-      className="relative min-h-[100dvh] overflow-y-auto overscroll-contain bg-bg text-text-primary"
+      className="relative h-[100dvh] overflow-y-auto overscroll-contain bg-bg text-text-primary"
       style={id.vars}
     >
       <div

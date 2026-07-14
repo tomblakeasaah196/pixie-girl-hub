@@ -25,6 +25,10 @@ import {
 import { resolveMessagingSalesChannel } from "@/lib/messaging-utils";
 import { cn } from "@/lib/cn";
 import type { Channel } from "@/lib/smartcomm-types";
+import {
+  StyledVariantPicker,
+  type StyledPick,
+} from "./StyledVariantPicker";
 
 interface Props {
   open: boolean;
@@ -56,6 +60,13 @@ interface LineItem {
   name: string;
   qty: number;
   note?: string;
+  // Staff-picked styled variant (head size × lace × colour).
+  styled_variant_id?: string | null;
+  size_code?: string | null;
+  lace_code?: string | null;
+  colour_id?: string | null;
+  price_ngn?: number | null;
+  spec?: string | null;
 }
 
 /**
@@ -90,6 +101,8 @@ export function OrderCaptureModal({
     { name: string | null; reason: string }[]
   >([]);
   const [copied, setCopied] = useState(false);
+  // A styled hit awaiting a size/lace pick (opens StyledVariantPicker).
+  const [pendingStyled, setPendingStyled] = useState<ProductHit | null>(null);
 
   useEffect(() => {
     const q = search.trim();
@@ -129,6 +142,29 @@ export function OrderCaptureModal({
       return [...arr, { kind: k, id, name, qty: 1 }];
     });
   }
+  function addStyledLine(hit: ProductHit, pick: StyledPick) {
+    const variant = {
+      styled_variant_id: pick.styled_variant_id,
+      size_code: pick.size_code,
+      lace_code: pick.lace_code,
+      colour_id: pick.colour_id,
+      price_ngn: pick.price,
+      spec: pick.spec || null,
+    };
+    // Lines are identified by (kind,id), so re-picking a styled product
+    // updates its chosen variant rather than adding a duplicate row.
+    setItems((arr) => {
+      const existing = arr.find((i) => i.kind === "styled" && i.id === hit.id);
+      if (existing) {
+        return arr.map((i) =>
+          i.kind === "styled" && i.id === hit.id ? { ...i, ...variant } : i,
+        );
+      }
+      return [...arr, { kind: "styled", id: hit.id, name: hit.label, qty: 1, ...variant }];
+    });
+    setPendingStyled(null);
+  }
+
   function setQty(k: CaptureKind, id: string, qty: number) {
     if (qty <= 0) {
       setItems((arr) => arr.filter((i) => !(i.kind === k && i.id === id)));
@@ -163,6 +199,12 @@ export function OrderCaptureModal({
           service_id: i.kind === "service" ? i.id : undefined,
           qty: i.qty,
           note: i.note,
+          price_ngn: i.price_ngn != null ? String(i.price_ngn) : undefined,
+          styled_variant_id: i.styled_variant_id ?? undefined,
+          size_code: i.size_code ?? undefined,
+          lace_code: i.lace_code ?? undefined,
+          colour_id: i.colour_id ?? undefined,
+          spec: i.spec ?? undefined,
         })),
         sales_channel: resolveMessagingSalesChannel(platform),
         notes: notes || undefined,
@@ -194,6 +236,7 @@ export function OrderCaptureModal({
       setWarnings([]);
       setSearch("");
       setHits([]);
+      setPendingStyled(null);
     } finally {
       setSending(false);
     }
@@ -271,7 +314,12 @@ export function OrderCaptureModal({
                   <button
                     key={`${p.kind}-${p.id}`}
                     onClick={() => {
-                      addItem(p.kind as CaptureKind, p.id, p.label);
+                      // Styled products need a head size / lace pick first.
+                      if (p.kind === "styled") {
+                        setPendingStyled(p);
+                      } else {
+                        addItem(p.kind as CaptureKind, p.id, p.label);
+                      }
                       setSearch("");
                     }}
                     className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-panel border-b hairline last:border-b-0"
@@ -308,9 +356,24 @@ export function OrderCaptureModal({
                   className="rounded-xl bg-panel-2 border hairline p-2.5"
                 >
                   <div className="flex items-center gap-2">
-                    <span className="flex-1 text-[12.5px] truncate">
-                      {i.name}
-                    </span>
+                    <div className="flex-1 min-w-0">
+                      <span className="block text-[12.5px] truncate">
+                        {i.name}
+                      </span>
+                      {(i.spec || i.price_ngn != null) && (
+                        <span className="block text-[10.5px] truncate">
+                          {i.spec && (
+                            <span className="text-accent-glow">{i.spec}</span>
+                          )}
+                          {i.spec && i.price_ngn != null ? " · " : ""}
+                          {i.price_ngn != null && (
+                            <span className="text-text-faint">
+                              ₦{Number(i.price_ngn).toLocaleString()}
+                            </span>
+                          )}
+                        </span>
+                      )}
+                    </div>
                     <span className="text-[9.5px] uppercase tracking-wide text-text-faint shrink-0">
                       {i.kind}
                     </span>
@@ -470,6 +533,18 @@ export function OrderCaptureModal({
           </button>
         )}
       </div>
+
+      {pendingStyled && (
+        <StyledVariantPicker
+          styledId={pendingStyled.id}
+          productName={pendingStyled.label}
+          anchorPrice={
+            pendingStyled.price != null ? Number(pendingStyled.price) : null
+          }
+          onCancel={() => setPendingStyled(null)}
+          onConfirm={(pick) => addStyledLine(pendingStyled, pick)}
+        />
+      )}
     </Modal>
   );
 }

@@ -272,6 +272,17 @@ async function submitOrderForm({ brand, input, request_id }) {
     shipping_fee_ngn = Number(quote.fee_ngn) || 0;
   }
 
+  // Staff-picked styled variant pricing: what a styled product costs depends
+  // on the chosen head size / lace, picked by the operator at share/capture
+  // time and signed into the capture token. Resolve those prices FROM THE
+  // SIGNED TOKEN (never the POST body a shopper could tamper with) and apply
+  // them as the line unit price, so the customer's order total matches the
+  // price they were shown for that size/lace.
+  const styledUnitPriceByVariant = await resolveStyledUnitPrices({
+    brand,
+    capture_token: input.capture_token,
+  });
+
   return transaction(async (client) => {
     // 1. Upsert the customer as a contact.
     let contact = await repo.findContactByEmailOrPhone({
@@ -319,6 +330,12 @@ async function submitOrderForm({ brand, input, request_id }) {
         lines: input.items.map((it) => ({
           variant_id: it.variant_id,
           quantity: it.quantity,
+          // Apply the staff-picked styled variant price when this line's
+          // variant was priced in the signed token; otherwise Sales prices
+          // it by the variant's channel price as usual.
+          ...(styledUnitPriceByVariant.has(it.variant_id)
+            ? { unit_price_ngn: styledUnitPriceByVariant.get(it.variant_id) }
+            : {}),
         })),
         shipping_fee_ngn,
         utm_source: input.utm_source,
@@ -483,6 +500,44 @@ async function upsertCheckoutContactExtras({ client, contact, input }) {
       "order-form: contact extras upsert failed (order stands)",
     );
   }
+}
+
+/**
+ * Resolve staff-picked styled variant prices from a signed capture token,
+ * keyed by the sellable base variant_id, so the checkout can apply them as
+ * line unit prices. The price comes ONLY from the token (which was signed at
+ * mint time) — never from the public POST body — so a shopper can't rewrite
+ * it. Gated to styled items that actually carried a picked styled_variant_id;
+ * every other line prices normally through Sales. A bad/expired/cross-brand
+ * token yields an empty map (order prices as usual, never fails the checkout).
+ */
+async function resolveStyledUnitPrices({ brand, capture_token }) {
+  const map = new Map();
+  if (!capture_token) return map;
+  try {
+    const orderCapture = require("../smartcomm/smartcomm.order-capture");
+    const resolvers = require("../smartcomm/smartcomm.order-capture.resolvers");
+    const decoded = orderCapture.verifyCaptureToken(capture_token);
+    if (
+      !decoded ||
+      decoded.brand !== brand ||
+      !Array.isArray(decoded.items)
+    ) {
+      return map;
+    }
+    const resolved = await resolvers.resolveItems(brand, decoded.items);
+    for (const r of resolved) {
+      if (r.kind !== "styled" || !r.styled_variant_id || r.price_ngn == null) {
+        continue;
+      }
+      for (const l of r.lines || []) {
+        if (l.variant_id) map.set(l.variant_id, String(r.price_ngn));
+      }
+    }
+  } catch {
+    // expired / tampered / cross-brand token — no overrides.
+  }
+  return map;
 }
 
 // Stylist referral capture (§6.26 Q17): only a code that resolves to an

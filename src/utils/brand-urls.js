@@ -87,11 +87,10 @@ async function publicBaseUrl(brand) {
 
 /**
  * Base URL of the Hub app itself (the admin deployment). The public
- * `/welcome/...` and `/order/capture/...` pages are routes of the Hub
- * app — NOT the brand storefront — so links to them must be minted on
- * the hub domain. Minting them on `storefront_domain` produced dead
- * links whenever that domain doesn't serve the Hub bundle (e.g.
- * faitlynhair.com → 404). Same resolution the walk-in QR uses.
+ * `/welcome/...` onboarding form is a route of the Hub app — NOT the
+ * brand storefront — so it must be minted on the hub domain. (Order
+ * links, by contrast, ride the brand's own domain via orderLinkUrl.)
+ * Same resolution the walk-in QR uses.
  */
 function hubBaseUrl() {
   return (
@@ -112,13 +111,24 @@ async function welcomeUrl(brand, token) {
 }
 
 /**
- * `${hubBaseUrl}/order/capture/{token}` for an order link (staff-picked
- * cart or shared-catalogue mini-shop). The consumer page decodes the
- * signed JWT and pre-fills the cart.
+ * `${brandBase}/o/{slug}` for a shared-catalogue order link.
+ *
+ * Owner decision (2026-07): order links carry the BRAND's own customer-
+ * facing domain (pixiegirlglobal.com / faitlynhair.com) so a Faitlyn
+ * shopper never sees a Pixie Girl URL and hesitates to pay. The checkout
+ * bundle + `/api/public/*` are served on each brand host via the deploy's
+ * reverse-proxy (see docs/BRAND_ORDER_LINKS.md); we mint on
+ * `publicBaseUrl(brand)` — the brand storefront domain — falling back to
+ * the hub base only when a brand domain isn't configured yet (dev).
+ *
+ * The slug is short + unguessable (minted in smartcomm.order-links.repo),
+ * so `/o/AbC12_d34XyZ` replaces the old ~1.4 KB signed-JWT path that
+ * Instagram DM rejected for length.
  */
-async function orderCaptureUrl(brand, token) {
-  const base = hubBaseUrl();
-  return base ? `${base}/order/capture/${token}` : `/order/capture/${token}`;
+async function orderLinkUrl(brand, slug) {
+  if (!slug) return "";
+  const base = (await publicBaseUrl(brand)) || hubBaseUrl();
+  return base ? `${base}/o/${slug}` : `/o/${slug}`;
 }
 
 /**
@@ -156,7 +166,7 @@ module.exports = {
   publicBaseUrl,
   hubBaseUrl,
   welcomeUrl,
-  orderCaptureUrl,
+  orderLinkUrl,
   payLinkUrl,
   supportContact,
   invalidate,

@@ -7,7 +7,7 @@
 
 const service = require("./smartcomm.service");
 const praxisDraft = require("./smartcomm.praxis-draft");
-const orderCapture = require("./smartcomm.order-capture");
+const orderLinks = require("./smartcomm.order-links.service");
 
 const ctx = (req) => ({
   user: req.user,
@@ -283,8 +283,8 @@ async function draftWithPraxis(req, res) {
   res.json(data);
 }
 
-async function createOrderCapture(req, res) {
-  const data = await orderCapture.createCaptureLink({
+async function createOrderLink(req, res) {
+  const data = await orderLinks.createLink({
     brand: req.brand,
     user: req.user,
     request_id: req.request_id,
@@ -295,7 +295,6 @@ async function createOrderCapture(req, res) {
 
 // Sidebar activity panel: a channel's order links with live cart state.
 async function listOrderLinks(req, res) {
-  const orderLinks = require("./smartcomm.order-links.service");
   const data = await orderLinks.listForChannel({
     channel_id: req.params.id,
     limit: 10,
@@ -442,7 +441,7 @@ module.exports = {
   saveDraft,
   discardDraft,
   draftWithPraxis,
-  createOrderCapture,
+  createOrderLink,
   listOrderLinks,
   sendInvoiceIntoThread,
   listQuickReplies,

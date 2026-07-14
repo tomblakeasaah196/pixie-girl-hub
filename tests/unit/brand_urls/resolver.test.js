@@ -65,20 +65,28 @@ describe("brand-urls helpers", () => {
     brandUrls.invalidate();
   });
 
-  // The /welcome and /order/capture pages are routes of the Hub app, so
-  // their links mint on the hub (admin) domain — NOT storefront_domain.
-  // Minting on storefront_domain produced 404s whenever the brand domain
-  // didn't serve the Hub bundle (faitlynhair.com). No DB call involved.
+  // The /welcome onboarding form is a route of the Hub app, so its link
+  // mints on the hub (admin) domain — NOT storefront_domain. No DB call.
   test("welcomeUrl mints on the hub domain + brand slug", async () => {
     const url = await brandUrls.welcomeUrl("pixiegirl", "tok123");
     expect(url).toBe("https://admin.fallback.test/welcome/pixiegirl/tok123");
     expect(query).not.toHaveBeenCalled();
   });
 
-  test("orderCaptureUrl mints on the hub domain with /order/capture/", async () => {
-    const url = await brandUrls.orderCaptureUrl("faitlynhair", "jwt-abc");
-    expect(url).toBe("https://admin.fallback.test/order/capture/jwt-abc");
-    expect(query).not.toHaveBeenCalled();
+  // Order links, by contrast, ride the BRAND's own customer-facing domain
+  // (owner decision 2026-07) so a Faitlyn shopper never sees a Pixie URL —
+  // the deploy serves the checkout bundle on that host. Short `/o/<slug>`.
+  test("orderLinkUrl mints on the brand storefront domain with /o/", async () => {
+    mockBrand({ storefront_domain: "faitlynhair.com" });
+    const url = await brandUrls.orderLinkUrl("faitlynhair", "Ab3xK9mP2q");
+    expect(url).toBe("https://faitlynhair.com/o/Ab3xK9mP2q");
+  });
+
+  test("orderLinkUrl falls back to the hub base when no brand domain", async () => {
+    mockBrand({ storefront_domain: null });
+    const url = await brandUrls.orderLinkUrl("faitlynhair", "Ab3xK9mP2q");
+    // publicBaseUrl → STOREFRONT_BASE_URL fallback (still a real base).
+    expect(url).toBe("https://storefront.fallback.test/o/Ab3xK9mP2q");
   });
 
   test("payLinkUrl matches legacy /pay/{token} shape", async () => {

@@ -68,7 +68,8 @@ function buttonTitleForUrl(url) {
   const path = parsed.pathname || "";
   if (host === "youtu.be" || host.endsWith("youtube.com")) return "Watch on YouTube";
   if (path.startsWith("/welcome/")) return "Open the form";
-  if (path.startsWith("/order/capture/")) return "Order here";
+  if (path.startsWith("/o/") || path.startsWith("/order/capture/"))
+    return "Order here";
   if (path.startsWith("/pay/")) return "Pay here";
   if (host.endsWith("instagram.com")) return "Open on Instagram";
   if (host.endsWith("wa.me") || host.endsWith("whatsapp.com")) return "Open WhatsApp";

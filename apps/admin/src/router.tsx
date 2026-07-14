@@ -147,9 +147,9 @@ const WalkInPublic = lazyWithRetry(() =>
     default: m.WalkInPublic,
   })),
 );
-const OrderCapturePublic = lazyWithRetry(() =>
-  import("@/pages/order-capture/OrderCapturePublic").then((m) => ({
-    default: m.OrderCapturePublic,
+const OrderCheckoutPublic = lazyWithRetry(() =>
+  import("@/pages/order/OrderCheckoutPublic").then((m) => ({
+    default: m.OrderCheckoutPublic,
   })),
 );
 const SignDocumentPage = lazyWithRetry(() =>
@@ -345,12 +345,13 @@ export const router = createBrowserRouter(
         </Suspense>
       ),
     },
-    // Public Order Capture consumer (the staffer mints, customer opens).
+    // Public order checkout — the short `/o/<slug>` link a staffer shares
+    // (customer picks items, checks out, and is sent to the payment gateway).
     {
-      path: "/order/capture/:token",
+      path: "/o/:slug",
       element: (
         <Suspense fallback={<RouteFallback />}>
-          <OrderCapturePublic />
+          <OrderCheckoutPublic />
         </Suspense>
       ),
     },

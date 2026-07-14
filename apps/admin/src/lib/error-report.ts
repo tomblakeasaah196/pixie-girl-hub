@@ -43,7 +43,7 @@ export function describeError(err: unknown): { message: string; detail?: string 
  * up in one call — the single entry point every catch block / onError
  * handler in the STAFF-FACING admin should use instead of a bare toast or
  * silent console.error. Not for public/unauthenticated pages (sign links,
- * order-capture, onboarding forms, login) — those shouldn't surface an
+ * order checkout, onboarding forms, login) — those shouldn't surface an
  * internal support WhatsApp number to outside visitors.
  */
 export function toastReport(

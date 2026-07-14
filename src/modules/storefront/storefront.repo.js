@@ -666,6 +666,20 @@ async function listCareGuides({ brand, limit = 4 }) {
   return rows;
 }
 
+/** Most recent proven (posted) social post tagging this styled product — the
+ *  "as seen on Instagram" storefront badge's data source. Social Studio lives
+ *  in `shared`, so this is a plain cross-schema read, same as nearbyStylists. */
+async function getSocialProof({ brand, styled_id }) {
+  const { rows } = await query(
+    `SELECT platform, external_url, oembed_thumbnail_url, oembed_author_handle, published_at
+       FROM shared.social_posts
+      WHERE business = $1 AND status = 'posted' AND $2 = ANY(tagged_product_ids)
+      ORDER BY published_at DESC LIMIT 1`,
+    [brand, styled_id],
+  );
+  return rows[0] || null;
+}
+
 async function nearbyStylists({ city, limit = 3 }) {
   const params = [];
   let where = "status = 'certified'";
@@ -711,4 +725,5 @@ module.exports = {
   findOrderByTrackingToken,
   listCareGuides,
   nearbyStylists,
+  getSocialProof,
 };

@@ -25,6 +25,7 @@ const screenshotUpload = multer({
 
 // Accounts
 router.get("/accounts", can("view"), c.listAccounts);
+router.get("/staff", can("view"), c.listAssignableStaff);
 router.post(
   "/accounts",
   can("create"),

@@ -23,6 +23,9 @@ function monthParam(req) {
 async function listAccounts(req, res) {
   res.json({ data: await service.listAccounts({ brand: req.brand }) });
 }
+async function listAssignableStaff(req, res) {
+  res.json({ data: await service.listAssignableStaff({ brand: req.brand }) });
+}
 async function connectAccount(req, res) {
   res.status(201).json({
     data: await service.connectAccount({ ...base(req), input: req.body }),
@@ -216,6 +219,7 @@ async function ingestInboundDM(req, res) {
 
 module.exports = {
   listAccounts,
+  listAssignableStaff,
   connectAccount,
   revokeAccount,
   createPlan,

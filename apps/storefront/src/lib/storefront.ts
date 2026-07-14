@@ -82,6 +82,14 @@ export interface ProductDetail {
     guide_md?: string | null;
     video_url?: string | null;
   } | null;
+  /** "As seen on Instagram" — the most recent proven (posted) Social Studio
+   *  post tagging this product, or null if none has been proven yet. */
+  social_proof?: {
+    platform: "instagram" | "facebook" | "tiktok" | "youtube";
+    url: string;
+    thumbnail_url: string | null;
+    author_handle: string | null;
+  } | null;
 }
 
 export interface CartItem {

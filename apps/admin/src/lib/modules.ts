@@ -353,8 +353,8 @@ export const MODULES: AppModule[] = [
   {
     key: "social",
     permission: "social",
-    label: "Social",
-    description: "Posts & reach",
+    label: "Social Studio",
+    description: "Plan, prove, and score every post",
     group: "grow",
     route: "/social",
     icon: Share2,

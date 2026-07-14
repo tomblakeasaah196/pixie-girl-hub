@@ -136,6 +136,23 @@ export interface GalleryItem {
   handle?: string;
 }
 
+/**
+ * The brand's Instagram identity shown beneath the rotating showcase — the
+ * Studio-editable "Profile" group under Pages → Home → Gallery.
+ */
+export interface GalleryProfile {
+  /** Brand handle, e.g. "@faitlynhair". Rendered as an Instagram-gradient link. */
+  handle: string;
+  /** Follower-count copy, verbatim — e.g. "84.9K". */
+  followers: string;
+  /** One-line tagline shown under the handle. */
+  bio: string;
+  /** Show the blue Instagram verification seal after the handle. */
+  verified: boolean;
+  /** Explicit profile URL; when empty it's derived from `handle`. */
+  href?: string;
+}
+
 export interface HomeContent {
   hero: HeroContent;
   marquee: string[];
@@ -146,7 +163,12 @@ export interface HomeContent {
   editorial: EditorialContent;
   press: { eyebrow: string; items: string[] };
   testimonials: { eyebrow: string; items: Testimonial[] };
-  gallery: { eyebrow: string; heading: string; items: GalleryItem[] };
+  gallery: {
+    eyebrow: string;
+    heading: string;
+    items: GalleryItem[];
+    profile: GalleryProfile;
+  };
   founder: FounderContent;
 }
 
@@ -226,8 +248,8 @@ export const DEFAULT_HOME: HomeContent = {
     ],
   },
   gallery: {
-    eyebrow: "@faitlynhair",
-    heading: "Tagged on Instagram",
+    eyebrow: "We love to see it — how do you wear your pixie?",
+    heading: "Tag @faitlynhair on IG to be featured",
     items: [
       { image: I.productPixie },
       { image: I.productBob },
@@ -238,6 +260,12 @@ export const DEFAULT_HOME: HomeContent = {
       { image: I.heroModel },
       { image: I.productPixie },
     ],
+    profile: {
+      handle: "@faitlynhair",
+      followers: "84.9K",
+      bio: "Most Realistic Pixie Wigs · Luxury Hair + Premium HD Lace",
+      verified: true,
+    },
   },
   founder: {
     eyebrow: "A note from Faitlyn",
@@ -394,6 +422,35 @@ function toGalleryItems(raw: unknown): GalleryItem[] | null {
   return items.length ? items : null;
 }
 
+/**
+ * Coerce a slot value to boolean. Studio may persist the toggle as a real
+ * boolean or (on older records) the string "true"/"false" — accept both, plus
+ * the usual truthy words; anything unrecognised falls back to the default.
+ */
+function toBool(v: unknown, fallback: boolean): boolean {
+  if (typeof v === "boolean") return v;
+  if (typeof v === "number") return v !== 0;
+  if (typeof v === "string") {
+    const t = v.trim().toLowerCase();
+    if (["true", "yes", "on", "1"].includes(t)) return true;
+    if (["false", "no", "off", "0", ""].includes(t)) return false;
+  }
+  return fallback;
+}
+
+/** Resolve the Instagram profile group over the default. */
+function resolveGalleryProfile(raw: unknown, def: GalleryProfile): GalleryProfile {
+  if (!raw || typeof raw !== "object") return def;
+  const o = raw as Record<string, unknown>;
+  return {
+    handle: str(o.handle) || def.handle,
+    followers: str(o.followers) || def.followers,
+    bio: str(o.bio) || def.bio,
+    verified: toBool(o.verified, def.verified),
+    href: str(o.href) || str(o.profileUrl) || def.href,
+  };
+}
+
 /** Resolve the gallery slot (new items / legacy images) over the default. */
 function resolveGallery(slot: unknown): HomeContent["gallery"] {
   const def = DEFAULT_HOME.gallery;
@@ -403,6 +460,7 @@ function resolveGallery(slot: unknown): HomeContent["gallery"] {
     eyebrow: str(s.eyebrow) || def.eyebrow,
     heading: str(s.heading) || def.heading,
     items: toGalleryItems(s.items) ?? toGalleryItems(s.images) ?? def.items,
+    profile: resolveGalleryProfile(s.profile, def.profile),
   };
 }
 

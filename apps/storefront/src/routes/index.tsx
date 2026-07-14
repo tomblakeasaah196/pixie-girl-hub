@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { CinematicPreloader } from "@/components/preloader/CinematicPreloader";
 import { Hero } from "@/components/site/Hero";
 import { Marquee } from "@/components/site/Marquee";
-import { BentoGrid } from "@/components/site/BentoGrid";
+import { BundleMarquee } from "@/components/site/BundleMarquee";
 import { ShopByShade } from "@/components/site/ShopByShade";
 import { SignatureCarousel } from "@/components/site/SignatureCarousel";
 import { WhyChooseFaitlyn } from "@/components/site/WhyChooseFaitlyn";
@@ -62,14 +62,19 @@ function Index() {
       <main>
         <Hero content={c.hero} />
         <Marquee items={c.marquee} />
-        <BentoGrid head={c.bundlesHead} items={bundleItems} />
-        <ShopByShade head={c.shadesHead} items={shadeItems} />
         <SignatureCarousel head={c.signatureHead} items={signatureItems} />
+        <BundleMarquee head={c.bundlesHead} items={bundleItems} />
+        <ShopByShade head={c.shadesHead} items={shadeItems} />
         <WhyChooseFaitlyn content={c.whyChoose} />
         <EditorialSplit content={c.editorial} />
         <PressStrip eyebrow={c.press.eyebrow} items={c.press.items} />
         <Testimonials eyebrow={c.testimonials.eyebrow} items={c.testimonials.items} />
-        <Gallery eyebrow={c.gallery.eyebrow} heading={c.gallery.heading} items={c.gallery.items} />
+        <Gallery
+          eyebrow={c.gallery.eyebrow}
+          heading={c.gallery.heading}
+          items={c.gallery.items}
+          profile={c.gallery.profile}
+        />
         <FounderNote content={c.founder} />
       </main>
     </>

@@ -819,7 +819,7 @@ const DETECTORS = [
     },
   },
 
-  // ── Social: failed / overdue scheduled posts ──
+  // ── Social: flagged (deadline missed) / overdue-with-no-proof posts ──
   {
     module: "social_media",
     detector: "post_failed",
@@ -828,12 +828,12 @@ const DETECTORS = [
       const rows = await repo.failedSocialPosts({});
       return rows.map((p) => ({
         module: "social_media",
-        detector: p.status === "failed" ? "post_failed" : "post_overdue",
+        detector: p.status === "flagged" ? "post_failed" : "post_overdue",
         business: p.business,
         severity: "medium",
         title:
-          p.status === "failed"
-            ? "Scheduled post failed to publish"
+          p.status === "flagged"
+            ? "Post missed its deadline — no proof submitted"
             : "Scheduled post is overdue",
         body: null,
         context: { post_id: p.post_id, status: p.status, scheduled_for: p.scheduled_for },
@@ -843,33 +843,6 @@ const DETECTORS = [
         drill_route: "/social",
         suppression_key: `post:${p.post_id}`,
       }));
-    },
-  },
-
-  // ── Social: access token expiring (publishing will break) ──
-  {
-    module: "social_media",
-    detector: "token_expiring",
-    scope: "shared",
-    async run() {
-      const rows = await repo.expiringSocialTokens({});
-      return rows.map((a) => {
-        const days = Number(a.days_left) || 0;
-        return {
-          module: "social_media",
-          detector: "token_expiring",
-          business: a.business,
-          severity: days <= 1 ? "high" : "medium",
-          title: `${a.platform} token expires in ${days} day${days === 1 ? "" : "s"}`,
-          body: "Re-authorise the account before it stops publishing.",
-          context: { account_id: a.account_id, platform: a.platform, days_left: days },
-          amount_ngn: null,
-          source_table: "social_accounts",
-          source_id: a.account_id,
-          drill_route: "/social",
-          suppression_key: `token:${a.account_id}`,
-        };
-      });
     },
   },
 

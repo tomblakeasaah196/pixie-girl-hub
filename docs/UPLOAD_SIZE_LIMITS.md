@@ -22,6 +22,7 @@ Browser ──▶ Cloudflare ──▶ nginx ──▶ Node/Express (the app)
 | nginx | `client_max_body_size` — **defaults to 1MB** when the directive is absent; our reference blocks (`ops/kaizen/nginx-kaizen.conf`, `docs/STOREFRONT_DEPLOYMENT.md` §7) use `20m` | the site's `server`/`location` block on the box | nginx HTML page |
 | App — video upload | **200MB** (multer disk storage) | `src/modules/storefront_studio/studio.routes.js` `VIDEO_MAX_BYTES` | JSON `FILE_TOO_LARGE` with a friendly `user_message` |
 | App — branding image upload | 8MB (multer memory) | same file, `imageUpload` | JSON error |
+| App — catalogue/storefront product images | 20MB raw intake, then compressed (resize + re-encode) and re-checked against a 10MB stored ceiling | `src/services/media-compression.service.js` (`compressUploadChecked`, used by `catalogue.service.js` and `styled_variants.service.js`) | JSON `IMAGE_TOO_LARGE` with a friendly `user_message` |
 | App — JSON bodies | 10MB | `src/middleware/index.js` (`express.json`) | JSON error |
 
 **How to tell who rejected it:** the app's own 413 is JSON with an
@@ -76,6 +77,13 @@ Notes:
 - `proxy_request_buffering off` also keeps the browser's upload progress
   bar honest — with buffering on, nginx swallows the whole body first and
   the app only sees it afterwards.
+- The catalogue image cap (20MB raw intake) sits right at the reference
+  `client_max_body_size 20m` used for the generic `/api/` block above — no
+  headroom. If the live box's `/api/` block is also set to `20m`, a photo
+  just over 20MB gets nginx's bare, unfriendly 413 instead of the app's
+  `IMAGE_TOO_LARGE` message. Same fix as the video route: give the API
+  block a little headroom (e.g. `client_max_body_size 25m`) so the app's
+  own ceiling — and its friendly error — is always what wins.
 
 ## The Cloudflare ceiling
 

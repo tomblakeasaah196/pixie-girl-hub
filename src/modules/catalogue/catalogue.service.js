@@ -12,7 +12,9 @@ const events = require("./catalogue.events");
 const outbox = require("../../shared/outbox/outbox");
 const documents = require("../../shared/documents/documents.service");
 const numbering = require("../../services/numbering.service");
-const { compressUpload } = require("../../services/media-compression.service");
+const {
+  compressUploadChecked,
+} = require("../../services/media-compression.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { NotFoundError, AppError } = require("../../utils/errors");
@@ -786,22 +788,11 @@ async function listImages({ brand, id }) {
 async function addImage({ brand, user, request_id, id, file, meta }) {
   const product = await repo.findProductById({ brand, id });
   if (!product) throw new NotFoundError("Product");
-  // Server-side ceiling mirroring the client guard (10 MB) — large/video
-  // assets belong on the media route + FFmpeg queue, not the image path.
-  if (file.buffer && file.buffer.length > 10 * 1024 * 1024) {
-    throw new AppError(
-      "IMAGE_TOO_LARGE",
-      "Image exceeds the 10 MB limit",
-      413,
-      {
-        user_message: "Images must be 10 MB or smaller.",
-      },
-    );
-  }
   // Re-encode oversized/heavy images to high-quality, smaller bytes (and
   // convert HEIC → JPEG) before they hit storage — keeps galleries crisp
-  // without bloating the CDN.
-  const shrunk = await compressUpload(file);
+  // without bloating the CDN. Size is gated on both sides of compression;
+  // see media-compression.service.js.
+  const shrunk = await compressUploadChecked(file);
   return transaction(async (client) => {
     const doc = await documents.store({
       client,
@@ -863,17 +854,7 @@ async function uploadCoverImage({
   reference_type,
   reference_id,
 }) {
-  if (file.buffer && file.buffer.length > 10 * 1024 * 1024) {
-    throw new AppError(
-      "IMAGE_TOO_LARGE",
-      "Image exceeds the 10 MB limit",
-      413,
-      {
-        user_message: "Images must be 10 MB or smaller.",
-      },
-    );
-  }
-  const shrunk = await compressUpload(file);
+  const shrunk = await compressUploadChecked(file);
   const doc = await documents.store({
     brand,
     user_id: user.user_id,

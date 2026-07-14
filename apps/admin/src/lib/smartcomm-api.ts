@@ -225,6 +225,12 @@ export const smartcommApi = {
       qty: number;
       price_ngn?: string;
       note?: string;
+      // Staff-picked styled variant (head size × lace × colour).
+      styled_variant_id?: string;
+      size_code?: string;
+      lace_code?: string;
+      colour_id?: string;
+      spec?: string;
     }[];
     sales_channel?: string;
     notes?: string;

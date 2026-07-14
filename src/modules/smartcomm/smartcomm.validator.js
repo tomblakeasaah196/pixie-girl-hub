@@ -157,6 +157,15 @@ const orderCaptureItem = z
     qty: z.number().positive().max(100),
     price_ngn: z.union([z.string(), z.number()]).optional(),
     note: z.string().max(280).optional(),
+    // Staff-picked styled variant (head size × lace × colour). The price a
+    // styled product sells at depends on the size/lace, so the operator picks
+    // the exact combination before sharing/capturing; these ride the signed
+    // token so the customer's order is priced + fulfilled for that variant.
+    styled_variant_id: z.string().uuid().optional(),
+    size_code: z.string().max(40).optional(),
+    lace_code: z.string().max(40).optional(),
+    colour_id: z.string().uuid().optional(),
+    spec: z.string().max(160).optional(),
   })
   .strict()
   .refine(

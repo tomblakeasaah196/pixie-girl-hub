@@ -107,6 +107,14 @@ async function createCaptureLink({ brand, user, request_id, input }) {
           ? String(it.price_ngn)
           : undefined,
       note: it.note || undefined,
+      // Staff-picked styled variant (head size × lace × colour). Signed into
+      // the token so the resolver + checkout honour the chosen combination's
+      // price, not the base anchor.
+      styled_variant_id: kind === "styled" ? it.styled_variant_id : undefined,
+      size_code: kind === "styled" ? it.size_code : undefined,
+      lace_code: kind === "styled" ? it.lace_code : undefined,
+      colour_id: kind === "styled" ? it.colour_id : undefined,
+      spec: kind === "styled" ? it.spec : undefined,
     };
   });
   const expiresIn = Number(input.expires_in) || DEFAULT_EXPIRY_SECONDS;

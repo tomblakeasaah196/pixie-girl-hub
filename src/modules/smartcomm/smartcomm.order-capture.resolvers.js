@@ -122,6 +122,12 @@ async function resolveStyledItem(business, it) {
     const v = await defaultVariant(schema, styled.base_product_id);
     variant_id = v ? v.variant_id : null;
   }
+  // Staff may have picked a specific head size × lace × colour (styled_variant).
+  // The physical stock line is still the base variant above; the styled variant
+  // sets the PRICE (it.price_ngn, snapshotted at pick time) and the spec label
+  // shown to the customer + recorded on the order note for fulfilment.
+  const spec = it.spec || null;
+  const note = [it.note, spec].filter(Boolean).join(" — ") || null;
   return {
     kind: "styled",
     ref_id: it.styled_id,
@@ -130,7 +136,12 @@ async function resolveStyledItem(business, it) {
     image_url: styled.primary_image_url || null,
     qty: it.qty,
     price_ngn: it.price_ngn || String(styled.retail_price_ngn ?? ""),
-    note: it.note || null,
+    note,
+    spec,
+    styled_variant_id: it.styled_variant_id || null,
+    size_code: it.size_code || null,
+    lace_code: it.lace_code || null,
+    colour_id: it.colour_id || null,
     unresolved_reason: variant_id
       ? null
       : "Base product has no active variant to sell through",

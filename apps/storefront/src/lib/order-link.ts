@@ -79,6 +79,10 @@ export interface OrderFormResult {
   total_ngn: string | null;
   payment_plan: "full" | "instalment" | null;
   pay_now_ngn: string | null;
+  // Gateway checkout URL minted server-side for an order-link checkout — the
+  // page redirects straight here (Nomba). Null only when the gateway couldn't
+  // be reached; the page then retries via the tracking token.
+  payment_url: string | null;
   public_tracking_token: string | null;
   contact_id: string;
   booking_count: number;

@@ -50,6 +50,82 @@ const popupDraftSchema = z.object({
   is_active: z.boolean().default(true),
 });
 
+// Journal article body: an ordered array of typed blocks (text / image /
+// youtube / instagram / video) instead of one flat string, so Storefront
+// Studio → Content can compose a magazine-style layout. Text formatting is
+// data-driven (font/size/color/weight flags) rather than raw HTML — the
+// renderer never uses dangerouslySetInnerHTML, so there is no markup
+// injection surface even though operators fully control the copy.
+const FONT_KEYS = [
+  "cormorant",
+  "instrument-serif",
+  "work-sans",
+  "archivo-black",
+  "playfair",
+  "marcellus",
+  "montserrat",
+  "cinzel",
+  "eb-garamond",
+  "prata",
+];
+const FONT_SIZES = ["sm", "base", "lg", "xl", "2xl", "3xl"];
+const EMBED_ASPECTS = ["16:9", "9:16", "1:1"];
+
+const blockBase = { id: z.string().trim().min(1).max(80) };
+
+const textBlockSchema = z.object({
+  ...blockBase,
+  type: z.literal("text"),
+  text: z.string().max(4000),
+  fontFamily: z.enum(FONT_KEYS).nullish(),
+  fontSize: z.enum(FONT_SIZES).nullish(),
+  color: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{3,8}$/)
+    .nullish(),
+  bold: z.boolean().nullish(),
+  italic: z.boolean().nullish(),
+  underline: z.boolean().nullish(),
+  align: z.enum(["left", "center", "right"]).nullish(),
+});
+const imageBlockSchema = z.object({
+  ...blockBase,
+  type: z.literal("image"),
+  url: z.string().max(1000),
+  alt: z.string().max(300).nullish(),
+  caption: z.string().max(500).nullish(),
+});
+const youtubeBlockSchema = z.object({
+  ...blockBase,
+  type: z.literal("youtube"),
+  url: z.string().max(500),
+  aspect: z.enum(EMBED_ASPECTS).default("16:9"),
+  caption: z.string().max(500).nullish(),
+});
+const instagramBlockSchema = z.object({
+  ...blockBase,
+  type: z.literal("instagram"),
+  url: z.string().max(500),
+  aspect: z.enum(EMBED_ASPECTS).default("9:16"),
+  caption: z.string().max(500).nullish(),
+});
+const videoBlockSchema = z.object({
+  ...blockBase,
+  type: z.literal("video"),
+  url: z.string().max(1000),
+  poster_url: z.string().max(1000).nullish(),
+  width: z.number().int().positive().nullish(),
+  height: z.number().int().positive().nullish(),
+  caption: z.string().max(500).nullish(),
+});
+const contentBlockSchema = z.discriminatedUnion("type", [
+  textBlockSchema,
+  imageBlockSchema,
+  youtubeBlockSchema,
+  instagramBlockSchema,
+  videoBlockSchema,
+]);
+
 // Content posts (FAQ / care guide / journal / policy). Slug, reading time,
 // and blank SEO fields are derived server-side, so the editor only has to send
 // what a shop owner actually types. Extra keys from a loaded row are stripped.
@@ -74,6 +150,7 @@ const contentPostSchema = z.object({
     .nullish(),
   faq_question: z.string().max(300).nullish(),
   tags: z.array(z.string().max(60)).max(20).default([]),
+  content_blocks: z.array(contentBlockSchema).max(80).default([]),
   meta_title: z.string().max(200).nullish(),
   meta_description: z.string().max(500).nullish(),
   is_featured: z.boolean().default(false),
@@ -96,4 +173,5 @@ module.exports = {
   pageDraftSchema,
   popupDraftSchema,
   contentPostSchema,
+  contentBlockSchema,
 };

@@ -150,6 +150,12 @@ router.post(
 );
 router.delete("/content/:postId", can("approve"), controller.deleteContent);
 
+// oEmbed lookup for journal video blocks — given a YouTube URL, resolves the
+// video's real width/height so the editor can auto-pick 16:9 vs 9:16 instead
+// of asking the operator to guess. Read-only, no host besides youtube.com is
+// ever contacted (see studio.service.js#fetchOEmbed).
+router.get("/oembed", can("view"), controller.oembed);
+
 // Section template library for the page composer.
 router.get("/section-templates", can("view"), controller.listSectionTemplates);
 

@@ -214,9 +214,22 @@ async function getSite({ brand, path, previewToken }) {
 // pre-wrapped) or `body_html`. Content posts store the copy in `body`, so
 // alias it to `body_md` on the way out. We never emit body_html — no raw HTML
 // is injected from operator input.
+//
+// The listing/detail pages also render a `cover_image_url` — the DB column is
+// `hero_image_url`, so that needs the same aliasing (previously missing:
+// every published journal post's hero image silently failed to render on
+// faitlynhair.com/journal, even though it was correctly stored and shown in
+// Storefront Studio). `content_blocks` (journal's rich block body, see
+// migration 000338) passes through as-is — it is structured JSON, not markup,
+// so there is no injection risk in emitting it verbatim.
 function withRenderableBody(post) {
   if (!post) return post;
-  return { ...post, body_md: post.body ?? null };
+  return {
+    ...post,
+    body_md: post.body ?? null,
+    cover_image_url: post.hero_image_url ?? null,
+    content_blocks: Array.isArray(post.content_blocks) ? post.content_blocks : [],
+  };
 }
 
 async function listContent({ brand, type }) {

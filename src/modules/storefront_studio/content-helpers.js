@@ -52,6 +52,15 @@ function clamp(str, max) {
   return v.length > max ? `${v.slice(0, max - 1)}…` : v;
 }
 
+/** Flatten the text-block copy out of content_blocks for reading-time counts. */
+function blocksText(blocks) {
+  if (!Array.isArray(blocks)) return "";
+  return blocks
+    .filter((b) => b && b.type === "text" && typeof b.text === "string")
+    .map((b) => b.text)
+    .join(" ");
+}
+
 /**
  * Normalise an editor payload into a full DB row shape. FAQ posts carry the
  * question in `faq_question` and the answer in `body`; the title mirrors the
@@ -76,13 +85,19 @@ function buildPostFields(input) {
     faq_category: isFaq ? input.faq_category || "general" : null,
     faq_question: isFaq ? input.faq_question || title : null,
     tags: input.tags || [],
+    content_blocks: Array.isArray(input.content_blocks) ? input.content_blocks : [],
     meta_title: (input.meta_title && input.meta_title.trim()) || clamp(title, 200),
     meta_description:
       (input.meta_description && input.meta_description.trim()) ||
       clamp(excerpt || body || title, 300),
     is_featured: !!input.is_featured,
     display_order: Number.isFinite(input.display_order) ? input.display_order : 0,
-    reading_time_minutes: readingTimeMinutes(title, excerpt, body),
+    reading_time_minutes: readingTimeMinutes(
+      title,
+      excerpt,
+      body,
+      blocksText(input.content_blocks),
+    ),
   };
 }
 

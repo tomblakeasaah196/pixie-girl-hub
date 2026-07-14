@@ -319,8 +319,8 @@ async function getRevision({ client, brand, revision_id }) {
 
 const CONTENT_COLS = `post_id, post_type, slug, title, excerpt, body,
   hero_image_url, hero_image_alt, faq_category, faq_question, tags,
-  meta_title, meta_description, status, published_at, is_featured,
-  display_order, reading_time_minutes, author_display_name,
+  content_blocks, meta_title, meta_description, status, published_at,
+  is_featured, display_order, reading_time_minutes, author_display_name,
   created_at, updated_at`;
 
 // Admin list: all statuses (the operator manages drafts too). Optional type
@@ -365,10 +365,10 @@ async function insertContentPost({ client, brand, post }) {
   const { rows } = await ex(client)(
     `INSERT INTO ${t(brand, "storefront_content_posts")}
        (post_type, slug, title, excerpt, body, hero_image_url, hero_image_alt,
-        faq_category, faq_question, tags, meta_title, meta_description,
-        status, published_at, is_featured, display_order,
+        faq_category, faq_question, tags, content_blocks, meta_title,
+        meta_description, status, published_at, is_featured, display_order,
         reading_time_minutes, author_user_id, author_display_name)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
      RETURNING ${CONTENT_COLS}`,
     [
       post.post_type,
@@ -381,6 +381,7 @@ async function insertContentPost({ client, brand, post }) {
       post.faq_category,
       post.faq_question,
       post.tags || [],
+      JSON.stringify(post.content_blocks || []),
       post.meta_title,
       post.meta_description,
       post.status,
@@ -400,9 +401,10 @@ async function updateContentPost({ client, brand, post_id, post }) {
     `UPDATE ${t(brand, "storefront_content_posts")} SET
        post_type = $2, slug = $3, title = $4, excerpt = $5, body = $6,
        hero_image_url = $7, hero_image_alt = $8, faq_category = $9,
-       faq_question = $10, tags = $11, meta_title = $12, meta_description = $13,
-       status = $14, published_at = $15, is_featured = $16, display_order = $17,
-       reading_time_minutes = $18, updated_at = now()
+       faq_question = $10, tags = $11, content_blocks = $12, meta_title = $13,
+       meta_description = $14, status = $15, published_at = $16,
+       is_featured = $17, display_order = $18, reading_time_minutes = $19,
+       updated_at = now()
       WHERE post_id = $1
       RETURNING ${CONTENT_COLS}`,
     [
@@ -417,6 +419,7 @@ async function updateContentPost({ client, brand, post_id, post }) {
       post.faq_category,
       post.faq_question,
       post.tags || [],
+      JSON.stringify(post.content_blocks || []),
       post.meta_title,
       post.meta_description,
       post.status,

@@ -25,7 +25,11 @@ const orderFormSchema = z
     // ("NG-AB"), a Lagos LGA ("NG-LA-AGEGE"), or an ISO-2 country code
     // for everywhere else (DHL). Required when fulfilment_type is
     // "delivery" — the server ALWAYS quotes the fee itself from this
-    // zone; there is deliberately no client-supplied fee field here.
+    // zone (storefront.service reads input.zone_code); there is
+    // deliberately no client-supplied fee field here. Without this field
+    // the .strict() schema rejected every delivery checkout that sent it
+    // ("Invalid input" — the reason Place Order never went through).
+    zone_code: z.string().max(40).optional(),
     items: z
       .array(
         z.object({

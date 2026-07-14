@@ -12,6 +12,7 @@ const { transaction } = require("../../config/database");
 const { NotFoundError, AppError } = require("../../utils/errors");
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
+const axios = require("axios");
 const { config } = require("../../config/env");
 const storage = require("../../services/storage.service");
 const {
@@ -377,6 +378,52 @@ async function previewInfo({ brand }) {
   return { token, base_url: base || null };
 }
 
+// ── YouTube oEmbed (auto aspect-ratio for journal video blocks) ────
+// YouTube's oEmbed endpoint is public and keyless. We only ever call it with
+// a video ID we ourselves extracted (never the raw operator-pasted URL) and
+// only ever hit youtube.com, so there is no open-redirect/SSRF surface here.
+const YOUTUBE_URL_RE =
+  /(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+
+function extractYouTubeId(url) {
+  const m = YOUTUBE_URL_RE.exec(String(url || ""));
+  return m ? m[1] : null;
+}
+
+async function fetchOEmbed({ url }) {
+  const videoId = extractYouTubeId(url);
+  if (!videoId)
+    throw new AppError(
+      "BAD_URL",
+      "That doesn't look like a YouTube link",
+      400,
+    );
+  try {
+    const { data } = await axios.get("https://www.youtube.com/oembed", {
+      params: {
+        url: `https://www.youtube.com/watch?v=${videoId}`,
+        format: "json",
+      },
+      timeout: 5000,
+    });
+    const width = Number(data.width) || null;
+    const height = Number(data.height) || null;
+    const aspect =
+      width && height
+        ? width > height
+          ? "16:9"
+          : width < height
+            ? "9:16"
+            : "1:1"
+        : null;
+    return { video_id: videoId, width, height, aspect, title: data.title || null };
+  } catch {
+    // A private/deleted/region-locked video, or YouTube being unreachable —
+    // the editor falls back to a manual aspect toggle either way.
+    return { video_id: videoId, width: null, height: null, aspect: null, title: null };
+  }
+}
+
 // ── Revisions (history + one-click rollback) ───────────────
 function listRevisions({ brand }) {
   return repo.listRevisions({ brand });
@@ -649,6 +696,7 @@ module.exports = {
   listSectionTemplates,
   uploadImage,
   uploadVideo,
+  fetchOEmbed,
   previewInfo,
   listRevisions,
   rollbackRevision,

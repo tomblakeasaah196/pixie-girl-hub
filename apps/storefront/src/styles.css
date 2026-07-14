@@ -9,6 +9,24 @@
 @import "@fontsource-variable/work-sans";
 @import "@fontsource/archivo-black/400.css";
 
+/* Journal editorial fonts — the curated 10-font roster offered per text
+   block in Storefront Studio → Content (see lib/content-blocks.ts#FONT_CSS).
+   Self-hosted like the fonts above, not a Google Fonts CDN link, so a
+   journal article never depends on a third-party font host at read time. */
+@import "@fontsource/playfair-display/400.css";
+@import "@fontsource/playfair-display/500.css";
+@import "@fontsource/playfair-display/700.css";
+@import "@fontsource/marcellus/400.css";
+@import "@fontsource/montserrat/400.css";
+@import "@fontsource/montserrat/500.css";
+@import "@fontsource/montserrat/700.css";
+@import "@fontsource/cinzel/400.css";
+@import "@fontsource/cinzel/600.css";
+@import "@fontsource/eb-garamond/400.css";
+@import "@fontsource/eb-garamond/500.css";
+@import "@fontsource/eb-garamond/600.css";
+@import "@fontsource/prata/400.css";
+
 @custom-variant dark (&:is(.dark *));
 
 /*

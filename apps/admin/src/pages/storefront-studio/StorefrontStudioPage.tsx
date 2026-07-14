@@ -10,7 +10,7 @@
  * shops are not developers.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   PointerSensor,
@@ -28,11 +28,13 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { Plus, Newspaper } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button, Card, Pill } from "@/components/ui/primitives";
 import { Toggle, Select, ConfirmDialog } from "@/components/ui/controls";
 import { Tabs } from "@/pages/stock/parts";
 import { useBusinessStore } from "@/stores/business";
+import { useContentPosts, type ContentPost } from "@/lib/content-posts";
 import {
   useThemes,
   useSaveThemeDraft,
@@ -60,7 +62,7 @@ import {
 import { toast } from "@/stores/toast";
 import { describeError } from "@/lib/error-report";
 import { formatDateTime } from "@/lib/format";
-import { ContentTab } from "./ContentTab";
+import { ContentTab, type ContentJump } from "./ContentTab";
 import { VideoField } from "./VideoField";
 
 /**
@@ -132,6 +134,14 @@ function StatusPill({ status }: { status?: StudioStatus }) {
 export function StorefrontStudioPage() {
   const brand = useBusinessStore((s) => s.activeKey);
   const [tab, setTab] = useState<Tab>("theme");
+  // Pages → journal links "view/create article" straight into Content, so the
+  // operator never has to re-find what they just clicked.
+  const [contentJump, setContentJump] = useState<ContentJump | null>(null);
+  const clearContentJump = useCallback(() => setContentJump(null), []);
+  const jumpToContent = useCallback((jump: ContentJump) => {
+    setContentJump(jump);
+    setTab("content");
+  }, []);
 
   return (
     <div className="space-y-5">
@@ -147,8 +157,10 @@ export function StorefrontStudioPage() {
         {tab === "branding" ? <BrandingTab /> : null}
         {tab === "toolbar" ? <ToolbarTab /> : null}
         {tab === "navigation" ? <NavigationTab /> : null}
-        {tab === "pages" ? <PagesTab /> : null}
-        {tab === "content" ? <ContentTab /> : null}
+        {tab === "pages" ? <PagesTab onJumpToContent={jumpToContent} /> : null}
+        {tab === "content" ? (
+          <ContentTab jumpTo={contentJump} onJumpHandled={clearContentJump} />
+        ) : null}
         {tab === "popups" ? <PopupsTab /> : null}
         {tab === "preview" ? <PreviewTab /> : null}
         {tab === "revisions" ? <RevisionsTab /> : null}
@@ -1353,7 +1365,11 @@ const BLANK_PAGE: PageRow = {
   slots: {},
 };
 
-function PagesTab() {
+function PagesTab({
+  onJumpToContent,
+}: {
+  onJumpToContent: (jump: { postId?: string }) => void;
+}) {
   const { data, isLoading } = usePages();
   const save = useSavePageDraft();
   const publish = usePublishPage();
@@ -1496,6 +1512,10 @@ function PagesTab() {
             <SlotsEditor value={slots} onChange={setSlots} />
           </div>
 
+          {sel.page_key === "journal" ? (
+            <JournalArticlesPanel onJumpToContent={onJumpToContent} />
+          ) : null}
+
           <div className="flex gap-2 pt-1">
             <Button
               variant="primary"
@@ -1519,6 +1539,71 @@ function PagesTab() {
           Select a page to edit, or create a new one.
         </p>
       )}
+    </div>
+  );
+}
+
+/** Read-only preview of journal articles, shown right on the "journal" page's
+ *  editor — this page is only the listing banner (eyebrow/heading), so this
+ *  panel answers "where are my actual articles?" and hands off to the real
+ *  editor (Content tab) rather than duplicating it here. */
+function JournalArticlesPanel({
+  onJumpToContent,
+}: {
+  onJumpToContent: (jump: { postId?: string }) => void;
+}) {
+  const { data, isLoading } = useContentPosts();
+  const articles = useMemo(
+    () => (data || []).filter((p) => p.post_type === "journal"),
+    [data],
+  );
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <label className={cn(labelCls, "text-[13px] text-text-primary")}>
+          Journal articles
+        </label>
+        <Button
+          variant="secondary"
+          size="sm"
+          icon={<Plus className="h-3.5 w-3.5" />}
+          onClick={() => onJumpToContent({})}
+        >
+          New article
+        </Button>
+      </div>
+      <p className="mb-2 text-[12px] text-text-muted">
+        The banner above is all this page controls. Individual articles are
+        written and published in Content — click one to open it there.
+      </p>
+      <Card className="p-2">
+        {isLoading ? (
+          <p className="px-2 py-3 text-[13px] text-text-muted">Loading…</p>
+        ) : articles.length === 0 ? (
+          <p className="px-2 py-4 text-center text-[12.5px] text-text-muted">
+            No articles yet. Click “New article” to write your first one.
+          </p>
+        ) : (
+          <ul className="space-y-1">
+            {articles.map((a: ContentPost) => (
+              <li key={a.post_id}>
+                <button
+                  onClick={() => onJumpToContent({ postId: a.post_id })}
+                  className="flex w-full items-center gap-2.5 rounded-[10px] px-3 py-2 text-left text-[13px] text-text-muted hover:bg-text-primary/[0.04] hover:text-text-primary"
+                >
+                  <Newspaper className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+                  <span className="min-w-0 flex-1 truncate">
+                    {a.title || "(untitled)"}
+                  </span>
+                  <Pill tone={a.status === "published" ? "success" : "neutral"} dot={false}>
+                    {a.status === "published" ? "Live" : "Draft"}
+                  </Pill>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
     </div>
   );
 }

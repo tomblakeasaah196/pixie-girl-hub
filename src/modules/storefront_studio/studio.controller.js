@@ -186,6 +186,9 @@ async function uploadVideo(req, res) {
     }),
   });
 }
+async function oembed(req, res) {
+  res.json({ data: await service.fetchOEmbed({ url: req.query.url }) });
+}
 async function previewInfo(req, res) {
   res.json({ data: await service.previewInfo({ brand: req.brand }) });
 }
@@ -220,6 +223,7 @@ module.exports = {
   listSectionTemplates,
   uploadImage,
   uploadVideo,
+  oembed,
   previewInfo,
   listRevisions,
   rollbackRevision,

@@ -5,6 +5,7 @@ import {
   rateToNgn,
   type CurrencyInfo,
 } from "./money";
+import type { ContentBlock } from "./content-blocks";
 
 /*
  * Storefront data layer - typed Hub calls + types. Replaces every Supabase
@@ -278,6 +279,8 @@ export const getContentPost = (type: string, slug: string, ctx?: ApiContext) =>
     body_md?: string;
     body_html?: string;
     cover_image_url?: string;
+    content_blocks?: ContentBlock[];
+    tags?: string[];
     published_at?: string;
   }>(`${SF}/content/${type}/${slug}`, ctx);
 export const getContentList = (type: string, ctx?: ApiContext) =>
@@ -287,6 +290,7 @@ export const getContentList = (type: string, ctx?: ApiContext) =>
       title: string;
       excerpt?: string;
       cover_image_url?: string;
+      tags?: string[];
       published_at?: string;
     }[]
   >(`${SF}/content/${type}`, ctx);

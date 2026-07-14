@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { getContentPost } from "@/lib/storefront";
 import { Section, ErrorState } from "@/components/parts";
+import { BlockRenderer } from "@/components/journal/BlockRenderer";
 
 export const Route = createFileRoute("/journal/$slug")({
   component: JournalPost,
@@ -35,7 +36,11 @@ function JournalPost() {
           <img src={data.cover_image_url} alt={data.title} className="h-full w-full object-cover" />
         </div>
       ) : null}
-      {data.body_html ? (
+      {data.content_blocks && data.content_blocks.length > 0 ? (
+        <div className="mt-8">
+          <BlockRenderer blocks={data.content_blocks} />
+        </div>
+      ) : data.body_html ? (
         <div
           className="prose mt-8 max-w-none text-body text-foreground"
           dangerouslySetInnerHTML={{ __html: data.body_html }}

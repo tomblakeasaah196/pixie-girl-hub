@@ -56,6 +56,10 @@ const A = (
 function listAccounts({ brand }) {
   return repo.listAccounts({ brand });
 }
+/** Active staff on this brand — the "assign to" picker's data source. */
+function listAssignableStaff({ brand }) {
+  return repo.listAssignableStaff({ brand });
+}
 async function connectAccount({ brand, user, request_id, input }) {
   const account = await repo.createAccount({
     brand,
@@ -838,6 +842,7 @@ async function ingestInboundDM({ brand, user, request_id, input }) {
 
 module.exports = {
   listAccounts,
+  listAssignableStaff,
   connectAccount,
   revokeAccount,
   createPlan,

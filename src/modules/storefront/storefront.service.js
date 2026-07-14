@@ -53,13 +53,14 @@ async function getProduct({ brand, slug }) {
     throw new NotFoundError("Product");
   }
 
-  const [allVariants, gallery, colours, tiers, laces, cfg] = await Promise.all([
+  const [allVariants, gallery, colours, tiers, laces, cfg, socialProof] = await Promise.all([
     styledVariantsRepo.listVariants({ brand, styled_id }),
     repo.listStyledGallery({ brand, styled_id }),
     repo.listColourGalleries({ brand, styled_id }),
     styledVariantsRepo.listSizeTiers({ brand, activeOnly: true }),
     styledVariantsRepo.listLaceSizes({ brand, activeOnly: true }),
     styledVariantsRepo.getConfig({ brand }),
+    repo.getSocialProof({ brand, styled_id }),
   ]);
 
   // Show ONLY variants a buyer can actually purchase — the same is_active +
@@ -145,6 +146,16 @@ async function getProduct({ brand, slug }) {
           title: cfg.size_guide_title || "How to find your head size",
           guide_md: cfg.head_size_guide_md || null,
           video_url: cfg.head_size_video_url || null,
+        }
+      : null,
+    // "As seen on Instagram" badge — null when nothing's been proven-posted
+    // tagging this product yet.
+    social_proof: socialProof
+      ? {
+          platform: socialProof.platform,
+          url: socialProof.external_url,
+          thumbnail_url: socialProof.oembed_thumbnail_url,
+          author_handle: socialProof.oembed_author_handle,
         }
       : null,
   };

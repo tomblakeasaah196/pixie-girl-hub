@@ -439,6 +439,18 @@ async function creatorDrilldown({ brand, user_id, period_month }) {
   return rows;
 }
 
+/** Active staff permitted on this brand — powers the "assign to" picker when
+ *  the CEO hands a creator a specific post to execute. */
+async function listAssignableStaff({ brand }) {
+  const { rows } = await query(
+    `SELECT user_id, display_name FROM shared.users
+      WHERE is_active = true AND $1 = ANY(permitted_businesses)
+      ORDER BY display_name`,
+    [brand],
+  );
+  return rows;
+}
+
 module.exports = {
   createAccount,
   listAccounts,
@@ -467,4 +479,5 @@ module.exports = {
   performanceSummary,
   teamSummary,
   creatorDrilldown,
+  listAssignableStaff,
 };

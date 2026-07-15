@@ -136,17 +136,62 @@ async function dispatch({
   // most often refers to, unless the caller supplied them explicitly.
   const enriched = await enrichVariables({ brand, contact, variables });
 
+  // Address for each channel, override-first (send-test uses overrides).
+  const addressFor = (ch) => {
+    if (ch === "email")
+      return variables.override_to_email || (contact && contact.email) || null;
+    if (ch === "whatsapp")
+      return (
+        variables.override_to_phone ||
+        (contact && (contact.whatsapp_number || contact.primary_phone)) ||
+        null
+      );
+    if (ch === "instagram")
+      return (
+        variables.override_ig_user_id || (contact && contact.ig_user_id) || null
+      );
+    return null;
+  };
+  const NO_ADDRESS = {
+    email: "no_email",
+    whatsapp: "no_phone",
+    instagram: "no_ig_user_id",
+  };
+
+  // Address-aware fallback: when the policy-resolved channel has no address
+  // on the contact (the classic case: 'order_confirmation' prefers email but
+  // a WhatsApp customer never gave one), fall through to the policy's OWN
+  // fallback_channel rather than silently skipping — the CEO configured it
+  // for exactly this. block_whatsapp stays a hard guardrail.
+  // Only an EXPLICITLY configured fallback_channel qualifies — never an
+  // invented default (cost discipline: nothing rides WhatsApp unless the
+  // CEO picked it for this event).
+  const candidates = [channel];
+  const fb = automation.fallback_channel || null;
+  if (
+    fb &&
+    fb !== channel &&
+    ["email", "whatsapp", "instagram"].includes(fb) &&
+    !(fb === "whatsapp" && automation.block_whatsapp)
+  ) {
+    candidates.push(fb);
+  }
+  const sendChannel = candidates.find((ch) => addressFor(ch));
+  const fellBack = sendChannel ? sendChannel !== channel : false;
+
   try {
-    if (channel === "email") {
-      const to = variables.override_to_email || (contact && contact.email);
-      if (!to) {
-        await repo.markSendStatus({
-          send_id: claim.send_id,
-          status: "skipped",
-          failure_reason: "no_email",
-        });
-        return { dispatched: false, channel, reason: "no_email" };
-      }
+    if (!sendChannel) {
+      const reason = NO_ADDRESS[channel] || `no_address:${channel}`;
+      await repo.markSendStatus({
+        send_id: claim.send_id,
+        status: "skipped",
+        failure_reason: reason,
+      });
+      return { dispatched: false, channel, reason };
+    }
+
+    if (sendChannel === "email") {
+      const to = addressFor("email");
       const brandTokens = await emailRender.resolveBrandTokens(brand);
       const built = renderer.buildEmail({
         automation,
@@ -165,58 +210,87 @@ async function dispatch({
         reference_id,
       });
       await repo.markSendStatus({ send_id: claim.send_id, status: "sent" });
-      return { dispatched: true, channel: "email", send_id: claim.send_id };
+      return {
+        dispatched: true,
+        channel: "email",
+        send_id: claim.send_id,
+        ...(fellBack ? { fallback: true } : {}),
+      };
     }
 
-    if (channel === "whatsapp") {
-      const to =
-        variables.override_to_phone ||
-        (contact && (contact.whatsapp_number || contact.primary_phone));
-      if (!to) {
+    if (sendChannel === "whatsapp" || sendChannel === "instagram") {
+      // IG falls back to the WhatsApp wording when no IG-specific template
+      // was written — most automations are seeded with a WhatsApp body only.
+      const body =
+        sendChannel === "whatsapp"
+          ? renderer.buildWhatsApp({ automation, variables: enriched })
+          : renderer.buildInstagram({ automation, variables: enriched }) ||
+            renderer.buildWhatsApp({ automation, variables: enriched });
+      if (!body || !body.trim()) {
         await repo.markSendStatus({
           send_id: claim.send_id,
           status: "skipped",
-          failure_reason: "no_phone",
+          failure_reason: "no_template_body",
         });
-        return { dispatched: false, channel, reason: "no_phone" };
+        return { dispatched: false, channel: sendChannel, reason: "no_template_body" };
       }
-      const body = renderer.buildWhatsApp({ automation, variables: enriched });
-      await enqueue("whatsapp-send", `automation:${event_key}`, {
-        brand,
-        to,
-        body,
-      });
-      await repo.markSendStatus({ send_id: claim.send_id, status: "sent" });
-      return { dispatched: true, channel: "whatsapp", send_id: claim.send_id };
-    }
 
-    if (channel === "instagram") {
-      const igUserId =
-        variables.override_ig_user_id || (contact && contact.ig_user_id);
-      if (!igUserId) {
-        await repo.markSendStatus({
-          send_id: claim.send_id,
-          status: "skipped",
-          failure_reason: "no_ig_user_id",
-        });
-        return { dispatched: false, channel, reason: "no_ig_user_id" };
+      // Prefer the smartcomm funnel: it records the message on the
+      // customer's thread (so the operator SEES the automated send in
+      // Messaging, with real delivery status) and enqueues the identical
+      // provider job. Overrides (send-test to an arbitrary number) and any
+      // funnel failure fall back to the raw enqueue this dispatcher always
+      // did, so an automation never dies because the mirror did.
+      const hasOverride =
+        sendChannel === "whatsapp"
+          ? !!variables.override_to_phone
+          : !!variables.override_ig_user_id;
+      let mirrored = null;
+      if (contact_id && !hasOverride) {
+        try {
+          const smartcomm = require("../smartcomm/smartcomm.service");
+          mirrored = await smartcomm.sendToCustomer({
+            brand,
+            contact_id,
+            channel: sendChannel,
+            body,
+            soft: true,
+          });
+          if (mirrored && mirrored.skipped) mirrored = null;
+        } catch {
+          mirrored = null;
+        }
       }
-      const text = renderer.buildInstagram({ automation, variables: enriched });
-      await enqueue("instagram-send", `automation:${event_key}`, {
-        brand,
-        recipient_id: igUserId,
-        text,
-      });
+      if (!mirrored) {
+        if (sendChannel === "whatsapp") {
+          await enqueue("whatsapp-send", `automation:${event_key}`, {
+            brand,
+            to: addressFor("whatsapp"),
+            body,
+          });
+        } else {
+          await enqueue("instagram-send", `automation:${event_key}`, {
+            brand,
+            recipient_id: addressFor("instagram"),
+            text: body,
+          });
+        }
+      }
       await repo.markSendStatus({ send_id: claim.send_id, status: "sent" });
-      return { dispatched: true, channel: "instagram", send_id: claim.send_id };
+      return {
+        dispatched: true,
+        channel: sendChannel,
+        send_id: claim.send_id,
+        ...(fellBack ? { fallback: true } : {}),
+      };
     }
 
     await repo.markSendStatus({
       send_id: claim.send_id,
       status: "skipped",
-      failure_reason: `unknown_channel:${channel}`,
+      failure_reason: `unknown_channel:${sendChannel}`,
     });
-    return { dispatched: false, channel, reason: "unknown_channel" };
+    return { dispatched: false, channel: sendChannel, reason: "unknown_channel" };
   } catch (err) {
     await repo.markSendStatus({
       send_id: claim.send_id,

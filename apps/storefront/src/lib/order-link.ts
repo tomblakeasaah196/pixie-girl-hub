@@ -126,8 +126,26 @@ export interface OrderFormBody {
   items: OrderLinkLine[];
   bundle_id?: string;
   payment_plan: "full" | "instalment";
+  // Buyer's gateway pick (nomba | paystack) — server prefers it on the
+  // active chain and falls over automatically if it's down.
+  payment_gateway?: string;
   client_idempotency_key?: string;
 }
+
+/** Checkout-safe payment config for a brand+channel (Flexi Pay + gateways). */
+export interface PayConfig {
+  instalments_enabled: boolean;
+  plan_display_name?: string;
+  plan_terms?: string[];
+  // Buyer-pickable gateways actually active for this brand (NGN chain),
+  // in the server's preference order.
+  gateways?: string[];
+}
+
+export const getPayConfig = (brand: string, channel: string) =>
+  api.get<PayConfig>(
+    `/api/public/pay/config/${encodeURIComponent(brand)}?channel=${encodeURIComponent(channel)}`,
+  );
 
 export const getOrderLink = (slug: string) =>
   api.get<OrderLinkContext>(

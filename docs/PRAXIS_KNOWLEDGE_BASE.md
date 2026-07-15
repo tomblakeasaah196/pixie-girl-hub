@@ -177,7 +177,8 @@ chasing deliveries, and payment settings.
   Sale Form, add items, take payment. (This replaced the old POS.)
 - *Create a full order and send a pay link?* Sales → **Orders** → **New Sale** /
   **Create Order & Send Pay Link**. The customer gets a short checkout link
-  (`/o/<slug>`) and pays through the gateway.
+  (`/o/<slug>`), picks their gateway (Nomba / Paystack, whichever are active),
+  and is redirected straight to payment.
 - *Send a quotation?* Sales → **Quotations** → **New Quotation** / **Create Quotation**.
 - *See orders waiting to ship?* Sales → **Delivery Pending** tab.
 - *Open one order?* Sales → **Orders**, click the order → `/sales/orders/<orderId>`.
@@ -503,10 +504,18 @@ messages across WhatsApp, SMS, and other channels in one place.
 **Common tasks.**
 - *Reply to a customer on WhatsApp/SMS?* Messaging (`/smartcomm`) — pick the
   conversation and send.
+- *Share products / a bundle / a service in a chat?* Open the conversation →
+  the **catalogue icon** in the composer → pick Base / Styled / **Bundle** /
+  Service items → **Send**. The customer gets photo cards plus one short
+  order link (`/o/<slug>`) to pick, confirm delivery, and pay.
 - *Connect a WhatsApp/SMS number?* That's **Messaging Accounts** (permission
   `messaging_accounts`) — connect channels there.
 - *Edit the automatic messages customers get (receipts, order updates)?* That's
   the **Automated Messages Studio** (`comms_studio` permission).
+- *See the confirmation a customer was sent after paying?* It's recorded on
+  their thread in Messaging: the branded confirmation **email** appears on
+  their email-channel conversation, and a WhatsApp confirmation (sent when
+  the customer has no email on file) appears on their WhatsApp thread.
 
 ### 4.25 Org & Workflow
 **What it's for.** Company **structure, roles, and approvals** — the org chart,

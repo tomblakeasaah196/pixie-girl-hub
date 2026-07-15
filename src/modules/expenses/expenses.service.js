@@ -378,6 +378,7 @@ async function markPaid({ brand, user, request_id, id, input }) {
         paid_by: user.user_id,
         payment_method: input.payment_method,
         payment_reference: input.payment_reference,
+        amount_paid_ngn: toCurrencyString(owed),
       },
     });
   });

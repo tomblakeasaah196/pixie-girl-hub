@@ -157,6 +157,7 @@ CREATE TABLE {{BUSINESS}}.expenses (
   paid_by               UUID        REFERENCES shared.users (user_id) ON DELETE SET NULL,
   payment_method        TEXT        CHECK (payment_method IN ('cash','bank_transfer','pos_card','payslip_addition','wallet',NULL)),
   payment_reference     TEXT,
+  amount_paid_ngn       NUMERIC(14,2),                              -- settled amount (markPaid always pays in full)
   -- Journal posting
   journal_entry_id      UUID        REFERENCES {{BUSINESS}}.journal_entries (entry_id) ON DELETE SET NULL,
   -- Audit

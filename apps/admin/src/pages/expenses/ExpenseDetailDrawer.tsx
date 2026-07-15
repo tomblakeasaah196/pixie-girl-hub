@@ -1,11 +1,20 @@
-import { useState } from "react";
-import { Receipt, CheckCircle, XCircle, Send, Banknote } from "lucide-react";
+import { useRef, useState } from "react";
+import {
+  Receipt,
+  CheckCircle,
+  XCircle,
+  Send,
+  Banknote,
+  Paperclip,
+  Download,
+} from "lucide-react";
 import { Drawer } from "@/components/ui/Drawer";
 import { Button, Card, Pill, MoneyText } from "@/components/ui/primitives";
 import { Select } from "@/components/ui/controls";
-import { formatDate } from "@/lib/format";
+import { formatDate, money } from "@/lib/format";
+import { downloadDocumentById } from "@/lib/documents-api";
 import { useAuthStore } from "@/stores/auth";
-import { useExpense, useExpenseMutations } from "./hooks";
+import { useExpense, useExpenseMutations, useExpenseReceipts } from "./hooks";
 import { EXPENSE_STATUS_META } from "./constants";
 import type { Expense } from "./types";
 import type { PaymentMethod } from "./api";
@@ -17,6 +26,8 @@ const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
   { value: "payslip_addition", label: "Payslip Addition" },
   { value: "wallet", label: "Wallet" },
 ];
+const paymentMethodLabel = (v: string) =>
+  PAYMENT_METHODS.find((m) => m.value === v)?.label ?? v;
 
 interface Props {
   expense: Expense;
@@ -35,6 +46,7 @@ function useExpenseDetail(initial: Expense, onDone: () => void) {
   const [showPay, setShowPay] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | "">("");
   const [paymentReference, setPaymentReference] = useState("");
+  const [paymentReceipt, setPaymentReceipt] = useState<File | null>(null);
 
   const e = ex ?? initial;
   const canApprove = can("expenses", "approve");
@@ -60,6 +72,7 @@ function useExpenseDetail(initial: Expense, onDone: () => void) {
   }
   function handlePay() {
     if (!paymentMethod) return;
+    const receipt = paymentReceipt;
     mutations.pay.mutate(
       {
         id: e.expense_id,
@@ -68,7 +81,13 @@ function useExpenseDetail(initial: Expense, onDone: () => void) {
           payment_reference: paymentReference.trim() || undefined,
         },
       },
-      { onSuccess: onDone },
+      {
+        onSuccess: () => {
+          if (receipt)
+            mutations.addReceipt.mutate({ id: e.expense_id, file: receipt });
+          onDone();
+        },
+      },
     );
   }
 
@@ -93,6 +112,8 @@ function useExpenseDetail(initial: Expense, onDone: () => void) {
     setPaymentMethod,
     paymentReference,
     setPaymentReference,
+    paymentReceipt,
+    setPaymentReceipt,
     showActions,
     handleSubmit,
     handleApprove,
@@ -117,17 +138,33 @@ function ExpenseDetailContent({ d }: { d: ExpenseDetail }) {
     setPaymentMethod,
     paymentReference,
     setPaymentReference,
+    paymentReceipt,
+    setPaymentReceipt,
     isBusy,
     handleReject,
     handlePay,
   } = d;
   const meta = EXPENSE_STATUS_META[e.status];
+  const paidAmount =
+    (e.status === "paid" || e.status === "partially_paid") &&
+    e.amount_paid_ngn
+      ? Number(e.amount_paid_ngn)
+      : null;
+  const { data: receipts } = useExpenseReceipts(e.expense_id);
 
   return (
     <div className="space-y-5">
       {/* Status */}
       <div className="flex items-center gap-2">
-        <Pill tone={meta.tone}>{meta.label}</Pill>
+        <Pill tone={meta.tone}>
+          {meta.label}
+          {paidAmount != null && (
+            <span className="font-mono normal-case font-normal">
+              {" "}
+              · {money(paidAmount)}
+            </span>
+          )}
+        </Pill>
         <span className="text-xs text-text-faint capitalize">
           {e.expense_type.replace(/_/g, " ")}
         </span>
@@ -174,13 +211,55 @@ function ExpenseDetailContent({ d }: { d: ExpenseDetail }) {
           <DetailRow label="Submitted By" value={e.submitted_by_name} />
         )}
         {e.approved_by && (
-          <DetailRow label="Approved By" value={e.approved_by} />
+          <DetailRow
+            label="Approved By"
+            value={e.approved_by_name || e.approved_by}
+          />
         )}
         {e.approved_at && (
           <DetailRow
             label="Approved At"
             value={formatDate(e.approved_at)}
           />
+        )}
+        {e.paid_by && (
+          <DetailRow label="Paid By" value={e.paid_by_name || e.paid_by} />
+        )}
+        {e.paid_at && (
+          <DetailRow label="Paid At" value={formatDate(e.paid_at)} />
+        )}
+        {e.payment_method && (
+          <DetailRow
+            label="Payment Method"
+            value={paymentMethodLabel(e.payment_method)}
+          />
+        )}
+        {e.payment_reference && (
+          <DetailRow label="Reference" value={e.payment_reference} />
+        )}
+        {!!receipts?.length && (
+          <div className="pt-1">
+            <span className="block text-[11.5px] text-text-muted mb-1.5">
+              Receipts
+            </span>
+            <div className="space-y-1.5">
+              {receipts.map((r) => (
+                <button
+                  key={r.receipt_id}
+                  type="button"
+                  onClick={() =>
+                    downloadDocumentById(r.document_id, r.document_title)
+                  }
+                  className="w-full flex items-center gap-2 text-left text-[13px] text-accent hover:underline"
+                >
+                  <Download className="w-3.5 h-3.5 shrink-0" />
+                  <span className="truncate">
+                    {r.document_title || "Receipt"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
         )}
       </Card>
 
@@ -252,6 +331,15 @@ function ExpenseDetailContent({ d }: { d: ExpenseDetail }) {
                 onChange={(ev) => setPaymentReference(ev.target.value)}
                 placeholder="e.g. transaction ID"
                 className="w-full h-[42px] px-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-[13px] outline-none focus:border-accent/50"
+              />
+            </div>
+            <div>
+              <span className="block text-[11.5px] text-text-muted mb-1.5">
+                Or attach receipt (optional)
+              </span>
+              <ReceiptPicker
+                file={paymentReceipt}
+                onChange={setPaymentReceipt}
               />
             </div>
           </div>
@@ -417,6 +505,52 @@ function DetailRow({
     <div className="flex justify-between gap-4 text-sm">
       <span className="text-text-muted shrink-0">{label}</span>
       <span className="text-right">{value}</span>
+    </div>
+  );
+}
+
+/** File picker for attaching a receipt photo/PDF in place of typing a full
+    transaction ID — the reference field stays optional either way. */
+function ReceiptPicker({
+  file,
+  onChange,
+}: {
+  file: File | null;
+  onChange: (f: File | null) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*,application/pdf"
+        className="hidden"
+        onChange={(ev) => onChange(ev.target.files?.[0] ?? null)}
+      />
+      <Button
+        size="sm"
+        variant="ghost"
+        icon={<Paperclip className="w-3.5 h-3.5" />}
+        onClick={() => inputRef.current?.click()}
+      >
+        {file ? "Change file" : "Choose file"}
+      </Button>
+      {file && (
+        <>
+          <span className="text-[13px] text-text-muted truncate min-w-0">
+            {file.name}
+          </span>
+          <button
+            type="button"
+            onClick={() => onChange(null)}
+            className="text-text-faint hover:text-danger shrink-0"
+            aria-label="Remove attached receipt"
+          >
+            <XCircle className="w-4 h-4" />
+          </button>
+        </>
+      )}
     </div>
   );
 }

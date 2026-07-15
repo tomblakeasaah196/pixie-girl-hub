@@ -11,6 +11,27 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-15 — Expenses: amount_paid_ngn column + approver/payer name joins
+
+**Source:** live repro on the expense detail drawer — the "Paid" summary
+tile and status pill always rendered "—"/no amount after marking an expense
+paid, and "Approved By" showed a raw user UUID instead of a name.
+
+- `000346_business_expenses_amount_paid` (root migration, both brand
+  schemas) — adds `expenses.amount_paid_ngn NUMERIC(14,2)` (declared in the
+  frontend type and read by the UI, but never created — template 000023
+  omitted it) and backfills existing paid/partially_paid/reimbursed rows
+  with `total_amount_ngn + vat_amount_ngn`. `src/modules/expenses/expenses.service.js`
+  (`markPaid`) now writes it on every payment.
+- `migrations/template/000023_business_expenses.sql.template` — added the
+  same column so fresh bootstraps match.
+- `src/modules/expenses/expenses.repo.js` (`findById`, `listReceipts`) —
+  joins `shared.users` to resolve `submitted_by_name`, `approved_by_name`,
+  `paid_by_name`, and `shared.documents` to resolve receipt filenames. No
+  new tables; per-brand table count unchanged.
+
+---
+
 ## 2026-07-15 — Stylist Studio: assignment picker narrowing, task-trigger created_by fix, hand-off tag code
 
 **Source:** live repro assigning FLH-JOB-0027 to a Head Stylist. A prior same-day

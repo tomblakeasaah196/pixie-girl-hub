@@ -807,7 +807,7 @@ function OrgTab({
         </div>
 
         {/* Org graph + position detail */}
-        <div>
+        <div className="min-w-0">
           {isFullView && (
             <>
               <div className="flex items-center justify-between mb-3">

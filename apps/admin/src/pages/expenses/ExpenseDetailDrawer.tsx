@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Receipt, CheckCircle, XCircle } from "lucide-react";
+import { Receipt, CheckCircle, XCircle, Send } from "lucide-react";
 import { Drawer } from "@/components/ui/Drawer";
 import { Button, Card, Pill, MoneyText } from "@/components/ui/primitives";
 import { formatDate } from "@/lib/format";
@@ -25,8 +25,15 @@ function useExpenseDetail(initial: Expense, onDone: () => void) {
 
   const e = ex ?? initial;
   const canApprove = can("expenses", "approve");
-  const isBusy = mutations.approve.isPending || mutations.reject.isPending;
+  const canEdit = can("expenses", "edit");
+  const isBusy =
+    mutations.submitExpense.isPending ||
+    mutations.approve.isPending ||
+    mutations.reject.isPending;
 
+  function handleSubmit() {
+    mutations.submitExpense.mutate(e.expense_id, { onSuccess: onDone });
+  }
   function handleApprove() {
     mutations.approve.mutate(e.expense_id, { onSuccess: onDone });
   }
@@ -38,17 +45,20 @@ function useExpenseDetail(initial: Expense, onDone: () => void) {
     );
   }
 
-  const showActions = e.status === "pending" && canApprove;
+  const canSubmit = e.status === "draft" && canEdit;
+  const showActions = (e.status === "pending" && canApprove) || canSubmit;
 
   return {
     e,
     canApprove,
+    canSubmit,
     isBusy,
     rejectReason,
     setRejectReason,
     showReject,
     setShowReject,
     showActions,
+    handleSubmit,
     handleApprove,
     handleReject,
   };
@@ -174,29 +184,46 @@ function ExpenseDetailContent({ d }: { d: ExpenseDetail }) {
   );
 }
 
-/** Approve / reject footer buttons — shared between drawer footer + inline bar. */
+/** Submit / approve / reject footer buttons — shared between drawer footer + inline bar. */
 function ExpenseDetailActions({ d }: { d: ExpenseDetail }) {
-  const { isBusy, setShowReject, handleApprove } = d;
+  const { e, canApprove, canSubmit, isBusy, setShowReject, handleSubmit, handleApprove } = d;
   return (
     <>
-      <Button
-        variant="danger"
-        size="sm"
-        disabled={isBusy}
-        onClick={() => setShowReject(true)}
-        icon={<XCircle className="w-3.5 h-3.5" />}
-      >
-        Reject
-      </Button>
-      <Button
-        variant="primary"
-        size="sm"
-        disabled={isBusy}
-        onClick={handleApprove}
-        icon={<CheckCircle className="w-3.5 h-3.5" />}
-      >
-        Approve
-      </Button>
+      {/* Submit for approval — moves the draft into the workflow's approval
+          queue (manager/CEO threshold, configured server-side). */}
+      {canSubmit && (
+        <Button
+          variant="primary"
+          size="sm"
+          disabled={isBusy}
+          onClick={handleSubmit}
+          icon={<Send className="w-3.5 h-3.5" />}
+        >
+          Submit for Approval
+        </Button>
+      )}
+      {e.status === "pending" && canApprove && (
+        <>
+          <Button
+            variant="danger"
+            size="sm"
+            disabled={isBusy}
+            onClick={() => setShowReject(true)}
+            icon={<XCircle className="w-3.5 h-3.5" />}
+          >
+            Reject
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={isBusy}
+            onClick={handleApprove}
+            icon={<CheckCircle className="w-3.5 h-3.5" />}
+          >
+            Approve
+          </Button>
+        </>
+      )}
     </>
   );
 }

@@ -1,11 +1,26 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useBusinessStore } from "@/stores/business";
+import { toast } from "@/stores/toast";
 import * as cashApi from "./api";
 import type { Decision, DocumentRole } from "./types";
 
 function useBrand() {
   return useBusinessStore((s) => s.activeKey);
 }
+
+/** Server error message (ApiError.message) or a safe fallback. */
+function errText(e: unknown): string {
+  return e instanceof Error && e.message
+    ? e.message
+    : "Something went wrong. Please try again.";
+}
+
+/** Toast a failed write so it never looks like "nothing happened". */
+const onWriteError = (action: string) => (e: unknown) =>
+  toast.error(`Couldn't ${action}`, {
+    description: errText(e),
+    report: { area: "Cash Requests", action, message: errText(e) },
+  });
 
 export function useCashRequests(filters: { status?: string; page?: number }) {
   const brand = useBrand();
@@ -64,23 +79,27 @@ export function useCashRequestMutations() {
   const create = useMutation({
     mutationFn: cashApi.createCashRequest,
     onSuccess: invalidate,
+    onError: onWriteError("create the request"),
   });
 
   const submit = useMutation({
     mutationFn: (id: string) => cashApi.submitCashRequest(id),
     onSuccess: invalidate,
+    onError: onWriteError("submit the request"),
   });
 
   const finance = useMutation({
     mutationFn: (v: { id: string; decision: Decision; notes?: string }) =>
       cashApi.financeDecision(v.id, v.decision, v.notes),
     onSuccess: invalidate,
+    onError: onWriteError("record the decision"),
   });
 
   const ceo = useMutation({
     mutationFn: (v: { id: string; decision: Decision; notes?: string }) =>
       cashApi.ceoDecision(v.id, v.decision, v.notes),
     onSuccess: invalidate,
+    onError: onWriteError("record the decision"),
   });
 
   const disburse = useMutation({
@@ -88,7 +107,11 @@ export function useCashRequestMutations() {
       id: string;
       input: Parameters<typeof cashApi.disburseCashRequest>[1];
     }) => cashApi.disburseCashRequest(v.id, v.input),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      toast.success("Disbursed");
+    },
+    onError: onWriteError("disburse"),
   });
 
   const settle = useMutation({
@@ -97,12 +120,14 @@ export function useCashRequestMutations() {
       input: Parameters<typeof cashApi.settleCashRequest>[1];
     }) => cashApi.settleCashRequest(v.id, v.input),
     onSuccess: invalidate,
+    onError: onWriteError("settle the advance"),
   });
 
   const cancel = useMutation({
     mutationFn: (v: { id: string; reason?: string }) =>
       cashApi.cancelCashRequest(v.id, v.reason),
     onSuccess: invalidate,
+    onError: onWriteError("cancel the request"),
   });
 
   const addDocument = useMutation({

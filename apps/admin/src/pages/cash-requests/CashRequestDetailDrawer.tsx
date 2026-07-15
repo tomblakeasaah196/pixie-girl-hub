@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   Send,
   CreditCard,
+  Paperclip,
 } from "lucide-react";
 import { Drawer } from "@/components/ui/Drawer";
 import { formatDate } from "@/lib/format";
@@ -21,6 +22,8 @@ import {
 import { Timeline } from "@/components/ui/Timeline";
 import { Field, TextInput } from "@/components/ui/Form";
 import { useAuthStore } from "@/stores/auth";
+import { useUploadDocument } from "@/lib/documents-api";
+import { toast } from "@/stores/toast";
 import { cn } from "@/lib/cn";
 import {
   useCashRequest,
@@ -74,7 +77,9 @@ function useCashRequestDetail(
     bank_name: "",
     notes: "",
   });
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [showDisburse, setShowDisburse] = useState(false);
+  const uploadReceipt = useUploadDocument();
 
   const canApprove = can("expenses", "approve");
   const isBusy =
@@ -82,7 +87,8 @@ function useCashRequestDetail(
     mutations.finance.isPending ||
     mutations.ceo.isPending ||
     mutations.disburse.isPending ||
-    mutations.cancel.isPending;
+    mutations.cancel.isPending ||
+    uploadReceipt.isPending;
 
   function handleDecision(decision: Decision, stage: "finance" | "ceo" | null) {
     if (!stage) return;
@@ -105,17 +111,54 @@ function useCashRequestDetail(
     }
   }
 
-  function handleDisburse() {
+  async function handleDisburse() {
+    const id = r.cash_request_id;
+
+    // Optionally attach a bank-transfer receipt. Upload it first so the file
+    // exists before we mark the request disbursed; if the operator chose a file
+    // that fails to upload, stop rather than disburse without the proof.
+    let receiptDocId: string | null = null;
+    if (receiptFile) {
+      try {
+        const doc = await uploadReceipt.mutateAsync({
+          file: receiptFile,
+          document_type: "receipt",
+          title: `Disbursement receipt ${r.request_number}`,
+          reference_type: "cash_request",
+          reference_id: id,
+        });
+        receiptDocId = doc.document_id;
+      } catch (e) {
+        toast.error("Receipt upload failed", {
+          description:
+            e instanceof Error ? e.message : "Please try attaching it again.",
+        });
+        return;
+      }
+    }
+
     mutations.disburse.mutate(
       {
-        id: r.cash_request_id,
+        id,
         input: {
           bank_transaction_id: disburseForm.bank_transaction_id,
           bank_name: disburseForm.bank_name || undefined,
           disbursement_notes: disburseForm.notes || undefined,
         },
       },
-      { onSuccess: onClose },
+      {
+        onSuccess: () => {
+          // Link the uploaded receipt to the request as the transfer proof.
+          if (receiptDocId) {
+            mutations.addDocument.mutate({
+              id,
+              document_id: receiptDocId,
+              document_role: "bank_transfer_receipt",
+            });
+          }
+          onClose();
+        },
+      },
     );
   }
 
@@ -160,6 +203,8 @@ function useCashRequestDetail(
     setShowRejectModal,
     disburseForm,
     setDisburseForm,
+    receiptFile,
+    setReceiptFile,
     showDisburse,
     setShowDisburse,
     activeStage,
@@ -188,6 +233,8 @@ function CashRequestDetailContent({ d }: { d: CashRequestDetail }) {
     setShowRejectModal,
     disburseForm,
     setDisburseForm,
+    receiptFile,
+    setReceiptFile,
     showDisburse,
     setShowDisburse,
     activeStage,
@@ -411,6 +458,22 @@ function CashRequestDetailContent({ d }: { d: CashRequestDetail }) {
                 }
                 placeholder="Optional disbursement notes"
               />
+            </Field>
+            <Field label="Transfer Receipt" hint="optional">
+              <label className="flex items-center gap-3 px-3 py-2 rounded-xl bg-text-primary/[0.04] border border-line cursor-pointer hover:border-accent/50 transition-colors">
+                <Paperclip className="w-4 h-4 text-text-muted shrink-0" />
+                <span className="text-sm text-text-muted truncate">
+                  {receiptFile ? receiptFile.name : "Attach receipt (PDF or image)"}
+                </span>
+                <input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  className="hidden"
+                  onChange={(e) =>
+                    setReceiptFile(e.target.files?.[0] ?? null)
+                  }
+                />
+              </label>
             </Field>
             <div className="flex gap-2 justify-end">
               <Button

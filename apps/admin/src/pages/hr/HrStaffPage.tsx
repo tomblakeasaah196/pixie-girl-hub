@@ -531,14 +531,17 @@ function SettingsTab() {
           Powers clock-in address labels and the office-location picker&rsquo;s
           search + map. Configured here instead of an environment variable.
         </p>
-        <div className="flex items-center gap-2">
-          <Pill tone={geoapifyStatus.tone}>{geoapifyStatus.label}</Pill>
-        </div>
-        <div className="mt-3">
-          <Button variant="primary" onClick={() => setGeoapifyOpen(true)}>
-            Configure Geoapify
-          </Button>
-        </div>
+        <button
+          type="button"
+          onClick={() => setGeoapifyOpen(true)}
+          className="inline-flex"
+          title="Configure the Geoapify key that powers clock-in address labels and the office-location picker"
+        >
+          <Pill tone={geoapifyStatus.tone} dot={false}>
+            <MapPin className="h-3 w-3" />
+            Configure Geoapify · {geoapifyStatus.label}
+          </Pill>
+        </button>
         {geoapifyOpen && <GeoapifySettingsModal onClose={() => setGeoapifyOpen(false)} />}
       </Card>
 

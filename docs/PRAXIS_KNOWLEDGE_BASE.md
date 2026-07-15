@@ -533,6 +533,12 @@ positions, roles, the permission matrix, and approval routing rules.
 - *Create a role / edit what a role can do?* Org & Workflow → **Add a role** /
   the role × module permission matrix.
 - *Add a position / build the org chart?* Org & Workflow → **Add a position**.
+- *See every department in one chart / print or share the org chart?* Org &
+  Workflow → Org Chart tab → the **Full Organigramme** pill at the bottom of
+  the Departments list (below the last department). It renders every
+  department's positions as one connected tree (department badge on each
+  node) and has an **Export PDF** button that generates and downloads a
+  landscape PDF of the whole structure.
 - *Change who approves what (approval chains)?* Org & Workflow → approvals.
 > Giving an individual person access to a module is done here (role) or per-user
 > in **IAM & Security → Users** (`/iam-security/users`).

@@ -13,6 +13,12 @@ jest.mock("axios", () => ({ get: jest.fn() }));
 jest.mock("../../../src/config/logger", () => ({
   logger: { warn: jest.fn(), info: jest.fn(), error: jest.fn() },
 }));
+// The key now resolves DB-first (shared.geoapify_settings), env-fallback
+// second — see geoapify.service.js's getApiKey(). These tests exercise the
+// env-fallback path, so the DB side always resolves null.
+jest.mock("../../../src/modules/geoapify_settings/geoapify-settings.service", () => ({
+  resolveActiveApiKey: jest.fn().mockResolvedValue(null),
+}));
 
 const axios = require("axios");
 const geoapify = require("../../../src/services/geoapify.service");
@@ -21,6 +27,7 @@ const KEY = "test-geoapify-key";
 
 beforeEach(() => {
   jest.clearAllMocks();
+  geoapify.invalidateKeyCache();
   process.env.GEOAPIFY_API_KEY = KEY;
 });
 afterEach(() => {
@@ -28,10 +35,11 @@ afterEach(() => {
 });
 
 describe("isConfigured", () => {
-  it("reflects the presence of the key", () => {
-    expect(geoapify.isConfigured()).toBe(true);
+  it("reflects the presence of the key", async () => {
+    await expect(geoapify.isConfigured()).resolves.toBe(true);
+    geoapify.invalidateKeyCache();
     delete process.env.GEOAPIFY_API_KEY;
-    expect(geoapify.isConfigured()).toBe(false);
+    await expect(geoapify.isConfigured()).resolves.toBe(false);
   });
 });
 
@@ -129,6 +137,30 @@ describe("staticMap", () => {
     delete process.env.GEOAPIFY_API_KEY;
     await expect(geoapify.staticMap({ lat: 6.5, lng: 3.4 })).rejects.toMatchObject({
       code: "GEOAPIFY_NOT_CONFIGURED",
+    });
+    expect(axios.get).not.toHaveBeenCalled();
+  });
+});
+
+describe("testConnection", () => {
+  it("resolves ok with a sample address on a valid key", async () => {
+    axios.get.mockResolvedValue({ data: { results: [{ formatted: "Lagos, Nigeria" }] } });
+    await expect(geoapify.testConnection({ apiKey: KEY })).resolves.toMatchObject({
+      ok: true,
+      sample_address: "Lagos, Nigeria",
+    });
+  });
+
+  it("rejects with a clear message on an invalid key (401)", async () => {
+    axios.get.mockRejectedValue({ response: { status: 401, data: {} } });
+    await expect(geoapify.testConnection({ apiKey: "bad-key" })).rejects.toMatchObject({
+      message: "Invalid Geoapify API key",
+    });
+  });
+
+  it("rejects when no key is supplied, without calling out", async () => {
+    await expect(geoapify.testConnection({ apiKey: "" })).rejects.toMatchObject({
+      code: "NO_TOKEN",
     });
     expect(axios.get).not.toHaveBeenCalled();
   });

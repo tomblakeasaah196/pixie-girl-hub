@@ -138,6 +138,8 @@ const messagingAccountsRouter = require("../modules/messaging_accounts/messaging
 
 // Apify Settings — encrypted key for the Social Studio public metrics scraper
 const apifySettingsRouter = require("../modules/apify_settings/apify-settings.routes");
+// Geoapify Settings — encrypted key for HR clock-in reverse geocoding + maps
+const geoapifySettingsRouter = require("../modules/geoapify_settings/geoapify-settings.routes");
 // Social platform registry — extensible list of scrapeable networks
 const socialPlatformsRouter = require("../modules/social_platforms/social-platforms.routes");
 
@@ -393,6 +395,7 @@ function mountRoutes(app) {
     ["/service-catalogue", serviceCatalogueRouter],
     ["/messaging-accounts", messagingAccountsRouter],
     ["/apify-settings", apifySettingsRouter],
+    ["/geoapify-settings", geoapifySettingsRouter],
     ["/social-platforms", socialPlatformsRouter],
     ["/whatsapp-templates", whatsappTemplatesRouter],
     ["/calls", callsRouter],

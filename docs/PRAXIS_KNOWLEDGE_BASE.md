@@ -456,6 +456,11 @@ disciplinary queries, targets, rewards, recruitment, and HR analytics.
 - *Raise a staff query?* HR → **Queries**.
 - *Hire someone (JD → offer → e-sign → onboarding)?* HR → **Recruitment** tab.
   Candidates get a public offer link (`/offer/<token>`).
+- *Clock-in address label missing, or want to rotate/test the geocoding key?*
+  HR → **Settings** tab → the **"Configure Geoapify"** pill (right after
+  **Payout authorisation**). The key is stored encrypted (permission
+  `geoapify_settings`), maskable/revealable with a password re-check, and has
+  a **Test connection** button — no `.env` edit or redeploy needed.
 
 ### 4.20 Payroll
 **What it's for.** Pay runs, payslips, and disbursement.

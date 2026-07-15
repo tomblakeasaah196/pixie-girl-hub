@@ -151,11 +151,13 @@ async function resolveStyledItem(business, it) {
 
 /** Resolve a `kind: 'bundle'` item into its component lines. A bundle
  *  only resolves cleanly when EVERY component maps to a stocked base
- *  product; if any component can't resolve (e.g. a styled sub-component
- *  with no pinned variant) the whole bundle is left unsupported rather
- *  than shipping a partial order silently. */
+ *  variant; if any component can't resolve (a styled sub-component with
+ *  no reachable base, a bundle_offer_products row with no product/styled
+ *  reference at all) the whole bundle is left unsupported rather than
+ *  shipping a partial order silently. */
 async function resolveBundleItem(business, it) {
   const bundleService = require("../retention/bundle.service");
+  const styledRepo = require("../catalogue/styled.repo");
   const schema = `"${business}"`;
   let bundle;
   try {
@@ -182,16 +184,43 @@ async function resolveBundleItem(business, it) {
   const lines = [];
   let allResolved = true;
   for (const comp of bundle.components || []) {
-    // Same rot as styled products: a component's pinned variant_id can
-    // outlive the variant itself. Verify each pin against the brand's
-    // schema; fall back to the component product's default variant when
-    // the pin is stale so the bundle doesn't dead-end at Place Order.
+    // Bundle components can pin ANY of three things (bundle_offer_products
+    // carries all three columns): a specific variant, a styled product, or
+    // a base product. The pinned variant/base can rot silently too — the
+    // referenced variant is deleted/deactivated in POS while the pin stays
+    // put — so every branch verifies + falls through to the base's default
+    // variant when the pin is stale. Missing this styled_id branch was
+    // exactly why every bundle made of styled components (e.g. "The Baddie")
+    // returned lines:[] and rendered "Unavailable right now" on the /o page.
+    // Matches the resolution the storefront's own bundle resolver runs
+    // (src/modules/storefront/storefront.service.js resolveStorefrontBundle).
     let variant_id = null;
     if (
       comp.variant_id &&
       (await isVariantSellable(schema, comp.variant_id))
     ) {
       variant_id = comp.variant_id;
+    } else if (comp.styled_id) {
+      // Styled component → the base variant carries the stock; the styled
+      // record only sets pricing + fulfilment styling. Prefer the pinned
+      // base_variant_id when it's still sellable in the brand's schema,
+      // else the base product's default variant.
+      let styled = null;
+      try {
+        styled = await styledRepo.getById({ brand: business, id: comp.styled_id });
+      } catch {
+        styled = null;
+      }
+      if (
+        styled &&
+        styled.base_variant_id &&
+        (await isVariantSellable(schema, styled.base_variant_id))
+      ) {
+        variant_id = styled.base_variant_id;
+      } else if (styled && styled.base_product_id) {
+        const v = await defaultVariant(schema, styled.base_product_id);
+        variant_id = v ? v.variant_id : null;
+      }
     } else if (comp.product_id) {
       const v = await defaultVariant(schema, comp.product_id);
       variant_id = v ? v.variant_id : null;

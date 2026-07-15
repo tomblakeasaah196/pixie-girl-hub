@@ -383,8 +383,11 @@ export const ignorePosReconciliation = (id: string, note: string) =>
   );
 
 /** Manual-search fallback (decision 1A) — reuses the normal order list,
- *  scoped to the brand active in X-Brand-Context, open in-store orders only. */
+ *  scoped to the brand active in X-Brand-Context. Not filtered by
+ *  sales_channel: Quick Sale (which replaced the old POS module) never
+ *  tags an order with the legacy 'pos' channel, so that filter matched
+ *  nothing — a terminal payment can settle any open order's balance. */
 export const searchPosReconcilableOrders = (search: string) =>
   api.get<PaginatedResponse<SalesOrder>>(
-    `/sales/orders${qs({ q: search, sales_channel: "pos", page_size: 10 })}`,
+    `/sales/orders${qs({ q: search, page_size: 10 })}`,
   );

@@ -36,7 +36,14 @@ async function suggestions(req, res) {
     brand: req.query.brand || null,
     user: req.user,
   });
-  res.json(result);
+  // Single-envelope like every other non-paginated endpoint here (getById,
+  // match, ignore). The API client auto-unwraps a bare `{ data, meta }`
+  // shape (list endpoints) but strips ANY other `{ data: ... }` object down
+  // to its `data` field — result already has a `data` key (the candidates)
+  // alongside `recon`, so passing it straight through got silently
+  // stripped to the bare candidates array, and the frontend's
+  // `suggestions.data.data` read `.data` off an array → crash.
+  res.json({ data: result });
 }
 
 async function match(req, res) {

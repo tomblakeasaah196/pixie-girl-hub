@@ -136,12 +136,33 @@ async function updateSettings({ brand, user, request_id, patch }) {
  * here, under what name/terms, and what are the minimums. Never exposes
  * internal toggles. `campaign` (when the channel is sales_campaign) must also
  * carry allow_instalments for the plan to show.
+ *
+ * Also carries `gateways` — the brand's ACTIVE NGN gateway chain, provider
+ * names only (never credentials) — so public checkout pages (order-link /o
+ * page, storefront) can render a "pay with" picker limited to gateways that
+ * are actually configured. Order matches the server's fallback preference.
  */
 async function publicConfig({ brand, channel, campaign = null }) {
   const s = await getSettings(brand);
   let enabled = s.channels[channel] !== false;
   if (channel === "sales_campaign") {
     enabled = enabled && !!(campaign && campaign.allow_instalments === true);
+  }
+  let gateways = [];
+  try {
+    const gatewaysService = require("../business_setup/payment-gateways.service");
+    const chain = await gatewaysService.getActiveChain({
+      brand,
+      currency: "NGN",
+    });
+    // Buyer-pickable rails only (matches the storefront checkout + the
+    // order-form's payment_gateway allowlist). Stripe stays a server-side
+    // automatic last-resort, never a buyer-facing pick.
+    gateways = chain
+      .map((g) => g.provider)
+      .filter((p) => p === "nomba" || p === "paystack");
+  } catch {
+    gateways = []; // picker hides; the server default (Nomba-first) applies
   }
   return {
     instalments_enabled: enabled,
@@ -150,6 +171,7 @@ async function publicConfig({ brand, channel, campaign = null }) {
     min_first_payment_pct: Number(s.min_first_payment_pct),
     min_topup_ngn: Number(s.min_topup_ngn),
     custom_order_deposit_pct: Number(s.custom_order_deposit_pct),
+    gateways,
   };
 }
 

@@ -24,8 +24,10 @@ import {
   submitOrderLinkOrder,
   createOrderPayLink,
   reportOrderLinkActivity,
+  getPayConfig,
   type OrderLinkContext,
   type OrderLinkItem,
+  type PayConfig,
 } from "@/lib/order-link";
 
 /**
@@ -147,14 +149,36 @@ function CheckoutForm({
 
   const [deliveryFee, setDeliveryFee] = useState<number | null>(null);
   const [quoting, setQuoting] = useState(false);
+  // Buyer's gateway pick — shown only when the brand has >1 pickable gateway
+  // active; the server prefers the pick and falls over if it's down.
+  const [payCfg, setPayCfg] = useState<PayConfig | null>(null);
+  const [gateway, setGateway] = useState("nomba");
 
   useEffect(() => {
     let alive = true;
     fetchGeoOptions().then((g) => alive && setGeo(g));
+    const chan =
+      ctx.sales_channel &&
+      ["public_form", "whatsapp", "instagram", "facebook"].includes(
+        ctx.sales_channel,
+      )
+        ? ctx.sales_channel
+        : "public_form";
+    getPayConfig(ctx.brand, chan)
+      .then((cfg) => {
+        if (!alive) return;
+        setPayCfg(cfg);
+        if (cfg.gateways?.length && !cfg.gateways.includes("nomba")) {
+          setGateway(cfg.gateways[0]);
+        }
+      })
+      .catch(() => {
+        /* no picker on failure — server default (Nomba-first) applies */
+      });
     return () => {
       alive = false;
     };
-  }, []);
+  }, [ctx.brand, ctx.sales_channel]);
 
   const picked = useMemo(
     () =>
@@ -348,6 +372,7 @@ function CheckoutForm({
         items: resolvedItems.flatMap((i) => i.lines),
         bundle_id: bundleId || undefined,
         payment_plan: "full",
+        payment_gateway: gateway,
         client_idempotency_key: `order:${slug}`,
       });
 
@@ -389,8 +414,9 @@ function CheckoutForm({
           <CheckCircle2 className="mx-auto mb-3 h-9 w-9 text-emerald-500" />
           <p className="text-body font-display text-xl">Order placed 🌹</p>
           <p className="mx-auto mt-2 max-w-sm text-body-sm text-muted-foreground">
-            We&rsquo;ll send you a payment link on WhatsApp in a moment. Once
-            payment lands, your order moves into production.
+            We couldn&rsquo;t open the payment page just now, so we&rsquo;ll
+            send you a payment link on WhatsApp in a moment. Once payment
+            lands, your order moves into production.
           </p>
         </div>
       </Section>
@@ -678,6 +704,30 @@ function CheckoutForm({
             onChange={setEmail}
           />
         </div>
+
+        {/* Gateway pick — mirrors the main storefront checkout. Hidden when
+            the brand has one (or no reported) pickable gateway. */}
+        {!serviceOnly && (payCfg?.gateways?.length ?? 0) > 1 && (
+          <div className="space-y-2">
+            <p className="text-caption">Pay with</p>
+            <div className="grid grid-cols-2 gap-2">
+              {(payCfg?.gateways ?? []).map((g) => (
+                <button
+                  key={g}
+                  type="button"
+                  onClick={() => setGateway(g)}
+                  className={`rounded-md border py-3 text-body-sm capitalize ${
+                    gateway === g
+                      ? "border-foreground bg-foreground text-background"
+                      : "border-border text-muted-foreground hover:bg-secondary"
+                  }`}
+                >
+                  {g}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Summary */}
         {(hasProducts || serviceItems.length > 0) && (

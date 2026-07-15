@@ -37,6 +37,7 @@ const fs = require("fs/promises");
 const crypto = require("crypto");
 const instagram = require("../../services/instagram.service");
 const storage = require("../../services/storage.service");
+const outboundImage = require("../../services/outbound-image.service");
 const ffmpeg = require("./media.ffmpeg");
 const { logger } = require("../../config/logger");
 const {
@@ -167,11 +168,19 @@ async function sendSequenceStep(step, data) {
     stepData.media_kind = stepData.media_kind || "image";
   }
   if (stepData.media_url) {
+    const kind = stepData.media_kind || "image";
+    let mediaUrl = stepData.media_url;
+    if (kind === "image") {
+      // IG DMs accept only jpeg/png/gif — a WebP (bundle collage cover,
+      // .webp catalogue photo) is rejected by Meta's fetcher. Transcode +
+      // re-host to JPEG when needed; falls back to the original URL.
+      mediaUrl = await outboundImage.ensureInstagramImageUrl(mediaUrl);
+    }
     const res = await instagram.sendMedia({
       brand: stepData.brand,
       recipient_id: stepData.recipient_id,
-      kind: stepData.media_kind || "image",
-      media_url: stepData.media_url,
+      kind,
+      media_url: mediaUrl,
       tag: stepData.tag,
     });
     return res && (res.message_id || res.recipient_id);
@@ -313,11 +322,17 @@ module.exports = async function process(job) {
   try {
     let res;
     if (data.media_url) {
+      const kind = data.media_kind || "image";
+      let mediaUrl = data.media_url;
+      if (kind === "image") {
+        // Same jpeg/png/gif-only rule as the sequence path (WebP bounces).
+        mediaUrl = await outboundImage.ensureInstagramImageUrl(mediaUrl);
+      }
       res = await instagram.sendMedia({
         brand: data.brand,
         recipient_id: data.recipient_id,
-        kind: data.media_kind || "image",
-        media_url: data.media_url,
+        kind,
+        media_url: mediaUrl,
         tag: data.tag,
       });
     } else if (data.image_url) {
@@ -325,7 +340,7 @@ module.exports = async function process(job) {
       res = await instagram.sendImage({
         brand: data.brand,
         recipient_id: data.recipient_id,
-        image_url: data.image_url,
+        image_url: await outboundImage.ensureInstagramImageUrl(data.image_url),
         tag: data.tag,
       });
     } else {

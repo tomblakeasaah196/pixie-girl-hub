@@ -114,6 +114,11 @@ interface OrderFormResult {
   // Amount to charge now (server-computed): the plan deposit for instalment,
   // else the full balance. Null for service-only checkouts.
   pay_now_ngn: string | null;
+  // Gateway checkout URL minted server-side inside the order-form call
+  // (Nomba/Paystack, buyer's pick preferred) — the page redirects straight
+  // here. Null only when the gateway hiccuped; the /pay/{token} retry below
+  // is the backup.
+  payment_url: string | null;
   public_tracking_token: string | null;
   contact_id: string;
   booking_count: number;
@@ -138,8 +143,13 @@ export function OrderCheckoutPublic() {
     instalments_enabled: boolean;
     plan_display_name?: string;
     plan_terms?: string[];
+    gateways?: string[];
   } | null>(null);
   const [paymentPlan, setPaymentPlan] = useState<"full" | "instalment">("full");
+  // The buyer's gateway pick (Nomba default). Only shown when the brand has
+  // more than one buyer-pickable gateway active; the server prefers the pick
+  // but still falls over automatically if that gateway is down.
+  const [gateway, setGateway] = useState("nomba");
   const [geo, setGeo] = useState<GeoOptions>(GEO_FALLBACK);
   const [address, setAddress] = useState({
     line1: "",
@@ -237,12 +247,17 @@ export function OrderCheckoutPublic() {
             instalments_enabled: boolean;
             plan_display_name?: string;
             plan_terms?: string[];
+            gateways?: string[];
           }>(
             `/pay/config/${encodeURIComponent(data.brand)}?channel=${encodeURIComponent(ch)}`,
             "public",
           )
           .then((cfg) => {
-            if (!cancelled) setFlexi(cfg);
+            if (cancelled) return;
+            setFlexi(cfg);
+            if (cfg.gateways?.length && !cfg.gateways.includes("nomba")) {
+              setGateway(cfg.gateways[0]);
+            }
           })
           .catch(() => {
             /* no picker on failure */
@@ -510,18 +525,26 @@ export function OrderCheckoutPublic() {
             flexi?.instalments_enabled && paymentPlan === "instalment"
               ? "instalment"
               : "full",
+          // The buyer's gateway pick — the server prefers it on the active
+          // chain and still falls over automatically if it's down.
+          payment_gateway: gateway,
           client_idempotency_key: `order:${slug}`,
         },
         "public",
       );
 
-      // Straight to the payment gateway. A product order carries a
-      // public_tracking_token — mint a checkout on the brand's active gateway
-      // (Nomba) and redirect the buyer to pay. Pay-in-full charges the whole
-      // balance (amount omitted → server uses the outstanding total);
-      // instalment charges the plan deposit the server computed (pay_now_ngn).
-      // If no gateway is configured / init fails, fall back to the "we'll send
-      // you a link" confirmation rather than dead-ending the buyer.
+      // Straight to the payment gateway: the order-form mints the checkout
+      // link server-side (buyer's gateway pick preferred) and returns it —
+      // redirect in ONE step. Gating this on public_tracking_token was the
+      // "Order placed 🌹 / we'll WhatsApp you a link" bug: the token column
+      // is null at creation, so the redirect never happened.
+      if (result?.payment_url) {
+        window.location.href = result.payment_url;
+        return; // navigating away — stay on "submitting" until unload
+      }
+      // Backup only (gateway hiccup): retry via the tracking token when one
+      // exists — no re-order, the order already stands. Confirmation screen
+      // is the last resort so the buyer never dead-ends.
       const payToken = result?.public_tracking_token;
       if (result?.order_id && payToken) {
         try {
@@ -584,8 +607,9 @@ export function OrderCheckoutPublic() {
           <CheckCircle2 className="w-9 h-9 mx-auto mb-3 text-green-400" />
           <p className="font-display text-[20px] mb-1">Order placed 🌹</p>
           <p className="text-[13px] text-text-muted max-w-[360px] mx-auto">
-            We&rsquo;ll WhatsApp you a payment link in a moment. Once payment
-            lands, your order moves into production.
+            We couldn&rsquo;t open the payment page just now, so we&rsquo;ll
+            WhatsApp you a payment link in a moment. Once payment lands, your
+            order moves into production.
           </p>
         </div>
       </Shell>
@@ -1015,6 +1039,31 @@ export function OrderCheckoutPublic() {
                 with the link we send you. Ships once fully paid.
               </p>
             )}
+          </Section>
+        )}
+
+        {/* Gateway pick — mirrors the main storefront checkout. Only shown
+            when the brand has more than one buyer-pickable gateway active;
+            with one (or none reported) the server's Nomba-first default
+            applies silently. */}
+        {!serviceOnly && (flexi?.gateways?.length ?? 0) > 1 && (
+          <Section title="Pay with">
+            <div className="grid grid-cols-2 gap-2">
+              {(flexi?.gateways ?? []).map((g) => (
+                <button
+                  key={g}
+                  type="button"
+                  onClick={() => setGateway(g)}
+                  className={`rounded-xl border px-3 py-2.5 text-[13px] font-semibold capitalize transition-colors ${
+                    gateway === g
+                      ? "border-accent bg-accent/10 text-accent-glow"
+                      : "border-border-c/20 text-text-muted"
+                  }`}
+                >
+                  {g}
+                </button>
+              ))}
+            </div>
           </Section>
         )}
 

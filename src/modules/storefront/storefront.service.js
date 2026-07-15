@@ -490,12 +490,20 @@ async function submitOrderForm({ brand, input, request_id }) {
   // order_id (exactly like the cart checkout), so the token isn't needed here.
   if (input.order_link_slug && result.order_id) {
     try {
+      // The buyer's gateway pick from the /o page (same rails as the main
+      // storefront checkout). createPaymentLink still walks the whole active
+      // chain with this one preferred, so a down gateway falls over rather
+      // than dead-ending the order.
+      const allowedGateways = ["nomba", "paystack"];
+      const preferredProvider = allowedGateways.includes(input.payment_gateway)
+        ? input.payment_gateway
+        : "nomba";
       const pay = await paymentLink.createPaymentLink({
         brand,
         order_id: result.order_id,
         amount_ngn:
           result.payment_plan === "instalment" ? result.pay_now_ngn : undefined,
-        preferred_provider: "nomba",
+        preferred_provider: preferredProvider,
         return_url_base: input.return_url_base || undefined,
       });
       payment_url = pay.checkout_url || null;

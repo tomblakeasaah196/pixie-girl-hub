@@ -56,9 +56,19 @@ Business Setup and point the host at the Hub app — no code change.
 
 ## Payment
 
-Placing an order from `/o/<slug>` creates a real Sales order, then the page
-redirects **straight to the active payment gateway** (Nomba today) via
-`POST /api/public/pay/<public_tracking_token>`:
+Placing an order from `/o/<slug>` creates a real Sales order and the page
+redirects **straight to the payment gateway in one step**: the order-form
+response carries a server-minted `payment_url` (the checkout is created on
+`order_id` inside the same call — never gated on `public_tracking_token`,
+which is null at creation). `POST /api/public/pay/<public_tracking_token>`
+remains only as the retry path when the first gateway init hiccups.
+
+The page shows a **"Pay with" picker** when the brand has more than one
+buyer-pickable gateway active (Nomba / Paystack — read from
+`GET /api/public/pay/config/<brand>`, which lists the active NGN chain).
+The pick is passed as `payment_gateway` and preferred server-side; the
+active-chain fallback still applies if that gateway is down. Stripe stays a
+server-side last resort, never a buyer-facing pick.
 
 - **Pay in full** → charges the full balance.
 - **Flexi Pay (instalment)** → charges the plan deposit (`pay_now_ngn`,

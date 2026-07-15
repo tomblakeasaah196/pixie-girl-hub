@@ -90,6 +90,15 @@ const orderFormSchema = z
     // the deposit minimum + balance reminders apply. The customer pays via the
     // pay link they receive. Defaults to 'full'.
     payment_plan: z.enum(["full", "instalment"]).optional().default("full"),
+    // The buyer's gateway pick (mirrors the main storefront checkout).
+    // Only providers on the NGN chain are offered; the server still walks
+    // the active chain with this one preferred, so a down gateway falls
+    // over instead of failing the checkout.
+    payment_gateway: z.enum(["nomba", "paystack"]).optional(),
+    // Where the gateway returns the buyer after paying (the /o page passes
+    // its own thank-you URL). Server-side createPaymentLink appends
+    // ?ref & order_id.
+    return_url_base: z.string().url().max(500).optional(),
   })
   .strict()
   .refine(

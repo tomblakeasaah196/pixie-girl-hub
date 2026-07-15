@@ -167,11 +167,11 @@ stock health, and other KPIs at a glance.
 
 ### 4.2 Sales
 **What it's for.** Selling: quick over-the-counter sales, full orders, quotations,
-chasing deliveries, and payment settings.
+chasing deliveries, matching stray in-store terminal payments, and payment settings.
 **Where.** Run → **Sales** · `/sales`
 **Who can see it.** `sales` permission.
 **What's inside (tabs).** **Quick Sale** · **Orders** · **Quotations** ·
-**Delivery Pending** · **Payments**.
+**Delivery Pending** · **POS Reconciliation** · **Payments**.
 **Common tasks.**
 - *Ring up a fast sale?* Sales → **Quick Sale** tab (`/sales`). Fill the Quick
   Sale Form, add items, take payment. (This replaced the old POS.)
@@ -181,6 +181,13 @@ chasing deliveries, and payment settings.
   and is redirected straight to payment.
 - *Send a quotation?* Sales → **Quotations** → **New Quotation** / **Create Quotation**.
 - *See orders waiting to ship?* Sales → **Delivery Pending** tab.
+- *An in-store card/terminal payment came in but no order matched it?* Sales →
+  **POS Reconciliation** tab (`/sales?tab=pos-reconciliation`). Pick the
+  suggested order (or search manually) and **Match** — this confirms the
+  order's payment exactly as if the terminal had reported it directly — or
+  **Ignore** a false positive/duplicate with a short reason. A payment whose
+  terminal isn't registered to either brand yet shows in a CEO-only
+  cross-brand section until it's resolved.
 - *Open one order?* Sales → **Orders**, click the order → `/sales/orders/<orderId>`.
 - *Record a payment against an order?* Open the order, **Record Payment**.
 
@@ -783,6 +790,8 @@ Use this as the fast lookup. Format: **task → module (group) → link**.
 - Create an order + pay link → Sales → `/sales` (Orders → Create Order & Send Pay Link)
 - Send a quotation → Sales → `/sales` (Quotations → New Quotation)
 - Record a payment on an order → open the order → `/sales/orders/<id>` → Record Payment
+- Match an unattributed in-store terminal payment to an order → Sales →
+  `/sales?tab=pos-reconciliation` → Match (or Ignore with a reason)
 - Add a CRM deal → CRM (Run) → `/crm` (Pipeline → New Deal)
 - See a client's history → CRM → `/crm/clients/<id>`
 - Add a contact → Contacts (People) → `/contacts` (New Contact)

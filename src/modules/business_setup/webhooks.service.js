@@ -799,7 +799,7 @@ async function confirmNombaCharge(log) {
         }
       }
     }
-    await posRepo.enqueueReconciliation({
+    const reconRow = await posRepo.enqueueReconciliation({
       row: {
         webhook_id: log.webhook_id,
         provider: "nomba",
@@ -816,6 +816,17 @@ async function confirmNombaCharge(log) {
         raw_payload: evt,
       },
     });
+    // Active notification (decision 6B) — only for a genuinely new row; a
+    // replayed/duplicate webhook that the unique index already absorbed
+    // returns null and shouldn't re-notify anyone.
+    if (reconRow) {
+      const posEvents = require("../pos/pos.events");
+      posEvents.emit("pending", {
+        recon_id: reconRow.recon_id,
+        business: reconBrand || null,
+        amount_ngn,
+      });
+    }
     logger.warn(
       {
         webhook_id: log.webhook_id,

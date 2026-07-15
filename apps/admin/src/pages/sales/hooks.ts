@@ -375,3 +375,91 @@ export function useSavePaymentSettings() {
     },
   });
 }
+
+// ── POS Reconciliation ──────────────────────────────────────
+
+const POS_RECON_KEY = "pos-reconciliation";
+const POS_RECON_UNRESOLVED_KEY = "pos-reconciliation-unresolved";
+
+/** The active brand's own pending queue. 30s poll — this is real customer
+ *  money sitting unclaimed, so the list should feel current without staff
+ *  needing to manually refresh (decision 6B extends to the list, not just
+ *  the notification). */
+export function usePosReconciliation(
+  params: salesApi.PosReconListParams = {},
+) {
+  const biz = useBiz();
+  return useQuery({
+    queryKey: [POS_RECON_KEY, biz, params],
+    queryFn: () => salesApi.listPosReconciliation(params),
+    placeholderData: keepPreviousData,
+    refetchInterval: 30_000,
+  });
+}
+
+/** Cross-brand queue for payments whose terminal brand isn't known yet.
+ *  `enabled` should be the caller's CEO check — the backend 403s otherwise. */
+export function usePosReconciliationUnresolved(
+  enabled: boolean,
+  params: salesApi.PosReconListParams = {},
+) {
+  return useQuery({
+    queryKey: [POS_RECON_UNRESOLVED_KEY, params],
+    queryFn: () => salesApi.listPosReconciliationUnresolved(params),
+    placeholderData: keepPreviousData,
+    enabled,
+    refetchInterval: 30_000,
+  });
+}
+
+export function usePosReconciliationSuggestions(
+  id: string | null,
+  brand?: string,
+) {
+  return useQuery({
+    queryKey: [POS_RECON_KEY, "suggestions", id, brand],
+    queryFn: () => salesApi.getPosReconciliationSuggestions(id!, brand),
+    enabled: !!id,
+  });
+}
+
+export function useMatchPosReconciliation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      id,
+      input,
+    }: {
+      id: string;
+      input: { brand: string; order_id: string };
+    }) => salesApi.matchPosReconciliation(id, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [POS_RECON_KEY] });
+      qc.invalidateQueries({ queryKey: [POS_RECON_UNRESOLVED_KEY] });
+      qc.invalidateQueries({ queryKey: ["sales-orders"] });
+    },
+  });
+}
+
+export function useIgnorePosReconciliation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, note }: { id: string; note: string }) =>
+      salesApi.ignorePosReconciliation(id, note),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [POS_RECON_KEY] });
+      qc.invalidateQueries({ queryKey: [POS_RECON_UNRESOLVED_KEY] });
+    },
+  });
+}
+
+/** Manual-search fallback (decision 1A) for when nothing in the smart
+ *  suggestions matches — debounced by the caller. */
+export function usePosReconcilableOrderSearch(search: string) {
+  return useQuery({
+    queryKey: [POS_RECON_KEY, "order-search", search],
+    queryFn: () => salesApi.searchPosReconcilableOrders(search),
+    enabled: search.trim().length > 1,
+    placeholderData: keepPreviousData,
+  });
+}

@@ -73,7 +73,6 @@ const MODULE_CATALOG = [
   { key: "retail_partners", group: "operate", label: "Retail Partners", description: "Consignment & partner stock" },
   { key: "stylist_programme", group: "operate", label: "Stylists", description: "Partner stylist programme" },
   { key: "service_catalogue", group: "operate", label: "Service Catalogue", description: "Bookable services & their pricing" },
-  { key: "storefront", group: "operate", label: "E-Commerce", description: "Online storefront admin" },
   { key: "storefront_studio", group: "operate", label: "Storefront Studio", description: "Storefront templates & wording" },
 
   // ── Finance ──────────────────────────────────────────────
@@ -81,7 +80,6 @@ const MODULE_CATALOG = [
   { key: "accounting", group: "finance", label: "Accounting", description: "The books — ledgers & journals" },
   { key: "expenses", group: "finance", label: "Expenses", description: "Claims, advances & cash requests" },
   { key: "pricing", group: "finance", label: "Pricing", description: "Margins, fees & price changes" },
-  { key: "intercompany", group: "finance", label: "Intercompany", description: "Cross-brand settlement" },
 
   // ── People ───────────────────────────────────────────────
   { key: "hr_payroll", group: "people", label: "HR & Payroll", description: "Staff records, attendance admin & pay" },
@@ -115,7 +113,7 @@ const MODULE_CATALOG = [
   { key: "apify_settings", group: "system", label: "Apify Integration", description: "Public social-metrics scraper credentials (Social Studio)" },
 ];
 
-// The distinct requirePermission keys enforced across src/ (46 modules).
+// The distinct requirePermission keys enforced across src/ (47 modules).
 // Derived from the catalog above so the label/group data can never drift from
 // the enforced key set. `settings`/`iam` gate the admin surfaces themselves.
 const MODULES = MODULE_CATALOG.map((m) => m.key);

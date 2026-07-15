@@ -27,7 +27,6 @@ describe("permission catalog", () => {
       "stock",
       "hr_payroll",
       "settings",
-      "intercompany",
       // Reconciled in — these are enforced by routes and were missing before.
       "catalogue",
       "help_center",
@@ -41,6 +40,11 @@ describe("permission catalog", () => {
     // POS was retired (owner directive) — selling happens through Sales.
     // A key here that no route enforces lets the matrix accumulate dead grants.
     expect(MODULES).not.toContain("pos");
+    // E-Commerce (storefront admin) and Intercompany were retired (out of scope
+    // for single-business tenants). The public storefront still runs, but the
+    // admin permission keys are gone from the matrix. See migration 000344.
+    expect(MODULES).not.toContain("storefront");
+    expect(MODULES).not.toContain("intercompany");
   });
 
   test("action vocabulary matches the middleware and the permissions schema", () => {

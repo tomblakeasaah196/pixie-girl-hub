@@ -1,0 +1,58 @@
+-- ============================================================
+-- TEMPLATE 000080 — Stylist Studio: fix service-job task created_by NOT NULL
+-- Pixie Girl Hub · JBS Praxis · V2.2 · §6.24 (Stylist Studio)
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to NEW brands by bootstrap (after 000079) and to EXISTING brands by
+-- repair-business-schema.js. NO CREATE TABLE here — CREATE OR REPLACE FUNCTION
+-- is idempotent, so the repair runner re-applies it every pass harmlessly.
+--
+-- WHY (bug found assigning a stylist to an order-generated service job):
+--   fn_service_job_create_task (template 000034, restored 000073) inserts the
+--   auto-raised staff task with created_by = NEW.created_by. But
+--   service_jobs.created_by is nullable (jobs raised by a background/order
+--   process may never set it), while shared.tasks.created_by is NOT NULL —
+--   so assigning a stylist to any job with no recorded creator violates that
+--   constraint and the assignment fails outright ("A required detail was
+--   missing"). Falls back to the assignee (NEW.assigned_staff_user_id, which
+--   the IF above already guarantees is NOT NULL at this point) when the job
+--   has no recorded creator.
+--
+-- Replaces: {{BUSINESS}}.fn_service_job_create_task()
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION {{BUSINESS}}.fn_service_job_create_task()
+RETURNS TRIGGER
+LANGUAGE plpgsql AS $$
+DECLARE
+  v_task_id UUID;
+BEGIN
+  -- Only when newly assigned to a staff member (in-house stylists ARE staff).
+  IF NEW.assigned_staff_user_id IS NOT NULL
+     AND (OLD IS NULL OR OLD.assigned_staff_user_id IS DISTINCT FROM NEW.assigned_staff_user_id)
+     AND NEW.task_id IS NULL THEN
+    INSERT INTO shared.tasks
+      (business, title, description, status, priority, assigned_to, due_at,
+       reference_type, reference_id, created_by)
+    VALUES
+      ('{{BUSINESS}}',
+       'Service Job ' || NEW.job_number,
+       'Complete service job. Status: ' || NEW.status,
+       'to_do',
+       'normal',
+       NEW.assigned_staff_user_id,
+       NEW.expected_completion_at,
+       'service_job',
+       NEW.job_id,
+       COALESCE(NEW.created_by, NEW.assigned_staff_user_id))
+    RETURNING task_id INTO v_task_id;
+    NEW.task_id := v_task_id;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+-- ============================================================
+-- Verify (after substitution): assigning a stylist to a job whose
+-- created_by is NULL no longer violates shared.tasks' created_by NOT NULL.
+-- ============================================================

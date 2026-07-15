@@ -103,6 +103,9 @@ export interface ServiceJob {
   styled_id: string | null;
   shipment_id: string | null;
   customer_asset_id: string | null;
+  // 5-digit hand-off tag written on the physical wig/hair, allocated at
+  // first assignment; cycles 1..99999 then wraps (see fn_next_stylist_tag).
+  tag_code: string | null;
   // ── Intercompany Flow-1 (FLH styles PXG's hair) — from getJob join ──
   intercompany_number?: string | null;
   intercompany_seller_doc?: string | null;

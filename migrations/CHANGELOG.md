@@ -11,6 +11,45 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-15 — Stylist Studio: assignment picker narrowing, task-trigger created_by fix, hand-off tag code
+
+**Source:** live repro assigning FLH-JOB-0027 to a Head Stylist. A prior same-day
+fix already corrected `listAssignableStylists`' `sp.end_date IS NULL` (excluded
+staff with a scheduled *future* contract end date even though still employed
+today) to `(sp.end_date IS NULL OR sp.end_date >= CURRENT_DATE)`. This entry
+covers what came after that: the picker still listed the whole Operations
+department, not just stylists, and assigning any order-generated job (no
+recorded creator) failed outright with "A required detail was missing."
+
+- `src/modules/service_jobs/service-jobs.repo.js` (`listAssignableStylists`)
+  — narrowed the candidate pool from every Operations employee to stylist
+  seats only (`job_title ILIKE '%stylist%'`) — Operations Manager, Head of
+  Security, and Sanitation Officer are Operations staff but not assignable
+  to styling jobs.
+- `000080_business_service_job_task_created_by_fix` (brand template) —
+  `CREATE OR REPLACE` of `fn_service_job_create_task` (see 000073, the same
+  trigger's first fix). The trigger inserted the auto-raised staff task with
+  `created_by = NEW.created_by`, but `service_jobs.created_by` is nullable
+  (jobs raised by a background/order process may never set it) while
+  `shared.tasks.created_by` is `NOT NULL` — so assigning a stylist to any
+  job with no recorded creator violated that constraint and **the
+  assignment failed outright**. Now falls back to
+  `COALESCE(NEW.created_by, NEW.assigned_staff_user_id)`. No `CREATE TABLE`
+  (idempotent function replace, re-applied every `db:repair`); per-brand
+  table count unchanged.
+- `000081_business_stylist_studio_tag_code` (brand template) — new
+  `service_jobs.tag_code` column + `fn_next_stylist_tag()`, a 5-digit counter
+  (backed by the same `shared.document_numbering` table every other document
+  sequence in this codebase uses) that cycles 1..99999 and wraps back to 1
+  automatically. `assignStylist` allocates one on first assignment so ops can
+  write it on the physical tag pinned to the customer's hair; the Job Board
+  can now search by tag code, and the job drawer shows it. Per-brand table
+  count unchanged (column add only).
+
+Apply to existing brands with `npm run db:repair`.
+
+---
+
 ## 2026-07-13 — Reconcile shared.service_booking_requests
 
 **Source:** production 500 on `GET /api/v1/smartcomm/channels/:id/order-links`

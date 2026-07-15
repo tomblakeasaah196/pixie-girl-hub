@@ -672,6 +672,11 @@ async function assignStylist({
     };
     if (!before.reserved_variant_id && before.hair_variant_id)
       fields.reserved_variant_id = before.hair_variant_id;
+    // Allocate the physical hand-off tag once, on first assignment — it's
+    // written on a tag pinned to the actual hair, so it must stay stable
+    // across any later reassignment of the same job.
+    if (!before.tag_code)
+      fields.tag_code = await repo.nextTagCode({ client, brand });
     const job = await repo.setServiceJobStatus({
       client,
       brand,

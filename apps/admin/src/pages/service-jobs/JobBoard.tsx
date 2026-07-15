@@ -850,6 +850,14 @@ function JobDetailDrawer({
                   </span>
                 </>
               )}
+              {job.tag_code && (
+                <>
+                  <span className="text-text-muted">Tag code</span>
+                  <span className="font-mono tracking-widest">
+                    {job.tag_code}
+                  </span>
+                </>
+              )}
               {job.agreed_cost_ngn && !job.sales_order_id && (
                 <>
                   <span className="text-text-muted">Agreed cost</span>
@@ -1103,6 +1111,7 @@ function CreateJobDrawer({
 export function JobBoard({ canCreate }: { canCreate: boolean }) {
   const { data: serviceTypes = [] } = useServiceTypes(true);
   const [statusFilter, setStatusFilter] = useState<string>("");
+  const [tagQuery, setTagQuery] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   // The open job drawer is URL-driven (?job=<id>) so deep links from the
   // Order page + notifications land directly on the job, and closing it
@@ -1122,7 +1131,11 @@ export function JobBoard({ canCreate }: { canCreate: boolean }) {
       ? { status: statusFilter, page_size: 200 }
       : { page_size: 200 },
   );
-  const jobs = data?.data ?? [];
+  const allJobs = data?.data ?? [];
+  const tagQueryTrimmed = tagQuery.trim();
+  const jobs = tagQueryTrimmed
+    ? allJobs.filter((j) => j.tag_code?.includes(tagQueryTrimmed))
+    : allJobs;
 
   const pocketingCount = jobs.filter(
     (j) =>
@@ -1174,9 +1187,20 @@ export function JobBoard({ canCreate }: { canCreate: boolean }) {
             </span>
           )}
         </div>
-        {canCreate && (
-          <Button onClick={() => setShowCreate(true)}>+ New Job</Button>
-        )}
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            inputMode="numeric"
+            value={tagQuery}
+            onChange={(e) => setTagQuery(e.target.value)}
+            placeholder="Tag code…"
+            className="input w-32 text-sm"
+            aria-label="Search by tag code"
+          />
+          {canCreate && (
+            <Button onClick={() => setShowCreate(true)}>+ New Job</Button>
+          )}
+        </div>
       </div>
 
       {/* Board */}
@@ -1185,9 +1209,11 @@ export function JobBoard({ canCreate }: { canCreate: boolean }) {
           icon={<span className="text-3xl">📋</span>}
           title="No service jobs"
           message={
-            statusFilter
-              ? `No jobs with status "${statusFilter}"`
-              : "Create your first job above"
+            tagQueryTrimmed
+              ? `No job with tag code "${tagQueryTrimmed}"`
+              : statusFilter
+                ? `No jobs with status "${statusFilter}"`
+                : "Create your first job above"
           }
           action={
             canCreate ? (

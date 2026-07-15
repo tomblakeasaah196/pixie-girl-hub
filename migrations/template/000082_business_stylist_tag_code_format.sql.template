@@ -1,0 +1,58 @@
+-- ============================================================
+-- TEMPLATE 000082 — Stylist Studio: 3-digit hand-off tag counter
+-- Pixie Girl Hub · JBS Praxis · V2.2 · §6.24 (Stylist Studio)
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to NEW brands by bootstrap (after 000081) and to EXISTING brands by
+-- repair-business-schema.js. CREATE OR REPLACE FUNCTION is idempotent, so the
+-- repair runner re-applies it every pass harmlessly.
+--
+-- WHY: the tag code format changed from a bare 5-digit number to a 3-digit
+-- number + 2 letters (e.g. "342NS"), the letters being an initials-style hint
+-- of the styled product name — carries a bit of product context on the
+-- physical tag, not just an opaque counter. The 2-letter part is computed in
+-- application code (src/modules/service_jobs/service-jobs.repo.js,
+-- deriveTagInitials) from the job's styled product / hair description, since
+-- that isn't something a parameterless SQL function can know. This migration
+-- only narrows the numeric counter this function hands out from 5 digits
+-- (1..99999) to 3 digits (1..999) — same cycle-then-wrap behaviour as before,
+-- just a smaller range since it's now half of a 5-character code instead of
+-- the whole thing.
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION {{BUSINESS}}.fn_next_stylist_tag()
+RETURNS TEXT
+LANGUAGE plpgsql AS $$
+DECLARE
+  v_row       shared.document_numbering%ROWTYPE;
+  v_allocated INTEGER;
+BEGIN
+  INSERT INTO shared.document_numbering (business, document_type, prefix, next_number, padding)
+  VALUES ('{{BUSINESS}}', 'stylist_tag', '', 1, 3)
+  ON CONFLICT (business, document_type) DO NOTHING;
+
+  SELECT * INTO v_row
+    FROM shared.document_numbering
+   WHERE business = '{{BUSINESS}}' AND document_type = 'stylist_tag'
+     FOR UPDATE;
+
+  -- 3-digit numeric half of the tag cycles 1..999, then wraps back to 1.
+  v_allocated := v_row.next_number;
+  IF v_allocated > 999 THEN
+    v_allocated := 1;
+  END IF;
+
+  UPDATE shared.document_numbering
+     SET next_number = v_allocated + 1,
+         padding = 3
+   WHERE seq_id = v_row.seq_id;
+
+  RETURN LPAD(v_allocated::text, 3, '0');
+END;
+$$;
+
+-- ============================================================
+-- Verify (after substitution): SELECT {{BUSINESS}}.fn_next_stylist_tag();
+-- returns a 3-digit string. The full tag (e.g. "342NS") is assembled in JS
+-- by appending 2 initials letters — see assignStylist in service-jobs.service.js.
+-- ============================================================

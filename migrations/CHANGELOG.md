@@ -11,6 +11,41 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-15 — Stylist Studio: job drawer enrichment (PR1 of 2)
+
+**Source:** "make the job drawer rich" — customer/order/product identity,
+inline ratings open the whole time a job is live (not just after QC),
+workload badges, cost breakdown, wig custody mini-timeline, activity
+timeline, and a non-sequential hand-off tag format.
+
+- `000082_business_stylist_tag_code_format` (brand template) — `CREATE OR
+  REPLACE` of `fn_next_stylist_tag`. Changed from a bare 5-digit counter to a
+  3-digit counter (this migration) + 2 letters drawn from the styled product
+  name, computed in `deriveTagInitials` (`service-jobs.repo.js`) — e.g.
+  "342NS" instead of "00342". Same cycle-then-wrap counter, just half the
+  digits since letters now carry the other half of the code. No `CREATE
+  TABLE` (idempotent function replace); per-brand table count unchanged.
+- `src/modules/service_jobs/service-jobs.repo.js` (`getServiceJob`) — joins
+  customer name (name only, never contact details), order placed-at, base +
+  styled product names, styled product photo, wig-out timestamp, and a
+  materials/chemicals cost rollup. New `listJobActivity` reads the existing
+  audit log for a job's full lifecycle — no new event table needed.
+- `assignStylist` now returns `is_new_tag` so the drawer shows a "copy this
+  onto the tag" confirmation only on the assignment that actually allocated
+  the code, never on a later reassignment of the same job.
+
+Apply to existing brands with `npm run db:repair`.
+
+Companion data fix (not a migration — run by hand): styled products'
+`default_service_type_id` was unset for some/all styled products, so
+`createForOrder` fell back to whichever service type sorted first
+("Installation") instead of "Styling". SQL handed to the operator directly
+rather than baked into a migration, since it depends on row data (which
+service type is actually named "Styling" in this deployment) rather than
+schema shape.
+
+---
+
 ## 2026-07-15 — Expenses: amount_paid_ngn column + approver/payer name joins
 
 **Source:** live repro on the expense detail drawer — the "Paid" summary

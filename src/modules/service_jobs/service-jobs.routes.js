@@ -109,6 +109,7 @@ router.post(
 );
 router.delete("/:id/references/:refId", can("edit"), c.removeReference);
 router.get("/:id/time-logs", can("view"), c.listTimeLogs);
+router.get("/:id/activity", can("view"), c.listJobActivity);
 
 // ── Service-job chemical consumption (F-7d) ────────────────
 router.get("/:id/chemicals", can("view"), c.listChemicals);

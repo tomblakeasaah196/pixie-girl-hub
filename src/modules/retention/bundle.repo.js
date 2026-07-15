@@ -113,6 +113,12 @@ async function listComponents({ client, brand, bundle_id }) {
             COALESCE(p.name, sp.name) AS product_name,
             COALESCE(p.product_code, sp.styled_code) AS product_code,
             sp.name AS styled_name, sp.slug AS styled_slug, sp.status AS styled_status,
+            -- The base product a component ultimately sells as: a pinned variant's
+            -- product, the base component's own product, or (for a styled component,
+            -- which pins only styled_id) the styled's base product / base variant.
+            -- Lets the sales bundle verifier match styled components against the
+            -- base-variant line the checkout submits (fixes BUNDLE_INCOMPLETE).
+            COALESCE(v.product_id, bop.product_id, sp.base_product_id, bv.product_id) AS match_product_id,
             COALESCE(
               v.price_storefront_ngn,
               (SELECT dv.price_storefront_ngn
@@ -145,6 +151,7 @@ async function listComponents({ client, brand, bundle_id }) {
        LEFT JOIN ${t(brand, "products")} p ON p.product_id = bop.product_id
        LEFT JOIN ${t(brand, "product_variants")} v ON v.variant_id = bop.variant_id
        LEFT JOIN ${t(brand, "styled_products")} sp ON sp.styled_id = bop.styled_id
+       LEFT JOIN ${t(brand, "product_variants")} bv ON bv.variant_id = sp.base_variant_id
       WHERE bop.bundle_id = $1 ORDER BY bop.display_order`,
     [bundle_id],
   );

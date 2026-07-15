@@ -76,7 +76,10 @@ async function runAbandonedCheckoutSweep() {
           if (!claimed) continue;
           const payUrl = await brandUrls.payLinkUrl(
             brand,
-            order.public_tracking_token,
+            await salesRepo.ensurePublicTrackingToken({
+              brand,
+              id: order.order_id,
+            }),
           );
           const result = await commsStudio.dispatch({
             brand,

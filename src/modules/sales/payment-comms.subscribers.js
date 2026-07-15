@@ -41,7 +41,10 @@ async function onPaymentRecorded({
   const order = await salesRepo.findById({ brand, id: order_id });
   if (!order || !contact_id) return;
   const settings = await paymentSettings.getSettings(brand);
-  const payUrl = await brandUrls.payLinkUrl(brand, order.public_tracking_token);
+  const payUrl = await brandUrls.payLinkUrl(
+    brand,
+    await salesRepo.ensurePublicTrackingToken({ brand, id: order_id }),
+  );
   const balance = new Decimal(total_ngn || 0).minus(
     new Decimal(amount_paid_ngn || 0),
   );
@@ -76,7 +79,10 @@ async function onPaymentMilestone({
   if (settings.milestone_messages_enabled === false) return;
   const order = await salesRepo.findById({ brand, id: order_id });
   if (!order) return;
-  const payUrl = await brandUrls.payLinkUrl(brand, order.public_tracking_token);
+  const payUrl = await brandUrls.payLinkUrl(
+    brand,
+    await salesRepo.ensurePublicTrackingToken({ brand, id: order_id }),
+  );
   const balance = new Decimal(total_ngn || 0).minus(
     new Decimal(amount_paid_ngn || 0),
   );

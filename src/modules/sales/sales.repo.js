@@ -314,6 +314,23 @@ async function findByPublicToken({ client, brand, token }) {
   );
   return rows[0] || null;
 }
+// The customer pay page (/pay/:token) resolves an order by this token, but the
+// column has no default and is NULL at creation — so every emailed/WhatsApp
+// "pay / complete my order" link was pointing at an empty token. Mint one on
+// first need and persist it. Idempotent: COALESCE only fills a NULL, and the
+// row lock serialises concurrent callers, so an order keeps its first token.
+async function ensurePublicTrackingToken({ client, brand, id }) {
+  if (!id) return null;
+  const token = require("crypto").randomBytes(18).toString("base64url");
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "sales_orders")}
+        SET public_tracking_token = COALESCE(public_tracking_token, $2)
+      WHERE order_id = $1
+      RETURNING public_tracking_token`,
+    [id, token],
+  );
+  return rows[0] ? rows[0].public_tracking_token : null;
+}
 async function findByOrderNumber({ client, brand, order_number }) {
   if (!order_number) return null;
   const { rows } = await ex(client)(
@@ -1230,6 +1247,7 @@ module.exports = {
   listAbandonableLayaway,
   listLayawayDueForReminder,
   listAbandonedCheckoutsForNudge,
+  ensurePublicTrackingToken,
   claimAbandonedNudge,
   listExpiredAbandonedCheckouts,
   mergeInternalNotes,

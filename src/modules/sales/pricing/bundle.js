@@ -15,21 +15,32 @@ const { AppError } = require("../../../utils/errors");
 
 function isComponentOf(components) {
   return (b) =>
-    components.some((c) =>
-      c.variant_id
-        ? b.li.variant_id === c.variant_id
-        : b.ctx.product_id === c.product_id,
-    );
+    components.some((c) => {
+      if (c.variant_id) return b.li.variant_id === c.variant_id;
+      // Styled/base components match on the resolved base product id. A styled
+      // component pins only styled_id (product_id/variant_id null); the repo
+      // resolves it to match_product_id so it lines up with the base-variant
+      // line the checkout actually submits.
+      const productId = c.product_id || c.match_product_id;
+      return productId ? b.ctx.product_id === productId : false;
+    });
 }
 
 /** Throws BUNDLE_INCOMPLETE unless every core component is in the cart. */
 function assertBundleComplete(bundle, built) {
   const components = bundle.components || [];
   for (const comp of components.filter((c) => c.role === "core" || !c.role)) {
+    // Styled components carry no product_id/variant_id, only styled_id; the
+    // repo resolves them to match_product_id (the base product the styled
+    // component sells as) so a bundle of styled items no longer falsely reads
+    // as "components missing" at Place Order.
+    const compProductId = comp.product_id || comp.match_product_id;
     const have = built.reduce((q, b) => {
       const match = comp.variant_id
         ? b.li.variant_id === comp.variant_id
-        : b.ctx.product_id === comp.product_id;
+        : compProductId
+          ? b.ctx.product_id === compProductId
+          : false;
       return match ? q + b.li.quantity : q;
     }, 0);
     if (have < (comp.quantity || 1))

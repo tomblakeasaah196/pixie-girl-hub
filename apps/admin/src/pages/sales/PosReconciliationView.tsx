@@ -25,6 +25,7 @@ import {
 import type {
   PosTerminalReconciliation,
   PosReconOrderCandidate,
+  PaginatedResponse,
 } from "./types";
 
 function useDebounced<T>(value: T, ms = 300): T {
@@ -83,6 +84,46 @@ function errMessage(err: unknown, fallback: string): string {
   return err instanceof Error && err.message ? err.message : fallback;
 }
 
+/** Prev/Next pager shared by both lists in this tab — 15 per page keeps a
+ *  busy queue from turning into one long overwhelming scroll. Wraps onto
+ *  two lines on narrow screens instead of squeezing the count + buttons
+ *  into one cramped row. */
+function Pager({
+  meta,
+  onPrev,
+  onNext,
+}: {
+  meta: PaginatedResponse<unknown>["meta"];
+  onPrev: () => void;
+  onNext: () => void;
+}) {
+  if (meta.total <= meta.page_size) return null;
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 text-[12px] text-text-muted mt-3 px-1">
+      <span>
+        Showing {(meta.page - 1) * meta.page_size + 1}–
+        {Math.min(meta.page * meta.page_size, meta.total)} of {meta.total}
+      </span>
+      <div className="flex gap-1">
+        <button
+          disabled={meta.page <= 1}
+          onClick={onPrev}
+          className="px-3 h-8 rounded-[9px] border border-line text-[12px] font-semibold disabled:opacity-40 hover:bg-text-primary/[0.05]"
+        >
+          Prev
+        </button>
+        <button
+          disabled={!meta.has_more}
+          onClick={onNext}
+          className="px-3 h-8 rounded-[9px] border border-line text-[12px] font-semibold disabled:opacity-40 hover:bg-text-primary/[0.05]"
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** One candidate order row — used for both smart suggestions and manual
  *  search results (decision 1A: same landing action either way). */
 function CandidateRow({
@@ -96,16 +137,22 @@ function CandidateRow({
 }) {
   return (
     <div className="flex items-center justify-between gap-3 p-3 rounded-[10px] border border-line hover:border-accent/40 transition-colors">
-      <div className="min-w-0">
-        <div className="font-mono text-[13px] font-semibold">
+      <div className="min-w-0 flex-1">
+        <div className="font-mono text-[13px] font-semibold truncate">
           {candidate.order_number}
         </div>
-        <div className="text-[11px] text-text-muted">
+        <div className="text-[11px] text-text-muted truncate">
           Balance <MoneyText ngn={Number(candidate.balance_due_ngn)} /> ·{" "}
           {formatDate(candidate.created_at)}
         </div>
       </div>
-      <Button size="sm" variant="primary" disabled={busy} onClick={onMatch}>
+      <Button
+        size="sm"
+        variant="primary"
+        disabled={busy}
+        onClick={onMatch}
+        className="shrink-0"
+      >
         <CheckCircle className="w-3.5 h-3.5" />
         Match
       </Button>
@@ -160,12 +207,12 @@ function MatchModal({
   return (
     <Modal open onClose={onClose} title="Match POS payment" size="lg">
       <div className="space-y-5">
-        <div className="rounded-[10px] border border-line p-3 flex items-center justify-between">
-          <div>
+        <div className="rounded-[10px] border border-line p-3 flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
             <div className="text-[13px] font-semibold">
               <MoneyText ngn={Number(row.amount_ngn)} />
             </div>
-            <div className="text-[11px] text-text-muted">
+            <div className="text-[11px] text-text-muted truncate">
               {row.alias_account_name || "Unknown sender"} ·{" "}
               {row.transaction_time
                 ? `${formatDate(row.transaction_time)} ${formatTime(row.transaction_time)}`
@@ -173,7 +220,7 @@ function MatchModal({
             </div>
           </div>
           {!row.resolved_brand && (
-            <div className="flex gap-1.5">
+            <div className="flex flex-wrap gap-1.5">
               {businesses.map((b) => (
                 <button
                   key={b.key}
@@ -438,14 +485,23 @@ export function PosReconciliationView() {
   const [ignoreRow, setIgnoreRow] = useState<PosTerminalReconciliation | null>(
     null,
   );
+  // 15 per page on both lists — a queue that's grown to dozens of rows reads
+  // as one long overwhelming scroll otherwise.
+  const PAGE_SIZE = 15;
   const [page, setPage] = useState(1);
+  const [unresolvedPage, setUnresolvedPage] = useState(1);
 
-  const pending = usePosReconciliation({ page, page_size: 25 });
-  const unresolved = usePosReconciliationUnresolved(isCeo, { page_size: 25 });
+  const pending = usePosReconciliation({ page, page_size: PAGE_SIZE });
+  const unresolved = usePosReconciliationUnresolved(isCeo, {
+    page: unresolvedPage,
+    page_size: PAGE_SIZE,
+  });
 
   const rows = pending.data?.data ?? [];
   const meta = pending.data?.meta;
   const unresolvedRows = unresolved.data?.data ?? [];
+  const unresolvedMeta = unresolved.data?.meta;
+  const unresolvedTotal = unresolvedMeta?.total ?? 0;
 
   const columns = reconColumns(
     canEdit,
@@ -465,12 +521,12 @@ export function PosReconciliationView() {
         </p>
       </div>
 
-      {isCeo && unresolvedRows.length > 0 && (
+      {isCeo && unresolvedTotal > 0 && (
         <div className="rounded-[13px] border border-accent/30 bg-accent/[0.05] px-4 py-3 mb-4">
           <p className="text-[13px] font-semibold mb-2">
-            {unresolvedRows.length} payment
-            {unresolvedRows.length === 1 ? "" : "s"} with no terminal on
-            record yet — visible to you as CEO across both brands.
+            {unresolvedTotal} payment{unresolvedTotal === 1 ? "" : "s"} with no
+            terminal on record yet — visible to you as CEO across both
+            brands.
           </p>
           <div className="space-y-2">
             {unresolvedRows.map((r) => (
@@ -478,18 +534,29 @@ export function PosReconciliationView() {
                 key={r.recon_id}
                 className="flex items-center justify-between gap-3 p-2.5 rounded-[9px] bg-text-primary/[0.03]"
               >
-                <div className="text-[13px]">
+                <div className="min-w-0 flex-1 truncate text-[13px]">
                   <MoneyText ngn={Number(r.amount_ngn)} /> —{" "}
                   <span className="text-text-muted">
                     {r.alias_account_name || "Unknown sender"}
                   </span>
                 </div>
-                <Button size="sm" onClick={() => setMatchRow(r)}>
+                <Button
+                  size="sm"
+                  onClick={() => setMatchRow(r)}
+                  className="shrink-0"
+                >
                   Resolve
                 </Button>
               </div>
             ))}
           </div>
+          {unresolvedMeta && (
+            <Pager
+              meta={unresolvedMeta}
+              onPrev={() => setUnresolvedPage((p) => p - 1)}
+              onNext={() => setUnresolvedPage((p) => p + 1)}
+            />
+          )}
         </div>
       )}
 
@@ -508,30 +575,12 @@ export function PosReconciliationView() {
               message: "Every terminal payment has a matching order.",
             }}
           />
-          {meta && meta.total > meta.page_size && (
-            <div className="flex items-center justify-between text-[12px] text-text-muted mt-3 px-1">
-              <span>
-                Showing {(meta.page - 1) * meta.page_size + 1}–
-                {Math.min(meta.page * meta.page_size, meta.total)} of{" "}
-                {meta.total}
-              </span>
-              <div className="flex gap-1">
-                <button
-                  disabled={meta.page <= 1}
-                  onClick={() => setPage((p) => p - 1)}
-                  className="px-3 h-8 rounded-[9px] border border-line text-[12px] font-semibold disabled:opacity-40 hover:bg-text-primary/[0.05]"
-                >
-                  Prev
-                </button>
-                <button
-                  disabled={!meta.has_more}
-                  onClick={() => setPage((p) => p + 1)}
-                  className="px-3 h-8 rounded-[9px] border border-line text-[12px] font-semibold disabled:opacity-40 hover:bg-text-primary/[0.05]"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
+          {meta && (
+            <Pager
+              meta={meta}
+              onPrev={() => setPage((p) => p - 1)}
+              onNext={() => setPage((p) => p + 1)}
+            />
           )}
         </>
       )}

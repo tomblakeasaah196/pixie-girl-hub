@@ -14,6 +14,8 @@ import type {
   PaginatedResponse,
   FlexiPaySettings,
   FlexiPaySettingsPatch,
+  PosTerminalReconciliation,
+  PosReconOrderCandidate,
 } from "./types";
 
 const S = "/sales";
@@ -326,3 +328,58 @@ export const getBundle = (id: string) =>
       role: string;
     }>;
   }>(`/retention/bundles/${id}`);
+
+// ── POS Reconciliation (Sales → POS Reconciliation tab) ─────
+
+const POS = "/pos";
+
+export interface PosReconListParams {
+  page?: number;
+  page_size?: number;
+}
+
+export const listPosReconciliation = (params: PosReconListParams = {}) =>
+  api.get<PaginatedResponse<PosTerminalReconciliation>>(
+    `${POS}/reconciliation${qs(params)}`,
+  );
+
+/** Cross-brand — terminal not yet resolved to a brand (CEO only, backend-enforced). */
+export const listPosReconciliationUnresolved = (
+  params: PosReconListParams = {},
+) =>
+  api.get<PaginatedResponse<PosTerminalReconciliation>>(
+    `${POS}/reconciliation/unresolved${qs(params)}`,
+  );
+
+export interface PosReconSuggestionsResponse {
+  data: PosReconOrderCandidate[];
+  recon: PosTerminalReconciliation;
+}
+
+/** `brand` is required when the row's own resolved_brand is still null. */
+export const getPosReconciliationSuggestions = (id: string, brand?: string) =>
+  api.get<PosReconSuggestionsResponse>(
+    `${POS}/reconciliation/${id}/suggestions${qs({ brand })}`,
+  );
+
+export const matchPosReconciliation = (
+  id: string,
+  input: { brand: string; order_id: string },
+) =>
+  api.post<{ data: PosTerminalReconciliation }>(
+    `${POS}/reconciliation/${id}/match`,
+    input,
+  );
+
+export const ignorePosReconciliation = (id: string, note: string) =>
+  api.post<{ data: PosTerminalReconciliation }>(
+    `${POS}/reconciliation/${id}/ignore`,
+    { note },
+  );
+
+/** Manual-search fallback (decision 1A) — reuses the normal order list,
+ *  scoped to the brand active in X-Brand-Context, open in-store orders only. */
+export const searchPosReconcilableOrders = (search: string) =>
+  api.get<PaginatedResponse<SalesOrder>>(
+    `/sales/orders${qs({ q: search, sales_channel: "pos", page_size: 10 })}`,
+  );

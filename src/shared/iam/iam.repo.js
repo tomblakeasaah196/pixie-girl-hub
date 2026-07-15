@@ -766,7 +766,7 @@ async function queryAuditLog({
   }
   if (search) {
     where.push(
-      `(a.user_name ILIKE $${i} OR a.user_email ILIKE $${i} OR a.action ILIKE $${i})`,
+      `(u.display_name ILIKE $${i} OR c.display_name ILIKE $${i} OR a.user_name ILIKE $${i} OR a.user_email ILIKE $${i} OR a.action ILIKE $${i})`,
     );
     params.push(`%${search}%`);
     i++;
@@ -774,18 +774,31 @@ async function queryAuditLog({
 
   const w = `WHERE ${where.join(" AND ")}`;
 
+  // Resolve the actor's friendly display name (the audit row only stores the
+  // UUID in user_name for most events). Same users -> staff_profiles -> contacts
+  // chain the Users & Access list uses. 1:1:1, so no fan-out.
+  const joins = `
+       LEFT JOIN shared.users u ON u.user_id = a.user_id
+       LEFT JOIN shared.staff_profiles sp ON sp.profile_id = u.staff_profile_id
+       LEFT JOIN shared.contacts c ON c.contact_id = sp.contact_id`;
+  const displayName = `COALESCE(u.display_name, c.display_name,
+            NULLIF(a.user_name, a.user_id::text), a.user_email, 'System')`;
+
   const countQ = query(
-    `SELECT count(*)::int AS total FROM shared.audit_log a ${w}`,
+    `SELECT count(*)::int AS total FROM shared.audit_log a ${joins} ${w}`,
     params,
   );
 
   const offset = (page - 1) * limit;
   const dataQ = query(
-    `SELECT a.log_id, a.occurred_at, a.user_id, a.user_name, a.user_email,
-            a.user_class, a.business, a.module, a.action,
+    `SELECT a.log_id, a.occurred_at, a.user_id,
+            ${displayName} AS user_name,
+            a.user_email, a.user_class, a.business, a.module, a.action,
             a.table_name, a.record_id,
+            a.before_state, a.after_state,
             a.ip_address, a.session_id, a.is_sensitive, a.metadata
        FROM shared.audit_log a
+       ${joins}
        ${w}
       ORDER BY a.occurred_at DESC
       LIMIT $${i} OFFSET $${i + 1}`,
@@ -802,8 +815,20 @@ async function queryAuditLog({
 }
 
 async function getAuditEntry(logId) {
+  // Return the full payload (before/after/metadata) with the actor's friendly
+  // display name resolved instead of the raw UUID stored on the row.
   const { rows } = await query(
-    `SELECT * FROM shared.audit_log WHERE log_id = $1`,
+    `SELECT a.log_id, a.occurred_at, a.user_id,
+            COALESCE(u.display_name, c.display_name,
+                     NULLIF(a.user_name, a.user_id::text), a.user_email, 'System') AS user_name,
+            a.user_email, a.user_class, a.business, a.module, a.action,
+            a.table_name, a.record_id, a.before_state, a.after_state,
+            a.ip_address, a.user_agent, a.session_id, a.is_sensitive, a.metadata
+       FROM shared.audit_log a
+       LEFT JOIN shared.users u ON u.user_id = a.user_id
+       LEFT JOIN shared.staff_profiles sp ON sp.profile_id = u.staff_profile_id
+       LEFT JOIN shared.contacts c ON c.contact_id = sp.contact_id
+      WHERE a.log_id = $1`,
     [logId],
   );
   return rows[0] || null;
@@ -811,11 +836,16 @@ async function getAuditEntry(logId) {
 
 async function getRecordTrail(tableName, recordId) {
   const { rows } = await query(
-    `SELECT log_id, occurred_at, user_id, user_name, action,
-            before_state, after_state, metadata
-       FROM shared.audit_log
-      WHERE table_name = $1 AND record_id = $2
-      ORDER BY occurred_at ASC`,
+    `SELECT a.log_id, a.occurred_at, a.user_id,
+            COALESCE(u.display_name, c.display_name,
+                     NULLIF(a.user_name, a.user_id::text), a.user_email, 'System') AS user_name,
+            a.action, a.before_state, a.after_state, a.metadata
+       FROM shared.audit_log a
+       LEFT JOIN shared.users u ON u.user_id = a.user_id
+       LEFT JOIN shared.staff_profiles sp ON sp.profile_id = u.staff_profile_id
+       LEFT JOIN shared.contacts c ON c.contact_id = sp.contact_id
+      WHERE a.table_name = $1 AND a.record_id = $2
+      ORDER BY a.occurred_at ASC`,
     [tableName, recordId],
   );
   return rows;
@@ -867,7 +897,7 @@ async function exportAuditLog({
   }
   if (search) {
     where.push(
-      `(a.user_name ILIKE $${i} OR a.user_email ILIKE $${i} OR a.action ILIKE $${i})`,
+      `(u.display_name ILIKE $${i} OR c.display_name ILIKE $${i} OR a.user_name ILIKE $${i} OR a.user_email ILIKE $${i} OR a.action ILIKE $${i})`,
     );
     params.push(`%${search}%`);
     i++;
@@ -875,13 +905,18 @@ async function exportAuditLog({
 
   const w = `WHERE ${where.join(" AND ")}`;
   const { rows } = await query(
-    `SELECT a.log_id, a.occurred_at, a.user_id, a.user_name, a.user_email,
-            a.user_class, a.business, a.module, a.action,
+    `SELECT a.log_id, a.occurred_at, a.user_id,
+            COALESCE(u.display_name, c.display_name,
+                     NULLIF(a.user_name, a.user_id::text), a.user_email, 'System') AS user_name,
+            a.user_email, a.user_class, a.business, a.module, a.action,
             a.table_name, a.record_id,
             a.before_state, a.after_state,
             a.ip_address, a.user_agent, a.session_id,
             a.is_sensitive, a.metadata
        FROM shared.audit_log a
+       LEFT JOIN shared.users u ON u.user_id = a.user_id
+       LEFT JOIN shared.staff_profiles sp ON sp.profile_id = u.staff_profile_id
+       LEFT JOIN shared.contacts c ON c.contact_id = sp.contact_id
        ${w}
       ORDER BY a.occurred_at DESC`,
     params,

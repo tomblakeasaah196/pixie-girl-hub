@@ -27,6 +27,7 @@ import {
   LogIn,
   LogOut,
   MailCheck,
+  MapPin,
 } from "lucide-react";
 import { Card, Button, Pill, Skeleton, EmptyState } from "@/components/ui/primitives";
 import { Modal } from "@/components/ui/Modal";
@@ -170,18 +171,29 @@ export function LiveAttendanceStrip() {
                     : "border-line bg-text-primary/[0.02]",
                 )}
               >
-                <div className="flex min-w-0 items-center gap-2">
-                  {r.event_type === "clock_in" ? (
-                    <LogIn className="h-4 w-4 shrink-0 text-success" />
-                  ) : (
-                    <LogOut className="h-4 w-4 shrink-0 text-text-muted" />
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <div className="flex min-w-0 items-center gap-2">
+                    {r.event_type === "clock_in" ? (
+                      <LogIn className="h-4 w-4 shrink-0 text-success" />
+                    ) : (
+                      <LogOut className="h-4 w-4 shrink-0 text-text-muted" />
+                    )}
+                    <span className="truncate text-sm text-text-primary">
+                      {r.display_name || "Staff"}
+                    </span>
+                    <span className="shrink-0 text-[11px] text-text-faint">
+                      {clockTime(r.occurred_at)}
+                    </span>
+                  </div>
+                  {r.address && (
+                    <span
+                      className="ml-6 flex items-center gap-1 truncate text-[11px] text-text-faint"
+                      title={r.address}
+                    >
+                      <MapPin className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{r.address}</span>
+                    </span>
                   )}
-                  <span className="truncate text-sm text-text-primary">
-                    {r.display_name || "Staff"}
-                  </span>
-                  <span className="shrink-0 text-[11px] text-text-faint">
-                    {clockTime(r.occurred_at)}
-                  </span>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   {unknown && <UnknownDeviceFlag />}

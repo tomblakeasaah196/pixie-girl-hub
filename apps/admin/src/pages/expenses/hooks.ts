@@ -71,11 +71,17 @@ export function useExpenseMutations() {
     onSuccess: invalidate,
   });
 
+  const pay = useMutation({
+    mutationFn: (v: { id: string; input: expApi.PayExpenseInput }) =>
+      expApi.payExpense(v.id, v.input),
+    onSuccess: invalidate,
+  });
+
   const createCategory = useMutation({
     mutationFn: expApi.createExpenseCategory,
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: ["expense-categories"] }),
   });
 
-  return { create, submitExpense, approve, reject, createCategory };
+  return { create, submitExpense, approve, reject, pay, createCategory };
 }

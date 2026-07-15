@@ -166,6 +166,54 @@ async function findActivePeriod({ client, brand, date }) {
   );
   return rows[0] || null;
 }
+/**
+ * Open a period that was seeded ahead as 'future' and now covers `date` (the
+ * calendar has advanced into it). No-op for a date not covered by a future
+ * period. Never touches 'closed'/'locked' periods.
+ */
+async function openFuturePeriod({ client, brand, date }) {
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "fiscal_periods")}
+        SET status = 'open', updated_at = now()
+      WHERE $1::date BETWEEN starts_on AND ends_on
+        AND status = 'future'
+      RETURNING *`,
+    [date],
+  );
+  return rows[0] || null;
+}
+/** Any period (any status) covering `date` — to detect a deliberate close. */
+async function findPeriodCoveringDate({ client, brand, date }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM ${t(brand, "fiscal_periods")}
+      WHERE $1::date BETWEEN starts_on AND ends_on
+      ORDER BY starts_on DESC LIMIT 1`,
+    [date],
+  );
+  return rows[0] || null;
+}
+/**
+ * Provision the calendar-month period for `date` as 'open' (period_number =
+ * month, matching the seed). Idempotent under concurrency via ON CONFLICT;
+ * returns null if another transaction already inserted the row.
+ */
+async function createOpenMonthPeriod({ client, brand, date }) {
+  const { rows } = await ex(client)(
+    `INSERT INTO ${t(brand, "fiscal_periods")}
+       (fiscal_year, period_number, period_name, starts_on, ends_on, status)
+     SELECT EXTRACT(YEAR FROM d)::smallint,
+            EXTRACT(MONTH FROM d)::smallint,
+            to_char(date_trunc('month', d), 'Mon YYYY'),
+            date_trunc('month', d)::date,
+            (date_trunc('month', d) + INTERVAL '1 month - 1 day')::date,
+            'open'
+       FROM (SELECT $1::date AS d) s
+     ON CONFLICT (fiscal_year, period_number) DO NOTHING
+     RETURNING *`,
+    [date],
+  );
+  return rows[0] || null;
+}
 async function createPeriod({ client, brand, input }) {
   const { rows } = await ex(client)(
     `INSERT INTO ${t(brand, "fiscal_periods")} (fiscal_year, period_number, period_name, starts_on, ends_on, status, is_year_end)
@@ -719,6 +767,9 @@ module.exports = {
   listPeriods,
   getPeriod,
   findActivePeriod,
+  openFuturePeriod,
+  findPeriodCoveringDate,
+  createOpenMonthPeriod,
   createPeriod,
   closePeriod,
   nextEntryNumber,

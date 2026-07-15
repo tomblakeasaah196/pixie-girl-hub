@@ -43,6 +43,60 @@ async function resolveAccountId({ client, brand, line }) {
 }
 
 /**
+ * Resolve the fiscal period to post `date` into, self-healing the common
+ * calendar-drift cases so posting never dead-ends on a period the seed simply
+ * hadn't opened yet:
+ *   1. An open/adjusted/closing period exists → use it.
+ *   2. A 'future' period seeded ahead now covers the date → open it and use it
+ *      (exactly what the seed would have done had it run today).
+ *   3. A period covers the date but is 'closed'/'locked' → return null; the
+ *      deliberate close stands and the caller raises NO_OPEN_PERIOD.
+ *   4. No period row covers the date (e.g. a new fiscal year) → create the
+ *      calendar month as open and use it.
+ * Auto-open / auto-create are audited. Runs inside the caller's transaction, so
+ * the period change commits atomically with the journal (or rolls back with it).
+ */
+async function ensureOpenPeriod({ client, brand, date, user_id }) {
+  const active = await repo.findActivePeriod({ client, brand, date });
+  if (active) return active;
+
+  const opened = await repo.openFuturePeriod({ client, brand, date });
+  if (opened) {
+    await audit({
+      business: brand,
+      user_id,
+      action_key: "accounting.period.auto_open",
+      target_type: "fiscal_period",
+      target_id: opened.period_id,
+      after: { period_name: opened.period_name, reason: "posting_into_future_period", date },
+    });
+    return opened;
+  }
+
+  // Covered by a non-open, non-future period (closed/locked) → respect the close.
+  const covering = await repo.findPeriodCoveringDate({ client, brand, date });
+  if (covering) return null;
+
+  // No period at all for this date (e.g. a fiscal year the seed never made).
+  let created = await repo.createOpenMonthPeriod({ client, brand, date });
+  if (!created) {
+    // Lost an insert race — the row now exists; pick it up.
+    created = await repo.findActivePeriod({ client, brand, date });
+  }
+  if (created) {
+    await audit({
+      business: brand,
+      user_id,
+      action_key: "accounting.period.auto_create",
+      target_type: "fiscal_period",
+      target_id: created.period_id,
+      after: { period_name: created.period_name, reason: "no_period_for_date", date },
+    });
+  }
+  return created;
+}
+
+/**
  * Post a balanced journal entry. Accepts an optional `client` so callers can
  * post inside their own transaction (atomic with the source record).
  */
@@ -93,15 +147,16 @@ async function postEntry({ client, brand, entry, lines, user_id }) {
 
     const posting_date =
       entry.posting_date || new Date().toISOString().slice(0, 10);
-    const period = await repo.findActivePeriod({
+    const period = await ensureOpenPeriod({
       client: c,
       brand,
       date: posting_date,
+      user_id,
     });
     if (!period)
       throw new AppError(
         "NO_OPEN_PERIOD",
-        `No open fiscal period for ${posting_date}`,
+        `Fiscal period for ${posting_date} is closed`,
         409,
       );
 

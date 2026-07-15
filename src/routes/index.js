@@ -31,6 +31,7 @@ const authRouter = require("../shared/hr_payroll/auth.routes");
 const crmRouter = require("../modules/crm/crm.routes");
 const catalogueRouter = require("../modules/catalogue/catalogue.routes");
 const salesRouter = require("../modules/sales/sales.routes");
+const posRouter = require("../modules/pos/pos.routes");
 const storefrontRouter = require("../modules/storefront/storefront.routes");
 const invoicingRouter = require("../modules/invoicing/invoicing.routes");
 const accountingRouter = require("../modules/accounting/accounting.routes");
@@ -369,6 +370,7 @@ function mountRoutes(app) {
     ["/crm", crmRouter],
     ["/catalogue", catalogueRouter],
     ["/sales", salesRouter],
+    ["/pos", posRouter],
     ["/storefront", storefrontRouter],
     ["/invoicing", invoicingRouter],
     ["/accounting", accountingRouter],

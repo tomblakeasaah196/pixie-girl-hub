@@ -350,3 +350,41 @@ export interface CancellationRequestInput {
   reason_category?: CancellationCategory;
   requested_by_contact_id?: string;
 }
+
+// ── POS Reconciliation (Sales → POS Reconciliation tab) ─────
+// Unmatched in-store Nomba terminal payments, parked by the webhook fallback
+// for staff to match against an open order (or ignore). Backed by the
+// shared, not-brand-scoped shared.pos_terminal_reconciliation table.
+
+export type PosReconStatus = "pending" | "matched" | "ignored";
+
+export interface PosTerminalReconciliation {
+  recon_id: string;
+  webhook_id: string | null;
+  provider: string;
+  resolved_brand: string | null;
+  nomba_terminal_id: string | null;
+  alias_account_name: string | null;
+  amount_ngn: string;
+  transaction_time: string | null;
+  provider_reference: string | null;
+  status: PosReconStatus;
+  matched_brand: string | null;
+  matched_order_id: string | null;
+  matched_by: string | null;
+  matched_at: string | null;
+  note: string | null;
+  created_at: string;
+}
+
+/** Candidate order returned by the smart-suggestion search (sales.repo.js
+ *  findReconcilablePosOrders) — same balance, same brand, near the payment time. */
+export interface PosReconOrderCandidate {
+  order_id: string;
+  order_number: string;
+  status: string;
+  total_ngn: string;
+  amount_paid_ngn: string;
+  balance_due_ngn: string;
+  created_at: string;
+}

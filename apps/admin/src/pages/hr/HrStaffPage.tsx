@@ -521,10 +521,20 @@ function SettingsTab() {
           <Button variant="primary" disabled={pin.length < 4 || savePin.isPending}
             onClick={() => savePin.mutate()}>{data.payout_pin_set ? "Replace PIN" : "Set PIN"}</Button>
         </div>
+      </Card>
+
+      <Card className="p-5">
+        <SectionTitle icon={<MapPin className="h-4 w-4 text-accent-glow" />}>
+          Geoapify Integration
+        </SectionTitle>
+        <p className="mb-3 text-xs text-text-muted">
+          Powers clock-in address labels and the office-location picker&rsquo;s
+          search + map. Configured here instead of an environment variable.
+        </p>
         <button
           type="button"
           onClick={() => setGeoapifyOpen(true)}
-          className="mt-4 inline-flex"
+          className="inline-flex"
           title="Configure the Geoapify key that powers clock-in address labels and the office-location picker"
         >
           <Pill tone={geoapifyStatus.tone} dot={false}>

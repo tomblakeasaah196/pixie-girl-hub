@@ -12,10 +12,21 @@
  *  - staticMap({...})           a centred map image (PNG bytes) for the office
  *                               location picker — rendered as a plain <img>, so
  *                               there is no browser Maps SDK to load or break.
+ *  - testConnection({apiKey})  validates a candidate key (used by the
+ *                               "Configure Geoapify" admin-UI Test button).
  *
- * The API key stays SERVER-SIDE by design (env GEOAPIFY_API_KEY, never shipped
- * to the browser): the admin app calls our own /attendance/geo/* proxy, which
- * calls Geoapify. Free tier is 3,000 requests/day — ample for HR usage.
+ * The API key stays SERVER-SIDE by design (never shipped to the browser): the
+ * admin app calls our own /attendance/geo/* proxy, which calls Geoapify. Free
+ * tier is 3,000 requests/day — ample for HR usage.
+ *
+ * Key source: shared.geoapify_settings (encrypted, configured from HR & Staff
+ * → Settings → "Configure Geoapify" — see geoapify-settings.service.js),
+ * cached in-process for CACHE_TTL_MS to avoid a DB round trip per call.
+ * GEOAPIFY_API_KEY in .env is read only as an emergency fallback when no
+ * active row is configured — new deployments should configure the key in the
+ * admin UI instead. geoapify-settings.service.js is required lazily (inside
+ * getApiKey(), not at module load) since it requires this module back for
+ * testConnection — a top-level require here would be a circular import.
  *
  * Best-effort BY DESIGN: reverseGeocode + autocomplete return null / [] on a
  * missing key, bad input, timeout or any upstream error — they must never
@@ -29,6 +40,7 @@
 
 const axios = require("axios");
 const { logger } = require("../config/logger");
+const { AppError } = require("../utils/errors");
 
 const REVERSE_URL = "https://api.geoapify.com/v1/geocode/reverse";
 const AUTOCOMPLETE_URL = "https://api.geoapify.com/v1/geocode/autocomplete";
@@ -40,9 +52,39 @@ const STATICMAP_TIMEOUT_MS = 6000;
 // hint (both businesses are Lagos-based).
 const DEFAULT_BIAS = { lat: 6.5244, lng: 3.3792 };
 
+const CACHE_TTL_MS = 60_000;
+let cachedKey = null;
+let cachedAt = 0;
+
+/** Drop the cached key so the next call re-resolves (e.g. right after a save). */
+function invalidateKeyCache() {
+  cachedKey = null;
+  cachedAt = 0;
+}
+
+/**
+ * Resolve the active API key: DB-stored key first, GEOAPIFY_API_KEY as a
+ * fallback, cached for CACHE_TTL_MS. Never throws — a DB hiccup just falls
+ * through to the env var (or null).
+ */
+async function getApiKey() {
+  const now = Date.now();
+  if (cachedKey !== null && now - cachedAt < CACHE_TTL_MS) return cachedKey;
+  let dbKey = null;
+  try {
+    const geoapifySettings = require("../modules/geoapify_settings/geoapify-settings.service");
+    dbKey = await geoapifySettings.resolveActiveApiKey();
+  } catch (err) {
+    logger.warn({ err: err.message }, "[geoapify] key resolution from DB failed, falling back to env");
+  }
+  cachedKey = dbKey || process.env.GEOAPIFY_API_KEY || null;
+  cachedAt = now;
+  return cachedKey;
+}
+
 /** Whether a Geoapify key is configured (drives graceful UI degradation). */
-function isConfigured() {
-  return Boolean(process.env.GEOAPIFY_API_KEY);
+async function isConfigured() {
+  return Boolean(await getApiKey());
 }
 
 function validCoord(lat, lng) {
@@ -63,7 +105,7 @@ function validCoord(lat, lng) {
  * on a missing key, bad coords, timeout or upstream error.
  */
 async function reverseGeocode(lat, lng) {
-  const apiKey = process.env.GEOAPIFY_API_KEY;
+  const apiKey = await getApiKey();
   if (!apiKey) return null;
   const point = validCoord(lat, lng);
   if (!point) return null;
@@ -98,7 +140,7 @@ async function reverseGeocode(lat, lng) {
  * @returns {Promise<Array<{formatted:string,lat:number,lng:number,place_id:string|null,category:string|null,city:string|null,country:string|null}>>}
  */
 async function autocomplete(text, opts = {}) {
-  const apiKey = process.env.GEOAPIFY_API_KEY;
+  const apiKey = await getApiKey();
   if (!apiKey) return [];
   const q = typeof text === "string" ? text.trim() : "";
   if (q.length < 2) return [];
@@ -148,7 +190,7 @@ async function autocomplete(text, opts = {}) {
  * @returns {Promise<{buffer:Buffer, contentType:string}>}
  */
 async function staticMap({ lat, lng, zoom, width, height, style } = {}) {
-  const apiKey = process.env.GEOAPIFY_API_KEY;
+  const apiKey = await getApiKey();
   if (!apiKey) {
     const err = new Error("Geoapify not configured");
     err.code = "GEOAPIFY_NOT_CONFIGURED";
@@ -180,4 +222,50 @@ async function staticMap({ lat, lng, zoom, width, height, style } = {}) {
   };
 }
 
-module.exports = { reverseGeocode, autocomplete, staticMap, isConfigured };
+/**
+ * Confirm a candidate API key is live — validated via a reverse-geocode call
+ * against a known coordinate (Geoapify has no dedicated "whoami"/account
+ * endpoint). Used by geoapify-settings.service.js's "Test connection".
+ */
+async function testConnection({ apiKey }) {
+  if (!apiKey) {
+    throw new AppError("NO_TOKEN", "No Geoapify API key saved", 422);
+  }
+  try {
+    const { data } = await axios.get(REVERSE_URL, {
+      params: {
+        lat: DEFAULT_BIAS.lat,
+        lon: DEFAULT_BIAS.lng,
+        format: "json",
+        limit: 1,
+        apiKey,
+      },
+      timeout: TIMEOUT_MS,
+    });
+    const sample_address =
+      data?.results?.[0]?.formatted || data?.features?.[0]?.properties?.formatted || null;
+    return { ok: true, sample_address };
+  } catch (err) {
+    const status = err.response && err.response.status;
+    const body = err.response && err.response.data;
+    const upstreamMsg =
+      (body && (body.message || (body.error && (body.error.message || body.error)))) ||
+      err.message;
+    const message =
+      status === 401 || status === 403 ? "Invalid Geoapify API key" : upstreamMsg || "Geoapify request failed";
+    throw new AppError(
+      "PROVIDER_PING_FAILED",
+      message,
+      status && status >= 400 && status < 500 ? status : 502,
+    );
+  }
+}
+
+module.exports = {
+  reverseGeocode,
+  autocomplete,
+  staticMap,
+  isConfigured,
+  testConnection,
+  invalidateKeyCache,
+};

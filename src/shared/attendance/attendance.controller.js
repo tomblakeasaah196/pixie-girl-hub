@@ -69,7 +69,7 @@ async function listEvents(req, res) {
 /** Whether the map/search features are available (drives UI degradation). */
 async function geoStatus(_req, res) {
   res.set("Cache-Control", "private, max-age=300");
-  res.json({ data: { configured: geoapify.isConfigured() } });
+  res.json({ data: { configured: await geoapify.isConfigured() } });
 }
 
 /** Address autocomplete: typed text → ranked suggestions with coordinates. */

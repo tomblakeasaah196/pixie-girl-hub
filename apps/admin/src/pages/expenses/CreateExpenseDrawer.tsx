@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Loader2, Receipt, Plus, X, Paperclip } from "lucide-react";
+import { Loader2, Receipt, Plus, X, Paperclip, Send } from "lucide-react";
 import { Drawer } from "@/components/ui/Drawer";
 import { Button } from "@/components/ui/primitives";
 import { Select, NumberField } from "@/components/ui/controls";
+import { useAuthStore } from "@/stores/auth";
 import { useExpenseCategories, useExpenseMutations } from "./hooks";
 import { uploadExpenseReceipt } from "./api";
 
@@ -34,8 +35,10 @@ function today() {
 }
 
 export function CreateExpenseDrawer({ onClose }: { onClose: () => void }) {
+  const can = useAuthStore((s) => s.can);
+  const canSubmit = can("expenses", "edit");
   const categoriesQ = useExpenseCategories();
-  const { create, createCategory } = useExpenseMutations();
+  const { create, createCategory, submitExpense } = useExpenseMutations();
   const categories = (categoriesQ.data ?? []).filter((c) => c.is_active);
 
   const [title, setTitle] = useState("");
@@ -56,7 +59,7 @@ export function CreateExpenseDrawer({ onClose }: { onClose: () => void }) {
   const [uploading, setUploading] = useState(false);
 
   const amountNum = Number(amount);
-  const busy = create.isPending || uploading;
+  const busy = create.isPending || submitExpense.isPending || uploading;
   const canSave =
     !!title && !!date && !!categoryId && amountNum > 0 && !busy;
 
@@ -76,7 +79,7 @@ export function CreateExpenseDrawer({ onClose }: { onClose: () => void }) {
     );
   }
 
-  function submit() {
+  function handleSave(andSubmit: boolean) {
     create.mutate(
       {
         title,
@@ -105,7 +108,11 @@ export function CreateExpenseDrawer({ onClose }: { onClose: () => void }) {
               setUploading(false);
             }
           }
-          onClose();
+          if (andSubmit) {
+            submitExpense.mutate(created.expense_id, { onSuccess: onClose });
+          } else {
+            onClose();
+          }
         },
       },
     );
@@ -264,13 +271,23 @@ export function CreateExpenseDrawer({ onClose }: { onClose: () => void }) {
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           <Button
-            variant="primary"
+            variant="secondary"
             disabled={!canSave}
-            onClick={submit}
+            onClick={() => handleSave(false)}
             icon={busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Receipt className="w-4 h-4" />}
           >
-            {uploading ? "Uploading receipt..." : "Record expense"}
+            {uploading ? "Uploading receipt..." : "Save as Draft"}
           </Button>
+          {canSubmit && (
+            <Button
+              variant="primary"
+              disabled={!canSave}
+              onClick={() => handleSave(true)}
+              icon={busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            >
+              {uploading ? "Uploading receipt..." : "Submit for Approval"}
+            </Button>
+          )}
         </div>
       </div>
     </Drawer>

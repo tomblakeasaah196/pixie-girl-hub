@@ -398,8 +398,11 @@ spend, and advance settlements, with approval routing.
 Advance settlement) and status (Draft, Pending, Approved, Paid, Partially Paid,
 Rejected).
 **Common tasks.**
-- *Claim an expense / reimbursement?* Expenses → **New** (add receipts, submit).
-  It routes to your approver.
+- *Claim an expense / reimbursement?* Expenses → **New** (add receipts) →
+  **Submit for Approval**. It routes to your approver. Picking **Save as
+  Draft** instead records it without submitting.
+- *Submit a draft expense you saved earlier?* Open it from the list →
+  **Submit for Approval** (needs `edit`).
 - *Settle a cash advance?* Expenses → **Advance settlement**.
 - *Approve someone's expense?* Expenses → the pending list (needs `approve`).
 

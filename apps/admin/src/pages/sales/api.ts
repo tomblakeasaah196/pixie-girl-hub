@@ -340,7 +340,7 @@ export interface PosReconListParams {
 
 export const listPosReconciliation = (params: PosReconListParams = {}) =>
   api.get<PaginatedResponse<PosTerminalReconciliation>>(
-    `${POS}/reconciliation${qs(params)}`,
+    `${POS}/reconciliation${qs({ ...params })}`,
   );
 
 /** Cross-brand — terminal not yet resolved to a brand (CEO only, backend-enforced). */
@@ -348,7 +348,7 @@ export const listPosReconciliationUnresolved = (
   params: PosReconListParams = {},
 ) =>
   api.get<PaginatedResponse<PosTerminalReconciliation>>(
-    `${POS}/reconciliation/unresolved${qs(params)}`,
+    `${POS}/reconciliation/unresolved${qs({ ...params })}`,
   );
 
 export interface PosReconSuggestionsResponse {

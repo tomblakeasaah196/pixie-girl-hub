@@ -1,0 +1,67 @@
+-- ============================================================
+-- TEMPLATE 000081 — Stylist Studio: physical hand-off tag code
+-- Pixie Girl Hub · JBS Praxis · V2.2 · §6.24 (Stylist Studio)
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to NEW brands by bootstrap (after 000080) and to EXISTING brands by
+-- repair-business-schema.js. ADD COLUMN/INDEX use IF NOT EXISTS and the
+-- function replace is idempotent, so the repair runner re-applies it every
+-- pass harmlessly.
+--
+-- WHY: ops wants a short number they can write by hand on the physical tag
+-- pinned to a customer's hair, so anyone can glance at a wig and match it to
+-- the job in the system without reading a full job_number or UUID.
+--
+-- Allocated once, at first assignment (service-jobs.service.js
+-- assignStylist), from a dedicated 5-digit counter that cycles 1..99999 and
+-- then wraps back to 1 automatically — codes are NOT guaranteed unique
+-- forever, only within a ~100,000-job cycle (accepted tradeoff; a brand would
+-- need 100,000 service jobs before a code could repeat, and by then the
+-- earlier job is long since closed out).
+-- ============================================================
+
+ALTER TABLE {{BUSINESS}}.service_jobs
+  ADD COLUMN IF NOT EXISTS tag_code TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_service_jobs_tag_code
+  ON {{BUSINESS}}.service_jobs (tag_code) WHERE tag_code IS NOT NULL;
+
+-- Self-bootstrapping counter: seeds its own shared.document_numbering row on
+-- first call (document_type = 'stylist_tag'), same table every other
+-- document sequence in this codebase uses (see fn_next_document_number,
+-- template 000034) — just with an explicit wrap instead of unbounded growth.
+CREATE OR REPLACE FUNCTION {{BUSINESS}}.fn_next_stylist_tag()
+RETURNS TEXT
+LANGUAGE plpgsql AS $$
+DECLARE
+  v_row       shared.document_numbering%ROWTYPE;
+  v_allocated INTEGER;
+BEGIN
+  INSERT INTO shared.document_numbering (business, document_type, prefix, next_number, padding)
+  VALUES ('{{BUSINESS}}', 'stylist_tag', '', 1, 5)
+  ON CONFLICT (business, document_type) DO NOTHING;
+
+  SELECT * INTO v_row
+    FROM shared.document_numbering
+   WHERE business = '{{BUSINESS}}' AND document_type = 'stylist_tag'
+     FOR UPDATE;
+
+  -- 5-digit code cycles 1..99999, then wraps back to 1 automatically.
+  v_allocated := v_row.next_number;
+  IF v_allocated > 99999 THEN
+    v_allocated := 1;
+  END IF;
+
+  UPDATE shared.document_numbering
+     SET next_number = v_allocated + 1
+   WHERE seq_id = v_row.seq_id;
+
+  RETURN LPAD(v_allocated::text, 5, '0');
+END;
+$$;
+
+-- ============================================================
+-- Verify (after substitution): SELECT {{BUSINESS}}.fn_next_stylist_tag();
+-- returns '00001' on first call for a fresh brand, increments from there,
+-- and returns to '00001' again after '99999'.
+-- ============================================================

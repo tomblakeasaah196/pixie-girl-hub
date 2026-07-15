@@ -20,6 +20,14 @@ async function nextNumber({ client, brand, type }) {
   );
   return rows[0].n;
 }
+// 5-digit physical hand-off tag (e.g. "04821") — cycles 1..99999 then wraps;
+// see fn_next_stylist_tag (migration template 000081).
+async function nextTagCode({ client, brand }) {
+  const { rows } = await ex(client)(
+    `SELECT ${t(brand, "fn_next_stylist_tag")}() AS n`,
+  );
+  return rows[0].n;
+}
 
 // ── service_types ──────────────────────────────────────────
 async function listServiceTypes({ brand, is_active }) {
@@ -762,17 +770,19 @@ async function overdueOutWigs({ brand, threshold_days }) {
 }
 
 /**
- * Return staff who can be assigned service jobs — every employee in the
- * Operations department of the active brand who has an active login account.
- * Includes a live open-jobs count (pending or in_progress or assigned or
- * on_hold or rework) and an on-leave-today flag so the picker can show
- * workload + availability without a second round-trip.
+ * Return staff who can be assigned service jobs — stylists (Junior/Senior/
+ * Head Stylist) in the Operations department of the active brand who have an
+ * active login account. Includes a live open-jobs count (pending or
+ * in_progress or assigned or on_hold or rework) and an on-leave-today flag so
+ * the picker can show workload + availability without a second round-trip.
  *
  * Department is matched two ways so no one is missed regardless of which
  * source a brand keeps current: the legacy `staff_profiles.department` text
  * AND membership of an "Operations" org unit (org_positions → org_units, the
- * newer source of truth). Each person's own job_title rides along as their
- * role within the department (e.g. "Chief Stylist", "Operations Lead").
+ * newer source of truth). Within that department, job_title (kept in sync
+ * with the org-position seat by org.service.syncProfileFromPosition) narrows
+ * the pool to stylist seats only — Operations Manager, Head of Security, and
+ * Sanitation Officer are Operations staff but not assignable to styling jobs.
  */
 async function listAssignableStylists({ brand }) {
   const { rows } = await query(
@@ -805,6 +815,7 @@ async function listAssignableStylists({ brand }) {
         AND sp.is_deleted = false
         AND (sp.end_date IS NULL OR sp.end_date >= CURRENT_DATE)
         AND u.status <> 'disabled'
+        AND sp.job_title ILIKE '%stylist%'
         AND (
           TRIM(sp.department) ILIKE 'operations'
           OR EXISTS (
@@ -848,6 +859,7 @@ async function countCompletedQualityForUser({ client, brand, userId, year, month
 
 module.exports = {
   nextNumber,
+  nextTagCode,
   countCompletedQualityForUser,
   listServiceTypes,
   listAssignableStylists,

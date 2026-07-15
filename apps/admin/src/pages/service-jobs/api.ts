@@ -152,10 +152,10 @@ export function assignStaff(id: string, assigned_staff_user_id: string) {
   });
 }
 
-// Options for the drawer's assignment picker: every Operations-department
-// employee with an active login in the current brand, with live workload +
-// leave state. Their job_title is shown as their role. Backed by
-// GET /service-jobs/stylists; small list (no pagination).
+// Options for the drawer's assignment picker: stylists (Junior/Senior/Head
+// Stylist) in the Operations department with an active login in the current
+// brand, with live workload + leave state. Their job_title is shown as their
+// role. Backed by GET /service-jobs/stylists; small list (no pagination).
 export interface AssignableStylist {
   user_id: string;
   full_name: string;

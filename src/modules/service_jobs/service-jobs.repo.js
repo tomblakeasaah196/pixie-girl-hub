@@ -20,13 +20,31 @@ async function nextNumber({ client, brand, type }) {
   );
   return rows[0].n;
 }
-// 5-digit physical hand-off tag (e.g. "04821") — cycles 1..99999 then wraps;
-// see fn_next_stylist_tag (migration template 000081).
-async function nextTagCode({ client, brand }) {
+// 3-digit numeric half of the physical hand-off tag — cycles 1..999 then
+// wraps; see fn_next_stylist_tag (migration template 000082). The full tag
+// (e.g. "342NS") is this plus 2 initials letters — see deriveTagInitials.
+async function nextTagSequence({ client, brand }) {
   const { rows } = await ex(client)(
     `SELECT ${t(brand, "fn_next_stylist_tag")}() AS n`,
   );
   return rows[0].n;
+}
+
+// First letters of the first two significant words in a name, e.g.
+// "Nala Sleek Bang Blacks" -> "NS". Falls back to the first two letters of a
+// single-word name, or "XX" when there's no name to draw from at all (a
+// custom job with neither a styled product nor a hair description).
+function deriveTagInitials(name) {
+  const words = (name || "")
+    .trim()
+    .split(/\s+/)
+    .filter((w) => /[a-zA-Z]/.test(w));
+  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+  if (words.length === 1) {
+    const letters = words[0].replace(/[^a-zA-Z]/g, "");
+    return (letters.slice(0, 2).padEnd(2, "X")).toUpperCase();
+  }
+  return "XX";
 }
 
 // ── service_types ──────────────────────────────────────────
@@ -152,15 +170,76 @@ async function getServiceJob({ client, brand, id }) {
             ic.seller_brand       AS intercompany_seller_brand,
             ic.buyer_brand        AS intercompany_buyer_brand,
             ic.status             AS intercompany_status,
-            ic.amount_ngn         AS intercompany_amount_ngn
+            ic.amount_ngn         AS intercompany_amount_ngn,
+            -- Identity/context (name only — never a phone/email; stylists
+            -- don't get customer contact details, per V2.2 access rules).
+            c.display_name        AS customer_name,
+            so.order_number        AS sales_order_number,
+            so.placed_at            AS order_placed_at,
+            pv.variant_name          AS base_product_name,
+            sty.name                  AS styled_product_name,
+            ${primaryStyledImageSql(brand, "sty")} AS styled_product_image_url,
+            -- Wig custody: currently OUT with no return/dispatch/write-off yet.
+            (SELECT MIN(l.created_at)
+               FROM ${t(brand, "wig_custody_ledger")} l
+              WHERE l.job_id = j.job_id AND l.event = 'out'
+                AND NOT EXISTS (
+                  SELECT 1 FROM ${t(brand, "wig_custody_ledger")} l2
+                   WHERE l2.job_id = j.job_id
+                     AND l2.event IN ('return','dispatched','write_off')
+                )) AS wig_out_at,
+            -- Cost rollup: materials (stock-deducted discrete items, priced at
+            -- their deduction-time cost) + chemicals logged against this job.
+            (SELECT COALESCE(SUM(sjm.quantity * sm.unit_cost_ngn), 0)
+               FROM ${t(brand, "service_job_materials")} sjm
+               LEFT JOIN ${t(brand, "stock_movements")} sm
+                      ON sm.movement_id = sjm.stock_movement_id
+              WHERE sjm.job_id = j.job_id AND sjm.kind = 'discrete') AS materials_cost_ngn,
+            (SELECT COALESCE(SUM(sjc.cost_ngn), 0)
+               FROM ${t(brand, "service_job_chemicals")} sjc
+              WHERE sjc.job_id = j.job_id) AS chemicals_cost_ngn
        FROM ${t(brand, "service_jobs")} j
        LEFT JOIN ${t(brand, "service_types")} st ON st.service_type_id = j.service_type_id
        LEFT JOIN shared.intercompany_transactions ic
               ON ic.ic_transaction_id = j.intercompany_transaction_id
+       LEFT JOIN shared.contacts c ON c.contact_id = j.customer_contact_id
+       LEFT JOIN ${t(brand, "sales_orders")} so ON so.order_id = j.sales_order_id
+       LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = j.hair_variant_id
+       LEFT JOIN ${t(brand, "styled_products")} sty ON sty.styled_id = j.styled_id
       WHERE j.job_id = $1`,
     [id],
   );
   return rows[0] || null;
+}
+// Styled product hero image, in priority order: explicit primary_image_id →
+// the default colour's first picture → any picture on the styled product.
+// Mirrors styled.repo.js's primaryImageSql (kept local — repos don't import
+// across modules in this codebase — same lookup, just against the `sty`
+// alias used here).
+function primaryStyledImageSql(brand, alias) {
+  return `COALESCE(
+    (SELECT pi.cdn_url FROM ${t(brand, "product_images")} pi
+      WHERE pi.image_id = ${alias}.primary_image_id),
+    (SELECT pi.cdn_url FROM ${t(brand, "product_images")} pi
+       JOIN ${t(brand, "styled_product_colours")} col ON col.colour_id = pi.styled_colour_id
+      WHERE col.styled_id = ${alias}.styled_id
+      ORDER BY col.is_default DESC, col.display_order, pi.display_order LIMIT 1),
+    (SELECT pi.cdn_url FROM ${t(brand, "product_images")} pi
+      WHERE pi.styled_id = ${alias}.styled_id
+      ORDER BY pi.is_primary DESC, pi.display_order LIMIT 1))`;
+}
+// Full lifecycle timeline for one job, read straight from the audit log
+// every state-changing action already writes to (assign/start/pause/resume/
+// return/qc/dispatch/hand_to_sales/outcome) — no separate event table needed.
+async function listJobActivity({ brand, job_id }) {
+  const { rows } = await query(
+    `SELECT log_id, occurred_at, user_name, action, after_state
+       FROM shared.audit_log
+      WHERE business = $1 AND table_name = 'service_job' AND record_id = $2
+      ORDER BY occurred_at ASC`,
+    [brand, job_id],
+  );
+  return rows;
 }
 /**
  * Flow-1 linkage: bind a service job to its matched inter-company styling
@@ -218,16 +297,21 @@ async function listServiceJobs({
   );
   const offset = (page - 1) * page_size;
   // Enrich with the source order's number (Studio board shows "which order is
-  // this wig for?") and the assigned stylist's display name (the Order page's
-  // Studio card shows WHO has the wig, not a UUID).
+  // this wig for?"), the assigned stylist's display name (the Order page's
+  // Studio card shows WHO has the wig, not a UUID), and the customer's name
+  // (name only — board search matches on it, but no contact details ride
+  // along here).
   const { rows } = await query(
     `SELECT sj.*, so.order_number AS sales_order_number,
-            u.display_name AS assigned_staff_name
+            u.display_name AS assigned_staff_name,
+            c.display_name AS customer_name
        FROM ${t(brand, "service_jobs")} sj
        LEFT JOIN ${t(brand, "sales_orders")} so
          ON so.order_id = sj.sales_order_id
        LEFT JOIN shared.users u
          ON u.user_id = sj.assigned_staff_user_id
+       LEFT JOIN shared.contacts c
+         ON c.contact_id = sj.customer_contact_id
       ${w}
       ORDER BY sj.created_at DESC LIMIT $${i++} OFFSET $${i}`,
     [...params, page_size, offset],
@@ -859,7 +943,9 @@ async function countCompletedQualityForUser({ client, brand, userId, year, month
 
 module.exports = {
   nextNumber,
-  nextTagCode,
+  nextTagSequence,
+  deriveTagInitials,
+  listJobActivity,
   countCompletedQualityForUser,
   listServiceTypes,
   listAssignableStylists,

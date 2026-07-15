@@ -103,9 +103,26 @@ export interface ServiceJob {
   styled_id: string | null;
   shipment_id: string | null;
   customer_asset_id: string | null;
-  // 5-digit hand-off tag written on the physical wig/hair, allocated at
-  // first assignment; cycles 1..99999 then wraps (see fn_next_stylist_tag).
+  // Hand-off tag written on the physical wig/hair, e.g. "342NS" (3-digit
+  // counter + 2 initials from the styled product name). Allocated once, at
+  // first assignment (see fn_next_stylist_tag + deriveTagInitials).
   tag_code: string | null;
+  // ── Rich identity/context — from getJob join (PR: drawer enrichment) ──
+  // Customer NAME ONLY — never phone/email; stylists don't get contact
+  // details.
+  customer_name?: string | null;
+  order_placed_at?: string | null;
+  base_product_name?: string | null;
+  styled_product_name?: string | null;
+  styled_product_image_url?: string | null;
+  // Currently-out wig custody timestamp (null once returned/dispatched/
+  // written off, or if this job never had a wig taken out).
+  wig_out_at?: string | null;
+  materials_cost_ngn?: string | null;
+  chemicals_cost_ngn?: string | null;
+  // Present only on the response from POST /:id/assign — true when this call
+  // allocated a brand-new tag_code (first assignment), false on reassignment.
+  is_new_tag?: boolean;
   // ── Intercompany Flow-1 (FLH styles PXG's hair) — from getJob join ──
   intercompany_number?: string | null;
   intercompany_seller_doc?: string | null;
@@ -268,4 +285,14 @@ export interface QcInput {
   quality_rating?: number;
   quality_notes?: string;
   reassign_to?: string;
+}
+
+// ── Job activity timeline (read from the audit log) ─────────
+
+export interface JobActivityEntry {
+  log_id: string;
+  occurred_at: string;
+  user_name: string;
+  action: string;
+  after_state: Record<string, unknown> | null;
 }

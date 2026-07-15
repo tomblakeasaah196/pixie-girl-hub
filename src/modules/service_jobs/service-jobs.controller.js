@@ -207,6 +207,14 @@ async function listTimeLogs(req, res) {
     data: await service.listTimeLogs({ brand: req.brand, id: req.params.id }),
   });
 }
+async function listJobActivity(req, res) {
+  res.json({
+    data: await service.listJobActivity({
+      brand: req.brand,
+      id: req.params.id,
+    }),
+  });
+}
 
 // ── Wig accountability ─────────────────────────────────────
 async function getAccountability(req, res) {
@@ -335,6 +343,7 @@ module.exports = {
   listReferences,
   removeReference,
   listTimeLogs,
+  listJobActivity,
   getAccountability,
   listCustodyLedger,
   writeOffWig,

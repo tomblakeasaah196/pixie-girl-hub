@@ -22,6 +22,7 @@ import type {
   Accountability,
   CustodyEntry,
   QcInput,
+  JobActivityEntry,
 } from "./types";
 
 const BASE = "/service-jobs";
@@ -300,6 +301,9 @@ export function deleteReference(jobId: string, refId: string) {
 }
 export function listTimeLogs(jobId: string) {
   return api.get<JobTimeLog[]>(`${BASE}/${jobId}/time-logs`);
+}
+export function listJobActivity(jobId: string) {
+  return api.get<JobActivityEntry[]>(`${BASE}/${jobId}/activity`);
 }
 
 // ── Wig accountability ─────────────────────────────────────

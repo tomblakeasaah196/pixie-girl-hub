@@ -1,6 +1,15 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Package, UserCheck, UserPlus, User } from "lucide-react";
+import {
+  Package,
+  UserCheck,
+  UserPlus,
+  User,
+  Copy,
+  Check,
+  Clock,
+  AlertTriangle,
+} from "lucide-react";
 import {
   Button,
   Pill,
@@ -10,6 +19,7 @@ import {
 } from "@/components/ui/primitives";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { Drawer } from "@/components/ui/Drawer";
+import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/controls";
 import { ErrorState } from "@/components/ui/controls";
 import type { ServiceJob, ServiceType, JobStatus } from "./types";
@@ -24,6 +34,11 @@ import {
   useRecipe,
   useCreateJob,
   useAssignableStylists,
+  useJobActivity,
+  useJobMaterials,
+  useJobReferences,
+  useJobCustody,
+  useAccountability,
 } from "./hooks";
 import {
   JOB_STATUS_META,
@@ -35,6 +50,25 @@ import {
   CUSTOMER_HAPPINESS_FACES,
   HAPPINESS_EMOJI,
 } from "./constants";
+
+// Human-readable label for each audit action_key the job lifecycle writes.
+const ACTIVITY_LABELS: Record<string, string> = {
+  "service_jobs.create": "Job created",
+  "service_jobs.from_order": "Job opened from order",
+  "service_jobs.assign": "Assigned to stylist",
+  "service_jobs.assign_staff": "Assigned to stylist",
+  "service_jobs.start": "Started work",
+  "service_jobs.pause": "Paused",
+  "service_jobs.resume": "Resumed",
+  "service_jobs.return": "Returned for QC",
+  "service_jobs.qc": "QC reviewed",
+  "service_jobs.dispatch": "Dispatched",
+  "service_jobs.hand_to_sales": "Handed to sales",
+  "service_jobs.outcome": "Outcome recorded",
+  "service_jobs.update": "Details updated",
+  "service_jobs.advance": "Status advanced",
+  "service_jobs.write_off": "Wig written off",
+};
 
 // ── Star rating display ────────────────────────────────────
 
@@ -117,6 +151,71 @@ function FacePicker({
         );
       })}
     </div>
+  );
+}
+
+// Read-only face for the "at a glance" rating card — same face set as
+// FacePicker, no interaction.
+function FaceDisplay({ value }: { value: number | null }) {
+  if (!value)
+    return <span className="text-text-muted text-sm">Not rated yet</span>;
+  const f = CUSTOMER_HAPPINESS_FACES.find((x) => x.value === value);
+  if (!f) return null;
+  return (
+    <span className="text-sm">
+      <span className="text-xl align-middle mr-1">{f.emoji}</span>
+      {f.label}
+    </span>
+  );
+}
+
+// ── "Copy it onto the tag" confirmation ────────────────────
+//
+// Shown once, right after the assignment that actually allocates a fresh
+// tag_code (never on a later reassignment of the same job — the code stays
+// stable once it's written on the physical tag). Forces a deliberate
+// acknowledgement rather than a toast that's easy to miss, since the whole
+// point of the code is that it makes it onto the tag before anyone walks
+// away from the desk.
+function TagConfirmModal({
+  code,
+  onClose,
+}: {
+  code: string;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    navigator.clipboard?.writeText(code).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Write this on the tag"
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={copy} icon={<Copy className="w-3.5 h-3.5" />}>
+            {copied ? "Copied" : "Copy code"}
+          </Button>
+          <Button onClick={onClose} icon={<Check className="w-3.5 h-3.5" />}>
+            I've written it on the tag
+          </Button>
+        </>
+      }
+    >
+      <div className="text-center py-4 space-y-2">
+        <p className="text-sm text-text-muted">
+          Pin this code to the customer's hair now, before it leaves the desk.
+        </p>
+        <p className="font-mono text-4xl tracking-[0.2em] text-accent-glow">
+          {code}
+        </p>
+      </div>
+    </Modal>
   );
 }
 
@@ -572,6 +671,7 @@ function AssignmentPanel({
   jobId: string;
 }) {
   const [picking, setPicking] = useState(false);
+  const [confirmTag, setConfirmTag] = useState<string | null>(null);
   const assigned = !!job.assigned_staff_user_id;
   const showPicker = !assigned || picking;
 
@@ -588,7 +688,14 @@ function AssignmentPanel({
           jobId={jobId}
           currentUserId={job.assigned_staff_user_id}
           onDone={() => setPicking(false)}
+          onAssigned={(assignedJob) => {
+            if (assignedJob.is_new_tag && assignedJob.tag_code)
+              setConfirmTag(assignedJob.tag_code);
+          }}
         />
+      )}
+      {confirmTag && (
+        <TagConfirmModal code={confirmTag} onClose={() => setConfirmTag(null)} />
       )}
     </div>
   );
@@ -623,8 +730,17 @@ function AssignedRow({
         <div className="text-sm font-semibold truncate">
           {current?.full_name ?? "Assigned stylist"}
         </div>
-        <div className="text-[11px] text-text-muted truncate">
-          {current?.job_title ?? "Stylist"}
+        <div className="text-[11px] text-text-muted truncate flex items-center gap-1.5">
+          <span>{current?.job_title ?? "Stylist"}</span>
+          {current && (
+            <span>
+              · {current.open_jobs_count} open job
+              {current.open_jobs_count === 1 ? "" : "s"} right now
+            </span>
+          )}
+          {current?.on_leave_today && (
+            <Pill tone="warn">On leave today</Pill>
+          )}
         </div>
       </div>
       <Button variant="ghost" size="sm" onClick={onChange}>
@@ -638,10 +754,12 @@ function StylistPicker({
   jobId,
   currentUserId,
   onDone,
+  onAssigned,
 }: {
   jobId: string;
   currentUserId: string | null;
   onDone: () => void;
+  onAssigned?: (job: ServiceJob) => void;
 }) {
   const { assign } = useJobActions(jobId);
   const { data: stylists = [], isLoading } = useAssignableStylists(true);
@@ -656,9 +774,10 @@ function StylistPicker({
   if (stylists.length === 0) {
     return (
       <div className="glass p-3 rounded-lg text-sm text-text-muted">
-        No one in the Operations department yet. Everyone whose HR department is
-        &ldquo;Operations&rdquo; in the business you&rsquo;re currently viewing —
-        with an active login account — shows here, whatever their job title.
+        No stylists available. Junior/Senior/Head Stylists in the Operations
+        department of the business you&rsquo;re currently viewing — with an
+        active login account and not on a fixed-term contract that&rsquo;s
+        already ended — show here.
       </div>
     );
   }
@@ -675,7 +794,10 @@ function StylistPicker({
             disabled={disabled}
             onClick={() => {
               assign.mutate(s.user_id, {
-                onSuccess: () => onDone(),
+                onSuccess: (assignedJob) => {
+                  onAssigned?.(assignedJob);
+                  onDone();
+                },
               });
             }}
             className={
@@ -729,6 +851,195 @@ function StylistPicker({
   );
 }
 
+// ── Style brief (customer's references) — condensed read view ──
+//
+// Mirrors JobWorkPanel's brief rendering exactly (image/audio show as a
+// labelled chip, not a thumbnail — there's no doc-id→URL resolution wired
+// up anywhere in this module yet, so a real gallery is future work, not
+// this one). Renders nothing at all when there's no brief on file.
+function JobReferencesBrief({ jobId }: { jobId: string }) {
+  const { data: refs = [] } = useJobReferences(jobId);
+  if (refs.length === 0) return null;
+  return (
+    <div className="rounded-lg border border-accent/20 bg-accent/5 p-3 space-y-2">
+      <div className="text-xs text-accent-glow font-semibold">
+        Style brief — what they asked for
+      </div>
+      {refs.map((r) => (
+        <div key={r.reference_id} className="flex items-start gap-2 text-sm">
+          {r.ref_type === "creative_freedom" && (
+            <Pill tone="accent">🎨 Creative freedom</Pill>
+          )}
+          {r.ref_type === "video_link" && r.url && (
+            <a
+              href={r.url}
+              target="_blank"
+              rel="noreferrer"
+              className="text-info hover:underline break-all"
+            >
+              {r.url}
+            </a>
+          )}
+          {(r.ref_type === "text" || r.body) && r.body && (
+            <span className="text-text-primary">&ldquo;{r.body}&rdquo;</span>
+          )}
+          {(r.ref_type === "image" || r.ref_type === "audio") && (
+            <span className="text-text-muted">
+              {r.ref_type === "image" ? "📷 photo" : "🎙 voice note"}
+            </span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Cost breakdown — materials + chemicals + labour ─────────
+function CostBreakdown({ job, jobId }: { job: ServiceJob; jobId: string }) {
+  const { data: materialsUsed = [] } = useJobMaterials(jobId);
+  const materials = parseFloat(job.materials_cost_ngn || "0");
+  const chemicals = parseFloat(job.chemicals_cost_ngn || "0");
+  const labour = parseFloat(job.actual_cost_ngn || job.agreed_cost_ngn || "0");
+  const total = materials + chemicals + labour;
+  if (total <= 0 && materialsUsed.length === 0) return null;
+  return (
+    <div className="glass rounded-lg p-3 space-y-2">
+      <p className="text-[11px] text-text-muted uppercase tracking-wide font-semibold">
+        Materials &amp; cost
+      </p>
+      {materialsUsed.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {materialsUsed.map((m) => (
+            <Pill key={m.material_id} tone={m.kind === "chemical" ? "info" : "accent"}>
+              {m.chemical_name ?? "item"}
+              {m.quantity ? ` ×${m.quantity}` : ""}
+            </Pill>
+          ))}
+        </div>
+      )}
+      {total > 0 && (
+        <>
+          <div className="grid grid-cols-2 gap-y-1 text-sm">
+            {materials > 0 && (
+              <>
+                <span className="text-text-muted">Materials</span>
+                <MoneyText ngn={materials} />
+              </>
+            )}
+            {chemicals > 0 && (
+              <>
+                <span className="text-text-muted">Chemicals</span>
+                <MoneyText ngn={chemicals} />
+              </>
+            )}
+            {labour > 0 && (
+              <>
+                <span className="text-text-muted">Labour</span>
+                <MoneyText ngn={labour} />
+              </>
+            )}
+            <span className="font-semibold border-t border-line pt-1 mt-1">
+              Total
+            </span>
+            <span className="font-semibold border-t border-line pt-1 mt-1">
+              <MoneyText ngn={total} />
+            </span>
+          </div>
+          {materials > 0 && (
+            <p className="text-[10px] text-text-muted">
+              Materials cost is best-effort — priced from stock at the time
+              it was deducted, where deducted from tracked stock.
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Wig custody mini-timeline ────────────────────────────────
+function WigCustodyMini({ jobId }: { jobId: string }) {
+  const { data: entries = [] } = useJobCustody(jobId);
+  const { data: accountability } = useAccountability();
+  if (entries.length === 0) return null;
+  const outEntry = entries.find((e) => e.event === "out");
+  const hasReturn = entries.some((e) =>
+    ["return", "dispatched", "write_off"].includes(e.event),
+  );
+  const daysOut = outEntry
+    ? Math.floor(
+        (Date.now() - new Date(outEntry.created_at).getTime()) / 86400000,
+      )
+    : 0;
+  const overdue =
+    !hasReturn &&
+    outEntry &&
+    accountability &&
+    daysOut > accountability.threshold_days;
+  const EVENT_LABEL: Record<string, string> = {
+    out: "Out with stylist",
+    return: "Returned",
+    dispatched: "Dispatched",
+    write_off: "Written off",
+  };
+  return (
+    <div className="glass rounded-lg p-3 space-y-1.5">
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] text-text-muted uppercase tracking-wide font-semibold">
+          Wig custody
+        </p>
+        {overdue && (
+          <Pill tone="danger">
+            <AlertTriangle className="w-3 h-3 inline mr-1" />
+            {daysOut}d overdue
+          </Pill>
+        )}
+      </div>
+      <div className="space-y-1 text-sm">
+        {entries.map((e) => (
+          <div key={e.entry_id} className="flex items-center gap-2">
+            <Clock className="w-3 h-3 text-text-muted shrink-0" />
+            <span>{EVENT_LABEL[e.event] ?? e.event}</span>
+            <span className="text-text-muted text-[11px] ml-auto">
+              {formatDateTime(e.created_at)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Activity timeline tab ────────────────────────────────────
+function ActivityTab({ jobId }: { jobId: string }) {
+  const { data: entries = [], isLoading } = useJobActivity(jobId);
+  if (isLoading)
+    return <Skeleton className="h-24" />;
+  if (entries.length === 0)
+    return (
+      <p className="text-sm text-text-muted py-4">
+        No activity recorded for this job yet.
+      </p>
+    );
+  return (
+    <div className="space-y-3">
+      {entries.map((e) => (
+        <div key={e.log_id} className="flex items-start gap-3 text-sm">
+          <div className="w-2 h-2 rounded-full bg-accent mt-1.5 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="font-medium">
+              {ACTIVITY_LABELS[e.action] ?? e.action}
+            </div>
+            <div className="text-[11px] text-text-muted">
+              {e.user_name} · {formatDateTime(e.occurred_at)}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ── Job detail drawer ──────────────────────────────────────
 
 function JobDetailDrawer({
@@ -743,9 +1054,9 @@ function JobDetailDrawer({
   const navigate = useNavigate();
   const { data: job, isLoading } = useJob(jobId);
   const actions = useJobActions(jobId);
-  const [tab, setTab] = useState<"details" | "chemicals" | "outcome">(
-    "details",
-  );
+  const [tab, setTab] = useState<
+    "details" | "chemicals" | "outcome" | "activity"
+  >("details");
   const [costInput, setCostInput] = useState("");
 
   if (isLoading) {
@@ -802,31 +1113,96 @@ function JobDetailDrawer({
           )}
         </div>
 
+        {/* Identity strip — always visible regardless of tab. The photo is
+            the fastest way to match a physical wig to its job; customer +
+            order date give the "who/when" without opening the order. */}
+        {(job.styled_product_name ||
+          job.base_product_name ||
+          job.customer_name) && (
+          <div className="glass rounded-lg p-3 flex items-center gap-3">
+            <div className="w-14 h-14 rounded-lg bg-accent/[0.08] grid place-items-center overflow-hidden shrink-0">
+              {job.styled_product_image_url ? (
+                // eslint-disable-next-line jsx-a11y/img-redundant-alt
+                <img
+                  src={job.styled_product_image_url}
+                  alt={job.styled_product_name ?? "Styled product"}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <Package className="w-5 h-5 text-text-muted" />
+              )}
+            </div>
+            <div className="flex-1 min-w-0 text-sm">
+              <div className="font-semibold truncate">
+                {job.styled_product_name ??
+                  job.base_product_name ??
+                  "Custom job"}
+              </div>
+              {job.styled_product_name && job.base_product_name && (
+                <div className="text-[11px] text-text-muted truncate">
+                  Base: {job.base_product_name}
+                </div>
+              )}
+              <div className="text-[11px] text-text-muted truncate">
+                {job.customer_name ?? "Walk-in / no customer on file"}
+                {job.order_placed_at &&
+                  ` · ordered ${formatDateTime(job.order_placed_at)}`}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Tab bar */}
         <div className="flex border-b border-line gap-4">
-          {(["details", "chemicals", "outcome"] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
-                tab === t
-                  ? "border-accent text-text-primary"
-                  : "border-transparent text-text-muted hover:text-text-primary"
-              }`}
-              onClick={() => setTab(t)}
-            >
-              {t === "details"
-                ? "Details"
-                : t === "chemicals"
-                  ? "Chemicals"
-                  : "Outcome"}
-            </button>
-          ))}
+          {(["details", "chemicals", "outcome", "activity"] as const).map(
+            (t) => (
+              <button
+                key={t}
+                type="button"
+                className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
+                  tab === t
+                    ? "border-accent text-text-primary"
+                    : "border-transparent text-text-muted hover:text-text-primary"
+                }`}
+                onClick={() => setTab(t)}
+              >
+                {t === "details"
+                  ? "Details"
+                  : t === "chemicals"
+                    ? "Chemicals"
+                    : t === "outcome"
+                      ? "Outcome"
+                      : "Activity"}
+              </button>
+            ),
+          )}
         </div>
 
         {/* Details tab */}
         {tab === "details" && (
           <div className="space-y-4">
+            {/* Ratings at a glance — open the whole time the job is live, not
+                just once QC returns it, so a delay is visible immediately
+                (a low/sad rating here is a live signal, not a retrospective
+                one). Editing still happens on the Outcome tab; this is the
+                read view. */}
+            {(job.quality_rating || job.customer_rating) && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="glass rounded-lg p-3 space-y-1">
+                  <p className="text-[11px] text-text-muted uppercase tracking-wide font-semibold">
+                    Quality
+                  </p>
+                  <StarRating value={job.quality_rating} />
+                </div>
+                <div className="glass rounded-lg p-3 space-y-1">
+                  <p className="text-[11px] text-text-muted uppercase tracking-wide font-semibold">
+                    Customer happiness
+                  </p>
+                  <FaceDisplay value={job.customer_rating} />
+                </div>
+              </div>
+            )}
+            <JobReferencesBrief jobId={jobId} />
             <div className="grid grid-cols-2 gap-3 text-sm">
               {job.hair_description && (
                 <>
@@ -898,6 +1274,9 @@ function JobDetailDrawer({
                 countdown all wait on assigned_staff_user_id being set. */}
             <AssignmentPanel job={job} jobId={jobId} />
 
+            <CostBreakdown job={job} jobId={jobId} />
+            <WigCustodyMini jobId={jobId} />
+
             {job.recipe_id && (
               <div>
                 <p className="text-xs text-text-muted mb-1.5 uppercase tracking-wide font-semibold">
@@ -962,6 +1341,7 @@ function JobDetailDrawer({
 
         {tab === "chemicals" && <ChemicalsTab jobId={jobId} />}
         {tab === "outcome" && <OutcomeTab job={job} jobId={jobId} />}
+        {tab === "activity" && <ActivityTab jobId={jobId} />}
       </div>
     </Drawer>
   );
@@ -1133,8 +1513,14 @@ export function JobBoard({ canCreate }: { canCreate: boolean }) {
   );
   const allJobs = data?.data ?? [];
   const tagQueryTrimmed = tagQuery.trim();
+  const tagQueryLower = tagQueryTrimmed.toLowerCase();
   const jobs = tagQueryTrimmed
-    ? allJobs.filter((j) => j.tag_code?.includes(tagQueryTrimmed))
+    ? allJobs.filter(
+        (j) =>
+          j.tag_code?.includes(tagQueryTrimmed) ||
+          j.customer_name?.toLowerCase().includes(tagQueryLower) ||
+          j.sales_order_number?.toLowerCase().includes(tagQueryLower),
+      )
     : allJobs;
 
   const pocketingCount = jobs.filter(
@@ -1190,12 +1576,11 @@ export function JobBoard({ canCreate }: { canCreate: boolean }) {
         <div className="flex items-center gap-2">
           <input
             type="text"
-            inputMode="numeric"
             value={tagQuery}
             onChange={(e) => setTagQuery(e.target.value)}
-            placeholder="Tag code…"
-            className="input w-32 text-sm"
-            aria-label="Search by tag code"
+            placeholder="Tag, customer, order…"
+            className="input w-44 text-sm"
+            aria-label="Search by tag code, customer, or order number"
           />
           {canCreate && (
             <Button onClick={() => setShowCreate(true)}>+ New Job</Button>
@@ -1210,7 +1595,7 @@ export function JobBoard({ canCreate }: { canCreate: boolean }) {
           title="No service jobs"
           message={
             tagQueryTrimmed
-              ? `No job with tag code "${tagQueryTrimmed}"`
+              ? `No job matches "${tagQueryTrimmed}"`
               : statusFilter
                 ? `No jobs with status "${statusFilter}"`
                 : "Create your first job above"

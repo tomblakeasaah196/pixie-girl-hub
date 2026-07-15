@@ -674,9 +674,17 @@ async function assignStylist({
       fields.reserved_variant_id = before.hair_variant_id;
     // Allocate the physical hand-off tag once, on first assignment — it's
     // written on a tag pinned to the actual hair, so it must stay stable
-    // across any later reassignment of the same job.
-    if (!before.tag_code)
-      fields.tag_code = await repo.nextTagCode({ client, brand });
+    // across any later reassignment of the same job. Format: 3-digit counter
+    // + 2 letters drawn from the styled product name (falls back to the
+    // free-text hair description, then "XX" for a bare custom job).
+    const isNewTag = !before.tag_code;
+    if (isNewTag) {
+      const seq = await repo.nextTagSequence({ client, brand });
+      const initials = repo.deriveTagInitials(
+        before.styled_product_name || before.hair_description,
+      );
+      fields.tag_code = `${seq}${initials}`;
+    }
     const job = await repo.setServiceJobStatus({
       client,
       brand,
@@ -740,7 +748,10 @@ async function assignStylist({
       job_id: id,
       priority: "high",
     });
-    return job;
+    // is_new_tag tells the drawer whether to show the "copy this onto the
+    // tag" confirmation modal — only on the assignment that actually
+    // allocated the code, never on a later reassignment of the same job.
+    return { ...job, is_new_tag: isNewTag };
   });
 }
 
@@ -1225,6 +1236,9 @@ async function getAccountability({ brand }) {
 function listCustodyLedger({ brand, job_id, stylist_user_id }) {
   return repo.listCustody({ brand, job_id, stylist_user_id });
 }
+function listJobActivity({ brand, id }) {
+  return repo.listJobActivity({ brand, job_id: id });
+}
 async function writeOffWig({ brand, user, request_id, id, reason }) {
   return transaction(async (client) => {
     const before = await repo.getServiceJob({ client, brand, id });
@@ -1332,6 +1346,7 @@ module.exports = {
   linkIntercompany,
   getAccountability,
   listCustodyLedger,
+  listJobActivity,
   writeOffWig,
   runMissingWigCheck,
   recordOutcome,

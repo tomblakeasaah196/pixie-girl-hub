@@ -309,6 +309,15 @@ export function useJobTimeLogs(jobId: string | null) {
   });
 }
 
+export function useJobActivity(jobId: string | null) {
+  const brand = useBrand();
+  return useQuery({
+    queryKey: ["job-activity", jobId, brand],
+    queryFn: () => api.listJobActivity(jobId!),
+    enabled: !!jobId,
+  });
+}
+
 // ── Wig accountability ─────────────────────────────────────
 
 export function useAccountability() {
@@ -316,5 +325,14 @@ export function useAccountability() {
   return useQuery({
     queryKey: ["studio-accountability", brand],
     queryFn: () => api.getAccountability(),
+  });
+}
+
+export function useJobCustody(jobId: string | null) {
+  const brand = useBrand();
+  return useQuery({
+    queryKey: ["job-custody", jobId, brand],
+    queryFn: () => api.listCustodyLedger({ job_id: jobId! }),
+    enabled: !!jobId,
   });
 }

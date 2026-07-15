@@ -7,6 +7,7 @@
 "use strict";
 
 const service = require("./org.service");
+const chartPdf = require("./org.chart-pdf");
 
 // ── org_units ──────────────────────────────────────────────
 
@@ -105,6 +106,17 @@ async function deletePosition(req, res) {
   res.status(204).end();
 }
 
+// ── Full organigramme (all departments, one PDF) ───────────
+
+async function exportFullChartPdf(req, res) {
+  const result = await chartPdf.exportFullChartPdf({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+  });
+  res.json({ data: result });
+}
+
 // ── org_position_dotted_lines ──────────────────────────────
 
 async function listDottedLines(req, res) {
@@ -158,6 +170,7 @@ module.exports = {
   createPosition,
   updatePosition,
   deletePosition,
+  exportFullChartPdf,
   listDottedLines,
   createDottedLine,
   updateDottedLine,

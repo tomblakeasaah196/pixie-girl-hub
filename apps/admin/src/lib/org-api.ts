@@ -154,6 +154,10 @@ export const orgApi = {
     api.patch<OrgPosition>(`/org/positions/${id}`, body),
   deletePosition: (id: string) => api.delete<void>(`/org/positions/${id}`),
 
+  // Full organigramme (every department, one chart)
+  exportChartPdf: () =>
+    api.post<{ document_id: string; title: string }>("/org/chart/pdf"),
+
   // Dotted lines
   listDottedLines: (position_id: string) =>
     api.get<DottedLine[]>(`/org/positions/${position_id}/dotted-lines`),

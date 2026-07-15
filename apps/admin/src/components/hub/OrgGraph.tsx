@@ -17,10 +17,12 @@ interface Props {
   positions: OrgPosition[];
   onSelectPosition?: (pos: OrgPosition) => void;
   selectedId?: string | null;
+  /** Show each node's department — for the cross-department full organigramme. */
+  showDepartment?: boolean;
 }
 
 const NODE_W = 192;
-const NODE_H = 90;
+const NODE_H = 106;
 const COL_GAP = 80;
 const ROW_GAP = 20;
 const PAD = 32;
@@ -94,7 +96,12 @@ function formatNgn(n: number): string {
 
 // ── Desktop: SVG + absolute-positioned nodes ──────────────────────────────
 
-function GraphDesktop({ positions, onSelectPosition, selectedId }: Props) {
+function GraphDesktop({
+  positions,
+  onSelectPosition,
+  selectedId,
+  showDepartment,
+}: Props) {
   const layout = useMemo(() => buildLayout(positions), [positions]);
   const byId = useMemo(
     () => new Map(layout.map((n) => [n.pos.position_id, n])),
@@ -104,7 +111,9 @@ function GraphDesktop({ positions, onSelectPosition, selectedId }: Props) {
   if (layout.length === 0) {
     return (
       <div className="flex items-center justify-center h-48 text-[rgb(var(--text-faint))] text-sm">
-        No positions in this department yet.
+        {showDepartment
+          ? "No positions in the organisation yet."
+          : "No positions in this department yet."}
       </div>
     );
   }
@@ -186,6 +195,11 @@ function GraphDesktop({ positions, onSelectPosition, selectedId }: Props) {
               <div className="font-mono text-[9.5px] text-[rgb(var(--text-faint))] truncate mb-1.5">
                 {pos.position_key}
               </div>
+              {showDepartment && pos.unit_name && (
+                <div className="text-[9px] font-semibold uppercase tracking-wide text-[rgb(var(--accent-glow))] truncate mb-1.5">
+                  {pos.unit_name}
+                </div>
+              )}
               <div className="flex flex-wrap gap-1">
                 {pos.is_management && (
                   <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full bg-[rgb(var(--accent)/0.15)] text-[rgb(var(--accent-glow))]">
@@ -219,12 +233,14 @@ function TreeNode({
   positions,
   onSelectPosition,
   selectedId,
+  showDepartment,
 }: {
   pos: OrgPosition;
   depth: number;
   positions: OrgPosition[];
   onSelectPosition?: (p: OrgPosition) => void;
   selectedId?: string | null;
+  showDepartment?: boolean;
 }) {
   const children = positions.filter(
     (p) => p.reports_to_position_id === pos.position_id,
@@ -247,6 +263,11 @@ function TreeNode({
         <div className="text-[10px] text-[rgb(var(--text-faint))] font-mono">
           {pos.position_key}
         </div>
+        {showDepartment && pos.unit_name && (
+          <div className="text-[9px] font-semibold uppercase tracking-wide text-[rgb(var(--accent-glow))] mt-0.5">
+            {pos.unit_name}
+          </div>
+        )}
       </button>
       {children.length > 0 && (
         <ul className="space-y-0.5">
@@ -258,6 +279,7 @@ function TreeNode({
               positions={positions}
               onSelectPosition={onSelectPosition}
               selectedId={selectedId}
+              showDepartment={showDepartment}
             />
           ))}
         </ul>
@@ -266,7 +288,12 @@ function TreeNode({
   );
 }
 
-function GraphMobile({ positions, onSelectPosition, selectedId }: Props) {
+function GraphMobile({
+  positions,
+  onSelectPosition,
+  selectedId,
+  showDepartment,
+}: Props) {
   const roots = positions.filter((p) => {
     const parentId = p.reports_to_position_id;
     return !parentId || !positions.some((q) => q.position_id === parentId);
@@ -284,6 +311,7 @@ function GraphMobile({ positions, onSelectPosition, selectedId }: Props) {
             positions={positions}
             onSelectPosition={onSelectPosition}
             selectedId={selectedId}
+            showDepartment={showDepartment}
           />
         ))}
       </ul>
@@ -300,6 +328,7 @@ function GraphMobile({ positions, onSelectPosition, selectedId }: Props) {
           positions={positions}
           onSelectPosition={onSelectPosition}
           selectedId={selectedId}
+          showDepartment={showDepartment}
         />
       ))}
     </ul>

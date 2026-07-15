@@ -23,6 +23,9 @@ import type {
   CustodyEntry,
   QcInput,
   JobActivityEntry,
+  StylistScorecardSummary,
+  StylistScorecard,
+  JobSummary,
 } from "./types";
 
 const BASE = "/service-jobs";
@@ -170,6 +173,15 @@ export function listAssignableStylists() {
   return api.get<AssignableStylist[]>(`${BASE}/stylists`);
 }
 
+// Internal Stylist Studio scorecards — NOT the Stylist Partner Programme
+// (that's a separate module/nav section with its own review system).
+export function listStylistScorecards() {
+  return api.get<StylistScorecardSummary[]>(`${BASE}/scorecards`);
+}
+export function getStylistScorecard(userId: string) {
+  return api.get<StylistScorecard>(`${BASE}/scorecards/${userId}`);
+}
+
 export function recordOutcome(
   id: string,
   input: {
@@ -258,6 +270,9 @@ export function writeOffWig(id: string, reason: string) {
   return api.post<CustodyEntry>(`${BASE}/${id}/write-off`, {
     reason,
   });
+}
+export function summarizeJob(id: string) {
+  return api.post<JobSummary>(`${BASE}/${id}/summarize`, {});
 }
 
 // ── Materials / references / time logs ─────────────────────

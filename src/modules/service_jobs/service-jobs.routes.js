@@ -61,6 +61,11 @@ router.get("/accountability/ledger", can("view"), c.listCustodyLedger);
 // button for a real staff selection that fires the DB task trigger + push.
 router.get("/stylists", can("view"), c.listAssignableStylists);
 
+// ── Scorecards (internal Stylist Studio only — separate from the Stylist
+// Partner Programme's own review system) — must stay ahead of GET /:id. ──
+router.get("/scorecards", can("view"), c.listStylistScorecards);
+router.get("/scorecards/:userId", can("view"), c.getStylistScorecard);
+
 // ── Jobs ───────────────────────────────────────────────────
 router.get("/", can("view"), c.listJobs);
 router.post("/", can("create"), v.validateJobCreate, c.createJob);
@@ -110,6 +115,7 @@ router.post(
 router.delete("/:id/references/:refId", can("edit"), c.removeReference);
 router.get("/:id/time-logs", can("view"), c.listTimeLogs);
 router.get("/:id/activity", can("view"), c.listJobActivity);
+router.post("/:id/summarize", can("view"), c.summarizeJob);
 
 // ── Service-job chemical consumption (F-7d) ────────────────
 router.get("/:id/chemicals", can("view"), c.listChemicals);

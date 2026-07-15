@@ -918,6 +918,92 @@ async function listAssignableStylists({ brand }) {
   return rows;
 }
 
+// Shared aggregate expression for both scorecard queries below — one row per
+// (assigned) in-house stylist, never touching shared.stylist_partners /
+// stylist_assignments (the separate Stylist Partner Programme tables).
+const SCORECARD_AGGREGATE_COLS = `
+  COUNT(*)::int AS jobs_total,
+  COUNT(*) FILTER (WHERE sj.status = 'completed')::int AS jobs_completed,
+  ROUND(AVG(sj.quality_rating)::numeric, 2) AS avg_quality_rating,
+  ROUND(AVG(sj.customer_rating)::numeric, 2) AS avg_customer_rating,
+  COALESCE(SUM(sj.rework_count), 0)::int AS rework_count,
+  CASE WHEN COUNT(*) FILTER (WHERE sj.status = 'completed' AND sj.sla_due_at IS NOT NULL) > 0
+       THEN ROUND(100.0 * COUNT(*) FILTER (
+              WHERE sj.status = 'completed' AND sj.sla_due_at IS NOT NULL
+                AND sj.completed_at <= sj.sla_due_at
+            ) / COUNT(*) FILTER (WHERE sj.status = 'completed' AND sj.sla_due_at IS NOT NULL), 0)
+       ELSE NULL END AS on_time_pct`;
+
+/**
+ * Roster for the Scorecards tab — every in-house stylist who has EVER been
+ * assigned a job in this brand (not just currently-assignable ones, so
+ * someone who's moved role or left still shows their history), each with
+ * their aggregate quality/happiness/on-time/rework numbers.
+ */
+async function listStylistScorecards({ brand }) {
+  const { rows } = await query(
+    `SELECT u.user_id, c.display_name AS full_name, u.avatar_url,
+            sp.job_title,
+            ${SCORECARD_AGGREGATE_COLS}
+       FROM ${t(brand, "service_jobs")} sj
+       JOIN shared.users u ON u.user_id = sj.assigned_staff_user_id
+       LEFT JOIN shared.staff_profiles sp ON sp.profile_id = u.staff_profile_id
+       LEFT JOIN shared.contacts c ON c.contact_id = sp.contact_id
+      WHERE sj.assigned_staff_user_id IS NOT NULL
+      GROUP BY u.user_id, c.display_name, u.avatar_url, sp.job_title
+      ORDER BY full_name`,
+    [brand],
+  );
+  return rows;
+}
+
+/** Full drill-down for one stylist: the same aggregate, their job history
+ * (with each job's rating/comments so a trend is visible), and their rework
+ * history (drawn from the audit log — see recordQc — attributed to whoever
+ * the job is CURRENTLY assigned to; a reassigned-mid-rework job's earlier
+ * rework events follow the job's current owner, not a point-in-time one). */
+async function getStylistScorecard({ brand, user_id }) {
+  const { rows: summaryRows } = await query(
+    `SELECT u.user_id, c.display_name AS full_name, u.avatar_url,
+            sp.job_title,
+            ${SCORECARD_AGGREGATE_COLS}
+       FROM ${t(brand, "service_jobs")} sj
+       JOIN shared.users u ON u.user_id = sj.assigned_staff_user_id
+       LEFT JOIN shared.staff_profiles sp ON sp.profile_id = u.staff_profile_id
+       LEFT JOIN shared.contacts c ON c.contact_id = sp.contact_id
+      WHERE sj.assigned_staff_user_id = $1
+      GROUP BY u.user_id, c.display_name, u.avatar_url, sp.job_title`,
+    [user_id],
+  );
+  if (!summaryRows[0]) return null;
+
+  const { rows: jobs } = await query(
+    `SELECT job_id, job_number, tag_code, status, quality_rating,
+            customer_rating, customer_feedback, quality_notes, rework_count,
+            scheduled_for, expected_completion_at, sla_due_at, completed_at,
+            created_at
+       FROM ${t(brand, "service_jobs")}
+      WHERE assigned_staff_user_id = $1
+      ORDER BY created_at DESC`,
+    [user_id],
+  );
+
+  const { rows: rework } = await query(
+    `SELECT al.log_id, al.occurred_at, al.user_name, al.after_state,
+            sj.job_id, sj.job_number
+       FROM shared.audit_log al
+       JOIN ${t(brand, "service_jobs")} sj ON sj.job_id = al.record_id
+      WHERE al.business = $1 AND al.table_name = 'service_job'
+        AND al.action = 'service_jobs.qc'
+        AND al.after_state->>'result' = 'rework'
+        AND sj.assigned_staff_user_id = $2
+      ORDER BY al.occurred_at DESC`,
+    [brand, user_id],
+  );
+
+  return { ...summaryRows[0], jobs, rework };
+}
+
 /**
  * Count a staffer's done, quality-passing jobs in a month — the quality-gated
  * numerator for the `styles_completed` / `services_completed` target progress.
@@ -949,6 +1035,8 @@ module.exports = {
   countCompletedQualityForUser,
   listServiceTypes,
   listAssignableStylists,
+  listStylistScorecards,
+  getStylistScorecard,
   getDefaultServiceType,
   findServiceType,
   createServiceType,

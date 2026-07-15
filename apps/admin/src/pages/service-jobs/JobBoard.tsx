@@ -9,6 +9,8 @@ import {
   Check,
   Clock,
   AlertTriangle,
+  Trophy,
+  Sparkles,
 } from "lucide-react";
 import {
   Button,
@@ -39,6 +41,8 @@ import {
   useJobReferences,
   useJobCustody,
   useAccountability,
+  useSummarizeJob,
+  useStylistScorecard,
 } from "./hooks";
 import {
   JOB_STATUS_META,
@@ -708,6 +712,7 @@ function AssignedRow({
   job: ServiceJob;
   onChange: () => void;
 }) {
+  const navigate = useNavigate();
   const { data: stylists = [] } = useAssignableStylists(true);
   const current = stylists.find(
     (s) => s.user_id === job.assigned_staff_user_id,
@@ -743,6 +748,20 @@ function AssignedRow({
           )}
         </div>
       </div>
+      {job.assigned_staff_user_id && (
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={<Trophy className="w-3.5 h-3.5" />}
+          onClick={() =>
+            navigate(
+              `/service-jobs?tab=scorecards&stylist=${job.assigned_staff_user_id}`,
+            )
+          }
+        >
+          Scorecard
+        </Button>
+      )}
       <Button variant="ghost" size="sm" onClick={onChange}>
         Change
       </Button>
@@ -1040,6 +1059,56 @@ function ActivityTab({ jobId }: { jobId: string }) {
   );
 }
 
+// ── AI job summary — one click, never blocks on an AI vendor being
+// configured (server falls back to a deterministic template). ───
+function AiSummaryBox({ jobId }: { jobId: string }) {
+  const { mutate, data, isPending, isError } = useSummarizeJob(jobId);
+  return (
+    <div className="rounded-lg border border-accent/20 bg-accent/5 p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-xs text-accent-glow font-semibold flex items-center gap-1.5">
+          <Sparkles className="w-3.5 h-3.5" /> AI summary
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={isPending}
+          onClick={() => mutate()}
+        >
+          {isPending ? "Thinking…" : data ? "Refresh" : "Summarize"}
+        </Button>
+      </div>
+      {data && <p className="text-sm text-text-primary">{data.summary}</p>}
+      {isError && (
+        <p className="text-xs text-danger">Couldn't generate a summary — try again.</p>
+      )}
+    </div>
+  );
+}
+
+// Compares a single job's quality rating to the assigned stylist's own
+// average — "is this better or worse than their usual work?"
+function RatingComparisonBadge({
+  stylistId,
+  jobRating,
+}: {
+  stylistId: string | null;
+  jobRating: number | null;
+}) {
+  const { data } = useStylistScorecard(stylistId);
+  if (!jobRating || !data?.avg_quality_rating) return null;
+  const avg = parseFloat(data.avg_quality_rating);
+  const diff = jobRating - avg;
+  if (Math.abs(diff) < 0.5) {
+    return <p className="text-[11px] text-text-muted">In line with their average ({avg})</p>;
+  }
+  return (
+    <p className={`text-[11px] ${diff > 0 ? "text-success" : "text-warn"}`}>
+      {diff > 0 ? "Above" : "Below"} their average of {avg}
+    </p>
+  );
+}
+
 // ── Job detail drawer ──────────────────────────────────────
 
 function JobDetailDrawer({
@@ -1181,6 +1250,8 @@ function JobDetailDrawer({
         {/* Details tab */}
         {tab === "details" && (
           <div className="space-y-4">
+            <AiSummaryBox jobId={jobId} />
+
             {/* Ratings at a glance — open the whole time the job is live, not
                 just once QC returns it, so a delay is visible immediately
                 (a low/sad rating here is a live signal, not a retrospective
@@ -1193,6 +1264,10 @@ function JobDetailDrawer({
                     Quality
                   </p>
                   <StarRating value={job.quality_rating} />
+                  <RatingComparisonBadge
+                    stylistId={job.assigned_staff_user_id}
+                    jobRating={job.quality_rating}
+                  />
                 </div>
                 <div className="glass rounded-lg p-3 space-y-1">
                   <p className="text-[11px] text-text-muted uppercase tracking-wide font-semibold">

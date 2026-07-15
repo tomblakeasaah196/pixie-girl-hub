@@ -14,6 +14,7 @@
 const repo = require("./service-jobs.repo");
 const icRepo = require("../intercompany/intercompany.repo");
 const events = require("./service-jobs.events");
+const ai = require("./service-jobs.ai");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { money } = require("../../utils/money");
@@ -250,6 +251,23 @@ async function assignStaff({
  */
 async function listAssignableStylists({ brand }) {
   return repo.listAssignableStylists({ brand });
+}
+
+// ── Scorecards (internal Stylist Studio only — NOT the Stylist Partner
+// Programme; that's a separate module with its own review system) ──
+function listStylistScorecards({ brand }) {
+  return repo.listStylistScorecards({ brand });
+}
+async function getStylistScorecard({ brand, user_id }) {
+  const scorecard = await repo.getStylistScorecard({ brand, user_id });
+  if (!scorecard) throw new NotFoundError("Stylist has no job history");
+  return scorecard;
+}
+
+async function summarizeJob({ brand, id }) {
+  const job = await repo.getServiceJob({ brand, id });
+  if (!job) throw new NotFoundError("Service job");
+  return ai.summarizeJob(job);
 }
 
 async function recordOutcome({ brand, user, request_id, id, input }) {
@@ -1049,7 +1067,12 @@ async function recordQc({ brand, user, request_id, id, input }) {
       "service_jobs.qc",
       "service_job",
       id,
-      { result: input.result },
+      // quality_notes rides along so the job's activity/rework history shows
+      // the actual reason at each QC pass, not just pass/fail — the job row
+      // itself only ever holds the LATEST quality_notes, overwritten on the
+      // next QC call, so this audit trail is the only place a past rework
+      // reason survives.
+      { result: input.result, quality_notes: input.quality_notes ?? null },
       request_id,
     );
     events.emit("advanced", { brand, job_id: id, status });
@@ -1330,6 +1353,9 @@ module.exports = {
   assignStaff,
   assignStylist,
   listAssignableStylists,
+  listStylistScorecards,
+  getStylistScorecard,
+  summarizeJob,
   startWork,
   pauseWork,
   resumeWork,

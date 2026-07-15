@@ -405,6 +405,9 @@ Rejected).
   **Submit for Approval** (needs `edit`).
 - *Settle a cash advance?* Expenses → **Advance settlement**.
 - *Approve someone's expense?* Expenses → the pending list (needs `approve`).
+- *Mark an approved expense as paid / disburse it?* Open the approved expense
+  → **Mark as Paid**, pick a payment method (Bank Transfer, Cash, POS/Card,
+  Payslip Addition, Wallet) and an optional reference (needs `approve`).
 
 ### 4.17 Pricing
 **What it's for.** Margin, fees, and price changes — the pricing advisor, rules,

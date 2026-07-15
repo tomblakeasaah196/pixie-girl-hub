@@ -1,12 +1,22 @@
 import { useState } from "react";
-import { Receipt, CheckCircle, XCircle, Send } from "lucide-react";
+import { Receipt, CheckCircle, XCircle, Send, Banknote } from "lucide-react";
 import { Drawer } from "@/components/ui/Drawer";
 import { Button, Card, Pill, MoneyText } from "@/components/ui/primitives";
+import { Select } from "@/components/ui/controls";
 import { formatDate } from "@/lib/format";
 import { useAuthStore } from "@/stores/auth";
 import { useExpense, useExpenseMutations } from "./hooks";
 import { EXPENSE_STATUS_META } from "./constants";
 import type { Expense } from "./types";
+import type { PaymentMethod } from "./api";
+
+const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
+  { value: "bank_transfer", label: "Bank Transfer" },
+  { value: "cash", label: "Cash" },
+  { value: "pos_card", label: "POS / Card" },
+  { value: "payslip_addition", label: "Payslip Addition" },
+  { value: "wallet", label: "Wallet" },
+];
 
 interface Props {
   expense: Expense;
@@ -22,6 +32,9 @@ function useExpenseDetail(initial: Expense, onDone: () => void) {
   const mutations = useExpenseMutations();
   const [rejectReason, setRejectReason] = useState("");
   const [showReject, setShowReject] = useState(false);
+  const [showPay, setShowPay] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | "">("");
+  const [paymentReference, setPaymentReference] = useState("");
 
   const e = ex ?? initial;
   const canApprove = can("expenses", "approve");
@@ -29,7 +42,8 @@ function useExpenseDetail(initial: Expense, onDone: () => void) {
   const isBusy =
     mutations.submitExpense.isPending ||
     mutations.approve.isPending ||
-    mutations.reject.isPending;
+    mutations.reject.isPending ||
+    mutations.pay.isPending;
 
   function handleSubmit() {
     mutations.submitExpense.mutate(e.expense_id, { onSuccess: onDone });
@@ -44,23 +58,46 @@ function useExpenseDetail(initial: Expense, onDone: () => void) {
       { onSuccess: onDone },
     );
   }
+  function handlePay() {
+    if (!paymentMethod) return;
+    mutations.pay.mutate(
+      {
+        id: e.expense_id,
+        input: {
+          payment_method: paymentMethod,
+          payment_reference: paymentReference.trim() || undefined,
+        },
+      },
+      { onSuccess: onDone },
+    );
+  }
 
   const canSubmit = e.status === "draft" && canEdit;
-  const showActions = (e.status === "pending" && canApprove) || canSubmit;
+  const canPay = e.status === "approved" && canApprove;
+  const showActions =
+    (e.status === "pending" && canApprove) || canSubmit || canPay;
 
   return {
     e,
     canApprove,
     canSubmit,
+    canPay,
     isBusy,
     rejectReason,
     setRejectReason,
     showReject,
     setShowReject,
+    showPay,
+    setShowPay,
+    paymentMethod,
+    setPaymentMethod,
+    paymentReference,
+    setPaymentReference,
     showActions,
     handleSubmit,
     handleApprove,
     handleReject,
+    handlePay,
   };
 }
 
@@ -74,8 +111,15 @@ function ExpenseDetailContent({ d }: { d: ExpenseDetail }) {
     setRejectReason,
     showReject,
     setShowReject,
+    showPay,
+    setShowPay,
+    paymentMethod,
+    setPaymentMethod,
+    paymentReference,
+    setPaymentReference,
     isBusy,
     handleReject,
+    handlePay,
   } = d;
   const meta = EXPENSE_STATUS_META[e.status];
 
@@ -180,13 +224,69 @@ function ExpenseDetailContent({ d }: { d: ExpenseDetail }) {
           </div>
         </Card>
       )}
+
+      {/* Mark as paid form */}
+      {showPay && (
+        <Card className="p-4">
+          <div className="micro mb-3">Payment Details</div>
+          <div className="space-y-3">
+            <div>
+              <span className="block text-[11.5px] text-text-muted mb-1.5">
+                Payment Method
+              </span>
+              <Select
+                value={paymentMethod}
+                onChange={(v) => setPaymentMethod(v as PaymentMethod)}
+                options={[
+                  { value: "", label: "Choose a payment method…" },
+                  ...PAYMENT_METHODS,
+                ]}
+              />
+            </div>
+            <div>
+              <span className="block text-[11.5px] text-text-muted mb-1.5">
+                Reference (optional)
+              </span>
+              <input
+                value={paymentReference}
+                onChange={(ev) => setPaymentReference(ev.target.value)}
+                placeholder="e.g. transaction ID"
+                className="w-full h-[42px] px-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-[13px] outline-none focus:border-accent/50"
+              />
+            </div>
+          </div>
+          <div className="flex gap-2 mt-3 justify-end">
+            <Button size="sm" variant="ghost" onClick={() => setShowPay(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              variant="primary"
+              disabled={!paymentMethod || isBusy}
+              onClick={handlePay}
+            >
+              Confirm Payment
+            </Button>
+          </div>
+        </Card>
+      )}
     </div>
   );
 }
 
-/** Submit / approve / reject footer buttons — shared between drawer footer + inline bar. */
+/** Submit / approve / reject / pay footer buttons — shared between drawer footer + inline bar. */
 function ExpenseDetailActions({ d }: { d: ExpenseDetail }) {
-  const { e, canApprove, canSubmit, isBusy, setShowReject, handleSubmit, handleApprove } = d;
+  const {
+    e,
+    canApprove,
+    canSubmit,
+    canPay,
+    isBusy,
+    setShowReject,
+    setShowPay,
+    handleSubmit,
+    handleApprove,
+  } = d;
   return (
     <>
       {/* Submit for approval — moves the draft into the workflow's approval
@@ -223,6 +323,19 @@ function ExpenseDetailActions({ d }: { d: ExpenseDetail }) {
             Approve
           </Button>
         </>
+      )}
+      {/* Mark as paid — settles the accrual (DR accrued expenses / CR bank)
+          once an approved expense has actually been disbursed. */}
+      {canPay && (
+        <Button
+          variant="primary"
+          size="sm"
+          disabled={isBusy}
+          onClick={() => setShowPay(true)}
+          icon={<Banknote className="w-3.5 h-3.5" />}
+        >
+          Mark as Paid
+        </Button>
       )}
     </>
   );

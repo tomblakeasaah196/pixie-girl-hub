@@ -97,3 +97,19 @@ export function approveExpense(id: string) {
 export function rejectExpense(id: string, reason: string) {
   return api.post<Expense>(`${EX}/${id}/reject`, { reason });
 }
+
+export type PaymentMethod =
+  | "cash"
+  | "bank_transfer"
+  | "pos_card"
+  | "payslip_addition"
+  | "wallet";
+
+export interface PayExpenseInput {
+  payment_method: PaymentMethod;
+  payment_reference?: string;
+}
+
+export function payExpense(id: string, input: PayExpenseInput) {
+  return api.post<Expense>(`${EX}/${id}/pay`, input);
+}

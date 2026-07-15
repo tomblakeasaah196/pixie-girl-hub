@@ -817,6 +817,13 @@ async function pauseWork({ brand, user, request_id, id }) {
     const open = await repo.getOpenTimeSession({ client, brand, job_id: id });
     if (open)
       await repo.closeTimeSession({ client, brand, log_id: open.log_id });
+    const job = await repo.setServiceJobStatus({
+      client,
+      brand,
+      id,
+      status: "on_hold",
+      fields: {},
+    });
     await A(
       brand,
       user,
@@ -826,7 +833,7 @@ async function pauseWork({ brand, user, request_id, id }) {
       {},
       request_id,
     );
-    return repo.getServiceJob({ client, brand, id });
+    return job;
   });
 }
 
@@ -843,6 +850,13 @@ async function resumeWork({ brand, user, request_id, id }) {
         job_id: id,
         stylist_user_id: before.assigned_staff_user_id,
       });
+    const job = await repo.setServiceJobStatus({
+      client,
+      brand,
+      id,
+      status: "in_progress",
+      fields: {},
+    });
     await A(
       brand,
       user,
@@ -852,7 +866,7 @@ async function resumeWork({ brand, user, request_id, id }) {
       {},
       request_id,
     );
-    return repo.getServiceJob({ client, brand, id });
+    return job;
   });
 }
 

@@ -43,6 +43,7 @@ import {
   useAccountability,
   useSummarizeJob,
   useStylistScorecard,
+  useStudioLifecycle,
 } from "./hooks";
 import {
   JOB_STATUS_META,
@@ -1123,6 +1124,7 @@ function JobDetailDrawer({
   const navigate = useNavigate();
   const { data: job, isLoading } = useJob(jobId);
   const actions = useJobActions(jobId);
+  const lifecycle = useStudioLifecycle(jobId);
   const [tab, setTab] = useState<
     "details" | "chemicals" | "outcome" | "activity"
   >("details");
@@ -1368,8 +1370,50 @@ function JobDetailDrawer({
             {(() => {
               // 'assigned' has its own picker (AssignmentPanel) — hide the raw
               // advance button so the operator can't skip picking a stylist.
-              const buttons = nextStates.filter((s) => s !== "assigned");
-              if (buttons.length === 0) return null;
+              // 'qc_passed'/'rework' need a quality rating + notes, which a
+              // bare button can't capture — that's the QC Queue tab's job,
+              // and it already does it correctly (life.qc.mutate with a
+              // result + form). Every OTHER Stylist Studio lifecycle status
+              // needs its own dedicated endpoint (custody/time-session side
+              // effects the generic /advance route knows nothing about);
+              // only 'cancelled'/'completed' are safe to send there directly.
+              const needsQcForm =
+                job.status === "returned_for_qc" &&
+                nextStates.some((s) => s === "qc_passed" || s === "rework");
+              const buttons = nextStates.filter(
+                (s) => s !== "assigned" && s !== "qc_passed" && s !== "rework",
+              );
+              const anyPending =
+                actions.advance.isPending ||
+                lifecycle.start.isPending ||
+                lifecycle.pause.isPending ||
+                lifecycle.resume.isPending ||
+                lifecycle.returnForQc.isPending ||
+                lifecycle.dispatch.isPending ||
+                lifecycle.handToSales.isPending;
+              const runAdvance = (s: JobStatus) => {
+                if (s === "in_progress") {
+                  if (job.status === "on_hold") lifecycle.resume.mutate();
+                  else lifecycle.start.mutate();
+                } else if (s === "on_hold") {
+                  lifecycle.pause.mutate();
+                } else if (s === "returned_for_qc") {
+                  lifecycle.returnForQc.mutate();
+                } else if (s === "ready_for_dispatch") {
+                  lifecycle.dispatch.mutate();
+                } else if (s === "handed_to_sales") {
+                  lifecycle.handToSales.mutate();
+                } else {
+                  actions.advance.mutate({
+                    status: s,
+                    actual_cost_ngn:
+                      s === "completed" && costInput
+                        ? parseFloat(costInput)
+                        : undefined,
+                  });
+                }
+              };
+              if (buttons.length === 0 && !needsQcForm) return null;
               return (
                 <div className="border-t border-line pt-4 space-y-2">
                   <p className="text-xs text-text-muted uppercase tracking-wide font-semibold">
@@ -1392,22 +1436,20 @@ function JobDetailDrawer({
                         <Button
                           key={s}
                           variant="secondary"
-                          disabled={actions.advance.isPending}
-                          onClick={() =>
-                            actions.advance.mutate({
-                              status: s,
-                              actual_cost_ngn:
-                                s === "completed" && costInput
-                                  ? parseFloat(costInput)
-                                  : undefined,
-                            })
-                          }
+                          disabled={anyPending}
+                          onClick={() => runAdvance(s)}
                         >
                           → {m.label}
                         </Button>
                       );
                     })}
                   </div>
+                  {needsQcForm && (
+                    <p className="text-xs text-text-muted">
+                      Pass or send to rework from the QC Queue tab, where you
+                      can leave a quality rating and notes.
+                    </p>
+                  )}
                 </div>
               );
             })()}

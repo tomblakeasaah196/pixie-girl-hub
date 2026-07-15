@@ -25,6 +25,8 @@ import {
   Search,
   Copy,
   Wand2,
+  Network,
+  FileDown,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DataTable, type Column } from "@/components/ui/DataTable";
@@ -41,6 +43,8 @@ import { OrgGraph } from "@/components/hub/OrgGraph";
 import { useAuthStore } from "@/stores/auth";
 import { cn } from "@/lib/cn";
 import { toastReport } from "@/lib/error-report";
+import { toast } from "@/stores/toast";
+import { downloadDocumentById } from "@/lib/documents-api";
 import { formatDateTime, formatDate } from "@/lib/format";
 import {
   orgApi,
@@ -491,6 +495,94 @@ function PositionForm({
   );
 }
 
+// Sentinel selection for the "Full Organigramme" pill — not a real unit_id.
+const FULL_ORG_VIEW = "__full__";
+
+function PositionDetailCard({
+  position,
+  canEdit,
+  onEdit,
+  onDelete,
+}: {
+  position: OrgPosition;
+  canEdit: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="glass rounded-[var(--radius)] shadow-glass p-5">
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <div className="font-display text-lg font-medium">
+            {position.display_name}
+          </div>
+          <div className="font-mono text-[11px] text-[rgb(var(--text-faint))]">
+            {position.position_key}
+          </div>
+        </div>
+        {canEdit && (
+          <div className="flex gap-1.5">
+            <Button
+              size="sm"
+              icon={<Pencil className="w-3 h-3" />}
+              onClick={onEdit}
+            >
+              Edit
+            </Button>
+            <Button
+              size="sm"
+              variant="danger"
+              icon={<Trash2 className="w-3 h-3" />}
+              onClick={onDelete}
+            />
+          </div>
+        )}
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        {[
+          { label: "Holder", value: position.holder_name || "Vacant" },
+          { label: "Grants role", value: position.role_name || "None" },
+          {
+            label: "Management",
+            value: position.is_management ? "Yes" : "No",
+          },
+          { label: "Deputy", value: position.is_deputy ? "Yes" : "No" },
+          {
+            label: "Approval limit",
+            value:
+              position.approval_threshold_ngn != null
+                ? `₦${position.approval_threshold_ngn.toLocaleString()}`
+                : "Unlimited",
+          },
+        ].map(({ label, value }) => (
+          <div
+            key={label}
+            className="bg-[rgb(var(--text)/0.03)] rounded-xl p-3 border border-[rgb(var(--border-c))]"
+          >
+            <div className="micro mb-1">{label}</div>
+            <div className="text-[13px] font-semibold">{value}</div>
+          </div>
+        ))}
+      </div>
+      {position.is_deputy && position.deputy_capacities.length > 0 && (
+        <div className="mt-3">
+          <div className="micro mb-1.5">Deputy capacities</div>
+          <div className="flex flex-wrap gap-1.5">
+            {position.deputy_capacities.map((c) => (
+              <span
+                key={c}
+                className="font-mono text-[10px] bg-[rgb(var(--info)/0.12)] text-[rgb(var(--info))] px-2 py-0.5 rounded-full"
+              >
+                {c}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OrgTab({
   canEdit,
   onCreateRole,
@@ -536,13 +628,27 @@ function OrgTab({
   });
   const staff = staffResp?.data ?? [];
 
-  const selectedUnit =
-    units.find((u) => u.unit_id === selectedUnitId) ?? units[0] ?? null;
-  const unitPositions = allPositions.filter(
-    (p) => p.unit_id === selectedUnit?.unit_id,
-  );
+  const isFullView = selectedUnitId === FULL_ORG_VIEW;
+  const selectedUnit = isFullView
+    ? null
+    : (units.find((u) => u.unit_id === selectedUnitId) ?? units[0] ?? null);
+  const unitPositions = selectedUnit
+    ? allPositions.filter((p) => p.unit_id === selectedUnit.unit_id)
+    : [];
   const selectedPosition =
     allPositions.find((p) => p.position_id === selectedPositionId) ?? null;
+
+  const exportPdfMutation = useMutation({
+    mutationFn: () => orgApi.exportChartPdf(),
+    onSuccess: async (r) => {
+      await downloadDocumentById(r.document_id, r.title);
+      toast.success("PDF ready", {
+        description: "The full organigramme has been downloaded.",
+      });
+    },
+    onError: (e) =>
+      toastReport("Org & Workflow → Org Chart", "Export PDF", e),
+  });
 
   const createUnitMutation = useMutation({
     mutationFn: (data: Partial<OrgUnit>) => orgApi.createUnit(data),
@@ -671,11 +777,99 @@ function OrgTab({
               </div>
             ))
           )}
+
+          {/* Full organigramme — every department, one chart */}
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => setSelectedUnitId(FULL_ORG_VIEW)}
+            onKeyDown={(e) =>
+              e.key === "Enter" && setSelectedUnitId(FULL_ORG_VIEW)
+            }
+            className={cn(
+              "group flex items-center gap-3 p-3.5 rounded-[13px] border cursor-pointer transition-all",
+              "backdrop-blur-[22px] bg-[rgb(var(--accent)/0.08)]",
+              isFullView
+                ? "border-[rgb(var(--accent)/0.6)] ring-1 ring-[rgb(var(--accent)/0.25)]"
+                : "border-[rgb(var(--accent)/0.25)] hover:border-[rgb(var(--accent)/0.45)]",
+            )}
+          >
+            <Network className="w-4 h-4 text-[rgb(var(--accent-glow))] shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-[13px] font-semibold text-[rgb(var(--accent-glow))] truncate">
+                Full Organigramme
+              </div>
+              <div className="text-[10px] text-[rgb(var(--text-faint))] truncate">
+                All departments together
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Org graph + position detail */}
         <div>
-          {selectedUnit && (
+          {isFullView && (
+            <>
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <div className="font-display text-lg font-medium">
+                    Full Organigramme
+                  </div>
+                  <div className="micro">
+                    {units.length} department{units.length !== 1 ? "s" : ""} ·{" "}
+                    {allPositions.length} position
+                    {allPositions.length !== 1 ? "s" : ""}
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon={<FileDown className="w-3.5 h-3.5" />}
+                  disabled={exportPdfMutation.isPending}
+                  onClick={() => exportPdfMutation.mutate()}
+                >
+                  {exportPdfMutation.isPending ? "Preparing…" : "Export PDF"}
+                </Button>
+              </div>
+              <div className="glass rounded-[var(--radius)] shadow-glass p-4 mb-4 min-h-[220px]">
+                {posLoading ? (
+                  <div className="space-y-2">
+                    {Array.from({ length: 3 }).map((_, i) => (
+                      <Skeleton key={i} className="h-[90px] rounded-xl" />
+                    ))}
+                  </div>
+                ) : (
+                  <OrgGraph
+                    positions={allPositions}
+                    showDepartment
+                    onSelectPosition={(p) =>
+                      setSelectedPositionId(p.position_id)
+                    }
+                    selectedId={selectedPositionId}
+                  />
+                )}
+              </div>
+
+              {/* Selected position detail */}
+              {selectedPosition && (
+                <PositionDetailCard
+                  position={selectedPosition}
+                  canEdit={canEdit}
+                  onEdit={() => setPosDrawer(selectedPosition)}
+                  onDelete={() => {
+                    if (
+                      confirm(
+                        `Delete position "${selectedPosition.display_name}"?`,
+                      )
+                    ) {
+                      deletePosMutation.mutate(selectedPosition.position_id);
+                    }
+                  }}
+                />
+              )}
+            </>
+          )}
+          {!isFullView && selectedUnit && (
             <>
               <div className="flex items-center justify-between mb-3">
                 <div>
@@ -718,100 +912,24 @@ function OrgTab({
 
               {/* Selected position detail */}
               {selectedPosition && (
-                <div className="glass rounded-[var(--radius)] shadow-glass p-5">
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <div className="font-display text-lg font-medium">
-                        {selectedPosition.display_name}
-                      </div>
-                      <div className="font-mono text-[11px] text-[rgb(var(--text-faint))]">
-                        {selectedPosition.position_key}
-                      </div>
-                    </div>
-                    {canEdit && (
-                      <div className="flex gap-1.5">
-                        <Button
-                          size="sm"
-                          icon={<Pencil className="w-3 h-3" />}
-                          onClick={() => setPosDrawer(selectedPosition)}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          icon={<Trash2 className="w-3 h-3" />}
-                          onClick={() => {
-                            if (
-                              confirm(
-                                `Delete position "${selectedPosition.display_name}"?`,
-                              )
-                            ) {
-                              deletePosMutation.mutate(
-                                selectedPosition.position_id,
-                              );
-                            }
-                          }}
-                        />
-                      </div>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {[
-                      {
-                        label: "Holder",
-                        value: selectedPosition.holder_name || "Vacant",
-                      },
-                      {
-                        label: "Grants role",
-                        value: selectedPosition.role_name || "None",
-                      },
-                      {
-                        label: "Management",
-                        value: selectedPosition.is_management ? "Yes" : "No",
-                      },
-                      {
-                        label: "Deputy",
-                        value: selectedPosition.is_deputy ? "Yes" : "No",
-                      },
-                      {
-                        label: "Approval limit",
-                        value:
-                          selectedPosition.approval_threshold_ngn != null
-                            ? `₦${selectedPosition.approval_threshold_ngn.toLocaleString()}`
-                            : "Unlimited",
-                      },
-                    ].map(({ label, value }) => (
-                      <div
-                        key={label}
-                        className="bg-[rgb(var(--text)/0.03)] rounded-xl p-3 border border-[rgb(var(--border-c))]"
-                      >
-                        <div className="micro mb-1">{label}</div>
-                        <div className="text-[13px] font-semibold">{value}</div>
-                      </div>
-                    ))}
-                  </div>
-                  {selectedPosition.is_deputy &&
-                    selectedPosition.deputy_capacities.length > 0 && (
-                      <div className="mt-3">
-                        <div className="micro mb-1.5">Deputy capacities</div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {selectedPosition.deputy_capacities.map((c) => (
-                            <span
-                              key={c}
-                              className="font-mono text-[10px] bg-[rgb(var(--info)/0.12)] text-[rgb(var(--info))] px-2 py-0.5 rounded-full"
-                            >
-                              {c}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                </div>
+                <PositionDetailCard
+                  position={selectedPosition}
+                  canEdit={canEdit}
+                  onEdit={() => setPosDrawer(selectedPosition)}
+                  onDelete={() => {
+                    if (
+                      confirm(
+                        `Delete position "${selectedPosition.display_name}"?`,
+                      )
+                    ) {
+                      deletePosMutation.mutate(selectedPosition.position_id);
+                    }
+                  }}
+                />
               )}
             </>
           )}
-          {!selectedUnit && units.length > 0 && (
+          {!isFullView && !selectedUnit && units.length > 0 && (
             <div className="h-48 grid place-items-center text-[rgb(var(--text-muted))] text-sm">
               Select a department to view its positions
             </div>

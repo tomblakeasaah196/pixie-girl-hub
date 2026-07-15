@@ -753,9 +753,14 @@ async function listPayments({ client, brand, order_id }) {
  */
 /**
  * Candidate orders for matching an unattributed POS/terminal payment
- * (Fallback 1): open in-store orders whose outstanding balance equals the
- * paid amount, optionally within a time window around the payment. Newest
+ * (Fallback 1): open orders whose outstanding balance equals the paid
+ * amount, optionally within a time window around the payment. Newest
  * first; capped. Suggests matches to staff — never auto-applies.
+ *
+ * Not filtered by sales_channel: Quick Sale (which replaced the old POS
+ * module) never tags an order with the legacy 'pos' channel value, and a
+ * terminal payment can just as well settle the balance on an order placed
+ * through any channel (e.g. a WhatsApp order picked up and paid in person).
  */
 async function findReconcilablePosOrders({
   client,
@@ -769,8 +774,7 @@ async function findReconcilablePosOrders({
     `SELECT order_id, order_number, status, total_ngn, amount_paid_ngn,
             balance_due_ngn, created_at
        FROM ${t(brand, "sales_orders")}
-      WHERE sales_channel = 'pos'
-        AND balance_due_ngn = $1
+      WHERE balance_due_ngn = $1
         AND balance_due_ngn > 0
         AND status NOT IN ('cancelled','refunded','voided')
         AND ($2::timestamptz IS NULL OR created_at >= $2)

@@ -128,6 +128,13 @@ router.delete(
   controller.deleteDottedLine,
 );
 
+// ── Full organigramme (every department, one chart) ────────
+router.post(
+  "/chart/pdf",
+  requirePermission("org_workflow", "view"),
+  controller.exportFullChartPdf,
+);
+
 // ── Org-structure CRUD (org_units) ─────────────────────────
 router.get("/", requirePermission("org_workflow", "view"), controller.list);
 router.get(

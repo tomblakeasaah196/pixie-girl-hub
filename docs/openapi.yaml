@@ -10290,6 +10290,23 @@ paths:
         x-is-write: true,
         responses: { "204": { description: Deleted } },
       }
+  /org/chart/pdf:
+    post:
+      {
+        summary: Export the full organigramme (every department, one chart) as a PDF,
+        tags: [org_workflow],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "org_workflow.view",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses:
+          {
+            "200":
+              {
+                description: Rendered and stored — returns the document id + title,
+              },
+          },
+      }
   /org/positions/{position_id}/dotted-lines:
     get:
       {

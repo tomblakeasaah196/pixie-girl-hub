@@ -398,8 +398,11 @@ spend, and advance settlements, with approval routing.
 Advance settlement) and status (Draft, Pending, Approved, Paid, Partially Paid,
 Rejected).
 **Common tasks.**
-- *Claim an expense / reimbursement?* Expenses → **New** (add receipts, submit).
-  It routes to your approver.
+- *Claim an expense / reimbursement?* Expenses → **New** (add receipts) →
+  **Submit for Approval**. It routes to your approver. Picking **Save as
+  Draft** instead records it without submitting.
+- *Submit a draft expense you saved earlier?* Open it from the list →
+  **Submit for Approval** (needs `edit`).
 - *Settle a cash advance?* Expenses → **Advance settlement**.
 - *Approve someone's expense?* Expenses → the pending list (needs `approve`).
 
@@ -456,6 +459,11 @@ disciplinary queries, targets, rewards, recruitment, and HR analytics.
 - *Raise a staff query?* HR → **Queries**.
 - *Hire someone (JD → offer → e-sign → onboarding)?* HR → **Recruitment** tab.
   Candidates get a public offer link (`/offer/<token>`).
+- *Clock-in address label missing, or want to rotate/test the geocoding key?*
+  HR → **Settings** tab → the **"Configure Geoapify"** pill (right after
+  **Payout authorisation**). The key is stored encrypted (permission
+  `geoapify_settings`), maskable/revealable with a password re-check, and has
+  a **Test connection** button — no `.env` edit or redeploy needed.
 
 ### 4.20 Payroll
 **What it's for.** Pay runs, payslips, and disbursement.
@@ -533,6 +541,12 @@ positions, roles, the permission matrix, and approval routing rules.
 - *Create a role / edit what a role can do?* Org & Workflow → **Add a role** /
   the role × module permission matrix.
 - *Add a position / build the org chart?* Org & Workflow → **Add a position**.
+- *See every department in one chart / print or share the org chart?* Org &
+  Workflow → Org Chart tab → the **Full Organigramme** pill at the bottom of
+  the Departments list (below the last department). It renders every
+  department's positions as one connected tree (department badge on each
+  node) and has an **Export PDF** button that generates and downloads a
+  landscape PDF of the whole structure.
 - *Change who approves what (approval chains)?* Org & Workflow → approvals.
 > Giving an individual person access to a module is done here (role) or per-user
 > in **IAM & Security → Users** (`/iam-security/users`).

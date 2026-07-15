@@ -111,6 +111,7 @@ const MODULE_CATALOG = [
   { key: "outbound_policy", group: "system", label: "Outbound Policy", description: "Rules for outbound customer messages" },
   { key: "help_center", group: "system", label: "Help Center", description: "Guides & FAQs" },
   { key: "apify_settings", group: "system", label: "Apify Integration", description: "Public social-metrics scraper credentials (Social Studio)" },
+  { key: "geoapify_settings", group: "system", label: "Geoapify Integration", description: "Reverse-geocoding & map credentials (HR clock-in locations)" },
 ];
 
 // The distinct requirePermission keys enforced across src/ (47 modules).

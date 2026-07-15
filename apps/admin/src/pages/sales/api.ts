@@ -362,24 +362,32 @@ export const getPosReconciliationSuggestions = (id: string, brand?: string) =>
     `${POS}/reconciliation/${id}/suggestions${qs({ brand })}`,
   );
 
+// match/ignore respond with a single-envelope { data: row }, which the API
+// client auto-unwraps to the bare row (only a sibling `meta` key keeps a
+// `{ data, ... }` shape intact) — type these as the unwrapped shape so a
+// future caller that reads the resolved value doesn't hit the same
+// undefined-access bug the suggestions endpoint had.
 export const matchPosReconciliation = (
   id: string,
   input: { brand: string; order_id: string },
 ) =>
-  api.post<{ data: PosTerminalReconciliation }>(
+  api.post<PosTerminalReconciliation>(
     `${POS}/reconciliation/${id}/match`,
     input,
   );
 
 export const ignorePosReconciliation = (id: string, note: string) =>
-  api.post<{ data: PosTerminalReconciliation }>(
+  api.post<PosTerminalReconciliation>(
     `${POS}/reconciliation/${id}/ignore`,
     { note },
   );
 
 /** Manual-search fallback (decision 1A) — reuses the normal order list,
- *  scoped to the brand active in X-Brand-Context, open in-store orders only. */
+ *  scoped to the brand active in X-Brand-Context. Not filtered by
+ *  sales_channel: Quick Sale (which replaced the old POS module) never
+ *  tags an order with the legacy 'pos' channel, so that filter matched
+ *  nothing — a terminal payment can settle any open order's balance. */
 export const searchPosReconcilableOrders = (search: string) =>
   api.get<PaginatedResponse<SalesOrder>>(
-    `/sales/orders${qs({ q: search, sales_channel: "pos", page_size: 10 })}`,
+    `/sales/orders${qs({ q: search, page_size: 10 })}`,
   );

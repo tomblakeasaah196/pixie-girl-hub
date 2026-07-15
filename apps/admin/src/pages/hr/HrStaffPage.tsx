@@ -60,6 +60,8 @@ import {
 } from "@/lib/hr-api";
 import { OfficeGeofenceSettings } from "./OfficeGeofenceSettings";
 import { OnboardingSettings } from "./OnboardingSettings";
+import { GeoapifySettingsModal } from "@/components/hr/GeoapifySettingsModal";
+import { useGeoapifySettings } from "@/lib/geoapify-settings-api";
 import RecruitmentTab from "./RecruitmentTab";
 import { OnboardingArticlesTab } from "./OnboardingArticlesTab";
 import { RewardsTab } from "./RewardsTab";
@@ -400,6 +402,16 @@ function SettingsTab() {
   const notify = useNotify("HR → Staff: settings");
   const { data, isLoading } = useQuery({ queryKey: ["hr", "settings"], queryFn: getSettings });
   const [pin, setPin] = useState("");
+  const [geoapifyOpen, setGeoapifyOpen] = useState(false);
+  const geoapifySettingsQ = useGeoapifySettings();
+  const geoapifySettings = geoapifySettingsQ.data;
+  const geoapifyStatus = !geoapifySettings?.has_api_key
+    ? { tone: "warn" as const, label: "Not configured" }
+    : geoapifySettings.last_test_ok === false
+      ? { tone: "danger" as const, label: "Test failed" }
+      : geoapifySettings.last_test_ok
+        ? { tone: "success" as const, label: "Connected" }
+        : { tone: "accent" as const, label: "Key saved" };
   const save = useMutation({
     mutationFn: (patch: Partial<HrSettings>) => updateSettings(patch),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["hr", "settings"] }); notify("Settings saved"); },
@@ -509,6 +521,18 @@ function SettingsTab() {
           <Button variant="primary" disabled={pin.length < 4 || savePin.isPending}
             onClick={() => savePin.mutate()}>{data.payout_pin_set ? "Replace PIN" : "Set PIN"}</Button>
         </div>
+        <button
+          type="button"
+          onClick={() => setGeoapifyOpen(true)}
+          className="mt-4 inline-flex"
+          title="Configure the Geoapify key that powers clock-in address labels and the office-location picker"
+        >
+          <Pill tone={geoapifyStatus.tone} dot={false}>
+            <MapPin className="h-3 w-3" />
+            Configure Geoapify · {geoapifyStatus.label}
+          </Pill>
+        </button>
+        {geoapifyOpen && <GeoapifySettingsModal onClose={() => setGeoapifyOpen(false)} />}
       </Card>
 
       <Card className="p-5 lg:col-span-2">

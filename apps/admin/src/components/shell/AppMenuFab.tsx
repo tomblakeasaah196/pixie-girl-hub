@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { LayoutGrid } from "lucide-react";
 import { cn } from "@/lib/cn";
@@ -13,6 +13,23 @@ import { useUiStore } from "@/stores/ui";
  */
 const DRAG_THRESHOLD = 4;
 
+function clamp(x: number, y: number, el: HTMLElement) {
+  const r = el.getBoundingClientRect();
+  const baseLeft = window.innerWidth / 2 - r.width / 2;
+  const baseTop = window.innerHeight - 26 - r.height;
+  const m = 8;
+  return {
+    x: Math.min(
+      Math.max(x, m - baseLeft),
+      window.innerWidth - m - r.width - baseLeft,
+    ),
+    y: Math.min(
+      Math.max(y, m - baseTop),
+      window.innerHeight - m - r.height - baseTop,
+    ),
+  };
+}
+
 export function AppMenuFab() {
   const isDesktop = useIsDesktop();
   const navigate = useNavigate();
@@ -20,6 +37,7 @@ export function AppMenuFab() {
   const offset = useUiStore((s) => s.appMenuOffset);
   const setOffset = useUiStore((s) => s.setAppMenuOffset);
   const [dragging, setDragging] = useState(false);
+  const btnRef = useRef<HTMLButtonElement | null>(null);
   const drag = useRef<{
     id: number;
     sx: number;
@@ -29,27 +47,29 @@ export function AppMenuFab() {
     moved: boolean;
   } | null>(null);
 
-  if (!isDesktop || pathname === "/") return null;
+  // Re-clamp a persisted offset that can otherwise park the pill off-screen —
+  // e.g. dragged near an edge on a wide monitor, then reopened on a laptop.
+  // Runs on mount/visibility change and on resize (the drag itself already
+  // clamps live, so this only ever corrects a *stale* stored offset).
+  useEffect(() => {
+    if (!isDesktop || pathname === "/") return;
+    function reclamp() {
+      const el = btnRef.current;
+      if (!el) return;
+      const current = useUiStore.getState().appMenuOffset;
+      const next = clamp(current.x, current.y, el);
+      if (next.x !== current.x || next.y !== current.y) setOffset(next);
+    }
+    reclamp();
+    window.addEventListener("resize", reclamp);
+    return () => window.removeEventListener("resize", reclamp);
+  }, [isDesktop, pathname, setOffset]);
 
-  function clamp(x: number, y: number, el: HTMLElement) {
-    const r = el.getBoundingClientRect();
-    const baseLeft = window.innerWidth / 2 - r.width / 2;
-    const baseTop = window.innerHeight - 26 - r.height;
-    const m = 8;
-    return {
-      x: Math.min(
-        Math.max(x, m - baseLeft),
-        window.innerWidth - m - r.width - baseLeft,
-      ),
-      y: Math.min(
-        Math.max(y, m - baseTop),
-        window.innerHeight - m - r.height - baseTop,
-      ),
-    };
-  }
+  if (!isDesktop || pathname === "/") return null;
 
   return (
     <button
+      ref={btnRef}
       onPointerDown={(e) => {
         if (e.button !== 0) return;
         e.currentTarget.setPointerCapture(e.pointerId);

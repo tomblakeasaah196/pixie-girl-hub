@@ -362,17 +362,22 @@ export const getPosReconciliationSuggestions = (id: string, brand?: string) =>
     `${POS}/reconciliation/${id}/suggestions${qs({ brand })}`,
   );
 
+// match/ignore respond with a single-envelope { data: row }, which the API
+// client auto-unwraps to the bare row (only a sibling `meta` key keeps a
+// `{ data, ... }` shape intact) — type these as the unwrapped shape so a
+// future caller that reads the resolved value doesn't hit the same
+// undefined-access bug the suggestions endpoint had.
 export const matchPosReconciliation = (
   id: string,
   input: { brand: string; order_id: string },
 ) =>
-  api.post<{ data: PosTerminalReconciliation }>(
+  api.post<PosTerminalReconciliation>(
     `${POS}/reconciliation/${id}/match`,
     input,
   );
 
 export const ignorePosReconciliation = (id: string, note: string) =>
-  api.post<{ data: PosTerminalReconciliation }>(
+  api.post<PosTerminalReconciliation>(
     `${POS}/reconciliation/${id}/ignore`,
     { note },
   );

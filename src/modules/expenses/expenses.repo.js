@@ -136,7 +136,15 @@ async function insertLine({ client, brand, line }) {
 }
 async function findById({ client, brand, id }) {
   const { rows } = await ex(client)(
-    `SELECT * FROM ${t(brand, "expenses")} WHERE expense_id = $1`,
+    `SELECT e.*,
+            su.display_name AS submitted_by_name,
+            au.display_name AS approved_by_name,
+            pu.display_name AS paid_by_name
+       FROM ${t(brand, "expenses")} e
+       LEFT JOIN shared.users su ON su.user_id = e.submitted_by
+       LEFT JOIN shared.users au ON au.user_id = e.approved_by
+       LEFT JOIN shared.users pu ON pu.user_id = e.paid_by
+      WHERE e.expense_id = $1`,
     [id],
   );
   if (!rows[0]) return null;
@@ -336,7 +344,11 @@ async function addReceipt({ client, brand, receipt }) {
 }
 async function listReceipts({ client, brand, expense_id }) {
   const { rows } = await ex(client)(
-    `SELECT * FROM ${t(brand, "expense_receipts")} WHERE expense_id = $1 ORDER BY uploaded_at`,
+    `SELECT r.*, doc.title AS document_title, doc.mime_type, doc.file_size_bytes
+       FROM ${t(brand, "expense_receipts")} r
+       LEFT JOIN shared.documents doc ON doc.document_id = r.document_id
+      WHERE r.expense_id = $1
+      ORDER BY r.uploaded_at`,
     [expense_id],
   );
   return rows;

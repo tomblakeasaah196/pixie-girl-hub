@@ -3,6 +3,7 @@ import type {
   Expense,
   ExpenseCategory,
   ExpenseKpis,
+  ExpenseReceipt,
   PaginatedResponse,
 } from "./types";
 
@@ -63,7 +64,11 @@ export function createExpenseCategory(input: CreateCategoryInput) {
 export function uploadExpenseReceipt(id: string, file: File) {
   const fd = new FormData();
   fd.append("file", file);
-  return api.postForm<unknown>(`${EX}/${id}/receipts`, fd);
+  return api.postForm<ExpenseReceipt>(`${EX}/${id}/receipts`, fd);
+}
+
+export function listExpenseReceipts(id: string) {
+  return api.get<ExpenseReceipt[]>(`${EX}/${id}/receipts`);
 }
 
 export interface ExpenseLineInput {

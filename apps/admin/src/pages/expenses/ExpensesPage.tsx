@@ -14,10 +14,10 @@ import {
 } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { cn } from "@/lib/cn";
-import { moneyCompact, formatDate as fmtDateCanon } from "@/lib/format";
+import { money, moneyCompact, formatDate as fmtDateCanon } from "@/lib/format";
 import { useExpenses, useExpenseKpis } from "./hooks";
 import { EXPENSE_STATUS_META, EXPENSE_STATUS_TABS } from "./constants";
-import type { Expense, ExpenseStatus } from "./types";
+import type { Expense } from "./types";
 
 const ExpenseDetailDrawer = lazy(() => import("./ExpenseDetailDrawer"));
 const CreateExpenseDrawer = lazy(() =>
@@ -196,9 +196,24 @@ function Pagination({
   );
 }
 
-function exStatusPill(status: ExpenseStatus) {
-  const meta = EXPENSE_STATUS_META[status];
-  return <Pill tone={meta.tone}>{meta.label}</Pill>;
+function exStatusPill(row: Expense) {
+  const meta = EXPENSE_STATUS_META[row.status];
+  const paid =
+    (row.status === "paid" || row.status === "partially_paid") &&
+    row.amount_paid_ngn
+      ? Number(row.amount_paid_ngn)
+      : null;
+  return (
+    <Pill tone={meta.tone}>
+      {meta.label}
+      {paid != null && (
+        <span className="font-mono normal-case font-normal">
+          {" "}
+          · {money(paid)}
+        </span>
+      )}
+    </Pill>
+  );
 }
 
 function formatDate(d: string | null) {
@@ -260,7 +275,7 @@ function ExpensesTable({
       key: "status",
       header: "Status",
       width: "130px",
-      render: (r) => exStatusPill(r.status),
+      render: (r) => exStatusPill(r),
     },
     {
       key: "date",

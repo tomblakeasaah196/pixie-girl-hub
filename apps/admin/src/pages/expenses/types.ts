@@ -42,12 +42,33 @@ export interface Expense {
   balance_ngn: string | null;
   status: ExpenseStatus;
   approved_by: string | null;
+  approved_by_name?: string | null;
   approved_at: string | null;
+  paid_by?: string | null;
+  paid_by_name?: string | null;
+  paid_at?: string | null;
+  payment_method?: string | null;
+  payment_reference?: string | null;
   journal_entry_id: string | null;
   vendor_name: string | null;
   vendor_contact_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ExpenseReceipt {
+  receipt_id: string;
+  expense_id: string | null;
+  expense_line_id: string | null;
+  document_id: string;
+  document_title?: string | null;
+  mime_type?: string | null;
+  file_size_bytes?: number | null;
+  amount_on_receipt_ngn: string | null;
+  receipt_date: string | null;
+  vendor_name: string | null;
+  uploaded_by: string | null;
+  uploaded_at: string;
 }
 
 export interface ExpenseKpis {

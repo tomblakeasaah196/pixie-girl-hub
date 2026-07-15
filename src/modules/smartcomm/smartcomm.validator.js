@@ -145,9 +145,9 @@ const draftSave = z
 
 const sendInvoiceCard = z.object({ invoice_id: z.string().uuid() }).strict();
 
-// One id field per item; `kind` disambiguates (the modal always sends it,
+// One id field per item; `kind` disambiguates (the picker always sends it,
 // older callers may omit it and send only product_id).
-const orderCaptureItem = z
+const orderLinkItem = z
   .object({
     kind: z.enum(["base", "styled", "bundle", "service"]).optional(),
     product_id: z.string().uuid().optional(),
@@ -157,6 +157,15 @@ const orderCaptureItem = z
     qty: z.number().positive().max(100),
     price_ngn: z.union([z.string(), z.number()]).optional(),
     note: z.string().max(280).optional(),
+    // Staff-picked styled variant (head size × lace × colour). The price a
+    // styled product sells at depends on the size/lace, so the operator picks
+    // the exact combination before sharing; these persist on the link row so
+    // the customer's order is priced + fulfilled for that exact variant.
+    styled_variant_id: z.string().uuid().optional(),
+    size_code: z.string().max(40).optional(),
+    lace_code: z.string().max(40).optional(),
+    colour_id: z.string().uuid().optional(),
+    spec: z.string().max(160).optional(),
   })
   .strict()
   .refine(
@@ -164,12 +173,11 @@ const orderCaptureItem = z
     { message: "item needs a product_id, styled_id, bundle_id, or service_id" },
   );
 
-const orderCaptureCreate = z
+const orderLinkCreate = z
   .object({
     contact_id: z.string().uuid().optional(),
     channel_id: z.string().uuid().optional(),
-    mode: z.enum(["capture", "shop"]).optional(),
-    items: z.array(orderCaptureItem).min(1).max(20),
+    items: z.array(orderLinkItem).min(1).max(20),
     sales_channel: z
       .enum([
         "whatsapp",
@@ -283,7 +291,7 @@ module.exports = {
   validateDraftSave: mk(draftSave),
   validateQuickReplyCreate: mk(quickReplyCreate),
   validateQuickReplyUpdate: mk(quickReplyUpdate),
-  validateOrderCaptureCreate: mk(orderCaptureCreate),
+  validateOrderLinkCreate: mk(orderLinkCreate),
   validateSendInvoiceCard: mk(sendInvoiceCard),
   validateChannelAccessSet: mk(channelAccessSet),
 };

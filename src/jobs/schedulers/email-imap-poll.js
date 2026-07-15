@@ -46,6 +46,19 @@ async function pollOneMailbox(cfg) {
     // from wedging the whole sweep.
     socketTimeout: 30000,
   });
+  // imapflow emits 'error' on connection-level failures (socket timeout,
+  // TLS errors) that happen outside the currently awaited call. With no
+  // listener, Node's EventEmitter throws it synchronously from the raw
+  // socket callback, which is an uncaught exception that crashes the whole
+  // process — not just this poll. The failure still surfaces normally: it
+  // also rejects the in-flight command, which the try/catch below already
+  // logs and handles per-mailbox.
+  client.on("error", (err) => {
+    logger.warn(
+      { business: cfg.business, mailbox: cfg.mailbox, err: err.message },
+      "email-imap-poll: connection error",
+    );
+  });
 
   let ingested = 0;
   // imapflow requires an explicit connect before any mailbox operation —

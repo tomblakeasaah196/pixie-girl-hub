@@ -53,13 +53,14 @@ async function getProduct({ brand, slug }) {
     throw new NotFoundError("Product");
   }
 
-  const [allVariants, gallery, colours, tiers, laces, cfg] = await Promise.all([
+  const [allVariants, gallery, colours, tiers, laces, cfg, socialProof] = await Promise.all([
     styledVariantsRepo.listVariants({ brand, styled_id }),
     repo.listStyledGallery({ brand, styled_id }),
     repo.listColourGalleries({ brand, styled_id }),
     styledVariantsRepo.listSizeTiers({ brand, activeOnly: true }),
     styledVariantsRepo.listLaceSizes({ brand, activeOnly: true }),
     styledVariantsRepo.getConfig({ brand }),
+    repo.getSocialProof({ brand, styled_id }),
   ]);
 
   // Show ONLY variants a buyer can actually purchase — the same is_active +
@@ -147,6 +148,16 @@ async function getProduct({ brand, slug }) {
           video_url: cfg.head_size_video_url || null,
         }
       : null,
+    // "As seen on Instagram" badge — null when nothing's been proven-posted
+    // tagging this product yet.
+    social_proof: socialProof
+      ? {
+          platform: socialProof.platform,
+          url: socialProof.external_url,
+          thumbnail_url: socialProof.oembed_thumbnail_url,
+          author_handle: socialProof.oembed_author_handle,
+        }
+      : null,
   };
 }
 
@@ -214,9 +225,22 @@ async function getSite({ brand, path, previewToken }) {
 // pre-wrapped) or `body_html`. Content posts store the copy in `body`, so
 // alias it to `body_md` on the way out. We never emit body_html — no raw HTML
 // is injected from operator input.
+//
+// The listing/detail pages also render a `cover_image_url` — the DB column is
+// `hero_image_url`, so that needs the same aliasing (previously missing:
+// every published journal post's hero image silently failed to render on
+// faitlynhair.com/journal, even though it was correctly stored and shown in
+// Storefront Studio). `content_blocks` (journal's rich block body, see
+// migration 000338) passes through as-is — it is structured JSON, not markup,
+// so there is no injection risk in emitting it verbatim.
 function withRenderableBody(post) {
   if (!post) return post;
-  return { ...post, body_md: post.body ?? null };
+  return {
+    ...post,
+    body_md: post.body ?? null,
+    cover_image_url: post.hero_image_url ?? null,
+    content_blocks: Array.isArray(post.content_blocks) ? post.content_blocks : [],
+  };
 }
 
 async function listContent({ brand, type }) {
@@ -272,7 +296,18 @@ async function submitOrderForm({ brand, input, request_id }) {
     shipping_fee_ngn = Number(quote.fee_ngn) || 0;
   }
 
-  return transaction(async (client) => {
+  // Staff-picked styled variant pricing: what a styled product costs depends
+  // on the chosen head size / lace, picked by the operator when sharing the
+  // catalogue and stored on the order-link row. Resolve those prices FROM THE
+  // LINK ROW (never the POST body a shopper could tamper with) and apply them
+  // as the line unit price, so the customer's order total matches the price
+  // they were shown for that size/lace.
+  const styledUnitPriceByVariant = await resolveStyledUnitPrices({
+    brand,
+    order_link_slug: input.order_link_slug,
+  });
+
+  const result = await transaction(async (client) => {
     // 1. Upsert the customer as a contact.
     let contact = await repo.findContactByEmailOrPhone({
       client,
@@ -319,6 +354,12 @@ async function submitOrderForm({ brand, input, request_id }) {
         lines: input.items.map((it) => ({
           variant_id: it.variant_id,
           quantity: it.quantity,
+          // Apply the staff-picked styled variant price when this line's
+          // variant was priced in the signed token; otherwise Sales prices
+          // it by the variant's channel price as usual.
+          ...(styledUnitPriceByVariant.has(it.variant_id)
+            ? { unit_price_ngn: styledUnitPriceByVariant.get(it.variant_id) }
+            : {}),
         })),
         shipping_fee_ngn,
         utm_source: input.utm_source,
@@ -349,15 +390,18 @@ async function submitOrderForm({ brand, input, request_id }) {
     //    service booking requests, and announce everything in the thread.
     //    A bad/expired token never breaks a checkout that already worked.
     let bookings = [];
-    if (input.capture_token) {
+    if (input.order_link_slug) {
       try {
-        const orderCapture = require("../smartcomm/smartcomm.order-capture");
+        const orderLinksRepo = require("../smartcomm/smartcomm.order-links.repo");
         const orderLinks = require("../smartcomm/smartcomm.order-links.service");
-        const decoded = orderCapture.verifyCaptureToken(input.capture_token);
-        if (decoded.link_id) {
+        const link = await orderLinksRepo.getBySlug({
+          client,
+          slug: input.order_link_slug,
+        });
+        if (link && link.business === brand) {
           const done = await orderLinks.completeOrder({
             client,
-            link_id: decoded.link_id,
+            link_id: link.link_id,
             order_id: order ? order.order_id : null,
             order_number: order ? order.order_number : null,
             total_ngn: order ? order.total_ngn : null,
@@ -369,7 +413,7 @@ async function submitOrderForm({ brand, input, request_id }) {
       } catch (err) {
         logger.warn(
           { err: err.message },
-          "order-form: capture link completion failed (order stands)",
+          "order-form: order-link completion failed (order stands)",
         );
       }
     } else if (serviceBookings.length) {
@@ -394,17 +438,84 @@ async function submitOrderForm({ brand, input, request_id }) {
       }
     }
 
+    // The amount to charge at the gateway RIGHT NOW so the checkout page can
+    // redirect straight to payment: the full balance for a pay-in-full order,
+    // or the plan's deposit (min first payment) for an instalment order.
+    // Computed server-side (the client never decides what to charge). Null
+    // for service-only checkouts (no product order → nothing to pay yet).
+    let pay_now_ngn = null;
+    if (order) {
+      if (order.payment_plan === "instalment") {
+        try {
+          const paymentSettings = require("../sales/payment-settings.service");
+          const settings = await paymentSettings.getSettings(brand);
+          pay_now_ngn = toCurrencyString(
+            paymentSettings.minNextPaymentNgn(settings, order),
+          );
+        } catch {
+          pay_now_ngn = null; // fall back to full balance at the pay step
+        }
+      } else {
+        pay_now_ngn = toCurrencyString(money(order.total_ngn));
+      }
+    }
+
     return {
       order_id: order ? order.order_id : null,
       order_number: order ? order.order_number : null,
       total_ngn: order ? order.total_ngn : null,
       payment_model: order ? order.payment_model : null,
       payment_plan: order ? order.payment_plan : null,
+      pay_now_ngn,
       public_tracking_token: (order && order.public_tracking_token) || null,
       contact_id: contact.contact_id,
       booking_count: bookings.length,
     };
   });
+
+  // Straight to the payment gateway for an order-link checkout: mint the
+  // gateway checkout link server-side (exactly like the cart checkout) and
+  // return it, so the /o page redirects the buyer to Nomba in ONE step — no
+  // "we'll WhatsApp you a link" detour. Runs AFTER the transaction commits
+  // (never hold the DB open across an external gateway call). A gateway hiccup
+  // never fails the confirmed order — payment_url stays null and the page
+  // retries via the public pay link (keyed by the tracking token, so no
+  // duplicate order). Full plan charges the whole balance; instalment charges
+  // the deposit. Nomba is preferred (Paystack/Stripe only if it's down).
+  let payment_url = null;
+  // Gate on the ORDER (not public_tracking_token). The token column has no
+  // default and is null at creation, so requiring it here skipped the gateway
+  // step entirely — the /o page fell back to "we'll WhatsApp you a link"
+  // instead of redirecting to Nomba. createPaymentLink resolves the order by
+  // order_id (exactly like the cart checkout), so the token isn't needed here.
+  if (input.order_link_slug && result.order_id) {
+    try {
+      // The buyer's gateway pick from the /o page (same rails as the main
+      // storefront checkout). createPaymentLink still walks the whole active
+      // chain with this one preferred, so a down gateway falls over rather
+      // than dead-ending the order.
+      const allowedGateways = ["nomba", "paystack"];
+      const preferredProvider = allowedGateways.includes(input.payment_gateway)
+        ? input.payment_gateway
+        : "nomba";
+      const pay = await paymentLink.createPaymentLink({
+        brand,
+        order_id: result.order_id,
+        amount_ngn:
+          result.payment_plan === "instalment" ? result.pay_now_ngn : undefined,
+        preferred_provider: preferredProvider,
+        return_url_base: input.return_url_base || undefined,
+      });
+      payment_url = pay.checkout_url || null;
+    } catch (err) {
+      logger.error(
+        { err: err.message, order_id: result.order_id },
+        "order-link payment init failed after order (order stands; page will retry)",
+      );
+    }
+  }
+
+  return { ...result, payment_url };
 }
 
 /**
@@ -483,6 +594,46 @@ async function upsertCheckoutContactExtras({ client, contact, input }) {
       "order-form: contact extras upsert failed (order stands)",
     );
   }
+}
+
+/**
+ * Resolve staff-picked styled variant prices from the order-link row (looked
+ * up by slug), keyed by the sellable base variant_id, so the checkout can
+ * apply them as line unit prices. The price comes ONLY from the persisted
+ * link row (set when staff shared the catalogue) — never from the public POST
+ * body — so a shopper can't rewrite it. Gated to styled items that actually
+ * carried a picked styled_variant_id; every other line prices normally through
+ * Sales. An unknown/cross-brand slug yields an empty map (order prices as
+ * usual, never fails the checkout).
+ */
+async function resolveStyledUnitPrices({ brand, order_link_slug }) {
+  const map = new Map();
+  if (!order_link_slug) return map;
+  try {
+    const orderLinksRepo = require("../smartcomm/smartcomm.order-links.repo");
+    const resolvers = require("../smartcomm/smartcomm.order-links.resolvers");
+    const link = await orderLinksRepo.getBySlug({ slug: order_link_slug });
+    if (!link || link.business !== brand || !Array.isArray(link.items)) {
+      return map;
+    }
+    const resolved = await resolvers.resolveItems(brand, link.items);
+    for (const r of resolved) {
+      if (
+        r.kind !== "styled" ||
+        !r.styled_variant_id ||
+        r.price_ngn === null ||
+        r.price_ngn === undefined
+      ) {
+        continue;
+      }
+      for (const l of r.lines || []) {
+        if (l.variant_id) map.set(l.variant_id, String(r.price_ngn));
+      }
+    }
+  } catch {
+    // unknown / cross-brand slug — no overrides.
+  }
+  return map;
 }
 
 // Stylist referral capture (§6.26 Q17): only a code that resolves to an

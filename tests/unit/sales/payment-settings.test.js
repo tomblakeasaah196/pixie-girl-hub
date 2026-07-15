@@ -20,6 +20,20 @@ jest.mock("../../../src/modules/business_setup/business-setup.repo", () => ({
 jest.mock("../../../src/middleware/audit", () => ({
   audit: jest.fn(async () => {}),
 }));
+// publicConfig surfaces the brand's active NGN gateway chain (buyer-pickable
+// rails for public checkout pages). Mocked — the real service validates env
+// (ENCRYPTION_KEY etc.) at call time, which a hermetic unit test can't satisfy.
+const mockGateways = {
+  getActiveChain: jest.fn(async () => [
+    { provider: "nomba", credentials: {} },
+    { provider: "paystack", credentials: {} },
+    { provider: "stripe", credentials: {} },
+  ]),
+};
+jest.mock(
+  "../../../src/modules/business_setup/payment-gateways.service",
+  () => mockGateways,
+);
 
 const svc = require("../../../src/modules/sales/payment-settings.service");
 
@@ -196,6 +210,24 @@ describe("publicConfig", () => {
     expect(c).toHaveProperty("plan_display_name");
     expect(c).toHaveProperty("min_first_payment_pct");
     expect(c).not.toHaveProperty("allow_staff_recorded_manual_payments");
+  });
+
+  it("exposes buyer-pickable gateways (names only, Stripe filtered out)", async () => {
+    const c = await svc.publicConfig({
+      brand: "pixiegirl",
+      channel: "storefront",
+    });
+    // Stripe is a server-side last-resort, never a buyer-facing pick.
+    expect(c.gateways).toEqual(["nomba", "paystack"]);
+  });
+
+  it("gateway lookup failure degrades to an empty list, never an error", async () => {
+    mockGateways.getActiveChain.mockRejectedValueOnce(new Error("env"));
+    const c = await svc.publicConfig({
+      brand: "pixiegirl",
+      channel: "storefront",
+    });
+    expect(c.gateways).toEqual([]);
   });
 
   it("campaign channel needs the campaign's own toggle on", async () => {

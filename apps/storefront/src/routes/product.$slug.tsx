@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
+import { Sparkles, ExternalLink } from "lucide-react";
 import {
   addCartItem,
   type ProductDetail,
@@ -16,6 +17,30 @@ export const Route = createFileRoute("/product/$slug")({
   loader: async ({ params }) => ssrProduct({ data: { slug: params.slug } }),
   component: ProductPage,
 });
+
+const PLATFORM_LABEL: Record<string, string> = {
+  instagram: "Instagram",
+  facebook: "Facebook",
+  tiktok: "TikTok",
+  youtube: "YouTube",
+};
+
+/** Social proof loop: this product was actually posted and proven in Social
+ *  Studio — link back to the live post. */
+function SocialProofBadge({ proof }: { proof: NonNullable<ProductDetail["social_proof"]> }) {
+  return (
+    <a
+      href={proof.url}
+      target="_blank"
+      rel="noreferrer"
+      className="mt-3 inline-flex items-center gap-2 rounded-full border border-border px-3 py-1.5 text-body-sm text-muted-foreground transition hover:border-primary hover:text-primary"
+    >
+      <Sparkles className="h-3.5 w-3.5" />
+      As seen on {PLATFORM_LABEL[proof.platform] ?? proof.platform}
+      <ExternalLink className="h-3 w-3" />
+    </a>
+  );
+}
 
 function priceOfVariant(
   p: ProductDetail,
@@ -167,6 +192,7 @@ function ProductPage() {
         <p className="mt-3 font-mono text-h5">
           {price == null ? "-" : formatFromNgn(price, currency)}
         </p>
+        {product.social_proof ? <SocialProofBadge proof={product.social_proof} /> : null}
         {product.short_description ? (
           <p className="mt-4 text-body text-muted-foreground">
             {product.short_description}

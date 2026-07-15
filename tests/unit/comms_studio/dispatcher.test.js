@@ -29,11 +29,18 @@ jest.mock("../../../src/jobs/queue", () => ({
 jest.mock("../../../src/config/database", () => ({
   query: jest.fn(async () => ({ rows: [] })),
 }));
+// The dispatcher mirrors whatsapp/instagram automations onto the customer's
+// smartcomm thread (lazily required). Mocked so the unit test stays hermetic;
+// the default (null) exercises the raw-enqueue fallback path.
+jest.mock("../../../src/modules/smartcomm/smartcomm.service", () => ({
+  sendToCustomer: jest.fn(async () => null),
+}));
 
 const repo = require("../../../src/modules/comms_studio/comms-studio.repo");
 const policy = require("../../../src/modules/outbound_policy/outbound-policy.service");
 const { enqueue } = require("../../../src/jobs/queue");
 const { query } = require("../../../src/config/database");
+const smartcomm = require("../../../src/modules/smartcomm/smartcomm.service");
 const dispatcher = require("../../../src/modules/comms_studio/dispatcher");
 
 function baseAutomation(overrides = {}) {
@@ -225,6 +232,138 @@ describe("dispatcher.dispatch", () => {
     expect(queueName).toBe("whatsapp-send");
     expect(payload.to).toBe("234801");
     expect(payload.body).toBe("Hi Adaeze!");
+  });
+
+  test("WhatsApp sends mirror onto the smartcomm thread when the funnel succeeds", async () => {
+    repo.getAutomation.mockResolvedValueOnce(baseAutomation());
+    policy.resolveChannel.mockResolvedValueOnce({
+      channel: "whatsapp",
+      reason: "policy_default",
+    });
+    repo.claimSend.mockResolvedValueOnce({ send_id: "s-3" });
+    query.mockResolvedValueOnce({
+      rows: [
+        {
+          contact_id: "c-1",
+          first_name: "Adaeze",
+          display_name: "Adaeze O",
+          email: null,
+          primary_phone: "234801",
+          whatsapp_number: "234801",
+        },
+      ],
+    });
+    smartcomm.sendToCustomer.mockResolvedValueOnce({
+      channel_id: "ch-1",
+      queued: true,
+    });
+
+    const r = await dispatcher.dispatch({
+      brand: "pixiegirl",
+      event_key: "layaway_reminder",
+      contact_id: "c-1",
+    });
+
+    expect(r.dispatched).toBe(true);
+    expect(r.channel).toBe("whatsapp");
+    expect(smartcomm.sendToCustomer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        brand: "pixiegirl",
+        contact_id: "c-1",
+        channel: "whatsapp",
+        body: "Hi Adaeze!",
+        soft: true,
+      }),
+    );
+    // Mirrored via smartcomm — no duplicate raw enqueue.
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  test("email-preferred automation falls back to WhatsApp when the contact has no email (order_confirmation)", async () => {
+    repo.getAutomation.mockResolvedValueOnce(
+      baseAutomation({
+        event_key: "order_confirmation",
+        channel_preference: "email",
+        fallback_channel: "whatsapp",
+        whatsapp_body_template:
+          "Hi {{first_name}}! Order {{order_number}} received.",
+      }),
+    );
+    policy.resolveChannel.mockResolvedValueOnce({
+      channel: "email",
+      reason: "policy_default",
+    });
+    repo.claimSend.mockResolvedValueOnce({ send_id: "s-4" });
+    query.mockResolvedValueOnce({
+      rows: [
+        {
+          contact_id: "c-2",
+          first_name: "Ngozi",
+          display_name: "Ngozi A",
+          email: null, // ← WhatsApp customer: phone only
+          primary_phone: "234802",
+          whatsapp_number: "234802",
+        },
+      ],
+    });
+
+    const r = await dispatcher.dispatch({
+      brand: "faitlynhair",
+      event_key: "order_confirmation",
+      contact_id: "c-2",
+      variables: { order_number: "FLH-SO-0089" },
+    });
+
+    expect(r.dispatched).toBe(true);
+    expect(r.channel).toBe("whatsapp");
+    expect(r.fallback).toBe(true);
+    const [queueName, , payload] = enqueue.mock.calls[0];
+    expect(queueName).toBe("whatsapp-send");
+    expect(payload.to).toBe("234802");
+    expect(payload.body).toBe("Hi Ngozi! Order FLH-SO-0089 received.");
+  });
+
+  test("whatsapp fallback is refused when block_whatsapp is set", async () => {
+    repo.getAutomation.mockResolvedValueOnce(
+      baseAutomation({
+        channel_preference: "email",
+        fallback_channel: "whatsapp",
+        block_whatsapp: true,
+      }),
+    );
+    policy.resolveChannel.mockResolvedValueOnce({
+      channel: "email",
+      reason: "policy_default",
+    });
+    repo.claimSend.mockResolvedValueOnce({ send_id: "s-5" });
+    query.mockResolvedValueOnce({
+      rows: [
+        {
+          contact_id: "c-3",
+          first_name: "Bola",
+          display_name: "Bola K",
+          email: null,
+          primary_phone: "234803",
+          whatsapp_number: "234803",
+        },
+      ],
+    });
+
+    const r = await dispatcher.dispatch({
+      brand: "pixiegirl",
+      event_key: "layaway_reminder",
+      contact_id: "c-3",
+    });
+
+    expect(r).toEqual({
+      dispatched: false,
+      channel: "email",
+      reason: "no_email",
+    });
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(repo.markSendStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "skipped", failure_reason: "no_email" }),
+    );
   });
 });
 

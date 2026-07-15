@@ -28,13 +28,30 @@ class ApiError extends Error {
   status: number;
   body: Json;
   code?: string;
-  constructor(status: number, body: Json, message: string) {
+  constructor(status: number, body: Json, message: string, code?: string) {
     super(message);
     this.status = status;
     this.body = body;
-    this.code = (body as { error?: { code?: string }; code?: string })?.error
-      ?.code as string | undefined;
+    this.code =
+      code ??
+      ((body as { error?: { code?: string }; code?: string })?.error
+        ?.code as string | undefined);
   }
+}
+
+/** Thrown whenever a request never got a response at all — the browser
+ *  couldn't reach the server (offline, DNS failure, connection reset,
+ *  dropped mid-stream). Distinct from a `4xx`/`5xx` ApiError, which means
+ *  the server was reachable and answered. Status codes like 500 already
+ *  carry their own explanation from the backend; this is the one case
+ *  where the client has to explain itself, so the message is written for
+ *  a non-technical reader — no "fetch failed" jargon. */
+function networkError(): ApiError {
+  const online = typeof navigator === "undefined" || navigator.onLine;
+  const message = online
+    ? "Your connection looks slow or unstable right now. Try switching networks — e.g. from Wi-Fi to mobile data, or moving closer to your router — then try again."
+    : "You're not connected to the internet. Check your Wi-Fi or mobile data, then try again.";
+  return new ApiError(0, null, message, "NETWORK_ERROR");
 }
 
 // ── In-memory access token ────────────────────────────────
@@ -207,12 +224,17 @@ async function request<T>(path: string, opts: Options = {}): Promise<T> {
     if (active) headers["X-User-Activity"] = active;
   }
 
-  const res = await fetch(url, {
-    method,
-    headers,
-    credentials: "include",
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method,
+      headers,
+      credentials: "include",
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw networkError();
+  }
 
   // Silent-refresh-and-retry on a 401 — but never for the auth routes
   // themselves (login/refresh failing 401 is a real auth failure). We attempt
@@ -230,7 +252,12 @@ async function request<T>(path: string, opts: Options = {}): Promise<T> {
     if (hadSession) notifySessionExpired();
   }
 
-  const text = await res.text();
+  let text: string;
+  try {
+    text = await res.text();
+  } catch {
+    throw networkError();
+  }
   const parsed = text ? safeJson(text) : null;
 
   if (!res.ok) {
@@ -347,8 +374,7 @@ function postForm<T>(
       }
       resolve(((parsed as { data?: T })?.data ?? parsed) as T);
     };
-    xhr.onerror = () =>
-      reject(new ApiError(0, null, "Network error during upload"));
+    xhr.onerror = () => reject(networkError());
     xhr.onabort = () =>
       reject(new DOMException("Upload cancelled", "AbortError"));
 
@@ -369,17 +395,27 @@ async function download(path: string, fallbackName = "download"): Promise<void> 
   const active = activityHeader();
   if (active) headers["X-User-Activity"] = active;
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers,
-    credentials: "include",
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      headers,
+      credentials: "include",
+    });
+  } catch {
+    throw networkError();
+  }
   if (!res.ok) throw new ApiError(res.status, null, `HTTP ${res.status}`);
 
   const disposition = res.headers.get("Content-Disposition") || "";
   const match = /filename="?([^"]+)"?/.exec(disposition);
   const filename = match ? match[1] : fallbackName;
 
-  const blob = await res.blob();
+  let blob: Blob;
+  try {
+    blob = await res.blob();
+  } catch {
+    throw networkError();
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -413,7 +449,12 @@ async function getBlob(
     const active = activityHeader();
     if (active) headers["X-User-Activity"] = active;
   }
-  const res = await fetch(`${base}${path}`, { headers, credentials: "include" });
+  let res: Response;
+  try {
+    res = await fetch(`${base}${path}`, { headers, credentials: "include" });
+  } catch {
+    throw networkError();
+  }
   if (res.status === 401 && scope === "v1" && !_retried) {
     const hadSession = hadKnownSession();
     const ok = await refreshAccessToken();
@@ -422,7 +463,11 @@ async function getBlob(
     if (hadSession) notifySessionExpired();
   }
   if (!res.ok) throw new ApiError(res.status, null, `HTTP ${res.status}`);
-  return res.blob();
+  try {
+    return await res.blob();
+  } catch {
+    throw networkError();
+  }
 }
 
 /**

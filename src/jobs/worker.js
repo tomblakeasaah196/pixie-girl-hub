@@ -27,6 +27,7 @@
  *   daily 03:00      — Soft-FK reconciliation sweep (F-13)
  *   daily 03:30      — Catalogue Trash purge (15-day grace window)
  *   Sun 02:00        — GeoLite2-Country database auto-update (MaxMind)
+ *   09:00 & 18:00    — Social Studio Apify metrics sync (follower count + bio)
  */
 
 "use strict";
@@ -210,6 +211,12 @@ async function startWorkers() {
   const {
     runCosAccountabilitySweep,
   } = require("./schedulers/cos-accountability");
+  const {
+    runSocialDeadlineSweep,
+  } = require("./schedulers/social-deadline-sweep");
+  const {
+    runSocialMetricsSync,
+  } = require("./schedulers/social-metrics-sync");
 
   // Re-sync the brand registry so a business provisioned by the API process
   // reaches this worker's crons without a restart. Per-instance: it refreshes
@@ -267,6 +274,19 @@ async function startWorkers() {
     "cos-accountability",
     config.CRON_COS_ACCOUNTABILITY,
     runCosAccountabilitySweep,
+  );
+  // Social Studio: hourly nudge/escalate for overdue proof-of-publish posts.
+  scheduleCron(
+    "social-deadline-sweep",
+    config.CRON_SOCIAL_DEADLINE_SWEEP,
+    runSocialDeadlineSweep,
+  );
+  // Social Studio: twice-daily Apify pull of follower count + bio for every
+  // connected account (09:00 & 18:00 Lagos by default).
+  scheduleCron(
+    "social-metrics-sync",
+    config.CRON_SOCIAL_METRICS_SYNC,
+    runSocialMetricsSync,
   );
   scheduleCron(
     "layaway-abandonment",

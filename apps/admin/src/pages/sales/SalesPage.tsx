@@ -7,17 +7,23 @@ import {
   Truck,
   FileSpreadsheet,
   CreditCard,
+  Landmark,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button, KpiTile } from "@/components/ui/primitives";
 import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { money } from "@/lib/format";
 import { useAuthStore } from "@/stores/auth";
-import { useSalesKpis, useDeliveryPendingOrders } from "./hooks";
+import {
+  useSalesKpis,
+  useDeliveryPendingOrders,
+  usePosReconciliation,
+} from "./hooks";
 import { QuickSaleForm } from "./QuickSaleForm";
 import { OrdersView } from "./OrdersView";
 import { QuotationsView } from "./QuotationsView";
 import { DeliveryPendingView } from "./DeliveryPendingView";
+import { PosReconciliationView } from "./PosReconciliationView";
 import { PaymentSettingsView } from "./PaymentSettingsView";
 import { SalesReportExportModal } from "./SalesReportExportModal";
 
@@ -26,12 +32,14 @@ type SalesTab =
   | "orders"
   | "quotations"
   | "delivery-pending"
+  | "pos-reconciliation"
   | "payments";
 const TABS: { key: SalesTab; label: string; icon: typeof Zap }[] = [
   { key: "quick-sale", label: "Quick Sale", icon: Zap },
   { key: "orders", label: "Orders", icon: ShoppingBag },
   { key: "quotations", label: "Quotations", icon: FileText },
   { key: "delivery-pending", label: "Delivery Pending", icon: Truck },
+  { key: "pos-reconciliation", label: "POS Reconciliation", icon: Landmark },
   { key: "payments", label: "Payments", icon: CreditCard },
 ];
 
@@ -42,6 +50,8 @@ export function SalesPage() {
   const { data: kpis } = useSalesKpis();
   const { data: pendingFee } = useDeliveryPendingOrders({ page_size: 1 });
   const pendingCount = pendingFee?.meta?.total ?? 0;
+  const { data: pendingRecon } = usePosReconciliation({ page_size: 1 });
+  const pendingReconCount = pendingRecon?.meta?.total ?? 0;
   const can = useAuthStore((s) => s.can);
   const [exportOpen, setExportOpen] = useState(false);
 
@@ -108,16 +118,26 @@ export function SalesPage() {
             >
               <Icon className="w-4 h-4" />
               {t.label}
-              {t.key === "delivery-pending" && pendingCount > 0 && (
-                <span
-                  className={cn(
-                    "inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold",
-                    on ? "bg-white/20 text-white" : "bg-warn text-black",
-                  )}
-                >
-                  {pendingCount > 99 ? "99+" : pendingCount}
-                </span>
-              )}
+              {(() => {
+                const badgeCount =
+                  t.key === "delivery-pending"
+                    ? pendingCount
+                    : t.key === "pos-reconciliation"
+                      ? pendingReconCount
+                      : 0;
+                return (
+                  badgeCount > 0 && (
+                    <span
+                      className={cn(
+                        "inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold",
+                        on ? "bg-white/20 text-white" : "bg-warn text-black",
+                      )}
+                    >
+                      {badgeCount > 99 ? "99+" : badgeCount}
+                    </span>
+                  )
+                );
+              })()}
             </button>
           );
         })}
@@ -127,6 +147,7 @@ export function SalesPage() {
       {tab === "orders" && <OrdersView />}
       {tab === "quotations" && <QuotationsView />}
       {tab === "delivery-pending" && <DeliveryPendingView />}
+      {tab === "pos-reconciliation" && <PosReconciliationView />}
       {tab === "payments" && <PaymentSettingsView />}
     </div>
   );

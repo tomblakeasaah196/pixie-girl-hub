@@ -325,8 +325,24 @@ async function loadMediaBytes({ media_key, media_url, mime_type }) {
 async function sendMedia({ brand, to, kind, media_url, media_key, filename, mime_type, caption }) {
   let media_id = null;
   try {
-    const { buffer, mime } = await loadMediaBytes({ media_key, media_url, mime_type });
-    media_id = await uploadMedia({ brand, buffer, mime_type: mime, filename });
+    let { buffer, mime } = await loadMediaBytes({ media_key, media_url, mime_type });
+    let sendFilename = filename;
+    if (kind === "image") {
+      // Meta accepts ONLY jpeg/png for WhatsApp images. WebP (bundle
+      // collage covers, operator-uploaded .webp catalogue photos) bounced
+      // every share with an opaque media-upload error — transcode to JPEG
+      // before the upload instead of letting Meta reject the bytes.
+      const outboundImage = require("./outbound-image.service");
+      const safe = await outboundImage.ensureWhatsAppImage({
+        buffer,
+        mime,
+        filename,
+      });
+      buffer = safe.buffer;
+      mime = safe.mime;
+      sendFilename = safe.filename;
+    }
+    media_id = await uploadMedia({ brand, buffer, mime_type: mime, filename: sendFilename });
   } catch (err) {
     // Only fall back to the link method when we actually have a URL Meta
     // could fetch; otherwise surface the failure so the job is retried.

@@ -201,13 +201,11 @@ const schema = z.object({
   // (comma-separated). Meta's SDP supplies its own media candidates; STUN
   // lets the browser discover its public candidate behind NAT.
   WEBRTC_STUN_URLS: z.string().default("stun:stun.l.google.com:19302"),
-  META_IG_USER_ID: z.string().optional(), // IG Business account id (publish target)
-  META_FB_PAGE_ID: z.string().optional(),
-  META_FB_PAGE_TOKEN: z.string().optional(), // page access token (FB + IG publish)
-  TIKTOK_ACCESS_TOKEN: z.string().optional(),
-  TIKTOK_BASE_URL: z.string().url().default("https://open.tiktokapis.com"),
-  YOUTUBE_ACCESS_TOKEN: z.string().optional(), // OAuth token with youtube.upload scope
-  YOUTUBE_BASE_URL: z.string().url().default("https://www.googleapis.com"),
+  // Page access token — messaging (send API) + Social Studio's oEmbed proof
+  // lookups. Nothing in this codebase publishes to Meta any more (Social
+  // Studio is manual-first: creators post natively, then prove it with a
+  // link); this token only ever reads public oEmbed metadata for that link.
+  META_FB_PAGE_TOKEN: z.string().optional(),
 
   // Paid ads — Google Ads + Meta Marketing (V2.2 §6.15 live sync). App-level
   // creds only; per-ad-account OAuth tokens are stored AES-encrypted on
@@ -427,6 +425,12 @@ const schema = z.object({
   // Chief of Staff accountability sweep — hourly risk radar + follow-up nudges
   // + evening review (PR4). Cheap + deterministic; quiet-hours aware.
   CRON_COS_ACCOUNTABILITY: z.string().default("0 * * * *"),
+  // Social Studio deadline sweep — hourly nudge/escalate for overdue proof-
+  // of-publish posts (§6.14). Quiet-hours aware.
+  CRON_SOCIAL_DEADLINE_SWEEP: z.string().default("15 * * * *"),
+  // Social Studio Apify metrics sync — pull follower count + bio for every
+  // connected account twice a day (09:00 & 18:00 Africa/Lagos).
+  CRON_SOCIAL_METRICS_SYNC: z.string().default("0 9,18 * * *"),
 
   // ── Kaizen (maintenance/ops console) ─────────────────────────────────────
   // All optional/defaulted so the main app boots even when Kaizen isn't wired.

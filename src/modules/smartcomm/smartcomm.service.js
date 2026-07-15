@@ -1126,8 +1126,15 @@ async function buildProductShareCards({ business, message, platform }) {
   const meta = message.metadata || {};
   const products = Array.isArray(meta.products) ? meta.products : [];
   const trimForIg = platform === "instagram";
+  // Hard provider limits: IG rejects any bubble over 1000 chars (code 100,
+  // subcode 2534038); WhatsApp caps a media CAPTION at 1024. Trim with an
+  // ellipsis instead of letting Meta bounce the whole share — a long bundle
+  // description or operator intro must never kill the send.
+  const maxLen = trimForIg ? 980 : 1000;
+  const clamp = (s) =>
+    s && s.length > maxLen ? `${s.slice(0, maxLen - 1).trimEnd()}…` : s;
   const cards = [];
-  if (meta.intro) cards.push({ type: "text", body: meta.intro });
+  if (meta.intro) cards.push({ type: "text", body: clamp(meta.intro) });
 
   let capture_url = null;
   for (const p of products) {
@@ -1138,16 +1145,39 @@ async function buildProductShareCards({ business, message, platform }) {
     });
     const name = fresh?.name || p.name;
     const description = trimForIg ? null : fresh?.description || null;
-    const price_ngn = fresh ? fresh.price_ngn : p.price;
+    // A staff-picked styled variant (head size × lace × colour) sets its own
+    // price, snapshotted onto the card at pick time — prefer it over the live
+    // anchor lookup so the customer sees the price for THEIR size/lace. `spec`
+    // is the short combo label; show it on every platform (it's the point of
+    // the pick) even when the description is trimmed for Instagram.
+    const hasPickedVariant = Boolean(p.spec || p.styled_variant_id);
+    const price_ngn = hasPickedVariant
+      ? p.price
+      : fresh
+        ? fresh.price_ngn
+        : p.price;
     const image_url = fresh?.image_url || p.image_url || null;
     if (p.capture_url && !capture_url) capture_url = p.capture_url;
 
-    const bits = [`*${name}*`];
-    if (description) bits.push(description);
-    if (price_ngn !== null && price_ngn !== undefined) {
-      bits.push(`Price: ${ngn(price_ngn)}`);
+    const compose = (desc) => {
+      const bits = [`*${name}*`];
+      if (p.spec) bits.push(p.spec);
+      if (desc) bits.push(desc);
+      if (price_ngn !== null && price_ngn !== undefined) {
+        bits.push(`Price: ${ngn(price_ngn)}`);
+      }
+      return bits.join("\n");
+    };
+    let caption = compose(description);
+    if (caption.length > maxLen && description) {
+      // Trim the DESCRIPTION, never the price line off the bottom.
+      const overhead = caption.length - description.length;
+      const room = maxLen - overhead - 1;
+      caption = compose(
+        room > 20 ? `${description.slice(0, room).trimEnd()}…` : null,
+      );
     }
-    const caption = bits.join("\n");
+    caption = clamp(caption);
     cards.push(
       image_url ? { type: "image", media_url: image_url, caption } : { type: "text", body: caption },
     );
@@ -1982,6 +2012,98 @@ async function sendToCustomer({
 }
 
 /**
+ * Send a rich transactional email (order confirmation, receipt letter, …)
+ * AND record it on the contact's email customer thread, so automated
+ * brand mail is visible in Messaging → email channel instead of leaving
+ * the operator blind to what the customer was sent.
+ *
+ * Differs from sendToCustomer's email path, which uses one string as BOTH
+ * the thread content and the email body: transactional letters are full
+ * brand-skinned HTML, so here `html` rides only the email-send job while
+ * the thread stores the readable plain-text version (same shape inbound
+ * email ingestion stores). Delivery status flips queued → sent/failed via
+ * the email processor exactly like a composer send.
+ *
+ * Never throws — the caller's send must not fail because the mirror did.
+ * Returns null when it couldn't queue (caller should fall back to a
+ * direct email.send so the customer still gets the mail).
+ */
+async function sendTransactionalEmail({
+  brand,
+  contact_id,
+  to,
+  subject,
+  html,
+  text,
+  event_key,
+  reference_type,
+  reference_id,
+}) {
+  if (!brand || !contact_id || !to || !html) return null;
+  try {
+    const { thread, msg } = await transaction(async (client) => {
+      const th = await findOrCreateCustomerThread({
+        client,
+        brand,
+        contact_id,
+        platform: "email",
+      });
+      const m = await repo.insertMessage({
+        client,
+        message: {
+          channel_id: th.channel_id,
+          sender_user_id: null,
+          message_type: "system",
+          content: text || subject || "(email)",
+          delivery_status: "queued",
+          metadata: {
+            subject: subject || null,
+            event_key: event_key || null,
+            transactional: true,
+          },
+        },
+      });
+      return { thread: th, msg: m };
+    });
+    await enqueue("email-send", event_key || "transactional-email", {
+      brand,
+      to,
+      subject,
+      html,
+      text,
+      smartcomm_message_id: msg.message_id,
+      channel_id: thread.channel_id,
+      contact_id,
+      event_key,
+      reference_type,
+      reference_id,
+    });
+    if (subject) {
+      await query(
+        `UPDATE shared.message_channels
+            SET metadata = shared.message_channels.metadata || jsonb_build_object('subject', $2::text)
+          WHERE channel_id = $1`,
+        [thread.channel_id, subject],
+      ).catch(() => null);
+    }
+    events.emit("customer.message_sent", {
+      brand,
+      contact_id,
+      channel_id: thread.channel_id,
+      message_id: msg.message_id,
+    });
+    return { channel_id: thread.channel_id, message_id: msg.message_id, queued: true };
+  } catch (err) {
+    const { logger } = require("../../config/logger");
+    logger.warn(
+      { err: err.message, brand, contact_id, event_key },
+      "smartcomm: transactional email mirror failed (caller should send direct)",
+    );
+    return null;
+  }
+}
+
+/**
  * Delivery outcome from a queue processor (sent/failed + provider ref).
  * One entry point so every processor both persists the status AND emits
  * message.edited — the open thread used to keep showing the hourglass
@@ -2361,6 +2483,7 @@ module.exports = {
   getComposerSettings,
   updateComposerSettings,
   sendToCustomer,
+  sendTransactionalEmail,
   sendInvoiceIntoThread,
   recordInboundFromCustomer,
   findOrCreateCustomerThread,

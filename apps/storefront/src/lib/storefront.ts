@@ -5,6 +5,7 @@ import {
   rateToNgn,
   type CurrencyInfo,
 } from "./money";
+import type { ContentBlock } from "./content-blocks";
 
 /*
  * Storefront data layer - typed Hub calls + types. Replaces every Supabase
@@ -80,6 +81,14 @@ export interface ProductDetail {
     title: string;
     guide_md?: string | null;
     video_url?: string | null;
+  } | null;
+  /** "As seen on Instagram" — the most recent proven (posted) Social Studio
+   *  post tagging this product, or null if none has been proven yet. */
+  social_proof?: {
+    platform: "instagram" | "facebook" | "tiktok" | "youtube";
+    url: string;
+    thumbnail_url: string | null;
+    author_handle: string | null;
   } | null;
 }
 
@@ -278,6 +287,8 @@ export const getContentPost = (type: string, slug: string, ctx?: ApiContext) =>
     body_md?: string;
     body_html?: string;
     cover_image_url?: string;
+    content_blocks?: ContentBlock[];
+    tags?: string[];
     published_at?: string;
   }>(`${SF}/content/${type}/${slug}`, ctx);
 export const getContentList = (type: string, ctx?: ApiContext) =>
@@ -287,6 +298,7 @@ export const getContentList = (type: string, ctx?: ApiContext) =>
       title: string;
       excerpt?: string;
       cover_image_url?: string;
+      tags?: string[];
       published_at?: string;
     }[]
   >(`${SF}/content/${type}`, ctx);

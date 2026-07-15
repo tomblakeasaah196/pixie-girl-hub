@@ -10,7 +10,7 @@
  * shops are not developers.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   PointerSensor,
@@ -28,11 +28,13 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { Plus, Newspaper } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button, Card, Pill } from "@/components/ui/primitives";
-import { Toggle, Select } from "@/components/ui/controls";
+import { Toggle, Select, ConfirmDialog } from "@/components/ui/controls";
 import { Tabs } from "@/pages/stock/parts";
 import { useBusinessStore } from "@/stores/business";
+import { useContentPosts, type ContentPost } from "@/lib/content-posts";
 import {
   useThemes,
   useSaveThemeDraft,
@@ -60,7 +62,7 @@ import {
 import { toast } from "@/stores/toast";
 import { describeError } from "@/lib/error-report";
 import { formatDateTime } from "@/lib/format";
-import { ContentTab } from "./ContentTab";
+import { ContentTab, type ContentJump } from "./ContentTab";
 import { VideoField } from "./VideoField";
 
 /**
@@ -132,6 +134,14 @@ function StatusPill({ status }: { status?: StudioStatus }) {
 export function StorefrontStudioPage() {
   const brand = useBusinessStore((s) => s.activeKey);
   const [tab, setTab] = useState<Tab>("theme");
+  // Pages → journal links "view/create article" straight into Content, so the
+  // operator never has to re-find what they just clicked.
+  const [contentJump, setContentJump] = useState<ContentJump | null>(null);
+  const clearContentJump = useCallback(() => setContentJump(null), []);
+  const jumpToContent = useCallback((jump: ContentJump) => {
+    setContentJump(jump);
+    setTab("content");
+  }, []);
 
   return (
     <div className="space-y-5">
@@ -147,8 +157,10 @@ export function StorefrontStudioPage() {
         {tab === "branding" ? <BrandingTab /> : null}
         {tab === "toolbar" ? <ToolbarTab /> : null}
         {tab === "navigation" ? <NavigationTab /> : null}
-        {tab === "pages" ? <PagesTab /> : null}
-        {tab === "content" ? <ContentTab /> : null}
+        {tab === "pages" ? <PagesTab onJumpToContent={jumpToContent} /> : null}
+        {tab === "content" ? (
+          <ContentTab jumpTo={contentJump} onJumpHandled={clearContentJump} />
+        ) : null}
         {tab === "popups" ? <PopupsTab /> : null}
         {tab === "preview" ? <PreviewTab /> : null}
         {tab === "revisions" ? <RevisionsTab /> : null}
@@ -188,6 +200,38 @@ function Section({
           {children}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function BooleanField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-0.5">
+      <span className="text-[12px] font-medium text-text-muted">{label}</span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={value}
+        aria-label={label}
+        onClick={() => onChange(!value)}
+        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+          value ? "bg-accent-deep" : "bg-text-primary/20"
+        }`}
+      >
+        <span
+          className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
+            value ? "translate-x-[22px]" : "translate-x-[2px]"
+          }`}
+        />
+      </button>
     </div>
   );
 }
@@ -1321,7 +1365,11 @@ const BLANK_PAGE: PageRow = {
   slots: {},
 };
 
-function PagesTab() {
+function PagesTab({
+  onJumpToContent,
+}: {
+  onJumpToContent: (jump: { postId?: string }) => void;
+}) {
   const { data, isLoading } = usePages();
   const save = useSavePageDraft();
   const publish = usePublishPage();
@@ -1464,6 +1512,10 @@ function PagesTab() {
             <SlotsEditor value={slots} onChange={setSlots} />
           </div>
 
+          {sel.page_key === "journal" ? (
+            <JournalArticlesPanel onJumpToContent={onJumpToContent} />
+          ) : null}
+
           <div className="flex gap-2 pt-1">
             <Button
               variant="primary"
@@ -1491,6 +1543,71 @@ function PagesTab() {
   );
 }
 
+/** Read-only preview of journal articles, shown right on the "journal" page's
+ *  editor — this page is only the listing banner (eyebrow/heading), so this
+ *  panel answers "where are my actual articles?" and hands off to the real
+ *  editor (Content tab) rather than duplicating it here. */
+function JournalArticlesPanel({
+  onJumpToContent,
+}: {
+  onJumpToContent: (jump: { postId?: string }) => void;
+}) {
+  const { data, isLoading } = useContentPosts();
+  const articles = useMemo(
+    () => (data || []).filter((p) => p.post_type === "journal"),
+    [data],
+  );
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <label className={cn(labelCls, "text-[13px] text-text-primary")}>
+          Journal articles
+        </label>
+        <Button
+          variant="secondary"
+          size="sm"
+          icon={<Plus className="h-3.5 w-3.5" />}
+          onClick={() => onJumpToContent({})}
+        >
+          New article
+        </Button>
+      </div>
+      <p className="mb-2 text-[12px] text-text-muted">
+        The banner above is all this page controls. Individual articles are
+        written and published in Content — click one to open it there.
+      </p>
+      <Card className="p-2">
+        {isLoading ? (
+          <p className="px-2 py-3 text-[13px] text-text-muted">Loading…</p>
+        ) : articles.length === 0 ? (
+          <p className="px-2 py-4 text-center text-[12.5px] text-text-muted">
+            No articles yet. Click “New article” to write your first one.
+          </p>
+        ) : (
+          <ul className="space-y-1">
+            {articles.map((a: ContentPost) => (
+              <li key={a.post_id}>
+                <button
+                  onClick={() => onJumpToContent({ postId: a.post_id })}
+                  className="flex w-full items-center gap-2.5 rounded-[10px] px-3 py-2 text-left text-[13px] text-text-muted hover:bg-text-primary/[0.04] hover:text-text-primary"
+                >
+                  <Newspaper className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+                  <span className="min-w-0 flex-1 truncate">
+                    {a.title || "(untitled)"}
+                  </span>
+                  <Pill tone={a.status === "published" ? "success" : "neutral"} dot={false}>
+                    {a.status === "published" ? "Live" : "Draft"}
+                  </Pill>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+    </div>
+  );
+}
+
 // ============================================================
 // Generic keyed-slots editor — edits the exact `slots` object the storefront
 // reads (hero/heading/body/image fields, string lists, nested groups, lists of
@@ -1512,6 +1629,17 @@ const IMAGE_LIST_HINT = /(image|photo|gallery|slide|banner)/i;
 // it gets the trim/crop studio, never the generic object editor.
 const VIDEO_HINT = /video/i;
 
+// The Instagram identity shown under the home "Gallery" rotating showcase. It's
+// injected into the Gallery group (like the hero video/image below) so it's
+// editable even on pages published before the field existed. Keep in sync with
+// the storefront default in apps/storefront/src/lib/home-content.ts.
+const GALLERY_PROFILE_DEFAULT = {
+  handle: "@faitlynhair",
+  followers: "84.9K",
+  bio: "Most Realistic Pixie Wigs · Luxury Hair + Premium HD Lace",
+  verified: true,
+};
+
 function SlotValue({
   fieldKey,
   value,
@@ -1527,12 +1655,15 @@ function SlotValue({
     return <VideoField label={label} value={value} onChange={onChange} />;
   }
 
+  if (typeof value === "boolean") {
+    return <BooleanField label={label} value={value} onChange={onChange} />;
+  }
+
   if (
     value === null ||
     value === undefined ||
     typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
+    typeof value === "number"
   ) {
     const s = value == null ? "" : String(value);
     if (IMAGE_HINT.test(fieldKey))
@@ -1574,6 +1705,10 @@ function SlotValue({
   const isHero = /hero/i.test(fieldKey);
   const offerHeroVideo = isHero && !("video" in obj);
   const offerHeroImage = isHero && !("imageUrl" in obj);
+  // The home Gallery gets an Instagram "Profile" group (handle, followers,
+  // tagline, verified badge) shown under the rotating showcase — offered even
+  // on pages saved before the field existed.
+  const offerGalleryProfile = /gallery/i.test(fieldKey) && !("profile" in obj);
   return (
     <Section title={label}>
       {Object.entries(obj).map(([k, v]) => (
@@ -1596,6 +1731,13 @@ function SlotValue({
           label="Looping Video"
           value={undefined}
           onChange={(nv) => onChange({ ...obj, video: nv })}
+        />
+      ) : null}
+      {offerGalleryProfile ? (
+        <SlotValue
+          fieldKey="profile"
+          value={GALLERY_PROFILE_DEFAULT}
+          onChange={(nv) => onChange({ ...obj, profile: nv })}
         />
       ) : null}
     </Section>
@@ -1823,6 +1965,7 @@ function PopupsTab() {
   const del = useDeletePopup();
   const [sel, setSel] = useState<PopupRow | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const popups = useMemo(() => {
     const byKey: Record<string, PopupRow> = {};
@@ -2033,19 +2176,33 @@ function PopupsTab() {
             <Button
               variant="danger"
               disabled={!sel.popup_key || del.isPending}
-              onClick={() =>
-                runStudio(() => del.mutateAsync(sel.popup_key), {
-                  area: `${STUDIO_AREA} → Popups (${sel.popup_key})`,
-                  action: "Delete popup",
-                  success: "Popup deleted.",
-                  onOk: () => setSel(null),
-                })
-              }
+              onClick={() => setConfirmDelete(true)}
             >
               Delete
             </Button>
           </div>
           <Status msg={msg} />
+
+          <ConfirmDialog
+            open={confirmDelete}
+            onClose={() => setConfirmDelete(false)}
+            onConfirm={() =>
+              runStudio(() => del.mutateAsync(sel.popup_key), {
+                area: `${STUDIO_AREA} → Popups (${sel.popup_key})`,
+                action: "Delete popup",
+                success: "Popup deleted.",
+                onOk: () => {
+                  setConfirmDelete(false);
+                  setSel(null);
+                },
+              })
+            }
+            title="Delete popup"
+            message={`Delete the "${sel.popup_key}" popup? This removes both the draft and published versions and can't be undone.`}
+            confirmLabel="Delete"
+            tone="danger"
+            busy={del.isPending}
+          />
         </Card>
       ) : (
         <p className="text-[13px] text-text-muted">

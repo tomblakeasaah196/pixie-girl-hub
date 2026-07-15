@@ -210,12 +210,12 @@ export const smartcommApi = {
       `/smartcomm/channels/${channelId}/draft-with-praxis`,
     ),
 
-  // Order capture link (universal order link: capture = staff-picked
-  // cart, shop = curated mini-shop the customer picks from)
-  createOrderCapture: (input: {
+  // Order link — a short shared-catalogue checkout link (`/o/<slug>`) the
+  // customer opens to pick items + pay. The cart lives server-side; the URL
+  // only carries the slug, so it stays well under Instagram's 1,000-char cap.
+  createOrderLink: (input: {
     contact_id?: string;
     channel_id?: string;
-    mode?: "capture" | "shop";
     items: {
       kind?: "base" | "styled" | "bundle" | "service";
       product_id?: string;
@@ -225,6 +225,12 @@ export const smartcommApi = {
       qty: number;
       price_ngn?: string;
       note?: string;
+      // Staff-picked styled variant (head size × lace × colour).
+      styled_variant_id?: string;
+      size_code?: string;
+      lace_code?: string;
+      colour_id?: string;
+      spec?: string;
     }[];
     sales_channel?: string;
     notes?: string;
@@ -232,10 +238,9 @@ export const smartcommApi = {
   }) =>
     api.post<{
       url: string;
-      token: string;
+      slug: string;
       expires_at: string;
       link_id?: string;
-      mode?: "capture" | "shop";
       // Items that couldn't resolve to a sellable variant (inactive
       // product, no active variant, non-live styled product, broken
       // bundle) — surfaced at mint time so staff aren't surprised later
@@ -246,7 +251,7 @@ export const smartcommApi = {
         name: string | null;
         reason: string;
       }[];
-    }>("/smartcomm/order-capture", input),
+    }>("/smartcomm/order-link", input),
 
   // Sidebar activity panel: a channel's order links + live cart state.
   listOrderLinks: (channelId: string) =>

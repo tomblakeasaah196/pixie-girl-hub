@@ -23,6 +23,14 @@ export function moneyCompact(amount: number, currency = "NGN"): string {
   return `${sym}${amount}`;
 }
 
+/** Compact plain count for non-money tallies (followers, views): 1.2M, 128k. */
+export function compactCount(n: number): string {
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  if (abs >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
+  return String(n);
+}
+
 export function initials(name: string): string {
   return name
     .split(/\s|-/)

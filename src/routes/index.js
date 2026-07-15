@@ -31,6 +31,7 @@ const authRouter = require("../shared/hr_payroll/auth.routes");
 const crmRouter = require("../modules/crm/crm.routes");
 const catalogueRouter = require("../modules/catalogue/catalogue.routes");
 const salesRouter = require("../modules/sales/sales.routes");
+const posRouter = require("../modules/pos/pos.routes");
 const storefrontRouter = require("../modules/storefront/storefront.routes");
 const invoicingRouter = require("../modules/invoicing/invoicing.routes");
 const accountingRouter = require("../modules/accounting/accounting.routes");
@@ -125,15 +126,20 @@ const {
   publicRouter: onboardingPublicRouter,
 } = require("../modules/customer_onboarding/customer-onboarding.routes");
 
-// Order Capture public verifier (PR 4) — decodes signed JWT, returns
-// prefill payload for the storefront's consumer page.
-const orderCapturePublicRouter = require("../modules/smartcomm/smartcomm.order-capture.public.routes");
+// Order-link public checkout — resolves a short `/o/<slug>` link to its
+// checkout context (items + contact + address pre-fill) for the page.
+const orderLinkPublicRouter = require("../modules/smartcomm/smartcomm.order-links.public.routes");
 
 // Service Catalogue (revamps, custom styles, repairs etc.)
 const serviceCatalogueRouter = require("../modules/service_catalogue/service-catalogue.routes");
 
 // Messaging Accounts (PR 6) — admin surface for inbound routing rows
 const messagingAccountsRouter = require("../modules/messaging_accounts/messaging-accounts.routes");
+
+// Apify Settings — encrypted key for the Social Studio public metrics scraper
+const apifySettingsRouter = require("../modules/apify_settings/apify-settings.routes");
+// Social platform registry — extensible list of scrapeable networks
+const socialPlatformsRouter = require("../modules/social_platforms/social-platforms.routes");
 
 // WhatsApp approved templates + per-category send-cost rates
 const whatsappTemplatesRouter = require("../modules/whatsapp_templates/whatsapp-templates.routes");
@@ -308,13 +314,9 @@ function mountRoutes(app) {
   // Customer Onboarding form — public, token-protected. The token
   // itself is sufficient auth; the per-IP write limiter blunts abuse.
   publicRouter.use("/onboarding", publicWriteLimiter, onboardingPublicRouter);
-  // Order Capture verifier — the storefront consumer page POSTs the JWT
-  // and gets back the prefilled items + contact + address.
-  publicRouter.use(
-    "/order-capture",
-    publicWriteLimiter,
-    orderCapturePublicRouter,
-  );
+  // Order-link checkout — the `/o/<slug>` page GETs its prefill context and
+  // POSTs live cart activity. Write-limited (the activity POST).
+  publicRouter.use("/order-link", publicWriteLimiter, orderLinkPublicRouter);
   publicRouter.use("/pay", publicWriteLimiter, publicPayLinkRouter);
   publicRouter.use("/email", publicEmailTrackingRouter);
   // Unauthenticated branding feed — the login page calls this before
@@ -368,6 +370,7 @@ function mountRoutes(app) {
     ["/crm", crmRouter],
     ["/catalogue", catalogueRouter],
     ["/sales", salesRouter],
+    ["/pos", posRouter],
     ["/storefront", storefrontRouter],
     ["/invoicing", invoicingRouter],
     ["/accounting", accountingRouter],
@@ -389,6 +392,8 @@ function mountRoutes(app) {
     ["/customer-onboarding", onboardingAdminRouter],
     ["/service-catalogue", serviceCatalogueRouter],
     ["/messaging-accounts", messagingAccountsRouter],
+    ["/apify-settings", apifySettingsRouter],
+    ["/social-platforms", socialPlatformsRouter],
     ["/whatsapp-templates", whatsappTemplatesRouter],
     ["/calls", callsRouter],
     ["/outbound-policy", outboundPolicyRouter],

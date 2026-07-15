@@ -40,7 +40,7 @@ async function notifyRepOnSale({ brand, order_id }) {
   }
 }
 
-async function sendCustomerConfirmationEmail({ brand, order_id }) {
+async function sendCustomerConfirmation({ brand, order_id }) {
   try {
     const { query: dbQuery } = require("../../config/database");
     const {
@@ -55,15 +55,61 @@ async function sendCustomerConfirmationEmail({ brand, order_id }) {
       [order.contact_id],
     );
     const contact = rows[0];
-    if (!contact || !contact.email) return;
+    if (!contact) return;
 
-    // Premium, fully-branded confirmation: logo, brand colours, itemised order,
-    // delivery ETA or pickup window (Settings-driven), signed "Sales, {brand}".
-    await sendOrderConfirmationEmail({ brand, order, contact });
+    if (contact.email) {
+      // Premium, fully-branded confirmation letter: logo, brand colours,
+      // itemised order, delivery ETA or pickup window (Settings-driven),
+      // signed "Sales, {brand}". Mirrored onto the contact's email thread
+      // in Messaging.
+      await sendOrderConfirmationEmail({
+        brand,
+        order,
+        contact,
+        contact_id: order.contact_id,
+      });
+      return;
+    }
+
+    // No email on file — the common case for WhatsApp / Instagram customers
+    // (the order-link checkout only requires a phone). They used to get NO
+    // confirmation at all: the 'order_confirmation' automation existed in the
+    // Comms Studio but nothing ever dispatched it. Dispatch it now so the
+    // confirmation reaches them on the channel the CEO configured (the
+    // policy's fallback_channel covers the email-preferred default — see the
+    // dispatcher's address-aware fallback). Dedup on the order id, so the
+    // at-least-once outbox can never double-send.
+    const commsStudio = require("../../modules/comms_studio/comms-studio.service");
+    const brandUrls = require("../../utils/brand-urls");
+    let tracking_url = "";
+    try {
+      tracking_url = order.public_tracking_token
+        ? await brandUrls.payLinkUrl(brand, order.public_tracking_token)
+        : (await brandUrls.publicBaseUrl(brand)) || "";
+    } catch {
+      tracking_url = "";
+    }
+    const total = Number(order.total_ngn || 0);
+    await commsStudio.dispatch({
+      brand,
+      event_key: "order_confirmation",
+      contact_id: order.contact_id,
+      reference_type: "sales_order",
+      reference_id: order_id,
+      dedup_key: `order_confirmation:${order_id}`,
+      variables: {
+        order_number: order.order_number,
+        total_ngn_display: `₦${total.toLocaleString("en-NG", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}`,
+        tracking_url,
+      },
+    });
   } catch (err) {
     logger.error(
       { err: err.message, brand, order_id },
-      "notifications: customer confirmation email failed",
+      "notifications: customer confirmation failed",
     );
   }
 }
@@ -77,10 +123,10 @@ function register() {
   outbox.register(
     "order.paid",
     "customer-confirmation-email",
-    sendCustomerConfirmationEmail,
+    sendCustomerConfirmation,
   );
   logger.info(
-    "notifications subscribers registered (outbox order.paid → rep + customer email)",
+    "notifications subscribers registered (outbox order.paid → rep + customer confirmation email/WhatsApp)",
   );
 }
 

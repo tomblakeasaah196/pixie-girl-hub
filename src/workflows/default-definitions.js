@@ -215,6 +215,28 @@ const DEFINITIONS = {
     },
   },
 
+  // ── Social Studio (§6.14) — CEO signs off a creator's whole monthly plan ──
+  "social:submit_plan": {
+    name: "Content Plan Approval",
+    description:
+      "Single-stage CEO approval for a creator's monthly content plan — one decision covers every post in the batch.",
+    trigger_module: "social",
+    trigger_action: "submit_plan",
+    definition: {
+      trigger: { module: "social", action: "submit_plan" },
+      stages: [
+        {
+          order: 1,
+          name: "CEO approval",
+          approvers: [{ type: "role", value: "ceo" }],
+          timeout_hours: 48,
+          on_timeout: "escalate",
+          fallback_to_deputy: true,
+        },
+      ],
+    },
+  },
+
   // ── Cash Request (§6.32) — Finance validates, CEO approves above threshold ─
   "cash_request:submit": {
     name: "Cash Request Approval",

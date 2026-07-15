@@ -183,8 +183,8 @@ export interface Message {
 }
 
 /** A card inside a product_share carousel. `kind` matches the catalogue
- * picker domain (base/styled/bundle/service). `capture_url` is the
- * tap-to-order JWT link for product kinds; service cards skip it. */
+ * picker domain (base/styled/bundle/service). `capture_url` is the shared
+ * `/o/<slug>` order-link URL (same link for every card in the share). */
 export interface ProductCard {
   kind: "base" | "styled" | "bundle" | "service";
   id: string;
@@ -193,6 +193,14 @@ export interface ProductCard {
   image_url?: string | null;
   capture_url?: string | null;
   sub?: string | null;
+  // Staff-picked styled variant (head size × lace × colour). `spec` is the
+  // human label ("Medium · 6×6 Frontal · Spicy Copper"); the codes carry the
+  // exact variant so the order is priced + fulfilled for that combination.
+  spec?: string | null;
+  styled_variant_id?: string | null;
+  size_code?: string | null;
+  lace_code?: string | null;
+  colour_id?: string | null;
 }
 
 export interface UnreadCount {

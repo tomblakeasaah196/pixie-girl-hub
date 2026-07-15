@@ -122,6 +122,7 @@ src/modules/<module-name>/
 - [Entity isolation](docs/ENTITY_ISOLATION.md) — PXG vs FLH data separation
 - [Admin UI requirements](docs/ADMIN_UI_REQUIREMENTS.md) — for frontend pairing
 - [Frontend screen requirements](docs/FRONTEND_SCREEN_REQUIREMENTS.md)
+- [Praxis knowledge base](docs/PRAXIS_KNOWLEDGE_BASE.md) — whole-system navigation guide Praxis is trained on (see "Praxis knowledge base" governance below)
 
 ---
 
@@ -149,6 +150,10 @@ RBAC in the same PR:**
    - Map it in the admin nav so it hides from users without access:
      set the `permission` field on the module in
      [`apps/admin/src/lib/modules.ts`](apps/admin/src/lib/modules.ts).
+   - **Seed it into the Praxis knowledge base** — add the module (route,
+     permission, tabs, common tasks) to
+     [`docs/PRAXIS_KNOWLEDGE_BASE.md`](docs/PRAXIS_KNOWLEDGE_BASE.md) in the
+     **same PR** (see "Praxis knowledge base" governance below).
 2. **Removing / renaming a module:**
    - Remove the old key from `access.catalog.js`.
    - Ship a migration that purges its rows from `shared.permissions`
@@ -168,6 +173,63 @@ RBAC in the same PR:**
    a permission module — it's guarded by a `requireCeo` middleware and re-enters
    the real endpoints as the CEO, so RBAC re-applies. See `docs/RBAC.md` and
    `docs/AI_CHIEF_OF_STAFF.md`.
+
+### Praxis knowledge base (keep it seeded)
+
+Praxis answers "how do I… / where do I…" questions from a single trained
+document: [`docs/PRAXIS_KNOWLEDGE_BASE.md`](docs/PRAXIS_KNOWLEDGE_BASE.md). It is
+**generated from the live codebase** — the admin route map
+([`apps/admin/src/router.tsx`](apps/admin/src/router.tsx)), the nav catalogue
+([`apps/admin/src/lib/modules.ts`](apps/admin/src/lib/modules.ts)), and the RBAC
+catalog ([`src/shared/access/access.catalog.js`](src/shared/access/access.catalog.js)).
+If the code changes but the doc doesn't, Praxis starts handing users **dead links
+and wrong instructions**. So the doc is a first-class deliverable, not an
+afterthought.
+
+**Whenever a change affects how a user navigates or acts, seed it into the
+knowledge base in the SAME PR.** A change is "user-facing" (and therefore
+requires a knowledge-base update) if it does any of:
+
+- adds, removes, renames, or **re-routes** a page (anything in `router.tsx`);
+- adds/removes a **module** or changes its group/permission (`modules.ts`,
+  `access.catalog.js`);
+- adds/removes/renames a **tab** or a primary **action button** ("New X",
+  "Create X") inside a module;
+- changes a **task flow** the doc describes (e.g. how a cash request is raised,
+  approved, or settled);
+- adds a new **public link** shape (`/o/<slug>`, `/sign/<token>`, …).
+
+Pure backend refactors, tests, styling, and copy tweaks that don't change
+navigation or task steps do **not** need a knowledge-base update.
+
+**Seeding is automatic on deploy — you just keep the doc current.** The file is
+in the RAG ingest manifest (`scripts/ai-ingest-docs.js` `MANIFEST`), so every
+production deploy runs `npm run ai:reindex` (see `.github/workflows/ci.yml`),
+which re-chunks `docs/PRAXIS_KNOWLEDGE_BASE.md` and re-embeds only the changed
+chunks into `shared.ai_knowledge_chunks`. **Merge to `main` → Praxis re-learns
+the update.** So the whole job is: **edit the doc in the same PR as the code**.
+
+1. **Edit `docs/PRAXIS_KNOWLEDGE_BASE.md`** — update the affected module section
+   (route, permission, tabs, common tasks) **and** the "How do I…" task index and
+   glossary if the wording changed. Keep links as in-app paths (`/cash-requests`).
+2. **Sanity-check every link resolves** to a real route:
+   ```bash
+   # paths referenced in the doc — each must exist in router.tsx (or be a public/param route)
+   grep -oE '`/[a-z0-9/-]+`' docs/PRAXIS_KNOWLEDGE_BASE.md | tr -d '`' | sort -u
+   ```
+3. **New doc file?** If you split navigation knowledge into a *new* markdown,
+   add it to `MANIFEST` in `scripts/ai-ingest-docs.js` too — the ingest only
+   embeds whitelisted files, so an un-listed doc is invisible to Praxis.
+4. **Need it live before the next deploy?** The automatic path runs at deploy
+   time. For an immediate refresh without deploying, either run
+   `npm run ai:reindex` on the VPS, or upload the file in-app at **AI Control →
+   Knowledge & Training** (`/ai-control/training`) — that ingests it straight
+   away (once per business).
+
+Rule of thumb: **a user-facing change isn't "done" until the knowledge base doc
+reflects it** — the same bar as "a feature isn't done until its permission is
+wired." Because the doc is in the ingest manifest, keeping the doc right is all
+it takes; the deploy re-seeds Praxis for you.
 
 ### Naming
 

@@ -324,7 +324,7 @@ function buildOrderConfirmationEmail({
  * @param {object} a.order   full sales order (header + lines + internal_notes)
  * @param {object} a.contact { email, first_name, display_name }
  */
-async function sendOrderConfirmationEmail({ brand, order, contact }) {
+async function sendOrderConfirmationEmail({ brand, order, contact, contact_id }) {
   if (!order || !contact || !contact.email) return;
   try {
     const brandTokens = await emailRender.resolveBrandTokens(brand);
@@ -369,9 +369,31 @@ async function sendOrderConfirmationEmail({ brand, order, contact }) {
       copyEmail,
     });
 
-    await email.send({ to: contact.email, subject, html, text, brand });
+    // Send through the smartcomm transactional funnel so the letter is
+    // ALSO recorded on the contact's email thread (Messaging → email
+    // channel) with real delivery status, instead of leaving the operator
+    // blind to what the customer was sent. Falls back to a direct SMTP
+    // send if the mirror can't queue — the customer always gets the mail.
+    const cid = contact_id || order.contact_id || null;
+    const smartcomm = require("../modules/smartcomm/smartcomm.service");
+    const mirrored = cid
+      ? await smartcomm.sendTransactionalEmail({
+          brand,
+          contact_id: cid,
+          to: contact.email,
+          subject,
+          html,
+          text,
+          event_key: "order_confirmation",
+          reference_type: "sales_order",
+          reference_id: order.order_id,
+        })
+      : null;
+    if (!mirrored) {
+      await email.send({ to: contact.email, subject, html, text, brand });
+    }
     logger.info(
-      { brand, order_id: order.order_id, isPickup },
+      { brand, order_id: order.order_id, isPickup, mirrored: !!mirrored },
       "order confirmation email sent",
     );
   } catch (err) {

@@ -1,0 +1,20 @@
+-- ============================================================
+-- TEMPLATE MIGRATION 000079 — rich content blocks for storefront posts
+-- Pixie Girl Hub · JBS Praxis · V2.2   ({{BUSINESS}} → schema key)
+-- ============================================================
+--
+-- storefront_content_posts.body (000016) is a single plain-text column — no
+-- inline images, no video/social embeds. This adds an ordered JSON array
+-- column, content_blocks, so the Storefront Studio → Content editor can
+-- compose a magazine-style article out of typed blocks (text / image /
+-- youtube / instagram / video) instead of one flat string. `body` is kept
+-- as-is for the excerpt/plain-text fallback (FAQs, care guides, policies
+-- still use it exclusively); content_blocks is additive and defaults to an
+-- empty array so every existing post keeps rendering unchanged.
+--
+-- New brands get this column from birth here. Already-bootstrapped brands
+-- get it retrofitted by the companion shared migration 000338.
+-- ============================================================
+
+ALTER TABLE {{BUSINESS}}.storefront_content_posts
+  ADD COLUMN IF NOT EXISTS content_blocks JSONB NOT NULL DEFAULT '[]'::jsonb;

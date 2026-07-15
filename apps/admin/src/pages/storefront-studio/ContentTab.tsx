@@ -11,7 +11,7 @@
  * stay private until published — which is exactly why Praxis never guesses.
  */
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   FileText,
   HelpCircle,
@@ -45,6 +45,7 @@ import {
   type ContentPostInput,
   type FaqCategory,
 } from "@/lib/content-posts";
+import { BlockEditor } from "./BlockEditor";
 
 const AREA = "Storefront Studio → Content";
 
@@ -73,6 +74,7 @@ function blankPost(kind: ContentKind): ContentPost {
     faq_category: kind === "faq" ? "general" : null,
     faq_question: null,
     tags: [],
+    content_blocks: [],
     meta_title: null,
     meta_description: null,
     status: "draft",
@@ -96,12 +98,26 @@ function toInput(p: ContentPost): ContentPostInput {
     faq_category: p.faq_category,
     faq_question: p.faq_question,
     tags: p.tags,
+    content_blocks: p.content_blocks,
     is_featured: p.is_featured,
     display_order: p.display_order,
   };
 }
 
-export function ContentTab() {
+/** Cross-tab handoff from Pages → journal, so clicking an article there opens
+ *  it here without the operator having to re-find it. `postId` absent means
+ *  "start a new journal post" instead of opening an existing one. */
+export interface ContentJump {
+  postId?: string;
+}
+
+export function ContentTab({
+  jumpTo,
+  onJumpHandled,
+}: {
+  jumpTo?: ContentJump | null;
+  onJumpHandled?: () => void;
+}) {
   const { data, isLoading } = useContentPosts();
   const create = useCreateContent();
   const update = useUpdateContent();
@@ -115,6 +131,23 @@ export function ContentTab() {
   const [confirmDel, setConfirmDel] = useState(false);
 
   const posts = useMemo(() => data || [], [data]);
+
+  useEffect(() => {
+    if (!jumpTo) return;
+    setKind("journal");
+    if (!jumpTo.postId) {
+      setDraft(blankPost("journal"));
+      onJumpHandled?.();
+      return;
+    }
+    const found = posts.find((p) => p.post_id === jumpTo.postId);
+    if (found) {
+      setDraft({ ...found });
+      onJumpHandled?.();
+    }
+    // else: posts haven't loaded yet — this effect re-runs once `posts` fills in.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jumpTo, posts]);
   const countByKind = useMemo(() => {
     const c: Record<string, number> = {};
     for (const p of posts) c[p.post_type] = (c[p.post_type] || 0) + 1;
@@ -494,6 +527,7 @@ function ArticleFields({
 }) {
   const showHero = draft.post_type === "journal";
   const showFeatured = draft.post_type === "journal" || draft.post_type === "guide";
+  const isJournal = draft.post_type === "journal";
   return (
     <>
       <label className="block">
@@ -517,10 +551,12 @@ function ArticleFields({
         />
       </label>
       <label className="block">
-        <span className={labelCls}>Body</span>
+        <span className={labelCls}>
+          {isJournal ? "Plain-text summary (used by Praxis; shown only if the article below is empty)" : "Body"}
+        </span>
         <textarea
           className={cn(inputCls, "resize-y")}
-          rows={10}
+          rows={isJournal ? 4 : 10}
           value={draft.body || ""}
           placeholder={"Write in plain paragraphs. Leave a blank line between them."}
           onChange={(e) => setDraft({ ...draft, body: e.target.value })}
@@ -528,6 +564,30 @@ function ArticleFields({
       </label>
       {showHero ? (
         <HeroImage draft={draft} setDraft={setDraft} />
+      ) : null}
+      {isJournal ? (
+        <label className="block">
+          <span className={labelCls}>Category (optional)</span>
+          <input
+            className={inputCls}
+            value={draft.tags?.[0] || ""}
+            placeholder="e.g. AI Experience, Factory Story, Craftsmanship"
+            onChange={(e) => {
+              const v = e.target.value.trim();
+              setDraft({ ...draft, tags: v ? [v, ...(draft.tags || []).slice(1)] : (draft.tags || []).slice(1) });
+            }}
+            autoComplete="off"
+          />
+          <span className="mt-1 block text-[11px] text-text-muted">
+            Powers the filter tabs on the public Journal page.
+          </span>
+        </label>
+      ) : null}
+      {isJournal ? (
+        <BlockEditor
+          blocks={draft.content_blocks || []}
+          onChange={(content_blocks) => setDraft({ ...draft, content_blocks })}
+        />
       ) : null}
       {showFeatured ? (
         <button

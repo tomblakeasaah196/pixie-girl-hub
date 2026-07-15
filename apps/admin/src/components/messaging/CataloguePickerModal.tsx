@@ -23,6 +23,10 @@ import { resolveMessagingSalesChannel } from "@/lib/messaging-utils";
 import { cn } from "@/lib/cn";
 import { toastReport } from "@/lib/error-report";
 import type { ProductCard, Channel } from "@/lib/smartcomm-types";
+import {
+  StyledVariantPicker,
+  type StyledPick,
+} from "./StyledVariantPicker";
 
 // The in-chat picker offers services too (the ERP-wide PRODUCT_KINDS does not).
 const CHAT_KINDS: { key: ProductKind; label: string }[] = [
@@ -46,13 +50,18 @@ interface Selected extends ProductCard {
   qty: number;
 }
 
+/** True when a styled hit still needs a size/lace pick before it can be added. */
+function isStyled(h: ProductHit) {
+  return h.kind === "styled";
+}
+
 /**
  * Multi-select catalogue picker — kind tabs (Base / Styled / Bundle / Service),
  * search per kind, image thumbnails. The selected items render as a small
  * cart at the bottom; sending posts a `product_share` message into the chat.
- * Product cards (not service) get a tap-to-order JWT link minted from the
- * existing /smartcomm/order-capture endpoint, so the customer can pay
- * without retyping their address.
+ * The whole selection is minted as ONE short `/o/<slug>` order link (via
+ * /smartcomm/order-link) so the customer opens a mini-shop, picks what they
+ * want, and pays — without retyping their address.
  */
 export function CataloguePickerModal({
   open,
@@ -73,6 +82,8 @@ export function CataloguePickerModal({
   const [intro, setIntro] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A styled hit awaiting a size/lace pick (opens StyledVariantPicker).
+  const [pendingStyled, setPendingStyled] = useState<ProductHit | null>(null);
 
   // Reset when re-opened so the next chat doesn't see the previous selection.
   useEffect(() => {
@@ -82,6 +93,7 @@ export function CataloguePickerModal({
       setIntro("");
       setError(null);
       setHits([]);
+      setPendingStyled(null);
     }
   }, [open]);
 
@@ -116,23 +128,65 @@ export function CataloguePickerModal({
   }, [channel]);
 
   function toggle(h: ProductHit) {
+    const exists = selected.find((s) => s.kind === h.kind && s.id === h.id);
+    if (exists) {
+      setSelected((arr) =>
+        arr.filter((s) => !(s.kind === h.kind && s.id === h.id)),
+      );
+      return;
+    }
+    // Styled products price by head size × lace × colour — pick the variant
+    // before adding so the shared card + order carry the right price.
+    if (isStyled(h)) {
+      setPendingStyled(h);
+      return;
+    }
+    setSelected((arr) => [
+      ...arr,
+      {
+        kind: h.kind,
+        id: h.id,
+        name: h.label,
+        price: h.price ?? null,
+        image_url: h.image_url ?? null,
+        sub: h.sub,
+        qty: 1,
+      },
+    ]);
+  }
+
+  function addStyledPick(h: ProductHit, pick: StyledPick) {
+    const variant = {
+      price: pick.price ?? h.price ?? null,
+      sub: pick.spec || h.sub,
+      spec: pick.spec || null,
+      styled_variant_id: pick.styled_variant_id,
+      size_code: pick.size_code,
+      lace_code: pick.lace_code,
+      colour_id: pick.colour_id,
+    };
+    // Items are identified by (kind,id), so re-picking a styled product
+    // updates its chosen variant rather than adding a duplicate card.
     setSelected((arr) => {
-      const exists = arr.find((s) => s.kind === h.kind && s.id === h.id);
-      if (exists)
-        return arr.filter((s) => !(s.kind === h.kind && s.id === h.id));
+      const existing = arr.find((s) => s.kind === "styled" && s.id === h.id);
+      if (existing) {
+        return arr.map((s) =>
+          s.kind === "styled" && s.id === h.id ? { ...s, ...variant } : s,
+        );
+      }
       return [
         ...arr,
         {
-          kind: h.kind,
+          kind: "styled",
           id: h.id,
           name: h.label,
-          price: h.price ?? null,
           image_url: h.image_url ?? null,
-          sub: h.sub,
           qty: 1,
+          ...variant,
         },
       ];
     });
+    setPendingStyled(null);
   }
 
   function setQty(card: Selected, qty: number) {
@@ -150,18 +204,17 @@ export function CataloguePickerModal({
     );
   }
 
-  async function mintCaptureUrl(cards: Selected[]): Promise<string | null> {
-    // Shared catalogues mint a "shop" link: one mini-shop page with the
-    // curated picks where the CUSTOMER chooses items + quantities.
-    // Services are orderable too (they become booking requests). Works
-    // without a linked contact — checkout collects the customer inline.
-    // Mint failures are surfaced, not swallowed: silent 'Browse only'
-    // fallbacks hid a broken validator for weeks.
+  async function mintOrderLinkUrl(cards: Selected[]): Promise<string | null> {
+    // Shared catalogues mint a short `/o/<slug>` order link: one mini-shop
+    // page with the curated picks where the CUSTOMER chooses items +
+    // quantities and pays. Services are orderable too (they become booking
+    // requests). Works without a linked contact — checkout collects the
+    // customer inline. Mint failures are surfaced, not swallowed: silent
+    // 'Browse only' fallbacks hid a broken validator for weeks.
     if (cards.length === 0) return null;
-    const r = await smartcommApi.createOrderCapture({
+    const r = await smartcommApi.createOrderLink({
       contact_id: contactId ?? undefined,
       channel_id: channel.channel_id,
-      mode: "shop",
       items: cards.map((c) => ({
         kind: c.kind as "base" | "styled" | "bundle" | "service",
         product_id: c.kind === "base" ? c.id : undefined,
@@ -170,6 +223,13 @@ export function CataloguePickerModal({
         service_id: c.kind === "service" ? c.id : undefined,
         qty: c.qty,
         price_ngn: c.price != null ? String(c.price) : undefined,
+        // Staff-picked styled variant → the order is priced + fulfilled
+        // for this exact head size / lace / colour.
+        styled_variant_id: c.styled_variant_id ?? undefined,
+        size_code: c.size_code ?? undefined,
+        lace_code: c.lace_code ?? undefined,
+        colour_id: c.colour_id ?? undefined,
+        spec: c.spec ?? undefined,
       })),
       sales_channel: resolveMessagingSalesChannel(channel.external_platform),
     });
@@ -181,7 +241,7 @@ export function CataloguePickerModal({
     setBusy(true);
     setError(null);
     try {
-      const capture_url = await mintCaptureUrl(selected);
+      const capture_url = await mintOrderLinkUrl(selected);
       const cards: ProductCard[] = selected.map((s) => ({
         kind: s.kind,
         id: s.id,
@@ -190,6 +250,13 @@ export function CataloguePickerModal({
         image_url: s.image_url ?? null,
         sub: s.sub ?? null,
         capture_url,
+        // Carry the picked variant so the shared bubble shows the right
+        // size/lace + price (not the base anchor).
+        spec: s.spec ?? null,
+        styled_variant_id: s.styled_variant_id ?? null,
+        size_code: s.size_code ?? null,
+        lace_code: s.lace_code ?? null,
+        colour_id: s.colour_id ?? null,
       }));
       await smartcommApi.postMessage(channel.channel_id, {
         message_type: "product_share",
@@ -366,6 +433,11 @@ export function CataloguePickerModal({
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-[12px] truncate">{s.name}</div>
+                  {s.spec && (
+                    <div className="text-[10.5px] text-accent-glow truncate">
+                      {s.spec}
+                    </div>
+                  )}
                   <div className="text-[10.5px] text-text-faint truncate">
                     {ngn(s.price)}
                   </div>
@@ -420,6 +492,18 @@ export function CataloguePickerModal({
           No customer is linked to this thread yet — the order link will ask
           them for their details at checkout and link them automatically.
         </div>
+      )}
+
+      {pendingStyled && (
+        <StyledVariantPicker
+          styledId={pendingStyled.id}
+          productName={pendingStyled.label}
+          anchorPrice={
+            pendingStyled.price != null ? Number(pendingStyled.price) : null
+          }
+          onCancel={() => setPendingStyled(null)}
+          onConfirm={(pick) => addStyledPick(pendingStyled, pick)}
+        />
       )}
     </Modal>
   );

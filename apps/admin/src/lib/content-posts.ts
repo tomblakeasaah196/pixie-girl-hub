@@ -11,6 +11,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useBusinessStore } from "@/stores/business";
+import type { ContentBlock } from "@/pages/storefront-studio/content-blocks";
 
 export type ContentKind = "faq" | "guide" | "journal" | "policy";
 export type ContentStatus = "draft" | "published" | "scheduled" | "archived";
@@ -34,6 +35,7 @@ export interface ContentPost {
   faq_category: FaqCategory | null;
   faq_question: string | null;
   tags: string[];
+  content_blocks: ContentBlock[];
   meta_title: string | null;
   meta_description: string | null;
   status: ContentStatus;
@@ -56,6 +58,7 @@ export interface ContentPostInput {
   faq_category?: FaqCategory | null;
   faq_question?: string | null;
   tags?: string[];
+  content_blocks?: ContentBlock[];
   is_featured?: boolean;
   display_order?: number;
 }

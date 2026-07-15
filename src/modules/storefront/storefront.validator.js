@@ -25,7 +25,11 @@ const orderFormSchema = z
     // ("NG-AB"), a Lagos LGA ("NG-LA-AGEGE"), or an ISO-2 country code
     // for everywhere else (DHL). Required when fulfilment_type is
     // "delivery" — the server ALWAYS quotes the fee itself from this
-    // zone; there is deliberately no client-supplied fee field here.
+    // zone (storefront.service reads input.zone_code); there is
+    // deliberately no client-supplied fee field here. Without this field
+    // the .strict() schema rejected every delivery checkout that sent it
+    // ("Invalid input" — the reason Place Order never went through).
+    zone_code: z.string().max(40).optional(),
     items: z
       .array(
         z.object({
@@ -66,8 +70,9 @@ const orderFormSchema = z
         landmark: z.string().max(240).optional(),
       })
       .optional(),
-    // Signed order-link token — marks the link used + posts thread events.
-    capture_token: z.string().max(4000).optional(),
+    // Short order-link slug (the `/o/<slug>` checkout) — marks the link used,
+    // applies the staff-picked styled prices, and posts thread events.
+    order_link_slug: z.string().max(64).optional(),
     utm_source: z.string().max(80).optional(),
     utm_medium: z.string().max(80).optional(),
     utm_campaign: z.string().max(120).optional(),
@@ -85,6 +90,15 @@ const orderFormSchema = z
     // the deposit minimum + balance reminders apply. The customer pays via the
     // pay link they receive. Defaults to 'full'.
     payment_plan: z.enum(["full", "instalment"]).optional().default("full"),
+    // The buyer's gateway pick (mirrors the main storefront checkout).
+    // Only providers on the NGN chain are offered; the server still walks
+    // the active chain with this one preferred, so a down gateway falls
+    // over instead of failing the checkout.
+    payment_gateway: z.enum(["nomba", "paystack"]).optional(),
+    // Where the gateway returns the buyer after paying (the /o page passes
+    // its own thank-you URL). Server-side createPaymentLink appends
+    // ?ref & order_id.
+    return_url_base: z.string().url().max(500).optional(),
   })
   .strict()
   .refine(

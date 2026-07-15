@@ -443,6 +443,17 @@ async function testAccount({ id }) {
               auth: { user: cfg.user, pass: cfg.pass },
               logger: false,
             });
+            // Same requirement as the poller: imapflow can emit 'error' from
+            // a raw socket callback outside this try/catch's awaited chain.
+            // With no listener that throws synchronously and crashes the
+            // process, so a slow/misconfigured server would take the whole
+            // app down from an admin clicking "Test".
+            client.on("error", (err) => {
+              logger.warn(
+                { host: cfg.host, err: err.message },
+                "messaging_accounts.test: imap connection error",
+              );
+            });
             await client.connect();
             await client.logout();
             imap = { ok: true, host: `${cfg.host}:${cfg.port}` };

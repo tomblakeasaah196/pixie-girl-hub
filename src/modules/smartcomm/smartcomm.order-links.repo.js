@@ -11,37 +11,73 @@
 
 "use strict";
 
+const crypto = require("crypto");
 const { query } = require("../../config/database");
 
 const ex = (client) => (client ? client.query.bind(client) : query);
 
+/**
+ * Short, unguessable public slug for an order link's URL (`/o/<slug>`).
+ * 9 random bytes → 12 base64url chars (~72 bits of entropy) — short
+ * enough to keep the whole link under Instagram's 1,000-char DM cap, yet
+ * far too large to guess. Replaces the old signed-JWT-in-the-path that
+ * carried the full cart (and blew past the DM limit).
+ */
+function generateSlug() {
+  return crypto.randomBytes(9).toString("base64url");
+}
+
 async function createOrderLink({ client, link }) {
-  const { rows } = await ex(client)(
-    `INSERT INTO shared.smartcomm_order_links
-       (business, channel_id, contact_id, created_by, mode, sales_channel,
-        items, notes, expires_at)
-     VALUES ($1,$2,$3,$4,COALESCE($5,'capture'),COALESCE($6,'whatsapp'),
-             $7::jsonb,$8,$9)
-     RETURNING *`,
-    [
-      link.business,
-      link.channel_id || null,
-      link.contact_id || null,
-      link.created_by,
-      link.mode || null,
-      link.sales_channel || null,
-      JSON.stringify(link.items || []),
-      link.notes || null,
-      link.expires_at,
-    ],
-  );
-  return rows[0];
+  // Retry on the (astronomically unlikely) slug collision — the unique
+  // index is the source of truth, we just re-roll and re-insert.
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const slug = generateSlug();
+    try {
+      const { rows } = await ex(client)(
+        `INSERT INTO shared.smartcomm_order_links
+           (business, channel_id, contact_id, created_by, mode, sales_channel,
+            items, notes, expires_at, public_slug)
+         VALUES ($1,$2,$3,$4,COALESCE($5,'shop'),COALESCE($6,'whatsapp'),
+                 $7::jsonb,$8,$9,$10)
+         RETURNING *`,
+        [
+          link.business,
+          link.channel_id || null,
+          link.contact_id || null,
+          link.created_by,
+          link.mode || null,
+          link.sales_channel || null,
+          JSON.stringify(link.items || []),
+          link.notes || null,
+          link.expires_at,
+          slug,
+        ],
+      );
+      return rows[0];
+    } catch (err) {
+      // 23505 = unique_violation on public_slug; re-roll and try again.
+      if (err && err.code === "23505" && attempt < 4) continue;
+      throw err;
+    }
+  }
+  // Unreachable in practice (5 collisions at 72 bits each), satisfies lint.
+  throw new Error("order-link: could not mint a unique slug");
 }
 
 async function getOrderLink({ client, link_id }) {
   const { rows } = await ex(client)(
     `SELECT * FROM shared.smartcomm_order_links WHERE link_id = $1`,
     [link_id],
+  );
+  return rows[0] || null;
+}
+
+/** Resolve an order link by its short public slug (the `/o/<slug>` route). */
+async function getBySlug({ client, slug }) {
+  if (!slug) return null;
+  const { rows } = await ex(client)(
+    `SELECT * FROM shared.smartcomm_order_links WHERE public_slug = $1`,
+    [slug],
   );
   return rows[0] || null;
 }
@@ -139,8 +175,10 @@ async function createBookingRequest({ client, booking }) {
 }
 
 module.exports = {
+  generateSlug,
   createOrderLink,
   getOrderLink,
+  getBySlug,
   recordOpen,
   updateCart,
   markOrdered,

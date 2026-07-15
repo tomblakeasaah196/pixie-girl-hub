@@ -296,3 +296,57 @@ export interface JobActivityEntry {
   action: string;
   after_state: Record<string, unknown> | null;
 }
+
+// ── Stylist scorecards (internal Stylist Studio only — separate from
+// the Stylist Partner Programme's own review system under Grow > Stylists) ──
+
+export interface StylistScorecardSummary {
+  user_id: string;
+  full_name: string;
+  avatar_url: string | null;
+  job_title: string | null;
+  jobs_total: number;
+  jobs_completed: number;
+  avg_quality_rating: string | null;
+  avg_customer_rating: string | null;
+  rework_count: number;
+  on_time_pct: string | null;
+}
+
+export interface ScorecardJob {
+  job_id: string;
+  job_number: string;
+  tag_code: string | null;
+  status: JobStatus;
+  quality_rating: number | null;
+  customer_rating: number | null;
+  customer_feedback: string | null;
+  quality_notes: string | null;
+  rework_count: number;
+  scheduled_for: string | null;
+  expected_completion_at: string | null;
+  sla_due_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+export interface ReworkEvent {
+  log_id: string;
+  occurred_at: string;
+  user_name: string;
+  after_state: { result?: string; quality_notes?: string | null } | null;
+  job_id: string;
+  job_number: string;
+}
+
+export interface StylistScorecard extends StylistScorecardSummary {
+  jobs: ScorecardJob[];
+  rework: ReworkEvent[];
+}
+
+// ── AI job summary ───────────────────────────────────────────
+
+export interface JobSummary {
+  summary: string;
+  provider: string;
+}

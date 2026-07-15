@@ -10,6 +10,7 @@ import {
   Sparkles,
   UserRound,
   Plus,
+  Trophy,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import {
@@ -31,6 +32,7 @@ import { RecipesPanel } from "./RecipesPanel";
 import { AccountabilityPanel } from "./AccountabilityPanel";
 import { MyStudioJobs } from "./MyStudioJobs";
 import { QcQueue } from "./QcQueue";
+import { ScorecardsPanel } from "./ScorecardsPanel";
 import {
   useJobs,
   useServiceTypes,
@@ -525,6 +527,7 @@ type Tab =
   | "board"
   | "qc"
   | "accountability"
+  | "scorecards"
   | "types"
   | "recipes"
   | "reconciliation";
@@ -534,6 +537,7 @@ const TAB_IDS: Tab[] = [
   "board",
   "qc",
   "accountability",
+  "scorecards",
   "types",
   "recipes",
   "reconciliation",
@@ -552,6 +556,7 @@ export function ServiceJobsPage() {
       const next = new URLSearchParams(p);
       next.set("tab", t);
       next.delete("job"); // switching panes drops the job focus
+      next.delete("stylist"); // ...and any scorecard drill-down
       return next;
     });
 
@@ -579,6 +584,7 @@ export function ServiceJobsPage() {
     { id: "board", label: "Job Board", icon: LayoutGrid },
     { id: "qc", label: "QC Queue", icon: ClipboardCheck },
     { id: "accountability", label: "Wig Accountability", icon: PackageSearch },
+    { id: "scorecards", label: "Team Scorecards", icon: Trophy },
     { id: "types", label: "Service Types", icon: Wrench },
     { id: "recipes", label: "Recipes", icon: Sparkles },
     { id: "reconciliation", label: "Chemical Reconciliation", icon: FlaskConical },
@@ -619,6 +625,7 @@ export function ServiceJobsPage() {
       {tab === "board" && <JobBoard canCreate={canCreate} />}
       {tab === "qc" && <QcQueue />}
       {tab === "accountability" && <AccountabilityPanel />}
+      {tab === "scorecards" && <ScorecardsPanel />}
       {tab === "types" && <ServiceTypesTab canCreate={canCreate} />}
       {tab === "recipes" && <RecipesPanel canCreate={canEdit} />}
       {tab === "reconciliation" && <ReconciliationTab />}

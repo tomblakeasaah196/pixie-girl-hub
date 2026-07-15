@@ -114,6 +114,25 @@ async function listAssignableStylists(req, res) {
   });
 }
 
+async function listStylistScorecards(req, res) {
+  res.json({
+    data: await service.listStylistScorecards({ brand: req.brand }),
+  });
+}
+async function getStylistScorecard(req, res) {
+  res.json({
+    data: await service.getStylistScorecard({
+      brand: req.brand,
+      user_id: req.params.userId,
+    }),
+  });
+}
+async function summarizeJob(req, res) {
+  res.json({
+    data: await service.summarizeJob({ brand: req.brand, id: req.params.id }),
+  });
+}
+
 // ── Stylist Studio (PR2) lifecycle ─────────────────────────
 async function startWork(req, res) {
   res.json({
@@ -329,6 +348,9 @@ module.exports = {
   advanceJob,
   assignStaff,
   listAssignableStylists,
+  listStylistScorecards,
+  getStylistScorecard,
+  summarizeJob,
   startWork,
   pauseWork,
   resumeWork,

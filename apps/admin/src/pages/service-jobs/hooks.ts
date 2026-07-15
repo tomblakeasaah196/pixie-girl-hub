@@ -119,6 +119,31 @@ export function useAssignableStylists(enabled = true) {
   });
 }
 
+// ── Scorecards (internal Stylist Studio only) ────────────────
+
+export function useStylistScorecards() {
+  const brand = useBrand();
+  return useQuery({
+    queryKey: ["stylist-scorecards", brand],
+    queryFn: api.listStylistScorecards,
+  });
+}
+
+export function useStylistScorecard(userId: string | null) {
+  const brand = useBrand();
+  return useQuery({
+    queryKey: ["stylist-scorecard", userId, brand],
+    queryFn: () => api.getStylistScorecard(userId!),
+    enabled: !!userId,
+  });
+}
+
+export function useSummarizeJob(jobId: string) {
+  return useMutation({
+    mutationFn: () => api.summarizeJob(jobId),
+  });
+}
+
 export function useJobActions(jobId: string) {
   const qc = useQueryClient();
   const brand = useBrand();

@@ -529,26 +529,54 @@ export function PosReconciliationView() {
             brands.
           </p>
           <div className="space-y-2">
-            {unresolvedRows.map((r) => (
-              <div
-                key={r.recon_id}
-                className="flex items-center justify-between gap-3 p-2.5 rounded-[9px] bg-text-primary/[0.03]"
-              >
-                <div className="min-w-0 flex-1 truncate text-[13px]">
-                  <MoneyText ngn={Number(r.amount_ngn)} /> —{" "}
-                  <span className="text-text-muted">
-                    {r.alias_account_name || "Unknown sender"}
-                  </span>
-                </div>
-                <Button
-                  size="sm"
-                  onClick={() => setMatchRow(r)}
-                  className="shrink-0"
+            {unresolvedRows.map((r) => {
+              const a = ageInfo(r);
+              return (
+                <div
+                  key={r.recon_id}
+                  className="flex items-center justify-between gap-3 p-2.5 rounded-[9px] bg-text-primary/[0.03]"
                 >
-                  Resolve
-                </Button>
-              </div>
-            ))}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 text-[13px]">
+                      <MoneyText ngn={Number(r.amount_ngn)} />
+                      <span className="text-text-muted truncate">
+                        — {r.alias_account_name || "Unknown sender"}
+                      </span>
+                      <span
+                        className={`shrink-0 inline-flex items-center px-1.5 h-[18px] rounded-full text-[10px] font-bold ${a.className}`}
+                      >
+                        {a.label}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-text-muted truncate mt-0.5">
+                      {r.transaction_time
+                        ? `${formatDate(r.transaction_time)} ${formatTime(r.transaction_time)} · `
+                        : ""}
+                      Ref{" "}
+                      <span className="font-mono">
+                        {r.provider_reference || "—"}
+                      </span>
+                      {r.nomba_terminal_id ? (
+                        <>
+                          {" "}
+                          · Terminal{" "}
+                          <span className="font-mono">
+                            {r.nomba_terminal_id}
+                          </span>
+                        </>
+                      ) : null}
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    onClick={() => setMatchRow(r)}
+                    className="shrink-0"
+                  >
+                    Resolve
+                  </Button>
+                </div>
+              );
+            })}
           </div>
           {unresolvedMeta && (
             <Pager

@@ -803,7 +803,7 @@ async function listAssignableStylists({ brand }) {
        LEFT JOIN open_jobs oj ON oj.user_id = u.user_id
       WHERE sp.business = $1
         AND sp.is_deleted = false
-        AND sp.end_date IS NULL
+        AND (sp.end_date IS NULL OR sp.end_date >= CURRENT_DATE)
         AND u.status <> 'disabled'
         AND (
           TRIM(sp.department) ILIKE 'operations'

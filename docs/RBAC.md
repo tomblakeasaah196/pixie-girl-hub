@@ -63,6 +63,25 @@ async function findById({ brand, id, scope, user_id }) {
 }
 ```
 
+### Worked example — Stylist Studio (`service_jobs`)
+
+The `service_jobs` module runs a strict own/all split:
+
+| Role          | Actions kept                                       | Scope |
+| ------------- | -------------------------------------------------- | ----- |
+| `tech_stylist`| view, create, edit                                 | `own` |
+| `ops_mgr`     | view, create, edit, delete, approve, export        | `all` |
+| CEO / owner   | everything                                         | (bypass) |
+
+An `own`-scope stylist can only see + act on jobs they are **currently
+assigned to** OR were **ever a stylist on** (kept visible via the
+`wig_custody_ledger` — so their scorecard history survives reassignment).
+`getJob` throws `NO_LONGER_ASSIGNED` with the current assignee's display
+name when a stylist opens a stale link to a reassigned job, so the UI can
+render "reassigned to X → back to my jobs" instead of a bare 403.
+
+Seeded by migration `000348_shared_stylist_studio_rbac_own_scope.sql`.
+
 ## Field-level privacy
 
 Currently **app-layer only** (see CONFORMANCE_GAPS.md — H-1 / M-5). Sensitive fields (cost prices, factory origin, salaries) are filtered out in the service layer before response serialisation, based on the user's role. A pending amendment will back this with restricted views + column GRANTs at the DB level.

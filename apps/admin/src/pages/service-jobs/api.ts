@@ -26,6 +26,7 @@ import type {
   StylistScorecardSummary,
   StylistScorecard,
   JobSummary,
+  MyCurrentSession,
 } from "./types";
 
 const BASE = "/service-jobs";
@@ -115,6 +116,13 @@ export function listJobs(params?: {
 
 export function getJob(id: string) {
   return api.get<ServiceJob>(`${BASE}/${id}`);
+}
+
+// The caller's currently-open time session, or null when no clock is
+// running. Drives the page-level "You're working on Job X — 47m elapsed"
+// strip for own-scope stylists.
+export function getMyCurrentSession() {
+  return api.get<MyCurrentSession | null>(`${BASE}/my/current`);
 }
 
 export function createJob(input: CreateJobInput) {
@@ -252,14 +260,11 @@ export function resumeJob(id: string) {
 export function returnJob(id: string) {
   return api.post<ServiceJob>(`${BASE}/${id}/return`, {});
 }
+// QC pass now auto-completes the job + creates the Logistics delivery in a
+// single call (see service.js recordQc). The old dispatch + hand-to-sales
+// endpoints were retired — those flows live on the Logistics/Sales side now.
 export function qcJob(id: string, input: QcInput) {
   return api.post<ServiceJob>(`${BASE}/${id}/qc`, input);
-}
-export function dispatchJob(id: string) {
-  return api.post<ServiceJob>(`${BASE}/${id}/dispatch`, {});
-}
-export function handToSales(id: string) {
-  return api.post<ServiceJob>(`${BASE}/${id}/hand-to-sales`, {});
 }
 export function linkIntercompany(id: string, ic_transaction_id: string) {
   return api.post<ServiceJob>(`${BASE}/${id}/intercompany-link`, {

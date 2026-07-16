@@ -272,6 +272,7 @@ async function listServiceJobs({
   assigned_stylist_id,
   customer_contact_id,
   sales_order_id,
+  own_user_id,
   page = 1,
   page_size = 25,
 }) {
@@ -297,6 +298,20 @@ async function listServiceJobs({
   if (sales_order_id) {
     where.push(`sj.sales_order_id = $${i++}`);
     params.push(sales_order_id);
+  }
+  // Own-scope filter: current OR historical owner. A stylist keeps history on
+  // their scorecard after Ops reassigns a job away, so we OR the current
+  // assignment with any wig_custody_ledger row where they were the stylist.
+  if (own_user_id) {
+    where.push(`(
+      sj.assigned_staff_user_id = $${i}
+      OR EXISTS (
+        SELECT 1 FROM ${t(brand, "wig_custody_ledger")} l
+         WHERE l.job_id = sj.job_id AND l.stylist_user_id = $${i}
+      )
+    )`);
+    params.push(own_user_id);
+    i++;
   }
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const { rows: c } = await query(
@@ -326,6 +341,43 @@ async function listServiceJobs({
   );
   return { data: rows, page, page_size, total: c[0].total };
 }
+/**
+ * Own-scope access check for a specific job — mirrors the `own_user_id`
+ * OR-clause in listServiceJobs. Returns true when the user is either the
+ * CURRENT assignee or was ever a stylist on this job (kept as owner for
+ * history purposes; scorecards + past-work visibility rely on this).
+ */
+async function userHasJobAccess({ brand, job_id, user_id }) {
+  const { rows } = await query(
+    `SELECT 1
+       FROM ${t(brand, "service_jobs")} sj
+      WHERE sj.job_id = $1
+        AND (
+          sj.assigned_staff_user_id = $2
+          OR EXISTS (
+            SELECT 1 FROM ${t(brand, "wig_custody_ledger")} l
+             WHERE l.job_id = sj.job_id AND l.stylist_user_id = $2
+          )
+        )
+      LIMIT 1`,
+    [job_id, user_id],
+  );
+  return rows.length > 0;
+}
+
+/** Current assignee's display name — surfaced in the NO_LONGER_ASSIGNED 403
+ * so the frontend can render "reassigned to X" instead of a bare denial. */
+async function getJobAssigneeName({ brand, id }) {
+  const { rows } = await query(
+    `SELECT u.display_name AS name
+       FROM ${t(brand, "service_jobs")} sj
+       LEFT JOIN shared.users u ON u.user_id = sj.assigned_staff_user_id
+      WHERE sj.job_id = $1`,
+    [id],
+  );
+  return rows[0] ? rows[0].name : null;
+}
+
 async function serviceJobExistsForOrder({ client, brand, order_id }) {
   const { rows } = await ex(client)(
     `SELECT 1 FROM ${t(brand, "service_jobs")} WHERE sales_order_id = $1 LIMIT 1`,
@@ -654,6 +706,32 @@ async function closeTimeSession({ client, brand, log_id }) {
             duration_minutes = GREATEST(0, ROUND(EXTRACT(EPOCH FROM (now() - started_at)) / 60))
       WHERE log_id = $1 RETURNING *`,
     [log_id],
+  );
+  return rows[0] || null;
+}
+/**
+ * The single OPEN time session (started_at set, ended_at null) currently
+ * running for this user across every job in the brand, joined with the
+ * job's number + service-type label so the "You're working on Job X" strip
+ * can render without a second round-trip. Returns null when no clock is
+ * running (which is the normal state; the strip stays hidden).
+ *
+ * A stylist should only ever have one open session at a time (startWork
+ * refuses to open a second one for the same job), but the LIMIT 1 keeps
+ * this honest even if the invariant slips.
+ */
+async function getUsersOpenSession({ brand, user_id }) {
+  const { rows } = await query(
+    `SELECT tl.log_id, tl.job_id, tl.started_at,
+            sj.job_number, sj.status AS job_status,
+            st.display_name AS service_type_name
+       FROM ${t(brand, "service_job_time_logs")} tl
+       JOIN ${t(brand, "service_jobs")} sj ON sj.job_id = tl.job_id
+       LEFT JOIN ${t(brand, "service_types")} st
+         ON st.service_type_id = sj.service_type_id
+      WHERE tl.stylist_user_id = $1 AND tl.ended_at IS NULL
+      ORDER BY tl.started_at DESC LIMIT 1`,
+    [user_id],
   );
   return rows[0] || null;
 }
@@ -1066,6 +1144,8 @@ module.exports = {
   createServiceJob,
   getServiceJob,
   listServiceJobs,
+  userHasJobAccess,
+  getJobAssigneeName,
   serviceJobExistsForOrder,
   setServiceJobStatus,
   updateServiceJob,
@@ -1075,6 +1155,7 @@ module.exports = {
   listStyledBom,
   firstStudioLine,
   getOpenTimeSession,
+  getUsersOpenSession,
   openTimeSession,
   closeTimeSession,
   listTimeLogs,

@@ -96,6 +96,26 @@ export function useJob(id: string | null) {
   });
 }
 
+/**
+ * The stylist's currently-open time session (or null). Polls every 30s so
+ * the "Working on Job X" strip reflects a start/pause done elsewhere (e.g.
+ * from another tab, or from the per-job card lifecycle mutations).
+ * `enabled` gates the poll so we don't burn a request on users who aren't
+ * own-scope (Ops don't have a personal work clock).
+ */
+export function useMyCurrentSession(enabled: boolean) {
+  const brand = useBrand();
+  return useQuery({
+    queryKey: ["service-jobs-my-current", brand],
+    queryFn: api.getMyCurrentSession,
+    enabled,
+    refetchInterval: enabled ? 30_000 : false,
+    // A background tab shouldn't keep pinging — the strip will refresh when
+    // the user comes back to focus this window.
+    refetchIntervalInBackground: false,
+  });
+}
+
 export function useCreateJob() {
   const qc = useQueryClient();
   const brand = useBrand();
@@ -255,17 +275,12 @@ export function useStudioLifecycle(jobId: string) {
       mutationFn: () => api.returnJob(jobId),
       onSuccess: invalidate,
     }),
+    // QC pass auto-completes the job + creates the Logistics delivery in one
+    // call — no separate dispatch / hand-to-sales mutations any more (those
+    // flows now live on the Logistics + Sales Order side).
     qc: useMutation({
       mutationFn: (input: Parameters<typeof api.qcJob>[1]) =>
         api.qcJob(jobId, input),
-      onSuccess: invalidate,
-    }),
-    dispatch: useMutation({
-      mutationFn: () => api.dispatchJob(jobId),
-      onSuccess: invalidate,
-    }),
-    handToSales: useMutation({
-      mutationFn: () => api.handToSales(jobId),
       onSuccess: invalidate,
     }),
     writeOff: useMutation({

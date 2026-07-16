@@ -356,3 +356,16 @@ export interface JobSummary {
   summary: string;
   provider: string;
 }
+
+// ── "You're working on Job X" strip (own-scope stylists) ────
+// The caller's single currently-open time session, joined with the parent
+// job's number + service type label so the strip renders without a second
+// call. `null` means no clock is running (strip stays hidden).
+export interface MyCurrentSession {
+  log_id: string;
+  job_id: string;
+  started_at: string;
+  job_number: string;
+  job_status: JobStatus;
+  service_type_name: string | null;
+}

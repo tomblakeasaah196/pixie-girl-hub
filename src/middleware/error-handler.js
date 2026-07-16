@@ -93,6 +93,10 @@ function errorHandler(err, req, res, _next) {
         ...(meta.existing_orders ? { existing_orders: meta.existing_orders } : {}),
         // PERIOD_UNRECONCILED: let the payroll UI list/deep-link the days.
         ...(meta.unreconciled ? { unreconciled: meta.unreconciled } : {}),
+        // NO_LONGER_ASSIGNED: name of the current assignee so the Stylist
+        // Studio can render "reassigned to X → back to my jobs" instead
+        // of a bare 403 wall.
+        ...(meta.reassigned ? { reassigned: meta.reassigned } : {}),
       },
       request_id,
     });

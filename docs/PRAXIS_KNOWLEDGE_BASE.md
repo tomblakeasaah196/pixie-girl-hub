@@ -208,15 +208,35 @@ kanban) · **Clients** · **Reports** (forecast, close time).
 
 ### 4.4 Stylist Studio (Service Jobs)
 **What it's for.** Faitlyn's **in-house styling operations** — the register of
-styling jobs from booking to QC to ready-to-ship, plus chemical recipes.
+styling jobs from booking through QC. A QC pass marks the job **completed**
+and hands the wig over to Logistics; shipping + delivery live on the Sales
+Order / Logistics side.
 **Where.** Run → **Stylist Studio** · `/service-jobs`
-**Who can see it.** `service_jobs` permission.
-**What's inside (tabs/views).** **Job Board** · **My Jobs** · **QC Queue** ·
-**Recipes** (chemical recipes / reconciliation).
+**Who can see it.** `service_jobs` permission. **Scope matters:**
+- `own`-scope users (individual stylists) see **only their own queue** —
+  My Jobs + Recipes tabs; every ops surface is hidden.
+- `all`/`team` (Ops Manager / CEO) see every tab: My Jobs · Job Board · QC
+  Queue · Wig Accountability · Team Scorecards · Service Types · Recipes ·
+  Chemical Reconciliation.
+
+**Lifecycle (6 states).** `pending → assigned → in_progress → returned_for_qc
+→ completed` (or `rework` back to the stylist). Retired: `qc_passed`,
+`ready_for_dispatch`, `handed_to_sales` — never written for new jobs.
+
 **Common tasks.**
-- *Create a styling job?* Stylist Studio → **New Service Job** (`/service-jobs`).
-- *Move a job through QC?* Use the **QC Queue** (QC Passed / Rework / Rejected).
-- *Add a chemical recipe?* **Recipes** → **New Chemical Recipe** / **Add Chemical**.
+- *Create a styling job?* Ops → Stylist Studio → **New Service Job**
+  (`/service-jobs?tab=board`).
+- *Work on my own job?* Stylist → **My Jobs** (`/service-jobs?tab=my`) →
+  Start → hand back for QC.
+- *QC pass or fail a returned job?* Ops → **QC Queue** tab. Pass = job
+  completed + wig auto-dispatched to Logistics; fail = back to stylist for
+  rework.
+- *See a stylist's scorecard?* Ops → **Team Scorecards** tab.
+- *See my own scorecard?* Stylist → My Jobs — the "Your scorecard" tile is
+  at the top of the queue.
+- *Add a chemical recipe?* Ops → **Recipes** → **New Chemical Recipe**.
+- *A stylist opened a job that was reassigned to someone else?* The drawer
+  shows "reassigned to X → back to my jobs" (no bare 403).
 
 > Note: "Stylist Studio" (in-house jobs) is different from "**Stylists**" (the
 > external partner programme) — see §4.16.

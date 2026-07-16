@@ -11,6 +11,58 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-16 — Stylist Studio: lifecycle collapse + own-scope RBAC
+
+**Source:** owner directive — "the stylist studio gives every stylist access
+to the whole studio; and completed jobs shows 0 even after stylists have
+shipped work. Fix both." The job lifecycle used to require four separate
+Ops clicks after the wig came back (`qc pass → ready_for_dispatch →
+handed_to_sales → completed`); nobody clicked all four, so scorecards +
+HR `styles_completed` targets showed zero for real work. Separately, the
+`tech_stylist` role had `full` on `service_jobs` (view/create/edit/delete/
+approve/export at scope `all`), so every stylist could see every job and
+even approve write-offs; the Ops Manager was capped at `partial_team`,
+narrower than the stylists — the opposite of what the org runs on.
+
+- `000348_shared_stylist_studio_rbac_own_scope` (shared) — reseats the two
+  roles for the `service_jobs` module: `tech_stylist` = view/create/edit
+  at scope `own` (no delete/approve/export); `ops_mgr` = view/create/edit/
+  delete/approve/export at scope `all`. Idempotent delete-then-insert on
+  those two roles so repeated runs converge. CEO/owner bypass anyway.
+- `000084_business_service_jobs_lifecycle_backfill` (brand template) —
+  data-only backfill for rows stuck in the retired `qc_passed`,
+  `ready_for_dispatch`, `handed_to_sales` statuses: sets them to
+  `completed` and derives `completed_at` from the best available
+  timestamp (`handed_at` → `ready_at` → `qc_at` → `updated_at`). The
+  CHECK constraint is left tolerant of the retired values so historical
+  rebuilds don't fail; application code no longer writes them.
+- `src/modules/service_jobs/service-jobs.service.js` — `recordQc` on
+  `pass` now sets status directly to `completed`, stamps `completed_at`,
+  adds the `dispatched` custody row (wig leaves the studio for
+  Logistics/Sales), and creates the shipment via `logistics.createForOrder`
+  (best-effort, moved from the old `dispatch()` fn). The old `dispatch()`
+  and `handToSales()` service fns + `/service-jobs/:id/dispatch` +
+  `/service-jobs/:id/hand-to-sales` routes are removed — those flows now
+  live on the Logistics/Order side, single source of truth.
+- Service + repo scope-thread: `listJobs`, `getJob`, `listStylistScorecards`,
+  `getStylistScorecard`, `getAccountability`, `listCustodyLedger` all
+  accept `scope` + `user`. Own-scope callers see only jobs they are
+  currently assigned to OR were ever a stylist on (kept visible via the
+  wig_custody_ledger); `getJob` throws `NO_LONGER_ASSIGNED` with the
+  current assignee's name so the Stylist Studio can render
+  "reassigned to X → back to my jobs" instead of a bare 403.
+- Admin: `JOB_STATUS_META`, `JOB_NEXT_STATES`, `BOARD_COLUMNS` collapsed
+  to the six flowing states (`pending, assigned, in_progress, on_hold,
+  returned_for_qc, rework, completed`); dispatch/hand-to-sales buttons
+  removed from the drawer. Stylist Studio hides the Job Board / Team
+  Scorecards / Wig Accountability / Types / Recipes / Reconciliation
+  tabs for own-scope users and defaults them to "My Jobs".
+
+Apply to existing brands with `npm run db:repair`. RBAC change takes
+effect on the next `identityCache` refresh (30s TTL).
+
+---
+
 ## 2026-07-16 — Stylist Studio: lockable style brief
 
 **Source:** "the style brief came under QC instead of at job creation" — the

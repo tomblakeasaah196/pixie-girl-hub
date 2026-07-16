@@ -6,10 +6,19 @@
 
 const { z } = require("zod");
 
+// The full Stylist Studio lifecycle. `completed` is normally reached
+// automatically via /:id/qc (QC pass), but kept accepted on /:id/advance for
+// edge cases (legacy imports, one-off manual closes). Retired states
+// (qc_passed, ready_for_dispatch, handed_to_sales) are DELIBERATELY absent —
+// the DB CHECK still tolerates them for historical rows, but no code path
+// should be writing them any more.
 const JOB_STATUS = [
   "pending",
+  "assigned",
   "in_progress",
   "on_hold",
+  "returned_for_qc",
+  "rework",
   "completed",
   "rejected",
   "cancelled",

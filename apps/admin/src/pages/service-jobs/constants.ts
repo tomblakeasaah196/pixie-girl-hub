@@ -1,6 +1,14 @@
 import type { Tone } from "@/components/ui/primitives";
 import type { JobStatus, VarianceStatus } from "./types";
 
+// Lifecycle metadata. The Stylist Studio owns only the styling half of the
+// journey (pending → completed). Shipping/handing to Sales belongs to the
+// Logistics + Sales Order side of the house — a QC pass now flips status
+// straight to `completed`, credits the stylist, and creates the delivery.
+//
+// The `qc_passed`, `ready_for_dispatch`, `handed_to_sales` values are kept
+// here only so historical rows still render a label — new writes shouldn't
+// produce them (see migration 000084 backfill).
 export const JOB_STATUS_META: Record<
   JobStatus,
   { label: string; tone: Tone; column: boolean }
@@ -10,26 +18,28 @@ export const JOB_STATUS_META: Record<
   in_progress: { label: "In Progress", tone: "accent", column: true },
   on_hold: { label: "On Hold", tone: "warn", column: false },
   returned_for_qc: { label: "Returned · QC", tone: "warn", column: true },
-  qc_passed: { label: "QC Passed", tone: "success", column: false },
   rework: { label: "Rework", tone: "danger", column: false },
-  ready_for_dispatch: { label: "Ready to Ship", tone: "info", column: true },
-  handed_to_sales: { label: "With Sales", tone: "accent", column: false },
   completed: { label: "Completed", tone: "success", column: true },
+  // Retired states — kept for rendering historical rows only.
+  qc_passed: { label: "QC Passed", tone: "success", column: false },
+  ready_for_dispatch: { label: "Ready to Ship", tone: "info", column: false },
+  handed_to_sales: { label: "With Sales", tone: "accent", column: false },
   rejected: { label: "Rejected", tone: "danger", column: false },
   cancelled: { label: "Cancelled", tone: "neutral", column: false },
 };
 
 // Which status can each status advance to? (Stylist Studio lifecycle)
+// QC pass is DELIBERATELY not represented as a next-state edge — it goes
+// through POST /:id/qc (with a rating + notes) rather than /:id/advance,
+// and lands on `completed` in one hop.
 export const JOB_NEXT_STATES: Partial<Record<JobStatus, JobStatus[]>> = {
   pending: ["assigned", "cancelled"],
   assigned: ["in_progress", "on_hold", "cancelled"],
   in_progress: ["returned_for_qc", "on_hold"],
   on_hold: ["in_progress", "cancelled"],
-  returned_for_qc: ["qc_passed", "rework"],
-  qc_passed: ["ready_for_dispatch"],
-  rework: ["returned_for_qc"],
-  ready_for_dispatch: ["handed_to_sales"],
-  handed_to_sales: ["completed"],
+  // returned_for_qc advances via the QC form (pass → completed, fail → rework).
+  returned_for_qc: [],
+  rework: ["in_progress"],
 };
 
 export const BOARD_COLUMNS: JobStatus[] = [
@@ -37,7 +47,6 @@ export const BOARD_COLUMNS: JobStatus[] = [
   "assigned",
   "in_progress",
   "returned_for_qc",
-  "ready_for_dispatch",
   "completed",
 ];
 

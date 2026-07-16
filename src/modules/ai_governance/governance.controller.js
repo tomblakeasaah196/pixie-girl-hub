@@ -159,6 +159,15 @@ async function listUsage(req, res) {
     }),
   });
 }
+async function listCosTurns(req, res) {
+  res.json({
+    data: await service.listCosTurnTraces({
+      business: req.query.business || req.brand,
+      user_id: req.query.user_id,
+      limit: req.query.limit ? Number(req.query.limit) : 50,
+    }),
+  });
+}
 async function spendMeter(req, res) {
   res.json({
     data: await service.spendMeter({
@@ -381,6 +390,7 @@ module.exports = {
   openBudget,
   setBudgetCaps,
   listUsage,
+  listCosTurns,
   spendMeter,
   listActions,
   upsertAction,

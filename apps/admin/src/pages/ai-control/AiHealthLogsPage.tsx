@@ -74,6 +74,11 @@ export function AiHealthLogsPage() {
       }),
     refetchInterval: 30_000,
   });
+  const cosTurnsQ = useQuery({
+    queryKey: ["ai", "health", "cos-turns"],
+    queryFn: () => aiGovernanceApi.listCosTurns(40),
+    refetchInterval: 60_000,
+  });
 
   const pingNow = useMutation({
     mutationFn: (vendor: AiVendor) => aiGovernanceApi.pingVendorNow(vendor),
@@ -331,6 +336,74 @@ export function AiHealthLogsPage() {
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </Card>
+      </section>
+
+      {/* 5. CHIEF OF STAFF — recent turns (PR2-C observability) */}
+      <section>
+        <h2 className="text-[13px] font-semibold text-text-muted mb-2 flex items-center gap-2">
+          <Activity className="w-4 h-4" /> Chief of Staff — recent turns
+        </h2>
+        <Card className="p-0 overflow-hidden">
+          {cosTurnsQ.isLoading ? (
+            <div className="flex items-center gap-2 p-4 text-[13px] text-text-muted">
+              <Loader2 className="w-4 h-4 animate-spin" /> Loading turns…
+            </div>
+          ) : (cosTurnsQ.data ?? []).length === 0 ? (
+            <div className="p-4 text-[13px] text-text-faint">
+              No Chief of Staff turns recorded yet.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12.5px]">
+                <thead>
+                  <tr className="text-left text-text-faint border-b hairline">
+                    <th className="font-medium px-3 py-2">When</th>
+                    <th className="font-medium px-3 py-2">Outcome</th>
+                    <th className="font-medium px-3 py-2 text-right">Rounds</th>
+                    <th className="font-medium px-3 py-2 text-right">Steps</th>
+                    <th className="font-medium px-3 py-2 text-right">Reads</th>
+                    <th className="font-medium px-3 py-2">Vendor</th>
+                    <th className="font-medium px-3 py-2 text-right">Tokens</th>
+                    <th className="font-medium px-3 py-2 text-right">Latency</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(cosTurnsQ.data ?? []).map((t) => (
+                    <tr key={t.trace_id} className="border-b hairline/50">
+                      <td className="px-3 py-2 whitespace-nowrap text-text-muted">
+                        {formatDateTime(t.created_at)}
+                      </td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={
+                            "inline-block rounded-full px-2 py-0.5 text-[10.5px] font-semibold " +
+                            (t.outcome === "plan"
+                              ? "text-green-300 bg-green-500/10"
+                              : t.outcome === "error"
+                                ? "text-danger bg-danger/10"
+                                : t.outcome === "reprompt" || t.outcome === "stub"
+                                  ? "text-warn bg-warn/10"
+                                  : "text-text-muted bg-text-primary/[0.06]")
+                          }
+                        >
+                          {t.outcome}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">{t.rounds}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{t.tool_calls}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{t.reads}</td>
+                      <td className="px-3 py-2 text-text-muted">{t.vendors.join(", ") || "—"}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{t.total_tokens.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {(t.latency_ms / 1000).toFixed(1)}s
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </Card>

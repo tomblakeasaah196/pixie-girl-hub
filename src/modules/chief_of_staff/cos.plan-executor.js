@@ -69,7 +69,15 @@ async function duplicateGoalError({ step, payload }) {
 async function runStepOnce({ step, payload, auth_header, request_id }) {
   try {
     const exec = await executor.executeAction({
-      pending: { method: step.method, route: step.route, payload, business: step.business },
+      pending: {
+        method: step.method,
+        route: step.route,
+        payload,
+        business: step.business,
+        // Stable across retries, unique per step → the idempotency middleware
+        // replays a prior success instead of minting a duplicate record.
+        idempotency_key: step.plan_id ? `cos:${step.plan_id}:${step.plan_step}` : undefined,
+      },
       authHeader: auth_header,
       requestId: request_id,
     });

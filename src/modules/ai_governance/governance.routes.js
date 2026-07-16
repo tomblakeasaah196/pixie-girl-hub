@@ -114,6 +114,8 @@ router.post(
 // ── Usage meter ────────────────────────────────────────────
 router.get("/usage", can("view"), c.listUsage);
 router.get("/usage/meter", can("view"), c.spendMeter);
+// Chief-of-Staff per-turn traces (observability; metadata only).
+router.get("/cos-turns", can("view"), c.listCosTurns);
 
 // ── Brand Voice (per-brand Praxis personality) ─────────────
 router.get("/brand-voice", can("view"), c.getBrandVoice);

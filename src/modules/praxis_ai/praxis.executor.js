@@ -107,6 +107,9 @@ async function executeAction({ pending, authHeader, requestId }) {
       "X-Brand-Context": pending.business || "",
       "Content-Type": "application/json",
       ...(requestId ? { "X-Request-Id": requestId } : {}),
+      // Deterministic per-step key → a retried step (or a background job retry)
+      // replays the first success instead of creating a duplicate.
+      ...(pending.idempotency_key ? { "Idempotency-Key": pending.idempotency_key } : {}),
     },
     data: method === "get" || method === "delete" ? undefined : body,
     params: method === "get" ? body : undefined,

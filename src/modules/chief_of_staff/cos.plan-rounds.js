@@ -168,7 +168,17 @@ async function runPlanRounds({
   detectFromContent = true,
   isRead = () => false,
   executeRead = null,
+  onProgress = null,
 }) {
+  const progress = (info) => {
+    if (typeof onProgress === "function") {
+      try {
+        onProgress(info);
+      } catch {
+        /* progress is best-effort — never break a turn */
+      }
+    }
+  };
   const completions = [];
   const allCalls = []; // accumulated WRITE calls only
   let msgs = [...messages];
@@ -215,6 +225,7 @@ async function runPlanRounds({
             tool_calls: [],
             complete: true,
             completions,
+            reads: readsDone,
             broken_promise: promisesAction(content),
           };
         }
@@ -260,6 +271,15 @@ async function runPlanRounds({
       return JSON.stringify({ dropped: true, note: "Step budget exhausted — not queued." });
     });
 
+    // Live progress for the chat UI (replaces the dead spinner): what this
+    // round did — looked things up, or queued more steps.
+    progress({
+      round,
+      queued: allCalls.length + writes.length,
+      reads: readsDone,
+      had_reads: reads.length > 0,
+    });
+
     const owed =
       droppedByCap ||
       completion.finish_reason === "length" ||
@@ -289,7 +309,7 @@ async function runPlanRounds({
     allCalls.push(...writes);
   }
 
-  return { content, tool_calls: allCalls, complete, completions, broken_promise: false };
+  return { content, tool_calls: allCalls, complete, completions, reads: readsDone, broken_promise: false };
 }
 
 module.exports = {

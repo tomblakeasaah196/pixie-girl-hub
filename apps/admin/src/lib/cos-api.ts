@@ -317,9 +317,10 @@ export function useConfirmCosPlan(conversationId: string) {
     mutationFn: (planId: string) =>
       api.post<Plan>(`/cos/plans/${planId}/confirm`),
     onSuccess: (updated) => {
+      // 202: the steps run on a background worker — `updated` arrives as
+      // status 'executing' and the card settles to executed/partially_failed
+      // via the cos_plan:executed push (useRealtimeInvalidation).
       patchPlan(qc, conversationId, updated);
-      // A batch write touched goals/tasks/calendar — refresh those surfaces.
-      qc.invalidateQueries({ queryKey: ["workspace"] });
     },
     onError: (err) => toastReport("Chief of Staff → Plan", "Approve plan", err),
   });

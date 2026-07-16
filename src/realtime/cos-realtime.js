@@ -51,6 +51,13 @@ function registerCosRealtime() {
   cosEvents.on("turn.progress", (p) =>
     emitToUser(p.user_id, "cos_turn:progress", p),
   );
+  // Batch-plan completion (PR3): plans now execute on the cos-plan-exec
+  // worker, so this push is how the plan card learns the run finished
+  // (status: executed | partially_failed) — the client refetches the
+  // conversation instead of polling.
+  cosEvents.on("plan.executed", (p) =>
+    emitToUser(p.user_id, "cos_plan:executed", p),
+  );
 
   logger.info("cos realtime relay registered");
 }

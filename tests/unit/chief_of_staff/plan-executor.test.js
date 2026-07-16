@@ -17,8 +17,19 @@ jest.mock("../../../src/middleware/audit", () => ({ audit: jest.fn() }));
 jest.mock("../../../src/config/logger", () => ({
   logger: { error: jest.fn(), warn: jest.fn(), info: jest.fn(), debug: jest.fn() },
 }));
+// confirmPlan hands execution to the cos-plan-exec queue (PR3): mock the
+// producer + token mint so no Redis/env is touched.
+jest.mock("../../../src/jobs/queue-producer", () => ({ enqueue: jest.fn() }));
+jest.mock("../../../src/shared/hr_payroll/service-tokens", () => ({
+  mintCosPlanExecToken: jest.fn(() => "svc-token"),
+}));
+jest.mock("../../../src/shared/cache/identity-cache", () => ({
+  getAuthUser: jest.fn(),
+}));
 
 const repo = require("../../../src/modules/chief_of_staff/cos.repo");
+const { enqueue } = require("../../../src/jobs/queue-producer");
+const { mintCosPlanExecToken } = require("../../../src/shared/hr_payroll/service-tokens");
 const executor = require("../../../src/modules/praxis_ai/praxis.executor");
 const goalsRepo = require("../../../src/shared/goals/goals.repo");
 const planExec = require("../../../src/modules/chief_of_staff/cos.plan-executor");
@@ -139,22 +150,80 @@ test("confirmPlan stamps confirmed_by_user_id on each proposed step (no 409)", a
     Object.assign(s, { status, ...fields });
     return s;
   });
-  executor.executeAction.mockResolvedValue({ ok: true, http_status: 201, result: { data: { goal_id: "g-9" } } });
 
   const out = await planExec.confirmPlan({
     user: { user_id: "u1" },
     request_id: "r9",
     id: "plan-9",
-    auth_header: "Bearer x",
   });
 
-  expect(out.status).toBe("executed");
+  // Execution moved to the worker: confirm returns 'executing' and no step
+  // runs inline.
+  expect(out.status).toBe("executing");
+  expect(executor.executeAction).not.toHaveBeenCalled();
   const confirmCall = repo.setStepStatus.mock.calls.find(
     ([a]) => a.id === "p0" && a.status === "confirmed",
   );
   expect(confirmCall).toBeTruthy();
   expect(confirmCall[0].fields.confirmed_by_user_id).toBe("u1");
   expect(confirmCall[0].fields.confirmed_at).toBeTruthy();
+});
+
+test("confirmPlan mints a scoped service token and enqueues the execution job", async () => {
+  const plan = {
+    plan_id: "plan-10",
+    proposed_by_user_id: "u1",
+    business: "faitlynhair",
+    status: "proposed",
+    expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+  };
+  repo.findPlan.mockImplementation(async () => ({ ...plan }));
+  repo.listPlanSteps.mockResolvedValue([]);
+  repo.setPlanStatus.mockImplementation(async ({ status, fields = {} }) => {
+    Object.assign(plan, { status, ...fields });
+    return { ...plan };
+  });
+
+  const out = await planExec.confirmPlan({
+    user: { user_id: "u1" },
+    request_id: "r10",
+    id: "plan-10",
+  });
+
+  expect(mintCosPlanExecToken).toHaveBeenCalledWith({
+    user_id: "u1",
+    plan_id: "plan-10",
+    brand: "faitlynhair",
+  });
+  expect(enqueue).toHaveBeenCalledWith(
+    "cos-plan-exec",
+    "execute",
+    {
+      plan_id: "plan-10",
+      brand: "faitlynhair",
+      user_id: "u1",
+      service_token: "svc-token",
+      request_id: "r10",
+    },
+    { attempts: 3 },
+  );
+  expect(out.status).toBe("executing");
+  expect(out.steps).toEqual([]);
+});
+
+test("confirmPlan on a partially_failed plan re-enqueues (Retry remaining)", async () => {
+  const plan = { plan_id: "plan-11", proposed_by_user_id: "u1", business: "pixiegirl", status: "partially_failed" };
+  repo.findPlan.mockImplementation(async () => ({ ...plan }));
+  repo.listPlanSteps.mockResolvedValue([]);
+  repo.setPlanStatus.mockImplementation(async ({ status }) => {
+    plan.status = status;
+    return { ...plan };
+  });
+
+  const out = await planExec.confirmPlan({ user: { user_id: "u1" }, id: "plan-11" });
+
+  expect(enqueue).toHaveBeenCalledTimes(1);
+  expect(out.status).toBe("executing");
 });
 
 test("duplicate-goal guard: a create_goal step matching a live goal fails with an actionable error", async () => {

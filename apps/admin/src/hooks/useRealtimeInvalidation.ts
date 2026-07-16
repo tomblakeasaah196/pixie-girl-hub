@@ -59,11 +59,20 @@ export function useRealtimeInvalidation() {
       queryClient.invalidateQueries({ queryKey: ["cos", "followups"] });
     };
 
+    // CoS batch plan finished on the worker (PR3) → refetch the conversation
+    // (flips the plan card executing → executed/partially_failed) and the
+    // workspace boards its steps just wrote to. No polling.
+    const onCosPlan = () => {
+      queryClient.invalidateQueries({ queryKey: ["cos", "conversation"] });
+      queryClient.invalidateQueries({ queryKey: ["workspace"] });
+    };
+
     window.addEventListener("pgh:stock:changed", onStock);
     window.addEventListener("pgh:sales:changed", onSales);
     window.addEventListener("pgh:service_jobs:changed", onServiceJobs);
     window.addEventListener("pgh:notification:new", onNotification);
     window.addEventListener("pgh:cos:changed", onCos);
+    window.addEventListener("pgh:cos_plan:executed", onCosPlan);
 
     return () => {
       window.removeEventListener("pgh:stock:changed", onStock);
@@ -71,6 +80,7 @@ export function useRealtimeInvalidation() {
       window.removeEventListener("pgh:service_jobs:changed", onServiceJobs);
       window.removeEventListener("pgh:notification:new", onNotification);
       window.removeEventListener("pgh:cos:changed", onCos);
+      window.removeEventListener("pgh:cos_plan:executed", onCosPlan);
       joined.forEach(leaveRoom);
     };
   }, [brand, userId, queryClient]);

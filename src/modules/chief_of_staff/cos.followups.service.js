@@ -200,12 +200,13 @@ async function getOrCreateSystemConversation({ user, brand }) {
 const actionByKey = (actions, key) => actions.find((a) => a.action_key === key);
 
 /**
- * Build + execute a batch re-plan that shifts every open milestone/task on the
+ * Build + confirm a batch re-plan that shifts every open milestone/task on the
  * follow-up's goal (from the subject's date onward) by `days`. Reuses the PR3
- * plan executor so each shift re-enters the real endpoint as the CEO. Returns
- * the executed plan, or null when there was nothing to move.
+ * plan executor so each shift re-enters the real endpoint as the CEO — the
+ * steps run on the cos-plan-exec worker. Returns the plan in 'executing'
+ * state, or null when there was nothing to move.
  */
-async function rescheduleDependents({ followup, brand, user, days, request_id, auth_header }) {
+async function rescheduleDependents({ followup, brand, user, days, request_id }) {
   const goalId = await resolveGoalId(followup, brand);
   if (!goalId)
     throw new AppError("COS_NO_GOAL", "This item isn't linked to a goal to re-plan.", 422);
@@ -280,8 +281,10 @@ async function rescheduleDependents({ followup, brand, user, days, request_id, a
     return p;
   });
 
-  // The CEO already approved by choosing this suggestion — run it now.
-  return planExecutor.confirmPlan({ user, request_id, id: plan.plan_id, auth_header });
+  // The CEO already approved by choosing this suggestion — confirm hands the
+  // run to the cos-plan-exec worker; the returned plan is 'executing' and the
+  // card settles via the cos_plan:executed realtime push.
+  return planExecutor.confirmPlan({ user, request_id, id: plan.plan_id });
 }
 
 async function notifyStakeholders({ followup, brand }) {
@@ -411,7 +414,7 @@ async function act({ user, brand, request_id, id, auth_header, action }) {
     const pending = await moveDeadlinePending({ followup: f, brand, days });
     await runAsCeo({ pending, auth_header, request_id, what: "move the deadline" });
   } else if (kind === "reschedule_dependents") {
-    plan = await rescheduleDependents({ followup: f, brand, user, days, request_id, auth_header });
+    plan = await rescheduleDependents({ followup: f, brand, user, days, request_id });
   } else if (kind === "notify_stakeholder") {
     extra = await notifyStakeholders({ followup: f, brand });
   } else {

@@ -7,10 +7,20 @@
  * the CoS can never exceed the CEO. Before each step, `{{step:N.field}}` tokens
  * in its payload are resolved from prior steps' results.
  *
+ * Execution is a BACKGROUND JOB: confirmPlan mints a short-lived cos_plan_exec
+ * service token (the worker has no live request to borrow a JWT from, and the
+ * CEO's own token dies with the 45-minute idle window — see middleware/auth.js
+ * + shared/hr_payroll/service-tokens.js), enqueues onto the `cos-plan-exec`
+ * BullMQ queue, and returns immediately with status 'executing'. The worker
+ * (jobs/processors/cos-plan-exec-processor.js → executePlanJob) runs the steps
+ * and the plan.executed event reaches the browser via the realtime bridge, so
+ * a dozens-of-steps plan can never time out the confirm request or the proxy.
+ *
  * Idempotent + resumable: already-'executed' steps are skipped and their result
- * re-seeded, so a re-run continues from the first unfinished step. A step
- * failure stops the run (dependents can't resolve) and the plan lands in
- * 'partially_failed' — re-confirming resumes it.
+ * re-seeded, so a re-run (BullMQ retry after a crash, or the CEO's "Retry
+ * remaining") continues from the first unfinished step. A step failure stops
+ * its dependents and the plan lands in 'partially_failed' — re-confirming
+ * resumes it.
  */
 
 "use strict";
@@ -21,11 +31,23 @@ const events = require("./cos.events");
 const executor = require("../praxis_ai/praxis.executor");
 const goalsRepo = require("../../shared/goals/goals.repo");
 const governance = require("../ai_governance/governance.service");
+const identityCache = require("../../shared/cache/identity-cache");
+const { mintCosPlanExecToken } = require("../../shared/hr_payroll/service-tokens");
+const { enqueue } = require("../../jobs/queue-producer");
 const { makeRepairFn } = require("./cos.repair");
 const { humaniseExecutionError, isValidationFailure } = require("./cos.errors");
 const { audit } = require("../../middleware/audit");
 const { logger } = require("../../config/logger");
 const { NotFoundError, AppError } = require("../../utils/errors");
+
+// BullMQ queue carrying plan-execution jobs (consumed in jobs/worker.js).
+// Modest attempts: retries exist for crashes/infra errors, not business
+// failures — a step-level failure completes the job as partially_failed and
+// waits for the CEO's "Retry remaining". executePlan is resumable, so an
+// attempt-2 after a crash skips already-executed steps (idempotency inside
+// the step loop is PR2's per-step guard).
+const EXEC_QUEUE = "cos-plan-exec";
+const EXEC_ATTEMPTS = 3;
 
 const nowIso = () => new Date().toISOString();
 
@@ -254,8 +276,14 @@ async function buildRepairContext({ user, plan }) {
   }
 }
 
-/** Approve a plan and run it. Owner-checked, expiry-checked, resumable. */
-async function confirmPlan({ user, request_id, id, auth_header }) {
+/**
+ * Approve a plan and hand it to the background worker. Owner-checked,
+ * expiry-checked, resumable (re-confirming a partially_failed or stuck
+ * 'executing' plan enqueues a fresh job that skips executed steps).
+ * Returns the plan with status 'executing' — completion arrives via the
+ * plan.executed realtime push, not this response.
+ */
+async function confirmPlan({ user, request_id, id }) {
   const plan = await repo.findPlan({ id });
   if (!plan || plan.proposed_by_user_id !== user.user_id)
     throw new NotFoundError("Plan");
@@ -302,9 +330,79 @@ async function confirmPlan({ user, request_id, id, auth_header }) {
   });
   events.emit("plan.confirmed", { plan_id: id, user_id: user.user_id });
 
+  // Flip to 'executing' BEFORE enqueueing so the confirm response (and any
+  // refetch racing the worker) already shows the running state.
+  await repo.setPlanStatus({ id, status: "executing" });
+
+  // Minted while the CEO's request is live and authorized; travels only on
+  // the job payload (Redis) and is never persisted or logged.
+  const service_token = mintCosPlanExecToken({
+    user_id: user.user_id,
+    plan_id: id,
+    brand: plan.business,
+  });
+  await enqueue(
+    EXEC_QUEUE,
+    "execute",
+    { plan_id: id, brand: plan.business, user_id: user.user_id, service_token, request_id },
+    { attempts: EXEC_ATTEMPTS },
+  );
+
   const fresh = await repo.findPlan({ id });
-  const { repair, actionByKey } = await buildRepairContext({ user, plan: fresh });
-  return executePlan({ plan: fresh, auth_header, request_id, repair, actionByKey });
+  const steps = await repo.listPlanSteps({ plan_id: id });
+  return { ...fresh, steps };
+}
+
+/**
+ * Worker-side entry point (jobs/processors/cos-plan-exec-processor.js): load
+ * the plan, rebuild the self-repair context, run the steps as the confirming
+ * user via the service token. Throws only for infra-level errors (DB down,
+ * plan table unreachable) so BullMQ retries those; a step-level failure ends
+ * as 'partially_failed' WITHOUT throwing — that's the CEO's call, not a retry.
+ *
+ * @param {object} args
+ * @param {string} args.plan_id
+ * @param {string} args.user_id       The confirming user (repair context runs as them).
+ * @param {string} args.service_token Raw cos_plan_exec JWT minted at confirm time.
+ * @param {string} [args.request_id]
+ */
+async function executePlanJob({ plan_id, user_id, service_token, request_id }) {
+  const plan = await repo.findPlan({ id: plan_id });
+  if (!plan) {
+    // Plan vanished between enqueue and run — nothing to execute, and a
+    // retry can't bring it back. Complete the job quietly.
+    logger.warn({ plan_id }, "cos: plan-exec job found no plan — skipping");
+    return null;
+  }
+  // A stalled-job retry can fire after the run actually finished, and a plan
+  // rejected/expired in the queue gap must not run. Only these states may
+  // (re)execute — mirrors confirmPlan's resumable set post-confirm.
+  if (!["confirmed", "executing", "partially_failed"].includes(plan.status)) {
+    logger.info(
+      { plan_id, status: plan.status },
+      "cos: plan-exec job skipped — plan not in a runnable state",
+    );
+    return null;
+  }
+
+  // Repair context needs the confirming user's identity (governance budget +
+  // CEO flag). Best-effort: an unavailable identity just runs without repair.
+  let repairUser = { user_id, is_ceo: false };
+  try {
+    const u = await identityCache.getAuthUser(user_id);
+    if (u) repairUser = { user_id: u.user_id, is_ceo: u.is_ceo === true };
+  } catch (err) {
+    logger.debug({ err: err.message }, "cos: plan-exec identity lookup failed");
+  }
+  const { repair, actionByKey } = await buildRepairContext({ user: repairUser, plan });
+
+  return executePlan({
+    plan,
+    auth_header: `Bearer ${service_token}`,
+    request_id,
+    repair,
+    actionByKey,
+  });
 }
 
 /** Reject a proposed plan. Cancels its steps. */
@@ -337,4 +435,4 @@ async function rejectPlan({ user, request_id, id, reason }) {
   return updated;
 }
 
-module.exports = { executePlan, confirmPlan, rejectPlan };
+module.exports = { executePlan, executePlanJob, confirmPlan, rejectPlan };

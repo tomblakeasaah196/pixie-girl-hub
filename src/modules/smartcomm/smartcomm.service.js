@@ -1716,6 +1716,11 @@ async function recordInboundFromCustomer({
   external_thread_ref,
   media,
   metadata,
+  // Backfill support (scripts/backfill-instagram-history.js): record the
+  // message at its ORIGINAL platform timestamp, and don't wake the whole
+  // team with realtime pings + bell notifications for months-old history.
+  occurred_at,
+  quiet,
 }) {
   // Cheap idempotency pre-check BEFORE downloading media: a redelivery of
   // an already-recorded message must not re-fetch (and re-store) the file.
@@ -1795,6 +1800,7 @@ async function recordInboundFromCustomer({
         external_ref,
         delivery_status: "delivered",
         metadata: messageMetadata,
+        created_at: occurred_at,
       },
     });
     // Link the downloaded media (if any) so the inbox renders the real
@@ -1815,8 +1821,168 @@ async function recordInboundFromCustomer({
   // message row, so the event must never fire while the insert is still
   // invisible to other connections (it used to fire mid-transaction,
   // which made the sender lookup race and misfire notifications).
-  if (!result.duplicate) {
+  if (!result.duplicate && !quiet) {
     events.emit("customer.message_received", {
+      brand,
+      contact_id,
+      channel_id: result.channel_id,
+      message_id: result.message.message_id,
+      platform,
+    });
+  }
+  return result;
+}
+
+/**
+ * Record a reply OUR side sent from the platform's own app — today that's
+ * a staffer answering an Instagram DM inside the Instagram app instead of
+ * the Hub. Meta reports those as message echoes (is_echo) on the same
+ * webhook; before this existed they were dropped, so app-side replies
+ * were invisible here and three people could answer the same customer.
+ *
+ * Semantics (deliberate, and the only ones Meta's events allow):
+ *   - The reply lands on the customer thread as a business-side bubble
+ *     attributed "Instagram app" (no Hub user to credit it to).
+ *   - Replying clears the thread's unread badge for the whole team via
+ *     the channel's external_read_at watermark — the conversation was
+ *     handled, just not here. Merely READING in the Instagram app sends
+ *     no webhook at all, so an opened-but-unanswered thread keeps its
+ *     badge. That asymmetry is the desired behaviour.
+ *
+ * Dedup: echoes fire for Hub-sent messages too. findMessageByProviderRef
+ * matches the row's external_ref OR a multi-bubble send's sequence_mids,
+ * and a still-'queued' Hub send on the same thread defers the ingest
+ * (outbox retry) until the provider mid has been stamped back.
+ *
+ * `occurred_at` + `quiet` serve the history backfill, same as
+ * recordInboundFromCustomer.
+ */
+async function recordAgentReplyFromPlatform({
+  brand,
+  contact_id,
+  platform,
+  body,
+  message_type = "text",
+  external_ref,
+  external_thread_ref,
+  media,
+  metadata,
+  occurred_at,
+  quiet,
+}) {
+  // Echo of a message the Hub itself sent — already recorded at send time.
+  if (external_ref) {
+    const known = await repo.findMessageByProviderRef({ external_ref });
+    if (known) {
+      return { channel_id: known.channel_id, message: known, duplicate: true };
+    }
+  }
+  // A Hub send still on 'queued' hasn't had its mid stamped back yet, so
+  // its echo would look brand-new. Defer — the thrown error rides back to
+  // the outbox, which retries with backoff; by then applyDeliveryResult
+  // has stamped the mid and the dedup above catches it. Live ingest only:
+  // the backfill reads settled history.
+  if (!quiet && external_thread_ref) {
+    const thread = await repo.findCustomerThreadByExternalRef({
+      brand,
+      platform,
+      external_thread_ref,
+    });
+    if (
+      thread &&
+      (await repo.hasRecentQueuedOutbound({ channel_id: thread.channel_id }))
+    ) {
+      throw new AppError(
+        "IG_ECHO_DEFERRED",
+        "Echo arrived while a Hub send is in flight — retrying after the mid is stamped",
+        503,
+      );
+    }
+  }
+  const storedDoc = await downloadInboundMediaToDocument({ brand, media });
+
+  const result = await transaction(async (client) => {
+    // Authoritative re-check: a concurrent delivery may have inserted
+    // between the pre-check and here.
+    if (external_ref) {
+      const dup = await client.query(
+        `SELECT message_id, channel_id FROM shared.messages
+          WHERE external_ref = $1
+             OR (metadata ? 'sequence_mids' AND metadata->'sequence_mids' @> to_jsonb($1::text))
+          LIMIT 1`,
+        [external_ref],
+      );
+      if (dup.rows.length) {
+        const row = dup.rows[0];
+        return { channel_id: row.channel_id, message: row, duplicate: true };
+      }
+    }
+    const thread = await findOrCreateCustomerThread({
+      client,
+      brand,
+      contact_id,
+      platform: platform || "instagram",
+      external_thread_ref,
+    });
+    // The whitelist covers story/share card keys; `via` is stamped
+    // unconditionally server-side (no HTTP path reaches here, and the
+    // composer's whitelist can't forge it).
+    const messageMetadata = sanitiseMessageMetadata(message_type, metadata) || {};
+    messageMetadata.via = "instagram_app";
+    const msg = await repo.insertMessage({
+      client,
+      message: {
+        channel_id: thread.channel_id,
+        message_type,
+        content: body,
+        external_ref,
+        delivery_status: "sent",
+        metadata: messageMetadata,
+        created_at: occurred_at,
+      },
+    });
+    if (storedDoc) {
+      await repo.addAttachment({
+        client,
+        a: {
+          message_id: msg.message_id,
+          document_id: storedDoc.document_id,
+          display_name: storedDoc.display_name,
+        },
+      });
+    }
+    // The team answered — everything up to this reply reads as handled
+    // for every staff viewer. Monotonic, so a backfilled old reply can
+    // never un-read newer customer messages.
+    await repo.markChannelExternallyRead({
+      client,
+      channel_id: thread.channel_id,
+      at: msg.created_at,
+    });
+    // Only a reply that is (still) the newest thing on the thread consumes
+    // its bell notifications — a backfilled reply from before the
+    // customer's latest message must leave the bell alone.
+    const isLatest =
+      !thread.last_message_at ||
+      new Date(msg.created_at) >= new Date(thread.last_message_at);
+    return { channel_id: thread.channel_id, message: msg, duplicate: false, isLatest };
+  });
+
+  if (!result.duplicate && result.isLatest) {
+    // Consume the "new message" bell for EVERY user — the thread was
+    // answered on the platform. Best-effort, never blocks the ingest.
+    try {
+      const notifications = require("../../services/notifications.service");
+      await notifications.markReadByReferenceAllUsers({
+        reference_type: "smartcomm_channel",
+        reference_id: result.channel_id,
+      });
+    } catch {
+      /* non-fatal */
+    }
+  }
+  if (!result.duplicate && !quiet) {
+    events.emit("customer.replied_externally", {
       brand,
       contact_id,
       channel_id: result.channel_id,
@@ -2114,12 +2280,14 @@ async function applyDeliveryResult({
   delivery_status,
   delivery_error,
   external_ref,
+  sequence_mids,
 }) {
   const updated = await repo.setMessageDelivery({
     message_id,
     delivery_status,
     delivery_error,
     external_ref,
+    sequence_mids,
   });
   if (updated) {
     events.emit("message.edited", {
@@ -2486,6 +2654,7 @@ module.exports = {
   sendTransactionalEmail,
   sendInvoiceIntoThread,
   recordInboundFromCustomer,
+  recordAgentReplyFromPlatform,
   findOrCreateCustomerThread,
   addAttachment,
   // exposed for the calls module (voice-call timeline cards):

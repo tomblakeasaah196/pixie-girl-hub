@@ -549,6 +549,18 @@ messages across WhatsApp, SMS, and other channels in one place.
   their thread in Messaging: the branded confirmation **email** appears on
   their email-channel conversation, and a WhatsApp confirmation (sent when
   the customer has no email on file) appears on their WhatsApp thread.
+- *A teammate answered an Instagram DM from the Instagram app — where is it?*
+  It syncs into the customer's thread automatically as a business-side bubble
+  tagged **"via Instagram app"**, and the thread's unread badge clears for
+  everyone (the conversation was handled — just not in the Hub). If a thread
+  was only *opened* on Instagram but never answered, it stays **unread** here
+  on purpose, so nobody assumes it was dealt with.
+- *Instagram replies made in the app are missing / a thread's history has
+  gaps?* An admin can recover recent history with
+  `npm run backfill:instagram-history` on the server (Instagram only exposes
+  the ~20 most recent messages per conversation). Requires the Meta app's
+  Instagram webhook subscription to include **message_echoes** — see
+  `docs/INSTAGRAM_APP_REPLY_SYNC.md`.
 
 ### 4.25 Org & Workflow
 **What it's for.** Company **structure, roles, and approvals** — the org chart,

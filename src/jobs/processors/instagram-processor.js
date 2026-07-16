@@ -206,15 +206,22 @@ async function sendSequenceStep(step, data) {
 
 async function sendSequence(job, data) {
   let lastMid = null;
+  const mids = [];
   try {
     for (const step of data.sequence) {
       lastMid = await sendSequenceStep(step, data);
+      if (lastMid) mids.push(String(lastMid));
     }
     if (data.smartcomm_message_id) {
+      // external_ref carries the LAST bubble's mid (delivery-status
+      // callbacks key on it); sequence_mids carries EVERY bubble's mid so
+      // the echo-dedup lookup recognises echoes of the intermediate
+      // bubbles instead of re-recording them as "sent from the IG app".
       await smartcomm().applyDeliveryResult({
         message_id: data.smartcomm_message_id,
         delivery_status: "sent",
         external_ref: lastMid ? String(lastMid) : null,
+        sequence_mids: mids,
       });
     }
     logger.info(
@@ -242,10 +249,14 @@ async function sendSequence(job, data) {
       "instagram-send: sequence step failed",
     );
     if (data.smartcomm_message_id) {
+      // Bubbles that landed BEFORE the failing step still produced mids —
+      // stamp them so their echoes dedupe instead of re-recording as
+      // "sent from the IG app".
       await smartcomm().applyDeliveryResult({
         message_id: data.smartcomm_message_id,
         delivery_status: "failed",
         delivery_error: String(err.message || err).slice(0, 1000),
+        sequence_mids: mids,
       });
     }
     throw err;

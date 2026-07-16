@@ -826,9 +826,16 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
           messages.map((m, i) => {
             const prev = messages[i - 1];
             const isOwn = !!user && m.sender_user_id === user.id;
+            // A reply a staffer sent from the Instagram app itself (message
+            // echo, stamped via='instagram_app') is the business speaking —
+            // render it on our side of the thread, but keep isOwn false so
+            // it never grows Edit/Delete (there's no Hub message to edit —
+            // it lives on Instagram).
+            const isBusinessSide =
+              isOwn || m.metadata?.via === "instagram_app";
             const newDay = !prev || !isSameDay(prev.created_at, m.created_at);
             const showName =
-              !isOwn &&
+              !isBusinessSide &&
               m.message_type !== "system" &&
               m.sender_user_id !== prev?.sender_user_id;
             return (
@@ -851,6 +858,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
                 <MessageBubble
                   message={m}
                   isOwn={isOwn}
+                  businessSide={isBusinessSide}
                   showSenderName={showName}
                   isEmail={platform === "email"}
                   actions={{

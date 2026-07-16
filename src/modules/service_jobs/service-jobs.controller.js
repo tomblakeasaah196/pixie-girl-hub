@@ -176,6 +176,15 @@ async function recordQc(req, res) {
     }),
   });
 }
+
+async function getMyCurrentSession(req, res) {
+  res.json({
+    data: await service.getMyCurrentSession({
+      brand: req.brand,
+      user: req.user,
+    }),
+  });
+}
 async function linkIntercompany(req, res) {
   res.json({
     data: await service.linkIntercompany({
@@ -367,6 +376,7 @@ module.exports = {
   resumeWork,
   returnForQc,
   recordQc,
+  getMyCurrentSession,
   linkIntercompany,
   logMaterial,
   listMaterials,

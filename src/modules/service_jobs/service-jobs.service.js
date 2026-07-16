@@ -1087,6 +1087,17 @@ function listTimeLogs({ brand, id }) {
   return repo.listTimeLogs({ brand, job_id: id });
 }
 
+/**
+ * The caller's currently-open time session, or null if no clock is running.
+ * Drives the "You're working on Job X — 47m elapsed" strip at the top of
+ * the Stylist Studio page for own-scope users, so they can pause without
+ * having to hunt for the specific job card.
+ */
+function getMyCurrentSession({ brand, user }) {
+  if (!user) return Promise.resolve(null);
+  return repo.getUsersOpenSession({ brand, user_id: user.user_id });
+}
+
 /** Stylist marks done and returns the wig to Ops for QC. Custody RETURN. */
 async function returnForQc({ brand, user, request_id, id }) {
   return transaction(async (client) => {
@@ -1471,6 +1482,7 @@ module.exports = {
   listTimeLogs,
   returnForQc,
   recordQc,
+  getMyCurrentSession,
   linkIntercompany,
   getAccountability,
   listCustodyLedger,

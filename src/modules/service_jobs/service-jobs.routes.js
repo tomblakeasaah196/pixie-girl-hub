@@ -67,6 +67,11 @@ router.get("/scorecards", can("view"), c.listStylistScorecards);
 router.get("/scorecards/:userId", can("view"), c.getStylistScorecard);
 
 // ── Jobs ───────────────────────────────────────────────────
+// Caller's currently-open time session (drives the page-level "Working on
+// Job X — 47m elapsed" strip). Mounted BEFORE /:id so `my` isn't parsed
+// as a job UUID.
+router.get("/my/current", can("view"), c.getMyCurrentSession);
+
 router.get("/", can("view"), c.listJobs);
 router.post("/", can("create"), v.validateJobCreate, c.createJob);
 router.get("/:id", can("view"), c.getJob);

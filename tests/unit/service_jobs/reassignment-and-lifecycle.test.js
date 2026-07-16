@@ -43,6 +43,7 @@ jest.mock("../../../src/modules/service_jobs/service-jobs.repo", () => ({
   setServiceJobStatus: jest.fn(),
   userHasJobAccess: jest.fn(),
   getJobAssigneeName: jest.fn(),
+  getUsersOpenSession: jest.fn(),
   addCustody: jest.fn(),
   hasCustodyEvent: jest.fn().mockResolvedValue(true), // avoid double-deduct
 }));
@@ -228,6 +229,28 @@ describe("service_jobs.service.recordQc — QC pass auto-completes", () => {
     // still-completed job — merged into the returned object.
     expect(result.shipment_id).toBe("delivery-1");
     expect(result.status).toBe("completed");
+  });
+
+  it("returns null current-session for the caller when no clock is running", async () => {
+    repo.getUsersOpenSession.mockResolvedValue(null);
+    const result = await svc.getMyCurrentSession({
+      brand: "faitlynhair",
+      user: STYLIST_A,
+    });
+    expect(result).toBeNull();
+    expect(repo.getUsersOpenSession).toHaveBeenCalledWith({
+      brand: "faitlynhair",
+      user_id: STYLIST_A.user_id,
+    });
+  });
+
+  it("short-circuits current-session to null when no user is on the request", async () => {
+    const result = await svc.getMyCurrentSession({
+      brand: "faitlynhair",
+      user: null,
+    });
+    expect(result).toBeNull();
+    expect(repo.getUsersOpenSession).not.toHaveBeenCalled();
   });
 
   it("on fail, keeps the rework flow: status=rework, wig back out to the stylist", async () => {

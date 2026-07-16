@@ -26,6 +26,7 @@ import type {
   StylistScorecardSummary,
   StylistScorecard,
   JobSummary,
+  MyCurrentSession,
 } from "./types";
 
 const BASE = "/service-jobs";
@@ -115,6 +116,13 @@ export function listJobs(params?: {
 
 export function getJob(id: string) {
   return api.get<ServiceJob>(`${BASE}/${id}`);
+}
+
+// The caller's currently-open time session, or null when no clock is
+// running. Drives the page-level "You're working on Job X — 47m elapsed"
+// strip for own-scope stylists.
+export function getMyCurrentSession() {
+  return api.get<MyCurrentSession | null>(`${BASE}/my/current`);
 }
 
 export function createJob(input: CreateJobInput) {

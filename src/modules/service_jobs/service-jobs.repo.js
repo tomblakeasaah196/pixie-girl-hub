@@ -709,6 +709,32 @@ async function closeTimeSession({ client, brand, log_id }) {
   );
   return rows[0] || null;
 }
+/**
+ * The single OPEN time session (started_at set, ended_at null) currently
+ * running for this user across every job in the brand, joined with the
+ * job's number + service-type label so the "You're working on Job X" strip
+ * can render without a second round-trip. Returns null when no clock is
+ * running (which is the normal state; the strip stays hidden).
+ *
+ * A stylist should only ever have one open session at a time (startWork
+ * refuses to open a second one for the same job), but the LIMIT 1 keeps
+ * this honest even if the invariant slips.
+ */
+async function getUsersOpenSession({ brand, user_id }) {
+  const { rows } = await query(
+    `SELECT tl.log_id, tl.job_id, tl.started_at,
+            sj.job_number, sj.status AS job_status,
+            st.display_name AS service_type_name
+       FROM ${t(brand, "service_job_time_logs")} tl
+       JOIN ${t(brand, "service_jobs")} sj ON sj.job_id = tl.job_id
+       LEFT JOIN ${t(brand, "service_types")} st
+         ON st.service_type_id = sj.service_type_id
+      WHERE tl.stylist_user_id = $1 AND tl.ended_at IS NULL
+      ORDER BY tl.started_at DESC LIMIT 1`,
+    [user_id],
+  );
+  return rows[0] || null;
+}
 async function listTimeLogs({ brand, job_id }) {
   const { rows } = await query(
     `SELECT * FROM ${t(brand, "service_job_time_logs")}
@@ -1127,6 +1153,7 @@ module.exports = {
   listStyledBom,
   firstStudioLine,
   getOpenTimeSession,
+  getUsersOpenSession,
   openTimeSession,
   closeTimeSession,
   listTimeLogs,

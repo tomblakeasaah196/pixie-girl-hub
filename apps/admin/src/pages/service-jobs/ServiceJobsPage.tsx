@@ -33,6 +33,7 @@ import { AccountabilityPanel } from "./AccountabilityPanel";
 import { MyStudioJobs } from "./MyStudioJobs";
 import { QcQueue } from "./QcQueue";
 import { ScorecardsPanel } from "./ScorecardsPanel";
+import { WorkingNowStrip } from "./WorkingNowStrip";
 import {
   useJobs,
   useServiceTypes,
@@ -610,6 +611,11 @@ export function ServiceJobsPage() {
   return (
     <div className="p-4 md:p-6 space-y-5">
       <ModuleInsights module="service_jobs" />
+      {/* Own-scope stylists get a persistent "You're working on Job X —
+          47m elapsed [Pause]" strip when a time session is running, so the
+          Pause control is always one tap away no matter which tab they're
+          on. Renders nothing when no clock is running (or for Ops). */}
+      <WorkingNowStrip enabled={isOwnScope} />
       {/* KPI strip is an ops-wide summary — a stylist doesn't need "no-sale
           risk" or team happiness on their personal cockpit. */}
       {!isOwnScope && <KpiStrip />}

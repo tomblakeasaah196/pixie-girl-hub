@@ -720,8 +720,8 @@ async function listMaterials({ brand, job_id }) {
 async function addReference({ client, brand, r }) {
   const { rows } = await ex(client)(
     `INSERT INTO ${t(brand, "service_job_references")}
-       (job_id, ref_type, doc_id, url, body, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+       (job_id, ref_type, doc_id, url, body, created_by, is_locked)
+     VALUES ($1,$2,$3,$4,$5,$6,COALESCE($7,false)) RETURNING *`,
     [
       r.job_id,
       r.ref_type,
@@ -729,6 +729,7 @@ async function addReference({ client, brand, r }) {
       r.url || null,
       r.body || null,
       r.created_by || null,
+      r.is_locked === true,
     ],
   );
   return rows[0];
@@ -742,9 +743,12 @@ async function listReferences({ brand, job_id }) {
   return rows;
 }
 async function deleteReference({ brand, job_id, reference_id }) {
+  // The customer's locked brief can never be deleted here — only supplementary
+  // (is_locked = false) notes. The is_locked guard in SQL means even a
+  // hand-crafted request can't remove the original brief.
   const { rowCount } = await query(
     `DELETE FROM ${t(brand, "service_job_references")}
-      WHERE reference_id = $1 AND job_id = $2`,
+      WHERE reference_id = $1 AND job_id = $2 AND is_locked = false`,
     [reference_id, job_id],
   );
   return rowCount > 0;

@@ -57,6 +57,15 @@ const jobCreate = z
     scheduled_for: z.string().datetime().optional(),
     expected_completion_at: z.string().datetime().optional(),
     agreed_cost_ngn: z.coerce.number().nonnegative().optional(),
+    // Customer's style brief, captured at job open and locked. A note and/or
+    // an inspiration link — both optional, both become locked references.
+    brief: z
+      .object({
+        body: z.string().max(2000).optional(),
+        url: z.string().url().max(2000).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

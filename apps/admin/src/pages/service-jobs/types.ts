@@ -186,6 +186,9 @@ export interface CreateJobInput {
   agreed_cost_ngn?: number;
   is_intercompany?: boolean;
   intercompany_transaction_id?: string;
+  // Customer's style brief — a note and/or an inspiration link. Captured at
+  // creation and locked (read-only thereafter; stylists add notes on top).
+  brief?: { body?: string; url?: string };
 }
 
 export interface CreateRecipeInput {
@@ -232,6 +235,9 @@ export interface JobReference {
   body: string | null;
   created_by: string | null;
   created_at: string;
+  // true = the customer's original brief, captured at job open and not
+  // editable/deletable. false = a supplementary stylist/QC note.
+  is_locked: boolean;
 }
 
 export interface JobTimeLog {

@@ -11,6 +11,34 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-16 — Stylist Studio: lockable style brief
+
+**Source:** "the style brief came under QC instead of at job creation" — the
+brief (what the customer asked for) had no capture point at job open, so it
+only got filled in ad hoc whenever someone opened the stylist/QC work panel.
+Now captured once, at open, and locked.
+
+- `000083_business_stylist_brief_lock` (brand template) — adds
+  `service_job_references.is_locked BOOLEAN NOT NULL DEFAULT false`. `true`
+  marks the customer's original brief (captured at job open); `false` marks a
+  supplementary stylist/QC note. `deleteReference` refuses to remove locked
+  rows (guarded in SQL), so the original request can't be overwritten.
+  Existing references default to `false` (stay editable). Column add only;
+  per-brand table count unchanged.
+- `src/modules/service_jobs/service-jobs.service.js` — `createJob` accepts an
+  optional `brief` ({body, url}) written as locked reference rows;
+  `createForOrder` auto-pulls the source order line's `notes` into a locked
+  brief so order-opened jobs arrive with the customer request already on
+  them; `addReference` forces `is_locked = false` (the public endpoint can
+  only add supplementary notes, never a locked brief).
+- Admin: the "+ New Job" form gains a Style brief field (note + inspiration
+  link); the job drawer separates the locked brief from stylist/QC notes; the
+  work panel shows locked entries with a 🔒 and no delete control.
+
+Apply to existing brands with `npm run db:repair`.
+
+---
+
 ## 2026-07-15 — Stylist Studio: job drawer enrichment (PR1 of 2)
 
 **Source:** "make the job drawer rich" — customer/order/product identity,

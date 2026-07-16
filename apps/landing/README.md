@@ -6,7 +6,7 @@ Deployed to the dynamic per-brand sales subdomain configured in
 **Settings → Business Setup → Public Identity → Sales subdomain**:
 
 - `sales.pixiegirlglobal.com`
-- `sales.thefaitlynbrand.com`
+- `sales.faitlynhair.com`
 - _(any third brand the CEO onboards — DNS CNAME + the column value is all it takes)_
 
 ## Why a separate app

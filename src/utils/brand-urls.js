@@ -4,7 +4,7 @@
  * Replaces the single `STOREFRONT_BASE_URL` env var pattern with a
  * lookup on `business_config.storefront_domain` so each brand can
  * have its own customer-facing domain (e.g. pixiegirlglobal.com and
- * thefaitlynbrand.com).
+ * faitlynhair.com).
  *
  * Resolution order:
  *   1. business_config.storefront_domain  (preferred — CEO-editable)

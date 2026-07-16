@@ -9,7 +9,7 @@ ALTER TABLE shared.business_config
 UPDATE shared.business_config
 SET email_from_address = CASE business_key
   WHEN 'pixiegirl'   THEN 'noreply@pixiegirlglobal.com'
-  WHEN 'faitlynhair' THEN 'noreply@thefaitlynbrand.com'
+  WHEN 'faitlynhair' THEN 'noreply@faitlynhair.com'
   ELSE NULL
 END
 WHERE email_from_address IS NULL;

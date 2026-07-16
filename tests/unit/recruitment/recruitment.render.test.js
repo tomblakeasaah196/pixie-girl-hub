@@ -57,7 +57,7 @@ const FULL_COMPANY = {
   secondary_colour: "#B89A6B",
   address: "10b Emma Abimbola Cole, Lekki Phase 1, Lagos",
   phone: "+234 814 360 1938",
-  email: "contact@thefaitlynbrand.com",
+  email: "contact@faitlynhair.com",
   website: "faitlynhair.com",
   cac_number: "1234567",
   tin: "9876543",
@@ -89,7 +89,7 @@ describe("recruitment.render.offerPacketHtml", () => {
     const html = render.offerPacketHtml({ offer: SAMPLE_OFFER, company: FULL_COMPANY });
     expect(html).toContain("10b Emma Abimbola Cole, Lekki Phase 1, Lagos");
     expect(html).toContain("+234 814 360 1938");
-    expect(html).toContain("contact@thefaitlynbrand.com");
+    expect(html).toContain("contact@faitlynhair.com");
     expect(html).toContain("faitlynhair.com");
   });
 

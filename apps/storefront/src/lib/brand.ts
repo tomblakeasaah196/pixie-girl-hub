@@ -5,21 +5,18 @@
  * the request HOST and forwarded to the Hub as `X-Brand-Context`. There is NO
  * brand switcher in the website — one deploy serves one brand per host.
  *
- * This is the Storefront WEBSITE (e.g. pixiegirlglobal.com / thefaitlynbrand.com),
+ * NO hardcoded domain map: the brand is inferred from the brand key
+ * appearing in the hostname (domain-agnostic, so it survives domain
+ * changes), with DEFAULT_BRAND / VITE_STOREFRONT_BRAND as the deploy-level
+ * override. The authoritative host → brand mapping lives in the DB
+ * (business_config.storefront_domain, Settings → Business Setup) and is
+ * enforced by the Hub's host-brand-resolver on every /api/public call.
+ *
+ * This is the Storefront WEBSITE (e.g. pixiegirlglobal.com / faitlynhair.com),
  * NOT the Sales Campaign Landing (sales.<brand> → apps/landing). Never conflate.
  */
 
 export type BrandKey = "pixiegirl" | "faitlynhair";
-
-/** Explicit host map; substring fallback handles freshly-pointed aliases. */
-const HOST_BRAND_MAP: Record<string, BrandKey> = {
-  "pixiegirlglobal.com": "pixiegirl",
-  "www.pixiegirlglobal.com": "pixiegirl",
-  "thefaitlynbrand.com": "faitlynhair",
-  "www.thefaitlynbrand.com": "faitlynhair",
-  "faitlynhair.com": "faitlynhair",
-  "www.faitlynhair.com": "faitlynhair",
-};
 
 function envDefaultBrand(): BrandKey {
   const fromServer =
@@ -40,7 +37,6 @@ function envDefaultBrand(): BrandKey {
 export function brandFromHost(hostname?: string | null): BrandKey {
   if (!hostname) return envDefaultBrand();
   const host = hostname.split(":")[0].toLowerCase();
-  if (HOST_BRAND_MAP[host]) return HOST_BRAND_MAP[host];
   if (host.includes("faitlyn")) return "faitlynhair";
   if (host.includes("pixie")) return "pixiegirl";
   return envDefaultBrand();

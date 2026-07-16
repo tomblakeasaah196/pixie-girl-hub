@@ -1,5 +1,20 @@
 import path from "node:path";
 
+// Brand domains are NOT hardcoded: next/image's allowlist is built from the
+// LANDING_IMAGE_HOSTS env var (comma-separated apex domains, set alongside
+// HUB_API_URL on the deploy). Each entry allows the apex + all subdomains.
+// When a brand's domain changes, update the env var — no code change.
+const brandImageHosts = (
+  process.env.LANDING_IMAGE_HOSTS || "pixiegirlglobal.com,faitlynhair.com"
+)
+  .split(",")
+  .map((h) => h.trim())
+  .filter(Boolean)
+  .flatMap((h) => [
+    { protocol: "https", hostname: h },
+    { protocol: "https", hostname: `**.${h}` },
+  ]);
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -7,11 +22,7 @@ const nextConfig = {
   // CDN, and Instagram (for embed previews).
   images: {
     remotePatterns: [
-      { protocol: "https", hostname: "**.pixiegirlglobal.com" },
-      { protocol: "https", hostname: "pixiegirlglobal.com" },
-      { protocol: "https", hostname: "**.thefaitlynbrand.com" },
-      { protocol: "https", hostname: "thefaitlynbrand.com" },
-      { protocol: "https", hostname: "**.faitlynhair.com" },
+      ...brandImageHosts,
       { protocol: "https", hostname: "**.cdninstagram.com" },
       { protocol: "https", hostname: "**.fbcdn.net" },
       { protocol: "https", hostname: "**.scdn.co" },

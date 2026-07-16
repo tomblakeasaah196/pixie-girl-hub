@@ -97,10 +97,22 @@ export function AfterHero({ payload, brandConfig }: Props) {
     [payload.name, starts, ends],
   );
 
+  // Storefront destination, in preference order: the campaign's explicit
+  // redirect, the landing config (DB-overlaid from business_config), the
+  // payload's own brand record (also business_config), then a best-effort
+  // strip of the sales subdomain. No hardcoded domains anywhere.
+  const payloadStorefront = payload.brand?.storefront_domain
+    ? /^https?:\/\//i.test(payload.brand.storefront_domain)
+      ? payload.brand.storefront_domain
+      : `https://${payload.brand.storefront_domain}`
+    : null;
   const storefrontHref =
     payload.ended?.redirect_to ||
     brandConfig.storefront ||
-    `https://${brandConfig.domain.replace(/^sales\./, "")}`;
+    payloadStorefront ||
+    (brandConfig.domain
+      ? `https://${brandConfig.domain.replace(/^sales\./, "")}`
+      : "/");
 
   const next = payload.next_campaign;
   const nextDate = next ? new Date(next.starts_at) : null;

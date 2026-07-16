@@ -179,6 +179,10 @@ export interface Message {
     /** Emoji the customer reacted with on WhatsApp/Instagram (stamped
      *  server-side from the reaction webhook; absent once un-reacted). */
     customer_reaction?: string;
+    /** Stamped server-side on replies OUR side sent from the platform's
+     *  own app (message echoes) — 'instagram_app' renders the bubble on
+     *  the business side with a "via Instagram app" tag. */
+    via?: string;
   } | null;
 }
 

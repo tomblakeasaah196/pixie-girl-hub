@@ -80,6 +80,11 @@ const QUICK = ["👍", "❤️", "😂", "😮", "🙏", "✅"];
 interface Props {
   message: Message;
   isOwn: boolean;
+  /** Render on the business (right) side even when the viewer didn't send
+   *  it — e.g. a reply a staffer sent from the Instagram app (via metadata).
+   *  Alignment/styling only; Edit/Delete stay gated on isOwn. Defaults to
+   *  isOwn. */
+  businessSide?: boolean;
   showSenderName: boolean;
   actions: Actions;
   isEmail?: boolean;
@@ -88,16 +93,19 @@ interface Props {
 export function MessageBubble({
   message,
   isOwn,
+  businessSide,
   showSenderName,
   actions,
   isEmail,
 }: Props) {
   const [reactionBarOpen, setReactionBarOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
+  const own = businessSide ?? isOwn;
+  const viaInstagramApp = message.metadata?.via === "instagram_app";
 
   if (message.is_deleted) {
     return (
-      <div className={cn("flex", isOwn && "flex-row-reverse")}>
+      <div className={cn("flex", own && "flex-row-reverse")}>
         <div className="text-[12px] italic text-text-faint px-3 py-1.5">
           This message was deleted
         </div>
@@ -126,14 +134,14 @@ export function MessageBubble({
 
   return (
     <div
-      className={cn("flex gap-2", isOwn && "flex-row-reverse")}
+      className={cn("flex gap-2", own && "flex-row-reverse")}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => {
         setHovered(false);
         setReactionBarOpen(false);
       }}
     >
-      {!isOwn && (
+      {!own && (
         <div
           className="grid place-items-center w-7 h-7 rounded-full text-[10px] font-semibold text-white shrink-0 mt-1"
           style={{ backgroundColor: getAvatarColour(sender) }}
@@ -141,8 +149,8 @@ export function MessageBubble({
           {getInitials(sender)}
         </div>
       )}
-      <div className={cn("max-w-[78%] min-w-0 group", isOwn && "items-end")}>
-        {showSenderName && !isOwn && (
+      <div className={cn("max-w-[78%] min-w-0 group", own && "items-end")}>
+        {showSenderName && !own && (
           <div className="text-[11px] text-accent-glow mb-0.5 ml-1">
             {sender}
           </div>
@@ -151,7 +159,7 @@ export function MessageBubble({
           <div
             className={cn(
               "rounded-2xl px-3 py-2 text-[13.5px] leading-relaxed shadow-sm break-words",
-              isOwn
+              own
                 ? "bg-accent/15 border border-accent/30 text-text-primary rounded-tr-md"
                 : "bg-panel-2 border hairline text-text-primary rounded-tl-md",
             )}
@@ -160,7 +168,7 @@ export function MessageBubble({
               <div
                 className={cn(
                   "mb-1.5 -mx-1 px-2 py-1 rounded border-l-2 text-[11.5px] truncate",
-                  isOwn
+                  own
                     ? "border-accent/50 bg-bg/10 text-text-muted"
                     : "border-accent/60 bg-panel/40 text-text-muted",
                 )}
@@ -230,15 +238,23 @@ export function MessageBubble({
                 <p className="whitespace-pre-wrap">{message.content}</p>
               ))}
             <div className="mt-1 flex items-center gap-1 justify-end text-[10px] opacity-70">
+              {viaInstagramApp && (
+                <span
+                  className="italic"
+                  title="A team member sent this from the Instagram app — it synced here automatically"
+                >
+                  via Instagram app ·
+                </span>
+              )}
               {message.edited_at && <span className="italic">edited</span>}
               <span>{fmtClockTime(message.created_at)}</span>
-              {isOwn && (
+              {own && (
                 <DeliveryTick status={message.delivery_status} isEmail={isEmail} />
               )}
             </div>
             {/* Failed sends explain WHY + offer a one-tap retry, instead of
                 a bare warning triangle the operator can't act on. */}
-            {isOwn && message.delivery_status === "failed" && (
+            {own && message.delivery_status === "failed" && (
               <div className="mt-1 flex items-start gap-1.5 rounded-lg border border-danger/30 bg-danger/5 px-2 py-1.5 text-[11px] text-danger">
                 <AlertTriangle className="w-3 h-3 mt-[1px] shrink-0" />
                 <span className="flex-1 min-w-0 break-words">
@@ -266,7 +282,7 @@ export function MessageBubble({
             <div
               className={cn(
                 "absolute -bottom-2.5 flex gap-1",
-                isOwn ? "left-1" : "right-1",
+                own ? "left-1" : "right-1",
               )}
             >
               {customerReaction && (
@@ -293,7 +309,7 @@ export function MessageBubble({
             <div
               className={cn(
                 "absolute top-1/2 -translate-y-1/2 flex items-center gap-0.5 px-1 py-0.5 rounded-lg bg-panel border hairline shadow-lg",
-                isOwn ? "right-full mr-1.5" : "left-full ml-1.5",
+                own ? "right-full mr-1.5" : "left-full ml-1.5",
               )}
             >
               <button
@@ -353,7 +369,7 @@ export function MessageBubble({
             <div
               className={cn(
                 "absolute -top-9 flex gap-1 px-2 py-1 rounded-full bg-panel border hairline shadow-lg",
-                isOwn ? "right-0" : "left-0",
+                own ? "right-0" : "left-0",
               )}
             >
               {QUICK.map((emoji) => (

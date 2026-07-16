@@ -935,12 +935,16 @@ const SCORECARD_AGGREGATE_COLS = `
   ROUND(AVG(sj.quality_rating)::numeric, 2) AS avg_quality_rating,
   ROUND(AVG(sj.customer_rating)::numeric, 2) AS avg_customer_rating,
   COALESCE(SUM(sj.rework_count), 0)::int AS rework_count,
-  CASE WHEN COUNT(*) FILTER (WHERE sj.status = 'completed' AND sj.sla_due_at IS NOT NULL) > 0
-       THEN ROUND(100.0 * COUNT(*) FILTER (
-              WHERE sj.status = 'completed' AND sj.sla_due_at IS NOT NULL
-                AND sj.completed_at <= sj.sla_due_at
-            ) / COUNT(*) FILTER (WHERE sj.status = 'completed' AND sj.sla_due_at IS NOT NULL), 0)
-       ELSE NULL END AS on_time_pct`;
+  ROUND(
+    100.0 * COUNT(*) FILTER (
+      WHERE sj.status = 'completed' AND sj.sla_due_at IS NOT NULL
+        AND sj.completed_at <= sj.sla_due_at
+    )
+    / NULLIF(COUNT(*) FILTER (
+        WHERE sj.status = 'completed' AND sj.sla_due_at IS NOT NULL
+      ), 0)::numeric,
+    0
+  ) AS on_time_pct`;
 
 /**
  * Roster for the Scorecards tab — every in-house stylist who has EVER been

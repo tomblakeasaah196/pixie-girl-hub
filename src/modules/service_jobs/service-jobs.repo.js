@@ -233,10 +233,18 @@ function primaryStyledImageSql(brand, alias) {
 // return/qc/dispatch/hand_to_sales/outcome) — no separate event table needed.
 async function listJobActivity({ brand, job_id }) {
   const { rows } = await query(
-    `SELECT log_id, occurred_at, user_name, action, after_state
-       FROM shared.audit_log
-      WHERE business = $1 AND table_name = 'service_job' AND record_id = $2
-      ORDER BY occurred_at ASC`,
+    // Resolve the actor's CURRENT display name at read time rather than
+    // trusting the snapshot text column — audit_log is append-only (a DB
+    // trigger blocks UPDATE/DELETE), so any row written before user_name
+    // was populated correctly can never be backfilled in place. A live join
+    // fixes those old rows' display too, not just new ones going forward.
+    `SELECT al.log_id, al.occurred_at,
+            COALESCE(u.display_name, al.user_name) AS user_name,
+            al.action, al.after_state
+       FROM shared.audit_log al
+       LEFT JOIN shared.users u ON u.user_id = al.user_id
+      WHERE al.business = $1 AND al.table_name = 'service_job' AND al.record_id = $2
+      ORDER BY al.occurred_at ASC`,
     [brand, job_id],
   );
   return rows;
@@ -989,10 +997,14 @@ async function getStylistScorecard({ brand, user_id }) {
   );
 
   const { rows: rework } = await query(
-    `SELECT al.log_id, al.occurred_at, al.user_name, al.after_state,
-            sj.job_id, sj.job_number
+    // Same live-name resolution as listJobActivity — audit_log is
+    // append-only, so a join beats trusting the stored snapshot text.
+    `SELECT al.log_id, al.occurred_at,
+            COALESCE(u.display_name, al.user_name) AS user_name,
+            al.after_state, sj.job_id, sj.job_number
        FROM shared.audit_log al
        JOIN ${t(brand, "service_jobs")} sj ON sj.job_id = al.record_id
+       LEFT JOIN shared.users u ON u.user_id = al.user_id
       WHERE al.business = $1 AND al.table_name = 'service_job'
         AND al.action = 'service_jobs.qc'
         AND al.after_state->>'result' = 'rework'

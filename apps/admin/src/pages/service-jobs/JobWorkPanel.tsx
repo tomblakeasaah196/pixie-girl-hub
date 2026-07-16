@@ -183,15 +183,24 @@ export function JobWorkPanel({
                 {r.ref_type === "image" ? "📷 photo" : "🎙 voice note"}
               </span>
             )}
-            {canLog && (
-              <button
-                type="button"
-                className="ml-auto text-text-muted hover:text-danger"
-                onClick={() => refMut.remove.mutate(r.reference_id)}
-                aria-label="Remove reference"
+            {r.is_locked ? (
+              <span
+                className="ml-auto text-[10px] text-text-muted shrink-0"
+                title="Customer's brief — locked"
               >
-                ×
-              </button>
+                🔒 customer
+              </span>
+            ) : (
+              canLog && (
+                <button
+                  type="button"
+                  className="ml-auto text-text-muted hover:text-danger"
+                  onClick={() => refMut.remove.mutate(r.reference_id)}
+                  aria-label="Remove note"
+                >
+                  ×
+                </button>
+              )
             )}
           </div>
         ))}

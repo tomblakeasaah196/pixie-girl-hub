@@ -1,0 +1,27 @@
+-- ============================================================
+-- TEMPLATE 000083 — Stylist Studio: lockable style brief
+-- Pixie Girl Hub · JBS Praxis · V2.2 · §6.24 (Stylist Studio)
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to NEW brands by bootstrap (after 000082) and to EXISTING brands by
+-- repair-business-schema.js. ADD COLUMN IF NOT EXISTS is idempotent, so the
+-- repair runner re-applies it every pass harmlessly.
+--
+-- WHY: the style brief (what the customer asked for) previously had no home at
+-- job creation — it only got filled in ad hoc whenever someone opened the
+-- stylist/QC work panel, which is why a finished job could still show "No
+-- reference yet" at QC. The brief is now captured at job open (typed on the
+-- create form, or auto-pulled from the source order line's notes) and LOCKED,
+-- so stylists/QC can add their own supplementary notes on top without
+-- overwriting the customer's original request. is_locked = true marks the
+-- customer brief; false marks a supplementary note. Application code
+-- (service-jobs.service.js) refuses to delete locked rows.
+-- ============================================================
+
+ALTER TABLE {{BUSINESS}}.service_job_references
+  ADD COLUMN IF NOT EXISTS is_locked BOOLEAN NOT NULL DEFAULT false;
+
+-- ============================================================
+-- Verify (after substitution): the column exists and defaults to false, so
+-- every pre-existing reference stays a supplementary (deletable) note.
+-- ============================================================

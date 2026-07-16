@@ -99,6 +99,9 @@ async function getJob({ brand, id }) {
 }
 async function createJob({ brand, user, request_id, input }) {
   return transaction(async (client) => {
+    // brief is not a service_jobs column — it becomes locked reference rows
+    // (the customer's original request), so peel it off before the insert.
+    const { brief, ...jobInput } = input;
     const job_number = await repo.nextNumber({
       client,
       brand,
@@ -107,8 +110,9 @@ async function createJob({ brand, user, request_id, input }) {
     const job = await repo.createServiceJob({
       client,
       brand,
-      job: { ...input, job_number, created_by: user.user_id },
+      job: { ...jobInput, job_number, created_by: user.user_id },
     });
+    await addLockedBrief({ client, brand, job_id: job.job_id, brief, user });
     await A(
       brand,
       user,
@@ -121,6 +125,32 @@ async function createJob({ brand, user, request_id, input }) {
     events.emit("created", { brand, job_id: job.job_id });
     return job;
   });
+}
+
+/**
+ * Write the customer's style brief as locked reference rows at job open — a
+ * text note and/or an inspiration link. Locked (is_locked = true) so the
+ * original request can't later be overwritten or deleted; supplementary
+ * stylist/QC notes are added separately (unlocked) via addReference.
+ * Shared by manual creation (typed brief) and order auto-open (line notes).
+ */
+async function addLockedBrief({ client, brand, job_id, brief, user }) {
+  if (!brief) return;
+  const created_by = user ? user.user_id : null;
+  const note = typeof brief.body === "string" ? brief.body.trim() : "";
+  const link = typeof brief.url === "string" ? brief.url.trim() : "";
+  if (note)
+    await repo.addReference({
+      client,
+      brand,
+      r: { job_id, ref_type: "text", body: note, created_by, is_locked: true },
+    });
+  if (link)
+    await repo.addReference({
+      client,
+      brand,
+      r: { job_id, ref_type: "video_link", url: link, created_by, is_locked: true },
+    });
 }
 async function updateJob({ brand, user, request_id, id, patch }) {
   return transaction(async (client) => {
@@ -389,6 +419,17 @@ async function createForOrder({ brand, order }) {
         id: job.job_id,
         status: "pending",
         fields: stamp,
+      });
+    // Carry the customer's request from the order line straight onto the job
+    // as a locked brief, so the stylist opens the job already knowing what
+    // was asked for (no user — this is a system-opened job).
+    if (line.notes && line.notes.trim())
+      await addLockedBrief({
+        client,
+        brand,
+        job_id: job.job_id,
+        brief: { body: line.notes },
+        user: null,
       });
     await A(
       brand,
@@ -940,13 +981,16 @@ function listMaterials({ brand, id }) {
   return repo.listMaterials({ brand, job_id: id });
 }
 
-/** Add a style-brief reference (image / audio / video link / text / creative freedom). */
+/** Add a supplementary style-brief note (image / audio / video link / text /
+ * creative freedom). Always unlocked — the locked customer brief is written
+ * only at job open (createJob / createForOrder), never through this endpoint,
+ * so is_locked is forced false regardless of input. */
 async function addReference({ brand, user, request_id, id, input }) {
   const job = await repo.getServiceJob({ brand, id });
   if (!job) throw new NotFoundError("Service job");
   const r = await repo.addReference({
     brand,
-    r: { ...input, job_id: id, created_by: user.user_id },
+    r: { ...input, job_id: id, created_by: user.user_id, is_locked: false },
   });
   await A(
     brand,

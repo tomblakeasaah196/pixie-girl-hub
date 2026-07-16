@@ -24,7 +24,7 @@ import { Drawer } from "@/components/ui/Drawer";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/controls";
 import { ErrorState } from "@/components/ui/controls";
-import type { ServiceJob, ServiceType, JobStatus } from "./types";
+import type { ServiceJob, ServiceType, JobStatus, JobReference } from "./types";
 import {
   useJobs,
   useJob,
@@ -877,39 +877,61 @@ function StylistPicker({
 // labelled chip, not a thumbnail — there's no doc-id→URL resolution wired
 // up anywhere in this module yet, so a real gallery is future work, not
 // this one). Renders nothing at all when there's no brief on file.
+function ReferenceLine({ r }: { r: JobReference }) {
+  return (
+    <div className="flex items-start gap-2 text-sm">
+      {r.ref_type === "creative_freedom" && (
+        <Pill tone="accent">🎨 Creative freedom</Pill>
+      )}
+      {r.ref_type === "video_link" && r.url && (
+        <a
+          href={r.url}
+          target="_blank"
+          rel="noreferrer"
+          className="text-info hover:underline break-all"
+        >
+          {r.url}
+        </a>
+      )}
+      {(r.ref_type === "text" || r.body) && r.body && (
+        <span className="text-text-primary">&ldquo;{r.body}&rdquo;</span>
+      )}
+      {(r.ref_type === "image" || r.ref_type === "audio") && (
+        <span className="text-text-muted">
+          {r.ref_type === "image" ? "📷 photo" : "🎙 voice note"}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function JobReferencesBrief({ jobId }: { jobId: string }) {
   const { data: refs = [] } = useJobReferences(jobId);
+  const brief = refs.filter((r) => r.is_locked);
+  const notes = refs.filter((r) => !r.is_locked);
   if (refs.length === 0) return null;
   return (
-    <div className="rounded-lg border border-accent/20 bg-accent/5 p-3 space-y-2">
-      <div className="text-xs text-accent-glow font-semibold">
-        Style brief — what they asked for
-      </div>
-      {refs.map((r) => (
-        <div key={r.reference_id} className="flex items-start gap-2 text-sm">
-          {r.ref_type === "creative_freedom" && (
-            <Pill tone="accent">🎨 Creative freedom</Pill>
-          )}
-          {r.ref_type === "video_link" && r.url && (
-            <a
-              href={r.url}
-              target="_blank"
-              rel="noreferrer"
-              className="text-info hover:underline break-all"
-            >
-              {r.url}
-            </a>
-          )}
-          {(r.ref_type === "text" || r.body) && r.body && (
-            <span className="text-text-primary">&ldquo;{r.body}&rdquo;</span>
-          )}
-          {(r.ref_type === "image" || r.ref_type === "audio") && (
-            <span className="text-text-muted">
-              {r.ref_type === "image" ? "📷 photo" : "🎙 voice note"}
-            </span>
-          )}
+    <div className="space-y-3">
+      {brief.length > 0 && (
+        <div className="rounded-lg border border-accent/20 bg-accent/5 p-3 space-y-2">
+          <div className="text-xs text-accent-glow font-semibold">
+            Style brief — what the customer asked for
+          </div>
+          {brief.map((r) => (
+            <ReferenceLine key={r.reference_id} r={r} />
+          ))}
         </div>
-      ))}
+      )}
+      {notes.length > 0 && (
+        <div className="rounded-lg border border-line p-3 space-y-2">
+          <div className="text-xs text-text-muted font-semibold uppercase tracking-wide">
+            Stylist / QC notes
+          </div>
+          {notes.map((r) => (
+            <ReferenceLine key={r.reference_id} r={r} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1482,10 +1504,19 @@ function CreateJobDrawer({
     scheduled_for: "",
     expected_completion_at: "",
     agreed_cost_ngn: "",
+    brief_note: "",
+    brief_link: "",
   });
 
   const handleCreate = () => {
     if (!form.service_type_id) return;
+    const brief =
+      form.brief_note.trim() || form.brief_link.trim()
+        ? {
+            body: form.brief_note.trim() || undefined,
+            url: form.brief_link.trim() || undefined,
+          }
+        : undefined;
     create.mutate(
       {
         service_type_id: form.service_type_id,
@@ -1496,6 +1527,7 @@ function CreateJobDrawer({
         agreed_cost_ngn: form.agreed_cost_ngn
           ? parseFloat(form.agreed_cost_ngn)
           : undefined,
+        brief,
       },
       { onSuccess: onClose },
     );
@@ -1526,6 +1558,35 @@ function CreateJobDrawer({
               setForm((f) => ({ ...f, hair_description: e.target.value }))
             } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
+        </div>
+
+        {/* Customer's style brief — captured once here and locked. The
+            stylist opens the job already knowing what was asked for; they
+            add their own working notes on top, but can't overwrite this. */}
+        <div className="rounded-lg border border-accent/20 bg-accent/5 p-3 space-y-2">
+          <label className="label text-accent-glow">
+            Style brief — what the customer asked for
+          </label>
+          <textarea
+            className="input w-full h-20 text-sm"
+            placeholder="Describe the look they want…"
+            value={form.brief_note}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, brief_note: e.target.value }))
+            }
+          />
+          <input
+            className="input w-full text-sm"
+            placeholder="Inspiration link (YouTube / Instagram) — optional"
+            value={form.brief_link}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, brief_link: e.target.value }))
+            } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+          />
+          <p className="text-[11px] text-text-muted">
+            Locked once created — stylists and QC add notes on top, they
+            can&rsquo;t change this.
+          </p>
         </div>
 
         {recipes.length > 0 && (

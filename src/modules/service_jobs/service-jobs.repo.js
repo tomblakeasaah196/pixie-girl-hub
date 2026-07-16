@@ -968,7 +968,9 @@ async function listStylistScorecards({ brand }) {
       WHERE sj.assigned_staff_user_id IS NOT NULL
       GROUP BY u.user_id, c.display_name, u.avatar_url, sp.job_title
       ORDER BY full_name`,
-    [brand],
+    // No bind params: brand scoping is via the schema name (t(brand, …)),
+    // not a placeholder. Passing [brand] here crashed every call — Postgres
+    // rejects a bind of 1 param against a statement with 0 placeholders.
   );
   return rows;
 }

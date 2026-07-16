@@ -45,6 +45,8 @@ async function listJobs(req, res) {
   const { page, page_size } = parsePagination(req.query);
   const r = await service.listJobs({
     brand: req.brand,
+    scope: req.permission_scope,
+    user: req.user,
     status: req.query.status,
     assigned_staff_user_id: req.query.assigned_staff_user_id,
     assigned_stylist_id: req.query.assigned_stylist_id,
@@ -69,7 +71,12 @@ async function listJobs(req, res) {
 }
 async function getJob(req, res) {
   res.json({
-    data: await service.getJob({ brand: req.brand, id: req.params.id }),
+    data: await service.getJob({
+      brand: req.brand,
+      id: req.params.id,
+      scope: req.permission_scope,
+      user: req.user,
+    }),
   });
 }
 async function createJob(req, res) {
@@ -116,7 +123,11 @@ async function listAssignableStylists(req, res) {
 
 async function listStylistScorecards(req, res) {
   res.json({
-    data: await service.listStylistScorecards({ brand: req.brand }),
+    data: await service.listStylistScorecards({
+      brand: req.brand,
+      scope: req.permission_scope,
+      user: req.user,
+    }),
   });
 }
 async function getStylistScorecard(req, res) {
@@ -124,6 +135,8 @@ async function getStylistScorecard(req, res) {
     data: await service.getStylistScorecard({
       brand: req.brand,
       user_id: req.params.userId,
+      scope: req.permission_scope,
+      user: req.user,
     }),
   });
 }
@@ -161,16 +174,6 @@ async function recordQc(req, res) {
       id: req.params.id,
       input: req.body,
     }),
-  });
-}
-async function dispatch(req, res) {
-  res.json({
-    data: await service.dispatch({ ...base(req), id: req.params.id }),
-  });
-}
-async function handToSales(req, res) {
-  res.json({
-    data: await service.handToSales({ ...base(req), id: req.params.id }),
   });
 }
 async function linkIntercompany(req, res) {
@@ -237,7 +240,13 @@ async function listJobActivity(req, res) {
 
 // ── Wig accountability ─────────────────────────────────────
 async function getAccountability(req, res) {
-  res.json({ data: await service.getAccountability({ brand: req.brand }) });
+  res.json({
+    data: await service.getAccountability({
+      brand: req.brand,
+      scope: req.permission_scope,
+      user: req.user,
+    }),
+  });
 }
 async function listCustodyLedger(req, res) {
   res.json({
@@ -245,6 +254,8 @@ async function listCustodyLedger(req, res) {
       brand: req.brand,
       job_id: req.query.job_id,
       stylist_user_id: req.query.stylist_user_id,
+      scope: req.permission_scope,
+      user: req.user,
     }),
   });
 }
@@ -356,8 +367,6 @@ module.exports = {
   resumeWork,
   returnForQc,
   recordQc,
-  dispatch,
-  handToSales,
   linkIntercompany,
   logMaterial,
   listMaterials,

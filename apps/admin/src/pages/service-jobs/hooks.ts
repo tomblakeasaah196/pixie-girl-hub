@@ -255,17 +255,12 @@ export function useStudioLifecycle(jobId: string) {
       mutationFn: () => api.returnJob(jobId),
       onSuccess: invalidate,
     }),
+    // QC pass auto-completes the job + creates the Logistics delivery in one
+    // call — no separate dispatch / hand-to-sales mutations any more (those
+    // flows now live on the Logistics + Sales Order side).
     qc: useMutation({
       mutationFn: (input: Parameters<typeof api.qcJob>[1]) =>
         api.qcJob(jobId, input),
-      onSuccess: invalidate,
-    }),
-    dispatch: useMutation({
-      mutationFn: () => api.dispatchJob(jobId),
-      onSuccess: invalidate,
-    }),
-    handToSales: useMutation({
-      mutationFn: () => api.handToSales(jobId),
       onSuccess: invalidate,
     }),
     writeOff: useMutation({

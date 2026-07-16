@@ -546,11 +546,17 @@ const TAB_IDS: Tab[] = [
 export function ServiceJobsPage() {
   useBreadcrumbs([{ label: "Stylist Studio" }]);
   const can = useAuthStore((s) => s.can);
+  const scopeFor = useAuthStore((s) => s.scopeFor);
+  // Own-scope users (individual stylists) get the personal cockpit only —
+  // Job Board / QC Queue / Wig Accountability / Team Scorecards / Types /
+  // Recipes / Reconciliation are all Ops surfaces and stay hidden.
+  const isOwnScope = scopeFor("service_jobs", "view") === "own";
   // Tab lives in the URL so deep links from Orders / notifications land on the
   // right pane (?tab=board&job=<id> opens the board with the job drawer up).
   const [sp, setSp] = useSearchParams();
   const urlTab = sp.get("tab") as Tab | null;
-  const tab: Tab = urlTab && TAB_IDS.includes(urlTab) ? urlTab : "board";
+  const defaultTab: Tab = isOwnScope ? "my" : "board";
+  const tab: Tab = urlTab && TAB_IDS.includes(urlTab) ? urlTab : defaultTab;
   const setTab = (t: Tab) =>
     setSp((p) => {
       const next = new URLSearchParams(p);
@@ -579,7 +585,7 @@ export function ServiceJobsPage() {
   const canCreate = can("service_jobs", "create");
   const canEdit = can("service_jobs", "edit");
 
-  const tabs: { id: Tab; label: string; icon: typeof LayoutGrid }[] = [
+  const allTabs: { id: Tab; label: string; icon: typeof LayoutGrid }[] = [
     { id: "my", label: "My Jobs", icon: UserRound },
     { id: "board", label: "Job Board", icon: LayoutGrid },
     { id: "qc", label: "QC Queue", icon: ClipboardCheck },
@@ -589,17 +595,29 @@ export function ServiceJobsPage() {
     { id: "recipes", label: "Recipes", icon: Sparkles },
     { id: "reconciliation", label: "Chemical Reconciliation", icon: FlaskConical },
   ];
+  // Own-scope stylists see only their queue + the recipe library (they need
+  // it to actually do the work). Every ops-only surface — the board, QC
+  // queue, wig accountability ledger, team scorecards, service types,
+  // reconciliation — is hidden. The API enforces the same rules regardless.
+  const tabs = isOwnScope
+    ? allTabs.filter((t) => t.id === "my" || t.id === "recipes")
+    : allTabs;
+  // If someone lands on a hidden tab via a stale URL, silently redirect to
+  // the visible default rather than showing a blank pane.
+  const currentTabVisible = tabs.some((t) => t.id === tab);
+  const effectiveTab: Tab = currentTabVisible ? tab : defaultTab;
 
   return (
     <div className="p-4 md:p-6 space-y-5">
       <ModuleInsights module="service_jobs" />
-      {/* KPI strip (the page title/subtitle already render in the app header) */}
-      <KpiStrip />
+      {/* KPI strip is an ops-wide summary — a stylist doesn't need "no-sale
+          risk" or team happiness on their personal cockpit. */}
+      {!isOwnScope && <KpiStrip />}
 
       {/* Tabs — glassy pills */}
       <div className="flex gap-1 p-1 rounded-[13px] glass shadow-glass overflow-x-auto">
         {tabs.map((t) => {
-          const on = tab === t.id;
+          const on = effectiveTab === t.id;
           const Icon = t.icon;
           return (
             <button
@@ -621,14 +639,14 @@ export function ServiceJobsPage() {
       </div>
 
       {/* Tab content */}
-      {tab === "my" && <MyStudioJobs />}
-      {tab === "board" && <JobBoard canCreate={canCreate} />}
-      {tab === "qc" && <QcQueue />}
-      {tab === "accountability" && <AccountabilityPanel />}
-      {tab === "scorecards" && <ScorecardsPanel />}
-      {tab === "types" && <ServiceTypesTab canCreate={canCreate} />}
-      {tab === "recipes" && <RecipesPanel canCreate={canEdit} />}
-      {tab === "reconciliation" && <ReconciliationTab />}
+      {effectiveTab === "my" && <MyStudioJobs />}
+      {effectiveTab === "board" && <JobBoard canCreate={canCreate} />}
+      {effectiveTab === "qc" && <QcQueue />}
+      {effectiveTab === "accountability" && <AccountabilityPanel />}
+      {effectiveTab === "scorecards" && <ScorecardsPanel />}
+      {effectiveTab === "types" && <ServiceTypesTab canCreate={canCreate} />}
+      {effectiveTab === "recipes" && <RecipesPanel canCreate={canEdit} />}
+      {effectiveTab === "reconciliation" && <ReconciliationTab />}
     </div>
   );
 }

@@ -1,0 +1,48 @@
+-- ============================================================
+-- TEMPLATE 000084 — Stylist Studio lifecycle collapse: backfill
+-- Pixie Girl Hub · JBS Praxis · V2.2 · §6.24 (Stylist Studio)
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to EXISTING brands by repair-business-schema.js. Idempotent — the
+-- WHERE clause filters on retired statuses, so a re-run touches zero rows.
+--
+-- WHY: the styling job lifecycle used to require four separate manual clicks
+-- after Ops received the wig (qc pass → ready_for_dispatch → handed_to_sales
+-- → completed). Nobody clicked all four, so every finished job got stuck in
+-- qc_passed or handed_to_sales — and the scorecard aggregate keys on
+-- `status = 'completed'`, so real, shipped work showed as "0 completed" on
+-- every stylist's card.
+--
+-- Going forward, QC pass sets status directly to 'completed' and creates the
+-- Logistics delivery (see src/modules/service_jobs/service-jobs.service.js
+-- recordQc). This migration backfills the historical rows that got stuck in
+-- the intermediate states so those completions retroactively show up.
+--
+-- Backfill rules:
+--   status ∈ (qc_passed, ready_for_dispatch, handed_to_sales) → 'completed'
+--   completed_at ← first non-null of: handed_at, ready_at, qc_at, updated_at
+--
+-- The CHECK constraint on status is NOT tightened — historical rows still
+-- exist with the retired values in the audit log, and a future rebuild that
+-- re-applies old data should not fail. Application code no longer writes them.
+-- ============================================================
+
+UPDATE {{BUSINESS}}.service_jobs
+   SET status       = 'completed',
+       completed_at = COALESCE(completed_at, handed_at, ready_at, qc_at, updated_at),
+       updated_at   = now()
+ WHERE status IN ('qc_passed', 'ready_for_dispatch', 'handed_to_sales');
+
+-- ============================================================
+-- Verify (after substitution):
+--   SELECT status, count(*)
+--     FROM {{BUSINESS}}.service_jobs
+--    GROUP BY status
+--    ORDER BY status;
+--   -- No rows should remain in qc_passed / ready_for_dispatch / handed_to_sales.
+--
+--   SELECT count(*)
+--     FROM {{BUSINESS}}.service_jobs
+--    WHERE status = 'completed' AND completed_at IS NULL;
+--   -- Should be 0 (every completed row now has a completed_at timestamp).
+-- ============================================================

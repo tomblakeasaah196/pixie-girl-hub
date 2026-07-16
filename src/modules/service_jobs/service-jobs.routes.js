@@ -80,9 +80,10 @@ router.post("/:id/start", can("edit"), c.startWork);
 router.post("/:id/pause", can("edit"), c.pauseWork);
 router.post("/:id/resume", can("edit"), c.resumeWork);
 router.post("/:id/return", can("edit"), c.returnForQc);
+// QC pass now auto-completes the job + creates the logistics delivery; the
+// old /:id/dispatch and /:id/hand-to-sales endpoints were retired because
+// they duplicated Logistics/Sales ownership of the ship + hand-off flow.
 router.post("/:id/qc", can("edit"), v.validateQc, c.recordQc);
-router.post("/:id/dispatch", can("edit"), c.dispatch);
-router.post("/:id/hand-to-sales", can("edit"), c.handToSales);
 // Flow-1: bind a cross-entity styling job to its matched IC styling invoice.
 router.post(
   "/:id/intercompany-link",

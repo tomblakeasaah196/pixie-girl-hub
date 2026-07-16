@@ -24,7 +24,32 @@ import { Drawer } from "@/components/ui/Drawer";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/controls";
 import { ErrorState } from "@/components/ui/controls";
+import { ApiError } from "@/lib/api";
 import type { ServiceJob, ServiceType, JobStatus, JobReference } from "./types";
+
+/**
+ * A stylist may open a deep link (from an old push, an email, or a bookmark)
+ * to a job that Ops has since reassigned to someone else. The backend now
+ * responds with a 403 whose `error.reassigned` payload names the current
+ * assignee, so we can show a friendly hand-off card instead of a bare
+ * "permission denied" wall. This pulls the payload out of the ApiError.
+ */
+function extractReassigned(err: unknown): {
+  to_name: string | null;
+  job_number: string | null;
+} | null {
+  if (!(err instanceof ApiError)) return null;
+  if (err.status !== 403) return null;
+  const body = err.body as {
+    error?: {
+      code?: string;
+      reassigned?: { to_name?: string | null; job_number?: string | null };
+    };
+  } | null;
+  const r = body?.error?.reassigned;
+  if (body?.error?.code !== "NO_LONGER_ASSIGNED" || !r) return null;
+  return { to_name: r.to_name ?? null, job_number: r.job_number ?? null };
+}
 import {
   useJobs,
   useJob,
@@ -1144,7 +1169,7 @@ function JobDetailDrawer({
   onClose: () => void;
 }) {
   const navigate = useNavigate();
-  const { data: job, isLoading } = useJob(jobId);
+  const { data: job, isLoading, error } = useJob(jobId);
   const actions = useJobActions(jobId);
   const lifecycle = useStudioLifecycle(jobId);
   const [tab, setTab] = useState<
@@ -1159,6 +1184,47 @@ function JobDetailDrawer({
           {[...Array(5)].map((_, i) => (
             <Skeleton key={i} className="h-8" />
           ))}
+        </div>
+      </Drawer>
+    );
+  }
+
+  // Reassignment banner — a stylist who is no longer this job's owner opens
+  // an old notification link and lands here. Backend returns a rich 403 with
+  // the current assignee's name (see service.getJob NO_LONGER_ASSIGNED); we
+  // render it as an explanation + a link back to their own queue rather than
+  // a bare error state.
+  const reassigned = extractReassigned(error);
+  if (reassigned) {
+    return (
+      <Drawer open onClose={onClose} title="Job reassigned">
+        <div className="space-y-4 p-1">
+          <div className="rounded-[14px] border border-warn/40 bg-warn/5 p-4 space-y-2">
+            <p className="text-sm">
+              You no longer have access to this job — it has been reassigned
+              {reassigned.to_name ? (
+                <>
+                  {" "}
+                  to <strong>{reassigned.to_name}</strong>
+                </>
+              ) : null}
+              .
+            </p>
+            {reassigned.job_number && (
+              <p className="text-xs text-text-muted font-mono">
+                Job #{reassigned.job_number}
+              </p>
+            )}
+          </div>
+          <Button
+            variant="primary"
+            onClick={() => {
+              onClose();
+              navigate("/service-jobs?tab=my");
+            }}
+          >
+            Back to my jobs
+          </Button>
         </div>
       </Drawer>
     );
@@ -1399,20 +1465,16 @@ function JobDetailDrawer({
               // needs its own dedicated endpoint (custody/time-session side
               // effects the generic /advance route knows nothing about);
               // only 'cancelled'/'completed' are safe to send there directly.
-              const needsQcForm =
-                job.status === "returned_for_qc" &&
-                nextStates.some((s) => s === "qc_passed" || s === "rework");
-              const buttons = nextStates.filter(
-                (s) => s !== "assigned" && s !== "qc_passed" && s !== "rework",
-              );
+              // Once the wig is returned for QC, the job advances through
+              // the QC Queue tab (pass → auto-completed, fail → rework).
+              const needsQcForm = job.status === "returned_for_qc";
+              const buttons = nextStates.filter((s) => s !== "assigned");
               const anyPending =
                 actions.advance.isPending ||
                 lifecycle.start.isPending ||
                 lifecycle.pause.isPending ||
                 lifecycle.resume.isPending ||
-                lifecycle.returnForQc.isPending ||
-                lifecycle.dispatch.isPending ||
-                lifecycle.handToSales.isPending;
+                lifecycle.returnForQc.isPending;
               const runAdvance = (s: JobStatus) => {
                 if (s === "in_progress") {
                   if (job.status === "on_hold") lifecycle.resume.mutate();
@@ -1421,10 +1483,6 @@ function JobDetailDrawer({
                   lifecycle.pause.mutate();
                 } else if (s === "returned_for_qc") {
                   lifecycle.returnForQc.mutate();
-                } else if (s === "ready_for_dispatch") {
-                  lifecycle.dispatch.mutate();
-                } else if (s === "handed_to_sales") {
-                  lifecycle.handToSales.mutate();
                 } else {
                   actions.advance.mutate({
                     status: s,
@@ -1468,8 +1526,8 @@ function JobDetailDrawer({
                   </div>
                   {needsQcForm && (
                     <p className="text-xs text-text-muted">
-                      Pass or send to rework from the QC Queue tab, where you
-                      can leave a quality rating and notes.
+                      Pass or send to rework from the QC Queue tab. A pass
+                      completes the job and hands the wig to Logistics.
                     </p>
                   )}
                 </div>

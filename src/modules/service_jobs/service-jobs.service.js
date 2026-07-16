@@ -89,12 +89,54 @@ async function updateServiceType({ brand, user, request_id, id, patch }) {
 }
 
 // ── Jobs ───────────────────────────────────────────────────
+//
+// `own` scope: restrict to jobs the caller is currently assigned to OR was
+// ever assigned to (kept visible via the wig custody ledger so a stylist
+// keeps history on their scorecard after Ops reassigns a job away).
 function listJobs(args) {
-  return repo.listServiceJobs(args);
+  const { scope, user, ...rest } = args;
+  if (scope === "own" && user) {
+    return repo.listServiceJobs({ ...rest, own_user_id: user.user_id });
+  }
+  return repo.listServiceJobs(rest);
 }
-async function getJob({ brand, id }) {
+
+/**
+ * Look up one job with permission-scope enforcement. An `own`-scoped caller
+ * (e.g. a stylist) is allowed to open a job they are or ever were assigned to
+ * — otherwise we throw NO_LONGER_ASSIGNED with the current owner's name so the
+ * frontend can show "This job was reassigned to X → Back to my jobs" instead
+ * of a bare 403.
+ */
+async function getJob({ brand, id, scope, user }) {
   const job = await repo.getServiceJob({ brand, id });
   if (!job) throw new NotFoundError("Service job");
+  if (scope === "own" && user) {
+    const isOwner = await repo.userHasJobAccess({
+      brand,
+      job_id: id,
+      user_id: user.user_id,
+    });
+    if (!isOwner) {
+      const currentAssignee = await repo.getJobAssigneeName({ brand, id });
+      throw new AppError(
+        "NO_LONGER_ASSIGNED",
+        `Job ${job.job_number} is no longer assigned to this user`,
+        403,
+        {
+          user_message: currentAssignee
+            ? `You no longer have access to this job — it has been reassigned to ${currentAssignee}.`
+            : "You no longer have access to this job.",
+          metadata: {
+            reassigned: {
+              to_name: currentAssignee,
+              job_number: job.job_number,
+            },
+          },
+        },
+      );
+    }
+  }
   return job;
 }
 async function createJob({ brand, user, request_id, input }) {
@@ -290,10 +332,31 @@ async function listAssignableStylists({ brand }) {
 
 // ── Scorecards (internal Stylist Studio only — NOT the Stylist Partner
 // Programme; that's a separate module with its own review system) ──
-function listStylistScorecards({ brand }) {
+//
+// Scope discipline:
+//   * `own`-scope callers (stylists) only ever see their OWN card. The
+//     "team scorecards" list is Ops-only; on `own` scope we return just
+//     the caller's row so the frontend's "My Scorecard" tile still works
+//     without accidentally leaking teammates' numbers.
+//   * `own`-scope callers requesting anyone else's user_id get a clean
+//     403 — no data leak, no confusing "not found".
+function listStylistScorecards({ brand, scope, user }) {
+  if (scope === "own" && user) {
+    return repo
+      .getStylistScorecard({ brand, user_id: user.user_id })
+      .then((sc) => (sc ? [sc] : []));
+  }
   return repo.listStylistScorecards({ brand });
 }
-async function getStylistScorecard({ brand, user_id }) {
+async function getStylistScorecard({ brand, user_id, scope, user }) {
+  if (scope === "own" && user && user.user_id !== user_id) {
+    throw new AppError(
+      "PERMISSION_DENIED",
+      "You can only view your own scorecard",
+      403,
+      { user_message: "You can only view your own scorecard." },
+    );
+  }
   const scorecard = await repo.getStylistScorecard({ brand, user_id });
   if (!scorecard) throw new NotFoundError("Stylist has no job history");
   return scorecard;
@@ -1074,25 +1137,39 @@ async function returnForQc({ brand, user, request_id, id }) {
   });
 }
 
-/** Ops QC: pass → qc_passed; rework → back to a stylist (same or reassigned). */
+/**
+ * Ops QC decision.
+ *
+ * Pass → the styling job is DONE from the stylist's side: status jumps
+ * straight to `completed`, `completed_at` is stamped, the wig leaves
+ * the studio (custody `dispatched`), and a Logistics delivery is
+ * auto-created for the linked order so Sales/Logistics can ship it.
+ * This is the single moment that credits a stylist on their scorecard
+ * and against HR `styles_completed` targets — no further clicks needed.
+ *
+ * Fail → status = `rework`, wig goes back out to the (same or reassigned)
+ * stylist, rework_count increments, they get a push.
+ */
 async function recordQc({ brand, user, request_id, id, input }) {
-  return transaction(async (client) => {
+  const nowIso = new Date().toISOString();
+  const job = await transaction(async (client) => {
     const before = await repo.getServiceJob({ client, brand, id });
     if (!before) throw new NotFoundError("Service job");
-    const fields = { qc_by: user.user_id, qc_at: new Date().toISOString() };
+    const fields = { qc_by: user.user_id, qc_at: nowIso };
     if (input.quality_rating !== undefined)
       fields.quality_rating = input.quality_rating;
     if (input.quality_notes !== undefined)
       fields.quality_notes = input.quality_notes;
     let status;
     if (input.result === "pass") {
-      status = "qc_passed";
+      status = "completed";
+      fields.completed_at = nowIso;
     } else {
       status = "rework";
       fields.rework_count = (before.rework_count || 0) + 1;
       if (input.reassign_to) fields.assigned_staff_user_id = input.reassign_to;
     }
-    const job = await repo.setServiceJobStatus({
+    const updated = await repo.setServiceJobStatus({
       client,
       brand,
       id,
@@ -1101,7 +1178,6 @@ async function recordQc({ brand, user, request_id, id, input }) {
     });
     if (status === "rework") {
       const stylist = input.reassign_to || before.assigned_staff_user_id;
-      // The wig goes back out to the stylist — keep the custody balance honest.
       await repo.addCustody({
         client,
         brand,
@@ -1123,6 +1199,19 @@ async function recordQc({ brand, user, request_id, id, input }) {
         job_id: id,
         priority: "high",
       });
+    } else {
+      // Wig leaves the studio for Logistics/Sales — keep custody balanced.
+      await repo.addCustody({
+        client,
+        brand,
+        c: {
+          job_id: id,
+          event: "dispatched",
+          quantity: 1,
+          created_by: user.user_id,
+          reason: "QC passed → to logistics",
+        },
+      });
     }
     await A(
       brand,
@@ -1139,104 +1228,39 @@ async function recordQc({ brand, user, request_id, id, input }) {
       request_id,
     );
     events.emit("advanced", { brand, job_id: id, status });
-    return job;
+    if (status === "completed") events.emit("completed", { brand, job_id: id });
+    return updated;
   });
-}
 
-/** Ops marks the wig ready to ship — custody DISPATCHED + readiness stamp. */
-async function dispatch({ brand, user, request_id, id }) {
-  return transaction(async (client) => {
-    const before = await repo.getServiceJob({ client, brand, id });
-    if (!before) throw new NotFoundError("Service job");
-    const job = await repo.setServiceJobStatus({
-      client,
-      brand,
-      id,
-      status: "ready_for_dispatch",
-      fields: { ready_at: new Date().toISOString() },
-    });
-    await repo.addCustody({
-      client,
-      brand,
-      c: {
-        job_id: id,
-        event: "dispatched",
-        quantity: 1,
-        created_by: user.user_id,
-        reason: "ready for dispatch",
-      },
-    });
-    await A(
-      brand,
-      user,
-      "service_jobs.dispatch",
-      "service_job",
-      id,
-      {},
-      request_id,
-    );
-    events.emit("ready_for_dispatch", { brand, job_id: id });
-    return job;
-  }).then(async (job) => {
-    // Post-commit, best-effort: hand the finished wig to Logistics. Reuses the
-    // idempotent order→delivery creator, which no-ops for non-dispatch orders
-    // (e.g. an own-wig pickup), so only real shipments are made. The returned
-    // delivery id is stamped on the job so the SLA (promised vs actual) tracks.
+  // Post-commit, best-effort: on QC pass, create the Logistics delivery.
+  // Reuses the idempotent order→delivery creator, which no-ops for orders
+  // that don't need shipping (e.g. own-wig pickup). Never blocks the QC
+  // decision itself — if this fails, Ops can still ship from the order.
+  if (job && job.status === "completed" && job.sales_order_id) {
     try {
-      if (job.sales_order_id) {
-        const salesRepo = require("../sales/sales.repo");
-        const logistics = require("../logistics/logistics.service");
-        const order = await salesRepo.findById({
+      const salesRepo = require("../sales/sales.repo");
+      const logistics = require("../logistics/logistics.service");
+      const order = await salesRepo.findById({ brand, id: job.sales_order_id });
+      const delivery = order
+        ? await logistics.createForOrder({ brand, order })
+        : null;
+      if (delivery && delivery.delivery_id) {
+        const stamped = await repo.setServiceJobStatus({
           brand,
-          id: job.sales_order_id,
+          id,
+          status: "completed",
+          fields: { shipment_id: delivery.delivery_id },
         });
-        const delivery = order
-          ? await logistics.createForOrder({ brand, order })
-          : null;
-        if (delivery && delivery.delivery_id) {
-          await repo.setServiceJobStatus({
-            brand,
-            id,
-            status: "ready_for_dispatch",
-            fields: { shipment_id: delivery.delivery_id },
-          });
-          job.shipment_id = delivery.delivery_id;
-        }
+        return stamped;
       }
     } catch (err) {
       logger.warn(
         { err, job_id: id },
-        "studio dispatch → logistics handoff skipped",
+        "studio QC-pass → logistics handoff skipped",
       );
     }
-    return job;
-  });
-}
-
-/** Hand the finished, packed wig to Sales for shipping. */
-async function handToSales({ brand, user, request_id, id }) {
-  return transaction(async (client) => {
-    const before = await repo.getServiceJob({ client, brand, id });
-    if (!before) throw new NotFoundError("Service job");
-    const job = await repo.setServiceJobStatus({
-      client,
-      brand,
-      id,
-      status: "handed_to_sales",
-      fields: { handed_at: new Date().toISOString() },
-    });
-    await A(
-      brand,
-      user,
-      "service_jobs.hand_to_sales",
-      "service_job",
-      id,
-      {},
-      request_id,
-    );
-    events.emit("advanced", { brand, job_id: id, status: "handed_to_sales" });
-    return job;
-  });
+  }
+  return job;
 }
 
 /**
@@ -1310,17 +1334,34 @@ async function linkIntercompany({
 }
 
 // ── Wig accountability ─────────────────────────────────────
-async function getAccountability({ brand }) {
+//
+// Studio-wide accountability (all balances, all overdue) is Ops-only —
+// stylists shouldn't see their teammates' custody balances. On `own`
+// scope we filter down to the caller's row so a stylist can still see
+// "you're holding N wigs" if we surface it, but no one else's.
+async function getAccountability({ brand, scope, user }) {
   const cfg = await repo.getStudioConfig({ brand });
   const threshold = cfg.missing_wig_threshold_days || 7;
   const [balances, overdue] = await Promise.all([
     repo.custodyBalances({ brand }),
     repo.overdueOutWigs({ brand, threshold_days: threshold }),
   ]);
+  if (scope === "own" && user) {
+    return {
+      threshold_days: threshold,
+      balances: balances.filter((b) => b.stylist_user_id === user.user_id),
+      overdue: overdue.filter((o) => o.stylist_user_id === user.user_id),
+    };
+  }
   return { threshold_days: threshold, balances, overdue };
 }
-function listCustodyLedger({ brand, job_id, stylist_user_id }) {
-  return repo.listCustody({ brand, job_id, stylist_user_id });
+function listCustodyLedger({ brand, job_id, stylist_user_id, scope, user }) {
+  // `own`-scope: force the stylist filter to the caller — a stylist
+  // querying the ledger without a stylist_user_id (or with someone else's)
+  // gets only their own custody rows.
+  const forcedUserId =
+    scope === "own" && user ? user.user_id : stylist_user_id;
+  return repo.listCustody({ brand, job_id, stylist_user_id: forcedUserId });
 }
 function listJobActivity({ brand, id }) {
   return repo.listJobActivity({ brand, job_id: id });
@@ -1430,8 +1471,6 @@ module.exports = {
   listTimeLogs,
   returnForQc,
   recordQc,
-  dispatch,
-  handToSales,
   linkIntercompany,
   getAccountability,
   listCustodyLedger,

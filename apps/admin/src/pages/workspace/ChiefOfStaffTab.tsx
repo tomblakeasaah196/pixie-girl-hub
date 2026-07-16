@@ -286,7 +286,15 @@ function Bubble({
   );
 }
 
-function Thinking({ name, avatarUrl }: { name: string; avatarUrl?: string | null }) {
+function Thinking({
+  name,
+  avatarUrl,
+  status,
+}: {
+  name: string;
+  avatarUrl?: string | null;
+  status?: string | null;
+}) {
   return (
     <div className="flex gap-3 items-center">
       <Avatar pulse url={avatarUrl} />
@@ -300,7 +308,7 @@ function Thinking({ name, avatarUrl }: { name: string; avatarUrl?: string | null
             />
           ))}
         </span>
-        {name} is drafting your plan…
+        {status || `${name} is drafting your plan…`}
       </span>
     </div>
   );
@@ -848,6 +856,8 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
   const [view, setView] = useState<"chat" | "insights">("chat");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [pendingSend, setPendingSend] = useState(false);
+  // Live "thinking" status streamed over the socket during a turn (PR2-D).
+  const [turnStatus, setTurnStatus] = useState<string | null>(null);
   // Continuation hint from the LAST turn (reprompt kind only — incomplete
   // plans carry their own "Continue building" on the plan card).
   const [continuation, setContinuation] = useState<CosContinuation | null>(null);
@@ -929,6 +939,37 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages.length, plans.length, thinking]);
+
+  // Streamed turn progress (PR2-D): map the server phase to a friendly status
+  // line while the CoS is thinking, scoped to the active conversation.
+  useEffect(() => {
+    function onProgress(e: Event) {
+      const d = (e as CustomEvent).detail as {
+        conversation_id?: string;
+        phase?: string;
+        queued?: number;
+        had_reads?: boolean;
+      };
+      if (!d || d.conversation_id !== activeId) return;
+      let text = "Working on it…";
+      if (d.phase === "grounding") text = "Reading your goals & team…";
+      else if (d.phase === "finalising") text = "Finalising your plan…";
+      else if (d.phase === "building") {
+        if (d.had_reads) text = "Looking things up…";
+        else if (d.queued && d.queued > 0)
+          text = `Queued ${d.queued} step${d.queued === 1 ? "" : "s"}…`;
+        else text = "Drafting your plan…";
+      }
+      setTurnStatus(text);
+    }
+    window.addEventListener("pgh:cos_turn:progress", onProgress);
+    return () => window.removeEventListener("pgh:cos_turn:progress", onProgress);
+  }, [activeId]);
+
+  // The status line belongs to the in-flight turn only — clear it when idle.
+  useEffect(() => {
+    if (!thinking) setTurnStatus(null);
+  }, [thinking]);
 
   async function handleSend(input: { content: string; input_mode: "text" | "voice"; transcribed_text?: string }) {
     setPendingSend(true);
@@ -1088,7 +1129,7 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
             busy={saveNote.isPending}
           />
         )}
-        {thinking && <Thinking name={cosName} avatarUrl={avatarUrl} />}
+        {thinking && <Thinking name={cosName} avatarUrl={avatarUrl} status={turnStatus} />}
       </div>
     );
 

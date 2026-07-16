@@ -66,6 +66,11 @@ export function getSocket(): Socket {
       window.dispatchEvent(new CustomEvent("pgh:cos:changed", { detail }));
     });
   }
+  // Chief of Staff — live turn progress (user:{id}:goals, PR2-D). Kept separate
+  // from the invalidation family: it drives the chat's "thinking" status line.
+  socket.on("cos_turn:progress", (detail) => {
+    window.dispatchEvent(new CustomEvent("pgh:cos_turn:progress", { detail }));
+  });
   // Live attendance punch (brand:{brand}:attendance — device binding 000304).
   socket.on("attendance:punch", (detail) => {
     window.dispatchEvent(new CustomEvent("pgh:attendance:punch", { detail }));

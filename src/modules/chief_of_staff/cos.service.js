@@ -25,6 +25,7 @@ const planRounds = require("./cos.plan-rounds");
 const memory = require("./cos.memory");
 const settingsRepo = require("./cos.settings.repo");
 const feedbackRepo = require("./cos.feedback.repo");
+const traceRepo = require("./cos.trace.repo");
 const goalsRepo = require("../../shared/goals/goals.repo");
 const notesRepo = require("../../shared/goals/notes.repo");
 const tasksRepo = require("../../shared/tasks/tasks.repo");
@@ -328,9 +329,27 @@ async function runTurn({ user, brand, conversation, userMsg, userText, auth_head
 
   const { isRead, executeRead } = makeReadHelpers({ byName, brand, auth_header, request_id });
 
+  // Live turn progress → realtime (PR2-D). Best-effort; a phone/desktop that
+  // joined user:{id}:goals sees "Reading your goals…", "Queued 4 steps…" instead
+  // of a dead spinner during a multi-round build.
+  const emitProgress = (phase, extra = {}) => {
+    try {
+      events.emit("turn.progress", {
+        user_id: user.user_id,
+        conversation_id: conversation.conversation_id,
+        phase,
+        ...extra,
+      });
+    } catch {
+      /* best-effort */
+    }
+  };
+  emitProgress("grounding");
+
   // Bounded multi-round build: reads execute immediately and feed real data
   // back; writes accumulate until the whole narrated plan is emitted — so
   // "goal + milestones + tasks + events + note" actually arrives as one plan.
+  const turnStartedAt = Date.now();
   let rounds;
   try {
     rounds = await planRounds.runPlanRounds({
@@ -346,6 +365,7 @@ async function runTurn({ user, brand, conversation, userMsg, userText, auth_head
       messages,
       isRead,
       executeRead,
+      onProgress: (info) => emitProgress("building", info),
     });
   } catch (err) {
     logger.error({ err: err.message }, "cos: llm-router failed — falling back to stub");
@@ -382,9 +402,11 @@ async function runTurn({ user, brand, conversation, userMsg, userText, auth_head
     (s, c) => s + ((c.usage && c.usage.total_tokens) || 0),
     0,
   );
+  const latencyMs = Date.now() - turnStartedAt;
+  emitProgress("finalising");
 
   // Persistence only — short transaction, no network inside.
-  return transaction(async (client) => {
+  const result = await transaction(async (client) => {
     let plan = null;
     if (rounds.tool_calls.length) {
       const built = await planner.planFromCompletion({
@@ -428,6 +450,33 @@ async function runTurn({ user, brand, conversation, userMsg, userText, auth_head
     });
     return { assistant_message: assistant, plan, needs_reprompt: needsReprompt };
   });
+
+  // Best-effort turn trace (metadata only — no message content). Written AFTER
+  // the transaction commits so a trace hiccup can never roll back the reply.
+  try {
+    await traceRepo.insertTrace({
+      t: {
+        conversation_id: conversation.conversation_id,
+        message_id: result.assistant_message.message_id,
+        user_id: user.user_id,
+        business: brand,
+        outcome: result.plan ? "plan" : result.needs_reprompt ? "reprompt" : "chat",
+        rounds: rounds.completions.length,
+        tool_calls: rounds.tool_calls.length,
+        reads: rounds.reads || 0,
+        vendors: [...new Set(rounds.completions.map((c) => c.vendor).filter(Boolean))],
+        models: [...new Set(rounds.completions.map((c) => c.model).filter(Boolean))],
+        input_tokens: rounds.completions.reduce((s, c) => s + ((c.usage && c.usage.prompt_tokens) || 0), 0),
+        output_tokens: rounds.completions.reduce((s, c) => s + ((c.usage && c.usage.completion_tokens) || 0), 0),
+        total_tokens: totalTokens,
+        latency_ms: latencyMs,
+        plan_id: result.plan ? result.plan.plan.plan_id : null,
+      },
+    });
+  } catch (err) {
+    logger.debug({ err: err.message }, "cos: turn trace insert failed");
+  }
+  return result;
 }
 
 // The CoS is gated entirely from AI Control (no env switch): the 'cos_chat'

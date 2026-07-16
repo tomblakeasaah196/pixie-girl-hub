@@ -34,6 +34,27 @@ is byte-for-byte unchanged.
 | `cos.repair.js` | **Phase 0** — one-shot self-repair: the model corrects its own failed payload (re-checked by pre-flight), the executor retries once |
 | `cos.usage.js` | **Phase 0** — shared best-effort usage meter (chat turn + repair round) |
 | `cos.feedback.service.js` · `cos.feedback.repo.js` | **Phase 1** — 👍/👎 + correction on a reply; a 👎-with-comment becomes durable CoS memory AND a recency-injected standing instruction |
+| `cos.trace.repo.js` | **Phase 2 (PR2-C)** — one compact per-turn trace (rounds, vendor, latency, tool calls, outcome; metadata only) for AI Control → Health & Logs |
+
+## Phase 2 (PR2) — reliability & feel
+
+- **Idempotency (PR2-A):** the executor sends a deterministic `Idempotency-Key`
+  header (`cos:<plan_id>:<plan_step>`); a header-gated Redis middleware
+  (`src/middleware/idempotency.js`, reserve-then-store) replays a step's first
+  success instead of creating a duplicate on retry — also what background
+  execution (PR3) relies on.
+- **Planner eval suite (PR2-B):** `tests/…/planner-eval.test.js` runs golden
+  utterances through the real build → pre-flight → token pipeline as a Phase 0
+  regression net.
+- **Turn traces (PR2-C):** `cos.trace.repo` + `GET /ai-governance/cos-turns`
+  (permission `ai_governance.view`) + a card on AI Control → Health & Logs.
+- **Streaming (PR2-D):** `runPlanRounds` calls an injected `onProgress`; the turn
+  emits `turn.progress` → `cos-realtime` relays `cos_turn:progress` to the
+  `user:{id}:goals` room → the chat shows a live status line ("Reading your
+  goals…", "Queued 4 steps…") instead of a dead spinner.
+
+Background execution (PR3, separate branch) is briefed in
+`docs/COS_PR3_BACKGROUND_EXECUTION_BRIEF.md`.
 
 ## Phase 0 — reliable writes (see docs/COS_ARCHITECTURE_AUDIT.md)
 

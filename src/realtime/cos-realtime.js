@@ -47,6 +47,10 @@ function registerCosRealtime() {
   cosEvents.on("goal.health_changed", (p) =>
     emitToUser(p.user_id, "cos_goal:health", p),
   );
+  // Live turn progress (PR2-D) — streamed to the chat while the CoS thinks.
+  cosEvents.on("turn.progress", (p) =>
+    emitToUser(p.user_id, "cos_turn:progress", p),
+  );
 
   logger.info("cos realtime relay registered");
 }

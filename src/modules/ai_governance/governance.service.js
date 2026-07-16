@@ -511,6 +511,13 @@ async function recordUsage({ usage }) {
 function listUsage(args) {
   return repo.listUsage(args);
 }
+// Recent Chief-of-Staff turn traces (observability) — metadata only, surfaced
+// in AI Control → Health & Logs. Read via the CoS trace repo (governance is the
+// AI observability aggregator).
+const cosTraceRepo = require("../chief_of_staff/cos.trace.repo");
+function listCosTurnTraces(args) {
+  return cosTraceRepo.listTraces(args);
+}
 async function spendMeter({ from, to, feature_key, vendor }) {
   const [daily, period] = await Promise.all([
     repo.usageDaily({ from, to, feature_key, vendor }),
@@ -644,6 +651,7 @@ module.exports = {
   canUseFeature,
   recordUsage,
   listUsage,
+  listCosTurnTraces,
   spendMeter,
   listActions,
   upsertAction,

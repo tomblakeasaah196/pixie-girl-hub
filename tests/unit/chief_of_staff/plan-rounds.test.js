@@ -36,6 +36,22 @@ describe("runPlanRounds", () => {
     expect(out.content).toBe("What dates suit you?");
   });
 
+  test("emits progress per round and reports reads count (PR2-D)", async () => {
+    const chat = jest.fn().mockResolvedValue(
+      completion({
+        content: "The goal and its milestones.",
+        tool_calls: [call("workspace_create_goal", { title: "G" }, "a")],
+      }),
+    );
+    const onProgress = jest.fn();
+    const out = await rounds.runPlanRounds({ chat, messages: MESSAGES, onProgress });
+    expect(onProgress).toHaveBeenCalled();
+    expect(onProgress.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ round: 0, queued: 1, reads: 0, had_reads: false }),
+    );
+    expect(out.reads).toBe(0);
+  });
+
   test("a full plan in one round needs no continuation", async () => {
     const chat = jest.fn().mockResolvedValue(
       completion({

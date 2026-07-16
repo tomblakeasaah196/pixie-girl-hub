@@ -1,8 +1,8 @@
 # Storefront Website — Deployment Guide (both brands)
 
-**Status:** Deployment SSOT for `apps/storefront`. Grounded in the live repo (2026-06-27).
+**Status:** Deployment SSOT for `apps/storefront`. Grounded in the live repo (2026-06-27; domains updated 2026-07 — `thefaitlynbrand.com` retired in favour of `faitlynhair.com`).
 **Goal:** Serve the customer-facing Storefront Website on the **main domains of both brands** —
-`thefaitlynbrand.com` / `faitlynhair.com` → `faitlynhair`, and `pixiegirlglobal.com` → `pixiegirl` —
+`faitlynhair.com` → `faitlynhair`, and `pixiegirlglobal.com` → `pixiegirl` —
 from **one deployed SSR process**, rendering per-brand from the request **Host header**.
 
 > This is the **Storefront Website**, not the Sales Campaign Landing (`apps/landing`, `sale.<brand>`).
@@ -35,9 +35,9 @@ line in `HOST_BRAND_MAP`, no new process.
 
 ```
                           ┌────────────────────────── VPS ──────────────────────────┐
- thefaitlynbrand.com ─┐   │                                                          │
- faitlynhair.com      ├──▶ nginx :443 ──┬─ Host: *faitlyn*  ─┐                        │
- www.* (both)         │   │             │                    ├─▶ storefront SSR :3002 │  (one PM2 app,
+ faitlynhair.com     ─┐   │                                                          │
+ www.* (both)         ├──▶ nginx :443 ──┬─ Host: *faitlyn*  ─┐                        │
+                      │   │             │                    ├─▶ storefront SSR :3002 │  (one PM2 app,
  pixiegirlglobal.com ─┘   │             └─ Host: *pixie*    ─┘     brand from Host     │   both brands)
                           │                                                          │
                           │   /api/*  /media/*  ───────────────▶ Hub API :7000       │  (pm2: pixie-girl-hub)
@@ -68,7 +68,7 @@ Port assignments (avoid the existing collisions — landing already uses 3000):
    - `storefront_domain` set to the apex host (drives `X-Brand-Context` table-driven fallback).
    - `storefront_enabled = true` (kill-switch; `false` → branded "coming soon", catalogue/checkout 404).
 3. **DNS** — point both apexes + `www` at the VPS (A / CNAME) **before** TLS issuance.
-4. **TLS** — issue certs for all four names (`certbot --nginx -d thefaitlynbrand.com -d www.thefaitlynbrand.com -d pixiegirlglobal.com -d www.pixiegirlglobal.com`, plus `faitlynhair.com` if used).
+4. **TLS** — issue certs for all four names (`certbot --nginx -d faitlynhair.com -d www.faitlynhair.com -d pixiegirlglobal.com -d www.pixiegirlglobal.com`).
 
 ---
 
@@ -165,7 +165,7 @@ upstream storefront { server 127.0.0.1:3002; keepalive 32; }
 # --- Faitlyn ---
 server {
   listen 443 ssl http2;
-  server_name thefaitlynbrand.com www.thefaitlynbrand.com faitlynhair.com www.faitlynhair.com;
+  server_name faitlynhair.com www.faitlynhair.com;
   # ssl_certificate ... ssl_certificate_key ...;
 
   location /api/   { proxy_pass http://127.0.0.1:7000; include /etc/nginx/proxy_params; }
@@ -198,11 +198,11 @@ The two `server` blocks are byte-identical except `server_name`; both proxy to t
 
 ```bash
 # Brand resolves from Host on a single upstream:
-curl -s -H "Host: thefaitlynbrand.com"  http://127.0.0.1:3002/ | grep -o 'data-brand="[a-z]*"'   # faitlynhair
+curl -s -H "Host: faitlynhair.com"      http://127.0.0.1:3002/ | grep -o 'data-brand="[a-z]*"'   # faitlynhair
 curl -s -H "Host: pixiegirlglobal.com"  http://127.0.0.1:3002/ | grep -o 'data-brand="[a-z]*"'   # pixiegirl
 
 # Catalogue + geo reachable through the same host:
-curl -s https://thefaitlynbrand.com/api/public/storefront/products | head
+curl -s https://faitlynhair.com/api/public/storefront/products | head
 curl -s https://pixiegirlglobal.com/api/public/geo/currency
 ```
 

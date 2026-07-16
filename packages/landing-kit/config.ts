@@ -247,8 +247,12 @@ export function defaultConfig(brandKey: string): LandingConfig {
       legalName: "The Faitlyn Brand",
       tagline: "Quietly extraordinary.",
       welcomeLine: "Welcome to Faitlyn",
-      domain: "sales.thefaitlynbrand.com",
-      storefront: "https://thefaitlynbrand.com",
+      // domain + storefront are deliberately empty: the API-served config
+      // carries the live values from business_config (sales_subdomain /
+      // storefront_domain — Settings → Business Setup), so a brand domain
+      // change never touches code.
+      domain: "",
+      storefront: "",
       address: "10B Emma Abimbola Cole Street, Lekki Phase 1, Lagos",
       theme: {
         ink: "#1A0F08", paper: "#F8F5F1", primary: "#3A2418",
@@ -288,8 +292,10 @@ export function defaultConfig(brandKey: string): LandingConfig {
     legalName: "Pixie Girl Global LLC",
     tagline: "The House of the Pixie",
     welcomeLine: "Welcome to the House of Pixie",
-    domain: "sales.pixiegirlglobal.com",
-    storefront: "https://pixiegirlglobal.com",
+    // Overlaid from business_config by the API — see the faitlynhair
+    // block above.
+    domain: "",
+    storefront: "",
     address: "30 N Gould St Ste R, Sheridan, WY 82801",
     theme: {
       ink: "#100806", paper: "#F8F4F2", primary: "#5C0A14",

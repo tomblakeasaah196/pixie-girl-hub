@@ -149,7 +149,7 @@ SET website = 'https://pixiegirlglobal.com'
 WHERE business_key = 'pixiegirl' AND (website IS NULL OR website = '');
 
 UPDATE shared.business_config
-SET website = 'https://thefaitlynbrand.com'
+SET website = 'https://faitlynhair.com'
 WHERE business_key = 'faitlynhair' AND (website IS NULL OR website = '');
 
 -- ── 3. shared.users — PIN credentials ───────────────────────

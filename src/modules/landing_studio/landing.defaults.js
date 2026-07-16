@@ -77,8 +77,12 @@ function defaultConfig(brandKey) {
       legalName: "The Faitlyn Brand",
       tagline: "Quietly extraordinary.",
       welcomeLine: "Welcome to Faitlyn",
-      domain: "sales.thefaitlynbrand.com",
-      storefront: "https://thefaitlynbrand.com",
+      // domain + storefront are deliberately empty: landing.service
+      // overlays them from business_config (sales_subdomain /
+      // storefront_domain) at read time, so a brand domain change is
+      // done entirely in Settings → Business Setup — never in code.
+      domain: "",
+      storefront: "",
       address: "10B Emma Abimbola Cole Street, Lekki Phase 1, Lagos",
       theme: {
         ink: "#1A0F08", paper: "#F8F5F1", primary: "#3A2418",
@@ -118,8 +122,10 @@ function defaultConfig(brandKey) {
     legalName: "Pixie Girl Global LLC",
     tagline: "The House of the Pixie",
     welcomeLine: "Welcome to the House of Pixie",
-    domain: "sales.pixiegirlglobal.com",
-    storefront: "https://pixiegirlglobal.com",
+    // Overlaid from business_config at read time — see the faitlynhair
+    // block above.
+    domain: "",
+    storefront: "",
     address: "30 N Gould St Ste R, Sheridan, WY 82801",
     theme: {
       ink: "#100806", paper: "#F8F4F2", primary: "#5C0A14",

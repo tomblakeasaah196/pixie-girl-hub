@@ -19,6 +19,7 @@ const nodemailer = require("nodemailer");
 const { config } = require("../config/env");
 const { query } = require("../config/database");
 const { logger } = require("../config/logger");
+const { AppError } = require("../utils/errors");
 
 // One cached transporter per resolved config ("global" or a brand key).
 // Cache is cleared whenever Messaging Settings saves a new/changed
@@ -169,12 +170,16 @@ async function getSender(brand) {
   //   2. the authenticated SMTP user itself (always accepted by its own relay),
   //   3. only then the business_config address (often a noreply@ the relay
   //      does NOT own — the exact cause of the bounced invoices/receipts).
+  // Deliberately NO hardcoded final fallback: sender identity lives in the
+  // DB (Messaging → Settings → Outbound Email, Business Setup) or the
+  // SMTP_FROM_EMAIL env var. A baked-in domain would silently outlive a
+  // brand domain change and bounce every send from a retired domain.
   const fromEmail =
     (bs && bs.from_email) ||
     smtpUser ||
     cfg.email_from_address ||
     config.SMTP_FROM_EMAIL ||
-    "noreply@pixiegirlglobal.com";
+    null;
   const fromName =
     (bs && bs.from_name) ||
     cfg.display_name ||
@@ -214,6 +219,15 @@ async function send({
   const t = await getTransporter(brand);
   const sender = await getSender(brand);
   const fromEmail = from_email || sender.fromEmail;
+  if (!fromEmail) {
+    throw new AppError(
+      "EMAIL_FROM_UNCONFIGURED",
+      `No outbound sender address is configured${brand ? ` for ${brand}` : ""}. ` +
+        "Set the From address in Messaging → Settings → Outbound Email " +
+        "(or the brand's email address in Business Setup).",
+      412,
+    );
+  }
   const replyTo = reply_to || sender.replyTo || replyToFor(fromEmail);
 
   return t.sendMail({

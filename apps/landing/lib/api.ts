@@ -6,11 +6,12 @@
  * live in lib/api-client.ts.
  *
  * On the Hub backend the route is `/api/public/sale/:slug`. In dev the
- * Next.js rewrite proxies the call to localhost:7000. In production the
- * sales subdomain (sales.pixiegirlglobal.com / sales.thefaitlynbrand.com)
- * is fronted by an edge that routes /api/* to the Hub backend; the brand
- * is then resolved server-side from the Host header by the host →
- * brand resolver middleware (src/middleware/host-brand-resolver.js).
+ * Next.js rewrite proxies the call to localhost:7000. In production each
+ * brand's sales subdomain (business_config.sales_subdomain, e.g.
+ * sales.pixiegirlglobal.com / sales.faitlynhair.com) is fronted by an
+ * edge that routes /api/* to the Hub backend; the brand is then resolved
+ * server-side from the forwarded Host header by the host → brand
+ * resolver middleware (src/middleware/host-brand-resolver.js).
  */
 
 import "server-only";

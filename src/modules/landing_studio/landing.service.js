@@ -12,6 +12,7 @@ const crypto = require("crypto");
 const sharp = require("sharp");
 const repo = require("./landing.repo");
 const { withDefaults } = require("./landing.defaults");
+const configRepo = require("../business_setup/business-config.repo");
 const storage = require("../../services/storage.service");
 const {
   compressUpload,
@@ -48,6 +49,37 @@ async function getStudio({ brand }) {
   };
 }
 
+/** `https://<host>`, no trailing slash (http:// kept for localhost dev). */
+function normalisePublicUrl(raw) {
+  if (!raw) return "";
+  let url = String(raw).trim();
+  if (!url) return "";
+  if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+  return url.replace(/\/+$/, "");
+}
+
+/**
+ * Overlay the brand's live domains from business_config onto a landing
+ * config. business_config WINS over whatever the snapshot stored: the
+ * CEO changes domains in Settings → Business Setup and every published
+ * landing page follows on the next read — no re-publish, no code change.
+ * Non-fatal: on lookup failure the stored values serve as-is.
+ */
+async function applyBrandIdentity(brand, cfg) {
+  try {
+    const row = await configRepo.findPublicIdentity(brand);
+    if (!row) return cfg;
+    const storefront = normalisePublicUrl(row.storefront_domain || row.website);
+    return {
+      ...cfg,
+      domain: row.sales_subdomain || cfg.domain || "",
+      storefront: storefront || cfg.storefront || "",
+    };
+  } catch {
+    return cfg;
+  }
+}
+
 /** Public read: the published config only. 404 when never published.
  *  Merged with brand defaults so a snapshot published before a field existed
  *  (e.g. reveal.threeD) still serves a complete, on-brand config. */
@@ -57,7 +89,11 @@ async function getPublished({ brand }) {
   if (!row || !row.is_published || !row.published_config) {
     throw new NotFoundError("Landing page");
   }
-  return { business_key: brand, ...withDefaults(brand, row.published_config) };
+  const merged = await applyBrandIdentity(
+    brand,
+    withDefaults(brand, row.published_config),
+  );
+  return { business_key: brand, ...merged };
 }
 
 async function saveDraft({ brand, user, request_id, config, ip, user_agent }) {

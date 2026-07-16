@@ -1,7 +1,7 @@
 # apps/storefront — Storefront Website
 
 The customer-facing **Storefront Website** for Pixie Girl Hub, one deploy per
-brand by host (`pixiegirlglobal.com`, `thefaitlynbrand.com`, …). TanStack Start
+brand by host (`pixiegirlglobal.com`, `faitlynhair.com`, …). TanStack Start
 (React 19, SSR) + Tailwind v4, wired entirely to the Hub API. **No Supabase.**
 
 > This is **not** the Sales Campaign Landing (`apps/landing`, `/sale/:slug`).

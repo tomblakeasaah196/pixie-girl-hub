@@ -6,7 +6,7 @@
 -- The Landing Studio is a STANDALONE, brand-level editor (not nested
 -- inside a campaign). It owns the public "between drops / no active
 -- sale" page served on each brand's sales subdomain
--- (sales.pixiegirlglobal.com / sales.thefaitlynbrand.com).
+-- (sales.pixiegirlglobal.com / sales.faitlynhair.com).
 --
 -- One row per brand. We keep a working `draft_config` (what the studio
 -- edits + previews) and a `published_config` (what the public page
@@ -197,8 +197,8 @@ SELECT
     "legalName": "The Faitlyn Brand",
     "tagline": "Quietly extraordinary.",
     "welcomeLine": "Welcome to Faitlyn",
-    "domain": "sales.thefaitlynbrand.com",
-    "storefront": "https://thefaitlynbrand.com",
+    "domain": "sales.faitlynhair.com",
+    "storefront": "https://faitlynhair.com",
     "address": "10B Emma Abimbola Cole Street, Lekki Phase 1, Lagos",
     "theme": {
       "ink": "#1A0F08", "paper": "#F8F5F1", "primary": "#3A2418",
@@ -262,8 +262,8 @@ SELECT
     "legalName": "The Faitlyn Brand",
     "tagline": "Quietly extraordinary.",
     "welcomeLine": "Welcome to Faitlyn",
-    "domain": "sales.thefaitlynbrand.com",
-    "storefront": "https://thefaitlynbrand.com",
+    "domain": "sales.faitlynhair.com",
+    "storefront": "https://faitlynhair.com",
     "address": "10B Emma Abimbola Cole Street, Lekki Phase 1, Lagos",
     "theme": {
       "ink": "#1A0F08", "paper": "#F8F5F1", "primary": "#3A2418",

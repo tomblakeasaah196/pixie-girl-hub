@@ -54,4 +54,30 @@ async function findByKey(businessKey) {
   return rows[0] || null;
 }
 
-module.exports = { findByKey };
+/**
+ * Display-safe public identity for a brand — backs the unauthenticated
+ * GET /api/public/brand/:brandKey feed the public apps (sales landing,
+ * storefront) read instead of hardcoding brand domains or mailboxes.
+ * Every field is CEO-editable in Settings → Business Setup → Public
+ * Identity, so a domain change never requires a code change.
+ */
+async function findPublicIdentity(businessKey) {
+  const { rows } = await query(
+    `SELECT business_key,
+            display_name,
+            website,
+            storefront_domain,
+            sales_subdomain,
+            support_email,
+            support_email_display_name,
+            accent_colour,
+            logo_path
+       FROM shared.business_config
+      WHERE business_key = $1 AND is_active = true
+      LIMIT 1`,
+    [businessKey],
+  );
+  return rows[0] || null;
+}
+
+module.exports = { findByKey, findPublicIdentity };

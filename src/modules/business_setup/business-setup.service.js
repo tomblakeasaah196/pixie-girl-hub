@@ -8,6 +8,7 @@
 "use strict";
 
 const repo = require("./business-setup.repo");
+const configRepo = require("./business-config.repo");
 const events = require("./business-setup.events");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
@@ -429,7 +430,39 @@ async function deletePipelineStage({ brand, user, request_id, id }) {
   });
 }
 
+/** Normalise a stored domain/URL to `https://<host>` with no trailing slash
+ *  (http:// preserved so localhost dev links still work). */
+function normalisePublicUrl(raw) {
+  if (!raw) return null;
+  let url = String(raw).trim();
+  if (!url) return null;
+  if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+  return url.replace(/\/+$/, "");
+}
+
+/**
+ * Public brand identity (unauthenticated) — the single DB-backed source
+ * the public apps read instead of hardcoding brand domains, storefront
+ * URLs, or support mailboxes. Display-level data only.
+ */
+async function getPublicBrandIdentity({ brand }) {
+  const row = await configRepo.findPublicIdentity(brand);
+  if (!row) throw new NotFoundError("Brand");
+  return {
+    key: row.business_key,
+    name: row.display_name,
+    website: normalisePublicUrl(row.website),
+    storefront_url: normalisePublicUrl(row.storefront_domain || row.website),
+    sales_host: row.sales_subdomain || null,
+    support_email: row.support_email || null,
+    support_email_display_name: row.support_email_display_name || null,
+    accent_colour: row.accent_colour || null,
+    logo_url: row.logo_path || null,
+  };
+}
+
 module.exports = {
+  getPublicBrandIdentity,
   getConfig,
   updateConfig,
   listCurrencies,

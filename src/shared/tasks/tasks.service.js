@@ -70,6 +70,15 @@ function listTasks(args) {
   return repo.listTasks(args);
 }
 
+/**
+ * The teammates a task can be assigned to (or an event participant can be).
+ * Powers the assignee picker and, via the CoS catalogue, the agent's
+ * search_users tool — the only place a valid `assigned_to` user_id comes from.
+ */
+function listAssignees({ brand, search, limit }) {
+  return repo.listAssignableUsers({ brand, search, limit });
+}
+
 /** Kanban board: active tasks grouped by status column. */
 async function getBoard({ brand, assigned_to }) {
   const rows = await repo.boardTasks({ brand, assigned_to });
@@ -239,6 +248,7 @@ async function setSubtaskDone({
 
 module.exports = {
   listTasks,
+  listAssignees,
   getBoard,
   getTask,
   createTask,

@@ -136,6 +136,22 @@ function indexDecision({ decision_id, text, goalTitle, user_id, brand }) {
   });
 }
 
+/**
+ * Index a CEO correction (from a 👎 + comment) as durable memory, keyed by the
+ * message it corrected so re-correcting the same reply replaces it. Best-effort.
+ */
+function indexCorrection({ message_id, text, user_id, brand }) {
+  if (!message_id || !text || !user_id) return Promise.resolve(null);
+  return indexChunk({
+    source_type: "cos_correction",
+    source_ref: message_id,
+    business: brand,
+    title: `Correction: ${clip(text, 120)}`,
+    content: `The CEO corrected the Chief of Staff: ${clip(text, 3000)}`,
+    user_id,
+  });
+}
+
 function forgetGoal({ goal_id }) {
   return repo.deleteChunksForSubject({ source_type: "cos_goal", source_ref: goal_id }).catch(() => 0);
 }
@@ -177,6 +193,7 @@ module.exports = {
   indexGoal,
   indexNote,
   indexDecision,
+  indexCorrection,
   forgetGoal,
   forgetNote,
   // retrieval

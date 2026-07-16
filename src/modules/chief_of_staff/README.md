@@ -29,6 +29,44 @@ is byte-for-byte unchanged.
 | `cos.scheduler.js` | **PR5** — pure free-slot finder + load/overload; find-focus, today's load, batch reschedule |
 | `cos.meeting.js` | **PR5** — meeting prep brief for a calendar event |
 | `cos.overview.js` · `cos.overview.repo.js` | **PR5** — CEO cross-brand portfolio (documented isolation exception) |
+| `cos.preflight.js` | **Phase 0** — plan-build-time payload validation: strips hallucinated keys the strict endpoints reject, and warns (missing required / bad enum / bad id / bad datetime) BEFORE approval (`preflight_note` on the step) |
+| `cos.errors.js` | **Phase 0** — humanise a failed step's raw error into one plain sentence; decide if a failure is worth a self-repair retry |
+| `cos.repair.js` | **Phase 0** — one-shot self-repair: the model corrects its own failed payload (re-checked by pre-flight), the executor retries once |
+| `cos.usage.js` | **Phase 0** — shared best-effort usage meter (chat turn + repair round) |
+| `cos.feedback.service.js` · `cos.feedback.repo.js` | **Phase 1** — 👍/👎 + correction on a reply; a 👎-with-comment becomes durable CoS memory AND a recency-injected standing instruction |
+
+## Phase 0 — reliable writes (see docs/COS_ARCHITECTURE_AUDIT.md)
+
+The batch-plan path used to fail whenever a task/event carried the fields it
+actually needs. Fixed end-to-end:
+
+- **Identity.** `assigned_to` is an FK to `shared.users`, but the agent had no
+  way to get a `user_id`. New `workspace.search_users` read action
+  (`GET /tasks/assignees`) + the CEO's own id and a team roster injected into the
+  persona resolve "assign to my BDM". A contact is never assignable — link it via
+  `reference_type='contact'` instead.
+- **Linkage.** `create_task` now exposes `is_personal` + `reference_type`/
+  `reference_id`; `create_event` exposes `participants[]` — so personal to-dos,
+  contact-linked tasks, and meeting invitees actually work.
+- **Pre-flight** (`cos.preflight`) moves validation to build time and strips the
+  hallucinated keys the `.strict()` endpoints reject.
+- **Dependency-aware execution** (`cos.plan-executor`): one failed step no longer
+  kills the rest — only its true `{{step:N}}` dependents are skipped; independent
+  steps still run.
+- **Self-repair** (`cos.repair`): a fixable validation failure gets ONE
+  model-corrected retry before it's recorded.
+- **Human errors** (`cos.errors`) replace raw JSON on the card; the truncation
+  guard in `praxis.executor` now preserves id fields so cross-step tokens survive.
+- Plans now expire after **24 hours** (was 60 minutes).
+
+## Phase 1 — the training loop
+
+`POST /cos/messages/:messageId/feedback {rating, comment?}` records a 👍/👎 on
+`shared.ai_message_feedback`. A 👎 with a comment (CEO only) is indexed as a
+`cos_correction` memory chunk (owner-scoped, `restricted`) AND surfaced to the
+next turn's persona via `recentCorrections` (recency, no embeddings needed), so
+behavioural feedback ("stop suggesting 8am meetings") is respected immediately.
+The chat tab renders 👍/👎 under each reply; 👎 opens a comment box.
 
 Reused as-is: `praxis.executor`, `praxis.repo` (conversations/messages, now
 `kind`-aware), `governance.service` (feature `cos_chat`, usage ledger),
@@ -59,6 +97,7 @@ GET    /api/v1/cos/conversations/:id
 DELETE /api/v1/cos/conversations/:id
 POST   /api/v1/cos/conversations/:id/messages   → may return a plan
 POST   /api/v1/cos/conversations/:id/save-note   → summarise → upsert Workspace note
+POST   /api/v1/cos/messages/:messageId/feedback  → 👍/👎 (+ correction) on a reply
 GET    /api/v1/cos/plans/:planId
 POST   /api/v1/cos/plans/:planId/confirm         → approve → execute batch
 POST   /api/v1/cos/plans/:planId/reject

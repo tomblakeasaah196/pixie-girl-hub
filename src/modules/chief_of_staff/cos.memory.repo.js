@@ -22,7 +22,15 @@
 const crypto = require("crypto");
 const { query } = require("../../config/database");
 
-const COS_SOURCE_TYPES = ["cos_goal", "cos_milestone", "cos_note", "cos_decision"];
+const COS_SOURCE_TYPES = [
+  "cos_goal",
+  "cos_milestone",
+  "cos_note",
+  "cos_decision",
+  // A 👎 correction from the CEO — retrievable so a relevant past correction can
+  // resurface semantically, on top of the recency-based persona injection.
+  "cos_correction",
+];
 const sha256 = (s) => crypto.createHash("sha256").update(String(s)).digest("hex");
 // Cheap token estimate — the column is NOT NULL and only used for budgeting.
 const estimateTokens = (s) => Math.max(1, Math.ceil(String(s).length / 4));

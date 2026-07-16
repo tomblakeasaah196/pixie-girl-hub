@@ -14,11 +14,16 @@
 "use strict";
 
 const repo = require("./cos.repo");
+const { preflight } = require("./cos.preflight");
 const { AppError } = require("../../utils/errors");
 
 // {{step:0.goal_id}} / {{ step:12.data.event_id }}
 const TOKEN_RE = /\{\{\s*step:(\d+)\.([a-zA-Z0-9_.]+)\s*\}\}/g;
 const FULL_TOKEN_RE = /^\{\{\s*step:(\d+)\.([a-zA-Z0-9_.]+)\s*\}\}$/;
+// Non-global twin for stateless .test() — a /g regex carries lastIndex between
+// calls, so hasUnresolvedTokens using TOKEN_RE.test() intermittently missed a
+// token on the call after a match (docs/COS_ARCHITECTURE_AUDIT.md §3.6).
+const TOKEN_TEST_RE = /\{\{\s*step:(\d+)\.([a-zA-Z0-9_.]+)\s*\}\}/;
 
 /** Walk a dotted path against the raw result AND its `{data:…}` envelope. */
 function pickField(result, path) {
@@ -69,9 +74,32 @@ function resolveTokens(value, priorResults) {
   return value;
 }
 
+/**
+ * The 0-based plan_step indices a payload references via `{{step:N.field}}`
+ * tokens — the step's dependencies. Used by the executor to run independent
+ * steps even after an earlier step fails (skip only true dependents).
+ * @returns {number[]} sorted unique step indices
+ */
+function referencedSteps(value) {
+  const out = new Set();
+  const walk = (v) => {
+    if (typeof v === "string") {
+      const re = new RegExp(TOKEN_RE.source, "g");
+      let m;
+      while ((m = re.exec(v)) !== null) out.add(Number(m[1]));
+    } else if (Array.isArray(v)) {
+      v.forEach(walk);
+    } else if (v && typeof v === "object") {
+      Object.values(v).forEach(walk);
+    }
+  };
+  walk(value);
+  return [...out].sort((a, b) => a - b);
+}
+
 /** True when any `{{step:N.field}}` token survives in the (resolved) payload. */
 function hasUnresolvedTokens(value) {
-  if (typeof value === "string") return FULL_TOKEN_RE.test(value) || TOKEN_RE.test(value);
+  if (typeof value === "string") return TOKEN_TEST_RE.test(value);
   if (Array.isArray(value)) return value.some(hasUnresolvedTokens);
   if (value && typeof value === "object") return Object.values(value).some(hasUnresolvedTokens);
   return false;
@@ -174,7 +202,11 @@ function buildSteps({ toolCalls, byName }) {
         422,
       );
     }
-    const payload = parseArgs(fn.arguments);
+    const raw = parseArgs(fn.arguments);
+    // Pre-flight: strip hallucinated keys the strict endpoint validators would
+    // reject, and capture any review-time warning (missing required, bad enum,
+    // an id/date that won't parse) to show on the card BEFORE approval.
+    const { payload, note } = preflight({ action, payload: raw });
     steps.push({
       action_id: action.action_id,
       action_key: action.action_key,
@@ -182,6 +214,7 @@ function buildSteps({ toolCalls, byName }) {
       route: action.route,
       payload,
       human_summary: summariseStep(action, payload),
+      preflight_note: note,
       confidence:
         action.min_confidence !== null && action.min_confidence !== undefined
           ? Number(action.min_confidence)
@@ -282,6 +315,7 @@ async function persistSteps({
           route: s.route,
           payload: s.payload,
           human_summary: s.human_summary,
+          preflight_note: s.preflight_note || null,
           confidence: s.confidence,
           plan_id,
           plan_step: startIndex + i,
@@ -295,6 +329,7 @@ async function persistSteps({
 module.exports = {
   resolveTokens,
   hasUnresolvedTokens,
+  referencedSteps,
   pickField,
   buildSteps,
   summariseStep,

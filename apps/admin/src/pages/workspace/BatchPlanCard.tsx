@@ -144,6 +144,14 @@ function StepRow({
       {step.status === "failed" && step.execution_error && (
         <div className="mt-1 text-[11px] text-danger">{step.execution_error}</div>
       )}
+      {/* Review-time warning from pre-flight — shown before approval so it can
+          be fixed with ✎ rather than discovered as a run error. */}
+      {step.preflight_note && step.status !== "failed" && step.status !== "executed" && (
+        <div className="mt-1 flex items-start gap-1 text-[11px] text-warn">
+          <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
+          <span>{step.preflight_note}</span>
+        </div>
+      )}
       {editing ? (
         <div className="mt-2">
           <textarea

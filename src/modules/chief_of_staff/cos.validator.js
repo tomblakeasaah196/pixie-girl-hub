@@ -32,6 +32,16 @@ const messagePost = z
 
 const reason = z.object({ reason: z.string().max(2000).optional() }).strict();
 
+// Feedback on an assistant reply (Phase 1 training loop). A 👎 with a comment
+// becomes a durable CoS correction; the comment is bounded so a paste can't
+// bloat the correction chunk.
+const feedback = z
+  .object({
+    rating: z.enum(["up", "down"]),
+    comment: z.string().max(4000).optional(),
+  })
+  .strict();
+
 // Step payload edit — a plain JSON object (the step's tool arguments), bounded
 // so a paste bomb can't land in ai_pending_actions.payload.
 const stepPayloadUpdate = z
@@ -141,6 +151,7 @@ module.exports = {
   validateConversationCreate: mk(conversationCreate),
   validateMessagePost: mk(messagePost),
   validateReason: mk(reason),
+  validateFeedback: mk(feedback),
   validateStepPayloadUpdate: mk(stepPayloadUpdate),
   validateFollowupRespond: mk(followupRespond),
   validateFollowupAct: mk(followupAct),
@@ -154,6 +165,7 @@ module.exports = {
     conversationCreate,
     messagePost,
     reason,
+    feedback,
     stepPayloadUpdate,
     followupRespond,
     followupAct,

@@ -42,6 +42,9 @@ import {
   Trash2,
   X,
   Loader2,
+  ThumbsUp,
+  ThumbsDown,
+  Check,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Markdown } from "@/components/help/Markdown";
@@ -66,9 +69,11 @@ import {
   useArchiveCosConversation,
   usePostCosMessage,
   useSaveConversationToNotes,
+  useSendCosFeedback,
   useCosSettings,
   type CosMessage,
   type CosContinuation,
+  type FeedbackRating,
 } from "@/lib/cos-api";
 
 const DEFAULT_COS_NAME = "Chief of Staff";
@@ -106,14 +111,145 @@ function Avatar({
   );
 }
 
+/**
+ * Rate a Chief of Staff reply 👍/👎 (Phase 1 training loop). A 👎 opens a small
+ * comment box right below the buttons; the note becomes a durable correction
+ * the CoS respects on the next turn. Reflects any rating already given.
+ */
+function FeedbackBar({
+  conversationId,
+  msg,
+}: {
+  conversationId: string;
+  msg: CosMessage;
+}) {
+  const send = useSendCosFeedback();
+  const toast = useToast("Chief of Staff");
+  const [rating, setRating] = useState<FeedbackRating | null>(msg.feedback?.rating ?? null);
+  const [commenting, setCommenting] = useState(false);
+  const [comment, setComment] = useState(msg.feedback?.comment ?? "");
+
+  const rate = (next: FeedbackRating) => {
+    setRating(next);
+    if (next === "down") {
+      setCommenting(true);
+    } else {
+      setCommenting(false);
+      send.mutate(
+        { conversationId, messageId: msg.message_id, rating: "up" },
+        { onSuccess: () => toast.success("Thanks — noted.") },
+      );
+    }
+  };
+
+  const saveCorrection = () => {
+    const c = comment.trim();
+    send.mutate(
+      { conversationId, messageId: msg.message_id, rating: "down", comment: c || undefined },
+      {
+        onSuccess: () => {
+          setCommenting(false);
+          toast.success(
+            c ? "Got it — I'll remember that." : "Thanks — noted.",
+            c ? "Your note will steer future plans." : undefined,
+          );
+        },
+      },
+    );
+  };
+
+  return (
+    <div className="mt-2 flex flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => rate("up")}
+          aria-label="Good reply"
+          aria-pressed={rating === "up"}
+          title="Good reply"
+          className={cn(
+            "grid place-items-center w-7 h-7 rounded-lg transition-colors",
+            rating === "up"
+              ? "text-green-300 bg-green-500/10"
+              : "text-text-faint hover:text-text-primary hover:bg-text-primary/[0.06]",
+          )}
+        >
+          <ThumbsUp className="w-3.5 h-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => rate("down")}
+          aria-label="Needs improvement — tell the Chief of Staff why"
+          aria-pressed={rating === "down"}
+          title="Needs improvement"
+          className={cn(
+            "grid place-items-center w-7 h-7 rounded-lg transition-colors",
+            rating === "down"
+              ? "text-danger bg-danger/10"
+              : "text-text-faint hover:text-text-primary hover:bg-text-primary/[0.06]",
+          )}
+        >
+          <ThumbsDown className="w-3.5 h-3.5" />
+        </button>
+        {rating === "down" && !commenting && (
+          <button
+            type="button"
+            onClick={() => setCommenting(true)}
+            className="text-[11.5px] text-text-faint hover:text-accent-glow"
+          >
+            Add a note
+          </button>
+        )}
+      </div>
+
+      {/* The "small toast" below the dislike button: a glass comment card. */}
+      {commenting && (
+        <div className="max-w-[440px] rounded-[14px] border border-accent/25 bg-panel-2/80 backdrop-blur-xl p-2.5 shadow-[0_8px_28px_rgba(0,0,0,0.28)]">
+          <label className="block text-[11px] font-medium text-text-muted mb-1.5">
+            What should the Chief of Staff have done differently?
+          </label>
+          <textarea
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            placeholder="e.g. Don't schedule anything before 10am — I keep mornings for deep work."
+            rows={2}
+            autoFocus
+            className="w-full rounded-lg bg-black/25 border hairline px-2.5 py-2 text-[12.5px] leading-relaxed text-text-primary focus:outline-none focus:border-accent/50 resize-none"
+          />
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={saveCorrection}
+              disabled={send.isPending}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-accent text-bg px-3 py-1.5 text-[12px] font-semibold hover:bg-accent-glow disabled:opacity-50"
+            >
+              {send.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+              Teach the Chief of Staff
+            </button>
+            <button
+              type="button"
+              onClick={() => setCommenting(false)}
+              className="text-[11.5px] text-text-muted hover:text-text-primary"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Bubble({
   msg,
   avatarUrl,
   tts,
+  conversationId,
 }: {
   msg: CosMessage;
   avatarUrl?: string | null;
   tts: ReadAloudApi;
+  conversationId: string | null;
 }) {
   const text = msg.content || msg.transcribed_text || "";
   if (msg.role === "user") {
@@ -143,6 +279,8 @@ function Bubble({
             <VoiceSettingsButton tts={tts} />
           </div>
         )}
+        {/* Rate the reply so the CoS learns the CEO's preferences. */}
+        {text.trim() && conversationId && <FeedbackBar conversationId={conversationId} msg={msg} />}
       </div>
     </div>
   );
@@ -915,7 +1053,7 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
       <div className="flex flex-col gap-6">
         {messages.map((m) => (
           <div key={m.message_id} className="flex flex-col gap-6">
-            <Bubble msg={m} avatarUrl={avatarUrl} tts={tts} />
+            <Bubble msg={m} avatarUrl={avatarUrl} tts={tts} conversationId={activeId} />
             {(plansByMessage.get(m.message_id) ?? []).map((p) => (
               <div key={p.plan_id} className="md:pl-11">
                 <BatchPlanCard plan={p} conversationId={activeId!} />

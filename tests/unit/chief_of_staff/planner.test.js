@@ -55,6 +55,28 @@ describe("resolveTokens", () => {
     const out = planner.resolveTokens({ id: "{{step:0.goal_id}}" }, prior);
     expect(planner.hasUnresolvedTokens(out)).toBe(false);
   });
+
+  it("hasUnresolvedTokens is stateless across calls (no /g lastIndex leak)", () => {
+    // Regression for the stateful-regex bug (§3.6): a global regex used with
+    // .test() carries lastIndex, so the 2nd call could miss a real token.
+    const a = { note: "a long prefix before the token {{step:0.goal_id}}" };
+    const b = { id: "{{step:1.task_id}} leads the string" };
+    expect(planner.hasUnresolvedTokens(a)).toBe(true);
+    expect(planner.hasUnresolvedTokens(b)).toBe(true); // must NOT be false
+    expect(planner.hasUnresolvedTokens(a)).toBe(true); // stable when repeated
+  });
+
+  it("referencedSteps lists the step indices a payload depends on", () => {
+    expect(planner.referencedSteps({ id: "{{step:0.goal_id}}" })).toEqual([0]);
+    expect(
+      planner.referencedSteps({ id: "{{step:0.goal_id}}", taskId: "{{step:4.task_id}}" }),
+    ).toEqual([0, 4]);
+    // Nested (event participants) + de-duped + sorted.
+    expect(
+      planner.referencedSteps({ participants: [{ user_id: "{{step:2.user_id}}" }], x: "{{step:2.y}}" }),
+    ).toEqual([2]);
+    expect(planner.referencedSteps({ title: "no tokens here" })).toEqual([]);
+  });
 });
 
 describe("buildSteps (scope guardrail)", () => {

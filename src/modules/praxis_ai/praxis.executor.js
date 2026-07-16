@@ -23,14 +23,36 @@ const { AppError } = require("../../utils/errors");
 // the whole payload).
 const RESULT_MAX_CHARS = 4000;
 
+/** Shallow-collect id-shaped fields (id / *_id) with scalar values. */
+function idFields(obj) {
+  const out = {};
+  if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+    for (const [k, v] of Object.entries(obj)) {
+      if (
+        (k === "id" || k.endsWith("_id")) &&
+        (typeof v === "string" || typeof v === "number")
+      ) {
+        out[k] = v;
+      }
+    }
+  }
+  return out;
+}
+
 function trimResult(data) {
+  let s;
   try {
-    const s = JSON.stringify(data);
-    if (s.length <= RESULT_MAX_CHARS) return data;
-    return { _truncated: true, preview: s.slice(0, RESULT_MAX_CHARS) };
+    s = JSON.stringify(data);
   } catch {
     return { _unserialisable: true };
   }
+  if (s.length <= RESULT_MAX_CHARS) return data;
+  // Over budget: keep a preview, but PRESERVE the id fields (from the body and
+  // its {data:…} envelope) so a later {{step:N.field}} cross-step token can
+  // still resolve — trimming them out is what broke chained plan steps
+  // (docs/COS_ARCHITECTURE_AUDIT.md §3.5).
+  const ids = { ...idFields(data && data.data), ...idFields(data) };
+  return { _truncated: true, preview: s.slice(0, RESULT_MAX_CHARS), ...ids, data: ids };
 }
 
 /**

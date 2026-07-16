@@ -43,6 +43,13 @@ export interface CosConversation {
   message_count?: number;
 }
 
+export type FeedbackRating = "up" | "down";
+
+export interface MessageFeedback {
+  rating: FeedbackRating;
+  comment: string | null;
+}
+
 export interface CosMessage {
   message_id: string;
   conversation_id: string;
@@ -51,6 +58,8 @@ export interface CosMessage {
   input_mode?: "text" | "voice" | null;
   transcribed_text?: string | null;
   created_at: string;
+  /** The CEO's rating of this reply, if any (training loop) — hydrated on load. */
+  feedback?: MessageFeedback | null;
 }
 
 export interface PlanStep {
@@ -65,6 +74,8 @@ export interface PlanStep {
   status: StepStatus;
   execution_error?: string | null;
   execution_result?: unknown;
+  /** Review-time validation warning from pre-flight (shown before approval). */
+  preflight_note?: string | null;
 }
 
 export interface Plan {
@@ -237,6 +248,46 @@ export function useSaveConversationToNotes() {
       qc.invalidateQueries({ queryKey: ["workspace"] });
     },
     onError: (err) => toastReport("Chief of Staff", "Save to notes", err),
+  });
+}
+
+export interface SendCosFeedbackVars {
+  conversationId: string;
+  messageId: string;
+  rating: FeedbackRating;
+  comment?: string;
+}
+
+/**
+ * Rate a Chief of Staff reply 👍/👎 (Phase 1 training loop). A 👎 with a comment
+ * is stored as a durable correction the next turn respects. Optimistically folds
+ * the rating into the cached conversation so the thumbs reflect it immediately.
+ */
+export function useSendCosFeedback() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ messageId, rating, comment }: SendCosFeedbackVars) =>
+      api.post<{ ok: boolean; rating: FeedbackRating; learned: boolean }>(
+        `/cos/messages/${messageId}/feedback`,
+        { rating, comment },
+      ),
+    onMutate: ({ conversationId, messageId, rating, comment }) => {
+      qc.setQueryData<CosConversationDetail | undefined>(
+        cosKeys.conversation(conversationId),
+        (prev) =>
+          prev
+            ? {
+                ...prev,
+                messages: prev.messages.map((m) =>
+                  m.message_id === messageId
+                    ? { ...m, feedback: { rating, comment: comment ?? m.feedback?.comment ?? null } }
+                    : m,
+                ),
+              }
+            : prev,
+      );
+    },
+    onError: (err) => toastReport("Chief of Staff", "Send feedback", err),
   });
 }
 

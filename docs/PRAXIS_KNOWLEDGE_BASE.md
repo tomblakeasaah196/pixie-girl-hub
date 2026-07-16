@@ -248,6 +248,15 @@ Agenda) · **My HR** · **Goals** *(CEO)* · **Notes** *(CEO)* · **AI Chief of 
 - *Request leave / see my payslip?* Workspace → **My HR** tab.
   (Old `/my-hr` links redirect here: `/workspace?tab=my-hr`.)
 - *Set a goal?* Workspace → **Goals** → **New Goal** / **Create Goal** (CEO).
+- *Plan with the AI Chief of Staff?* (CEO) Workspace → **AI Chief of Staff** →
+  describe what you want in plain language. It proposes a whole plan (goal +
+  milestones + tasks + events + notes) as one card; review the steps (✎ to edit
+  any) and tap **Approve plan** to run them — nothing is written until you
+  approve. To assign work, name a teammate ("assign to my BDM") and it resolves
+  the person; for a private to-do say "personal" and it stays off the shared board.
+- *Teach the Chief of Staff my preferences?* Under any reply, tap 👍/👎. On 👎 a
+  small note box appears — say what it should have done differently ("don't
+  schedule anything before 10am") and it remembers that on future plans.
 
 ---
 

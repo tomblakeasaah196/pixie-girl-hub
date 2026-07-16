@@ -239,6 +239,52 @@ async function boardTasks({ brand, assigned_to }) {
   return rows;
 }
 
+/**
+ * Assignable teammates for this business — the identity source the CoS needs
+ * to resolve "assign to my BDM" into a real user_id (shared.tasks.assigned_to
+ * is an FK to shared.users, and a contact_id is NOT a user). Active users who
+ * can access the brand (or the CEO, who spans all), searchable by name/role,
+ * CEO first. Returns a compact shape: user_id, display_name, email, role, is_ceo.
+ */
+async function listAssignableUsers({ brand, search, limit = 50 }) {
+  const where = [
+    "u.status = 'active'",
+    "u.is_active = true",
+    "($1 = ANY(u.permitted_businesses) OR u.is_ceo = true)",
+  ];
+  const params = [brand];
+  let i = 2;
+  if (search && String(search).trim()) {
+    // Match a person's name/email OR the name of a role they hold ("BDM").
+    where.push(
+      `(u.display_name ILIKE $${i} OR u.email ILIKE $${i} OR EXISTS (
+          SELECT 1 FROM shared.user_roles ur2
+            JOIN shared.roles r2 ON r2.role_id = ur2.role_id
+           WHERE ur2.user_id = u.user_id AND r2.role_name ILIKE $${i}))`,
+    );
+    params.push(`%${String(search).trim()}%`);
+    i++;
+  }
+  const { rows } = await query(
+    `SELECT u.user_id,
+            COALESCE(u.display_name, u.email) AS display_name,
+            u.email,
+            u.is_ceo,
+            (SELECT r.role_name
+               FROM shared.user_roles ur
+               JOIN shared.roles r ON r.role_id = ur.role_id
+              WHERE ur.user_id = u.user_id
+              ORDER BY r.role_name
+              LIMIT 1) AS role_name
+       FROM shared.users u
+      WHERE ${where.join(" AND ")}
+      ORDER BY u.is_ceo DESC, display_name ASC
+      LIMIT $${i}`,
+    [...params, Math.min(Number(limit) || 50, 100)],
+  );
+  return rows;
+}
+
 module.exports = {
   createTask,
   listTasks,
@@ -251,4 +297,5 @@ module.exports = {
   setSubtaskDone,
   deleteSubtask,
   boardTasks,
+  listAssignableUsers,
 };

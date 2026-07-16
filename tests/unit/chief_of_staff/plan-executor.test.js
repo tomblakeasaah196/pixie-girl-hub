@@ -64,7 +64,7 @@ test("runs steps in order and resolves {{step:N.field}} from prior results", asy
   expect(steps[1].status).toBe("executed");
 });
 
-test("a failed step stops the run and lands the plan in partially_failed", async () => {
+test("a failed step skips only its dependents, not the whole run", async () => {
   const steps = [
     { pending_id: "p0", plan_step: 0, status: "confirmed", method: "POST", route: "/api/v1/goals", business: "pixiegirl", payload: { title: "Launch" } },
     { pending_id: "p1", plan_step: 1, status: "confirmed", method: "POST", route: "/api/v1/goals/:id/milestones", business: "pixiegirl", payload: { id: "{{step:0.goal_id}}", title: "M1" } },
@@ -77,7 +77,29 @@ test("a failed step stops the run and lands the plan in partially_failed", async
   expect(out.status).toBe("partially_failed");
   expect(executor.executeAction).toHaveBeenCalledTimes(1); // dependent step never ran
   expect(steps[0].status).toBe("failed");
-  expect(steps[1].status).toBe("confirmed"); // untouched
+  // The dependent is explicitly marked skipped (not silently left queued) with
+  // an actionable reason pointing at the step it needed.
+  expect(steps[1].status).toBe("failed");
+  expect(steps[1].execution_error).toMatch(/skipped/i);
+});
+
+test("independent steps still run after an unrelated step fails", async () => {
+  const steps = [
+    { pending_id: "p0", plan_step: 0, status: "confirmed", method: "POST", route: "/api/v1/goals", business: "pixiegirl", payload: { title: "Launch" } },
+    // No token → independent of step 0; must still run.
+    { pending_id: "p1", plan_step: 1, status: "confirmed", method: "POST", route: "/api/v1/tasks", business: "pixiegirl", payload: { title: "Standalone task" } },
+  ];
+  wireRepo(steps);
+  executor.executeAction
+    .mockResolvedValueOnce({ ok: false, http_status: 422, result: { error: { message: "bad" } } })
+    .mockResolvedValueOnce({ ok: true, http_status: 201, result: { data: { task_id: "t-1" } } });
+
+  const out = await planExec.executePlan({ plan: { ...PLAN }, auth_header: "Bearer x" });
+
+  expect(out.status).toBe("partially_failed");
+  expect(executor.executeAction).toHaveBeenCalledTimes(2); // both attempted
+  expect(steps[0].status).toBe("failed");
+  expect(steps[1].status).toBe("executed"); // independent work survived
 });
 
 test("fails a step whose token cannot resolve (no such prior result)", async () => {
@@ -89,7 +111,7 @@ test("fails a step whose token cannot resolve (no such prior result)", async () 
   expect(out.status).toBe("partially_failed");
   expect(executor.executeAction).not.toHaveBeenCalled();
   expect(steps[0].status).toBe("failed");
-  expect(steps[0].execution_error).toMatch(/cross-step reference/i);
+  expect(steps[0].execution_error).toMatch(/referenced value|can't run yet/i);
 });
 
 test("confirmPlan stamps confirmed_by_user_id on each proposed step (no 409)", async () => {
@@ -183,6 +205,42 @@ test("duplicate-goal guard fails open when the lookup itself throws", async () =
 
   const out = await planExec.executePlan({ plan: { ...PLAN }, auth_header: "Bearer x" });
   expect(out.status).toBe("executed"); // guard is best-effort, never blocks the run
+});
+
+test("self-repair: a validation failure is retried once with a corrected payload", async () => {
+  const steps = [
+    { pending_id: "p0", plan_step: 0, status: "confirmed", action_key: "workspace.create_task", method: "POST", route: "/api/v1/tasks", business: "pixiegirl", payload: { title: "T", priority: "sometime" } },
+  ];
+  wireRepo(steps);
+  // First attempt 422s; the repaired attempt succeeds.
+  executor.executeAction
+    .mockResolvedValueOnce({ ok: false, http_status: 422, result: { error: { code: "VALIDATION_ERROR", fields: { priority: ["bad"] } } } })
+    .mockResolvedValueOnce({ ok: true, http_status: 201, result: { data: { task_id: "t-1" } } });
+  const repair = jest.fn().mockResolvedValue({ title: "T", priority: "high" });
+  const actionByKey = new Map([["workspace.create_task", { action_key: "workspace.create_task", payload_schema: {} }]]);
+
+  const out = await planExec.executePlan({ plan: { ...PLAN }, auth_header: "Bearer x", repair, actionByKey });
+
+  expect(out.status).toBe("executed");
+  expect(repair).toHaveBeenCalledTimes(1);
+  expect(executor.executeAction).toHaveBeenCalledTimes(2); // original + repaired
+  expect(executor.executeAction.mock.calls[1][0].pending.payload).toEqual({ title: "T", priority: "high" });
+  expect(steps[0].status).toBe("executed");
+  expect(steps[0].payload).toEqual({ title: "T", priority: "high" }); // repaired payload persisted
+});
+
+test("self-repair is skipped for a non-validation (500) failure", async () => {
+  const steps = [
+    { pending_id: "p0", plan_step: 0, status: "confirmed", action_key: "workspace.create_task", method: "POST", route: "/api/v1/tasks", business: "pixiegirl", payload: { title: "T" } },
+  ];
+  wireRepo(steps);
+  executor.executeAction.mockResolvedValueOnce({ ok: false, http_status: 500, result: { error: {} } });
+  const repair = jest.fn();
+
+  const out = await planExec.executePlan({ plan: { ...PLAN }, auth_header: "Bearer x", repair, actionByKey: new Map() });
+
+  expect(out.status).toBe("partially_failed");
+  expect(repair).not.toHaveBeenCalled();
 });
 
 test("resume skips already-executed steps and re-seeds their results", async () => {

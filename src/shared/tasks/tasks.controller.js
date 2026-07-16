@@ -31,6 +31,16 @@ async function listTasks(req, res) {
     }),
   );
 }
+async function listAssignees(req, res) {
+  const { page_size } = parsePagination(req.query);
+  res.json({
+    data: await service.listAssignees({
+      brand: req.brand,
+      search: req.query.q,
+      limit: page_size,
+    }),
+  });
+}
 async function getBoard(req, res) {
   res.json({
     data: await service.getBoard({
@@ -104,6 +114,7 @@ async function deleteSubtask(req, res) {
 
 module.exports = {
   listTasks,
+  listAssignees,
   getBoard,
   getTask,
   createTask,

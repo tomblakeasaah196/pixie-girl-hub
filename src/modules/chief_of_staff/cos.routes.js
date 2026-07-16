@@ -72,6 +72,10 @@ router.post(
   c.saveConversationToNote,
 );
 
+// Rate an assistant reply 👍/👎 (Phase 1 training loop). A 👎 + comment becomes
+// a durable CoS correction. Cheap + idempotent (upsert), so no turn limiter.
+router.post("/messages/:messageId/feedback", v.validateFeedback, c.recordFeedback);
+
 // ── Plans (batch-plan approval) ────────────────────────────
 router.get("/plans/:planId", c.getPlan);
 router.post("/plans/:planId/confirm", c.confirmPlan);

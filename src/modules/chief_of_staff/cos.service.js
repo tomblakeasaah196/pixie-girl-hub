@@ -24,11 +24,13 @@ const planner = require("./cos.planner");
 const planRounds = require("./cos.plan-rounds");
 const memory = require("./cos.memory");
 const settingsRepo = require("./cos.settings.repo");
+const feedbackRepo = require("./cos.feedback.repo");
 const goalsRepo = require("../../shared/goals/goals.repo");
 const notesRepo = require("../../shared/goals/notes.repo");
+const tasksRepo = require("../../shared/tasks/tasks.repo");
 const events = require("./cos.events");
 const governance = require("../ai_governance/governance.service");
-const modelCatalogue = require("../ai_governance/model-catalogue.repo");
+const { recordUsageSafe } = require("./cos.usage");
 const llmRouter = require("../../services/llm-router");
 const transcription = require("../../services/transcription.service");
 const { audit } = require("../../middleware/audit");
@@ -97,14 +99,24 @@ async function getConversation({ user, id }) {
   const conv = await praxisRepo.findConversation({ id });
   if (!conv || conv.user_id !== user.user_id || conv.kind !== KIND)
     throw new NotFoundError("Conversation");
-  const [messages, plans, savedNote] = await Promise.all([
+  const [messages, plans, savedNote, feedbackRows] = await Promise.all([
     praxisRepo.listMessages({ conversation_id: id }),
     cosRepo.listPlansForConversation({ conversation_id: id }),
     notesRepo.findNoteByCosConversation({
       user_id: user.user_id,
       conversation_id: id,
     }),
+    feedbackRepo
+      .listForConversation({ conversation_id: id, user_id: user.user_id })
+      .catch(() => []),
   ]);
+  // Hydrate each reply with any rating the CEO already gave it, so the thumbs
+  // reflect prior feedback across reloads (the training loop's UI state).
+  const feedbackByMsg = new Map(feedbackRows.map((f) => [f.message_id, f]));
+  const messagesWithFeedback = messages.map((m) => {
+    const f = feedbackByMsg.get(m.message_id);
+    return f ? { ...m, feedback: { rating: f.rating, comment: f.comment } } : m;
+  });
   const plansWithSteps = await Promise.all(
     plans.map(async (p) => ({
       ...p,
@@ -120,7 +132,7 @@ async function getConversation({ user, id }) {
         updated_at: savedNote.updated_at,
       }
     : null;
-  return { ...conv, messages, plans: plansWithSteps, saved_note };
+  return { ...conv, messages: messagesWithFeedback, plans: plansWithSteps, saved_note };
 }
 
 async function createConversation({ user, brand, request_id, input }) {
@@ -152,44 +164,32 @@ async function archiveConversation({ user, id }) {
 }
 
 // ── The CoS turn ───────────────────────────────────────────
-async function recordUsageSafe({ user, brand, convId, completion, ok }) {
-  let cost = "0";
+// recordUsageSafe now lives in cos.usage (shared with the self-repair round).
+
+// How many teammates to inline in the persona before telling the model to fall
+// back to search_users — keeps the prompt bounded on a bigger org.
+const ROSTER_MAX = 40;
+// How many recent CEO corrections to inject as standing instructions.
+const CORRECTIONS_MAX = 5;
+
+/** Assignable teammates for the persona (identity source for `assigned_to`). */
+async function rosterSnapshot({ brand }) {
   try {
-    const model = await modelCatalogue.resolveActiveModel({
-      vendor: completion.vendor,
-      capability: "chat",
-    });
-    if (model)
-      cost = modelCatalogue.computeCost({
-        model,
-        input_tokens: completion.usage.prompt_tokens || 0,
-        output_tokens: completion.usage.completion_tokens || 0,
-      });
+    const roster = await tasksRepo.listAssignableUsers({ brand, limit: ROSTER_MAX + 1 });
+    const truncated = roster.length > ROSTER_MAX;
+    return { roster: roster.slice(0, ROSTER_MAX), truncated };
   } catch {
-    /* best-effort cost */
+    return { roster: [], truncated: false };
   }
+}
+
+/** The CEO's recent corrections (feedback loop) as plain strings for the persona. */
+async function correctionsSnapshot({ user }) {
   try {
-    await governance.recordUsage({
-      usage: {
-        user_id: user.user_id,
-        feature_key: FEATURE,
-        business: brand,
-        conversation_id: convId,
-        provider: completion.vendor,
-        model: completion.model,
-        call_type: "chat_completion",
-        input_tokens: completion.usage.prompt_tokens || 0,
-        output_tokens: completion.usage.completion_tokens || 0,
-        total_tokens: completion.usage.total_tokens || 0,
-        cost_native: cost,
-        cost_ngn: cost,
-        was_successful: ok,
-      },
-    });
-  } catch (err) {
-    logger.error({ err: err.message }, "cos: usage record failed");
+    return await feedbackRepo.recentCorrections({ user_id: user.user_id, limit: CORRECTIONS_MAX });
+  } catch {
+    return [];
   }
-  return cost;
 }
 
 /** Compact snapshot of the brand's active goals, so status questions are grounded. */
@@ -288,11 +288,14 @@ async function runTurn({ user, brand, conversation, userMsg, userText, auth_head
 
   // Ground the turn in the CEO's real goals + semantic memory (wow #7), so
   // "how is X doing?" is answered from history, not invented. Load the CEO's
-  // personalisation (PR6) so the persona speaks as her named assistant/tone.
-  const [goalsCtx, memCtx, settings] = await Promise.all([
+  // personalisation (PR6), the assignable team (identity source for
+  // assigned_to), and her recent corrections (the training loop).
+  const [goalsCtx, memCtx, settings, rosterCtx, corrections] = await Promise.all([
     goalsSnapshot({ brand }),
     memorySnapshot({ user, brand, userText }),
     settingsRepo.get({ user_id: user.user_id }).catch(() => null),
+    rosterSnapshot({ brand }),
+    correctionsSnapshot({ user }),
   ]);
   const contextBlock = [goalsCtx, memCtx].filter(Boolean).join("\n\n");
 
@@ -304,6 +307,9 @@ async function runTurn({ user, brand, conversation, userMsg, userText, auth_head
         user,
         settings,
         actionTitles: actions.map((a) => a.title),
+        roster: rosterCtx.roster,
+        rosterTruncated: rosterCtx.truncated,
+        corrections,
       }),
     },
     ...(contextBlock ? [{ role: "system", content: contextBlock }] : []),
@@ -639,7 +645,11 @@ async function continuePlan({ user, brand, request_id, id, auth_header }) {
     .slice(-HISTORY_TURNS)
     .map((m) => ({ role: m.role, content: (m.content || "").slice(0, HISTORY_MSG_MAX_CHARS) }));
 
-  const settings = await settingsRepo.get({ user_id: user.user_id }).catch(() => null);
+  const [settings, rosterCtx, corrections] = await Promise.all([
+    settingsRepo.get({ user_id: user.user_id }).catch(() => null),
+    rosterSnapshot({ brand }),
+    correctionsSnapshot({ user }),
+  ]);
   const queued = existing
     .map((s) => `${s.plan_step}. ${s.human_summary || s.action_key}`)
     .join("\n");
@@ -651,6 +661,9 @@ async function continuePlan({ user, brand, request_id, id, auth_header }) {
         user,
         settings,
         actionTitles: actions.map((a) => a.title),
+        roster: rosterCtx.roster,
+        rosterTruncated: rosterCtx.truncated,
+        corrections,
       }),
     },
     ...history,

@@ -5,6 +5,7 @@
 "use strict";
 
 const service = require("./cos.service");
+const feedback = require("./cos.feedback.service");
 const followups = require("./cos.followups.service");
 const meeting = require("./cos.meeting");
 const scheduler = require("./cos.scheduler");
@@ -52,6 +53,19 @@ async function postMessage(req, res) {
       // Threaded to the plan executor: it re-enters the API over loopback AS
       // this user, so auth/brand/RBAC/validation re-apply on every step.
       auth_header: req.headers.authorization,
+    }),
+  });
+}
+
+// Feedback on a reply (training loop). message_id is on the path; the
+// conversation is derived + ownership-checked server-side.
+async function recordFeedback(req, res) {
+  res.json({
+    data: await feedback.recordFeedback({
+      ...base(req),
+      message_id: req.params.messageId,
+      rating: req.body.rating,
+      comment: req.body.comment,
     }),
   });
 }
@@ -235,6 +249,7 @@ module.exports = {
   archiveConversation,
   postMessage,
   saveConversationToNote,
+  recordFeedback,
   getPlan,
   confirmPlan,
   rejectPlan,

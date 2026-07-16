@@ -186,4 +186,12 @@ export const publicOfferApi = {
       { signature_data_url },
       "public",
     ),
+  /**
+   * Download the offer as a branded PDF straight from the tokenised link — the
+   * SAME document the admin exporter produces. Works before AND after signing
+   * (once signed, the candidate's stamped e-signature is in the packet). No
+   * login: the token in the URL is the credential.
+   */
+  downloadPdf: (token: string, doc: OfferPdfDoc = "packet", fallbackName = "offer.pdf") =>
+    api.downloadPublic(`/offer/${token}/pdf?doc=${doc}&download=1`, fallbackName),
 };

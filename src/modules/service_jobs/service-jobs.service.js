@@ -34,6 +34,11 @@ const A = (
   audit({
     business: brand,
     user_id: user ? user.user_id : null,
+    // Without this, audit()'s own fallback is String(user_id) — a raw UUID —
+    // which is exactly what showed up in the job Activity tab and the
+    // stylist scorecard's rework history (both read shared.audit_log
+    // directly). req.user always carries display_name from authMiddleware.
+    user_name: user ? user.display_name || user.email : "system",
     action_key,
     target_type,
     target_id,

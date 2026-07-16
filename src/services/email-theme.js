@@ -38,6 +38,10 @@ const NEUTRAL = {
 // every inline style still names a safe fallback so Outlook/Gmail never break.
 const SERIF = "'Playfair Display', Georgia, 'Times New Roman', serif";
 const SANS = "'Montserrat', 'Helvetica Neue', Arial, sans-serif";
+// Monospace for figures the reader may need to copy verbatim — a temporary
+// password, a verification code, a reference number. No web font is loaded for
+// it in mail clients, so the stack is entirely system-safe.
+const MONO = "'JetBrains Mono', 'SFMono-Regular', Consolas, 'Courier New', monospace";
 const FONT_IMPORT =
   "https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500&display=swap";
 
@@ -79,6 +83,20 @@ function paragraph(html, { muted = false, top = 16 } = {}) {
   const color = muted ? NEUTRAL.muted : NEUTRAL.ink;
   return pad(
     `<p style="margin:0;font-family:${SANS};font-size:15px;line-height:1.62;color:${color}">${html}</p>`,
+    { top, bottom: 0 },
+  );
+}
+
+/**
+ * A block of caller-authored rich HTML (its own <p>/<strong>/<ul>…), placed in
+ * a branded container that carries the body font, size and colour. Used when a
+ * message's body is supplied as ready HTML rather than as discrete paragraphs
+ * (e.g. the stylist-programme notifications). Trusted, in-repo HTML only — it
+ * is inserted verbatim, so never pass unescaped user input here.
+ */
+function richText(html, { top = 16 } = {}) {
+  return pad(
+    `<div style="font-family:${SANS};font-size:15px;line-height:1.62;color:${NEUTRAL.ink}">${html}</div>`,
     { top, bottom: 0 },
   );
 }
@@ -158,6 +176,96 @@ function hero(srcToken, alt = "{{brand_name}}") {
   return `<tr><td style="padding:0"><img src="${srcToken}" alt="${esc(
     alt,
   )}" width="600" style="display:block;width:100%;max-width:600px;height:auto;border:0" /></td></tr>`;
+}
+
+/**
+ * A boxed key → value list for transactional facts the reader must read (and
+ * often copy): login email + temporary password, an offer's expiry date, a
+ * verification code. Values are HTML-escaped by default; pass `html:true` on a
+ * row whose value is deliberate markup (e.g. a link). `mono:true` renders the
+ * value in the monospace stack — right for passwords and codes.
+ */
+function detailBox(rows = []) {
+  const list = (rows || []).filter(Boolean);
+  const body = list
+    .map((r, idx) => {
+      const last = idx === list.length - 1;
+      const edge = last ? "" : `border-bottom:1px solid ${NEUTRAL.hairline};`;
+      const val = r.html ? r.value : esc(r.value);
+      return `<tr>
+      <td style="padding:10px 0;${edge}font-family:${SANS};font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:${NEUTRAL.muted};vertical-align:top;white-space:nowrap">${esc(
+        r.label,
+      )}</td>
+      <td style="padding:10px 0 10px 18px;${edge}font-family:${
+        r.mono ? MONO : SANS
+      };font-size:14px;color:${NEUTRAL.ink};text-align:right;word-break:break-all">${val}</td>
+    </tr>`;
+    })
+    .join("");
+  return `<tr><td style="padding:24px 40px 0 40px">
+    <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" bgcolor="${NEUTRAL.outerBg}" style="background-color:${NEUTRAL.outerBg};border:1px solid ${NEUTRAL.hairline};border-radius:8px">
+      <tr><td style="padding:4px 20px">
+        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">${body}</table>
+      </td></tr>
+    </table>
+  </td></tr>`;
+}
+
+/**
+ * A soft, accent-tinted notice card — used for a security/expiry note that
+ * should read as important but calm (not an alarm). `html` is inserted as-is,
+ * so escape any dynamic value at the call site.
+ */
+function noticeBox(html, { accent = "{{brand_color}}" } = {}) {
+  return `<tr><td style="padding:24px 40px 0 40px">
+    <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+      <tr><td style="padding:14px 18px;background:${accent}0d;border:1px solid ${accent}26;border-radius:6px;font-family:${SANS};font-size:12.5px;line-height:1.6;color:${NEUTRAL.muted}">${html}</td></tr>
+    </table>
+  </td></tr>`;
+}
+
+/**
+ * Footer for a TRANSACTIONAL letter (an offer, a welcome, login credentials) —
+ * as opposed to marketing mail. Identical luxury chrome to `footer()` but with
+ * NO "unsubscribe" / "you're receiving this because…" line: a candidate can't
+ * unsubscribe from their own offer, and a one-click unsubscribe on account
+ * mail is both wrong and a deliverability smell. Built from RESOLVED brand
+ * tokens (not {{placeholders}}) so an unconfigured address/website/support
+ * line is dropped rather than left as an empty link.
+ */
+function transactionalFooter(tokens = {}) {
+  const name = esc(tokens.brand_name || "");
+  const legal = esc(tokens.brand_legal_name || tokens.brand_name || "");
+  const year = esc(tokens.year || String(new Date().getFullYear()));
+  const contactBits = [
+    tokens.website_url &&
+      `<a href="${esc(tokens.website_url)}" target="_blank" style="color:${NEUTRAL.muted};text-decoration:none">${esc(
+        tokens.website_url,
+      )}</a>`,
+    tokens.support_email &&
+      `<a href="mailto:${esc(tokens.support_email)}" style="color:${NEUTRAL.muted};text-decoration:none">${esc(
+        tokens.support_email,
+      )}</a>`,
+  ].filter(Boolean);
+  const addressHtml = tokens.brand_address
+    ? `<div style="font-family:${SANS};font-size:12px;line-height:1.7;color:${NEUTRAL.muted};margin-top:8px">${esc(
+        tokens.brand_address,
+      )}</div>`
+    : "";
+  const contactHtml = contactBits.length
+    ? `<div style="font-family:${SANS};font-size:12px;line-height:1.7;color:${NEUTRAL.muted}">${contactBits.join(
+        " &nbsp;·&nbsp; ",
+      )}</div>`
+    : "";
+  return `<tr><td style="padding:34px 40px 40px 40px;border-top:1px solid ${NEUTRAL.hairline}" align="center">
+    <div style="font-family:${SERIF};font-size:17px;color:${NEUTRAL.ink};letter-spacing:0.5px">${name}</div>
+    ${addressHtml}
+    ${contactHtml}
+    <div style="font-family:${SANS};font-size:11px;line-height:1.7;color:${NEUTRAL.faint};margin-top:16px">
+      This is a service message from ${name}.<br/>
+      © ${year} ${legal}
+    </div>
+  </td></tr>`;
 }
 
 // ── Document shell ─────────────────────────────────────────────
@@ -257,6 +365,7 @@ module.exports = {
   NEUTRAL,
   SERIF,
   SANS,
+  MONO,
   FONT_IMPORT,
   esc,
   pad,
@@ -270,8 +379,12 @@ module.exports = {
   spacer,
   perk,
   hero,
+  richText,
+  detailBox,
+  noticeBox,
   header,
   footer,
+  transactionalFooter,
   wrapEmail,
   toPlainText,
 };

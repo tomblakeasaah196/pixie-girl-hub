@@ -464,7 +464,10 @@ disciplinary queries, targets, rewards, recruitment, and HR analytics.
 - *See attendance?* HR → **Attendance** tab. (Staff clock in via the top bar.)
 - *Raise a staff query?* HR → **Queries**.
 - *Hire someone (JD → offer → e-sign → onboarding)?* HR → **Recruitment** tab.
-  Candidates get a public offer link (`/offer/<token>`).
+  Candidates get a public offer link (`/offer/<token>`). On that page the
+  candidate can **download the offer as a branded PDF at any time — before or
+  after signing** (the signed copy carries their stamped e-signature); the
+  direct link is `/api/public/offer/<token>/pdf`.
 - *Clock-in address label missing, or want to rotate/test the geocoding key?*
   HR → **Settings** tab → the **"Configure Geoapify"** pill (right after
   **Payout authorisation**). The key is stored encrypted (permission
@@ -797,7 +800,8 @@ candidates). They don't need a Hub account:
 | Online welcome / onboarding | `/welcome/<business>/<token>` | New customer intake via a QR/token link. |
 | Document e-signature | `/sign/<token>` | Anyone signing a document emailed to them. |
 | Signature verification | `/verify/<code>` | Verifying a signed document is genuine. |
-| Candidate offer packet | `/offer/<token>` | A job candidate reads the JD + offer and e-signs. |
+| Candidate offer packet | `/offer/<token>` | A job candidate reads the JD + offer, downloads a PDF copy, and e-signs. |
+| Candidate offer PDF | `/api/public/offer/<token>/pdf` | Direct download of the offer packet PDF (any time, before/after signing). |
 
 ---
 

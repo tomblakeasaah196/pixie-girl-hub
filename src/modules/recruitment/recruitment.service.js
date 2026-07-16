@@ -22,7 +22,7 @@ const esign = require("../../shared/documents/documents.esign.service");
 const storage = require("../../services/storage.service");
 const invitations = require("../../shared/hr_payroll/invitations.service");
 const contractsRepo = require("../../shared/hr_payroll/contracts.repo");
-const email = require("../../services/email.service");
+const { sendTransactionalEmail } = require("../../services/transactional-email");
 const { audit } = require("../../middleware/audit");
 const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
@@ -42,6 +42,10 @@ const escHtml = (s) =>
 
 const appUrl = () => (config.APP_URL || "").replace(/\/$/, "");
 const offerLink = (token) => `${appUrl()}/offer/${token}`;
+// Direct, no-login download of the offer packet PDF (candidate's stamped
+// signature included once signed). Served by the public recruitment router —
+// works straight from an email client, no SPA needed.
+const offerPdfLink = (token) => `${appUrl()}/api/public/offer/${token}/pdf?download=1`;
 
 function loadLogoBase64(logoPath) {
   if (!logoPath) return null;
@@ -319,12 +323,15 @@ const EXPORT_KINDS = new Set(["packet", "jd", "offer"]);
  * When the offer is signed, the candidate's e-signature is stamped into the
  * execution block so it rides in the PDF itself.
  */
-async function exportOfferPdf({ brand, id, doc = "packet" }) {
+/**
+ * Render the chosen document to branded, page-numbered PDF bytes. Shared by the
+ * admin export and the public (tokenised) export so both produce a byte-for-byte
+ * identical file. `signature` is resolved here and is null until the offer is
+ * signed — once signed, the candidate's e-signature is stamped into the
+ * execution block so it rides in the PDF itself.
+ */
+async function buildOfferPdf({ offer, company, doc = "packet" }) {
   const kind = EXPORT_KINDS.has(doc) ? doc : "packet";
-  const offer = await repo.getOffer({ brand, id });
-  if (!offer) throw new NotFoundError("Offer");
-
-  const company = await getCompany({ brand, targets: offer.target_businesses });
   const signature = await resolveOfferSignature(offer); // null until signed
 
   let html;
@@ -346,6 +353,27 @@ async function exportOfferPdf({ brand, id, doc = "packet" }) {
     safe(offer.candidate_name || offer.candidate_email) || "candidate"
   }.pdf`;
   return { buffer, filename, mime_type: "application/pdf" };
+}
+
+async function exportOfferPdf({ brand, id, doc = "packet" }) {
+  const offer = await repo.getOffer({ brand, id });
+  if (!offer) throw new NotFoundError("Offer");
+  const company = await getCompany({ brand, targets: offer.target_businesses });
+  return buildOfferPdf({ offer, company, doc });
+}
+
+/**
+ * Public (no-login) export: the candidate downloads the SAME branded PDF from
+ * their tokenised offer link — the full offer packet by default, or ?doc=jd|offer.
+ * Available BEFORE and AFTER signing; once signed, their stamped e-signature is
+ * in the packet. No permission gate — the unguessable token is the credential,
+ * exactly as the existing read/sign endpoints already treat it.
+ */
+async function exportPublicOfferPdf({ token, doc = "packet" }) {
+  const offer = await repo.getOfferByToken({ token });
+  if (!offer) throw new NotFoundError("Offer");
+  const company = await getCompany({ brand: offer.business, targets: offer.target_businesses });
+  return buildOfferPdf({ offer, company, doc });
 }
 
 // ── Approve & send ─────────────────────────────────────────
@@ -438,19 +466,30 @@ async function approveAndSend({ brand, user, request_id, id, input = {} }) {
     is_sensitive: true,
   });
 
-  // 3) Short branded email with the /offer/<token> link (best-effort).
+  // 3) Branded, house-styled email with the /offer/<token> link (best-effort).
   const link = offerLink(token);
   try {
-    await email.send({
+    await sendTransactionalEmail({
       brand,
       to: offer.candidate_email,
       subject: `Your offer from ${company.display_name}`,
-      html: `<p>Hi ${escHtml(offer.candidate_name || "there")},</p>
-             <p>We're delighted to share your offer for the role of <b>${escHtml(offer.title)}</b> at ${escHtml(company.display_name)}.</p>
-             <p>Please review the full job description and offer letter, and sign at the bottom of the page:</p>
-             <p><a href="${link}">Open your offer</a></p>
-             <p>This link expires on ${formatDate(expires_at)}.</p>`,
-      text: `Your offer for ${offer.title} at ${company.display_name}. Review and sign: ${link}`,
+      preheader: `Your offer of employment for ${offer.title} — review and sign online.`,
+      eyebrow: "Your offer of employment",
+      heading: `Congratulations, ${offer.candidate_name || "and welcome"}`,
+      intro: `We're delighted to share your offer for the role of <b>${escHtml(
+        offer.title,
+      )}</b> at ${escHtml(company.display_name)}.`,
+      body: [
+        {
+          html: "Please review the full job description and offer letter, then sign at the bottom of the page. You can download a PDF copy at any time — before or after you sign.",
+          muted: true,
+        },
+      ],
+      cta: { label: "Open & sign your offer", url: link },
+      notice: `This secure link expires on <b>${escHtml(formatDate(expires_at))}</b>. If it lapses before you sign, contact us and we'll send a fresh one.`,
+      signoff: `We're looking forward to welcoming you.<br/>The ${escHtml(
+        company.display_name,
+      )} team`,
     });
   } catch (err) {
     logger.error(
@@ -593,17 +632,33 @@ async function onOfferSigned({ offerId, business }) {
   }
 
   // Welcome email — explicitly NO login yet (per the CEO): credentials follow.
+  // The tokenised offer link keeps working after signing, so we offer a direct
+  // "download your signed offer" button here (the packet PDF carries their
+  // stamped signature). Only shown when we actually have the public token.
   try {
-    await email.send({
+    await sendTransactionalEmail({
       brand: offer.business,
       to: offer.candidate_email,
       subject: `Welcome to ${company.display_name} — your offer is signed`,
-      html: `<p>Hi ${escHtml(offer.candidate_name || "there")},</p>
-             <p>Congratulations, and welcome to ${escHtml(company.display_name)}! We've received your
-             signed offer for <b>${escHtml(offer.title)}</b> and prepared your employment contract.</p>
-             <p><b>Your login details will be sent to you by email shortly</b> so you can access the Hub.</p>
-             <p>We're excited to have you on board.</p>`,
-      text: `Welcome to ${company.display_name}! Your signed offer for ${offer.title} is received. Your login details will follow by email shortly.`,
+      preheader: `Your signed offer for ${offer.title} is received — your login details will follow.`,
+      eyebrow: "Offer accepted",
+      heading: `Welcome to ${company.display_name}`,
+      intro: `Congratulations, ${escHtml(
+        offer.candidate_name || "and welcome aboard",
+      )}! We've received your signed offer for <b>${escHtml(
+        offer.title,
+      )}</b> and prepared your employment contract.`,
+      body: [
+        {
+          html: "<b>Your login details will be sent to you by email shortly</b> so you can access the Hub.",
+        },
+      ],
+      cta: offer.public_token
+        ? { label: "Download your signed offer", url: offerPdfLink(offer.public_token) }
+        : null,
+      signoff: `We're excited to have you on board.<br/>The ${escHtml(
+        company.display_name,
+      )} team`,
     });
   } catch (err) {
     logger.error(
@@ -701,17 +756,23 @@ async function provisionCredentials({ brand, user, request_id, id, input = {} })
   const company = await getCompany({ brand, targets: offer.target_businesses });
   const loginUrl = `${appUrl()}/login`;
 
-  await email.send({
+  await sendTransactionalEmail({
     brand,
     to: offer.candidate_email,
     subject: `Your ${company.display_name} Hub login`,
-    html: `<p>Hi ${escHtml(offer.candidate_name || "there")},</p>
-           <p>Your account is ready. Here are your login details — please change your password on first sign-in:</p>
-           <p><b>Sign in:</b> <a href="${loginUrl}">${loginUrl}</a><br/>
-              <b>Email:</b> ${escHtml(result.email)}<br/>
-              <b>Temporary password:</b> ${escHtml(result.temp_password)}</p>
-           <p>For your security you'll be asked to set a new password when you first log in.</p>`,
-    text: `Your ${company.display_name} Hub login — Sign in: ${loginUrl} · Email: ${result.email} · Temporary password: ${result.temp_password} (you'll change it on first login).`,
+    preheader: `Your account is ready — here are your sign-in details.`,
+    eyebrow: "Your account is ready",
+    heading: `Welcome to the ${company.display_name} Hub`,
+    intro: `Hi ${escHtml(
+      offer.candidate_name || "there",
+    )}, your account is set up. Here are your login details — you'll be asked to set a new password the first time you sign in.`,
+    details: [
+      { label: "Email", value: result.email },
+      { label: "Temporary password", value: result.temp_password, mono: true },
+    ],
+    cta: { label: "Sign in to the Hub", url: loginUrl },
+    notice: `For your security, please change this temporary password on first sign-in and don't share it with anyone.`,
+    signoff: `See you inside.<br/>The ${escHtml(company.display_name)} team`,
   });
 
   const updated = await repo.updateOffer({
@@ -765,6 +826,7 @@ module.exports = {
   // public
   getPublicOffer,
   signPublicOffer,
+  exportPublicOfferPdf,
   // events
   onOfferSigned,
 };

@@ -141,6 +141,19 @@ async function publicSign(req, res) {
     }),
   });
 }
+// Candidate self-serve download of their offer PDF from the tokenised link —
+// any time, before or after signing. Mirrors the admin exporter's headers.
+async function publicExportPdf(req, res) {
+  const { buffer, filename, mime_type } = await service.exportPublicOfferPdf({
+    token: req.params.token,
+    doc: req.query.doc,
+  });
+  const disposition = req.query.download ? "attachment" : "inline";
+  res.set("Content-Type", mime_type);
+  res.set("Content-Disposition", `${disposition}; filename="${filename}"`);
+  res.set("Cache-Control", "private, no-store");
+  res.send(buffer);
+}
 
 module.exports = {
   getContext,
@@ -160,4 +173,5 @@ module.exports = {
   provision,
   publicGet,
   publicSign,
+  publicExportPdf,
 };

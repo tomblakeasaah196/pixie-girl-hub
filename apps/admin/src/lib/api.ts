@@ -427,6 +427,43 @@ async function download(path: string, fallbackName = "download"): Promise<void> 
 }
 
 /**
+ * Public (no-auth) file download from the /api/public/* root. Same save-via-
+ * <a download> mechanism as `download`, but hits the public base and sends no
+ * bearer/brand headers — for tokenised endpoints where the URL token IS the
+ * credential (e.g. a candidate saving their offer packet PDF from the offer
+ * link). Falls back to opening the URL when the bytes can't be fetched.
+ */
+async function downloadPublic(path: string, fallbackName = "download"): Promise<void> {
+  const url = `${API_ROOT}/public${path}`;
+  let res: Response;
+  try {
+    res = await fetch(url, { credentials: "include" });
+  } catch {
+    throw networkError();
+  }
+  if (!res.ok) throw new ApiError(res.status, null, `HTTP ${res.status}`);
+
+  const disposition = res.headers.get("Content-Disposition") || "";
+  const match = /filename="?([^"]+)"?/.exec(disposition);
+  const filename = match ? match[1] : fallbackName;
+
+  let blob: Blob;
+  try {
+    blob = await res.blob();
+  } catch {
+    throw networkError();
+  }
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = objectUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(objectUrl);
+}
+
+/**
  * Authenticated binary GET → Blob (no download prompt).
  *
  * For bytes we want to render in-page rather than save — e.g. the Geoapify
@@ -510,6 +547,7 @@ export const api = {
   getBlob,
   postForm,
   download,
+  downloadPublic,
   post: <T>(path: string, body?: Json, scope: Options["scope"] = "v1") =>
     request<T>(path, { method: "POST", body, scope }),
   patch: <T>(path: string, body?: Json, scope: Options["scope"] = "v1") =>

@@ -19,6 +19,7 @@ const path = require("path");
 const { config } = require("../config/env");
 const { authMiddleware } = require("../middleware/auth");
 const { brandContextMiddleware } = require("../middleware/brand-context");
+const { idempotencyMiddleware } = require("../middleware/idempotency");
 const {
   hostBrandResolverMiddleware,
 } = require("../middleware/host-brand-resolver");
@@ -372,6 +373,10 @@ function mountRoutes(app) {
   const api = express.Router();
   api.use(authMiddleware);
   api.use(brandContextMiddleware);
+  // Header-gated: a no-op unless a request carries `Idempotency-Key` (only the
+  // CoS plan executor does), so a retried/duplicated write replays instead of
+  // creating a twin. Keyed after auth+brand so it scopes by user.
+  api.use(idempotencyMiddleware);
 
   const PROTECTED_MOUNTS = [
     ["/crm", crmRouter],

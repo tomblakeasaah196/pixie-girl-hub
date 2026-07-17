@@ -263,6 +263,10 @@ goals, the AI Chief of Staff, and **My HR** (your own attendance, leave, payslip
 Agenda) · **My HR** · **Goals** *(CEO)* · **Notes** *(CEO)* · **AI Chief of Staff**.
 **Common tasks.**
 - *See my to-dos / add a task?* Workspace → **Tasks** → **New Task** / **Create Task**.
+  The board shows **your** tasks (assigned to you or created by you) — including
+  tasks auto-raised when a service job is assigned to you. Managers/CEO with
+  team-wide task access get a **My tasks / Everyone** switch at the top of the
+  Tasks tab; My Day counts are always personal.
 - *Add a calendar event?* Workspace → **Calendar** → **New Event** / **Create Event**.
 - *Clock in / out?* Top bar **Clock in** button (or Workspace → **My HR**).
 - *Request leave / see my payslip?* Workspace → **My HR** tab.

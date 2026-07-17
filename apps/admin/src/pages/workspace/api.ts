@@ -27,7 +27,13 @@ function qs(params: Record<string, unknown>) {
 
 // ── Tasks ────────────────────────────────────────────────────────────────
 
-export const getTaskBoard = () => api.get<TaskBoard>(`${T}/board`);
+export interface TaskBoardParams {
+  /** "me" scopes the board to the signed-in user's tasks. */
+  assigned_to?: string;
+}
+
+export const getTaskBoard = (params: TaskBoardParams = {}) =>
+  api.get<TaskBoard>(`${T}/board${qs({ ...params })}`);
 
 export interface TaskListParams {
   status?: string;

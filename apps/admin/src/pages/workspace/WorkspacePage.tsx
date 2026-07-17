@@ -270,6 +270,14 @@ export function WorkspacePage() {
   // Task search
   const [taskSearch, setTaskSearch] = useState("");
 
+  // Tasks tab audience. Everyone defaults to their own tasks; only users whose
+  // tasks.view record scope reaches beyond 'own' can widen to the whole team
+  // (the API enforces regardless — 'own' scope is filtered server-side).
+  const scopeFor = useAuthStore((s) => s.scopeFor);
+  const taskScope = scopeFor("tasks", "view");
+  const canSeeAllTasks = taskScope === "all" || taskScope === "team";
+  const [taskView, setTaskView] = useState<"mine" | "everyone">("mine");
+
   // Kanban drag
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const moveTask = useMoveTask();
@@ -277,13 +285,23 @@ export function WorkspacePage() {
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   );
 
-  // Data
+  // Data. The Tasks tab board can widen to everyone (scope permitting);
+  // My Day always shows the signed-in user's own tasks. When both queries
+  // ask for "me" they share a query key, so only one request is made.
   const {
     data: board,
     isLoading: boardLoading,
     isError: boardError,
     refetch: refetchBoard,
-  } = useTaskBoard();
+  } = useTaskBoard(
+    taskView === "everyone" && canSeeAllTasks ? {} : { assigned_to: "me" },
+  );
+  const {
+    data: myBoard,
+    isLoading: myBoardLoading,
+    isError: myBoardError,
+    refetch: refetchMyBoard,
+  } = useTaskBoard({ assigned_to: "me" });
 
   // Calendar events for the visible range
   const calRange = useMemo(() => {
@@ -327,21 +345,32 @@ export function WorkspacePage() {
     ];
   }, [board]);
 
+  // My Day KPIs count the user's OWN tasks, never the widened team board.
+  const myTasks = useMemo(() => {
+    if (!myBoard) return [];
+    return [
+      ...myBoard.to_do,
+      ...myBoard.in_progress,
+      ...myBoard.in_review,
+      ...myBoard.done,
+    ];
+  }, [myBoard]);
+
   const dueTodayTasks = useMemo(
     () =>
-      allTasks.filter(
+      myTasks.filter(
         (t) =>
           t.due_at &&
           isSameDay(new Date(t.due_at), today) &&
           t.status !== "done" &&
           t.status !== "cancelled",
       ),
-    [allTasks, todayStr],
+    [myTasks, todayStr],
   );
 
   const overdueTasks = useMemo(
     () =>
-      allTasks.filter(
+      myTasks.filter(
         (t) =>
           t.due_at &&
           isPast(t.due_at) &&
@@ -349,15 +378,15 @@ export function WorkspacePage() {
           t.status !== "done" &&
           t.status !== "cancelled",
       ),
-    [allTasks, todayStr],
+    [myTasks, todayStr],
   );
 
   const completedToday = useMemo(
     () =>
-      allTasks.filter(
+      myTasks.filter(
         (t) => t.completed_at && isSameDay(new Date(t.completed_at), today),
       ),
-    [allTasks, todayStr],
+    [myTasks, todayStr],
   );
 
   // CoS-access (CEO) users trade the backward-looking "Overdue / Completed"
@@ -538,10 +567,10 @@ export function WorkspacePage() {
               followups={followups}
               followupsLoading={followupsLoading}
               eventsLoading={eventsLoading}
-              boardLoading={boardLoading}
-              boardError={boardError}
+              boardLoading={myBoardLoading}
+              boardError={myBoardError}
               eventsError={eventsError}
-              onRetryBoard={refetchBoard}
+              onRetryBoard={refetchMyBoard}
               onRetryEvents={refetchEvents}
               onSelectTask={(t) => setSelectedTaskId(t.task_id)}
               onSelectEvent={setSelectedEvent}
@@ -571,6 +600,26 @@ export function WorkspacePage() {
             />
           )}
 
+          {/* Audience switch — only for scopes that reach beyond own tasks */}
+          {activeTab === "tasks" && canSeeAllTasks && (
+            <div className="mb-4 inline-flex gap-0.5 p-0.5 rounded-[12px] bg-text-primary/[0.04] border hairline">
+              {(["mine", "everyone"] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setTaskView(v)}
+                  className={cn(
+                    "px-3.5 h-[30px] rounded-[10px] text-[12px] font-semibold transition-all whitespace-nowrap",
+                    taskView === v
+                      ? "bg-accent-deep text-[#F4E9D9] shadow-sm"
+                      : "text-text-muted hover:text-text-primary hover:bg-text-primary/[0.06]",
+                  )}
+                >
+                  {v === "mine" ? "My tasks" : "Everyone"}
+                </button>
+              ))}
+            </div>
+          )}
           {activeTab === "tasks" &&
             (isMobile ? (
               <TaskListMobile

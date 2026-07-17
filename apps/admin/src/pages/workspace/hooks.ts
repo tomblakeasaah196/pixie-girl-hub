@@ -14,11 +14,13 @@ function useBiz() {
 
 // ── Task queries ─────────────────────────────────────────────────────────
 
-export function useTaskBoard() {
+export function useTaskBoard(params: ws.TaskBoardParams = {}) {
   const biz = useBiz();
   return useQuery({
-    queryKey: ["workspace", biz, "task-board"],
-    queryFn: ws.getTaskBoard,
+    // Mutations invalidate by the ["workspace", biz, "task-board"] prefix,
+    // which still matches every parameterised variant of this key.
+    queryKey: ["workspace", biz, "task-board", params],
+    queryFn: () => ws.getTaskBoard(params),
     staleTime: 30_000,
   });
 }

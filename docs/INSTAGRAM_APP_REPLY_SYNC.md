@@ -68,9 +68,35 @@ don't appear in the Hub:
    `entry.messaging[]` payload the existing endpoint already verifies.
 
 Quick verification: reply to any customer from the Instagram app, then
-check `shared.webhook_logs` for a `meta_instagram` payload containing
-`"is_echo":true`. If none arrives within seconds, the field isn't
-subscribed (or the token/app lacks `instagram_business_manage_messages`).
+check `shared.webhook_log` for a `meta_instagram` payload containing
+`"is_echo":true`:
+
+```sql
+SELECT received_at, signature_valid
+  FROM shared.webhook_log
+ WHERE source = 'meta_instagram'
+   AND payload::text LIKE '%is_echo%'
+ ORDER BY received_at DESC
+ LIMIT 5;
+```
+
+If none arrives within seconds, the field isn't subscribed (or the
+token/app lacks `instagram_business_manage_messages`).
+
+The dashboard toggle alone isn't always enough: with the Instagram API
+with Instagram Login, the professional account itself carries a
+`subscribed_apps` field list. Check and (if needed) extend it with the
+brand's IG token:
+
+```bash
+# what the account is currently subscribed to:
+curl "https://graph.instagram.com/v21.0/me/subscribed_apps?access_token=$IG_TOKEN"
+
+# add message_echoes (repeat the full list — it replaces, not appends):
+curl -X POST "https://graph.instagram.com/v21.0/me/subscribed_apps" \
+  -d "subscribed_fields=messages,message_echoes,message_reactions,messaging_seen" \
+  -d "access_token=$IG_TOKEN"
+```
 
 ## Backfilling history that was lost before this shipped
 

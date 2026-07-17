@@ -172,7 +172,6 @@ async function startWorkers() {
     runInboundEmailPoll,
   } = require("./schedulers/email-imap-poll");
   const { runAiInsightsSweep } = require("./schedulers/ai-insights-sweep");
-  const { runRetentionWorkflows } = require("./schedulers/retention-workflows");
   const {
     runRetentionStrategyTick,
   } = require("./schedulers/retention-strategy-tick");
@@ -354,9 +353,10 @@ async function startWorkers() {
       );
     },
   );
-  scheduleCron("retention-workflows", "* * * * *", runRetentionWorkflows);
   // Retention strategy engine: advance due enrolments every minute; scan for
-  // time-based triggers + expire stale points nightly (02:30 Lagos).
+  // time-based triggers + expire stale points nightly (02:30 Lagos). The
+  // legacy retention-workflows cron was retired — see migrations/template/000085
+  // for the rules-to-strategies migrator.
   scheduleCron(
     "retention-strategy-tick",
     "* * * * *",
@@ -434,7 +434,6 @@ async function startWorkers() {
   require("../modules/sales/receipt.subscribers"); // order.paid → archive receipt PDF
   require("../modules/sales/payment-comms.subscribers"); // part-payment receipt + milestone → Comms Studio
   require("../modules/sales/duplicate-resolve.subscribers"); // order.paid → cancel pending duplicate twins
-  require("../modules/retention/workflow.subscribers"); // order.paid → workflow trigger
   require("../modules/stock/stock.subscribers"); // variant.created → seed stock level
   require("../modules/service_jobs/service-jobs.subscribers"); // order.deposit_met + order.paid → service job
   require("../modules/stylist_programme/stylist.subscribers"); // order.paid → stylist referral accrual

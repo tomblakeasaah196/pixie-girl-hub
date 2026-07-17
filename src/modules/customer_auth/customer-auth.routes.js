@@ -8,6 +8,8 @@
 const express = require("express");
 const controller = require("./customer-auth.controller");
 const retention = require("./customer-retention.controller");
+const retentionController = require("../retention/retention.controller");
+const retentionValidator = require("../retention/retention.validator");
 const {
   customerAuthOptional,
   requireCustomer,
@@ -35,5 +37,16 @@ router.get("/loyalty", ...authed, retention.loyalty);
 router.get("/referral", ...authed, retention.referral);
 router.get("/rewards", ...authed, retention.rewards);
 router.post("/rewards/:id/redeem", ...authed, retention.redeem);
+
+// Hair-quiz submit (customer-authed). P0-7: the public /api/public/hair-quiz
+// route strips contact_id from the body (so no anonymous star farming), and
+// this authed route is the only path that credits stars — always to the
+// signed-in shopper (req.customer.contact_id).
+router.post(
+  "/hair-quiz/submit",
+  ...authed,
+  retentionValidator.validateQuizSubmit,
+  retentionController.submitQuizAuthed,
+);
 
 module.exports = router;

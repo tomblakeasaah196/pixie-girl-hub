@@ -135,16 +135,30 @@ async function setLoyaltyTier({ client, brand, contact_id, tier_id }) {
 async function ledgerEntryForReference({
   client,
   brand,
+  contact_id,
   reference_type,
   reference_id,
   transaction_type,
 }) {
+  // P0-7: the contact_id MUST be part of the idempotency key. Without it, an
+  // earn action whose (reference_type, reference_id) is shared across
+  // customers (e.g. hair_quiz + quiz_id — one quiz, N customers) matches the
+  // first customer's ledger row and every subsequent customer is silently
+  // treated as already-awarded. Callers that legitimately don't have a
+  // contact (there aren't any today) can pass null and get the pre-fix
+  // behaviour explicitly.
+  const params = [brand, reference_type, reference_id, transaction_type];
+  let contactPredicate = "";
+  if (contact_id) {
+    params.push(contact_id);
+    contactPredicate = ` AND contact_id = $${params.length}`;
+  }
   const { rows } = await ex(client)(
     `SELECT * FROM shared.loyalty_ledger
       WHERE business = $1 AND reference_type = $2 AND reference_id = $3
-        AND transaction_type = $4
+        AND transaction_type = $4${contactPredicate}
       LIMIT 1`,
-    [brand, reference_type, reference_id, transaction_type],
+    params,
   );
   return rows[0] || null;
 }
@@ -263,15 +277,26 @@ async function listStreakRules({ client, brand, action_type }) {
 async function streakLedgerForReference({
   client,
   brand,
+  contact_id,
   reference_type,
   reference_id,
   action_type,
 }) {
+  // P0-7: contact_id is required in the idempotency predicate for the same
+  // reason as ledgerEntryForReference above. The hair quiz passes
+  // reference_id = quiz_id, which is the same value for every customer, so
+  // without this scoping only the first customer per quiz ever earned stars.
+  const params = [reference_type, reference_id, action_type];
+  let contactPredicate = "";
+  if (contact_id) {
+    params.push(contact_id);
+    contactPredicate = ` AND contact_id = $${params.length}`;
+  }
   const { rows } = await ex(client)(
     `SELECT * FROM ${t(brand, "streak_star_ledger")}
-      WHERE reference_type = $1 AND reference_id = $2 AND earn_action_type = $3
+      WHERE reference_type = $1 AND reference_id = $2 AND earn_action_type = $3${contactPredicate}
       LIMIT 1`,
-    [reference_type, reference_id, action_type],
+    params,
   );
   return rows[0] || null;
 }

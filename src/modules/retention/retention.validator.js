@@ -32,11 +32,14 @@ const awardStreakSchema = z
   })
   .strict();
 
+// Public quiz submit (POST /api/public/hair-quiz/submit). P0-7: the schema
+// intentionally does NOT accept contact_id — an anonymous caller must never
+// be able to credit stars to an arbitrary UUID. The customer-authed variant
+// derives contact_id from req.customer server-side.
 const quizSubmitSchema = z
   .object({
     slug: z.string().max(120).optional(),
     storefront_session_id: z.string().uuid().optional(),
-    contact_id: z.string().uuid().optional(),
     visitor_email: z.string().email().optional(),
     visitor_first_name: z.string().max(120).optional(),
     visitor_phone: z.string().max(40).optional(),

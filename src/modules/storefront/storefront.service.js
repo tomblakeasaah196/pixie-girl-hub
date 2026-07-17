@@ -848,7 +848,7 @@ async function resolveCartToOrderLines({ brand, items }) {
  * catalogue_config.usd_fx_rate, marks the cart converted, and returns a payment
  * link. Prices are NEVER trusted from the client.
  */
-async function checkout({ brand, cart_id, input = {} }) {
+async function checkout({ brand, cart_id, sessionCustomerId = null, input = {} }) {
   const cart = await cartRepo.findCartById({ id: cart_id });
   if (!cart || cart.business !== brand || cart.status !== "active")
     throw new NotFoundError("Cart");
@@ -869,87 +869,176 @@ async function checkout({ brand, cart_id, input = {} }) {
   }
 
   // 1. Contact + address upsert (own transaction; address save in a SAVEPOINT).
-  const { contact, deliveryAddress } = await transaction(async (client) => {
-    const email = (c.email || "").toLowerCase().trim() || null;
-    const phone = normalizePhone(c.phone);
-    const displayName =
-      [c.first_name, c.last_name].filter(Boolean).join(" ").trim() ||
-      email ||
-      phone ||
-      "Customer";
-    let ct = await contactsRepo.findByPhoneOrEmail({ client, phone, email });
-    if (!ct) {
-      ct = await contactsRepo.create({
-        client,
-        input: {
-          contact_type: ["customer"],
-          display_name: displayName,
-          first_name: c.first_name,
-          last_name: c.last_name || null,
-          email,
-          primary_phone: phone,
-          source: "storefront_checkout",
-          visible_to: [brand],
-        },
-        user_id: null,
-      });
-    } else {
-      await contactsRepo.addContactTypes({
-        client,
-        id: ct.contact_id,
-        types: ["customer"],
-      });
-    }
-    if (isPickup) return { contact: ct, deliveryAddress: null };
+  //    P0-5 guard: an anonymous caller who supplies an email that matches an
+  //    existing customer must NEVER be treated as that customer. We record
+  //    whether the resolved contact matches the authenticated session; that
+  //    flag gates default-address overwrite here and points redemption below.
+  const { contact, deliveryAddress, isSessionMatch, contactWasNew } =
+    await transaction(async (client) => {
+      const email = (c.email || "").toLowerCase().trim() || null;
+      const phone = normalizePhone(c.phone);
+      const displayName =
+        [c.first_name, c.last_name].filter(Boolean).join(" ").trim() ||
+        email ||
+        phone ||
+        "Customer";
+      let ct = await contactsRepo.findByPhoneOrEmail({ client, phone, email });
+      const wasNew = !ct;
+      if (!ct) {
+        ct = await contactsRepo.create({
+          client,
+          input: {
+            contact_type: ["customer"],
+            display_name: displayName,
+            first_name: c.first_name,
+            last_name: c.last_name || null,
+            email,
+            primary_phone: phone,
+            source: "storefront_checkout",
+            visible_to: [brand],
+          },
+          user_id: null,
+        });
+      } else {
+        await contactsRepo.addContactTypes({
+          client,
+          id: ct.contact_id,
+          types: ["customer"],
+        });
+      }
+      // The caller "owns" this contact only when the authed session belongs to
+      // it. A newly-created contact is owned by definition (nothing to steal).
+      const sessionMatch =
+        wasNew ||
+        (Boolean(sessionCustomerId) && sessionCustomerId === ct.contact_id);
+      if (isPickup) {
+        return {
+          contact: ct,
+          deliveryAddress: null,
+          isSessionMatch: sessionMatch,
+          contactWasNew: wasNew,
+        };
+      }
 
-    const addr = c.address;
-    let savedAddress = null;
-    await client.query("SAVEPOINT pgh_addr");
-    try {
-      await contactsRepo.clearDefaultAddresses({
-        client,
-        contact_id: ct.contact_id,
-        address_type: "delivery",
-      });
-      savedAddress = await contactsRepo.addAddress({
-        client,
-        contact_id: ct.contact_id,
-        input: {
-          address_type: "delivery",
-          is_default: true,
-          line1: addr.line1,
-          line2: addr.line2 || null,
-          city: addr.city,
-          ...(addr.state ? { state: addr.state } : {}),
-          country: addr.country || "Nigeria",
-          ...(addr.country_code && /^[A-Za-z]{2}$/.test(addr.country_code)
-            ? { country_code: addr.country_code.toUpperCase() }
-            : {}),
-          ...(addr.landmark ? { landmark: addr.landmark } : {}),
-          recipient_name: displayName,
-          ...(phone ? { recipient_phone: phone } : {}),
+      const addr = c.address;
+      let savedAddress = null;
+      await client.query("SAVEPOINT pgh_addr");
+      try {
+        // Only overwrite the contact's default delivery address when the
+        // caller has proven they are that contact. An anonymous guest whose
+        // email matches an existing customer must NOT be able to replace the
+        // shipping address the operations team has already verified — that is
+        // the P0-5 tamper vector. Instead, add the new address as
+        // non-default (or default only if none exists yet).
+        const existing = await contactsRepo.listAddresses({
+          client,
+          contact_id: ct.contact_id,
+        });
+        const hasDefaultDelivery = existing.some(
+          (a) => a.address_type === "delivery" && a.is_default,
+        );
+        const canOverwriteDefault = sessionMatch || !hasDefaultDelivery;
+        if (canOverwriteDefault && hasDefaultDelivery) {
+          await contactsRepo.clearDefaultAddresses({
+            client,
+            contact_id: ct.contact_id,
+            address_type: "delivery",
+          });
+        }
+        savedAddress = await contactsRepo.addAddress({
+          client,
+          contact_id: ct.contact_id,
+          input: {
+            address_type: "delivery",
+            is_default: canOverwriteDefault,
+            line1: addr.line1,
+            line2: addr.line2 || null,
+            city: addr.city,
+            ...(addr.state ? { state: addr.state } : {}),
+            country: addr.country || "Nigeria",
+            ...(addr.country_code && /^[A-Za-z]{2}$/.test(addr.country_code)
+              ? { country_code: addr.country_code.toUpperCase() }
+              : {}),
+            ...(addr.landmark ? { landmark: addr.landmark } : {}),
+            recipient_name: displayName,
+            ...(phone ? { recipient_phone: phone } : {}),
+          },
+          user_id: null,
+        });
+        await client.query("RELEASE SAVEPOINT pgh_addr");
+      } catch (err) {
+        await client.query("ROLLBACK TO SAVEPOINT pgh_addr");
+        await client.query("RELEASE SAVEPOINT pgh_addr").catch(() => {});
+        logger.warn(
+          { err: err.message, contact_id: ct.contact_id },
+          "storefront checkout address save fell back to existing",
+        );
+        const existing = await contactsRepo.listAddresses({
+          client,
+          contact_id: ct.contact_id,
+        });
+        savedAddress =
+          existing.find((a) => a.address_type === "delivery" && a.is_default) ||
+          existing[0] ||
+          null;
+      }
+      return {
+        contact: ct,
+        deliveryAddress: savedAddress,
+        isSessionMatch: sessionMatch,
+        contactWasNew: wasNew,
+      };
+    });
+
+  // P0-5 guard: an unauthenticated checkout that resolved onto an existing
+  // customer must not be able to debit that customer's loyalty balance.
+  // Redemption requires a session whose contact matches the resolved contact.
+  // The storefront checkout page only shows the redeem input when signed in;
+  // this is defence in depth on the server.
+  if (input.redeem_points && Number(input.redeem_points) > 0 && !isSessionMatch) {
+    throw new AppError(
+      "AUTH_REQUIRED_FOR_POINTS",
+      "Sign in to redeem loyalty points on this order",
+      401,
+      {
+        user_message:
+          "Please sign in to your account to redeem loyalty points.",
+      },
+    );
+  }
+
+  // P0-5 guard: a coupon carrying per-customer restrictions (first_time_only
+  // or per_customer_limit) is scoped to a particular account. An anonymous
+  // caller matched onto an existing contact via an email guess must not be
+  // able to burn those allowances. Codes with no per-customer restriction
+  // (e.g. a broad marketing promo) still work for guests.
+  if (input.coupon_code && !isSessionMatch && !contactWasNew) {
+    const preview = await couponService
+      .validateCoupon({
+        brand,
+        code: input.coupon_code,
+        contact_id: contact.contact_id,
+        order_subtotal_ngn: 0,
+      })
+      .catch(() => null);
+    if (
+      preview &&
+      preview.valid &&
+      preview.coupon &&
+      (preview.coupon.first_time_only ||
+        (preview.coupon.per_customer_limit || 0) > 0)
+    ) {
+      throw new AppError(
+        "AUTH_REQUIRED_FOR_COUPON",
+        "Sign in to use this code",
+        401,
+        {
+          user_message:
+            "This code is tied to an account. Please sign in to use it.",
         },
-        user_id: null,
-      });
-      await client.query("RELEASE SAVEPOINT pgh_addr");
-    } catch (err) {
-      await client.query("ROLLBACK TO SAVEPOINT pgh_addr");
-      await client.query("RELEASE SAVEPOINT pgh_addr").catch(() => {});
-      logger.warn(
-        { err: err.message, contact_id: ct.contact_id },
-        "storefront checkout address save fell back to existing",
       );
-      const existing = await contactsRepo.listAddresses({
-        client,
-        contact_id: ct.contact_id,
-      });
-      savedAddress =
-        existing.find((a) => a.address_type === "delivery" && a.is_default) ||
-        existing[0] ||
-        null;
     }
-    return { contact: ct, deliveryAddress: savedAddress };
-  });
+  }
 
   // 2. Resolve cart → order lines (server-priced) + bundle discount.
   const { orderLines, bundleDiscountNgn } = await resolveCartToOrderLines({

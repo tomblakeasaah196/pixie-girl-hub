@@ -135,9 +135,29 @@ async function getQuizPublic(req, res) {
 }
 
 async function submitQuizPublic(req, res) {
+  // P0-7: never trust a body contact_id here (the validator already strips
+  // it; this call site defends belt-and-braces by not reading it either).
+  // An anonymous submission saves the response + recommendations but earns
+  // no stars — the authed handler below is where credit flows.
   res.status(201).json({
     data: await service.submitQuiz({
       brand: brandHint(req),
+      contact_id: null,
+      input: req.body,
+      ip: req.ip,
+      user_agent: req.headers["user-agent"],
+    }),
+  });
+}
+
+// Customer-authed variant (mounted at /api/public/auth/hair-quiz/submit
+// behind requireCustomer). Awards stars to the SIGNED-IN shopper only —
+// the only safe way to credit the hair-quiz completion earn rule.
+async function submitQuizAuthed(req, res) {
+  res.status(201).json({
+    data: await service.submitQuiz({
+      brand: brandHint(req),
+      contact_id: req.customer.contact_id,
       input: req.body,
       ip: req.ip,
       user_agent: req.headers["user-agent"],
@@ -159,4 +179,5 @@ module.exports = {
   validateReferralPublic,
   getQuizPublic,
   submitQuizPublic,
+  submitQuizAuthed,
 };

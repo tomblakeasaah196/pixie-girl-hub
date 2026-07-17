@@ -66,6 +66,14 @@ actually needs. Fixed end-to-end:
   (`GET /tasks/assignees`) + the CEO's own id and a team roster injected into the
   persona resolve "assign to my BDM". A contact is never assignable — link it via
   `reference_type='contact'` instead.
+  - The search matches **job titles** too (`staff_profiles.job_title`, joined via
+    `users.staff_profile_id`) alongside name/email/RBAC role, tokenised so
+    "operations manager" matches in any word order — "tell the operations
+    manager" resolves even when the RBAC role is just "Staff". Results carry
+    `job_title` so two Samuels are tellable apart, and both the persona and the
+    catalogue description enforce the protocol: several matches → **ask the CEO
+    which one** (name + job title), never pick silently; zero matches → say so,
+    never invent a user_id (migration 000349).
 - **Linkage.** `create_task` now exposes `is_personal` + `reference_type`/
   `reference_id`; `create_event` exposes `participants[]` — so personal to-dos,
   contact-linked tasks, and meeting invitees actually work.

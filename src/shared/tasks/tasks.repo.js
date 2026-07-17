@@ -239,12 +239,22 @@ async function boardTasks({ brand, assigned_to }) {
   return rows;
 }
 
+/** Escape ILIKE wildcards so a search term always matches literally. */
+const escapeLike = (s) => String(s).replace(/[\\%_]/g, (m) => `\\${m}`);
+
 /**
  * Assignable teammates for this business — the identity source the CoS needs
  * to resolve "assign to my BDM" into a real user_id (shared.tasks.assigned_to
  * is an FK to shared.users, and a contact_id is NOT a user). Active users who
- * can access the brand (or the CEO, who spans all), searchable by name/role,
- * CEO first. Returns a compact shape: user_id, display_name, email, role, is_ceo.
+ * can access the brand (or the CEO, who spans all), CEO first.
+ *
+ * Search is tokenised: every word of the query must appear somewhere in the
+ * person's name, email, job title (staff_profiles — how the CEO actually
+ * refers to people: "the operations manager") or role names — so
+ * "operations manager", "manager operations" and "Samuel ops" all resolve,
+ * and job-title vs RBAC-role drift can't hide anyone. Returns a compact
+ * shape: user_id, display_name, email, job_title, role_name, is_ceo — enough
+ * for a caller (or the CoS) to tell two Samuels apart.
  */
 async function listAssignableUsers({ brand, search, limit = 50 }) {
   const where = [
@@ -254,22 +264,32 @@ async function listAssignableUsers({ brand, search, limit = 50 }) {
   ];
   const params = [brand];
   let i = 2;
-  if (search && String(search).trim()) {
-    // Match a person's name/email OR the name of a role they hold ("BDM").
-    where.push(
-      `(u.display_name ILIKE $${i} OR u.email ILIKE $${i} OR EXISTS (
-          SELECT 1 FROM shared.user_roles ur2
-            JOIN shared.roles r2 ON r2.role_id = ur2.role_id
-           WHERE ur2.user_id = u.user_id AND r2.role_name ILIKE $${i}))`,
-    );
-    params.push(`%${String(search).trim()}%`);
-    i++;
+  const tokens = String(search || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 8);
+  if (tokens.length) {
+    // One haystack per user: name + email + job title + every role they hold.
+    const haystack = `(
+      COALESCE(u.display_name, '') || ' ' || COALESCE(u.email, '') || ' ' ||
+      COALESCE(sp.job_title, '') || ' ' ||
+      COALESCE((SELECT string_agg(r2.role_name, ' ')
+                  FROM shared.user_roles ur2
+                  JOIN shared.roles r2 ON r2.role_id = ur2.role_id
+                 WHERE ur2.user_id = u.user_id), ''))`;
+    for (const t of tokens) {
+      where.push(`${haystack} ILIKE $${i}`);
+      params.push(`%${escapeLike(t)}%`);
+      i++;
+    }
   }
   const { rows } = await query(
     `SELECT u.user_id,
             COALESCE(u.display_name, u.email) AS display_name,
             u.email,
             u.is_ceo,
+            sp.job_title,
             (SELECT r.role_name
                FROM shared.user_roles ur
                JOIN shared.roles r ON r.role_id = ur.role_id
@@ -277,6 +297,8 @@ async function listAssignableUsers({ brand, search, limit = 50 }) {
               ORDER BY r.role_name
               LIMIT 1) AS role_name
        FROM shared.users u
+       LEFT JOIN shared.staff_profiles sp
+         ON sp.profile_id = u.staff_profile_id AND sp.is_deleted = false
       WHERE ${where.join(" AND ")}
       ORDER BY u.is_ceo DESC, display_name ASC
       LIMIT $${i}`,

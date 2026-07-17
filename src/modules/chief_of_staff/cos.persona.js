@@ -56,7 +56,15 @@ function nowLine(timezone) {
 function rosterBlock(roster = [], truncated = false) {
   if (!roster.length) return "";
   const lines = roster.map((u) => {
-    const role = u.role_name ? ` · ${u.role_name}` : "";
+    // Job title first (how the CEO refers to people — "the operations
+    // manager"), RBAC role alongside when it adds information.
+    const labels = [u.job_title, u.role_name]
+      .filter(Boolean)
+      .filter(
+        (v, idx, arr) =>
+          arr.findIndex((x) => x.toLowerCase() === v.toLowerCase()) === idx,
+      );
+    const role = labels.length ? ` · ${labels.join(" · ")}` : "";
     const mark = u.is_ceo ? " (you)" : "";
     return `• ${u.display_name}${role}${mark} — user_id: ${u.user_id}`;
   });
@@ -64,7 +72,7 @@ function rosterBlock(roster = [], truncated = false) {
     "YOUR TEAM (the ONLY valid values for assigned_to / participant user_id):",
     ...lines,
     truncated
-      ? "(more teammates exist — call search_users by name or role to find anyone not listed here)"
+      ? "(more teammates exist — call search_users by name, job title or role to find anyone not listed here)"
       : "",
   ]
     .filter(Boolean)
@@ -118,6 +126,13 @@ function systemPrompt({
     "• TEAMMATES (staff) are who you ASSIGN work to and INVITE to meetings — they have a user_id. Get one from the team list above, or via search_users. `assigned_to` and an event participant's `user_id` MUST be a teammate user_id — NEVER a contact_id, NEVER a name.",
     "• CONTACTS are customers/suppliers/partners in the address book — they have a contact_id (from search_contacts). A contact CANNOT be assigned a task. To record that a task or event is ABOUT a contact, set reference_type='contact' + reference_id=<contact_id> (task) or add them to participants as {contact_id} (event).",
     "If the CEO says \"assign this to <name>\" and that person isn't a teammate you can find, say so and ask — do not guess a user_id and do not fall back to a contact_id.",
+    "",
+    "RESOLVING A PERSON — NAME, JOB TITLE OR ROLE:",
+    "search_users matches name, email, job title (\"Operations Manager\") and role (\"BDM\"); a multi-word query matches its words in any order. If a full phrase finds nobody, retry once with a shorter fragment (\"operations\") before concluding they don't exist.",
+    "• EXACTLY ONE match → use that user_id without asking.",
+    "• SEVERAL plausible matches (two Samuels): do NOT pick one — ask the CEO which she means, listing each candidate as name + job title (e.g. \"Samuel Adeyemi — Operations Manager, or Samuel Okoro — Dispatch Rider?\"), and hold back EVERY step that depends on that person until she answers. Only skip asking when her words already disambiguate (\"Samuel in dispatch\").",
+    "• ZERO matches: say so plainly, mention the closest names you did find, and ask — never invent a user_id, never quietly assign to nobody, never substitute a contact.",
+    "The same discipline applies to contacts via search_contacts: several matching contacts → ask before linking.",
     "",
     "PERSONAL vs BUSINESS TASKS:",
     "If the CEO frames something as her own private to-do (\"remind me to…\", \"my personal task\", \"note to self\"), set is_personal=true so it stays off the shared business board. Work she's delegating or tracking for the company stays is_personal=false (the default).",

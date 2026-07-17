@@ -191,6 +191,20 @@ async function validateCoupon({
   )
     return { valid: false, reason: "USAGE_LIMIT_REACHED" };
 
+  // P1-6: contact-bound voucher (coupons.assigned_contact_id). When set,
+  // only the redeeming contact may use the code — the "reward I minted
+  // for Amina isn't usable by anyone else" invariant.
+  if (coupon.assigned_contact_id) {
+    if (!contact_id || contact_id !== coupon.assigned_contact_id)
+      return { valid: false, reason: "NOT_ASSIGNED_TO_CONTACT" };
+  }
+
+  // P1-6: is_single_use was written by every voucher mint but never READ
+  // here. Treat it as an absolute one-use cap: total_redeemed = 0 or the
+  // coupon is done. Kicks in even when there is no contact_id (guests).
+  if (coupon.is_single_use && (coupon.total_redeemed || 0) >= 1)
+    return { valid: false, reason: "SINGLE_USE_CONSUMED" };
+
   if (contact_id) {
     const used = await repo.countCustomerRedemptions({
       client,
@@ -276,6 +290,18 @@ async function redeemCoupon({
   });
 }
 
+/**
+ * P1-6: mint a voucher INSIDE an existing transaction. rewards.service
+ * calls this atomically with the point deduction so a mint failure aborts
+ * the redemption entirely — nothing like the old "points spent, no
+ * voucher" gap. Returns the created coupon row. No admin CRUD side
+ * effects (audit / etc) because the reward redemption itself is the
+ * audited event.
+ */
+async function mintVoucherInTx({ client, brand, input, user_id = null }) {
+  return repo.create({ client, brand, input, user_id });
+}
+
 module.exports = {
   createCoupon,
   listCoupons,
@@ -285,4 +311,5 @@ module.exports = {
   deleteCoupon,
   validateCoupon,
   redeemCoupon,
+  mintVoucherInTx,
 };

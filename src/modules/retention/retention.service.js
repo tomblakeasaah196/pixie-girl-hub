@@ -336,7 +336,14 @@ async function redeemPoints({
   notes,
 }) {
   return transaction(async (client) => {
-    const state = await repo.getLoyaltyState({ client, brand, contact_id });
+    // P1-5: lock the state row so two concurrent redemptions can't both
+    // pass the balance check. The CHECK constraint added in migration
+    // 000352 is the DB-level backstop if any caller ever forgets to lock.
+    const state = await repo.getLoyaltyStateForUpdate({
+      client,
+      brand,
+      contact_id,
+    });
     if (!state || state.current_balance < points)
       throw new AppError(
         "INSUFFICIENT_POINTS",
@@ -537,6 +544,25 @@ async function redeemReferral({
       referral_id: ref.referral_id,
       reward_value: rewardCredit,
     });
+    // P1-7: the referrer's ₦ credit posts to the customer_store_credit_ledger
+    // as a real balance the CEO / storefront can spend at checkout. Before
+    // this, rewardCredit was written into referrals.total_rewards_value only
+    // — a display counter with no financial primitive behind it. Skipped
+    // when the ladder/settings return 0.
+    if (rewardCredit && Number(rewardCredit) > 0) {
+      await repo.insertStoreCreditEntry({
+        client,
+        brand,
+        entry: {
+          contact_id: ref.contact_id,
+          amount_ngn: rewardCredit,
+          transaction_type: "earned_referral",
+          reference_type: "referral_redemption",
+          reference_id: redemption.redemption_id,
+          notes: `Referral reward credit (${code})`,
+        },
+      });
+    }
     // Credit the referrer's loyalty balance.
     const referralEntry = await repo.insertLoyaltyLedger({
       client,

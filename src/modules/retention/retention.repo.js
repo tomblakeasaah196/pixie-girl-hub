@@ -123,6 +123,25 @@ async function getLoyaltyState({ client, brand, contact_id }) {
   return rows[0] || null;
 }
 
+/**
+ * P1-5: locked variant used by every redemption path so two concurrent
+ * redemptions can't both pass the balance check and drive the ledger
+ * negative. Only the state row is locked (FOR UPDATE) — the tier metadata
+ * from the LEFT JOIN is read separately via getLoyaltyState if callers
+ * need it. Requires a transaction; the CHECK constraint added in
+ * migration 000352 is the backstop if a caller ever forgets to lock.
+ */
+async function getLoyaltyStateForUpdate({ client, brand, contact_id }) {
+  if (!client)
+    throw new Error("getLoyaltyStateForUpdate requires a tx client");
+  const { rows } = await client.query(
+    `SELECT * FROM shared.customer_loyalty_state
+      WHERE contact_id = $1 AND business = $2 FOR UPDATE`,
+    [contact_id, brand],
+  );
+  return rows[0] || null;
+}
+
 async function setLoyaltyTier({ client, brand, contact_id, tier_id }) {
   await ex(client)(
     `UPDATE shared.customer_loyalty_state
@@ -161,6 +180,40 @@ async function ledgerEntryForReference({
     params,
   );
   return rows[0] || null;
+}
+
+// ── Store credit ledger (P1-7) ─────────────────────────────
+// Append-only. Balance = SUM(amount_ngn) per (contact_id, business).
+// Written from redeemReferral when settings/ladder award a ₦ credit; will
+// be read at checkout in a follow-up to net against the total.
+async function insertStoreCreditEntry({ client, brand, entry }) {
+  const { rows } = await ex(client)(
+    `INSERT INTO shared.customer_store_credit_ledger
+       (contact_id, business, amount_ngn, transaction_type,
+        reference_type, reference_id, notes, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+    [
+      entry.contact_id,
+      brand,
+      entry.amount_ngn,
+      entry.transaction_type,
+      entry.reference_type || null,
+      entry.reference_id || null,
+      entry.notes || null,
+      entry.created_by || null,
+    ],
+  );
+  return rows[0];
+}
+
+async function storeCreditBalance({ client, brand, contact_id }) {
+  const { rows } = await ex(client)(
+    `SELECT COALESCE(SUM(amount_ngn), 0)::numeric AS balance_ngn
+       FROM shared.customer_store_credit_ledger
+      WHERE business = $1 AND contact_id = $2`,
+    [brand, contact_id],
+  );
+  return Number(rows[0].balance_ngn || 0);
 }
 
 async function listLoyaltyLedger({ client, brand, contact_id, limit = 50 }) {
@@ -448,9 +501,13 @@ module.exports = {
   updateLoyaltyTier,
   insertLoyaltyLedger,
   getLoyaltyState,
+  getLoyaltyStateForUpdate,
   setLoyaltyTier,
   ledgerEntryForReference,
   listLoyaltyLedger,
+  // store credit (P1-7)
+  insertStoreCreditEntry,
+  storeCreditBalance,
   // referral
   findReferralByContact,
   findReferralByCode,

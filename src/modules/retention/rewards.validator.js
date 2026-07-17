@@ -29,6 +29,9 @@ const createSchema = z
     is_active: z.boolean().optional(),
     display_order: z.coerce.number().int().optional(),
     metadata: z.record(z.any()).optional(),
+    // P1-6: default 90; NULL falls back to the same default at redeem
+    // time so a legacy reward keeps working.
+    voucher_expiry_days: z.coerce.number().int().min(1).max(3650).optional(),
   })
   .strict()
   // P1-1: same rule as coupon.validator — percentage rewards store as a

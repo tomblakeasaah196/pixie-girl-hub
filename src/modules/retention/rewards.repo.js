@@ -27,6 +27,9 @@ const COLS = [
   "is_active",
   "display_order",
   "metadata",
+  // P1-6: how long a minted voucher stays valid, in days. Default 90 in
+  // the redeem flow when NULL/unset. Admins can override per reward.
+  "voucher_expiry_days",
 ];
 const JSON_COLS = new Set(["metadata"]);
 

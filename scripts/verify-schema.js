@@ -57,7 +57,11 @@ const pool = new Pool({
 //   - Chief of Staff intelligence (000326): +1 (goal_templates) → 196.
 //     (goals.template_id FK + ai_knowledge_chunks CHECK widen are ALTERs.)
 //   - Chief of Staff settings (000327): +1 (cos_settings) → 197.
-const EXPECTED_SHARED = 197;
+//   - Retention audit — P1-7 (000351_shared_customer_store_credit_ledger):
+//     +1 (customer_store_credit_ledger) → 198. Backs referrer_credit_ngn
+//     so retention.service.redeemReferral posts a real, auditable balance
+//     instead of a phantom counter on referrals.total_rewards_value.
+const EXPECTED_SHARED = 198;
 const EXPECTED_PER_BRAND = 203;
 
 async function countTables(schema) {

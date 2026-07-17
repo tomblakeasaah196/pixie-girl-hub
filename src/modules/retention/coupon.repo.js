@@ -26,6 +26,10 @@ const COUPON_COLS = [
   "is_single_use",
   "is_active",
   "metadata",
+  // P1-6: bind a minted voucher to the redeeming contact so the reward
+  // I minted for Amina is not usable by anyone else. validateCoupon
+  // rejects a mismatched contact when this is set.
+  "assigned_contact_id",
 ];
 
 async function create({ client, brand, input, user_id }) {

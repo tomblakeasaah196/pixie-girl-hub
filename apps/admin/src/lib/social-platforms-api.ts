@@ -12,10 +12,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 
+export type MetricType = "count" | "decimal" | "text" | "bool";
+
 export interface MetricSpec {
   key: string;
   label: string;
   aliases: string[];
+  /** How the scraped value is rendered. Absent = "count" (integer tile). */
+  type?: MetricType;
 }
 
 export interface SocialPlatformDef {

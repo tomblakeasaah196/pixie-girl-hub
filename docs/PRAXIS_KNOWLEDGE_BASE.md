@@ -73,7 +73,9 @@ only access one business, there's nothing to switch.
 ### 2.3 The top bar
 - **Search Hub… (⌘K / Ctrl-K)** — the global command palette. See §2.4.
 - **Clock in / Clock out** — punches your attendance for the day (feeds My HR
-  and the HR attendance register).
+  and the HR attendance register). As your closing time approaches you get a
+  reminder to clock out (5 min before / at / 5 min after) if you're still
+  clocked in; time past your closing time shows as supplementary hours in My HR.
 - **Bell (notifications)** — your alert feed; the number is unread count. Full
   page at `/notifications`.
 - **Theme toggle** — light / dark (the Hub defaults to the dark "Maroon Noir" look).
@@ -505,9 +507,24 @@ disciplinary queries, targets, rewards, recruitment, and HR analytics.
 - *Open an employee's file?* HR → **Directory**, click a person →
   `/hr/employees/<profileId>`.
 - *Onboard a new staff member?* HR → **Onboarding**, or Contacts →
-  **contacts/staff/new** (`/contacts/staff/new`).
+  **contacts/staff/new** (`/contacts/staff/new`). The onboarding wizard sets
+  the work schedule — on-site/remote/off per weekday, plus the **start and
+  closing time** and lateness grace.
+- *Change an employee's work days or hours after onboarding (e.g. 5 days → 3,
+  or a new closing time)?* Open their file → **Schedule** card → **Edit**.
+  Set the per-weekday mode and the start/closing/grace times, then Save.
 - *Approve leave?* HR → **Leave** tab (the badge shows pending count).
-- *See attendance?* HR → **Attendance** tab. (Staff clock in via the top bar.)
+- *See attendance?* HR → **Attendance** tab. (Staff clock in/out via the top
+  bar.) An employee's file → **Attendance** tab shows each day's in/out times,
+  minutes late, minutes early, and **supplementary hours** worked past their
+  closing time (`+Nm over`).
+- *Turn the clock-out reminders on/off?* HR → **Settings** tab → the
+  **"Clock-out reminders"** switch (under the attendance/lateness card). When
+  on, anyone still clocked in gets a nudge (in-app + push) **5 minutes before,
+  at, and 5 minutes after** their closing time so they don't forget to clock
+  out and bank unintended supplementary hours. Each person's closing time is
+  set on their **Schedule** (falls back to the brand default closing time in
+  **Settings → Payroll**).
 - *Raise a staff query?* HR → **Queries**.
 - *Hire someone (JD → offer → e-sign → onboarding)?* HR → **Recruitment** tab.
   Candidates get a public offer link (`/offer/<token>`). On that page the

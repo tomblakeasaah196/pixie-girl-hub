@@ -9,7 +9,7 @@ import {
 import { cn } from "@/lib/cn";
 import { formatBytes, mediaKind } from "@/lib/messaging-media";
 import type { Message, MessageAttachment } from "@/lib/smartcomm-types";
-import { Lightbox } from "./Lightbox";
+import { Lightbox } from "@/components/ui/Lightbox";
 import { VoiceNotePlayer } from "./VoiceNotePlayer";
 
 /** Renders a message's media attachments (image / video / voice / file). */

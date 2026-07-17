@@ -609,10 +609,14 @@ async function createOrderTx({ brand, user, request_id, input }) {
       }
     }
 
-    // 5a. Record the coupon discount IN Sales + log the redemption against this
-    // order (so the coupon resolves end-to-end: order totals, GL, and the
-    // redemption all reference the same order). Usage is bumped under the lock
-    // taken in step 3.5.
+    // 5a. Record the coupon discount IN Sales (audit trail on the order —
+    // must be immediate so invoices/totals reconcile). P1-3: the
+    // coupon_redemptions row + coupons.total_redeemed bump used to happen
+    // here too, which meant an abandoned checkout burned the buyer's
+    // per_customer_limit for good. Both effects now defer to the
+    // order.paid outbox handler (retention.subscribers.settleAfterPaid),
+    // and the cancellation handler reverses them for a paid-then-cancelled
+    // order.
     if (couponMeta) {
       const couponAmt = couponLineTotal.plus(couponShipping);
       if (couponAmt.gt(0)) {
@@ -631,22 +635,6 @@ async function createOrderTx({ brand, user, request_id, input }) {
                   ? "free_shipping"
                   : "fixed",
           },
-        });
-        await couponRepo.recordRedemption({
-          client,
-          redemption: {
-            coupon_id: couponMeta.coupon_id,
-            contact_id: input.contact_id,
-            business: brand,
-            reference_type: "sales_order",
-            reference_id: order.order_id,
-            discount_applied: toCurrencyString(couponAmt),
-          },
-        });
-        await couponRepo.bumpUsage({
-          client,
-          coupon_id: couponMeta.coupon_id,
-          discount_ngn: toCurrencyString(couponAmt),
         });
       }
     }
@@ -669,10 +657,13 @@ async function createOrderTx({ brand, user, request_id, input }) {
       });
     }
 
-    // 5a-ii. Record loyalty points redemption IN Sales (§6.23.3): a
-    // sales_order_discounts row + the negative loyalty-ledger entry, both
-    // referencing this order, so the points discount resolves end-to-end and
-    // the customer's balance is debited atomically with the order.
+    // 5a-ii. Record loyalty points redemption IN Sales (§6.23.3): the
+    // sales_order_discounts row stays here so the order's discount
+    // breakdown is complete + reconciled with total_ngn. P1-3: the actual
+    // ledger debit (which burns the customer's balance) defers to the
+    // order.paid handler so an abandoned checkout doesn't lose them their
+    // points; the cancellation handler reverses it for a paid-then-
+    // cancelled order.
     if (pointsUsed > 0 && pointsLineTotal.gt(0)) {
       await repo.insertDiscount({
         client,
@@ -683,19 +674,6 @@ async function createOrderTx({ brand, user, request_id, input }) {
           source_reference: `${pointsUsed} pts`,
           amount_ngn: toCurrencyString(pointsLineTotal),
           discount_type: "points_redemption",
-        },
-      });
-      await retentionRepo.insertLoyaltyLedger({
-        client,
-        brand,
-        entry: {
-          contact_id: input.contact_id,
-          transaction_type: "redeemed",
-          points: -Math.abs(pointsUsed),
-          reference_type: "sales_order",
-          reference_id: order.order_id,
-          notes: `Redeemed ${pointsUsed} pts on ${order_number}`,
-          created_by: user.user_id,
         },
       });
     }

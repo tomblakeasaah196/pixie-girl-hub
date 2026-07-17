@@ -126,6 +126,13 @@ function computeDiscount(coupon, subtotalNgn) {
       const cap = money(coupon.max_discount_value);
       if (d.gt(cap)) d = cap;
     }
+    // P1-1: never let a percentage discount exceed the subtotal, even when
+    // legacy data stored an out-of-range value (>1) that predates the new
+    // validator. The Zod refine blocks this at the admin edge, and the
+    // §6.25 allocator further clamps to real margin headroom, but this is
+    // the last-mile guarantee that `computeDiscount` alone can't return
+    // more than what's being discounted.
+    if (d.gt(sub)) d = sub;
     return d;
   }
   if (coupon.discount_type === "fixed_amount") {

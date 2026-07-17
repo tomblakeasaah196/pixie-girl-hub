@@ -134,13 +134,29 @@ const ACTIONS = ["view", "create", "edit", "delete", "approve", "export"];
 
 const RECORD_SCOPES = ["all", "own", "team"];
 
+// Contact-type visibility vocabulary (contacts §6.12). These keys are the
+// values stored in shared.contacts.contact_type[] AND allow-listed per role in
+// shared.role_contact_type_access — keep them in lock-step with that table's
+// CHECK constraint and the schema comment on shared.contacts.contact_type.
+// A role with NO access row sees every type (default); a row restricts it.
+const CONTACT_TYPES = [
+  { key: "customer", label: "Customers / clients" },
+  { key: "supplier", label: "Suppliers / manufacturers" },
+  { key: "staff", label: "Staff" },
+  { key: "retail_partner", label: "Retail partners" },
+  { key: "stylist_partner", label: "Stylist partners" },
+];
+const CONTACT_TYPE_KEYS = CONTACT_TYPES.map((t) => t.key);
+
 const MODULE_SET = new Set(MODULES);
 const ACTION_SET = new Set(ACTIONS);
 const SCOPE_SET = new Set(RECORD_SCOPES);
+const CONTACT_TYPE_SET = new Set(CONTACT_TYPE_KEYS);
 
 const isValidModule = (m) => MODULE_SET.has(m);
 const isValidAction = (a) => ACTION_SET.has(a);
 const isValidScope = (s) => SCOPE_SET.has(s);
+const isValidContactType = (t) => CONTACT_TYPE_SET.has(t);
 
 /**
  * The grid the matrix UI renders: every module (in display order) with its
@@ -159,6 +175,10 @@ function catalog() {
     groups: GROUPS,
     actions: ACTIONS,
     record_scopes: RECORD_SCOPES,
+    // Vocabulary for the per-role contact-type visibility control in the role
+    // editor. Empty selection for a role = it sees no contacts; leaving a role
+    // unmanaged (no selection saved) = it sees every type.
+    contact_types: CONTACT_TYPES,
   };
 }
 
@@ -169,8 +189,11 @@ module.exports = {
   GROUPS,
   ACTIONS,
   RECORD_SCOPES,
+  CONTACT_TYPES,
+  CONTACT_TYPE_KEYS,
   isValidModule,
   isValidAction,
   isValidScope,
+  isValidContactType,
   catalog,
 };

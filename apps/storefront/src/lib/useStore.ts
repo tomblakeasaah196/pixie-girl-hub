@@ -9,6 +9,10 @@ import { getCart, type Currency } from "./storefront";
  */
 
 export const CURRENCY_KEY = "sf_currency";
+// P0-3: a captured customer referral code lives here until checkout consumes
+// it. Simple key/value in localStorage — checkout reads it on mount, forwards
+// it to createOrder as customer_referral_code, then clears it on success.
+export const REFERRAL_KEY = "sf_referral_code";
 const CART_EVENT = "sf:cart-changed";
 const CURRENCY_EVENT = "sf:currency-changed";
 // Fired by lib/money when the currency runtime (rates/symbols) hydrates from the
@@ -90,6 +94,61 @@ export function useHelpOpen(): { open: boolean; setOpen: (o: boolean) => void } 
   const setOpen = (o: boolean) =>
     window.dispatchEvent(new CustomEvent(HELP_OPEN_EVENT, { detail: o }));
   return { open, setOpen };
+}
+
+/**
+ * Reads the customer referral code that was captured from a `?ref=` on any
+ * page load (see useReferralCapture, mounted in the root shell). Returns the
+ * live value + a setter that also clears it. The checkout page consumes this
+ * on mount, forwards it to createOrder, then calls clear() on success so the
+ * code isn't reused on the next order.
+ */
+export function useReferralCode(): {
+  code: string | null;
+  clear: () => void;
+} {
+  const [code, setCode] = useState<string | null>(null);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      setCode(window.localStorage.getItem(REFERRAL_KEY));
+    } catch {
+      /* SSR / private mode — leave as null */
+    }
+  }, []);
+  const clear = useCallback(() => {
+    try {
+      window.localStorage.removeItem(REFERRAL_KEY);
+    } catch {
+      /* ignore */
+    }
+    setCode(null);
+  }, []);
+  return { code, clear };
+}
+
+/**
+ * Mount once at the app root: capture ?ref=<code> from the current URL into
+ * localStorage so any subsequent page (product, cart, checkout) can pick it
+ * up via useReferralCode. Safe to run on every route change; a page with no
+ * ?ref= param leaves the stored value alone. The code is echoed to the
+ * checkout Zod validator's customer_referral_code, so it's UPPERCASED here
+ * and length-capped defensively.
+ */
+export function useReferralCapture(): void {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const raw = params.get("ref");
+      if (!raw) return;
+      const code = raw.trim().toUpperCase().slice(0, 80);
+      if (!code) return;
+      window.localStorage.setItem(REFERRAL_KEY, code);
+    } catch {
+      /* ignore — nothing depends on this succeeding */
+    }
+  }, []);
 }
 
 export function useCartCount(): number {

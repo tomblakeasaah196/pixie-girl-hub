@@ -86,6 +86,17 @@ Seeded by migration `000348_shared_stylist_studio_rbac_own_scope.sql`.
 
 Currently **app-layer only** (see CONFORMANCE_GAPS.md — H-1 / M-5). Sensitive fields (cost prices, factory origin, salaries) are filtered out in the service layer before response serialisation, based on the user's role. A pending amendment will back this with restricted views + column GRANTs at the DB level.
 
+## Contact-type visibility (Contacts §6.12)
+
+The `contacts` module carries an extra, contacts-specific scoping dimension on top of record scope: a per-role allow-list of **contact types** a role may see (`customer`, `supplier`, `staff`, `retail_partner`, `stylist_partner` — the values in `shared.contacts.contact_type[]`). This lets the owner separate the directory — e.g. supplier-facing / operations staff who deal with the China manufacturers see only suppliers, never the client book.
+
+- **Storage:** `shared.role_contact_type_access(role_id, contact_types[])`. **No row = unrestricted** (the role sees every type — the default, so nothing changes until a role is opted in). A row restricts the role to its listed types (empty array = sees no contacts).
+- **Effective per user = the union across their brand-active roles** (mirrors record scope's "most permissive wins"): any unrestricted role widens access to everything, so to lock a person down, restrict every role they hold — or give restricted staff only the restricted role. **CEO bypasses** (sees all).
+- **Enforced in the repo**, like `own`/`team`: `middleware/rbac.js` `contactTypeScope` resolves the caller's allowed set into `req.contact_type_scope` (cached via identity-cache), and `contacts.repo` adds a `contact_type && $allowed` guard to list / get / stats / milestones. A contact outside the set reads as **404**, never revealing it exists. Writes (create / update / import) can't give a contact a type the caller can't see. Bulk export stays owner/CEO-only (unrestricted).
+- **Praxis** inherits it automatically — it acts with the requesting user's permissions, and the enforcement lives below the service boundary the agent calls.
+
+Administered from **IAM → Org & Workflow → the role editor** (a "Contact visibility" control) via `GET/PUT /access/roles/:role_id/contact-types`.
+
 ## CEO bypass
 
 `req.user.is_ceo === true` short-circuits permission checks. The CEO sees everything by design. This is the V2.2 contract — the CEO doesn't need to grant themselves rights, they just have them.
@@ -114,6 +125,7 @@ user's brand access — the middleware otherwise only _reads_ permissions.
 | Catalog           | `GET /access/catalog`                                                        |
 | Roles             | `GET/POST /access/roles`, `…/roles/:role_id`                                 |
 | Permission matrix | `GET/PUT /access/roles/:role_id/permissions`                                 |
+| Contact visibility | `GET/PUT /access/roles/:role_id/contact-types` (Contacts §6.12)             |
 | Grants            | `GET/POST /access/users/:user_id/roles`, `DELETE …/roles/:role_id?business=` |
 | Brand access      | `GET/PUT /access/users/:user_id/access`                                      |
 

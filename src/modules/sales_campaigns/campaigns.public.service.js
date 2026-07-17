@@ -1288,6 +1288,10 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
       // allow_instalments) and snapshots the deposit policy on the order.
       payment_plan: input.payment_plan === "instalment" ? "instalment" : "full",
       coupon_code: input.coupon_code || null,
+      // P0-3: customer referral rail — forwarded to createOrder which
+      // resolves + applies the friend discount and stamps referral_code_used
+      // so the retention subscriber credits the referrer on order.paid.
+      customer_referral_code: input.customer_referral_code || null,
       client_idempotency_key: input.client_idempotency_key,
       utm_source: input.utm?.utm_source || null,
       utm_medium: input.utm?.utm_medium || null,

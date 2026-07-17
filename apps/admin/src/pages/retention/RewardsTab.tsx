@@ -68,7 +68,13 @@ export function RewardsTab() {
                   {r.reward_type === "order_discount" && r.discount_value != null && (
                     <>
                       {" · "}
-                      {r.discount_type === "percentage" ? `${r.discount_value}% off` : <MoneyText ngn={Number(r.discount_value)} className="text-[12px]" />}
+                      {r.discount_type === "percentage" ? (
+                        // P1-1: storage is fraction (0.10 = 10%). Display
+                        // whole percent (rounded to match the coupon list).
+                        `${Math.round(Number(r.discount_value) * 100)}% off`
+                      ) : (
+                        <MoneyText ngn={Number(r.discount_value)} className="text-[12px]" />
+                      )}
                     </>
                   )}
                 </div>
@@ -116,7 +122,21 @@ function RewardDrawer({
   const rewardId = (reward as Reward)?.reward_id ?? "new";
   const [syncedFor, setSyncedFor] = useState<string | null>(null);
   if (open && syncedFor !== rewardId) {
-    setForm(reward ?? {});
+    // P1-1: storage keeps the canonical fraction (0.10). The value field
+    // shows WHOLE PERCENT, so multiply on load then divide again on save.
+    const src = reward ?? {};
+    const nextForm: Partial<Reward> = { ...src };
+    if (
+      src.reward_type === "order_discount" &&
+      src.discount_type === "percentage" &&
+      src.discount_value != null
+    ) {
+      const asPercent = Number(src.discount_value) * 100;
+      nextForm.discount_value = (Number.isFinite(asPercent)
+        ? asPercent
+        : src.discount_value) as Reward["discount_value"];
+    }
+    setForm(nextForm);
     setSyncedFor(rewardId);
   }
   if (!open && syncedFor !== null) setSyncedFor(null);
@@ -131,7 +151,24 @@ function RewardDrawer({
       footer={
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={() => onSave(form)} disabled={saving || !form.display_name || !form.points_cost}>
+          <Button
+            variant="primary"
+            onClick={() => {
+              // P1-1: the value field takes WHOLE PERCENT (10 = 10%) for a
+              // percentage reward and NGN for fixed_amount. Storage is always
+              // the canonical fraction (matching CouponsTab) so the coupon
+              // engine's `subtotal.times(discount_value)` behaves.
+              const raw = Number(form.discount_value ?? 0);
+              const storedValue =
+                form.reward_type === "order_discount" &&
+                form.discount_type === "percentage" &&
+                Number.isFinite(raw) && raw > 0
+                  ? raw / 100
+                  : form.discount_value;
+              onSave({ ...form, discount_value: storedValue as Reward["discount_value"] });
+            }}
+            disabled={saving || !form.display_name || !form.points_cost}
+          >
             {saving ? "Saving…" : "Save"}
           </Button>
         </div>
@@ -166,8 +203,18 @@ function RewardDrawer({
                 ]}
               />
             </L>
-            <L label="Value">
-              <NumberField value={String(form.discount_value ?? "")} onChange={(v) => set("discount_value", Number(v) as Reward["discount_value"])} />
+            <L
+              label={
+                form.discount_type === "percentage"
+                  ? "% off (e.g. 10 for 10%)"
+                  : "Value (₦)"
+              }
+            >
+              <NumberField
+                value={String(form.discount_value ?? "")}
+                onChange={(v) => set("discount_value", Number(v) as Reward["discount_value"])}
+                suffix={form.discount_type === "percentage" ? "%" : undefined}
+              />
             </L>
           </>
         )}

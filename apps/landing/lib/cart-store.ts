@@ -65,6 +65,10 @@ interface CartState {
    *  checkout-glitch migration. Drives the one-time apology + gift modal; the
    *  modal calls `acknowledgeGlitch` to lower it so it shows exactly once. */
   glitchCleared: boolean;
+  /** Customer referral code captured from ?ref=<code> on the landing (P0-3).
+   *  Persisted so the buyer can browse → cart → checkout without losing it.
+   *  Consumed at checkout as customer_referral_code, then cleared. */
+  customer_referral_code: string | null;
 
   init: (slug: string) => void;
   add: (item: CartItem) => void;
@@ -76,6 +80,7 @@ interface CartState {
   toggleCart: () => void;
   markUpsellShown: (id: string) => void;
   acknowledgeGlitch: () => void;
+  setReferralCode: (code: string | null) => void;
 
   totalQty: () => number;
   subtotalNgn: () => number;
@@ -92,6 +97,7 @@ export const useCart = create<CartState>()(
       open: false,
       shown_upsell_ids: [],
       glitchCleared: false,
+      customer_referral_code: null,
 
       init(slug) {
         if (get().campaign_slug !== slug) {
@@ -157,6 +163,15 @@ export const useCart = create<CartState>()(
       acknowledgeGlitch() {
         set({ glitchCleared: false });
       },
+      setReferralCode(code) {
+        // Length-cap + uppercase for consistency with the server-side Zod
+        // validator (customer_referral_code max 80).
+        set({
+          customer_referral_code: code
+            ? code.trim().toUpperCase().slice(0, 80)
+            : null,
+        });
+      },
 
       totalQty() {
         return get().items.reduce((a, i) => a + i.quantity, 0);
@@ -213,6 +228,10 @@ export const useCart = create<CartState>()(
               ? prev.shown_upsell_ids
               : [],
           glitchCleared: hasBroken,
+          customer_referral_code:
+            typeof prev.customer_referral_code === "string"
+              ? prev.customer_referral_code
+              : null,
         } as CartState;
       },
       partialize: (s) => ({
@@ -220,6 +239,7 @@ export const useCart = create<CartState>()(
         items: s.items,
         shown_upsell_ids: s.shown_upsell_ids,
         glitchCleared: s.glitchCleared,
+        customer_referral_code: s.customer_referral_code,
       }),
     },
   ),

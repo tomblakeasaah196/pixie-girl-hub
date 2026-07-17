@@ -41,6 +41,11 @@ const ORDER = [
   // the acting staff (Quick Sale) or the catalogue-share link's sharer; NULL
   // for customer self-service checkouts (storefront / public form).
   "closed_by_user_id",
+  // Customer referral rail (P0-3). Stamped by sales.service when a friend's
+  // ?ref= resolves to an active customer referral code; the retention
+  // subscriber then bumps the referrer's counters + credits their reward on
+  // order.paid. Distinct from stylist_referral_code above.
+  "referral_code_used",
 ];
 const LINE = [
   "order_id",

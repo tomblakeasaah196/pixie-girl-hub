@@ -59,8 +59,14 @@ const pool = new Pool({
 //   - Chief of Staff settings (000327): +1 (cos_settings) → 197.
 //   - (000328–000349 shared additions are not itemised in this ledger; the
 //     absolute below trails those and should be reconciled in a batch pass.)
-//   - HR clock-out reminders (000350): +1 (clockout_reminders).
-const EXPECTED_SHARED = 198;
+//   - HR clock-out reminders (000350): +1 (clockout_reminders) → 198.
+//   - Retention audit — P1-7 (000352_shared_customer_store_credit_ledger):
+//     +1 (customer_store_credit_ledger) → 199. Backs referrer_credit_ngn
+//     so retention.service.redeemReferral posts a real, auditable balance
+//     instead of a phantom counter on referrals.total_rewards_value.
+//     (000351/000353/000354 in the same audit are ALTER / trigger drops /
+//     column adds, not new tables — count unchanged by them.)
+const EXPECTED_SHARED = 199;
 const EXPECTED_PER_BRAND = 203;
 
 async function countTables(schema) {

@@ -10,11 +10,15 @@ const multer = require("multer");
 const c = require("./contacts.controller");
 const v = require("./contacts.validator");
 const { config } = require("../../config/env");
-const { requirePermission } = require("../../middleware/rbac");
+const { requirePermission, contactTypeScope } = require("../../middleware/rbac");
 const { NotFoundError, PermissionDeniedError } = require("../../utils/errors");
 
 const router = express.Router();
 const can = (a) => requirePermission("contacts", a);
+
+// Resolve the caller's contact-type visibility (contacts §6.12) once per
+// request → req.contact_type_scope, so every read/write below can enforce it.
+router.use(contactTypeScope);
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: config.MEDIA_MAX_FILE_SIZE_MB * 1024 * 1024 },

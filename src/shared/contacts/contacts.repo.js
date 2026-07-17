@@ -8,21 +8,44 @@
 
 const { query, ex } = require("../../config/database");
 const { VALID, t, assertBrand } = require("../../config/brands");
+
+/**
+ * Contact-type visibility guard (contacts §6.12). `allowedTypes` comes from
+ * req.contact_type_scope:
+ *   null / undefined → unrestricted, no clause added.
+ *   string[]         → contact_type[] must overlap the allowed set. An empty
+ *                      array yields `contact_type && '{}'` which is always
+ *                      false, so a role restricted to nothing sees no contacts.
+ * Returns { clause, params } to splice into a WHERE, using `$${nextIndex}`.
+ */
+function typeGuard(allowedTypes, nextIndex) {
+  if (!Array.isArray(allowedTypes)) return { clause: "", params: [] };
+  return {
+    clause: `contact_type && $${nextIndex}::text[]`,
+    params: [allowedTypes],
+  };
+}
 /**
  * Directory KPIs. total/vip/new are global (contacts are shared); at_risk is
  * per-brand — customers who have ordered from this brand but not in 90 days.
  */
-async function stats({ brand }) {
+async function stats({ brand, allowedTypes = null }) {
+  const g = typeGuard(allowedTypes, 1);
+  const typeWhere = g.clause ? ` AND ${g.clause}` : "";
   const { rows } = await query(
     `SELECT
         count(*)::int AS total,
         count(*) FILTER (WHERE priority_level = 'vip')::int AS vip,
         count(*) FILTER (WHERE created_at >= date_trunc('month', now()))::int AS new_this_month
        FROM shared.contacts
-      WHERE is_deleted = false`,
+      WHERE is_deleted = false${typeWhere}`,
+    g.params,
   );
+  // A role that can't see 'customer' contacts has no at-risk customer count.
   let at_risk = 0;
-  if (brand && VALID.has(brand)) {
+  const canSeeCustomers =
+    !Array.isArray(allowedTypes) || allowedTypes.includes("customer");
+  if (brand && VALID.has(brand) && canSeeCustomers) {
     const { rows: ar } = await query(
       `SELECT count(*)::int AS at_risk
          FROM shared.contacts c
@@ -102,6 +125,7 @@ function setClause(cols, src, start = 1) {
 async function findAll({
   client,
   filters = {},
+  allowedTypes = null,
   page = 1,
   page_size = 25,
   offset = 0,
@@ -109,6 +133,14 @@ async function findAll({
   const where = ["is_deleted = false"];
   const params = [];
   let i = 1;
+  // Contact-type visibility comes first so the user's allowed set bounds every
+  // result regardless of the UI filters below.
+  const g = typeGuard(allowedTypes, i);
+  if (g.clause) {
+    where.push(g.clause);
+    params.push(...g.params);
+    i++;
+  }
   if (filters.priority_level) {
     where.push(`priority_level = $${i++}`);
     params.push(filters.priority_level);
@@ -148,10 +180,14 @@ async function findAll({
     },
   };
 }
-async function findById({ client, id }) {
+async function findById({ client, id, allowedTypes = null }) {
+  // A contact outside the caller's allowed types reads as "not found" — the
+  // scope must never reveal the existence of a contact they can't see.
+  const g = typeGuard(allowedTypes, 2);
+  const typeWhere = g.clause ? ` AND ${g.clause}` : "";
   const { rows } = await ex(client)(
-    `SELECT * FROM shared.contacts WHERE contact_id = $1 AND is_deleted = false`,
-    [id],
+    `SELECT * FROM shared.contacts WHERE contact_id = $1 AND is_deleted = false${typeWhere}`,
+    [id, ...g.params],
   );
   return rows[0] || null;
 }
@@ -394,7 +430,11 @@ async function deleteAddress({ client, contact_id, address_id }) {
  * nested CASE picks this year's birthday if it's still ahead (incl. today),
  * else next year's — interval math is leap-safe (no make_date crash on Feb 29).
  */
-async function upcomingMilestones({ days = 7, limit = 500 }) {
+async function upcomingMilestones({ days = 7, limit = 500, allowedTypes = null }) {
+  // Milestones respect the caller's contact-type scope: $1 days, $2 limit,
+  // and (when restricted) $3 = the allowed-type array on the base scan.
+  const g = typeGuard(allowedTypes, 3);
+  const typeWhere = g.clause ? ` AND ${g.clause}` : "";
   const { rows } = await query(
     `SELECT contact_id, display_name, date_of_birth, primary_phone,
             whatsapp_number, email, next_birthday,
@@ -411,13 +451,13 @@ async function upcomingMilestones({ days = 7, limit = 500 }) {
                       + (extract(year from age(date_of_birth))::int
                          * interval '1 year'))::date AS cand
                FROM shared.contacts
-              WHERE date_of_birth IS NOT NULL AND is_deleted = false
+              WHERE date_of_birth IS NOT NULL AND is_deleted = false${typeWhere}
            ) a
        ) m
       WHERE next_birthday <= current_date + ($1 * interval '1 day')
       ORDER BY next_birthday
       LIMIT $2`,
-    [days, limit],
+    [days, limit, ...g.params],
   );
   return rows.map((r) => ({ ...r, milestone_type: "birthday" }));
 }

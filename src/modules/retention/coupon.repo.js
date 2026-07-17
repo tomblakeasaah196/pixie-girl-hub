@@ -26,6 +26,10 @@ const COUPON_COLS = [
   "is_single_use",
   "is_active",
   "metadata",
+  // P1-6: bind a minted voucher to the redeeming contact so the reward
+  // I minted for Amina is not usable by anyone else. validateCoupon
+  // rejects a mismatched contact when this is set.
+  "assigned_contact_id",
 ];
 
 async function create({ client, brand, input, user_id }) {
@@ -179,6 +183,43 @@ async function bumpUsage({ client, coupon_id, discount_ngn }) {
   );
 }
 
+// P1-3 refund path: reverse a previous bumpUsage exactly. The GREATEST()
+// guards keep the counters non-negative even if reversal is called twice
+// (idempotency: the redemption row must be deleted separately so a second
+// reversal has nothing to match, but this is belt-and-braces).
+async function reverseUsage({ client, coupon_id, discount_ngn }) {
+  await ex(client)(
+    `UPDATE shared.coupons
+        SET total_redeemed = GREATEST(0, total_redeemed - 1),
+            total_discount_given = GREATEST(0, total_discount_given - $2),
+            updated_at = now()
+      WHERE coupon_id = $1`,
+    [coupon_id, discount_ngn],
+  );
+}
+
+// P1-3: enumerate redemptions attached to an order so the cancellation path
+// can walk them, reverse each usage bump, and delete the row.
+async function listRedemptionsForOrder({
+  client,
+  reference_type,
+  reference_id,
+}) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM shared.coupon_redemptions
+      WHERE reference_type = $1 AND reference_id = $2`,
+    [reference_type, reference_id],
+  );
+  return rows;
+}
+
+async function deleteRedemption({ client, redemption_id }) {
+  await ex(client)(
+    `DELETE FROM shared.coupon_redemptions WHERE redemption_id = $1`,
+    [redemption_id],
+  );
+}
+
 module.exports = {
   create,
   list,
@@ -193,4 +234,7 @@ module.exports = {
   redemptionExists,
   recordRedemption,
   bumpUsage,
+  reverseUsage,
+  listRedemptionsForOrder,
+  deleteRedemption,
 };

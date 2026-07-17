@@ -10,7 +10,9 @@
 
 const retentionService = require("../retention/retention.service");
 const rewardsService = require("../retention/rewards.service");
-const couponService = require("../retention/coupon.service");
+const tasksService = require("../../shared/tasks/tasks.service");
+const { getBroadcaster } = require("../../realtime/emitter");
+const { logger } = require("../../config/logger");
 
 /** Loyalty status: balance, current tier + progress to the next, recent ledger. */
 async function loyalty({ brand, contact_id }) {
@@ -79,37 +81,79 @@ async function redeem({ brand, contact_id, reward_id, request_id }) {
     request_id,
   });
 
-  let voucher_code = null;
+  // P1-6: the voucher is now minted atomically inside redeemReward's
+  // transaction (contact-bound, single-use, per-reward expiry). The
+  // customer-facing wrapper just surfaces the code and, for physical
+  // rewards, opens a fulfilment task.
+  let voucher_code = result.voucher_code || null;
+  let fulfilment_task_id = null;
   const f = result.fulfilment || {};
-  if (f.kind === "discount" || f.kind === "free_shipping") {
-    const code = "PTS-" + Math.random().toString(36).slice(2, 8).toUpperCase();
-    const input =
-      f.kind === "free_shipping"
-        ? { discount_type: "free_shipping", discount_value: 0 }
-        : {
-            discount_type: f.discount_type || "fixed_amount",
-            discount_value: Number(f.discount_value || 0),
-            max_discount_value: f.max_discount_value || undefined,
-          };
-    const coupon = await couponService.createCoupon({
-      brand,
-      user: { user_id: null },
-      request_id: request_id || `reward:${result.redemption_id}`,
-      input: {
-        ...input,
-        coupon_code: code,
-        display_name: "Reward voucher",
-        is_single_use: true,
-        per_customer_limit: 1,
-      },
-    });
-    voucher_code = coupon.coupon_code;
+  if (f.kind === "free_product" || f.kind === "gift") {
+    // P2-5: physical-goods rewards need a human to fulfil. Before this the
+    // JSON was stored on the redemption row and the storefront said "our
+    // team will be in touch" — but no task, notification, or queue was
+    // created for staff. Points left the account with nothing on the ops
+    // side. Now we open a task in shared.tasks and ping the ops rail so it
+    // shows up wherever the retention team already lives.
+    try {
+      const task = await tasksService.createFromModule({
+        brand,
+        created_by: null,
+        task: {
+          title:
+            f.kind === "free_product"
+              ? "Fulfil free-product reward redemption"
+              : "Fulfil gift reward redemption",
+          description: JSON.stringify(
+            {
+              redemption_id: result.redemption_id,
+              contact_id,
+              reward_kind: f.kind,
+              details: f,
+            },
+            null,
+            2,
+          ),
+          priority: "high",
+          reference_type: "reward_redemption",
+          reference_id: result.redemption_id,
+        },
+      });
+      fulfilment_task_id = task.task_id;
+      // Fan out to the brand's retention room so the Tasks widget on
+      // whoever's staffing retention ops updates live. Matches the room
+      // naming convention (`brand:<brand>:<resource>`) used across the app.
+      try {
+        getBroadcaster()
+          .to(`brand:${brand}:retention`)
+          .emit("reward.fulfilment_task", {
+            task_id: task.task_id,
+            reward_kind: f.kind,
+            redemption_id: result.redemption_id,
+          });
+      } catch (err) {
+        logger.debug(
+          { err: err.message },
+          "reward fulfilment socket ping skipped",
+        );
+      }
+    } catch (err) {
+      // Never fail the redemption on a task-creation hiccup; the points are
+      // already spent and the customer-facing UX must return cleanly. The
+      // redemption row still carries the fulfilment JSON so ops can
+      // reconcile from the retention analytics view if needed.
+      logger.error(
+        { err: err.message, redemption_id: result.redemption_id },
+        "reward fulfilment task creation failed",
+      );
+    }
   }
 
   return {
     points_spent: result.points_spent,
     fulfilment: result.fulfilment,
     voucher_code,
+    fulfilment_task_id,
   };
 }
 

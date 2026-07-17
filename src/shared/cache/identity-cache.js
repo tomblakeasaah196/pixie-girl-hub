@@ -33,6 +33,7 @@ const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
 const staffRepo = require("../hr_payroll/staff.repo");
 const permissionsRepo = require("../org_workflow/permissions.repo");
+const rolesRepo = require("../access/roles.repo");
 const businessConfigRepo = require("../../modules/business_setup/business-config.repo");
 const iamEvents = require("../iam/iam.events");
 const accessEvents = require("../access/access.events");
@@ -42,9 +43,11 @@ const K = {
   user: (id) => `idc:user:v1:${id}`,
   grants: (roleIds, module, action) =>
     `idc:grants:v1:${module}:${action}:${[...roleIds].sort().join(",")}`,
+  ctypes: (roleIds) => `idc:ctypes:v1:${[...roleIds].sort().join(",")}`,
   brand: (key) => `idc:brand:v1:${key}`,
 };
 const GRANTS_PATTERN = "idc:grants:v1:*";
+const CTYPES_PATTERN = "idc:ctypes:v1:*";
 
 const ttlSeconds = () => config.IDENTITY_CACHE_TTL_S;
 
@@ -108,8 +111,8 @@ async function del(...keys) {
   }
 }
 
-/** Delete every cached grants entry (permission definitions changed). */
-async function invalidateAllGrants() {
+/** Delete every cached entry whose key matches `pattern` (SCAN + DEL). */
+async function invalidateByPattern(pattern) {
   const redis = tryClient("scan");
   if (!redis) return;
   try {
@@ -118,7 +121,7 @@ async function invalidateAllGrants() {
       const [next, keys] = await redis.scan(
         cursor,
         "MATCH",
-        GRANTS_PATTERN,
+        pattern,
         "COUNT",
         200,
       );
@@ -129,6 +132,12 @@ async function invalidateAllGrants() {
     warnFailOpen(err, "scan");
   }
 }
+
+/** Delete every cached grants entry (permission definitions changed). */
+const invalidateAllGrants = () => invalidateByPattern(GRANTS_PATTERN);
+
+/** Delete every cached contact-type visibility entry (role access changed). */
+const invalidateAllContactTypes = () => invalidateByPattern(CTYPES_PATTERN);
 
 // ── Public read-through getters ───────────────────────────
 
@@ -163,6 +172,20 @@ async function getGrants({ role_ids, module, action }) {
   );
 }
 
+/**
+ * Effective contact-type visibility for a role-set (contacts §6.12).
+ *   → null      unrestricted (any role in the set sees every type)
+ *   → string[]  the union of the restricted roles' allowed types
+ * null survives the JSON round-trip (stored as "null", parsed back to null),
+ * so the "unrestricted" state is cached distinctly from "restricted to none".
+ */
+async function getContactTypeScope({ role_ids }) {
+  if (!Array.isArray(role_ids) || role_ids.length === 0) return [];
+  return getThrough(K.ctypes(role_ids), () =>
+    rolesRepo.contactTypesForRoles({ role_ids }),
+  );
+}
+
 /** Brand config row by business key (null when not configured). */
 async function getBrandConfig(businessKey) {
   return getThrough(K.brand(businessKey), () =>
@@ -184,6 +207,10 @@ const USER_EVENTS = [
 ];
 const ACCESS_USER_EVENTS = ["role_granted", "role_revoked", "user_access_changed"];
 const GRANTS_EVENTS = ["permissions_changed", "role_updated", "role_deleted"];
+// Contact-type visibility (contacts §6.12) is role-scoped and cached by role
+// set; a role's access edit — or a role delete that cascades its row — makes
+// every cached union potentially stale.
+const CTYPES_EVENTS = ["contact_type_access_changed", "role_deleted"];
 
 let subscribed = false;
 function registerInvalidationSubscribers() {
@@ -203,6 +230,9 @@ function registerInvalidationSubscribers() {
   for (const evt of GRANTS_EVENTS) {
     accessEvents.on(evt, () => invalidateAllGrants());
   }
+  for (const evt of CTYPES_EVENTS) {
+    accessEvents.on(evt, () => invalidateAllContactTypes());
+  }
   businessSetupEvents.on("config.updated", (payload) => {
     if (payload?.brand) del(K.brand(payload.brand));
   });
@@ -213,8 +243,10 @@ registerInvalidationSubscribers();
 module.exports = {
   getAuthUser,
   getGrants,
+  getContactTypeScope,
   getBrandConfig,
   invalidateAllGrants,
+  invalidateAllContactTypes,
   // exported for tests
   K,
 };

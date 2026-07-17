@@ -26,6 +26,7 @@ import { CustomCursor } from "@/components/site/CustomCursor";
 import { SiteConfigProvider, type StudioPage } from "@/lib/site-config";
 import { resolveToolbar } from "@/lib/toolbar";
 import { useCurrencyFeed } from "@/lib/useCurrencyFeed";
+import { useReferralCapture } from "@/lib/useStore";
 
 /*
  * SSR shell for the Storefront Website (dark-first maison).
@@ -167,6 +168,10 @@ function RootShell({ children }: { children: ReactNode }) {
  *  nothing; lives inside the QueryClientProvider so useQuery has its context. */
 function CurrencyFeedBoot() {
   useCurrencyFeed();
+  // P0-3: also capture any ?ref=<code> in the URL into localStorage so the
+  // checkout page can forward it as customer_referral_code. Effect-only,
+  // runs once at mount, does nothing on pages without the param.
+  useReferralCapture();
   return null;
 }
 

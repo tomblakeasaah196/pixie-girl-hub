@@ -13,7 +13,6 @@ const validator = require("./retention.validator");
 const couponRouter = require("./coupon.routes");
 const bundleRouter = require("./bundle.routes");
 const subscriptionRouter = require("./subscription.routes");
-const workflowRouter = require("./workflow.routes");
 const strategyRouter = require("./strategy.routes");
 const rewardsRouter = require("./rewards.routes");
 const earnRouter = require("./earn.routes");
@@ -34,9 +33,9 @@ router.use("/coupons", couponRouter);
 router.use("/bundles", bundleRouter);
 // Wig subscriptions (F-1 / §6.23.5)
 router.use("/subscriptions", subscriptionRouter);
-// Automated retention workflows (F-4 / §6.23) — legacy single-action engine
-router.use("/workflows", workflowRouter);
-// Retention strategy engine (multi-step journeys; the no-code evolution)
+// Retention strategy engine (multi-step journeys; the no-code retention brain).
+// The legacy single-action workflow engine (000031 retention_workflow_rules)
+// was retired — see migrations/template/000085 for the one-shot data migrator.
 router.use("/strategies", strategyRouter);
 // Loyalty rewards catalogue + redemption (§6.23 economy)
 router.use("/rewards", rewardsRouter);

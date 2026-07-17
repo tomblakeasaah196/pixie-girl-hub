@@ -2,9 +2,12 @@
  * Wig subscription service (F-1 / PD §6.23.5).
  *
  * Plan admin CRUD + subscriber lifecycle (enrol / pause / resume / cancel).
- * Recurring billing (Paystack charge_authorization → order) runs on a cron and
- * is the remaining F-1 step — it moves real money and must be validated against
- * staging before enablement, so it is intentionally not wired here yet.
+ * Recurring billing (Paystack charge_authorization → order) runs off the
+ * `subscription-billing` cron (worker.js) once daily at 03:00 Lagos time.
+ * P0-6: the pre-existing double-writer (000014 trigger + service) is gone —
+ * migration 000351 drops the trigger so this file is the sole writer for
+ * cycle counters, failure counters, and status transitions. Dunning
+ * cascade: 24h → 48h → 72h → pause after FAIL_LIMIT consecutive declines.
  */
 
 "use strict";
@@ -243,7 +246,11 @@ async function runDueBilling({ limit = 50 } = {}) {
       continue;
     }
     for (const sub of due) {
-      const setPastDue = sub.failed_attempts_in_row + 1 >= FAIL_LIMIT;
+      // P0-6: cascade is retry-24h → retry-48h → retry-72h → pause. `pause`
+      // is only set after the LIMIT-th consecutive decline; before then the
+      // sub sits in 'past_due' and claimDueForBilling picks it up on the
+      // next tick per the interval gate.
+      const pause = sub.failed_attempts_in_row + 1 >= FAIL_LIMIT;
       try {
         const plan = await repo.getPlan({ brand, id: sub.plan_id });
         if (!plan) continue;
@@ -270,7 +277,7 @@ async function runDueBilling({ limit = 50 } = {}) {
           });
           await repo.recordBillingFailure({
             id: sub.subscription_id,
-            set_past_due: setPastDue,
+            pause,
           });
           continue;
         }
@@ -324,7 +331,7 @@ async function runDueBilling({ limit = 50 } = {}) {
           });
           await repo.recordBillingFailure({
             id: sub.subscription_id,
-            set_past_due: setPastDue,
+            pause,
           });
         }
       } catch (err) {
@@ -335,7 +342,7 @@ async function runDueBilling({ limit = 50 } = {}) {
         await repo
           .recordBillingFailure({
             id: sub.subscription_id,
-            set_past_due: setPastDue,
+            pause,
           })
           .catch(() => {});
       }

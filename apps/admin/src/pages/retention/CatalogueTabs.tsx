@@ -34,11 +34,18 @@ export function CouponsTab() {
   const coupons = q.data ?? [];
 
   const submit = async () => {
+    // P1-1: the value field takes WHOLE PERCENT (10 = 10%) for a percentage
+    // discount and NGN for a fixed_amount. Storage is always the canonical
+    // fraction so the coupon engine's `subtotal.times(discount_value)` works
+    // as designed. Free-shipping ignores value entirely.
+    const raw = Number(form.discount_value || 0);
+    const storedValue =
+      form.discount_type === "percentage" ? raw / 100 : raw;
     const body: Record<string, unknown> = {
       coupon_code: form.coupon_code,
       display_name: form.display_name,
       discount_type: form.discount_type,
-      discount_value: Number(form.discount_value || 0),
+      discount_value: storedValue,
       is_active: true,
     };
     await save.mutateAsync({ body });
@@ -108,15 +115,25 @@ export function CouponsTab() {
               value={form.discount_type}
               onChange={(v) => setForm((f) => ({ ...f, discount_type: v }))}
               options={[
-                { value: "percentage", label: "% off (enter a fraction, e.g. 0.10)" },
+                { value: "percentage", label: "% off" },
                 { value: "fixed_amount", label: "₦ off" },
                 { value: "free_shipping", label: "Free shipping" },
               ]}
             />
           </L>
           {form.discount_type !== "free_shipping" && (
-            <L label="Value">
-              <NumberField value={form.discount_value ?? ""} onChange={(v) => setForm((f) => ({ ...f, discount_value: v }))} />
+            <L
+              label={
+                form.discount_type === "percentage"
+                  ? "% off (e.g. 10 for 10%)"
+                  : "Value (₦)"
+              }
+            >
+              <NumberField
+                value={form.discount_value ?? ""}
+                onChange={(v) => setForm((f) => ({ ...f, discount_value: v }))}
+                suffix={form.discount_type === "percentage" ? "%" : undefined}
+              />
             </L>
           )}
         </div>

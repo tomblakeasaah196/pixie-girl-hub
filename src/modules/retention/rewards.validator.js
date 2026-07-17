@@ -15,6 +15,7 @@ const createSchema = z
     reward_type: z.enum(["order_discount", "free_shipping", "free_product", "gift"]),
     points_cost: z.coerce.number().int().positive(),
     discount_type: z.enum(["percentage", "fixed_amount"]).optional(),
+    // percentage: fraction (0.10 = 10%); fixed_amount: NGN
     discount_value: z.coerce.number().nonnegative().optional(),
     max_discount_value: z.coerce.number().nonnegative().optional(),
     free_product_id: z.string().uuid().optional(),
@@ -28,8 +29,29 @@ const createSchema = z
     is_active: z.boolean().optional(),
     display_order: z.coerce.number().int().optional(),
     metadata: z.record(z.any()).optional(),
+    // P1-6: default 90; NULL falls back to the same default at redeem
+    // time so a legacy reward keeps working.
+    voucher_expiry_days: z.coerce.number().int().min(1).max(3650).optional(),
   })
-  .strict();
+  .strict()
+  // P1-1: same rule as coupon.validator — percentage rewards store as a
+  // fraction. The Rewards admin UI used to save `10` for "10% off" so the
+  // resulting voucher computed 10× the subtotal. The RewardsTab now divides
+  // by 100 on save (matching BundlesTab); this is the server backstop.
+  .superRefine((v, ctx) => {
+    if (
+      v.discount_type === "percentage" &&
+      v.discount_value !== undefined &&
+      !(v.discount_value > 0 && v.discount_value <= 1)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["discount_value"],
+        message:
+          "Percentage reward must be a fraction between 0 and 1 (e.g. 0.10 for 10%).",
+      });
+    }
+  });
 
 // The admin drawers edit an existing row and submit the whole object back, so
 // the update payload carries server-owned keys (reward_id, total_redeemed, …)
@@ -37,7 +59,26 @@ const createSchema = z
 // free_product_id / valid_to on an order_discount). cleanPatch() (in mkPatch)
 // drops null/""/undefined first so those never trip the uuid/string/positive
 // checks, and strip() removes the remaining unknown keys.
-const updateSchema = createSchema.omit({ reward_key: true }).partial().strip();
+// createSchema is a ZodEffects wrapper (superRefine); reach into the inner
+// shape for the update variant and re-attach the percentage guard.
+const updateSchema = createSchema._def.schema
+  .omit({ reward_key: true })
+  .partial()
+  .strip()
+  .superRefine((v, ctx) => {
+    if (
+      v.discount_type === "percentage" &&
+      v.discount_value !== undefined &&
+      !(v.discount_value > 0 && v.discount_value <= 1)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["discount_value"],
+        message:
+          "Percentage reward must be a fraction between 0 and 1 (e.g. 0.10 for 10%).",
+      });
+    }
+  });
 
 const redeemSchema = z
   .object({

@@ -68,9 +68,35 @@ don't appear in the Hub:
    `entry.messaging[]` payload the existing endpoint already verifies.
 
 Quick verification: reply to any customer from the Instagram app, then
-check `shared.webhook_logs` for a `meta_instagram` payload containing
-`"is_echo":true`. If none arrives within seconds, the field isn't
-subscribed (or the token/app lacks `instagram_business_manage_messages`).
+check `shared.webhook_log` for a `meta_instagram` payload containing
+`"is_echo":true`:
+
+```sql
+SELECT received_at, signature_valid
+  FROM shared.webhook_log
+ WHERE source = 'meta_instagram'
+   AND payload::text LIKE '%is_echo%'
+ ORDER BY received_at DESC
+ LIMIT 5;
+```
+
+If none arrives within seconds, the field isn't subscribed (or the
+token/app lacks `instagram_business_manage_messages`).
+
+The dashboard toggle alone isn't always enough: with the Instagram API
+with Instagram Login, the professional account itself carries a
+`subscribed_apps` field list. Check and (if needed) extend it with the
+brand's IG token:
+
+```bash
+# what the account is currently subscribed to:
+curl "https://graph.instagram.com/v21.0/me/subscribed_apps?access_token=$IG_TOKEN"
+
+# add message_echoes (repeat the full list — it replaces, not appends):
+curl -X POST "https://graph.instagram.com/v21.0/me/subscribed_apps" \
+  -d "subscribed_fields=messages,message_echoes,message_reactions,messaging_seen" \
+  -d "access_token=$IG_TOKEN"
+```
 
 ## Backfilling history that was lost before this shipped
 
@@ -99,6 +125,19 @@ for the **~20 most recent messages per conversation**; older rows come
 back truncated and are skipped. The backfill recovers the recent trend of
 every thread — not the deep archive. (That deep history still exists in
 the Instagram app itself.)
+
+**Rate limits.** The per-conversation `/messages` read is Meta's strict
+bucket. A single pass over a few hundred conversations is fine, but
+running the **dry run and the real run back-to-back doubles the calls**
+and trips a `403` (Meta code 4 / 17 / 32 — "request limit reached"). The
+script now detects the throttle, backs off (2s → 4s → 8s), and **stops
+early after 5 conversations in a row are throttled** rather than logging a
+failure for every remaining thread. If you see `Stopped early (rate
+limited)`: nothing is lost, **wait ~1 hour** for the window to reset, then
+run the **same command again** (skip `DRY_RUN` on the resume — it's
+idempotent and picks up the rest). To stay under the limit on a big first
+run, do it in chunks: `CONV_LIMIT=50 npm run backfill:instagram-history`,
+repeated, or raise the pacing with `GAP_MS=1000`.
 
 ## Files involved
 

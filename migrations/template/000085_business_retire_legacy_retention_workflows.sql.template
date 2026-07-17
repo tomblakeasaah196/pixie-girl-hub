@@ -1,0 +1,107 @@
+-- ============================================================
+-- TEMPLATE 000085 — Retire the legacy retention workflow engine
+-- Pixie Girl Hub · JBS Praxis
+--
+-- The retention_workflow_rules / _executions engine (000031) has been
+-- dead since ship — its loadContact() query selected shared.contacts
+-- by a non-existent `business` column, so every queued execution
+-- crashed and was marked 'failed'. The declarative strategy engine
+-- (000066) covers every advertised trigger + action combination.
+--
+-- This migration copies any active legacy rule into a single-step
+-- retention_strategy so the owner does not lose configuration when
+-- the code is removed, then deactivates the source rule so the
+-- engine (now deleted) never fires again.
+--
+-- Idempotent: strategy_key is 'legacy_' || rule_key with ON CONFLICT
+-- DO NOTHING, so re-runs are safe. Guarded by IF EXISTS so a fresh
+-- brand bootstrap (where 000031 still creates the legacy tables as
+-- empty) is a no-op.
+-- ============================================================
+
+DO $$
+DECLARE
+  legacy_present BOOLEAN;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1 FROM information_schema.tables
+     WHERE table_schema = '{{BUSINESS}}'
+       AND table_name = 'retention_workflow_rules'
+  ) INTO legacy_present;
+  IF NOT legacy_present THEN
+    RETURN;
+  END IF;
+
+  WITH migrated AS (
+    INSERT INTO {{BUSINESS}}.retention_strategies
+      (strategy_key, display_name, description, template_key, trigger_type,
+       trigger_conditions, audience_segment_id, status,
+       max_enrollments_per_customer, reenroll_cooldown_days, summary, created_by)
+    SELECT
+      'legacy_' || rule_key,
+      display_name,
+      COALESCE(description,
+               'Migrated from the legacy retention workflow engine.'),
+      'legacy_workflow',
+      -- Trigger name drift between the two engines.
+      CASE trigger_type
+        WHEN 'abandoned_cart'        THEN 'cart_abandoned'
+        WHEN 'subscription_renewal'  THEN 'subscription_renewal_reminder'
+        ELSE trigger_type
+      END,
+      trigger_conditions,
+      segment_id,
+      CASE WHEN is_active THEN 'active' ELSE 'paused' END,
+      max_executions_per_customer,
+      rate_limit_days,
+      'Migrated from legacy workflow rule ' || rule_key
+        || '. Review and edit as needed.',
+      created_by
+    FROM {{BUSINESS}}.retention_workflow_rules
+    WHERE
+      -- Only migrate rules whose trigger + action are representable in the
+      -- strategy engine's enums. Legacy send_whatsapp / send_sms / custom
+      -- and any trigger the new engine doesn't accept are left behind (the
+      -- source row survives with is_active=false, deactivated below).
+      trigger_type IN (
+        'order_placed','order_delivered','order_cancelled',
+        'review_left','first_purchase','high_value_purchase',
+        'tier_upgrade','tier_downgrade','birthday','anniversary',
+        'referral_completed','points_milestone','abandoned_cart',
+        'cart_abandoned','inactivity','win_back','reorder_reminder',
+        'subscription_renewal','subscription_renewal_reminder','custom_event'
+      )
+      AND action_type IN (
+        'send_email','issue_coupon','award_points','add_to_segment',
+        'assign_to_user','create_task','notify_team'
+      )
+    ON CONFLICT (strategy_key) DO NOTHING
+    RETURNING strategy_id, strategy_key
+  )
+  INSERT INTO {{BUSINESS}}.retention_strategy_steps
+    (strategy_id, step_order, wait_minutes, action_type, action_config,
+     email_template_id, coupon_template, description)
+  SELECT
+    m.strategy_id,
+    1,
+    r.wait_minutes,
+    r.action_type,
+    r.action_config,
+    r.email_template_id,
+    r.coupon_template,
+    'Migrated single-step action from legacy rule ' || r.rule_key || '.'
+  FROM migrated m
+  JOIN {{BUSINESS}}.retention_workflow_rules r
+    ON r.rule_key = substring(m.strategy_key from 8);  -- strip 'legacy_' prefix
+
+  -- Belt-and-braces: deactivate every legacy rule so, even if the deleted
+  -- code were somehow restored, nothing enqueues. The tables and history
+  -- stay in place for audit.
+  UPDATE {{BUSINESS}}.retention_workflow_rules
+     SET is_active = false
+   WHERE is_active = true;
+END $$;
+
+-- ============================================================
+-- No new tables created — table count unchanged.
+-- ============================================================

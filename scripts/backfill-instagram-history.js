@@ -56,12 +56,61 @@ const GRAPH = `https://graph.instagram.com/${config.META_GRAPH_VERSION || "v21.0
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function graphGet(url, access_token, params) {
-  const { data } = await axios.get(url, {
-    headers: { Authorization: `Bearer ${access_token}` },
-    params,
-    timeout: 30000,
-  });
-  return data;
+  try {
+    const { data } = await axios.get(url, {
+      headers: { Authorization: `Bearer ${access_token}` },
+      params,
+      timeout: 30000,
+    });
+    return data;
+  } catch (err) {
+    // Surface Meta's structured error (message + code/subcode) instead of
+    // axios's opaque "Request failed with status code 403" — the code is
+    // what tells a throttle (4/17/32/613/-1) apart from a real permission
+    // problem, so a failed run is diagnosable from the log alone.
+    const meta = err.response && err.response.data && err.response.data.error;
+    const wrapped = new Error(
+      meta
+        ? `${meta.message}${meta.code ? ` (code ${meta.code}${meta.error_subcode ? `/${meta.error_subcode}` : ""})` : ""}`
+        : err.message,
+    );
+    wrapped.status = err.response && err.response.status;
+    wrapped.meta = meta || null;
+    throw wrapped;
+  }
+}
+
+// Meta throttles heavy endpoints (the per-conversation /messages read is
+// the strict one) as HTTP 429, or 400/403 carrying an app/user/page
+// rate-limit code. When we see it we back off and — if it persists — stop
+// early, rather than burning the rest of the window on guaranteed 403s.
+const RATE_LIMIT_CODES = new Set([4, 17, 32, 613, 80007, -1]);
+function isRateLimited(err) {
+  if (err && err.status === 429) return true;
+  const code = err && err.meta && Number(err.meta.code);
+  return RATE_LIMIT_CODES.has(code);
+}
+
+/**
+ * Fetch a conversation's messages, retrying on throttle with exponential
+ * backoff (2s, 4s, 8s). A non-rate-limit error, or exhausted retries,
+ * rethrows to the caller.
+ */
+async function fetchMessagesWithBackoff({ conversation_id, access_token }, tries = 3) {
+  let attempt = 0;
+  for (;;) {
+    try {
+      return await listMessages({ conversation_id, access_token });
+    } catch (err) {
+      attempt += 1;
+      if (!isRateLimited(err) || attempt >= tries) throw err;
+      const wait = 2000 * 2 ** (attempt - 1);
+      console.warn(
+        `  ${conversation_id}: throttled, backing off ${wait / 1000}s (attempt ${attempt}/${tries})`,
+      );
+      await sleep(wait);
+    }
+  }
 }
 
 /**
@@ -162,8 +211,12 @@ async function alreadyRecorded({ brand, customer_igsid, m, body }) {
     await initDatabase();
     const days = Number(process.env.DAYS) || 30;
     const convLimit = Number(process.env.CONV_LIMIT) || 200;
-    const gapMs = Number(process.env.GAP_MS) || 400; // be gentle on Graph
+    const gapMs = Number(process.env.GAP_MS) || 600; // be gentle on Graph
     const dryRun = !!process.env.DRY_RUN;
+    // After this many conversations throttled back-to-back, Meta's window
+    // is spent — stop and let the operator resume later (idempotent), so a
+    // rate-limited run doesn't spew a failure per remaining conversation.
+    const rateLimitGiveUp = Number(process.env.RATE_LIMIT_GIVEUP) || 5;
     const cutoff = new Date(Date.now() - days * 24 * 3600 * 1000);
 
     const igAccounts = await maRepo.listActiveByPlatform({
@@ -188,9 +241,12 @@ async function alreadyRecorded({ brand, customer_igsid, m, body }) {
       skipped_existing: 0,
       skipped_empty: 0,
       errors: 0,
+      rate_limited: 0,
     };
+    let aborted = false;
 
     for (const brand of brands) {
+      if (aborted) break;
       const cfg = await maService.resolveInstagramSendConfig({ brand });
       const bizId = String(cfg.ig_business_account_id);
       console.warn(
@@ -205,17 +261,36 @@ async function alreadyRecorded({ brand, customer_igsid, m, body }) {
       });
       console.warn(`${brand}: ${conversations.length} conversation(s) in range.`);
 
+      let consecutiveThrottled = 0;
       for (const conv of conversations) {
         summary.conversations += 1;
         let messages;
         try {
-          messages = await listMessages({
+          messages = await fetchMessagesWithBackoff({
             conversation_id: conv.id,
             access_token: cfg.access_token,
           });
+          consecutiveThrottled = 0;
         } catch (err) {
           summary.errors += 1;
-          console.warn(`  ${conv.id}: messages fetch failed — ${err.message}`);
+          if (isRateLimited(err)) {
+            summary.rate_limited += 1;
+            consecutiveThrottled += 1;
+            console.warn(`  ${conv.id}: throttled by Meta — ${err.message}`);
+            if (consecutiveThrottled >= rateLimitGiveUp) {
+              console.warn(
+                `\n⚠️  Meta is rate-limiting the messages endpoint (${consecutiveThrottled} in a row).\n` +
+                  "Stopping here to preserve the quota window. Everything recorded so far is saved.\n" +
+                  "Wait ~1 hour, then run the SAME command again — it's idempotent, so already-synced\n" +
+                  "messages are skipped and it picks up where this left off. (Running DRY_RUN first\n" +
+                  "doubles the API calls — skip it when resuming.)",
+              );
+              aborted = true;
+              break;
+            }
+          } else {
+            console.warn(`  ${conv.id}: messages fetch failed — ${err.message}`);
+          }
           await sleep(gapMs);
           continue;
         }
@@ -290,14 +365,20 @@ async function alreadyRecorded({ brand, customer_igsid, m, body }) {
     }
 
     console.warn(
-      `\nDone. conversations=${summary.conversations} ` +
+      `\n${aborted ? "Stopped early (rate limited)." : "Done."} ` +
+        `conversations=${summary.conversations} ` +
         `inbound_recovered=${summary.recorded_inbound} ` +
         `app_replies_recovered=${summary.recorded_replies} ` +
         `already_present=${summary.skipped_existing} ` +
-        `empty_or_truncated=${summary.skipped_empty} errors=${summary.errors}`,
+        `empty_or_truncated=${summary.skipped_empty} ` +
+        `errors=${summary.errors} (throttled=${summary.rate_limited})`,
     );
     if (process.env.DRY_RUN) {
       console.warn("DRY_RUN — nothing was written.");
+    }
+    if (aborted) {
+      // Non-zero exit so a wrapper/cron knows to retry later.
+      process.exitCode = 2;
     }
   } catch (err) {
     console.error("Backfill failed:", err.message);

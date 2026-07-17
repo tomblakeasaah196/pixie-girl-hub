@@ -28,6 +28,7 @@ import {
   Wand2,
   Network,
   FileDown,
+  Users,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DataTable, type Column } from "@/components/ui/DataTable";
@@ -62,6 +63,7 @@ import {
   type Permission,
   type CatalogEntry,
   type Catalog,
+  type ContactTypeOption,
   ACTION_META,
   RECORD_SCOPE_LABELS,
 } from "@/lib/access-api";
@@ -73,6 +75,16 @@ import {
 import { listStaff, type StaffRow } from "@/lib/hr-api";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+
+// Contacts §6.12 visibility vocabulary — fallback when an older backend's
+// /access/catalog omits contact_types. Kept in step with access.catalog.js.
+const FALLBACK_CONTACT_TYPES: ContactTypeOption[] = [
+  { key: "customer", label: "Customers / clients" },
+  { key: "supplier", label: "Suppliers / manufacturers" },
+  { key: "staff", label: "Staff" },
+  { key: "retail_partner", label: "Retail partners" },
+  { key: "stylist_partner", label: "Stylist partners" },
+];
 
 type Tab = "org" | "permissions" | "workflows" | "pending";
 
@@ -1006,12 +1018,14 @@ function RoleEditorDrawer({
   roleId,
   catalog,
   groups,
+  contactTypes,
   onClose,
   canEdit,
 }: {
   roleId: string;
   catalog: CatalogEntry[];
   groups?: Catalog["groups"];
+  contactTypes?: ContactTypeOption[];
   onClose: () => void;
   canEdit: boolean;
 }) {
@@ -1023,6 +1037,11 @@ function RoleEditorDrawer({
   );
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Contact-type visibility (contacts §6.12). `ctDirty` tracks unsaved edits to
+  // this control independently of the permission matrix's `dirty`.
+  const [ctDirty, setCtDirty] = useState(false);
+  const [pendingCtRestricted, setPendingCtRestricted] = useState(false);
+  const [pendingCtTypes, setPendingCtTypes] = useState<Set<string>>(new Set());
   // Delete-role confirmation (checkbox acknowledgement).
   const [showDelete, setShowDelete] = useState(false);
   const [deleteAck, setDeleteAck] = useState(false);
@@ -1045,6 +1064,42 @@ function RoleEditorDrawer({
   }, [role]);
 
   const effectiveMap = dirty ? pendingGrants : permMap;
+
+  // ── Contact-type visibility (contacts §6.12) ──────────────
+  // Saved state from the role: null = unrestricted (sees every type); an array
+  // = restricted to those types. Pending overrides win once edited.
+  const savedCt = role?.contact_type_access ?? null;
+  const savedCtRestricted = Array.isArray(savedCt);
+  const ctOptions =
+    contactTypes && contactTypes.length ? contactTypes : FALLBACK_CONTACT_TYPES;
+  const ctRestricted = ctDirty ? pendingCtRestricted : savedCtRestricted;
+  const ctSelected = ctDirty
+    ? pendingCtTypes
+    : new Set<string>(Array.isArray(savedCt) ? savedCt : []);
+
+  function initCt() {
+    if (!ctDirty) {
+      setPendingCtRestricted(savedCtRestricted);
+      setPendingCtTypes(new Set(Array.isArray(savedCt) ? savedCt : []));
+      setCtDirty(true);
+    }
+  }
+  function setCtRestricted(on: boolean) {
+    if (!canEdit) return;
+    initCt();
+    setPendingCtRestricted(on);
+    setCtDirty(true);
+  }
+  function toggleCtType(key: string) {
+    if (!canEdit) return;
+    initCt();
+    const next = new Set(ctDirty ? pendingCtTypes : ctSelected);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setPendingCtTypes(next);
+    setPendingCtRestricted(true); // choosing types implies a restriction
+    setCtDirty(true);
+  }
 
   function initPending() {
     if (!dirty) {
@@ -1143,7 +1198,7 @@ function RoleEditorDrawer({
   }
 
   async function handleSave() {
-    if (!roleId || !dirty) return;
+    if (!roleId || (!dirty && !ctDirty)) return;
     setSaving(true);
     const grants = Array.from(effectiveMap.values()).map((p) => ({
       module: p.module,
@@ -1152,10 +1207,19 @@ function RoleEditorDrawer({
       hidden_fields: p.hidden_fields,
     }));
     try {
-      await accessApi.setRolePermissions(roleId, grants);
+      if (dirty) {
+        await accessApi.setRolePermissions(roleId, grants);
+      }
+      if (ctDirty) {
+        // Restricted → the selected set (may be empty = sees none);
+        // unrestricted → null (clears the restriction).
+        const desired = ctRestricted ? Array.from(ctSelected) : null;
+        await accessApi.setRoleContactTypes(roleId, desired);
+      }
       qc.invalidateQueries({ queryKey: ["role-detail", roleId] });
       qc.invalidateQueries({ queryKey: ["roles"] });
       setDirty(false);
+      setCtDirty(false);
     } finally {
       setSaving(false);
     }
@@ -1227,7 +1291,7 @@ function RoleEditorDrawer({
               </Button>
               <Button
                 variant="primary"
-                disabled={!dirty || saving}
+                disabled={(!dirty && !ctDirty) || saving}
                 onClick={handleSave}
               >
                 {saving ? "Saving…" : "Save permissions"}
@@ -1260,6 +1324,89 @@ function RoleEditorDrawer({
               </span>
             </div>
           )}
+          {/* Contact visibility (contacts §6.12) — which contact TYPES this
+              role may see. Independent of the module grid below; applies to the
+              Contacts module and every 360° surface that reads contacts. */}
+          <div className="mb-4 p-3 rounded-xl border border-[rgb(var(--border-c))] bg-[rgb(var(--panel-2)/0.4)]">
+            <div className="flex items-start gap-2 mb-2">
+              <Users className="w-4 h-4 text-[rgb(var(--accent))] shrink-0 mt-0.5" />
+              <div>
+                <div className="text-[13px] font-semibold">Contact visibility</div>
+                <p className="text-[11.5px] text-[rgb(var(--text-muted))] leading-snug">
+                  Which contact types this role can see in Contacts — e.g. limit
+                  supplier-facing staff to manufacturers only, keeping the client
+                  book out of view. The API enforces it on every request.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2 mb-2">
+              <button
+                type="button"
+                disabled={!canEdit}
+                onClick={() => setCtRestricted(false)}
+                className={cn(
+                  "text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition-colors",
+                  !ctRestricted
+                    ? "border-[rgb(var(--accent)/0.6)] bg-[rgb(var(--accent)/0.12)] text-[rgb(var(--text))]"
+                    : "border-[rgb(var(--border-c))] text-[rgb(var(--text-muted))] hover:text-[rgb(var(--text))]",
+                  !canEdit && "opacity-60 cursor-not-allowed",
+                )}
+              >
+                Sees all contact types
+              </button>
+              <button
+                type="button"
+                disabled={!canEdit}
+                onClick={() => setCtRestricted(true)}
+                className={cn(
+                  "text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition-colors",
+                  ctRestricted
+                    ? "border-[rgb(var(--accent)/0.6)] bg-[rgb(var(--accent)/0.12)] text-[rgb(var(--text))]"
+                    : "border-[rgb(var(--border-c))] text-[rgb(var(--text-muted))] hover:text-[rgb(var(--text))]",
+                  !canEdit && "opacity-60 cursor-not-allowed",
+                )}
+              >
+                Limit to selected types
+              </button>
+            </div>
+            {ctRestricted && (
+              <>
+                <div className="flex flex-wrap gap-1.5">
+                  {ctOptions.map((ct) => {
+                    const on = ctSelected.has(ct.key);
+                    return (
+                      <button
+                        key={ct.key}
+                        type="button"
+                        disabled={!canEdit}
+                        onClick={() => toggleCtType(ct.key)}
+                        className={cn(
+                          "inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg border transition-colors",
+                          on
+                            ? "border-[rgb(var(--accent)/0.6)] bg-[rgb(var(--accent)/0.12)] text-[rgb(var(--text))]"
+                            : "border-[rgb(var(--border-c))] text-[rgb(var(--text-muted))] hover:text-[rgb(var(--text))]",
+                          !canEdit && "opacity-60 cursor-not-allowed",
+                        )}
+                      >
+                        {on && <Check className="w-3 h-3" />}
+                        {ct.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {ctSelected.size === 0 && (
+                  <p className="mt-2 text-[11px] text-[rgb(var(--warn))] leading-snug">
+                    Nothing selected — this role will see no contacts at all.
+                    Pick at least one type, or switch back to “Sees all”.
+                  </p>
+                )}
+                <p className="mt-2 text-[11px] text-[rgb(var(--text-faint))] leading-snug">
+                  A member sees the union of all their roles’ types; any
+                  unrestricted role grants access to every contact.
+                </p>
+              </>
+            )}
+          </div>
           {/* Search — jump to any module in under a second */}
           <div className="relative mb-3">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[rgb(var(--text-faint))]" />
@@ -1961,6 +2108,7 @@ function PermissionsTab({ canEdit }: { canEdit: boolean }) {
           roleId={selectedRoleId}
           catalog={catalogModules}
           groups={catalog?.groups}
+          contactTypes={catalog?.contact_types}
           canEdit={canEdit}
           onClose={() => setSelectedRoleId(null)}
         />

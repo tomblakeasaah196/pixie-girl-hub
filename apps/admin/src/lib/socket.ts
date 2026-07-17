@@ -71,6 +71,12 @@ export function getSocket(): Socket {
   socket.on("cos_turn:progress", (detail) => {
     window.dispatchEvent(new CustomEvent("pgh:cos_turn:progress", { detail }));
   });
+  // Chief of Staff — batch-plan finished on the worker (PR3). Dedicated event
+  // so the conversation (plan card) refetch doesn't piggyback on every
+  // follow-up signal.
+  socket.on("cos_plan:executed", (detail) => {
+    window.dispatchEvent(new CustomEvent("pgh:cos_plan:executed", { detail }));
+  });
   // Live attendance punch (brand:{brand}:attendance — device binding 000304).
   socket.on("attendance:punch", (detail) => {
     window.dispatchEvent(new CustomEvent("pgh:attendance:punch", { detail }));

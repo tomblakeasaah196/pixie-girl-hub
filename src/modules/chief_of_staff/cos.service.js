@@ -629,8 +629,8 @@ async function getPlan({ user, id }) {
   return { ...plan, steps };
 }
 
-function confirmPlan({ user, request_id, id, auth_header }) {
-  return planExecutor.confirmPlan({ user, request_id, id, auth_header });
+function confirmPlan({ user, request_id, id }) {
+  return planExecutor.confirmPlan({ user, request_id, id });
 }
 
 function rejectPlan({ user, request_id, id, reason }) {

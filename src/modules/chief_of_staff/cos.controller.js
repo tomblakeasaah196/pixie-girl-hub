@@ -75,11 +75,13 @@ async function getPlan(req, res) {
   res.json({ data: await service.getPlan({ user: req.user, id: req.params.planId }) });
 }
 async function confirmPlan(req, res) {
-  res.json({
+  // 202: execution happens on the worker (cos-plan-exec queue); the response
+  // carries the plan in 'executing' state and completion arrives over the
+  // cos_plan:executed realtime push.
+  res.status(202).json({
     data: await service.confirmPlan({
       ...base(req),
       id: req.params.planId,
-      auth_header: req.headers.authorization,
     }),
   });
 }

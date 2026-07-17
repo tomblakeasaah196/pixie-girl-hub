@@ -12,6 +12,7 @@
  *   webhooks-replay    — failed inbound webhook retries
  *   ai-embed           — RAG ingest jobs
  *   report-generate    — weekly Sales + Customer reports (V2.2 §6.30)
+ *   cos-plan-exec      — Chief-of-Staff batch-plan execution (PR3)
  *
  * Cron jobs (timezone Africa/Lagos):
  *   daily 07:00      — AI Briefing
@@ -52,6 +53,7 @@ const queueNames = [
   "cart-ttl",
   "kaizen-backup",
   "calls-lifecycle",
+  "cos-plan-exec",
 ];
 
 const queues = new Map();
@@ -92,6 +94,7 @@ async function startWorkers() {
     "cart-ttl": require("./processors/cart-ttl-processor").processCartTtl,
     "kaizen-backup": require("./processors/kaizen-backup-processor"),
     "calls-lifecycle": require("./processors/calls-processor"),
+    "cos-plan-exec": require("./processors/cos-plan-exec-processor"),
   };
 
   for (const [name, processor] of Object.entries(handlers)) {

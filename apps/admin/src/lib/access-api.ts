@@ -14,6 +14,10 @@ export interface Role {
   updated_at: string;
   permissions?: Permission[];
   members?: RoleMember[];
+  /** Contacts §6.12 visibility: null = unrestricted (sees every contact type);
+   *  an array restricts the role to those types ([] = sees no contacts). Only
+   *  present on GET /access/roles/:id. */
+  contact_type_access?: string[] | null;
 }
 
 export interface Permission {
@@ -59,12 +63,21 @@ export interface CatalogGroup {
   label: string;
 }
 
+/** A contact-type option for the role editor's contacts-visibility control. */
+export interface ContactTypeOption {
+  key: string;
+  label: string;
+}
+
 export interface Catalog {
   modules: CatalogEntry[];
   /** Ordered section headers so the UI can band the columns like the sidebar. */
   groups?: CatalogGroup[];
   actions: string[];
   record_scopes: string[];
+  /** Contacts §6.12 vocabulary for the per-role contact-type visibility control.
+   *  May be absent on older backends — the UI falls back to a local list. */
+  contact_types?: ContactTypeOption[];
 }
 
 // Action display metadata
@@ -111,6 +124,16 @@ export const accessApi = {
       hidden_fields?: string[];
     }>,
   ) => api.put<Permission[]>(`/access/roles/${id}/permissions`, { grants }),
+
+  // ── contact-type visibility (contacts §6.12) ───────────────
+  // null clears the restriction (role sees every type); an array restricts to
+  // those types ([] = the role sees no contacts).
+  getRoleContactTypes: (id: string) =>
+    api.get<string[] | null>(`/access/roles/${id}/contact-types`),
+  setRoleContactTypes: (id: string, contact_types: string[] | null) =>
+    api.put<string[] | null>(`/access/roles/${id}/contact-types`, {
+      contact_types,
+    }),
 
   // ── user ⇄ role grants (per business) ──────────────────────
   listUserRoles: (userId: string) =>

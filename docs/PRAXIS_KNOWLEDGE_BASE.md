@@ -573,13 +573,17 @@ disciplinary queries, targets, rewards, recruitment, and HR analytics.
 **What it's for.** The shared **contact directory** — everyone the businesses deal
 with (customers, suppliers, staff, partners), with tags and milestones.
 **Where.** People → **Contacts** · `/contacts`
-**Who can see it.** `contacts` permission.
+**Who can see it.** `contacts` permission. A role can be limited to specific
+**contact types** (e.g. suppliers only) — see below; unrestricted by default.
 **Common tasks.**
 - *Add a contact?* Contacts → **New Contact** / **Create Contact** / **Add Contact**.
 - *Open a contact?* Contacts → click a row → `/contacts/<id>`.
 - *See birthdays / milestones?* Contacts → **Milestones** (`/contacts/milestones`).
 - *Add a new staff member?* `/contacts/staff/new`.
 - *Manage contact tags?* Settings → **Contact Tags** (`/settings/contact-tags`).
+- *Limit who sees which contact types (clients vs suppliers)?* Org & Workflow →
+  open the role → **Contact visibility** (`/org-workflow`). E.g. give
+  supplier-facing staff suppliers only, hiding the client book.
 
 ### 4.23 Retention
 **What it's for.** Keeping customers — loyalty, rewards, referrals, coupons,
@@ -649,6 +653,10 @@ positions, roles, the permission matrix, and approval routing rules.
 **Common tasks.**
 - *Create a role / edit what a role can do?* Org & Workflow → **Add a role** /
   the role × module permission matrix.
+- *Limit which contact types a role sees (clients vs suppliers)?* Org & Workflow
+  → open the role → **Contact visibility**: "Sees all contact types" (default)
+  or "Limit to selected types" (customers, suppliers, staff, retail/stylist
+  partners). Members see the union of their roles' types; the CEO sees all.
 - *Add a position / build the org chart?* Org & Workflow → **Add a position**.
 - *See every department in one chart / print or share the org chart?* Org &
   Workflow → Org Chart tab → the **Full Organigramme** pill at the bottom of

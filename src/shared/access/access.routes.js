@@ -69,6 +69,19 @@ router.put(
   controller.setRolePermissions,
 );
 
+// ── contact-type visibility (contacts §6.12) ───────────────
+router.get(
+  "/roles/:role_id/contact-types",
+  requirePermission("settings", "view"),
+  controller.getRoleContactTypes,
+);
+router.put(
+  "/roles/:role_id/contact-types",
+  requirePermission("settings", "edit"),
+  validator.validateContactTypes,
+  controller.setRoleContactTypes,
+);
+
 // ── user-role grants ───────────────────────────────────────
 router.get(
   "/users/:user_id/roles",

@@ -37,6 +37,13 @@ const permissionsSchema = z.object({
   grants: z.array(grantSchema).max(500),
 });
 
+// Contact-type visibility (contacts §6.12). `null` clears the restriction
+// (role sees every type again); an array restricts to those types (the service
+// checks each value against the catalog). Empty array = the role sees none.
+const contactTypesSchema = z.object({
+  contact_types: z.array(z.string().min(1).max(40)).max(20).nullable(),
+});
+
 const grantRoleSchema = z.object({
   role_id: uuid,
   business: z.string().min(1).max(60), // brand key or '*'
@@ -71,6 +78,7 @@ module.exports = {
   validateRoleCreate: makeBody(roleCreateSchema),
   validateRoleUpdate: makeBody(roleUpdateSchema),
   validatePermissions: makeBody(permissionsSchema),
+  validateContactTypes: makeBody(contactTypesSchema),
   validateGrantRole: makeBody(grantRoleSchema),
   validateUserAccess: makeBody(userAccessSchema),
   validateRevokeQuery: makeQuery(revokeQuerySchema),

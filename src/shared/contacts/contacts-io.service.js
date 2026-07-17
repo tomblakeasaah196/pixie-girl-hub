@@ -22,6 +22,7 @@ const repo = require("./contacts.repo");
 const service = require("./contacts.service");
 const { contactCreateChecked, addressCreate } = require("./contacts.validator");
 const { buildCsv, parseUpload } = require("../../services/spreadsheet.service");
+const { PermissionDeniedError } = require("../../utils/errors");
 
 // ── small coercion helpers ───────────────────────────────
 const isBlank = (v) => v === undefined || v === null || String(v).trim() === "";
@@ -372,8 +373,16 @@ async function importContacts({
   kind,
   buffer,
   filename,
+  allowedTypes = null,
 }) {
   const k = normaliseKind(kind) === "suppliers" ? "suppliers" : "clients";
+  // Contact-type visibility (contacts §6.12): a role that can't see a kind may
+  // not bulk-create it either (it would import contacts it then can't view).
+  if (Array.isArray(allowedTypes) && !allowedTypes.includes(KIND_TYPE[k])) {
+    throw new PermissionDeniedError(
+      `You don't have access to import ${KIND_LABEL[k].toLowerCase()}`,
+    );
+  }
   const rows = await parseUpload({ buffer, filename });
 
   const results = [];

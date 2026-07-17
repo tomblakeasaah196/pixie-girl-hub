@@ -38,6 +38,7 @@ import {
   type Tone,
 } from "@/components/ui/primitives";
 import { Drawer } from "@/components/ui/Drawer";
+import { Modal } from "@/components/ui/Modal";
 import { Timeline } from "@/components/ui/Timeline";
 import { OrgGraph } from "@/components/hub/OrgGraph";
 import { useAuthStore } from "@/stores/auth";
@@ -995,6 +996,11 @@ function OrgTab({
 
 const ACTION_ORDER = ["view", "create", "edit", "delete", "approve", "export"];
 
+// The seeded CEO/superuser role (shared.roles). It underpins the whole
+// permission-bypass model, so it is never deletable — the backend rejects it
+// too (access.guards). Keep in sync with OWNER_ROLE_ID there.
+const OWNER_ROLE_ID = "11111111-1111-1111-1111-000000000001";
+
 function RoleEditorDrawer({
   roleId,
   catalog,
@@ -1016,6 +1022,11 @@ function RoleEditorDrawer({
   );
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Delete-role confirmation (checkbox acknowledgement).
+  const [showDelete, setShowDelete] = useState(false);
+  const [deleteAck, setDeleteAck] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const { data: role, isLoading } = useQuery({
     queryKey: ["role-detail", roleId],
@@ -1042,7 +1053,7 @@ function RoleEditorDrawer({
   }
 
   function toggleAction(module: string, action: string) {
-    if (!canEdit || role?.is_system) return;
+    if (!canEdit) return;
     initPending();
     const key = `${module}.${action}`;
     const next = new Map(dirty ? pendingGrants : permMap);
@@ -1096,7 +1107,7 @@ function RoleEditorDrawer({
   // Bulk: ADD the given actions across a set of modules (union — never removes
   // an existing grant). Powers the per-section "View" / "Full access" buttons.
   function grantModulesActions(mods: CatalogEntry[], actions: string[]) {
-    if (!canEdit || role?.is_system) return;
+    if (!canEdit) return;
     initPending();
     const next = new Map(dirty ? pendingGrants : permMap);
     for (const cat of mods) {
@@ -1120,7 +1131,7 @@ function RoleEditorDrawer({
 
   // Bulk: remove every grant across a set of modules.
   function clearModules(mods: CatalogEntry[]) {
-    if (!canEdit || role?.is_system) return;
+    if (!canEdit) return;
     initPending();
     const next = new Map(dirty ? pendingGrants : permMap);
     for (const cat of mods) {
@@ -1149,7 +1160,31 @@ function RoleEditorDrawer({
     }
   }
 
+  async function handleDelete() {
+    if (!role) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await accessApi.deleteRole(role.role_id);
+      qc.invalidateQueries({ queryKey: ["roles"] });
+      qc.invalidateQueries({ queryKey: ["roles-permissions-all"] });
+      toast.success(`Role "${role.role_name}" deleted`);
+      setShowDelete(false);
+      onClose();
+    } catch (e) {
+      setDeleteError(
+        e instanceof Error ? e.message : "Failed to delete this role",
+      );
+      setDeleting(false);
+    }
+  }
+
   const isSystemRole = role?.is_system ?? false;
+  // Members lose this role's access the moment it's deleted — surface the count.
+  const memberCount = role?.members?.length ?? role?.member_count ?? 0;
+  // The owner role is never deletable (backend rejects it too); everything else
+  // may be deleted by a Settings admin.
+  const canDeleteRole = canEdit && !!role && role.role_id !== OWNER_ROLE_ID;
 
   return (
     <Drawer
@@ -1170,19 +1205,34 @@ function RoleEditorDrawer({
         )
       }
       footer={
-        canEdit && !isSystemRole ? (
-          <>
-            <Button variant="ghost" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              disabled={!dirty || saving}
-              onClick={handleSave}
-            >
-              {saving ? "Saving…" : "Save permissions"}
-            </Button>
-          </>
+        canEdit ? (
+          <div className="flex items-center gap-2 w-full">
+            {canDeleteRole && (
+              <Button
+                variant="danger"
+                icon={<Trash2 className="w-4 h-4" />}
+                onClick={() => {
+                  setDeleteAck(false);
+                  setDeleteError(null);
+                  setShowDelete(true);
+                }}
+              >
+                Delete role
+              </Button>
+            )}
+            <div className="ml-auto flex items-center gap-2">
+              <Button variant="ghost" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                disabled={!dirty || saving}
+                onClick={handleSave}
+              >
+                {saving ? "Saving…" : "Save permissions"}
+              </Button>
+            </div>
+          </div>
         ) : undefined
       }
     >
@@ -1200,10 +1250,12 @@ function RoleEditorDrawer({
             </p>
           )}
           {isSystemRole && (
-            <div className="flex items-center gap-2 mb-4 p-3 rounded-xl bg-[rgb(var(--warn)/0.08)] border border-[rgb(var(--warn)/0.25)]">
-              <Lock className="w-4 h-4 text-[rgb(var(--warn))] shrink-0" />
-              <span className="text-[12.5px] text-[rgb(var(--warn))]">
-                System role — permissions are read-only
+            <div className="flex items-start gap-2 mb-4 p-3 rounded-xl bg-[rgb(var(--warn)/0.08)] border border-[rgb(var(--warn)/0.25)]">
+              <AlertTriangle className="w-4 h-4 text-[rgb(var(--warn))] shrink-0 mt-0.5" />
+              <span className="text-[12.5px] text-[rgb(var(--warn))] leading-snug">
+                Seeded system role — edits change the platform default and take
+                effect on each member's next request. Deleting it removes it for
+                everyone; it won't return until a migration re-seeds it.
               </span>
             </div>
           )}
@@ -1237,7 +1289,7 @@ function RoleEditorDrawer({
               <div key={grp.key}>
                 <div className="flex items-center justify-between mb-1.5 px-0.5">
                   <div className="micro">{grp.label}</div>
-                  {canEdit && !isSystemRole && (
+                  {canEdit && (
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() =>
@@ -1324,12 +1376,10 @@ function RoleEditorDrawer({
                             <button
                               key={action}
                               onClick={() => toggleAction(cat.module, action)}
-                              disabled={isSystemRole || !canEdit}
+                              disabled={!canEdit}
                               className={cn(
                                 "flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-[12px] font-medium transition-all",
-                                isSystemRole || !canEdit
-                                  ? "cursor-default"
-                                  : "cursor-pointer",
+                                !canEdit ? "cursor-default" : "cursor-pointer",
                                 granted
                                   ? "border-transparent"
                                   : "border-[rgb(var(--border-c))] text-[rgb(var(--text-muted))] hover:border-[rgb(var(--text)/0.2)]",
@@ -1355,9 +1405,7 @@ function RoleEditorDrawer({
                         })}
                       </div>
                       {/* Scope + hidden fields for view grant */}
-                      {effectiveMap.has(`${cat.module}.view`) &&
-                        canEdit &&
-                        !isSystemRole && (
+                      {effectiveMap.has(`${cat.module}.view`) && canEdit && (
                           <div className="pt-2 border-t border-[rgb(var(--border-c))] space-y-2">
                             <div className="micro">
                               Data access refinement (view)
@@ -1421,6 +1469,82 @@ function RoleEditorDrawer({
             ))}
           </div>
         </>
+      )}
+
+      {showDelete && role && (
+        <Modal
+          open
+          onClose={() => {
+            if (!deleting) setShowDelete(false);
+          }}
+          title="Delete role"
+          footer={
+            <>
+              <Button
+                variant="ghost"
+                onClick={() => setShowDelete(false)}
+                disabled={deleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                icon={<Trash2 className="w-4 h-4" />}
+                disabled={!deleteAck || deleting}
+                onClick={handleDelete}
+              >
+                {deleting ? "Deleting…" : "Delete role"}
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-3">
+            <div className="flex items-start gap-2 p-3 rounded-xl bg-[rgb(var(--danger)/0.08)] border border-[rgb(var(--danger)/0.25)]">
+              <AlertTriangle className="w-4 h-4 text-[rgb(var(--danger))] shrink-0 mt-0.5" />
+              <div className="text-[12.5px] text-[rgb(var(--danger))] leading-snug">
+                You're about to permanently delete{" "}
+                <span className="font-semibold">{role.role_name}</span>. This
+                can't be undone.
+              </div>
+            </div>
+            <ul className="text-[13px] text-[rgb(var(--text-muted))] space-y-1.5 list-disc pl-5">
+              <li>
+                It will be removed from{" "}
+                <span className="font-semibold text-[rgb(var(--text))]">
+                  {memberCount} member{memberCount === 1 ? "" : "s"}
+                </span>
+                , who lose whatever access it granted on their next request.
+              </li>
+              {isSystemRole && (
+                <li>
+                  This is a{" "}
+                  <span className="font-semibold text-[rgb(var(--text))]">
+                    seeded system role
+                  </span>{" "}
+                  — it won't exist again until a migration re-seeds it.
+                </li>
+              )}
+              <li>Its permission grants are erased. The audit trail is kept.</li>
+            </ul>
+            {deleteError && (
+              <div className="text-[12.5px] text-[rgb(var(--danger))]">
+                {deleteError}
+              </div>
+            )}
+            <label className="flex items-start gap-2 cursor-pointer select-none pt-1">
+              <input
+                type="checkbox"
+                checked={deleteAck}
+                onChange={(e) => setDeleteAck(e.target.checked)}
+                className="mt-0.5 accent-[rgb(var(--danger))]"
+              />
+              <span className="text-[13px] text-[rgb(var(--text))]">
+                I understand this permanently deletes the role and removes it
+                from {memberCount} member{memberCount === 1 ? "" : "s"}.
+              </span>
+            </label>
+          </div>
+        </Modal>
       )}
     </Drawer>
   );

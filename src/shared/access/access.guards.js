@@ -1,15 +1,18 @@
 /**
  * Access escalation guards (V2.2 §3 — RBAC).
  *
- * Pure functions (throw on violation) that stop a delegated administrator —
- * someone with `settings` permission but who is NOT the owner/CEO — from
- * escalating their own privileges. The owner (is_ceo) bypasses these, as the
- * owner already bypasses all permission checks.
+ * Pure functions (throw on violation). Two foundational protections hold no
+ * matter who the actor is — they underpin the whole permission model:
+ *   - the `owner` role can never be DELETED (it is the CEO/superuser role), and
+ *   - only the owner (is_ceo) may GRANT or REVOKE the `owner` role, so no one
+ *     can promote themselves (or anyone else) to CEO.
  *
- * Rules:
- *   - System roles (is_system) cannot be deleted by anyone (foundational).
- *   - System roles' definition/permissions can only be changed by the owner.
- *   - The `owner` role can only be granted/revoked by the owner.
+ * Per owner directive (2026-07): editing a role's definition/permissions and
+ * deleting a NON-owner role — including seeded SYSTEM roles — are governed by
+ * the route-level `settings` permission alone. There is no extra owner-only
+ * lock on system roles. (Reverting to owner-only is a one-function change here
+ * plus the matching UI gate.) The Access UI surfaces the risk of editing or
+ * deleting a seeded role and requires an explicit confirmation before deleting.
  */
 
 "use strict";
@@ -22,24 +25,24 @@ const OWNER_ROLE_ID = "11111111-1111-1111-1111-000000000001";
 const isOwnerActor = (actor) => Boolean(actor && actor.is_ceo);
 const isOwnerRole = (role) => role && role.role_id === OWNER_ROLE_ID;
 
-function assertCanMutateRole(actor, role) {
-  if (role && role.is_system && !isOwnerActor(actor)) {
-    throw new PermissionDeniedError("Only the owner can modify a system role");
+// Editing a role's name/description. Gated by settings:edit at the route;
+// system roles carry no extra lock (owner directive).
+function assertCanMutateRole(_actor, _role) {
+  // intentionally permissive — see file header.
+}
+
+// Deleting a role. A settings admin may delete any role EXCEPT the foundational
+// `owner` role, which the CEO-bypass model depends on.
+function assertCanDeleteRole(_actor, role) {
+  if (isOwnerRole(role)) {
+    throw new ConflictError("The owner role cannot be deleted");
   }
 }
 
-function assertCanDeleteRole(actor, role) {
-  if (role && role.is_system) {
-    throw new ConflictError("System roles cannot be deleted");
-  }
-}
-
-function assertCanEditPermissions(actor, role) {
-  if (role && role.is_system && !isOwnerActor(actor)) {
-    throw new PermissionDeniedError(
-      "Only the owner can edit a system role's permissions",
-    );
-  }
+// Editing a role's permission matrix. Gated by settings:edit at the route;
+// system roles carry no extra lock (owner directive).
+function assertCanEditPermissions(_actor, _role) {
+  // intentionally permissive — see file header.
 }
 
 function assertCanGrantRole(actor, role) {

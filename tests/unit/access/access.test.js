@@ -48,24 +48,27 @@ describe("catalog", () => {
 });
 
 describe("escalation guards", () => {
-  test("system roles cannot be deleted by anyone", () => {
-    expect(() => guards.assertCanDeleteRole(owner, systemRole)).toThrow(
+  test("the owner role can never be deleted; any other role can", () => {
+    // Foundational: the owner role underpins the CEO bypass — never deletable.
+    expect(() => guards.assertCanDeleteRole(owner, ownerRole)).toThrow(
       ConflictError,
     );
-    expect(() => guards.assertCanDeleteRole(admin, systemRole)).toThrow(
+    expect(() => guards.assertCanDeleteRole(admin, ownerRole)).toThrow(
       ConflictError,
     );
+    // Per owner directive, a settings admin may delete seeded system roles and
+    // custom roles alike (the route enforces settings:delete).
+    expect(() => guards.assertCanDeleteRole(admin, systemRole)).not.toThrow();
     expect(() => guards.assertCanDeleteRole(admin, customRole)).not.toThrow();
   });
 
-  test("only owner may mutate / repermission system roles", () => {
-    expect(() => guards.assertCanMutateRole(admin, systemRole)).toThrow(
-      PermissionDeniedError,
-    );
+  test("editing role definition / permissions is not owner-locked", () => {
+    // Governed by settings:edit at the route — no extra system-role lock.
+    expect(() => guards.assertCanMutateRole(admin, systemRole)).not.toThrow();
     expect(() => guards.assertCanMutateRole(owner, systemRole)).not.toThrow();
-    expect(() => guards.assertCanEditPermissions(admin, systemRole)).toThrow(
-      PermissionDeniedError,
-    );
+    expect(() =>
+      guards.assertCanEditPermissions(admin, systemRole),
+    ).not.toThrow();
     expect(() =>
       guards.assertCanEditPermissions(admin, customRole),
     ).not.toThrow();

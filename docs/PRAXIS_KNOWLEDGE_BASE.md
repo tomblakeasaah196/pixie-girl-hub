@@ -639,6 +639,13 @@ messages across WhatsApp, SMS, and other channels in one place.
 **Common tasks.**
 - *Reply to a customer on WhatsApp/SMS?* Messaging (`/smartcomm`) — pick the
   conversation and send.
+- *Email a customer?* Open their **email** conversation. The composer shows a
+  **Subject** line (defaults to the thread's subject — edit it freely), a
+  **+ Cc** button to copy other recipients, and the paperclip to attach files
+  (PDFs, images, docs). Attachments **stage** as chips and go out **with** the
+  next message, so one Send delivers body + subject + Cc + every file as a
+  single **branded** email (the brand's logo, colours and footer are applied
+  automatically — nothing to configure per message).
 - *Share products / a bundle / a service in a chat?* Open the conversation →
   the **catalogue icon** in the composer → pick Base / Styled / **Bundle** /
   Service items → **Send**. The customer gets photo cards plus one short

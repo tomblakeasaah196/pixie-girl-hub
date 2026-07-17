@@ -121,6 +121,89 @@ function sanitiseMessageMetadata(messageType, metadata) {
   return Object.keys(out).length ? out : null;
 }
 
+// ── Email envelope helpers ────────────────────────────────
+// The three pieces the "make our email replies look like brand mail"
+// work needs: a clean Cc list, plain text → branded HTML body, and the
+// branded-shell wrapper. Kept here (not in email.service) because the
+// house style is resolved per-brand from Settings, the same source the
+// campaign / transactional mail uses.
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Normalise an operator-supplied Cc into a clean, de-duplicated list of
+ * valid addresses. Accepts an array (the composer sends one) or a raw
+ * comma/semicolon string (a subscriber or API caller might). Invalid or
+ * duplicate entries are dropped, capped at 25 so one call can't fan a
+ * copy out to a whole list.
+ */
+function normaliseCcList(cc) {
+  if (!cc) return [];
+  const arr = Array.isArray(cc) ? cc : String(cc).split(/[,;]/);
+  const seen = new Set();
+  const out = [];
+  for (const raw of arr) {
+    const e = String(raw || "").trim().toLowerCase();
+    if (e && EMAIL_RE.test(e) && !seen.has(e)) {
+      seen.add(e);
+      out.push(e);
+    }
+  }
+  return out.slice(0, 25);
+}
+
+/**
+ * Turn the operator's plain-text message into escaped HTML paragraphs for
+ * the branded email body. Blank lines separate paragraphs; single
+ * newlines become <br>. Everything is HTML-escaped first — this is
+ * operator free text, never trusted markup.
+ */
+function textToEmailHtml(text) {
+  const { esc } = require("../../services/email-theme");
+  const blocks = String(text || "")
+    .split(/\n{2,}/)
+    .map((b) => b.trim())
+    .filter(Boolean);
+  return blocks
+    .map(
+      (b) =>
+        `<p style="margin:0 0 14px;line-height:1.62">${esc(b).replace(/\n/g, "<br>")}</p>`,
+    )
+    .join("");
+}
+
+/**
+ * Wrap a conversational email body in the brand's house shell (logo,
+ * accent, footer) so a reply typed in Messaging arrives looking like the
+ * brand's marketing/transactional mail — resolved per-brand from Settings,
+ * nothing hard-coded. Falls back to a bare escaped paragraph if the brand
+ * lookup or render ever fails, so branding can never block a customer
+ * reply from going out.
+ */
+async function buildBrandedConversationalEmail({ brand, text }) {
+  const raw = String(text || "");
+  try {
+    const emailRender = require("../email_campaigns/email-render");
+    const { buildTransactionalEmail } = require("../../services/transactional-email");
+    const brandTokens = await emailRender.resolveBrandTokens(brand);
+    const preheader = raw.replace(/\s+/g, " ").trim().slice(0, 140);
+    const { html, text: plain } = buildTransactionalEmail({
+      brandTokens,
+      bodyHtml: textToEmailHtml(raw),
+      preheader,
+    });
+    return { html, text: raw || plain };
+  } catch (err) {
+    const { logger } = require("../../config/logger");
+    logger.warn(
+      { err: err.message, brand },
+      "smartcomm: branded email render failed — sending plain body",
+    );
+    const { esc } = require("../../services/email-theme");
+    return { html: `<p>${esc(raw).replace(/\n/g, "<br>")}</p>`, text: raw };
+  }
+}
+
 /**
  * Resolve whether the user is allowed to act on a platform for a brand.
  * The rule lives in platformAllows() so the inbox list filter agrees with
@@ -522,6 +605,18 @@ async function postMessage({ brand, user, request_id, id, input }) {
         );
       }
     }
+    // Card metadata (product_share/invoice/template) is whitelisted; on an
+    // email thread the operator's envelope (subject + Cc) rides alongside it
+    // so the outbound builder — and the thread record — can see it.
+    let metadata = sanitiseMessageMetadata(input.message_type, input.metadata);
+    if (channel.external_platform === "email" && (input.subject || input.cc)) {
+      const cc = normaliseCcList(input.cc);
+      metadata = {
+        ...(metadata || {}),
+        ...(input.subject ? { subject: String(input.subject).slice(0, 300) } : {}),
+        ...(cc.length ? { cc } : {}),
+      };
+    }
     const msg = await repo.insertMessage({
       client,
       message: {
@@ -532,7 +627,7 @@ async function postMessage({ brand, user, request_id, id, input }) {
         reply_to_id: input.reply_to_id,
         delivery_status:
           channel.channel_type === "customer_thread" ? "queued" : "sent",
-        metadata: sanitiseMessageMetadata(input.message_type, input.metadata),
+        metadata,
       },
     });
     // Attach documents if supplied.
@@ -590,6 +685,16 @@ async function postMessage({ brand, user, request_id, id, input }) {
     sender_user_id: user.user_id,
     external_platform: posted.channel.external_platform,
   });
+  // Keep the email thread's stored subject in step with the latest one the
+  // operator sent, so the thread header + the next reply's default follow it.
+  if (posted.channel.external_platform === "email" && input.subject) {
+    await query(
+      `UPDATE shared.message_channels
+          SET metadata = shared.message_channels.metadata || jsonb_build_object('subject', $2::text)
+        WHERE channel_id = $1`,
+      [id, String(input.subject).slice(0, 300)],
+    );
+  }
   await flushOutboundJobs(posted.jobs);
   return posted.msg;
 }
@@ -1513,15 +1618,49 @@ async function buildOutboundJobsForChannel({
 
   if (platform === "email") {
     const to = c.email;
-    if (!to) return [];
+    if (!to) return fail("NO_EMAIL_ON_FILE");
+    const mmeta = message.metadata || {};
+    // Subject: an explicit per-message subject wins, then the thread's
+    // stored subject, then a neutral default.
+    const subject = mmeta.subject || meta.subject || "A message from us";
+    // Cc copy recipients the operator added on this message.
+    const cc = normaliseCcList(mmeta.cc);
+    // Resolve the message's stored files into mail attachments. Only the
+    // storage KEY rides the queue — the email processor loads the bytes at
+    // send time (see email.service resolveAttachments), so a large PDF
+    // never bloats the Redis job payload.
+    const attachmentRows = await repo.getAttachmentsForSend({
+      client,
+      message_id: message.message_id,
+    });
+    const attachments = attachmentRows
+      .filter((a) => a.file_path)
+      .map((a) => ({
+        filename: a.display_name || "attachment",
+        storage_key: a.file_path,
+        content_type: a.mime_type || undefined,
+      }));
+    // A send with neither a body nor a file has nothing to deliver.
+    if (!String(content || "").trim() && attachments.length === 0) {
+      return fail("NOTHING_TO_SEND");
+    }
+    // Brand the plain-text body into the house email shell so the reply
+    // looks like the brand's other mail, not a bare paragraph.
+    const branded = await buildBrandedConversationalEmail({
+      brand: channel.business,
+      text: content,
+    });
     return [
       {
         queue: "email-send",
         name: "customer-email",
         data: {
           to,
-          subject: meta.subject || "A message from us",
-          html: content,
+          cc: cc.length ? cc : undefined,
+          subject,
+          html: branded.html,
+          text: branded.text,
+          attachments: attachments.length ? attachments : undefined,
           in_reply_to: meta.in_reply_to,
           smartcomm_message_id: message.message_id,
           channel_id: channel.channel_id,
@@ -2079,6 +2218,7 @@ async function sendToCustomer({
   contact_id,
   channel,
   subject,
+  cc,
   body,
   user,
   soft,
@@ -2140,6 +2280,17 @@ async function sendToCustomer({
       contact_id,
       platform: channel === "email" ? "email" : channel,
     });
+    // Stamp the email envelope on the message so buildOutboundJobsForChannel
+    // uses THIS send's subject/Cc (a brand-new thread has none on the channel
+    // yet — the channel-subject UPDATE below only runs post-commit).
+    const ccList = channel === "email" ? normaliseCcList(cc) : [];
+    const emailMeta =
+      channel === "email" && (subject || ccList.length)
+        ? {
+            ...(subject ? { subject: String(subject).slice(0, 300) } : {}),
+            ...(ccList.length ? { cc: ccList } : {}),
+          }
+        : undefined;
     const m = await repo.insertMessage({
       client,
       message: {
@@ -2148,6 +2299,7 @@ async function sendToCustomer({
         message_type: user ? "text" : "system",
         content: body,
         delivery_status: "queued",
+        metadata: emailMeta,
       },
     });
     const outboundJobs = await buildOutboundJobsForChannel({

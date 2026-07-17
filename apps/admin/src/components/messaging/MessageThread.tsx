@@ -60,7 +60,12 @@ import { toastReport } from "@/lib/error-report";
 import { useUploadProgress } from "@/lib/use-upload";
 import { isHeicFile } from "@/lib/heic";
 import { UploadProgress } from "@/components/ui/UploadProgress";
-import type { Channel, Message, QuickReply } from "@/lib/smartcomm-types";
+import type {
+  Channel,
+  Message,
+  MessageType,
+  QuickReply,
+} from "@/lib/smartcomm-types";
 import { MessageBubble } from "./MessageBubble";
 import { WhatsAppWindowBadge } from "./WhatsAppWindowBadge";
 import { PlatformPill } from "./PlatformPill";
@@ -131,6 +136,19 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
     start: number;
     end: number;
   } | null>(null);
+  // Email composer extras (customer email threads only): a subject line, an
+  // optional Cc, and files STAGED to send together with the next message —
+  // an email is one letter (body + subject + Cc + all attachments), unlike
+  // WhatsApp/IG where each file is its own immediate bubble.
+  const [subjectDraft, setSubjectDraft] = useState("");
+  const [ccInput, setCcInput] = useState("");
+  const [showCc, setShowCc] = useState(false);
+  const [pendingFiles, setPendingFiles] = useState<
+    { document_id: string; display_name: string; kind: MessageType }[]
+  >([]);
+  // Seed the subject from the thread's stored subject once per channel (only
+  // when the operator hasn't started typing their own).
+  const subjectSeededRef = useRef<string | null>(null);
 
   const canPraxis = useAuthStore((s) => s.can);
   const { data: composerSettings } = useComposerSettings();
@@ -183,6 +201,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
   const platform = channel ? getChannelPlatform(channel) : "internal";
   const isWhatsapp = platform === "whatsapp";
   const isInstagram = platform === "instagram";
+  const isEmail = platform === "email";
   const windowOpen = useMemo(() => {
     if (!channel?.wa_window_expires_at) return platform !== "whatsapp";
     return new Date(channel.wa_window_expires_at).getTime() > Date.now();
@@ -211,6 +230,25 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
     initialJumpedRef.current = null;
     lastLenRef.current = 0;
   }, [channelId]);
+
+  // Reset the email composer extras when switching threads so a staged
+  // attachment or Cc never leaks from one customer to the next.
+  useEffect(() => {
+    setPendingFiles([]);
+    setCcInput("");
+    setShowCc(false);
+    setSubjectDraft("");
+    subjectSeededRef.current = null;
+  }, [channelId]);
+
+  // Seed the subject from the thread's stored subject once the channel has
+  // loaded (guarded so re-renders / the operator clearing it don't re-seed).
+  useEffect(() => {
+    if (platform !== "email" || !channel) return;
+    if (subjectSeededRef.current === channelId) return;
+    subjectSeededRef.current = channelId;
+    setSubjectDraft(String(channel.metadata?.subject ?? ""));
+  }, [channelId, channel, platform]);
 
   // Then, in a useLayoutEffect (so it runs BEFORE paint), pin the
   // scroll container to its bottom on the first render carrying any
@@ -269,7 +307,84 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
     if (textareaRef.current) textareaRef.current.style.height = "auto";
   }
 
+  /** Parse a raw Cc field into a clean, de-duplicated list of addresses. */
+  function parseCc(raw: string): string[] {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const part of raw.split(/[,;\s]+/)) {
+      const e = part.trim().toLowerCase();
+      if (e && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) && !seen.has(e)) {
+        seen.add(e);
+        out.push(e);
+      }
+    }
+    return out;
+  }
+
+  // Email threads send the body + subject + Cc + all staged files as ONE
+  // branded letter, so they take a dedicated path.
+  async function handleSendEmail() {
+    setError(null);
+    const text = content.trim();
+    if (!text && pendingFiles.length === 0) return;
+    if (editing) {
+      // Edits are plain content updates — no envelope.
+      try {
+        setBusy("sending");
+        await smartcommApi.editMessage(editing.message_id, text);
+        setEditing(null);
+        resetTextarea();
+        invalidate();
+      } catch (e: unknown) {
+        toastReport("Messaging → Thread", "Send message", e);
+        setError(e instanceof Error ? e.message : "Could not send");
+      } finally {
+        setBusy(null);
+      }
+      return;
+    }
+    const cc = showCc ? parseCc(ccInput) : [];
+    const attachments = pendingFiles.map((f) => ({
+      document_id: f.document_id,
+      display_name: f.display_name,
+    }));
+    // One file → its natural type (renders inline in the thread); several,
+    // or none, → "document" so mixed staged files still render per-mime.
+    const message_type: MessageType =
+      attachments.length === 0
+        ? "text"
+        : pendingFiles.length === 1
+          ? pendingFiles[0].kind
+          : "document";
+    try {
+      setBusy("sending");
+      await smartcommApi.postMessage(channelId, {
+        content: text || undefined,
+        message_type,
+        reply_to_id: replyTo?.message_id,
+        subject: subjectDraft.trim() || undefined,
+        cc: cc.length ? cc : undefined,
+        attachments: attachments.length ? attachments : undefined,
+      });
+      setReplyTo(null);
+      resetTextarea();
+      setPendingFiles([]);
+      // Clear the Cc after each send so a later reply doesn't silently keep
+      // copying third parties. Subject stays (it's the thread's subject).
+      setCcInput("");
+      setShowCc(false);
+      setPraxisDrafted(false);
+      invalidate();
+    } catch (e: unknown) {
+      toastReport("Messaging → Thread", "Send message", e);
+      setError(e instanceof Error ? e.message : "Could not send");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function handleSend() {
+    if (isEmail) return handleSendEmail();
     setError(null);
     const text = content.trim();
     if (!text) return;
@@ -411,35 +526,50 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
     window.setTimeout(() => setHighlightId(null), 2200);
   }
 
+  /** Map a File to the smartcomm message_type used for rendering. HEIC often
+   *  arrives with an empty mime on desktop; treat it as an image (the server
+   *  converts it to JPEG) so it renders inline, not as a document link. */
+  function fileKind(file: File): MessageType {
+    if (file.type.startsWith("image/") || isHeicFile(file)) return "image";
+    if (file.type.startsWith("video/")) return "video";
+    if (file.type.startsWith("audio/")) return "voice_note";
+    return "document";
+  }
+
+  /** Upload one file to the documents store, returning its id. `mapPct`
+   *  turns this file's 0-100 progress into the aggregate bar percentage. */
+  async function uploadFile(
+    file: File,
+    mapPct?: (p: number) => number,
+  ): Promise<string> {
+    const form = new FormData();
+    form.append("file", file);
+    form.append("document_type", "message_attachment");
+    form.append("title", file.name);
+    const { document_id } = await runUpload((report) =>
+      postFormJson<{ document_id: string }>("/documents", form, (p) =>
+        report(mapPct ? mapPct(p) : p),
+      ),
+    );
+    return document_id;
+  }
+
   async function handleFiles(files: FileList | File[] | null) {
     if (!files || files.length === 0) return;
+    // Email: STAGE the files (upload now, send with the next message) so the
+    // body + subject + Cc + every attachment go out as one branded letter.
+    if (isEmail) return stageEmailFiles(files);
     setBusy("uploading");
     setError(null);
     try {
       const list = Array.from(files);
       for (let i = 0; i < list.length; i += 1) {
         const file = list[i];
-        const form = new FormData();
-        form.append("file", file);
-        form.append("document_type", "message_attachment");
-        form.append("title", file.name);
-        const { document_id } = await runUpload((onProgress) =>
-          postFormJson<{ document_id: string }>("/documents", form, (p) =>
-            onProgress(Math.round(((i + p / 100) / list.length) * 100)),
-          ),
+        const document_id = await uploadFile(file, (p) =>
+          Math.round(((i + p / 100) / list.length) * 100),
         );
-        // HEIC often arrives with an empty mime on desktop; treat it as an
-        // image (the server converts it to JPEG) so it renders inline, not as
-        // a document link.
-        const type = file.type.startsWith("image/") || isHeicFile(file)
-          ? "image"
-          : file.type.startsWith("video/")
-            ? "video"
-            : file.type.startsWith("audio/")
-              ? "voice_note"
-              : "document";
         await smartcommApi.postMessage(channelId, {
-          message_type: type,
+          message_type: fileKind(file),
           attachments: [{ document_id, display_name: file.name }],
           content: content.trim() || undefined,
           is_human_agent: igWindowClosed || undefined,
@@ -447,6 +577,33 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
       }
       resetTextarea();
       invalidate();
+    } catch (e: unknown) {
+      toastReport("Messaging → Thread", "Upload attachment", e);
+      setError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** Upload dropped/selected files and stage them on the email composer. */
+  async function stageEmailFiles(files: FileList | File[]) {
+    setBusy("uploading");
+    setError(null);
+    try {
+      const list = Array.from(files);
+      const staged: {
+        document_id: string;
+        display_name: string;
+        kind: MessageType;
+      }[] = [];
+      for (let i = 0; i < list.length; i += 1) {
+        const file = list[i];
+        const document_id = await uploadFile(file, (p) =>
+          Math.round(((i + p / 100) / list.length) * 100),
+        );
+        staged.push({ document_id, display_name: file.name, kind: fileKind(file) });
+      }
+      setPendingFiles((prev) => [...prev, ...staged]);
     } catch (e: unknown) {
       toastReport("Messaging → Thread", "Upload attachment", e);
       setError(e instanceof Error ? e.message : "Upload failed");
@@ -1105,6 +1262,82 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
               {uploadProgress !== null && (
                 <UploadProgress value={uploadProgress} label="Attaching…" />
               )}
+              {isEmail && !editing && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 rounded-xl border hairline bg-panel-2 px-3">
+                    <span className="text-[11px] font-medium uppercase tracking-wide text-text-faint shrink-0">
+                      Subject
+                    </span>
+                    <input
+                      value={subjectDraft}
+                      onChange={(e) => setSubjectDraft(e.target.value)}
+                      placeholder="What's this email about?"
+                      className="flex-1 bg-transparent py-2 text-[13px] focus:outline-none placeholder:text-text-faint"
+                    />
+                    {!showCc && (
+                      <button
+                        type="button"
+                        onClick={() => setShowCc(true)}
+                        className="shrink-0 text-[11.5px] text-text-faint hover:text-text-primary"
+                        title="Add Cc copy recipients"
+                      >
+                        + Cc
+                      </button>
+                    )}
+                  </div>
+                  {showCc && (
+                    <div className="flex items-center gap-2 rounded-xl border hairline bg-panel-2 px-3">
+                      <span className="text-[11px] font-medium uppercase tracking-wide text-text-faint shrink-0">
+                        Cc
+                      </span>
+                      <input
+                        value={ccInput}
+                        onChange={(e) => setCcInput(e.target.value)}
+                        placeholder="Copy others — comma-separated emails"
+                        className="flex-1 bg-transparent py-2 text-[13px] focus:outline-none placeholder:text-text-faint"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowCc(false);
+                          setCcInput("");
+                        }}
+                        className="shrink-0 text-text-faint hover:text-danger"
+                        title="Remove Cc"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                  {pendingFiles.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {pendingFiles.map((f, i) => (
+                        <span
+                          key={f.document_id}
+                          className="inline-flex items-center gap-1.5 rounded-lg border hairline bg-panel px-2 py-1 text-[11.5px]"
+                        >
+                          <Paperclip className="w-3 h-3 text-text-faint" />
+                          <span className="max-w-[160px] truncate">
+                            {f.display_name}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setPendingFiles((prev) =>
+                                prev.filter((_, j) => j !== i),
+                              )
+                            }
+                            className="text-text-faint hover:text-danger"
+                            title="Remove attachment"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="flex items-end gap-2">
               <div className="relative flex-1 rounded-2xl border hairline bg-panel-2">
                 <textarea
@@ -1116,7 +1349,9 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
                   placeholder={
                     composerLocked
                       ? "Free-form blocked — use a template"
-                      : "Type a message… (Enter = send, Shift+Enter = newline, '/' = quick reply)"
+                      : isEmail
+                        ? "Write your email… (Enter = send, Shift+Enter = newline)"
+                        : "Type a message… (Enter = send, Shift+Enter = newline, '/' = quick reply)"
                   }
                   rows={1}
                   disabled={composerLocked && !editing}
@@ -1235,7 +1470,11 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
               <button
                 onClick={handleSend}
                 disabled={
-                  !content.trim() || busy === "sending" || composerLocked
+                  (!content.trim() &&
+                    !(isEmail && !editing && pendingFiles.length > 0)) ||
+                  busy === "sending" ||
+                  busy === "uploading" ||
+                  composerLocked
                 }
                 className={cn(
                   "grid place-items-center w-10 h-10 rounded-2xl shrink-0 transition-all",

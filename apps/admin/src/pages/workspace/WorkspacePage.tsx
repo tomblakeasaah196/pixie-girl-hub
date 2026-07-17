@@ -54,6 +54,7 @@ import { GOAL_HEALTH_META } from "./goals-constants";
 import type { Goal } from "./goals-types";
 
 import { useTaskBoard, useCalendarEvents, useMoveTask } from "./hooks";
+import { TaskAgenda } from "./TaskAgenda";
 import { TaskCard } from "./TaskCard";
 import { TaskFormModal } from "./TaskFormModal";
 import { EventFormModal } from "./EventFormModal";
@@ -277,6 +278,10 @@ export function WorkspacePage() {
   const taskScope = scopeFor("tasks", "view");
   const canSeeAllTasks = taskScope === "all" || taskScope === "team";
   const [taskView, setTaskView] = useState<"mine" | "everyone">("mine");
+
+  // Desktop layout for the Tasks tab: kanban board (default) or the
+  // deadline-first agenda list. Phones always get the agenda.
+  const [taskLayout, setTaskLayout] = useState<"board" | "list">("board");
 
   // Kanban drag
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
@@ -600,30 +605,54 @@ export function WorkspacePage() {
             />
           )}
 
-          {/* Audience switch — only for scopes that reach beyond own tasks */}
-          {activeTab === "tasks" && canSeeAllTasks && (
-            <div className="mb-4 inline-flex gap-0.5 p-0.5 rounded-[12px] bg-text-primary/[0.04] border hairline">
-              {(["mine", "everyone"] as const).map((v) => (
-                <button
-                  key={v}
-                  type="button"
-                  onClick={() => setTaskView(v)}
-                  className={cn(
-                    "px-3.5 h-[30px] rounded-[10px] text-[12px] font-semibold transition-all whitespace-nowrap",
-                    taskView === v
-                      ? "bg-accent-deep text-[#F4E9D9] shadow-sm"
-                      : "text-text-muted hover:text-text-primary hover:bg-text-primary/[0.06]",
-                  )}
-                >
-                  {v === "mine" ? "My tasks" : "Everyone"}
-                </button>
-              ))}
+          {/* Tasks tab controls: audience switch (scopes beyond 'own') +
+              desktop Board/List layout switch. Phones always get the agenda. */}
+          {activeTab === "tasks" && (canSeeAllTasks || !isMobile) && (
+            <div className="mb-4 flex items-center gap-2 flex-wrap">
+              {canSeeAllTasks && (
+                <div className="inline-flex gap-0.5 p-0.5 rounded-[12px] bg-text-primary/[0.04] border hairline">
+                  {(["mine", "everyone"] as const).map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setTaskView(v)}
+                      className={cn(
+                        "px-3.5 h-[30px] rounded-[10px] text-[12px] font-semibold transition-all whitespace-nowrap",
+                        taskView === v
+                          ? "bg-accent-deep text-[#F4E9D9] shadow-sm"
+                          : "text-text-muted hover:text-text-primary hover:bg-text-primary/[0.06]",
+                      )}
+                    >
+                      {v === "mine" ? "My tasks" : "Everyone"}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {!isMobile && (
+                <div className="inline-flex gap-0.5 p-0.5 rounded-[12px] bg-text-primary/[0.04] border hairline">
+                  {(["board", "list"] as const).map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setTaskLayout(v)}
+                      className={cn(
+                        "px-3.5 h-[30px] rounded-[10px] text-[12px] font-semibold transition-all whitespace-nowrap",
+                        taskLayout === v
+                          ? "bg-accent-deep text-[#F4E9D9] shadow-sm"
+                          : "text-text-muted hover:text-text-primary hover:bg-text-primary/[0.06]",
+                      )}
+                    >
+                      {v === "board" ? "Board" : "List"}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           {activeTab === "tasks" &&
-            (isMobile ? (
-              <TaskListMobile
-                board={filteredBoard}
+            (isMobile || taskLayout === "list" ? (
+              <TaskAgenda
+                tasks={allTasks}
                 loading={boardLoading}
                 error={boardError}
                 search={taskSearch}
@@ -631,6 +660,7 @@ export function WorkspacePage() {
                 onRetry={refetchBoard}
                 onSelectTask={(t) => setSelectedTaskId(t.task_id)}
                 onCreateTask={() => openCreateTaskForDate()}
+                showAssignee={canSeeAllTasks && taskView === "everyone"}
               />
             ) : (
               <TasksKanban
@@ -1575,135 +1605,6 @@ function TasksKanban({
             ) : null}
           </DragOverlay>
         </DndContext>
-      )}
-    </div>
-  );
-}
-
-// ── Tasks List (mobile) ──────────────────────────────────────────────────
-
-function TaskListMobile({
-  board,
-  loading,
-  error,
-  search,
-  onSearchChange,
-  onRetry,
-  onSelectTask,
-  onCreateTask,
-}: {
-  board: ReturnType<typeof useTaskBoard>["data"] | null;
-  loading: boolean;
-  error: boolean;
-  search: string;
-  onSearchChange: (s: string) => void;
-  onRetry: () => void;
-  onSelectTask: (t: Task) => void;
-  onCreateTask: () => void;
-}) {
-  if (error)
-    return <ErrorState message="Could not load tasks." onRetry={onRetry} />;
-
-  const allTasks = board
-    ? [...board.to_do, ...board.in_progress, ...board.in_review, ...board.done]
-    : [];
-
-  const filtered = search.trim()
-    ? allTasks.filter(
-        (t) =>
-          t.title.toLowerCase().includes(search.toLowerCase()) ||
-          t.assigned_to_name?.toLowerCase().includes(search.toLowerCase()),
-      )
-    : allTasks;
-
-  return (
-    <div>
-      <div className="mb-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-faint" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search tasks..."
-            className="w-full h-[36px] pl-9 pr-3 rounded-[10px] bg-text-primary/[0.04] border border-line text-[12px] text-text-primary outline-none focus:border-accent/50 transition-colors" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
-          />
-        </div>
-      </div>
-
-      {loading && (
-        <div className="space-y-2">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-16 rounded-xl" />
-          ))}
-        </div>
-      )}
-
-      {!loading && filtered.length === 0 && (
-        <EmptyState
-          icon={<ListTodo className="w-6 h-6" />}
-          title="No tasks"
-          message={
-            search
-              ? "No tasks match your search."
-              : "Create your first task to get started."
-          }
-          action={
-            !search ? (
-              <Button
-                variant="primary"
-                size="sm"
-                icon={<Plus className="w-3 h-3" />}
-                onClick={onCreateTask}
-              >
-                New Task
-              </Button>
-            ) : undefined
-          }
-        />
-      )}
-
-      {!loading && (
-        <div className="space-y-1.5">
-          {filtered.map((task) => (
-            <button
-              key={task.task_id}
-              onClick={() => onSelectTask(task)}
-              className="w-full text-left glass rounded-xl p-3 hover:bg-text-primary/[0.04] transition-colors"
-            >
-              <div className="flex items-start gap-2">
-                <div className="flex-1 min-w-0">
-                  <div className="text-[13px] font-semibold text-text-primary truncate">
-                    {task.title}
-                  </div>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Pill tone={TASK_STATUS_META[task.status].tone} dot={false}>
-                      {TASK_STATUS_META[task.status].label}
-                    </Pill>
-                    <Pill
-                      tone={TASK_PRIORITY_META[task.priority].tone}
-                      dot={false}
-                    >
-                      {TASK_PRIORITY_META[task.priority].label}
-                    </Pill>
-                  </div>
-                </div>
-                {task.due_at && (
-                  <span
-                    className={cn(
-                      "text-[10px] font-mono shrink-0",
-                      isPast(task.due_at) && task.status !== "done"
-                        ? "text-danger"
-                        : "text-text-faint",
-                    )}
-                  >
-                    {formatDate(task.due_at)}
-                  </span>
-                )}
-              </div>
-            </button>
-          ))}
-        </div>
       )}
     </div>
   );

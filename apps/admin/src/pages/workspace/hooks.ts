@@ -83,6 +83,21 @@ export function useMoveTask() {
   });
 }
 
+/** Quick due-date change (agenda swipe-left / hover reschedule). */
+export function useRescheduleTask() {
+  const qc = useQueryClient();
+  const biz = useBiz();
+  return useMutation({
+    mutationFn: ({ id, due_at }: { id: string; due_at: string | null }) =>
+      ws.updateTask(id, { due_at }),
+    onSuccess: (_d, { id }) => {
+      qc.invalidateQueries({ queryKey: ["workspace", biz, "task-board"] });
+      qc.invalidateQueries({ queryKey: ["workspace", biz, "tasks"] });
+      qc.invalidateQueries({ queryKey: ["workspace", biz, "task", id] });
+    },
+  });
+}
+
 export function useDeleteTask() {
   const qc = useQueryClient();
   const biz = useBiz();

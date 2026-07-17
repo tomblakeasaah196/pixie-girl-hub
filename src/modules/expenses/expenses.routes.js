@@ -13,10 +13,16 @@ const multer = require("multer");
 const controller = require("./expenses.controller");
 const validator = require("./expenses.validator");
 const { config } = require("../../config/env");
-const { requirePermission } = require("../../middleware/rbac");
+const {
+  requirePermission,
+  approveGatedScope,
+} = require("../../middleware/rbac");
 
 const router = express.Router();
 const can = (action) => requirePermission("expenses", action);
+// Read visibility is approve-gated: view-only staff see only the expenses /
+// advances they submitted; approvers (and the CEO) see the whole queue.
+const canRead = () => [can("view"), approveGatedScope("expenses")];
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: config.MEDIA_MAX_FILE_SIZE_MB * 1024 * 1024 },
@@ -38,14 +44,14 @@ router.patch(
 );
 
 // Cash advances (request → approve → disburse → settle)
-router.get("/advances", can("view"), controller.listAdvances);
+router.get("/advances", canRead(), controller.listAdvances);
 router.post(
   "/advances",
   can("create"),
   validator.validateAdvanceRequest,
   controller.requestAdvance,
 );
-router.get("/advances/:advId", can("view"), controller.getAdvance);
+router.get("/advances/:advId", canRead(), controller.getAdvance);
 router.post(
   "/advances/:advId/approve",
   can("approve"),
@@ -72,16 +78,16 @@ router.post(
 );
 
 // Expenses
-router.get("/", can("view"), controller.listExpenses);
+router.get("/", canRead(), controller.listExpenses);
 // KPIs before /:id so the literal isn't captured as an id.
-router.get("/kpis", can("view"), controller.kpis);
+router.get("/kpis", canRead(), controller.kpis);
 router.post(
   "/",
   can("create"),
   validator.validateExpenseCreate,
   controller.createExpense,
 );
-router.get("/:id", can("view"), controller.getById);
+router.get("/:id", canRead(), controller.getById);
 router.post(
   "/:id/submit",
   can("edit"),
@@ -108,7 +114,7 @@ router.post(
 );
 
 // Receipts (multipart upload → Documents gateway)
-router.get("/:id/receipts", can("view"), controller.listReceipts);
+router.get("/:id/receipts", canRead(), controller.listReceipts);
 router.post(
   "/:id/receipts",
   can("edit"),

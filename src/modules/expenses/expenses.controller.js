@@ -48,10 +48,21 @@ async function listExpenses(req, res) {
   );
 }
 const kpis = async (req, res) =>
-  res.json({ data: await service.kpis({ brand: req.brand }) });
+  res.json({
+    data: await service.kpis({
+      brand: req.brand,
+      scope: req.permission_scope,
+      user: req.user,
+    }),
+  });
 const getById = async (req, res) =>
   res.json({
-    data: await service.getById({ brand: req.brand, id: req.params.id }),
+    data: await service.getById({
+      brand: req.brand,
+      id: req.params.id,
+      scope: req.permission_scope,
+      user: req.user,
+    }),
   });
 const createExpense = async (req, res) =>
   res.status(201).json({
@@ -103,7 +114,12 @@ async function listAdvances(req, res) {
 }
 const getAdvance = async (req, res) =>
   res.json({
-    data: await service.getAdvance({ brand: req.brand, id: req.params.advId }),
+    data: await service.getAdvance({
+      brand: req.brand,
+      id: req.params.advId,
+      scope: req.permission_scope,
+      user: req.user,
+    }),
   });
 const requestAdvance = async (req, res) =>
   res.status(201).json({
@@ -146,7 +162,12 @@ const settleAdvance = async (req, res) =>
 // Receipts (multipart → Documents gateway)
 const listReceipts = async (req, res) =>
   res.json({
-    data: await service.listReceipts({ brand: req.brand, id: req.params.id }),
+    data: await service.listReceipts({
+      brand: req.brand,
+      id: req.params.id,
+      scope: req.permission_scope,
+      user: req.user,
+    }),
   });
 async function addReceipt(req, res) {
   if (!req.file)

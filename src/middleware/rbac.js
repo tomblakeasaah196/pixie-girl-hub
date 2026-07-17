@@ -113,6 +113,48 @@ function requirePermission(moduleKey, action) {
 }
 
 /**
+ * Approve-gated read visibility — for finance queues (expenses §6.7, cash
+ * requests §6.32) where seeing OTHER people's records is a supervisor
+ * privilege, not a side effect of holding `view`.
+ *
+ * A plain `view` grant — at ANY record_scope, including the historically
+ * unenforced 'team' — is clamped to the caller's OWN records. Only a user who
+ * can also `approve` the module (or the CEO) sees the whole brand's queue.
+ * This deliberately overrides the record_scope that requirePermission derived
+ * from the `view` grant, so it MUST run AFTER requirePermission(module, 'view')
+ * on read routes. Sets `req.permission_scope` to:
+ *   'all'  → CEO or holder of an `approve` grant on the module
+ *   'own'  → everyone else (view-only staff)
+ * which the module's list/detail reads already honour.
+ *
+ * Rationale: junior/team staff were seeing cash requests and expenses raised by
+ * colleagues because 'team' fell through to "no filter" in the list queries.
+ * Binding visibility to the approve capability makes "who can see the queue"
+ * match "who acts on the queue", and is robust to mis-seeded record scopes.
+ */
+function approveGatedScope(moduleKey) {
+  if (!moduleKey || typeof moduleKey !== "string") {
+    throw new Error("approveGatedScope: moduleKey required");
+  }
+  return async function approveScopeCheck(req, _res, next) {
+    if (!req.user) {
+      throw new AppError("AUTH_REQUIRED", "Authentication required", 401);
+    }
+    if (req.user.is_ceo) {
+      req.permission_scope = "all"; // CEO sees everything by design (§3)
+      return next();
+    }
+    const grants = await identityCache.getGrants({
+      role_ids: activeRoleIds(req),
+      module: moduleKey,
+      action: "approve",
+    });
+    req.permission_scope = grants && grants.length > 0 ? "all" : "own";
+    return next();
+  };
+}
+
+/**
  * Contact-type visibility (contacts §6.12). Resolves the caller's allowed
  * contact types from their brand-active roles and stashes it on
  * `req.contact_type_scope` for the contacts repo/service to enforce:
@@ -156,6 +198,7 @@ function requireCeo(req, _res, next) {
 
 module.exports = {
   requirePermission,
+  approveGatedScope,
   requireCeo,
   contactTypeScope,
   activeRoleIds,

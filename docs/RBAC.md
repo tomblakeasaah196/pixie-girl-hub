@@ -82,6 +82,33 @@ render "reassigned to X → back to my jobs" instead of a bare 403.
 
 Seeded by migration `000348_shared_stylist_studio_rbac_own_scope.sql`.
 
+### Worked example — Expenses (`expenses`) & Cash Requests
+
+Both the **Expenses** (§6.7) and **Cash Request** (§6.32) modules share the one
+`expenses` permission key, and their read visibility is **approve-gated** rather
+than driven by the record scope on the `view` grant:
+
+| Can `approve` the module? | Sees on lists / detail |
+| ------------------------- | ---------------------- |
+| Yes (or CEO)              | the whole brand's queue (`all`) |
+| No — `view` only          | only records they submitted (`own`) |
+
+Why not the plain record scope? Because `expenses` was seeded to several roles
+at `partial_team` (view at scope `team`), and `team` was never implemented in
+these modules' queries — it fell through to "no filter", so team/junior staff
+could see cash requests and expenses raised by colleagues. Binding visibility to
+the **approve capability** makes "who can see the queue" match "who acts on it",
+and is robust to mis-seeded scopes.
+
+- **Enforced by `middleware/rbac.js` `approveGatedScope('expenses')`**, mounted
+  **after** `requirePermission('expenses','view')` on every read route (list,
+  detail, KPIs, advances, receipts, documents, history). It overrides
+  `req.permission_scope` to `all` (holder of an `approve` grant, or CEO) or
+  `own` (everyone else). List queries then filter `submitted_by` /
+  `requested_by`; single-record reads 404 a record the caller doesn't own — so a
+  stray id can't confirm a record exists. Creating/editing your **own** request
+  is unaffected (those routes gate on `create`/`edit`, not `view`).
+
 ## Field-level privacy
 
 Currently **app-layer only** (see CONFORMANCE_GAPS.md — H-1 / M-5). Sensitive fields (cost prices, factory origin, salaries) are filtered out in the service layer before response serialisation, based on the user's role. A pending amendment will back this with restricted views + column GRANTs at the DB level.

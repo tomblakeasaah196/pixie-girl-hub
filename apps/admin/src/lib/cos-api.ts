@@ -194,7 +194,40 @@ export function usePostCosMessage() {
         `/cos/conversations/${conversationId}/messages`,
         input,
       ),
-    onSuccess: (turn, vars) => {
+    // Optimistic echo: the CEO's bubble appears the instant she hits send —
+    // the turn itself (LLM rounds + reads) can take many seconds, and a chat
+    // where your own message doesn't show until the reply lands reads as
+    // "did that even send?". The temp message is swapped for the server's
+    // real one on success and removed on error (the composer restores the
+    // draft, so nothing is lost).
+    onMutate: async ({ conversationId, content }: PostCosMessageVars) => {
+      const key = cosKeys.conversation(conversationId);
+      // Cancel a racing refetch only when we hold data to protect — cancelling
+      // a brand-new conversation's FIRST fetch would leave its pane stuck on
+      // the loading skeleton for the whole turn (there the echo is skipped;
+      // the fetch lands the empty thread and the Thinking bubble covers it).
+      if (qc.getQueryData(key)) await qc.cancelQueries({ queryKey: key });
+      const tempId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      qc.setQueryData<CosConversationDetail | undefined>(key, (prev) =>
+        prev
+          ? {
+              ...prev,
+              messages: [
+                ...prev.messages,
+                {
+                  message_id: tempId,
+                  conversation_id: conversationId,
+                  role: "user",
+                  content,
+                  created_at: new Date().toISOString(),
+                } as CosMessage,
+              ],
+            }
+          : prev,
+      );
+      return { tempId };
+    },
+    onSuccess: (turn, vars, ctx) => {
       qc.setQueryData<CosConversationDetail | undefined>(
         cosKeys.conversation(vars.conversationId),
         (prev) =>
@@ -202,7 +235,7 @@ export function usePostCosMessage() {
             ? {
                 ...prev,
                 messages: [
-                  ...prev.messages,
+                  ...prev.messages.filter((m) => m.message_id !== ctx?.tempId),
                   turn.user_message,
                   turn.assistant_message,
                 ],
@@ -210,9 +243,26 @@ export function usePostCosMessage() {
               }
             : prev,
       );
+      // No cached detail to patch (first message raced the initial fetch) —
+      // refetch so the turn's messages appear.
+      if (!qc.getQueryData(cosKeys.conversation(vars.conversationId))) {
+        qc.invalidateQueries({ queryKey: cosKeys.conversation(vars.conversationId) });
+      }
       qc.invalidateQueries({ queryKey: cosKeys.conversations });
     },
-    onError: (err) => toastReport("Chief of Staff", "Send message", err),
+    onError: (err, vars, ctx) => {
+      qc.setQueryData<CosConversationDetail | undefined>(
+        cosKeys.conversation(vars.conversationId),
+        (prev) =>
+          prev
+            ? {
+                ...prev,
+                messages: prev.messages.filter((m) => m.message_id !== ctx?.tempId),
+              }
+            : prev,
+      );
+      toastReport("Chief of Staff", "Send message", err);
+    },
   });
 }
 

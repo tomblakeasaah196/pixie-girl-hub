@@ -199,7 +199,7 @@ describe("runPlanRounds", () => {
     expect(out.broken_promise).toBe(false);
     // The corrective nudge told the model nothing was queued.
     const retryMsgs = chat.mock.calls[1][0];
-    expect(retryMsgs.at(-1).content).toMatch(/NOTHING was queued/);
+    expect(retryMsgs.at(-1).content).toMatch(/NOTHING was checked or queued/);
   });
 
   test("broken promise twice is reported so the caller can be honest about it", async () => {
@@ -305,6 +305,85 @@ describe("immediate reads", () => {
     expect(chat).toHaveBeenCalledTimes(1);
   });
 
+  test("read-grounded answer: the post-read reply is returned, not the round-0 promise", async () => {
+    // Regression (the Samuel-Farounbi bug, case B): the model DID call the
+    // read tool, but only round 0's "Let me check…" narration was kept — the
+    // actual answer written after the read results came back was discarded.
+    const executeRead = jest.fn().mockResolvedValue({ data: [] });
+    const chat = jest
+      .fn()
+      .mockResolvedValueOnce(
+        completion({
+          content: "Let me check our team database for Samuel Farounbi.",
+          tool_calls: [call("workspace_search_users", { query: "Samuel Farounbi" }, "r1")],
+        }),
+      )
+      .mockResolvedValueOnce(
+        completion({
+          content: "I checked — there is no Samuel Farounbi in the team database.",
+        }),
+      );
+
+    const out = await rounds.runPlanRounds({ chat, messages: MESSAGES, isRead, executeRead });
+
+    expect(executeRead).toHaveBeenCalledTimes(1);
+    expect(out.tool_calls).toEqual([]);
+    expect(out.content).toBe("I checked — there is no Samuel Farounbi in the team database.");
+  });
+
+  test("a read promise with no tool call gets the corrective retry (Samuel-Farounbi case A)", async () => {
+    // "Let me check the team database" with nothing attached used to ship
+    // as-is — the promise verbs only covered writes. Now it trips the same
+    // broken-promise retry, the retry's read executes, and the answer that
+    // follows the read results is what the CEO sees.
+    const executeRead = jest
+      .fn()
+      .mockResolvedValue({ data: [{ user_id: "u-7", name: "Samuel Farounbi", job_title: "Operations Manager" }] });
+    const chat = jest
+      .fn()
+      .mockResolvedValueOnce(
+        completion({ content: "Let me check our team database for Samuel Farounbi." }),
+      )
+      .mockResolvedValueOnce(
+        completion({ tool_calls: [call("workspace_search_users", { query: "Samuel Farounbi" }, "r1")] }),
+      )
+      .mockResolvedValueOnce(
+        completion({ content: "Yes — Samuel Farounbi is in the database as Operations Manager." }),
+      );
+
+    const out = await rounds.runPlanRounds({ chat, messages: MESSAGES, isRead, executeRead });
+
+    expect(chat).toHaveBeenCalledTimes(3);
+    // The retry prompt names the failure and demands the read.
+    const retryMsgs = chat.mock.calls[1][0];
+    expect(retryMsgs[retryMsgs.length - 1].content).toMatch(/no tool calls/i);
+    expect(executeRead).toHaveBeenCalledTimes(1);
+    expect(out.tool_calls).toEqual([]);
+    expect(out.content).toBe("Yes — Samuel Farounbi is in the database as Operations Manager.");
+    expect(out.broken_promise).toBe(false);
+  });
+
+  test("plan turns still keep round 0's narration as the reply", async () => {
+    const executeRead = jest.fn().mockResolvedValue({ data: [] });
+    const chat = jest
+      .fn()
+      .mockResolvedValueOnce(
+        completion({
+          content: "Here's the plan: one goal with a kickoff task.",
+          tool_calls: [
+            call("workspace_list_goals", {}, "r1"),
+            call("workspace_create_goal", { title: "G" }, "w1"),
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(completion({ content: "DONE" }));
+
+    const out = await rounds.runPlanRounds({ chat, messages: MESSAGES, isRead, executeRead });
+
+    expect(out.tool_calls.map((c) => c.id)).toEqual(["w1"]);
+    expect(out.content).toBe("Here's the plan: one goal with a kickoff task.");
+  });
+
   test("mixed round: writes get stubs with correct global numbering alongside read results", async () => {
     const executeRead = jest.fn().mockResolvedValue({ data: [] });
     const chat = jest
@@ -338,6 +417,19 @@ describe("helpers", () => {
     expect(rounds.promisesAction("Let me start building.")).toBe(true);
     expect(rounds.promisesAction("Let me know what you decide.")).toBe(false);
     expect(rounds.promisesAction("What does a good day look like?")).toBe(false);
+  });
+
+  test("promisesAction matches READ commitments too (the Samuel-Farounbi bug)", () => {
+    expect(rounds.promisesAction("Let me check our team database for Samuel Farounbi.")).toBe(true);
+    expect(rounds.promisesAction("Let me search for Samuel Farounbi in the system.")).toBe(true);
+    expect(rounds.promisesAction("I'll look him up.")).toBe(true);
+    expect(rounds.promisesAction("Let me look into the tag options.")).toBe(true);
+    expect(rounds.promisesAction("I'll verify the stylist assignments.")).toBe(true);
+    expect(rounds.promisesAction("Let me pull up his record.")).toBe(true);
+    // Plain chat still never trips.
+    expect(rounds.promisesAction("Let me think about the best structure.")).toBe(false);
+    expect(rounds.promisesAction("Check-ins every Friday sound good.")).toBe(false);
+    expect(rounds.promisesAction("You should check with Samuel first.")).toBe(false);
   });
 
   test("missingKinds compares narration against emitted tool names", () => {

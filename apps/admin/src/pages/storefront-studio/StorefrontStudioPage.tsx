@@ -29,7 +29,7 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Plus, Newspaper } from "lucide-react";
+import { Plus, Newspaper, ChevronLeft, Smartphone, Tablet, Monitor } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button, Card, Pill } from "@/components/ui/primitives";
 import { Toggle, Select, ConfirmDialog } from "@/components/ui/controls";
@@ -132,6 +132,25 @@ function StatusPill({ status }: { status?: StudioStatus }) {
   );
 }
 
+/**
+ * Mobile "back to the list" affordance for the master/detail tabs (Pages,
+ * Popups, Content). On phones the list and editor are a two-screen drill-down
+ * — this returns to the list — so it's hidden from `lg` up where both panes
+ * sit side by side and the button would be meaningless.
+ */
+function BackToList({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="-ml-1 mb-1 inline-flex items-center gap-1 self-start rounded-[9px] py-1 pl-1 pr-2 text-[13px] font-medium text-text-muted hover:text-text-primary lg:hidden"
+    >
+      <ChevronLeft className="h-4 w-4" />
+      {label}
+    </button>
+  );
+}
+
 export function StorefrontStudioPage() {
   const brand = useBusinessStore((s) => s.activeKey);
   const [tab, setTab] = useUrlTab<Tab>(
@@ -151,9 +170,15 @@ export function StorefrontStudioPage() {
   );
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between gap-4">
-        <Tabs tabs={TABS} active={tab} onChange={(k) => setTab(k as Tab)} />
+    <div className="space-y-4 md:space-y-5">
+      {/* Segmented tab strip. On phones the strip scrolls horizontally
+          (min-w-0 lets it shrink inside the row) so the brand chip never gets
+          pushed off-screen — the whole header behaves like a native app's
+          scrollable top segmented control. */}
+      <div className="flex items-center gap-2.5">
+        <div className="min-w-0 flex-1">
+          <Tabs tabs={TABS} active={tab} onChange={(k) => setTab(k as Tab)} />
+        </div>
         <Pill tone="accent" dot={false}>
           {brand}
         </Pill>
@@ -320,38 +345,70 @@ function SelectField({
   );
 }
 
+const HEX_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
 function ColorField({
   label,
+  hint,
   value,
+  defaultColor,
   onChange,
+  onReset,
 }: {
   label: string;
+  hint?: string;
+  /** The saved override, or "" when the site is using its default colour. */
   value: string;
+  /** The live default (any CSS colour — hex OR oklch) shown when unset, so the
+   *  swatch always reflects the colour the website is actually painting. */
+  defaultColor?: string;
   onChange: (v: string) => void;
+  /** Clears the override and falls back to the website default. */
+  onReset?: () => void;
 }) {
-  // The colour picker only understands hex; if the saved value is something
-  // else (e.g. an oklch token) the swatch shows a neutral default but the
-  // text field still carries the real value so nothing is lost.
-  const hex = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value)
-    ? value
-    : "#690909";
+  // The swatch shows the *effective* colour (override, else default) using the
+  // raw CSS value — so an oklch default renders correctly, not as a grey
+  // placeholder. The OS colour picker only speaks hex, so it seeds from the
+  // effective colour when that's a hex and a neutral otherwise; picking always
+  // writes a hex, which the storefront applies verbatim.
+  const effective = value || defaultColor || "#690909";
+  const pickerHex = HEX_RE.test(effective) ? effective : "#690909";
   return (
-    <label className="block">
-      <span className={labelCls}>{label}</span>
+    <div className="block">
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <span className="text-[12px] font-medium text-text-muted">{label}</span>
+        {value && onReset ? (
+          <button
+            type="button"
+            onClick={onReset}
+            className="text-[11px] font-medium text-text-muted hover:text-text-primary"
+          >
+            Reset
+          </button>
+        ) : null}
+      </div>
       <div className="flex items-center gap-2">
-        <input
-          type="color"
-          value={hex}
-          onChange={(e) => onChange(e.target.value)}
-          className="h-9 w-10 shrink-0 cursor-pointer rounded-[8px] border border-line bg-transparent"
-        />
+        <label
+          className="relative h-9 w-10 shrink-0 cursor-pointer overflow-hidden rounded-[8px] border border-line"
+          style={{ background: effective }}
+        >
+          <input
+            type="color"
+            value={pickerHex}
+            aria-label={label}
+            onChange={(e) => onChange(e.target.value)}
+            className="no-min-h absolute inset-0 h-full w-full cursor-pointer opacity-0"
+          />
+        </label>
         <input
           className={cn(inputCls, "font-mono uppercase")}
           value={value}
+          placeholder={defaultColor || ""}
           onChange={(e) => onChange(e.target.value)} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
       </div>
-    </label>
+      {hint ? <p className="mt-1 text-[11px] text-text-muted">{hint}</p> : null}
+    </div>
   );
 }
 
@@ -598,16 +655,30 @@ function SortableCard({
 }
 
 // ============================================================
-// Theme - colours, fonts, corners (no JSON)
+// Theme — every colour, font and corner the website paints with (no JSON)
+//
+// These controls write the *actual* CSS variables the storefront renders
+// (apps/storefront/src/styles.css → `.dark`, forwarded verbatim by
+// apps/storefront/src/routes/__root.tsx → tokensToCss). Each `def` is the
+// storefront's shipped dark-mode default so an unset control still shows the
+// real live colour; only controls the operator changes are persisted, so an
+// untouched site keeps its pristine defaults.
 // ============================================================
 
+// The curated font roster the storefront self-hosts (apps/storefront/src/
+// styles.css @imports). Only these render on the live site — no CDN fonts —
+// so we never offer a choice that would silently fall back to a system face.
 const FONT_OPTIONS: { value: string; label: string }[] = [
-  { value: '"Work Sans Variable", system-ui, sans-serif', label: "Work Sans (modern sans)" },
-  { value: '"Inter", system-ui, sans-serif', label: "Inter (clean sans)" },
-  { value: '"Montserrat", system-ui, sans-serif', label: "Montserrat (geometric sans)" },
-  { value: '"Poppins", system-ui, sans-serif', label: "Poppins (rounded sans)" },
-  { value: '"Playfair Display", Georgia, serif', label: "Playfair Display (elegant serif)" },
-  { value: '"Cormorant Garamond", Georgia, serif', label: "Cormorant (luxury serif)" },
+  { value: '"Work Sans Variable", ui-sans-serif, system-ui, sans-serif', label: "Work Sans (modern sans)" },
+  { value: '"Montserrat", ui-sans-serif, system-ui, sans-serif', label: "Montserrat (geometric sans)" },
+  { value: '"Archivo Black", ui-sans-serif, sans-serif', label: "Archivo Black (heavy sans)" },
+  { value: '"Playfair Display", ui-serif, Georgia, serif', label: "Playfair Display (editorial serif)" },
+  { value: '"Cormorant Garamond", ui-serif, Georgia, serif', label: "Cormorant (luxury serif)" },
+  { value: '"EB Garamond", ui-serif, Georgia, serif', label: "EB Garamond (classic serif)" },
+  { value: '"Prata", ui-serif, Georgia, serif', label: "Prata (fashion serif)" },
+  { value: '"Marcellus", ui-serif, Georgia, serif', label: "Marcellus (refined serif)" },
+  { value: '"Cinzel", ui-serif, Georgia, serif', label: "Cinzel (roman caps)" },
+  { value: '"Instrument Serif", ui-serif, Georgia, serif', label: "Instrument Serif (display serif)" },
   { value: "system-ui, sans-serif", label: "System default" },
 ];
 
@@ -620,8 +691,73 @@ function fontOptionsWith(current: string) {
 
 function remNumber(value: string | undefined): number {
   const n = parseFloat(String(value ?? "").replace("rem", ""));
-  return Number.isFinite(n) ? n : 0.5;
+  return Number.isFinite(n) ? n : 0.25;
 }
+
+/** A colour control: one visible swatch that may drive several CSS variables
+ *  (e.g. "Muted surfaces" tints chips, inputs and quiet fills together). */
+type ColorControl = { label: string; hint?: string; keys: string[]; def: string };
+
+const CORE_COLORS: ColorControl[] = [
+  {
+    label: "Page background",
+    keys: ["--ink"],
+    def: "oklch(0.14 0.012 60)",
+    hint: "The base colour behind the whole site.",
+  },
+  {
+    label: "Cards & panels",
+    keys: ["--card", "--popover"],
+    def: "oklch(0.18 0.012 60)",
+  },
+  {
+    label: "Muted surfaces",
+    keys: ["--secondary", "--muted", "--input"],
+    def: "oklch(0.22 0.015 60)",
+    hint: "Chips, form fields and quiet fills.",
+  },
+  { label: "Main text", keys: ["--cream"], def: "oklch(0.96 0.018 80)" },
+  {
+    label: "Subtle text",
+    keys: ["--muted-foreground"],
+    def: "oklch(0.68 0.025 70)",
+    hint: "Captions, hints and secondary copy.",
+  },
+  { label: "Lines & dividers", keys: ["--border"], def: "oklch(0.28 0.015 60)" },
+];
+
+const ACCENT_COLORS: ColorControl[] = [
+  {
+    label: "Primary — buttons & links",
+    keys: ["--taupe"],
+    def: "oklch(0.82 0.045 60)",
+  },
+  { label: "Soft accent", keys: ["--champagne"], def: "oklch(0.71 0.06 60)" },
+  { label: "Gold highlight", keys: ["--gold"], def: "oklch(0.78 0.11 75)" },
+  { label: "Rose", keys: ["--rose"], def: "oklch(0.62 0.13 18)" },
+  { label: "Deep burgundy", keys: ["--burgundy"], def: "oklch(0.32 0.11 25)" },
+];
+
+type FontControl = { label: string; hint?: string; key: string; def: string };
+
+const FONT_CONTROLS: FontControl[] = [
+  {
+    label: "Headings font",
+    key: "--font-display",
+    def: '"Work Sans Variable", ui-sans-serif, system-ui, sans-serif',
+  },
+  {
+    label: "Body text font",
+    key: "--font-sans",
+    def: '"Work Sans Variable", ui-sans-serif, system-ui, sans-serif',
+  },
+  {
+    label: "Elegant accent font",
+    key: "--font-couture",
+    def: '"Cormorant Garamond", ui-serif, Georgia, serif',
+    hint: "The serif used for italic flourishes.",
+  },
+];
 
 function ThemeTab() {
   const { data, isLoading } = useThemes();
@@ -635,103 +771,224 @@ function ThemeTab() {
     if (active) setTokens(active.tokens || {});
   }, [active]);
 
-  const set = (k: string, v: string) =>
-    setTokens((t) => ({ ...t, [k]: v }));
+  const set = (k: string, v: string) => setTokens((t) => ({ ...t, [k]: v }));
+  const setMany = (keys: string[], v: string) =>
+    setTokens((t) => {
+      const n = { ...t };
+      for (const k of keys) n[k] = v;
+      return n;
+    });
+  const clearMany = (keys: string[]) =>
+    setTokens((t) => {
+      const n = { ...t };
+      for (const k of keys) delete n[k];
+      return n;
+    });
+  // Effective value for the live preview: the override, else the site default.
+  const eff = (key: string, def: string) => tokens[key] || def;
 
   if (isLoading)
     return <p className="text-[13px] text-text-muted">Loading...</p>;
 
+  const renderColors = (list: ColorControl[]) =>
+    list.map((c) => (
+      <ColorField
+        key={c.keys[0]}
+        label={c.label}
+        hint={c.hint}
+        value={tokens[c.keys[0]] || ""}
+        defaultColor={c.def}
+        onChange={(v) => setMany(c.keys, v)}
+        onReset={() => clearMany(c.keys)}
+      />
+    ));
+
   return (
-    <Card className="max-w-2xl space-y-4 p-5">
-      <div className="flex items-center gap-2">
-        <h2 className="text-[15px] font-semibold text-text-primary">
-          Theme
-        </h2>
-        <StatusPill status={active?.status} />
-      </div>
-      <p className="text-[13px] text-text-muted">
-        Pick the colours, fonts and corner roundness for your website. Changes
-        save as a draft; press Publish to make them live.
-      </p>
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_320px]">
+      <Card className="space-y-4 p-5">
+        <div className="flex items-center gap-2">
+          <h2 className="text-[15px] font-semibold text-text-primary">Theme</h2>
+          <StatusPill status={active?.status} />
+        </div>
+        <p className="text-[13px] text-text-muted">
+          This tab controls the whole look of your website — every colour, font
+          and corner. Leave anything untouched to keep its default; the preview
+          updates live. Changes save as a draft; press Publish to go live.
+        </p>
 
-      <Section title="Colours" defaultOpen>
-        <ColorField
-          label="Primary colour"
-          value={tokens["--color-primary"] || ""}
-          onChange={(v) => set("--color-primary", v)}
-        />
-        <ColorField
-          label="Accent colour"
-          value={tokens["--color-accent"] || ""}
-          onChange={(v) => set("--color-accent", v)}
-        />
-      </Section>
+        <Section title="Core colours" defaultOpen>
+          {renderColors(CORE_COLORS)}
+        </Section>
 
-      <Section title="Fonts">
-        <SelectField
-          label="Headings font"
-          value={tokens["--font-heading"] || ""}
-          onChange={(v) => set("--font-heading", v)}
-          options={fontOptionsWith(tokens["--font-heading"] || "")}
-        />
-        <SelectField
-          label="Body text font"
-          value={tokens["--font-body"] || ""}
-          onChange={(v) => set("--font-body", v)}
-          options={fontOptionsWith(tokens["--font-body"] || "")}
-        />
-      </Section>
+        <Section title="Brand accents">{renderColors(ACCENT_COLORS)}</Section>
 
-      <Section title="Corners">
-        <RangeField
-          label="Corner roundness"
-          value={remNumber(tokens["--radius"])}
-          min={0}
-          max={1.5}
-          step={0.05}
-          suffix="rem"
-          onChange={(v) => set("--radius", `${v}rem`)}
-        />
-      </Section>
+        <Section title="Fonts">
+          {FONT_CONTROLS.map((f) => (
+            <div key={f.key}>
+              <SelectField
+                label={f.label}
+                value={tokens[f.key] || ""}
+                onChange={(v) => (v ? set(f.key, v) : clearMany([f.key]))}
+                options={[
+                  { value: "", label: "Website default" },
+                  ...fontOptionsWith(tokens[f.key] || ""),
+                ]}
+              />
+              {f.hint ? (
+                <p className="mt-1 text-[11px] text-text-muted">{f.hint}</p>
+              ) : null}
+            </div>
+          ))}
+        </Section>
 
-      <div className="flex gap-2">
-        <Button
-          variant="primary"
-          disabled={save.isPending || publish.isPending}
-          onClick={() =>
-            runStudio(() => save.mutateAsync(tokens), {
-              area: `${STUDIO_AREA} → Theme`,
-              action: "Save theme draft",
-              success: "Draft saved.",
-              onOk: () => setMsg("Draft saved."),
-            })
-          }
-        >
-          Save draft
-        </Button>
-        <Button
-          variant="secondary"
-          disabled={save.isPending || publish.isPending}
-          onClick={() =>
-            runStudio(
-              async () => {
-                await save.mutateAsync(tokens);
-                await publish.mutateAsync();
-              },
-              {
+        <Section title="Corners">
+          <RangeField
+            label="Corner roundness"
+            value={remNumber(tokens["--radius"] || "0.25rem")}
+            min={0}
+            max={1.5}
+            step={0.05}
+            suffix="rem"
+            onChange={(v) => set("--radius", `${v}rem`)}
+          />
+        </Section>
+
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="primary"
+            disabled={save.isPending || publish.isPending}
+            onClick={() =>
+              runStudio(() => save.mutateAsync(tokens), {
                 area: `${STUDIO_AREA} → Theme`,
-                action: "Publish theme",
-                success: "Theme published — it's live now.",
-                onOk: () => setMsg("Theme published."),
-              },
-            )
-          }
-        >
-          Publish
-        </Button>
+                action: "Save theme draft",
+                success: "Draft saved.",
+                onOk: () => setMsg("Draft saved."),
+              })
+            }
+          >
+            Save draft
+          </Button>
+          <Button
+            variant="secondary"
+            disabled={save.isPending || publish.isPending}
+            onClick={() =>
+              runStudio(
+                async () => {
+                  await save.mutateAsync(tokens);
+                  await publish.mutateAsync();
+                },
+                {
+                  area: `${STUDIO_AREA} → Theme`,
+                  action: "Publish theme",
+                  success: "Theme published — it's live now.",
+                  onOk: () => setMsg("Theme published."),
+                },
+              )
+            }
+          >
+            Publish
+          </Button>
+        </div>
+        <Status msg={msg} />
+      </Card>
+
+      <ThemePreview get={eff} />
+    </div>
+  );
+}
+
+/** A quick, live approximation of the dark-mode storefront using the current
+ *  (draft) theme tokens, so operators see a colour/font/corner change land
+ *  before they ever publish. Not pixel-perfect — a confidence check. */
+function ThemePreview({ get }: { get: (key: string, def: string) => string }) {
+  const bg = get("--ink", "oklch(0.14 0.012 60)");
+  const card = get("--card", "oklch(0.18 0.012 60)");
+  const text = get("--cream", "oklch(0.96 0.018 80)");
+  const muted = get("--muted-foreground", "oklch(0.68 0.025 70)");
+  const border = get("--border", "oklch(0.28 0.015 60)");
+  const primary = get("--taupe", "oklch(0.82 0.045 60)");
+  const champagne = get("--champagne", "oklch(0.71 0.06 60)");
+  const gold = get("--gold", "oklch(0.78 0.11 75)");
+  const rose = get("--rose", "oklch(0.62 0.13 18)");
+  const burgundy = get("--burgundy", "oklch(0.32 0.11 25)");
+  const heading = get(
+    "--font-display",
+    '"Work Sans Variable", ui-sans-serif, system-ui, sans-serif',
+  );
+  const body = get(
+    "--font-sans",
+    '"Work Sans Variable", ui-sans-serif, system-ui, sans-serif',
+  );
+  const couture = get(
+    "--font-couture",
+    '"Cormorant Garamond", ui-serif, Georgia, serif',
+  );
+  const radius = get("--radius", "0.25rem");
+
+  return (
+    <div className="lg:sticky lg:top-4 lg:self-start">
+      <p className="mb-2 text-[12px] font-medium text-text-muted">Live preview</p>
+      <div className="overflow-hidden rounded-[14px] border border-line shadow-glass">
+        <div style={{ background: bg, fontFamily: body, color: text }} className="p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <span
+              style={{ fontFamily: couture, color: primary }}
+              className="text-[16px] italic"
+            >
+              Maison
+            </span>
+            <div className="flex gap-1.5">
+              {[champagne, gold, rose, burgundy].map((c, i) => (
+                <span
+                  key={i}
+                  style={{ background: c }}
+                  className="h-3.5 w-3.5 rounded-full ring-1 ring-black/20"
+                />
+              ))}
+            </div>
+          </div>
+          <div
+            style={{ background: card, borderColor: border, borderRadius: radius }}
+            className="border p-4"
+          >
+            <p
+              style={{ color: muted }}
+              className="text-[9.5px] font-semibold uppercase tracking-[0.22em]"
+            >
+              New in
+            </p>
+            <h3
+              style={{ fontFamily: heading, color: text }}
+              className="mt-1.5 text-[21px] font-semibold leading-tight"
+            >
+              The Pixie Cut Wig
+            </h3>
+            <p style={{ color: muted }} className="mt-1.5 text-[12px] leading-relaxed">
+              Most realistic HD lace — hand-tied and ready to wear.
+            </p>
+            <div className="mt-3.5 flex items-center gap-2">
+              <button
+                type="button"
+                style={{ background: primary, color: bg, borderRadius: radius }}
+                className="px-3.5 py-2 text-[12px] font-semibold"
+              >
+                Add to bag
+              </button>
+              <button
+                type="button"
+                style={{ borderColor: border, color: text, borderRadius: radius }}
+                className="border px-3.5 py-2 text-[12px] font-semibold"
+              >
+                Details
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
-      <Status msg={msg} />
-    </Card>
+      <p className="mt-2 text-[11px] text-text-muted">
+        An approximation of your dark-mode storefront. Publish to see it live.
+      </p>
+    </div>
   );
 }
 
@@ -1157,7 +1414,7 @@ function NavigationTab() {
               title={`Link ${i + 1}`}
               onRemove={() => setHeader((h) => h.filter((_, j) => j !== i))}
             >
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <TextField
                   label="Label"
                   value={item.label}
@@ -1249,7 +1506,7 @@ function NavigationTab() {
                         )
                       }
                     >
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                         <TextField
                           label="Label"
                           value={lk.label}
@@ -1443,8 +1700,8 @@ function PagesTab({
     return <p className="text-[13px] text-text-muted">Loading...</p>;
 
   return (
-    <div className="grid grid-cols-[220px_1fr] gap-5">
-      <Card className="p-3">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[240px_1fr] lg:gap-5">
+      <Card className={cn("p-3", sel && "hidden lg:block")}>
         <Button
           variant="secondary"
           size="sm"
@@ -1473,9 +1730,11 @@ function PagesTab({
         </ul>
       </Card>
 
+      <div className={cn(!sel && "hidden lg:block")}>
       {sel ? (
-        <Card className="max-w-2xl space-y-4 p-5">
-          <div className="grid grid-cols-2 gap-3">
+        <Card className="flex flex-col space-y-4 p-5 lg:max-w-2xl">
+          <BackToList label="All pages" onClick={() => setSel(null)} />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <TextField
               label="Page name (key)"
               value={sel.page_key}
@@ -1542,10 +1801,11 @@ function PagesTab({
           <Status msg={msg} />
         </Card>
       ) : (
-        <p className="text-[13px] text-text-muted">
+        <p className="hidden text-[13px] text-text-muted lg:block">
           Select a page to edit, or create a new one.
         </p>
       )}
+      </div>
     </div>
   );
 }
@@ -2027,8 +2287,8 @@ function PopupsTab() {
     return <p className="text-[13px] text-text-muted">Loading...</p>;
 
   return (
-    <div className="grid grid-cols-[220px_1fr] gap-5">
-      <Card className="p-3">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[240px_1fr] lg:gap-5">
+      <Card className={cn("p-3", sel && "hidden lg:block")}>
         <Button
           variant="secondary"
           size="sm"
@@ -2057,8 +2317,10 @@ function PopupsTab() {
         </ul>
       </Card>
 
+      <div className={cn(!sel && "hidden lg:block")}>
       {sel ? (
-        <Card className="max-w-2xl space-y-4 p-5">
+        <Card className="flex flex-col space-y-4 p-5 lg:max-w-2xl">
+          <BackToList label="All popups" onClick={() => setSel(null)} />
           <TextField
             label="Popup name (key)"
             value={sel.popup_key}
@@ -2082,7 +2344,7 @@ function PopupsTab() {
               value={content.image_url || ""}
               onChange={(v) => setContent("image_url", v)}
             />
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <TextField
                 label="Button label"
                 value={content.button_label || ""}
@@ -2102,7 +2364,7 @@ function PopupsTab() {
           </Section>
 
           <Section title="When it shows" defaultOpen>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <SelectField
                 label="Trigger"
                 value={sel.trigger_type}
@@ -2165,7 +2427,7 @@ function PopupsTab() {
             />
           </Section>
 
-          <div className="flex gap-2 pt-1">
+          <div className="flex flex-wrap gap-2 pt-1">
             <Button
               variant="primary"
               disabled={save.isPending || publish.isPending}
@@ -2184,6 +2446,7 @@ function PopupsTab() {
               variant="danger"
               disabled={!sel.popup_key || del.isPending}
               onClick={() => setConfirmDelete(true)}
+              className="sm:ml-auto"
             >
               Delete
             </Button>
@@ -2212,10 +2475,11 @@ function PopupsTab() {
           />
         </Card>
       ) : (
-        <p className="text-[13px] text-text-muted">
+        <p className="hidden text-[13px] text-text-muted lg:block">
           Select a popup to edit, or create a new one.
         </p>
       )}
+      </div>
     </div>
   );
 }
@@ -2244,43 +2508,43 @@ function RevisionsTab() {
       {revs.length === 0 ? (
         <p className="text-[13px] text-text-muted">No publishes yet.</p>
       ) : (
-        <table className="w-full text-[13px]">
-          <thead>
-            <tr className="border-b border-line text-left text-text-muted">
-              <th className="py-2 font-medium">When</th>
-              <th className="font-medium">Type</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {revs.map((r) => (
-              <tr key={r.revision_id} className="border-b border-line">
-                <td className="py-2 text-text-primary">
+        // A responsive list, not a <table>: each publish stacks into a tidy
+        // row on phones (details on top, a full-width Restore below) and lines
+        // up in columns on wider screens — no horizontal scroll on mobile.
+        <ul className="divide-y divide-line">
+          {revs.map((r) => (
+            <li
+              key={r.revision_id}
+              className="flex flex-col gap-2.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+            >
+              <div className="min-w-0">
+                <div className="text-[13px] text-text-primary">
                   {formatDateTime(r.published_at)}
-                </td>
-                <td className="capitalize text-text-primary">{r.entity_type}</td>
-                <td className="text-right">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={rollback.isPending}
-                    onClick={() =>
-                      runStudio(() => rollback.mutateAsync(r.revision_id), {
-                        area: `${STUDIO_AREA} → Revisions`,
-                        action: "Restore revision",
-                        success: "Restored to draft — review and publish.",
-                        onOk: () =>
-                          setMsg("Restored to draft - review and publish."),
-                      })
-                    }
-                  >
-                    Restore to draft
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </div>
+                <div className="mt-0.5 text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                  {r.entity_type}
+                </div>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="w-full sm:w-auto"
+                disabled={rollback.isPending}
+                onClick={() =>
+                  runStudio(() => rollback.mutateAsync(r.revision_id), {
+                    area: `${STUDIO_AREA} → Revisions`,
+                    action: "Restore revision",
+                    success: "Restored to draft — review and publish.",
+                    onOk: () =>
+                      setMsg("Restored to draft - review and publish."),
+                  })
+                }
+              >
+                Restore to draft
+              </Button>
+            </li>
+          ))}
+        </ul>
       )}
       <Status msg={msg} />
     </Card>
@@ -2291,8 +2555,21 @@ function RevisionsTab() {
 // Preview (embedded iframe + open-live)
 // ============================================================
 
+type PreviewDevice = "phone" | "tablet" | "desktop";
+const PREVIEW_DEVICES: {
+  key: PreviewDevice;
+  label: string;
+  icon: React.ReactNode;
+  width: number | null;
+}[] = [
+  { key: "phone", label: "Phone", icon: <Smartphone className="h-4 w-4" />, width: 390 },
+  { key: "tablet", label: "Tablet", icon: <Tablet className="h-4 w-4" />, width: 768 },
+  { key: "desktop", label: "Desktop", icon: <Monitor className="h-4 w-4" />, width: null },
+];
+
 function PreviewTab() {
   const { data, isLoading, refetch } = usePreviewInfo();
+  const [device, setDevice] = useState<PreviewDevice>("phone");
 
   if (isLoading)
     return <p className="text-[13px] text-text-muted">Loading preview...</p>;
@@ -2309,14 +2586,41 @@ function PreviewTab() {
   const url = `${data.base_url.replace(/\/$/, "")}/?preview=${encodeURIComponent(
     data.token,
   )}`;
+  const activeDevice = PREVIEW_DEVICES.find((d) => d.key === device)!;
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-[13px] text-text-muted">
           Live draft preview - shows unpublished changes. The preview link
           expires in ~30 minutes.
         </p>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Frame the site at real device widths so operators can sanity-check
+              their own mobile responsiveness from inside the Studio. */}
+          <div
+            role="tablist"
+            aria-label="Preview device size"
+            className="inline-flex items-center gap-0.5 rounded-[11px] border border-line bg-text-primary/[0.03] p-0.5"
+          >
+            {PREVIEW_DEVICES.map((d) => (
+              <button
+                key={d.key}
+                role="tab"
+                aria-selected={d.key === device}
+                aria-label={d.label}
+                title={d.label}
+                onClick={() => setDevice(d.key)}
+                className={cn(
+                  "grid h-8 w-9 place-items-center rounded-[9px] transition-colors",
+                  d.key === device
+                    ? "bg-accent-deep text-[#F4E9D9]"
+                    : "text-text-muted hover:text-text-primary",
+                )}
+              >
+                {d.icon}
+              </button>
+            ))}
+          </div>
           <Button variant="ghost" size="sm" onClick={() => refetch()}>
             Refresh
           </Button>
@@ -2325,16 +2629,29 @@ function PreviewTab() {
             size="sm"
             onClick={() => window.open(url, "_blank", "noopener")}
           >
-            Open live preview
+            Open
           </Button>
         </div>
       </div>
       <Card className="overflow-hidden p-0">
-        <iframe
-          title="Storefront preview"
-          src={url}
-          className="h-[70vh] w-full border-0 bg-white"
-        />
+        <div
+          className={cn(
+            "mx-auto w-full transition-[max-width] duration-300",
+            activeDevice.width ? "p-3 sm:p-5" : "",
+          )}
+          style={activeDevice.width ? { maxWidth: activeDevice.width } : undefined}
+        >
+          <iframe
+            title="Storefront preview"
+            src={url}
+            className={cn(
+              "h-[70vh] w-full border-0 bg-white",
+              activeDevice.width
+                ? "rounded-[24px] border border-line shadow-glass"
+                : "",
+            )}
+          />
+        </div>
       </Card>
     </div>
   );

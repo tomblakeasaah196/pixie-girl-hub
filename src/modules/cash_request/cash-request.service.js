@@ -118,8 +118,15 @@ function list({ brand, user, scope, filters, page, page_size }) {
   });
 }
 
-async function getById({ brand, id }) {
-  return load({ brand, id });
+async function getById({ brand, id, scope, user }) {
+  const cr = await load({ brand, id });
+  // Approve-gated visibility (§6.32): a view-only ('own' scope) caller may only
+  // open a request they submitted — 404, not 403, so a stray id doesn't confirm
+  // the record exists. Approvers / CEO arrive here as scope 'all'.
+  if (scope === "own" && user && cr.submitted_by !== user.user_id) {
+    throw new NotFoundError("CashRequest");
+  }
+  return cr;
 }
 
 // ── Stage 0: create draft ──────────────────────────────────
@@ -601,14 +608,15 @@ async function addDocument({
   return doc;
 }
 
-async function listDocuments({ brand, id }) {
-  await load({ brand, id });
+async function listDocuments({ brand, id, scope, user }) {
+  // getById enforces the same approve-gated visibility as the parent request.
+  await getById({ brand, id, scope, user });
   return repo.listDocuments({ brand, cash_request_id: id });
 }
 
 // ── History timeline ──────────────────────────────────────
-async function getHistory({ brand, id }) {
-  await load({ brand, id });
+async function getHistory({ brand, id, scope, user }) {
+  await getById({ brand, id, scope, user });
   return repo.getHistory({ cash_request_id: id });
 }
 

@@ -356,7 +356,12 @@ async function listReceipts({ client, brand, expense_id }) {
 
 // Dashboard KPIs for the Expenses module (its own stats, distinct from cash
 // requests). Single aggregate over the brand's expenses header table.
-async function kpis({ brand }) {
+async function kpis({ brand, scope, user_id }) {
+  // Approve-gated visibility: a view-only ('own' scope) caller's KPI cards
+  // aggregate only their own expenses; approvers / CEO ('all') see the brand.
+  const where =
+    scope === "own" && user_id ? `WHERE submitted_by = $1` : ``;
+  const params = scope === "own" && user_id ? [user_id] : [];
   const { rows } = await query(
     `SELECT
        COALESCE(SUM(total_amount_ngn) FILTER (
@@ -372,7 +377,8 @@ async function kpis({ brand }) {
          WHERE expense_type = 'reimbursement'
            AND status NOT IN ('paid','reimbursed','rejected','cancelled')
        ), 0) AS reimbursements_outstanding
-       FROM ${t(brand, "expenses")}`,
+       FROM ${t(brand, "expenses")} ${where}`,
+    params,
   );
   const r = rows[0] || {};
   return {

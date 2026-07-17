@@ -228,6 +228,10 @@ Order / Logistics side.
   (`/service-jobs?tab=board`).
 - *Work on my own job?* Stylist → **My Jobs** (`/service-jobs?tab=my`) →
   Start → hand back for QC.
+- *See or download the style photo?* Open the job from the Job Board
+  (`/service-jobs?tab=board`) — the photo sits at the top of the job drawer;
+  **click it** for a full-screen view with a **Download** button, so you can
+  save it to your phone and work from it.
 - *QC pass or fail a returned job?* Ops → **QC Queue** tab. Pass = job
   completed + wig auto-dispatched to Logistics; fail = back to stylist for
   rework.

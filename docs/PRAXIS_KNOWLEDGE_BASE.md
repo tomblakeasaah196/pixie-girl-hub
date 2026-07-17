@@ -83,12 +83,21 @@ only access one business, there's nothing to switch.
 ### 2.4 Global search & command palette (⌘K)
 Press **⌘K** (Mac) or **Ctrl-K** (Windows) anywhere. From one box you can:
 - **Find records** across the business — orders, contacts, invoices, expenses,
-  cash requests, CRM deals, employees, deliveries, documents.
-- **Jump to any page** — type a module name ("cash", "invoicing", "stock").
+  cash requests, CRM deals, employees, deliveries, documents, **products &
+  catalogue items** (search a product name or SKU).
+- **Jump to any page — and any tab within a page.** Type a module name
+  ("stock", "invoicing") *or* a tab name ("shades", "credit notes", "chart of
+  accounts", "approval queue") and the palette takes you straight to that tab
+  (e.g. "shades" → **Catalogue › Shades**).
 - **Run a command** — e.g. type "new order" to start one.
 - **Search help articles.**
 - **Search across all your brands** (toggle) — find a record even if it's in the
   other business.
+
+Everything the palette shows respects your permissions: modules, their tabs,
+and record types you can't access simply don't appear (e.g. a user without
+Catalogue access never sees Catalogue or its tabs in search). Operators narrow
+the search: `>` commands, `#` records, `@` people, `?` help, `!` pages & tabs.
 
 This is the fastest way to get anywhere. When telling a user where something is,
 you can add: "or press **⌘K** and type its name."

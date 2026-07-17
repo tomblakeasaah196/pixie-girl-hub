@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useUrlTab } from "@/hooks/useUrlTab";
 import { useNavigate } from "react-router-dom";
 import {
   Truck,
@@ -107,7 +108,10 @@ const NON_LIST_TABS = new Set<Tab>(["rates", "agencies"]);
 export function LogisticsPage() {
   useBreadcrumbs([{ label: "Logistics" }]);
   const { can } = useAuthStore();
-  const [tab, setTab] = useState<Tab>("queue");
+  const [tab, setTab] = useUrlTab<Tab>(
+    "queue",
+    TABS.map((t) => t.key),
+  );
   const [search, setSearch] = useState("");
   const [creating, setCreating] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);

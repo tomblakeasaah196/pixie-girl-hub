@@ -1,4 +1,5 @@
 import { useState, lazy, Suspense } from "react";
+import { useUrlTab } from "@/hooks/useUrlTab";
 import {
   Wallet,
   Plus,
@@ -36,7 +37,15 @@ export default function CashRequestsPage() {
   useBreadcrumbs([{ label: "Cash Requests" }]);
   const can = useAuthStore((s) => s.can);
 
-  const [tab, setTab] = useState<Tab>("my-requests");
+  // Approval-only tabs must not be selectable (even via a hand-typed ?tab=)
+  // by a user who can't approve — the valid-list falls them back to My Requests.
+  const canApproveTabs = can("expenses", "approve");
+  const [tab, setTab] = useUrlTab<Tab>(
+    "my-requests",
+    canApproveTabs
+      ? ["my-requests", "drafts", "approval-queue", "all-requests"]
+      : ["my-requests", "drafts"],
+  );
   const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(1);
 

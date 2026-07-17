@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useUrlTab } from "@/hooks/useUrlTab";
 import {
   DndContext,
   PointerSensor,
@@ -133,15 +134,21 @@ function StatusPill({ status }: { status?: StudioStatus }) {
 
 export function StorefrontStudioPage() {
   const brand = useBusinessStore((s) => s.activeKey);
-  const [tab, setTab] = useState<Tab>("theme");
+  const [tab, setTab] = useUrlTab<Tab>(
+    "theme",
+    TABS.map((t) => t.key),
+  );
   // Pages → journal links "view/create article" straight into Content, so the
   // operator never has to re-find what they just clicked.
   const [contentJump, setContentJump] = useState<ContentJump | null>(null);
   const clearContentJump = useCallback(() => setContentJump(null), []);
-  const jumpToContent = useCallback((jump: ContentJump) => {
-    setContentJump(jump);
-    setTab("content");
-  }, []);
+  const jumpToContent = useCallback(
+    (jump: ContentJump) => {
+      setContentJump(jump);
+      setTab("content");
+    },
+    [setTab],
+  );
 
   return (
     <div className="space-y-5">

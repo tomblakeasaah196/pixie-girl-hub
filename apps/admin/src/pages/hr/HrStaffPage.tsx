@@ -9,6 +9,7 @@
  */
 
 import { useState } from "react";
+import { useUrlTab } from "@/hooks/useUrlTab";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -980,7 +981,22 @@ export default function HrStaffPage() {
   const qc = useQueryClient();
   const notify = useNotify("HR → Staff: analytics");
   const can = useAuthStore((s) => s.can);
-  const [tab, setTab] = useState("overview");
+  // Recruitment is only a valid tab for users who can see it — a hand-typed
+  // ?tab=recruitment from anyone else falls back to Overview.
+  const [tab, setTab] = useUrlTab<string>("overview", [
+    "overview",
+    "directory",
+    "leave",
+    "attendance",
+    "devices",
+    "queries",
+    "targets",
+    "rewards",
+    ...(can("recruitment", "view") ? ["recruitment"] : []),
+    "analytics",
+    "settings",
+    "onboarding",
+  ]);
   const [raiseOpen, setRaiseOpen] = useState(false);
   const [targetOpen, setTargetOpen] = useState(false);
   const [contractOpen, setContractOpen] = useState(false);

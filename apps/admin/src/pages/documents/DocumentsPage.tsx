@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { useUrlTab } from "@/hooks/useUrlTab";
 import {
   FolderArchive,
   Upload,
@@ -83,7 +84,7 @@ const KIND_ICON = {
 export function DocumentsPage() {
   useBreadcrumbs([{ label: "Documents" }]);
   const { can } = useAuthStore();
-  const [tab, setTab] = useState<Tab>("vault");
+  const [tab, setTab] = useUrlTab<Tab>("vault", ["vault", "signatures"]);
 
   if (!can("documents", "view")) {
     return <DeniedState message="You don't have access to Documents." />;

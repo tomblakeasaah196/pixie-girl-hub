@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useUrlTab } from "@/hooks/useUrlTab";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { useAuthStore } from "@/stores/auth";
@@ -31,7 +31,13 @@ const TABS = [
 export function SocialPage() {
   useBreadcrumbs([{ label: "Social Studio" }]);
   const { can } = useAuthStore();
-  const [tab, setTab] = useState<Tab>("board");
+  const [tab, setTab] = useUrlTab<Tab>("board", [
+    "board",
+    "calendar",
+    "performance",
+    "team",
+    "accounts",
+  ]);
 
   if (!can("social", "view")) {
     return <DeniedState message="You don't have access to Social Studio." />;

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useUrlTab } from "@/hooks/useUrlTab";
 import { Lock } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
@@ -33,7 +33,10 @@ type TabKey = (typeof TABS)[number]["key"];
 export default function AccountingPage() {
   useBreadcrumbs([{ label: "Accounting" }]);
   const can = useAuthStore((s) => s.can);
-  const [tab, setTab] = useState<TabKey>("reports");
+  const [tab, setTab] = useUrlTab<TabKey>(
+    "reports",
+    TABS.map((t) => t.key),
+  );
 
   if (!can("accounting", "view")) {
     return (

@@ -119,6 +119,10 @@ export const smartcommApi = {
       message_type?: MessageType;
       reply_to_id?: string;
       attachments?: { document_id: string; display_name?: string }[];
+      /** Email only: subject line for this outbound message. */
+      subject?: string;
+      /** Email only: Cc copy recipients. */
+      cc?: string[];
       is_template?: boolean;
       /** IG only: send outside the 24h window with Meta's HUMAN_AGENT tag. */
       is_human_agent?: boolean;

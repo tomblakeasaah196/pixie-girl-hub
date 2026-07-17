@@ -205,8 +205,52 @@ function replyToFor(fromEmail) {
   return domain ? `sales@${domain}` : null;
 }
 
+/**
+ * Turn caller-supplied attachment specs into the shape Nodemailer's
+ * `attachments` array expects. Two forms are accepted:
+ *   • `{ filename, storage_key, content_type }` — a file already in local
+ *     storage (a message attachment / generated PDF). Only the KEY rides
+ *     the queue (never the bytes — that would bloat Redis); the bytes are
+ *     loaded here, at send time, straight from storage.
+ *   • a ready Nodemailer object (`{ filename, content }`, `{ path }`,
+ *     `{ href }`) — passed through untouched.
+ *
+ * A missing stored file throws rather than sending a mail that silently
+ * omits the PDF/photo the customer was promised — the operator then sees
+ * the send fail and can re-attach, instead of the file vanishing quietly.
+ */
+async function resolveAttachments(list) {
+  if (!Array.isArray(list) || list.length === 0) return undefined;
+  const storage = require("./storage.service");
+  const out = [];
+  for (const a of list) {
+    if (!a) continue;
+    if (a.storage_key) {
+      let content;
+      try {
+        content = await storage.get(a.storage_key);
+      } catch {
+        throw new AppError(
+          "EMAIL_ATTACHMENT_MISSING",
+          `Attachment "${a.filename || a.storage_key}" could not be read from storage — the file may have been removed. Re-attach it and try again.`,
+          422,
+        );
+      }
+      out.push({
+        filename: a.filename || "attachment",
+        content,
+        contentType: a.content_type || a.contentType || undefined,
+      });
+    } else if (a.content || a.path || a.href) {
+      out.push(a);
+    }
+  }
+  return out.length ? out : undefined;
+}
+
 async function send({
   to,
+  cc,
   subject,
   html,
   text,
@@ -214,6 +258,7 @@ async function send({
   from_name,
   reply_to,
   headers,
+  attachments,
   brand,
 }) {
   const t = await getTransporter(brand);
@@ -229,15 +274,20 @@ async function send({
     );
   }
   const replyTo = reply_to || sender.replyTo || replyToFor(fromEmail);
+  const resolvedAttachments = await resolveAttachments(attachments);
 
   return t.sendMail({
     to,
+    // Nodemailer accepts a string, comma-list, or array for cc — pass an
+    // array of addresses straight through; omit entirely when there's none.
+    cc: cc && cc.length ? cc : undefined,
     from: `${from_name || sender.fromName} <${fromEmail}>`,
     replyTo: replyTo || undefined,
     subject,
     html,
     text,
     headers,
+    attachments: resolvedAttachments,
   });
 }
 

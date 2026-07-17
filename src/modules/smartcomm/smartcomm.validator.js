@@ -78,6 +78,11 @@ const postMessage = z
           .strict(),
       )
       .optional(),
+    // Email envelope (ignored on WhatsApp/IG/internal threads): the
+    // operator's subject line and any Cc copy recipients. Persisted on the
+    // message metadata and used to build the outbound email.
+    subject: z.string().max(300).optional(),
+    cc: z.array(z.string().email()).max(25).optional(),
     is_template: z.boolean().optional(),
     // Instagram-outside-window escape hatch: operator explicitly opts
     // into a HUMAN_AGENT-tagged Meta send (requires Meta app approval).
@@ -113,7 +118,9 @@ const sendToCustomer = z
   .object({
     contact_id: z.string().uuid(),
     channel: z.enum(["whatsapp", "email", "instagram"]).optional(),
-    subject: z.string().max(200).optional(),
+    subject: z.string().max(300).optional(),
+    // Email-only Cc copy recipients (ignored on other channels).
+    cc: z.array(z.string().email()).max(25).optional(),
     body: z.string().min(1).max(8000),
   })
   .strict();

@@ -246,6 +246,7 @@ async function sendToCustomer(req, res) {
     contact_id: req.body.contact_id,
     channel: req.body.channel,
     subject: req.body.subject,
+    cc: req.body.cc,
     body: req.body.body,
     user: req.user,
   });

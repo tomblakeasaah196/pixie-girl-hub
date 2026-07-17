@@ -126,6 +126,19 @@ back truncated and are skipped. The backfill recovers the recent trend of
 every thread — not the deep archive. (That deep history still exists in
 the Instagram app itself.)
 
+**Rate limits.** The per-conversation `/messages` read is Meta's strict
+bucket. A single pass over a few hundred conversations is fine, but
+running the **dry run and the real run back-to-back doubles the calls**
+and trips a `403` (Meta code 4 / 17 / 32 — "request limit reached"). The
+script now detects the throttle, backs off (2s → 4s → 8s), and **stops
+early after 5 conversations in a row are throttled** rather than logging a
+failure for every remaining thread. If you see `Stopped early (rate
+limited)`: nothing is lost, **wait ~1 hour** for the window to reset, then
+run the **same command again** (skip `DRY_RUN` on the resume — it's
+idempotent and picks up the rest). To stay under the limit on a big first
+run, do it in chunks: `CONV_LIMIT=50 npm run backfill:instagram-history`,
+repeated, or raise the pacing with `GAP_MS=1000`.
+
 ## Files involved
 
 | Piece | Where |

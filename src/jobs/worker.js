@@ -24,6 +24,7 @@
  *   every 30m        — Layaway gentle payment reminder
  *   every 30m        — Invoice reminder sweep (F-10)
  *   every 2m         — Workspace task/event reminder sweep (remind_at)
+ *   every 1m         — HR clock-out reminders (−5 / at / +5 min of close time)
  *   every 30m        — Webhook replay sweep (H-4 — re-drive stuck webhooks)
  *   daily 03:00      — Soft-FK reconciliation sweep (F-13)
  *   daily 03:30      — Catalogue Trash purge (15-day grace window)
@@ -199,6 +200,9 @@ async function startWorkers() {
   } = require("./schedulers/catalogue-trash-purge");
   const { runHrAttendanceSweep } = require("./schedulers/hr-attendance");
   const {
+    runClockoutReminderSweep,
+  } = require("./schedulers/hr-clockout-reminders");
+  const {
     runAppraisalAutoScore,
   } = require("./schedulers/hr-appraisal-autoscore");
   const { runEsignReminderSweep } = require("./schedulers/esign-reminders");
@@ -325,6 +329,10 @@ async function startWorkers() {
   // every punch to the Attendance tab), so this only settles the books at
   // day's end rather than being the thing anyone waits on.
   scheduleCron("hr-attendance-sweep", "0 21 * * *", runHrAttendanceSweep);
+  // Clock-out reminders: every minute, nudge staff still clocked in as their
+  // closing time approaches (−5 / at / +5 min). Cheap indexed no-op when
+  // nobody is due; each nudge is claimed once via shared.clockout_reminders.
+  scheduleCron("hr-clockout-reminders", "* * * * *", runClockoutReminderSweep);
   scheduleCron("hr-appraisal-autoscore", "30 2 * * *", runAppraisalAutoScore);
   scheduleCron("esign-reminder-sweep", "0 9 * * *", runEsignReminderSweep);
   // Task/event reminders (remind_at) — every 2 min so a "15 minutes before"

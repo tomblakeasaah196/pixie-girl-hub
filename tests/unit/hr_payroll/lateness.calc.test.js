@@ -130,6 +130,46 @@ describe("lateness.calc — reconcileDay", () => {
   });
 });
 
+describe("lateness.calc — minutesOvertime (supplementary hours)", () => {
+  const base = { expectedEnd: "18:00", dateStr: "2026-06-22" };
+
+  test("clocking out after close counts the extra minutes", () => {
+    expect(
+      calc.minutesOvertime({ ...base, lastClockOutAt: "2026-06-22T18:45:00Z" }),
+    ).toBe(45);
+  });
+
+  test("clocking out before close is zero (not negative)", () => {
+    expect(
+      calc.minutesOvertime({ ...base, lastClockOutAt: "2026-06-22T17:30:00Z" }),
+    ).toBe(0);
+  });
+
+  test("clocking out exactly at close is zero", () => {
+    expect(
+      calc.minutesOvertime({ ...base, lastClockOutAt: "2026-06-22T18:00:00Z" }),
+    ).toBe(0);
+  });
+
+  test("no expected end or no clock-out → zero", () => {
+    expect(
+      calc.minutesOvertime({ ...base, expectedEnd: null, lastClockOutAt: "2026-06-22T20:00:00Z" }),
+    ).toBe(0);
+    expect(calc.minutesOvertime({ ...base, lastClockOutAt: null })).toBe(0);
+  });
+
+  test("respects the workplace timezone offset (Lagos = 60)", () => {
+    // 19:00 Lagos = 18:00Z; against an 18:00 local close that is exactly 60 min.
+    expect(
+      calc.minutesOvertime({
+        ...base,
+        lastClockOutAt: "2026-06-22T18:00:00Z",
+        tzOffsetMinutes: 60,
+      }),
+    ).toBe(60);
+  });
+});
+
 describe("lateness.calc — computeAttendanceInsights", () => {
   test("counts present_day_off as a present day", () => {
     const insights = calc.computeAttendanceInsights([
@@ -137,5 +177,16 @@ describe("lateness.calc — computeAttendanceInsights", () => {
       { status: "present", first_clock_in_at: "2026-06-23T09:00:00Z", work_date: "2026-06-23" },
     ]);
     expect(insights.present_days).toBe(2);
+  });
+
+  test("aggregates overtime across days", () => {
+    const insights = calc.computeAttendanceInsights([
+      { status: "present", overtime_minutes: 30, work_date: "2026-06-22" },
+      { status: "present", overtime_minutes: 0, work_date: "2026-06-23" },
+      { status: "present", overtime_minutes: 90, work_date: "2026-06-24" },
+    ]);
+    expect(insights.overtime_minutes).toBe(120);
+    expect(insights.overtime_days).toBe(2);
+    expect(insights.avg_overtime_minutes).toBe(60);
   });
 });

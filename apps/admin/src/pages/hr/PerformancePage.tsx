@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Gauge,
@@ -19,8 +20,16 @@ import {
   Trash2,
   FileDown,
   SlidersHorizontal,
+  Trophy,
+  Download,
+  Megaphone,
+  TrendingUp,
+  TrendingDown,
+  Clock,
+  UsersRound,
+  Send,
 } from "lucide-react";
-import { Card, Button, Pill, Skeleton, EmptyState } from "@/components/ui/primitives";
+import { Card, Button, Pill, Skeleton, EmptyState, MoneyText } from "@/components/ui/primitives";
 import { DeniedState } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
@@ -43,10 +52,18 @@ import {
   listPerfScores,
   calibratePerfScore,
   listStaff,
+  insightsSalesReport,
+  insightsAttendance,
+  downloadInsightsExcel,
+  insightsWinnerPdf,
+  announceWinner,
   type PerfCycle,
   type PerfScore,
   type KpiDef,
   type ScoreSource,
+  type SalesExecRep,
+  type ChannelMixRow,
+  type AttendanceStaffRow,
 } from "@/lib/hr-api";
 import { downloadDocumentById } from "@/lib/documents-api";
 import { TabBar, statusTone, useNotify, errMsg } from "./hr-shared";
@@ -692,6 +709,415 @@ function KpiEditorModal({ kpi, onClose }: { kpi: KpiDef | null; onClose: () => v
   );
 }
 
+// ── Insights tab (Sales exec of the month + Attendance + AI ask) ──
+
+const iso = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+/** First..last day of the month containing `d`. */
+function monthBounds(d = new Date()): { from: string; to: string } {
+  return {
+    from: iso(new Date(d.getFullYear(), d.getMonth(), 1)),
+    to: iso(new Date(d.getFullYear(), d.getMonth() + 1, 0)),
+  };
+}
+
+// Plain-language starters — tap to open Praxis pre-filled (option 8: Praxis box
+// + quick chips). Praxis answers from the same numbers this tab shows.
+const QUICK_QUESTIONS = [
+  "Who is sales exec of the month?",
+  "Who closed the most sales this month?",
+  "How was attendance this month?",
+  "Who was late the most this month?",
+  "Which channel drives our sales?",
+];
+
+const MEDALS = ["🥇", "🥈", "🥉"];
+
+/** Thin horizontal share bar (no chart lib — a token-styled meter). */
+function ShareBar({ pct, muted = false }: { pct: number; muted?: boolean }) {
+  return (
+    <div className="h-1.5 w-full overflow-hidden rounded-full bg-text-primary/[0.08]">
+      <div
+        className={`h-full rounded-full ${muted ? "bg-text-faint" : "bg-accent-glow"}`}
+        style={{ width: `${Math.max(0, Math.min(100, pct))}%` }}
+      />
+    </div>
+  );
+}
+
+function AskBar({ onAsk }: { onAsk: (q: string) => void }) {
+  const [text, setText] = useState("");
+  return (
+    <Card className="space-y-3 border-accent-glow/30 bg-accent-glow/[0.05] p-4 backdrop-blur-md">
+      <div className="flex items-center gap-2">
+        <Sparkles className="h-4 w-4 text-accent-glow" />
+        <span className="text-sm font-semibold text-text-primary">Ask Praxis</span>
+        <span className="text-xs text-text-muted">— plain-language questions about sales &amp; attendance</span>
+      </div>
+      <form
+        className="flex items-center gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (text.trim()) {
+            onAsk(text.trim());
+            setText("");
+          }
+        }}
+      >
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="e.g. who closed the most sales this month?"
+          className="w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary placeholder:text-text-faint"
+          autoComplete="off"
+          data-lpignore="true"
+        />
+        <Button type="submit" variant="primary" icon={<Send className="h-4 w-4" />} disabled={!text.trim()}>
+          Ask
+        </Button>
+      </form>
+      <div className="flex flex-wrap gap-2">
+        {QUICK_QUESTIONS.map((q) => (
+          <button
+            key={q}
+            onClick={() => onAsk(q)}
+            className="rounded-full border border-line bg-text-primary/[0.03] px-3 py-1 text-xs text-text-muted transition hover:border-accent-glow/40 hover:text-text-primary"
+          >
+            {q}
+          </button>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function WinnerCard({ winner, period }: { winner: SalesExecRep | null; period: { from: string; to: string } }) {
+  if (!winner) {
+    return (
+      <Card className="p-5">
+        <div className="flex items-center gap-2 text-sm text-text-muted">
+          <Trophy className="h-4 w-4" /> No staff-closed sales in this period yet.
+        </div>
+      </Card>
+    );
+  }
+  return (
+    <Card className="relative overflow-hidden border-accent-glow/40 bg-accent-glow/[0.06] p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-text-muted">
+            <Trophy className="h-3.5 w-3.5 text-accent-glow" /> Sales Exec of the Month
+          </div>
+          <div className="mt-1 font-display text-2xl text-text-primary">{winner.staff_name}</div>
+          <div className="text-xs text-text-faint">
+            {period.from} → {period.to}
+          </div>
+        </div>
+        <div className="text-5xl leading-none">🏆</div>
+      </div>
+      <div className="mt-4 grid grid-cols-3 gap-3">
+        <div>
+          <div className="font-display text-2xl text-accent-glow tabular-nums">{winner.closed_count}</div>
+          <div className="text-[11px] uppercase tracking-wide text-text-muted">Sales closed</div>
+        </div>
+        <div>
+          <div className="font-display text-2xl text-accent-glow tabular-nums">{winner.share_pct}%</div>
+          <div className="text-[11px] uppercase tracking-wide text-text-muted">Of all sales</div>
+        </div>
+        <div>
+          <MoneyText ngn={Number(winner.total_ngn)} className="text-2xl text-accent-glow" />
+          <div className="text-[11px] uppercase tracking-wide text-text-muted">Value closed</div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function LeaderRow({ rep, total }: { rep: SalesExecRep; total: number }) {
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-line p-3">
+      <span className="w-7 text-center text-sm">{MEDALS[rep.rank - 1] || rep.rank}</span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center justify-between gap-2">
+          <span className="truncate text-sm text-text-primary">{rep.staff_name}</span>
+          <span className="shrink-0 text-xs text-text-muted">
+            <span className="font-mono text-text-primary">{rep.closed_count}</span> of {total} · {rep.share_pct}%
+          </span>
+        </div>
+        <div className="mt-1.5">
+          <ShareBar pct={rep.share_pct} />
+        </div>
+      </div>
+      <MoneyText ngn={Number(rep.total_ngn)} className="shrink-0 text-sm" />
+    </div>
+  );
+}
+
+function ChannelMix({ rows }: { rows: ChannelMixRow[] }) {
+  if (!rows.length) return null;
+  return (
+    <Card className="p-4">
+      <div className="mb-3 text-sm font-semibold text-text-primary">Sales by channel</div>
+      <div className="space-y-2.5">
+        {rows.map((c) => (
+          <div key={c.channel} className="space-y-1">
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="flex items-center gap-1.5 text-text-primary">
+                {c.label}
+                {c.self_service && (
+                  <span className="rounded-full bg-text-primary/[0.06] px-1.5 py-0.5 text-[10px] text-text-faint">
+                    self-service
+                  </span>
+                )}
+              </span>
+              <span className="text-text-muted">
+                <span className="font-mono text-text-primary">{c.closed_count}</span> · {c.share_pct}%
+              </span>
+            </div>
+            <ShareBar pct={c.share_pct} muted={c.self_service} />
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function AttendanceTable({ staff }: { staff: AttendanceStaffRow[] }) {
+  if (!staff.length)
+    return (
+      <EmptyState
+        icon={<Clock className="h-6 w-6" />}
+        title="No attendance yet"
+        message="Reconciled attendance for this period will appear here."
+      />
+    );
+  const otTone = (p: number | null) =>
+    p === null ? "neutral" : p >= 90 ? "success" : p >= 75 ? "warn" : "danger";
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[640px] text-sm">
+        <thead>
+          <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-text-muted">
+            <th className="py-2 pr-3 font-medium">Staff</th>
+            <th className="px-2 py-2 text-right font-medium">Present</th>
+            <th className="px-2 py-2 text-right font-medium">Late</th>
+            <th className="px-2 py-2 text-right font-medium">Absent</th>
+            <th className="px-2 py-2 text-right font-medium">Off-site</th>
+            <th className="px-2 py-2 text-right font-medium">Hours</th>
+            <th className="px-2 py-2 text-right font-medium">On-time</th>
+          </tr>
+        </thead>
+        <tbody>
+          {staff.map((s) => (
+            <tr key={s.profile_id} className="border-b border-line/60">
+              <td className="py-2 pr-3 text-text-primary">{s.staff_name}</td>
+              <td className="px-2 py-2 text-right font-mono text-text-primary">{s.present_days}</td>
+              <td className="px-2 py-2 text-right font-mono text-text-muted">{s.late_days}</td>
+              <td className="px-2 py-2 text-right font-mono text-text-muted">{s.absent_days}</td>
+              <td className="px-2 py-2 text-right font-mono text-text-muted">{s.offsite_days}</td>
+              <td className="px-2 py-2 text-right font-mono text-text-muted">{s.hours_worked.toFixed(1)}</td>
+              <td className="px-2 py-2 text-right">
+                {s.on_time_pct === null ? (
+                  <span className="text-text-faint">—</span>
+                ) : (
+                  <Pill tone={otTone(s.on_time_pct)}>{s.on_time_pct}%</Pill>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function InsightsTab() {
+  const navigate = useNavigate();
+  const notify = useNotify("HR → Performance: insights");
+  const can = useAuthStore((s) => s.can);
+  const canEdit = can("performance", "edit");
+  const [{ from, to }, setPeriod] = useState(() => monthBounds());
+  const params = { from, to };
+
+  const sales = useQuery({
+    queryKey: ["perf", "insights", "sales", from, to],
+    queryFn: () => insightsSalesReport(params),
+  });
+  const attendance = useQuery({
+    queryKey: ["perf", "insights", "attendance", from, to],
+    queryFn: () => insightsAttendance(params),
+  });
+
+  const goAsk = (q: string) => {
+    if (q.trim()) navigate("/praxis", { state: { initialText: q.trim() } });
+  };
+
+  const xlsx = useMutation({
+    mutationFn: () => downloadInsightsExcel(params),
+    onError: (e) => notify("Export failed", errMsg(e), "high"),
+  });
+  const pdf = useMutation({
+    mutationFn: () => insightsWinnerPdf(params),
+    onSuccess: async (r) => {
+      await downloadDocumentById(r.document_id, r.title);
+      notify("Winner certificate ready", "The PDF has been downloaded.");
+    },
+    onError: (e) => notify("Failed", errMsg(e), "high"),
+  });
+  const announce = useMutation({
+    mutationFn: () => announceWinner(params),
+    onSuccess: (r) =>
+      notify(
+        r.winner ? "Winner announced" : "Nothing to announce",
+        r.winner
+          ? `${r.winner.staff_name} — notified ${r.notified} staff.`
+          : "No staff-closed sales in this period.",
+      ),
+    onError: (e) => notify("Failed", errMsg(e), "high"),
+  });
+
+  const s = sales.data;
+  const compare = s?.compare;
+
+  return (
+    <div className="space-y-4">
+      <AskBar onAsk={goAsk} />
+
+      {/* Period + actions toolbar */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2 rounded-xl border border-line bg-text-primary/[0.03] px-3 py-1.5">
+          <input
+            type="date"
+            value={from}
+            max={to}
+            onChange={(e) => setPeriod((p) => ({ ...p, from: e.target.value }))}
+            className="bg-transparent text-sm text-text-primary"
+          />
+          <span className="text-text-faint">→</span>
+          <input
+            type="date"
+            value={to}
+            min={from}
+            onChange={(e) => setPeriod((p) => ({ ...p, to: e.target.value }))}
+            className="bg-transparent text-sm text-text-primary"
+          />
+        </div>
+        <Button size="sm" variant="ghost" onClick={() => setPeriod(monthBounds())}>
+          This month
+        </Button>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="ghost" icon={<Download className="h-3.5 w-3.5" />}
+            disabled={xlsx.isPending} onClick={() => xlsx.mutate()}>
+            {xlsx.isPending ? "Preparing…" : "Excel"}
+          </Button>
+          <Button size="sm" variant="ghost" icon={<FileDown className="h-3.5 w-3.5" />}
+            disabled={pdf.isPending} onClick={() => pdf.mutate()}>
+            {pdf.isPending ? "Preparing…" : "Winner PDF"}
+          </Button>
+          {canEdit && (
+            <Button size="sm" icon={<Megaphone className="h-3.5 w-3.5" />}
+              disabled={announce.isPending || !s?.winner} onClick={() => announce.mutate()}>
+              {announce.isPending ? "Announcing…" : "Announce winner"}
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Sales exec of the month */}
+      {sales.isLoading ? (
+        <Skeleton className="h-40 rounded-[var(--radius)]" />
+      ) : sales.isError ? (
+        <Card className="flex items-center justify-between gap-3 p-4">
+          <span className="text-sm text-danger">Couldn't load the sales leaderboard.</span>
+          <Button size="sm" variant="ghost" onClick={() => sales.refetch()}>Retry</Button>
+        </Card>
+      ) : s ? (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="space-y-3">
+            <WinnerCard winner={s.winner} period={s.period} />
+            {compare && (
+              <div className="flex items-center gap-2 px-1 text-xs text-text-muted">
+                {compare.closed_delta >= 0 ? (
+                  <TrendingUp className="h-3.5 w-3.5 text-success" />
+                ) : (
+                  <TrendingDown className="h-3.5 w-3.5 text-danger" />
+                )}
+                {s.totals.total_closed} sales this period ·{" "}
+                {compare.closed_delta >= 0 ? "+" : ""}
+                {compare.closed_delta} vs previous ({compare.total_closed})
+              </div>
+            )}
+            <Card className="p-4">
+              <div className="mb-1 flex items-center gap-2 text-sm font-semibold text-text-primary">
+                <UsersRound className="h-4 w-4" /> Leaderboard
+              </div>
+              <div className="mb-3 text-xs text-text-muted">
+                {s.totals.attributed_closed} of {s.totals.total_closed} sales credited to{" "}
+                {s.totals.rep_count} rep{s.totals.rep_count === 1 ? "" : "s"}.
+              </div>
+              {s.leaderboard.length ? (
+                <div className="space-y-2">
+                  {s.leaderboard.map((rep) => (
+                    <LeaderRow key={rep.user_id} rep={rep} total={s.totals.total_closed} />
+                  ))}
+                  {s.unattributed.closed_count > 0 && (
+                    <div className="flex items-center gap-3 rounded-xl border border-dashed border-line p-3">
+                      <span className="w-7 text-center text-text-faint">🌐</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate text-sm text-text-muted">{s.unattributed.label}</span>
+                          <span className="shrink-0 text-xs text-text-muted">
+                            <span className="font-mono">{s.unattributed.closed_count}</span> · {s.unattributed.share_pct}%
+                          </span>
+                        </div>
+                        <div className="mt-1.5"><ShareBar pct={s.unattributed.share_pct} muted /></div>
+                      </div>
+                      <MoneyText ngn={Number(s.unattributed.total_ngn)} className="shrink-0 text-sm text-text-muted" />
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <EmptyState icon={<Trophy className="h-6 w-6" />} title="No sales credited yet"
+                  message="Staff-closed sales (Quick Sale, WhatsApp/Instagram, shared catalogue links) appear here." />
+              )}
+            </Card>
+          </div>
+          <ChannelMix rows={s.channel_mix} />
+        </div>
+      ) : null}
+
+      {/* Attendance */}
+      <Card className="p-4">
+        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-text-primary">
+          <Clock className="h-4 w-4" /> Attendance summary
+        </div>
+        {attendance.isLoading ? (
+          <Skeleton className="h-32 rounded-xl" />
+        ) : attendance.isError ? (
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm text-danger">Couldn't load attendance.</span>
+            <Button size="sm" variant="ghost" onClick={() => attendance.refetch()}>Retry</Button>
+          </div>
+        ) : attendance.data ? (
+          <>
+            <div className="mb-3 flex flex-wrap gap-4 text-xs text-text-muted">
+              <span>Present <span className="font-mono text-text-primary">{attendance.data.totals.present_days}</span></span>
+              <span>Late <span className="font-mono text-text-primary">{attendance.data.totals.late_days}</span></span>
+              <span>Absent <span className="font-mono text-text-primary">{attendance.data.totals.absent_days}</span></span>
+              <span>Off-site <span className="font-mono text-text-primary">{attendance.data.totals.offsite_days}</span></span>
+              {attendance.data.totals.on_time_pct !== null && (
+                <span>Team on-time <span className="font-mono text-text-primary">{attendance.data.totals.on_time_pct}%</span></span>
+              )}
+            </div>
+            <AttendanceTable staff={attendance.data.staff} />
+          </>
+        ) : null}
+      </Card>
+    </div>
+  );
+}
+
 export default function PerformancePage() {
   useBreadcrumbs([{ label: "Performance" }]);
   const can = useAuthStore((s) => s.can);
@@ -715,6 +1141,7 @@ export default function PerformancePage() {
           { key: "cycles", label: "Cycles" },
           { key: "kpis", label: "KPIs" },
           { key: "reviews", label: "Reviews" },
+          { key: "insights", label: "Insights" },
         ]} />
 
       {tab === "cycles" && (
@@ -722,6 +1149,7 @@ export default function PerformancePage() {
       )}
       {tab === "kpis" && <KpisTab />}
       {tab === "reviews" && <ReviewsTab />}
+      {tab === "insights" && <InsightsTab />}
 
       <CreateCycleModal open={createOpen} onClose={() => setCreateOpen(false)} />
       <ScoreStaffModal open={scoreOpen} onClose={() => setScoreOpen(false)} />

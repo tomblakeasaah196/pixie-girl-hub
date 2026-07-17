@@ -65,7 +65,16 @@ async function exportReport(req, res) {
 }
 const createOrder = async (req, res) =>
   res.status(201).json({
-    data: await service.createOrder({ ...base(req), input: req.body }),
+    data: await service.createOrder({
+      ...base(req),
+      // Staff attribution (Performance → Insights): whoever raises the order
+      // here (Quick Sale) is the closer by default. A supervisor logging a
+      // sale for a colleague can override via `closed_by_user_id` in the body.
+      input: {
+        ...req.body,
+        closed_by_user_id: req.body.closed_by_user_id || req.user?.user_id || null,
+      },
+    }),
   });
 const updateOrder = async (req, res) =>
   res.json({

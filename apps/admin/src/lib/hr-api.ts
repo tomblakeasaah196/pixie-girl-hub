@@ -1000,3 +1000,86 @@ function qs(params: Record<string, string>): string {
   if (!entries.length) return "";
   return "?" + entries.map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
 }
+
+// ── Performance → Insights (Sales exec of the month + Attendance) ──
+export interface Period {
+  from: string;
+  to: string;
+}
+export interface SalesExecRep {
+  rank: number;
+  user_id: string;
+  staff_name: string;
+  closed_count: number;
+  total_ngn: string;
+  share_pct: number;
+}
+export interface ChannelMixRow {
+  channel: string;
+  label: string;
+  self_service: boolean;
+  closed_count: number;
+  attributed_count: number;
+  total_ngn: string;
+  share_pct: number;
+}
+export interface SalesExecReport {
+  period: Period;
+  winner: SalesExecRep | null;
+  leaderboard: SalesExecRep[];
+  unattributed: { closed_count: number; total_ngn: string; share_pct: number; label: string };
+  channel_mix: ChannelMixRow[];
+  totals: {
+    total_closed: number;
+    attributed_closed: number;
+    unattributed_closed: number;
+    total_ngn: string;
+    attributed_ngn: string;
+    rep_count: number;
+  };
+  compare:
+    | { period: Period; total_closed: number; total_ngn: string; closed_delta: number; ngn_delta: string }
+    | null;
+}
+export interface AttendanceStaffRow {
+  profile_id: string;
+  staff_name: string;
+  present_days: number;
+  late_days: number;
+  absent_days: number;
+  leave_days: number;
+  offsite_days: number;
+  total_minutes_late: number;
+  hours_worked: number;
+  on_time_pct: number | null;
+}
+export interface AttendanceInsightReport {
+  period: Period;
+  staff: AttendanceStaffRow[];
+  totals: {
+    present_days: number;
+    late_days: number;
+    absent_days: number;
+    leave_days: number;
+    offsite_days: number;
+    hours_worked: number;
+    on_time_pct: number | null;
+    staff_count: number;
+  };
+}
+
+export const insightsSalesReport = (params: Record<string, string> = {}) =>
+  api.get<SalesExecReport>(`/hr/insights/sales-reps${qs(params)}`);
+export const insightsAttendance = (params: Record<string, string> = {}) =>
+  api.get<AttendanceInsightReport>(`/hr/insights/attendance${qs(params)}`);
+export const downloadInsightsExcel = (params: Record<string, string> = {}) =>
+  api.download(`/hr/insights/export${qs(params)}`, "performance-insights.xlsx");
+export const insightsWinnerPdf = (params: Record<string, string> = {}) =>
+  api.post<{ document_id: string; title: string; winner: SalesExecRep | null }>(
+    `/hr/insights/winner-pdf${qs(params)}`,
+  );
+export const announceWinner = (body: { from?: string; to?: string }) =>
+  api.post<{ winner: SalesExecRep | null; notified: number; period: Period }>(
+    `/hr/insights/announce-winner`,
+    body,
+  );

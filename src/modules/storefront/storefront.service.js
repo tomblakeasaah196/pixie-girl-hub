@@ -307,6 +307,14 @@ async function submitOrderForm({ brand, input, request_id }) {
     order_link_slug: input.order_link_slug,
   });
 
+  // Credit the catalogue sharer for a link-driven checkout (Performance →
+  // Insights). Resolved from the link row, never the POST body. Null for a
+  // plain public order form → the sale counts in totals but is unattributed.
+  const closedByUserId = await resolveOrderLinkSharer({
+    brand,
+    order_link_slug: input.order_link_slug,
+  });
+
   const result = await transaction(async (client) => {
     // 1. Upsert the customer as a contact.
     let contact = await repo.findContactByEmailOrPhone({
@@ -383,6 +391,8 @@ async function submitOrderForm({ brand, input, request_id }) {
         stylist_referral_code: await resolveStylistReferral(
           input.referral_code,
         ),
+        // Attribute the sale to whoever shared the order link (if any).
+        closed_by_user_id: closedByUserId,
       },
     });
 
@@ -606,6 +616,27 @@ async function upsertCheckoutContactExtras({ client, contact, input }) {
  * Sales. An unknown/cross-brand slug yields an empty map (order prices as
  * usual, never fails the checkout).
  */
+/**
+ * Resolve the staff member who SHARED a catalogue/order link, so a checkout
+ * completed through that link is credited to them on the Performance → Insights
+ * leaderboard (Q4 owner decision: "when we share catalogue we see who shared the
+ * catalogue with the order link that was clicked that made the order"). Comes
+ * ONLY from the persisted link row's `created_by`; a direct order-form checkout
+ * (no link) has no sharer and stays unattributed. An unknown/cross-brand slug
+ * yields null (order stands, credited to nobody) and never fails the checkout.
+ */
+async function resolveOrderLinkSharer({ brand, order_link_slug }) {
+  if (!order_link_slug) return null;
+  try {
+    const orderLinksRepo = require("../smartcomm/smartcomm.order-links.repo");
+    const link = await orderLinksRepo.getBySlug({ slug: order_link_slug });
+    if (!link || link.business !== brand) return null;
+    return link.created_by || null;
+  } catch {
+    return null;
+  }
+}
+
 async function resolveStyledUnitPrices({ brand, order_link_slug }) {
   const map = new Map();
   if (!order_link_slug) return map;

@@ -498,6 +498,12 @@ async function createOrderTx({ brand, user, request_id, input }) {
         coupon_code: input.coupon_code || null,
         client_idempotency_key: input.client_idempotency_key || null,
         stylist_referral_code: input.stylist_referral_code || null,
+        // Staff attribution (Performance → Insights). The caller decides:
+        // Quick Sale defaults it to the acting staff (set in the controller),
+        // a catalogue-share checkout passes the link's sharer, and customer
+        // self-service (storefront cart) leaves it null → counts toward the
+        // company total but credited to no individual on the leaderboard.
+        closed_by_user_id: input.closed_by_user_id || null,
         payment_plan: paymentPlan,
         payment_model: paymentModel,
         required_deposit_pct:

@@ -855,7 +855,13 @@ fonts, colours, favicons, and vocabulary (button text, page copy).
 **Common tasks.**
 - *Change storefront colours / fonts / corner roundness?* Storefront Studio →
   **Theme** (a live preview updates as you edit; Save draft, then Publish).
-- *Change storefront logo / favicon / share image?* Storefront Studio → **Branding**.
+- *Change storefront logo / favicon?* Storefront Studio → **Branding**.
+- *Fix how the site looks when shared on WhatsApp/Instagram/Facebook (the
+  picture + title + description)?* Storefront Studio → **Branding → Share text
+  and Share banner**. Upload one normal photo (4:5 or square is fine) and it
+  builds the wide 1200×630 share banner — your photo centred, the brand
+  gradient around it, optional logo + headline — with crop/zoom/gradient
+  controls and a live preview. Save draft, then Publish.
 - *Preview the storefront on a phone / tablet / desktop frame?* Storefront
   Studio → **Preview** (device-size toggle).
 - *Reword storefront buttons/labels?* Storefront Studio → **Content** / vocabulary.

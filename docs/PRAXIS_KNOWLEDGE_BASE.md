@@ -853,7 +853,11 @@ fonts, colours, favicons, and vocabulary (button text, page copy).
 **Where.** System → **Storefront Studio** · `/storefront-studio`
 **Who can see it.** `storefront_studio` permission.
 **Common tasks.**
-- *Change storefront branding / fonts / colours?* Storefront Studio → **Branding**.
+- *Change storefront colours / fonts / corner roundness?* Storefront Studio →
+  **Theme** (a live preview updates as you edit; Save draft, then Publish).
+- *Change storefront logo / favicon / share image?* Storefront Studio → **Branding**.
+- *Preview the storefront on a phone / tablet / desktop frame?* Storefront
+  Studio → **Preview** (device-size toggle).
 - *Reword storefront buttons/labels?* Storefront Studio → **Content** / vocabulary.
 
 ### 4.35 Notifications

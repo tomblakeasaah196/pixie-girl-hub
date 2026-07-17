@@ -24,6 +24,7 @@ import {
   Eye,
   EyeOff,
   CheckCircle2,
+  ChevronLeft,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button, Card, Pill, EmptyState } from "@/components/ui/primitives";
@@ -295,9 +296,10 @@ export function ContentTab({
 
       <p className="text-[12.5px] text-text-muted">{meta.blurb}</p>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[260px_1fr]">
-        {/* List of this kind */}
-        <Card className="p-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[260px_1fr] lg:gap-5">
+        {/* List of this kind — on phones it gives way to the editor once you
+            open an item (a native drill-down), and comes back via "All …". */}
+        <Card className={cn("p-3", draft && "hidden lg:block")}>
           <Button
             variant="primary"
             size="sm"
@@ -343,8 +345,17 @@ export function ContentTab({
         </Card>
 
         {/* Editor */}
+        <div className={cn(!draft && "hidden lg:block")}>
         {draft ? (
-          <Card className="max-w-2xl space-y-4 p-5">
+          <Card className="flex flex-col space-y-4 p-5 lg:max-w-2xl">
+            <button
+              type="button"
+              onClick={() => setDraft(null)}
+              className="-ml-1 inline-flex items-center gap-1 self-start rounded-[9px] py-1 pl-1 pr-2 text-[13px] font-medium text-text-muted hover:text-text-primary lg:hidden"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              All {meta.label.toLowerCase()}
+            </button>
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-[13px] font-semibold text-text-primary">
                 {KIND_ICON[draft.post_type]}
@@ -431,7 +442,7 @@ export function ContentTab({
             </div>
           </Card>
         ) : (
-          <Card className="grid place-items-center p-4">
+          <Card className="hidden place-items-center p-4 lg:grid">
             <EmptyState
               icon={<FileText className="h-7 w-7" />}
               title={`Write your first ${meta.singular}`}
@@ -448,6 +459,7 @@ export function ContentTab({
             />
           </Card>
         )}
+        </div>
       </div>
 
       <ConfirmDialog

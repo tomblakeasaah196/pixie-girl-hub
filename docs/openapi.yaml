@@ -3764,6 +3764,14 @@ paths:
             in: query,
             schema: { type: string, format: uuid },
           }
+        - name: mine
+          in: query
+          description: >-
+            "My Jobs" cockpit filter. When true, narrows results to jobs the
+            caller currently holds OR once held (historical custody), even for
+            team/all-scope callers — otherwise a privileged caller (Ops, CEO)
+            receives the whole brand's jobs.
+          schema: { type: boolean }
       x-required-permission: "service_jobs.view"
       x-entity-scope: brand
       x-is-write: false

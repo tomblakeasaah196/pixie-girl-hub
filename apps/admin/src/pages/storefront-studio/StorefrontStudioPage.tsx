@@ -154,7 +154,6 @@ function BackToList({ label, onClick }: { label: string; onClick: () => void }) 
 }
 
 export function StorefrontStudioPage() {
-  const brand = useBusinessStore((s) => s.activeKey);
   const [tab, setTab] = useUrlTab<Tab>(
     "theme",
     TABS.map((t) => t.key),
@@ -173,18 +172,15 @@ export function StorefrontStudioPage() {
 
   return (
     <div className="space-y-4 md:space-y-5">
-      {/* Segmented tab strip. On phones the strip scrolls horizontally
-          (min-w-0 lets it shrink inside the row) so the brand chip never gets
-          pushed off-screen — the whole header behaves like a native app's
-          scrollable top segmented control. */}
-      <div className="flex items-center gap-2.5">
-        <div className="min-w-0 flex-1">
-          <Tabs tabs={TABS} active={tab} onChange={(k) => setTab(k as Tab)} />
-        </div>
-        <Pill tone="accent" dot={false}>
-          {brand}
-        </Pill>
-      </div>
+      {/* Full-width, roomy segmented tab strip — the brand context is already
+          obvious from the app shell, so no chip competes for space here. On
+          phones it scrolls horizontally like a native top segmented control. */}
+      <Tabs
+        tabs={TABS}
+        active={tab}
+        onChange={(k) => setTab(k as Tab)}
+        size="lg"
+      />
 
       <div>
         {tab === "theme" ? <ThemeTab /> : null}
@@ -2254,6 +2250,76 @@ const IMAGE_LIST_HINT = /(image|photo|gallery|slide|banner)/i;
 // it gets the trim/crop studio, never the generic object editor.
 const VIDEO_HINT = /video/i;
 
+// A heading/eyebrow/body is composed in three parts — the start, a highlighted
+// (accent) segment, and the text after it: e.g. "Hair, [sculptée] like
+// couture." These friendlier labels make that structure obvious instead of the
+// bare "Heading Accent" / "Heading After" the generic humaniser produced.
+const SLOT_LABELS: Record<string, string> = {
+  eyebrow: "Eyebrow",
+  eyebrowAccent: "Eyebrow — highlighted part",
+  eyebrowAfter: "Eyebrow — after the highlight",
+  heading: "Heading",
+  headingAccent: "Heading — highlighted part",
+  headingAfter: "Heading — after the highlight",
+  subheading: "Subheading",
+  subheadingAccent: "Subheading — highlighted part",
+  subheadingAfter: "Subheading — after the highlight",
+  body: "Body",
+  bodyAccent: "Body — highlighted part",
+  bodyAfter: "Body — after the highlight",
+};
+function humanizeSlot(key: string): string {
+  return SLOT_LABELS[key] || humanize(key);
+}
+
+// Chronological ordering for a section's fields, so the editor always reads
+// top-to-bottom the way the page renders — eyebrow → heading (+ highlight +
+// after) → body → buttons → media → lists — no matter what order the stored
+// JSON happens to hold. Unknown keys keep their original relative order.
+function slotRank(key: string): number {
+  const comp =
+    /^(eyebrow|headline|title|heading|subheading|subhead|body|text|description|quote|attribution)(accent|after)?$/i.exec(
+      key,
+    );
+  if (comp) {
+    const base = comp[1].toLowerCase();
+    const baseRank: Record<string, number> = {
+      eyebrow: 10,
+      headline: 15,
+      title: 20,
+      heading: 20,
+      subheading: 30,
+      subhead: 30,
+      body: 40,
+      text: 40,
+      description: 40,
+      quote: 50,
+      attribution: 55,
+    };
+    const suf = (comp[2] || "").toLowerCase();
+    return (baseRank[base] ?? 45) + (suf === "accent" ? 1 : suf === "after" ? 2 : 0);
+  }
+  const n = Number((key.match(/\d+/) || [0])[0]) || 0;
+  if (/(cta|button|link)/i.test(key) && /label|text|title/i.test(key))
+    return 60 + n * 0.1;
+  if (/(cta|button|link)/i.test(key) && /href|url|link/i.test(key))
+    return 60 + n * 0.1 + 0.05;
+  if (VIDEO_HINT.test(key)) return 72;
+  if (IMAGE_HINT.test(key) || IMAGE_LIST_HINT.test(key)) return 70;
+  return 100;
+}
+function orderedSlotEntries(
+  obj: Record<string, unknown>,
+): [string, unknown][] {
+  return Object.entries(obj)
+    .map((entry, i) => [entry, i] as const)
+    .sort((a, b) => {
+      const r = slotRank(a[0][0]) - slotRank(b[0][0]);
+      return r !== 0 ? r : a[1] - b[1];
+    })
+    .map(([entry]) => entry);
+}
+
 // The Instagram identity shown under the home "Gallery" rotating showcase. It's
 // injected into the Gallery group (like the hero video/image below) so it's
 // editable even on pages published before the field existed. Keep in sync with
@@ -2274,7 +2340,7 @@ function SlotValue({
   value: unknown;
   onChange: (v: unknown) => void;
 }) {
-  const label = humanize(fieldKey);
+  const label = humanizeSlot(fieldKey);
 
   if (!Array.isArray(value) && VIDEO_HINT.test(fieldKey)) {
     return <VideoField label={label} value={value} onChange={onChange} />;
@@ -2336,7 +2402,7 @@ function SlotValue({
   const offerGalleryProfile = /gallery/i.test(fieldKey) && !("profile" in obj);
   return (
     <Section title={label}>
-      {Object.entries(obj).map(([k, v]) => (
+      {orderedSlotEntries(obj).map(([k, v]) => (
         <SlotValue
           key={k}
           fieldKey={k}
@@ -2487,7 +2553,7 @@ function ObjectListField({
               Remove
             </button>
           </div>
-          {Object.entries(item).map(([k, v]) => (
+          {orderedSlotEntries(item).map(([k, v]) => (
             <SlotValue
               key={k}
               fieldKey={k}
@@ -2519,7 +2585,7 @@ function SlotsEditor({
   onChange: (v: Record<string, unknown>) => void;
 }) {
   const [newKey, setNewKey] = useState("");
-  const entries = Object.entries(value);
+  const entries = orderedSlotEntries(value);
   return (
     <div className="space-y-3">
       {entries.length === 0 ? (

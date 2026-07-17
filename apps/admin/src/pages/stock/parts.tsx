@@ -13,14 +13,21 @@ export function Tabs({
   tabs,
   active,
   onChange,
+  size = "md",
 }: {
   tabs: TabDef[];
   active: string;
   onChange: (key: string) => void;
+  /** "lg" gives a taller, roomier strip for a module's primary tab bar. */
+  size?: "md" | "lg";
 }) {
+  const lg = size === "lg";
   return (
     <div
-      className="flex gap-1 p-1 rounded-[13px] glass shadow-glass overflow-x-auto"
+      className={cn(
+        "flex gap-1 p-1 glass shadow-glass overflow-x-auto",
+        lg ? "rounded-[15px] p-1.5" : "rounded-[13px]",
+      )}
       role="tablist"
     >
       {tabs.map((t) => {
@@ -32,7 +39,8 @@ export function Tabs({
             aria-selected={on}
             onClick={() => onChange(t.key)}
             className={cn(
-              "inline-flex items-center gap-2 px-3.5 h-9 rounded-[10px] text-[13px] font-semibold whitespace-nowrap transition-all",
+              "inline-flex items-center gap-2 rounded-[10px] font-semibold whitespace-nowrap transition-all",
+              lg ? "px-4 h-11 text-[14px]" : "px-3.5 h-9 text-[13px]",
               on
                 ? "bg-accent-deep text-[#F4E9D9] shadow-[0_6px_18px_rgb(var(--accent-deep)/0.4)]"
                 : "text-text-muted hover:text-text-primary hover:bg-text-primary/[0.05]",

@@ -76,9 +76,11 @@ export function useMoveTask() {
   return useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       ws.moveTask(id, status),
-    onSuccess: () => {
+    onSuccess: (_d, { id }) => {
       qc.invalidateQueries({ queryKey: ["workspace", biz, "task-board"] });
       qc.invalidateQueries({ queryKey: ["workspace", biz, "tasks"] });
+      // The detail panel reads the single-task query — keep it in step.
+      qc.invalidateQueries({ queryKey: ["workspace", biz, "task", id] });
     },
   });
 }

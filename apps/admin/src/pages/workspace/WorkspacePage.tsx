@@ -199,22 +199,14 @@ function DraggableTaskCard({
   task: Task;
   onClick: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({
-      id: task.task_id,
-    });
-  const style = transform
-    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
-    : undefined;
+  // The DragOverlay renders the moving copy, so the source card stays put
+  // and only dims (translating it as well would double the motion).
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: task.task_id,
+  });
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...listeners}
-      {...attributes}
-      className={isDragging ? "opacity-40" : ""}
-    >
+    <div ref={setNodeRef} {...listeners} {...attributes}>
       <TaskCard task={task} onClick={onClick} isDragging={isDragging} />
     </div>
   );
@@ -693,16 +685,19 @@ export function WorkspacePage() {
           {activeTab === "my-hr" && <MyHrPage />}
         </div>
 
-        {/* Detail panel (desktop only) */}
+        {/* Detail panel (desktop only) — sticky below the top bar with its
+            own internal scroll, so scrolling the board never hides it. */}
         {isDesktop && selectedTaskId && (
-          <TaskDetailPanel
-            taskId={selectedTaskId}
-            onClose={() => setSelectedTaskId(null)}
-            onEdit={() => {
-              const t = allTasks.find((x) => x.task_id === selectedTaskId);
-              if (t) setEditTask(t);
-            }}
-          />
+          <div className="sticky top-[76px] self-start h-[calc(100dvh-100px)] min-h-[320px]">
+            <TaskDetailPanel
+              taskId={selectedTaskId}
+              onClose={() => setSelectedTaskId(null)}
+              onEdit={() => {
+                const t = allTasks.find((x) => x.task_id === selectedTaskId);
+                if (t) setEditTask(t);
+              }}
+            />
+          </div>
         )}
       </div>
 

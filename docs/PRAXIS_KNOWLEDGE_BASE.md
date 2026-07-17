@@ -273,6 +273,9 @@ Agenda) · **My HR** · **Goals** *(CEO)* · **Notes** *(CEO)* · **AI Chief of 
   reschedule** (Later today / Tomorrow / Next week / pick a date). On desktop
   the same actions appear on hover, and a **Board / List** switch toggles
   between the kanban board and this list.
+- *Change a task's status?* Open the task and use the **status dropdown** at
+  the top of its detail panel — or, on the desktop board, drag its card into
+  another column.
 - *Add a calendar event?* Workspace → **Calendar** → **New Event** / **Create Event**.
 - *Clock in / out?* Top bar **Clock in** button (or Workspace → **My HR**).
 - *Request leave / see my payslip?* Workspace → **My HR** tab.

@@ -22,6 +22,9 @@ const BIO_ALIASES = ["bio", "biography", "about", "description"];
 const AVATAR_ALIASES = [
   "profilePicUrl",
   "profilePictureUrl",
+  "profilePicture",
+  "profile_image_url_https",
+  "profile_image_url",
   "avatarUrl",
   "imageUrl",
   "avatar",

@@ -24,6 +24,14 @@ const QUERY_HISTORY_LIMIT = 6;
 interface UiState {
   theme: Theme;
   density: Density;
+  /**
+   * Personal palette override (canon §2.3 Layer A, per-user). Holds the name
+   * of a preset from `@/lib/theme-presets`, or null to follow whatever the
+   * admin set as the platform default. Client-side only — like `theme`, this
+   * is a per-device comfort preference, not a shared/white-label setting, so
+   * it never touches the platform logo, fonts, or product identity.
+   */
+  themePreset: string | null;
   sidebarCollapsed: boolean;
   mobileSidebarOpen: boolean;
   /** Command palette (⌘K) — not persisted. */
@@ -49,6 +57,7 @@ interface UiState {
   immersive: boolean;
   setTheme: (t: Theme) => void;
   toggleTheme: () => void;
+  setThemePreset: (name: string | null) => void;
   setDensity: (d: Density) => void;
   toggleSidebar: () => void;
   setMobileSidebarOpen: (v: boolean) => void;
@@ -66,6 +75,7 @@ export const useUiStore = create<UiState>()(
     (set, get) => ({
       theme: "dark",
       density: "comfortable",
+      themePreset: null,
       sidebarCollapsed: false,
       mobileSidebarOpen: false,
       paletteOpen: false,
@@ -77,6 +87,7 @@ export const useUiStore = create<UiState>()(
       setTheme: (theme) => set({ theme }),
       toggleTheme: () =>
         set({ theme: get().theme === "dark" ? "light" : "dark" }),
+      setThemePreset: (themePreset) => set({ themePreset }),
       setDensity: (density) => set({ density }),
       toggleSidebar: () => set({ sidebarCollapsed: !get().sidebarCollapsed }),
       setMobileSidebarOpen: (mobileSidebarOpen) => set({ mobileSidebarOpen }),
@@ -112,6 +123,7 @@ export const useUiStore = create<UiState>()(
       partialize: (s) => ({
         theme: s.theme,
         density: s.density,
+        themePreset: s.themePreset,
         sidebarCollapsed: s.sidebarCollapsed,
         appMenuOffset: s.appMenuOffset,
         paletteRecents: s.paletteRecents,

@@ -2,6 +2,7 @@ import { PinManager } from "@/components/auth/PinManager";
 import { ChangePasswordModal } from "@/components/auth/ChangePasswordModal";
 import { ProfileDrawer } from "@/components/profile/ProfileDrawer";
 import { PhotoCropModal } from "@/components/profile/PhotoCropModal";
+import { AppearancePickerModal } from "./AppearancePickerModal";
 import { toViewableImage } from "@/lib/heic";
 import type { UseAccountMenu } from "./useAccountMenu";
 
@@ -20,6 +21,8 @@ export function AccountMenuModals({ menu }: { menu: UseAccountMenu }) {
     setPasswordOpen,
     profileOpen,
     setProfileOpen,
+    appearanceOpen,
+    setAppearanceOpen,
   } = menu;
 
   return (
@@ -50,6 +53,10 @@ export function AccountMenuModals({ menu }: { menu: UseAccountMenu }) {
         onClose={() => setPasswordOpen(false)}
       />
       <ProfileDrawer open={profileOpen} onClose={() => setProfileOpen(false)} />
+      <AppearancePickerModal
+        open={appearanceOpen}
+        onClose={() => setAppearanceOpen(false)}
+      />
     </>
   );
 }

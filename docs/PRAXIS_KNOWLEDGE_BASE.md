@@ -77,8 +77,13 @@ only access one business, there's nothing to switch.
 - **Bell (notifications)** — your alert feed; the number is unread count. Full
   page at `/notifications`.
 - **Theme toggle** — light / dark (the Hub defaults to the dark "Maroon Noir" look).
-- **Your name / avatar (bottom-left)** — account menu: profile, preferences,
-  sign out.
+- **Your name / avatar (bottom-left)** — account menu: **Change photo · My
+  profile · My HR · Appearance · Quick login PIN · Change password · Sign out**.
+  - **Appearance** here is a *personal* look for your own device — pick a
+    palette (Maroon Noir, Porcelain White, Onyx Ruby), dark/light, and density.
+    It doesn't need any permission and doesn't change the company logo, fonts,
+    or anyone else's view. (That company-wide branding lives at **Settings →
+    Appearance**, `/settings/appearance`, which only admins can open.)
 
 ### 2.4 Global search & command palette (⌘K)
 Press **⌘K** (Mac) or **Ctrl-K** (Windows) anywhere. From one box you can:
@@ -692,7 +697,7 @@ focused settings page.
 
 | Setting | Link |
 |---|---|
-| Appearance (theme / branding) | `/settings/appearance` |
+| Appearance — **company-wide** logo, fonts & default palette (white-label). For a *personal* look, use **Appearance** in the account menu instead — see §2.3. | `/settings/appearance` |
 | Login screen editor | `/settings/login` |
 | Business setup (company profile) | `/settings/business-setup` |
 | Businesses (brands) | `/settings/businesses` |

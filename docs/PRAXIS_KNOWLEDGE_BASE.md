@@ -561,13 +561,32 @@ disciplinary queries, targets, rewards, recruitment, and HR analytics.
   Workspace → **My HR**.)
 
 ### 4.21 Performance
-**What it's for.** Appraisals and reviews — score and review your team over cycles.
+**What it's for.** Appraisals and reviews — score and review your team over cycles —
+plus an **Insights** tab: Sales Exec of the Month and an attendance report, with a
+plain-language Praxis ask box.
 **Where.** People → **Performance** · `/performance`
 **Who can see it.** `performance` permission.
+**Tabs.** **Cycles** · **KPIs** · **Reviews** · **Insights**.
 **Common tasks.**
-- *Start an appraisal cycle?* Performance → **New cycle**.
-- *Review / score someone?* Performance → open the cycle → the person.
-- *Close a cycle?* Performance → **Close cycle**.
+- *Start an appraisal cycle?* Performance → **Cycles** → **New cycle**.
+- *Review / score someone?* Performance → **Cycles** → open the cycle → the person.
+- *Close a cycle?* Performance → **Cycles** → **Close cycle**.
+- *See who is Sales Exec of the Month / who closed the most sales?* Performance →
+  **Insights**. Each rep shows how many sales they closed out of the total, their
+  share %, and value closed. Website / storefront self-checkouts are counted in
+  the total but shown as **Online / self-service (unattributed)** — credited to
+  no individual (nobody "closed" a self-checkout). WhatsApp/Instagram and walk-in
+  sales are credited to the staff who raised them in **Quick Sale**, or to whoever
+  **shared the catalogue/order link** the customer bought through.
+- *See the attendance report (present / late / absent, on-time %, hours)?*
+  Performance → **Insights** → **Attendance summary**. Filter by date range.
+- *Ask a plain-language question about sales or attendance?* Performance →
+  **Insights** → **Ask Praxis** box (or the quick-question chips) — e.g. *"who
+  closed the most sales this month?"*, *"how was attendance this month?"*.
+- *Export the report?* Performance → **Insights** → **Excel** (workbook) or
+  **Winner PDF** (Sales Exec of the Month certificate).
+- *Announce the winner to staff?* Performance → **Insights** → **Announce winner**
+  (sends an in-app notification to brand staff). Needs `performance` edit.
 
 ### 4.22 Contacts
 **What it's for.** The shared **contact directory** — everyone the businesses deal
@@ -968,7 +987,9 @@ Use this as the fast lookup. Format: **task → module (group) → link**.
 - Run payroll → Payroll (People) → `/payroll`
 - See my own payslip / request leave → Workspace → `/workspace` (My HR)
 - Clock in/out → top-bar Clock in button
-- Start an appraisal → Performance (People) → `/performance` (New cycle)
+- Start an appraisal → Performance (People) → `/performance` (Cycles → New cycle)
+- See Sales Exec of the Month / who closed the most sales → Performance → `/performance` (Insights)
+- See the attendance report (present/late/absent, on-time %) → Performance → `/performance` (Insights)
 - Hire someone (JD → offer → e-sign) → HR → `/hr` (Recruitment)
 
 **Growth & AI**

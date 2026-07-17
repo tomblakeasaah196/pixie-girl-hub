@@ -206,6 +206,58 @@ const appraisalH = {
     }),
 };
 
+// ── Performance → Insights (Sales exec of the month + Attendance) ──
+const insights = require("./insights.service");
+const insightsExport = require("./insights.export");
+const insightsH = {
+  sales: async (req, res) =>
+    res.json({
+      data: await insights.salesReport({
+        brand: req.brand,
+        from: req.query.from,
+        to: req.query.to,
+      }),
+    }),
+  attendance: async (req, res) =>
+    res.json({
+      data: await insights.attendanceReport({
+        brand: req.brand,
+        from: req.query.from,
+        to: req.query.to,
+      }),
+    }),
+  exportExcel: async (req, res) => {
+    const { buffer, filename } = await insightsExport.exportInsightsExcel({
+      brand: req.brand,
+      from: req.query.from,
+      to: req.query.to,
+    });
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(Buffer.from(buffer));
+  },
+  exportWinnerPdf: async (req, res) =>
+    res.json({
+      data: await insightsExport.exportWinnerPdf({
+        brand: req.brand,
+        user: req.user,
+        from: req.query.from,
+        to: req.query.to,
+      }),
+    }),
+  announceWinner: async (req, res) =>
+    res.json({
+      data: await insights.announceWinner({
+        brand: req.brand,
+        from: req.body ? req.body.from : undefined,
+        to: req.body ? req.body.to : undefined,
+      }),
+    }),
+};
+
 module.exports = {
   listStaff,
   getStaff,
@@ -218,4 +270,5 @@ module.exports = {
   cycles,
   kpiDefs,
   appraisal: appraisalH,
+  insights: insightsH,
 };

@@ -185,6 +185,17 @@ router.post(
   controller.appraisal.acknowledgeReview,
 );
 
+// ── Performance → Insights (Sales exec of the month + Attendance) ──
+// Gated on `performance` (same as cycles/KPIs/reviews) so a manager granted
+// Performance can see the leaderboard + attendance report for their team
+// without payroll/salary access. Period comes from ?from&to (default: month).
+router.get("/insights/sales-reps", PERF("view"), controller.insights.sales);
+router.get("/insights/attendance", PERF("view"), controller.insights.attendance);
+router.get("/insights/export", PERF("view"), controller.insights.exportExcel);
+router.post("/insights/winner-pdf", PERF("view"), controller.insights.exportWinnerPdf);
+// Announce the winner to brand staff (in-app notification). Needs `edit`.
+router.post("/insights/announce-winner", PERF("edit"), controller.insights.announceWinner);
+
 // ── Payroll deductions (PAYE / pension / NHF) ──────────────
 router.get("/deductions", P("view"), controller.deductions.list);
 router.post(

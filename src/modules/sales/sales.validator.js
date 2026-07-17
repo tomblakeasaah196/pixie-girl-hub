@@ -74,6 +74,11 @@ const orderCreate = z
     // Stylist Programme referral capture (§6.26 Q17) — validated upstream
     // against shared.stylist_referral_links before it reaches the order.
     stylist_referral_code: z.string().max(80).optional(),
+    // Staff attribution (Performance → Insights): the staff member credited
+    // with closing this sale. Defaults to the acting user in the controller;
+    // a supervisor entering an order for a colleague can override it here.
+    // Left null for customer self-service (storefront / public form).
+    closed_by_user_id: z.string().uuid().optional().nullable(),
   })
   .strict();
 

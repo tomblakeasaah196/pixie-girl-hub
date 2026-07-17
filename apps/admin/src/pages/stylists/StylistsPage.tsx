@@ -9,6 +9,7 @@
  */
 
 import { useMemo, useState } from "react";
+import { useUrlTab } from "@/hooks/useUrlTab";
 import { Scissors, Search, Star } from "lucide-react";
 import { Pill, KpiTile } from "@/components/ui/primitives";
 import { DeniedState, ErrorState, Select } from "@/components/ui/controls";
@@ -207,7 +208,7 @@ function DirectoryPanel({
 export function StylistsPage() {
   useBreadcrumbs([{ label: "Stylists" }]);
   const can = useAuthStore((s) => s.can);
-  const [tab, setTab] = useState<Tab>("Directory");
+  const [tab, setTab] = useUrlTab<Tab>("Directory", TABS);
   const [openPartnerId, setOpenPartnerId] = useState<string | null>(null);
 
   const partners = usePartners({});

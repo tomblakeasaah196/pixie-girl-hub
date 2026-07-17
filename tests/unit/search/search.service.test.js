@@ -78,7 +78,7 @@ describe("search.service.pickEntities", () => {
       typesFilter: ["employee", "sale_order"],
       permittedModules: new Set(["sales"]),
     });
-    // employee requires hr; the sales-only user can't see it.
+    // employee requires hr_payroll; the sales-only user can't see it.
     expect(picked.map((e) => e.key)).toEqual(["sale_order"]);
   });
 });
@@ -98,5 +98,67 @@ describe("search.registry", () => {
   test("registry keys are unique", () => {
     const keys = ENTITIES.map((e) => e.key);
     expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  test("every RBAC module is a real access-catalog key", () => {
+    // The permission gate (search.service.permittedModulesFor) looks each
+    // entity's `module` up in the access catalog. A typo / stale key (e.g. the
+    // old "hr" instead of "hr_payroll") silently fails closed and hides the
+    // entity from everyone but the CEO — so pin it to the catalog.
+    const { MODULES } = require("../../../src/shared/access/access.catalog");
+    const valid = new Set(MODULES);
+    for (const e of ENTITIES) {
+      if (e.module === null) continue; // universal (contacts, help, docs)
+      expect(valid.has(e.module)).toBe(true);
+    }
+  });
+});
+
+describe("search.registry routes lead to real pages", () => {
+  // The router (apps/admin/src/router.tsx) mounts each detail page at a
+  // specific path shape. A result whose route doesn't match one of these
+  // falls through to the not-found placeholder — a dead search hit. These
+  // patterns mirror the real routes, so reverting a fix (e.g. back to
+  // /sales/:id, which doesn't exist) fails this test.
+  const ALLOWED_ROUTE_PATTERNS = [
+    /^\/sales\/orders\/[^/?]+$/, // order / payment detail
+    /^\/crm\/deals\/[^/?]+$/,
+    /^\/smartcomm\?channel=[^/&]+$/,
+    /^\/catalogue\/base\/[^/?]+$/, // product / stock variant
+    /^\/logistics(\?tab=[^/&]+)?$/,
+    /^\/invoicing\?tab=invoices&invoice=[^/&]+$/,
+    /^\/contacts\/[^/?]+$/,
+    /^\/hr\/employees\/[^/?]+$/,
+    /^\/sales-campaigns\/[^/?]+$/,
+    /^\/help\/[^/?]+$/,
+    /^\/expenses$/,
+    /^\/cash-requests$/,
+    /^\/documents$/,
+  ];
+
+  // A synthetic row carrying every id field the resolvers read for their
+  // routes. `ex` ignores the SQL and just hands this back.
+  const ROW = {
+    id: "11111111-1111-1111-1111-111111111111",
+    order_id: "22222222-2222-2222-2222-222222222222",
+    product_id: "33333333-3333-3333-3333-333333333333",
+    slug: "getting-started",
+  };
+  const ex = async () => ({ rows: [ROW] });
+
+  test("every entity produces a route matching a real router path", async () => {
+    for (const e of ENTITIES) {
+      const results = await e.resolve({
+        ex,
+        brand: "pixiegirl",
+        q: "x",
+        limit: 5,
+      });
+      for (const r of results) {
+        const ok = ALLOWED_ROUTE_PATTERNS.some((re) => re.test(r.route));
+        // Surface the offending route in the failure message.
+        expect(ok ? "" : `${e.key} → ${r.route}`).toBe("");
+      }
+    }
   });
 });

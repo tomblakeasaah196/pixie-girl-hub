@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useUrlTab } from "@/hooks/useUrlTab";
 import {
   Mail,
   BarChart3,
@@ -88,7 +89,10 @@ export function MarketingPage() {
 
   const canEmail = can("email_campaigns", "view");
   const canAds = can("ad_analytics", "view");
-  const [tab, setTab] = useState<Tab>(canEmail ? "email" : "ads");
+  const [tab, setTab] = useUrlTab<Tab>(canEmail ? "email" : "ads", [
+    "email",
+    "ads",
+  ]);
 
   if (!canEmail && !canAds) {
     return <DeniedState message="You don't have access to Marketing." />;

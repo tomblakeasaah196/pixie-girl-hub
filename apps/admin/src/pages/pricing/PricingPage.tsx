@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useUrlTab } from "@/hooks/useUrlTab";
 import {
   Tag,
   Shield,
@@ -41,7 +41,15 @@ export function PricingPage() {
   useBreadcrumbs([{ label: "Pricing" }]);
   const can = useAuthStore((s) => s.can);
   const canEdit = can("pricing", "edit");
-  const [tab, setTab] = useState<Tab>("advisor");
+  const [tab, setTab] = useUrlTab<Tab>("advisor", [
+    "advisor",
+    "scenarios",
+    "rules",
+    "floors",
+    "overrides",
+    "proposals",
+    "settings",
+  ]);
 
   if (!can("pricing", "view")) {
     return (

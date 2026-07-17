@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useUrlTab } from "@/hooks/useUrlTab";
 import {
   ShoppingCart,
   Building2,
@@ -68,7 +69,12 @@ export function PurchasingPage() {
   useBreadcrumbs([{ label: "Purchasing" }]);
   const can = useAuthStore((s) => s.can);
 
-  const [tab, setTab] = useState<Tab>("overview");
+  const [tab, setTab] = useUrlTab<Tab>("overview", [
+    "overview",
+    "purchase-orders",
+    "suppliers",
+    "grn-invoices",
+  ]);
   const [selectedPo, setSelectedPo] = useState<PurchaseOrder | null>(null);
   const [showCreatePo, setShowCreatePo] = useState(false);
   const [statusFilter, setStatusFilter] = useState("");

@@ -717,16 +717,20 @@ full-screen **Landing Studio** (`/landing-studio`).
 - *Set up campaign bundles?* Sales Campaigns → **Bundles**.
 
 ### 4.27 Social Studio
-**What it's for.** Plan, schedule, prove, and score social posts across accounts.
+**What it's for.** Log the links of posts you published natively, see them
+embedded on a calendar, and track posting cadence. No planning, approvals, or
+content authoring — just proof of what went out and how it's doing.
 **Where.** Grow → **Social Studio** · `/social`
 **Who can see it.** `social` permission.
-**What's inside (tabs).** **Board** · **Calendar** · **Performance** · **Team** ·
-**Accounts**.
+**What's inside (tabs).** **Calendar** · **Performance** · **Account**.
 **Common tasks.**
-- *Schedule a post?* Social → **Calendar** / **Board** → draft → **Schedule**.
-- *See post performance / reach?* Social → **Performance**.
-- *Connect a social account?* Social → **Accounts** → **Add social**.
-- *Assign a post to a creator?* Social → **Board** → assign to creator.
+- *Record a post you published?* Social → **Calendar** → tap the day → paste the
+  link (platform is auto-detected) → **Log it**. It embeds in that day's drawer.
+- *See what was posted on a day?* Social → **Calendar** → tap the day to open its
+  drawer of embeds + reactions.
+- *Check posting cadence / how many posts this month?* Social → **Performance**
+  (the target is fixed: 6 posts/week, Sunday off; Instagram must hit 6).
+- *Add a social handle?* Social → **Account** → **Add handle**.
 
 ### 4.28 Marketing
 **What it's for.** Email campaigns and ads — reaching customers in bulk and
@@ -1013,7 +1017,7 @@ Use this as the fast lookup. Format: **task → module (group) → link**.
 - Launch a flash sale → Sales Campaigns (Grow) → `/sales-campaigns`
 - Design a landing page → `/landing-studio`
 - Create a discount code → Sales Campaigns → `/sales-campaigns/codes`
-- Schedule a social post → Social Studio (Grow) → `/social` (Calendar/Board)
+- Log a posted link → Social Studio (Grow) → `/social` (Calendar → tap a day → paste link)
 - Send an email campaign → Marketing (Grow) → `/marketing`
 - Build a retention strategy → Retention (People) → `/retention/strategies/new`
 - Ask or instruct Praxis → `/praxis` or the floating button

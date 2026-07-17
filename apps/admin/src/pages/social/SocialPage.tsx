@@ -1,58 +1,48 @@
+import { CalendarDays, TrendingUp, AtSign } from "lucide-react";
 import { useUrlTab } from "@/hooks/useUrlTab";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
-import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { useAuthStore } from "@/stores/auth";
 import { DeniedState } from "@/components/ui/controls";
-import { Tabs } from "@/pages/stock/parts";
-import { BoardTab } from "./BoardTab";
+import { StudioTabs, type StudioTab } from "./StudioTabs";
 import { CalendarTab } from "./CalendarTab";
 import { PerformanceTab } from "./PerformanceTab";
-import { TeamTab } from "./TeamTab";
 import { AccountsTab } from "./AccountsTab";
 
 /**
- * Social Studio (`/social`, canon §6.14) — manual-first, proof-of-publish.
+ * Social Studio (`/social`) — simplified to a native, app-like surface.
  *
- * Board (content plans + bulk planner) · Calendar · Performance (KPIs) ·
- * Team (leaderboard) · Accounts (handle registry). "Social Studio" is a
- * frontend-only rename — the module key, permission, and API all stay `social`.
+ * Three tabs, no friction: **Calendar** (log a posted link on its day, see it
+ * embedded), **Performance** (received vs. the fixed 6/week cadence), and
+ * **Account** (the brand's handles). The old Board / plans / approvals / team /
+ * targets and all content authoring are gone — the module key, permission, and
+ * API all stay `social`.
  */
 
-type Tab = "board" | "calendar" | "performance" | "team" | "accounts";
+type Tab = "calendar" | "performance" | "account";
 
-const TABS = [
-  { key: "board", label: "Board" },
-  { key: "calendar", label: "Calendar" },
-  { key: "performance", label: "Performance" },
-  { key: "team", label: "Team" },
-  { key: "accounts", label: "Accounts" },
+const TABS: StudioTab<Tab>[] = [
+  { key: "calendar", label: "Calendar", icon: CalendarDays },
+  { key: "performance", label: "Performance", icon: TrendingUp },
+  { key: "account", label: "Account", icon: AtSign },
 ];
 
 export function SocialPage() {
   useBreadcrumbs([{ label: "Social Studio" }]);
   const { can } = useAuthStore();
-  const [tab, setTab] = useUrlTab<Tab>("board", [
-    "board",
-    "calendar",
-    "performance",
-    "team",
-    "accounts",
-  ]);
+  const [tab, setTab] = useUrlTab<Tab>("calendar", ["calendar", "performance", "account"]);
 
   if (!can("social", "view")) {
     return <DeniedState message="You don't have access to Social Studio." />;
   }
 
   return (
-    <div className="max-w-[1180px] space-y-5">
-      <ModuleInsights module="social_media" />
-      <Tabs tabs={TABS} active={tab} onChange={(k) => setTab(k as Tab)} />
-
-      {tab === "board" && <BoardTab />}
-      {tab === "calendar" && <CalendarTab />}
-      {tab === "performance" && <PerformanceTab />}
-      {tab === "team" && <TeamTab />}
-      {tab === "accounts" && <AccountsTab />}
+    <div className="mx-auto max-w-[900px]">
+      <StudioTabs tabs={TABS} active={tab} onChange={setTab} />
+      <div className="mt-1">
+        {tab === "calendar" && <CalendarTab />}
+        {tab === "performance" && <PerformanceTab />}
+        {tab === "account" && <AccountsTab />}
+      </div>
     </div>
   );
 }

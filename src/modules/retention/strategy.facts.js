@@ -52,11 +52,16 @@ async function build({ brand, contact_id, event = {}, client }) {
 
   const run = ex(client);
 
-  // Contact identity.
+  // Contact identity. shared.contacts has no `business` column — visibility is
+  // via `visible_to TEXT[]` (empty = all brands). Filter contact_id alone and
+  // drop the row if this brand isn't in visible_to when it's been narrowed.
   const { rows: cRows } = await run(
     `SELECT contact_id, first_name, display_name, email, primary_phone,
-            date_of_birth, created_at
-       FROM shared.contacts WHERE contact_id = $1 AND business = $2`,
+            date_of_birth, created_at, visible_to
+       FROM shared.contacts
+      WHERE contact_id = $1
+        AND is_deleted = false
+        AND (cardinality(visible_to) = 0 OR $2 = ANY(visible_to))`,
     [contact_id, brand],
   );
   const c = cRows[0];

@@ -158,11 +158,31 @@ async function setStatus({ brand, id, status, fields = {} }) {
 }
 
 // ── Billing (W-C) ─────────────────────────────────────────
+// P0-6: due orders are BOTH 'active' subs whose next_billing_at has passed
+// AND 'past_due' subs whose retry gap has elapsed. Retry cadence is
+// derived from failed_attempts_in_row so nothing new needs to persist:
+//   1st decline  → wait 24h before next attempt
+//   2nd decline  → wait 48h
+//   3rd+ decline → wait 72h (also flips to 'paused' via the service)
+// updated_at is bumped every time recordBillingFailure runs, so
+// (now() - updated_at) measures "hours since last attempt". The trigger
+// that was corrupting updated_at is dropped in migration 000351.
 async function claimDueForBilling({ client, brand, limit }) {
   const { rows } = await client.query(
     `WITH due AS (
        SELECT subscription_id FROM shared.subscriptions
-        WHERE business = $1 AND status = 'active' AND next_billing_at <= now()
+        WHERE business = $1
+          AND (
+            (status = 'active' AND next_billing_at <= now())
+            OR (
+              status = 'past_due'
+              AND now() - updated_at >= CASE
+                WHEN failed_attempts_in_row >= 3 THEN interval '72 hours'
+                WHEN failed_attempts_in_row = 2 THEN interval '48 hours'
+                ELSE interval '24 hours'
+              END
+            )
+          )
         ORDER BY next_billing_at
         FOR UPDATE SKIP LOCKED
         LIMIT $2
@@ -208,15 +228,19 @@ async function advanceAfterSuccess({ client, id, interval, amount_ngn }) {
   );
 }
 
-async function recordBillingFailure({ client, id, set_past_due }) {
+async function recordBillingFailure({ client, id, pause }) {
+  // P0-6: `pause` flips a subscription that has exhausted the retry cascade
+  // to 'paused' so it stops being claimed. Anything short of that stays in
+  // 'past_due' (or transitions to it from 'active' on the FIRST decline)
+  // and is retried per the interval CASE in claimDueForBilling.
   const q = client ? client.query.bind(client) : query;
   await q(
     `UPDATE shared.subscriptions
         SET failed_attempts_in_row = failed_attempts_in_row + 1,
-            status = CASE WHEN $2 THEN 'past_due' ELSE status END,
+            status = CASE WHEN $2 THEN 'paused' ELSE 'past_due' END,
             updated_at = now()
       WHERE subscription_id = $1`,
-    [id, set_past_due],
+    [id, pause],
   );
 }
 

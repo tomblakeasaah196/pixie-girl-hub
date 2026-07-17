@@ -39,6 +39,7 @@ const createSchema = z
     pricing_model: pricingModel,
     bundle_price_ngn: z.coerce.number().nonnegative().optional(),
     bundle_price_usd: z.coerce.number().nonnegative().nullable().optional(),
+    // pct_off: fraction (0.10 = 10%); amount_off / fixed_bundle_price: NGN
     discount_value: z.coerce.number().nonnegative().optional(),
     buy_quantity: z.coerce.number().int().positive().optional(),
     get_quantity: z.coerce.number().int().positive().optional(),
@@ -57,11 +58,44 @@ const createSchema = z
     is_active: z.boolean().optional(),
     components: z.array(componentSchema).min(1),
   })
-  .strict();
+  .strict()
+  // P1-1: bundle pct_off model stores discount_value as a fraction (same as
+  // coupon / reward percentage). BundlesTab already divides by 100 on save;
+  // this is the server backstop for direct API callers.
+  .superRefine((v, ctx) => {
+    if (
+      v.pricing_model === "pct_off" &&
+      v.discount_value !== undefined &&
+      !(v.discount_value > 0 && v.discount_value <= 1)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["discount_value"],
+        message:
+          "pct_off bundle discount must be a fraction between 0 and 1 (e.g. 0.10 for 10%).",
+      });
+    }
+  });
 
-const updateSchema = createSchema
+// createSchema is a ZodEffects (superRefine); reach into the inner shape and
+// re-attach the guard so pct_off updates are validated too.
+const updateSchema = createSchema._def.schema
   .partial()
-  .omit({ bundle_code: true, components: true });
+  .omit({ bundle_code: true, components: true })
+  .superRefine((v, ctx) => {
+    if (
+      v.pricing_model === "pct_off" &&
+      v.discount_value !== undefined &&
+      !(v.discount_value > 0 && v.discount_value <= 1)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["discount_value"],
+        message:
+          "pct_off bundle discount must be a fraction between 0 and 1 (e.g. 0.10 for 10%).",
+      });
+    }
+  });
 
 const priceSchema = z
   .object({

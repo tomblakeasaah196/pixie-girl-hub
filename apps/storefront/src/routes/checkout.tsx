@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  applyCoupon,
   checkout,
   getCart,
   quoteCart,
@@ -28,7 +29,7 @@ import {
 } from "@/lib/storefront";
 import { formatFromNgn, settlementFor } from "@/lib/money";
 import { bootstrapAuth, getMe } from "@/lib/auth";
-import { useCurrency } from "@/lib/useStore";
+import { useCurrency, useReferralCode } from "@/lib/useStore";
 import {
   fetchDeliveryQuote,
   fetchGeoOptions,
@@ -113,6 +114,55 @@ function CheckoutPage() {
   const [gateway, setGateway] = useState("nomba");
   const [points, setPoints] = useState(0);
   const [redeem, setRedeem] = useState(0);
+
+  // ── Referral (P0-3) ──
+  // A ?ref=<code> captured on any earlier page (root-level useReferralCapture)
+  // is echoed here for the buyer to see + edit, and forwarded to createOrder
+  // as customer_referral_code. Cleared after a successful checkout so it
+  // isn't re-applied to the next order.
+  const { code: capturedReferral, clear: clearReferral } = useReferralCode();
+  const [referralCode, setReferralCode] = useState("");
+  useEffect(() => {
+    if (capturedReferral && !referralCode) setReferralCode(capturedReferral);
+  }, [capturedReferral, referralCode]);
+
+  // ── Promo code ──
+  // The persistent cart carries applied_coupon_id + applied_coupon_code once
+  // a code has been attached (POST /cart/coupon). The quote's server-side
+  // discount preview then reflects it in `discount_ngn`. On checkout we
+  // forward the code so createOrder actually redeems it (P0-4).
+  const [promoOpen, setPromoOpen] = useState(false);
+  const [promoCode, setPromoCode] = useState("");
+  const [promoBusy, setPromoBusy] = useState(false);
+  const [promoErr, setPromoErr] = useState<string | null>(null);
+  // Pre-fill from the cart's stored applied coupon when the page loads.
+  useEffect(() => {
+    const code =
+      cartQ.data?.applied_coupon_code ?? quoteQ.data?.applied_coupon_code ?? "";
+    if (code && !promoCode) {
+      setPromoCode(code);
+      setPromoOpen(true);
+    }
+  }, [cartQ.data?.applied_coupon_code, quoteQ.data?.applied_coupon_code, promoCode]);
+  const promoAppliedCode = quoteQ.data?.applied_coupon_code || null;
+  async function applyPromo() {
+    const code = promoCode.trim();
+    if (!code || promoBusy) return;
+    setPromoBusy(true);
+    setPromoErr(null);
+    try {
+      await applyCoupon(code);
+      // Re-fetch cart + quote so the summary reflects the discount.
+      await Promise.all([cartQ.refetch(), quoteQ.refetch()]);
+    } catch (e) {
+      const m =
+        (e as { userMessage?: string })?.userMessage ||
+        "That code isn't valid on this cart. Please double-check it and try again.";
+      setPromoErr(m);
+    } finally {
+      setPromoBusy(false);
+    }
+  }
 
   // Warm "we need an address we can ship to" modal. Opens when the buyer taps
   // Pay on a delivery order that hasn't resolved a real, positive fee. It only
@@ -336,9 +386,21 @@ function CheckoutPage() {
         display_currency: currency,
         payment_gateway: gateway,
         redeem_points: redeem > 0 ? redeem : undefined,
+        // P0-4: forward the coupon. Prefer the code the buyer just applied
+        // (either typed here or attached to the cart) so createOrder actually
+        // redeems it — before this the FE never sent coupon_code at all.
+        coupon_code: promoCode.trim() || promoAppliedCode || undefined,
+        // P0-3: forward the customer referral code (from ?ref= capture or the
+        // "have a friend's code?" field). createOrder resolves it against
+        // shared.referrals, applies the friend discount, and stamps
+        // referral_code_used on the order.
+        customer_referral_code: referralCode.trim() || undefined,
         client_idempotency_key: idemKey,
       };
       const res = await checkout(input);
+      // Referral code is single-use per order (createOrder consumes it in the
+      // same transaction); clear the captured value so it never re-applies.
+      clearReferral();
       window.location.href = res.payment_url;
     } catch (e) {
       const m =
@@ -699,7 +761,14 @@ function CheckoutPage() {
               </div>
               {discountNgn > 0 ? (
                 <div className="flex justify-between text-rose">
-                  <dt>Discount</dt>
+                  <dt className="inline-flex items-center gap-1">
+                    Discount
+                    {promoAppliedCode ? (
+                      <span className="font-mono text-caption">
+                        · {promoAppliedCode}
+                      </span>
+                    ) : null}
+                  </dt>
                   <dd className="font-mono tabular-nums">
                     −{fmt(discountNgn)}
                   </dd>
@@ -744,6 +813,82 @@ function CheckoutPage() {
                 </dd>
               </div>
             </dl>
+
+            {/* Referral code (P0-3). Captured from a friend's ?ref= link and
+                pre-filled here, or typed by the buyer. Applied server-side at
+                order-create — the friend discount comes off the order total
+                and the referrer's reward is credited on order.paid. */}
+            <div className="mt-4 border-t border-border pt-4">
+              <label className="block text-caption text-muted-foreground mb-2">
+                Referred by a friend?
+              </label>
+              <input
+                type="text"
+                value={referralCode}
+                onChange={(e) =>
+                  setReferralCode(e.target.value.toUpperCase().slice(0, 80))
+                }
+                placeholder="Friend's code (optional)"
+                className={`${field} w-full font-mono uppercase`}
+              />
+              {referralCode && capturedReferral === referralCode ? (
+                <p className="mt-1 text-caption text-muted-foreground">
+                  Applied from your friend's link · discount is on the order
+                  total.
+                </p>
+              ) : null}
+            </div>
+
+            {/* Promo code (P0-4). The persistent cart carries the applied
+                coupon; on submit the FE forwards coupon_code so createOrder
+                actually redeems it. */}
+            <div className="mt-4 border-t border-border pt-4">
+              {!promoOpen ? (
+                <button
+                  type="button"
+                  onClick={() => setPromoOpen(true)}
+                  className="inline-flex items-center gap-1 text-body-sm text-muted-foreground hover:text-foreground"
+                >
+                  Have a promo code?
+                </button>
+              ) : (
+                <div className="space-y-2">
+                  <label className="block text-caption text-muted-foreground">
+                    Promo code
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={promoCode}
+                      onChange={(e) => {
+                        setPromoCode(e.target.value.toUpperCase());
+                        setPromoErr(null);
+                      }}
+                      placeholder="Enter code"
+                      className={`${field} flex-1 font-mono uppercase`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void applyPromo()}
+                      disabled={!promoCode.trim() || promoBusy}
+                      className="rounded-full border border-primary bg-primary px-4 text-body-sm text-primary-foreground disabled:opacity-50"
+                    >
+                      {promoBusy ? "…" : "Apply"}
+                    </button>
+                  </div>
+                  {promoAppliedCode && !promoErr ? (
+                    <p className="text-caption text-muted-foreground">
+                      Code{" "}
+                      <span className="font-mono">{promoAppliedCode}</span>{" "}
+                      applied · discount shown above.
+                    </p>
+                  ) : null}
+                  {promoErr ? (
+                    <p className="text-caption text-destructive">{promoErr}</p>
+                  ) : null}
+                </div>
+              )}
+            </div>
 
             {err ? (
               <div

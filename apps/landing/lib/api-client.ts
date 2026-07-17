@@ -108,6 +108,10 @@ export async function postCheckout(args: {
   first_payment_ngn?: number;
   client_idempotency_key: string;
   coupon_code?: string;
+  /** Customer referral code captured from a friend's ?ref= link on the
+   *  landing (P0-3). The Hub applies the friend discount + credits the
+   *  referrer on order.paid. */
+  customer_referral_code?: string;
   /** Bypass the near-duplicate guard after the buyer has confirmed intent. */
   force_new_order?: boolean;
 }) {

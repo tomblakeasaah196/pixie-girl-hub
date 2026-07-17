@@ -19,6 +19,7 @@ const discount = require("../sales_campaigns/campaigns.discount.service");
 const couponService = require("../retention/coupon.service");
 const couponRepo = require("../retention/coupon.repo");
 const retentionRepo = require("../retention/retention.repo");
+const referralConfigRepo = require("../retention/referral-config.repo");
 const bundleRepo = require("../retention/bundle.repo");
 const bundleService = require("../retention/bundle.service");
 const campaignsRepo = require("../sales_campaigns/campaigns.repo");
@@ -332,7 +333,12 @@ async function createOrderTx({ brand, user, request_id, input }) {
     if (input.redeem_points && input.contact_id) {
       const pts = Math.floor(Number(input.redeem_points));
       if (pts > 0) {
-        const state = await retentionRepo.getLoyaltyState({
+        // P1-5: lock the state row for the duration of the tx so two
+        // concurrent orders can't both pass the balance check. The actual
+        // ledger debit is deferred to order.paid (P1-3), but the CHECK
+        // constraint (000353) plus this lock make the "insufficient
+        // points" gate race-free.
+        const state = await retentionRepo.getLoyaltyStateForUpdate({
           client,
           brand,
           contact_id: input.contact_id,
@@ -400,6 +406,60 @@ async function createOrderTx({ brand, user, request_id, input }) {
     // against each line's full remaining value, down to ₦0 (never negative), so
     // a campaign may sell below the variant min_price. Runs last; nothing after
     // it consumes line headroom.
+    // 3.9 Customer referral (P0-3): a friend's order gets the discount
+    // configured in referral_program_settings (percentage or fixed). Floor-
+    // respecting — same allocator as coupons/points/bundles — so we never
+    // sell below the variant min_price. Runs before the campaign_deal step
+    // (floor-free) so the referral saving is bounded by real margin.
+    //
+    // Guarding: only apply when the code resolves in THIS brand, the
+    // programme is active, the buyer isn't self-referring, and the config
+    // has a non-zero discount. The redemption ledger + counter bumps still
+    // happen in retention.subscribers on order.paid (see redeemReferral) —
+    // this stage only applies the discount and stamps referral_code_used.
+    let referralMeta = null;
+    let referralLineTotal = money(0);
+    if (input.customer_referral_code && input.contact_id) {
+      const codeNorm = String(input.customer_referral_code).trim();
+      if (codeNorm) {
+        const ref = await retentionRepo.findReferralByCode({
+          client,
+          code: codeNorm,
+          brand,
+        });
+        const settings = await referralConfigRepo
+          .getSettings({ client, brand })
+          .catch(() => null);
+        const programmeOn = !settings || settings.is_active !== false;
+        const notSelf = ref && ref.contact_id !== input.contact_id;
+        const hasDiscount =
+          settings &&
+          settings.friend_discount_type &&
+          settings.friend_discount_value != null &&
+          Number(settings.friend_discount_value) > 0;
+        if (ref && programmeOn && notSelf && hasDiscount) {
+          const preTotalNow = preNet.reduce(
+            (s, n) => s.plus(n),
+            money(0),
+          );
+          const raw =
+            settings.friend_discount_type === "percentage"
+              ? preTotalNow.times(money(settings.friend_discount_value))
+              : money(settings.friend_discount_value);
+          if (raw.gt(money(0))) {
+            referralLineTotal = applyOrderDiscount(raw);
+            if (referralLineTotal.gt(money(0))) {
+              referralMeta = {
+                code: codeNorm,
+                referrer_contact_id: ref.contact_id,
+                discount_ngn: toCurrencyString(referralLineTotal),
+              };
+            }
+          }
+        }
+      }
+    }
+
     let dealLineTotal = money(0);
     if (input.campaign_deal_discount_ngn) {
       const want = money(input.campaign_deal_discount_ngn);
@@ -498,6 +558,11 @@ async function createOrderTx({ brand, user, request_id, input }) {
         coupon_code: input.coupon_code || null,
         client_idempotency_key: input.client_idempotency_key || null,
         stylist_referral_code: input.stylist_referral_code || null,
+        // P0-3: stamp the CUSTOMER referral code that actually applied so
+        // the order.paid outbox handler can credit the referrer's points
+        // and post the store-credit reward (see retention.subscribers).
+        // Distinct from stylist_referral_code (§6.26 stylist rail).
+        referral_code_used: referralMeta ? referralMeta.code : null,
         payment_plan: paymentPlan,
         payment_model: paymentModel,
         required_deposit_pct:
@@ -549,10 +614,14 @@ async function createOrderTx({ brand, user, request_id, input }) {
       }
     }
 
-    // 5a. Record the coupon discount IN Sales + log the redemption against this
-    // order (so the coupon resolves end-to-end: order totals, GL, and the
-    // redemption all reference the same order). Usage is bumped under the lock
-    // taken in step 3.5.
+    // 5a. Record the coupon discount IN Sales (audit trail on the order —
+    // must be immediate so invoices/totals reconcile). P1-3: the
+    // coupon_redemptions row + coupons.total_redeemed bump used to happen
+    // here too, which meant an abandoned checkout burned the buyer's
+    // per_customer_limit for good. Both effects now defer to the
+    // order.paid outbox handler (retention.subscribers.settleAfterPaid),
+    // and the cancellation handler reverses them for a paid-then-cancelled
+    // order.
     if (couponMeta) {
       const couponAmt = couponLineTotal.plus(couponShipping);
       if (couponAmt.gt(0)) {
@@ -571,22 +640,6 @@ async function createOrderTx({ brand, user, request_id, input }) {
                   ? "free_shipping"
                   : "fixed",
           },
-        });
-        await couponRepo.recordRedemption({
-          client,
-          redemption: {
-            coupon_id: couponMeta.coupon_id,
-            contact_id: input.contact_id,
-            business: brand,
-            reference_type: "sales_order",
-            reference_id: order.order_id,
-            discount_applied: toCurrencyString(couponAmt),
-          },
-        });
-        await couponRepo.bumpUsage({
-          client,
-          coupon_id: couponMeta.coupon_id,
-          discount_ngn: toCurrencyString(couponAmt),
         });
       }
     }
@@ -609,10 +662,13 @@ async function createOrderTx({ brand, user, request_id, input }) {
       });
     }
 
-    // 5a-ii. Record loyalty points redemption IN Sales (§6.23.3): a
-    // sales_order_discounts row + the negative loyalty-ledger entry, both
-    // referencing this order, so the points discount resolves end-to-end and
-    // the customer's balance is debited atomically with the order.
+    // 5a-ii. Record loyalty points redemption IN Sales (§6.23.3): the
+    // sales_order_discounts row stays here so the order's discount
+    // breakdown is complete + reconciled with total_ngn. P1-3: the actual
+    // ledger debit (which burns the customer's balance) defers to the
+    // order.paid handler so an abandoned checkout doesn't lose them their
+    // points; the cancellation handler reverses it for a paid-then-
+    // cancelled order.
     if (pointsUsed > 0 && pointsLineTotal.gt(0)) {
       await repo.insertDiscount({
         client,
@@ -623,19 +679,6 @@ async function createOrderTx({ brand, user, request_id, input }) {
           source_reference: `${pointsUsed} pts`,
           amount_ngn: toCurrencyString(pointsLineTotal),
           discount_type: "points_redemption",
-        },
-      });
-      await retentionRepo.insertLoyaltyLedger({
-        client,
-        brand,
-        entry: {
-          contact_id: input.contact_id,
-          transaction_type: "redeemed",
-          points: -Math.abs(pointsUsed),
-          reference_type: "sales_order",
-          reference_id: order.order_id,
-          notes: `Redeemed ${pointsUsed} pts on ${order_number}`,
-          created_by: user.user_id,
         },
       });
     }
@@ -658,6 +701,31 @@ async function createOrderTx({ brand, user, request_id, input }) {
         client,
         brand,
         bundle_id: bundleMeta.bundle_id,
+      });
+    }
+
+    // 5a-iii-b. Record the customer referral (friend) discount IN Sales
+    // (P0-3). This is the discount that just applied above — the redemption
+    // ledger row + referrer counter bump land later on order.paid via
+    // retention.subscribers.redeemReferral (already stamped as
+    // referral_code_used on the order row above).
+    if (referralMeta && referralLineTotal.gt(money(0))) {
+      const settings = await referralConfigRepo
+        .getSettings({ client, brand })
+        .catch(() => null);
+      await repo.insertDiscount({
+        client,
+        brand,
+        disc: {
+          order_id: order.order_id,
+          source: "referral",
+          source_reference: referralMeta.code,
+          amount_ngn: toCurrencyString(referralLineTotal),
+          discount_type:
+            settings && settings.friend_discount_type === "percentage"
+              ? "percentage"
+              : "fixed",
+        },
       });
     }
 

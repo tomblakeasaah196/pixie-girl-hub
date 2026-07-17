@@ -37,6 +37,11 @@ const ORDER = [
   // checkout; the stylist_programme outbox consumer accrues the commission on
   // order.paid. Distinct from the customer rail's referral_code_used.
   "stylist_referral_code",
+  // Customer referral rail (P0-3). Stamped by sales.service when a friend's
+  // ?ref= resolves to an active customer referral code; the retention
+  // subscriber then bumps the referrer's counters + credits their reward on
+  // order.paid. Distinct from stylist_referral_code above.
+  "referral_code_used",
 ];
 const LINE = [
   "order_id",

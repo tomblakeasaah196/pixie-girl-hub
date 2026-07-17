@@ -62,7 +62,11 @@ router.post(
 // Posts
 router.get("/posts", can("view"), c.listPosts);
 router.post("/posts", can("create"), v.validatePostCreate, c.createPost);
+// Simplified calendar: paste a link -> proven "posted" row (no plan/screenshot).
+router.post("/posts/quick-log", can("create"), v.validateQuickLog, c.quickLog);
 router.get("/posts/:id", can("view"), c.getPost);
+router.delete("/posts/:id", can("delete"), c.deletePost);
+router.post("/posts/:id/refresh-reactions", can("edit"), c.refreshReactions);
 router.patch("/posts/:id", can("edit"), v.validatePostUpdate, c.updatePost);
 router.post(
   "/posts/:id/reschedule",

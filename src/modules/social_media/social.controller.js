@@ -120,6 +120,20 @@ async function createPost(req, res) {
     data: await service.createPost({ ...base(req), input: req.body }),
   });
 }
+async function quickLog(req, res) {
+  res.status(201).json({
+    data: await service.quickLog({ ...base(req), input: req.body }),
+  });
+}
+async function deletePost(req, res) {
+  await service.deletePost({ ...base(req), id: req.params.id });
+  res.status(204).end();
+}
+async function refreshReactions(req, res) {
+  res.json({
+    data: await service.refreshReactions({ ...base(req), id: req.params.id }),
+  });
+}
 async function updatePost(req, res) {
   res.json({
     data: await service.updatePost({
@@ -238,6 +252,9 @@ module.exports = {
   listPosts,
   getPost,
   createPost,
+  quickLog,
+  deletePost,
+  refreshReactions,
   updatePost,
   reschedulePost,
   submitProof,

@@ -426,6 +426,48 @@ export function useCreatePost() {
   });
 }
 
+// ── Quick-log (the simplified calendar's one write) ──────────
+export interface QuickLogInput {
+  external_url: string;
+  platform?: SocialPlatform;
+  account_id?: string;
+  /** ISO datetime of the calendar day the post belongs to. */
+  published_at?: string;
+}
+
+/** Paste a link that was already posted natively -> it lands as a proven
+ *  "posted" row on that day, oEmbed-enriched. No content, no screenshot. */
+export function useQuickLog() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (body: QuickLogInput) =>
+      api.post<SocialPost>("/social/posts/quick-log", body),
+    onSuccess: () => invalidatePost(qc, brand),
+  });
+}
+
+/** Remove a logged link (undo a wrong paste). */
+export function useDeletePost() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (id: string) => api.delete<void>(`/social/posts/${id}`),
+    onSuccess: (_d, id) => invalidatePost(qc, brand, id),
+  });
+}
+
+/** Best-effort on-demand refresh of a post's embed card + reactions. */
+export function useRefreshReactions() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post<SocialPost>(`/social/posts/${id}/refresh-reactions`, {}),
+    onSuccess: (_d, id) => invalidatePost(qc, brand, id),
+  });
+}
+
 export function useUpdatePost() {
   const qc = useQueryClient();
   const brand = useBrand();
@@ -594,6 +636,48 @@ export const ALL_PLATFORMS: SocialPlatform[] = [
   "youtube",
 ];
 
+/** Instagram is the brand's non-negotiable channel; the rest follow. This is
+ *  the display order everywhere in the simplified Studio. */
+export const PLATFORM_ORDER: SocialPlatform[] = [
+  "instagram",
+  "facebook",
+  "tiktok",
+  "youtube",
+];
+
+/** Per-platform look: brand colour + a one/two-letter glyph for calendar dots
+ *  and card badges. Kept in sync with the backend's HOST_PLATFORM mapping. */
+export const PLATFORM_UI: Record<
+  SocialPlatform,
+  { label: string; glyph: string; color: string }
+> = {
+  instagram: { label: "Instagram", glyph: "IG", color: "#E1306C" },
+  facebook: { label: "Facebook", glyph: "f", color: "#1877F2" },
+  tiktok: { label: "TikTok", glyph: "TT", color: "#25F4EE" },
+  youtube: { label: "YouTube", glyph: "YT", color: "#FF0000" },
+};
+
+const HOST_PLATFORM: [RegExp, SocialPlatform][] = [
+  [/(^|\.)instagram\.com$/i, "instagram"],
+  [/(^|\.)(facebook\.com|fb\.watch)$/i, "facebook"],
+  [/(^|\.)tiktok\.com$/i, "tiktok"],
+  [/(^|\.)(youtube\.com|youtu\.be)$/i, "youtube"],
+];
+
+/** Which platform a pasted URL belongs to, or null if it isn't one of the four
+ *  the brand posts to. Mirrors social-proof.service.js#detectPlatform so the UI
+ *  can label/validate a link before the round trip. */
+export function detectPlatformFromUrl(url: string): SocialPlatform | null {
+  let host: string;
+  try {
+    host = new URL(url.trim()).hostname;
+  } catch {
+    return null;
+  }
+  for (const [re, platform] of HOST_PLATFORM) if (re.test(host)) return platform;
+  return null;
+}
+
 export const POST_TYPES: PostType[] = [
   "image",
   "carousel",
@@ -665,4 +749,37 @@ export function sameDay(a: Date, b: Date): boolean {
     a.getMonth() === b.getMonth() &&
     a.getDate() === b.getDate()
   );
+}
+
+/** Local `YYYY-MM-DD` key for grouping posts onto calendar days (avoids the
+ *  UTC drift a toISOString().slice(0,10) would introduce near midnight). */
+export function dayKey(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** ISO half-open window [from, to) covering one calendar month — the fetch
+ *  bounds for that month's posts. */
+export function monthWindow(year: number, month: number): { from: string; to: string } {
+  return {
+    from: new Date(year, month, 1).toISOString(),
+    to: new Date(year, month + 1, 1).toISOString(),
+  };
+}
+
+/** The fixed cadence: 6 posts a week, Sunday off. The month's expected number
+ *  is simply its count of non-Sunday days (so Feb, 30- and 31-day months each
+ *  get their own honest target with no manual setup). */
+export function expectedPostsInMonth(year: number, month: number): number {
+  let count = 0;
+  const d = new Date(year, month, 1);
+  while (d.getMonth() === month) {
+    if (d.getDay() !== 0) count += 1; // 0 = Sunday
+    d.setDate(d.getDate() + 1);
+  }
+  return count;
+}
+
+export function isSunday(d: Date): boolean {
+  return d.getDay() === 0;
 }

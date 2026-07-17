@@ -3,12 +3,21 @@
 **Spec:** Social Media Management (V2.2 §6.14)
 **Permission key:** `social`
 
-Manual-first, proof-of-publish: a creator plans a whole month of posts as one
-"content plan", submits it as a single CEO approval (workflow engine), then
-posts natively from their own device and proves it here with a link
-(verified server-side via oEmbed — no OAuth, no Graph API publishing) plus a
-screenshot. A missed deadline nudges the creator, then escalates straight to
-the CEO — flat, two-tier, no team-lead stage.
+Manual-first, proof-of-publish. The admin UI ("Social Studio") is now a
+**simplified, link-only calendar**: a creator posts natively from their own
+device, then logs the link on its calendar day (`POST /posts/quick-log`) — the
+platform is inferred from the URL, the post lands as a proven `posted` row, and
+oEmbed enriches it for the day drawer's embed card. No content authoring, no
+screenshots, no monthly content plan, no approval, no per-creator targets or
+assignment. The cadence target is fixed (6 posts/week, Sunday off; Instagram
+must hit 6) and computed on the fly, so `social_targets` is no longer written
+from the UI.
+
+The heavier machinery below (content plans + CEO approval workflow, targets,
+team leaderboard, deadline sweep/nudges, screenshot proof) still exists in the
+schema and API but is **dormant** — the simplified frontend doesn't drive it.
+It's kept intact (not dropped) so the richer flow can be revived without a
+migration.
 
 ## Backing tables (all `shared`)
 

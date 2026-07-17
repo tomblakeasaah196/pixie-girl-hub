@@ -1,5 +1,5 @@
 -- ============================================================
--- MIGRATION 000352 — Non-negative loyalty balance CHECK
+-- MIGRATION 000353 — Non-negative loyalty balance CHECK
 -- Pixie Girl Hub · JBS Praxis
 --
 -- P1-5: point balances had no concurrency guard. redeemPoints,

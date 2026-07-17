@@ -1,5 +1,5 @@
 -- ============================================================
--- MIGRATION 000350 — Drop the subscription billing double-writer trigger
+-- MIGRATION 000351 — Drop the subscription billing double-writer trigger
 -- Pixie Girl Hub · JBS Praxis
 --
 -- P0-6: the fn_subscription_handle_attempt trigger (migration 000014) and

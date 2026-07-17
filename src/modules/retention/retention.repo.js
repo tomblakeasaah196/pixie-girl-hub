@@ -129,7 +129,7 @@ async function getLoyaltyState({ client, brand, contact_id }) {
  * negative. Only the state row is locked (FOR UPDATE) — the tier metadata
  * from the LEFT JOIN is read separately via getLoyaltyState if callers
  * need it. Requires a transaction; the CHECK constraint added in
- * migration 000352 is the backstop if a caller ever forgets to lock.
+ * migration 000353 is the backstop if a caller ever forgets to lock.
  */
 async function getLoyaltyStateForUpdate({ client, brand, contact_id }) {
   if (!client)

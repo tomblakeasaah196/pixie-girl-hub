@@ -11,6 +11,7 @@ import {
   AlertTriangle,
   Trophy,
   Sparkles,
+  Maximize2,
 } from "lucide-react";
 import {
   Button,
@@ -22,6 +23,7 @@ import {
 import { formatDate, formatDateTime } from "@/lib/format";
 import { Drawer } from "@/components/ui/Drawer";
 import { Modal } from "@/components/ui/Modal";
+import { Lightbox } from "@/components/ui/Lightbox";
 import { Select } from "@/components/ui/controls";
 import { ErrorState } from "@/components/ui/controls";
 import { ApiError } from "@/lib/api";
@@ -1159,6 +1161,19 @@ function RatingComparisonBadge({
 
 // ── Job detail drawer ──────────────────────────────────────
 
+// Suggested filename when a stylist downloads the style photo from the
+// lightbox — keeps the real extension from the URL so the file opens
+// correctly once saved.
+function photoDownloadName(job: ServiceJob): string {
+  const base =
+    [job.job_number, job.styled_product_name].filter(Boolean).join(" - ") ||
+    "style-photo";
+  const ext = job.styled_product_image_url?.match(
+    /\.(jpe?g|png|webp|gif|avif)(?=$|\?)/i,
+  )?.[1];
+  return ext ? `${base}.${ext.toLowerCase()}` : base;
+}
+
 function JobDetailDrawer({
   jobId,
   serviceTypes,
@@ -1176,6 +1191,7 @@ function JobDetailDrawer({
     "details" | "chemicals" | "outcome" | "activity"
   >("details");
   const [costInput, setCostInput] = useState("");
+  const [photoOpen, setPhotoOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -1243,7 +1259,15 @@ function JobDetailDrawer({
     !job.intercompany_transaction_id;
 
   return (
-    <Drawer open onClose={onClose} title={job.job_number}>
+    <Drawer
+      open
+      // Both the Drawer and the photo Lightbox listen for Esc on document —
+      // while the lightbox is on top, Esc should close only the lightbox.
+      onClose={() => {
+        if (!photoOpen) onClose();
+      }}
+      title={job.job_number}
+    >
       <div className="space-y-4">
         {/* Header */}
         <div className="flex items-center gap-3 flex-wrap">
@@ -1273,24 +1297,42 @@ function JobDetailDrawer({
         </div>
 
         {/* Identity strip — always visible regardless of tab. The photo is
-            the fastest way to match a physical wig to its job; customer +
-            order date give the "who/when" without opening the order. */}
+            what the stylist actually works from, so it gets real estate:
+            224px (4× the old thumbnail), click for the full-screen lightbox
+            with download. Stacks above the text until the drawer widens at
+            lg; the no-photo placeholder keeps the old compact row. */}
         {(job.styled_product_name ||
           job.base_product_name ||
           job.customer_name) && (
-          <div className="glass rounded-lg p-3 flex items-center gap-3">
-            <div className="w-14 h-14 rounded-lg bg-accent/[0.08] grid place-items-center overflow-hidden shrink-0">
-              {job.styled_product_image_url ? (
-                // eslint-disable-next-line jsx-a11y/img-redundant-alt
+          <div
+            className={
+              job.styled_product_image_url
+                ? "glass rounded-lg p-3 flex flex-col lg:flex-row lg:items-center gap-3"
+                : "glass rounded-lg p-3 flex items-center gap-3"
+            }
+          >
+            {job.styled_product_image_url ? (
+              <button
+                type="button"
+                onClick={() => setPhotoOpen(true)}
+                aria-label="View style photo full screen"
+                title="View full screen"
+                className="group relative w-56 h-56 max-w-full rounded-lg bg-accent/[0.08] overflow-hidden shrink-0 cursor-zoom-in"
+              >
                 <img
                   src={job.styled_product_image_url}
                   alt={job.styled_product_name ?? "Styled product"}
                   className="w-full h-full object-cover"
                 />
-              ) : (
+                <span className="absolute inset-0 grid place-items-center bg-black/0 group-hover:bg-black/30 group-focus-visible:bg-black/30 transition-colors">
+                  <Maximize2 className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity" />
+                </span>
+              </button>
+            ) : (
+              <div className="w-14 h-14 rounded-lg bg-accent/[0.08] grid place-items-center overflow-hidden shrink-0">
                 <Package className="w-5 h-5 text-text-muted" />
-              )}
-            </div>
+              </div>
+            )}
             <div className="flex-1 min-w-0 text-sm">
               <div className="font-semibold truncate">
                 {job.styled_product_name ??
@@ -1539,6 +1581,14 @@ function JobDetailDrawer({
         {tab === "chemicals" && <ChemicalsTab jobId={jobId} />}
         {tab === "outcome" && <OutcomeTab job={job} jobId={jobId} />}
         {tab === "activity" && <ActivityTab jobId={jobId} />}
+
+        {photoOpen && job.styled_product_image_url && (
+          <Lightbox
+            url={job.styled_product_image_url}
+            name={photoDownloadName(job)}
+            onClose={() => setPhotoOpen(false)}
+          />
+        )}
       </div>
     </Drawer>
   );

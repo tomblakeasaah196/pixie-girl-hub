@@ -26,8 +26,11 @@ import type { ServiceJob } from "./types";
  */
 export function MyStudioJobs() {
   const userId = useAuthStore((s) => s.user?.id) ?? null;
+  // `mine: true` narrows the list to jobs I hold or once held — even for
+  // team/all-scope callers (Ops, CEO), who would otherwise get the whole
+  // brand's jobs back and see every one mislabelled as "reassigned away".
   const { data, isLoading, isError, refetch } = useJobs(
-    userId ? { page_size: 100 } : undefined,
+    userId ? { mine: true, page_size: 100 } : undefined,
   );
 
   if (isLoading) {

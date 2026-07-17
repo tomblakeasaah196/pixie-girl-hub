@@ -1,5 +1,5 @@
 -- ============================================================
--- MIGRATION 000353 — Voucher binding + per-reward voucher expiry
+-- MIGRATION 000354 — Voucher binding + per-reward voucher expiry
 -- Pixie Girl Hub · JBS Praxis
 --
 -- P1-6: reward vouchers had three latent failures.

@@ -203,6 +203,7 @@ export function EmployeeOnboardingPage() {
     sun: "off",
   });
   const [expectedStart, setExpectedStart] = useState("09:00");
+  const [expectedEnd, setExpectedEnd] = useState("18:00");
   const [grace, setGrace] = useState("15");
 
   // ── Financial ───────────────────────────────────────────
@@ -379,6 +380,7 @@ export function EmployeeOnboardingPage() {
           ...(taxId.trim() ? { tax_id: taxId.trim() } : {}),
           work_schedule: schedule,
           ...(expectedStart ? { work_expected_start_time: expectedStart } : {}),
+          ...(expectedEnd ? { work_expected_end_time: expectedEnd } : {}),
           work_grace_minutes: Number(grace) || 0,
         });
         createdProfileRef.current = profile;
@@ -642,6 +644,8 @@ export function EmployeeOnboardingPage() {
                 setSchedule={setSchedule}
                 expectedStart={expectedStart}
                 setExpectedStart={setExpectedStart}
+                expectedEnd={expectedEnd}
+                setExpectedEnd={setExpectedEnd}
                 grace={grace}
                 setGrace={setGrace}
               />
@@ -1308,6 +1312,8 @@ function WorkScheduleEditor({
   setSchedule,
   expectedStart,
   setExpectedStart,
+  expectedEnd,
+  setExpectedEnd,
   grace,
   setGrace,
 }: {
@@ -1315,6 +1321,8 @@ function WorkScheduleEditor({
   setSchedule: (fn: (s: WorkSchedule) => WorkSchedule) => void;
   expectedStart: string;
   setExpectedStart: (v: string) => void;
+  expectedEnd: string;
+  setExpectedEnd: (v: string) => void;
   grace: string;
   setGrace: (v: string) => void;
 }) {
@@ -1358,12 +1366,19 @@ function WorkScheduleEditor({
           </div>
         ))}
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-3 sm:max-w-xs">
+      <div className="mt-3 grid grid-cols-3 gap-3 sm:max-w-md">
         <Field label="Expected start">
           <TextInput
             type="time"
             value={expectedStart}
             onChange={(e) => setExpectedStart(e.target.value)}
+          />
+        </Field>
+        <Field label="Closing time">
+          <TextInput
+            type="time"
+            value={expectedEnd}
+            onChange={(e) => setExpectedEnd(e.target.value)}
           />
         </Field>
         <Field label="Grace (min)">
@@ -1374,6 +1389,10 @@ function WorkScheduleEditor({
           />
         </Field>
       </div>
+      <p className="mt-2 text-[11px] text-text-faint">
+        Closing time powers early-departure tracking, supplementary-hours
+        (overtime) capture, and the clock-out reminders.
+      </p>
     </div>
   );
 }

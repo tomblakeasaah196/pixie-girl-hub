@@ -1,4 +1,5 @@
 import { useState, lazy, Suspense, useEffect } from "react";
+import { useUrlTab } from "@/hooks/useUrlTab";
 import { useTranslation } from "react-i18next";
 import {
   Factory,
@@ -66,7 +67,11 @@ export function ProductionPage() {
   const { i18n } = useTranslation("factory");
   const { languages } = useFactoryLanguages();
 
-  const [tab, setTab] = useState<MainTab>("overview");
+  const [tab, setTab] = useUrlTab<MainTab>("overview", [
+    "overview",
+    "factory",
+    "runs",
+  ]);
   const [factoryTab, setFactoryTab] = useState<FactoryTab>("ledger");
   const [selectedAccount, setSelectedAccount] = useState<FactoryAccount | null>(
     null,

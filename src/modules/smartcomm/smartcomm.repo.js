@@ -223,13 +223,21 @@ async function getChannelEnriched({ id, user_id }) {
   return { ...channel, members, messages, my_member: me, my_role: me?.role ?? null };
 }
 
-async function findCustomerThread({ client, brand, contact_id }) {
+// Platform-scoped on purpose: a contact has ONE thread PER channel
+// (whatsapp / instagram / email). Matching on contact alone made every
+// send land on whichever thread existed first — a staff member picking
+// "Email" in the composer had the message ride the contact's old
+// WhatsApp thread, because the outbound job builder derives the wire
+// protocol from the thread's external_platform.
+async function findCustomerThread({ client, brand, contact_id, platform }) {
   const { rows } = await ex(client)(
     `SELECT * FROM shared.message_channels
       WHERE channel_type = 'customer_thread' AND business = $1
         AND metadata->>'contact_id' = $2
+        AND external_platform = $3
+      ORDER BY created_at DESC
       LIMIT 1`,
-    [brand, contact_id],
+    [brand, contact_id, platform],
   );
   return rows[0] || null;
 }

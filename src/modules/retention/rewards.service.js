@@ -109,7 +109,7 @@ async function redeemReward({
 
     // P1-5: lock the state row so two concurrent redemptions of the same
     // reward can't both pass the balance check. Balance goes through the
-    // trigger-maintained state; the CHECK constraint (000352) is the DB-
+    // trigger-maintained state; the CHECK constraint (000353) is the DB-
     // level backstop.
     const state = await lrepo.getLoyaltyStateForUpdate({
       client,

@@ -7,7 +7,7 @@
  * when the user lacks the grant (canon §4 #3).
  */
 
-import { useState } from "react";
+import { useUrlTab } from "@/hooks/useUrlTab";
 import {
   Sparkles,
   Gift,
@@ -56,7 +56,10 @@ const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
 export function RetentionPage() {
   useBreadcrumbs([{ label: "Retention" }]);
   const { can } = useAuthStore();
-  const [tab, setTab] = useState<Tab>("strategies");
+  const [tab, setTab] = useUrlTab<Tab>(
+    "strategies",
+    TABS.map((t) => t.key),
+  );
 
   if (!can("retention", "view")) {
     return <DeniedState message="You don't have access to Retention." />;

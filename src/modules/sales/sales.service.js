@@ -336,7 +336,7 @@ async function createOrderTx({ brand, user, request_id, input }) {
         // P1-5: lock the state row for the duration of the tx so two
         // concurrent orders can't both pass the balance check. The actual
         // ledger debit is deferred to order.paid (P1-3), but the CHECK
-        // constraint (000352) plus this lock make the "insufficient
+        // constraint (000353) plus this lock make the "insufficient
         // points" gate race-free.
         const state = await retentionRepo.getLoyaltyStateForUpdate({
           client,

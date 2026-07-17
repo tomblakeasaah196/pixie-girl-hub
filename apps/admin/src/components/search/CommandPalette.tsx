@@ -12,7 +12,12 @@ import { cn } from "@/lib/cn";
 import { useUiStore } from "@/stores/ui";
 import { useAuthStore } from "@/stores/auth";
 import { useBusinessStore } from "@/stores/business";
-import { MODULES, GROUP_LABELS, type ModuleGroup } from "@/lib/modules";
+import {
+  MODULES,
+  MODULE_BY_KEY,
+  GROUP_LABELS,
+  type ModuleGroup,
+} from "@/lib/modules";
 import { usePermittedModuleKeys } from "@/hooks/useModuleAccess";
 import {
   search as apiSearch,
@@ -25,6 +30,11 @@ import {
   scoreAction,
   type PaletteAction,
 } from "@/lib/search-actions";
+import {
+  permittedTabs,
+  scoreTab,
+  type ModuleTab,
+} from "@/lib/module-tabs";
 import { highlight } from "@/lib/search-highlight";
 import { PaletteEmpty } from "./PaletteEmpty";
 
@@ -36,8 +46,11 @@ import { PaletteEmpty } from "./PaletteEmpty";
  *   #   records only         (contacts, orders, invoices, …)
  *   @   people only          (contacts + employees)
  *   ?   help articles only
- *   !   settings + modules
- *   (none) — everything (records + apps + top actions + Ask Praxis)
+ *   !   pages — modules and their tabs (Catalogue › Shades, …)
+ *   (none) — everything (records + apps + tabs + top actions + Ask Praxis)
+ *
+ * Modules, tabs and record groups are all RBAC-gated: a user who can't reach a
+ * module never sees the module, its tabs, or its records in the palette.
  *
  * The palette debounces record-search API calls to 200ms and swallows the
  * pending response when a newer keystroke lands (AbortController).
@@ -47,6 +60,7 @@ type Row =
   | { kind: "action"; action: PaletteAction }
   | { kind: "record"; hit: SearchHit; groupLabel: string; groupIcon: string }
   | { kind: "app"; label: string; sub: string; route: string; icon: string }
+  | { kind: "tab"; tab: ModuleTab }
   | { kind: "praxis"; label: string; query: string };
 
 interface OperatorMode {
@@ -220,6 +234,28 @@ export function CommandPalette() {
     }).slice(0, mode.key === "apps" ? 20 : 5);
   }, [q, mode.key, permitted]);
 
+  // ── Module tabs (client-side; RBAC-gated by parent module) ──
+  // A tab is never shown unless its module is permitted (same `permitted` set
+  // the sidebar uses), plus any per-tab action / CEO gate. Tabs only surface
+  // once the user types — they'd flood the empty "!" jump view otherwise.
+  const allowedTabs = useMemo(
+    () =>
+      user ? permittedTabs(permitted, can, user.isCeo ?? false) : [],
+    [user, permitted, can],
+  );
+  const matchedTabs = useMemo(() => {
+    if (mode.key === "commands" || mode.key === "people" || mode.key === "help") {
+      return [];
+    }
+    if (!q) return [];
+    return allowedTabs
+      .map((t) => ({ t, score: scoreTab(t, q) }))
+      .filter(({ score }) => score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, mode.key === "apps" ? 20 : 6)
+      .map(({ t }) => t);
+  }, [allowedTabs, q, mode.key]);
+
   // ── Records (server) ─────────────────────────────────
   useEffect(() => {
     if (mode.key === "commands" || mode.key === "apps") {
@@ -278,6 +314,9 @@ export function CommandPalette() {
         icon: app.key,
       });
     }
+    for (const tab of matchedTabs) {
+      out.push({ kind: "tab", tab });
+    }
     for (const g of remoteGroups) {
       for (const hit of g.hits) {
         out.push({
@@ -295,7 +334,7 @@ export function CommandPalette() {
       out.push({ kind: "praxis", label: `Ask Praxis: “${q.trim()}”`, query: q.trim() });
     }
     return out;
-  }, [matchedActions, matchedApps, remoteGroups, q, user, can, mode.key]);
+  }, [matchedActions, matchedApps, matchedTabs, remoteGroups, q, user, can, mode.key]);
 
   useEffect(() => {
     // Reset selection when the row set changes so highlight doesn't dangle.
@@ -319,6 +358,11 @@ export function CommandPalette() {
     if (r.kind === "app") {
       setOpen(false);
       navigate(r.route);
+      return;
+    }
+    if (r.kind === "tab") {
+      setOpen(false);
+      navigate(r.tab.route);
       return;
     }
     if (r.kind === "record") {
@@ -521,6 +565,7 @@ export function CommandPalette() {
 function rowKey(r: Row, i: number) {
   if (r.kind === "action") return `a:${r.action.key}`;
   if (r.kind === "app") return `p:${r.route}`;
+  if (r.kind === "tab") return `t:${r.tab.route}`;
   if (r.kind === "record") return `r:${r.hit.type}:${r.hit.id}`;
   return `x:${i}`;
 }
@@ -585,6 +630,40 @@ function Row({ row, q, isActive, onEnter, onActivate }: RowProps) {
           </span>
           <span className="block text-[11px] text-text-faint truncate">
             {row.sub}
+          </span>
+        </span>
+        {isActive && (
+          <CornerDownLeft className="w-3.5 h-3.5 text-text-faint shrink-0" />
+        )}
+      </div>
+    );
+  }
+  if (row.kind === "tab") {
+    const mod = MODULE_BY_KEY[row.tab.moduleKey];
+    const Icon = mod?.icon;
+    return (
+      <div
+        onMouseEnter={onEnter}
+        onClick={onActivate}
+        className={commonCls}
+        role="option"
+        aria-selected={isActive}
+      >
+        <span className="w-8 h-8 rounded-[9px] grid place-items-center text-accent-glow bg-accent/10 shrink-0">
+          {Icon ? (
+            <Icon className="w-[16px] h-[16px]" />
+          ) : (
+            <span className="text-[15px]">•</span>
+          )}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block font-semibold text-[13.5px] truncate">
+            <span className="text-text-muted">{mod?.label ?? row.tab.moduleKey}</span>
+            <span className="text-text-faint px-1">›</span>
+            {highlight(row.tab.label, q)}
+          </span>
+          <span className="block text-[11px] text-text-faint truncate">
+            {mod ? `${GROUP_LABELS[mod.group as ModuleGroup]} · ` : ""}Tab
           </span>
         </span>
         {isActive && (

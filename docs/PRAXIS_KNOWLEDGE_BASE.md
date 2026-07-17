@@ -73,22 +73,38 @@ only access one business, there's nothing to switch.
 ### 2.3 The top bar
 - **Search Hub… (⌘K / Ctrl-K)** — the global command palette. See §2.4.
 - **Clock in / Clock out** — punches your attendance for the day (feeds My HR
-  and the HR attendance register).
+  and the HR attendance register). As your closing time approaches you get a
+  reminder to clock out (5 min before / at / 5 min after) if you're still
+  clocked in; time past your closing time shows as supplementary hours in My HR.
 - **Bell (notifications)** — your alert feed; the number is unread count. Full
   page at `/notifications`.
 - **Theme toggle** — light / dark (the Hub defaults to the dark "Maroon Noir" look).
-- **Your name / avatar (bottom-left)** — account menu: profile, preferences,
-  sign out.
+- **Your name / avatar (bottom-left)** — account menu: **Change photo · My
+  profile · My HR · Appearance · Quick login PIN · Change password · Sign out**.
+  - **Appearance** here is a *personal* look for your own device — pick a
+    palette (Maroon Noir, Porcelain White, Onyx Ruby), dark/light, and density.
+    It doesn't need any permission and doesn't change the company logo, fonts,
+    or anyone else's view. (That company-wide branding lives at **Settings →
+    Appearance**, `/settings/appearance`, which only admins can open.)
 
 ### 2.4 Global search & command palette (⌘K)
 Press **⌘K** (Mac) or **Ctrl-K** (Windows) anywhere. From one box you can:
 - **Find records** across the business — orders, contacts, invoices, expenses,
-  cash requests, CRM deals, employees, deliveries, documents.
-- **Jump to any page** — type a module name ("cash", "invoicing", "stock").
+  cash requests, CRM deals, employees, deliveries, documents, **products &
+  catalogue items** (search a product name or SKU).
+- **Jump to any page — and any tab within a page.** Type a module name
+  ("stock", "invoicing") *or* a tab name ("shades", "credit notes", "chart of
+  accounts", "approval queue") and the palette takes you straight to that tab
+  (e.g. "shades" → **Catalogue › Shades**).
 - **Run a command** — e.g. type "new order" to start one.
 - **Search help articles.**
 - **Search across all your brands** (toggle) — find a record even if it's in the
   other business.
+
+Everything the palette shows respects your permissions: modules, their tabs,
+and record types you can't access simply don't appear (e.g. a user without
+Catalogue access never sees Catalogue or its tabs in search). Operators narrow
+the search: `>` commands, `#` records, `@` people, `?` help, `!` pages & tabs.
 
 This is the fastest way to get anywhere. When telling a user where something is,
 you can add: "or press **⌘K** and type its name."
@@ -228,6 +244,10 @@ Order / Logistics side.
   (`/service-jobs?tab=board`).
 - *Work on my own job?* Stylist → **My Jobs** (`/service-jobs?tab=my`) →
   Start → hand back for QC.
+- *See or download the style photo?* Open the job from the Job Board
+  (`/service-jobs?tab=board`) — the photo sits at the top of the job drawer;
+  **click it** for a full-screen view with a **Download** button, so you can
+  save it to your phone and work from it.
 - *QC pass or fail a returned job?* Ops → **QC Queue** tab. Pass = job
   completed + wig auto-dispatched to Logistics; fail = back to stylist for
   rework.
@@ -501,9 +521,24 @@ disciplinary queries, targets, rewards, recruitment, and HR analytics.
 - *Open an employee's file?* HR → **Directory**, click a person →
   `/hr/employees/<profileId>`.
 - *Onboard a new staff member?* HR → **Onboarding**, or Contacts →
-  **contacts/staff/new** (`/contacts/staff/new`).
+  **contacts/staff/new** (`/contacts/staff/new`). The onboarding wizard sets
+  the work schedule — on-site/remote/off per weekday, plus the **start and
+  closing time** and lateness grace.
+- *Change an employee's work days or hours after onboarding (e.g. 5 days → 3,
+  or a new closing time)?* Open their file → **Schedule** card → **Edit**.
+  Set the per-weekday mode and the start/closing/grace times, then Save.
 - *Approve leave?* HR → **Leave** tab (the badge shows pending count).
-- *See attendance?* HR → **Attendance** tab. (Staff clock in via the top bar.)
+- *See attendance?* HR → **Attendance** tab. (Staff clock in/out via the top
+  bar.) An employee's file → **Attendance** tab shows each day's in/out times,
+  minutes late, minutes early, and **supplementary hours** worked past their
+  closing time (`+Nm over`).
+- *Turn the clock-out reminders on/off?* HR → **Settings** tab → the
+  **"Clock-out reminders"** switch (under the attendance/lateness card). When
+  on, anyone still clocked in gets a nudge (in-app + push) **5 minutes before,
+  at, and 5 minutes after** their closing time so they don't forget to clock
+  out and bank unintended supplementary hours. Each person's closing time is
+  set on their **Schedule** (falls back to the brand default closing time in
+  **Settings → Payroll**).
 - *Raise a staff query?* HR → **Queries**.
 - *Hire someone (JD → offer → e-sign → onboarding)?* HR → **Recruitment** tab.
   Candidates get a public offer link (`/offer/<token>`). On that page the
@@ -699,7 +734,7 @@ focused settings page.
 
 | Setting | Link |
 |---|---|
-| Appearance (theme / branding) | `/settings/appearance` |
+| Appearance — **company-wide** logo, fonts & default palette (white-label). For a *personal* look, use **Appearance** in the account menu instead — see §2.3. | `/settings/appearance` |
 | Login screen editor | `/settings/login` |
 | Business setup (company profile) | `/settings/business-setup` |
 | Businesses (brands) | `/settings/businesses` |

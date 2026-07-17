@@ -5,7 +5,7 @@
  * Recurring billing (Paystack charge_authorization → order) runs off the
  * `subscription-billing` cron (worker.js) once daily at 03:00 Lagos time.
  * P0-6: the pre-existing double-writer (000014 trigger + service) is gone —
- * migration 000350 drops the trigger so this file is the sole writer for
+ * migration 000351 drops the trigger so this file is the sole writer for
  * cycle counters, failure counters, and status transitions. Dunning
  * cascade: 24h → 48h → 72h → pause after FAIL_LIMIT consecutive declines.
  */

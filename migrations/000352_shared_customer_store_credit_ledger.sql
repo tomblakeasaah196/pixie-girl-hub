@@ -1,5 +1,5 @@
 -- ============================================================
--- MIGRATION 000351 — Customer store-credit ledger
+-- MIGRATION 000352 — Customer store-credit ledger
 -- Pixie Girl Hub · JBS Praxis
 --
 -- P1-7: referral_program_settings.referrer_credit_ngn (and its per-tier

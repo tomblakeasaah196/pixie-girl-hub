@@ -97,6 +97,9 @@ export function listJobs(params?: {
   assigned_staff_user_id?: string;
   assigned_stylist_id?: string;
   customer_contact_id?: string;
+  // "My Jobs" cockpit: narrow the list to the caller's own jobs (current OR
+  // historical-custody) regardless of how broad their permission scope is.
+  mine?: boolean;
   page?: number;
   page_size?: number;
 }) {
@@ -108,6 +111,7 @@ export function listJobs(params?: {
     qs.set("assigned_stylist_id", params.assigned_stylist_id);
   if (params?.customer_contact_id)
     qs.set("customer_contact_id", params.customer_contact_id);
+  if (params?.mine) qs.set("mine", "true");
   if (params?.page) qs.set("page", String(params.page));
   if (params?.page_size) qs.set("page_size", String(params.page_size));
   const q = qs.toString();

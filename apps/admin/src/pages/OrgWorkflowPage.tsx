@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useUrlTab } from "@/hooks/useUrlTab";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import {
@@ -3010,7 +3011,12 @@ function PendingTab({ canAct }: { canAct: boolean }) {
 
 export function OrgWorkflowPage() {
   const { can, user } = useAuthStore();
-  const [tab, setTab] = useState<Tab>("org");
+  const [tab, setTab] = useUrlTab<Tab>("org", [
+    "org",
+    "permissions",
+    "workflows",
+    "pending",
+  ]);
 
   const tabLabels: Record<Tab, string> = {
     org: "Org Chart",

@@ -338,7 +338,7 @@ async function redeemPoints({
   return transaction(async (client) => {
     // P1-5: lock the state row so two concurrent redemptions can't both
     // pass the balance check. The CHECK constraint added in migration
-    // 000352 is the DB-level backstop if any caller ever forgets to lock.
+    // 000353 is the DB-level backstop if any caller ever forgets to lock.
     const state = await repo.getLoyaltyStateForUpdate({
       client,
       brand,

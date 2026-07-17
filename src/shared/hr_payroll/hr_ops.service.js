@@ -31,6 +31,7 @@ const { evaluateClockTransition } = require("./clock.guard");
 const { evaluateDeviceRecognition } = require("./device.guard");
 const events = require("./hr.events");
 const { reverseGeocode } = require("../../services/geoapify.service");
+const notifications = require("../../services/notifications.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { NotFoundError, ConflictError, ValidationError } =
@@ -526,6 +527,19 @@ async function reconcileDay({ brand, user, date }) {
             })
           : 0;
 
+      // Supplementary hours: time worked PAST the expected close (mirror of
+      // early-leave on the "stayed late" side). Tracking figure only — it does
+      // not feed payroll (overtime is still a manual payslip line).
+      const overtimeMinutes =
+        wd.working && clockOut
+          ? calc.minutesOvertime({
+              expectedEnd,
+              lastClockOutAt: clockOut.occurred_at,
+              dateStr,
+              tzOffsetMinutes: LAGOS_UTC_OFFSET_MIN,
+            })
+          : 0;
+
       const day = await repo.upsertAttendanceDay({
         client, brand,
         input: {
@@ -549,6 +563,7 @@ async function reconcileDay({ brand, user, date }) {
           clock_in_lng: clock ? clock.longitude : null,
           last_clock_out_at: clockOut ? clockOut.occurred_at : null,
           early_leave_minutes: earlyLeaveMinutes,
+          overtime_minutes: overtimeMinutes,
           clock_out_address: clockOut ? clockOut.formatted_address : null,
           clock_out_lat: clockOut ? clockOut.latitude : null,
           clock_out_lng: clockOut ? clockOut.longitude : null,
@@ -737,6 +752,109 @@ async function bumpDueReminders({ brand }) {
     });
   }
   return { reminded: due.length };
+}
+
+// ── Clock-out reminders (close-time nudges) ────────────────
+// The three nudges, as Lagos-local minute offsets from each employee's
+// closing time: 5 min before, at the time, 5 min after. GRACE is how many
+// minutes past a target we still fire, so a skipped every-minute cron tick
+// doesn't drop a nudge. Windows never overlap (min gap between targets is 5).
+const CLOCKOUT_NUDGES = [
+  { tag: "before", offset: -5 },
+  { tag: "at", offset: 0 },
+  { tag: "after", offset: 5 },
+];
+const CLOCKOUT_NUDGE_GRACE_MIN = 2;
+
+/** Minutes-since-midnight for an 'HH:MM' / 'HH:MM:SS' string, or null. */
+function parseHhMm(value) {
+  if (!value) return null;
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(value));
+  if (!m) return null;
+  return Number(m[1]) * 60 + Number(m[2]);
+}
+
+/** Build the in-app + push copy for one nudge kind. */
+function clockoutNudgeCopy(tag, endLabel) {
+  switch (tag) {
+    case "before":
+      return {
+        priority: "normal",
+        title: "Clock-out reminder",
+        body: `Your day ends at ${endLabel} — 5 minutes to go. Remember to clock out so your hours are recorded correctly.`,
+      };
+    case "at":
+      return {
+        priority: "normal",
+        title: "Time to clock out",
+        body: `It's ${endLabel}, your closing time. Tap the clock in the top bar to clock out.`,
+      };
+    default: // "after"
+      return {
+        priority: "high",
+        title: "You haven't clocked out",
+        body: `It's past your ${endLabel} closing time and you're still clocked in. Clock out now — anything beyond this counts as supplementary hours.`,
+      };
+  }
+}
+
+/**
+ * Send the close-time clock-out nudges for a brand (5 min before / at / 5 min
+ * after each employee's expected closing time) to anyone still clocked in on a
+ * working day. Runs every minute; each nudge is claimed via
+ * shared.clockout_reminders so it fires AT MOST ONCE per employee/day/offset,
+ * even across restarts or a second worker. Delivery is in-app + web push via
+ * notify() (gated by the brand's clockout_reminder_enabled switch).
+ */
+async function sendClockoutReminders({ brand, now = new Date() }) {
+  const settings = await repo.getSettings({ brand });
+  if (!settings.clockout_reminder_enabled) return { sent: 0, candidates: 0 };
+
+  const dateStr = todayStr(now);
+  const nowMin = calc.localMinutesOfDay(now.toISOString(), LAGOS_UTC_OFFSET_MIN);
+  const candidates = await repo.clockedInWithoutClockout({ brand, dateStr });
+
+  let sent = 0;
+  for (const s of candidates) {
+    const wd = calc.resolveWorkingDay({
+      dateStr,
+      workSchedule: s.work_schedule,
+      brandWorkingDays: settings.working_days,
+    });
+    if (!wd.working) continue;
+
+    const expectedEnd = s.work_expected_end_time || settings.default_expected_end_time;
+    const endMin = parseHhMm(expectedEnd);
+    if (endMin === null) continue;
+    const endLabel = String(expectedEnd).slice(0, 5); // HH:MM
+
+    for (const nudge of CLOCKOUT_NUDGES) {
+      const target = endMin + nudge.offset;
+      if (nowMin < target || nowMin > target + CLOCKOUT_NUDGE_GRACE_MIN) continue;
+      // The INSERT is the dedupe: only the first claim returns a row.
+      const claim = await repo.claimClockoutReminder({
+        brand,
+        profileId: s.profile_id,
+        workDate: dateStr,
+        offsetTag: nudge.tag,
+      });
+      if (!claim) continue;
+      const copy = clockoutNudgeCopy(nudge.tag, endLabel);
+      await notifications.notify({
+        user_id: s.user_id,
+        business: brand,
+        type: "clockout_reminder",
+        priority: copy.priority,
+        title: copy.title,
+        body: copy.body,
+        reference_type: "attendance",
+        reference_id: s.profile_id,
+        action_url: "/workspace?tab=my-hr",
+      });
+      sent++;
+    }
+  }
+  return { sent, candidates: candidates.length };
 }
 
 // ── Self clock-in / today (My HR + top-bar widget) ─────────
@@ -1180,6 +1298,7 @@ async function getMyHr({ brand, user }) {
     schedule: {
       work_schedule: profile.work_schedule || {},
       expected_start_time: profile.work_expected_start_time || settings.default_expected_start_time,
+      expected_end_time: profile.work_expected_end_time || settings.default_expected_end_time,
       grace_minutes: profile.work_grace_minutes !== null && profile.work_grace_minutes !== undefined
         ? profile.work_grace_minutes
         : settings.default_grace_minutes,
@@ -1418,6 +1537,7 @@ module.exports = {
   unreconciledWorkingDates,
   applyLapsedOffsite,
   bumpDueReminders,
+  sendClockoutReminders,
   getMyToday,
   selfClock,
   getOverview,

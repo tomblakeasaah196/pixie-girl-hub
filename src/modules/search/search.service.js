@@ -229,7 +229,7 @@ async function suggestions({ user, brand, limit = 5 }) {
           title: r.order_number,
           subtitle: r.contact_name || "—",
           meta: { status: r.status, amount_ngn: r.total_ngn },
-          route: `/sales/${r.id}`,
+          route: `/sales/orders/${r.id}`,
         }));
       } catch (err) {
         logger.warn({ err: err.message }, "search suggestions: orders failed");
@@ -274,7 +274,7 @@ async function suggestions({ user, brand, limit = 5 }) {
           title: r.invoice_number,
           subtitle: r.contact_name || "—",
           meta: { status: r.status, amount_ngn: r.total_ngn },
-          route: `/invoicing/${r.id}`,
+          route: `/invoicing?tab=invoices&invoice=${r.id}`,
         }));
       } catch (err) {
         logger.warn(

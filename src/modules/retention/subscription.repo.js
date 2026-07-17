@@ -166,7 +166,7 @@ async function setStatus({ brand, id, status, fields = {} }) {
 //   3rd+ decline → wait 72h (also flips to 'paused' via the service)
 // updated_at is bumped every time recordBillingFailure runs, so
 // (now() - updated_at) measures "hours since last attempt". The trigger
-// that was corrupting updated_at is dropped in migration 000350.
+// that was corrupting updated_at is dropped in migration 000351.
 async function claimDueForBilling({ client, brand, limit }) {
   const { rows } = await client.query(
     `WITH due AS (

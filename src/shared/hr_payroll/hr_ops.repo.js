@@ -185,6 +185,7 @@ async function updateSettings({ client, brand, patch }) {
     "default_grace_minutes",
     "default_expected_start_time",
     "default_expected_end_time",
+    "clockout_reminder_enabled",
     "working_days",
     "leave_escalation_days",
     "earnings_tracker_enabled",
@@ -449,9 +450,9 @@ async function upsertAttendanceDay({ client, brand, input }) {
         last_clock_out_at, early_leave_minutes,
         clock_out_address, clock_out_lat, clock_out_lng, clock_out_is_offsite,
         clock_out_distance_m, clock_in_ip, clock_out_ip,
-        clock_in_device_recognized)
+        clock_in_device_recognized, overtime_minutes)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,
-             $22,$23,$24,$25,$26,$27,$28,$29)
+             $22,$23,$24,$25,$26,$27,$28,$29,$30)
      ON CONFLICT (profile_id, work_date) DO UPDATE SET
         status = EXCLUDED.status,
         expected_start_time = EXCLUDED.expected_start_time,
@@ -479,7 +480,8 @@ async function upsertAttendanceDay({ client, brand, input }) {
         clock_out_distance_m = EXCLUDED.clock_out_distance_m,
         clock_in_ip = EXCLUDED.clock_in_ip,
         clock_out_ip = EXCLUDED.clock_out_ip,
-        clock_in_device_recognized = EXCLUDED.clock_in_device_recognized
+        clock_in_device_recognized = EXCLUDED.clock_in_device_recognized,
+        overtime_minutes = EXCLUDED.overtime_minutes
      RETURNING *`,
     [
       brand,
@@ -511,6 +513,7 @@ async function upsertAttendanceDay({ client, brand, input }) {
       input.clock_in_ip || null,
       input.clock_out_ip || null,
       input.clock_in_device_recognized ?? null,
+      input.overtime_minutes || 0,
     ],
   );
   return rows[0];
@@ -938,6 +941,61 @@ async function todayClockEvents({ client, profileId }) {
   return rows;
 }
 
+/**
+ * Staff who are currently clocked IN but have not clocked OUT today — the
+ * candidates for a close-time reminder. Keyed on the primary brand (the
+ * payroll owner, same rule reconcile uses). One accepted clock-in + no
+ * accepted clock-out today (the clock guard enforces one of each per day).
+ * Carries the login user_id (notify target) and the fields needed to resolve
+ * each person's expected closing time + whether today is a working day.
+ * Times are read at the Lagos wall-clock day.
+ */
+async function clockedInWithoutClockout({ client, brand, dateStr }) {
+  const { rows } = await exec(client)(
+    `SELECT sp.profile_id, sp.business, sp.work_schedule,
+            sp.work_expected_end_time, sp.start_date, sp.end_date,
+            c.display_name,
+            (SELECT u.user_id FROM shared.users u
+               WHERE u.staff_profile_id = sp.profile_id
+               ORDER BY u.is_active DESC, u.created_at ASC
+               LIMIT 1) AS user_id
+       FROM shared.staff_profiles sp
+       LEFT JOIN shared.contacts c ON c.contact_id = sp.contact_id
+      WHERE sp.business = $1 AND sp.is_deleted = false
+        AND (sp.end_date IS NULL OR sp.end_date >= CURRENT_DATE)
+        AND EXISTS (
+          SELECT 1 FROM shared.staff_clock_events e
+           WHERE e.profile_id = sp.profile_id AND e.event_type = 'clock_in'
+             AND e.accepted = true
+             AND (e.occurred_at AT TIME ZONE 'Africa/Lagos')::date = $2::date)
+        AND NOT EXISTS (
+          SELECT 1 FROM shared.staff_clock_events e
+           WHERE e.profile_id = sp.profile_id AND e.event_type = 'clock_out'
+             AND e.accepted = true
+             AND (e.occurred_at AT TIME ZONE 'Africa/Lagos')::date = $2::date)`,
+    [brand, dateStr],
+  );
+  return rows.filter((r) => r.user_id); // only staff with a login to notify
+}
+
+/**
+ * Claim one clock-out nudge for a staff member/day/offset. The UNIQUE key on
+ * shared.clockout_reminders makes the INSERT the dedupe: it RETURNS a row only
+ * for the first claimant, so the caller notifies exactly once even across
+ * worker restarts or a second worker instance. Returns the row, or null if
+ * this nudge was already sent.
+ */
+async function claimClockoutReminder({ client, brand, profileId, workDate, offsetTag }) {
+  const { rows } = await exec(client)(
+    `INSERT INTO shared.clockout_reminders (profile_id, business, work_date, offset_tag)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (profile_id, work_date, offset_tag) DO NOTHING
+     RETURNING reminder_id`,
+    [profileId, brand, workDate, offsetTag],
+  );
+  return rows[0] || null;
+}
+
 /** Discard a day's presence: mark absent and zero its pay (offsite upheld). */
 async function markDayAbsent({ client, dayId }) {
   const { rows } = await exec(client)(
@@ -1262,6 +1320,8 @@ module.exports = {
   approvedLeaveForDate,
   todayClockEvents,
   liveTodayPunches,
+  clockedInWithoutClockout,
+  claimClockoutReminder,
   markDayAbsent,
   lapsedOffsiteQueries,
   dueReminderQueries,

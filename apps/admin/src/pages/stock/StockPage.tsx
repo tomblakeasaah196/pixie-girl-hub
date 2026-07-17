@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useUrlTab } from "@/hooks/useUrlTab";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
 import { DeniedState } from "@/components/ui/controls";
@@ -25,7 +25,10 @@ const TABS = [
 export function StockPage() {
   useBreadcrumbs([{ label: "Stock & Inventory" }]);
   const { can } = useAuthStore();
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = useUrlTab(
+    "overview",
+    TABS.map((t) => t.key),
+  );
 
   if (!can("stock", "view")) {
     return (

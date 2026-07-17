@@ -1254,8 +1254,8 @@ function RoleEditorDrawer({
               <AlertTriangle className="w-4 h-4 text-[rgb(var(--warn))] shrink-0 mt-0.5" />
               <span className="text-[12.5px] text-[rgb(var(--warn))] leading-snug">
                 Seeded system role — edits change the platform default and take
-                effect on each member's next request. Deleting it removes it for
-                everyone; it won't return until a migration re-seeds it.
+                effect on each member's next request. Deleting it is permanent;
+                a normal deploy won't recreate it.
               </span>
             </div>
           )}
@@ -1520,8 +1520,9 @@ function RoleEditorDrawer({
                   This is a{" "}
                   <span className="font-semibold text-[rgb(var(--text))]">
                     seeded system role
-                  </span>{" "}
-                  — it won't exist again until a migration re-seeds it.
+                  </span>
+                  , but deleting it is permanent — migrations run once, so a
+                  normal deploy won't recreate it.
                 </li>
               )}
               <li>Its permission grants are erased. The audit trail is kept.</li>

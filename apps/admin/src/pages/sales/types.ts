@@ -260,6 +260,11 @@ export interface OrderCreateInput {
   campaign_slug?: string;
   coupon_code?: string;
   redeem_points?: number;
+  /** Customer referral rail (P0-3). When a walk-in mentions a friend's
+   *  code the operator types it here; createOrder validates it brand-
+   *  scoped, applies the friend discount, and stamps referral_code_used
+   *  so the referrer's points + store credit post on order.paid. */
+  customer_referral_code?: string;
   bundle_id?: string;
   client_idempotency_key?: string;
   shipping_fee_ngn?: number;

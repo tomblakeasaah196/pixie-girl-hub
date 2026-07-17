@@ -87,6 +87,7 @@ const CASES = [
   ["retention.findReferralByCode (P1-4 brand-scoped)", (c) => retentionRepo.findReferralByCode({ client: c, code: "NOPE", brand: BRAND })],
   ["retention.findRedemption", (c) => retentionRepo.findRedemption({ client: c, referral_id: NIL_UUID, referred_contact_id: NIL_UUID })],
   ["retention.storeCreditBalance (P1-7)", (c) => retentionRepo.storeCreditBalance({ client: c, brand: BRAND, contact_id: NIL_UUID })],
+  ["retention.listAssignedVouchers (Quick Sale panel)", (c) => retentionRepo.listAssignedVouchers({ client: c, brand: BRAND, contact_id: NIL_UUID })],
   ["retention.listStreakTiers", (c) => retentionRepo.listStreakTiers({ client: c, brand: BRAND })],
   ["retention.listStreakRules", (c) => retentionRepo.listStreakRules({ client: c, brand: BRAND, action_type: "money_spent" })],
   ["retention.streakLedgerForReference (P0-7 with contact scope)", (c) => retentionRepo.streakLedgerForReference({ client: c, brand: BRAND, contact_id: NIL_UUID, reference_type: "sales_order", reference_id: NIL_UUID, action_type: "money_spent" })],

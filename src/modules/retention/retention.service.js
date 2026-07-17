@@ -130,9 +130,23 @@ async function updateTier({ brand, user, request_id, id, patch }) {
 }
 
 async function getLoyaltyState({ brand, contact_id }) {
-  const state = await repo.getLoyaltyState({ brand, contact_id });
-  const ledger = await repo.listLoyaltyLedger({ brand, contact_id });
-  return { state: state || null, ledger };
+  // Fanned out so the Quick Sale form (and any other admin surface that
+  // needs the "what can I offer this shopper right now?" view) gets one
+  // call: current points state + ledger, store-credit balance (P1-7
+  // ledger), and every voucher that has been bound to this contact and
+  // is still valid. All entity-scoped, all read-only.
+  const [state, ledger, storeCreditBalance, vouchers] = await Promise.all([
+    repo.getLoyaltyState({ brand, contact_id }),
+    repo.listLoyaltyLedger({ brand, contact_id }),
+    repo.storeCreditBalance({ brand, contact_id }),
+    repo.listAssignedVouchers({ brand, contact_id }),
+  ]);
+  return {
+    state: state || null,
+    ledger,
+    store_credit_balance: storeCreditBalance,
+    vouchers,
+  };
 }
 
 async function recomputeTier({ client, brand, contact_id }) {

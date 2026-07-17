@@ -216,6 +216,30 @@ async function storeCreditBalance({ client, brand, contact_id }) {
   return Number(rows[0].balance_ngn || 0);
 }
 
+/**
+ * Vouchers bound to this contact that a staffer can still spend on their
+ * behalf: active, not fully redeemed against total_usage_limit, and (if a
+ * valid_to is set) not expired. The Quick Sale form renders these as
+ * "one-click apply" chips so the operator sees the shopper's real offers
+ * instead of having to ask them to read the code out.
+ */
+async function listAssignedVouchers({ client, brand, contact_id }) {
+  const { rows } = await ex(client)(
+    `SELECT coupon_id, coupon_code, display_name, discount_type,
+            discount_value, max_discount_value, valid_to, total_usage_limit,
+            total_redeemed
+       FROM shared.coupons
+      WHERE business = $1
+        AND assigned_contact_id = $2
+        AND is_active = true
+        AND (valid_to IS NULL OR valid_to > now())
+        AND (total_usage_limit IS NULL OR total_redeemed < total_usage_limit)
+      ORDER BY valid_to NULLS LAST, created_at DESC`,
+    [brand, contact_id],
+  );
+  return rows;
+}
+
 async function listLoyaltyLedger({ client, brand, contact_id, limit = 50 }) {
   const { rows } = await ex(client)(
     `SELECT * FROM shared.loyalty_ledger
@@ -508,6 +532,8 @@ module.exports = {
   // store credit (P1-7)
   insertStoreCreditEntry,
   storeCreditBalance,
+  // vouchers bound to a contact (Quick Sale "what's on offer")
+  listAssignedVouchers,
   // referral
   findReferralByContact,
   findReferralByCode,

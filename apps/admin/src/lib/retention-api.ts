@@ -511,6 +511,51 @@ export function useLoyaltyTiers() {
   });
 }
 
+/**
+ * The customer's live retention position — powers the Quick Sale form's
+ * summary card so the operator can see (and offer) points, store credit,
+ * and assigned vouchers at the counter. Enabled only when contactId is
+ * set; brand-scoped through the api client.
+ */
+export interface CustomerLoyaltySummary {
+  state: {
+    current_balance: number | string;
+    lifetime_earned: number | string;
+    lifetime_redeemed: number | string;
+    tier_key?: string | null;
+    tier_name?: string | null;
+  } | null;
+  ledger: Array<{
+    transaction_type: string;
+    points: number;
+    notes?: string | null;
+    created_at: string;
+  }>;
+  store_credit_balance: number;
+  vouchers: Array<{
+    coupon_id: string;
+    coupon_code: string;
+    display_name: string;
+    discount_type: string;
+    discount_value: string | number | null;
+    max_discount_value: string | number | null;
+    valid_to: string | null;
+  }>;
+}
+
+export function useCustomerLoyaltySummary(contactId: string | null) {
+  const brand = useBrand();
+  return useQuery({
+    enabled: Boolean(brand && contactId),
+    queryKey: ["retention", "customer-loyalty", brand, contactId],
+    queryFn: () =>
+      api.get<CustomerLoyaltySummary>(
+        `/retention/customers/${contactId}/loyalty`,
+      ),
+    staleTime: 30_000,
+  });
+}
+
 export function useSaveLoyaltyTier() {
   const qc = useQueryClient();
   const brand = useBrand();

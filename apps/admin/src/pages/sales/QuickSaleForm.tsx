@@ -32,6 +32,7 @@ import {
   useOrderPaymentWatch,
   usePaymentSettings,
 } from "./hooks";
+import { useCustomerLoyaltySummary } from "@/lib/retention-api";
 import { useToastStore } from "@/components/notifications/NotificationToast";
 import { toastReport } from "@/lib/error-report";
 import { onboardingApi } from "@/lib/smartcomm-api";
@@ -91,6 +92,14 @@ export function QuickSaleForm() {
   const [currency, setCurrency] = useState("NGN");
   const [applyVat, setApplyVat] = useState(true);
   const [coupon, setCoupon] = useState("");
+  // Retention engine spend fields (connect Quick Sale to the full retention
+  // rail so a walk-in sale earns / burns exactly like a storefront order):
+  //   customer_referral_code — friend's code → friend discount now +
+  //                            referrer reward on order.paid
+  //   redeem_points          — spend the customer's loyalty balance
+  // Both are optional; server validates and clamps.
+  const [customerReferralCode, setCustomerReferralCode] = useState("");
+  const [redeemPoints, setRedeemPoints] = useState(0);
   // Flexi Pay: offer the instalment plan when this channel enables it.
   const { data: flexiSettings } = usePaymentSettings();
   const instalmentsEnabled =
@@ -111,6 +120,17 @@ export function QuickSaleForm() {
   const [qrLoading, setQrLoading] = useState(false);
   const toast = useToastStore();
   const activeBiz = useBusinessStore((s) => s.activeKey);
+
+  // Retention position for the picked contact — powers the summary card so
+  // the operator can offer points, store credit and assigned vouchers at
+  // the counter. Silent (enabled=false) until a contact is picked.
+  const retentionSummary = useCustomerLoyaltySummary(contactId);
+  const pointsBalance = Number(retentionSummary.data?.state?.current_balance ?? 0);
+  const storeCreditBalance = Number(
+    retentionSummary.data?.store_credit_balance ?? 0,
+  );
+  const assignedVouchers = retentionSummary.data?.vouchers ?? [];
+  const tierName = retentionSummary.data?.state?.tier_name ?? null;
 
   // Watch the created order so the counter screen flips to "Paid" on its own
   // once the gateway confirms — no manual payment entry (anti-pocketing).
@@ -265,6 +285,8 @@ export function QuickSaleForm() {
         ),
         bundle_id: bundleId || undefined,
         coupon_code: coupon || undefined,
+        customer_referral_code: customerReferralCode.trim() || undefined,
+        redeem_points: redeemPoints > 0 ? redeemPoints : undefined,
         shipping_fee_ngn: shipping || undefined,
         payment_plan:
           instalmentsEnabled && paymentPlan === "instalment"
@@ -330,6 +352,8 @@ export function QuickSaleForm() {
     setCurrency("NGN");
     setApplyVat(true);
     setCoupon("");
+    setCustomerReferralCode("");
+    setRedeemPoints(0);
     setPaymentPlan("full");
     setFulfilment("walk_in");
     setAddressText("");
@@ -602,6 +626,76 @@ export function QuickSaleForm() {
 
       {/* Step 4: Configuration */}
       {step >= 4 && (
+        <>
+        {/* Retention position for the picked customer — makes points, store
+            credit and assigned vouchers visible at the counter so the
+            operator can offer them. Silent until a contact is picked; a
+            loading state avoids a "no rewards" flash. */}
+        {contactId && (
+          <Card className="p-5">
+            <div className="micro mb-3">Retention · {contactName || "Customer"}</div>
+            {retentionSummary.isLoading ? (
+              <div className="text-[12.5px] text-text-faint">Loading rewards…</div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex flex-wrap gap-2 text-[12px]">
+                  <span className="inline-flex items-center gap-1 rounded-full border border-line px-2.5 py-1 text-text-muted">
+                    <span className="font-mono tabular-nums">
+                      {pointsBalance.toLocaleString()}
+                    </span>
+                    pts
+                  </span>
+                  {storeCreditBalance > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-accent/40 bg-accent/10 px-2.5 py-1 text-accent-readable">
+                      Store credit&nbsp;
+                      <MoneyText
+                        ngn={storeCreditBalance}
+                        className="text-[12px] font-mono"
+                      />
+                    </span>
+                  )}
+                  {tierName && (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-line px-2.5 py-1 text-text-muted">
+                      Tier · {tierName}
+                    </span>
+                  )}
+                </div>
+                {assignedVouchers.length > 0 && (
+                  <div>
+                    <div className="micro mb-1.5">
+                      Vouchers assigned to this customer
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {assignedVouchers.map((v) => (
+                        <button
+                          key={v.coupon_id}
+                          type="button"
+                          onClick={() => setCoupon(v.coupon_code)}
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[12px] font-mono transition-colors ${
+                            coupon === v.coupon_code
+                              ? "border-accent/60 bg-accent/15 text-accent-readable"
+                              : "border-line text-text-muted hover:text-text-primary"
+                          }`}
+                          title={v.display_name}
+                        >
+                          {v.coupon_code}
+                          {v.discount_type === "percentage" &&
+                          v.discount_value != null
+                            ? ` · ${Math.round(Number(v.discount_value) * 100)}%`
+                            : v.discount_type === "fixed_amount" &&
+                                v.discount_value != null
+                              ? ` · ₦${Number(v.discount_value).toLocaleString()}`
+                              : ""}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </Card>
+        )}
+
         <Card className="p-5">
           <div className="micro mb-3">Order Configuration</div>
           <FormGrid>
@@ -619,6 +713,39 @@ export function QuickSaleForm() {
                 placeholder="Enter coupon"
               />
             </Field>
+            <Field
+              label="Referred by (friend's code)"
+              hint={
+                customerReferralCode.trim()
+                  ? "Applies the friend discount at checkout"
+                  : "optional"
+              }
+            >
+              <TextInput
+                value={customerReferralCode}
+                onChange={(e) =>
+                  setCustomerReferralCode(e.target.value.toUpperCase().slice(0, 80))
+                }
+                placeholder="e.g. AMY1234"
+              />
+            </Field>
+            {contactId && pointsBalance > 0 && (
+              <Field
+                label="Redeem loyalty points"
+                hint={`balance ${pointsBalance.toLocaleString()} pts`}
+              >
+                <NumberField
+                  value={String(redeemPoints || "")}
+                  onChange={(v) =>
+                    setRedeemPoints(
+                      Math.max(0, Math.min(pointsBalance, Number(v) || 0)),
+                    )
+                  }
+                  allowDecimal={false}
+                  suffix="pts"
+                />
+              </Field>
+            )}
           </FormGrid>
 
           <div className="flex items-center gap-6 mt-4">
@@ -726,6 +853,7 @@ export function QuickSaleForm() {
             </Button>
           )}
         </Card>
+        </>
       )}
 
       {/* Step 5: Summary & Send */}

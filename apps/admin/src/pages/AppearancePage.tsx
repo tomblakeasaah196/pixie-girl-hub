@@ -34,8 +34,8 @@ import {
   type PlatformBranding,
   type ScalarToken,
   type ThemeMode,
-  type ThemeTokens,
 } from "@/lib/branding";
+import { THEME_PRESETS as PRESETS } from "@/lib/theme-presets";
 
 /**
  * Settings → Appearance (canon §2.3). The Layer-A platform skin and
@@ -46,58 +46,10 @@ import {
  * they click Save. The mutation's onSuccess invalidates the branding
  * query → ThemeProvider re-applies the canonical row → the preview
  * "snaps" to truth, proving the round-trip worked.
+ *
+ * The preset palettes live in `@/lib/theme-presets` so this admin page
+ * and the per-user account-menu picker share one canonical list.
  */
-
-const PRESETS: ReadonlyArray<{
-  name: string;
-  desc: string;
-  mode: ThemeMode;
-  patch: ThemeTokens;
-}> = [
-  {
-    name: "Maroon Noir",
-    desc: "Black · deep red · cream",
-    mode: "dark",
-    patch: {
-      bg: "15 8 9",
-      panel: "26 15 17",
-      "panel-2": "39 22 25",
-      text: "244 233 217",
-      "text-muted": "179 164 155",
-      "text-faint": "128 112 107",
-      accent: "168 29 29",
-      "accent-deep": "105 9 9",
-      "accent-glow": "216 92 87",
-    },
-  },
-  {
-    name: "Porcelain White",
-    desc: "White · deep red · ink",
-    mode: "light",
-    patch: {
-      bg: "251 250 249",
-      panel: "255 255 255",
-      "panel-2": "244 241 238",
-      text: "26 16 17",
-      "text-muted": "107 94 92",
-      "text-faint": "155 142 138",
-      accent: "105 9 9",
-      "accent-deep": "105 9 9",
-      "accent-glow": "140 20 20",
-    },
-  },
-  {
-    name: "Onyx Ruby",
-    desc: "Neutral black · ruby",
-    mode: "dark",
-    patch: {
-      bg: "12 11 13",
-      panel: "24 22 26",
-      accent: "177 30 30",
-      "accent-deep": "155 24 24",
-    },
-  },
-] as const;
 
 export function AppearancePage() {
   useBreadcrumbs([

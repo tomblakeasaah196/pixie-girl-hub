@@ -1,6 +1,13 @@
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Camera, User, CalendarClock, Hash, KeyRound } from "lucide-react";
+import {
+  Camera,
+  User,
+  CalendarClock,
+  Hash,
+  KeyRound,
+  Palette,
+} from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { uploadAvatar } from "@/lib/auth-api";
 
@@ -8,6 +15,9 @@ export const ACCOUNT_MENU_ITEMS = [
   { key: "photo", label: "Change photo", icon: Camera },
   { key: "profile", label: "My profile", icon: User },
   { key: "hr", label: "My HR", icon: CalendarClock },
+  // Self-service, permission-free — a personal look for this device that
+  // doesn't touch the shared logo/branding in Settings → Appearance.
+  { key: "appearance", label: "Appearance", icon: Palette },
   { key: "pin", label: "Quick login PIN", icon: Hash },
   { key: "password", label: "Change password", icon: KeyRound },
 ] as const;
@@ -25,6 +35,7 @@ export function useAccountMenu() {
   const [pinOpen, setPinOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [cropFile, setCropFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -35,6 +46,7 @@ export function useAccountMenu() {
     // Workspace — not the admin "HR & Staff" console at /hr (that's permission
     // -gated and a plain Team Member can't open it, so the click looked dead).
     else if (key === "hr") navigate("/workspace?tab=my-hr");
+    else if (key === "appearance") setAppearanceOpen(true);
     else if (key === "pin") setPinOpen(true);
     else if (key === "password") setPasswordOpen(true);
   };
@@ -65,6 +77,8 @@ export function useAccountMenu() {
     setPasswordOpen,
     profileOpen,
     setProfileOpen,
+    appearanceOpen,
+    setAppearanceOpen,
     onItem,
     onSignOut,
     handleAvatarDone,

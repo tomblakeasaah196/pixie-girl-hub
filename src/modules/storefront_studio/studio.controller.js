@@ -186,6 +186,15 @@ async function uploadVideo(req, res) {
     }),
   });
 }
+async function composeOgBanner(req, res) {
+  res.json({
+    data: await service.composeOgBanner({
+      brand: req.brand,
+      file: req.file,
+      body: req.body || {},
+    }),
+  });
+}
 async function oembed(req, res) {
   res.json({ data: await service.fetchOEmbed({ url: req.query.url }) });
 }
@@ -223,6 +232,7 @@ module.exports = {
   listSectionTemplates,
   uploadImage,
   uploadVideo,
+  composeOgBanner,
   oembed,
   previewInfo,
   listRevisions,

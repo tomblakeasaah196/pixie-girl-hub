@@ -51,6 +51,8 @@ import {
   usePublishPopup,
   useDeletePopup,
   uploadStorefrontImage,
+  buildOgBanner,
+  type OgBannerParams,
   usePreviewInfo,
   useRevisions,
   useRollbackRevision,
@@ -996,17 +998,52 @@ function ThemePreview({ get }: { get: (key: string, def: string) => string }) {
 // Branding (logo / favicon / OG -> theme tokens)
 // ============================================================
 
+// Layer-B brand gradient (canon §2.2) — the default fill around the OG photo.
+function brandGradientDefault(brand: string | null): { from: string; to: string } {
+  return brand === "faitlynhair"
+    ? { from: "#7F703D", to: "#D5B8A4" }
+    : { from: "#A81D1D", to: "#690909" };
+}
+
+function readOgParams(
+  tokens: Record<string, unknown>,
+  brand: string | null,
+): OgBannerParams {
+  const raw = (
+    tokens.og_params && typeof tokens.og_params === "object"
+      ? tokens.og_params
+      : {}
+  ) as Record<string, unknown>;
+  const g = brandGradientDefault(brand);
+  const n = (v: unknown, d: number) =>
+    Number.isFinite(Number(v)) ? Number(v) : d;
+  const s = (v: unknown, d: string) => (typeof v === "string" && v ? v : d);
+  return {
+    zoom: n(raw.zoom, 1),
+    focusX: n(raw.focusX, 0.5),
+    focusY: n(raw.focusY, 0.5),
+    photoWidthPct: n(raw.photoWidthPct, 0.62),
+    gradFrom: s(raw.gradFrom, g.from),
+    gradTo: s(raw.gradTo, g.to),
+    showBranding: raw.showBranding === true,
+    headline: typeof raw.headline === "string" ? raw.headline : "",
+  };
+}
+
 function BrandingTab() {
   const { data, isLoading } = useThemes();
+  const brand = useBusinessStore((s) => s.activeKey);
   const save = useSaveThemeDraft();
   const publish = usePublishTheme();
   const active = pickActive(data);
-  const [tokens, setTokens] = useState<Record<string, string>>({});
+  // Tokens hold objects too (og_params, toolbar), so this is unknown-valued
+  // like the Toolbar tab — cast to the string-record the save mutation expects.
+  const [tokens, setTokens] = useState<Record<string, unknown>>({});
   const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (!active) return;
-    const t = { ...(active.tokens || {}) };
+    const t = { ...(active.tokens || {}) } as Record<string, unknown>;
     // Migrate a previously-single logo/favicon into the dark slot so it stays
     // visible in the editor and keeps rendering on the (dark-default) site.
     if (!t["--logo-url-dark"] && t["--logo-url"])
@@ -1016,10 +1053,15 @@ function BrandingTab() {
     setTokens(t);
   }, [active]);
 
+  const patch = (p: Record<string, unknown>) =>
+    setTokens((t) => ({ ...t, ...p }));
+  const str = (k: string) => (typeof tokens[k] === "string" ? (tokens[k] as string) : "");
+  const nextTokens = tokens as unknown as Record<string, string>;
+
   if (isLoading)
     return <p className="text-[13px] text-text-muted">Loading...</p>;
 
-  const rows = [
+  const logoRows = [
     {
       key: "--logo-url-dark",
       label: "Logo — dark mode (a light/cream logo, for the dark site)",
@@ -1036,31 +1078,66 @@ function BrandingTab() {
       key: "--favicon-url-light",
       label: "Favicon — light browsers (square; use a dark mark)",
     },
-    { key: "--og-image", label: "Share image (shown when the link is posted)" },
   ];
+
   return (
     <Card className="max-w-xl space-y-5 p-5">
       <p className="text-[13px] text-text-muted">
-        Upload a logo for dark mode and one for light mode — each is used in both
-        the header and the footer, and swaps automatically with the site theme.
-        The favicon is the little icon in the browser tab; give a light one for
-        dark browsers and a dark one for light browsers. Leave a light-mode slot
-        empty to reuse the dark one. Save as a draft, then Publish to go live.
+        Your logos, browser icon, and how the site looks when someone shares its
+        link. Save as a draft, then Publish to go live.
       </p>
-      {rows.map((r) => (
-        <ImageField
-          key={r.key}
-          label={r.label}
-          value={tokens[r.key] || ""}
-          onChange={(v) => setTokens((t) => ({ ...t, [r.key]: v }))}
+
+      <Section title="Logos & favicon" defaultOpen>
+        <p className="text-[12px] text-text-muted">
+          Upload a logo for dark mode and one for light mode — each is used in
+          both the header and the footer, and swaps automatically with the site
+          theme. The favicon is the little icon in the browser tab. Leave a
+          light-mode slot empty to reuse the dark one.
+        </p>
+        {logoRows.map((r) => (
+          <ImageField
+            key={r.key}
+            label={r.label}
+            value={str(r.key)}
+            onChange={(v) => patch({ [r.key]: v })}
+          />
+        ))}
+      </Section>
+
+      <Section title="Share text (SEO)" defaultOpen>
+        <p className="text-[12px] text-text-muted">
+          The title and description shown under the picture when your site is
+          shared on WhatsApp, Instagram, Facebook or in Google results. A page
+          that sets its own title/description overrides these.
+        </p>
+        <TextField
+          label="Share title"
+          value={str("og_title")}
+          placeholder={
+            brand === "faitlynhair"
+              ? "Faitlyn Hair — Luxury Natural Hair"
+              : "Pixie Girl — Premium Wigs & Hair"
+          }
+          onChange={(v) => patch({ og_title: v })}
         />
-      ))}
-      <div className="flex gap-2">
+        <AreaField
+          label="Share description"
+          rows={3}
+          value={str("og_description")}
+          onChange={(v) => patch({ og_description: v })}
+        />
+      </Section>
+
+      <Section title="Share banner" defaultOpen>
+        <OgBannerStudio brand={brand} tokens={tokens} patch={patch} />
+      </Section>
+
+      <div className="flex flex-wrap gap-2">
         <Button
           variant="primary"
           disabled={save.isPending || publish.isPending}
           onClick={() =>
-            runStudio(() => save.mutateAsync(tokens), {
+            runStudio(() => save.mutateAsync(nextTokens), {
               area: `${STUDIO_AREA} → Branding`,
               action: "Save branding draft",
               success: "Draft saved.",
@@ -1076,7 +1153,7 @@ function BrandingTab() {
           onClick={() =>
             runStudio(
               async () => {
-                await save.mutateAsync(tokens);
+                await save.mutateAsync(nextTokens);
                 await publish.mutateAsync();
               },
               {
@@ -1093,6 +1170,287 @@ function BrandingTab() {
       </div>
       <Status msg={msg} />
     </Card>
+  );
+}
+
+/**
+ * The Share-banner studio: upload one photo (4:5 or square is fine) and this
+ * composes a proper 1200×630 Open Graph card — the photo centred, the brand
+ * gradient filling the sides, optionally the logo + a headline. Cropping,
+ * zoom, gradient and the branding overlay are all adjustable, with a live
+ * preview that mirrors what the server bakes with sharp. The composed banner
+ * URL is written to the --og-image token; the source photo + params are kept
+ * so a later tweak recomposes from the original.
+ */
+function OgBannerStudio({
+  brand,
+  tokens,
+  patch,
+}: {
+  brand: string | null;
+  tokens: Record<string, unknown>;
+  patch: (p: Record<string, unknown>) => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+
+  const params = readOgParams(tokens, brand);
+  const sourceUrl = typeof tokens.og_source_url === "string" ? tokens.og_source_url : "";
+  const sourceKey = typeof tokens.og_source_key === "string" ? tokens.og_source_key : "";
+  const bannerUrl = typeof tokens["--og-image"] === "string" ? (tokens["--og-image"] as string) : "";
+  const logoUrl =
+    (typeof tokens["--logo-url-dark"] === "string" && tokens["--logo-url-dark"]) ||
+    (typeof tokens["--logo-url-light"] === "string" && tokens["--logo-url-light"]) ||
+    "";
+
+  const setParam = (k: keyof OgBannerParams, v: number | string | boolean) =>
+    patch({ og_params: { ...params, [k]: v } });
+
+  async function rebuild(file?: File | null) {
+    if (!file && !sourceKey) return;
+    setBusy(true);
+    try {
+      const res = await buildOgBanner({
+        file: file ?? null,
+        source_key: sourceKey || null,
+        logo_url: (logoUrl as string) || null,
+        params,
+      });
+      patch({
+        "--og-image": res.banner_url,
+        og_source_url: res.source_url || sourceUrl,
+        og_source_key: res.source_key || sourceKey,
+        og_params: res.params,
+      });
+      toast.success("Share banner updated.");
+    } catch (e) {
+      const { message, detail } = describeError(e);
+      toast.error("Couldn't build the banner", {
+        description: message,
+        report: {
+          area: `${STUDIO_AREA} → Branding → Share banner`,
+          action: "Build OG banner",
+          message,
+          detail,
+        },
+      });
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  const hasSource = Boolean(sourceUrl || sourceKey);
+
+  return (
+    <div className="space-y-3">
+      <p className="text-[12px] text-text-muted">
+        Upload one photo — a normal 4:5 or square shot is perfect — and we build
+        the wide 1200×630 share banner for you: your photo centred, the brand
+        gradient around it, and (optionally) your logo and a headline on top.
+      </p>
+
+      {/* Live preview — mirrors the server composition. */}
+      <OgBannerPreview
+        params={params}
+        sourceUrl={sourceUrl}
+        logoUrl={logoUrl as string}
+        bannerUrl={bannerUrl}
+      />
+
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={busy}
+          onClick={() => fileRef.current?.click()}
+        >
+          {busy ? "Working…" : hasSource ? "Replace photo" : "Upload photo"}
+        </Button>
+        {hasSource ? (
+          <Button variant="primary" size="sm" disabled={busy} onClick={() => rebuild()}>
+            {busy ? "Building…" : "Update banner"}
+          </Button>
+        ) : null}
+        {bannerUrl ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={busy}
+            onClick={() =>
+              patch({
+                "--og-image": "",
+                og_source_url: "",
+                og_source_key: "",
+              })
+            }
+          >
+            Remove
+          </Button>
+        ) : null}
+      </div>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*,.heic,.heif"
+        className="hidden"
+        onChange={(e) => rebuild(e.target.files?.[0])}
+      />
+
+      {hasSource ? (
+        <div className="space-y-3 rounded-[12px] border border-line p-3.5">
+          <RangeField
+            label="Photo width"
+            value={Math.round(params.photoWidthPct * 100)}
+            min={35}
+            max={100}
+            step={1}
+            suffix="%"
+            onChange={(v) => setParam("photoWidthPct", v / 100)}
+          />
+          <RangeField
+            label="Zoom"
+            value={Number(params.zoom.toFixed(2))}
+            min={1}
+            max={2.5}
+            step={0.05}
+            suffix="×"
+            onChange={(v) => setParam("zoom", v)}
+          />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <RangeField
+              label="Position ↔"
+              value={Math.round(params.focusX * 100)}
+              min={0}
+              max={100}
+              step={1}
+              suffix="%"
+              onChange={(v) => setParam("focusX", v / 100)}
+            />
+            <RangeField
+              label="Position ↕"
+              value={Math.round(params.focusY * 100)}
+              min={0}
+              max={100}
+              step={1}
+              suffix="%"
+              onChange={(v) => setParam("focusY", v / 100)}
+            />
+          </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <ColorField
+              label="Gradient — from"
+              value={params.gradFrom}
+              defaultColor={brandGradientDefault(brand).from}
+              onChange={(v) => setParam("gradFrom", v)}
+            />
+            <ColorField
+              label="Gradient — to"
+              value={params.gradTo}
+              defaultColor={brandGradientDefault(brand).to}
+              onChange={(v) => setParam("gradTo", v)}
+            />
+          </div>
+          <ToggleField
+            label="Show logo & headline on the banner"
+            checked={params.showBranding}
+            onChange={(v) => setParam("showBranding", v)}
+          />
+          {params.showBranding ? (
+            <TextField
+              label="Headline (optional)"
+              value={params.headline}
+              placeholder="Luxury Natural Hair, Crafted in Lagos"
+              onChange={(v) => setParam("headline", v)}
+            />
+          ) : null}
+          <p className="text-[11px] text-text-muted">
+            Adjust freely — the preview updates live. Press{" "}
+            <span className="font-medium text-text-primary">Update banner</span>{" "}
+            to bake the final image, then Save or Publish.
+          </p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** A live, DOM-composed 1200×630 preview using the same layout maths as the
+ *  server. Purely visual (no canvas export) so a cross-origin source never
+ *  taints anything — the hosted banner is what the server bakes. */
+function OgBannerPreview({
+  params,
+  sourceUrl,
+  logoUrl,
+  bannerUrl,
+}: {
+  params: OgBannerParams;
+  sourceUrl: string;
+  logoUrl: string;
+  bannerUrl: string;
+}) {
+  const gradient = `linear-gradient(135deg, ${params.gradFrom}, ${params.gradTo})`;
+  return (
+    <div
+      className="relative w-full overflow-hidden rounded-[12px] border border-line"
+      style={{ aspectRatio: "1200 / 630", background: gradient }}
+    >
+      {sourceUrl ? (
+        <>
+          <div
+            className="absolute inset-y-0 overflow-hidden"
+            style={{
+              width: `${params.photoWidthPct * 100}%`,
+              left: `${(1 - params.photoWidthPct) * 50}%`,
+            }}
+          >
+            <img
+              src={sourceUrl}
+              alt=""
+              className="h-full w-full"
+              style={{
+                objectFit: "cover",
+                objectPosition: `${params.focusX * 100}% ${params.focusY * 100}%`,
+                transform: `scale(${params.zoom})`,
+                transformOrigin: `${params.focusX * 100}% ${params.focusY * 100}%`,
+              }}
+            />
+          </div>
+          {params.showBranding ? (
+            <>
+              <div
+                className="absolute inset-x-0 bottom-0 h-[38%]"
+                style={{
+                  background:
+                    "linear-gradient(to top, rgba(0,0,0,0.72), rgba(0,0,0,0))",
+                }}
+              />
+              {logoUrl ? (
+                <img
+                  src={logoUrl}
+                  alt=""
+                  className="absolute left-[4.5%] top-[7%] h-[10%] w-auto object-contain"
+                />
+              ) : null}
+              {params.headline ? (
+                <span
+                  className="absolute left-[4.5%] bottom-[8%] max-w-[90%] truncate font-bold text-white"
+                  style={{ fontSize: "clamp(11px, 3.6vw, 30px)" }}
+                >
+                  {params.headline}
+                </span>
+              ) : null}
+            </>
+          ) : null}
+        </>
+      ) : bannerUrl ? (
+        <img src={bannerUrl} alt="Current share banner" className="h-full w-full object-cover" />
+      ) : (
+        <div className="absolute inset-0 grid place-items-center text-[12px] text-white/70">
+          Upload a photo to build your share banner
+        </div>
+      )}
+    </div>
   );
 }
 

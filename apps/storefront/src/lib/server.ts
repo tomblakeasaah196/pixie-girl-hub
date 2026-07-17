@@ -24,29 +24,74 @@ function reqBrandCookie(): {
   brand: BrandKey;
   cookie?: string;
   preview?: string;
+  /** Absolute origin (e.g. https://faitlynhair.com) for absolute OG URLs. */
+  origin?: string;
+  /** Current request path, to match a Studio page's per-page SEO overrides. */
+  path?: string;
 } {
   try {
     const req = getRequest();
     let preview: string | undefined;
+    let path = "/";
     try {
-      preview = new URL(req.url).searchParams.get("preview") || undefined;
+      const u = new URL(req.url);
+      preview = u.searchParams.get("preview") || undefined;
+      path = u.pathname || "/";
     } catch {
       /* non-absolute url */
     }
+    const host = req?.headers?.get("host") || "";
+    // Behind nginx/Cloudflare the edge terminates TLS; trust the forwarded
+    // scheme, defaulting to https (the storefront is https in production).
+    const proto = req?.headers?.get("x-forwarded-proto") || "https";
     return {
-      brand: brandFromHost(req?.headers?.get("host")),
+      brand: brandFromHost(host),
       cookie: req?.headers?.get("cookie") ?? undefined,
       preview,
+      origin: host ? `${proto}://${host}` : undefined,
+      path,
     };
   } catch {
     return { brand: brandFromHost(null) };
   }
 }
 
+/** Per-page SEO overrides resolved from the published Studio pages for the
+ *  current path — brand-level defaults (from theme tokens) are applied in the
+ *  root shell so a page that leaves these blank still gets a rich share card. */
+interface SiteSeo {
+  origin: string;
+  path: string;
+  pageTitle: string;
+  pageDescription: string;
+  pageImage: string;
+}
+
+function resolveSeo(
+  site: SiteConfig,
+  origin: string,
+  path: string,
+): SiteSeo {
+  const page =
+    (site.pages || []).find(
+      (p) => p.url_path === path || (path === "/" && p.page_key === "home"),
+    ) || null;
+  return {
+    origin,
+    path,
+    pageTitle: page?.meta_title || "",
+    pageDescription: page?.meta_description || "",
+    pageImage: page?.og_image_url || "",
+  };
+}
+
 interface StudioPage {
   page_key?: string;
   template_key?: string;
   url_path?: string;
+  meta_title?: string;
+  meta_description?: string;
+  og_image_url?: string;
   slots?: { sections?: unknown[] } & Record<string, unknown>;
 }
 
@@ -57,20 +102,26 @@ interface SiteConfig {
   pages?: StudioPage[];
   popups?: unknown[];
   preview?: boolean;
+  seo?: SiteSeo;
 }
 
 export const ssrSite = createServerFn({ method: "GET", strict: false }).handler(
   async (): Promise<SiteConfig> => {
-    const { brand, cookie, preview } = reqBrandCookie();
+    const { brand, cookie, preview, origin, path } = reqBrandCookie();
+    const o = origin || "";
+    const p = path || "/";
     const qs = preview ? `?preview=${encodeURIComponent(preview)}` : "";
     try {
       const site = await api.get<SiteConfig>(
         `/api/public/storefront/site${qs}`,
         { brand, cookie },
       );
-      return { ...site, brand };
+      return { ...site, brand, seo: resolveSeo(site, o, p) };
     } catch {
-      return { brand };
+      return {
+        brand,
+        seo: { origin: o, path: p, pageTitle: "", pageDescription: "", pageImage: "" },
+      };
     }
   },
 );

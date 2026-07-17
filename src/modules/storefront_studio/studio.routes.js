@@ -150,6 +150,17 @@ router.post(
   controller.uploadVideo,
 );
 
+// OG share-banner compose. Multipart: an optional `file` (new source photo) or
+// a `source_key` (re-edit an already-stored source), plus composition params
+// (zoom, focusX/focusY, photoWidthPct, gradFrom/gradTo, showBranding,
+// headline, logo_url). Returns { banner_url, source_url, source_key, params }.
+router.post(
+  "/og-banner",
+  can("edit"),
+  acceptImageUpload,
+  controller.composeOgBanner,
+);
+
 // Content posts (FAQ / care guide / journal / policy) — the storefront CMS
 // that also feeds Praxis's Brand Brain. Single-row status lifecycle, so
 // publish/unpublish flip status rather than duplicating a draft.

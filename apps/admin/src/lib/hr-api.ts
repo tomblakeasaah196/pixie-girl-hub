@@ -97,6 +97,7 @@ export interface AttendanceDay {
   clock_in_lng: number | null;
   last_clock_out_at: string | null;
   early_leave_minutes: number;
+  overtime_minutes: number;
   clock_out_address: string | null;
   clock_out_lat: number | null;
   clock_out_lng: number | null;
@@ -123,6 +124,9 @@ export interface AttendanceInsights {
   at_risk_days: number;
   punctuality_pct: number;
   avg_late_minutes: number;
+  overtime_minutes: number;
+  overtime_days: number;
+  avg_overtime_minutes: number;
   earliest_arrival: ArrivalPoint | null;
   latest_arrival: ArrivalPoint | null;
   earliest_departure: ArrivalPoint | null;
@@ -167,6 +171,7 @@ export interface MyHr {
   schedule: {
     work_schedule: WorkSchedule;
     expected_start_time: string | null;
+    expected_end_time: string | null;
     grace_minutes: number;
   };
   earnings: MyHrEarnings;
@@ -288,6 +293,7 @@ export interface HrSettings {
   default_grace_minutes: number;
   default_expected_start_time: string | null;
   default_expected_end_time: string | null;
+  clockout_reminder_enabled: boolean;
   working_days: string[];
   leave_escalation_days: number;
   earnings_tracker_enabled: boolean;

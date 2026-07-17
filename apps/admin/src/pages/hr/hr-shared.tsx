@@ -120,6 +120,16 @@ export function minutesLabel(local: number | null | undefined): string {
   return `${h12}:${String(m).padStart(2, "0")} ${period}`;
 }
 
+/** "2h 15m" / "45m" from a count of minutes (a duration, not a clock time). */
+export function durationLabel(mins: number | null | undefined): string {
+  const total = Math.max(0, Math.round(Number(mins || 0)));
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
 /** One "In/Out" map link: stored address → map, coords fallback, offsite tint. */
 function ClockPointLink({
   label,

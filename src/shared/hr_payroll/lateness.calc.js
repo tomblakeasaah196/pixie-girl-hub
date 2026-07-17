@@ -116,6 +116,23 @@ function minutesEarly({ expectedEnd, lastClockOutAt, dateStr, tzOffsetMinutes = 
 }
 
 /**
+ * Supplementary/overtime minutes worked past the expected closing time =
+ * (last clock-out) − (expected end), floored at 0. The mirror of minutesEarly
+ * on the "stayed late" side. 0 when there is no expected end or no clock-out.
+ * Tracking figure only — payroll's manual overtime line is not touched here.
+ */
+function minutesOvertime({ expectedEnd, lastClockOutAt, dateStr, tzOffsetMinutes = 0 }) {
+  if (!expectedEnd || !lastClockOutAt) return 0;
+  const m = /^(\d{1,2}):(\d{2})/.exec(expectedEnd);
+  if (!m) return 0;
+  const expected = new Date(`${dateStr}T00:00:00Z`);
+  expected.setUTCHours(Number(m[1]), Number(m[2]) - Number(tzOffsetMinutes || 0), 0, 0);
+  const actual = new Date(lastClockOutAt);
+  const diffMin = Math.floor((actual.getTime() - expected.getTime()) / 60000);
+  return diffMin > 0 ? diffMin : 0;
+}
+
+/**
  * Inclusive count of working days between two 'YYYY-MM-DD' dates for a
  * working-day set (used to pro-rate mid-period joiners/leavers).
  */
@@ -234,6 +251,7 @@ function localMinutesOfDay(iso, tzOffsetMinutes = 0) {
  */
 function computeAttendanceInsights(days, tzOffsetMinutes = 0) {
   let present = 0, late = 0, absent = 0, offsite = 0, atRisk = 0, lateSum = 0;
+  let overtimeSum = 0, overtimeDays = 0;
   let earliestArrival = null, latestArrival = null;
   let earliestDeparture = null, latestDeparture = null;
 
@@ -243,6 +261,8 @@ function computeAttendanceInsights(days, tzOffsetMinutes = 0) {
     if (d.status === "absent") absent++;
     if (d.is_offsite) offsite++;
     if ((d.is_late || d.is_offsite) && !d.justified) atRisk++;
+    const ot = Number(d.overtime_minutes || 0);
+    if (ot > 0) { overtimeSum += ot; overtimeDays++; }
 
     const inMin = localMinutesOfDay(d.first_clock_in_at, tzOffsetMinutes);
     if (inMin !== null) {
@@ -266,6 +286,9 @@ function computeAttendanceInsights(days, tzOffsetMinutes = 0) {
     at_risk_days: atRisk,
     punctuality_pct: present > 0 ? Math.round(((present - late) / present) * 100) : 0,
     avg_late_minutes: late > 0 ? round2(lateSum / late) : 0,
+    overtime_minutes: overtimeSum,
+    overtime_days: overtimeDays,
+    avg_overtime_minutes: overtimeDays > 0 ? round2(overtimeSum / overtimeDays) : 0,
     earliest_arrival: earliestArrival,
     latest_arrival: latestArrival,
     earliest_departure: earliestDeparture,
@@ -285,6 +308,7 @@ module.exports = {
   deductionPctForMinutes,
   deductionAmount,
   reconcileDay,
+  minutesOvertime,
   localMinutesOfDay,
   computeAttendanceInsights,
 };

@@ -57,7 +57,10 @@ const pool = new Pool({
 //   - Chief of Staff intelligence (000326): +1 (goal_templates) → 196.
 //     (goals.template_id FK + ai_knowledge_chunks CHECK widen are ALTERs.)
 //   - Chief of Staff settings (000327): +1 (cos_settings) → 197.
-const EXPECTED_SHARED = 197;
+//   - (000328–000349 shared additions are not itemised in this ledger; the
+//     absolute below trails those and should be reconciled in a batch pass.)
+//   - HR clock-out reminders (000350): +1 (clockout_reminders).
+const EXPECTED_SHARED = 198;
 const EXPECTED_PER_BRAND = 203;
 
 async function countTables(schema) {

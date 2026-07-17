@@ -11,6 +11,32 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-17 — HR clock-out overtime + close-time reminders
+
+**Source:** owner directive — "edit an employee's work days/times after
+onboarding (e.g. 5 days → 3), add a closing time, get the supplementary hours
+worked past close, and push 3 clock-out reminders (5 min before / at / 5 min
+after) so people never miss clocking out."
+
+**Files:** `000350_shared_hr_clockout_overtime.sql` (new, shared).
+
+**What / why:**
+- `attendance_days`: `overtime_minutes` — supplementary time worked past the
+  expected closing time (last clock-out − expected end, floored at 0). The
+  mirror of `early_leave_minutes` on the "stayed late" side. Reconcile fills
+  it every day. **Tracking only** — payroll's manual `overtime` line is
+  untouched (no auto-pay).
+- `hr_settings`: `clockout_reminder_enabled` (default **true**) — per-brand
+  master switch for the "remember to clock out" nudges.
+- `clockout_reminders` (new table) — a thin idempotency ledger so the
+  every-minute sweep sends each of the three nudges AT MOST ONCE per employee
+  per day, even across worker restarts / a second worker. `UNIQUE
+  (profile_id, work_date, offset_tag)` is the claim: the sweep INSERTs before
+  it notifies, and only the winning INSERT fires the notification.
+- (Closing time itself, `staff_profiles.work_expected_end_time`, already
+  existed from 000257; this release makes it settable end-to-end — validator,
+  repo, onboarding wizard and the new HR edit-schedule form.)
+
 ## 2026-07-16 — Stylist Studio: lifecycle collapse + own-scope RBAC
 
 **Source:** owner directive — "the stylist studio gives every stylist access

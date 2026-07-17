@@ -459,6 +459,11 @@ function SettingsTab() {
             onChange={(e) => save.mutate({ earnings_tracker_enabled: e.target.checked })} />
           Real-time earnings tracker enabled
         </label>
+        <label className="mt-2 flex items-center gap-2 text-sm text-text-primary">
+          <input type="checkbox" checked={data.clockout_reminder_enabled}
+            onChange={(e) => save.mutate({ clockout_reminder_enabled: e.target.checked })} />
+          Clock-out reminders (nudge 5 min before / at / 5 min after closing time)
+        </label>
       </Card>
 
       <Card className="p-5">

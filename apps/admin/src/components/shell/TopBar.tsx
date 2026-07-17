@@ -1,8 +1,9 @@
-import { Menu, Search, Sun, Moon, LogOut } from "lucide-react";
+import { Menu, Search, Sun, Moon, LogOut, RefreshCw } from "lucide-react";
 import { useLocation } from "react-router-dom";
 import { useUiStore } from "@/stores/ui";
 import { useIsDesktop } from "@/hooks/useMediaQuery";
 import { MODULES } from "@/lib/modules";
+import { hardRefresh } from "@/lib/hardRefresh";
 import { ClockWidget } from "./ClockWidget";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { useEffect, useRef, useState } from "react";
@@ -12,7 +13,7 @@ import { ACCOUNT_MENU_ITEMS, useAccountMenu } from "./useAccountMenu";
 import { AccountMenuModals } from "./AccountMenuModals";
 import { usePageActionsSlotRef } from "./PageActions";
 
-/** Sticky top bar (canon §3.2): module title+desc · page actions · clock-in · ⌘K search · bell · theme. */
+/** Sticky top bar (canon §3.2): module title+desc · page actions · clock-in · ⌘K search · bell · refresh · theme. */
 export function TopBar() {
   const { pathname } = useLocation();
   const { setMobileSidebarOpen, setPaletteOpen, theme, toggleTheme } =
@@ -21,6 +22,7 @@ export function TopBar() {
   const menu = useAccountMenu();
   const { user, onItem, onSignOut } = menu;
   const [accountOpen, setAccountOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const accountRef = useRef<HTMLDivElement>(null);
   const slotRef = usePageActionsSlotRef();
 
@@ -32,6 +34,11 @@ export function TopBar() {
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
   }, [accountOpen]);
+
+  const handleHardRefresh = () => {
+    setRefreshing(true);
+    void hardRefresh();
+  };
 
   const mod = MODULES.find((m) => pathname.startsWith(m.route));
   const title = pathname === "/" ? "Hub" : (mod?.label ?? "Hub");
@@ -82,6 +89,19 @@ export function TopBar() {
             </button>
             {isDesktop && <ClockWidget compact={!isDesktop} />}
             <NotificationBell />
+            {isDesktop && (
+              <button
+                onClick={handleHardRefresh}
+                disabled={refreshing}
+                aria-label="Hard refresh"
+                title="Hard refresh"
+                className="grid place-items-center w-[38px] h-[38px] rounded-[11px] bg-text-primary/[0.05] text-text-muted hover:bg-text-primary/10 hover:text-text-primary transition-all disabled:opacity-60"
+              >
+                <RefreshCw
+                  className={cn("w-[18px]", refreshing && "animate-spin")}
+                />
+              </button>
+            )}
             {isDesktop && (
               <button
                 onClick={toggleTheme}

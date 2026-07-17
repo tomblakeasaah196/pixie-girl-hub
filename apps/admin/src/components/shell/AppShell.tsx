@@ -1,7 +1,7 @@
-import { useEffect, useCallback } from "react";
+import { useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/cn";
+import { hardRefresh } from "@/lib/hardRefresh";
 import { moduleForPath, moduleIsPermitted } from "@/lib/modules";
 import { useAuthStore } from "@/stores/auth";
 import { DeniedState } from "@/components/ui/controls";
@@ -68,15 +68,10 @@ export function AppShell() {
   const { sidebarCollapsed, setPaletteOpen, paletteOpen, immersive } =
     useUiStore();
   const isDesktop = useIsDesktop();
-  const queryClient = useQueryClient();
 
   // Live-refresh Sales / Stock / Service-Jobs boards from backend realtime
   // signals (joins the active brand's rooms; invalidates on change).
   useRealtimeInvalidation();
-
-  const handleRefresh = useCallback(async () => {
-    await queryClient.invalidateQueries();
-  }, [queryClient]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -93,7 +88,7 @@ export function AppShell() {
     <div className="h-screen overflow-hidden">
       <Sidebar />
       <PullToRefresh
-        onRefresh={handleRefresh}
+        onRefresh={hardRefresh}
         className={cn(
           "h-screen overflow-y-auto transition-[margin] duration-300 ease-brand",
           isDesktop

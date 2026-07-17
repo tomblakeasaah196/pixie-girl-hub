@@ -54,6 +54,7 @@ async function listTasks({
   brand,
   status,
   assigned_to,
+  visible_to,
   priority,
   reference_type,
   reference_id,
@@ -71,6 +72,13 @@ async function listTasks({
   if (assigned_to) {
     where.push(`t.assigned_to = $${i++}`);
     params.push(assigned_to);
+  }
+  // Record scope 'own' (RBAC layer 4): a task is yours if you're the
+  // assignee OR you raised it (you still track work you handed to others).
+  if (visible_to) {
+    where.push(`(t.assigned_to = $${i} OR t.created_by = $${i})`);
+    params.push(visible_to);
+    i++;
   }
   if (priority) {
     where.push(`t.priority = $${i++}`);
@@ -112,7 +120,13 @@ async function listTasks({
 }
 async function findTask({ client, brand, id }) {
   const { rows } = await ex(client)(
-    `SELECT * FROM shared.tasks WHERE task_id = $1 AND business = $2 AND is_deleted = false`,
+    `SELECT t.*,
+            ua.display_name AS assigned_to_name,
+            uc.display_name AS created_by_name
+       FROM shared.tasks t
+       LEFT JOIN shared.users ua ON ua.user_id = t.assigned_to
+       LEFT JOIN shared.users uc ON uc.user_id = t.created_by
+      WHERE t.task_id = $1 AND t.business = $2 AND t.is_deleted = false`,
     [id, brand],
   );
   return rows[0] || null;
@@ -209,7 +223,7 @@ async function deleteSubtask({ subtask_id }) {
 }
 
 /** All non-cancelled tasks for the board view (optionally scoped to an assignee). */
-async function boardTasks({ brand, assigned_to }) {
+async function boardTasks({ brand, assigned_to, visible_to }) {
   const where = [
     "t.business = $1",
     "t.is_deleted = false",
@@ -220,6 +234,11 @@ async function boardTasks({ brand, assigned_to }) {
   if (assigned_to) {
     where.push(`t.assigned_to = $${i++}`);
     params.push(assigned_to);
+  }
+  if (visible_to) {
+    where.push(`(t.assigned_to = $${i} OR t.created_by = $${i})`);
+    params.push(visible_to);
+    i++;
   }
   const { rows } = await query(
     `SELECT t.*,

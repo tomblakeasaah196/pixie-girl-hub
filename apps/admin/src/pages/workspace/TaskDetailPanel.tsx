@@ -13,9 +13,10 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button, IconButton, Pill, Skeleton } from "@/components/ui/primitives";
-import type { Subtask } from "./types";
+import { Select } from "@/components/ui/controls";
+import type { Subtask, TaskStatus } from "./types";
 import {
-  TASK_STATUS_META,
+  TASK_STATUS_OPTIONS,
   TASK_PRIORITY_META,
   formatDate,
   formatTime,
@@ -26,6 +27,7 @@ import {
   useAddSubtask,
   useToggleSubtask,
   useDeleteSubtask,
+  useMoveTask,
 } from "./hooks";
 
 // ── Props ───────────────────────────────────────────────────────────────
@@ -105,6 +107,7 @@ export default function TaskDetailPanel({
   const addSubtask = useAddSubtask(taskId);
   const toggleSubtask = useToggleSubtask(taskId);
   const deleteSubtask = useDeleteSubtask(taskId);
+  const moveTask = useMoveTask();
 
   const [showAddInput, setShowAddInput] = useState(false);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState("");
@@ -157,7 +160,6 @@ export default function TaskDetailPanel({
   const doneCount =
     task?.subtask_done_count ?? subtasks.filter((s) => s.is_done).length;
   const totalCount = task?.subtask_count ?? subtasks.length;
-  const statusMeta = task ? TASK_STATUS_META[task.status] : null;
   const priorityMeta = task ? TASK_PRIORITY_META[task.priority] : null;
   const overdue = task?.due_at
     ? isPast(task.due_at) &&
@@ -188,11 +190,18 @@ export default function TaskDetailPanel({
         <DetailSkeleton />
       ) : task ? (
         <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-5">
-          {/* ── Status + Priority pills ── */}
+          {/* ── Status dropdown + Priority pill ── */}
           <div className="flex items-center gap-2 flex-wrap">
-            {statusMeta && (
-              <Pill tone={statusMeta.tone}>{statusMeta.label}</Pill>
-            )}
+            <Select<TaskStatus>
+              value={task.status}
+              onChange={(status) =>
+                moveTask.mutate({ id: task.task_id, status })
+              }
+              options={TASK_STATUS_OPTIONS}
+              disabled={moveTask.isPending}
+              ariaLabel="Task status"
+              className="min-w-[140px]"
+            />
             {priorityMeta && (
               <Pill tone={priorityMeta.tone}>{priorityMeta.label}</Pill>
             )}

@@ -14,11 +14,13 @@ function useBiz() {
 
 // ── Task queries ─────────────────────────────────────────────────────────
 
-export function useTaskBoard() {
+export function useTaskBoard(params: ws.TaskBoardParams = {}) {
   const biz = useBiz();
   return useQuery({
-    queryKey: ["workspace", biz, "task-board"],
-    queryFn: ws.getTaskBoard,
+    // Mutations invalidate by the ["workspace", biz, "task-board"] prefix,
+    // which still matches every parameterised variant of this key.
+    queryKey: ["workspace", biz, "task-board", params],
+    queryFn: () => ws.getTaskBoard(params),
     staleTime: 30_000,
   });
 }
@@ -74,9 +76,26 @@ export function useMoveTask() {
   return useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       ws.moveTask(id, status),
-    onSuccess: () => {
+    onSuccess: (_d, { id }) => {
       qc.invalidateQueries({ queryKey: ["workspace", biz, "task-board"] });
       qc.invalidateQueries({ queryKey: ["workspace", biz, "tasks"] });
+      // The detail panel reads the single-task query — keep it in step.
+      qc.invalidateQueries({ queryKey: ["workspace", biz, "task", id] });
+    },
+  });
+}
+
+/** Quick due-date change (agenda swipe-left / hover reschedule). */
+export function useRescheduleTask() {
+  const qc = useQueryClient();
+  const biz = useBiz();
+  return useMutation({
+    mutationFn: ({ id, due_at }: { id: string; due_at: string | null }) =>
+      ws.updateTask(id, { due_at }),
+    onSuccess: (_d, { id }) => {
+      qc.invalidateQueries({ queryKey: ["workspace", biz, "task-board"] });
+      qc.invalidateQueries({ queryKey: ["workspace", biz, "tasks"] });
+      qc.invalidateQueries({ queryKey: ["workspace", biz, "task", id] });
     },
   });
 }

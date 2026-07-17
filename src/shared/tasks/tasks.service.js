@@ -66,7 +66,19 @@ const VALID_STATUSES = [
 ];
 const VALID_PRIORITIES = ["low", "normal", "high", "urgent"];
 
-function listTasks(args) {
+/**
+ * Record-scope guard (RBAC layer 4). With 'own' scope a task is visible only
+ * to its assignee or creator. 'team' has no membership source yet, so it
+ * behaves like 'all' — same as every other module repo today.
+ */
+function canSee(task, scope, user) {
+  if (scope !== "own") return true;
+  const uid = user && user.user_id;
+  return task.assigned_to === uid || task.created_by === uid;
+}
+
+function listTasks({ scope, user, ...args }) {
+  if (scope === "own") args.visible_to = user.user_id;
   return repo.listTasks(args);
 }
 
@@ -80,17 +92,21 @@ function listAssignees({ brand, search, limit }) {
 }
 
 /** Kanban board: active tasks grouped by status column. */
-async function getBoard({ brand, assigned_to }) {
-  const rows = await repo.boardTasks({ brand, assigned_to });
+async function getBoard({ brand, scope, user, assigned_to }) {
+  const rows = await repo.boardTasks({
+    brand,
+    assigned_to,
+    visible_to: scope === "own" ? user.user_id : undefined,
+  });
   const board = { to_do: [], in_progress: [], in_review: [], done: [] };
   for (const t of rows) {
     if (board[t.status]) board[t.status].push(t);
   }
   return board;
 }
-async function getTask({ brand, id }) {
+async function getTask({ brand, scope, user, id }) {
   const task = await repo.findTask({ brand, id });
-  if (!task) throw new NotFoundError("Task");
+  if (!task || !canSee(task, scope, user)) throw new NotFoundError("Task");
   task.subtasks = await repo.listSubtasks({ task_id: id });
   return task;
 }
@@ -122,9 +138,9 @@ async function createTask({ brand, user, request_id, input }) {
     return task;
   });
 }
-async function updateTask({ brand, user, request_id, id, patch }) {
+async function updateTask({ brand, scope, user, request_id, id, patch }) {
   const before = await repo.findTask({ brand, id });
-  if (!before) throw new NotFoundError("Task");
+  if (!before || !canSee(before, scope, user)) throw new NotFoundError("Task");
   // Keep the reminder honest: unless the caller pinned an explicit remind_at,
   // recompute it whenever the due date or the relative offset changes —
   // otherwise a moved deadline silently fires the reminder at the old time.
@@ -149,16 +165,18 @@ async function updateTask({ brand, user, request_id, id, patch }) {
     await notifyAssignee({ brand, task });
   return task;
 }
-async function changeStatus({ brand, user, request_id, id, status }) {
+async function changeStatus({ brand, scope, user, request_id, id, status }) {
   const before = await repo.findTask({ brand, id });
-  if (!before) throw new NotFoundError("Task");
+  if (!before || !canSee(before, scope, user)) throw new NotFoundError("Task");
   const completed = status === "done";
   const task = await repo.setStatus({ brand, id, status, completed });
   await A(brand, user, "tasks.status", "task", id, { status }, request_id);
   events.emit("task.status_changed", { brand, task_id: id, status });
   return task;
 }
-async function deleteTask({ brand, user, request_id, id }) {
+async function deleteTask({ brand, scope, user, request_id, id }) {
+  const before = await repo.findTask({ brand, id });
+  if (!before || !canSee(before, scope, user)) throw new NotFoundError("Task");
   const ok = await repo.softDeleteTask({ brand, id });
   if (!ok) throw new NotFoundError("Task");
   await A(brand, user, "tasks.delete", "task", id, null, request_id);
@@ -189,9 +207,9 @@ async function createFromModule({ brand, created_by, task }) {
   return created;
 }
 
-async function deleteSubtask({ brand, user, request_id, id, subtask_id }) {
+async function deleteSubtask({ brand, scope, user, request_id, id, subtask_id }) {
   const task = await repo.findTask({ brand, id });
-  if (!task) throw new NotFoundError("Task");
+  if (!task || !canSee(task, scope, user)) throw new NotFoundError("Task");
   const ok = await repo.deleteSubtask({ subtask_id });
   if (!ok) throw new NotFoundError("Subtask");
   await A(
@@ -205,9 +223,9 @@ async function deleteSubtask({ brand, user, request_id, id, subtask_id }) {
   );
 }
 
-async function addSubtask({ brand, user, request_id, id, input }) {
+async function addSubtask({ brand, scope, user, request_id, id, input }) {
   const task = await repo.findTask({ brand, id });
-  if (!task) throw new NotFoundError("Task");
+  if (!task || !canSee(task, scope, user)) throw new NotFoundError("Task");
   const sub = await repo.addSubtask({
     s: { task_id: id, title: input.title, display_order: input.display_order },
   });
@@ -224,6 +242,7 @@ async function addSubtask({ brand, user, request_id, id, input }) {
 }
 async function setSubtaskDone({
   brand,
+  scope,
   user,
   request_id,
   id,
@@ -231,7 +250,7 @@ async function setSubtaskDone({
   is_done,
 }) {
   const task = await repo.findTask({ brand, id });
-  if (!task) throw new NotFoundError("Task");
+  if (!task || !canSee(task, scope, user)) throw new NotFoundError("Task");
   const sub = await repo.setSubtaskDone({ subtask_id, is_done });
   if (!sub) throw new NotFoundError("Subtask");
   await A(

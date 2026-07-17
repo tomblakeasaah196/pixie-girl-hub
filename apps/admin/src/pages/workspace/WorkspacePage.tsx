@@ -54,6 +54,7 @@ import { GOAL_HEALTH_META } from "./goals-constants";
 import type { Goal } from "./goals-types";
 
 import { useTaskBoard, useCalendarEvents, useMoveTask } from "./hooks";
+import { TaskAgenda } from "./TaskAgenda";
 import { TaskCard } from "./TaskCard";
 import { TaskFormModal } from "./TaskFormModal";
 import { EventFormModal } from "./EventFormModal";
@@ -198,22 +199,14 @@ function DraggableTaskCard({
   task: Task;
   onClick: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({
-      id: task.task_id,
-    });
-  const style = transform
-    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
-    : undefined;
+  // The DragOverlay renders the moving copy, so the source card stays put
+  // and only dims (translating it as well would double the motion).
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: task.task_id,
+  });
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...listeners}
-      {...attributes}
-      className={isDragging ? "opacity-40" : ""}
-    >
+    <div ref={setNodeRef} {...listeners} {...attributes}>
       <TaskCard task={task} onClick={onClick} isDragging={isDragging} />
     </div>
   );
@@ -270,6 +263,18 @@ export function WorkspacePage() {
   // Task search
   const [taskSearch, setTaskSearch] = useState("");
 
+  // Tasks tab audience. Everyone defaults to their own tasks; only users whose
+  // tasks.view record scope reaches beyond 'own' can widen to the whole team
+  // (the API enforces regardless — 'own' scope is filtered server-side).
+  const scopeFor = useAuthStore((s) => s.scopeFor);
+  const taskScope = scopeFor("tasks", "view");
+  const canSeeAllTasks = taskScope === "all" || taskScope === "team";
+  const [taskView, setTaskView] = useState<"mine" | "everyone">("mine");
+
+  // Desktop layout for the Tasks tab: kanban board (default) or the
+  // deadline-first agenda list. Phones always get the agenda.
+  const [taskLayout, setTaskLayout] = useState<"board" | "list">("board");
+
   // Kanban drag
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const moveTask = useMoveTask();
@@ -277,13 +282,23 @@ export function WorkspacePage() {
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   );
 
-  // Data
+  // Data. The Tasks tab board can widen to everyone (scope permitting);
+  // My Day always shows the signed-in user's own tasks. When both queries
+  // ask for "me" they share a query key, so only one request is made.
   const {
     data: board,
     isLoading: boardLoading,
     isError: boardError,
     refetch: refetchBoard,
-  } = useTaskBoard();
+  } = useTaskBoard(
+    taskView === "everyone" && canSeeAllTasks ? {} : { assigned_to: "me" },
+  );
+  const {
+    data: myBoard,
+    isLoading: myBoardLoading,
+    isError: myBoardError,
+    refetch: refetchMyBoard,
+  } = useTaskBoard({ assigned_to: "me" });
 
   // Calendar events for the visible range
   const calRange = useMemo(() => {
@@ -327,21 +342,32 @@ export function WorkspacePage() {
     ];
   }, [board]);
 
+  // My Day KPIs count the user's OWN tasks, never the widened team board.
+  const myTasks = useMemo(() => {
+    if (!myBoard) return [];
+    return [
+      ...myBoard.to_do,
+      ...myBoard.in_progress,
+      ...myBoard.in_review,
+      ...myBoard.done,
+    ];
+  }, [myBoard]);
+
   const dueTodayTasks = useMemo(
     () =>
-      allTasks.filter(
+      myTasks.filter(
         (t) =>
           t.due_at &&
           isSameDay(new Date(t.due_at), today) &&
           t.status !== "done" &&
           t.status !== "cancelled",
       ),
-    [allTasks, todayStr],
+    [myTasks, todayStr],
   );
 
   const overdueTasks = useMemo(
     () =>
-      allTasks.filter(
+      myTasks.filter(
         (t) =>
           t.due_at &&
           isPast(t.due_at) &&
@@ -349,15 +375,15 @@ export function WorkspacePage() {
           t.status !== "done" &&
           t.status !== "cancelled",
       ),
-    [allTasks, todayStr],
+    [myTasks, todayStr],
   );
 
   const completedToday = useMemo(
     () =>
-      allTasks.filter(
+      myTasks.filter(
         (t) => t.completed_at && isSameDay(new Date(t.completed_at), today),
       ),
-    [allTasks, todayStr],
+    [myTasks, todayStr],
   );
 
   // CoS-access (CEO) users trade the backward-looking "Overdue / Completed"
@@ -538,10 +564,10 @@ export function WorkspacePage() {
               followups={followups}
               followupsLoading={followupsLoading}
               eventsLoading={eventsLoading}
-              boardLoading={boardLoading}
-              boardError={boardError}
+              boardLoading={myBoardLoading}
+              boardError={myBoardError}
               eventsError={eventsError}
-              onRetryBoard={refetchBoard}
+              onRetryBoard={refetchMyBoard}
               onRetryEvents={refetchEvents}
               onSelectTask={(t) => setSelectedTaskId(t.task_id)}
               onSelectEvent={setSelectedEvent}
@@ -571,10 +597,54 @@ export function WorkspacePage() {
             />
           )}
 
+          {/* Tasks tab controls: audience switch (scopes beyond 'own') +
+              desktop Board/List layout switch. Phones always get the agenda. */}
+          {activeTab === "tasks" && (canSeeAllTasks || !isMobile) && (
+            <div className="mb-4 flex items-center gap-2 flex-wrap">
+              {canSeeAllTasks && (
+                <div className="inline-flex gap-0.5 p-0.5 rounded-[12px] bg-text-primary/[0.04] border hairline">
+                  {(["mine", "everyone"] as const).map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setTaskView(v)}
+                      className={cn(
+                        "px-3.5 h-[30px] rounded-[10px] text-[12px] font-semibold transition-all whitespace-nowrap",
+                        taskView === v
+                          ? "bg-accent-deep text-[#F4E9D9] shadow-sm"
+                          : "text-text-muted hover:text-text-primary hover:bg-text-primary/[0.06]",
+                      )}
+                    >
+                      {v === "mine" ? "My tasks" : "Everyone"}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {!isMobile && (
+                <div className="inline-flex gap-0.5 p-0.5 rounded-[12px] bg-text-primary/[0.04] border hairline">
+                  {(["board", "list"] as const).map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setTaskLayout(v)}
+                      className={cn(
+                        "px-3.5 h-[30px] rounded-[10px] text-[12px] font-semibold transition-all whitespace-nowrap",
+                        taskLayout === v
+                          ? "bg-accent-deep text-[#F4E9D9] shadow-sm"
+                          : "text-text-muted hover:text-text-primary hover:bg-text-primary/[0.06]",
+                      )}
+                    >
+                      {v === "board" ? "Board" : "List"}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           {activeTab === "tasks" &&
-            (isMobile ? (
-              <TaskListMobile
-                board={filteredBoard}
+            (isMobile || taskLayout === "list" ? (
+              <TaskAgenda
+                tasks={allTasks}
                 loading={boardLoading}
                 error={boardError}
                 search={taskSearch}
@@ -582,6 +652,7 @@ export function WorkspacePage() {
                 onRetry={refetchBoard}
                 onSelectTask={(t) => setSelectedTaskId(t.task_id)}
                 onCreateTask={() => openCreateTaskForDate()}
+                showAssignee={canSeeAllTasks && taskView === "everyone"}
               />
             ) : (
               <TasksKanban
@@ -614,16 +685,19 @@ export function WorkspacePage() {
           {activeTab === "my-hr" && <MyHrPage />}
         </div>
 
-        {/* Detail panel (desktop only) */}
+        {/* Detail panel (desktop only) — sticky below the top bar with its
+            own internal scroll, so scrolling the board never hides it. */}
         {isDesktop && selectedTaskId && (
-          <TaskDetailPanel
-            taskId={selectedTaskId}
-            onClose={() => setSelectedTaskId(null)}
-            onEdit={() => {
-              const t = allTasks.find((x) => x.task_id === selectedTaskId);
-              if (t) setEditTask(t);
-            }}
-          />
+          <div className="sticky top-[76px] self-start h-[calc(100dvh-100px)] min-h-[320px]">
+            <TaskDetailPanel
+              taskId={selectedTaskId}
+              onClose={() => setSelectedTaskId(null)}
+              onEdit={() => {
+                const t = allTasks.find((x) => x.task_id === selectedTaskId);
+                if (t) setEditTask(t);
+              }}
+            />
+          </div>
         )}
       </div>
 
@@ -1526,135 +1600,6 @@ function TasksKanban({
             ) : null}
           </DragOverlay>
         </DndContext>
-      )}
-    </div>
-  );
-}
-
-// ── Tasks List (mobile) ──────────────────────────────────────────────────
-
-function TaskListMobile({
-  board,
-  loading,
-  error,
-  search,
-  onSearchChange,
-  onRetry,
-  onSelectTask,
-  onCreateTask,
-}: {
-  board: ReturnType<typeof useTaskBoard>["data"] | null;
-  loading: boolean;
-  error: boolean;
-  search: string;
-  onSearchChange: (s: string) => void;
-  onRetry: () => void;
-  onSelectTask: (t: Task) => void;
-  onCreateTask: () => void;
-}) {
-  if (error)
-    return <ErrorState message="Could not load tasks." onRetry={onRetry} />;
-
-  const allTasks = board
-    ? [...board.to_do, ...board.in_progress, ...board.in_review, ...board.done]
-    : [];
-
-  const filtered = search.trim()
-    ? allTasks.filter(
-        (t) =>
-          t.title.toLowerCase().includes(search.toLowerCase()) ||
-          t.assigned_to_name?.toLowerCase().includes(search.toLowerCase()),
-      )
-    : allTasks;
-
-  return (
-    <div>
-      <div className="mb-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-faint" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search tasks..."
-            className="w-full h-[36px] pl-9 pr-3 rounded-[10px] bg-text-primary/[0.04] border border-line text-[12px] text-text-primary outline-none focus:border-accent/50 transition-colors" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
-          />
-        </div>
-      </div>
-
-      {loading && (
-        <div className="space-y-2">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-16 rounded-xl" />
-          ))}
-        </div>
-      )}
-
-      {!loading && filtered.length === 0 && (
-        <EmptyState
-          icon={<ListTodo className="w-6 h-6" />}
-          title="No tasks"
-          message={
-            search
-              ? "No tasks match your search."
-              : "Create your first task to get started."
-          }
-          action={
-            !search ? (
-              <Button
-                variant="primary"
-                size="sm"
-                icon={<Plus className="w-3 h-3" />}
-                onClick={onCreateTask}
-              >
-                New Task
-              </Button>
-            ) : undefined
-          }
-        />
-      )}
-
-      {!loading && (
-        <div className="space-y-1.5">
-          {filtered.map((task) => (
-            <button
-              key={task.task_id}
-              onClick={() => onSelectTask(task)}
-              className="w-full text-left glass rounded-xl p-3 hover:bg-text-primary/[0.04] transition-colors"
-            >
-              <div className="flex items-start gap-2">
-                <div className="flex-1 min-w-0">
-                  <div className="text-[13px] font-semibold text-text-primary truncate">
-                    {task.title}
-                  </div>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Pill tone={TASK_STATUS_META[task.status].tone} dot={false}>
-                      {TASK_STATUS_META[task.status].label}
-                    </Pill>
-                    <Pill
-                      tone={TASK_PRIORITY_META[task.priority].tone}
-                      dot={false}
-                    >
-                      {TASK_PRIORITY_META[task.priority].label}
-                    </Pill>
-                  </div>
-                </div>
-                {task.due_at && (
-                  <span
-                    className={cn(
-                      "text-[10px] font-mono shrink-0",
-                      isPast(task.due_at) && task.status !== "done"
-                        ? "text-danger"
-                        : "text-text-faint",
-                    )}
-                  >
-                    {formatDate(task.due_at)}
-                  </span>
-                )}
-              </div>
-            </button>
-          ))}
-        </div>
       )}
     </div>
   );

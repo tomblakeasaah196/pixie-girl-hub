@@ -263,6 +263,19 @@ goals, the AI Chief of Staff, and **My HR** (your own attendance, leave, payslip
 Agenda) · **My HR** · **Goals** *(CEO)* · **Notes** *(CEO)* · **AI Chief of Staff**.
 **Common tasks.**
 - *See my to-dos / add a task?* Workspace → **Tasks** → **New Task** / **Create Task**.
+  The tab shows **your** tasks (assigned to you or created by you) — including
+  tasks auto-raised when a service job is assigned to you. Managers/CEO with
+  team-wide task access get a **My tasks / Everyone** switch at the top of the
+  Tasks tab; My Day counts are always personal.
+- *Work through my tasks on my phone?* The Tasks tab is a deadline-first list
+  grouped **Overdue · Today · This Week · Later · Done Today** (tap a heading to
+  expand/collapse). **Swipe a task right to mark it done**, **swipe left to
+  reschedule** (Later today / Tomorrow / Next week / pick a date). On desktop
+  the same actions appear on hover, and a **Board / List** switch toggles
+  between the kanban board and this list.
+- *Change a task's status?* Open the task and use the **status dropdown** at
+  the top of its detail panel — or, on the desktop board, drag its card into
+  another column.
 - *Add a calendar event?* Workspace → **Calendar** → **New Event** / **Create Event**.
 - *Clock in / out?* Top bar **Clock in** button (or Workspace → **My HR**).
 - *Request leave / see my payslip?* Workspace → **My HR** tab.

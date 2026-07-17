@@ -557,10 +557,21 @@ subscriptions, bundles, maintenance reminders, and win-back **strategies**.
 **Common tasks.**
 - *Build an automated retention strategy (trigger → action)?* Retention →
   **Strategies** → new (`/retention/strategies/new`). Edit one at
-  `/retention/strategies/<id>/edit`.
+  `/retention/strategies/<id>/edit`. (The legacy single-action "Workflows"
+  tab was retired — every advertised trigger + action lives in Strategies.)
 - *Set up a loyalty scheme / rewards?* Retention → **Loyalty** / **Rewards**.
-- *Create a coupon?* Retention → **Coupons**.
-- *Run a referral programme?* Retention → **Referrals**.
+  Reward percentages are entered as whole percent (e.g. `10` for 10% off)
+  and stored as a fraction; free-product / gift redemptions open a task in
+  **Tasks** automatically for Retention Ops to fulfil.
+- *Create a coupon?* Retention → **Coupons**. Percentage discounts take a
+  whole percent (e.g. `10`); the value stores as a fraction so the engine
+  applies it correctly.
+- *Run a referral programme?* Retention → **Referrals**. A shopper's
+  referral code is brand-scoped, captured from the storefront/landing URL
+  as `?ref=<code>` and pre-filled on the checkout referral field. The
+  friend's discount applies at checkout; the referrer's points AND ₦
+  store-credit reward post on order.paid (the credit lands in the
+  customer store-credit ledger).
 
 ### 4.24 Messaging (Smart Comm)
 **What it's for.** The **unified inbox** — staff send and receive customer

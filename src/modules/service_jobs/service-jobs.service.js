@@ -93,9 +93,16 @@ async function updateServiceType({ brand, user, request_id, id, patch }) {
 // `own` scope: restrict to jobs the caller is currently assigned to OR was
 // ever assigned to (kept visible via the wig custody ledger so a stylist
 // keeps history on their scorecard after Ops reassigns a job away).
+//
+// `mine`: the "My Jobs" cockpit opts in to the SAME caller-narrowed filter
+// regardless of permission scope. Without this a team/all-scope caller (Ops
+// manager, CEO) gets the WHOLE brand's jobs back on that tab, and the frontend
+// then mislabels every job that isn't personally theirs as "reassigned away
+// from me". Own-scope callers are narrowed by the repo either way, so `mine`
+// only changes behaviour for the broader scopes.
 function listJobs(args) {
-  const { scope, user, ...rest } = args;
-  if (scope === "own" && user) {
+  const { scope, user, mine, ...rest } = args;
+  if ((mine || scope === "own") && user) {
     return repo.listServiceJobs({ ...rest, own_user_id: user.user_id });
   }
   return repo.listServiceJobs(rest);

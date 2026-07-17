@@ -40,6 +40,12 @@ jest.mock("../../../src/modules/service_jobs/service-jobs.events", () => ({
 
 jest.mock("../../../src/modules/service_jobs/service-jobs.repo", () => ({
   getServiceJob: jest.fn(),
+  listServiceJobs: jest.fn().mockResolvedValue({
+    data: [],
+    page: 1,
+    page_size: 25,
+    total: 0,
+  }),
   setServiceJobStatus: jest.fn(),
   userHasJobAccess: jest.fn(),
   getJobAssigneeName: jest.fn(),
@@ -140,6 +146,51 @@ describe("service_jobs.service.getJob — own-scope enforcement", () => {
     expect(job.job_id).toBe("job-1");
     expect(repo.userHasJobAccess).not.toHaveBeenCalled();
     expect(repo.getJobAssigneeName).not.toHaveBeenCalled();
+  });
+});
+
+describe("service_jobs.service.listJobs — 'My Jobs' vs. board scoping", () => {
+  it("own scope always narrows to the caller (stylist board == my board)", async () => {
+    await svc.listJobs({ brand: "faitlynhair", scope: "own", user: STYLIST_A });
+    expect(repo.listServiceJobs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        brand: "faitlynhair",
+        own_user_id: STYLIST_A.user_id,
+      }),
+    );
+  });
+
+  it("all scope with no `mine` returns the WHOLE brand (the Ops Job Board)", async () => {
+    await svc.listJobs({ brand: "faitlynhair", scope: "all", user: ACTOR });
+    const args = repo.listServiceJobs.mock.calls[0][0];
+    expect(args.own_user_id).toBeUndefined();
+  });
+
+  it("`mine:true` narrows to the caller EVEN on all scope (the CEO/Ops 'My Jobs' tab)", async () => {
+    await svc.listJobs({
+      brand: "faitlynhair",
+      scope: "all",
+      user: ACTOR,
+      mine: true,
+    });
+    expect(repo.listServiceJobs).toHaveBeenCalledWith(
+      expect.objectContaining({ own_user_id: ACTOR.user_id }),
+    );
+  });
+
+  it("does not leak `scope`/`user`/`mine` control fields into the repo call", async () => {
+    await svc.listJobs({
+      brand: "faitlynhair",
+      scope: "all",
+      user: ACTOR,
+      mine: true,
+      status: "assigned",
+    });
+    const args = repo.listServiceJobs.mock.calls[0][0];
+    expect(args).not.toHaveProperty("scope");
+    expect(args).not.toHaveProperty("user");
+    expect(args).not.toHaveProperty("mine");
+    expect(args.status).toBe("assigned");
   });
 });
 

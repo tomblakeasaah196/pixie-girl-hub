@@ -47,6 +47,9 @@ async function listJobs(req, res) {
     brand: req.brand,
     scope: req.permission_scope,
     user: req.user,
+    // "My Jobs" cockpit: narrow to the caller's own jobs (current OR
+    // historical-custody) even when their permission scope is team/all.
+    mine: req.query.mine === "true",
     status: req.query.status,
     assigned_staff_user_id: req.query.assigned_staff_user_id,
     assigned_stylist_id: req.query.assigned_stylist_id,

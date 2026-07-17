@@ -61,9 +61,17 @@ export function useRealtimeInvalidation() {
 
     // CoS batch plan finished on the worker (PR3) → refetch the conversation
     // (flips the plan card executing → executed/partially_failed) and the
-    // workspace boards its steps just wrote to. No polling.
-    const onCosPlan = () => {
-      queryClient.invalidateQueries({ queryKey: ["cos", "conversation"] });
+    // workspace boards its steps just wrote to. No polling. The event carries
+    // conversation_id so only the waiting conversation refetches; the prefix
+    // fallback covers events from servers not yet sending it.
+    const onCosPlan = (e: Event) => {
+      const conversationId = (e as CustomEvent<{ conversation_id?: string }>)
+        .detail?.conversation_id;
+      queryClient.invalidateQueries({
+        queryKey: conversationId
+          ? ["cos", "conversation", conversationId]
+          : ["cos", "conversation"],
+      });
       queryClient.invalidateQueries({ queryKey: ["workspace"] });
     };
 

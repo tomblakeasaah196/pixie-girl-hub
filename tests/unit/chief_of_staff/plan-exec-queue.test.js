@@ -77,6 +77,7 @@ function wirePlan(plan, steps) {
 test("confirm → enqueue → processor executes as the service token → broadcast", async () => {
   const plan = {
     plan_id: "plan-1",
+    conversation_id: "conv-1",
     proposed_by_user_id: "ceo-1",
     business: "pixiegirl",
     status: "proposed",
@@ -124,11 +125,17 @@ test("confirm → enqueue → processor executes as the service token → broadc
   expect(executor.executeAction.mock.calls[1][0].pending.payload).toEqual({ id: "g-1", title: "M1" });
   expect(plan.status).toBe("executed");
 
-  // 3) Completion push: plan.executed reached the user's goals room.
+  // 3) Completion push: plan.executed reached the user's goals room, carrying
+  // conversation_id so the client can refetch exactly the waiting card.
   expect(emitted).toContainEqual({
     room: "user:ceo-1:goals",
     event: "cos_plan:executed",
-    payload: { plan_id: "plan-1", user_id: "ceo-1", status: "executed" },
+    payload: {
+      plan_id: "plan-1",
+      conversation_id: "conv-1",
+      user_id: "ceo-1",
+      status: "executed",
+    },
   });
 });
 

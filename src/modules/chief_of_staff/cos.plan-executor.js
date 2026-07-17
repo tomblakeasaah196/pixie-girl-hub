@@ -246,6 +246,9 @@ async function executePlan({ plan, auth_header, request_id, repair = null, actio
   const finalSteps = await repo.listPlanSteps({ plan_id: plan.plan_id });
   events.emit("plan.executed", {
     plan_id: plan.plan_id,
+    // Lets the client refresh exactly the conversation whose card is waiting,
+    // instead of invalidating every cached conversation.
+    conversation_id: plan.conversation_id || null,
     user_id: plan.proposed_by_user_id,
     status: finalStatus,
   });

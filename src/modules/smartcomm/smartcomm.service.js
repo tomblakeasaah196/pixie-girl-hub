@@ -1571,6 +1571,7 @@ async function findOrCreateCustomerThread({
     client,
     brand,
     contact_id,
+    platform,
   });
   if (existing) {
     if (external_thread_ref && !existing.external_thread_ref) {

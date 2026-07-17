@@ -125,6 +125,17 @@ export interface OrderFormBody {
   sales_channel: string;
   items: OrderLinkLine[];
   bundle_id?: string;
+  /** Promo / voucher code the customer types on the /o/ checkout. Server
+   *  validates + burns on order.paid via the retention settlement rail. */
+  coupon_code?: string;
+  /** Friend's referral code (P0-3). Server validates brand-scoped, applies
+   *  the friend discount, and stamps referral_code_used so the referrer's
+   *  points + store credit post on order.paid. */
+  customer_referral_code?: string;
+  /** Only forwarded when the /o/ link resolved a known contact — a public
+   *  link with an email guess must not be able to spend a stranger's
+   *  points (same P0-5 gate as the storefront checkout). */
+  redeem_points?: number;
   payment_plan: "full" | "instalment";
   // Buyer's gateway pick (nomba | paystack) — server prefers it on the
   // active chain and falls over automatically if it's down.

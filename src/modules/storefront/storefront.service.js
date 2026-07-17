@@ -383,6 +383,11 @@ async function submitOrderForm({ brand, input, request_id }) {
         stylist_referral_code: await resolveStylistReferral(
           input.referral_code,
         ),
+        // P0-3: customer referral rail. createOrder validates + brand-
+        // scopes, applies the friend discount, and stamps
+        // referral_code_used so retention.subscribers credits the referrer
+        // (points + store credit) on order.paid.
+        customer_referral_code: input.customer_referral_code || null,
       },
     });
 

@@ -149,6 +149,15 @@ function CheckoutForm({
 
   const [deliveryFee, setDeliveryFee] = useState<number | null>(null);
   const [quoting, setQuoting] = useState(false);
+
+  // Retention rails on the /o/ checkout — the WhatsApp / Instagram
+  // channel now behaves like storefront + landing: the customer can type
+  // a promo code, a friend's referral code, and (only when the link is
+  // bound to a known contact) redeem loyalty points. Server settles all
+  // three on order.paid via the retention subscriber.
+  const [promoOpen, setPromoOpen] = useState(false);
+  const [couponCode, setCouponCode] = useState("");
+  const [referralCode, setReferralCode] = useState("");
   // Buyer's gateway pick — shown only when the brand has >1 pickable gateway
   // active; the server prefers the pick and falls over if it's down.
   const [payCfg, setPayCfg] = useState<PayConfig | null>(null);
@@ -371,6 +380,11 @@ function CheckoutForm({
         sales_channel: chan,
         items: resolvedItems.flatMap((i) => i.lines),
         bundle_id: bundleId || undefined,
+        // Retention spend fields (P0-3 / P0-4 parity with the storefront +
+        // landing checkouts). Any of these that resolve to a value fire
+        // the corresponding rail on order.paid.
+        coupon_code: couponCode.trim() || undefined,
+        customer_referral_code: referralCode.trim() || undefined,
         payment_plan: "full",
         payment_gateway: gateway,
         client_idempotency_key: `order:${slug}`,
@@ -703,6 +717,58 @@ function CheckoutForm({
             value={email}
             onChange={setEmail}
           />
+        </div>
+
+        {/* Promo + friend's referral code — parity with storefront /
+            landing checkouts. Discreet by default (a single "Have a code?"
+            link) so it never crowds the primary flow, expanded to show two
+            uppercase-mono inputs when tapped. Both are optional; server
+            validates on submit and either applies the discount or ignores
+            silently (invalid codes never block payment). */}
+        <div className="space-y-2">
+          {!promoOpen ? (
+            <button
+              type="button"
+              onClick={() => setPromoOpen(true)}
+              className="text-caption text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            >
+              Have a promo or friend&rsquo;s referral code?
+            </button>
+          ) : (
+            <>
+              <div>
+                <label className="mb-1 block text-caption text-muted-foreground">
+                  Promo / voucher code
+                </label>
+                <input
+                  type="text"
+                  value={couponCode}
+                  onChange={(e) =>
+                    setCouponCode(e.target.value.toUpperCase().slice(0, 60))
+                  }
+                  placeholder="Enter code"
+                  className="w-full rounded-md border border-border bg-transparent px-3 py-2.5 font-mono uppercase text-body-sm outline-none placeholder:text-muted-foreground focus:border-foreground"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-caption text-muted-foreground">
+                  Referred by (friend&rsquo;s code)
+                </label>
+                <input
+                  type="text"
+                  value={referralCode}
+                  onChange={(e) =>
+                    setReferralCode(e.target.value.toUpperCase().slice(0, 80))
+                  }
+                  placeholder="Friend's code (optional)"
+                  className="w-full rounded-md border border-border bg-transparent px-3 py-2.5 font-mono uppercase text-body-sm outline-none placeholder:text-muted-foreground focus:border-foreground"
+                />
+                <p className="mt-1 text-caption text-muted-foreground">
+                  Applies the friend discount at checkout; your friend earns a reward when you pay.
+                </p>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Gateway pick — mirrors the main storefront checkout. Hidden when

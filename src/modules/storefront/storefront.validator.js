@@ -84,8 +84,15 @@ const orderFormSchema = z
     redeem_points: z.coerce.number().int().positive().optional(),
     bundle_id: z.string().uuid().optional(),
     client_idempotency_key: z.string().max(80).optional(),
-    // Stylist Programme referral capture (§6.26 Q17).
+    // Stylist Programme referral capture (§6.26 Q17). Resolved to an
+    // active partner server-side and stamped as stylist_referral_code.
     referral_code: z.string().max(80).optional(),
+    // Customer referral rail (P0-3). Distinct from referral_code above —
+    // this is the FRIEND's shared code, applied to the friend discount at
+    // checkout + credited to the referrer on order.paid. The /o/ order-link
+    // checkout forwards this so a customer who was told "give my code AMY123"
+    // in the DM gets the friend discount and the referrer earns.
+    customer_referral_code: z.string().max(80).optional(),
     // Flexi Pay (PR-2): 'instalment' raises the order on the flexible plan so
     // the deposit minimum + balance reminders apply. The customer pays via the
     // pay link they receive. Defaults to 'full'.

@@ -73,6 +73,23 @@ async function setRolePermissions(req, res) {
   res.json(result);
 }
 
+// ── contact-type visibility (contacts §6.12) ───────────────
+
+async function getRoleContactTypes(req, res) {
+  res.json(await service.getRoleContactTypes({ role_id: req.params.role_id }));
+}
+
+async function setRoleContactTypes(req, res) {
+  const result = await service.setRoleContactTypes({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    role_id: req.params.role_id,
+    contact_types: req.body.contact_types,
+  });
+  res.json(result);
+}
+
 // ── user-role grants ───────────────────────────────────────
 
 async function listUserRoles(req, res) {
@@ -130,6 +147,8 @@ module.exports = {
   getCatalog,
   getRolePermissions,
   setRolePermissions,
+  getRoleContactTypes,
+  setRoleContactTypes,
   listUserRoles,
   grantUserRole,
   revokeUserRole,

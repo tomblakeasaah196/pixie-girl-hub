@@ -39,11 +39,19 @@ async function listRoles({ brand }) {
 async function getRole({ role_id }) {
   const role = await rolesRepo.findRole({ role_id });
   if (!role) throw new NotFoundError("Role");
-  const [permissions, members] = await Promise.all([
+  const [permissions, members, ctAccess] = await Promise.all([
     rolesRepo.listPermissions({ role_id }),
     grantsRepo.listRoleMembers({ role_id }),
+    rolesRepo.getContactTypeAccess({ role_id }),
   ]);
-  return { ...role, permissions, members };
+  return {
+    ...role,
+    permissions,
+    members,
+    // Contacts §6.12: null = unrestricted (sees every type); a row restricts to
+    // its contact_types (empty array = sees no contacts).
+    contact_type_access: ctAccess ? ctAccess.contact_types : null,
+  };
 }
 
 async function createRole({ brand, user, request_id, input }) {
@@ -198,6 +206,73 @@ async function setRolePermissions({
       request_id,
     });
     events.emit("permissions_changed", { brand, role_id });
+    return { data: after };
+  });
+}
+
+// ── contact-type visibility (contacts §6.12) ───────────────
+
+/** A role's contact-type allow-list, or null when the role is unrestricted. */
+async function getRoleContactTypes({ role_id }) {
+  const role = await rolesRepo.findRole({ role_id });
+  if (!role) throw new NotFoundError("Role");
+  const row = await rolesRepo.getContactTypeAccess({ role_id });
+  return { data: row ? row.contact_types : null };
+}
+
+/**
+ * Set (or clear) which contact types a role may see.
+ *   contact_types = null  → clear the restriction (role sees every type again)
+ *   contact_types = [...]  → restrict to that set (empty array = sees none)
+ */
+async function setRoleContactTypes({
+  brand,
+  user,
+  request_id,
+  role_id,
+  contact_types,
+}) {
+  const role = await rolesRepo.findRole({ role_id });
+  if (!role) throw new NotFoundError("Role");
+  // Reuse the permission-matrix guard: editing contact visibility is the same
+  // class of change as editing the role's grants.
+  guards.assertCanEditPermissions(user, role);
+
+  if (contact_types !== null && contact_types !== undefined) {
+    if (!Array.isArray(contact_types)) {
+      throw new ValidationError("contact_types must be an array or null");
+    }
+    const bad = contact_types.filter((t) => !catalog.isValidContactType(t));
+    if (bad.length) {
+      throw new ValidationError(`Unknown contact type(s): ${bad.join(", ")}`);
+    }
+  }
+
+  return transaction(async (client) => {
+    const before = await rolesRepo.getContactTypeAccess({ client, role_id });
+    let after = null;
+    if (contact_types === null || contact_types === undefined) {
+      await rolesRepo.clearContactTypeAccess({ client, role_id });
+    } else {
+      const row = await rolesRepo.setContactTypeAccess({
+        client,
+        role_id,
+        contact_types: [...new Set(contact_types)],
+        updated_by: user.user_id,
+      });
+      after = row.contact_types;
+    }
+    await sensitiveAudit({
+      business: brand,
+      user_id: user.user_id,
+      action_key: "access.set_contact_types",
+      target_type: "role_contact_type_access",
+      target_id: role_id,
+      before: { contact_types: before ? before.contact_types : null },
+      after: { contact_types: after },
+      request_id,
+    });
+    events.emit("contact_type_access_changed", { brand, role_id });
     return { data: after };
   });
 }
@@ -376,6 +451,8 @@ module.exports = {
   getCatalog,
   getRolePermissions,
   setRolePermissions,
+  getRoleContactTypes,
+  setRoleContactTypes,
   listUserRoles,
   grantUserRole,
   revokeUserRole,

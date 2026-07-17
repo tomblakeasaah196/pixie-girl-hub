@@ -12,6 +12,9 @@ const base = (req) => ({
   brand: req.brand,
   user: req.user,
   request_id: req.request_id,
+  // Contact-type visibility (contacts §6.12); null = unrestricted. Set by the
+  // contactTypeScope middleware on the contacts router.
+  allowedTypes: req.contact_type_scope ?? null,
 });
 
 function sendCsv(res, buffer, filename) {
@@ -70,13 +73,19 @@ async function list(req, res) {
         assigned_to: req.query.assigned_to,
         contact_type: req.query.contact_type ?? req.query.type,
       },
+      allowedTypes: req.contact_type_scope ?? null,
       page,
       page_size,
     }),
   });
 }
 async function getById(req, res) {
-  res.json({ data: await service.getById({ id: req.params.id }) });
+  res.json({
+    data: await service.getById({
+      id: req.params.id,
+      allowedTypes: req.contact_type_scope ?? null,
+    }),
+  });
 }
 async function getTimeline(req, res) {
   const { page, page_size } = parsePagination(req.query);
@@ -94,12 +103,17 @@ async function getTimeline(req, res) {
       category: req.query.category,
       page,
       page_size,
+      allowedTypes: req.contact_type_scope ?? null,
     }),
   });
 }
 async function getSummary(req, res) {
   res.json({
-    data: await service.getSummary({ brand: req.brand, id: req.params.id }),
+    data: await service.getSummary({
+      brand: req.brand,
+      id: req.params.id,
+      allowedTypes: req.contact_type_scope ?? null,
+    }),
   });
 }
 async function create(req, res) {
@@ -179,16 +193,30 @@ const deleteAddress = async (req, res) => {
 };
 
 async function milestones(req, res) {
-  res.json({ data: await service.milestones({ days: req.query.days }) });
+  res.json({
+    data: await service.milestones({
+      days: req.query.days,
+      allowedTypes: req.contact_type_scope ?? null,
+    }),
+  });
 }
 
 async function stats(req, res) {
-  res.json({ data: await service.stats({ brand: req.brand }) });
+  res.json({
+    data: await service.stats({
+      brand: req.brand,
+      allowedTypes: req.contact_type_scope ?? null,
+    }),
+  });
 }
 
 async function listTags(req, res) {
   res.json({
-    data: await service.listTags({ brand: req.brand, id: req.params.id }),
+    data: await service.listTags({
+      brand: req.brand,
+      id: req.params.id,
+      allowedTypes: req.contact_type_scope ?? null,
+    }),
   });
 }
 async function addTag(req, res) {

@@ -217,3 +217,50 @@ describe("contacts.repo.softDelete", () => {
     expect(ok).toBe(false);
   });
 });
+
+// Contact-type visibility (contacts §6.12): allowedTypes bounds every read.
+describe("contacts.repo — contact-type scope", () => {
+  test("findAll adds an overlap guard when the role is restricted", async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ total: 0 }] })
+      .mockResolvedValueOnce({ rows: [] });
+    await repo.findAll({
+      filters: {},
+      allowedTypes: ["supplier"],
+      page: 1,
+      page_size: 25,
+      offset: 0,
+    });
+    expect(db.query.mock.calls[0][0]).toMatch(/contact_type && \$1::text\[\]/);
+    expect(db.query.mock.calls[0][1][0]).toEqual(["supplier"]);
+  });
+
+  test("findAll adds NO type guard when unrestricted (null)", async () => {
+    db.query
+      .mockResolvedValueOnce({ rows: [{ total: 0 }] })
+      .mockResolvedValueOnce({ rows: [] });
+    await repo.findAll({
+      filters: {},
+      allowedTypes: null,
+      page: 1,
+      page_size: 25,
+      offset: 0,
+    });
+    expect(db.query.mock.calls[0][0]).not.toContain("contact_type &&");
+  });
+
+  test("findById gates on the allowed types so an unseen contact is not found", async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
+    const out = await repo.findById({ id: "abc", allowedTypes: ["supplier"] });
+    expect(captured.text).toMatch(/contact_type && \$2::text\[\]/);
+    expect(captured.params).toEqual(["abc", ["supplier"]]);
+    expect(out).toBeNull();
+  });
+
+  test("findById is unfiltered when unrestricted", async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ contact_id: "abc" }] });
+    await repo.findById({ id: "abc" });
+    expect(captured.text).not.toContain("contact_type &&");
+    expect(captured.params).toEqual(["abc"]);
+  });
+});

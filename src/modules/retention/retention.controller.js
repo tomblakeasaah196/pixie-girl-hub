@@ -120,8 +120,14 @@ async function getReferral(req, res) {
 
 // ── Public ─────────────────────────────────────────────────
 async function validateReferralPublic(req, res) {
+  // P1-4: brand-scope the public lookup using the same host-resolved brand
+  // hint every other public endpoint uses, so sales.pixiegirl.ng only
+  // surfaces Pixie Girl codes and vice versa.
   res.json({
-    data: await service.validateReferralCode({ code: req.params.code }),
+    data: await service.validateReferralCode({
+      code: req.params.code,
+      brand: brandHint(req),
+    }),
   });
 }
 

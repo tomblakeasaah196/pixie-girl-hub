@@ -182,13 +182,23 @@ async function findReferralByContact({ client, brand, contact_id }) {
   return rows[0] || null;
 }
 
-async function findReferralByCode({ client, code }) {
+async function findReferralByCode({ client, code, brand = null }) {
+  // P1-4: when `brand` is provided the lookup is brand-scoped, so a Pixie
+  // Girl code cannot redeem on a Faitlyn order. The optional signature keeps
+  // the public /referral/:code validator working; every INTERNAL caller
+  // (sales.service, redeemReferral) now passes brand.
+  const params = [code];
+  let brandPredicate = "";
+  if (brand) {
+    params.push(brand);
+    brandPredicate = ` AND r.business = $${params.length}`;
+  }
   const { rows } = await ex(client)(
     `SELECT r.*, c.first_name AS referrer_first_name, c.display_name AS referrer_name
        FROM shared.referrals r
        JOIN shared.contacts c ON c.contact_id = r.contact_id
-      WHERE r.referral_code = $1 AND r.is_active = true`,
-    [code],
+      WHERE r.referral_code = $1 AND r.is_active = true${brandPredicate}`,
+    params,
   );
   return rows[0] || null;
 }

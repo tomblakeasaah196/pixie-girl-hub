@@ -19,6 +19,7 @@ const discount = require("../sales_campaigns/campaigns.discount.service");
 const couponService = require("../retention/coupon.service");
 const couponRepo = require("../retention/coupon.repo");
 const retentionRepo = require("../retention/retention.repo");
+const referralConfigRepo = require("../retention/referral-config.repo");
 const bundleRepo = require("../retention/bundle.repo");
 const bundleService = require("../retention/bundle.service");
 const campaignsRepo = require("../sales_campaigns/campaigns.repo");
@@ -400,6 +401,60 @@ async function createOrderTx({ brand, user, request_id, input }) {
     // against each line's full remaining value, down to ₦0 (never negative), so
     // a campaign may sell below the variant min_price. Runs last; nothing after
     // it consumes line headroom.
+    // 3.9 Customer referral (P0-3): a friend's order gets the discount
+    // configured in referral_program_settings (percentage or fixed). Floor-
+    // respecting — same allocator as coupons/points/bundles — so we never
+    // sell below the variant min_price. Runs before the campaign_deal step
+    // (floor-free) so the referral saving is bounded by real margin.
+    //
+    // Guarding: only apply when the code resolves in THIS brand, the
+    // programme is active, the buyer isn't self-referring, and the config
+    // has a non-zero discount. The redemption ledger + counter bumps still
+    // happen in retention.subscribers on order.paid (see redeemReferral) —
+    // this stage only applies the discount and stamps referral_code_used.
+    let referralMeta = null;
+    let referralLineTotal = money(0);
+    if (input.customer_referral_code && input.contact_id) {
+      const codeNorm = String(input.customer_referral_code).trim();
+      if (codeNorm) {
+        const ref = await retentionRepo.findReferralByCode({
+          client,
+          code: codeNorm,
+          brand,
+        });
+        const settings = await referralConfigRepo
+          .getSettings({ client, brand })
+          .catch(() => null);
+        const programmeOn = !settings || settings.is_active !== false;
+        const notSelf = ref && ref.contact_id !== input.contact_id;
+        const hasDiscount =
+          settings &&
+          settings.friend_discount_type &&
+          settings.friend_discount_value != null &&
+          Number(settings.friend_discount_value) > 0;
+        if (ref && programmeOn && notSelf && hasDiscount) {
+          const preTotalNow = preNet.reduce(
+            (s, n) => s.plus(n),
+            money(0),
+          );
+          const raw =
+            settings.friend_discount_type === "percentage"
+              ? preTotalNow.times(money(settings.friend_discount_value))
+              : money(settings.friend_discount_value);
+          if (raw.gt(money(0))) {
+            referralLineTotal = applyOrderDiscount(raw);
+            if (referralLineTotal.gt(money(0))) {
+              referralMeta = {
+                code: codeNorm,
+                referrer_contact_id: ref.contact_id,
+                discount_ngn: toCurrencyString(referralLineTotal),
+              };
+            }
+          }
+        }
+      }
+    }
+
     let dealLineTotal = money(0);
     if (input.campaign_deal_discount_ngn) {
       const want = money(input.campaign_deal_discount_ngn);
@@ -498,6 +553,11 @@ async function createOrderTx({ brand, user, request_id, input }) {
         coupon_code: input.coupon_code || null,
         client_idempotency_key: input.client_idempotency_key || null,
         stylist_referral_code: input.stylist_referral_code || null,
+        // P0-3: stamp the CUSTOMER referral code that actually applied so
+        // the order.paid outbox handler can credit the referrer's points
+        // and post the store-credit reward (see retention.subscribers).
+        // Distinct from stylist_referral_code (§6.26 stylist rail).
+        referral_code_used: referralMeta ? referralMeta.code : null,
         payment_plan: paymentPlan,
         payment_model: paymentModel,
         required_deposit_pct:
@@ -658,6 +718,31 @@ async function createOrderTx({ brand, user, request_id, input }) {
         client,
         brand,
         bundle_id: bundleMeta.bundle_id,
+      });
+    }
+
+    // 5a-iii-b. Record the customer referral (friend) discount IN Sales
+    // (P0-3). This is the discount that just applied above — the redemption
+    // ledger row + referrer counter bump land later on order.paid via
+    // retention.subscribers.redeemReferral (already stamped as
+    // referral_code_used on the order row above).
+    if (referralMeta && referralLineTotal.gt(money(0))) {
+      const settings = await referralConfigRepo
+        .getSettings({ client, brand })
+        .catch(() => null);
+      await repo.insertDiscount({
+        client,
+        brand,
+        disc: {
+          order_id: order.order_id,
+          source: "referral",
+          source_reference: referralMeta.code,
+          amount_ngn: toCurrencyString(referralLineTotal),
+          discount_type:
+            settings && settings.friend_discount_type === "percentage"
+              ? "percentage"
+              : "fixed",
+        },
       });
     }
 

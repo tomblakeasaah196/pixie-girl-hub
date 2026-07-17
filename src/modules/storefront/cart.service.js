@@ -336,24 +336,45 @@ async function mergeGuestCart({ business, guest_cart_id, contact_id }) {
   });
 }
 
-async function applyCoupon({ business, cart_id, coupon_code }) {
+async function applyCoupon({ business, cart_id, coupon_code, contact_id }) {
   assertBrand(business);
   const cart = await repo.findCartById({ id: cart_id });
   if (!cart || cart.business !== business || cart.status !== "active")
     throw new NotFoundError("Cart");
 
-  // Validate via the retention coupons service (read-only validation, no redemption yet).
-  const couponsService = require("../retention/retention.service");
-  const coupon = await couponsService.validateCoupon({
+  // Read-only validation (redemption happens at checkout via createOrder).
+  // P0-4: this used to require validateCoupon from retention.service, which
+  // never exported it — every attach threw a 500. Coupon validation lives
+  // in coupon.service; validateCoupon returns { valid, reason?, coupon? }
+  // and NEVER throws for a bad code, so we surface the reason cleanly.
+  const couponService = require("../retention/coupon.service");
+  const result = await couponService.validateCoupon({
     brand: business,
     code: coupon_code,
+    contact_id: contact_id || null,
   });
+  if (!result.valid) {
+    throw new AppError(
+      "COUPON_INVALID",
+      `Coupon not applicable: ${result.reason || "unknown"}`,
+      409,
+      {
+        user_message:
+          "That code isn't valid on this cart. Please double-check it and try again.",
+      },
+    );
+  }
   await repo.updateCart({
     cart_id,
-    patch: { applied_coupon_id: coupon.coupon_id },
+    patch: { applied_coupon_id: result.coupon.coupon_id },
   });
   const items = await repo.listCartItems({ cart_id });
-  return { ...cart, applied_coupon_id: coupon.coupon_id, items };
+  return {
+    ...cart,
+    applied_coupon_id: result.coupon.coupon_id,
+    applied_coupon_code: result.coupon.coupon_code,
+    items,
+  };
 }
 
 // ── Wishlist ───────────────────────────────────────────────

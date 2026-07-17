@@ -110,6 +110,8 @@ export interface CartItem {
 export interface Cart {
   cart_id?: string;
   items: CartItem[];
+  applied_coupon_id?: string | null;
+  applied_coupon_code?: string | null;
 }
 
 export interface Quote {
@@ -131,6 +133,7 @@ export interface Quote {
   delivery_display?: string | null;
   total_display?: string | null;
   fx_rate_used?: number | null;
+  applied_coupon_code?: string | null;
 }
 
 const SF = "/api/public/storefront";
@@ -364,6 +367,7 @@ export interface CheckoutInput {
   display_currency?: Currency;
   payment_gateway?: string;
   coupon_code?: string;
+  customer_referral_code?: string;
   redeem_points?: number;
   client_idempotency_key: string;
 }

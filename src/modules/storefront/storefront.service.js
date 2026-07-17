@@ -1131,6 +1131,12 @@ async function checkout({ brand, cart_id, sessionCustomerId = null, input = {} }
       payment_plan: input.payment_plan === "instalment" ? "instalment" : "full",
       coupon_code: input.coupon_code || null,
       stylist_referral_code: stylistReferralCode,
+      // P0-3 customer referral rail: forwarded verbatim; createOrder resolves
+      // the code against shared.referrals (brand-scoped), applies the friend
+      // discount via the floor-respecting allocator, and stamps
+      // referral_code_used on the order so retention.subscribers can credit
+      // the referrer on order.paid.
+      customer_referral_code: input.customer_referral_code || null,
       // Loyalty points redemption (optional) — createOrder validates + caps it.
       redeem_points: input.redeem_points || undefined,
       // Bundle savings folded into the order-level deal discount (floor-respecting
@@ -1392,26 +1398,27 @@ async function quoteCart({
       deliveryNgn = Number(dq.fee_ngn) || 0;
   }
 
-  // Coupon preview (best-effort): the authoritative discount is applied at
-  // checkout by createOrder. Here we just show the buyer an estimate.
+  // Coupon preview: the authoritative discount is applied at checkout by
+  // createOrder. This is display-only, but the P0-4 audit found the query
+  // selected the wrong column (`code` vs the real `coupon_code`), so every
+  // discount silently rendered ₦0.00 in the cart quote. The swallow-all
+  // try/catch also hid the column drift; drop it so schema drift fails
+  // loud in dev instead of degrading silently in prod.
   let discountNgn = money(0);
+  let appliedCode = null;
   if (cart.applied_coupon_id) {
-    try {
-      const { rows } = await query(
-        `SELECT code FROM shared.coupons WHERE coupon_id = $1`,
-        [cart.applied_coupon_id],
-      );
-      const code = rows[0] && rows[0].code;
-      if (code) {
-        const res = await couponService.validateCoupon({
-          brand,
-          code,
-          order_subtotal_ngn: Number(toCurrencyString(subtotal)),
-        });
-        if (res && res.valid) discountNgn = money(res.discount_ngn || 0);
-      }
-    } catch {
-      /* preview only — ignore coupon errors here */
+    const { rows } = await query(
+      `SELECT coupon_code FROM shared.coupons WHERE coupon_id = $1`,
+      [cart.applied_coupon_id],
+    );
+    appliedCode = rows[0] ? rows[0].coupon_code : null;
+    if (appliedCode) {
+      const res = await couponService.validateCoupon({
+        brand,
+        code: appliedCode,
+        order_subtotal_ngn: Number(toCurrencyString(subtotal)),
+      });
+      if (res && res.valid) discountNgn = money(res.discount_ngn || 0);
     }
   }
 
@@ -1441,6 +1448,9 @@ async function quoteCart({
     delivery_display: toDisplay(money(deliveryNgn)),
     total_display: toDisplay(totalNgn),
     fx_rate_used: cur === "USD" ? fxRate : null,
+    // Applied coupon (if any) so the checkout page can pre-fill the promo
+    // field and forward the code on submit.
+    applied_coupon_code: appliedCode,
   };
 }
 

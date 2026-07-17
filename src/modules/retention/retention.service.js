@@ -443,8 +443,11 @@ async function getOrCreateReferral({ brand, contact_id, contact }) {
   });
 }
 
-async function validateReferralCode({ code }) {
-  const ref = await repo.findReferralByCode({ code });
+async function validateReferralCode({ code, brand = null }) {
+  // P1-4: when a brand is provided (public /referral/:code resolved via the
+  // host-brand-resolver), the lookup is brand-scoped so a Pixie Girl code
+  // never surfaces as valid on a Faitlyn host and vice versa.
+  const ref = await repo.findReferralByCode({ code, brand });
   if (!ref) return { valid: false };
   return {
     valid: true,
@@ -466,7 +469,10 @@ async function redeemReferral({
   order_value,
 }) {
   return transaction(async (client) => {
-    const ref = await repo.findReferralByCode({ client, code });
+    // P1-4: brand-scoped lookup so a code minted on brand A cannot pay out
+    // a reward against brand B's economy (loyalty ledger + credit + analytics
+    // all live per-brand). Falls back to "code not found" cleanly.
+    const ref = await repo.findReferralByCode({ client, code, brand });
     if (!ref) throw new NotFoundError("Referral code");
 
     const settings = await referralConfig.getSettings({ client, brand });

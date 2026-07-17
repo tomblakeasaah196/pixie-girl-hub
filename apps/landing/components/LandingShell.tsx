@@ -53,10 +53,23 @@ export function LandingShell({
     [payload],
   );
   const init = useCart((s) => s.init);
+  const setReferralCode = useCart((s) => s.setReferralCode);
   const [tick, setTick] = useState(0);
   useEffect(() => {
     init(payload.slug);
   }, [init, payload.slug]);
+  // P0-3: capture ?ref=<code> off the landing URL into the persisted cart so
+  // the checkout can forward it as customer_referral_code. Idempotent — a
+  // page without the param leaves any earlier capture intact.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = new URLSearchParams(window.location.search).get("ref");
+      if (raw && raw.trim()) setReferralCode(raw);
+    } catch {
+      /* ignore */
+    }
+  }, [setReferralCode]);
   // Re-derive the state every second so countdown transitions are smooth
   // (Before → Live → Last Call → Ended).
   useEffect(() => {

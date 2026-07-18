@@ -63,6 +63,13 @@ const config: Config = {
           "0%": { backgroundPosition: "100% 0" },
           "100%": { backgroundPosition: "-100% 0" },
         },
+        // iOS-style "edit mode" wobble for app tiles. Applied to an inner
+        // layer so it never fights the dnd-kit translate on the outer node;
+        // per-tile negative animation-delay keeps the grid out of phase.
+        jiggle: {
+          "0%, 100%": { transform: "rotate(-0.9deg)" },
+          "50%": { transform: "rotate(1.1deg)" },
+        },
         // First-load "I can be dragged" hint for the floating launcher — a
         // playful bounce-and-tilt that draws the eye without being disruptive.
         "fab-dance": {
@@ -77,6 +84,7 @@ const config: Config = {
       },
       animation: {
         "tile-in": "tile-in .5s cubic-bezier(.16,1,.3,1) backwards",
+        jiggle: "jiggle .33s ease-in-out infinite",
         "fade-in": "fade-in .3s ease-out",
         shimmer: "shimmer 1.4s infinite",
         "sheet-slide-up": "sheet-slide-up .3s cubic-bezier(.16,1,.3,1)",

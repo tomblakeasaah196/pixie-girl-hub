@@ -172,7 +172,7 @@ function Popover({
     <div
       ref={ref}
       className={cn(
-        "absolute top-full mt-1.5 z-30 dropglass rounded-xl border border-line shadow-xl p-2 min-w-[210px]",
+        "absolute top-full mt-1.5 z-30 dropglass rounded-xl border border-line shadow-xl p-2 min-w-[210px] max-w-[calc(100vw-2rem)]",
         align === "right" ? "right-0" : "left-0",
       )}
     >
@@ -585,11 +585,9 @@ export function RichMailEditor({
           )}
         </div>
 
-        <div className="flex-1" />
-
         {/* Personalise */}
         {personalise && (
-        <div className="relative">
+        <div className="relative ml-auto">
           <button
             type="button"
             onMouseDown={(e) => e.preventDefault()}

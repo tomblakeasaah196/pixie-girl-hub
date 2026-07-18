@@ -92,6 +92,25 @@ export function useQuickReplies() {
 }
 
 /**
+ * Unfurl a URL shared in a thread into an OG/Twitter preview card. The result
+ * is cached server-side (Redis) and here (long staleTime, no refetch) since a
+ * link's metadata is effectively static — a thread of many bubbles must never
+ * turn into a storm of refetches. Returns `{ ok:false }` for a link that has
+ * no preview, which the card renders as nothing.
+ */
+export function useLinkPreview(url: string | null | undefined) {
+  return useQuery({
+    queryKey: ["smartcomm", "link-preview", url],
+    queryFn: () => smartcommApi.getLinkPreview(url!),
+    enabled: !!url,
+    staleTime: 60 * 60_000, // 1h
+    gcTime: 24 * 60 * 60_000, // 24h
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+}
+
+/**
  * Subscribe to a single channel's realtime stream. Joins the channel
  * room + the typing room, invalidates queries on relevant events, and
  * cleans up on unmount.

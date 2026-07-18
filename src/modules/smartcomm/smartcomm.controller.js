@@ -8,6 +8,7 @@
 const service = require("./smartcomm.service");
 const praxisDraft = require("./smartcomm.praxis-draft");
 const orderLinks = require("./smartcomm.order-links.service");
+const linkPreview = require("../../services/link-preview.service");
 
 const ctx = (req) => ({
   user: req.user,
@@ -418,6 +419,14 @@ async function getComposerSettings(req, res) {
   res.json({ data });
 }
 
+// Unfurl a link shared in a thread into an OG/Twitter preview card. The
+// service is SSRF-guarded and always resolves (a failed unfurl comes back as
+// { ok:false } so the UI just keeps the plain clickable link).
+async function getLinkPreview(req, res) {
+  const data = await linkPreview.getLinkPreview(req.query.url);
+  res.json({ data });
+}
+
 async function updateComposerSettings(req, res) {
   const data = await service.updateComposerSettings({
     ...ctx(req),
@@ -430,6 +439,7 @@ module.exports = {
   startDirect,
   getComposerSettings,
   updateComposerSettings,
+  getLinkPreview,
   listChannels,
   getChannel,
   createChannel,

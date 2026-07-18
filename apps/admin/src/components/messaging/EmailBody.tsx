@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
+import { extractUrls, linkify } from "@/lib/linkify";
+import { LinkPreviews } from "./LinkPreview";
 
 /**
  * Renders an email message body, collapsing the quoted history (the
@@ -28,7 +30,8 @@ export function EmailBody({ content }: { content: string }) {
 
   return (
     <div>
-      {main && <p className="whitespace-pre-wrap">{main}</p>}
+      {main && <LinkPreviews urls={extractUrls(main)} />}
+      {main && <p className="whitespace-pre-wrap">{linkify(main)}</p>}
       {quoted && (
         <div className="mt-1">
           <button
@@ -45,7 +48,7 @@ export function EmailBody({ content }: { content: string }) {
           </button>
           {showQuoted && (
             <pre className="mt-1 whitespace-pre-wrap border-l-2 border-current/20 pl-2 text-[12px] opacity-70 font-sans">
-              {quoted}
+              {linkify(quoted)}
             </pre>
           )}
         </div>

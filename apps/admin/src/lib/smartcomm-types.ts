@@ -302,6 +302,22 @@ export interface ComposerSettingsInput {
   whatsapp_share_number: string;
 }
 
+/** OG/Twitter/bare-HTML metadata for a link shared in a thread — powers the
+ *  WhatsApp-style preview card. A failed unfurl comes back as `{ ok:false }`,
+ *  so the card renders nothing and the plain clickable link stays. */
+export interface LinkPreviewResult {
+  ok: boolean;
+  preview?: {
+    url: string;
+    title: string | null;
+    description: string | null;
+    image: string | null;
+    site_name: string | null;
+    favicon: string | null;
+    type: string | null;
+  };
+}
+
 export interface MessageDraft {
   channel_id: string;
   user_id: string;

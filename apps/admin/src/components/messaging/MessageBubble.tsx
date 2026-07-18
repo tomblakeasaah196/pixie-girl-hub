@@ -19,12 +19,14 @@ import {
   getInitials,
 } from "@/lib/messaging-utils";
 import { cn } from "@/lib/cn";
+import { extractUrls, linkify } from "@/lib/linkify";
 import type { Message } from "@/lib/smartcomm-types";
 import { MessageAttachments } from "./MessageAttachments";
 import { ProductCarousel } from "./ProductCarousel";
 import { InvoiceCard } from "./InvoiceCard";
 import { CallCard } from "./CallCard";
 import { EmailBody } from "./EmailBody";
+import { LinkPreviews } from "./LinkPreview";
 
 interface Actions {
   onReply: (m: Message) => void;
@@ -235,7 +237,14 @@ export function MessageBubble({
               (isEmail ? (
                 <EmailBody content={message.content} />
               ) : (
-                <p className="whitespace-pre-wrap">{message.content}</p>
+                <>
+                  {/* Any link shared in a thread unfurls into a WhatsApp-style
+                      preview card above the text; all URLs stay clickable. */}
+                  <LinkPreviews urls={extractUrls(message.content)} />
+                  <p className="whitespace-pre-wrap">
+                    {linkify(message.content)}
+                  </p>
+                </>
               ))}
             <div className="mt-1 flex items-center gap-1 justify-end text-[10px] opacity-70">
               {viaInstagramApp && (

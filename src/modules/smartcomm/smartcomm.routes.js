@@ -39,6 +39,10 @@ const imageUpload = multer({
 router.get("/unread-count", can("view"), c.getUnreadCount);
 router.get("/starred", can("view"), c.listStarred);
 router.get("/search", can("view"), c.searchMessages);
+// Link preview (unfurl): fetch OG/Twitter metadata for a URL shared in a
+// thread so the chat can render a WhatsApp-style preview card. Read-gated —
+// any messaging user can preview a link they can already see.
+router.get("/link-preview", can("view"), c.getLinkPreview);
 router.post("/send", can("edit"), v.validateSendToCustomer, c.sendToCustomer);
 // Rich email composer: inline image upload (drag/drop or pick → public URL).
 // Same gate as sending — any rep who can reply can embed an image.

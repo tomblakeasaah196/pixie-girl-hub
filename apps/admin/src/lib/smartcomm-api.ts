@@ -17,6 +17,7 @@ import type {
   MessageType,
   ComposerSettings,
   ComposerSettingsInput,
+  LinkPreviewResult,
 } from "@/lib/smartcomm-types";
 
 // ── Channels ─────────────────────────────────────────────
@@ -206,6 +207,11 @@ export const smartcommApi = {
       "/smartcomm/send",
       input,
     ),
+
+  // Link preview (unfurl) — OG/Twitter metadata for a URL shared in a thread,
+  // for the WhatsApp-style preview card. SSRF-guarded + cached server-side.
+  getLinkPreview: (url: string) =>
+    api.get<LinkPreviewResult>(`/smartcomm/link-preview${qs({ url })}`),
 
   // Quick replies
   listQuickReplies: () => api.get<QuickReply[]>("/smartcomm/quick-replies"),

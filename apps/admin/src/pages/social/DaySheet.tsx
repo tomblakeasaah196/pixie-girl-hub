@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Loader2,
   Link2,
@@ -11,6 +11,7 @@ import {
   Play,
   Moon,
   AlertTriangle,
+  AtSign,
   Check,
 } from "lucide-react";
 import { createPortal } from "react-dom";
@@ -27,9 +28,12 @@ import {
   useRefreshReactions,
   usePost,
   detectPlatformFromUrl,
+  accountForUrl,
+  buildPlatformLooks,
+  registeredPlatforms,
+  lookFor,
   isSunday,
-  PLATFORM_UI,
-  PLATFORM_ORDER,
+  type PlatformLook,
   type SocialPost,
   type SocialAccount,
 } from "@/lib/social-api";
@@ -96,11 +100,23 @@ function DayBody({
   const { can } = useAuthStore();
   const canLog = can("social", "create");
   const accountsQ = useSocialAccounts();
-  const accounts = accountsQ.data ?? [];
+  const accounts = useMemo(
+    () => (accountsQ.data ?? []).filter((a) => a.is_active !== false),
+    [accountsQ.data],
+  );
+  const looks = useMemo(() => buildPlatformLooks(accounts), [accounts]);
+  // The registered handles ARE the chip row — plus any platform that already
+  // has a post this day even if its handle was since removed.
+  const platforms = useMemo(() => {
+    const regs = registeredPlatforms(accounts);
+    const extra = [...new Set(posts.map((p) => p.platform))].filter(
+      (p) => !regs.includes(p),
+    );
+    return [...regs, ...extra];
+  }, [accounts, posts]);
+
   const sunday = isSunday(date);
   const isFuture = startOfDay(date).getTime() > startOfDay(new Date()).getTime();
-
-  // Distinct platforms with a post this day (for the coverage summary).
   const covered = new Set(posts.map((p) => p.platform));
 
   return (
@@ -125,32 +141,52 @@ function DayBody({
         </div>
       )}
 
-      {/* Coverage dots */}
-      {!isFuture && (
+      {/* Coverage chips — one per registered handle's platform */}
+      {!isFuture && platforms.length > 0 && (
         <div className="flex flex-wrap items-center gap-2">
-          {PLATFORM_ORDER.map((p) => {
+          {platforms.map((p) => {
             const on = covered.has(p);
+            const look = lookFor(looks, p);
             return (
               <span
                 key={p}
                 className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
                   on ? "border-transparent text-white" : "border-line text-text-faint"
                 }`}
-                style={on ? { background: PLATFORM_UI[p].color } : undefined}
+                style={on ? { background: look.color } : undefined}
               >
                 {on && <Check className="h-3 w-3" />}
-                {PLATFORM_UI[p].label}
+                {look.label}
               </span>
             );
           })}
         </div>
       )}
 
+      {/* No handles registered yet — point at the Account tab (canon: empty
+          state with CTA, not a dead surface). */}
+      {!accountsQ.isLoading && accounts.length === 0 && posts.length === 0 && (
+        <div className="flex items-center gap-2.5 rounded-[12px] border border-dashed border-line px-3 py-4">
+          <AtSign className="h-4 w-4 flex-none text-text-faint" />
+          <span className="text-[12.5px] text-text-muted">
+            No handles registered yet — add your accounts in the{" "}
+            <span className="font-semibold text-text-primary">Account</span> tab
+            and they&rsquo;ll appear here.
+          </span>
+        </div>
+      )}
+
       {/* Logged posts */}
       {posts.length > 0 && (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {posts.map((p) => (
-            <LoggedPost key={p.post_id} post={p} canDelete={can("social", "delete")} canEdit={can("social", "edit")} />
+            <LoggedPost
+              key={p.post_id}
+              post={p}
+              look={lookFor(looks, p.platform)}
+              canDelete={can("social", "delete")}
+              canEdit={can("social", "edit")}
+            />
           ))}
         </div>
       )}
@@ -160,25 +196,34 @@ function DayBody({
         <p className="rounded-[12px] border border-dashed border-line px-3 py-6 text-center text-[12.5px] text-text-faint">
           This day hasn&rsquo;t come yet — paste a link once it&rsquo;s posted.
         </p>
-      ) : canLog ? (
-        <LinkComposer date={date} accounts={accounts} />
+      ) : canLog && accounts.length > 0 ? (
+        <LinkComposer date={date} accounts={accounts} looks={looks} />
       ) : null}
     </div>
   );
 }
 
-/** Paste a single link → auto-detect platform → log it to this day. */
-function LinkComposer({ date, accounts }: { date: Date; accounts: SocialAccount[] }) {
+/** Paste a single link → resolve it to a registered handle → log it. */
+function LinkComposer({
+  date,
+  accounts,
+  looks,
+}: {
+  date: Date;
+  accounts: SocialAccount[];
+  looks: Map<string, PlatformLook>;
+}) {
   const quickLog = useQuickLog();
   const [url, setUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const trimmed = url.trim();
-  const platform = trimmed ? detectPlatformFromUrl(trimmed) : null;
-  const account = platform
-    ? accounts.find((a) => a.platform === platform && a.is_active !== false)
-    : undefined;
-  const noAccount = Boolean(platform) && !account;
+  const account = trimmed ? accountForUrl(trimmed, accounts) : null;
+  // Canonical detection still names the platform when there's no handle for
+  // it, so the error can say WHICH handle to add.
+  const detected = account?.platform ?? (trimmed ? detectPlatformFromUrl(trimmed) : null);
+  const look = detected ? lookFor(looks, detected) : null;
+  const noAccount = Boolean(detected) && !account;
 
   const publishedAt = (() => {
     const w = new Date(date);
@@ -186,22 +231,22 @@ function LinkComposer({ date, accounts }: { date: Date; accounts: SocialAccount[
     return w.toISOString();
   })();
 
-  const canSubmit = Boolean(platform) && Boolean(account) && !quickLog.isPending;
+  const canSubmit = Boolean(account) && !quickLog.isPending;
 
   const submit = () => {
     setError(null);
-    if (!platform) {
-      setError("That link isn't Instagram, Facebook, TikTok or YouTube.");
-      return;
-    }
     if (!account) {
-      setError(`Add a ${PLATFORM_UI[platform].label} handle in the Account tab first.`);
+      setError(
+        detected && look
+          ? `Add a ${look.label} handle in the Account tab first.`
+          : "That link doesn't match any of your registered platforms.",
+      );
       return;
     }
     quickLog.mutate(
       {
         external_url: trimmed,
-        platform,
+        platform: account.platform,
         account_id: account.account_id,
         published_at: publishedAt,
       },
@@ -232,26 +277,26 @@ function LinkComposer({ date, accounts }: { date: Date; accounts: SocialAccount[
           inputMode="url"
           data-1p-ignore=""
         />
-        {platform && (
+        {look && (
           <span
             className="mr-1.5 grid h-7 w-7 flex-none place-items-center rounded-lg font-display text-[11px] font-semibold text-white"
-            style={{ background: PLATFORM_UI[platform].color }}
-            title={PLATFORM_UI[platform].label}
+            style={{ background: look.color }}
+            title={look.label}
           >
-            {PLATFORM_UI[platform].glyph}
+            {look.glyph}
           </span>
         )}
       </div>
 
-      {platform && account && (
+      {account && look && (
         <p className="text-[11.5px] text-text-faint">
-          Logs to <span className="text-text-muted">@{account.handle}</span> on {PLATFORM_UI[platform].label}.
+          Logs to <span className="text-text-muted">@{account.handle}</span> on {look.label}.
         </p>
       )}
-      {noAccount && platform && (
+      {noAccount && look && (
         <p className="flex items-center gap-1.5 text-[11.5px] text-warn">
           <AlertTriangle className="h-3.5 w-3.5" />
-          No {PLATFORM_UI[platform].label} handle yet — add one in the Account tab.
+          No {look.label} handle yet — add one in the Account tab.
         </p>
       )}
       {error && <p className="text-[11.5px] text-danger">{error}</p>}
@@ -269,13 +314,15 @@ function LinkComposer({ date, accounts }: { date: Date; accounts: SocialAccount[
   );
 }
 
-/** One logged link: its embed + reactions + refresh/delete/open actions. */
+/** One logged link: its live embed + reactions + refresh/delete actions. */
 function LoggedPost({
   post,
+  look,
   canDelete,
   canEdit,
 }: {
   post: SocialPost;
+  look: PlatformLook;
   canDelete: boolean;
   canEdit: boolean;
 }) {
@@ -304,6 +351,7 @@ function LoggedPost({
         url={detail.external_url ?? post.external_url ?? ""}
         thumbnailUrl={detail.oembed_thumbnail_url}
         authorHandle={detail.oembed_author_handle}
+        look={look}
       />
 
       {detail.handle_mismatch && (

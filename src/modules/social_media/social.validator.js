@@ -105,10 +105,16 @@ const proofSubmit = z
 // Quick-log (simplified Social Studio): paste a link for a day + platform and
 // it lands as a proven "posted" row, oEmbed enriched, no content/screenshot.
 // platform is optional — the service infers it from the URL host when omitted.
+// Like accountConnect above, platform is any key from the (admin-extensible)
+// shared.social_platforms registry, not just the original four — the service
+// requires it to resolve to a registered account either way.
 const quickLog = z
   .object({
     external_url: z.string().url().max(500),
-    platform: z.enum(PLATFORM).optional(),
+    platform: z
+      .string()
+      .regex(/^[a-z][a-z0-9_]{0,40}$/, "Unknown platform")
+      .optional(),
     account_id: z.string().uuid().optional(),
     // The calendar day the post belongs to (ISO). Absent -> now.
     published_at: z.string().datetime().optional(),

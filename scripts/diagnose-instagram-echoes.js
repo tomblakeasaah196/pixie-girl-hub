@@ -5,9 +5,11 @@
  * "A staffer replies from the Instagram app and the reply never appears
  * in the Hub" has exactly one healthy path:
  *
- *   Meta delivers a message_echoes webhook  →  shared.webhook_log row
- *   →  outbox → smartcomm ingest            →  shared.messages row
- *      (metadata.via = 'instagram_app')     →  visible in the thread
+ *   Meta delivers the echo as a `messages` webhook (is_echo: true —
+ *   Instagram has NO separate message_echoes field; that's Messenger-
+ *   only)  →  shared.webhook_log row  →  outbox → smartcomm ingest
+ *   →  shared.messages row (metadata.via = 'instagram_app')
+ *   →  visible in the thread
  *
  * This script checks every hop against the live DB + Meta Graph API and
  * prints a single VERDICT naming the broken hop:
@@ -132,10 +134,15 @@ async function checkAccounts() {
         (f) => !sub.fields.has(f),
       );
       line(`    Subscribed webhook fields: ${acc.fields.length ? acc.fields.join(", ") : "(none!)"}`);
-      if (acc.missing.length) {
-        line(`    ✗ MISSING: ${acc.missing.join(", ")}  ← app-sent replies CANNOT sync without message_echoes`);
-      } else {
-        line("    ✓ All required fields subscribed (messages, message_echoes, message_reactions, messaging_seen)");
+      if (acc.missing.includes("messages")) {
+        line("    ✗ MISSING: messages  ← the ENTIRE inbox hangs on this field (customer DMs AND app-reply echoes — is_echo rides it)");
+      }
+      const minor = acc.missing.filter((f) => f !== "messages");
+      if (minor.length) {
+        line(`    ⚠ MISSING: ${minor.join(", ")}  ← read ticks / ❤️ reaction badges won't update (echoes are NOT affected — they ride 'messages')`);
+      }
+      if (!acc.missing.length) {
+        line("    ✓ All required fields subscribed (messages, message_reactions, messaging_seen)");
       }
     } catch (err) {
       acc.error = `subscribed_apps read failed: ${metaMsg(err)}`;
@@ -228,20 +235,30 @@ async function checkIngestHealth() {
 
 function verdict({ meta, evidence, ingest }) {
   h("VERDICT");
-  const missingAccounts = meta.accounts.filter(
-    (a) => a.missing && a.missing.length,
+  // Only a missing `messages` field can stop echoes — they ride it
+  // (is_echo). Missing reactions/seen degrades ticks + badges, never sync.
+  const missingCritical = meta.accounts.filter(
+    (a) => a.missing && a.missing.includes("messages"),
+  );
+  const missingMinor = meta.accounts.filter(
+    (a) => a.missing && a.missing.length && !a.missing.includes("messages"),
   );
   const brokenAccounts = meta.accounts.filter((a) => a.error);
-  if (missingAccounts.length) {
-    for (const a of missingAccounts) {
-      line(`  ► META SIDE (config, fixable now): ${a.business} is not subscribed to [${a.missing.join(", ")}].`);
+  if (missingCritical.length) {
+    for (const a of missingCritical) {
+      line(`  ► META SIDE (config, fixable now): ${a.business} is not subscribed to 'messages' —`);
+      line("    NOTHING syncs for this account (customer DMs or app-reply echoes). Fix it with:");
     }
-    line("");
-    line("    This is exactly why app-sent replies don't appear. Fix it with:");
     line("      npm run diag:instagram-echoes -- --fix");
-    line("    …or wait for the hourly ig-echo-watchdog, which now re-subscribes automatically.");
-    line("    Then reply to any customer from the Instagram app and watch it appear in the Hub.");
+    line("    …or wait for the hourly ig-echo-watchdog, which re-subscribes automatically.");
     return 1;
+  }
+  if (missingMinor.length) {
+    for (const a of missingMinor) {
+      line(`  ⚠ Note: ${a.business} is missing [${a.missing.join(", ")}] — read ticks/reaction badges are off.`);
+    }
+    line("    That does NOT block echoes (they ride 'messages'). --fix or the hourly watchdog restores them.");
+    line("");
   }
   if (brokenAccounts.length) {
     line("  ► BLOCKED: fix the account errors in section 1 first (token/decrypt), then re-run.");
@@ -266,7 +283,8 @@ function verdict({ meta, evidence, ingest }) {
   line("    Prove it live: reply to any customer from the Instagram app NOW, wait 60s, re-run this.");
   line("    If still nothing lands in shared.webhook_log, our server was never called — check in the");
   line("    Meta App Dashboard (developers.facebook.com → your app):");
-  line("      • Webhooks → Instagram: 'message_echoes' must be subscribed for the APP too");
+  line("      • Webhooks → Instagram: 'messages' must be subscribed for the APP (echoes ride it —");
+  line("        Instagram has no separate message_echoes field; that one is Messenger-only)");
   line("      • the app must be LIVE (not Development mode)");
   line("      • instagram_business_manage_messages permission granted (Advanced Access)");
   line("    None of that is fixable from our code — it's Meta configuration.");

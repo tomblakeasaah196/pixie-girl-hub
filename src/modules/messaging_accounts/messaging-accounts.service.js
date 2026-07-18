@@ -369,8 +369,8 @@ async function testAccount({ id }) {
           );
         }
         // Surface — and repair — the webhook-field subscription right in
-        // the Test result: "app replies not syncing" (message_echoes
-        // dropped) becomes visible here instead of silently broken.
+        // the Test result: a dropped messages/reactions/seen subscription
+        // becomes visible here instead of silently broken.
         let echo_sync = null;
         try {
           const res = await ensureEchoSubscriptionForToken({
@@ -627,27 +627,32 @@ async function refreshInstagramTokens() {
   return summary;
 }
 
-// ── Instagram webhook-field self-healing (message echoes) ──────
+// ── Instagram webhook-field self-healing ───────────────────────
 //
-// The Hub only learns about replies staff send from the Instagram APP
-// through `message_echoes` webhooks, and that subscription lives on the
-// professional account itself (POST /me/subscribed_apps) — outside our
-// database, outside our deploys. It drifts: an account reconnect, a
-// token re-issue, or any partial re-subscribe REPLACES the field list,
-// and when `message_echoes` falls off, app-side replies silently stop
-// syncing — no error anywhere, threads just look unanswered again.
+// Per Meta's Messenger-Platform webhook reference, `message_echoes` is a
+// MESSENGER-ONLY field: "For Instagram Messaging conversations, the
+// message echo notifications are included with the `messages` webhook
+// field subscription." On Instagram, an app-sent reply arrives as a
+// normal `messages` event flagged `is_echo: true` — so `messages` is the
+// one field the entire inbox (customer DMs AND app-reply echoes) hangs
+// on. Never POST `message_echoes` here: it doesn't exist on Instagram,
+// and an invalid field can make Meta reject the whole subscription
+// update (subscribed_apps REPLACES the list, so a rejected update also
+// means the valid fields you meant to add never land).
 //
-// This watchdog closes that hole for good: read the account's current
-// subscribed_fields, and when anything required is missing re-subscribe
-// with the union (never dropping fields someone added), verify, audit,
-// and tell the CEO it drifted. Runs hourly (ig-echo-watchdog), after the
-// daily token sweep, on account save, and inside the Test button.
+// The subscription lives on the professional account itself (POST
+// /me/subscribed_apps) — outside our database, outside our deploys — and
+// it drifts: an account reconnect or partial re-subscribe replaces the
+// list. This watchdog re-reads the account's subscribed_fields and, when
+// anything required is missing, re-subscribes with the union (never
+// dropping fields someone added), verifies, audits, and tells the CEO it
+// drifted. Runs hourly (ig-echo-watchdog), after the daily token sweep,
+// on account save, and inside the Test button.
 
 const REQUIRED_IG_WEBHOOK_FIELDS = Object.freeze([
-  "messages",
-  "message_echoes",
-  "message_reactions",
-  "messaging_seen",
+  "messages", // customer DMs + app-reply echoes (is_echo rides this field)
+  "message_reactions", // ❤️ badges on bubbles
+  "messaging_seen", // customer read ticks
 ]);
 
 // Meta's structured error message ("Invalid OAuth access token", …) beats
@@ -775,7 +780,7 @@ async function ensureInstagramEchoSubscriptions() {
             missing_before: res.missing_before,
             fields: res.fields,
           },
-          "instagram webhook subscription had drifted — re-subscribed (app-sent replies were NOT syncing until now)",
+          "instagram webhook subscription had drifted — re-subscribed",
         );
         await audit({
           business: row.business,
@@ -786,16 +791,26 @@ async function ensureInstagramEchoSubscriptions() {
           after: { missing_before: res.missing_before, fields: res.fields },
           request_id: null,
         });
+        // `messages` carries the whole inbox — customer DMs AND app-reply
+        // echoes (is_echo). reactions/seen only affect badges and ticks;
+        // don't tell the CEO the inbox was down when it wasn't.
+        const inboxWasDown = res.missing_before.includes("messages");
         await notifyCeoOnce({
           business: row.business,
           type: "ig_echo_sync_healed",
           priority: "high",
-          title: "Instagram app-reply sync was off — fixed automatically",
-          body:
-            `${row.business}: Meta had dropped the '${res.missing_before.join("', '")}' webhook subscription, ` +
-            "so replies sent from the Instagram app were not syncing into Messaging. " +
-            "It has been re-subscribed automatically. Anything sent while it was off can be " +
-            "recovered with the Instagram history backfill.",
+          title: inboxWasDown
+            ? "Instagram message sync was off — fixed automatically"
+            : "Instagram webhook subscriptions restored",
+          body: inboxWasDown
+            ? `${row.business}: Meta had dropped the 'messages' webhook subscription, so customer ` +
+              "DMs and app-sent replies were not syncing into Messaging. It has been re-subscribed " +
+              "automatically. Anything sent while it was off can be recovered with the Instagram " +
+              "history backfill."
+            : `${row.business}: Meta had dropped the '${res.missing_before.join("', '")}' webhook ` +
+              "subscription(s), so read receipts and customer reactions were not updating in " +
+              "Messaging. Re-subscribed automatically. (Messages and app-sent replies were " +
+              "unaffected — they ride the 'messages' field, which was intact.)",
         });
       } else if (res.ok) {
         summary.ok += 1;
@@ -815,12 +830,12 @@ async function ensureInstagramEchoSubscriptions() {
           business: row.business,
           type: "ig_echo_sync_broken",
           priority: "urgent",
-          title: "Instagram app-reply sync is broken (needs Meta attention)",
+          title: "Instagram webhook sync is broken (needs Meta attention)",
           body:
             `${row.business}: the '${res.missing_after.join("', '")}' webhook subscription could not be restored — ` +
-            "Meta accepted the request but the field did not stick. Replies sent from the " +
-            "Instagram app will NOT appear in Messaging until this is fixed in the Meta App " +
-            "Dashboard (Webhooks → Instagram).",
+            "Meta accepted the request but the field did not stick. Parts of Instagram " +
+            "messaging sync will stay broken until this is fixed in the Meta App Dashboard " +
+            "(Webhooks → Instagram; check instagram_business_manage_messages access).",
         });
       }
     } catch (err) {
@@ -834,11 +849,11 @@ async function ensureInstagramEchoSubscriptions() {
         business: row.business,
         type: "ig_echo_sync_broken",
         priority: "urgent",
-        title: "Instagram app-reply sync check failed",
+        title: "Instagram webhook subscription check failed",
         body:
-          `${row.business}: could not verify/restore the Instagram webhook subscription that syncs ` +
-          `app-sent replies (${msg}). Until this is fixed, replies sent from the Instagram app ` +
-          "may not appear in Messaging. Open Messaging → Settings and Test the Instagram connection.",
+          `${row.business}: could not verify/restore the Instagram webhook subscriptions ` +
+          `(${msg}). DM sync, app-reply echoes, read receipts or reactions may be affected. ` +
+          "Open Messaging → Settings and Test the Instagram connection.",
       }).catch(() => {});
     }
   }
@@ -1235,7 +1250,7 @@ module.exports = {
   revealSecret,
   listReveals,
   refreshInstagramTokens,
-  // Instagram echo-sync watchdog (message_echoes subscription self-heal):
+  // Instagram webhook-subscription watchdog (messages/reactions/seen self-heal):
   ensureInstagramEchoSubscriptions,
   ensureEchoSubscriptionForToken,
   getInstagramSubscribedFields,

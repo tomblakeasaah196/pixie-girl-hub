@@ -99,9 +99,10 @@ export interface TestResult {
   mx_records?: { exchange: string; priority: number }[];
   /** IG only: the stored account id didn't match Meta's and was corrected. */
   healed?: boolean;
-  /** IG only: state of the message_echoes webhook subscription that syncs
-   *  replies staff send from the Instagram app. `healed` means it had been
-   *  dropped on Meta's side and the Test re-subscribed it. */
+  /** IG only: state of the account's webhook-field subscriptions
+   *  (messages — which carries app-reply echoes via is_echo —, reactions,
+   *  seen). `healed` means something had been dropped on Meta's side and
+   *  the Test re-subscribed it. */
   echo_sync?: {
     ok: boolean;
     healed?: boolean;

@@ -107,7 +107,7 @@ export function AppShell() {
       <PullToRefresh
         onRefresh={softRefresh}
         className={cn(
-          "h-screen overflow-y-auto transition-[margin] duration-300 ease-brand",
+          "h-screen overflow-y-auto overflow-x-hidden transition-[margin] duration-300 ease-brand",
           isDesktop
             ? sidebarCollapsed
               ? "ml-[var(--side-c)]"

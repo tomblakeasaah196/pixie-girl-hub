@@ -140,9 +140,9 @@ export function DashboardPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="font-display text-2xl font-medium">Dashboard</h1>
-          <p className="text-[12px] text-text-faint mt-0.5">
+        <div className="min-w-0">
+          <h1 className="font-display text-2xl max-sm:text-xl font-medium truncate">Dashboard</h1>
+          <p className="text-[12px] text-text-faint mt-0.5 max-sm:hidden">
             {isGlobal
               ? "Both companies, one view"
               : isReports
@@ -172,7 +172,7 @@ export function DashboardPage() {
               }}
               icon={<FileSpreadsheet className="w-4 h-4" />}
             >
-              {exporting ? "Exporting…" : "Export Excel"}
+              <span className="max-sm:hidden">{exporting ? "Exporting…" : "Export Excel"}</span>
             </Button>
           )}
           {!isReports && !isGlobal && !customizing && (
@@ -181,7 +181,7 @@ export function DashboardPage() {
               onClick={() => setCustomizing(true)}
               icon={<Settings2 className="w-4 h-4" />}
             >
-              Customize
+              <span className="max-sm:hidden">Customize</span>
             </Button>
           )}
           {customizing && (
@@ -211,19 +211,19 @@ export function DashboardPage() {
         </div>
       </div>
 
-      <div className="flex gap-1.5 overflow-x-auto pb-1 -mb-1">
+      <div className="flex gap-1.5 max-sm:gap-1 overflow-x-auto pb-1 -mb-1 hide-scrollbar">
         {tabs.map((t) => (
           <button
             key={t.key}
             onClick={() => setParam({ tab: t.key === "overview" ? null : t.key })}
             className={cn(
-              "px-3.5 h-10 rounded-full text-[12.5px] whitespace-nowrap transition-colors border shrink-0",
+              "px-3.5 max-sm:px-2.5 h-10 max-sm:h-8 rounded-full text-[12.5px] max-sm:text-[11.5px] whitespace-nowrap transition-colors border shrink-0",
               tab === t.key
                 ? "bg-accent-deep text-[#F4E9D9] border-transparent font-medium"
                 : "glass hairline text-text-muted hover:text-text-primary",
             )}
           >
-            {t.key === GLOBAL_TAB && <Building2 className="w-3.5 h-3.5 inline mr-1.5 -mt-0.5" />}
+            {t.key === GLOBAL_TAB && <Building2 className="w-3.5 h-3.5 max-sm:w-3 max-sm:h-3 inline mr-1.5 max-sm:mr-1 -mt-0.5" />}
             {t.label}
           </button>
         ))}

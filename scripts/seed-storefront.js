@@ -53,6 +53,20 @@ const THEMES = {
   pixiegirl: { logo_url: "" },
 };
 
+// Brand-level share card (Open Graph / meta) — the SINGLE SOURCE OF TRUTH for
+// the home page's title/description/banner, edited in Studio → Branding. Seeded
+// here (matching the home page copy) so a fresh install has Branding populated
+// from day one rather than showing blank Share fields. The --og-image banner is
+// composed by the operator in Studio, so it is intentionally left unset.
+function themeTokensFor(brand) {
+  const name = brand === "faitlynhair" ? "Faitlyn Hair" : "Pixie Girl";
+  return {
+    ...(THEMES[brand] || THEMES.pixiegirl),
+    og_title: `${name} — Luxury Natural Hair, Crafted in Lagos`,
+    og_description: `${name}: a Lagos maison crafting the world's most coveted pixies, bobs and curls. Hand-finished, lace-perfect luxury — shipped worldwide.`,
+  };
+}
+
 // Nav (matches the ported SiteHeader/SiteFooter — no "Shades" item).
 const NAV = {
   header_items: [
@@ -359,7 +373,7 @@ async function seedBrand(client, brand) {
   await client.query(
     `INSERT INTO shared.storefront_themes (business, status, tokens)
      VALUES ($1, 'published', $2)`,
-    [brand, JSON.stringify(THEMES[brand] || THEMES.pixiegirl)],
+    [brand, JSON.stringify(themeTokensFor(brand))],
   );
 
   await client.query(

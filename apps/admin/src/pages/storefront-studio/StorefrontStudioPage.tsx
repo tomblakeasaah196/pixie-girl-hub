@@ -170,6 +170,20 @@ export function StorefrontStudioPage() {
     [setTab],
   );
 
+  // The home page's share card (title / description / banner) is edited in ONE
+  // place — the Branding tab — so the Pages editor deep-links there instead of
+  // duplicating the SEO fields. This flag makes Branding scroll to the Share
+  // sections when the operator follows that link.
+  const [focusBrandingShare, setFocusBrandingShare] = useState(false);
+  const clearBrandingShareFocus = useCallback(
+    () => setFocusBrandingShare(false),
+    [],
+  );
+  const jumpToBrandingShare = useCallback(() => {
+    setFocusBrandingShare(true);
+    setTab("branding");
+  }, [setTab]);
+
   return (
     <div className="space-y-4 md:space-y-5">
       {/* Full-width, roomy segmented tab strip — the brand context is already
@@ -184,10 +198,20 @@ export function StorefrontStudioPage() {
 
       <div>
         {tab === "theme" ? <ThemeTab /> : null}
-        {tab === "branding" ? <BrandingTab /> : null}
+        {tab === "branding" ? (
+          <BrandingTab
+            focusShare={focusBrandingShare}
+            onFocusHandled={clearBrandingShareFocus}
+          />
+        ) : null}
         {tab === "toolbar" ? <ToolbarTab /> : null}
         {tab === "navigation" ? <NavigationTab /> : null}
-        {tab === "pages" ? <PagesTab onJumpToContent={jumpToContent} /> : null}
+        {tab === "pages" ? (
+          <PagesTab
+            onJumpToContent={jumpToContent}
+            onJumpToBranding={jumpToBrandingShare}
+          />
+        ) : null}
         {tab === "content" ? (
           <ContentTab jumpTo={contentJump} onJumpHandled={clearContentJump} />
         ) : null}
@@ -1026,7 +1050,15 @@ function readOgParams(
   };
 }
 
-function BrandingTab() {
+function BrandingTab({
+  focusShare = false,
+  onFocusHandled,
+}: {
+  /** Set when the operator followed the Pages → home "Edit in Branding" link,
+   *  so we scroll the Share text / Share banner sections into view. */
+  focusShare?: boolean;
+  onFocusHandled?: () => void;
+}) {
   const { data, isLoading } = useThemes();
   const brand = useBusinessStore((s) => s.activeKey);
   const save = useSaveThemeDraft();
@@ -1036,6 +1068,7 @@ function BrandingTab() {
   // like the Toolbar tab — cast to the string-record the save mutation expects.
   const [tokens, setTokens] = useState<Record<string, unknown>>({});
   const [msg, setMsg] = useState<string | null>(null);
+  const shareRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!active) return;
@@ -1048,6 +1081,17 @@ function BrandingTab() {
       t["--favicon-url-dark"] = t["--favicon-url"];
     setTokens(t);
   }, [active]);
+
+  // Deep-link target: bring the Share sections into view once the tab has
+  // painted, then clear the flag so a later manual visit doesn't re-scroll.
+  useEffect(() => {
+    if (!focusShare || isLoading) return;
+    const id = window.setTimeout(() => {
+      shareRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 60);
+    onFocusHandled?.();
+    return () => window.clearTimeout(id);
+  }, [focusShare, isLoading, onFocusHandled]);
 
   const patch = (p: Record<string, unknown>) =>
     setTokens((t) => ({ ...t, ...p }));
@@ -1100,33 +1144,36 @@ function BrandingTab() {
         ))}
       </Section>
 
-      <Section title="Share text (SEO)" defaultOpen>
-        <p className="text-[12px] text-text-muted">
-          The title and description shown under the picture when your site is
-          shared on WhatsApp, Instagram, Facebook or in Google results. A page
-          that sets its own title/description overrides these.
-        </p>
-        <TextField
-          label="Share title"
-          value={str("og_title")}
-          placeholder={
-            brand === "faitlynhair"
-              ? "Faitlyn Hair — Luxury Natural Hair"
-              : "Pixie Girl — Premium Wigs & Hair"
-          }
-          onChange={(v) => patch({ og_title: v })}
-        />
-        <AreaField
-          label="Share description"
-          rows={3}
-          value={str("og_description")}
-          onChange={(v) => patch({ og_description: v })}
-        />
-      </Section>
+      <div ref={shareRef} className="scroll-mt-4 space-y-5">
+        <Section title="Share text (SEO)" defaultOpen>
+          <p className="text-[12px] text-text-muted">
+            The title and description shown under the picture when your site is
+            shared on WhatsApp, Instagram, Facebook or in Google results. This is
+            the single source of truth for the home page's share card; a deeper
+            page may still set its own title/description, which overrides these.
+          </p>
+          <TextField
+            label="Share title"
+            value={str("og_title")}
+            placeholder={
+              brand === "faitlynhair"
+                ? "Faitlyn Hair — Luxury Natural Hair"
+                : "Pixie Girl — Premium Wigs & Hair"
+            }
+            onChange={(v) => patch({ og_title: v })}
+          />
+          <AreaField
+            label="Share description"
+            rows={3}
+            value={str("og_description")}
+            onChange={(v) => patch({ og_description: v })}
+          />
+        </Section>
 
-      <Section title="Share banner" defaultOpen>
-        <OgBannerStudio brand={brand} tokens={tokens} patch={patch} />
-      </Section>
+        <Section title="Share banner" defaultOpen>
+          <OgBannerStudio brand={brand} tokens={tokens} patch={patch} />
+        </Section>
+      </div>
 
       <div className="flex flex-wrap gap-2">
         <Button
@@ -1986,8 +2033,10 @@ const BLANK_PAGE: PageRow = {
 
 function PagesTab({
   onJumpToContent,
+  onJumpToBranding,
 }: {
   onJumpToContent: (jump: { postId?: string }) => void;
+  onJumpToBranding: () => void;
 }) {
   const { data, isLoading } = usePages();
   const save = useSavePageDraft();
@@ -2104,23 +2153,40 @@ function PagesTab({
             />
           </div>
 
-          <Section title="Search & sharing (SEO)">
-            <TextField
-              label="Search title"
-              value={sel.meta_title || ""}
-              onChange={(v) => setSel({ ...sel, meta_title: v })}
-            />
-            <AreaField
-              label="Search description"
-              value={sel.meta_description || ""}
-              onChange={(v) => setSel({ ...sel, meta_description: v })}
-            />
-            <ImageField
-              label="Share image"
-              value={sel.og_image_url || ""}
-              onChange={(v) => setSel({ ...sel, og_image_url: v })}
-            />
-          </Section>
+          {sel.page_key === "home" || sel.url_path === "/" ? (
+            <div className="space-y-2 rounded-[12px] border border-line p-4">
+              <p className="text-[13px] font-semibold text-text-primary">
+                Search & sharing (SEO)
+              </p>
+              <p className="text-[12px] text-text-muted">
+                The home page uses the site-wide share card — its title,
+                description and share banner all live in one place, the{" "}
+                <span className="font-medium text-text-primary">Branding</span>{" "}
+                tab, so they stay in sync everywhere the link is shared.
+              </p>
+              <Button variant="secondary" size="sm" onClick={onJumpToBranding}>
+                Edit in Branding →
+              </Button>
+            </div>
+          ) : (
+            <Section title="Search & sharing (SEO)">
+              <TextField
+                label="Search title"
+                value={sel.meta_title || ""}
+                onChange={(v) => setSel({ ...sel, meta_title: v })}
+              />
+              <AreaField
+                label="Search description"
+                value={sel.meta_description || ""}
+                onChange={(v) => setSel({ ...sel, meta_description: v })}
+              />
+              <ImageField
+                label="Share image"
+                value={sel.og_image_url || ""}
+                onChange={(v) => setSel({ ...sel, og_image_url: v })}
+              />
+            </Section>
+          )}
 
           <div>
             <label className={cn(labelCls, "text-[13px] text-text-primary")}>

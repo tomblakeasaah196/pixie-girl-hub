@@ -153,14 +153,32 @@ function RootShell({ children }: { children: ReactNode }) {
   const { brand, theme, seo } = Route.useLoaderData();
   const themeCss = tokensToCss(theme?.tokens);
   const { faviconDark, faviconLight } = brandingFrom(theme?.tokens, brand);
-  // Share/SEO meta: per-page override (Studio page meta) → brand default
-  // (Branding tab tokens) → brand name. Emitted here in the shell so every
-  // route gets a rich, brand-correct preview without touching each route file.
+  // Share/SEO meta, emitted here in the shell so every route gets a rich,
+  // brand-correct preview without touching each route file.
+  //
+  // The home page ("/") shares the SITE-WIDE card, whose single source of truth
+  // is the Branding tab (theme tokens og_title / og_description / --og-image).
+  // So on the home page the brand tokens WIN and any legacy per-page value is
+  // only a fallback — this is what lets the composed Share banner replace the
+  // old per-page hero image. Deeper pages keep their own per-page override
+  // first, then fall back to the brand default, then the brand name.
   const tokens = (theme?.tokens || {}) as Record<string, string>;
   const brandName = BRAND_NAMES[brand] ?? "";
-  const ogTitle = seo?.pageTitle || tokens.og_title || brandName;
-  const ogDesc = seo?.pageDescription || tokens.og_description || "";
-  const ogImage = absoluteImage(seo?.origin, seo?.pageImage || tokens["--og-image"]);
+  const isHome = (seo?.path || "/") === "/";
+  const ogTitle =
+    (isHome
+      ? tokens.og_title || seo?.pageTitle
+      : seo?.pageTitle || tokens.og_title) || brandName;
+  const ogDesc =
+    (isHome
+      ? tokens.og_description || seo?.pageDescription
+      : seo?.pageDescription || tokens.og_description) || "";
+  const ogImage = absoluteImage(
+    seo?.origin,
+    isHome
+      ? tokens["--og-image"] || seo?.pageImage
+      : seo?.pageImage || tokens["--og-image"],
+  );
   const ogUrl = seo?.origin ? `${seo.origin}${seo.path || ""}` : "";
   // Dark-default site → the plain link (fallback for browsers that ignore
   // `media` on icons) uses the dark favicon; the media links pick the right

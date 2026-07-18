@@ -1,18 +1,15 @@
 import { SmartLink } from "@/components/site/SmartLink";
-
-const ITEMS: { text: string; emphasis?: string; to?: string }[] = [
-  { text: "Complimentary worldwide shipping on orders over $800" },
-  { text: "Bulk savings — 2 pieces $40 off · 3 pieces $90 off", emphasis: "auto-applied" },
-  { text: "First order? Take 10% off with code", emphasis: "FAITLYN10" },
-  { text: "Refer & earn up to $50 atelier credit", to: "/account" },
-];
+import { useSiteChrome } from "@/lib/site-config";
 
 /**
  * Scrolling promo strip. Duplicates the row for a seamless loop and pauses on
- * hover so people can read the offers.
+ * hover so people can read the offers. The offers are Studio-editable
+ * (Pages → “Site chrome” → Promo bar); falls back to the maison defaults.
  */
 export function PromoBar() {
-  const loop = [...ITEMS, ...ITEMS];
+  const items = useSiteChrome().promo.items;
+  if (!items.length) return null;
+  const loop = [...items, ...items];
   return (
     <div className="bg-ink/60 backdrop-blur-md border-b border-taupe/15 overflow-hidden group">
       <div
@@ -32,8 +29,8 @@ export function PromoBar() {
           );
           return (
             <span key={i} className="flex items-center gap-10 px-10">
-              {it.to ? (
-                <SmartLink to={it.to} className="hover:text-cream transition-colors">
+              {it.url ? (
+                <SmartLink to={it.url} className="hover:text-cream transition-colors">
                   {content}
                 </SmartLink>
               ) : (

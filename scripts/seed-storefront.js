@@ -67,14 +67,33 @@ function themeTokensFor(brand) {
   };
 }
 
-// Nav (matches the ported SiteHeader/SiteFooter — no "Shades" item).
+// Nav (matches the ported SiteHeader/SiteFooter). Header items carry `children`
+// so the header renders glass dropdowns on desktop and accordions on mobile;
+// this published nav is the SINGLE SOURCE OF TRUTH the storefront reads, so
+// editing it in Storefront Studio → Navigation drives both. Keep `url` (not
+// `href`) — that is the key the storefront reads.
 const NAV = {
   header_items: [
-    { label: "Shop", url: "/shop" },
-    { label: "Bundles", url: "/bundles" },
+    {
+      label: "Shop",
+      url: "/shop",
+      children: [
+        { label: "All catalogue", url: "/shop" },
+        { label: "By shade", url: "/shades" },
+        { label: "By collection", url: "/collections" },
+        { label: "By bundle", url: "/bundles" },
+        { label: "Find my shade", url: "/shade-finder" },
+      ],
+    },
     { label: "Services", url: "/services" },
-    { label: "Maison", url: "/about" },
-    { label: "Journal", url: "/journal" },
+    {
+      label: "Maison",
+      url: "/about",
+      children: [
+        { label: "Our story", url: "/about" },
+        { label: "Journal", url: "/journal" },
+      ],
+    },
   ],
   footer_columns: [
     { title: "Shop", links: [
@@ -237,6 +256,38 @@ function pagesFor(brand) {
       slots: HOME_SLOTS,
     },
     {
+      // Site-wide chrome (promo bar · footer blurb/signature · mobile ☰ extras).
+      // Not a route — the storefront reads it via useSiteChrome(). Keys mirror
+      // apps/storefront/src/lib/site-config.tsx DEFAULT_SITE_CHROME.
+      page_key: "site_chrome", template_key: "site_chrome_v1", url_path: "(appears on every page)", og_image_url: null,
+      meta_title: null, meta_description: null,
+      slots: {
+        promo: {
+          items: [
+            { text: "Complimentary worldwide shipping on orders over $800", emphasis: "", url: "" },
+            { text: "Bulk savings — 2 pieces $40 off · 3 pieces $90 off", emphasis: "auto-applied", url: "" },
+            { text: "First order? Take 10% off with code", emphasis: "FAITLYN10", url: "" },
+            { text: "Refer & earn up to $50 atelier credit", emphasis: "", url: "/account" },
+          ],
+        },
+        footer: {
+          blurb: "A Lagos-born atelier of luxury natural hair. Curated, ethically sourced, finished by hand.",
+          signature: "Maison Faitlyn — fait à la main à Lagos",
+          copyrightName: "",
+        },
+        drawer: {
+          featureEyebrow: "New in",
+          featureTitle: "The Maison Collection",
+          featureCta: "Shop the drop",
+          featureHref: "/shop",
+          featureImage: IMG.atelier,
+          signature: "Est. Lagos · 2021",
+          conciergeLabel: "Chat with a stylist",
+          consultLabel: "Book a consultation",
+        },
+      },
+    },
+    {
       page_key: "shop", template_key: "catalogue_v1", url_path: "/shop", og_image_url: IMG.hero,
       meta_title: `Shop the Catalogue — ${name}`,
       meta_description: "Every silhouette, live from the Lagos atelier — hand-finished and shade-matched.",
@@ -271,6 +322,45 @@ function pagesFor(brand) {
       meta_title: `Contact — ${name}`,
       meta_description: "Reach the Lagos studio for sizing, orders and aftercare.",
       slots: { eyebrow: "Concierge", heading: "Let's talk ", headingAccent: "hair", headingAfter: ".", body: "Sizing, shade-matching, bulk & trade orders, aftercare — our Lagos studio answers every message personally. ", bodyAccent: "Fait avec soin.", email: "hello@faitlynhair.com", whatsapp: "2348061987874", studio: "10B Emma Abimbola Cole Street, Lekki Phase 1, Lagos", hours: "Mon – Sat · 9am – 6pm WAT" },
+    },
+    {
+      page_key: "shades", template_key: "shades_v1", url_path: "/shades", og_image_url: IMG.hero,
+      meta_title: `Shop by Shade — ${name}`,
+      meta_description: "Every tone hand-mixed in the Lagos studio and colour-matched to your skin.",
+      // Keys match the /shades page defaults (usePageSlots("shades")).
+      slots: {
+        heading: "Shop by shade",
+        body: "Find your match, then make it yours.",
+        finderTitle: "Not sure which shade is yours?",
+        finderBody: "Share one photo and Praxis, our AI stylist, will read your undertone and pick it — free, private, nothing saved.",
+        finderCta: "Find my shade",
+        emptyTitle: "No shades published yet.",
+      },
+    },
+    {
+      page_key: "collections", template_key: "collections_v1", url_path: "/collections", og_image_url: IMG.hero,
+      meta_title: `Collections — ${name}`,
+      meta_description: "Edits and stories from the Lagos atelier, grouped.",
+      // Keys match the /collections page defaults (usePageSlots("collections")).
+      slots: {
+        heading: "Collections",
+        body: "Edits and stories, grouped.",
+        emptyTitle: "No collections yet.",
+      },
+    },
+    {
+      page_key: "bundle_detail", template_key: "bundle_detail_v1", url_path: "/bundles/:slug", og_image_url: IMG.hero,
+      meta_title: `Bundle — ${name}`,
+      meta_description: "Curated sets at a couture discount.",
+      // Shared copy for every bundle detail page (usePageSlots("bundle_detail")).
+      slots: {
+        eyebrow: "Bundle",
+        includedLabel: "What's included",
+        ctaLabel: "Add bundle to bag",
+        ctaBusyLabel: "Adding...",
+        addedToast: "Bundle added to bag",
+        errorToast: "Couldn't add bundle. Please try again.",
+      },
     },
   ];
   pages.push({

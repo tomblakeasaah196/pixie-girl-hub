@@ -19,9 +19,9 @@ import {
 import { useCartCount, useCurrency, openCart, openHelp } from "@/lib/useStore";
 import { PromoBar } from "./PromoBar";
 import { BrandLogo } from "./BrandLogo";
-import { useNavigation, useBranding, useToolbar, type NavItem } from "@/lib/site-config";
+import { useNavigation, useBranding, useToolbar, useSiteChrome, type NavItem } from "@/lib/site-config";
 import { waDigits } from "@/lib/toolbar";
-import { SITE_IMAGES } from "@/lib/site-assets";
+import { SmartLink } from "@/components/site/SmartLink";
 import { getShades } from "@/lib/storefront";
 import { mapShades } from "@/lib/home-content";
 import { bootstrapAuth, getReferral } from "@/lib/auth";
@@ -91,13 +91,12 @@ export function SiteHeader() {
   const showTheme = toolbar.buttons.theme;
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
-  // Prefer a Studio nav only when it actually carries groups; otherwise use the
-  // grouped default so the dropdowns render even against the flat seed.
+  // Prefer the published Studio nav whenever it carries any items — so edits in
+  // Storefront Studio → Navigation drive BOTH the desktop header and the mobile
+  // ☰ menu (dropdowns included, when items define children). Fall back to the
+  // built-in grouped default only when no navigation has been published yet.
   const studio = nav?.header_items;
-  const groups: NavItem[] =
-    studio && studio.some((i) => i.children && i.children.length)
-      ? studio
-      : NAV_GROUPS;
+  const groups: NavItem[] = studio && studio.length ? studio : NAV_GROUPS;
 
   // Entrance gate — play the stagger after the cinematic preloader (fast on
   // return visits where it's skipped).
@@ -418,6 +417,7 @@ function MobileDrawer({
 }) {
   const nav = useNavigation();
   const toolbar = useToolbar();
+  const chrome = useSiteChrome();
   const [currency, setCurrency] = useCurrency();
   const { currencies } = useCurrencyFeed();
   const socialEntries = Object.entries(nav?.socials ?? {}).filter(([, href]) => href);
@@ -465,6 +465,12 @@ function MobileDrawer({
             </div>
 
             <nav className="flex-1 overflow-y-auto px-6 py-7">
+              {/* Home — the logo already links home, but the mobile menu needs
+                  an explicit entry too. Skipped only if the published nav
+                  already defines its own Home link (so it never duplicates). */}
+              {groups.some((g) => g.url === "/") ? null : (
+                <DrawerLink to="/" label="Home" onNavigate={onClose} />
+              )}
               {groups.map((g) =>
                 g.children?.length ? (
                   <DrawerAccordion key={g.label} group={g} pathname={pathname} onNavigate={onClose} />
@@ -515,30 +521,36 @@ function MobileDrawer({
               {/* Refer a friend — the maison's word-of-mouth engine, one tap away */}
               <DrawerReferral onNavigate={onClose} />
 
-              {/* Featured editorial — turns the dead space into a shoppable moment */}
-              <Link
-                to="/shop"
-                onClick={onClose}
-                className="group relative mt-5 block overflow-hidden rounded-2xl border border-taupe/15"
-              >
-                <img
-                  src={SITE_IMAGES.editorialAtelier}
-                  alt=""
-                  loading="lazy"
-                  className="h-44 w-full object-cover transition-transform duration-700 group-hover:scale-105"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/45 to-transparent" />
-                <div className="absolute inset-x-0 bottom-0 p-5">
-                  <p className="text-[0.58rem] tracking-[0.42em] uppercase text-taupe">New in</p>
-                  <p className="mt-1.5 font-display text-xl leading-tight text-cream">
-                    The Maison Collection
-                  </p>
-                  <span className="mt-2 inline-flex items-center gap-1.5 text-[0.6rem] tracking-[0.3em] uppercase text-cream/85">
-                    Shop the drop
-                    <span aria-hidden className="transition-transform duration-300 group-hover:translate-x-1">→</span>
-                  </span>
-                </div>
-              </Link>
+              {/* Featured editorial — turns the dead space into a shoppable
+                  moment. Card image + copy are Studio-editable (Pages → Site
+                  chrome → Mobile menu). Hidden if the image is cleared. */}
+              {chrome.drawer.featureImage ? (
+                <SmartLink
+                  to={chrome.drawer.featureHref}
+                  onClick={onClose}
+                  className="group relative mt-5 block overflow-hidden rounded-2xl border border-taupe/15"
+                >
+                  <img
+                    src={chrome.drawer.featureImage}
+                    alt=""
+                    loading="lazy"
+                    className="h-44 w-full object-cover transition-transform duration-700 group-hover:scale-105"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/45 to-transparent" />
+                  <div className="absolute inset-x-0 bottom-0 p-5">
+                    <p className="text-[0.58rem] tracking-[0.42em] uppercase text-taupe">
+                      {chrome.drawer.featureEyebrow}
+                    </p>
+                    <p className="mt-1.5 font-display text-xl leading-tight text-cream">
+                      {chrome.drawer.featureTitle}
+                    </p>
+                    <span className="mt-2 inline-flex items-center gap-1.5 text-[0.6rem] tracking-[0.3em] uppercase text-cream/85">
+                      {chrome.drawer.featureCta}
+                      <span aria-hidden className="transition-transform duration-300 group-hover:translate-x-1">→</span>
+                    </span>
+                  </div>
+                </SmartLink>
+              ) : null}
 
               {/* Concierge — a real person, one tap away */}
               {conciergeHref ? (
@@ -550,7 +562,7 @@ function MobileDrawer({
                   className="mt-4 flex items-center justify-center gap-2.5 rounded-full border border-taupe/40 py-3.5 text-[0.66rem] tracking-[0.3em] uppercase text-cream transition-colors hover:bg-cream/5"
                 >
                   <MessageCircle size={15} strokeWidth={1.5} />
-                  Chat with a stylist
+                  {chrome.drawer.conciergeLabel}
                 </a>
               ) : (
                 <Link
@@ -559,7 +571,7 @@ function MobileDrawer({
                   className="mt-4 flex items-center justify-center gap-2.5 rounded-full border border-taupe/40 py-3.5 text-[0.66rem] tracking-[0.3em] uppercase text-cream transition-colors hover:bg-cream/5"
                 >
                   <MessageCircle size={15} strokeWidth={1.5} />
-                  Book a consultation
+                  {chrome.drawer.consultLabel}
                 </Link>
               )}
 
@@ -605,7 +617,7 @@ function MobileDrawer({
                 ) : null}
               </div>
               <p className="mt-5 text-center font-couture italic text-sm text-taupe">
-                Est. Lagos · 2021
+                {chrome.drawer.signature}
               </p>
             </nav>
           </motion.div>

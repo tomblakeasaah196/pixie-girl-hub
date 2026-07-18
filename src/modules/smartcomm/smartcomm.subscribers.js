@@ -770,47 +770,81 @@ async function onWebhookReceived({ webhook_id, source }) {
       { err: err.message, source, webhook_id },
       "smartcomm: webhook parse failed",
     );
+    // Deterministic — retrying can't fix a parse bug. But the row must not
+    // read as successfully processed either: record the error so the replay
+    // sweep + diagnostics can see it (processed stays false).
+    await webhookRepo
+      .markProcessed(webhook_id, {
+        error_message: `parse failed: ${err.message}`,
+      })
+      .catch(() => {});
     return;
   }
-  for (const st of statuses) {
-    try {
-      await service.applyProviderStatus(st);
-    } catch (err) {
-      logger.error(
-        { err: err.message, source, webhook_id, external_ref: st.external_ref },
-        "smartcomm: delivery-status webhook apply failed",
-      );
-      throw err; // let outbox retry the whole batch
+  // This consumer owns webhook_log.processed for the inbox sources: marked
+  // true only when EVERYTHING below ingested, marked false + error_message
+  // on any failure. That bookkeeping is what lets the 30-min replay sweep
+  // re-drive a row whose outbox retries were exhausted — before this, a
+  // failed messaging ingest (e.g. an Instagram app-reply echo) was lost
+  // forever, invisibly.
+  try {
+    for (const st of statuses) {
+      try {
+        await service.applyProviderStatus(st);
+      } catch (err) {
+        logger.error(
+          {
+            err: err.message,
+            source,
+            webhook_id,
+            external_ref: st.external_ref,
+          },
+          "smartcomm: delivery-status webhook apply failed",
+        );
+        throw err; // let outbox retry the whole batch
+      }
     }
-  }
-  for (const r of reactions) {
-    try {
-      await service.applyCustomerReaction(r);
-    } catch (err) {
-      logger.error(
-        { err: err.message, source, webhook_id, external_ref: r.external_ref },
-        "smartcomm: customer-reaction webhook apply failed",
-      );
-      throw err; // let outbox retry the whole batch
+    for (const r of reactions) {
+      try {
+        await service.applyCustomerReaction(r);
+      } catch (err) {
+        logger.error(
+          {
+            err: err.message,
+            source,
+            webhook_id,
+            external_ref: r.external_ref,
+          },
+          "smartcomm: customer-reaction webhook apply failed",
+        );
+        throw err; // let outbox retry the whole batch
+      }
     }
-  }
-  for (const evt of events) {
-    try {
-      await ingestInbound(evt);
-    } catch (err) {
-      logger.error(
-        {
-          err: err.message,
-          source,
-          webhook_id,
-          platform: evt.platform,
-          external_ref: evt.external_ref,
-        },
-        "smartcomm: webhook ingest failed",
-      );
-      throw err; // let outbox retry the whole batch
+    for (const evt of events) {
+      try {
+        await ingestInbound(evt);
+      } catch (err) {
+        logger.error(
+          {
+            err: err.message,
+            source,
+            webhook_id,
+            platform: evt.platform,
+            external_ref: evt.external_ref,
+          },
+          "smartcomm: webhook ingest failed",
+        );
+        throw err; // let outbox retry the whole batch
+      }
     }
+  } catch (err) {
+    await webhookRepo
+      .markProcessed(webhook_id, {
+        error_message: String((err && err.message) || err),
+      })
+      .catch(() => {});
+    throw err;
   }
+  await webhookRepo.markProcessed(webhook_id, { error_message: null });
 }
 
 function register() {

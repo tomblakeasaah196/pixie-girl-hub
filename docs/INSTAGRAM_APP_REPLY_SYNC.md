@@ -52,11 +52,77 @@ only for Hub-originated sends). Consequences:
    - A customer message arriving **after** the app-side reply counts as
      unread again, as normal.
 
+## One command answers "is it Meta or is it us?"
+
+The healthy path has exactly four hops — Meta delivers a
+`message_echoes` webhook → `shared.webhook_log` → smartcomm ingest →
+`shared.messages` (`metadata.via = 'instagram_app'`). When app replies
+are missing, run this on the VPS; it checks every hop against the live
+DB **and** the Meta Graph API and prints a verdict naming the broken
+one:
+
+```bash
+npm run diag:instagram-echoes           # read-only diagnosis
+npm run diag:instagram-echoes -- --fix  # + re-subscribe missing webhook fields
+DAYS=30 npm run diag:instagram-echoes   # widen the evidence window
+```
+
+Verdicts: **META SIDE (config)** — the account isn't subscribed to
+`message_echoes` (fixable immediately with `--fix`); **META SIDE
+(delivery)** — subscribed but no echo ever arrives (App Dashboard /
+permissions / Live-mode problem, with a checklist); **OUR SIDE** —
+echoes arrive but ingest fails (prints the exact recorded error);
+**HEALTHY** — echoes arrive and are recorded (missing older messages are
+history from a down period → run the backfill).
+
+## The subscription self-heals now (the watchdog)
+
+The root cause of "it keeps breaking": the `message_echoes` subscription
+lives **on the Instagram account at Meta** (`POST /me/subscribed_apps`),
+not in our code or database — and any partial re-subscribe **replaces**
+the whole field list, so reconnecting the account or re-running a setup
+step silently drops it. Historically it was restored by hand (dashboard
+toggle or curl) and drifted off again later.
+
+That manual step is gone. `messaging-accounts.service.
+ensureInstagramEchoSubscriptions()` reads each active IG account's
+`subscribed_fields` and, when anything required is missing
+(`messages`, `message_echoes`, `message_reactions`, `messaging_seen`),
+re-subscribes with the **union** (never dropping extra fields), verifies
+it stuck, audits it (`messaging_accounts.echo_subscription_healed`), and
+notifies the CEO that it drifted (max one notification per brand per
+day). It runs:
+
+- **hourly** (`ig-echo-watchdog` cron, :40) — worst case the sync is
+  down for one hour, and you're told it happened;
+- **after the daily token sweep** (`ig-token-refresh`);
+- **when an Instagram connection is saved** in Messaging → Settings;
+- **inside the Test button**, whose result now includes the field list
+  (`echo_sync`) so a broken subscription is visible on demand.
+
+If the re-subscribe itself fails (revoked token, permission not granted,
+app not Live), the CEO gets an **urgent** notification instead — that
+situation needs Meta Dashboard attention and cannot be fixed from code.
+
+## Failed ingests are recoverable now
+
+Previously a messaging webhook whose ingest kept failing was lost
+forever: the payment dispatcher marked the `webhook_log` row processed
+immediately, so once the outbox's 10 retries were exhausted the 30-min
+replay sweep (which only re-drives `processed = false` rows) could never
+see it. The smartcomm consumer now owns the `processed` flag for
+messaging sources — success marks it true, failure records the error on
+the row — and the replay sweep re-drives stuck messaging rows through
+the same idempotent ingest (provider-id dedup). A transient outage can
+no longer eat an echo.
+
 ## The Meta Dashboard setting this depends on (the "works locally, fails live" gotcha)
 
 Echo webhooks are only delivered if the Meta app is **subscribed to the
-`message_echoes` webhook field** for Instagram. If app-side replies still
-don't appear in the Hub:
+`message_echoes` webhook field** for Instagram. The account-level part
+of this is now enforced automatically (see the watchdog above); the
+app-level part below is one-time Meta Dashboard configuration. If
+app-side replies still don't appear in the Hub:
 
 1. [developers.facebook.com](https://developers.facebook.com) → your app →
    **Webhooks** (or **Instagram → API setup with Instagram login**) →
@@ -150,3 +216,6 @@ repeated, or raise the pacing with `GAP_MS=1000`.
 | Team-wide bell clearing | `src/services/notifications.service.js` (`markReadByReferenceAllUsers`) |
 | Bubble rendering ("via Instagram app") | `apps/admin/src/components/messaging/MessageBubble.tsx`, `MessageThread.tsx` |
 | Backfill | `scripts/backfill-instagram-history.js` (`npm run backfill:instagram-history`) |
+| Diagnosis (Meta vs us) | `scripts/diagnose-instagram-echoes.js` (`npm run diag:instagram-echoes`) |
+| Subscription self-heal | `src/modules/messaging_accounts/messaging-accounts.service.js` (`ensureInstagramEchoSubscriptions`), `src/jobs/schedulers/ig-echo-watchdog.js` (hourly) |
+| Failed-ingest recovery | `smartcomm.subscribers.js` (owns `webhook_log.processed`), `src/jobs/processors/webhooks-replay-processor.js`, `webhooks.service.js` |

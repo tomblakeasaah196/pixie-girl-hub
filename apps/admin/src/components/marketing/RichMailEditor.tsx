@@ -224,6 +224,12 @@ export function RichMailEditor({
   const lastEmitted = useRef(value);
   const onSubmitRef = useRef(onSubmit);
   onSubmitRef.current = onSubmit;
+  // Remember where the caret is. On touch devices the toolbar's focus-preserving
+  // `mousedown` handler fires *after* the tap has already blurred the editor, so
+  // its live DOM selection is gone by the time a Personalise pick runs — a plain
+  // `.focus().insertContent()` then has no caret to land on and silently does
+  // nothing. We insert at this remembered position instead, so a pick always lands.
+  const caretRef = useRef<{ from: number; to: number } | null>(null);
 
   const editor = useEditor({
     extensions: [
@@ -254,6 +260,14 @@ export function RichMailEditor({
       },
     },
     content: htmlToEditor(value),
+    onCreate: ({ editor: ed }) => {
+      const { from, to } = ed.state.selection;
+      caretRef.current = { from, to };
+    },
+    onSelectionUpdate: ({ editor: ed }) => {
+      const { from, to } = ed.state.selection;
+      caretRef.current = { from, to };
+    },
     onUpdate: ({ editor: ed }) => {
       const html = editorToHtml(ed.getHTML());
       lastEmitted.current = html;
@@ -276,10 +290,19 @@ export function RichMailEditor({
 
   const insertToken = useCallback(
     (token: string) => {
+      if (!editor) return;
+      // Land the pill at the remembered caret rather than the live selection,
+      // which a touch-device tap on the menu will have already dropped. Clamp
+      // to the current doc (an external content swap can leave the saved range
+      // stale) and fall back to the end so a pick is never a no-op.
+      const size = editor.state.doc.content.size;
+      const saved = caretRef.current;
+      const from = saved ? Math.min(saved.from, size) : size;
+      const to = saved ? Math.min(saved.to, size) : size;
       editor
-        ?.chain()
+        .chain()
+        .insertContentAt({ from, to }, { type: "tokenPill", attrs: { token } })
         .focus()
-        .insertContent({ type: "tokenPill", attrs: { token } })
         .run();
       setMenu(null);
     },

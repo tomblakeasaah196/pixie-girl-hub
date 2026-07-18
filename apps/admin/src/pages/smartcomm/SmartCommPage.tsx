@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
@@ -30,10 +30,45 @@ export function SmartCommPage() {
   const user = useAuthStore((s) => s.user);
   const qc = useQueryClient();
   const [params, setParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const channelId = params.get("channel");
   const dmUser = params.get("dm_user");
   const [mobileShowThread, setMobileShowThread] = useState(false);
   const [newChat, setNewChat] = useState<null | "chat" | "group">(null);
+  // Deep-link from the Contacts "Message" button: open the customer compose
+  // pre-selected to a contact + channel. Delivered via router state so no
+  // contact PII rides in the URL.
+  const [msgCustomer, setMsgCustomer] = useState<{
+    contact: {
+      contact_id: string;
+      display_name: string;
+      primary_phone?: string | null;
+      email?: string | null;
+    };
+    channel?: "whatsapp" | "email" | "instagram";
+  } | null>(null);
+  const msgHandled = useRef(false);
+  useEffect(() => {
+    const st = location.state as {
+      messageCustomer?: {
+        contact_id: string;
+        display_name: string;
+        primary_phone?: string | null;
+        email?: string | null;
+      };
+      channel?: "whatsapp" | "email" | "instagram";
+    } | null;
+    if (st?.messageCustomer && !msgHandled.current) {
+      msgHandled.current = true;
+      setMsgCustomer({ contact: st.messageCustomer, channel: st.channel });
+      // Clear the state so a refresh / back-nav doesn't reopen the composer.
+      navigate(location.pathname + location.search, {
+        replace: true,
+        state: null,
+      });
+    }
+  }, [location, navigate]);
   const [sidebarOpen, setSidebarOpen] = useState(
     () => localStorage.getItem(SIDEBAR_PREF_KEY) !== "0",
   );
@@ -228,11 +263,17 @@ export function SmartCommPage() {
       />
 
       <NewChatModal
-        open={newChat !== null}
-        initialMode={newChat ?? "chat"}
-        onClose={() => setNewChat(null)}
+        open={newChat !== null || msgCustomer !== null}
+        initialMode={msgCustomer ? "customer" : (newChat ?? "chat")}
+        initialCustomer={msgCustomer?.contact}
+        initialChannel={msgCustomer?.channel}
+        onClose={() => {
+          setNewChat(null);
+          setMsgCustomer(null);
+        }}
         onStarted={(id) => {
           setNewChat(null);
+          setMsgCustomer(null);
           select(id);
           setMobileShowThread(true);
         }}

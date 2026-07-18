@@ -33,6 +33,16 @@ interface Props {
   /** Which mode to open in — defaults to "chat" so existing HR "Message" buttons
    *  keep launching the 1:1 flow. The Groups tab opens directly into "group". */
   initialMode?: Mode;
+  /** Deep-link entry: jump straight to the customer compose step pre-selected
+   *  to this contact (the Contacts "Message" button). Overrides initialMode. */
+  initialCustomer?: {
+    contact_id: string;
+    display_name: string;
+    primary_phone?: string | null;
+    email?: string | null;
+  };
+  /** Which channel to pre-select when initialCustomer is set. */
+  initialChannel?: CustomerChannel;
 }
 
 /**
@@ -45,7 +55,14 @@ interface Props {
  * the top + a "Select whole department" quick-pick), (2) name the group and
  * hit Create. If a caller opens the modal with an initialMode, we honour it.
  */
-export function NewChatModal({ open, onClose, onStarted, initialMode = "chat" }: Props) {
+export function NewChatModal({
+  open,
+  onClose,
+  onStarted,
+  initialMode = "chat",
+  initialCustomer,
+  initialChannel,
+}: Props) {
   const meId = useAuthStore((s) => s.user?.id);
   const [mode, setMode] = useState<Mode>(initialMode);
   const [step, setStep] = useState<Step>("pick");
@@ -67,16 +84,28 @@ export function NewChatModal({ open, onClose, onStarted, initialMode = "chat" }:
   // Reset every time the modal opens so a second launch is never stale.
   useEffect(() => {
     if (!open) return;
-    setMode(initialMode);
-    setStep("pick");
     setQ("");
     setSelected(new Set());
     setGroupName("");
     setError(null);
     setContacts([]);
-    setSelectedContact(null);
     setComposeBody("");
-  }, [open, initialMode]);
+    // Deep-link: pre-selected contact → straight to the customer compose step.
+    if (initialCustomer) {
+      setMode("customer");
+      setStep("compose");
+      // The compose step only reads contact_id / display_name / primary_phone /
+      // email, all present here — the rest of CrmClient is unused.
+      setSelectedContact(initialCustomer as unknown as CrmClient);
+      setComposeChannel(
+        initialChannel ?? (initialCustomer.primary_phone ? "whatsapp" : "email"),
+      );
+      return;
+    }
+    setMode(initialMode);
+    setStep("pick");
+    setSelectedContact(null);
+  }, [open, initialMode, initialCustomer, initialChannel]);
 
   const { data, isLoading } = useQuery({
     queryKey: ["smartcomm", "colleagues", "new-chat"],

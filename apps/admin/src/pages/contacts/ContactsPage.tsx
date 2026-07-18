@@ -613,8 +613,8 @@ export function ContactsPage() {
           flex-wrap: on phones the CTA cluster is wider than what's left
           beside the title, so it drops to its own row instead of painting
           over the heading. */}
-      <div className="flex flex-wrap items-center mb-4 gap-3">
-        <div className="min-w-0 mr-auto">
+      <div className="mb-4">
+        <div className="min-w-0 mb-3">
           <h1 className="font-display text-2xl text-text-primary">Contacts</h1>
           {totalCount != null && (
             <p className="text-[12px] text-text-faint mt-0.5">
@@ -622,9 +622,11 @@ export function ContactsPage() {
             </p>
           )}
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2 w-full sm:w-auto sm:flex-shrink-0">
+        {/* View switch sits on the left directly under the title; the QR pill
+            and Power Plus stay together on the right. */}
+        <div className="flex items-center gap-2">
           {!isProgrammeTab && (
-            <div className="flex items-center rounded-[10px] border border-line overflow-hidden mr-1">
+            <div className="flex items-center rounded-[10px] border border-line overflow-hidden">
               <button
                 onClick={() => setViewPersist("list")}
                 className={`grid place-items-center w-[34px] h-[34px] transition-colors ${
@@ -651,24 +653,26 @@ export function ContactsPage() {
               </button>
             </div>
           )}
-          {/* QR pill — reveals Walk-in / Online QR (was two toolbar buttons) */}
-          <button
-            onClick={() => setShowQrSheet(true)}
-            aria-label="Share a QR code"
-            title="QR codes"
-            className="inline-flex items-center justify-center h-[38px] px-3.5 rounded-[12px] bg-text-primary/[0.04] border border-line text-text-muted hover:text-text-primary hover:bg-text-primary/[0.08] transition-colors"
-          >
-            <QrCode className="w-[18px] h-[18px]" />
-          </button>
-          {/* Power Plus — one button, every way to add a contact */}
-          <button
-            onClick={openAdd}
-            aria-label={primaryLabel}
-            title={primaryLabel}
-            className="inline-flex items-center justify-center h-[38px] min-w-[46px] px-3.5 rounded-[12px] text-[#F4E9D9] bg-accent-deep hover:bg-accent transition-colors shadow-[0_8px_22px_rgb(var(--accent-deep)/0.45)]"
-          >
-            <Plus className="w-[19px] h-[19px]" strokeWidth={2.4} />
-          </button>
+          <div className="flex items-center gap-2 ml-auto">
+            {/* QR pill — reveals Walk-in / Online QR (was two toolbar buttons) */}
+            <button
+              onClick={() => setShowQrSheet(true)}
+              aria-label="Share a QR code"
+              title="QR codes"
+              className="inline-flex items-center justify-center h-[38px] px-3.5 rounded-[12px] bg-text-primary/[0.04] border border-line text-text-muted hover:text-text-primary hover:bg-text-primary/[0.08] transition-colors"
+            >
+              <QrCode className="w-[18px] h-[18px]" />
+            </button>
+            {/* Power Plus — one button, every way to add a contact */}
+            <button
+              onClick={openAdd}
+              aria-label={primaryLabel}
+              title={primaryLabel}
+              className="inline-flex items-center justify-center h-[38px] min-w-[46px] px-3.5 rounded-[12px] text-[#F4E9D9] bg-accent-deep hover:bg-accent transition-colors shadow-[0_8px_22px_rgb(var(--accent-deep)/0.45)]"
+            >
+              <Plus className="w-[19px] h-[19px]" strokeWidth={2.4} />
+            </button>
+          </div>
         </div>
       </div>
 

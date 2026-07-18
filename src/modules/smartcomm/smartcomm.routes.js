@@ -13,9 +13,11 @@
 "use strict";
 
 const express = require("express");
+const multer = require("multer");
 const c = require("./smartcomm.controller");
 const v = require("./smartcomm.validator");
 const { requirePermission, requireCeo } = require("../../middleware/rbac");
+const { config } = require("../../config/env");
 
 // Side-effects:
 //   - sales.order.payment_reminder → customer dispatch (G-4)
@@ -28,11 +30,24 @@ const router = express.Router();
 const can = (action) => requirePermission("smartcomm", action);
 const canPraxis = (action) => requirePermission("praxis_ai", action);
 
+const imageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: (config.MEDIA_MAX_FILE_SIZE_MB || 10) * 1024 * 1024 },
+});
+
 // ── Reads + dispatch (literal segments before /channels/:id) ─
 router.get("/unread-count", can("view"), c.getUnreadCount);
 router.get("/starred", can("view"), c.listStarred);
 router.get("/search", can("view"), c.searchMessages);
 router.post("/send", can("edit"), v.validateSendToCustomer, c.sendToCustomer);
+// Rich email composer: inline image upload (drag/drop or pick → public URL).
+// Same gate as sending — any rep who can reply can embed an image.
+router.post(
+  "/upload-image",
+  can("edit"),
+  imageUpload.single("file"),
+  c.uploadImage,
+);
 
 // ── Colleague directory (internal people-picker) ───────────
 // smartcomm.view so any messaging user can start a group / add teammates,

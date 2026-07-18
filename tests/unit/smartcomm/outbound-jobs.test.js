@@ -271,6 +271,45 @@ describe("email outbound", () => {
     );
   });
 
+  test("passes a rich HTML body through the brand shell (not escaped)", async () => {
+    stubMember({ contact_id: "c-1", email: "buyer@example.com" });
+    const jobs = await service.buildOutboundJobsForChannel({
+      channel: emailChannel(),
+      message: textMessage({
+        metadata: {
+          subject: "Your look",
+          body_html:
+            '<p>Hi <strong>Ada</strong>, see our <a href="https://x.co/sale">sale</a>.</p>',
+        },
+      }),
+      content: "Hi Ada, see our sale.",
+      client: {},
+    });
+    expect(jobs).toHaveLength(1);
+    const { data } = jobs[0];
+    // The operator's HTML rides through verbatim (bold + link preserved),
+    // wrapped in the house shell — never escaped into visible tags.
+    expect(data.html).toContain("<strong>Ada</strong>");
+    expect(data.html).toContain('href="https://x.co/sale"');
+    expect(data.html).not.toContain("&lt;strong&gt;");
+    // Plain-text alternative still carries the readable shadow.
+    expect(data.text).toContain("Hi Ada, see our sale.");
+  });
+
+  test("sends a rich HTML-only email even with no plain-text body", async () => {
+    stubMember({ contact_id: "c-1", email: "buyer@example.com" });
+    const jobs = await service.buildOutboundJobsForChannel({
+      channel: emailChannel(),
+      message: textMessage({
+        metadata: { body_html: '<p><img src="https://x.co/look.jpg"></p>' },
+      }),
+      content: null,
+      client: {},
+    });
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0].data.html).toContain('src="https://x.co/look.jpg"');
+  });
+
   test("fails the message when the contact has no email on file", async () => {
     stubMember({ contact_id: "c-1", email: null });
     const jobs = await service.buildOutboundJobsForChannel({

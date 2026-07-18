@@ -646,13 +646,22 @@ messages across WhatsApp, SMS, and other channels in one place.
 **Common tasks.**
 - *Reply to a customer on WhatsApp/SMS?* Messaging (`/smartcomm`) — pick the
   conversation and send.
-- *Email a customer?* Open their **email** conversation. The composer shows a
-  **Subject** line (defaults to the thread's subject — edit it freely), a
-  **+ Cc** button to copy other recipients, and the paperclip to attach files
-  (PDFs, images, docs). Attachments **stage** as chips and go out **with** the
-  next message, so one Send delivers body + subject + Cc + every file as a
-  single **branded** email (the brand's logo, colours and footer are applied
-  automatically — nothing to configure per message).
+- *Email a customer?* Open their **email** conversation. Email uses a
+  **rich, Gmail-style writer** — bold/italic/underline, text colour and size,
+  alignment, bullet/numbered lists, links, inline **images**, and emoji from
+  the editor's toolbar. Above it sits a **Subject** line (defaults to the
+  thread's subject — edit it freely) and a **+ Cc** button to copy other
+  recipients; the **Attach** button stages files (PDFs, images, docs) as chips
+  to ride the same letter. One Send delivers the formatted body + subject + Cc
+  + every file as a single **branded** email (the brand's logo, colours and
+  footer are applied automatically). Press **⌘/Ctrl + Enter** to send;
+  plain Enter makes a new line. (WhatsApp and Instagram stay a simple text box —
+  those channels don't carry formatting, subjects or Cc.)
+- *Start a brand-new conversation with a customer?* The **+** (top of the inbox
+  list) → **Customer** tab → search the contact → pick **Send via** WhatsApp /
+  Email / Instagram. Choosing **Email** opens the same rich Gmail-style writer
+  with Subject, Cc and attachments; WhatsApp/Instagram show a simple first-
+  message box.
 - *Share products / a bundle / a service in a chat?* Open the conversation →
   the **catalogue icon** in the composer → pick Base / Styled / **Bundle** /
   Service items → **Send**. The customer gets photo cards plus one short

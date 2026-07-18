@@ -180,8 +180,16 @@ function textToEmailHtml(text) {
  * lookup or render ever fails, so branding can never block a customer
  * reply from going out.
  */
-async function buildBrandedConversationalEmail({ brand, text }) {
+async function buildBrandedConversationalEmail({ brand, text, bodyHtml }) {
   const raw = String(text || "");
+  // A Gmail-style composer supplies ready HTML (bold/colours/lists/links/
+  // images the operator laid out); a plain reply supplies just text, which we
+  // paragraph-wrap. Either way it goes inside the brand shell so the mail
+  // looks like the brand's other letters, not a bare paragraph.
+  const inner =
+    bodyHtml && String(bodyHtml).trim()
+      ? String(bodyHtml)
+      : textToEmailHtml(raw);
   try {
     const emailRender = require("../email_campaigns/email-render");
     const { buildTransactionalEmail } = require("../../services/transactional-email");
@@ -189,7 +197,7 @@ async function buildBrandedConversationalEmail({ brand, text }) {
     const preheader = raw.replace(/\s+/g, " ").trim().slice(0, 140);
     const { html, text: plain } = buildTransactionalEmail({
       brandTokens,
-      bodyHtml: textToEmailHtml(raw),
+      bodyHtml: inner,
       preheader,
     });
     return { html, text: raw || plain };
@@ -199,8 +207,14 @@ async function buildBrandedConversationalEmail({ brand, text }) {
       { err: err.message, brand },
       "smartcomm: branded email render failed — sending plain body",
     );
+    // Fallback still honours a rich body (it's already HTML); only the plain
+    // path needs escaping so stray angle brackets don't become tags.
     const { esc } = require("../../services/email-theme");
-    return { html: `<p>${esc(raw).replace(/\n/g, "<br>")}</p>`, text: raw };
+    const fallback =
+      bodyHtml && String(bodyHtml).trim()
+        ? String(bodyHtml)
+        : `<p>${esc(raw).replace(/\n/g, "<br>")}</p>`;
+    return { html: fallback, text: raw };
   }
 }
 
@@ -609,12 +623,18 @@ async function postMessage({ brand, user, request_id, id, input }) {
     // email thread the operator's envelope (subject + Cc) rides alongside it
     // so the outbound builder — and the thread record — can see it.
     let metadata = sanitiseMessageMetadata(input.message_type, input.metadata);
-    if (channel.external_platform === "email" && (input.subject || input.cc)) {
+    if (
+      channel.external_platform === "email" &&
+      (input.subject || input.cc || input.body_html)
+    ) {
       const cc = normaliseCcList(input.cc);
       metadata = {
         ...(metadata || {}),
         ...(input.subject ? { subject: String(input.subject).slice(0, 300) } : {}),
         ...(cc.length ? { cc } : {}),
+        ...(input.body_html && String(input.body_html).trim()
+          ? { body_html: String(input.body_html) }
+          : {}),
       };
     }
     const msg = await repo.insertMessage({
@@ -1640,15 +1660,23 @@ async function buildOutboundJobsForChannel({
         storage_key: a.file_path,
         content_type: a.mime_type || undefined,
       }));
-    // A send with neither a body nor a file has nothing to deliver.
-    if (!String(content || "").trim() && attachments.length === 0) {
+    // A send with neither a body (plain or rich HTML) nor a file has nothing
+    // to deliver.
+    const hasHtmlBody = !!(mmeta.body_html && String(mmeta.body_html).trim());
+    if (
+      !String(content || "").trim() &&
+      !hasHtmlBody &&
+      attachments.length === 0
+    ) {
       return fail("NOTHING_TO_SEND");
     }
-    // Brand the plain-text body into the house email shell so the reply
-    // looks like the brand's other mail, not a bare paragraph.
+    // Brand the body into the house email shell so the reply looks like the
+    // brand's other mail. A rich (Gmail-style) send rides HTML in the message
+    // metadata; a plain reply just has text.
     const branded = await buildBrandedConversationalEmail({
       brand: channel.business,
       text: content,
+      bodyHtml: mmeta.body_html,
     });
     return [
       {
@@ -2220,6 +2248,8 @@ async function sendToCustomer({
   subject,
   cc,
   body,
+  body_html,
+  attachments,
   user,
   soft,
   event_key,
@@ -2284,11 +2314,19 @@ async function sendToCustomer({
     // uses THIS send's subject/Cc (a brand-new thread has none on the channel
     // yet — the channel-subject UPDATE below only runs post-commit).
     const ccList = channel === "email" ? normaliseCcList(cc) : [];
+    // Attachments and rich HTML are email-only — they ride the one outbound
+    // letter. Other channels ignore them.
+    const emailFiles = channel === "email" ? attachments || [] : [];
+    const richHtml =
+      channel === "email" && body_html && String(body_html).trim()
+        ? String(body_html)
+        : undefined;
     const emailMeta =
-      channel === "email" && (subject || ccList.length)
+      channel === "email" && (subject || ccList.length || richHtml)
         ? {
             ...(subject ? { subject: String(subject).slice(0, 300) } : {}),
             ...(ccList.length ? { cc: ccList } : {}),
+            ...(richHtml ? { body_html: richHtml } : {}),
           }
         : undefined;
     const m = await repo.insertMessage({
@@ -2296,12 +2334,24 @@ async function sendToCustomer({
       message: {
         channel_id: th.channel_id,
         sender_user_id: user ? user.user_id : null,
-        message_type: user ? "text" : "system",
+        message_type: user ? (emailFiles.length ? "document" : "text") : "system",
         content: body,
         delivery_status: "queued",
         metadata: emailMeta,
       },
     });
+    // Stage the files on the message before the outbound job is built —
+    // buildOutboundJobsForChannel reads them back (same client) to attach.
+    for (const a of emailFiles) {
+      await repo.addAttachment({
+        client,
+        a: {
+          message_id: m.message_id,
+          document_id: a.document_id,
+          display_name: a.display_name,
+        },
+      });
+    }
     const outboundJobs = await buildOutboundJobsForChannel({
       channel: th,
       message: m,
@@ -2767,6 +2817,38 @@ async function setUserChannelAccess({
   });
   events.emit("channel_access.changed", { brand, user_id });
   return getUserChannelAccess({ brand, user_id });
+}
+
+/**
+ * Upload an inline image for the Gmail-style email composer (drag/drop or
+ * pick) and return a public URL to embed in the mail HTML. Mirrors the
+ * marketing mail editor's upload, but keyed under the messaging namespace so
+ * a rep who can reply — not necessarily a marketing officer — can use it.
+ */
+async function uploadImage({ brand, file }) {
+  if (!file || !file.buffer || !file.buffer.length) {
+    throw new AppError("NO_FILE", "No image was uploaded", 400);
+  }
+  const { compressUpload } = require("../../services/media-compression.service");
+  const storage = require("../../services/storage.service");
+  const crypto = require("crypto");
+  const shrunk = await compressUpload(file);
+  if (!/^image\//.test(shrunk.mime_type || "")) {
+    throw new AppError("BAD_FILE_TYPE", "Only image files are allowed", 400);
+  }
+  const ext =
+    String(shrunk.filename || "")
+      .split(".")
+      .pop()
+      ?.toLowerCase()
+      .replace(/[^a-z0-9]/g, "")
+      .slice(0, 5) || "jpg";
+  const key = `messaging/${brand}/${crypto.randomBytes(12).toString("hex")}.${ext}`;
+  const stored = await storage.put(shrunk.buffer, {
+    key,
+    contentType: shrunk.mime_type,
+  });
+  return { url: stored.public_url };
 }
 
 module.exports = {

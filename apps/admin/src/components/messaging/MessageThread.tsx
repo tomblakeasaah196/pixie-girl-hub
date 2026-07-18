@@ -59,6 +59,12 @@ import { cn } from "@/lib/cn";
 import { toastReport } from "@/lib/error-report";
 import { useUploadProgress } from "@/lib/use-upload";
 import { isHeicFile } from "@/lib/heic";
+import {
+  htmlToPlainText,
+  isRichHtmlEmpty,
+  textToMailHtml,
+} from "@/lib/html-mail";
+import { RichMailEditor } from "@/components/marketing/RichMailEditor";
 import { UploadProgress } from "@/components/ui/UploadProgress";
 import type {
   Channel,
@@ -143,6 +149,10 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
   const [subjectDraft, setSubjectDraft] = useState("");
   const [ccInput, setCcInput] = useState("");
   const [showCc, setShowCc] = useState(false);
+  // Gmail-style rich email body (HTML). Email threads compose here instead of
+  // the plain textarea; the plain-text shadow is derived on send.
+  const [emailHtml, setEmailHtml] = useState("");
+  const [emailQrOpen, setEmailQrOpen] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<
     { document_id: string; display_name: string; kind: MessageType }[]
   >([]);
@@ -202,6 +212,15 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
   const isWhatsapp = platform === "whatsapp";
   const isInstagram = platform === "instagram";
   const isEmail = platform === "email";
+  // Whether the rich email editor is the active composer (vs the plain
+  // textarea). Editing an existing message always uses the textarea.
+  const emailRich = isEmail && !editing;
+  // The composer's text regardless of which surface it lives on — used by the
+  // Praxis / stock-message chips and the "save as default" flow.
+  const composerText = useMemo(
+    () => (emailRich ? htmlToPlainText(emailHtml) : content),
+    [emailRich, emailHtml, content],
+  );
   const windowOpen = useMemo(() => {
     if (!channel?.wa_window_expires_at) return platform !== "whatsapp";
     return new Date(channel.wa_window_expires_at).getTime() > Date.now();
@@ -238,6 +257,8 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
     setCcInput("");
     setShowCc(false);
     setSubjectDraft("");
+    setEmailHtml("");
+    setEmailQrOpen(false);
     subjectSeededRef.current = null;
   }, [channelId]);
 
@@ -321,14 +342,14 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
     return out;
   }
 
-  // Email threads send the body + subject + Cc + all staged files as ONE
+  // Email threads send the rich body + subject + Cc + all staged files as ONE
   // branded letter, so they take a dedicated path.
   async function handleSendEmail() {
     setError(null);
-    const text = content.trim();
-    if (!text && pendingFiles.length === 0) return;
     if (editing) {
-      // Edits are plain content updates — no envelope.
+      // Edits are plain content updates via the textarea — no envelope.
+      const text = content.trim();
+      if (!text) return;
       try {
         setBusy("sending");
         await smartcommApi.editMessage(editing.message_id, text);
@@ -343,6 +364,12 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
       }
       return;
     }
+    // Compose comes from the Gmail-style rich editor: HTML is what goes out,
+    // with a plain-text shadow for the thread / search / preheader.
+    const html = emailHtml;
+    const hasBody = !isRichHtmlEmpty(html);
+    const plain = htmlToPlainText(html).trim();
+    if (!hasBody && pendingFiles.length === 0) return;
     const cc = showCc ? parseCc(ccInput) : [];
     const attachments = pendingFiles.map((f) => ({
       document_id: f.document_id,
@@ -359,7 +386,8 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
     try {
       setBusy("sending");
       await smartcommApi.postMessage(channelId, {
-        content: text || undefined,
+        content: plain || undefined,
+        body_html: hasBody ? html : undefined,
         message_type,
         reply_to_id: replyTo?.message_id,
         subject: subjectDraft.trim() || undefined,
@@ -368,6 +396,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
       });
       setReplyTo(null);
       resetTextarea();
+      setEmailHtml("");
       setPendingFiles([]);
       // Clear the Cc after each send so a later reply doesn't silently keep
       // copying third parties. Subject stays (it's the thread's subject).
@@ -613,6 +642,12 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
   }
 
   function insertReplyBody(body: string) {
+    // Email composes in the rich editor — drop the text in as simple HTML
+    // (paragraphs + auto-linked URLs). Everything else uses the textarea.
+    if (isEmail && !editing) {
+      setEmailHtml(textToMailHtml(body));
+      return;
+    }
     setContent(body);
     requestAnimationFrame(() => {
       const el = textareaRef.current;
@@ -691,7 +726,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
   // {placeholder} so the saved template stays reusable.
   async function saveTemplateAsDefault() {
     if (!templateChip) return;
-    const withToken = content
+    const withToken = composerText
       .split(templateChip.value)
       .join(templateChip.token);
     setTemplateChip((c) => (c ? { ...c, saving: true } : c));
@@ -738,18 +773,23 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
     try {
       setBusy("drafting");
       const draft = await smartcommApi.draftWithPraxis(channelId);
-      setContent(draft.content || "");
       setPraxisMode(draft.draft_mode === "followup" ? "followup" : "reply");
       setPraxisDrafted(true);
-      // Auto-resize the textarea to the new content
-      requestAnimationFrame(() => {
-        const el = textareaRef.current;
-        if (el) {
-          el.style.height = "auto";
-          el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
-          el.focus();
-        }
-      });
+      if (isEmail && !editing) {
+        // Email drafts land in the rich editor as simple HTML.
+        setEmailHtml(textToMailHtml(draft.content || ""));
+      } else {
+        setContent(draft.content || "");
+        // Auto-resize the textarea to the new content
+        requestAnimationFrame(() => {
+          const el = textareaRef.current;
+          if (el) {
+            el.style.height = "auto";
+            el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+            el.focus();
+          }
+        });
+      }
     } catch (e: unknown) {
       toastReport("Messaging → Thread", "Draft reply with Praxis", e);
       setError(
@@ -1091,7 +1131,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
       )}
 
       {/* Praxis-drafted chip */}
-      {praxisDrafted && content && (
+      {praxisDrafted && composerText.trim() && (
         <div className="mx-3 sm:mx-4 mb-1 flex items-center gap-2 rounded-xl border border-accent/30 bg-accent/5 px-3 py-1.5 text-[11.5px] text-text-muted">
           <Sparkles className="w-3.5 h-3.5 text-accent-glow shrink-0" />
           <span className="flex-1">
@@ -1103,6 +1143,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
             onClick={() => {
               setPraxisDrafted(false);
               setContent("");
+              setEmailHtml("");
               if (textareaRef.current)
                 textareaRef.current.style.height = "auto";
             }}
@@ -1116,7 +1157,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
 
       {/* Stock-message chip — insert a form/WhatsApp template, edit it in
           the composer, then optionally make the edit the new default. */}
-      {templateChip && content && (
+      {templateChip && composerText.trim() && (
         <div className="mx-3 sm:mx-4 mb-1 flex items-center gap-2 rounded-xl border border-accent/30 bg-accent/5 px-3 py-1.5 text-[11.5px] text-text-muted">
           <MessageCircle className="w-3.5 h-3.5 text-accent-glow shrink-0" />
           <span className="flex-1 min-w-0">
@@ -1131,7 +1172,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
           ) : (
             <button
               onClick={saveTemplateAsDefault}
-              disabled={templateChip.saving || !content.trim()}
+              disabled={templateChip.saving || !composerText.trim()}
               className="shrink-0 inline-flex items-center gap-1 rounded-md border border-accent/40 px-2 py-0.5 font-semibold text-accent-glow hover:bg-accent/10 disabled:opacity-50"
               title="Replace the automated text with this wording next time"
             >
@@ -1339,6 +1380,116 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
                 </div>
               )}
               <div className="flex items-end gap-2">
+              {emailRich ? (
+                /* Email composes in the Gmail-style rich editor. Its own
+                   toolbar carries formatting / colour / link / image / emoji;
+                   the row below adds the mail-specific actions. */
+                <div className="min-w-0 flex-1">
+                  <RichMailEditor
+                    value={emailHtml}
+                    onChange={setEmailHtml}
+                    personalise={false}
+                    compact
+                    uploadEndpoint="/smartcomm/upload-image"
+                    placeholder="Write your email…"
+                    onSubmit={() => void handleSend()}
+                  />
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1 px-0.5">
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={busy === "uploading"}
+                      className="p-1 text-text-faint hover:text-text-primary disabled:opacity-40"
+                      title="Attach a file"
+                    >
+                      {busy === "uploading" ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Paperclip className="w-4 h-4" />
+                      )}
+                    </button>
+                    {isCustomerThread && (
+                      <button
+                        onClick={insertOnboardingLink}
+                        disabled={busy === "sending"}
+                        className="p-1 text-text-faint hover:text-text-primary disabled:opacity-50"
+                        title="Insert Online welcome form link (edit before sending)"
+                      >
+                        {busy === "sending" ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Link2 className="w-4 h-4" />
+                        )}
+                      </button>
+                    )}
+                    {isCustomerThread && (
+                      <button
+                        onClick={insertWhatsAppHandoff}
+                        className="p-1 text-text-faint hover:text-[#25D366]"
+                        title="Insert WhatsApp follow-up (shares your number)"
+                      >
+                        <MessageCircle className="w-4 h-4" />
+                      </button>
+                    )}
+                    {canPraxis("praxis_ai", "view") && (
+                      <button
+                        onClick={handleDraftWithPraxis}
+                        disabled={busy === "drafting"}
+                        className="p-1 text-accent-glow hover:text-accent disabled:opacity-50"
+                        title="Draft with Praxis"
+                      >
+                        {busy === "drafting" ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Sparkles className="w-4 h-4" />
+                        )}
+                      </button>
+                    )}
+                    <div className="relative">
+                      <button
+                        onClick={() => setEmailQrOpen((v) => !v)}
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-[11px] hover:text-text-primary",
+                          emailQrOpen ? "text-accent-glow" : "text-text-faint",
+                        )}
+                        title="Quick replies"
+                      >
+                        / Quick reply
+                      </button>
+                      {emailQrOpen && quickReplies.length > 0 && (
+                        <div className="absolute bottom-full left-0 z-30 mb-1 max-h-56 w-64 overflow-y-auto rounded-xl border hairline bg-panel-2 shadow-xl">
+                          {quickReplies.map((r) => (
+                            <button
+                              key={r.reply_id}
+                              onClick={() => {
+                                setEmailQrOpen(false);
+                                void applyQuickReply(r.slug);
+                              }}
+                              className="block w-full px-3 py-2 text-left text-[12.5px] hover:bg-panel"
+                            >
+                              <span className="font-medium text-text-primary">
+                                {r.title}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <span className="ml-auto text-[10px] text-text-faint">
+                      ⌘↵ to send
+                    </span>
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    hidden
+                    onChange={(e) => {
+                      void handleFiles(e.target.files);
+                      e.target.value = "";
+                    }}
+                  />
+                </div>
+              ) : (
               <div className="relative flex-1 rounded-2xl border hairline bg-panel-2">
                 <textarea
                   ref={textareaRef}
@@ -1467,11 +1618,13 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
                   />
                 </div>
               </div>
+              )}
               <button
                 onClick={handleSend}
                 disabled={
-                  (!content.trim() &&
-                    !(isEmail && !editing && pendingFiles.length > 0)) ||
+                  (emailRich
+                    ? isRichHtmlEmpty(emailHtml) && pendingFiles.length === 0
+                    : !content.trim()) ||
                   busy === "sending" ||
                   busy === "uploading" ||
                   composerLocked

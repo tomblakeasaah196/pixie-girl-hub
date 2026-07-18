@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import { useBranding } from "@/lib/branding";
@@ -19,11 +19,22 @@ export function SelectEntityPage() {
   const loadPermissions = useAuthStore((s) => s.loadPermissions);
   const setActive = useBusinessStore((s) => s.setActive);
 
-  const all = data?.businesses ?? [];
   // CEO/super-admin sees every active brand; others only their grants.
-  const businesses = user?.isCeo
-    ? all
-    : all.filter((b) => user?.availableBusinesses?.includes(b.business_key));
+  // Memoized so this stays referentially stable across re-renders that don't
+  // actually change the set (e.g. loadPermissions() below resolving, which
+  // replaces `user` with a new object carrying the same isCeo/availableBusinesses)
+  // — otherwise the redirect effect keyed on `businesses` would re-fire on
+  // every such render, re-triggering setActive/loadPermissions/navigate in a
+  // tight loop while this page settles.
+  const rawBusinesses = data?.businesses;
+  const isCeo = user?.isCeo;
+  const availableBusinesses = user?.availableBusinesses;
+  const businesses = useMemo(() => {
+    const all = rawBusinesses ?? [];
+    return isCeo
+      ? all
+      : all.filter((b) => availableBusinesses?.includes(b.business_key));
+  }, [rawBusinesses, isCeo, availableBusinesses]);
 
   // If somehow there's only one, don't make them choose.
   useEffect(() => {

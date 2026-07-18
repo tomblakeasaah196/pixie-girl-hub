@@ -37,6 +37,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import {
   Button,
+  IconButton,
   Card,
   KpiTile,
   Skeleton,
@@ -222,6 +223,20 @@ export function WorkspacePage() {
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   // Keep the active tab pill in view as the strip scrolls on phones.
   const activeTabRef = useRef<HTMLButtonElement | null>(null);
+
+  // Mobile "New" menu — the tab strip has no room for two labelled buttons,
+  // so phones get one compact icon button that fans to Task / Event instead
+  // of losing the create action entirely.
+  const [mobileCreateOpen, setMobileCreateOpen] = useState(false);
+  const mobileCreateRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!mobileCreateOpen) return;
+    const onDown = (e: MouseEvent) =>
+      !mobileCreateRef.current?.contains(e.target as Node) &&
+      setMobileCreateOpen(false);
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [mobileCreateOpen]);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const isCeo = !!user?.isCeo;
@@ -522,7 +537,44 @@ export function WorkspacePage() {
           </div>
         </div>
 
-        {!isMobile && (
+        {isMobile ? (
+          <div className="relative shrink-0" ref={mobileCreateRef}>
+            <IconButton
+              aria-label="New task or event"
+              title="New task or event"
+              onClick={() => setMobileCreateOpen((o) => !o)}
+            >
+              <Plus className="w-[18px] h-[18px]" />
+            </IconButton>
+            {mobileCreateOpen && (
+              <div
+                role="menu"
+                className="absolute z-[65] top-full right-0 mt-2 w-[168px] p-1.5 rounded-[13px] dropglass animate-fade-in"
+              >
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setMobileCreateOpen(false);
+                    openCreateTaskForDate();
+                  }}
+                  className="w-full flex items-center gap-2.5 p-[9px_10px] rounded-[9px] text-[13px] font-medium text-text-muted hover:bg-text-primary/[0.06] hover:text-text-primary transition-all"
+                >
+                  <ListTodo className="w-4 h-4" /> New task
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setMobileCreateOpen(false);
+                    setShowCreateEvent(true);
+                  }}
+                  className="w-full flex items-center gap-2.5 p-[9px_10px] rounded-[9px] text-[13px] font-medium text-text-muted hover:bg-text-primary/[0.06] hover:text-text-primary transition-all"
+                >
+                  <CalendarDays className="w-4 h-4" /> New event
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
           <div className="ml-auto flex items-center gap-2 shrink-0">
             <Button
               variant="primary"

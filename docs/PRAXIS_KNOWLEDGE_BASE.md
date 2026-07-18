@@ -84,8 +84,9 @@ only access one business, there's nothing to switch.
   the sparkle and *hold* for a moment to confirm, so a stray flick or scroll
   bounce won't trigger it. For a full reload that also clears the app's cached
   files (use this if the Hub ever looks stuck or stale), use **Hard refresh** —
-  the ⟳ button in the top bar on desktop, or **Hard refresh** in the account
-  menu on mobile.
+  the ⟳ button in the top bar on desktop, or on mobile via **Hard refresh** in
+  the account menu (tap your avatar, top-right) or the floating launcher's ⟳
+  fan item (tap the launcher bottom-right).
 - **Your name / avatar (bottom-left)** — account menu: **Change photo · My
   profile · My HR · Appearance · Quick login PIN · Change password · Sign out**.
   - **Appearance** here is a *personal* look for your own device — pick a

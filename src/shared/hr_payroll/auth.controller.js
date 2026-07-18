@@ -14,6 +14,7 @@
 
 const service = require("./auth.service");
 const permissionsRepo = require("../org_workflow/permissions.repo");
+const { hasOrgDashboardRight } = require("../../modules/dashboards/dashboards.access");
 const { AppError } = require("../../utils/errors");
 
 async function login(req, res) {
@@ -168,6 +169,21 @@ async function mePermissions(req, res) {
   const rows = await permissionsRepo.findAllForRoles({
     role_ids: req.user.role_ids,
   });
+  // Org-chart dashboard rights (management position / dotted-line
+  // can_view_dashboards) are a second, additive grant path the RBAC matrix
+  // doesn't know about (dashboards.access.js). Fold it in here so the
+  // frontend nav/route guard — which only reads this "effective grants"
+  // list — shows Dashboard for these users too, without widening
+  // matrix-based access for anyone else.
+  const hasMatrixDashboardView = rows.some(
+    (r) => r.module === "dashboards" && r.action === "view",
+  );
+  if (
+    !hasMatrixDashboardView &&
+    (await hasOrgDashboardRight(req.user.user_id))
+  ) {
+    rows.push({ module: "dashboards", action: "view", record_scope: "all" });
+  }
   res.json({ data: rows });
 }
 

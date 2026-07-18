@@ -7,12 +7,20 @@ import {
   type ReactNode,
 } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Sparkles, MessageCircle, HelpCircle, X } from "lucide-react";
+import {
+  Plus,
+  Sparkles,
+  MessageCircle,
+  HelpCircle,
+  RefreshCw,
+  X,
+} from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useIsDesktop } from "@/hooks/useMediaQuery";
 import { useChatDockStore } from "@/stores/chat-dock";
 import { usePraxisDockStore } from "@/stores/praxis-dock";
 import { useUnreadMessages } from "@/hooks/useSmartcomm";
+import { hardRefresh } from "@/lib/hardRefresh";
 import { useClockPunch } from "./useClockPunch";
 import { ClockFanItem } from "./ClockFanItem";
 
@@ -92,6 +100,15 @@ export function FloatingLauncher() {
   const clock = useClockPunch();
   const showClock =
     !isDesktop && clock.view !== "hidden" && clock.view !== "loading";
+  // Hard refresh also rides the launcher on mobile — the top bar there is
+  // already tight with menu/search/bell/avatar, so it lives in the account
+  // menu AND here, mirroring how Clock moved off the top bar for phones.
+  const showRefresh = !isDesktop;
+  const [refreshing, setRefreshing] = useState(false);
+  const handleHardRefresh = () => {
+    setRefreshing(true);
+    void hardRefresh();
+  };
   const ref = useRef<HTMLDivElement>(null);
   const suppressClick = useRef(false);
   const drag = useRef<{
@@ -223,9 +240,10 @@ export function FloatingLauncher() {
   }
 
   // Height the open fan needs, so we know whether to flip it below the button
-  // when it's parked near the top of the screen. Grows by one row when the
-  // clock item is present.
-  const fanHeight = (showClock ? 4 : 3) * FAN_ITEM + EDGE_PAD;
+  // when it's parked near the top of the screen. Grows by one row for each of
+  // the clock and hard-refresh items when present.
+  const fanHeight =
+    (3 + (showClock ? 1 : 0) + (showRefresh ? 1 : 0)) * FAN_ITEM + EDGE_PAD;
   const fanBelow = pos != null && pos.top < fanHeight + EDGE_PAD;
   const containerStyle: CSSProperties = pos
     ? { left: pos.left, top: pos.top, right: "auto", bottom: "auto" }
@@ -298,6 +316,17 @@ export function FloatingLauncher() {
               hover the phone can't give. */}
           {showClock && (
             <ClockFanItem clock={clock} onPunch={() => setOpen(false)} />
+          )}
+          {showRefresh && (
+            <div className="group/m">
+              {mini(
+                refreshing ? "Refreshing…" : "Hard refresh",
+                <RefreshCw
+                  className={cn("w-5 h-5", refreshing && "animate-spin")}
+                />,
+                handleHardRefresh,
+              )}
+            </div>
           )}
           <div className="group/m">
             {mini("Help", <HelpCircle className="w-5 h-5" />, () =>

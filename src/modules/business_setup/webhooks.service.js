@@ -923,9 +923,24 @@ const DISPATCH = {
   stripe: confirmStripeCharge,
 };
 
+// Sources whose real consumer is the smartcomm inbox ingest (registered on
+// the same outbox event), not the payment dispatch below.
+const MESSAGING_SOURCES = new Set([
+  "meta_whatsapp",
+  "meta_instagram",
+  "cloudflare_email",
+]);
+
 async function onWebhookReceived({ webhook_id }) {
   const log = await repo.findById(webhook_id);
   if (!log || log.processed) return; // already handled
+  // Messaging webhooks have no payment handler here — their processed flag
+  // is owned by the smartcomm ingest consumer, which marks success/failure
+  // itself. Marking them processed here (the old behaviour) made a failed
+  // ingest unrescuable: once the outbox retries were exhausted, the replay
+  // sweep (which only re-drives processed = false rows) could never see it,
+  // and the message — e.g. an Instagram app-reply echo — was lost for good.
+  if (!DISPATCH[log.source] && MESSAGING_SOURCES.has(log.source)) return;
   try {
     const handler = DISPATCH[log.source];
     if (handler) await handler(log);

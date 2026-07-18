@@ -558,6 +558,25 @@ function PlatformEditor({ platform, account, onSaved }: EditorProps) {
                   Inbound IMAP check failed: {test.data.imap.error}
                 </span>
               ))}
+            {test.data?.echo_sync &&
+              (test.data.echo_sync.healed ? (
+                <span className="block text-amber-300/90">
+                  The webhook subscription that syncs replies sent from the
+                  Instagram app had been dropped on Meta's side — it has been
+                  re-subscribed automatically.
+                </span>
+              ) : test.data.echo_sync.ok ? (
+                <span className="block text-green-200/80">
+                  App-reply sync (message echoes) is subscribed and healthy.
+                </span>
+              ) : (
+                <span className="block text-amber-300/90">
+                  App-reply sync check failed
+                  {test.data.echo_sync.error
+                    ? `: ${test.data.echo_sync.error}`
+                    : " — replies sent from the Instagram app may not appear here."}
+                </span>
+              ))}
           </span>
         </div>
       )}

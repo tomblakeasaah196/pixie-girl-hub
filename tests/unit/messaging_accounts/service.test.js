@@ -32,6 +32,7 @@ jest.mock("../../../src/config/env", () => ({
 }));
 jest.mock("axios", () => ({
   get: jest.fn(),
+  post: jest.fn(),
 }));
 jest.mock("../../../src/modules/smartcomm/smartcomm.repo", () => ({}));
 
@@ -128,9 +129,26 @@ describe("messaging_accounts.service", () => {
       external_account_id: "17841400000000000",
       access_token_enc: "enc:IGAA-token",
     });
-    axios.get.mockResolvedValue({
-      data: { user_id: "17841400000000000", username: "faitlynhair" },
-    });
+    axios.get.mockImplementation((url) =>
+      url.includes("/me/subscribed_apps")
+        ? Promise.resolve({
+            data: {
+              data: [
+                {
+                  subscribed_fields: [
+                    "messages",
+                    "message_echoes",
+                    "message_reactions",
+                    "messaging_seen",
+                  ],
+                },
+              ],
+            },
+          })
+        : Promise.resolve({
+            data: { user_id: "17841400000000000", username: "faitlynhair" },
+          }),
+    );
     const r = await service.testAccount({ id: "id-2" });
     const call = axios.get.mock.calls[0];
     // IG Login tokens only authenticate against graph.instagram.com — the
@@ -142,12 +160,76 @@ describe("messaging_accounts.service", () => {
     expect(call[1].headers.Authorization).toBe("Bearer IGAA-token");
     // Stored id already matches Meta's → no heal.
     expect(repo.updateExternalId).not.toHaveBeenCalled();
-    expect(r).toEqual({
+    expect(r).toMatchObject({
       ok: true,
       platform: "instagram",
       provider_id: "17841400000000000",
       provider_name: "faitlynhair",
       healed: false,
+      // Echo sync (message_echoes subscription) is verified in the same
+      // Test click — all fields present → nothing to heal, no POST.
+      echo_sync: { ok: true, healed: false },
+    });
+    expect(axios.post).not.toHaveBeenCalled();
+  });
+
+  test("testAccount repairs a dropped message_echoes subscription (echo sync self-heal)", async () => {
+    repo.getRaw.mockResolvedValue({
+      account_id: "id-2",
+      platform: "instagram",
+      external_account_id: "17841400000000000",
+      access_token_enc: "enc:IGAA-token",
+    });
+    // subscribed_apps first returns a drifted list (echoes missing), then —
+    // after the repair POST — the full list.
+    let subCalls = 0;
+    axios.get.mockImplementation((url) => {
+      if (url.includes("/me/subscribed_apps")) {
+        subCalls += 1;
+        return Promise.resolve({
+          data: {
+            data: [
+              {
+                subscribed_fields:
+                  subCalls === 1
+                    ? ["messages"]
+                    : [
+                        "messages",
+                        "message_echoes",
+                        "message_reactions",
+                        "messaging_seen",
+                      ],
+              },
+            ],
+          },
+        });
+      }
+      return Promise.resolve({
+        data: { user_id: "17841400000000000", username: "faitlynhair" },
+      });
+    });
+    axios.post.mockResolvedValue({ data: { success: true } });
+
+    const r = await service.testAccount({ id: "id-2" });
+
+    // The repair POST must send the UNION (subscribed_apps REPLACES the
+    // list — a partial re-subscribe is exactly how the field gets lost).
+    expect(axios.post).toHaveBeenCalledTimes(1);
+    const [postUrl, , postOpts] = axios.post.mock.calls[0];
+    expect(postUrl).toContain("/me/subscribed_apps");
+    const sent = postOpts.params.subscribed_fields.split(",");
+    expect(sent).toEqual(
+      expect.arrayContaining([
+        "messages",
+        "message_echoes",
+        "message_reactions",
+        "messaging_seen",
+      ]),
+    );
+    expect(r.echo_sync).toMatchObject({
+      ok: true,
+      healed: true,
+      missing_before: expect.arrayContaining(["message_echoes"]),
     });
   });
 

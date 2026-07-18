@@ -1,7 +1,8 @@
-import { Instagram, Facebook, Twitter, MessageCircle, Sparkles, HelpCircle } from "lucide-react";
+import { Sparkles, HelpCircle } from "lucide-react";
 import { useNavigation, useBranding, type FooterColumn } from "@/lib/site-config";
 import { BrandLogo } from "@/components/site/BrandLogo";
 import { SmartLink } from "@/components/site/SmartLink";
+import { socialIcon } from "@/components/site/social-icons";
 import { openHelp } from "@/lib/useStore";
 
 // Fallback columns (used when Studio navigation isn't published yet).
@@ -35,13 +36,6 @@ const FALLBACK_COLUMNS: FooterColumn[] = [
   },
 ];
 
-const SOCIAL_ICON: Record<string, typeof Instagram> = {
-  instagram: Instagram,
-  facebook: Facebook,
-  twitter: Twitter,
-  whatsapp: MessageCircle,
-};
-
 export function SiteFooter() {
   const nav = useNavigation();
   const { name } = useBranding();
@@ -70,7 +64,7 @@ export function SiteFooter() {
           {socialEntries.length ? (
             <div className="mt-6 flex gap-3">
               {socialEntries.map(([key, href]) => {
-                const Icon = SOCIAL_ICON[key] ?? Instagram;
+                const Icon = socialIcon(key);
                 return (
                   <a
                     key={key}

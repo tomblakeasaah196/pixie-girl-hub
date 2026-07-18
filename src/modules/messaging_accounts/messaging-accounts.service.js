@@ -752,7 +752,8 @@ async function notifyCeoOnce({ business, type, title, body, priority }) {
     title,
     body,
     priority,
-    action_url: "/messaging",
+    // The messaging inbox lives at /smartcomm ("/messaging" is a stub page).
+    action_url: "/smartcomm",
   });
 }
 

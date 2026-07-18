@@ -128,7 +128,17 @@ The Hub's home screen (the "/" landing) is the **Command Center**:
 - A **role KPI strip** (three cards tuned to your role).
 - **Quick Actions** (shortcuts you have permission for).
 - A **Praxis Insights** card (urgent + open counts, deep links into `/insights`).
-- The **App Grid** (pin/drag your favourite modules).
+- The **App Grid** (your favourite modules). To rearrange it, press and hold
+  any tile for a couple of seconds (or use the small **Arrange** button beside
+  the "Your apps" title) — the tiles start to jiggle, iOS-style. While
+  arranging: **drag** a tile to reorder (neighbours slide out of the way),
+  tap a tile's **−** badge to move it down to the "More" list, and tap the
+  **+** badge on any app in the "More" list to pin it up into the grid
+  (the **+** is always visible, even outside arrange mode). Finish with
+  **Done**, press **Esc**, or tap anywhere outside the grid. The grid holds
+  10 apps — pinning an 11th moves the last one back to "More". Dashboard is
+  anchored first and can't be moved. The same order drives the sidebar's
+  Priority list.
 - **My activity** (your recent audit trail — so you can spot anything that
   wasn't you).
 

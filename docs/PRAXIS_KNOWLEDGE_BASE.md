@@ -79,6 +79,13 @@ only access one business, there's nothing to switch.
 - **Bell (notifications)** — your alert feed; the number is unread count. Full
   page at `/notifications`.
 - **Theme toggle** — light / dark (the Hub defaults to the dark "Maroon Noir" look).
+- **Refresh** — on mobile, *pull down* on any screen to re-fetch what's on it.
+  That's a light refresh: no full reload, just the on-screen data — pull past
+  the sparkle and *hold* for a moment to confirm, so a stray flick or scroll
+  bounce won't trigger it. For a full reload that also clears the app's cached
+  files (use this if the Hub ever looks stuck or stale), use **Hard refresh** —
+  the ⟳ button in the top bar on desktop, or **Hard refresh** in the account
+  menu on mobile.
 - **Your name / avatar (bottom-left)** — account menu: **Change photo · My
   profile · My HR · Appearance · Quick login PIN · Change password · Sign out**.
   - **Appearance** here is a *personal* look for your own device — pick a

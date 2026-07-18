@@ -15,6 +15,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useBusinessStore } from "@/stores/business";
 import type { Tone } from "@/components/ui/primitives";
+import type { MetricSpec } from "@/lib/social-platforms-api";
 
 export function useBrand() {
   return useBusinessStore((s) => s.activeKey);
@@ -65,7 +66,9 @@ export interface SocialAccount {
   follower_count: number | null;
   bio: string | null;
   avatar_url: string | null;
-  metrics: Record<string, number>;
+  // Values are typed per the platform's metric spec: count/decimal -> number,
+  // text -> string, bool -> boolean (see migration 000356).
+  metrics: Record<string, number | string | boolean>;
   scrape_enabled: boolean;
   last_scraped_at: string | null;
   last_scrape_status: "ok" | "error" | null;
@@ -75,7 +78,7 @@ export interface SocialAccount {
   platform_brand_color: string;
   platform_icon_glyph: string;
   platform_supports_bio: boolean;
-  platform_metrics_schema: { key: string; label: string; aliases: string[] }[];
+  platform_metrics_schema: MetricSpec[];
 }
 
 export interface SocialPost {

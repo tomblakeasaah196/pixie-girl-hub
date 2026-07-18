@@ -18,7 +18,7 @@
 
 const apify = require("./apify.service");
 
-const BIO_ALIASES = ["bio", "biography", "about", "description"];
+const BIO_ALIASES = ["bio", "biography", "about", "description", "tagline", "signature"];
 const AVATAR_ALIASES = [
   "profilePicUrl",
   "profilePictureUrl",
@@ -56,19 +56,77 @@ function toCount(value) {
   return Number.isFinite(n) ? Math.round(n) : null;
 }
 
+/** A rating-style number kept to one decimal place (4.8, not rounded to 5). */
+function toDecimal(value) {
+  if (value === null || value === undefined) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.round(n * 10) / 10 : null;
+}
+
+/** A short display string. Arrays (e.g. LinkedIn specialties) are joined;
+ *  nested objects aren't meaningful as a chip, so they yield null. */
+function toText(value) {
+  if (value === null || value === undefined) return null;
+  if (Array.isArray(value)) {
+    const s = value
+      .filter((v) => v !== null && v !== undefined && typeof v !== "object")
+      .join(", ");
+    return s ? s.slice(0, 200) : null;
+  }
+  if (typeof value === "object") return null;
+  const s = String(value).trim();
+  return s ? s.slice(0, 200) : null;
+}
+
+// Only literal truthy/falsey words — actual booleans (the common actor shape,
+// e.g. verified:true / permanentlyClosed:false) pass straight through above, so
+// we deliberately don't map ambiguous words like "open"/"closed" here.
+const TRUE_WORDS = new Set(["true", "yes", "1"]);
+const FALSE_WORDS = new Set(["false", "no", "0"]);
+function toBool(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  const s = String(value).trim().toLowerCase();
+  if (TRUE_WORDS.has(s)) return true;
+  if (FALSE_WORDS.has(s)) return false;
+  return null;
+}
+
+/** Coerce one plucked value per the spec's declared type (default "count",
+ *  so pre-typed schemas keep working). */
+function coerce(raw, type) {
+  switch (type) {
+    case "decimal":
+      return toDecimal(raw);
+    case "text":
+      return toText(raw);
+    case "bool":
+      return toBool(raw);
+    default:
+      return toCount(raw);
+  }
+}
+
 /**
  * Extract the normalised { follower_count, bio, avatar_url, metrics } shape
  * the dashboard renders, from one actor's raw dataset item + that
- * platform's configured metrics_schema.
+ * platform's configured metrics_schema. Each spec carries a `type`
+ * (count | decimal | text | bool, default count) so a card can show a
+ * verified badge / category / rating alongside plain follower counts.
  */
 function extractMetrics(item, metricsSchema) {
   const metrics = {};
   let follower_count = null;
   for (const spec of Array.isArray(metricsSchema) ? metricsSchema : []) {
     const raw = pluck(item, spec.aliases || [spec.key]);
-    const value = toCount(raw);
-    if (value !== null) metrics[spec.key] = value;
-    if (spec.key === "followers" || spec.key === "subscribers") {
+    const type = spec.type || "count";
+    const value = coerce(raw, type);
+    if (value !== null && value !== undefined) metrics[spec.key] = value;
+    if (
+      type === "count" &&
+      (spec.key === "followers" || spec.key === "subscribers")
+    ) {
       follower_count = value;
     }
   }

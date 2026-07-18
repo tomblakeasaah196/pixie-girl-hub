@@ -192,7 +192,12 @@ function AccountCard({
         : "pending";
   const status = SCRAPE_STATUS[statusKey];
   const schema = account.platform_metrics_schema ?? [];
-  const [primary, secondary] = schema;
+  // count/decimal -> numeric tiles; text -> chips; bool -> badges (shown when true).
+  const numericSpecs = schema.filter(
+    (s) => !s.type || s.type === "count" || s.type === "decimal",
+  );
+  const textSpecs = schema.filter((s) => s.type === "text");
+  const boolSpecs = schema.filter((s) => s.type === "bool");
 
   const brand = account.platform_brand_color;
 
@@ -246,14 +251,34 @@ function AccountCard({
         )}
       </div>
 
-      {schema.length > 0 && (
-        <div className="flex gap-2">
-          {primary && (
-            <MetricTile label={primary.label} value={account.metrics?.[primary.key]} />
+      {numericSpecs.length > 0 && (
+        <div className="grid grid-cols-2 gap-2">
+          {numericSpecs.map((s) => (
+            <MetricTile
+              key={s.key}
+              label={s.label}
+              value={account.metrics?.[s.key]}
+              decimal={s.type === "decimal"}
+            />
+          ))}
+        </div>
+      )}
+
+      {(boolSpecs.length > 0 || textSpecs.length > 0) && (
+        <div className="flex flex-wrap gap-1.5">
+          {boolSpecs.map((s) =>
+            account.metrics?.[s.key] === true ? (
+              <Pill key={s.key} tone={boolTone(s.key)}>
+                {s.label}
+              </Pill>
+            ) : null,
           )}
-          {secondary && (
-            <MetricTile label={secondary.label} value={account.metrics?.[secondary.key]} />
-          )}
+          {textSpecs.map((s) => {
+            const v = account.metrics?.[s.key];
+            return v === undefined || v === null || v === "" ? null : (
+              <AttrChip key={s.key} label={s.label} value={String(v)} />
+            );
+          })}
         </div>
       )}
 
@@ -296,16 +321,52 @@ function AccountCard({
   );
 }
 
-function MetricTile({ label, value }: { label: string; value: number | undefined }) {
+function MetricTile({
+  label,
+  value,
+  decimal,
+}: {
+  label: string;
+  value: number | string | boolean | undefined;
+  decimal?: boolean;
+}) {
+  const display =
+    typeof value === "number"
+      ? decimal
+        ? value.toFixed(1)
+        : compactCount(value)
+      : "—";
   return (
-    <div className="flex-1 min-w-0 rounded-[10px] bg-text-primary/[0.035] px-2.5 py-2">
-      <div className="font-mono text-[15px] font-medium tabular-nums">
-        {value !== undefined && value !== null ? compactCount(value) : "—"}
-      </div>
+    <div className="min-w-0 rounded-[10px] bg-text-primary/[0.035] px-2.5 py-2">
+      <div className="font-mono text-[15px] font-medium tabular-nums">{display}</div>
       <div className="text-[9px] uppercase tracking-wide text-text-faint mt-0.5 truncate">
         {label}
       </div>
     </div>
+  );
+}
+
+// Bool badges only show when true; a couple of keys get a meaningful tone.
+const BOOL_TONE: Record<string, Tone> = {
+  verified: "success",
+  ads_running: "warn",
+  closed: "danger",
+};
+function boolTone(key: string): Tone {
+  return BOOL_TONE[key] ?? "neutral";
+}
+
+/** A labelled text attribute (category, industry, address, …) rendered as a
+ *  compact chip, with the full value on hover. */
+function AttrChip({ label, value }: { label: string; value: string }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1 max-w-full rounded-full border border-line bg-text-primary/[0.03] px-2 py-0.5"
+      title={`${label}: ${value}`}
+    >
+      <span className="text-[9px] uppercase tracking-wide text-text-faint">{label}</span>
+      <span className="text-[10.5px] text-text-muted truncate max-w-[140px]">{value}</span>
+    </span>
   );
 }
 

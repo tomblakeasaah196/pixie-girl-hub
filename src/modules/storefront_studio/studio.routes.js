@@ -152,8 +152,9 @@ router.post(
 
 // OG share-banner compose. Multipart: an optional `file` (new source photo) or
 // a `source_key` (re-edit an already-stored source), plus composition params
-// (zoom, focusX/focusY, photoWidthPct, gradFrom/gradTo, showBranding,
-// headline, logo_url). Returns { banner_url, source_url, source_key, params }.
+// (zoom, focusX/focusY, photoWidthPct, bgMode, bgBlur/bgDim/bgZoom,
+// gradFrom/gradTo, showBranding, headline, logo_url). Returns
+// { banner_url, source_url, source_key, params }.
 router.post(
   "/og-banner",
   can("edit"),

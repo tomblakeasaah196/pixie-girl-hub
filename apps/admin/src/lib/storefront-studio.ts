@@ -225,7 +225,16 @@ export interface OgBannerParams {
   focusY: number;
   /** How wide the centred photo panel is, as a fraction of the 1200px width. */
   photoWidthPct: number;
-  /** Gradient that fills the space around the photo. */
+  /** What fills the space around the photo: a blurred, enlarged copy of the
+   *  photo itself ("blur", default) or the flat brand gradient ("gradient"). */
+  bgMode: "blur" | "gradient";
+  /** Blur strength of the photo background (sigma; only used in "blur" mode). */
+  bgBlur: number;
+  /** How much the blurred background is darkened, 0..1 (only in "blur" mode). */
+  bgDim: number;
+  /** Enlargement of the blurred background copy (only in "blur" mode). */
+  bgZoom: number;
+  /** Gradient that fills the space around the photo (only in "gradient" mode). */
   gradFrom: string;
   gradTo: string;
   /** Overlay the brand logo + a headline over a bottom scrim. */
@@ -256,6 +265,10 @@ export async function buildOgBanner(input: {
   form.append("focusX", String(p.focusX));
   form.append("focusY", String(p.focusY));
   form.append("photoWidthPct", String(p.photoWidthPct));
+  form.append("bgMode", p.bgMode);
+  form.append("bgBlur", String(p.bgBlur));
+  form.append("bgDim", String(p.bgDim));
+  form.append("bgZoom", String(p.bgZoom));
   form.append("gradFrom", p.gradFrom);
   form.append("gradTo", p.gradTo);
   form.append("showBranding", String(p.showBranding));

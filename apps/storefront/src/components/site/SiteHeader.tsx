@@ -7,16 +7,13 @@ import {
   Check,
   ChevronDown,
   Copy,
-  Facebook,
   Gift,
   HelpCircle,
-  Instagram,
   Menu,
   MessageCircle,
   Moon,
   ShoppingBag,
   Sun,
-  Twitter,
   X,
 } from "lucide-react";
 import { useCartCount, useCurrency, openCart, openHelp } from "@/lib/useStore";
@@ -30,13 +27,7 @@ import { mapShades } from "@/lib/home-content";
 import { bootstrapAuth, getReferral } from "@/lib/auth";
 import { useCurrencyFeed } from "@/lib/useCurrencyFeed";
 import { useTheme } from "@/lib/theme";
-
-const SOCIAL_ICON: Record<string, typeof Instagram> = {
-  instagram: Instagram,
-  facebook: Facebook,
-  twitter: Twitter,
-  whatsapp: MessageCircle,
-};
+import { socialIcon } from "@/components/site/social-icons";
 
 // Module-scoped referral cache so re-opening the drawer doesn't re-hit the
 // network. undefined = not yet checked · null = guest (no code) · string = code.
@@ -596,7 +587,7 @@ function MobileDrawer({
                 {socialEntries.length ? (
                   <div className="flex gap-2.5">
                     {socialEntries.map(([key, href]) => {
-                      const Icon = SOCIAL_ICON[key] ?? Instagram;
+                      const Icon = socialIcon(key);
                       return (
                         <a
                           key={key}

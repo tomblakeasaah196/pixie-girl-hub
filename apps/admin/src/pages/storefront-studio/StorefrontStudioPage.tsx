@@ -1694,6 +1694,7 @@ const SOCIAL_PLATFORMS = [
   "facebook",
   "twitter",
   "youtube",
+  "pinterest",
   "whatsapp",
 ];
 

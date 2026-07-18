@@ -7,8 +7,8 @@
 import { useEffect, useState } from "react";
 import { Eye, EyeOff, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/cn";
-import type { Kpi, PeriodParams } from "@/lib/dashboards-api";
-import { fmtTileValue } from "@/components/charts/chart-kit";
+import type { Kpi, PeriodParams, TableColumn } from "@/lib/dashboards-api";
+import { fmtTileValue, fmtValue } from "@/components/charts/chart-kit";
 
 // ── Period presets ─────────────────────────────────────────
 
@@ -97,14 +97,14 @@ export function PeriodPicker({
   onCustom: (from: string, to: string) => void;
 }) {
   return (
-    <div className="flex items-center gap-2 flex-wrap">
-      <div className="flex gap-1 overflow-x-auto max-w-full pb-0.5 -mb-0.5">
+    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:flex-wrap">
+      <div className="flex gap-1 overflow-x-auto max-w-full pb-0.5 -mb-0.5 hide-scrollbar">
         {PRESETS.map((p) => (
           <button
             key={p.key}
             onClick={() => onPreset(p.key)}
             className={cn(
-              "px-3 h-9 rounded-full text-[12px] whitespace-nowrap transition-colors border",
+              "px-3 max-sm:px-2.5 h-9 max-sm:h-8 rounded-full text-[12px] max-sm:text-[11px] whitespace-nowrap transition-colors border shrink-0",
               preset === p.key
                 ? "bg-accent-deep text-[#F4E9D9] border-transparent"
                 : "glass hairline text-text-muted hover:text-text-primary",
@@ -115,12 +115,12 @@ export function PeriodPicker({
         ))}
       </div>
       {preset === "custom" && (
-        <div className="flex items-center gap-1.5 text-[12px]">
+        <div className="flex items-center gap-1.5 text-[12px] max-sm:w-full">
           <input
             type="date"
             value={customFrom}
             onChange={(e) => onCustom(e.target.value, customTo)}
-            className="glass hairline rounded-lg h-9 px-2 bg-transparent"
+            className="glass hairline rounded-lg h-9 max-sm:h-8 px-2 bg-transparent max-sm:flex-1 max-sm:min-w-0"
             aria-label="From date"
           />
           <span className="text-text-faint">→</span>
@@ -128,7 +128,7 @@ export function PeriodPicker({
             type="date"
             value={customTo}
             onChange={(e) => onCustom(customFrom, e.target.value)}
-            className="glass hairline rounded-lg h-9 px-2 bg-transparent"
+            className="glass hairline rounded-lg h-9 max-sm:h-8 px-2 bg-transparent max-sm:flex-1 max-sm:min-w-0"
             aria-label="To date"
           />
         </div>
@@ -193,13 +193,53 @@ export function KpiCard({
       {delta && (
         <div
           className={cn(
-            "text-[11px] font-bold mt-1",
+            "text-[11px] font-bold mt-1 truncate",
             delta.up ? "text-success" : "text-danger",
           )}
         >
           {delta.up ? "▲" : "▼"} {delta.text}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Generic phone card for a dashboard table row ───────────
+// First column = title line; the rest become label:value chips that
+// wrap. Used by every dashboard DataTable so phones never scroll a
+// table sideways.
+
+export function MobileRowCard({
+  row,
+  columns,
+}: {
+  row: Record<string, unknown>;
+  columns: TableColumn[];
+}) {
+  const primary = columns[0];
+  const rest = columns.slice(1);
+  return (
+    <div className="space-y-1 min-w-0">
+      {primary && (
+        <div className="font-medium text-[13px] truncate">
+          {fmtValue(row[primary.key], primary.format)}
+        </div>
+      )}
+      <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11.5px] text-text-muted">
+        {rest.map((c) => (
+          <span key={c.key} className="flex items-baseline gap-1 min-w-0">
+            <span className="text-text-faint shrink-0">{c.label}:</span>
+            <span
+              className={cn(
+                "truncate",
+                c.format === "money" && "font-mono tabular-nums",
+              )}
+            >
+              {fmtValue(row[c.key], c.format)}
+            </span>
+          </span>
+        ))}
+      </div>
     </div>
   );
 }

@@ -1043,6 +1043,10 @@ function readOgParams(
     focusX: n(raw.focusX, 0.5),
     focusY: n(raw.focusY, 0.5),
     photoWidthPct: n(raw.photoWidthPct, 0.62),
+    bgMode: raw.bgMode === "gradient" ? "gradient" : "blur",
+    bgBlur: n(raw.bgBlur, 22),
+    bgDim: n(raw.bgDim, 0.3),
+    bgZoom: n(raw.bgZoom, 1.2),
     gradFrom: s(raw.gradFrom, g.from),
     gradTo: s(raw.gradTo, g.to),
     showBranding: raw.showBranding === true,
@@ -1289,8 +1293,10 @@ function OgBannerStudio({
     <div className="space-y-3">
       <p className="text-[12px] text-text-muted">
         Upload one photo — a normal 4:5 or square shot is perfect — and we build
-        the wide 1200×630 share banner for you: your photo centred, the brand
-        gradient around it, and (optionally) your logo and a headline on top.
+        the wide 1200×630 share banner for you: your photo centred, a blurred
+        enlargement of it filling the sides (or a flat gradient), and
+        (optionally) your logo and a headline on top. A photo that's already
+        1200×630 is used edge-to-edge.
       </p>
 
       {/* Live preview — mirrors the server composition. */}
@@ -1380,19 +1386,59 @@ function OgBannerStudio({
               onChange={(v) => setParam("focusY", v / 100)}
             />
           </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <ColorField
-              label="Gradient — from"
-              value={params.gradFrom}
-              defaultColor={brandGradientDefault(brand).from}
-              onChange={(v) => setParam("gradFrom", v)}
+          {/* Background: blurred, enlarged copy of the photo (default) so the
+              surround always matches the shot — or a flat brand gradient. */}
+          <div className="space-y-3 border-t border-line pt-3">
+            <ToggleField
+              label="Use a flat gradient background instead"
+              checked={params.bgMode === "gradient"}
+              onChange={(v) => setParam("bgMode", v ? "gradient" : "blur")}
             />
-            <ColorField
-              label="Gradient — to"
-              value={params.gradTo}
-              defaultColor={brandGradientDefault(brand).to}
-              onChange={(v) => setParam("gradTo", v)}
-            />
+            {params.bgMode === "gradient" ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <ColorField
+                  label="Gradient — from"
+                  value={params.gradFrom}
+                  defaultColor={brandGradientDefault(brand).from}
+                  onChange={(v) => setParam("gradFrom", v)}
+                />
+                <ColorField
+                  label="Gradient — to"
+                  value={params.gradTo}
+                  defaultColor={brandGradientDefault(brand).to}
+                  onChange={(v) => setParam("gradTo", v)}
+                />
+              </div>
+            ) : (
+              <>
+                <RangeField
+                  label="Background blur"
+                  value={Math.round(params.bgBlur)}
+                  min={4}
+                  max={60}
+                  step={1}
+                  onChange={(v) => setParam("bgBlur", v)}
+                />
+                <RangeField
+                  label="Background dim"
+                  value={Math.round(params.bgDim * 100)}
+                  min={0}
+                  max={90}
+                  step={1}
+                  suffix="%"
+                  onChange={(v) => setParam("bgDim", v / 100)}
+                />
+                <RangeField
+                  label="Background zoom"
+                  value={Number(params.bgZoom.toFixed(2))}
+                  min={1}
+                  max={2}
+                  step={0.05}
+                  suffix="×"
+                  onChange={(v) => setParam("bgZoom", v)}
+                />
+              </>
+            )}
           </div>
           <ToggleField
             label="Show logo & headline on the banner"
@@ -1440,6 +1486,26 @@ function OgBannerPreview({
     >
       {sourceUrl ? (
         <>
+          {/* Blurred, enlarged copy of the photo as the background (mirrors the
+              server's sharp plate) — or the gradient set on the container. */}
+          {params.bgMode !== "gradient" ? (
+            <>
+              <img
+                src={sourceUrl}
+                alt=""
+                aria-hidden
+                className="absolute inset-0 h-full w-full object-cover"
+                style={{
+                  filter: `blur(${params.bgBlur}px)`,
+                  transform: `scale(${params.bgZoom})`,
+                }}
+              />
+              <div
+                className="absolute inset-0"
+                style={{ background: `rgba(0,0,0,${params.bgDim})` }}
+              />
+            </>
+          ) : null}
           <div
             className="absolute inset-y-0 overflow-hidden"
             style={{

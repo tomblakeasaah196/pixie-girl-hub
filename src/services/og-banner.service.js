@@ -3,10 +3,12 @@
  *
  * Turns a single uploaded photo (usually 4:5 or square — the shapes phones
  * shoot) into a correctly-sized 1200×630 Open Graph / Twitter share card:
- * the photo is centred as a "panel", a brand gradient fills the space around
- * it, and — optionally — the brand logo and a short headline are laid over a
- * bottom scrim so the card reads as a designed share image rather than a
- * cropped snapshot.
+ * the photo is centred as a "panel", the space around it is filled with a
+ * blurred, enlarged copy of the same photo (default — so the surround always
+ * matches the shot) or a flat brand gradient, and — optionally — the brand
+ * logo and a short headline are laid over a bottom scrim so the card reads as
+ * a designed share image rather than a cropped snapshot. A photo that's
+ * already ~OG-shaped (1200×630) is used full-bleed rather than re-framed.
  *
  * The exact same layout maths runs in the Storefront Studio → Branding preview
  * (apps/admin) so what the operator sees is what this produces. Composition is
@@ -70,11 +72,36 @@ function normalizeParams(raw = {}) {
     focusX: num(p.focusX, 0, 1, 0.5),
     focusY: num(p.focusY, 0, 1, 0.5),
     photoWidthPct: num(p.photoWidthPct, 0.3, 1, 0.62),
+    // Background: a blurred, enlarged copy of the photo itself (default) so the
+    // surround always matches the shot, or a flat brand gradient.
+    bgMode: p.bgMode === "gradient" ? "gradient" : "blur",
+    bgBlur: num(p.bgBlur, 0, 100, 22),
+    bgDim: num(p.bgDim, 0, 0.9, 0.3),
+    bgZoom: num(p.bgZoom, 1, 2.5, 1.2),
     gradFrom: hex(p.gradFrom, "#3a0d0d"),
     gradTo: hex(p.gradTo, "#120708"),
     showBranding: truthy(p.showBranding),
     headline: String(p.headline || "").slice(0, 80),
   };
+}
+
+/** Build the blurred, enlarged background plate from the source photo: cover
+ *  the card at a slight over-scale, blur it, then centre-crop back to 1200×630.
+ *  The over-scale hides the soft, semi-transparent edge a heavy blur leaves. */
+async function buildBlurBackground(srcBuf, p) {
+  const bgW = Math.max(OG_W, Math.round(OG_W * p.bgZoom));
+  const bgH = Math.max(OG_H, Math.round(OG_H * p.bgZoom));
+  const enlarged = await sharp(srcBuf)
+    .rotate()
+    .resize(bgW, bgH, { fit: "cover", position: "centre" })
+    .blur(Math.max(0.3, p.bgBlur))
+    .toBuffer();
+  const meta = await sharp(enlarged).metadata();
+  const cw = meta.width || bgW;
+  const ch = meta.height || bgH;
+  const left = Math.max(0, Math.round((cw - OG_W) / 2));
+  const top = Math.max(0, Math.round((ch - OG_H) / 2));
+  return sharp(enlarged).extract({ left, top, width: OG_W, height: OG_H }).toBuffer();
 }
 
 async function loadSourceBuffer({ file, source_key }) {
@@ -103,6 +130,28 @@ async function composeOgBanner({ brand, file, source_key, logo_url, params }) {
   if (!brand) throw new AppError("NO_BRAND", "Missing brand context", 400);
   const p = normalizeParams(params);
   const srcBuf = await loadSourceBuffer({ file, source_key });
+
+  // Auto full-bleed: a fresh upload that's already ~OG-shaped (1200×630) is used
+  // edge-to-edge instead of being framed in the narrower default panel — which
+  // would otherwise centre-crop a correctly-sized share image and lose its sides
+  // to the surround. Only on a new upload, so a later deliberate re-frame sticks.
+  if (file && Buffer.isBuffer(file.buffer) && file.buffer.length) {
+    try {
+      const m = await sharp(srcBuf).metadata();
+      let w = m.width || 0;
+      let h = m.height || 0;
+      if (m.orientation && m.orientation >= 5) [w, h] = [h, w]; // EXIF 90°/270°
+      if (w && h) {
+        const ogAspect = OG_W / OG_H;
+        if (Math.abs(w / h - ogAspect) / ogAspect <= 0.08) {
+          p.photoWidthPct = 1;
+          p.zoom = 1;
+        }
+      }
+    } catch {
+      /* metadata is best-effort — fall back to the framed panel */
+    }
+  }
 
   // Persist the (normalised) source on a fresh upload so later tweaks recompose
   // from the original, not from an already-composed banner.
@@ -136,6 +185,29 @@ async function composeOgBanner({ brand, file, source_key, logo_url, params }) {
   );
 
   const composites = [];
+
+  // 1b. Background plate: a blurred, enlarged copy of the photo (default) so the
+  //     surround always matches the shot — or the flat brand gradient. A dim
+  //     scrim over the blurred plate keeps the centred photo reading clearly.
+  //     Best-effort: any blur hiccup falls back to the gradient.
+  let baseInput = gradSvg;
+  if (p.bgMode !== "gradient") {
+    try {
+      baseInput = await buildBlurBackground(srcBuf, p);
+      if (p.bgDim > 0) {
+        composites.push({
+          input: Buffer.from(
+            `<svg xmlns="http://www.w3.org/2000/svg" width="${OG_W}" height="${OG_H}">` +
+              `<rect width="${OG_W}" height="${OG_H}" fill="#000" fill-opacity="${p.bgDim}"/></svg>`,
+          ),
+          left: 0,
+          top: 0,
+        });
+      }
+    } catch {
+      baseInput = gradSvg;
+    }
+  }
 
   // 2. Centred photo panel — cover-fit with zoom + focus (so a portrait/square
   //    photo sits as a tall centred band with gradient on the sides).
@@ -203,7 +275,7 @@ async function composeOgBanner({ brand, file, source_key, logo_url, params }) {
     }
   }
 
-  const bannerBuf = await sharp(gradSvg)
+  const bannerBuf = await sharp(baseInput)
     .composite(composites)
     .jpeg({ quality: 88 })
     .toBuffer();

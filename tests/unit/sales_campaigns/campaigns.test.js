@@ -1,7 +1,12 @@
 "use strict";
 
 // Mock the repo (DB) so discount-engine math can be tested in isolation.
+// Keep the real CLONEABLE_COLS constant (no DB) so the clone-coverage test
+// catches drift, while the query functions stay mocked.
 jest.mock("../../../src/modules/sales_campaigns/campaigns.repo", () => ({
+  CLONEABLE_COLS: jest.requireActual(
+    "../../../src/modules/sales_campaigns/campaigns.repo",
+  ).CLONEABLE_COLS,
   listProducts: jest.fn().mockResolvedValue([]),
   findById: jest.fn(),
   findBySlug: jest.fn(),
@@ -65,10 +70,25 @@ describe("publicSaleBaseUrl (share/blast/return-url base)", () => {
       }),
     ).toBe("https://sales.faitlynhair.com");
   });
-  test("falls back to the storefront domain when no subdomain is set", () => {
+  test("derives sales.<apex> from the storefront domain when no subdomain is set", () => {
+    // The apex serves the storefront app, which has no /sale route → an apex
+    // sale link 404s. So the fallback derives the sales subdomain that DOES
+    // route /sale/:slug, rather than returning the dead apex.
     expect(
       service.publicSaleBaseUrl({ storefront_domain: "pixiegirlglobal.com" }),
-    ).toBe("https://pixiegirlglobal.com");
+    ).toBe("https://sales.pixiegirlglobal.com");
+  });
+  test("strips scheme/www when deriving the sales host from the apex", () => {
+    expect(
+      service.publicSaleBaseUrl({
+        storefront_domain: "https://www.faitlynhair.com/",
+      }),
+    ).toBe("https://sales.faitlynhair.com");
+  });
+  test("does not double-prefix an apex that already starts with sales.", () => {
+    expect(
+      service.publicSaleBaseUrl({ storefront_domain: "sales.faitlynhair.com" }),
+    ).toBe("https://sales.faitlynhair.com");
   });
   test("normalises an existing scheme and trailing slash", () => {
     expect(
@@ -76,6 +96,29 @@ describe("publicSaleBaseUrl (share/blast/return-url base)", () => {
         sales_subdomain: "https://sales.pixiegirlglobal.com/",
       }),
     ).toBe("https://sales.pixiegirlglobal.com");
+  });
+});
+
+describe("duplicate cloneable columns", () => {
+  test("the clone carries the deals/gateways/FX/landing config, not a subset", () => {
+    const cols = repo.CLONEABLE_COLS;
+    // Regression: duplicate used to copy ~22 hand-listed fields, dropping the
+    // whole v2/v3 surface. The clone now copies every create column, so these
+    // must all be present in the cloneable set.
+    for (const col of [
+      "position_ladder",
+      "stacking_bonus",
+      "bulk_tiers",
+      "allowed_payment_gateways",
+      "ngn_per_usd_rate",
+      "landing_extras",
+      "vip_top_n",
+      "exit_intent_enabled",
+      "allow_instalments",
+      "delivery_weeks",
+    ]) {
+      expect(cols).toContain(col);
+    }
   });
 });
 

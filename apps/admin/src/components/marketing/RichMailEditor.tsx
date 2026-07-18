@@ -21,7 +21,11 @@ import { TextStyle, Color, FontSize } from "@tiptap/extension-text-style";
 import TextAlign from "@tiptap/extension-text-align";
 import Image from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
-import { Node as TiptapNode, mergeAttributes } from "@tiptap/core";
+import {
+  Node as TiptapNode,
+  Extension,
+  mergeAttributes,
+} from "@tiptap/core";
 import {
   Bold,
   Italic,
@@ -30,6 +34,7 @@ import {
   AlignLeft,
   AlignCenter,
   AlignRight,
+  AlignVerticalSpaceAround,
   List,
   ListOrdered,
   Link2,
@@ -100,6 +105,63 @@ const TokenPill = TiptapNode.create({
       }),
       tokenLabel(token),
     ];
+  },
+});
+
+// ── Paragraph spacing (Word-style "Line spacing") ───────────
+//
+// Marks whole paragraphs "tight" or "relaxed" so a signature block can sit
+// close and body copy can breathe. Stored as a `data-space` attribute on the
+// <p> (nothing on screen); the editor CSS renders it live, and the mail
+// renderer + preview map it to real margins so the sent email matches.
+
+export type ParagraphSpace = "tight" | "relaxed";
+
+declare module "@tiptap/core" {
+  interface Commands<ReturnType> {
+    paragraphSpacing: {
+      /** Apply a spacing to every paragraph in the selection (null = normal). */
+      setParagraphSpacing: (space: ParagraphSpace | null) => ReturnType;
+    };
+  }
+}
+
+const ParagraphSpacing = Extension.create({
+  name: "paragraphSpacing",
+  addGlobalAttributes() {
+    return [
+      {
+        types: ["paragraph"],
+        attributes: {
+          dataSpace: {
+            default: null,
+            parseHTML: (el) => el.getAttribute("data-space") || null,
+            renderHTML: (attrs) =>
+              attrs.dataSpace ? { "data-space": attrs.dataSpace } : {},
+          },
+        },
+      },
+    ];
+  },
+  addCommands() {
+    return {
+      // Applies to every paragraph touched by the selection — "select three
+      // lines, tap once, all three change" — not just the one at the cursor.
+      setParagraphSpacing:
+        (space) =>
+        ({ tr, state, dispatch }) => {
+          const { from, to } = state.selection;
+          let touched = false;
+          state.doc.nodesBetween(from, to, (node, pos) => {
+            if (node.type.name === "paragraph") {
+              tr.setNodeAttribute(pos, "dataSpace", space);
+              touched = true;
+            }
+          });
+          if (touched && dispatch) dispatch(tr);
+          return touched;
+        },
+    };
   },
 });
 
@@ -188,6 +250,19 @@ const FONT_SIZES = [
   { label: "Huge", value: "24px" },
 ];
 
+/** Line-spacing menu. `key` matches the paragraph's data-space ("normal" = the
+ *  default, stored as no attribute); `value` is what the command applies. */
+const SPACING_OPTIONS: {
+  key: string;
+  value: ParagraphSpace | null;
+  label: string;
+  hint: string;
+}[] = [
+  { key: "tight", value: "tight", label: "Tight", hint: "Close together — great for a signature" },
+  { key: "normal", value: null, label: "Normal", hint: "The default" },
+  { key: "relaxed", value: "relaxed", label: "Relaxed", hint: "More room to breathe" },
+];
+
 /** Close-on-outside-click popover under a toolbar button. Height-capped and
  *  internally scrollable so it can NEVER run off the bottom of a phone
  *  screen — long lists (Personalise) scroll inside it instead. */
@@ -265,7 +340,7 @@ export function RichMailEditor({
 }) {
   const palette = useBrandPalette();
   const [menu, setMenu] = useState<
-    null | "personalise" | "emoji" | "color" | "size"
+    null | "personalise" | "emoji" | "color" | "size" | "spacing"
   >(null);
   const [customHex, setCustomHex] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -300,6 +375,7 @@ export function RichMailEditor({
       Image.configure({ inline: false }),
       Placeholder.configure({ placeholder }),
       TokenPill,
+      ParagraphSpacing,
     ],
     autofocus: autoFocus ? "end" : false,
     editorProps: {
@@ -614,6 +690,54 @@ export function RichMailEditor({
         >
           <AlignRight className="w-4 h-4" />
         </ToolBtn>
+
+        {/* Line spacing — tighten or loosen the selected paragraphs */}
+        <div className="relative">
+          <ToolBtn
+            title="Line spacing"
+            active={menu === "spacing" || !!editor.getAttributes("paragraph").dataSpace}
+            onClick={() => setMenu(menu === "spacing" ? null : "spacing")}
+          >
+            <AlignVerticalSpaceAround className="w-4 h-4" />
+          </ToolBtn>
+          {menu === "spacing" && (
+            <Popover onClose={() => setMenu(null)}>
+              <div className="micro px-1 pb-1.5">
+                Spacing for the selected lines
+              </div>
+              {SPACING_OPTIONS.map((opt) => {
+                const current =
+                  (editor.getAttributes("paragraph").dataSpace as
+                    | string
+                    | null) ?? "normal";
+                const active = current === opt.key;
+                return (
+                  <button
+                    key={opt.key}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      editor
+                        .chain()
+                        .focus()
+                        .setParagraphSpacing(opt.value)
+                        .run();
+                      setMenu(null);
+                    }}
+                    className={cn(
+                      "w-full flex flex-col items-start px-2 py-1.5 rounded-lg hover:bg-text-primary/[0.06] text-left",
+                      active ? "text-accent-glow" : "text-text-primary",
+                    )}
+                  >
+                    <span className="text-[12.5px] font-medium">{opt.label}</span>
+                    <span className="text-[10.5px] text-text-faint">{opt.hint}</span>
+                  </button>
+                );
+              })}
+            </Popover>
+          )}
+        </div>
+
         <Divider />
         <ToolBtn
           title="Bulleted list"

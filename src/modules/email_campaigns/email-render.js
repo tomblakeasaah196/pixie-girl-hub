@@ -84,7 +84,6 @@ function isFullDocument(html) {
 // <style> blocks, so every tag must carry its look inline. Only tags without
 // an existing style attribute are touched — editor-set colours/sizes win.
 const RICH_TAG_STYLES = {
-  p: `margin:0 0 14px 0;font-family:${theme.SANS};font-size:15px;line-height:1.62;color:${theme.NEUTRAL.ink}`,
   h1: `margin:22px 0 10px 0;font-family:${theme.SERIF};font-size:28px;line-height:1.25;font-weight:600;color:${theme.NEUTRAL.ink}`,
   h2: `margin:20px 0 8px 0;font-family:${theme.SERIF};font-size:22px;line-height:1.3;font-weight:600;color:${theme.NEUTRAL.ink}`,
   h3: `margin:18px 0 6px 0;font-family:${theme.SANS};font-size:16px;line-height:1.35;font-weight:700;color:${theme.NEUTRAL.ink}`,
@@ -97,9 +96,38 @@ const RICH_TAG_STYLES = {
   hr: `border:none;border-top:1px solid ${theme.NEUTRAL.hairline};margin:22px 0`,
 };
 
+// Per-paragraph vertical rhythm (the editor's Line-spacing control writes a
+// `data-space` attribute). Keep these values identical to previewRichStyles in
+// apps/admin/src/pages/marketing/EmailExtras.tsx and the editor CSS.
+const P_SPACE = {
+  tight: "margin:0 0 3px 0;line-height:1.4",
+  relaxed: "margin:0 0 24px 0;line-height:1.95",
+  normal: "margin:0 0 14px 0;line-height:1.62",
+};
+const P_FONT = `font-family:${theme.SANS};font-size:15px;color:${theme.NEUTRAL.ink}`;
+
+/** Style every <p> with its spacing + font, preserving an editor-set
+ *  text-align. Handled apart from the generic pass so spacing survives. */
+function stripParagraphSpacing(html) {
+  return String(html).replace(/<p\b([^>]*)>/gi, (_m, attrs) => {
+    const spaceMatch = /data-space="(tight|relaxed)"/i.exec(attrs);
+    const key = spaceMatch ? spaceMatch[1].toLowerCase() : "normal";
+    const styleMatch = /style="([^"]*)"/i.exec(attrs);
+    let align = "";
+    if (styleMatch) {
+      const ta = /text-align:\s*(left|right|center|justify)/i.exec(styleMatch[1]);
+      if (ta) align = `;text-align:${ta[1]}`;
+    }
+    const cleaned = attrs
+      .replace(/\s*data-space="[^"]*"/i, "")
+      .replace(/\s*style="[^"]*"/i, "");
+    return `<p style="${P_SPACE[key]};${P_FONT}${align}"${cleaned}>`;
+  });
+}
+
 /** Give bare rich-text tags email-safe inline styles. */
 function inlineRichStyles(html) {
-  let out = String(html || "");
+  let out = stripParagraphSpacing(String(html || ""));
   for (const [tag, style] of Object.entries(RICH_TAG_STYLES)) {
     out = out.replace(
       new RegExp(`<${tag}(?![a-z0-9])(?![^>]*\\bstyle=)([^>]*)>`, "gi"),

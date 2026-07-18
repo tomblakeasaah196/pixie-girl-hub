@@ -2,6 +2,8 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath, URL } from "node:url";
 import { execSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 // A verifiable build fingerprint. Embedded as a <meta> tag in index.html so
 // the live build can be confirmed with one curl (the CI post-deploy check
@@ -35,6 +37,28 @@ export default defineConfig({
           "</head>",
           `  <meta name="x-build" content="${BUILD_ID}" />\n  </head>`,
         );
+      },
+    },
+    {
+      // Stamp the build id into sw.js AFTER Vite copies public/ into dist.
+      // sw.js must change bytes on every deploy: the browser only fires
+      // `updatefound` (→ the in-app "new version available" banner) when a
+      // re-fetched sw.js differs from the registered one. A deploy that
+      // leaves sw.js identical is invisible to already-running PWAs — they
+      // keep executing the old bundle until the OS happens to kill them.
+      name: "stamp-sw-build-id",
+      apply: "build",
+      closeBundle() {
+        const swPath = join(
+          fileURLToPath(new URL("./dist", import.meta.url)),
+          "sw.js",
+        );
+        try {
+          const src = readFileSync(swPath, "utf8");
+          writeFileSync(swPath, src.replace(/__PGH_BUILD__/g, BUILD_ID));
+        } catch {
+          // No dist/sw.js (e.g. a tooling build without public/) — skip.
+        }
       },
     },
   ],

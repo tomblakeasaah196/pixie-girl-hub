@@ -41,6 +41,21 @@ export function PwaUpdateBanner() {
     checkForServiceWorkerUpdate();
   }, [pathname]);
 
+  // …and whenever the app returns to the foreground. An iOS home-screen PWA
+  // is suspended, not killed, when "closed" — resuming restores the same JS
+  // context with no navigation and no route change, so without this hook a
+  // phone could run a stale build for days without ever hearing about a
+  // deploy. visibilitychange → visible is exactly that resume moment.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        checkForServiceWorkerUpdate();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
+
   const handleUpdate = useCallback(() => {
     setUpdating(true);
     // The controllerchange listener in push.ts reloads once the new worker

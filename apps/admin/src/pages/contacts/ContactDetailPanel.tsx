@@ -183,7 +183,7 @@ function SummaryStrip({ contactId }: { contactId: string }) {
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-4 gap-2 mb-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
         {Array.from({ length: 4 }).map((_, i) => (
           <Skeleton key={i} className="h-[52px] rounded-[11px]" />
         ))}
@@ -490,7 +490,7 @@ function AddressesTab({ contactId }: { contactId: string }) {
                   />
                 )}
               </div>
-              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                 {addr.google_maps_url && (
                   <a
                     href={addr.google_maps_url}
@@ -833,7 +833,7 @@ export function ContactDetailPanel({
     return (
       <div className="flex flex-col gap-3">
         <Skeleton className="h-5 w-24 rounded" />
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} className="h-[52px] rounded-[11px]" />
           ))}

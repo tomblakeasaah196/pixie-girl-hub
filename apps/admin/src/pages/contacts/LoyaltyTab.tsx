@@ -187,23 +187,23 @@ export function LoyaltyTab({ contactId, contactName }: Props) {
             </span>
           </div>
           <div className="grid grid-cols-3 gap-2 mb-3">
-            <div>
+            <div className="min-w-0">
               <div className="micro">Orders</div>
-              <div className="font-display text-lg text-text-primary">
+              <div className="font-display text-base sm:text-lg text-text-primary">
                 {summary.total_orders}
               </div>
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="micro">Lifetime value</div>
-              <div className="font-display text-lg text-text-primary tabular-nums">
+              <div className="font-display text-sm sm:text-lg text-text-primary tabular-nums truncate">
                 <MoneyText
                   ngn={parseFloat(summary.lifetime_value_ngn || "0")}
                 />
               </div>
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="micro">Open deals</div>
-              <div className="font-display text-lg text-text-primary">
+              <div className="font-display text-base sm:text-lg text-text-primary">
                 {summary.open_deals}
               </div>
             </div>

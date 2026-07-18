@@ -701,6 +701,13 @@ body.session-locked #root {
   line-height: 1.65;
   color: rgb(var(--text));
   word-break: break-word;
+  /* iOS Safari "text autosizing" (font boosting) recomputes text sizes by a
+     width heuristic and OVERRIDES explicit font-size — so Small/Normal/Large/
+     Huge all collapsed to one size on iPhone while colour/bold (untouched by
+     boosting) worked fine. Pin it to 100% so the Text-size menu renders the
+     exact size we set. Harmless on desktop, where boosting doesn't run. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 /* Slimmer surface for the Messaging composers (in-thread reply + new chat). */
 .pgh-mail-editor--compact .ProseMirror {

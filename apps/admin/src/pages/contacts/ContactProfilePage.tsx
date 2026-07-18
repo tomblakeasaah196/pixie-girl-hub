@@ -83,47 +83,51 @@ export function ContactProfilePage() {
         Back to Contacts
       </button>
 
-      {/* Header */}
+      {/* Header — on phones the actions drop to their own wrapping row below
+          the identity block instead of crowding (and overflowing past) the
+          name; on ≥sm they sit inline on the right. */}
       <div className="rounded-[16px] glass border hairline p-5 sm:p-6 mb-5">
-        <div className="flex items-start gap-4">
-          <div
-            className="w-14 h-14 rounded-full grid place-items-center text-lg font-semibold text-white font-display flex-shrink-0"
-            style={{ background: AVATAR_COLORS[colorIdx] }}
-          >
-            {bigInitials(contact.display_name)}
-          </div>
-          <div className="min-w-0 flex-1">
-            <h1 className="font-display text-2xl sm:text-3xl text-text-primary leading-tight truncate">
-              {contact.display_name}
-            </h1>
-            {contact.company_name && (
-              <p className="text-[13px] text-text-muted mt-0.5 truncate">
-                {contact.company_name}
-              </p>
-            )}
-            <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
-              <Pill tone={PRIORITY_TONE[contact.priority_level]}>
-                {contact.priority_level}
-              </Pill>
-              {contact.contact_type.map((t) => {
-                const def = stakeholderForType(t);
-                return (
-                  <Pill key={t} tone={def?.tone ?? "neutral"} dot={false}>
-                    {TYPE_LABELS[t] ?? t}
-                  </Pill>
-                );
-              })}
-              {contact.is_ambassador && (
-                <Pill tone="accent" dot={false}>
-                  <span className="inline-flex items-center gap-1">
-                    <Sparkles className="w-3 h-3" />
-                    Ambassador
-                  </span>
-                </Pill>
+        <div className="sm:flex sm:items-start gap-4 space-y-4 sm:space-y-0">
+          <div className="flex items-start gap-4 min-w-0 flex-1">
+            <div
+              className="w-14 h-14 rounded-full grid place-items-center text-lg font-semibold text-white font-display flex-shrink-0"
+              style={{ background: AVATAR_COLORS[colorIdx] }}
+            >
+              {bigInitials(contact.display_name)}
+            </div>
+            <div className="min-w-0 flex-1">
+              <h1 className="font-display text-2xl sm:text-3xl text-text-primary leading-tight truncate">
+                {contact.display_name}
+              </h1>
+              {contact.company_name && (
+                <p className="text-[13px] text-text-muted mt-0.5 truncate">
+                  {contact.company_name}
+                </p>
               )}
+              <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+                <Pill tone={PRIORITY_TONE[contact.priority_level]}>
+                  {contact.priority_level}
+                </Pill>
+                {contact.contact_type.map((t) => {
+                  const def = stakeholderForType(t);
+                  return (
+                    <Pill key={t} tone={def?.tone ?? "neutral"} dot={false}>
+                      {TYPE_LABELS[t] ?? t}
+                    </Pill>
+                  );
+                })}
+                {contact.is_ambassador && (
+                  <Pill tone="accent" dot={false}>
+                    <span className="inline-flex items-center gap-1">
+                      <Sparkles className="w-3 h-3" />
+                      Ambassador
+                    </span>
+                  </Pill>
+                )}
+              </div>
             </div>
           </div>
-          <div className="flex gap-2 flex-shrink-0">
+          <div className="flex flex-wrap gap-2 sm:flex-shrink-0">
             <MessageButton contact={contact} />
             {!contact.contact_type.includes("staff") && (
               <Button

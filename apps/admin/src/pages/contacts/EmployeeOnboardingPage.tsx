@@ -486,8 +486,9 @@ export function EmployeeOnboardingPage() {
       )}
 
       <div className="grid lg:grid-cols-[260px_1fr] gap-5 items-start">
-        {/* Step rail */}
-        <div className="rounded-[16px] glass border hairline p-3 space-y-1">
+        {/* Step rail — a compact horizontal strip on phones/tablet (scrolls if
+            it must), the vertical rail on desktop. */}
+        <div className="rounded-[16px] glass border hairline p-2 lg:p-3 flex gap-1.5 overflow-x-auto no-scrollbar lg:block lg:space-y-1">
           {STEPS.map((s, i) => {
             const state =
               i < step ? "done" : i === step ? "current" : "upcoming";
@@ -498,7 +499,7 @@ export function EmployeeOnboardingPage() {
                 onClick={() => i <= step && setStep(i)}
                 disabled={i > step}
                 className={[
-                  "w-full flex items-start gap-3 p-2.5 rounded-[11px] text-left transition-colors",
+                  "flex-shrink-0 lg:w-full flex items-center lg:items-start gap-2.5 lg:gap-3 p-2.5 rounded-[11px] text-left transition-colors",
                   state === "current"
                     ? "bg-accent-deep/[0.14] border border-accent-deep/40"
                     : "border border-transparent hover:bg-text-primary/[0.04] disabled:opacity-50 disabled:hover:bg-transparent",
@@ -517,10 +518,10 @@ export function EmployeeOnboardingPage() {
                   {state === "done" ? <Check className="w-3.5 h-3.5" /> : i + 1}
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-[13px] font-semibold text-text-primary">
+                  <span className="block text-[13px] font-semibold text-text-primary whitespace-nowrap lg:whitespace-normal">
                     {s.label}
                   </span>
-                  <span className="block text-[11px] text-text-faint">
+                  <span className="hidden lg:block text-[11px] text-text-faint">
                     {s.description}
                   </span>
                 </span>

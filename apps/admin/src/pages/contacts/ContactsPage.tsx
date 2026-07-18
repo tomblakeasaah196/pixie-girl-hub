@@ -393,6 +393,115 @@ export function ContactsPage() {
     },
   ];
 
+  // ── Phone card renderers ──────────────────────────────────────────────
+  // On phones the column tables become tap-friendly stacked cards (no more
+  // sideways scrolling). Each mirrors its table's columns in a compact form.
+  const contactMobileCard = (c: Contact) => {
+    const idx = contacts.indexOf(c);
+    return (
+      <div className="flex items-start gap-3">
+        <ContactAvatar name={c.display_name} idx={idx} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-medium text-[14px] text-text-primary truncate">
+              {c.display_name}
+            </span>
+            <Pill tone={PRIORITY_TONE[c.priority_level]} dot={false}>
+              {c.priority_level}
+            </Pill>
+          </div>
+          {(c.primary_phone || c.whatsapp_number || c.email) && (
+            <div className="text-[12px] text-text-faint truncate mt-0.5 font-mono">
+              {c.primary_phone ?? c.whatsapp_number ?? c.email}
+            </div>
+          )}
+          <div className="flex flex-wrap gap-1 mt-2">
+            {c.contact_type.slice(0, 3).map((t) => {
+              const def = stakeholderForType(t);
+              return (
+                <Pill key={t} tone={def?.tone ?? "neutral"} dot={false}>
+                  {TYPE_LABELS[t] ?? t}
+                </Pill>
+              );
+            })}
+            {c.is_ambassador && (
+              <Pill tone="accent" dot={false}>
+                Ambassador
+              </Pill>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const ambMobileCard = (a: Ambassador) => {
+    const idx = ambassadors.indexOf(a);
+    const name =
+      a.display_name ||
+      [a.first_name, a.last_name].filter(Boolean).join(" ") ||
+      "Unnamed";
+    return (
+      <div className="flex items-start gap-3">
+        <ContactAvatar name={name} idx={idx} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-medium text-[14px] text-text-primary truncate">
+              {name}
+            </span>
+            <Pill tone="accent" dot={false}>
+              Ambassador
+            </Pill>
+          </div>
+          {a.instagram_handle && (
+            <div className="text-[12px] text-text-faint truncate mt-0.5">
+              @{a.instagram_handle}
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-2 text-[12px] text-text-muted font-mono">
+            {a.ambassador_profile?.commission_pct != null && (
+              <span>
+                {Math.round(a.ambassador_profile.commission_pct * 100)}%
+                commission
+              </span>
+            )}
+            {a.primary_phone && <span>{a.primary_phone}</span>}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const stylistMobileCard = (s: StylistPartner) => {
+    const idx = stylists.indexOf(s);
+    return (
+      <div className="flex items-start gap-3">
+        <ContactAvatar name={s.display_name} idx={idx} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-medium text-[14px] text-text-primary truncate">
+              {s.display_name}
+            </span>
+            <Pill tone={STYLIST_STATUS_TONE[s.status] ?? "neutral"} dot={false}>
+              {s.status}
+            </Pill>
+          </div>
+          <div className="text-[12px] text-text-faint truncate mt-0.5 font-mono">
+            {s.partner_code}
+          </div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-2 text-[12px] text-text-muted">
+            {s.current_tier_key && (
+              <span className="capitalize">{s.current_tier_key}</span>
+            )}
+            <span>
+              {[s.city, s.country_code].filter(Boolean).join(", ") || "—"}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const toolbar = (
     <div className="flex flex-col sm:flex-row gap-3 p-[14px_18px] border-b hairline">
       <div className="relative flex-1 max-w-xs">
@@ -497,7 +606,7 @@ export function ContactsPage() {
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex flex-wrap items-center justify-end gap-2 w-full sm:w-auto sm:flex-shrink-0">
           {!isProgrammeTab && (
             <div className="flex items-center rounded-[10px] border border-line overflow-hidden mr-1">
               <button
@@ -607,6 +716,7 @@ export function ContactsPage() {
           onRowClick={(a) => navigate(`/contacts/${a.contact_id}`)}
           loading={ambLoading}
           toolbar={toolbar}
+          mobileCard={ambMobileCard}
           empty={{
             icon: <Users className="w-8 h-8" />,
             title: "No ambassadors yet",
@@ -622,6 +732,7 @@ export function ContactsPage() {
           onRowClick={(s) => navigate(`/contacts/${s.contact_id}`)}
           loading={stylistLoading}
           toolbar={toolbar}
+          mobileCard={stylistMobileCard}
           empty={{
             icon: <Users className="w-8 h-8" />,
             title: "No stylist partners yet",
@@ -683,6 +794,7 @@ export function ContactsPage() {
             onRowClick={openContact}
             loading={isLoading}
             toolbar={toolbar}
+            mobileCard={contactMobileCard}
             empty={{
               icon: <Users className="w-8 h-8" />,
               title: `No ${emptyLabel} yet`,

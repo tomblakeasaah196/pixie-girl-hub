@@ -113,7 +113,7 @@ This is the authoritative Hub route tree. **Bold** routes are new or expanded re
 ├─ /org-builder          Org & Workflow Builder (6.27)      [CEO]
 │
 │  MARKETING & RETENTION
-├─ /marketing            Marketing & Email Campaigns (6.15/6.16)
+├─ /marketing            Marketing — Email Campaigns (6.16)
 ├─ /social               Social Media Management (6.14)
 ├─ **/campaigns**        **Sales Campaigns & Landing Pages (6.22)** — flash-sale builder, 3-state
 ├─ **/retention**        **Customer Retention & Loyalty (6.23)** — full admin (NEW; closes G-1)
@@ -714,23 +714,24 @@ The Pricing engine owns the math that absorbs gateway fees into the published pr
 
 ---
 
-## 2.16 Marketing & Email Campaigns (6.15 / 6.16) — `/marketing`
+## 2.16 Marketing — Email Campaigns (6.16) — `/marketing`
 
 **Roles:** Marketing + CEO. **Scope:** per-entity.
-**Purpose:** Paid-ad management + analytics (Google/Meta) and owned email campaigns (no Klaviyo — Nodemailer over transactional SMTP).
+**Purpose:** Owned email campaigns (no Klaviyo — Nodemailer over transactional SMTP). *Ad analytics (6.15) was retired: no ad accounts are connected and none will be — the module is email-only.*
 
-**Screens**
+**Screens** (tabs: **Campaigns · Templates · Segments · Design**)
 
-- **Ad campaigns + analytics:** connect `ad_accounts` (Google Ads / Meta Ads via OAuth); push campaigns (`ad_campaigns`) with audience/budget/creative; monitor spend/impressions/clicks/conversions/CPA (`ad_spend_daily`). Note: programmatic create needs approved API access (Google Ads dev token, Meta Marketing API review) — UI should support a **read-first** mode (render performance) while create/schedule access is finalised.
-- **Email campaigns:** `email_templates` (HTML editor + preview with sample variables), `email_campaigns` + `email_campaign_variants` (A/B) + `email_campaign_recipients` + `email_campaign_events` (provider webhooks — append-only). Segment picker (dynamic segments from CRM), send/schedule, opens/clicks/replies. Rolled `total_*` columns are computed — display, don't edit.
+- **Campaigns:** `email_campaigns` + `email_campaign_variants` (A/B) + `email_campaign_recipients` + `email_campaign_events` (append-only). Segment picker, send/schedule, opens/clicks/replies. Opening a campaign shows the **exact mail** it sends/sent, rendered by the send pipeline itself (`GET /email-campaigns/:id/preview`). Rolled `total_*` columns are computed — display, don't edit.
+- **Templates:** Gmail-style rich text editor (TipTap) — no HTML, no modes. Personalise pills insert `{{tokens}}` behind the scenes; images upload via `POST /email-campaigns/upload-image`; text colours offer the brand palette from Storefront Studio's theme. Bodies are stored as bare rich HTML and wrapped in the brand frame at send.
+- **Segments:** saved audience filters with a **live count + "who's in" sample** (`POST /email-campaigns/segments/preview`) inside the create modal, before saving.
+- **Design:** the brand frame — the header (logo/tagline) and footer (address, contacts, socials, unsubscribe) every mail is wrapped in. Seeded with premium defaults; edited via `GET/PUT /email-campaigns/frame`; the editor previews through `GET /email-campaigns/frame/shell`.
 - **Milestone emails:** `email_milestone_rules` (birthday / anniversary / tier-upgrade / reorder), linked to `email_templates` + optional coupon issuance. (Configured here or in Retention workflows — keep one builder; cross-link.)
-- **Unified analytics:** organic (Social) + paid + email + storefront + conversions in one funnel view (also surfaced in Dashboards).
 
-**Tables:** `shared.ad_accounts, ad_campaigns, ad_spend_daily`; `{brand}.email_templates, email_milestone_rules, email_campaigns, email_campaign_variants, email_campaign_recipients, email_campaign_events`.
+**Tables:** `{brand}.email_templates, email_milestone_rules, email_campaigns, email_campaign_variants, email_campaign_recipients, email_campaign_events`; frame config in `shared.business_config.brand_theme.email_frame`.
 
-**Components:** `AdAccountConnect` (OAuth), `CampaignBuilder` (email), `EmailTemplateEditor`, `SegmentPicker`, `ABVariantPanel`, `SendScheduleDialog`, `EngagementStats`, `MilestoneRuleBuilder`.
+**Components:** `CampaignBuilder`, `RichMailEditor`, `SegmentPicker`, `ABVariantPanel`, `SendScheduleDialog`, `EngagementStats`, `MilestoneRuleBuilder`.
 
-**Rules:** all email goes through the backend service — the frontend wires UI actions to Hub endpoints, **never** to Meta/SMTP from the browser (credential leakage). Email/ad campaigns never cross entities.
+**Rules:** all email goes through the backend service — the frontend wires UI actions to Hub endpoints, **never** to SMTP from the browser (credential leakage). Email campaigns never cross entities.
 
 **Interconnections:** Social, CRM (segments/leads), Sales (attribution), E-Commerce (traffic/conversion), Retention (segments as audiences).
 

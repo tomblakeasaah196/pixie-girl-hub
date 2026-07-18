@@ -261,8 +261,10 @@ export const MODULE_TABS: ModuleTab[] = [
     { key: "accounts", label: "Accounts", keywords: ["channels", "instagram", "connect"] },
   ]),
   ...tabs("marketing", [
-    { key: "email", label: "Email", keywords: ["newsletter", "broadcast"] },
-    { key: "ads", label: "Ads", keywords: ["advertising", "meta", "google"] },
+    { key: "campaigns", label: "Campaigns", keywords: ["email", "newsletter", "broadcast", "send"] },
+    { key: "templates", label: "Templates", keywords: ["mail", "editor", "write"] },
+    { key: "segments", label: "Segments", keywords: ["audience", "contacts"] },
+    { key: "design", label: "Design", keywords: ["header", "footer", "frame"] },
   ]),
 
   // ── System ─────────────────────────────────────────────

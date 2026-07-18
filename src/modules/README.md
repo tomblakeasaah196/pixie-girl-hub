@@ -23,7 +23,6 @@ Each module is **self-contained**: routes, controller, service, repo, validator,
 | `contacts`          | 6.12 Contacts & Directory            | `contacts`          |
 | `documents`         | 6.13 Documents & Signatures          | `documents`         |
 | `social_media`      | 6.14 Social Media Management         | `social`            |
-| `marketing`         | 6.15 Marketing Campaigns             | `ad_analytics`      |
 | `email_campaigns`   | 6.16 Email Campaigns                 | `email_campaigns`   |
 | `smartcomm`         | 6.17 Messaging                       | `smartcomm`         |
 | `calendar`          | 6.18 Calendar & Scheduling           | `calendar`          |

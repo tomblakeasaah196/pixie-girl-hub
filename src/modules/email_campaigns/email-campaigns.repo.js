@@ -560,6 +560,17 @@ async function emailableContacts({ brand, filter = {} }) {
   return rows;
 }
 
+// ── Brand email frame (header/footer config) ───────────────
+async function saveEmailFrame({ brand, frame }) {
+  await query(
+    `UPDATE shared.business_config
+        SET brand_theme = jsonb_set(COALESCE(brand_theme, '{}'::jsonb),
+                                    '{email_frame}', $2::jsonb)
+      WHERE business_key = $1`,
+    [brand, JSON.stringify(frame)],
+  );
+}
+
 module.exports = {
   audienceClauses,
   nextNumber,
@@ -593,4 +604,5 @@ module.exports = {
   updateSegmentCount,
   deleteSegment,
   emailableContacts,
+  saveEmailFrame,
 };

@@ -35,7 +35,6 @@ const MONEY_CHARTS = new Set([
   "income_vs_expenses",
   "ar_ageing",
   "expenses_by_category",
-  "ad_spend_trend",
   "campaign_performance",
   "top_moving_value",
   "commissions_by_staff",

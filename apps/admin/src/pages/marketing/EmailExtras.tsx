@@ -1,37 +1,24 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { formatDate } from "@/lib/format";
 import {
   Plus,
   Loader2,
   Trash2,
-  Eye,
-  FileCode2,
   Users,
   Crown,
   Beaker,
   Check,
   Mail,
-  Wand2,
-  Code2,
-  ArrowUp,
-  ArrowDown,
   Tag,
   Clock,
+  FileCode2,
+  Sparkles,
+  ChevronDown,
+  ChevronUp,
+  LayoutTemplate,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
-import { useActiveBusiness } from "@/stores/business";
-import {
-  newBlock,
-  defaultDesign,
-  parseDesign,
-  serializeDesign,
-  previewEmailHtml,
-  fillSample,
-  BLOCK_LABELS,
-  type EmailDesign,
-  type EmailBlock,
-  type EmailBlockType,
-} from "@/lib/email-studio";
+import { fillSample, parseDesign, type EmailDesign } from "@/lib/email-studio";
 import {
   Button,
   Card,
@@ -39,9 +26,10 @@ import {
   Skeleton,
   EmptyState,
 } from "@/components/ui/primitives";
-import { ErrorState, Select, MultiSelect } from "@/components/ui/controls";
+import { ErrorState, Select, MultiSelect, Toggle } from "@/components/ui/controls";
 import { Drawer } from "@/components/ui/Drawer";
 import { Modal } from "@/components/ui/Modal";
+import { RichMailEditor } from "@/components/marketing/RichMailEditor";
 import {
   useEmailTemplates,
   useCreateTemplate,
@@ -49,20 +37,100 @@ import {
   useEmailSegments,
   useSaveSegment,
   useDeleteSegment,
-  usePreviewSegment,
+  usePreviewAudience,
   useAbResults,
   useCreateVariant,
   useDeclareWinner,
   useBuildAudienceFromSegment,
   useBuildRecipients,
   useUpdateEmailCampaign,
-  TEMPLATE_VARIABLES,
+  useEmailFrame,
+  useSaveEmailFrame,
+  useFrameShell,
   type EmailTemplate,
-  type EmailSegment,
-  type SegmentPreview,
   type EmailCampaign,
   type CampaignMergeData,
+  type EmailFrame,
 } from "@/lib/marketing-api";
+
+/* ════════════════════════════════════════════════════════════
+   FRAMED PREVIEW — one composition path for editor + design tab
+   ════════════════════════════════════════════════════════════ */
+
+/** Legacy templates carry their own chrome (seeded premium HTML, old studio
+ *  designs); rich-text bodies get the brand frame. Mirror of the server's
+ *  isFullDocument. */
+function isFullDocument(html: string | undefined): boolean {
+  return /<!DOCTYPE|<html[\s>]|<body[\s>]/i.test(String(html || ""));
+}
+
+/** Preview-only mirror of the server's inlineRichStyles — enough styling for
+ *  the iframe to look like the sent mail (the real inlining happens at send). */
+function previewRichStyles(html: string, accent: string): string {
+  const rules: Record<string, string> = {
+    p: "margin:0 0 14px 0;font-family:'Montserrat',Arial,sans-serif;font-size:15px;line-height:1.62;color:#1A1212",
+    h1: "margin:22px 0 10px 0;font-family:'Playfair Display',Georgia,serif;font-size:28px;line-height:1.25;font-weight:600;color:#1A1212",
+    h2: "margin:20px 0 8px 0;font-family:'Playfair Display',Georgia,serif;font-size:22px;line-height:1.3;font-weight:600;color:#1A1212",
+    ul: "margin:0 0 14px 0;padding-left:22px",
+    ol: "margin:0 0 14px 0;padding-left:22px",
+    li: "margin:0 0 6px 0;font-family:'Montserrat',Arial,sans-serif;font-size:15px;line-height:1.62;color:#1A1212",
+    a: `color:${accent};text-decoration:underline`,
+    blockquote: `margin:0 0 14px 0;padding:2px 0 2px 16px;border-left:3px solid ${accent};font-family:'Montserrat',Arial,sans-serif;font-size:15px;line-height:1.62;color:#7A7068`,
+    img: "max-width:100%;height:auto;border:0;border-radius:6px",
+    hr: "border:none;border-top:1px solid #ECE5DC;margin:22px 0",
+  };
+  let out = html;
+  for (const [tag, style] of Object.entries(rules)) {
+    out = out.replace(
+      new RegExp(`<${tag}(?![a-z0-9])(?![^>]*\\bstyle=)([^>]*)>`, "gi"),
+      `<${tag} style="${style}"$1>`,
+    );
+  }
+  return out;
+}
+
+function applyTokens(html: string, tokens: Record<string, string>): string {
+  return html.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (m, k: string) =>
+    k in tokens ? tokens[k] : m,
+  );
+}
+
+/** Compose the full framed preview: the server-rendered shell (real header +
+ *  footer, brand tokens resolved) around the body being written. */
+function composeFramedPreview(
+  shell: { shell_html: string; tokens: Record<string, string> } | undefined,
+  storedBody: string,
+): string {
+  const accent = shell?.tokens?.brand_color || "#690909";
+  let body = previewRichStyles(storedBody, accent);
+  if (shell) body = applyTokens(body, shell.tokens);
+  body = fillSample(body); // sample sale values for leftover tokens
+  if (!shell) {
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="margin:0;padding:24px;background:#F4EFE9;font-family:Arial,sans-serif">${body}</body></html>`;
+  }
+  return shell.shell_html.replace("<!--PGH_BODY-->", body);
+}
+
+/** The tall white iframe every preview renders into. */
+function MailPreviewFrame({
+  html,
+  className,
+}: {
+  html: string;
+  className?: string;
+}) {
+  return (
+    <iframe
+      title="Mail preview"
+      sandbox=""
+      srcDoc={html}
+      className={
+        className ??
+        "w-full h-[420px] md:h-[520px] rounded-[13px] border border-line bg-white"
+      }
+    />
+  );
+}
 
 /* ════════════════════════════════════════════════════════════
    TEMPLATES
@@ -83,12 +151,18 @@ export function TemplatesTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-[13px] text-text-muted">
-          Reusable email designs with merge variables and a live preview.
+          Write a mail once, reuse it in any campaign. The brand header and
+          footer are added automatically.
         </p>
         {can("email_campaigns", "create") && (
-          <Button size="sm" variant="secondary" icon={<Plus className="w-4 h-4" />} onClick={() => setEditing("new")}>
+          <Button
+            size="sm"
+            variant="secondary"
+            icon={<Plus className="w-4 h-4" />}
+            onClick={() => setEditing("new")}
+          >
             New template
           </Button>
         )}
@@ -96,7 +170,9 @@ export function TemplatesTab() {
 
       {templatesQ.isLoading ? (
         <Card className="p-4 space-y-3">
-          {[0, 1, 2].map((i) => <Skeleton key={i} style={{ height: 44 }} />)}
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} style={{ height: 44 }} />
+          ))}
         </Card>
       ) : templatesQ.isError ? (
         <ErrorState onRetry={() => templatesQ.refetch()} />
@@ -104,7 +180,18 @@ export function TemplatesTab() {
         <EmptyState
           icon={<FileCode2 className="w-7 h-7" />}
           title="No templates"
-          message="Create a reusable email template — campaigns pick one to send."
+          message="Write your first mail — campaigns pick a template to send."
+          action={
+            can("email_campaigns", "create") ? (
+              <Button
+                variant="primary"
+                icon={<Plus className="w-4 h-4" />}
+                onClick={() => setEditing("new")}
+              >
+                New template
+              </Button>
+            ) : undefined
+          }
         />
       ) : (
         <Card className="p-0 overflow-hidden">
@@ -120,11 +207,17 @@ export function TemplatesTab() {
                 <Mail className="w-4 h-4" />
               </span>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-[13.5px] truncate">{t.display_name}</span>
-                  <Pill tone={STATUS_TONE[t.status] ?? "neutral"} dot={false}>{t.status}</Pill>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-medium text-[13.5px] truncate">
+                    {t.display_name}
+                  </span>
+                  <Pill tone={STATUS_TONE[t.status] ?? "neutral"} dot={false}>
+                    {t.status}
+                  </Pill>
                 </div>
-                <div className="text-[11.5px] text-text-faint truncate">{t.subject_line}</div>
+                <div className="text-[11.5px] text-text-faint truncate">
+                  {t.subject_line}
+                </div>
               </div>
             </button>
           ))}
@@ -142,8 +235,64 @@ export function TemplatesTab() {
 }
 
 function slugify(s: string) {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 80);
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 80);
 }
+
+/** Best-effort conversion of an old block-studio design into rich-text HTML
+ *  so the mail opens in the new editor instead of being lost. */
+function designToRichHtml(design: EmailDesign): string {
+  const esc = (s: string) =>
+    s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const parts: string[] = [];
+  for (const b of design.blocks) {
+    switch (b.type) {
+      case "heading":
+        parts.push(`<h1>${esc(b.text ?? "")}</h1>`);
+        break;
+      case "text":
+        for (const line of String(b.text ?? "").split(/\n+/)) {
+          if (line.trim()) parts.push(`<p>${esc(line)}</p>`);
+        }
+        break;
+      case "button":
+        if (b.label)
+          parts.push(
+            `<p><a href="${esc(b.href ?? "#")}"><strong>${esc(b.label)}</strong></a></p>`,
+          );
+        break;
+      case "price":
+        parts.push(
+          `<p><strong>${esc(b.label ?? "")}</strong> ${
+            b.text ? `<s>${esc(b.text)}</s>` : ""
+          }</p>`,
+        );
+        break;
+      case "deadline":
+        if (b.text) parts.push(`<p><strong>${esc(b.text)}</strong></p>`);
+        if (b.label) parts.push(`<p>${esc(b.label)}</p>`);
+        break;
+      case "hero":
+      case "image":
+        if (b.imageUrl)
+          parts.push(`<img src="${esc(b.imageUrl)}" alt="${esc(b.alt ?? "")}"/>`);
+        break;
+      case "divider":
+        parts.push("<hr/>");
+        break;
+      // header/footer/spacer: the brand frame handles chrome now
+      default:
+        break;
+    }
+  }
+  return parts.join("\n") || "<p></p>";
+}
+
+const NEW_BODY =
+  "<p>Hi <span data-token=\"first_name\"></span>,</p><p></p><p></p><p>With love,<br/><span data-token=\"brand_name\"></span></p>";
 
 function TemplateEditor({
   template,
@@ -154,48 +303,42 @@ function TemplateEditor({
 }) {
   const create = useCreateTemplate();
   const update = useUpdateTemplate();
-  const business = useActiveBusiness();
+  const shellQ = useFrameShell();
   const isNew = !template;
-  const bodyRef = useRef<HTMLTextAreaElement>(null);
 
-  // Re-open a studio-built template in the studio; raw HTML opens in HTML mode.
-  const existingDesign = useMemo(() => parseDesign(template?.html_body), [template]);
+  // Decide how the stored body opens:
+  //  • rich/plain HTML → straight into the editor
+  //  • old block-studio design → converted to rich text
+  //  • full HTML document (seeded premium templates) → read-only, with an
+  //    explicit "rewrite" escape hatch so nothing is mangled silently.
+  const stored = template?.html_body ?? "";
+  const legacyDesign = useMemo(() => parseDesign(stored), [stored]);
+  const legacyDocument = !legacyDesign && isFullDocument(stored);
 
-  const [mode, setMode] = useState<"design" | "html">(() =>
-    isNew ? "design" : existingDesign ? "design" : "html",
-  );
   const [displayName, setDisplayName] = useState(template?.display_name ?? "");
   const [subject, setSubject] = useState(template?.subject_line ?? "");
-  const [status, setStatus] = useState<EmailTemplate["status"]>(template?.status ?? "draft");
-  const [design, setDesign] = useState<EmailDesign>(
-    () => existingDesign ?? defaultDesign(business.name),
+  const [status, setStatus] = useState<EmailTemplate["status"]>(
+    template?.status ?? "draft",
   );
-  const [html, setHtml] = useState(
-    template?.html_body ??
-      '<div style="font-family:Arial,sans-serif;padding:24px">\n  <h1>Hello {{customer_name}},</h1>\n  <p>Write your message here…</p>\n</div>',
-  );
+  const [rewriting, setRewriting] = useState(false);
+  const [body, setBody] = useState<string>(() => {
+    if (isNew) return NEW_BODY.replace(/<span data-token="(\w+)"><\/span>/g, "{{$1}}");
+    if (legacyDesign) return designToRichHtml(legacyDesign);
+    if (legacyDocument) return "";
+    return stored;
+  });
+  const richMode = !legacyDocument || rewriting;
 
   const busy = create.isPending || update.isPending;
   const error = create.isError || update.isError;
-  const previewSrc = mode === "design" ? previewEmailHtml(design) : fillSample(html);
 
-  function insertToken(token: string) {
-    const el = bodyRef.current;
-    if (!el) {
-      setHtml((h) => h + token);
-      return;
-    }
-    const start = el.selectionStart ?? html.length;
-    const end = el.selectionEnd ?? html.length;
-    setHtml(html.slice(0, start) + token + html.slice(end));
-    requestAnimationFrame(() => {
-      el.focus();
-      el.selectionStart = el.selectionEnd = start + token.length;
-    });
-  }
+  const previewHtml = useMemo(() => {
+    if (legacyDocument && !rewriting) return fillSample(stored);
+    return composeFramedPreview(shellQ.data, body);
+  }, [legacyDocument, rewriting, stored, shellQ.data, body]);
 
   function save() {
-    const html_body = mode === "design" ? serializeDesign(design) : html;
+    const html_body = richMode ? body : stored;
     if (isNew) {
       create.mutate(
         {
@@ -217,364 +360,265 @@ function TemplateEditor({
     }
   }
 
-  const canSave = !!displayName && !!subject && !busy;
+  const canSave = !!displayName && !!subject && !busy && (richMode ? body.trim() !== "" : true);
 
   return (
     <Drawer
       open
+      wide
       onClose={onClose}
       title={isNew ? "New template" : "Edit template"}
-      subtitle={isNew ? "Design a reusable email" : template?.template_key}
-    >
-      <div className="space-y-4 p-1">
-        <Field label="Template name">
-          <Input value={displayName} onChange={setDisplayName} placeholder="June drop announcement" />
-        </Field>
-        <Field label="Subject line">
-          <Input value={subject} onChange={setSubject} placeholder="Something new just landed ✨" />
-        </Field>
-
-        {!isNew && (
-          <Field label="Status">
-            <Select
-              value={status}
-              onChange={(v) => setStatus(v as EmailTemplate["status"])}
-              options={[
-                { value: "draft", label: "Draft" },
-                { value: "review", label: "In review" },
-                { value: "approved", label: "Approved" },
-                { value: "archived", label: "Archived" },
-              ]}
-            />
-          </Field>
-        )}
-
-        <div className="inline-flex rounded-[10px] border border-line overflow-hidden">
-          <ModeBtn active={mode === "design"} onClick={() => setMode("design")} icon={<Wand2 className="w-3.5 h-3.5" />}>
-            Design
-          </ModeBtn>
-          <ModeBtn active={mode === "html"} onClick={() => setMode("html")} icon={<Code2 className="w-3.5 h-3.5" />}>
-            HTML
-          </ModeBtn>
-        </div>
-
-        {mode === "design" ? (
-          <StudioEditor design={design} setDesign={setDesign} />
-        ) : (
-          <Field label="HTML body">
-            <p className="text-[11px] text-text-faint mb-1.5">
-              Tokens fill in at send — <span className="text-text-muted">brand</span> items
-              (logo, colours, name) come from Settings; <span className="text-text-muted">sale</span> items
-              from the campaign&rsquo;s Sale details.
+      subtitle={isNew ? "Write the mail — the brand frame is added for you" : template?.template_key}
+      footer={
+        <>
+          {error && (
+            <p className="text-[12px] text-danger mr-auto">
+              Couldn&rsquo;t save the template.
             </p>
-            <div className="flex flex-wrap gap-1.5 mb-1.5">
-              {TEMPLATE_VARIABLES.map((v) => (
-                <button
-                  key={v.token}
-                  type="button"
-                  onClick={() => insertToken(v.token)}
-                  className={`text-[11px] rounded-md border px-2 py-1 hover:text-accent-glow hover:border-accent/40 ${
-                    v.group === "sale"
-                      ? "border-accent/30 text-accent-glow/80"
-                      : "border-line text-text-muted"
-                  }`}
-                  title={`Insert ${v.label}${v.auto ? " (auto from Settings)" : ""}`}
-                >
-                  {v.token}
-                </button>
-              ))}
-            </div>
-            <textarea
-              ref={bodyRef}
-              value={html}
-              onChange={(e) => setHtml(e.target.value)}
-              rows={10}
-              spellCheck={false}
-              className="w-full rounded-[11px] bg-text-primary/[0.04] border border-line px-3 py-2.5 text-[12px] font-mono outline-none focus:border-accent/50 resize-y"
-            />
-          </Field>
-        )}
-
-        <Field label="Live preview (sample data)">
-          <iframe
-            title="preview"
-            className="w-full h-[320px] rounded-[11px] border border-line bg-white"
-            srcDoc={previewSrc}
-          />
-        </Field>
-
-        {error && <p className="text-[12px] text-danger">Couldn&rsquo;t save the template.</p>}
-
-        <div className="flex justify-end gap-2 pt-2">
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          )}
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
           <Button
             variant="primary"
             disabled={!canSave}
             onClick={save}
-            icon={busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+            icon={
+              busy ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Check className="w-4 h-4" />
+              )
+            }
           >
             {isNew ? "Create" : "Save"}
           </Button>
+        </>
+      }
+    >
+      <div className="grid lg:grid-cols-2 gap-5 p-1">
+        <div className="space-y-4 min-w-0">
+          <Field label="Template name">
+            <Input
+              value={displayName}
+              onChange={setDisplayName}
+              placeholder="June drop announcement"
+            />
+          </Field>
+          <Field label="Subject line (what lands in the inbox)">
+            <Input
+              value={subject}
+              onChange={setSubject}
+              placeholder="Something new just landed ✨"
+            />
+          </Field>
+
+          {!isNew && (
+            <Field label="Status">
+              <Select
+                value={status}
+                onChange={(v) => setStatus(v as EmailTemplate["status"])}
+                options={[
+                  { value: "draft", label: "Draft" },
+                  { value: "review", label: "In review" },
+                  { value: "approved", label: "Approved" },
+                  { value: "archived", label: "Archived" },
+                ]}
+              />
+            </Field>
+          )}
+
+          {richMode ? (
+            <Field label="The mail">
+              <RichMailEditor value={body} onChange={setBody} />
+              <p className="text-[11px] text-text-faint mt-1.5">
+                <Sparkles className="w-3 h-3 inline mr-1 text-accent-glow" />
+                Use <span className="text-text-muted font-medium">Personalise</span> to
+                greet each customer by name. Logo, colours and the unsubscribe
+                footer are added automatically.
+              </p>
+            </Field>
+          ) : (
+            <div className="rounded-xl border border-line p-3.5 space-y-2">
+              <div className="micro inline-flex items-center gap-1.5">
+                <LayoutTemplate className="w-3.5 h-3.5 text-accent-glow" />
+                Designed template
+              </div>
+              <p className="text-[12.5px] text-text-muted">
+                This is one of the pre-designed templates. You can rename it,
+                change the subject, and send it as-is — or rewrite it as a
+                simple mail in the editor.
+              </p>
+              <Button size="sm" variant="secondary" onClick={() => { setRewriting(true); setBody(""); }}>
+                Rewrite in the mail editor
+              </Button>
+            </div>
+          )}
+        </div>
+
+        <div className="min-w-0">
+          <div className="micro mb-1.5">
+            Preview — exactly what recipients see
+          </div>
+          <MailPreviewFrame html={previewHtml} className="w-full h-[380px] lg:h-[560px] rounded-[13px] border border-line bg-white" />
         </div>
       </div>
     </Drawer>
   );
 }
 
-function ModeBtn({
-  active,
-  onClick,
-  icon,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold transition-colors ${
-        active ? "bg-accent/[0.12] text-accent-glow" : "text-text-muted hover:text-text-primary"
-      }`}
-    >
-      {icon}
-      {children}
-    </button>
+/* ════════════════════════════════════════════════════════════
+   DESIGN — the brand frame (header + footer) config
+   ════════════════════════════════════════════════════════════ */
+
+const SAMPLE_BODY =
+  "<p>Hi {{first_name}},</p><p>This is how every campaign mail is framed — your header above, your footer below. Write the middle in Templates.</p>";
+
+export function DesignTab() {
+  const { can } = useAuthStore();
+  const frameQ = useEmailFrame();
+  const shellQ = useFrameShell();
+  const save = useSaveEmailFrame();
+  const [draft, setDraft] = useState<EmailFrame | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (frameQ.data && !draft) setDraft(frameQ.data.frame);
+  }, [frameQ.data, draft]);
+
+  const canEdit = can("email_campaigns", "edit");
+  const previewHtml = useMemo(
+    () => composeFramedPreview(shellQ.data, SAMPLE_BODY),
+    [shellQ.data],
   );
-}
 
-const ADD_BLOCKS: EmailBlockType[] = [
-  "heading",
-  "text",
-  "button",
-  "price",
-  "deadline",
-  "image",
-  "hero",
-  "divider",
-  "spacer",
-  "header",
-  "footer",
-];
+  if (frameQ.isLoading || !draft) {
+    return (
+      <Card className="p-4 space-y-3">
+        {[0, 1, 2].map((i) => (
+          <Skeleton key={i} style={{ height: 44 }} />
+        ))}
+      </Card>
+    );
+  }
+  if (frameQ.isError) return <ErrorState onRetry={() => frameQ.refetch()} />;
 
-function StudioEditor({
-  design,
-  setDesign,
-}: {
-  design: EmailDesign;
-  setDesign: (d: EmailDesign) => void;
-}) {
-  const patchBlock = (id: string, patch: Partial<EmailBlock>) =>
-    setDesign({ ...design, blocks: design.blocks.map((b) => (b.id === id ? { ...b, ...patch } : b)) });
-  const addBlock = (type: EmailBlockType) =>
-    setDesign({ ...design, blocks: [...design.blocks, newBlock(type)] });
-  const removeBlock = (id: string) =>
-    setDesign({ ...design, blocks: design.blocks.filter((b) => b.id !== id) });
-  const move = (idx: number, dir: -1 | 1) => {
-    const next = [...design.blocks];
-    const j = idx + dir;
-    if (j < 0 || j >= next.length) return;
-    [next[idx], next[j]] = [next[j], next[idx]];
-    setDesign({ ...design, blocks: next });
+  const set = (patch: Partial<EmailFrame>) => {
+    setSaved(false);
+    setDraft({ ...draft, ...patch });
   };
-  const setTheme = (patch: Partial<EmailDesign["theme"]>) =>
-    setDesign({ ...design, theme: { ...design.theme, ...patch } });
 
   return (
-    <div className="space-y-3">
-      {/* Theme + add */}
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="inline-flex items-center gap-1.5 text-[11.5px] text-text-muted">
-          Accent
-          <input type="color" value={design.theme.accent} onChange={(e) => setTheme({ accent: e.target.value })} className="w-7 h-7 rounded border border-line bg-transparent" />
-        </label>
-        <label className="inline-flex items-center gap-1.5 text-[11.5px] text-text-muted">
-          Background
-          <input type="color" value={design.theme.background} onChange={(e) => setTheme({ background: e.target.value })} className="w-7 h-7 rounded border border-line bg-transparent" />
-        </label>
-      </div>
-      <div className="flex flex-wrap gap-1.5">
-        {ADD_BLOCKS.map((type) => (
-          <button
-            key={type}
-            type="button"
-            onClick={() => addBlock(type)}
-            className="text-[11px] rounded-md border border-line px-2 py-1 text-text-muted hover:text-accent-glow hover:border-accent/40 inline-flex items-center gap-1"
-          >
-            <Plus className="w-3 h-3" />
-            {BLOCK_LABELS[type]}
-          </button>
-        ))}
-      </div>
+    <div className="grid lg:grid-cols-2 gap-5">
+      <div className="space-y-4 min-w-0">
+        <p className="text-[13px] text-text-muted">
+          Every campaign mail is wrapped in this header and footer — already
+          styled with your logo, address and unsubscribe link from Settings.
+          Only touch it when you want to.
+        </p>
 
-      {/* Blocks */}
-      <div className="space-y-2">
-        {design.blocks.map((b, i) => (
-          <div key={b.id} className="rounded-xl border border-line p-2.5">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[11px] uppercase tracking-widest text-text-faint">{BLOCK_LABELS[b.type]}</span>
-              <div className="flex items-center gap-1">
-                <IconBtn onClick={() => move(i, -1)} disabled={i === 0}><ArrowUp className="w-3.5 h-3.5" /></IconBtn>
-                <IconBtn onClick={() => move(i, 1)} disabled={i === design.blocks.length - 1}><ArrowDown className="w-3.5 h-3.5" /></IconBtn>
-                <IconBtn onClick={() => removeBlock(b.id)} danger><Trash2 className="w-3.5 h-3.5" /></IconBtn>
-              </div>
-            </div>
-            <BlockFields block={b} onChange={(p) => patchBlock(b.id, p)} />
+        <Card className="p-4 space-y-3.5">
+          <div className="micro">Header</div>
+          <label className="flex items-center justify-between gap-3 text-[13px]">
+            Show the brand logo
+            <Toggle
+              checked={draft.show_logo}
+              onChange={(v) => set({ show_logo: v })}
+              disabled={!canEdit}
+            />
+          </label>
+          <Field label="Tagline under the logo (optional)">
+            <Input
+              value={draft.tagline}
+              onChange={(v) => set({ tagline: v })}
+              placeholder="Luxury hair, delivered"
+              disabled={!canEdit}
+            />
+          </Field>
+        </Card>
+
+        <Card className="p-4 space-y-3.5">
+          <div className="micro">Footer</div>
+          <Field label="Why they're receiving this">
+            <textarea
+              value={draft.footer_note}
+              onChange={(e) => set({ footer_note: e.target.value })}
+              rows={2}
+              disabled={!canEdit}
+              className="w-full rounded-[11px] bg-text-primary/[0.04] border border-line px-3 py-2 text-[13px] outline-none focus:border-accent/50 resize-y disabled:opacity-60"
+            />
+          </Field>
+          <label className="flex items-center justify-between gap-3 text-[13px]">
+            Show the business address
+            <Toggle
+              checked={draft.show_address}
+              onChange={(v) => set({ show_address: v })}
+              disabled={!canEdit}
+            />
+          </label>
+          <label className="flex items-center justify-between gap-3 text-[13px]">
+            Show website &amp; support email
+            <Toggle
+              checked={draft.show_contact}
+              onChange={(v) => set({ show_contact: v })}
+              disabled={!canEdit}
+            />
+          </label>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <Field label="Instagram link (optional)">
+              <Input
+                value={draft.instagram_url}
+                onChange={(v) => set({ instagram_url: v })}
+                placeholder="https://instagram.com/…"
+                disabled={!canEdit}
+              />
+            </Field>
+            <Field label="TikTok link (optional)">
+              <Input
+                value={draft.tiktok_url}
+                onChange={(v) => set({ tiktok_url: v })}
+                placeholder="https://tiktok.com/@…"
+                disabled={!canEdit}
+              />
+            </Field>
           </div>
-        ))}
-        {design.blocks.length === 0 && (
-          <p className="text-[12.5px] text-text-faint italic">Add a block to start designing.</p>
+        </Card>
+
+        {save.isError && (
+          <p className="text-[12px] text-danger">Couldn&rsquo;t save.</p>
+        )}
+        {canEdit && (
+          <div className="flex items-center justify-end gap-2">
+            {saved && !save.isPending && (
+              <span className="text-[12px] text-success">
+                Saved — every future mail uses this.
+              </span>
+            )}
+            <Button
+              variant="primary"
+              disabled={save.isPending}
+              onClick={() =>
+                save.mutate(draft, { onSuccess: () => setSaved(true) })
+              }
+              icon={
+                save.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Check className="w-4 h-4" />
+                )
+              }
+            >
+              Save header &amp; footer
+            </Button>
+          </div>
         )}
       </div>
-    </div>
-  );
-}
 
-function BlockFields({ block, onChange }: { block: EmailBlock; onChange: (p: Partial<EmailBlock>) => void }) {
-  const t = block.type;
-  return (
-    <div className="space-y-2">
-      {t === "header" && (
-        <>
-          <Input value={block.text ?? ""} onChange={(v) => onChange({ text: v })} placeholder="Brand name" />
-          <Input value={block.imageUrl ?? ""} onChange={(v) => onChange({ imageUrl: v })} placeholder="Logo image URL (optional)" />
-        </>
-      )}
-      {(t === "hero" || t === "image") && (
-        <>
-          <Input value={block.imageUrl ?? ""} onChange={(v) => onChange({ imageUrl: v })} placeholder="Image URL" />
-          <Input value={block.alt ?? ""} onChange={(v) => onChange({ alt: v })} placeholder="Alt text" />
-          <Input value={block.href ?? ""} onChange={(v) => onChange({ href: v })} placeholder="Link URL (optional)" />
-        </>
-      )}
-      {(t === "heading" || t === "text") && (
-        <>
-          {t === "text" ? (
-            <textarea
-              value={block.text ?? ""}
-              onChange={(e) => onChange({ text: e.target.value })}
-              rows={3}
-              className="w-full rounded-[11px] bg-text-primary/[0.04] border border-line px-3 py-2 text-[13px] outline-none focus:border-accent/50 resize-y"
-            />
-          ) : (
-            <Input value={block.text ?? ""} onChange={(v) => onChange({ text: v })} placeholder="Heading" />
-          )}
-          <div className="flex items-center justify-between">
-            <AlignToggle value={block.align ?? "left"} onChange={(a) => onChange({ align: a })} />
-            <div className="flex flex-wrap gap-1 justify-end">
-              {["{{first_name}}", "{{brand_name}}", "{{discount}}", "{{sale_url}}"].map((tok) => (
-                <button
-                  key={tok}
-                  type="button"
-                  onClick={() => onChange({ text: (block.text ?? "") + tok })}
-                  className="text-[10.5px] rounded border border-line px-1.5 py-0.5 text-text-muted hover:text-accent-glow"
-                >
-                  {tok}
-                </button>
-              ))}
-            </div>
-          </div>
-        </>
-      )}
-      {t === "button" && (
-        <>
-          <Input value={block.label ?? ""} onChange={(v) => onChange({ label: v })} placeholder="Button label" />
-          <Input value={block.href ?? ""} onChange={(v) => onChange({ href: v })} placeholder="https://… or {{sale_url}}" />
-          <AlignToggle value={block.align ?? "center"} onChange={(a) => onChange({ align: a })} />
-        </>
-      )}
-      {t === "price" && (
-        <>
-          <div className="grid grid-cols-2 gap-2">
-            <Input value={block.text ?? ""} onChange={(v) => onChange({ text: v })} placeholder="Was ₦120,000" />
-            <Input value={block.label ?? ""} onChange={(v) => onChange({ label: v })} placeholder="Now ₦84,000" />
-          </div>
-          <Input value={block.alt ?? ""} onChange={(v) => onChange({ alt: v })} placeholder="Caption (e.g. Sale price)" />
-          <AlignToggle value={block.align ?? "center"} onChange={(a) => onChange({ align: a })} />
-        </>
-      )}
-      {t === "deadline" && (
-        <>
-          <Input value={block.text ?? ""} onChange={(v) => onChange({ text: v })} placeholder="Headline (e.g. {{deadline_phrase}})" />
-          <Input value={block.label ?? ""} onChange={(v) => onChange({ label: v })} placeholder="Subline (e.g. Sale ends {{sale_end_display}})" />
-          <p className="text-[11px] text-text-faint">
-            Set the discount &amp; end date in the campaign&rsquo;s Sale details —
-            the countdown fills automatically at send.
-          </p>
-        </>
-      )}
-      {t === "spacer" && (
-        <input
-          value={String(block.height ?? 24)}
-          onChange={(e) => onChange({ height: Number(e.target.value.replace(/[^0-9]/g, "")) || 0 })}
-          inputMode="numeric"
-          className="w-28 rounded-[11px] bg-text-primary/[0.04] border border-line px-3 h-[40px] text-[13px] outline-none focus:border-accent/50 tabular-nums"
-          placeholder="Height px" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
-        />
-      )}
-      {t === "footer" && (
-        <textarea
-          value={block.text ?? ""}
-          onChange={(e) => onChange({ text: e.target.value })}
-          rows={2}
-          className="w-full rounded-[11px] bg-text-primary/[0.04] border border-line px-3 py-2 text-[13px] outline-none focus:border-accent/50 resize-y"
-        />
-      )}
-      {t === "divider" && <p className="text-[11.5px] text-text-faint">A horizontal rule.</p>}
+      <div className="min-w-0">
+        <div className="micro mb-1.5">Preview (updates when you save)</div>
+        <MailPreviewFrame html={previewHtml} />
+      </div>
     </div>
-  );
-}
-
-function AlignToggle({
-  value,
-  onChange,
-}: {
-  value: "left" | "center" | "right";
-  onChange: (a: "left" | "center" | "right") => void;
-}) {
-  return (
-    <div className="inline-flex rounded-[8px] border border-line overflow-hidden">
-      {(["left", "center", "right"] as const).map((a) => (
-        <button
-          key={a}
-          type="button"
-          onClick={() => onChange(a)}
-          className={`px-2 py-1 text-[11px] capitalize ${
-            value === a ? "bg-accent/[0.12] text-accent-glow" : "text-text-muted hover:text-text-primary"
-          }`}
-        >
-          {a}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function IconBtn({
-  onClick,
-  disabled,
-  danger,
-  children,
-}: {
-  onClick: () => void;
-  disabled?: boolean;
-  danger?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`rounded-lg bg-panel-2 border border-line p-1.5 disabled:opacity-30 ${
-        danger ? "hover:border-danger/40 text-text-muted hover:text-danger" : "hover:border-accent/40 text-text-muted"
-      }`}
-    >
-      {children}
-    </button>
   );
 }
 
@@ -587,25 +631,25 @@ export function SegmentsTab() {
   const segmentsQ = useEmailSegments();
   const del = useDeleteSegment();
   const [creating, setCreating] = useState(false);
-  const [preview, setPreview] = useState<{ segment: EmailSegment; data?: SegmentPreview } | null>(null);
-  const previewM = usePreviewSegment();
+  const [viewing, setViewing] = useState<{
+    name: string;
+    filter: Record<string, unknown>;
+  } | null>(null);
   const segments = segmentsQ.data ?? [];
-
-  function openPreview(seg: EmailSegment) {
-    setPreview({ segment: seg });
-    previewM.mutate(seg.segment_id, {
-      onSuccess: (data) => setPreview({ segment: seg, data }),
-    });
-  }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-[13px] text-text-muted">
           Saved audiences. A campaign builds its recipient list from a segment.
         </p>
         {can("email_campaigns", "create") && (
-          <Button size="sm" variant="secondary" icon={<Plus className="w-4 h-4" />} onClick={() => setCreating(true)}>
+          <Button
+            size="sm"
+            variant="secondary"
+            icon={<Plus className="w-4 h-4" />}
+            onClick={() => setCreating(true)}
+          >
             New segment
           </Button>
         )}
@@ -613,7 +657,9 @@ export function SegmentsTab() {
 
       {segmentsQ.isLoading ? (
         <Card className="p-4 space-y-3">
-          {[0, 1, 2].map((i) => <Skeleton key={i} style={{ height: 44 }} />)}
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} style={{ height: 44 }} />
+          ))}
         </Card>
       ) : segmentsQ.isError ? (
         <ErrorState onRetry={() => segmentsQ.refetch()} />
@@ -622,27 +668,60 @@ export function SegmentsTab() {
           icon={<Users className="w-7 h-7" />}
           title="No segments"
           message="Create a saved audience to target with campaigns."
+          action={
+            can("email_campaigns", "create") ? (
+              <Button
+                variant="primary"
+                icon={<Plus className="w-4 h-4" />}
+                onClick={() => setCreating(true)}
+              >
+                New segment
+              </Button>
+            ) : undefined
+          }
         />
       ) : (
         <Card className="p-0 overflow-hidden">
           {segments.map((s, i) => (
             <div
               key={s.segment_id}
-              className={`p-4 flex items-center gap-3 ${i < segments.length - 1 ? "border-b border-line" : ""}`}
+              className={`p-4 flex items-center gap-3 ${
+                i < segments.length - 1 ? "border-b border-line" : ""
+              }`}
             >
               <span className="grid place-items-center w-9 h-9 rounded-xl bg-panel-2 text-accent-glow border border-line shrink-0">
                 <Users className="w-4 h-4" />
               </span>
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-[13.5px] truncate">{s.name}</div>
-                {s.description && <div className="text-[11.5px] text-text-faint truncate">{s.description}</div>}
-              </div>
-              <Button size="sm" variant="ghost" icon={<Eye className="w-4 h-4" />} onClick={() => openPreview(s)}>
-                Preview
+              <button
+                className="flex-1 min-w-0 text-left"
+                onClick={() =>
+                  setViewing({ name: s.name, filter: s.filter ?? {} })
+                }
+              >
+                <div className="font-medium text-[13.5px] truncate">
+                  {s.name}
+                </div>
+                {s.description && (
+                  <div className="text-[11.5px] text-text-faint truncate">
+                    {s.description}
+                  </div>
+                )}
+              </button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() =>
+                  setViewing({ name: s.name, filter: s.filter ?? {} })
+                }
+              >
+                Who&rsquo;s in
               </Button>
               {can("email_campaigns", "delete") && (
                 <button
-                  onClick={() => window.confirm(`Delete segment "${s.name}"?`) && del.mutate(s.segment_id)}
+                  onClick={() =>
+                    window.confirm(`Delete segment "${s.name}"?`) &&
+                    del.mutate(s.segment_id)
+                  }
                   className="rounded-lg bg-panel-2 border border-line p-1.5 hover:border-danger/40"
                   title="Delete"
                 >
@@ -655,37 +734,13 @@ export function SegmentsTab() {
       )}
 
       {creating && <SegmentCreate onClose={() => setCreating(false)} />}
-      {preview && (
-        <Modal open onClose={() => setPreview(null)} title={`Audience · ${preview.segment.name}`}>
-          {previewM.isPending && !preview.data ? (
-            <div className="py-6 text-center"><Loader2 className="w-5 h-5 animate-spin mx-auto text-text-faint" /></div>
-          ) : preview.data ? (
-            <div className="space-y-3">
-              <div className="text-[13px]">
-                <span className="font-display text-[24px] tabular-nums">{preview.data.count.toLocaleString()}</span>
-                <span className="text-text-muted ml-2">emailable contacts</span>
-              </div>
-              <div className="rounded-xl border border-line overflow-hidden">
-                {preview.data.sample.length === 0 ? (
-                  <p className="p-3 text-[12.5px] text-text-faint italic">No contacts match.</p>
-                ) : (
-                  preview.data.sample.map((c, idx) => (
-                    <div
-                      key={c.contact_id}
-                      className={`p-2.5 flex items-center justify-between text-[12.5px] ${
-                        idx < preview.data!.sample.length - 1 ? "border-b border-line" : ""
-                      }`}
-                    >
-                      <span className="truncate">{c.display_name || "—"}</span>
-                      <span className="text-text-faint font-mono text-[11px] truncate ml-2">{c.email}</span>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          ) : (
-            <p className="text-[12.5px] text-text-faint">Couldn&rsquo;t load the preview.</p>
-          )}
+      {viewing && (
+        <Modal
+          open
+          onClose={() => setViewing(null)}
+          title={`Audience · ${viewing.name}`}
+        >
+          <AudiencePreview filter={viewing.filter} alwaysOpen />
         </Modal>
       )}
     </div>
@@ -715,6 +770,103 @@ const PURCHASED_OPTIONS = [
   { value: "365", label: "Last year" },
 ];
 
+/** Debounce a changing value (for the live audience count). */
+function useDebounced<T>(value: T, ms: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return debounced;
+}
+
+/** Live who's-in preview for a filter: big count + expandable people list. */
+function AudiencePreview({
+  filter,
+  alwaysOpen = false,
+}: {
+  filter: Record<string, unknown>;
+  alwaysOpen?: boolean;
+}) {
+  const debounced = useDebounced(filter, 450);
+  const previewQ = usePreviewAudience(debounced);
+  const [open, setOpen] = useState(alwaysOpen);
+  const data = previewQ.data;
+
+  return (
+    <div className="rounded-xl border border-accent/25 bg-accent/[0.05] overflow-hidden">
+      <div className="p-3 flex items-center gap-3">
+        <Users className="w-4 h-4 text-accent-glow shrink-0" />
+        <div className="flex-1 text-[13px]">
+          {previewQ.isLoading || previewQ.isFetching ? (
+            <span className="inline-flex items-center gap-2 text-text-muted">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" /> Counting…
+            </span>
+          ) : previewQ.isError ? (
+            <span className="text-text-muted">
+              Couldn&rsquo;t count this audience.
+            </span>
+          ) : (
+            <>
+              <span className="font-display text-[22px] tabular-nums align-middle">
+                {(data?.count ?? 0).toLocaleString()}
+              </span>
+              <span className="text-text-muted ml-2">
+                emailable contact{(data?.count ?? 0) === 1 ? "" : "s"} will get
+                this
+              </span>
+            </>
+          )}
+        </div>
+        {!alwaysOpen && (data?.count ?? 0) > 0 && (
+          <button
+            type="button"
+            onClick={() => setOpen(!open)}
+            className="inline-flex items-center gap-1 text-[12px] font-semibold text-accent-glow hover:underline shrink-0"
+          >
+            See who&rsquo;s in
+            {open ? (
+              <ChevronUp className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronDown className="w-3.5 h-3.5" />
+            )}
+          </button>
+        )}
+      </div>
+      {open && data && (
+        <div className="border-t border-line/60 max-h-52 overflow-y-auto">
+          {data.sample.length === 0 ? (
+            <p className="p-3 text-[12.5px] text-text-faint italic">
+              No contacts match these filters.
+            </p>
+          ) : (
+            <>
+              {data.sample.map((c, idx) => (
+                <div
+                  key={c.contact_id}
+                  className={`px-3 py-2 flex items-center justify-between gap-2 text-[12.5px] ${
+                    idx < data.sample.length - 1 ? "border-b border-line/60" : ""
+                  }`}
+                >
+                  <span className="truncate">{c.display_name || "—"}</span>
+                  <span className="text-text-faint font-mono text-[11px] truncate">
+                    {c.email}
+                  </span>
+                </div>
+              ))}
+              {data.count > data.sample.length && (
+                <p className="px-3 py-2 text-[11.5px] text-text-faint">
+                  …and {(data.count - data.sample.length).toLocaleString()} more
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SegmentCreate({ onClose }: { onClose: () => void }) {
   const save = useSaveSegment();
   const [name, setName] = useState("");
@@ -726,7 +878,7 @@ function SegmentCreate({ onClose }: { onClose: () => void }) {
   const [purchasedDays, setPurchasedDays] = useState("");
   const [birthdayDays, setBirthdayDays] = useState("");
 
-  function buildFilter(): Record<string, unknown> {
+  const filter = useMemo(() => {
     const f: Record<string, unknown> = {};
     if (contactTypes.length) f.contact_type = contactTypes;
     if (priorities.length) f.priority_level = priorities;
@@ -734,44 +886,90 @@ function SegmentCreate({ onClose }: { onClose: () => void }) {
     if (tagList.length) f.tag_names = tagList;
     if (minSpend && Number(minSpend) > 0) f.min_lifetime_spend = Number(minSpend);
     if (purchasedDays) f.purchased_within_days = Number(purchasedDays);
-    if (birthdayDays && Number(birthdayDays) > 0) f.birthday_within_days = Number(birthdayDays);
+    if (birthdayDays && Number(birthdayDays) > 0)
+      f.birthday_within_days = Number(birthdayDays);
     return f;
-  }
+  }, [contactTypes, priorities, tags, minSpend, purchasedDays, birthdayDays]);
 
   const digits = (s: string) => s.replace(/[^0-9]/g, "");
 
   return (
-    <Modal open onClose={onClose} title="New segment">
+    <Modal
+      open
+      onClose={onClose}
+      title="New segment"
+      footer={
+        <>
+          {save.isError && (
+            <p className="text-[12px] text-danger mr-auto">
+              Couldn&rsquo;t save.
+            </p>
+          )}
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            disabled={!name || save.isPending}
+            onClick={() =>
+              save.mutate(
+                { name, description: description || undefined, filter },
+                { onSuccess: onClose },
+              )
+            }
+            icon={
+              save.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Check className="w-4 h-4" />
+              )
+            }
+          >
+            Create segment
+          </Button>
+        </>
+      }
+    >
       <div className="space-y-3">
         <Field label="Name">
           <Input value={name} onChange={setName} placeholder="Lagos VIPs" />
         </Field>
         <Field label="Description (optional)">
-          <Input value={description} onChange={setDescription} placeholder="VIP customers who bought recently" />
+          <Input
+            value={description}
+            onChange={setDescription}
+            placeholder="VIP customers who bought recently"
+          />
         </Field>
 
         <div className="rounded-xl border border-line p-3 space-y-3">
-          <div className="micro">Filters — leave empty to target all emailable contacts</div>
+          <div className="micro">
+            Filters — leave empty to target all emailable contacts
+          </div>
           <Field label="Contact type">
             <MultiSelect
               values={contactTypes}
               onChange={setContactTypes}
-              options={CONTACT_TYPE_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+              options={CONTACT_TYPE_OPTIONS}
             />
           </Field>
           <Field label="Priority">
             <MultiSelect
               values={priorities}
               onChange={setPriorities}
-              options={PRIORITY_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+              options={PRIORITY_OPTIONS}
             />
           </Field>
           <Field label="Tags (comma-separated)">
             <Input value={tags} onChange={setTags} placeholder="loyal, wholesale" />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Bought within">
-              <Select value={purchasedDays} onChange={setPurchasedDays} options={PURCHASED_OPTIONS} />
+              <Select
+                value={purchasedDays}
+                onChange={setPurchasedDays}
+                options={PURCHASED_OPTIONS}
+              />
             </Field>
             <Field label="Min lifetime spend (₦)">
               <input
@@ -794,34 +992,15 @@ function SegmentCreate({ onClose }: { onClose: () => void }) {
           </Field>
         </div>
 
-        <p className="text-[11.5px] text-text-faint">
-          Save, then <span className="text-text-muted">Preview</span> to see how
-          many contacts match. Campaigns build their recipients from this segment.
-        </p>
-        {save.isError && <p className="text-[12px] text-danger">Couldn&rsquo;t save.</p>}
-        <div className="flex justify-end gap-2 pt-1">
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button
-            variant="primary"
-            disabled={!name || save.isPending}
-            onClick={() =>
-              save.mutate(
-                { name, description: description || undefined, filter: buildFilter() },
-                { onSuccess: onClose },
-              )
-            }
-            icon={save.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-          >
-            Create
-          </Button>
-        </div>
+        {/* Live who's-in — updates as filters change, before anything is saved */}
+        <AudiencePreview filter={filter} />
       </div>
     </Modal>
   );
 }
 
 /* ════════════════════════════════════════════════════════════
-   CAMPAIGN DETAIL SECTIONS (audience + A/B)
+   CAMPAIGN DETAIL SECTIONS (audience + sale + A/B)
    ════════════════════════════════════════════════════════════ */
 
 export function CampaignAudienceSection({ campaign }: { campaign: EmailCampaign }) {
@@ -849,7 +1028,7 @@ export function CampaignAudienceSection({ campaign }: { campaign: EmailCampaign 
       </div>
       {editable ? (
         <>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <Select
               value={segmentId}
               onChange={setSegmentId}
@@ -863,7 +1042,13 @@ export function CampaignAudienceSection({ campaign }: { campaign: EmailCampaign 
               variant="secondary"
               disabled={!segmentId || fromSegment.isPending}
               onClick={() => fromSegment.mutate(segmentId)}
-              icon={fromSegment.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users className="w-4 h-4" />}
+              icon={
+                fromSegment.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Users className="w-4 h-4" />
+                )
+              }
             >
               Build
             </Button>
@@ -876,10 +1061,14 @@ export function CampaignAudienceSection({ campaign }: { campaign: EmailCampaign 
             {allContacts.isPending ? "Adding…" : "Or add all emailable contacts"}
           </button>
           {lastAdded != null && (
-            <p className="text-[12px] text-success">Added {lastAdded.toLocaleString()} recipients.</p>
+            <p className="text-[12px] text-success">
+              Added {lastAdded.toLocaleString()} recipients.
+            </p>
           )}
           {(fromSegment.isError || allContacts.isError) && (
-            <p className="text-[12px] text-danger">Couldn&rsquo;t build the audience.</p>
+            <p className="text-[12px] text-danger">
+              Couldn&rsquo;t build the audience.
+            </p>
           )}
         </>
       ) : (
@@ -951,7 +1140,7 @@ export function CampaignSaleSection({ campaign }: { campaign: EmailCampaign }) {
       </div>
       {editable ? (
         <>
-          <div className="grid grid-cols-2 gap-2.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <Field label="Discount %">
               <input
                 value={discount}
@@ -980,8 +1169,8 @@ export function CampaignSaleSection({ campaign }: { campaign: EmailCampaign }) {
             </div>
           )}
           <p className="text-[11px] text-text-faint">
-            Feeds the Sale Announcement template&rsquo;s countdown, discount and
-            button. The logo and colours come from Settings automatically.
+            Feeds the mail&rsquo;s countdown, discount and button. The logo and
+            colours come from Settings automatically.
           </p>
           {update.isError && <p className="text-[12px] text-danger">Couldn&rsquo;t save.</p>}
           <div className="flex items-center justify-end gap-2">
@@ -1076,7 +1265,7 @@ export function CampaignVariantsSection({ campaign }: { campaign: EmailCampaign 
           <div className="rounded-lg border border-line p-2.5 space-y-2">
             <Input value={label} onChange={setLabel} placeholder="Variant label (e.g. B)" />
             <Input value={subject} onChange={setSubject} placeholder="Subject line for this variant" />
-            <div className="flex gap-2 items-center">
+            <div className="flex gap-2 items-center flex-wrap">
               <input
                 value={alloc}
                 onChange={(e) => setAlloc(e.target.value.replace(/[^0-9]/g, ""))}
@@ -1126,17 +1315,20 @@ function Input({
   value,
   onChange,
   placeholder,
+  disabled,
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  disabled?: boolean;
 }) {
   return (
     <input
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      className="w-full rounded-[11px] bg-text-primary/[0.04] border border-line px-3 h-[42px] text-[13px] outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+      disabled={disabled}
+      className="w-full rounded-[11px] bg-text-primary/[0.04] border border-line px-3 h-[42px] text-[13px] outline-none focus:border-accent/50 disabled:opacity-60" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
     />
   );
 }

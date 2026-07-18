@@ -192,7 +192,6 @@ async function startWorkers() {
   const { runMissingWigCheck } = require("./schedulers/missing-wig-check");
   const { runWebhookReplaySweep } = require("./schedulers/webhook-replay");
   const { runIgTokenRefreshSweep } = require("./schedulers/ig-token-refresh");
-  const { runAdSpendSync } = require("./schedulers/ad-spend-sync");
   const { runGeoIpDatabaseUpdate } = require("./schedulers/geoip-updater");
   const {
     runCatalogueTrashPurge,
@@ -379,8 +378,6 @@ async function startWorkers() {
   // buckets + contact-360 churn pill; segment presets + counts at 04:00.
   scheduleCron("churn-risk-scoring", "45 2 * * *", runChurnRiskScoring);
   scheduleCron("segment-presets", "0 4 * * *", runSegmentPresetRefresh);
-  // nightly ad-spend sync (pull metrics from ad networks)
-  scheduleCron("ad-spend-sync", "0 2 * * *", runAdSpendSync);
   scheduleCron("subscription-billing", "0 3 * * *", runSubscriptionBilling);
   scheduleCron("workflow-timeout", "*/10 * * * *", runWorkflowTimeoutSweep);
   scheduleCron(

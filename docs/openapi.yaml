@@ -5198,124 +5198,6 @@ paths:
       x-is-write: true
       responses: { "201": { description: Bridged } }
 
-  # ── Marketing / Ad Analytics (Module 6.15) ───────────────────────
-  /marketing/attribution:
-    get:
-      summary: Ad-spend → sales attribution report (ROAS by campaign ↔ utm_campaign)
-      tags: [marketing]
-      parameters:
-        - $ref: "#/components/parameters/BrandContext"
-        - { name: from, in: query, schema: { type: string, format: date } }
-        - { name: to, in: query, schema: { type: string, format: date } }
-      x-required-permission: "ad_analytics.view"
-      x-entity-scope: brand
-      x-is-write: false
-      responses: { "200": { description: Attribution + ROAS } }
-  /marketing/ad-accounts:
-    get:
-      summary: List ad accounts
-      tags: [marketing]
-      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
-      x-required-permission: "ad_analytics.view"
-      x-entity-scope: brand
-      x-is-write: false
-      responses: { "200": { description: Ad accounts } }
-    post:
-      summary: Connect an ad account
-      tags: [marketing]
-      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
-      x-required-permission: "ad_analytics.create"
-      x-entity-scope: brand
-      x-is-write: true
-      responses: { "201": { description: Connected } }
-  /marketing/ad-accounts/{id}:
-    delete:
-      summary: Deactivate an ad account
-      tags: [marketing]
-      parameters:
-        - $ref: "#/components/parameters/BrandContext"
-        - {
-            name: id,
-            in: path,
-            required: true,
-            schema: { type: string, format: uuid },
-          }
-      x-required-permission: "ad_analytics.delete"
-      x-entity-scope: brand
-      x-is-write: true
-      responses: { "204": { description: Deactivated } }
-  /marketing/ad-campaigns:
-    get:
-      summary: List ad campaigns
-      tags: [marketing]
-      parameters:
-        - $ref: "#/components/parameters/BrandContext"
-        - { name: status, in: query, schema: { type: string } }
-      x-required-permission: "ad_analytics.view"
-      x-entity-scope: brand
-      x-is-write: false
-      responses: { "200": { description: Ad campaigns } }
-    post:
-      summary: Create an ad campaign
-      tags: [marketing]
-      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
-      x-required-permission: "ad_analytics.create"
-      x-entity-scope: brand
-      x-is-write: true
-      responses: { "201": { description: Created } }
-  /marketing/ad-campaigns/{id}:
-    get:
-      summary: Get an ad campaign
-      tags: [marketing]
-      parameters:
-        - $ref: "#/components/parameters/BrandContext"
-        - {
-            name: id,
-            in: path,
-            required: true,
-            schema: { type: string, format: uuid },
-          }
-      x-required-permission: "ad_analytics.view"
-      x-entity-scope: brand
-      x-is-write: false
-      responses:
-        {
-          "200": { description: Campaign },
-          "404": { $ref: "#/components/responses/NotFound" },
-        }
-  /marketing/ad-campaigns/{id}/status:
-    post:
-      summary: Set ad campaign status
-      tags: [marketing]
-      parameters:
-        - $ref: "#/components/parameters/BrandContext"
-        - {
-            name: id,
-            in: path,
-            required: true,
-            schema: { type: string, format: uuid },
-          }
-      x-required-permission: "ad_analytics.edit"
-      x-entity-scope: brand
-      x-is-write: true
-      responses: { "200": { description: Updated } }
-  /marketing/ad-campaigns/{id}/spend:
-    post:
-      summary: Record daily ad spend/metrics
-      tags: [marketing]
-      parameters:
-        - $ref: "#/components/parameters/BrandContext"
-        - {
-            name: id,
-            in: path,
-            required: true,
-            schema: { type: string, format: uuid },
-          }
-      x-required-permission: "ad_analytics.edit"
-      x-entity-scope: brand
-      x-is-write: true
-      responses: { "201": { description: Recorded } }
-
   # ── Email Campaigns (Module 6.16) ────────────────────────────────
   /email-campaigns/templates:
     get:
@@ -5414,6 +5296,52 @@ paths:
       x-entity-scope: brand
       x-is-write: false
       responses: { "200": { description: Audience preview } }
+  /email-campaigns/segments/preview:
+    post:
+      summary: Live count + sample for an ad-hoc audience filter (pre-save)
+      tags: [email_campaigns]
+      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
+      x-required-permission: "email_campaigns.view"
+      x-entity-scope: brand
+      x-is-write: false
+      responses: { "200": { description: "{ count, sample[] }" } }
+  /email-campaigns/frame:
+    get:
+      summary: The brand email frame (header/footer config, defaults applied)
+      tags: [email_campaigns]
+      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
+      x-required-permission: "email_campaigns.view"
+      x-entity-scope: brand
+      x-is-write: false
+      responses: { "200": { description: "{ frame, defaults }" } }
+    put:
+      summary: Update the brand email frame (partial patch)
+      tags: [email_campaigns]
+      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
+      x-required-permission: "email_campaigns.edit"
+      x-entity-scope: brand
+      x-is-write: true
+      responses: { "200": { description: Updated frame } }
+  /email-campaigns/frame/shell:
+    get:
+      summary: Framed document shell for the mail editor's live preview
+      description: Real header/footer with brand tokens resolved and a
+        `<!--PGH_BODY-->` marker where the editor injects the body.
+      tags: [email_campaigns]
+      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
+      x-required-permission: "email_campaigns.view"
+      x-entity-scope: brand
+      x-is-write: false
+      responses: { "200": { description: "{ shell_html, tokens }" } }
+  /email-campaigns/upload-image:
+    post:
+      summary: Upload an image from the mail editor (multipart), returns { url }
+      tags: [email_campaigns]
+      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
+      x-required-permission: "email_campaigns.create"
+      x-entity-scope: brand
+      x-is-write: true
+      responses: { "201": { description: "{ url }" } }
   /email-campaigns:
     get:
       summary: List email campaigns
@@ -5469,6 +5397,24 @@ paths:
       x-entity-scope: brand
       x-is-write: false
       responses: { "200": { description: Stats } }
+  /email-campaigns/{id}/preview:
+    get:
+      summary: The exact mail this campaign sends (send-pipeline render, no pixel)
+      description: Rendered with the brand frame, sale merge data and the first
+        real recipient when one exists (sample data otherwise).
+      tags: [email_campaigns]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - {
+            name: id,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
+      x-required-permission: "email_campaigns.view"
+      x-entity-scope: brand
+      x-is-write: false
+      responses: { "200": { description: "{ subject, html, sample_recipient }" } }
   /email-campaigns/{id}/ab-results:
     get:
       summary: A/B variant results + leading variant

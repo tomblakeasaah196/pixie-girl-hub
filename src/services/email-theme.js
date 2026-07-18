@@ -270,6 +270,83 @@ function transactionalFooter(tokens = {}) {
 
 // ── Document shell ─────────────────────────────────────────────
 
+/**
+ * Default marketing frame — the header/footer every campaign mail is wrapped
+ * in. Editable per brand from Marketing → Design (stored in
+ * shared.business_config.brand_theme.email_frame); any field left unset falls
+ * back to these values, so an untouched brand already sends the full premium
+ * chrome. Text fields support {{tokens}} (substituted at send).
+ */
+const DEFAULT_FRAME = {
+  show_logo: true,
+  tagline: "",
+  footer_note:
+    "You're receiving this because you're part of the {{brand_name}} community.",
+  show_address: true,
+  show_contact: true,
+  instagram_url: "",
+  tiktok_url: "",
+};
+
+/** Normalise a stored frame config against the defaults. */
+function resolveFrame(frame) {
+  const f = { ...DEFAULT_FRAME };
+  for (const [k, v] of Object.entries(frame || {})) {
+    if (v === null || v === undefined) continue;
+    if (k in DEFAULT_FRAME) f[k] = v;
+  }
+  return f;
+}
+
+/** The marketing header honouring a brand's frame config. */
+function frameHeader(frame) {
+  const f = resolveFrame(frame);
+  const mark = f.show_logo
+    ? `<img src="{{logo_url}}" alt="{{brand_name}}" height="40" style="display:block;border:0;max-height:44px;width:auto" />`
+    : `<div style="font-family:${SERIF};font-size:22px;letter-spacing:1px;color:${NEUTRAL.ink}">{{brand_name}}</div>`;
+  const tagline = f.tagline
+    ? `<div style="font-family:${SANS};font-size:11px;font-weight:600;letter-spacing:2.5px;text-transform:uppercase;color:${NEUTRAL.muted};margin-top:10px">${esc(
+        f.tagline,
+      )}</div>`
+    : "";
+  return `<tr><td align="center" style="padding:34px 40px 22px 40px;border-bottom:1px solid ${NEUTRAL.hairline}">
+    ${mark}${tagline}
+    <!--[if mso]>&nbsp;<![endif]-->
+  </td></tr>`;
+}
+
+/** The marketing footer honouring a brand's frame config. */
+function frameFooter(frame) {
+  const f = resolveFrame(frame);
+  const social = [
+    f.instagram_url &&
+      `<a href="${esc(f.instagram_url)}" target="_blank" style="color:${NEUTRAL.muted};text-decoration:none">Instagram</a>`,
+    f.tiktok_url &&
+      `<a href="${esc(f.tiktok_url)}" target="_blank" style="color:${NEUTRAL.muted};text-decoration:none">TikTok</a>`,
+  ]
+    .filter(Boolean)
+    .join(" &nbsp;·&nbsp; ");
+  return `<tr><td style="padding:34px 40px 40px 40px;border-top:1px solid ${NEUTRAL.hairline}" align="center">
+    <div style="font-family:${SERIF};font-size:17px;color:${NEUTRAL.ink};letter-spacing:0.5px">{{brand_name}}</div>
+    ${f.show_address ? `<div style="font-family:${SANS};font-size:12px;line-height:1.7;color:${NEUTRAL.muted};margin-top:8px">{{brand_address}}</div>` : ""}
+    ${
+      f.show_contact
+        ? `<div style="font-family:${SANS};font-size:12px;line-height:1.7;color:${NEUTRAL.muted}">
+      <a href="{{website_url}}" target="_blank" style="color:${NEUTRAL.muted};text-decoration:none">{{website_url}}</a>
+      &nbsp;·&nbsp;
+      <a href="mailto:{{support_email}}" style="color:${NEUTRAL.muted};text-decoration:none">{{support_email}}</a>
+    </div>`
+        : ""
+    }
+    ${social ? `<div style="font-family:${SANS};font-size:12px;line-height:1.7;color:${NEUTRAL.muted};margin-top:6px">${social}</div>` : ""}
+    <div style="font-family:${SANS};font-size:11px;line-height:1.7;color:${NEUTRAL.faint};margin-top:16px">
+      ${esc(f.footer_note)}<br/>
+      <a href="{{unsubscribe_url}}" target="_blank" style="color:${NEUTRAL.faint};text-decoration:underline">Unsubscribe</a>
+      &nbsp;·&nbsp; © {{year}} {{brand_legal_name}}
+    </div>
+  </td></tr>`;
+}
+
 function header() {
   // Logo image with a text fallback (Outlook/blocked-image safe). The
   // <img>'s alt carries the brand name; below it a thin accent rule.
@@ -304,7 +381,14 @@ function footer() {
  * @param {boolean} [a.withHeader=true]
  * @param {boolean} [a.withFooter=true]
  */
-function wrapEmail({ preheader = "", content = "", withHeader = true, withFooter = true }) {
+function wrapEmail({
+  preheader = "",
+  content = "",
+  withHeader = true,
+  withFooter = true,
+  headerHtml,
+  footerHtml,
+}) {
   return `<!DOCTYPE html>
 <html lang="en" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
@@ -334,9 +418,9 @@ function wrapEmail({ preheader = "", content = "", withHeader = true, withFooter
     <tr><td align="center" style="padding:32px 12px">
       <!--[if mso]><table role="presentation" width="600" border="0" cellspacing="0" cellpadding="0"><tr><td><![endif]-->
       <table role="presentation" class="pgh-card" width="600" border="0" cellspacing="0" cellpadding="0" bgcolor="${NEUTRAL.card}" style="width:600px;max-width:600px;background-color:${NEUTRAL.card};border-radius:10px;overflow:hidden;border:1px solid ${NEUTRAL.hairline}">
-${withHeader ? header() : ""}
+${withHeader ? headerHtml || header() : ""}
 ${content}
-${withFooter ? footer() : ""}
+${withFooter ? footerHtml || footer() : ""}
       </table>
       <!--[if mso]></td></tr></table><![endif]-->
     </td></tr>
@@ -385,6 +469,10 @@ module.exports = {
   header,
   footer,
   transactionalFooter,
+  DEFAULT_FRAME,
+  resolveFrame,
+  frameHeader,
+  frameFooter,
   wrapEmail,
   toPlainText,
 };

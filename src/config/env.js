@@ -207,29 +207,6 @@ const schema = z.object({
   // link); this token only ever reads public oEmbed metadata for that link.
   META_FB_PAGE_TOKEN: z.string().optional(),
 
-  // Paid ads — Google Ads + Meta Marketing (V2.2 §6.15 live sync). App-level
-  // creds only; per-ad-account OAuth tokens are stored AES-encrypted on
-  // shared.ad_accounts. Blank for a network → its pull/push returns a clean 503
-  // and the nightly sync skips it.
-  GOOGLE_ADS_DEVELOPER_TOKEN: z.string().optional(),
-  GOOGLE_ADS_CLIENT_ID: z.string().optional(),
-  GOOGLE_ADS_CLIENT_SECRET: z.string().optional(),
-  GOOGLE_ADS_LOGIN_CUSTOMER_ID: z.string().optional(), // MCC id, digits only
-  GOOGLE_ADS_API_VERSION: z.string().default("v17"),
-  GOOGLE_ADS_BASE_URL: z
-    .string()
-    .url()
-    .default("https://googleads.googleapis.com"),
-  GOOGLE_OAUTH_TOKEN_URL: z
-    .string()
-    .url()
-    .default("https://oauth2.googleapis.com/token"),
-  // Meta Marketing rides the Graph API (META_GRAPH_VERSION above). Optional
-  // system-user token; per-account tokens are preferred. App secret (optional)
-  // enables appsecret_proof on calls.
-  META_MARKETING_API_KEY: z.string().optional(),
-  META_ADS_APP_SECRET: z.string().optional(),
-
   // SMTP
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().int().positive().default(587),

@@ -73,7 +73,19 @@ const TokenPill = TiptapNode.create({
   inline: true,
   atom: true,
   addAttributes() {
-    return { token: { default: "" } };
+    // Persist the token in `data-token` in BOTH directions. Without an explicit
+    // parseHTML, TipTap reads the attribute named `token`, but stored mail (and
+    // htmlToEditor) only carries `data-token` — so on reload/setContent the pill
+    // parsed back with an empty token and rendered as a blank chip (the stray
+    // "underscore" pill). renderHTML here is a no-op because the node's own
+    // renderHTML already emits data-token; this just fixes the read side.
+    return {
+      token: {
+        default: "",
+        parseHTML: (el) => el.getAttribute("data-token") || "",
+        renderHTML: () => ({}),
+      },
+    };
   },
   parseHTML() {
     return [{ tag: "span[data-token]" }];
@@ -500,7 +512,13 @@ export function RichMailEditor({
         <div className="relative">
           <ToolBtn
             title="Text size"
-            active={menu === "size"}
+            // Reflect an applied size/heading, not just the open menu, so the
+            // button lights up like Bold/Italic do once a size is in effect.
+            active={
+              menu === "size" ||
+              !!editor.getAttributes("textStyle").fontSize ||
+              editor.isActive("heading")
+            }
             onClick={() => setMenu(menu === "size" ? null : "size")}
           >
             <Type className="w-4 h-4" />

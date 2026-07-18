@@ -311,18 +311,26 @@ export function RichMailEditor({
   const insertToken = useCallback(
     (token: string) => {
       if (!editor) return;
-      // Land the pill at the remembered caret rather than the live selection,
-      // which a touch-device tap on the menu will have already dropped. Clamp
-      // to the current doc (an external content swap can leave the saved range
-      // stale) and fall back to the end so a pick is never a no-op.
+      // Order matters, and it's the whole bug on iOS WebKit. Every other
+      // toolbar op runs `.focus()` FIRST and mutates a focused editor, and
+      // they all paint immediately. Mutating a BLURRED editor (tapping the
+      // Personalise menu drops focus) and focusing afterwards inserts the
+      // node into the document but WebKit doesn't repaint the contenteditable
+      // until the next transaction — so the pill was invisible until any
+      // other button (e.g. redo) nudged a reflow. Focus first, then insert.
+      //
+      // We still target the remembered caret explicitly (touch drops the live
+      // selection), clamped to the current doc (an external content swap can
+      // leave the saved range stale) with an end-of-doc fallback so a pick is
+      // never a no-op.
       const size = editor.state.doc.content.size;
       const saved = caretRef.current;
       const from = saved ? Math.min(saved.from, size) : size;
       const to = saved ? Math.min(saved.to, size) : size;
       editor
         .chain()
-        .insertContentAt({ from, to }, { type: "tokenPill", attrs: { token } })
         .focus()
+        .insertContentAt({ from, to }, { type: "tokenPill", attrs: { token } })
         .run();
       setMenu(null);
     },

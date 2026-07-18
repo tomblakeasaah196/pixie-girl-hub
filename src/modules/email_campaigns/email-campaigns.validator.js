@@ -148,6 +148,24 @@ const framePatch = z
   })
   .strict();
 
+// Custom personalise tokens — the full list is PUT back each save (small,
+// bounded). Name rules are enforced again in the service (shared with render).
+const personaliseTokensPut = z
+  .object({
+    tokens: z
+      .array(
+        z
+          .object({
+            token: z.string().min(2).max(40),
+            label: z.string().max(60).optional(),
+            value: z.string().max(500).optional(),
+          })
+          .strip(),
+      )
+      .max(50),
+  })
+  .strict();
+
 const mk = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body || {});
   next();
@@ -168,4 +186,5 @@ module.exports = {
   validateAudienceFromSegment: mk(audienceFromSegment),
   validateAudiencePreview: mk(audiencePreview),
   validateFramePatch: mk(framePatch),
+  validatePersonaliseTokensPut: mk(personaliseTokensPut),
 };

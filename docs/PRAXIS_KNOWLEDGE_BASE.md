@@ -625,6 +625,17 @@ subscriptions, bundles, maintenance reminders, and win-back **strategies**.
   **Strategies** → new (`/retention/strategies/new`). Edit one at
   `/retention/strategies/<id>/edit`. (The legacy single-action "Workflows"
   tab was retired — every advertised trigger + action lives in Strategies.)
+- *Write the email a strategy step sends?* In the strategy builder, a
+  **Send email** step offers two modes: **Write it here** — the same
+  Gmail-style editor Marketing uses, with **Personalise** tokens (name,
+  points balance, loyalty tier, days since last order …) — or
+  **Saved template**, which reuses a mail crafted in Marketing →
+  **Templates** (`/marketing?tab=templates`). Either way the mail goes out
+  with the brand header, footer and unsubscribe link added automatically —
+  the exact same pipeline as campaign mail.
+- *Preview what a strategy will send?* The builder's **Preview** panel
+  renders the exact framed mail a sample customer would receive;
+  **Email me a test** sends it to your own inbox.
 - *Set up a loyalty scheme / rewards?* Retention → **Loyalty** / **Rewards**.
   Reward percentages are entered as whole percent (e.g. `10` for 10% off)
   and stored as a fraction; free-product / gift redemptions open a task in
@@ -789,7 +800,17 @@ was retired; the module is email-only.)
 - *Write or edit a mail template?* Marketing → **Templates** → **New template**
   — a Gmail-style editor: write normally, use **Personalise** to greet each
   customer by name, add images/emoji/brand colours. The logo header and
-  unsubscribe footer are added automatically.
+  unsubscribe footer are added automatically. Templates are also reusable by
+  Retention → **Strategies** email steps, so one mail can serve campaigns
+  and automated journeys alike.
+- *Personalise a mail with loyalty details?* The **Personalise** menu now
+  includes each customer's live loyalty facts — points balance, tier,
+  orders placed, lifetime spend, days since last order — plus the
+  campaign's sale tokens.
+- *Add my own merge token (e.g. a WhatsApp line or store hours)?* In any
+  mail editor, **Personalise → Add your own token** — name it, say what it
+  fills in, and it's instantly available in Marketing templates and
+  Retention strategy mails for that brand.
 - *Choose who gets a campaign?* Marketing → **Segments** → **New segment** —
   pick filters and watch the live count of who's in before saving.
 - *Change the header/footer on every mail?* Marketing → **Design** — tagline,

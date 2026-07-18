@@ -50,6 +50,16 @@ router.get("/frame", can("view"), c.getFrame);
 router.put("/frame", can("edit"), v.validateFramePatch, c.updateFrame);
 router.get("/frame/shell", can("view"), c.frameShell);
 
+// Custom personalise tokens (the editor's "add your own" merge tags). Shared
+// with the retention strategy builder, which renders through this pipeline.
+router.get("/personalise-tokens", can("view"), c.listPersonaliseTokens);
+router.put(
+  "/personalise-tokens",
+  can("edit"),
+  v.validatePersonaliseTokensPut,
+  c.savePersonaliseTokens,
+);
+
 router.get("/segments", can("view"), c.listSegments);
 router.post("/segments", can("create"), v.validateSegmentSave, c.saveSegment);
 router.post(

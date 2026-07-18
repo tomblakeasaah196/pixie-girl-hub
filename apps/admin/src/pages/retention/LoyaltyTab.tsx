@@ -46,7 +46,7 @@ export function LoyaltyTab() {
     <div className="space-y-6">
       {/* Tiers */}
       <section className="space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           <h2 className="font-display text-lg">Loyalty tiers</h2>
           {canEdit && (
             <Button
@@ -93,8 +93,8 @@ export function LoyaltyTab() {
 
       {/* Earn rules */}
       <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="min-w-0">
             <h2 className="font-display text-lg">How points are earned</h2>
             <p className="text-[12.5px] text-text-muted">Add or change earn rules — no code needed.</p>
           </div>
@@ -118,7 +118,7 @@ export function LoyaltyTab() {
         ) : (
           <Card className="p-0 overflow-hidden">
             {rules.map((r, i) => (
-              <div key={r.rule_id} className={`p-4 flex items-center gap-3 ${i < rules.length - 1 ? "border-b border-line" : ""}`}>
+              <div key={r.rule_id} className={`p-4 flex items-center gap-2.5 sm:gap-3 ${i < rules.length - 1 ? "border-b border-line" : ""}`}>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-medium text-[14px]">{r.display_name}</span>

@@ -14,6 +14,7 @@ const events = require("./email-campaigns.events");
 const email = require("../../services/email.service");
 const crypto = require("crypto");
 const render = require("./email-render");
+const personalise = require("../../services/email-personalise");
 const theme = require("../../services/email-theme");
 const storage = require("../../services/storage.service");
 const { compressUpload } = require("../../services/media-compression.service");
@@ -163,10 +164,16 @@ async function sendCampaign({ brand, user, request_id, id }) {
 
   // Resolve the per-brand identity (logo, accent, name, links from Settings)
   // and the campaign-level merge data (sale discount/link/deadline) once, then
-  // personalise + send per recipient.
+  // personalise + send per recipient. Loyalty facts (points, tier, spend,
+  // recency) load in ONE batched query so {{points_balance}}-style tokens
+  // work in campaign mail without a per-recipient round-trip.
   const brandTokens = await render.resolveBrandTokens(brand);
   const frame = await render.resolveBrandFrame(brand);
   const campaignTokens = render.resolveCampaignTokens(campaign);
+  const loyaltyFacts = await repo.loyaltyFactsForContacts({
+    brand,
+    contact_ids: recipients.map((r) => r.contact_id),
+  });
 
   let sent = 0;
   for (const r of recipients) {
@@ -174,7 +181,10 @@ async function sendCampaign({ brand, user, request_id, id }) {
       const { subject, html, text, headers } = render.buildEmail({
         template,
         brandTokens,
-        campaignTokens,
+        campaignTokens: {
+          ...campaignTokens,
+          ...personalise.displayTokensFromFacts(loyaltyFacts.get(r.contact_id)),
+        },
         recipient: r,
         brand,
         frame,
@@ -577,11 +587,23 @@ async function previewCampaign({ brand, id }) {
     page_size: 1,
   });
   const recipient = first || SAMPLE_RECIPIENT;
+  // Loyalty tokens: real values for a real recipient, friendly samples
+  // otherwise — the preview must render every token the send would.
+  const loyaltyTokens = first && first.contact_id
+    ? personalise.displayTokensFromFacts(
+        (
+          await repo.loyaltyFactsForContacts({
+            brand,
+            contact_ids: [first.contact_id],
+          })
+        ).get(first.contact_id),
+      )
+    : personalise.sampleDisplayTokens();
 
   const { subject, html } = render.buildEmail({
     template,
     brandTokens,
-    campaignTokens,
+    campaignTokens: { ...campaignTokens, ...loyaltyTokens },
     recipient,
     brand,
     frame,
@@ -635,6 +657,7 @@ async function frameShell({ brand }) {
   const shell = render.applyFrame({ body: "<!--PGH_BODY-->", frame });
   const tokens = {
     ...brandTokens,
+    ...personalise.sampleDisplayTokens(),
     customer_name: SAMPLE_RECIPIENT.contact_name_snapshot,
     first_name: SAMPLE_RECIPIENT.contact_name_snapshot.split(" ")[0],
     email: SAMPLE_RECIPIENT.email,
@@ -807,9 +830,54 @@ async function handleUnsubscribe({ brand, recipient_id }) {
         id: r.campaign_id,
         column: "total_unsubscribed",
       });
+      // Persist beyond this campaign: tag the contact so future audience
+      // builds (and retention strategies) skip them. Without this, the next
+      // campaign would quietly re-add someone who already opted out.
+      if (r.contact_id) {
+        await repo.tagContactUnsubscribed({
+          client,
+          brand,
+          contact_id: r.contact_id,
+        });
+      }
     }
     return { ok: true, unsubscribed: true };
   });
+}
+
+/** Contact-level unsubscribe — the link retention strategy mails carry. The
+ *  token is HMAC-signed (email-render), so a bad token is simply ignored. */
+async function handleContactUnsubscribe({ brand, token }) {
+  const contact_id = render.verifyContactUnsubscribeToken(token, brand);
+  if (!contact_id) return { ok: true }; // never leak validity on a public URL
+  await repo.tagContactUnsubscribed({ brand, contact_id });
+  return { ok: true, unsubscribed: true };
+}
+
+// ── Custom personalise tokens (the "add your own" in the editor) ──
+async function listPersonaliseTokens({ brand }) {
+  return { custom: await repo.getCustomTokens({ brand }) };
+}
+
+async function savePersonaliseTokens({ brand, user, request_id, tokens }) {
+  let clean;
+  try {
+    clean = personalise.normaliseCustomTokens(tokens);
+  } catch (err) {
+    throw new AppError("BAD_TOKENS", err.message, 422);
+  }
+  await repo.saveCustomTokens({ brand, tokens: clean });
+  render.invalidateBrand(brand); // token values merge into the brand cache
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "email_campaigns.personalise_tokens.update",
+    target_type: "business_config",
+    target_id: brand,
+    after: { count: clean.length },
+    request_id,
+  });
+  return { custom: clean };
 }
 
 module.exports = {
@@ -846,4 +914,7 @@ module.exports = {
   handlePixelOpen,
   handleClick,
   handleUnsubscribe,
+  handleContactUnsubscribe,
+  listPersonaliseTokens,
+  savePersonaliseTokens,
 };

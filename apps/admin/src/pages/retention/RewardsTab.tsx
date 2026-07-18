@@ -29,8 +29,8 @@ export function RewardsTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="min-w-0">
           <h2 className="font-display text-lg">Rewards catalogue</h2>
           <p className="text-[12.5px] text-text-muted">What customers can redeem their points for.</p>
         </div>
@@ -52,7 +52,7 @@ export function RewardsTab() {
       ) : rewards.length === 0 ? (
         <EmptyState icon={<Gift className="w-7 h-7" />} title="No rewards yet" message="Create a reward so points become redeemable." />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {rewards.map((r) => (
             <Card key={r.reward_id} className="p-4 flex items-start gap-3">
               <span className="grid place-items-center w-9 h-9 rounded-[11px] bg-accent/10 text-accent-glow border border-accent/20 shrink-0">
@@ -83,7 +83,11 @@ export function RewardsTab() {
                 </div>
               </div>
               {canEdit && (
-                <button onClick={() => setEditing(r)} className="grid place-items-center w-8 h-8 rounded-[9px] text-text-faint hover:text-text-primary">
+                <button
+                  onClick={() => setEditing(r)}
+                  aria-label={`Edit ${r.display_name}`}
+                  className="grid place-items-center w-10 h-10 sm:w-8 sm:h-8 rounded-[9px] text-text-faint hover:text-text-primary shrink-0"
+                >
                   <Pencil className="w-4 h-4" />
                 </button>
               )}

@@ -1,10 +1,12 @@
 /**
- * RichMailEditor — the Gmail-style mail writer for Marketing templates.
+ * RichMailEditor — the Gmail-style mail writer shared by Marketing templates
+ * and the Retention strategy builder (one editor, one token vocabulary).
  *
- * The marketing officer just writes: bold/italic/underline, brand colours,
- * text size, alignment, lists, links, images (uploaded, not URLs), emoji, and
- * a "Personalise" menu that drops friendly pills like “First name” into the
- * text. No HTML, no modes, no tokens on screen.
+ * The writer just writes: bold/italic/underline, brand colours, text size,
+ * alignment, lists, links, images (uploaded, not URLs), emoji, and a
+ * "Personalise" menu that drops friendly pills like “First name” or “Points
+ * balance” into the text — plus the owner's own custom tokens, addable inline
+ * right inside the menu. No HTML, no modes, no tokens on screen.
  *
  * Storage contract: the editor's value is plain HTML whose personalisation
  * pills are serialized to `{{token}}` merge tags (what the send pipeline
@@ -41,18 +43,28 @@ import {
   Undo2,
   Redo2,
   Type,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { EmojiPicker } from "@/components/messaging/EmojiPicker";
 import { useBrandPalette } from "@/lib/brand-colors";
-import { TEMPLATE_VARIABLES } from "@/lib/marketing-api";
+import { useAuthStore } from "@/stores/auth";
+import {
+  PERSONALISE_TOKENS,
+  SCOPE_GROUPS,
+  tokenLabel,
+  registerTokenLabels,
+  useCustomTokens,
+  useSaveCustomTokens,
+  CUSTOM_TOKEN_RE,
+  isReservedToken,
+  type TokenScope,
+  type CustomToken,
+} from "@/lib/personalise";
 
 // ── Personalisation pills ───────────────────────────────────
-
-const TOKEN_LABELS: Record<string, string> = Object.fromEntries(
-  TEMPLATE_VARIABLES.map((v) => [v.token.replace(/[{}]/g, ""), v.label]),
-);
 
 /** An inline, atomic “First name”-style pill that stands for a merge token. */
 const TokenPill = TiptapNode.create({
@@ -74,7 +86,7 @@ const TokenPill = TiptapNode.create({
         "data-token": token,
         class: "pgh-token-pill",
       }),
-      TOKEN_LABELS[token] || token,
+      tokenLabel(token),
     ];
   },
 });
@@ -121,7 +133,8 @@ function ToolBtn({
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       className={cn(
-        "grid place-items-center w-8 h-8 rounded-lg transition-colors disabled:opacity-30",
+        // Real thumb targets on touch screens; the tighter 32px grid on desktop.
+        "grid place-items-center w-9 h-9 sm:w-8 sm:h-8 rounded-lg transition-colors disabled:opacity-30",
         active
           ? "bg-accent/[0.16] text-accent-glow"
           : "text-text-muted hover:text-text-primary hover:bg-text-primary/[0.06]",
@@ -143,7 +156,9 @@ const FONT_SIZES = [
   { label: "Huge", value: "24px" },
 ];
 
-/** Close-on-outside-click popover under a toolbar button. */
+/** Close-on-outside-click popover under a toolbar button. Height-capped and
+ *  internally scrollable so it can NEVER run off the bottom of a phone
+ *  screen — long lists (Personalise) scroll inside it instead. */
 function Popover({
   onClose,
   children,
@@ -173,6 +188,7 @@ function Popover({
       ref={ref}
       className={cn(
         "absolute top-full mt-1.5 z-30 dropglass rounded-xl border border-line shadow-xl p-2 min-w-[210px] max-w-[calc(100vw-2rem)]",
+        "max-h-[min(440px,60vh)] overflow-y-auto overscroll-contain",
         align === "right" ? "right-0" : "left-0",
       )}
     >
@@ -188,6 +204,7 @@ export function RichMailEditor({
   onChange,
   placeholder = "Write your mail…",
   personalise = true,
+  tokenScope = "campaign",
   uploadEndpoint = "/email-campaigns/upload-image",
   compact = false,
   autoFocus = false,
@@ -200,6 +217,9 @@ export function RichMailEditor({
   /** Show the "Personalise" merge-token menu. Off for 1:1 messaging, where
    *  there are no campaign merge tags to fill in. */
   personalise?: boolean;
+  /** Which token groups the Personalise menu offers: "campaign" adds the
+   *  sale tokens; "retention" is customer + loyalty only. */
+  tokenScope?: TokenScope;
   /** Where inline images upload to (returns `{ url }`). Marketing keeps the
    *  default; Messaging points at its own endpoint. */
   uploadEndpoint?: string;
@@ -616,7 +636,7 @@ export function RichMailEditor({
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => setMenu(menu === "personalise" ? null : "personalise")}
             className={cn(
-              "inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-[12px] font-semibold transition-colors",
+              "inline-flex items-center gap-1.5 h-9 sm:h-8 px-2.5 rounded-lg text-[12px] font-semibold transition-colors",
               menu === "personalise"
                 ? "bg-accent/[0.16] text-accent-glow"
                 : "text-accent-glow/90 hover:bg-accent/[0.1]",
@@ -627,22 +647,11 @@ export function RichMailEditor({
             <ChevronDown className="w-3 h-3" />
           </button>
           {menu === "personalise" && (
-            <Popover onClose={() => setMenu(null)} align="right">
-              <div className="micro px-1 pb-1.5">
-                Fills in for each customer
-              </div>
-              {TEMPLATE_VARIABLES.filter((v) => v.group === "recipient").map(
-                (v) => (
-                  <PersonaliseItem key={v.token} v={v} onPick={insertToken} />
-                ),
-              )}
-              <div className="micro px-1 pt-2 pb-1.5 border-t border-line mt-1.5">
-                From the campaign&rsquo;s sale details
-              </div>
-              {TEMPLATE_VARIABLES.filter((v) => v.group === "sale").map((v) => (
-                <PersonaliseItem key={v.token} v={v} onPick={insertToken} />
-              ))}
-            </Popover>
+            <PersonaliseMenu
+              scope={tokenScope}
+              onPick={insertToken}
+              onClose={() => setMenu(null)}
+            />
           )}
         </div>
         )}
@@ -665,21 +674,209 @@ export function RichMailEditor({
 }
 
 function PersonaliseItem({
-  v,
+  token,
+  label,
   onPick,
 }: {
-  v: (typeof TEMPLATE_VARIABLES)[number];
+  token: string;
+  label: string;
   onPick: (token: string) => void;
 }) {
   return (
     <button
       type="button"
       onMouseDown={(e) => e.preventDefault()}
-      onClick={() => onPick(v.token.replace(/[{}]/g, ""))}
-      className="w-full px-2 py-1.5 rounded-lg text-[12.5px] text-text-primary hover:bg-text-primary/[0.06] text-left"
+      onClick={() => onPick(token)}
+      className="w-full px-2 py-2 sm:py-1.5 rounded-lg text-[12.5px] text-text-primary hover:bg-text-primary/[0.06] text-left"
     >
-      {v.label}
+      {label}
     </button>
+  );
+}
+
+/**
+ * The grouped Personalise menu: built-in tokens per scope, the brand's own
+ * custom tokens, and an inline "Add your own" form. Everything lives INSIDE
+ * the scroll-capped popover — nothing ever renders off-screen.
+ */
+function PersonaliseMenu({
+  scope,
+  onPick,
+  onClose,
+}: {
+  scope: TokenScope;
+  onPick: (token: string) => void;
+  onClose: () => void;
+}) {
+  const { can } = useAuthStore();
+  const canManage = can("email_campaigns", "edit");
+  const customQ = useCustomTokens();
+  const save = useSaveCustomTokens();
+  const custom = customQ.data ?? [];
+
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState("");
+  const [tokenValue, setTokenValue] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
+
+  // Custom pills should read as chips ("WhatsApp line"), not code.
+  useEffect(() => {
+    if (customQ.data?.length) registerTokenLabels(customQ.data);
+  }, [customQ.data]);
+
+  const slugged = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 40);
+
+  const addToken = async () => {
+    setFormError(null);
+    if (!CUSTOM_TOKEN_RE.test(slugged)) {
+      setFormError("Use letters, numbers and spaces — starting with a letter.");
+      return;
+    }
+    if (isReservedToken(slugged)) {
+      setFormError("That name is a built-in token.");
+      return;
+    }
+    if (custom.some((t) => t.token === slugged)) {
+      setFormError("You already have that token.");
+      return;
+    }
+    const next: CustomToken = {
+      token: slugged,
+      label: name.trim() || slugged,
+      value: tokenValue.trim(),
+    };
+    try {
+      await save.mutateAsync([...custom, next]);
+      registerTokenLabels([next]);
+      setName("");
+      setTokenValue("");
+      setAdding(false);
+      onPick(next.token); // drop the new pill straight into the mail
+    } catch {
+      setFormError("Couldn't save the token — try again.");
+    }
+  };
+
+  const removeToken = (token: string) => {
+    save.mutate(custom.filter((t) => t.token !== token));
+  };
+
+  return (
+    <Popover onClose={onClose} align="right">
+      {SCOPE_GROUPS[scope].map(({ group, heading }, gi) => (
+        <div key={group}>
+          <div
+            className={cn(
+              "micro px-1 pb-1.5",
+              gi > 0 && "pt-2 border-t border-line mt-1.5",
+            )}
+          >
+            {heading}
+          </div>
+          {PERSONALISE_TOKENS.filter((v) => v.group === group).map((v) => (
+            <PersonaliseItem
+              key={v.token}
+              token={v.token}
+              label={v.label}
+              onPick={onPick}
+            />
+          ))}
+        </div>
+      ))}
+
+      {/* Your tokens */}
+      {(custom.length > 0 || canManage) && (
+        <div className="micro px-1 pt-2 pb-1.5 border-t border-line mt-1.5">
+          Your tokens
+        </div>
+      )}
+      {custom.map((t) => (
+        <div key={t.token} className="flex items-center gap-1">
+          <div className="flex-1 min-w-0">
+            <PersonaliseItem token={t.token} label={t.label} onPick={onPick} />
+          </div>
+          {canManage && (
+            <button
+              type="button"
+              title={`Remove "${t.label}"`}
+              aria-label={`Remove "${t.label}"`}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => removeToken(t.token)}
+              disabled={save.isPending}
+              className="grid place-items-center w-7 h-7 rounded-md text-text-faint hover:text-danger shrink-0 disabled:opacity-40"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      ))}
+
+      {/* Add your own — inline, inside the scrolling popover */}
+      {canManage &&
+        (adding ? (
+          <div className="mt-1.5 p-2 rounded-lg bg-text-primary/[0.04] border border-line space-y-1.5">
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Token name (e.g. WhatsApp line)"
+              autoFocus
+              className="w-full h-9 px-2.5 rounded-lg bg-text-primary/[0.05] border border-line text-[12.5px] outline-none focus:border-accent/50"
+              autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+            />
+            <input
+              value={tokenValue}
+              onChange={(e) => setTokenValue(e.target.value)}
+              placeholder="What it fills in (e.g. +234 800 000 0000)"
+              className="w-full h-9 px-2.5 rounded-lg bg-text-primary/[0.05] border border-line text-[12.5px] outline-none focus:border-accent/50"
+              autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+            />
+            {slugged && (
+              <p className="text-[10.5px] text-text-faint font-mono px-0.5">
+                {"{{"}{slugged}{"}}"}
+              </p>
+            )}
+            {formError && (
+              <p className="text-[11px] text-danger px-0.5">{formError}</p>
+            )}
+            <div className="flex justify-end gap-1.5 pt-0.5">
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  setAdding(false);
+                  setFormError(null);
+                }}
+                className="h-8 px-2.5 rounded-lg text-[12px] text-text-muted hover:bg-text-primary/[0.06]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={addToken}
+                disabled={!name.trim() || save.isPending}
+                className="h-8 px-3 rounded-lg text-[12px] font-semibold text-accent-glow bg-accent/[0.12] disabled:opacity-40"
+              >
+                {save.isPending ? "Adding…" : "Add & insert"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => setAdding(true)}
+            className="mt-1 w-full px-2 py-2 rounded-lg text-[12.5px] font-semibold text-accent-glow hover:bg-accent/[0.08] text-left inline-flex items-center gap-1.5"
+          >
+            <Plus className="w-3.5 h-3.5" /> Add your own token
+          </button>
+        ))}
+    </Popover>
   );
 }
 

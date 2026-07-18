@@ -187,11 +187,29 @@ export function RichMailEditor({
   value,
   onChange,
   placeholder = "Write your mail…",
+  personalise = true,
+  uploadEndpoint = "/email-campaigns/upload-image",
+  compact = false,
+  autoFocus = false,
+  onSubmit,
 }: {
   /** Stored HTML with {{token}} merge tags. */
   value: string;
   onChange: (storedHtml: string) => void;
   placeholder?: string;
+  /** Show the "Personalise" merge-token menu. Off for 1:1 messaging, where
+   *  there are no campaign merge tags to fill in. */
+  personalise?: boolean;
+  /** Where inline images upload to (returns `{ url }`). Marketing keeps the
+   *  default; Messaging points at its own endpoint. */
+  uploadEndpoint?: string;
+  /** Slimmer writing surface for the messaging composers. */
+  compact?: boolean;
+  /** Focus the editor on mount. */
+  autoFocus?: boolean;
+  /** Fired on Cmd/Ctrl+Enter — lets a composer send without leaving the
+   *  keyboard while plain Enter still makes a new line (Gmail-style). */
+  onSubmit?: () => void;
 }) {
   const palette = useBrandPalette();
   const [menu, setMenu] = useState<
@@ -200,6 +218,12 @@ export function RichMailEditor({
   const [customHex, setCustomHex] = useState("");
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  // Track the last HTML we emitted so the value-sync effect can tell an
+  // external replacement (a Praxis draft, a quick reply, a post-send clear)
+  // apart from the echo of the operator's own typing.
+  const lastEmitted = useRef(value);
+  const onSubmitRef = useRef(onSubmit);
+  onSubmitRef.current = onSubmit;
 
   const editor = useEditor({
     extensions: [
@@ -219,9 +243,36 @@ export function RichMailEditor({
       Placeholder.configure({ placeholder }),
       TokenPill,
     ],
+    autofocus: autoFocus ? "end" : false,
+    editorProps: {
+      handleKeyDown: (_view, event) => {
+        if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+          onSubmitRef.current?.();
+          return true;
+        }
+        return false;
+      },
+    },
     content: htmlToEditor(value),
-    onUpdate: ({ editor: ed }) => onChange(editorToHtml(ed.getHTML())),
+    onUpdate: ({ editor: ed }) => {
+      const html = editorToHtml(ed.getHTML());
+      lastEmitted.current = html;
+      onChange(html);
+    },
   });
+
+  // Reflect external `value` replacements into the editor (the parent driving
+  // content in — insertions, clear-after-send). Guarded against our own
+  // emissions so typing is never clobbered mid-keystroke.
+  useEffect(() => {
+    if (!editor) return;
+    if (value === lastEmitted.current) return;
+    const current = editorToHtml(editor.getHTML());
+    if (value !== current) {
+      editor.commands.setContent(htmlToEditor(value), { emitUpdate: false });
+    }
+    lastEmitted.current = value;
+  }, [value, editor]);
 
   const insertToken = useCallback(
     (token: string) => {
@@ -262,7 +313,7 @@ export function RichMailEditor({
         const form = new FormData();
         form.append("file", file);
         const { url } = await api.postForm<{ url: string }>(
-          "/email-campaigns/upload-image",
+          uploadEndpoint,
           form,
         );
         editor.chain().focus().setImage({ src: url, alt: file.name }).run();
@@ -272,7 +323,7 @@ export function RichMailEditor({
         setUploading(false);
       }
     },
-    [editor],
+    [editor, uploadEndpoint],
   );
 
   if (!editor) return null;
@@ -537,6 +588,7 @@ export function RichMailEditor({
         <div className="flex-1" />
 
         {/* Personalise */}
+        {personalise && (
         <div className="relative">
           <button
             type="button"
@@ -572,10 +624,14 @@ export function RichMailEditor({
             </Popover>
           )}
         </div>
+        )}
       </div>
 
       {/* Writing surface */}
-      <EditorContent editor={editor} className="pgh-mail-editor" />
+      <EditorContent
+        editor={editor}
+        className={cn("pgh-mail-editor", compact && "pgh-mail-editor--compact")}
+      />
       <input
         ref={fileRef}
         type="file"

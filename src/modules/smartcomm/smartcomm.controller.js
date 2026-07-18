@@ -248,9 +248,16 @@ async function sendToCustomer(req, res) {
     subject: req.body.subject,
     cc: req.body.cc,
     body: req.body.body,
+    body_html: req.body.body_html,
+    attachments: req.body.attachments,
     user: req.user,
   });
   res.status(201).json(data);
+}
+
+async function uploadImage(req, res) {
+  const data = await service.uploadImage({ brand: req.brand, file: req.file });
+  res.json({ data });
 }
 
 // ── Drafts ────────────────────────────────────────────────
@@ -438,6 +445,7 @@ module.exports = {
   getUnreadCount,
   addAttachment,
   sendToCustomer,
+  uploadImage,
   getDraft,
   saveDraft,
   discardDraft,

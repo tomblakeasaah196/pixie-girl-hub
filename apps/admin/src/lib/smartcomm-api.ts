@@ -123,6 +123,9 @@ export const smartcommApi = {
       subject?: string;
       /** Email only: Cc copy recipients. */
       cc?: string[];
+      /** Email only: Gmail-style rich HTML body. `content` carries the
+       *  plain-text shadow; this HTML is what actually goes out. */
+      body_html?: string;
       is_template?: boolean;
       /** IG only: send outside the 24h window with Meta's HUMAN_AGENT tag. */
       is_human_agent?: boolean;
@@ -189,7 +192,15 @@ export const smartcommApi = {
     contact_id: string;
     channel?: "whatsapp" | "email" | "instagram";
     subject?: string;
-    body: string;
+    /** Email only: Cc copy recipients. */
+    cc?: string[];
+    /** Plain-text body / shadow. Optional on email when a rich HTML body or
+     *  an attachment leads instead; required on WhatsApp/Instagram. */
+    body?: string;
+    /** Email only: Gmail-style rich HTML body (delivered in the brand shell). */
+    body_html?: string;
+    /** Email only: files to send with this first message. */
+    attachments?: { document_id: string; display_name?: string }[];
   }) =>
     api.post<{ channel_id: string; message: Message; queued: boolean }>(
       "/smartcomm/send",

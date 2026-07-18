@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   Search,
@@ -12,15 +12,33 @@ import {
   Loader2,
   Mail,
   Phone,
+  Paperclip,
 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
+import { RichMailEditor } from "@/components/marketing/RichMailEditor";
 import { listCrmClients } from "@/pages/crm/api";
 import type { CrmClient } from "@/pages/crm/types";
 import { smartcommApi, type Colleague } from "@/lib/smartcomm-api";
+import { api } from "@/lib/api";
+import { htmlToPlainText, isRichHtmlEmpty } from "@/lib/html-mail";
 import { useAuthStore } from "@/stores/auth";
 import { getAvatarColour, getInitials } from "@/lib/messaging-utils";
 import { toastReport } from "@/lib/error-report";
 import { cn } from "@/lib/cn";
+
+/** Parse a raw Cc field into a clean, de-duplicated list of addresses. */
+function parseCcList(raw: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of raw.split(/[,;\s]+/)) {
+    const e = part.trim().toLowerCase();
+    if (e && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) && !seen.has(e)) {
+      seen.add(e);
+      out.push(e);
+    }
+  }
+  return out;
+}
 
 type Mode = "chat" | "group" | "customer";
 type Step = "pick" | "name" | "compose";
@@ -80,6 +98,17 @@ export function NewChatModal({
   const [composeChannel, setComposeChannel] =
     useState<CustomerChannel>("whatsapp");
   const [composeBody, setComposeBody] = useState("");
+  // Email-only rich compose extras: subject, Cc, the Gmail-style HTML body,
+  // and files staged to ride the one outbound letter.
+  const [subjectDraft, setSubjectDraft] = useState("");
+  const [ccInput, setCcInput] = useState("");
+  const [showCc, setShowCc] = useState(false);
+  const [emailHtml, setEmailHtml] = useState("");
+  const [emailFiles, setEmailFiles] = useState<
+    { document_id: string; display_name: string }[]
+  >([]);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
+  const emailFileRef = useRef<HTMLInputElement>(null);
 
   // Reset every time the modal opens so a second launch is never stale.
   useEffect(() => {
@@ -90,6 +119,11 @@ export function NewChatModal({
     setError(null);
     setContacts([]);
     setComposeBody("");
+    setSubjectDraft("");
+    setCcInput("");
+    setShowCc(false);
+    setEmailHtml("");
+    setEmailFiles([]);
     // Deep-link: pre-selected contact → straight to the customer compose step.
     if (initialCustomer) {
       setMode("customer");
@@ -140,12 +174,28 @@ export function NewChatModal({
   }, [mode, step, q]);
 
   const sendToCustomer = useMutation({
-    mutationFn: () =>
-      smartcommApi.sendToCustomer({
+    mutationFn: () => {
+      // Email leads with the Gmail-style rich body (+ subject / Cc /
+      // attachments); WhatsApp & Instagram stay plain text.
+      if (composeChannel === "email") {
+        const plain = htmlToPlainText(emailHtml).trim();
+        const cc = showCc ? parseCcList(ccInput) : [];
+        return smartcommApi.sendToCustomer({
+          contact_id: selectedContact!.contact_id,
+          channel: "email",
+          subject: subjectDraft.trim() || undefined,
+          cc: cc.length ? cc : undefined,
+          body: plain || undefined,
+          body_html: isRichHtmlEmpty(emailHtml) ? undefined : emailHtml,
+          attachments: emailFiles.length ? emailFiles : undefined,
+        });
+      }
+      return smartcommApi.sendToCustomer({
         contact_id: selectedContact!.contact_id,
         channel: composeChannel,
         body: composeBody.trim(),
-      }),
+      });
+    },
     onSuccess: (res) => onStarted(res.channel_id),
     onError: (e: unknown) => {
       toastReport("Messaging → New chat", "Message a customer", e);
@@ -154,6 +204,38 @@ export function NewChatModal({
       );
     },
   });
+
+  // Upload files to stage on the first email (they ride the one letter).
+  async function handleEmailFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setUploadingFiles(true);
+    setError(null);
+    try {
+      const staged: { document_id: string; display_name: string }[] = [];
+      for (const file of Array.from(files)) {
+        const form = new FormData();
+        form.append("file", file);
+        form.append("document_type", "message_attachment");
+        form.append("title", file.name);
+        const { document_id } = await api.postForm<{ document_id: string }>(
+          "/documents",
+          form,
+        );
+        staged.push({ document_id, display_name: file.name });
+      }
+      setEmailFiles((prev) => [...prev, ...staged]);
+    } catch (e: unknown) {
+      toastReport("Messaging → New chat", "Attach file", e);
+      setError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setUploadingFiles(false);
+    }
+  }
+
+  // Send readiness — email needs a rich body or a file; other channels a line.
+  const emailReady = !isRichHtmlEmpty(emailHtml) || emailFiles.length > 0;
+  const composeReady =
+    composeChannel === "email" ? emailReady : !!composeBody.trim();
 
   const startDm = useMutation({
     mutationFn: (userId: string) => smartcommApi.startDirect(userId),
@@ -281,7 +363,9 @@ export function NewChatModal({
           </button>
           <button
             onClick={() => sendToCustomer.mutate()}
-            disabled={!composeBody.trim() || sendToCustomer.isPending}
+            disabled={
+              !composeReady || sendToCustomer.isPending || uploadingFiles
+            }
             className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3.5 py-1.5 text-[12.5px] font-medium text-bg hover:bg-accent-glow disabled:opacity-40"
           >
             {sendToCustomer.isPending ? (
@@ -657,19 +741,133 @@ export function NewChatModal({
             </div>
           </div>
 
-          <label className="block space-y-1.5">
-            <span className="text-[11.5px] uppercase tracking-widest text-text-faint">
-              First message
-            </span>
-            <textarea
-              autoFocus
-              value={composeBody}
-              onChange={(e) => setComposeBody(e.target.value)}
-              placeholder="e.g. Hi! Following up on your order…"
-              rows={4}
-              className="w-full rounded-xl border border-line bg-text-primary/[0.04] px-3 py-2.5 text-sm text-text-primary outline-none focus-visible:border-accent/50 resize-none"
-            />
-          </label>
+          {composeChannel === "email" ? (
+            /* Gmail-style email: subject, Cc, rich body, attachments. */
+            <div className="space-y-2">
+              <span className="text-[11.5px] uppercase tracking-widest text-text-faint">
+                First message
+              </span>
+              <div className="flex items-center gap-2 rounded-xl border hairline bg-text-primary/[0.04] px-3">
+                <span className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-text-faint">
+                  Subject
+                </span>
+                <input
+                  value={subjectDraft}
+                  onChange={(e) => setSubjectDraft(e.target.value)}
+                  placeholder="What's this email about?"
+                  className="flex-1 bg-transparent py-2 text-[13px] focus:outline-none placeholder:text-text-faint"
+                />
+                {!showCc && (
+                  <button
+                    type="button"
+                    onClick={() => setShowCc(true)}
+                    className="shrink-0 text-[11.5px] text-text-faint hover:text-text-primary"
+                    title="Add Cc copy recipients"
+                  >
+                    + Cc
+                  </button>
+                )}
+              </div>
+              {showCc && (
+                <div className="flex items-center gap-2 rounded-xl border hairline bg-text-primary/[0.04] px-3">
+                  <span className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-text-faint">
+                    Cc
+                  </span>
+                  <input
+                    value={ccInput}
+                    onChange={(e) => setCcInput(e.target.value)}
+                    placeholder="Copy others — comma-separated emails"
+                    className="flex-1 bg-transparent py-2 text-[13px] focus:outline-none placeholder:text-text-faint"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCc(false);
+                      setCcInput("");
+                    }}
+                    className="shrink-0 text-text-faint hover:text-danger"
+                    title="Remove Cc"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
+              <RichMailEditor
+                value={emailHtml}
+                onChange={setEmailHtml}
+                personalise={false}
+                compact
+                autoFocus
+                uploadEndpoint="/smartcomm/upload-image"
+                placeholder="Write your email…"
+                onSubmit={() => {
+                  if (composeReady && !sendToCustomer.isPending)
+                    sendToCustomer.mutate();
+                }}
+              />
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => emailFileRef.current?.click()}
+                  disabled={uploadingFiles}
+                  className="inline-flex items-center gap-1.5 rounded-lg border hairline px-2.5 py-1.5 text-[11.5px] text-text-muted hover:text-text-primary disabled:opacity-50"
+                  title="Attach a file"
+                >
+                  {uploadingFiles ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Paperclip className="h-3.5 w-3.5" />
+                  )}
+                  Attach
+                </button>
+                {emailFiles.map((f, i) => (
+                  <span
+                    key={f.document_id}
+                    className="inline-flex items-center gap-1.5 rounded-lg border hairline bg-panel px-2 py-1 text-[11.5px]"
+                  >
+                    <Paperclip className="h-3 w-3 text-text-faint" />
+                    <span className="max-w-[160px] truncate">
+                      {f.display_name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEmailFiles((prev) => prev.filter((_, j) => j !== i))
+                      }
+                      className="text-text-faint hover:text-danger"
+                      title="Remove attachment"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+                <input
+                  ref={emailFileRef}
+                  type="file"
+                  multiple
+                  hidden
+                  onChange={(e) => {
+                    void handleEmailFiles(e.target.files);
+                    e.target.value = "";
+                  }}
+                />
+              </div>
+            </div>
+          ) : (
+            <label className="block space-y-1.5">
+              <span className="text-[11.5px] uppercase tracking-widest text-text-faint">
+                First message
+              </span>
+              <textarea
+                autoFocus
+                value={composeBody}
+                onChange={(e) => setComposeBody(e.target.value)}
+                placeholder="e.g. Hi! Following up on your order…"
+                rows={4}
+                className="w-full rounded-xl border border-line bg-text-primary/[0.04] px-3 py-2.5 text-sm text-text-primary outline-none focus-visible:border-accent/50 resize-none"
+              />
+            </label>
+          )}
 
           {error && <p className="text-[11.5px] text-danger">{error}</p>}
         </div>

@@ -136,14 +136,34 @@ function ToolBtn({
   title: string;
   children: React.ReactNode;
 }) {
+  // The click only runs if a real pointer/keyboard gesture landed on this
+  // button first. After a user clicks back into the editor from another
+  // control, Chromium can synthesise a trusted click on whichever toolbar
+  // button React just restored focus to during the commit — with no
+  // pointerdown/mousedown of its own — which was silently firing Undo/Redo
+  // and eating the just-typed text. We ignore that phantom click.
+  const armed = useRef(false);
   return (
     <button
       type="button"
       title={title}
       aria-label={title}
       disabled={disabled}
+      onPointerDown={() => {
+        armed.current = true;
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") armed.current = true;
+      }}
       onMouseDown={(e) => e.preventDefault()}
-      onClick={onClick}
+      onClick={(e) => {
+        if (!armed.current) {
+          e.preventDefault();
+          return;
+        }
+        armed.current = false;
+        onClick();
+      }}
       className={cn(
         // Real thumb targets on touch screens; the tighter 32px grid on desktop.
         "grid place-items-center w-9 h-9 sm:w-8 sm:h-8 rounded-lg transition-colors disabled:opacity-30",

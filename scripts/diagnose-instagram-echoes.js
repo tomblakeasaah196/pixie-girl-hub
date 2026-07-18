@@ -277,7 +277,7 @@ async function main() {
   line(`Instagram echo-sync diagnosis — ${new Date().toISOString()}  (window: ${DAYS} days${FIX ? ", --fix" : ", read-only"})`);
   await initDatabase();
   try {
-    const meta = await checkAccounts();
+    let meta = await checkAccounts();
     if (FIX) {
       h("APPLYING --fix (re-subscribe missing webhook fields)");
       const summary = await maService.ensureInstagramEchoSubscriptions();
@@ -285,6 +285,9 @@ async function main() {
       if (summary.healed) {
         line("  ✓ Re-subscribed. Reply to a customer from the Instagram app to confirm it syncs.");
       }
+      // Re-read the live state so the verdict below reflects the repair,
+      // not the drifted list captured before it.
+      meta = await checkAccounts();
     }
     const evidence = await checkWebhookEvidence();
     const ingest = await checkIngestHealth();

@@ -104,6 +104,18 @@ If the re-subscribe itself fails (revoked token, permission not granted,
 app not Live), the CEO gets an **urgent** notification instead — that
 situation needs Meta Dashboard attention and cannot be fixed from code.
 
+## The constraint that silently killed every echo (fixed in 000361)
+
+Post-mortem for the record: echo bubbles are deliberately **senderless**
+(no Hub user to credit; crediting the contact would flip the bubble's
+meaning), but `message_sender_check` (000004) only allowed a senderless
+row for `message_type = 'system'` — so every echo that DID arrive was
+rejected at the final INSERT, on every retry, invisibly. Migration
+000361 allows a senderless row when `metadata.via` is stamped (server-
+side only). If `npm run diag:instagram-echoes` ever shows failed rows
+with `violates check constraint "message_sender_check"`, that migration
+hasn't been applied.
+
 ## Failed ingests are recoverable now
 
 Previously a messaging webhook whose ingest kept failing was lost
@@ -212,6 +224,7 @@ repeated, or raise the pacing with `GAP_MS=1000`.
 | Echo parsing + ingest routing | `src/modules/smartcomm/smartcomm.subscribers.js` |
 | Recorder + unread watermark | `src/modules/smartcomm/smartcomm.service.js` (`recordAgentReplyFromPlatform`), `smartcomm.repo.js` |
 | Migration | `migrations/000348_shared_smartcomm_external_read.sql` |
+| Senderless echo bubbles allowed (DB constraint) | `migrations/000361_shared_messages_platform_echo_sender.sql` |
 | Sequence-mid stamping | `src/jobs/processors/instagram-processor.js` |
 | Team-wide bell clearing | `src/services/notifications.service.js` (`markReadByReferenceAllUsers`) |
 | Bubble rendering ("via Instagram app") | `apps/admin/src/components/messaging/MessageBubble.tsx`, `MessageThread.tsx` |

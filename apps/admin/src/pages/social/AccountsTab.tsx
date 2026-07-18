@@ -193,8 +193,15 @@ function AccountCard({
   const status = SCRAPE_STATUS[statusKey];
   const schema = account.platform_metrics_schema ?? [];
   // count/decimal -> numeric tiles; text -> chips; bool -> badges (shown when true).
+  // After a successful scrape, a metric the actor didn't return means this
+  // profile simply doesn't have it (e.g. a Facebook page with ratings off) —
+  // drop the tile rather than showing a dead "—". Before the first sync (or
+  // after an error) keep every tile so the card shows what's coming.
+  const scrapedOk = account.last_scrape_status === "ok";
   const numericSpecs = schema.filter(
-    (s) => !s.type || s.type === "count" || s.type === "decimal",
+    (s) =>
+      (!s.type || s.type === "count" || s.type === "decimal") &&
+      (!scrapedOk || account.metrics?.[s.key] !== undefined),
   );
   const textSpecs = schema.filter((s) => s.type === "text");
   const boolSpecs = schema.filter((s) => s.type === "bool");

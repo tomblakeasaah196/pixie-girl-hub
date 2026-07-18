@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { getCollection } from "@/lib/storefront";
 import { useCurrency } from "@/lib/useStore";
+import { usePageSlots, withSlots } from "@/lib/site-config";
 import {
   ProductCardLink,
   Section,
@@ -17,6 +18,10 @@ export const Route = createFileRoute("/collections/$slug")({
 function CollectionPage() {
   const { slug } = Route.useParams();
   const [currency] = useCurrency();
+  const s = withSlots(
+    { emptyTitle: "No products in this collection yet." },
+    usePageSlots("collection_detail"),
+  );
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["collection", slug],
     queryFn: () => getCollection(slug),
@@ -38,7 +43,7 @@ function CollectionPage() {
           ) : null}
           <div className="mt-10">
             {(data.products ?? []).length === 0 ? (
-              <EmptyState title="No products in this collection yet." />
+              <EmptyState title={s.emptyTitle} />
             ) : (
               <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
                 {data.products.map((p) => (

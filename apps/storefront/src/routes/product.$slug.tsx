@@ -10,6 +10,7 @@ import {
 import { formatFromNgn } from "@/lib/money";
 import { ssrProduct } from "@/lib/server";
 import { useCurrency, notifyCartChanged } from "@/lib/useStore";
+import { usePageSlots, withSlots } from "@/lib/site-config";
 import { Section, ErrorState } from "@/components/parts";
 import { YouTubeFacade, youtubeId } from "@/components/site/VideoEmbed";
 
@@ -27,7 +28,13 @@ const PLATFORM_LABEL: Record<string, string> = {
 
 /** Social proof loop: this product was actually posted and proven in Social
  *  Studio — link back to the live post. */
-function SocialProofBadge({ proof }: { proof: NonNullable<ProductDetail["social_proof"]> }) {
+function SocialProofBadge({
+  proof,
+  prefix,
+}: {
+  proof: NonNullable<ProductDetail["social_proof"]>;
+  prefix: string;
+}) {
   return (
     <a
       href={proof.url}
@@ -36,7 +43,7 @@ function SocialProofBadge({ proof }: { proof: NonNullable<ProductDetail["social_
       className="mt-3 inline-flex items-center gap-2 rounded-full border border-border px-3 py-1.5 text-body-sm text-muted-foreground transition hover:border-primary hover:text-primary"
     >
       <Sparkles className="h-3.5 w-3.5" />
-      As seen on {PLATFORM_LABEL[proof.platform] ?? proof.platform}
+      {prefix} {PLATFORM_LABEL[proof.platform] ?? proof.platform}
       <ExternalLink className="h-3 w-3" />
     </a>
   );
@@ -66,6 +73,24 @@ function ProductPage() {
   const [currency] = useCurrency();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
+  // Named `copy` (not `s`) — `s` is used as a size map param further down.
+  const copy = withSlots(
+    {
+      colourLabel: "Colour",
+      sizeLabel: "Cap size",
+      laceLabel: "Lace",
+      unstyledLabel: "Buy unstyled (raw)",
+      addCta: "Add to bag",
+      addBusyLabel: "Adding...",
+      viewBagCta: "View bag",
+      chooseVariantError: "Please choose colour, size and lace.",
+      addedToast: "Added to bag",
+      addErrorToast: "Couldn't add to bag. Please try again.",
+      socialProofPrefix: "As seen on",
+      sizeGuideFallbackTitle: "Head size guide",
+    },
+    usePageSlots("product_detail"),
+  );
 
   const colours = product?.colours ?? [];
   const sizes = product?.size_tiers ?? [];
@@ -125,7 +150,7 @@ function ProductPage() {
 
   async function add() {
     if (!unstyled && !selectedVariant) {
-      toast.error("Please choose colour, size and lace.");
+      toast.error(copy.chooseVariantError);
       return;
     }
     setBusy(true);
@@ -137,9 +162,9 @@ function ProductPage() {
         display_currency: currency,
       });
       notifyCartChanged();
-      toast.success("Added to bag");
+      toast.success(copy.addedToast);
     } catch {
-      toast.error("Couldn't add to bag. Please try again.");
+      toast.error(copy.addErrorToast);
     } finally {
       setBusy(false);
     }
@@ -192,7 +217,9 @@ function ProductPage() {
         <p className="mt-3 font-mono text-h5">
           {price == null ? "-" : formatFromNgn(price, currency)}
         </p>
-        {product.social_proof ? <SocialProofBadge proof={product.social_proof} /> : null}
+        {product.social_proof ? (
+          <SocialProofBadge proof={product.social_proof} prefix={copy.socialProofPrefix} />
+        ) : null}
         {product.short_description ? (
           <p className="mt-4 text-body text-muted-foreground">
             {product.short_description}
@@ -202,7 +229,7 @@ function ProductPage() {
         {/* Colour */}
         {colours.length > 0 ? (
           <div className="mt-8">
-            <p className="text-caption">Colour</p>
+            <p className="text-caption">{copy.colourLabel}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {colours.map((c) => (
                 <button
@@ -220,7 +247,7 @@ function ProductPage() {
         {/* Size */}
         {sizes.length > 0 ? (
           <div className="mt-6">
-            <p className="text-caption">Cap size</p>
+            <p className="text-caption">{copy.sizeLabel}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {sizes.map((s) => (
                 <Box
@@ -241,7 +268,7 @@ function ProductPage() {
         {/* Lace */}
         {laces.length > 0 ? (
           <div className="mt-6">
-            <p className="text-caption">Lace</p>
+            <p className="text-caption">{copy.laceLabel}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {laces.map((l) => (
                 <Box
@@ -262,7 +289,7 @@ function ProductPage() {
             checked={unstyled}
             onChange={(e) => setUnstyled(e.target.checked)}
           />
-          Buy unstyled (raw)
+          {copy.unstyledLabel}
         </label>
 
         <div className="mt-8 flex gap-3">
@@ -271,13 +298,13 @@ function ProductPage() {
             disabled={busy}
             className="rounded-full bg-primary px-8 py-3 text-body text-primary-foreground disabled:opacity-60"
           >
-            {busy ? "Adding..." : "Add to bag"}
+            {busy ? copy.addBusyLabel : copy.addCta}
           </button>
           <button
             onClick={() => navigate({ to: "/cart" })}
             className="rounded-full border border-border px-6 py-3 text-body hover:bg-secondary"
           >
-            View bag
+            {copy.viewBagCta}
           </button>
         </div>
 
@@ -291,7 +318,7 @@ function ProductPage() {
               <div className="mt-3">
                 <YouTubeFacade
                   videoId={videoId}
-                  title={product.size_guide.title || "Head size guide"}
+                  title={product.size_guide.title || copy.sizeGuideFallbackTitle}
                 />
               </div>
             ) : videoUrl ? (

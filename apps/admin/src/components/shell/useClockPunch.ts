@@ -115,6 +115,13 @@ export function useClockPunch(): ClockPunch {
     },
     onSuccess: (rec) => {
       qc.invalidateQueries({ queryKey: ["hr", "me"] });
+      // The "My HR" workspace tab keeps its own attendance history query
+      // (["my-hr", "attendance", ...] — see MyHrPage.tsx's AttendanceSection),
+      // a different cache namespace than this widget's ["hr", "me"] status
+      // query. Without this, a punch here updates the top-bar pill but the
+      // My HR list a user checks right after clocking in keeps showing
+      // yesterday's data until it goes stale on its own.
+      qc.invalidateQueries({ queryKey: ["my-hr", "attendance"] });
       if (rec.device_recognized === false) {
         notify(
           "Clocked in — unrecognised device",

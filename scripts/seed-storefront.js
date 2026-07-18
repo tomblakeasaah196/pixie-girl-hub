@@ -256,6 +256,38 @@ function pagesFor(brand) {
       slots: HOME_SLOTS,
     },
     {
+      // Site-wide chrome (promo bar · footer blurb/signature · mobile ☰ extras).
+      // Not a route — the storefront reads it via useSiteChrome(). Keys mirror
+      // apps/storefront/src/lib/site-config.tsx DEFAULT_SITE_CHROME.
+      page_key: "site_chrome", template_key: "site_chrome_v1", url_path: "(appears on every page)", og_image_url: null,
+      meta_title: null, meta_description: null,
+      slots: {
+        promo: {
+          items: [
+            { text: "Complimentary worldwide shipping on orders over $800", emphasis: "", url: "" },
+            { text: "Bulk savings — 2 pieces $40 off · 3 pieces $90 off", emphasis: "auto-applied", url: "" },
+            { text: "First order? Take 10% off with code", emphasis: "FAITLYN10", url: "" },
+            { text: "Refer & earn up to $50 atelier credit", emphasis: "", url: "/account" },
+          ],
+        },
+        footer: {
+          blurb: "A Lagos-born atelier of luxury natural hair. Curated, ethically sourced, finished by hand.",
+          signature: "Maison Faitlyn — fait à la main à Lagos",
+          copyrightName: "",
+        },
+        drawer: {
+          featureEyebrow: "New in",
+          featureTitle: "The Maison Collection",
+          featureCta: "Shop the drop",
+          featureHref: "/shop",
+          featureImage: IMG.atelier,
+          signature: "Est. Lagos · 2021",
+          conciergeLabel: "Chat with a stylist",
+          consultLabel: "Book a consultation",
+        },
+      },
+    },
+    {
       page_key: "shop", template_key: "catalogue_v1", url_path: "/shop", og_image_url: IMG.hero,
       meta_title: `Shop the Catalogue — ${name}`,
       meta_description: "Every silhouette, live from the Lagos atelier — hand-finished and shade-matched.",

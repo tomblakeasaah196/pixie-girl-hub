@@ -99,6 +99,9 @@ Legend: ✅ editable in Studio · ⚠️ partially / indirectly editable · ❌ 
 | Theme (colours/fonts) | ✅ | Studio → Theme. |
 | Floating toolbar / concierge / WhatsApp / help | ✅ | Studio → Toolbar. |
 | Popups (newsletter etc.) | ✅ | Studio → Popups. |
+| Promo bar (scrolling strip) | ✅ **New** | Studio → Pages → **Site chrome** → Promo bar. Add/edit/remove offers (+ optional emphasis & link). |
+| Footer blurb & signature | ✅ **New** | Studio → Pages → **Site chrome** → Footer. |
+| Mobile ☰ feature card + buttons | ✅ **New** | Studio → Pages → **Site chrome** → Mobile menu (image, eyebrow, title, CTA, link, concierge labels, signature). |
 
 ---
 
@@ -107,15 +110,9 @@ Legend: ✅ editable in Studio · ⚠️ partially / indirectly editable · ❌ 
 These are **not yet editable** and are the honest remaining backlog.
 
 ### Site chrome copy
-- **`PromoBar`** (`components/site/PromoBar.tsx`) — the scrolling announcement
-  strip `ITEMS` is hardcoded. _No Studio surface yet._
-- **`SiteFooter`** — the intro blurb (“A Lagos-born atelier…”) and the copyright
-  line / signature are hardcoded (columns, links and socials **are** editable).
-- **Mobile drawer extras** (`SiteHeader.tsx`) — the “Maison Collection” editorial
-  card + its image, the “Est. Lagos · 2021” signature, and the concierge button
-  copy are hardcoded.
 - **`site-assets.ts` `SITE_IMAGES`** — local placeholder stills used as fallbacks
-  until a real image is uploaded into the matching slot.
+  until a real image is uploaded into the matching slot. (Not user copy; these
+  are just the “nothing 404s” defaults.)
 
 ### Functional / transactional routes (microcopy hardcoded)
 These render mostly UI chrome (buttons, form labels, toasts) rather than
@@ -148,8 +145,13 @@ marketing content, and read no slots today:
    `deepMergeSlots`, independent of DB seed state. `shade_finder`, `shades`,
    `collections`, `bundle_detail` now appear; `about` exposes its editorial/press/
    founder groups.
-3. **Seed** (`scripts/seed-storefront.js`) adds `shades`, `collections`,
-   `bundle_detail` rows and the grouped nav.
+3. **Site-wide chrome is now editable** via a synthetic `site_chrome` page
+   (`useSiteChrome()` in `site-config.tsx`): the promo bar offers, the footer
+   blurb/signature, and the mobile drawer’s feature card + concierge labels.
+   `PromoBar`, `SiteFooter` and the mobile drawer now read it (defaults
+   preserved). `SmartLink` gained `onClick` for the drawer.
+4. **Seed** (`scripts/seed-storefront.js`) adds `shades`, `collections`,
+   `bundle_detail` and `site_chrome` rows plus the grouped nav.
 
 ### To apply on an existing install
 Re-run `npm run db:seed` (or just re-publish Navigation in Studio) to pick up the

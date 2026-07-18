@@ -2402,54 +2402,65 @@ function PagesTab({
       {sel ? (
         <Card className="flex flex-col space-y-4 p-5 lg:max-w-2xl">
           <BackToList label="All pages" onClick={() => setSel(null)} />
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <TextField
-              label="Page name (key)"
-              value={sel.page_key}
-              placeholder="home"
-              onChange={(v) => setSel({ ...sel, page_key: v })}
-            />
-            <TextField
-              label="URL path"
-              value={sel.url_path}
-              placeholder="/"
-              onChange={(v) => setSel({ ...sel, url_path: v })}
-            />
-          </div>
-
-          {sel.page_key === "home" || sel.url_path === "/" ? (
-            <div className="space-y-2 rounded-[12px] border border-line p-4">
-              <p className="text-[13px] font-semibold text-text-primary">
-                Search & sharing (SEO)
-              </p>
-              <p className="text-[12px] text-text-muted">
-                The home page uses the site-wide share card — its title,
-                description and share banner all live in one place, the{" "}
-                <span className="font-medium text-text-primary">Branding</span>{" "}
-                tab, so they stay in sync everywhere the link is shared.
-              </p>
-              <Button variant="secondary" size="sm" onClick={onJumpToBranding}>
-                Edit in Branding →
-              </Button>
+          {sel.page_key === "site_chrome" ? (
+            <div className="rounded-[12px] border border-line p-4 text-[12px] text-text-muted">
+              This isn’t a single page — it’s the chrome shown on{" "}
+              <span className="font-medium text-text-primary">every page</span>:
+              the scrolling promo bar, the footer blurb &amp; signature, and the
+              mobile ☰ menu’s feature card and buttons. Edit below, then Publish.
             </div>
           ) : (
-            <Section title="Search & sharing (SEO)">
-              <TextField
-                label="Search title"
-                value={sel.meta_title || ""}
-                onChange={(v) => setSel({ ...sel, meta_title: v })}
-              />
-              <AreaField
-                label="Search description"
-                value={sel.meta_description || ""}
-                onChange={(v) => setSel({ ...sel, meta_description: v })}
-              />
-              <ImageField
-                label="Share image"
-                value={sel.og_image_url || ""}
-                onChange={(v) => setSel({ ...sel, og_image_url: v })}
-              />
-            </Section>
+            <>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <TextField
+                  label="Page name (key)"
+                  value={sel.page_key}
+                  placeholder="home"
+                  onChange={(v) => setSel({ ...sel, page_key: v })}
+                />
+                <TextField
+                  label="URL path"
+                  value={sel.url_path}
+                  placeholder="/"
+                  onChange={(v) => setSel({ ...sel, url_path: v })}
+                />
+              </div>
+
+              {sel.page_key === "home" || sel.url_path === "/" ? (
+                <div className="space-y-2 rounded-[12px] border border-line p-4">
+                  <p className="text-[13px] font-semibold text-text-primary">
+                    Search & sharing (SEO)
+                  </p>
+                  <p className="text-[12px] text-text-muted">
+                    The home page uses the site-wide share card — its title,
+                    description and share banner all live in one place, the{" "}
+                    <span className="font-medium text-text-primary">Branding</span>{" "}
+                    tab, so they stay in sync everywhere the link is shared.
+                  </p>
+                  <Button variant="secondary" size="sm" onClick={onJumpToBranding}>
+                    Edit in Branding →
+                  </Button>
+                </div>
+              ) : (
+                <Section title="Search & sharing (SEO)">
+                  <TextField
+                    label="Search title"
+                    value={sel.meta_title || ""}
+                    onChange={(v) => setSel({ ...sel, meta_title: v })}
+                  />
+                  <AreaField
+                    label="Search description"
+                    value={sel.meta_description || ""}
+                    onChange={(v) => setSel({ ...sel, meta_description: v })}
+                  />
+                  <ImageField
+                    label="Share image"
+                    value={sel.og_image_url || ""}
+                    onChange={(v) => setSel({ ...sel, og_image_url: v })}
+                  />
+                </Section>
+              )}
+            </>
           )}
 
           <div>

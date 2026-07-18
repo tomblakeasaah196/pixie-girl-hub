@@ -173,3 +173,112 @@ export function usePageSlots(pageKey: string): Record<string, unknown> {
 export function withSlots<T extends object>(def: T, slots: Record<string, unknown>): T {
   return { ...def, ...(slots as Partial<T>) };
 }
+
+// ── Site-wide chrome (promo bar · footer copy · mobile-menu extras) ──────────
+// These live on the whole site rather than any one page, so they ride a
+// synthetic `site_chrome` page in Studio → Pages. Every value here has a control
+// there; the storefront resolves the published slots over these defaults.
+
+export interface PromoItem {
+  text: string;
+  /** Highlighted tail, e.g. a code ("FAITLYN10") or "auto-applied". */
+  emphasis?: string;
+  /** Optional path the strip links to. */
+  url?: string;
+}
+export interface SiteChrome {
+  promo: { items: PromoItem[] };
+  footer: { blurb: string; signature: string; copyrightName: string };
+  drawer: {
+    featureEyebrow: string;
+    featureTitle: string;
+    featureCta: string;
+    featureHref: string;
+    featureImage: string;
+    signature: string;
+    conciergeLabel: string;
+    consultLabel: string;
+  };
+}
+
+export const DEFAULT_SITE_CHROME: SiteChrome = {
+  promo: {
+    items: [
+      { text: "Complimentary worldwide shipping on orders over $800" },
+      { text: "Bulk savings — 2 pieces $40 off · 3 pieces $90 off", emphasis: "auto-applied" },
+      { text: "First order? Take 10% off with code", emphasis: "FAITLYN10" },
+      { text: "Refer & earn up to $50 atelier credit", url: "/account" },
+    ],
+  },
+  footer: {
+    blurb:
+      "A Lagos-born atelier of luxury natural hair. Curated, ethically sourced, finished by hand.",
+    signature: "Maison Faitlyn — fait à la main à Lagos",
+    copyrightName: "",
+  },
+  drawer: {
+    featureEyebrow: "New in",
+    featureTitle: "The Maison Collection",
+    featureCta: "Shop the drop",
+    featureHref: "/shop",
+    featureImage: "/maison/editorial-atelier.jpg",
+    signature: "Est. Lagos · 2021",
+    conciergeLabel: "Chat with a stylist",
+    consultLabel: "Book a consultation",
+  },
+};
+
+function isObj(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === "object" && !Array.isArray(v);
+}
+function str(v: unknown, def: string): string {
+  return typeof v === "string" && v ? v : def;
+}
+
+/** Normalise the promo `items` slot (objects or bare strings) or null if empty. */
+function resolvePromoItems(raw: unknown): PromoItem[] | null {
+  if (!Array.isArray(raw)) return null;
+  const items = raw
+    .map((x): PromoItem | null => {
+      if (typeof x === "string") return x ? { text: x } : null;
+      if (isObj(x)) {
+        const text = str(x.text, "");
+        if (!text) return null;
+        return {
+          text,
+          emphasis: str(x.emphasis, "") || undefined,
+          url: str(x.url, "") || str(x.to, "") || str(x.href, "") || undefined,
+        };
+      }
+      return null;
+    })
+    .filter((x): x is PromoItem => x !== null);
+  return items.length ? items : null;
+}
+
+/** Resolve the published `site_chrome` slots over the defaults. */
+export function useSiteChrome(): SiteChrome {
+  const slots = usePageSlots("site_chrome");
+  const promo = isObj(slots.promo) ? slots.promo : {};
+  const footer = isObj(slots.footer) ? slots.footer : {};
+  const drawer = isObj(slots.drawer) ? slots.drawer : {};
+  const d = DEFAULT_SITE_CHROME;
+  return {
+    promo: { items: resolvePromoItems(promo.items) ?? d.promo.items },
+    footer: {
+      blurb: str(footer.blurb, d.footer.blurb),
+      signature: str(footer.signature, d.footer.signature),
+      copyrightName: str(footer.copyrightName, d.footer.copyrightName),
+    },
+    drawer: {
+      featureEyebrow: str(drawer.featureEyebrow, d.drawer.featureEyebrow),
+      featureTitle: str(drawer.featureTitle, d.drawer.featureTitle),
+      featureCta: str(drawer.featureCta, d.drawer.featureCta),
+      featureHref: str(drawer.featureHref, d.drawer.featureHref),
+      featureImage: str(drawer.featureImage, d.drawer.featureImage),
+      signature: str(drawer.signature, d.drawer.signature),
+      conciergeLabel: str(drawer.conciergeLabel, d.drawer.conciergeLabel),
+      consultLabel: str(drawer.consultLabel, d.drawer.consultLabel),
+    },
+  };
+}

@@ -373,6 +373,16 @@ async function getChannelAccessMatrix(req, res) {
   res.json(data);
 }
 
+// The requesting user's own channel visibility — drives inbox tab hiding.
+// Self-only, so it rides smartcomm.view rather than the CEO gate.
+async function getMyChannelAccess(req, res) {
+  const data = await service.getMyChannelAccess({
+    user: req.user,
+    brand: req.brand,
+  });
+  res.json(data);
+}
+
 async function getUserChannelAccess(req, res) {
   const data = await service.getUserChannelAccess({
     brand: req.brand,
@@ -460,6 +470,7 @@ module.exports = {
   getCustomer360,
   listColleagues,
   getChannelAccessMatrix,
+  getMyChannelAccess,
   getUserChannelAccess,
   setUserChannelAccess,
 };

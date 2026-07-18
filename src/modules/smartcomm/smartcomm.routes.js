@@ -54,6 +54,12 @@ router.post(
 // rather than needing iam.view (the old /iam/users source most staff lacked).
 router.get("/colleagues", can("view"), c.listColleagues);
 
+// The requesting user's own channel visibility — read by the inbox to hide
+// tabs for channels they can't reach. Self-only, so plain smartcomm.view (NOT
+// requireCeo). Distinct literal path, so it never collides with the CEO
+// `/channel-access/:user_id` matrix route below.
+router.get("/my-channel-access", can("view"), c.getMyChannelAccess);
+
 // ── CEO channel-access matrix (SSOT) ───────────────────────
 // Owner-only: who may reach which channels (in-house/groups, WhatsApp,
 // Instagram, Facebook, email) per business. CEO decides; the service layer

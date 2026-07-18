@@ -720,6 +720,16 @@ body.session-locked #root {
 .pgh-mail-editor .ProseMirror p {
   margin: 0 0 10px;
 }
+/* Word-style line spacing on selected paragraphs (Text-spacing toolbar). The
+   mail renderer + preview mirror these values so the sent email matches. */
+.pgh-mail-editor .ProseMirror p[data-space="tight"] {
+  margin-bottom: 3px;
+  line-height: 1.4;
+}
+.pgh-mail-editor .ProseMirror p[data-space="relaxed"] {
+  margin-bottom: 24px;
+  line-height: 1.95;
+}
 .pgh-mail-editor .ProseMirror h1 {
   font-family: "Playfair Display", serif;
   font-size: 24px;

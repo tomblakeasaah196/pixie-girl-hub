@@ -67,8 +67,12 @@ function isFullDocument(html: string | undefined): boolean {
 /** Preview-only mirror of the server's inlineRichStyles — enough styling for
  *  the iframe to look like the sent mail (the real inlining happens at send). */
 function previewRichStyles(html: string, accent: string): string {
+  // Paragraphs carry an optional data-space (Line-spacing control) → real
+  // margins. Handled first and explicitly so it stays in lock-step with the
+  // server's inlineRichStyles (docs/… email-render.js). Keep these values
+  // identical to that file and to the editor CSS.
+  let out = paragraphSpacingStyles(html);
   const rules: Record<string, string> = {
-    p: "margin:0 0 14px 0;font-family:'Montserrat',Arial,sans-serif;font-size:15px;line-height:1.62;color:#1A1212",
     h1: "margin:22px 0 10px 0;font-family:'Playfair Display',Georgia,serif;font-size:28px;line-height:1.25;font-weight:600;color:#1A1212",
     h2: "margin:20px 0 8px 0;font-family:'Playfair Display',Georgia,serif;font-size:22px;line-height:1.3;font-weight:600;color:#1A1212",
     ul: "margin:0 0 14px 0;padding-left:22px",
@@ -79,7 +83,6 @@ function previewRichStyles(html: string, accent: string): string {
     img: "max-width:100%;height:auto;border:0;border-radius:6px",
     hr: "border:none;border-top:1px solid #ECE5DC;margin:22px 0",
   };
-  let out = html;
   for (const [tag, style] of Object.entries(rules)) {
     out = out.replace(
       new RegExp(`<${tag}(?![a-z0-9])(?![^>]*\\bstyle=)([^>]*)>`, "gi"),
@@ -87,6 +90,35 @@ function previewRichStyles(html: string, accent: string): string {
     );
   }
   return out;
+}
+
+/** Vertical rhythm per paragraph (Line-spacing control). Mirror of the server
+ *  P_SPACE map in src/modules/email_campaigns/email-render.js. */
+const PREVIEW_P_SPACE: Record<string, string> = {
+  tight: "margin:0 0 3px 0;line-height:1.4",
+  relaxed: "margin:0 0 24px 0;line-height:1.95",
+  normal: "margin:0 0 14px 0;line-height:1.62",
+};
+const PREVIEW_P_FONT =
+  "font-family:'Montserrat',Arial,sans-serif;font-size:15px;color:#1A1212";
+
+/** Rewrite every <p> with its spacing + font, preserving an editor-set
+ *  text-align. Runs before the generic pass so the <p> never double-styles. */
+function paragraphSpacingStyles(html: string): string {
+  return html.replace(/<p\b([^>]*)>/gi, (_m, attrs: string) => {
+    const spaceMatch = /data-space="(tight|relaxed)"/i.exec(attrs);
+    const key = spaceMatch ? spaceMatch[1].toLowerCase() : "normal";
+    const styleMatch = /style="([^"]*)"/i.exec(attrs);
+    let align = "";
+    if (styleMatch) {
+      const ta = /text-align:\s*(left|right|center|justify)/i.exec(styleMatch[1]);
+      if (ta) align = `;text-align:${ta[1]}`;
+    }
+    const cleaned = attrs
+      .replace(/\s*data-space="[^"]*"/i, "")
+      .replace(/\s*style="[^"]*"/i, "");
+    return `<p style="${PREVIEW_P_SPACE[key]};${PREVIEW_P_FONT}${align}"${cleaned}>`;
+  });
 }
 
 function applyTokens(html: string, tokens: Record<string, string>): string {

@@ -137,7 +137,6 @@ describe("messaging_accounts.service", () => {
                 {
                   subscribed_fields: [
                     "messages",
-                    "message_echoes",
                     "message_reactions",
                     "messaging_seen",
                   ],
@@ -166,14 +165,14 @@ describe("messaging_accounts.service", () => {
       provider_id: "17841400000000000",
       provider_name: "faitlynhair",
       healed: false,
-      // Echo sync (message_echoes subscription) is verified in the same
-      // Test click — all fields present → nothing to heal, no POST.
+      // Webhook subscriptions are verified in the same Test click — all
+      // fields present → nothing to heal, no POST.
       echo_sync: { ok: true, healed: false },
     });
     expect(axios.post).not.toHaveBeenCalled();
   });
 
-  test("testAccount repairs a dropped message_echoes subscription (echo sync self-heal)", async () => {
+  test("testAccount repairs dropped webhook subscriptions (self-heal, never posting message_echoes)", async () => {
     repo.getRaw.mockResolvedValue({
       account_id: "id-2",
       platform: "instagram",
@@ -193,12 +192,7 @@ describe("messaging_accounts.service", () => {
                 subscribed_fields:
                   subCalls === 1
                     ? ["messages"]
-                    : [
-                        "messages",
-                        "message_echoes",
-                        "message_reactions",
-                        "messaging_seen",
-                      ],
+                    : ["messages", "message_reactions", "messaging_seen"],
               },
             ],
           },
@@ -221,15 +215,17 @@ describe("messaging_accounts.service", () => {
     expect(sent).toEqual(
       expect.arrayContaining([
         "messages",
-        "message_echoes",
         "message_reactions",
         "messaging_seen",
       ]),
     );
+    // Messenger-only field — must never be posted on Instagram (it can
+    // make Meta reject the whole subscription update).
+    expect(sent).not.toContain("message_echoes");
     expect(r.echo_sync).toMatchObject({
       ok: true,
       healed: true,
-      missing_before: expect.arrayContaining(["message_echoes"]),
+      missing_before: expect.arrayContaining(["message_reactions"]),
     });
   });
 

@@ -21,7 +21,7 @@ async function runIgTokenRefreshSweep() {
   const summary = await svc.refreshInstagramTokens();
   logger.info(summary, "ig token refresh sweep done");
   // A rotation can coincide with Meta dropping the account-level webhook
-  // subscriptions (message_echoes above all) — re-assert them right after
+  // subscriptions (messages/reactions/seen) — re-assert them right after
   // the sweep instead of waiting for the next hourly watchdog tick.
   try {
     const echo = await svc.ensureInstagramEchoSubscriptions();

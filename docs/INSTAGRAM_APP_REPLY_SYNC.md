@@ -54,12 +54,12 @@ only for Hub-originated sends). Consequences:
 
 ## One command answers "is it Meta or is it us?"
 
-The healthy path has exactly four hops — Meta delivers a
-`message_echoes` webhook → `shared.webhook_log` → smartcomm ingest →
-`shared.messages` (`metadata.via = 'instagram_app'`). When app replies
-are missing, run this on the VPS; it checks every hop against the live
-DB **and** the Meta Graph API and prints a verdict naming the broken
-one:
+The healthy path has exactly four hops — Meta delivers the echo as a
+**`messages` webhook flagged `is_echo: true`** → `shared.webhook_log` →
+smartcomm ingest → `shared.messages` (`metadata.via = 'instagram_app'`).
+When app replies are missing, run this on the VPS; it checks every hop
+against the live DB **and** the Meta Graph API and prints a verdict
+naming the broken one:
 
 ```bash
 npm run diag:instagram-echoes           # read-only diagnosis
@@ -68,30 +68,47 @@ DAYS=30 npm run diag:instagram-echoes   # widen the evidence window
 ```
 
 Verdicts: **META SIDE (config)** — the account isn't subscribed to
-`message_echoes` (fixable immediately with `--fix`); **META SIDE
-(delivery)** — subscribed but no echo ever arrives (App Dashboard /
-permissions / Live-mode problem, with a checklist); **OUR SIDE** —
-echoes arrive but ingest fails (prints the exact recorded error);
-**HEALTHY** — echoes arrive and are recorded (missing older messages are
-history from a down period → run the backfill).
+`messages` (fixable immediately with `--fix`); **META SIDE (delivery)**
+— subscribed but no echo ever arrives (App Dashboard / permissions /
+Live-mode problem, with a checklist); **OUR SIDE** — echoes arrive but
+ingest fails (prints the exact recorded error); **HEALTHY** — echoes
+arrive and are recorded (missing older messages are history from a down
+period → run the backfill). Missing `message_reactions` /
+`messaging_seen` is reported as a secondary warning — it degrades ticks
+and ❤️ badges but never blocks echoes.
+
+## There is NO `message_echoes` field on Instagram (the correction)
+
+Per Meta's Messenger-Platform webhook reference: *"`message_echoes` …
+is available only for Messenger conversations. For Instagram Messaging
+conversations, the message echo notifications are included with the
+`messages` webhook field subscription."* Earlier versions of this doc
+(and the setup curl) treated `message_echoes` as an Instagram field —
+that was wrong. On Instagram an app-sent reply arrives as a normal
+`messages` event with `is_echo: true` in the payload, so **the one
+field the entire inbox hangs on is `messages`** — which also means: if
+customer DMs arrive, echoes are arriving too, and a "replies missing"
+problem is almost certainly on our ingest side (see the constraint
+post-mortem below — exactly what happened). Never POST `message_echoes`
+to `/me/subscribed_apps`: an invalid field can make Meta reject the
+whole update, silently losing the valid fields you meant to add.
 
 ## The subscription self-heals now (the watchdog)
 
-The root cause of "it keeps breaking": the `message_echoes` subscription
-lives **on the Instagram account at Meta** (`POST /me/subscribed_apps`),
-not in our code or database — and any partial re-subscribe **replaces**
-the whole field list, so reconnecting the account or re-running a setup
-step silently drops it. Historically it was restored by hand (dashboard
-toggle or curl) and drifted off again later.
+The account-level subscription lives **on the Instagram account at
+Meta** (`POST /me/subscribed_apps`), not in our code or database — and
+any partial re-subscribe **replaces** the whole field list, so
+reconnecting the account or re-running a setup step silently drops
+fields. Historically it was restored by hand and drifted again later.
 
 That manual step is gone. `messaging-accounts.service.
 ensureInstagramEchoSubscriptions()` reads each active IG account's
 `subscribed_fields` and, when anything required is missing
-(`messages`, `message_echoes`, `message_reactions`, `messaging_seen`),
-re-subscribes with the **union** (never dropping extra fields), verifies
-it stuck, audits it (`messaging_accounts.echo_subscription_healed`), and
-notifies the CEO that it drifted (max one notification per brand per
-day). It runs:
+(`messages` — DMs + echoes, `message_reactions` — ❤️ badges,
+`messaging_seen` — read ticks), re-subscribes with the **union** (never
+dropping extra fields), verifies it stuck, audits it
+(`messaging_accounts.echo_subscription_healed`), and notifies the CEO
+that it drifted (max one notification per brand per day). It runs:
 
 - **hourly** (`ig-echo-watchdog` cron, :40) — worst case the sync is
   down for one hour, and you're told it happened;
@@ -103,6 +120,18 @@ day). It runs:
 If the re-subscribe itself fails (revoked token, permission not granted,
 app not Live), the CEO gets an **urgent** notification instead — that
 situation needs Meta Dashboard attention and cannot be fixed from code.
+
+## The constraint that silently killed every echo (fixed in 000361)
+
+Post-mortem for the record: echo bubbles are deliberately **senderless**
+(no Hub user to credit; crediting the contact would flip the bubble's
+meaning), but `message_sender_check` (000004) only allowed a senderless
+row for `message_type = 'system'` — so every echo that DID arrive was
+rejected at the final INSERT, on every retry, invisibly. Migration
+000361 allows a senderless row when `metadata.via` is stamped (server-
+side only). If `npm run diag:instagram-echoes` ever shows failed rows
+with `violates check constraint "message_sender_check"`, that migration
+hasn't been applied.
 
 ## Failed ingests are recoverable now
 
@@ -118,18 +147,19 @@ no longer eat an echo.
 
 ## The Meta Dashboard setting this depends on (the "works locally, fails live" gotcha)
 
-Echo webhooks are only delivered if the Meta app is **subscribed to the
-`message_echoes` webhook field** for Instagram. The account-level part
-of this is now enforced automatically (see the watchdog above); the
-app-level part below is one-time Meta Dashboard configuration. If
-app-side replies still don't appear in the Hub:
+Echo webhooks ride the **`messages`** field — they are only delivered if
+the app (Dashboard) and the account (`subscribed_apps`) are subscribed
+to it. The account-level part is now enforced automatically (see the
+watchdog above); the app-level part below is one-time Meta Dashboard
+configuration. If app-side replies still don't appear in the Hub:
 
 1. [developers.facebook.com](https://developers.facebook.com) → your app →
    **Webhooks** (or **Instagram → API setup with Instagram login**) →
    product **Instagram**.
-2. In the webhook subscriptions list, make sure **`messages`** *and*
-   **`message_echoes`** are subscribed (add `message_reactions` /
-   `messaging_seen` as already in use).
+2. In the webhook subscriptions list, make sure **`messages`** is
+   subscribed (plus `message_reactions` / `messaging_seen` for badges
+   and ticks). Do **not** look for a `message_echoes` toggle — it does
+   not exist for Instagram.
 3. No server change is needed — echoes ride the same signed
    `entry.messaging[]` payload the existing endpoint already verifies.
 
@@ -158,9 +188,10 @@ brand's IG token:
 # what the account is currently subscribed to:
 curl "https://graph.instagram.com/v21.0/me/subscribed_apps?access_token=$IG_TOKEN"
 
-# add message_echoes (repeat the full list — it replaces, not appends):
+# re-subscribe (repeat the FULL list — it replaces, not appends; never
+# include message_echoes — invalid on Instagram, can reject the update):
 curl -X POST "https://graph.instagram.com/v21.0/me/subscribed_apps" \
-  -d "subscribed_fields=messages,message_echoes,message_reactions,messaging_seen" \
+  -d "subscribed_fields=messages,message_reactions,messaging_seen" \
   -d "access_token=$IG_TOKEN"
 ```
 
@@ -212,6 +243,7 @@ repeated, or raise the pacing with `GAP_MS=1000`.
 | Echo parsing + ingest routing | `src/modules/smartcomm/smartcomm.subscribers.js` |
 | Recorder + unread watermark | `src/modules/smartcomm/smartcomm.service.js` (`recordAgentReplyFromPlatform`), `smartcomm.repo.js` |
 | Migration | `migrations/000348_shared_smartcomm_external_read.sql` |
+| Senderless echo bubbles allowed (DB constraint) | `migrations/000361_shared_messages_platform_echo_sender.sql` |
 | Sequence-mid stamping | `src/jobs/processors/instagram-processor.js` |
 | Team-wide bell clearing | `src/services/notifications.service.js` (`markReadByReferenceAllUsers`) |
 | Bubble rendering ("via Instagram app") | `apps/admin/src/components/messaging/MessageBubble.tsx`, `MessageThread.tsx` |

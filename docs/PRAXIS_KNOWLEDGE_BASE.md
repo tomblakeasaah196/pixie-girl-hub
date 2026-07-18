@@ -695,8 +695,10 @@ messages across WhatsApp, SMS, and other channels in one place.
 - *Instagram replies made in the app are missing / a thread's history has
   gaps?* An admin can recover recent history with
   `npm run backfill:instagram-history` on the server (Instagram only exposes
-  the ~20 most recent messages per conversation). Requires the Meta app's
-  Instagram webhook subscription to include **message_echoes** — see
+  the ~20 most recent messages per conversation), and diagnose live sync
+  with `npm run diag:instagram-echoes`. Echoes ride the **`messages`**
+  webhook subscription (there is no separate `message_echoes` field on
+  Instagram), which the hourly watchdog keeps subscribed — see
   `docs/INSTAGRAM_APP_REPLY_SYNC.md`.
 
 ### 4.25 Org & Workflow

@@ -399,8 +399,8 @@ async function startWorkers() {
   // brands' Instagram inboxes never silently disconnect.
   scheduleCron("ig-token-refresh", "20 3 * * *", runIgTokenRefreshSweep);
   // Hourly: re-assert each IG account's webhook-field subscription
-  // (message_echoes!) — it lives on Meta's side and drifts; when it does,
-  // replies sent from the Instagram app silently stop syncing.
+  // (messages/reactions/seen) — it lives on Meta's side and drifts; when
+  // it does, DMs, app-reply echoes, ticks or badges silently stop syncing.
   scheduleCron("ig-echo-watchdog", "40 * * * *", runIgEchoSubscriptionWatchdog);
   scheduleCron("soft-fk-reconciliation", "0 3 * * *", runSoftFkReconciliation);
   // Daily 03:30 — purge catalogue Trash past its 15-day grace window.

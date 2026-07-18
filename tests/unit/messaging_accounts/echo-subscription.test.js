@@ -1,15 +1,17 @@
 "use strict";
 
 /**
- * The Instagram echo-subscription watchdog. The `message_echoes` webhook
- * field is the ONLY signal Meta sends when a staffer replies from the
- * Instagram app; it is subscribed on the professional account itself and
- * has repeatedly drifted off (re-subscribes REPLACE the field list).
- * These tests pin the self-heal contract:
+ * The Instagram webhook-subscription watchdog. On Instagram, app-reply
+ * echoes ride the `messages` field (is_echo — there is NO standalone
+ * message_echoes field; that's Messenger-only), and the account-level
+ * subscription (messages/reactions/seen) drifts because re-subscribes
+ * REPLACE the field list. These tests pin the self-heal contract:
  *
  *   - a complete subscription is left untouched (no POST)
  *   - a drifted one is repaired with the UNION of fields, audited, and
  *     the CEO is notified (once per day, not per hourly tick)
+ *   - message_echoes is NEVER posted (invalid on Instagram — it can make
+ *     Meta reject the whole update)
  *   - one account's failure never blocks the other brand's check
  */
 
@@ -48,12 +50,7 @@ const notifications = require("../../../src/services/notifications.service");
 const { audit } = require("../../../src/middleware/audit");
 const service = require("../../../src/modules/messaging_accounts/messaging-accounts.service");
 
-const FULL_FIELDS = [
-  "messages",
-  "message_echoes",
-  "message_reactions",
-  "messaging_seen",
-];
+const FULL_FIELDS = ["messages", "message_reactions", "messaging_seen"];
 
 function subscribedAppsResponse(fields) {
   return { data: { data: [{ subscribed_fields: fields }] } };
@@ -124,6 +121,9 @@ describe("ensureInstagramEchoSubscriptions", () => {
     expect(sent).toEqual(
       expect.arrayContaining([...FULL_FIELDS, "messaging_postbacks"]),
     );
+    // Messenger-only field — POSTing it on Instagram can make Meta reject
+    // the whole subscription update.
+    expect(sent).not.toContain("message_echoes");
     expect(opts.headers.Authorization).toBe("Bearer IGAA-flh");
     expect(audit).toHaveBeenCalledWith(
       expect.objectContaining({

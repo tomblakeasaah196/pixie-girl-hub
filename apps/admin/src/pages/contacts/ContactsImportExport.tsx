@@ -49,8 +49,13 @@ const KIND_ITEMS: {
  */
 export function ContactsImportExport({
   onImported,
+  variant = "toolbar",
 }: {
   onImported?: () => void;
+  /** "toolbar" = inline dropdown buttons (default). "sheet" = flat tiles with
+   *  an inline Clients/Suppliers chooser, for use inside the Add bottom-sheet
+   *  where absolute dropdowns would be clipped. */
+  variant?: "toolbar" | "sheet";
 }) {
   const isCeo = useAuthStore((s) => s.user?.isCeo ?? false);
 
@@ -63,6 +68,10 @@ export function ContactsImportExport({
   const [result, setResult] = useState<ContactImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  // Sheet variant: which tool is awaiting a Clients/Suppliers choice.
+  const [pendingTool, setPendingTool] = useState<null | "template" | "import">(
+    null,
+  );
   const { progress, run } = useUploadProgress();
 
   const downloadTemplate = async (kind: ContactImportKind) => {
@@ -102,58 +111,132 @@ export function ContactsImportExport({
     }
   };
 
-  return (
-    <>
-      <div className="inline-flex items-center gap-1.5">
-        <MenuButton
+  const hiddenInput = (
+    <input
+      ref={fileRef}
+      type="file"
+      accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      hidden
+      onChange={onPick}
+    />
+  );
+
+  // Sheet variant — flat tiles (Import · Export · Template) with an inline
+  // Clients/Suppliers chooser, so it drops cleanly into the Add bottom-sheet.
+  const sheetControls = (
+    <div>
+      <div className="grid grid-cols-3 gap-2">
+        <SheetTile
+          icon={<Upload className="w-[18px] h-[18px]" />}
+          label="Import"
+          active={pendingTool === "import"}
+          busy={busy === "import"}
+          disabled={busy !== null}
+          onClick={() =>
+            setPendingTool((t) => (t === "import" ? null : "import"))
+          }
+        />
+        {isCeo && (
+          <SheetTile
+            icon={<Download className="w-[18px] h-[18px]" />}
+            label="Export"
+            disabled={busy !== null}
+            onClick={() => {
+              setPendingTool(null);
+              setExportOpen(true);
+            }}
+          />
+        )}
+        <SheetTile
+          icon={<FileSpreadsheet className="w-[18px] h-[18px]" />}
           label="Template"
-          icon={<FileSpreadsheet className="w-3.5 h-3.5" />}
-          variant="ghost"
+          active={pendingTool === "template"}
           busy={busy === "template"}
           disabled={busy !== null}
-          items={KIND_ITEMS.map((it) => ({
-            key: it.kind,
-            label: it.label,
-            icon: <it.icon className="w-4 h-4" />,
-            onSelect: () => downloadTemplate(it.kind),
-          }))}
-        />
-
-        <MenuButton
-          label="Import"
-          icon={<Upload className="w-3.5 h-3.5" />}
-          variant="secondary"
-          busy={busy === "import"}
-          busyLabel="Importing…"
-          disabled={busy !== null}
-          items={KIND_ITEMS.map((it) => ({
-            key: it.kind,
-            label: it.label,
-            icon: <it.icon className="w-4 h-4" />,
-            onSelect: () => startImport(it.kind),
-          }))}
-        />
-
-        {isCeo && (
-          <Button
-            size="sm"
-            variant="ghost"
-            icon={<Download className="w-3.5 h-3.5" />}
-            disabled={busy !== null}
-            onClick={() => setExportOpen(true)}
-          >
-            Export
-          </Button>
-        )}
-
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-          hidden
-          onChange={onPick}
+          onClick={() =>
+            setPendingTool((t) => (t === "template" ? null : "template"))
+          }
         />
       </div>
+
+      {pendingTool && (
+        <div className="mt-2.5 flex items-center gap-2 p-2.5 rounded-[11px] bg-text-primary/[0.04] border hairline">
+          <span className="micro flex-1">
+            {pendingTool === "import"
+              ? "Import which records?"
+              : "Template for which records?"}
+          </span>
+          {KIND_ITEMS.map((it) => (
+            <button
+              key={it.kind}
+              type="button"
+              disabled={busy !== null}
+              onClick={() => {
+                const kind = it.kind;
+                setPendingTool(null);
+                if (pendingTool === "template") downloadTemplate(kind);
+                else startImport(kind);
+              }}
+              className="inline-flex items-center gap-1.5 h-[30px] px-3 rounded-[9px] text-[12px] font-semibold bg-text-primary/[0.05] border border-line text-text-primary hover:bg-text-primary/[0.1] transition-colors disabled:opacity-50"
+            >
+              <it.icon className="w-3.5 h-3.5" />
+              {it.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const toolbarControls = (
+    <div className="inline-flex items-center gap-1.5">
+      <MenuButton
+        label="Template"
+        icon={<FileSpreadsheet className="w-3.5 h-3.5" />}
+        variant="ghost"
+        busy={busy === "template"}
+        disabled={busy !== null}
+        items={KIND_ITEMS.map((it) => ({
+          key: it.kind,
+          label: it.label,
+          icon: <it.icon className="w-4 h-4" />,
+          onSelect: () => downloadTemplate(it.kind),
+        }))}
+      />
+
+      <MenuButton
+        label="Import"
+        icon={<Upload className="w-3.5 h-3.5" />}
+        variant="secondary"
+        busy={busy === "import"}
+        busyLabel="Importing…"
+        disabled={busy !== null}
+        items={KIND_ITEMS.map((it) => ({
+          key: it.kind,
+          label: it.label,
+          icon: <it.icon className="w-4 h-4" />,
+          onSelect: () => startImport(it.kind),
+        }))}
+      />
+
+      {isCeo && (
+        <Button
+          size="sm"
+          variant="ghost"
+          icon={<Download className="w-3.5 h-3.5" />}
+          disabled={busy !== null}
+          onClick={() => setExportOpen(true)}
+        >
+          Export
+        </Button>
+      )}
+    </div>
+  );
+
+  return (
+    <>
+      {variant === "sheet" ? sheetControls : toolbarControls}
+      {hiddenInput}
 
       {busy === "import" && (
         <UploadProgress value={progress} label="Importing…" className="mt-2" />
@@ -359,6 +442,40 @@ function ImportResultModal({
         </div>
       )}
     </Modal>
+  );
+}
+
+// ── Sheet tile (flat, no dropdown — safe inside an overflow-clipped sheet) ──
+function SheetTile({
+  icon,
+  label,
+  onClick,
+  active,
+  busy,
+  disabled,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  active?: boolean;
+  busy?: boolean;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "flex flex-col items-center justify-center gap-2 py-3.5 rounded-[14px] border transition-colors disabled:opacity-50",
+        active
+          ? "bg-accent-deep/[0.15] border-accent-deep/50 text-accent-glow"
+          : "bg-text-primary/[0.03] border-line text-text-muted hover:bg-text-primary/[0.06] hover:text-text-primary",
+      )}
+    >
+      <span className={busy ? "animate-pulse" : undefined}>{icon}</span>
+      <span className="text-[12px] font-semibold">{busy ? "…" : label}</span>
+    </button>
   );
 }
 

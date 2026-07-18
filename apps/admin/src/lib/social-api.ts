@@ -85,7 +85,9 @@ export interface SocialPost {
   post_id: string;
   business: string;
   account_id: string;
-  platform: SocialPlatform;
+  // Any key from the platform registry — quick-logged posts may belong to a
+  // platform an admin added from the UI, not just the canonical four.
+  platform: string;
   post_type: PostType;
   caption: string | null;
   hashtags: string[];
@@ -149,7 +151,7 @@ export interface SocialTarget {
 }
 
 export interface PerformanceRow {
-  platform: SocialPlatform;
+  platform: string;
   posted_count: number;
   pending_count: number;
   flagged_count: number;
@@ -432,7 +434,8 @@ export function useCreatePost() {
 // ── Quick-log (the simplified calendar's one write) ──────────
 export interface QuickLogInput {
   external_url: string;
-  platform?: SocialPlatform;
+  /** Registry platform key (not just the canonical four). */
+  platform?: string;
   account_id?: string;
   /** ISO datetime of the calendar day the post belongs to. */
   published_at?: string;
@@ -640,7 +643,7 @@ export const ALL_PLATFORMS: SocialPlatform[] = [
 ];
 
 /** Instagram is the brand's non-negotiable channel; the rest follow. This is
- *  the display order everywhere in the simplified Studio. */
+ *  the display order for the canonical four — registry extras sort after. */
 export const PLATFORM_ORDER: SocialPlatform[] = [
   "instagram",
   "facebook",
@@ -648,8 +651,9 @@ export const PLATFORM_ORDER: SocialPlatform[] = [
   "youtube",
 ];
 
-/** Per-platform look: brand colour + a one/two-letter glyph for calendar dots
- *  and card badges. Kept in sync with the backend's HOST_PLATFORM mapping. */
+/** Canonical-four look fallback, used only when the platform registry hasn't
+ *  supplied a display name / brand colour / glyph for a platform (the
+ *  registry — joined onto every account row — is the source of truth). */
 export const PLATFORM_UI: Record<
   SocialPlatform,
   { label: string; glyph: string; color: string }
@@ -667,9 +671,9 @@ const HOST_PLATFORM: [RegExp, SocialPlatform][] = [
   [/(^|\.)(youtube\.com|youtu\.be)$/i, "youtube"],
 ];
 
-/** Which platform a pasted URL belongs to, or null if it isn't one of the four
- *  the brand posts to. Mirrors social-proof.service.js#detectPlatform so the UI
- *  can label/validate a link before the round trip. */
+/** Which canonical platform a pasted URL belongs to, or null. Mirrors
+ *  social-proof.service.js#detectPlatform. Registry-added platforms are
+ *  matched by accountForUrl below instead. */
 export function detectPlatformFromUrl(url: string): SocialPlatform | null {
   let host: string;
   try {
@@ -678,6 +682,95 @@ export function detectPlatformFromUrl(url: string): SocialPlatform | null {
     return null;
   }
   for (const [re, platform] of HOST_PLATFORM) if (re.test(host)) return platform;
+  return null;
+}
+
+// ── Registry-driven presentation (accounts are the source of truth) ────
+
+export interface PlatformLook {
+  label: string;
+  glyph: string;
+  color: string;
+}
+
+const NEUTRAL_LOOK_COLOR = "#80706b";
+
+/** Per-platform look map built from the registered accounts (each row carries
+ *  its registry platform's display name / brand colour / glyph), with the
+ *  canonical-four constants as fallback for platforms with no account yet. */
+export function buildPlatformLooks(
+  accounts: SocialAccount[],
+): Map<string, PlatformLook> {
+  const m = new Map<string, PlatformLook>(Object.entries(PLATFORM_UI));
+  for (const a of accounts) {
+    if (a.platform_brand_color || !m.has(a.platform)) {
+      m.set(a.platform, {
+        label: a.platform_display_name || a.platform,
+        color: a.platform_brand_color || NEUTRAL_LOOK_COLOR,
+        glyph:
+          a.platform_icon_glyph ||
+          (a.platform_display_name || a.platform).slice(0, 2).toUpperCase(),
+      });
+    }
+  }
+  return m;
+}
+
+export function lookFor(
+  looks: Map<string, PlatformLook>,
+  platform: string,
+): PlatformLook {
+  return (
+    looks.get(platform) ?? {
+      label: platform,
+      color: NEUTRAL_LOOK_COLOR,
+      glyph: platform.slice(0, 2).toUpperCase(),
+    }
+  );
+}
+
+/** Distinct platforms with an active registered handle, canonical four first
+ *  (Instagram leading), registry extras after alphabetically. This — not a
+ *  hardcoded list — is what the Calendar/Performance surfaces render. */
+export function registeredPlatforms(accounts: SocialAccount[]): string[] {
+  const active = new Set(
+    accounts.filter((a) => a.is_active !== false).map((a) => a.platform),
+  );
+  const canonical = PLATFORM_ORDER.filter((p) => active.has(p));
+  const extras = [...active]
+    .filter((p) => !(PLATFORM_ORDER as string[]).includes(p))
+    .sort();
+  return [...canonical, ...extras];
+}
+
+/** Resolve a pasted URL to the registered account it belongs to: canonical
+ *  host detection first, then a host match against each account's profile_url
+ *  (which is how a registry-added platform like Pinterest resolves). Mirrors
+ *  the backend's quickLog resolution so the composer can preview the outcome. */
+export function accountForUrl(
+  url: string,
+  accounts: SocialAccount[],
+): SocialAccount | null {
+  const active = accounts.filter((a) => a.is_active !== false);
+  const canonical = detectPlatformFromUrl(url);
+  if (canonical) return active.find((a) => a.platform === canonical) ?? null;
+  let host: string;
+  try {
+    host = new URL(url.trim()).hostname.replace(/^www\./i, "").toLowerCase();
+  } catch {
+    return null;
+  }
+  for (const a of active) {
+    if (!a.profile_url) continue;
+    try {
+      const accountHost = new URL(a.profile_url).hostname
+        .replace(/^www\./i, "")
+        .toLowerCase();
+      if (host === accountHost || host.endsWith(`.${accountHost}`)) return a;
+    } catch {
+      /* malformed stored profile_url — skip */
+    }
+  }
   return null;
 }
 

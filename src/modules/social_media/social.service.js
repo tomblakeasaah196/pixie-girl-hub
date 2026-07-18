@@ -621,19 +621,51 @@ async function submitProof({
   return updated;
 }
 
+/** Fallback platform detection for non-canonical registered platforms: does
+ *  the pasted link's host belong to any registered account's profile_url?
+ *  This is what lets a platform added from the UI (Pinterest, X, …) work in
+ *  the quick-log without a code change. Never throws — null on no match. */
+async function matchPlatformByAccountHost({ brand, url }) {
+  let host;
+  try {
+    host = new URL(url).hostname.replace(/^www\./i, "").toLowerCase();
+  } catch {
+    return null;
+  }
+  const accounts = await repo.listAccounts({ brand });
+  for (const a of accounts) {
+    if (a.is_active === false || !a.profile_url) continue;
+    try {
+      const accountHost = new URL(a.profile_url).hostname
+        .replace(/^www\./i, "")
+        .toLowerCase();
+      if (host === accountHost || host.endsWith(`.${accountHost}`)) {
+        return a.platform;
+      }
+    } catch {
+      /* malformed stored profile_url — skip */
+    }
+  }
+  return null;
+}
+
 /**
  * Quick-log (simplified Social Studio): the calendar's one and only write.
  * Paste the link to something already posted natively; we detect the platform
- * from the URL, resolve the brand's account for it, and store it as a proven
- * `posted` row — oEmbed enriched (best-effort), no content, no screenshot, no
- * plan/approval. The whole friction stack the old Board carried is gone.
+ * from the URL (canonical hosts first, then any registered account's host),
+ * resolve the brand's account for it, and store it as a proven `posted` row —
+ * oEmbed enriched (best-effort), no content, no screenshot, no plan/approval.
+ * The whole friction stack the old Board carried is gone.
  */
 async function quickLog({ brand, user, request_id, input }) {
-  const platform = input.platform || proof.detectPlatform(input.external_url);
+  const platform =
+    input.platform ||
+    proof.detectPlatform(input.external_url) ||
+    (await matchPlatformByAccountHost({ brand, url: input.external_url }));
   if (!platform) {
     throw new AppError(
       "UNSUPPORTED_LINK",
-      "That link isn't from Instagram, Facebook, TikTok or YouTube. Paste the direct post link.",
+      "That link doesn't match any registered platform — add the account's handle under Social Studio → Account first.",
       422,
     );
   }

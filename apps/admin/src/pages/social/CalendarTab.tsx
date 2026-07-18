@@ -3,6 +3,10 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Card, Skeleton } from "@/components/ui/primitives";
 import {
   usePosts,
+  useSocialAccounts,
+  buildPlatformLooks,
+  registeredPlatforms,
+  lookFor,
   monthGrid,
   monthWindow,
   dayKey,
@@ -11,8 +15,6 @@ import {
   expectedPostsInMonth,
   MONTH_NAMES,
   DAY_NAMES,
-  PLATFORM_UI,
-  PLATFORM_ORDER,
   type SocialPost,
 } from "@/lib/social-api";
 import { DaySheet } from "./DaySheet";
@@ -25,6 +27,18 @@ export function CalendarTab() {
   const month = cursor.getMonth();
   const { from, to } = useMemo(() => monthWindow(year, month), [year, month]);
   const postsQ = usePosts({ status: "posted", from, to, page_size: 500 });
+  const accountsQ = useSocialAccounts();
+  const looks = useMemo(
+    () => buildPlatformLooks(accountsQ.data ?? []),
+    [accountsQ.data],
+  );
+  // Expected count scales with how many handles are registered — the cadence
+  // is per platform (6/week each), so 3 registered platforms in a 27-workday
+  // month expect 81, not a hardcoded 4-platform number.
+  const platformCount = Math.max(
+    1,
+    registeredPlatforms(accountsQ.data ?? []).length,
+  );
 
   const weeks = useMemo(() => monthGrid(year, month), [year, month]);
   const byDay = useMemo(() => {
@@ -45,7 +59,7 @@ export function CalendarTab() {
     for (const [k, arr] of byDay) if (k.startsWith(`${year}-${String(month + 1).padStart(2, "0")}`)) n += arr.length;
     return n;
   }, [byDay, year, month]);
-  const expected = expectedPostsInMonth(year, month);
+  const expected = expectedPostsInMonth(year, month) * platformCount;
   const pct = Math.min(100, Math.round((loggedThisMonth / Math.max(1, expected)) * 100));
 
   const shift = (n: number) => setCursor(new Date(year, month + n, 1));
@@ -139,7 +153,7 @@ export function CalendarTab() {
                 const inMonth = d.getMonth() === month;
                 const dayPosts = byDay.get(dayKey(d)) ?? [];
                 const today = sameDay(d, new Date());
-                const platforms = PLATFORM_ORDER.filter((p) => dayPosts.some((x) => x.platform === p));
+                const platforms = [...new Set(dayPosts.map((x) => x.platform))];
                 return (
                   <button
                     key={idx}
@@ -170,7 +184,7 @@ export function CalendarTab() {
                             <span
                               key={p}
                               className="h-[5px] w-[5px] rounded-full"
-                              style={{ background: PLATFORM_UI[p].color }}
+                              style={{ background: lookFor(looks, p).color }}
                             />
                           ))}
                         </div>

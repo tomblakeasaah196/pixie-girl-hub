@@ -107,6 +107,15 @@ function buildCsp() {
       "'self'",
       "https://www.youtube.com",
       "https://www.google.com",
+      // Social Studio day-drawer embeds — each platform's own iframe endpoint
+      // (instagram.com/…/embed/captioned/, facebook.com/plugins/*.php,
+      // tiktok.com/player/v1/…). Plain sandboxed cross-origin frames; no
+      // third-party <script> ever enters our page, so script-src stays
+      // strict — same trust model as the YouTube embed above and the
+      // storefront journal's Instagram embeds (apps/storefront content-blocks).
+      "https://www.instagram.com",
+      "https://www.facebook.com",
+      "https://www.tiktok.com",
       ...extra(config.CSP_EXTRA_FRAME_SRC),
     ],
     workerSrc: ["'self'", "blob:"],

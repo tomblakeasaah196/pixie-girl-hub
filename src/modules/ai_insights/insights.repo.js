@@ -590,7 +590,6 @@ module.exports = {
   overdueTasks,
   pendingStylistPayouts,
   stuckCampaigns,
-  wastefulAdCampaigns,
   unansweredThreads,
   failedSocialPosts,
   failedStorefrontPayments,
@@ -714,23 +713,6 @@ async function stuckCampaigns({ brand, limit = 500 }) {
       WHERE (status = 'live' AND ends_at < now())
          OR (status = 'scheduled' AND starts_at < now())
       ORDER BY ends_at ASC LIMIT $1`,
-    [limit],
-  );
-  return rows;
-}
-// Marketing: active ad campaigns spending with zero conversions (last 7 days).
-async function wastefulAdCampaigns({ limit = 500 }) {
-  const { rows } = await query(
-    `SELECT c.ad_campaign_id, c.name, c.business,
-            SUM(s.spend_ngn)::numeric(14,2) AS spend_ngn,
-            SUM(s.conversions)::int AS conversions
-       FROM shared.ad_campaigns c
-       JOIN shared.ad_spend_daily s ON s.ad_campaign_id = c.ad_campaign_id
-      WHERE c.status = 'active'
-        AND s.metric_date >= CURRENT_DATE - 7
-      GROUP BY c.ad_campaign_id, c.name, c.business
-     HAVING SUM(s.conversions) = 0 AND SUM(s.spend_ngn) > 5000
-      ORDER BY SUM(s.spend_ngn) DESC LIMIT $1`,
     [limit],
   );
   return rows;

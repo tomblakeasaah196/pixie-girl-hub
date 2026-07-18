@@ -363,7 +363,7 @@ export const MODULES: AppModule[] = [
     key: "marketing",
     permission: "email_campaigns",
     label: "Marketing",
-    description: "Email & ads",
+    description: "Email campaigns, templates & audiences",
     group: "grow",
     route: "/marketing",
     icon: Mail,

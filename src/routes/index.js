@@ -51,7 +51,6 @@ const attendanceRouter = require("../shared/attendance/attendance.routes");
 const contactsRouter = require("../shared/contacts/contacts.routes");
 const documentsRouter = require("../shared/documents/documents.routes");
 const socialMediaRouter = require("../modules/social_media/social.routes");
-const marketingRouter = require("../modules/marketing/marketing.routes");
 const emailCampaignsRouter = require("../modules/email_campaigns/email-campaigns.routes");
 const smartcommRouter = require("../modules/smartcomm/smartcomm.routes");
 const calendarRouter = require("../shared/calendar/calendar.routes");
@@ -398,7 +397,6 @@ function mountRoutes(app) {
     ["/contacts", contactsRouter],
     ["/documents", documentsRouter],
     ["/social", socialMediaRouter],
-    ["/marketing", marketingRouter],
     ["/email-campaigns", emailCampaignsRouter],
     ["/smartcomm", smartcommRouter],
     ["/customer-onboarding", onboardingAdminRouter],

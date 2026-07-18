@@ -12,7 +12,11 @@
 const repo = require("./email-campaigns.repo");
 const events = require("./email-campaigns.events");
 const email = require("../../services/email.service");
+const crypto = require("crypto");
 const render = require("./email-render");
+const theme = require("../../services/email-theme");
+const storage = require("../../services/storage.service");
+const { compressUpload } = require("../../services/media-compression.service");
 const { audit } = require("../../middleware/audit");
 const { transaction, query } = require("../../config/database");
 const { logger } = require("../../config/logger");
@@ -161,6 +165,7 @@ async function sendCampaign({ brand, user, request_id, id }) {
   // and the campaign-level merge data (sale discount/link/deadline) once, then
   // personalise + send per recipient.
   const brandTokens = await render.resolveBrandTokens(brand);
+  const frame = await render.resolveBrandFrame(brand);
   const campaignTokens = render.resolveCampaignTokens(campaign);
 
   let sent = 0;
@@ -172,6 +177,7 @@ async function sendCampaign({ brand, user, request_id, id }) {
         campaignTokens,
         recipient: r,
         brand,
+        frame,
       });
       await email.send({
         to: r.email,
@@ -533,6 +539,140 @@ async function deleteSegment({ brand, user, request_id, id }) {
     request_id,
   });
 }
+/** A stand-in recipient for previews when a campaign has no audience yet. */
+const SAMPLE_RECIPIENT = {
+  recipient_id: "00000000-0000-0000-0000-000000000000",
+  contact_name_snapshot: "Adaeze Okafor",
+  email: "adaeze@example.com",
+};
+
+/**
+ * Render the exact mail a campaign sends — same pipeline as the live send
+ * (brand frame + tokens, sale merge data, personalisation) but with no
+ * tracking pixel. Uses the first real recipient when one exists so a sent
+ * campaign previews precisely what that customer received.
+ */
+async function previewCampaign({ brand, id }) {
+  const campaign = await repo.getCampaign({ brand, id });
+  if (!campaign) throw new NotFoundError("Campaign");
+  if (!campaign.default_template_id)
+    throw new AppError(
+      "NO_TEMPLATE",
+      "Pick a template for this campaign to preview the mail",
+      422,
+    );
+  const template = await repo.getTemplate({
+    brand,
+    id: campaign.default_template_id,
+  });
+  if (!template) throw new NotFoundError("Template");
+
+  const brandTokens = await render.resolveBrandTokens(brand);
+  const frame = await render.resolveBrandFrame(brand);
+  const campaignTokens = render.resolveCampaignTokens(campaign);
+  const [first] = await repo.listRecipients({
+    brand,
+    campaign_id: id,
+    page: 1,
+    page_size: 1,
+  });
+  const recipient = first || SAMPLE_RECIPIENT;
+
+  const { subject, html } = render.buildEmail({
+    template,
+    brandTokens,
+    campaignTokens,
+    recipient,
+    brand,
+    frame,
+    tracking: false,
+  });
+  return {
+    campaign_id: id,
+    subject,
+    html,
+    sample_recipient: {
+      name: recipient.contact_name_snapshot || "",
+      email: recipient.email || "",
+      is_real: Boolean(first),
+    },
+  };
+}
+
+// ── Brand frame (header/footer around every campaign mail) ─
+/** The brand's email frame config with defaults applied. */
+async function getFrame({ brand }) {
+  const frame = await render.resolveBrandFrame(brand);
+  return { frame, defaults: theme.DEFAULT_FRAME };
+}
+
+async function updateFrame({ brand, user, request_id, patch }) {
+  const current = await render.resolveBrandFrame(brand);
+  const frame = theme.resolveFrame({ ...current, ...patch });
+  await repo.saveEmailFrame({ brand, frame });
+  render.invalidateBrand(brand);
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "email_campaigns.frame.update",
+    target_type: "business_config",
+    target_id: brand,
+    after: frame,
+    request_id,
+  });
+  return { frame, defaults: theme.DEFAULT_FRAME };
+}
+
+/**
+ * The framed document shell for the mail editor's live preview: the real
+ * header/footer with brand tokens resolved and a `<!--PGH_BODY-->` marker
+ * where the editor injects what's being written. Zero drift — it is the same
+ * wrap the send pipeline applies.
+ */
+async function frameShell({ brand }) {
+  const brandTokens = await render.resolveBrandTokens(brand);
+  const frame = await render.resolveBrandFrame(brand);
+  const shell = render.applyFrame({ body: "<!--PGH_BODY-->", frame });
+  const tokens = {
+    ...brandTokens,
+    customer_name: SAMPLE_RECIPIENT.contact_name_snapshot,
+    first_name: SAMPLE_RECIPIENT.contact_name_snapshot.split(" ")[0],
+    email: SAMPLE_RECIPIENT.email,
+    unsubscribe_url: "#",
+  };
+  return { shell_html: render.renderStr(shell, tokens), tokens };
+}
+
+/** Store an image dropped into the mail editor; returns its public URL. */
+async function uploadImage({ brand, file }) {
+  if (!file || !file.buffer || !file.buffer.length) {
+    throw new AppError("NO_FILE", "No image was uploaded", 400);
+  }
+  const shrunk = await compressUpload(file);
+  if (!/^image\//.test(shrunk.mime_type || "")) {
+    throw new AppError("BAD_FILE_TYPE", "Only image files are allowed", 400);
+  }
+  const ext =
+    String(shrunk.filename || "")
+      .split(".")
+      .pop()
+      ?.toLowerCase()
+      .replace(/[^a-z0-9]/g, "")
+      .slice(0, 5) || "jpg";
+  const key = `email/${brand}/${crypto.randomBytes(12).toString("hex")}.${ext}`;
+  const stored = await storage.put(shrunk.buffer, {
+    key,
+    contentType: shrunk.mime_type,
+  });
+  return { url: stored.public_url };
+}
+
+/** Count + sample an ad-hoc audience filter (segment modal live preview). */
+async function previewAudience({ brand, filter }) {
+  const contacts = await repo.emailableContacts({ brand, filter: filter || {} });
+  return { count: contacts.length, sample: contacts.slice(0, 20) };
+}
+
 /** Preview the audience a segment resolves to (emailable contacts). */
 async function previewSegment({ brand, id }) {
   const seg = await repo.getSegment({ brand, id });
@@ -696,6 +836,12 @@ module.exports = {
   saveSegment,
   deleteSegment,
   previewSegment,
+  previewAudience,
+  previewCampaign,
+  uploadImage,
+  getFrame,
+  updateFrame,
+  frameShell,
   buildAudienceFromSegment,
   handlePixelOpen,
   handleClick,

@@ -179,6 +179,35 @@ async function previewSegment(req, res) {
     data: await service.previewSegment({ brand: req.brand, id: req.params.id }),
   });
 }
+async function previewAudience(req, res) {
+  res.json({
+    data: await service.previewAudience({
+      brand: req.brand,
+      filter: req.body.filter,
+    }),
+  });
+}
+async function previewCampaign(req, res) {
+  res.json({
+    data: await service.previewCampaign({ brand: req.brand, id: req.params.id }),
+  });
+}
+async function getFrame(req, res) {
+  res.json({ data: await service.getFrame({ brand: req.brand }) });
+}
+async function updateFrame(req, res) {
+  res.json({
+    data: await service.updateFrame({ ...base(req), patch: req.body }),
+  });
+}
+async function frameShell(req, res) {
+  res.json({ data: await service.frameShell({ brand: req.brand }) });
+}
+async function uploadImage(req, res) {
+  res.status(201).json({
+    data: await service.uploadImage({ brand: req.brand, file: req.file }),
+  });
+}
 async function buildAudienceFromSegment(req, res) {
   res.json({
     data: await service.buildAudienceFromSegment({
@@ -257,6 +286,12 @@ module.exports = {
   saveSegment,
   deleteSegment,
   previewSegment,
+  previewAudience,
+  previewCampaign,
+  getFrame,
+  updateFrame,
+  frameShell,
+  uploadImage,
   buildAudienceFromSegment,
   subscribeNewsletter,
   trackOpen,

@@ -761,13 +761,29 @@ content authoring — just proof of what went out and how it's doing.
 - *Add a social handle?* Social → **Account** → **Add handle**.
 
 ### 4.28 Marketing
-**What it's for.** Email campaigns and ads — reaching customers in bulk and
-tracking ad spend/performance.
+**What it's for.** Email campaigns — writing beautiful branded mails, choosing
+who receives them, sending/scheduling, and reading the results. (Ad analytics
+was retired; the module is email-only.)
 **Where.** Grow → **Marketing** · `/marketing`
-**Who can see it.** `email_campaigns` permission (ad analytics via `ad_analytics`).
+**Who can see it.** `email_campaigns` permission.
+**What's inside (tabs).** **Campaigns** (`?tab=campaigns`, the default) ·
+**Templates** (`?tab=templates`) · **Segments** (`?tab=segments`) ·
+**Design** (`?tab=design`).
 **Common tasks.**
-- *Send an email campaign?* Marketing (`/marketing`) → build and send.
-- *See ad performance?* Marketing → ad analytics.
+- *Send an email campaign?* Marketing → **Campaigns** → **New campaign** →
+  name it, pick a segment + template → build the audience → **Send now** (or
+  set a schedule).
+- *See the exact mail a past campaign sent?* Marketing → **Campaigns** → open
+  the campaign — the full mail is previewed at the top, with performance
+  (sent/opened/clicked) below it.
+- *Write or edit a mail template?* Marketing → **Templates** → **New template**
+  — a Gmail-style editor: write normally, use **Personalise** to greet each
+  customer by name, add images/emoji/brand colours. The logo header and
+  unsubscribe footer are added automatically.
+- *Choose who gets a campaign?* Marketing → **Segments** → **New segment** —
+  pick filters and watch the live count of who's in before saving.
+- *Change the header/footer on every mail?* Marketing → **Design** — tagline,
+  footer note, socials; it ships pre-styled so most brands never touch it.
 > Email **signatures** and sender setup live in Settings →
 > **Email Signatures** (`/settings/email-signatures`).
 

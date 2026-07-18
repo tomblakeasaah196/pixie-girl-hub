@@ -97,7 +97,6 @@ const MODULE_CATALOG = [
   { key: "sales_campaigns", group: "grow", label: "Sales Campaigns", description: "Flash sales & landing pages" },
   { key: "social", group: "grow", label: "Social", description: "Posts & reach" },
   { key: "email_campaigns", group: "grow", label: "Marketing", description: "Email & ad campaigns" },
-  { key: "ad_analytics", group: "grow", label: "Ad Analytics", description: "Ad spend & performance" },
   { key: "praxis_ai", group: "grow", label: "Praxis AI", description: "Your AI operator — acts only with your permissions" },
 
   // ── System ───────────────────────────────────────────────

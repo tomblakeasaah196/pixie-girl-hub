@@ -755,37 +755,6 @@ const DETECTORS = [
     },
   },
 
-  // ── Marketing: active ad spend with zero conversions (last 7 days) ──
-  {
-    module: "marketing",
-    detector: "ad_no_conversions",
-    scope: "shared",
-    async run() {
-      const rows = await repo.wastefulAdCampaigns({});
-      return rows.map((a) => {
-        const spend = money(a.spend_ngn || 0);
-        return {
-          module: "marketing",
-          detector: "ad_no_conversions",
-          business: a.business,
-          severity: spend.gte(money("50000")) ? "high" : "medium",
-          title: `Ad "${a.name}" — ₦${spend.toFixed(2)} spent, 0 conversions (7d)`,
-          body: null,
-          context: {
-            ad_campaign_id: a.ad_campaign_id,
-            spend_ngn: a.spend_ngn,
-            conversions: a.conversions,
-          },
-          amount_ngn: a.spend_ngn || null,
-          source_table: "ad_campaigns",
-          source_id: a.ad_campaign_id,
-          drill_route: "/marketing",
-          suppression_key: `ad_waste:${a.ad_campaign_id}`,
-        };
-      });
-    },
-  },
-
   // ── Smartcomm: customer thread unanswered past SLA ──
   {
     module: "smartcomm",

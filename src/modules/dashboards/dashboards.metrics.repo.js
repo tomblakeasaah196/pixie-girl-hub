@@ -542,14 +542,6 @@ async function marketingKpis({ brand, from, to }) {
       WHERE send_started_at BETWEEN $1 AND $2`,
     [from, to],
   );
-  const { rows: ads } = await query(
-    `SELECT COALESCE(SUM(s.spend_ngn),0)::text AS ad_spend,
-            COALESCE(ROUND(SUM(s.conversion_value_ngn) / NULLIF(SUM(s.spend_ngn),0) * 100, 1),0)::float8 AS roas
-       FROM shared.ad_spend_daily s
-       JOIN shared.ad_campaigns c ON c.ad_campaign_id = s.ad_campaign_id
-      WHERE c.business = $1 AND s.metric_date BETWEEN $2::timestamptz::date AND $3::timestamptz::date`,
-    [brand, from, to],
-  );
   const { rows: social } = await query(
     `SELECT count(DISTINCT p.post_id) FILTER (WHERE p.published_at BETWEEN $2 AND $3)::int AS posts_published,
             COALESCE(SUM(m.likes + m.comments + m.shares)
@@ -559,7 +551,7 @@ async function marketingKpis({ brand, from, to }) {
       WHERE p.business = $1`,
     [brand, from, to],
   );
-  return { ...email[0], ...ads[0], ...social[0] };
+  return { ...email[0], ...social[0] };
 }
 
 async function emailFunnel({ brand, from, to }) {
@@ -579,22 +571,6 @@ async function emailFunnel({ brand, from, to }) {
     { label: "Opened", value: r.opened },
     { label: "Clicked", value: r.clicked },
   ];
-}
-
-async function adSpendSeries({ brand, from, to, granularity }) {
-  const sql = seriesSql(
-    granularity,
-    `SELECT ${bucketExprDate(granularity, "s.metric_date")} AS bucket,
-            SUM(s.spend_ngn) AS spend, SUM(s.conversion_value_ngn) AS ad_return
-       FROM shared.ad_spend_daily s
-       JOIN shared.ad_campaigns c ON c.ad_campaign_id = s.ad_campaign_id
-      WHERE c.business = $3
-        AND s.metric_date BETWEEN $1::timestamptz::date AND $2::timestamptz::date
-      GROUP BY 1`,
-    `COALESCE(a.spend,0)::float8 AS spend, COALESCE(a.ad_return,0)::float8 AS ad_return`,
-  );
-  const { rows } = await query(sql, [from, to, brand]);
-  return rows;
 }
 
 async function engagementByPlatform({ brand, from, to }) {
@@ -1038,7 +1014,6 @@ module.exports = {
   // marketing
   marketingKpis,
   emailFunnel,
-  adSpendSeries,
   engagementByPlatform,
   salesCampaignPerformance,
   // ecommerce

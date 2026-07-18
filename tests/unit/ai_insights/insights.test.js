@@ -325,14 +325,6 @@ describe("registry — Wave-3 batch 4 detectors", () => {
     });
   });
 
-  test("marketing/ad_no_conversions: big spend → high, carries business", async () => {
-    repo.wastefulAdCampaigns.mockResolvedValue([
-      { ad_campaign_id: "ad-1", name: "IG Retarget", business: "faitlynhair", spend_ngn: "80000.00", conversions: 0 },
-    ]);
-    const [f] = await det("marketing", "ad_no_conversions").run();
-    expect(f).toMatchObject({ business: "faitlynhair", severity: "high", amount_ngn: "80000.00", suppression_key: "ad_waste:ad-1" });
-  });
-
   test("smartcomm/unanswered: >24h waiting → high", async () => {
     repo.unansweredThreads.mockResolvedValue([
       { channel_id: "ch-1", business: "pixiegirl", external_platform: "whatsapp", name: null, last_at: "x", hours_waiting: 30 },

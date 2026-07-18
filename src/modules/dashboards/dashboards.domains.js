@@ -224,21 +224,18 @@ const DOMAINS = [
   {
     key: "marketing",
     label: "Marketing",
-    description: "Organic reach, paid ads, attribution",
+    description: "Email campaigns & organic reach",
     gate: null,
     kpis: [
       { key: "emails_sent", label: "Emails Sent", format: "int" },
       { key: "open_rate", label: "Open Rate", format: "pct" },
       { key: "click_rate", label: "Click Rate", format: "pct" },
       { key: "email_revenue", label: "Email Revenue", format: "money" },
-      { key: "ad_spend", label: "Ad Spend", format: "money" },
-      { key: "roas", label: "ROAS", format: "pct" },
       { key: "posts_published", label: "Posts Published", format: "int" },
       { key: "social_engagement", label: "Engagement", format: "int" },
     ],
     charts: [
       { key: "email_funnel", label: "Email Funnel", type: "funnel" },
-      { key: "ad_spend_trend", label: "Ad Spend vs Return", type: "bar_line" },
       {
         key: "engagement_by_platform",
         label: "Engagement by Platform",
@@ -259,7 +256,6 @@ const DOMAINS = [
     ],
     details: {
       email_campaigns: { label: "Email Campaigns" },
-      ad_campaigns: { label: "Ad Campaigns" },
     },
   },
   {

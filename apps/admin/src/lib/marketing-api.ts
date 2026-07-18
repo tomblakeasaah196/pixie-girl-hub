@@ -1,12 +1,9 @@
 /**
- * Marketing & Email Campaigns — typed client + TanStack hooks.
+ * Marketing — Email Campaigns typed client + TanStack hooks.
  *
- * Two backends behind one Hub module ("Marketing & Email Campaigns"):
- *   • Ad Analytics — `src/modules/marketing` (mounted /api/v1/marketing,
- *     permission key `ad_analytics`): ad accounts, ad campaigns, attribution.
- *   • Email Campaigns — `src/modules/email_campaigns` (mounted
- *     /api/v1/email-campaigns, permission key `email_campaigns`): templates,
- *     segments, campaigns, A/B, stats.
+ * One backend: `src/modules/email_campaigns` (mounted /api/v1/email-campaigns,
+ * permission key `email_campaigns`) — campaigns, templates, segments, the
+ * brand frame (header/footer), A/B, stats and the exact-mail preview.
  *
  * The campaign builder always sends via email (the only delivery the backend
  * guarantees); WhatsApp is an optional secondary channel surfaced as a toggle.
@@ -29,188 +26,6 @@ export function useBrand() {
 interface Paginated<T> {
   data: T[];
   meta?: Record<string, unknown>;
-}
-
-// ════════════════════════════════════════════════════════════
-// Ad Analytics — types
-// ════════════════════════════════════════════════════════════
-
-export type AdPlatform = "google_ads" | "meta_ads";
-export type AdStatus = "draft" | "active" | "paused" | "ended" | "removed";
-
-export interface AdAccount {
-  ad_account_id: string;
-  business: string;
-  platform: AdPlatform;
-  external_account_id: string;
-  display_name: string;
-  currency: string;
-  created_at?: string;
-}
-
-export interface AdCampaign {
-  ad_campaign_id: string;
-  business: string;
-  ad_account_id: string;
-  platform: AdPlatform;
-  external_campaign_id: string | null;
-  name: string;
-  objective: string | null;
-  status: AdStatus;
-  budget_amount: number | null;
-  budget_currency: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface AttributionRow {
-  ad_campaign_id: string;
-  name: string;
-  platform: AdPlatform;
-  spend_ngn: number;
-  impressions: number;
-  clicks: number;
-  conversions: number;
-  revenue_ngn?: number;
-  orders?: number;
-  roas?: number;
-}
-
-export interface AttributionReport {
-  ads?: AttributionRow[];
-  sales?: Array<Record<string, unknown>>;
-  rows?: AttributionRow[];
-  totals?: Record<string, number>;
-  [k: string]: unknown;
-}
-
-// ── Ad accounts ─────────────────────────────────────────────
-
-export function useAdAccounts() {
-  const brand = useBrand();
-  return useQuery({
-    enabled: Boolean(brand),
-    queryKey: ["marketing", "ad-accounts", brand],
-    queryFn: () => api.get<AdAccount[]>("/marketing/ad-accounts"),
-    staleTime: 60_000,
-  });
-}
-
-export function useConnectAdAccount() {
-  const qc = useQueryClient();
-  const brand = useBrand();
-  return useMutation({
-    mutationFn: (input: {
-      platform: AdPlatform;
-      external_account_id: string;
-      display_name: string;
-      currency?: string;
-    }) => api.post<AdAccount>("/marketing/ad-accounts", input),
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: ["marketing", "ad-accounts", brand] }),
-  });
-}
-
-export function useRevokeAdAccount() {
-  const qc = useQueryClient();
-  const brand = useBrand();
-  return useMutation({
-    mutationFn: (id: string) => api.delete<void>(`/marketing/ad-accounts/${id}`),
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: ["marketing", "ad-accounts", brand] }),
-  });
-}
-
-// ── Ad campaigns ────────────────────────────────────────────
-
-export function useAdCampaigns(status?: string) {
-  const brand = useBrand();
-  const qs = new URLSearchParams();
-  if (status) qs.set("status", status);
-  qs.set("page_size", "100");
-  return useQuery({
-    enabled: Boolean(brand),
-    queryKey: ["marketing", "ad-campaigns", brand, qs.toString()],
-    // The list endpoint returns { data, page, page_size, total } (no `meta`),
-    // so the api client unwraps it to a bare array; normalise either shape.
-    queryFn: async () => {
-      const r = await api.get<AdCampaign[] | Paginated<AdCampaign>>(
-        `/marketing/ad-campaigns?${qs}`,
-      );
-      return Array.isArray(r) ? r : (r?.data ?? []);
-    },
-    staleTime: 30_000,
-    placeholderData: keepPreviousData,
-  });
-}
-
-export function useCreateAdCampaign() {
-  const qc = useQueryClient();
-  const brand = useBrand();
-  return useMutation({
-    mutationFn: (body: {
-      ad_account_id: string;
-      platform: AdPlatform;
-      name: string;
-      objective?: string;
-      status?: AdStatus;
-      budget_amount?: number;
-      budget_currency?: string;
-      external_campaign_id?: string;
-      push?: boolean;
-    }) => api.post<AdCampaign>("/marketing/ad-campaigns", body),
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: ["marketing", "ad-campaigns", brand] }),
-  });
-}
-
-export function useSetAdCampaignStatus() {
-  const qc = useQueryClient();
-  const brand = useBrand();
-  return useMutation({
-    mutationFn: (args: { id: string; status: AdStatus }) =>
-      api.post<AdCampaign>(`/marketing/ad-campaigns/${args.id}/status`, {
-        status: args.status,
-      }),
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: ["marketing", "ad-campaigns", brand] }),
-  });
-}
-
-export function useRecordSpend() {
-  const qc = useQueryClient();
-  const brand = useBrand();
-  return useMutation({
-    mutationFn: (args: {
-      id: string;
-      metric_date?: string;
-      spend_ngn?: number;
-      impressions?: number;
-      clicks?: number;
-      conversions?: number;
-      conversion_value_ngn?: number;
-    }) => {
-      const { id, ...body } = args;
-      return api.post<unknown>(`/marketing/ad-campaigns/${id}/spend`, body);
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["marketing", "ad-campaigns", brand] });
-      qc.invalidateQueries({ queryKey: ["marketing", "attribution", brand] });
-    },
-  });
-}
-
-export function useAttribution(from?: string, to?: string) {
-  const brand = useBrand();
-  const qs = new URLSearchParams();
-  if (from) qs.set("from", from);
-  if (to) qs.set("to", to);
-  return useQuery({
-    enabled: Boolean(brand),
-    queryKey: ["marketing", "attribution", brand, qs.toString()],
-    queryFn: () => api.get<AttributionReport>(`/marketing/attribution?${qs}`),
-    staleTime: 60_000,
-  });
 }
 
 // ════════════════════════════════════════════════════════════
@@ -482,6 +297,80 @@ export function useUpdateEmailCampaign(id: string | undefined) {
   });
 }
 
+/** The exact mail a campaign sends — rendered by the send pipeline itself. */
+export interface CampaignPreview {
+  campaign_id: string;
+  subject: string;
+  html: string;
+  sample_recipient: { name: string; email: string; is_real: boolean };
+}
+
+export function useCampaignPreview(id: string | undefined, enabled = true) {
+  const brand = useBrand();
+  return useQuery({
+    enabled: Boolean(brand && id && enabled),
+    queryKey: ["email", "preview", brand, id],
+    queryFn: () => api.get<CampaignPreview>(`/email-campaigns/${id}/preview`),
+    retry: false,
+  });
+}
+
+// ── Brand frame (header/footer around every campaign mail) ──
+export interface EmailFrame {
+  show_logo: boolean;
+  tagline: string;
+  footer_note: string;
+  show_address: boolean;
+  show_contact: boolean;
+  instagram_url: string;
+  tiktok_url: string;
+}
+
+export function useEmailFrame() {
+  const brand = useBrand();
+  return useQuery({
+    enabled: Boolean(brand),
+    queryKey: ["email", "frame", brand],
+    queryFn: () =>
+      api.get<{ frame: EmailFrame; defaults: EmailFrame }>(
+        "/email-campaigns/frame",
+      ),
+    staleTime: 60_000,
+  });
+}
+
+export function useSaveEmailFrame() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (patch: Partial<EmailFrame>) =>
+      api.put<{ frame: EmailFrame; defaults: EmailFrame }>(
+        "/email-campaigns/frame",
+        patch,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["email", "frame", brand] });
+      qc.invalidateQueries({ queryKey: ["email", "frame-shell", brand] });
+      qc.invalidateQueries({ queryKey: ["email", "preview", brand] });
+    },
+  });
+}
+
+/** The framed shell (real header/footer, brand tokens resolved) with a
+ *  `<!--PGH_BODY-->` marker the editor swaps for what's being written. */
+export function useFrameShell() {
+  const brand = useBrand();
+  return useQuery({
+    enabled: Boolean(brand),
+    queryKey: ["email", "frame-shell", brand],
+    queryFn: () =>
+      api.get<{ shell_html: string; tokens: Record<string, string> }>(
+        "/email-campaigns/frame/shell",
+      ),
+    staleTime: 60_000,
+  });
+}
+
 export function useEmailStats(id: string | undefined) {
   const brand = useBrand();
   return useQuery({
@@ -535,6 +424,27 @@ export function usePreviewSegment() {
   return useMutation({
     mutationFn: (id: string) =>
       api.get<SegmentPreview>(`/email-campaigns/segments/${id}/preview`),
+  });
+}
+
+/** Live count + sample for an ad-hoc filter — powers the segment modal's
+ *  "who's in" preview before anything is saved. */
+export function usePreviewAudience(filter: Record<string, unknown>) {
+  const brand = useBrand();
+  return useQuery({
+    enabled: Boolean(brand),
+    queryKey: ["email", "audience-preview", brand, JSON.stringify(filter)],
+    queryFn: () =>
+      api.post<{
+        count: number;
+        sample: Array<{
+          contact_id: string;
+          display_name?: string | null;
+          email?: string | null;
+        }>;
+      }>("/email-campaigns/segments/preview", { filter }),
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
   });
 }
 
@@ -664,19 +574,6 @@ export function useCancelEmailCampaign() {
 // ════════════════════════════════════════════════════════════
 // Presentation metadata
 // ════════════════════════════════════════════════════════════
-
-export const AD_PLATFORM_LABEL: Record<AdPlatform, string> = {
-  google_ads: "Google Ads",
-  meta_ads: "Meta Ads",
-};
-
-export const AD_STATUS_TONE: Record<AdStatus, Tone> = {
-  draft: "neutral",
-  active: "success",
-  paused: "warn",
-  ended: "neutral",
-  removed: "danger",
-};
 
 export const EMAIL_STATUS_TONE: Record<EmailCampaignStatus, Tone> = {
   draft: "neutral",

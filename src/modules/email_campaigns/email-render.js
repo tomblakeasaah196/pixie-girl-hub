@@ -19,10 +19,12 @@
 
 "use strict";
 
+const crypto = require("crypto");
 const { query } = require("../../config/database");
 const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
 const theme = require("../../services/email-theme");
+const personalise = require("../../services/email-personalise");
 const { toPlainText } = theme;
 
 // ── URL helpers ────────────────────────────────────────────────
@@ -153,6 +155,9 @@ async function resolveBrand(brand) {
   const brandTheme = (row && row.brand_theme) || {};
   const website = absoluteSite((row && (row.website || row.storefront_domain)) || "");
   const tokens = {
+    // Owner-defined custom tokens first, so a built-in of the same name
+    // always wins (save-time validation blocks the collision anyway).
+    ...personalise.customTokenMap(brandTheme.email_custom_tokens),
     brand_name: (row && row.display_name) || "Our Atelier",
     brand_legal_name: (row && (row.legal_name || row.display_name)) || "",
     logo_url: absoluteAsset(row && (row.logo_path || row.logo_alt_path)),
@@ -255,6 +260,33 @@ function unsubscribeUrl(brand, recipientId) {
   return `${apiBase()}/api/public/email/unsubscribe/${recipientId}?brand=${encodeURIComponent(brand)}`;
 }
 
+// Contact-level unsubscribe — used by retention strategy mails, which have no
+// campaign-recipient row. The link carries `contact_id.hmac` so a public,
+// unauthenticated endpoint can trust it without a lookup table.
+function signContact(contactId, brand) {
+  return crypto
+    .createHmac("sha256", config.JWT_SECRET)
+    .update(`unsub:${contactId}:${brand}`)
+    .digest("hex")
+    .slice(0, 24);
+}
+function contactUnsubscribeToken(contactId, brand) {
+  return `${contactId}.${signContact(contactId, brand)}`;
+}
+/** @returns {string|null} the contact_id when the token is genuine */
+function verifyContactUnsubscribeToken(token, brand) {
+  const [contactId, sig] = String(token || "").split(".");
+  if (!contactId || !sig) return null;
+  const expected = signContact(contactId, brand);
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+  return contactId;
+}
+function contactUnsubscribeUrl(brand, contactId) {
+  return `${apiBase()}/api/public/email/unsubscribe-contact/${contactUnsubscribeToken(contactId, brand)}?brand=${encodeURIComponent(brand)}`;
+}
+
 function recipientTokens(recipient, brand) {
   const name = (recipient.contact_name_snapshot || "").trim();
   const first = name.split(/\s+/)[0] || "there";
@@ -347,4 +379,6 @@ module.exports = {
   absoluteSite,
   trackingPixelUrl,
   unsubscribeUrl,
+  contactUnsubscribeUrl,
+  verifyContactUnsubscribeToken,
 };

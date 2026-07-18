@@ -203,6 +203,19 @@ async function updateFrame(req, res) {
 async function frameShell(req, res) {
   res.json({ data: await service.frameShell({ brand: req.brand }) });
 }
+
+// Custom personalise tokens (the editor's "add your own")
+async function listPersonaliseTokens(req, res) {
+  res.json({ data: await service.listPersonaliseTokens({ brand: req.brand }) });
+}
+async function savePersonaliseTokens(req, res) {
+  res.json({
+    data: await service.savePersonaliseTokens({
+      ...base(req),
+      tokens: req.body.tokens,
+    }),
+  });
+}
 async function uploadImage(req, res) {
   res.status(201).json({
     data: await service.uploadImage({ brand: req.brand, file: req.file }),
@@ -262,6 +275,24 @@ async function unsubscribe(req, res) {
   });
   res.json({ data: { unsubscribed: true } });
 }
+async function unsubscribeContact(req, res) {
+  await service.handleContactUnsubscribe({
+    brand: brandHint(req),
+    token: req.params.token,
+  });
+  // A customer clicks this from their inbox — answer with a small, human
+  // page, not JSON.
+  res
+    .set("Content-Type", "text/html; charset=utf-8")
+    .send(
+      `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Unsubscribed</title></head>` +
+        `<body style="margin:0;padding:48px 24px;background:#F4EFE9;font-family:Arial,Helvetica,sans-serif;color:#1A1212;text-align:center">` +
+        `<div style="max-width:420px;margin:0 auto;background:#fff;border-radius:14px;padding:36px 28px;box-shadow:0 10px 30px rgba(0,0,0,.08)">` +
+        `<div style="font-size:26px;margin-bottom:10px">You're unsubscribed</div>` +
+        `<p style="font-size:15px;line-height:1.6;color:#7A7068;margin:0">You won't receive marketing emails from us any more. ` +
+        `Order and payment emails still arrive as usual.</p></div></body></html>`,
+    );
+}
 
 module.exports = {
   listTemplates,
@@ -297,4 +328,7 @@ module.exports = {
   trackOpen,
   trackClick,
   unsubscribe,
+  unsubscribeContact,
+  listPersonaliseTokens,
+  savePersonaliseTokens,
 };

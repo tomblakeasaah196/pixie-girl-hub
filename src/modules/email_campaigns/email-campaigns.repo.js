@@ -10,6 +10,24 @@
 
 const { query, ex } = require("../../config/database");
 const { t } = require("../../config/brands");
+const {
+  UNSUBSCRIBED_TAG,
+  COUNTED_ORDER_STATUSES,
+} = require("../../services/email-personalise");
+
+/**
+ * SQL guard excluding contacts who must not receive marketing email: anyone
+ * tagged email_unsubscribed for this brand, and anyone whose stated channel
+ * preference is 'none' (do-not-contact). `brandParam` is the 1-based $ index
+ * of the brand key already in the query's params.
+ */
+function consentClause(alias, brandParam) {
+  return `NOT EXISTS (SELECT 1 FROM shared.contact_tags ct
+            WHERE ct.contact_id = ${alias}.contact_id
+              AND ct.business = $${brandParam}
+              AND ct.tag_name = '${UNSUBSCRIBED_TAG}')
+        AND (${alias}.preferred_channel IS DISTINCT FROM 'none')`;
+}
 
 /**
  * Compile a saved-segment audience filter into SQL AND-clauses against
@@ -323,6 +341,7 @@ async function addRecipientsFromContacts({ brand, campaign_id, filter = {} }) {
        FROM shared.contacts c
       WHERE c.is_deleted = false AND c.email IS NOT NULL
         AND ($2 = ANY(c.visible_to) OR c.visible_to = '{}')
+        AND ${consentClause("c", 2)}
         ${extra}
      ON CONFLICT (campaign_id, email) DO NOTHING`,
     params,
@@ -554,10 +573,92 @@ async function emailableContacts({ brand, filter = {} }) {
        FROM shared.contacts c
       WHERE c.is_deleted = false AND c.email IS NOT NULL
         AND ($1 = ANY(c.visible_to) OR c.visible_to = '{}')
+        AND ${consentClause("c", 1)}
         ${extra}`,
     params,
   );
   return rows;
+}
+
+/** Stamp a contact as unsubscribed for this brand (idempotent). */
+async function tagContactUnsubscribed({ client, brand, contact_id }) {
+  await ex(client)(
+    `INSERT INTO shared.contact_tags (contact_id, tag_name, business)
+     VALUES ($1, $2, $3) ON CONFLICT (contact_id, tag_name, business) DO NOTHING`,
+    [contact_id, UNSUBSCRIBED_TAG, brand],
+  );
+}
+
+/**
+ * Batch loyalty/purchase facts for campaign personalisation — one round-trip
+ * for a whole send batch. Returns a Map keyed by contact_id with the same
+ * field names the retention facts builder uses, so
+ * email-personalise.displayTokensFromFacts() works on either shape.
+ */
+async function loyaltyFactsForContacts({ brand, contact_ids }) {
+  const ids = (contact_ids || []).filter(Boolean);
+  const map = new Map();
+  if (ids.length === 0) return map;
+  const { rows } = await query(
+    `SELECT c.contact_id,
+            c.created_at,
+            s.current_balance,
+            s.lifetime_earned,
+            ti.tier_name,
+            o.order_count,
+            o.lifetime_spend,
+            o.last_order_at
+       FROM shared.contacts c
+       LEFT JOIN shared.customer_loyalty_state s
+              ON s.contact_id = c.contact_id AND s.business = $2
+       LEFT JOIN shared.loyalty_tiers ti ON ti.tier_id = s.current_tier_id
+       LEFT JOIN LATERAL (
+            SELECT COUNT(*)::int AS order_count,
+                   COALESCE(SUM(so.total_ngn), 0)::numeric AS lifetime_spend,
+                   MAX(so.placed_at) AS last_order_at
+              FROM ${t(brand, "sales_orders")} so
+             WHERE so.contact_id = c.contact_id
+               AND so.placed_at IS NOT NULL
+               AND so.status = ANY($3)
+       ) o ON true
+      WHERE c.contact_id = ANY($1::uuid[])`,
+    [ids, brand, COUNTED_ORDER_STATUSES],
+  );
+  const days = (from) =>
+    from ? Math.floor((Date.now() - new Date(from).getTime()) / 86_400_000) : null;
+  for (const r of rows) {
+    map.set(r.contact_id, {
+      points_balance: Number(r.current_balance || 0),
+      lifetime_points: Number(r.lifetime_earned || 0),
+      tier_name: r.tier_name || null,
+      order_count: Number(r.order_count || 0),
+      lifetime_spend: Number(r.lifetime_spend || 0),
+      days_since_last_order: days(r.last_order_at),
+      days_since_signup: days(r.created_at),
+    });
+  }
+  return map;
+}
+
+// ── Custom personalise tokens (brand_theme.email_custom_tokens) ───
+async function getCustomTokens({ brand }) {
+  const { rows } = await query(
+    `SELECT brand_theme -> 'email_custom_tokens' AS tokens
+       FROM shared.business_config WHERE business_key = $1`,
+    [brand],
+  );
+  const list = rows[0] && rows[0].tokens;
+  return Array.isArray(list) ? list : [];
+}
+
+async function saveCustomTokens({ brand, tokens }) {
+  await query(
+    `UPDATE shared.business_config
+        SET brand_theme = jsonb_set(COALESCE(brand_theme, '{}'::jsonb),
+                                    '{email_custom_tokens}', $2::jsonb)
+      WHERE business_key = $1`,
+    [brand, JSON.stringify(tokens)],
+  );
 }
 
 // ── Brand email frame (header/footer config) ───────────────
@@ -605,4 +706,8 @@ module.exports = {
   deleteSegment,
   emailableContacts,
   saveEmailFrame,
+  tagContactUnsubscribed,
+  loyaltyFactsForContacts,
+  getCustomTokens,
+  saveCustomTokens,
 };

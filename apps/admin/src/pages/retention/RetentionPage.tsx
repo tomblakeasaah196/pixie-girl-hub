@@ -7,6 +7,7 @@
  * when the user lacks the grant (canon §4 #3).
  */
 
+import { useEffect, useRef } from "react";
 import { useUrlTab } from "@/hooks/useUrlTab";
 import {
   Sparkles,
@@ -61,6 +62,15 @@ export function RetentionPage() {
     TABS.map((t) => t.key),
   );
 
+  // Keep the active tab visible in the swipeable strip (e.g. landing on
+  // ?tab=analytics from a deep link should not hide the selection off-screen).
+  const navRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    navRef.current
+      ?.querySelector<HTMLButtonElement>('[data-active="true"]')
+      ?.scrollIntoView({ inline: "center", block: "nearest" });
+  }, [tab]);
+
   if (!can("retention", "view")) {
     return <DeniedState message="You don't have access to Retention." />;
   }
@@ -68,12 +78,19 @@ export function RetentionPage() {
   return (
     <div className="max-w-[1180px] space-y-5">
       <ModuleInsights module="retention" />
-      <nav className="flex items-center gap-1 border-b border-line overflow-x-auto">
+      {/* 9 tabs — a swipeable strip on phones: real touch targets, scroll
+          snapping, faded edges hinting there's more, no visible scrollbar. */}
+      <nav
+        ref={navRef}
+        className="flex items-center gap-1 border-b border-line overflow-x-auto hide-scrollbar -mx-1 px-1 snap-x snap-proximity [mask-image:linear-gradient(to_right,transparent,black_14px,black_calc(100%-14px),transparent)]"
+        aria-label="Retention sections"
+      >
         {TABS.map((t) => (
           <button
             key={t.key}
+            data-active={tab === t.key ? "true" : undefined}
             onClick={() => setTab(t.key)}
-            className={`inline-flex items-center gap-2 px-3.5 py-2.5 text-[13px] font-semibold border-b-2 -mb-px transition-colors whitespace-nowrap ${
+            className={`inline-flex items-center gap-2 px-3.5 py-3 sm:py-2.5 text-[13px] font-semibold border-b-2 -mb-px transition-colors whitespace-nowrap shrink-0 snap-start ${
               tab === t.key
                 ? "border-accent text-accent-glow"
                 : "border-transparent text-text-muted hover:text-text-primary"

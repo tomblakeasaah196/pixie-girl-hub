@@ -19,6 +19,8 @@ const retentionService = require("./retention.service");
 const tasksService = require("../../shared/tasks/tasks.service");
 const notifications = require("../../services/notifications.service");
 const { EVENT_KEY } = require("./strategy.suppression");
+const { renderStepEmail } = require("./strategy.email");
+const { UNSUBSCRIBED_TAG } = require("../../services/email-personalise");
 const { logger } = require("../../config/logger");
 
 /** Replace {{token}} occurrences with facts values (missing → ""). */
@@ -33,19 +35,6 @@ function renderTokens(str, facts) {
       );
     return v === null || v === undefined ? "" : String(v);
   });
-}
-
-async function loadEmailTemplate(brand, templateId) {
-  if (!templateId) return null;
-  try {
-    const { rows } = await query(
-      `SELECT subject, body_html FROM ${brand}.email_templates WHERE template_id = $1`,
-      [templateId],
-    );
-    return rows[0] || null;
-  } catch {
-    return null;
-  }
 }
 
 async function logEmail({ brand, contact_id, recipient, subject, ok, error }) {
@@ -82,11 +71,21 @@ async function runStep({ brand, step, enrollment, facts, request_id }) {
     case "send_email": {
       const to = facts.email;
       if (!to) return { status: "suppressed", failure_reason: "no contact email" };
-      const tpl = await loadEmailTemplate(brand, step.email_template_id);
-      const subject = renderTokens(tpl ? tpl.subject : cfg.subject, facts) || "";
-      const html = renderTokens(tpl ? tpl.body_html : cfg.html || cfg.body, facts) || "";
+      // Consent gate: an unsubscribed (or do-not-contact) customer never
+      // receives a strategy mail, whatever the journey says.
+      if ((facts.tags || []).includes(UNSUBSCRIBED_TAG))
+        return { status: "suppressed", failure_reason: "contact unsubscribed" };
+      if (facts.preferred_channel === "none")
+        return { status: "suppressed", failure_reason: "contact is do-not-contact" };
+      // Same render pipeline as campaign mail: brand frame, inline styles,
+      // loyalty + custom tokens, contact unsubscribe link + one-click header.
+      const { subject, html, text, headers } = await renderStepEmail({
+        brand,
+        step,
+        facts,
+      });
       try {
-        await email.send({ to, subject, html, brand });
+        await email.send({ to, subject, html, text, headers, brand });
         await logEmail({ brand, contact_id: contactId, recipient: to, subject, ok: true });
         return { status: "completed", result_summary: { email_sent: true, subject } };
       } catch (err) {

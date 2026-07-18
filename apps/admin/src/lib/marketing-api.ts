@@ -63,34 +63,9 @@ export interface EmailTemplate {
   created_at?: string;
 }
 
-/** Merge tokens the send pipeline substitutes (src/modules/email_campaigns/
- *  email-render.js). `auto` tokens fill themselves from brand Settings or the
- *  recipient — you never set them by hand. Sale tokens come from a campaign's
- *  "Sale details" (merge_data). */
-export const TEMPLATE_VARIABLES: {
-  token: string;
-  label: string;
-  group: "recipient" | "brand" | "sale";
-  auto?: boolean;
-}[] = [
-  // Recipient (auto)
-  { token: "{{first_name}}", label: "First name", group: "recipient", auto: true },
-  { token: "{{customer_name}}", label: "Full name", group: "recipient", auto: true },
-  { token: "{{email}}", label: "Email address", group: "recipient", auto: true },
-  { token: "{{unsubscribe_url}}", label: "Unsubscribe link", group: "recipient", auto: true },
-  // Brand identity (auto, from Settings)
-  { token: "{{brand_name}}", label: "Brand name", group: "brand", auto: true },
-  { token: "{{logo_url}}", label: "Logo URL", group: "brand", auto: true },
-  { token: "{{brand_color}}", label: "Accent colour", group: "brand", auto: true },
-  { token: "{{website_url}}", label: "Website", group: "brand", auto: true },
-  { token: "{{support_email}}", label: "Support email", group: "brand", auto: true },
-  // Sale / campaign (from this campaign's Sale details)
-  { token: "{{discount}}", label: "Discount %", group: "sale" },
-  { token: "{{sale_url}}", label: "Sale link", group: "sale" },
-  { token: "{{sale_end_display}}", label: "End date", group: "sale" },
-  { token: "{{deadline_phrase}}", label: "Countdown phrase", group: "sale" },
-  { token: "{{days_left}}", label: "Days left", group: "sale" },
-];
+// Merge-token registry (recipient, loyalty, brand, sale + custom tokens):
+// see @/lib/personalise — one vocabulary shared by the Marketing template
+// editor and the Retention strategy builder.
 
 export interface EmailSegment {
   segment_id: string;

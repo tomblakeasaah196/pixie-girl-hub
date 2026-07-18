@@ -129,8 +129,8 @@ export function ReferralsTab() {
 
       {/* Ladder */}
       <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="min-w-0">
             <h2 className="font-display text-lg">Reward ladder</h2>
             <p className="text-[12.5px] text-text-muted">Bigger rewards as a customer refers more friends.</p>
           </div>
@@ -186,23 +186,29 @@ function LadderRow({
   const dirty = min !== String(tier.min_successful_referrals) || pts !== String(tier.referrer_points);
 
   return (
-    <div className={`p-3.5 flex items-center gap-3 ${last ? "" : "border-b border-line"}`}>
+    // Wraps to two tidy lines on narrow phones instead of crushing the
+    // number fields — the words + fields flow, the actions keep right.
+    <div className={`p-3.5 flex flex-wrap items-center gap-x-2 gap-y-2.5 ${last ? "" : "border-b border-line"}`}>
       <span className="text-[12px] text-text-muted">After</span>
       <div className="w-20"><NumberField value={min} onChange={setMin} allowDecimal={false} disabled={!canEdit} /></div>
       <span className="text-[12px] text-text-muted">referrals →</span>
       <div className="w-28"><NumberField value={pts} onChange={setPts} allowDecimal={false} suffix="pts" disabled={!canEdit} /></div>
-      <div className="flex-1" />
+      <div className="flex-1 min-w-2" />
       {canEdit && (
-        <>
+        <div className="flex items-center gap-1.5 ml-auto">
           {dirty && (
             <Button size="sm" variant="primary" onClick={() => onSave({ min_successful_referrals: Number(min), referrer_points: Number(pts) })}>
               Save
             </Button>
           )}
-          <button onClick={onDelete} className="grid place-items-center w-9 h-9 rounded-[10px] text-text-faint hover:text-danger">
+          <button
+            onClick={onDelete}
+            aria-label="Remove rung"
+            className="grid place-items-center w-10 h-10 sm:w-9 sm:h-9 rounded-[10px] text-text-faint hover:text-danger"
+          >
             <Trash2 className="w-4 h-4" />
           </button>
-        </>
+        </div>
       )}
     </div>
   );

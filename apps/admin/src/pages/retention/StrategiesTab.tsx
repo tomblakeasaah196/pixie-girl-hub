@@ -43,8 +43,8 @@ export function StrategiesTab() {
       {/* Template gallery */}
       {canCreate && (
         <section className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="min-w-0">
               <h2 className="font-display text-lg">Start from a template</h2>
               <p className="text-[12.5px] text-text-muted">
                 Pick a ready-made play and tweak it — or build your own from scratch.
@@ -60,13 +60,13 @@ export function StrategiesTab() {
           </div>
 
           {catalogueQ.isLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {[0, 1, 2].map((i) => (
                 <Skeleton key={i} style={{ height: 96 }} />
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {templates.map((t) => (
                 <button
                   key={t.template_key}
@@ -139,14 +139,14 @@ function StrategyRow({
 }) {
   return (
     <div
-      className={`p-4 flex items-center gap-3 ${last ? "" : "border-b border-line"}`}
+      className={`p-4 flex flex-col sm:flex-row sm:items-center gap-2.5 sm:gap-3 ${last ? "" : "border-b border-line"}`}
     >
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-medium text-[14px] truncate">{s.display_name}</span>
           <Pill tone={STRATEGY_STATUS_TONE[s.status]}>{s.status}</Pill>
         </div>
-        <p className="text-[12px] text-text-muted mt-0.5 line-clamp-1">
+        <p className="text-[12px] text-text-muted mt-0.5 line-clamp-2 sm:line-clamp-1">
           {s.summary || s.description || "—"}
         </p>
         <div className="text-[10.5px] text-text-faint mt-1">
@@ -154,7 +154,7 @@ function StrategyRow({
         </div>
       </div>
       {canEdit && (
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto">
           {s.status === "active" ? (
             <Button
               size="sm"

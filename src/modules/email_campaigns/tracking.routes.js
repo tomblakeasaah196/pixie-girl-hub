@@ -16,5 +16,8 @@ const router = express.Router();
 router.get("/open/:recipient_id", c.trackOpen);
 router.get("/click/:recipient_id", c.trackClick);
 router.get("/unsubscribe/:recipient_id", c.unsubscribe);
+// Contact-level (HMAC-signed token) — carried by retention strategy mails,
+// which have no campaign-recipient row.
+router.get("/unsubscribe-contact/:token", c.unsubscribeContact);
 
 module.exports = router;

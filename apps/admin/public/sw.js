@@ -2,10 +2,19 @@
    Proper fetch handler required for installability across all browsers
    (Chrome, Edge, Firefox, Samsung Internet). */
 
-// Bump this version on any change that should evict the old shell cache.
-// The activate handler deletes every cache that isn't CACHE_NAME, so a new
-// version guarantees clients drop stale assets on next activation.
-const CACHE_NAME = "pixie-hub-shell-v5";
+// Stamped with the git short SHA at build time (see the stamp-sw-build-id
+// plugin in vite.config.ts). This makes sw.js byte-different on EVERY deploy,
+// which is what makes browsers fire `updatefound` and show the in-app update
+// banner. Without it, a deploy that only changes app JS leaves sw.js
+// identical, so a long-lived PWA (especially iOS standalone, which suspends
+// and resumes without a navigation) is never told a new build exists and
+// keeps running stale code indefinitely. In dev the placeholder is served
+// verbatim — harmless, it's just a string.
+const BUILD_ID = "__PGH_BUILD__";
+
+// The cache name embeds BUILD_ID so the activate handler (which deletes every
+// cache that isn't CACHE_NAME) also evicts the previous deploy's shell cache.
+const CACHE_NAME = "pixie-hub-shell-v5-" + BUILD_ID;
 const OFFLINE_URL = "/offline.html";
 const SHELL_ASSETS = [
   "/favicon.svg",

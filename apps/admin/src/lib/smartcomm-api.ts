@@ -279,6 +279,12 @@ export const smartcommApi = {
   listColleagues: (q?: string) =>
     api.get<Colleague[]>(`/smartcomm/colleagues${qs({ q })}`),
 
+  // The current user's own channel visibility — drives inbox tab hiding so a
+  // user without WhatsApp access never sees the WhatsApp tab. Self-only
+  // (smartcomm.view), unlike the CEO matrix endpoints below.
+  getMyChannelAccess: () =>
+    api.get<MyChannelAccess>("/smartcomm/my-channel-access"),
+
   // CEO channel-access matrix (owner-only endpoints).
   getChannelAccessMatrix: () =>
     api.get<ChannelAccessMatrix>("/smartcomm/channel-access"),
@@ -317,6 +323,16 @@ export interface ChannelGrant {
 }
 
 export type ChannelGrantMap = Record<AccessPlatform, ChannelGrant>;
+
+/** The current user's own effective channel visibility (self endpoint). */
+export interface MyChannelAccess {
+  /** CEO sees every channel regardless of grants. */
+  ceo: boolean;
+  /** True once the CEO has set any explicit grant for this user. */
+  managed: boolean;
+  /** Per-platform view visibility — the inbox hides tabs set to false. */
+  platforms: Record<AccessPlatform, boolean>;
+}
 
 export interface ChannelAccessUser {
   user_id: string;

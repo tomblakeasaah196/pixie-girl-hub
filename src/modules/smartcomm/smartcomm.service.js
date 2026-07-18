@@ -2718,6 +2718,30 @@ async function getChannelAccessMatrix({ brand }) {
   return { platforms: ACCESS_PLATFORMS, users };
 }
 
+/**
+ * The requesting user's OWN effective channel visibility — the map the admin
+ * UI reads to hide inbox tabs a user can't reach (someone without WhatsApp
+ * access never sees the WhatsApp tab). Unlike the CEO matrix endpoints this is
+ * self-only, so it rides the plain `smartcomm.view` gate rather than requireCeo.
+ *
+ * Returns `{ ceo, managed, platforms: { <platform>: <can_view bool> } }`,
+ * derived from the same loadPlatformAccess / platformAllows rules the inbox
+ * list filter uses, so the visible tabs always match the channels the list
+ * would actually return. CEO sees every channel.
+ */
+async function getMyChannelAccess({ user, brand }) {
+  const platforms = {};
+  if (isCeo(user)) {
+    for (const p of ACCESS_PLATFORMS) platforms[p] = true;
+    return { ceo: true, managed: false, platforms };
+  }
+  const access = await loadPlatformAccess({ user, brand });
+  for (const p of ACCESS_PLATFORMS) {
+    platforms[p] = platformAllows(access, p, "view");
+  }
+  return { ceo: false, managed: access.managed, platforms };
+}
+
 /** One user's effective per-channel grants (for the editor). */
 async function getUserChannelAccess({ brand, user_id }) {
   const rows = await repo.listPlatformPermissionsForUser({
@@ -2906,6 +2930,7 @@ module.exports = {
   // colleague directory + CEO channel-access matrix
   listColleagues,
   getChannelAccessMatrix,
+  getMyChannelAccess,
   getUserChannelAccess,
   setUserChannelAccess,
 };

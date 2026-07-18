@@ -177,6 +177,23 @@ export function TopBar() {
                       </button>
                     ))}
                     <div className="h-px bg-line/30 my-1.5 mx-1" />
+                    {/* Deliberate hard refresh (cache wipe + reload) for
+                        mobile -- the pull gesture now only soft-refreshes, and
+                        the top-bar refresh button is desktop-only. */}
+                    <button
+                      role="menuitem"
+                      onClick={() => {
+                        setAccountOpen(false);
+                        handleHardRefresh();
+                      }}
+                      disabled={refreshing}
+                      className="w-full flex items-center gap-[11px] p-[9px_10px] rounded-[10px] text-[13px] font-medium text-text-muted hover:bg-text-primary/[0.06] hover:text-text-primary transition-all disabled:opacity-60"
+                    >
+                      <RefreshCw
+                        className={cn("w-4 h-4", refreshing && "animate-spin")}
+                      />
+                      Hard refresh
+                    </button>
                     <button
                       role="menuitem"
                       onClick={() => {

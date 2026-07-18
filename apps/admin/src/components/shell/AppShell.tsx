@@ -1,7 +1,7 @@
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/cn";
-import { hardRefresh } from "@/lib/hardRefresh";
 import { moduleForPath, moduleIsPermitted } from "@/lib/modules";
 import { useAuthStore } from "@/stores/auth";
 import { DeniedState } from "@/components/ui/controls";
@@ -68,10 +68,27 @@ export function AppShell() {
   const { sidebarCollapsed, setPaletteOpen, paletteOpen, immersive } =
     useUiStore();
   const isDesktop = useIsDesktop();
+  const queryClient = useQueryClient();
 
   // Live-refresh Sales / Stock / Service-Jobs boards from backend realtime
   // signals (joins the active brand's rooms; invalidates on change).
   useRealtimeInvalidation();
+
+  // Pull-to-refresh does a *soft* refresh: re-fetch the data currently on
+  // screen (active queries) instead of reloading the whole document. An
+  // accidental pull now costs a quick refetch, not a full reboot + 2s splash
+  // + cache wipe. The deliberate hard refresh (cache clear + reload) still
+  // lives on the top-bar button (desktop) and account menu (mobile).
+  const softRefresh = useCallback(async () => {
+    const started = Date.now();
+    await queryClient.invalidateQueries();
+    // Keep the sparkle visible for a beat even if the refetch resolves
+    // instantly, so the gesture always feels acknowledged.
+    const elapsed = Date.now() - started;
+    if (elapsed < 450) {
+      await new Promise((resolve) => setTimeout(resolve, 450 - elapsed));
+    }
+  }, [queryClient]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -88,7 +105,7 @@ export function AppShell() {
     <div className="h-screen overflow-hidden">
       <Sidebar />
       <PullToRefresh
-        onRefresh={hardRefresh}
+        onRefresh={softRefresh}
         className={cn(
           "h-screen overflow-y-auto transition-[margin] duration-300 ease-brand",
           isDesktop

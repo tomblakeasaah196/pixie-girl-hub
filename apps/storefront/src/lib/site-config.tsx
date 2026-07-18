@@ -44,6 +44,47 @@ export interface StudioNavigation {
 }
 
 /**
+ * Studio config is authored in the admin, and older drafts stored link targets
+ * under `href` while the storefront reads `url`. Normalise once at the root so
+ * every consumer (header, mobile drawer, footer) sees a clean `{ label, url }`
+ * — a link with only `href` would otherwise render as a dead `to={undefined}`.
+ */
+function coerceLink(x: unknown): { label: string; url: string } {
+  const o = (x || {}) as Record<string, unknown>;
+  return {
+    label: typeof o.label === "string" ? o.label : "",
+    url:
+      (typeof o.url === "string" && o.url) ||
+      (typeof o.href === "string" && o.href) ||
+      "/",
+  };
+}
+function normalizeNavigation(
+  nav?: StudioNavigation | null,
+): StudioNavigation | null {
+  if (!nav) return null;
+  return {
+    ...nav,
+    header_items: Array.isArray(nav.header_items)
+      ? nav.header_items.map((it) => {
+          const base = coerceLink(it);
+          const kids = (it as { children?: unknown }).children;
+          return {
+            ...base,
+            children: Array.isArray(kids) ? kids.map(coerceLink) : undefined,
+          };
+        })
+      : nav.header_items,
+    footer_columns: Array.isArray(nav.footer_columns)
+      ? nav.footer_columns.map((col) => ({
+          title: typeof col?.title === "string" ? col.title : "",
+          links: Array.isArray(col?.links) ? col.links.map(coerceLink) : [],
+        }))
+      : nav.footer_columns,
+  };
+}
+
+/**
  * Resolved branding for the chrome — the operator's uploaded logos/favicons
  * (Storefront Studio → Branding, stored as theme tokens) plus the brand's
  * display name. The dark/light logo swaps with the site theme; the header and
@@ -81,7 +122,7 @@ export function SiteConfigProvider({
   return (
     <PagesCtx.Provider value={pages ?? []}>
       <PopupsCtx.Provider value={popups ?? []}>
-        <NavCtx.Provider value={navigation ?? null}>
+        <NavCtx.Provider value={normalizeNavigation(navigation)}>
           <BrandingCtx.Provider value={branding ?? { name: "" }}>
             <ToolbarCtx.Provider value={toolbar ?? DEFAULT_TOOLBAR}>
               {children}

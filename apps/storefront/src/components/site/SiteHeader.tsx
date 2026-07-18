@@ -91,13 +91,12 @@ export function SiteHeader() {
   const showTheme = toolbar.buttons.theme;
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
-  // Prefer a Studio nav only when it actually carries groups; otherwise use the
-  // grouped default so the dropdowns render even against the flat seed.
+  // Prefer the published Studio nav whenever it carries any items — so edits in
+  // Storefront Studio → Navigation drive BOTH the desktop header and the mobile
+  // ☰ menu (dropdowns included, when items define children). Fall back to the
+  // built-in grouped default only when no navigation has been published yet.
   const studio = nav?.header_items;
-  const groups: NavItem[] =
-    studio && studio.some((i) => i.children && i.children.length)
-      ? studio
-      : NAV_GROUPS;
+  const groups: NavItem[] = studio && studio.length ? studio : NAV_GROUPS;
 
   // Entrance gate — play the stagger after the cinematic preloader (fast on
   // return visits where it's skipped).
@@ -465,6 +464,12 @@ function MobileDrawer({
             </div>
 
             <nav className="flex-1 overflow-y-auto px-6 py-7">
+              {/* Home — the logo already links home, but the mobile menu needs
+                  an explicit entry too. Skipped only if the published nav
+                  already defines its own Home link (so it never duplicates). */}
+              {groups.some((g) => g.url === "/") ? null : (
+                <DrawerLink to="/" label="Home" onNavigate={onClose} />
+              )}
               {groups.map((g) =>
                 g.children?.length ? (
                   <DrawerAccordion key={g.label} group={g} pathname={pathname} onNavigate={onClose} />

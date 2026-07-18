@@ -67,6 +67,12 @@ import { describeError } from "@/lib/error-report";
 import { formatDateTime } from "@/lib/format";
 import { ContentTab, type ContentJump } from "./ContentTab";
 import { VideoField } from "./VideoField";
+import {
+  STOREFRONT_PAGE_CATALOG,
+  CATALOG_BY_KEY,
+  deepMergeSlots,
+  type CatalogPage,
+} from "./page-catalog";
 
 /**
  * Run a Studio mutation with unmissable feedback. Success shows a toast (plus
@@ -1798,8 +1804,42 @@ function ToolbarTab() {
 // Navigation - header links, footer columns, socials (no JSON)
 // ============================================================
 
-type NavLink = { label: string; href: string };
-type FooterCol = { title: string; links: NavLink[] };
+// A header link (or footer link) is { label, url }. A header link may also carry
+// `children` — the dropdown entries the storefront renders as a glass menu
+// (desktop) and an accordion (mobile). We standardise on `url` here so what the
+// editor writes matches the seed + the public storefront (which read `url`);
+// legacy drafts that stored `href` are migrated on load by normaliseLink().
+type NavChild = { label: string; url: string };
+type NavLink = { label: string; url: string; children?: NavChild[] };
+type FooterCol = { title: string; links: NavChild[] };
+
+/** Tolerantly read a stored link, accepting the legacy `href` key. */
+function normaliseChild(x: unknown): NavChild {
+  const o = (x || {}) as Record<string, unknown>;
+  return {
+    label: typeof o.label === "string" ? o.label : "",
+    url:
+      (typeof o.url === "string" && o.url) ||
+      (typeof o.href === "string" && o.href) ||
+      "/",
+  };
+}
+function normaliseLink(x: unknown): NavLink {
+  const o = (x || {}) as Record<string, unknown>;
+  return {
+    ...normaliseChild(o),
+    children: Array.isArray(o.children)
+      ? (o.children as unknown[]).map(normaliseChild)
+      : undefined,
+  };
+}
+function normaliseFooterCol(x: unknown): FooterCol {
+  const o = (x || {}) as Record<string, unknown>;
+  return {
+    title: typeof o.title === "string" ? o.title : "",
+    links: Array.isArray(o.links) ? (o.links as unknown[]).map(normaliseChild) : [],
+  };
+}
 
 const SOCIAL_PLATFORMS = [
   "instagram",
@@ -1824,8 +1864,8 @@ function NavigationTab() {
 
   useEffect(() => {
     if (active) {
-      setHeader((active.header_items as NavLink[]) || []);
-      setFooter((active.footer_columns as FooterCol[]) || []);
+      setHeader(((active.header_items as unknown[]) || []).map(normaliseLink));
+      setFooter(((active.footer_columns as unknown[]) || []).map(normaliseFooterCol));
       setSocials((active.socials as Record<string, string>) || {});
     }
   }, [active]);
@@ -1869,6 +1909,11 @@ function NavigationTab() {
       </p>
 
       <Section title="Header menu" defaultOpen>
+        <p className="mb-2 text-[12px] text-text-muted">
+          These links appear in the site header on desktop and in the ☰ menu on
+          mobile. Add dropdown links under any item to turn it into a menu (e.g.
+          “Shop” → All catalogue, By shade, By bundle…).
+        </p>
         <DragList
           ids={header.map((_, i) => `hdr-${i}`)}
           onReorder={(from, to) =>
@@ -1895,14 +1940,118 @@ function NavigationTab() {
                 />
                 <TextField
                   label="Link (path)"
-                  value={item.href}
+                  value={item.url}
                   placeholder="/shop"
                   onChange={(v) =>
                     setHeader((h) =>
-                      h.map((x, j) => (j === i ? { ...x, href: v } : x)),
+                      h.map((x, j) => (j === i ? { ...x, url: v } : x)),
                     )
                   }
                 />
+              </div>
+
+              {/* Dropdown links (optional) — makes this item a menu. */}
+              <div className="mt-3 border-l border-line pl-3">
+                <span className={cn(labelCls, "text-[11px]")}>
+                  Dropdown links (optional)
+                </span>
+                <DragList
+                  ids={(item.children || []).map((_, k) => `hdr-${i}-c-${k}`)}
+                  onReorder={(from, to) =>
+                    setHeader((h) =>
+                      h.map((x, j) =>
+                        j === i
+                          ? { ...x, children: arrayMove(x.children || [], from, to) }
+                          : x,
+                      ),
+                    )
+                  }
+                >
+                  {(item.children || []).map((c, ci) => (
+                    <SortableCard
+                      key={`hdr-${i}-c-${ci}`}
+                      id={`hdr-${i}-c-${ci}`}
+                      title={`Dropdown ${ci + 1}`}
+                      onRemove={() =>
+                        setHeader((h) =>
+                          h.map((x, j) =>
+                            j === i
+                              ? {
+                                  ...x,
+                                  children: (x.children || []).filter(
+                                    (_, k) => k !== ci,
+                                  ),
+                                }
+                              : x,
+                          ),
+                        )
+                      }
+                    >
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <TextField
+                          label="Label"
+                          value={c.label}
+                          placeholder="All catalogue"
+                          onChange={(v) =>
+                            setHeader((h) =>
+                              h.map((x, j) =>
+                                j === i
+                                  ? {
+                                      ...x,
+                                      children: (x.children || []).map((y, k) =>
+                                        k === ci ? { ...y, label: v } : y,
+                                      ),
+                                    }
+                                  : x,
+                              ),
+                            )
+                          }
+                        />
+                        <TextField
+                          label="Link (path)"
+                          value={c.url}
+                          placeholder="/shop"
+                          onChange={(v) =>
+                            setHeader((h) =>
+                              h.map((x, j) =>
+                                j === i
+                                  ? {
+                                      ...x,
+                                      children: (x.children || []).map((y, k) =>
+                                        k === ci ? { ...y, url: v } : y,
+                                      ),
+                                    }
+                                  : x,
+                              ),
+                            )
+                          }
+                        />
+                      </div>
+                    </SortableCard>
+                  ))}
+                </DragList>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="mt-2"
+                  onClick={() =>
+                    setHeader((h) =>
+                      h.map((x, j) =>
+                        j === i
+                          ? {
+                              ...x,
+                              children: [
+                                ...(x.children || []),
+                                { label: "", url: "/" },
+                              ],
+                            }
+                          : x,
+                      ),
+                    )
+                  }
+                >
+                  + Add dropdown link
+                </Button>
               </div>
             </SortableCard>
           ))}
@@ -1912,7 +2061,7 @@ function NavigationTab() {
           size="sm"
           className="mt-2"
           onClick={() =>
-            setHeader((h) => [...h, { label: "", href: "/" }])
+            setHeader((h) => [...h, { label: "", url: "/" }])
           }
         >
           + Add menu link
@@ -1995,7 +2144,7 @@ function NavigationTab() {
                         />
                         <TextField
                           label="Link"
-                          value={lk.href}
+                          value={lk.url}
                           onChange={(v) =>
                             setFooter((f) =>
                               f.map((x, j) =>
@@ -2003,7 +2152,7 @@ function NavigationTab() {
                                   ? {
                                       ...x,
                                       links: x.links.map((y, k) =>
-                                        k === li ? { ...y, href: v } : y,
+                                        k === li ? { ...y, url: v } : y,
                                       ),
                                     }
                                   : x,
@@ -2025,7 +2174,7 @@ function NavigationTab() {
                         j === ci
                           ? {
                               ...x,
-                              links: [...(x.links || []), { label: "", href: "/" }],
+                              links: [...(x.links || []), { label: "", url: "/" }],
                             }
                           : x,
                       ),
@@ -2097,6 +2246,15 @@ const BLANK_PAGE: PageRow = {
   slots: {},
 };
 
+/** A row in the Pages list: a known storefront page (with its `catalog`
+ *  schema), its saved `db` row if any, or an operator-created custom page. */
+interface ListedPage {
+  key: string;
+  label: string;
+  catalog?: CatalogPage;
+  db?: PageRow;
+}
+
 function PagesTab({
   onJumpToContent,
   onJumpToBranding,
@@ -2111,17 +2269,51 @@ function PagesTab({
   const [slots, setSlots] = useState<Record<string, unknown>>({});
   const [msg, setMsg] = useState<string | null>(null);
 
+  // Merge the canonical page catalog with whatever rows the DB actually has, so
+  // EVERY storefront page is listed — even one no seed ever inserted — and each
+  // opens with its FULL field set (catalog defaults, overlaid by saved slots).
+  // `db` is the saved row (undefined until first save); `catalog` its schema.
   const pages = useMemo(() => {
     const byKey: Record<string, PageRow> = {};
     for (const p of data || []) {
       if (!byKey[p.page_key] || p.status === "draft") byKey[p.page_key] = p;
     }
-    return Object.values(byKey);
+    const listed: ListedPage[] = STOREFRONT_PAGE_CATALOG.map((c) => ({
+      key: c.page_key,
+      label: c.label,
+      catalog: c,
+      db: byKey[c.page_key],
+    }));
+    // Any operator-created page that isn't a known storefront page: list it too.
+    for (const p of Object.values(byKey)) {
+      if (!CATALOG_BY_KEY[p.page_key]) {
+        listed.push({ key: p.page_key, label: p.page_key || "(unnamed)", db: p });
+      }
+    }
+    return listed;
   }, [data]);
 
-  function edit(p: PageRow) {
-    setSel({ ...p });
-    setSlots((p.slots as Record<string, unknown>) || {});
+  function openPage(lp: ListedPage) {
+    const defaults = lp.catalog?.defaultSlots ?? {};
+    const saved = (lp.db?.slots as Record<string, unknown>) ?? {};
+    setSel({
+      page_key: lp.db?.page_key ?? lp.catalog?.page_key ?? lp.key,
+      template_key: lp.db?.template_key ?? lp.catalog?.template_key ?? "section_v1",
+      url_path: lp.db?.url_path ?? lp.catalog?.url_path ?? "/",
+      status: lp.db?.status,
+      meta_title: lp.db?.meta_title ?? "",
+      meta_description: lp.db?.meta_description ?? "",
+      og_image_url: lp.db?.og_image_url ?? "",
+      slots: {},
+    });
+    // Full field set: catalog defaults, with saved values winning where present.
+    setSlots(deepMergeSlots(defaults, saved));
+    setMsg(null);
+  }
+
+  function newPage() {
+    setSel({ ...BLANK_PAGE });
+    setSlots({});
     setMsg(null);
   }
 
@@ -2176,24 +2368,30 @@ function PagesTab({
           variant="secondary"
           size="sm"
           className="mb-3 w-full"
-          onClick={() => edit(BLANK_PAGE)}
+          onClick={newPage}
         >
           + New page
         </Button>
         <ul className="space-y-1">
           {pages.map((p) => (
-            <li key={p.page_key}>
+            <li key={p.key}>
               <button
-                onClick={() => edit(p)}
+                onClick={() => openPage(p)}
                 className={cn(
-                  "flex w-full items-center justify-between rounded-[10px] px-3 py-2 text-left text-[13px]",
-                  sel?.page_key === p.page_key
+                  "flex w-full items-center justify-between gap-2 rounded-[10px] px-3 py-2 text-left text-[13px]",
+                  sel?.page_key === p.key
                     ? "bg-text-primary/[0.07] text-text-primary"
                     : "text-text-muted hover:bg-text-primary/[0.04] hover:text-text-primary",
                 )}
               >
-                <span>{p.page_key || "(unnamed)"}</span>
-                <StatusPill status={p.status} />
+                <span className="min-w-0 truncate">{p.label}</span>
+                {p.db ? (
+                  <StatusPill status={p.db.status} />
+                ) : (
+                  <Pill tone="neutral" dot={false}>
+                    Default
+                  </Pill>
+                )}
               </button>
             </li>
           ))}

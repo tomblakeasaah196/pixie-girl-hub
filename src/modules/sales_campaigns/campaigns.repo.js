@@ -614,6 +614,11 @@ async function listDailyMetrics({ client, brand, campaign_id, from, to }) {
 }
 
 module.exports = {
+  // Columns a clone should carry over from the source campaign (everything a
+  // client may set on create). Exported so campaigns.service.duplicate copies
+  // the FULL config — deals engine, gateways, FX, landing extras, VIP, exit
+  // intent — instead of a hand-maintained subset that silently drops fields.
+  CLONEABLE_COLS: CREATE_COLS,
   // campaigns
   findAll,
   findById,

@@ -714,14 +714,35 @@ bundles and special discount codes, and a public landing page.
 **Special Codes** (`/sales-campaigns/codes`) · a campaign detail
 (`/sales-campaigns/<id>`) · the builder (`/sales-campaigns/<id>/edit`) · the
 full-screen **Landing Studio** (`/landing-studio`).
+**Who can do what.** The whole Marketing team shares one campaign board:
+**Marketing Officer** can see, build, edit and **submit for approval** *any*
+campaign the team created (not just their own). **Marketing Manager** (and the
+CEO) additionally **approve / launch**, delete and export. So the flow is:
+anyone on the team builds & submits → a manager or CEO approves & launches.
+**What's inside.** Campaigns list (filter chips: All · Live · Scheduled ·
+Drafts · **Past**) · **Bundles** (`/sales-campaigns/bundles`) · **Special
+Codes** (`/sales-campaigns/codes`) · a campaign detail
+(`/sales-campaigns/<id>`) · the builder (`/sales-campaigns/<id>/edit`) · the
+full-screen **Landing Studio** (`/landing-studio`).
 **Common tasks.**
 - *Launch a flash sale?* Sales Campaigns → new campaign → build → **Approval &
-  launch**.
+  launch** (submit → a manager/CEO approves → launch).
+- *Clone a past campaign to reuse it?* Open the campaign → **Clone** (top-right
+  of the detail page). It copies the whole sale — products, pricing, deals,
+  gateways, landing config — into a fresh **draft** and drops you in the builder
+  to edit. Needs `sales_campaigns.create`.
+- *View past campaigns and the sales they made?* Sales Campaigns → **Past**
+  chip (or the "Ended" state filter) → open one to see visitors, signups,
+  orders, revenue, conversion, AOV, discount given and VIP gifts.
 - *Design the campaign's landing page?* Open the campaign → **Landing Studio**
   (`/landing-studio`), drag blocks, preview (`/landing-studio/preview`).
 - *Create a discount code?* Sales Campaigns → **Special Codes**
   (`/sales-campaigns/codes`).
 - *Set up campaign bundles?* Sales Campaigns → **Bundles**.
+- *A campaign link shows 404?* Public sale pages live on the brand's **sales
+  subdomain** (e.g. `sales.faitlynhair.com/sale/<slug>`), set in Settings →
+  Business Setup → Public Identity. A link on the bare apex
+  (`faitlynhair.com/sale/…`) 404s — use the subdomain link from **Share kit**.
 
 ### 4.27 Social Studio
 **What it's for.** Log the links of posts you published natively, see them

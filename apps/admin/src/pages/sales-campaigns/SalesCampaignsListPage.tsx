@@ -43,6 +43,15 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: "ended", label: "Ended" },
 ];
 
+// One-tap chips (mobile-first). "Ended" surfaces past campaigns directly.
+const QUICK_FILTERS: { value: string; label: string }[] = [
+  { value: "", label: "All" },
+  { value: "live", label: "Live" },
+  { value: "scheduled", label: "Scheduled" },
+  { value: "draft", label: "Drafts" },
+  { value: "ended", label: "Past" },
+];
+
 const TONE_FOR: Record<CampaignStatus, Tone> = {
   draft: "neutral",
   pending_approval: "warn",
@@ -195,7 +204,25 @@ export function SalesCampaignsListPage() {
       </div>
 
       {/* Filters */}
-      <Card className="p-3 md:p-4">
+      <Card className="p-3 md:p-4 space-y-3">
+        {/* One-tap quick filters — a mobile-friendly segmented control.
+            "Ended" jumps straight to past campaigns. */}
+        <div className="flex gap-1.5 overflow-x-auto -mx-1 px-1">
+          {QUICK_FILTERS.map((f) => (
+            <button
+              key={f.value}
+              onClick={() => setStatus(f.value)}
+              className={
+                "shrink-0 whitespace-nowrap px-3 py-1.5 rounded-full text-[12px] font-semibold border transition-colors " +
+                (status === f.value
+                  ? "bg-accent-deep text-[#F4E9D9] border-transparent"
+                  : "text-text-muted border-line hover:bg-text-primary/[0.06] hover:text-text-primary")
+              }
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
         <div className="flex flex-col md:flex-row gap-3 md:items-center">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-faint" />
@@ -213,7 +240,7 @@ export function SalesCampaignsListPage() {
               options={STATUS_OPTIONS}
             />
           </div>
-          <div className="ml-auto flex items-center gap-4">
+          <div className="flex items-center gap-4 md:ml-auto">
             <Link
               to="/sales-campaigns/codes"
               className="text-[12px] font-semibold text-accent-glow hover:underline"

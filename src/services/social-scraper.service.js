@@ -140,12 +140,28 @@ function extractMetrics(item, metricsSchema) {
   };
 }
 
+/** Several actors report per-item failures inside an otherwise-successful run
+ *  (e.g. Apify's Instagram scrapers emit `{error, errorDescription}` records
+ *  for a blocked/private/rate-limited profile). Surface that as the scrape
+ *  error instead of treating the record as profile data. */
+function itemErrorOf(item) {
+  for (const key of ["error", "errorDescription", "errorMessage"]) {
+    const v = item[key];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  if (item.error === true) return "Actor reported an unspecified error for this profile";
+  if (Array.isArray(item.requestErrorMessages) && item.requestErrorMessages.length) {
+    return String(item.requestErrorMessages[0]);
+  }
+  return null;
+}
+
 /**
  * Scrape a single account. Returns { ok: true, ...fields } or
  * { ok: false, error }. Never throws — every failure mode (no actor
- * configured, Apify error, empty dataset) is a soft failure so the caller
- * (cron loop or manual sync) can record it against the one account without
- * aborting the batch.
+ * configured, Apify error, empty dataset, unusable record) is a soft failure
+ * so the caller (cron loop or manual sync) can record it against the one
+ * account without aborting the batch.
  */
 async function scrapeAccount({ account, platform, apiKey }) {
   if (!platform.apify_actor_id) {
@@ -168,11 +184,26 @@ async function scrapeAccount({ account, platform, apiKey }) {
     if (!item) {
       return { ok: false, error: "Apify returned no data for this profile" };
     }
+    const itemError = itemErrorOf(item);
+    if (itemError) {
+      return { ok: false, error: `Actor reported: ${itemError}` };
+    }
     const extracted = extractMetrics(item, platform.metrics_schema);
+    // A record that matched none of the platform's metrics is diagnostic, not
+    // data — recording it as "ok" would blank the card (and, before this
+    // guard, overwrote previously-good values with nothing). Name the fields
+    // the actor actually returned so the mismatch is visible on the card.
+    if (extracted.follower_count === null && Object.keys(extracted.metrics).length === 0) {
+      const fields = Object.keys(item).slice(0, 12).join(", ");
+      return {
+        ok: false,
+        error: `Actor returned a record but none of the expected metrics were in it (fields: ${fields || "none"})`,
+      };
+    }
     return { ok: true, ...extracted, raw: item };
   } catch (err) {
     return { ok: false, error: err.message || "Scrape failed" };
   }
 }
 
-module.exports = { scrapeAccount, extractMetrics, pluck };
+module.exports = { scrapeAccount, extractMetrics, pluck, itemErrorOf };

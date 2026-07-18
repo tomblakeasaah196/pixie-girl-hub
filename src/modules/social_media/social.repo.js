@@ -125,7 +125,9 @@ async function recordScrapeResult({ account_id, result }) {
           SET follower_count = COALESCE($2, follower_count),
               bio = COALESCE($3, bio),
               avatar_url = COALESCE($4, avatar_url),
-              metrics = COALESCE($5::jsonb, metrics),
+              -- Merge, don't replace: a scrape that found followers but not
+              -- (say) rating must not wipe the rating a previous run stored.
+              metrics = metrics || COALESCE($5::jsonb, '{}'::jsonb),
               last_scraped_at = now(),
               last_scrape_status = 'ok',
               last_scrape_error = NULL

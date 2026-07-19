@@ -53,15 +53,23 @@ async function getProduct({ brand, slug }) {
     throw new NotFoundError("Product");
   }
 
-  const [allVariants, gallery, colours, tiers, laces, cfg, socialProof] = await Promise.all([
-    styledVariantsRepo.listVariants({ brand, styled_id }),
-    repo.listStyledGallery({ brand, styled_id }),
-    repo.listColourGalleries({ brand, styled_id }),
-    styledVariantsRepo.listSizeTiers({ brand, activeOnly: true }),
-    styledVariantsRepo.listLaceSizes({ brand, activeOnly: true }),
-    styledVariantsRepo.getConfig({ brand }),
-    repo.getSocialProof({ brand, styled_id }),
-  ]);
+  const [allVariants, gallery, colours, tiers, laces, cfg, socialProof, videos, relatedProducts] =
+    await Promise.all([
+      styledVariantsRepo.listVariants({ brand, styled_id }),
+      repo.listStyledGallery({ brand, styled_id }),
+      repo.listColourGalleries({ brand, styled_id }),
+      styledVariantsRepo.listSizeTiers({ brand, activeOnly: true }),
+      styledVariantsRepo.listLaceSizes({ brand, activeOnly: true }),
+      styledVariantsRepo.getConfig({ brand }),
+      repo.getSocialProof({ brand, styled_id }),
+      repo.listProductVideos({ brand, product_id: styled.base_product_id }),
+      repo.listRelatedProducts({
+        brand,
+        base_product_id: styled.base_product_id,
+        category_id: styled.category_id,
+        exclude_styled_id: styled_id,
+      }),
+    ]);
 
   // Show ONLY variants a buyer can actually purchase — the same is_active +
   // is_deleted gate add-to-cart applies (listVariants already drops is_deleted).
@@ -158,6 +166,30 @@ async function getProduct({ brand, slug }) {
           author_handle: socialProof.oembed_author_handle,
         }
       : null,
+    // Media gallery videos (YouTube/Reels/TikTok/direct upload) — merchandised
+    // on the base product, shown on every styled skin built on it.
+    videos: videos.map((v) => ({
+      video_id: v.video_id,
+      source: v.source,
+      external_ref: v.external_ref,
+      embed_url: v.embed_url,
+      thumbnail_url: v.thumbnail_url,
+      title: v.title,
+      caption: v.caption,
+      duration_seconds: v.duration_seconds,
+      is_primary: v.is_primary,
+    })),
+    // "You May Also Love" — curated product_related, topped up from the same
+    // category so the rail is never empty.
+    related_products: relatedProducts.map((p) => ({
+      styled_id: p.styled_id,
+      name: p.name,
+      slug: p.slug,
+      short_description: p.short_description,
+      cover_image_url: p.cover_image_url,
+      effective_price_ngn: p.effective_price_ngn,
+      effective_price_usd: p.effective_price_usd,
+    })),
   };
 }
 

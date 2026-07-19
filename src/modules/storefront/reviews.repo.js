@@ -41,16 +41,33 @@ async function listApproved({ brand, product_id, limit = 50 }) {
   }));
 }
 
-/** Aggregate rating summary (count + average) for the product header. */
+/** Aggregate rating summary (count + average + per-star breakdown) for the
+ *  product header's histogram. */
 async function summary({ brand, product_id }) {
   const { rows } = await query(
-    `SELECT COUNT(*)::int AS count, COALESCE(AVG(rating), 0)::numeric(3,2) AS average
+    `SELECT COUNT(*)::int AS count, COALESCE(AVG(rating), 0)::numeric(3,2) AS average,
+            COUNT(*) FILTER (WHERE rating = 5)::int AS star_5,
+            COUNT(*) FILTER (WHERE rating = 4)::int AS star_4,
+            COUNT(*) FILTER (WHERE rating = 3)::int AS star_3,
+            COUNT(*) FILTER (WHERE rating = 2)::int AS star_2,
+            COUNT(*) FILTER (WHERE rating = 1)::int AS star_1
        FROM shared.product_reviews
       WHERE business = $1 AND product_id = $2
         AND status = 'approved' AND is_deleted = false`,
     [brand, product_id],
   );
-  return { count: rows[0] ? rows[0].count : 0, average: Number(rows[0]?.average) || 0 };
+  const r = rows[0] || {};
+  return {
+    count: r.count || 0,
+    average: Number(r.average) || 0,
+    breakdown: {
+      5: r.star_5 || 0,
+      4: r.star_4 || 0,
+      3: r.star_3 || 0,
+      2: r.star_2 || 0,
+      1: r.star_1 || 0,
+    },
+  };
 }
 
 async function create({

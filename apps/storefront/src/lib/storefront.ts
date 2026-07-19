@@ -90,6 +90,21 @@ export interface ProductDetail {
     thumbnail_url: string | null;
     author_handle: string | null;
   } | null;
+  /** Merchandised video clips (YouTube/Reels/TikTok/direct upload) — shown
+   *  alongside the photo gallery on the product detail page. */
+  videos: {
+    video_id: string;
+    source: "youtube" | "instagram_reel" | "tiktok" | "direct_upload";
+    external_ref: string;
+    embed_url: string;
+    thumbnail_url?: string | null;
+    title?: string | null;
+    caption?: string | null;
+    duration_seconds?: number | null;
+    is_primary?: boolean;
+  }[];
+  /** "You May Also Love" — curated + auto-filled related products. */
+  related_products: ProductCard[];
 }
 
 export interface CartItem {
@@ -269,10 +284,14 @@ export interface Review {
   author: string;
 }
 export const getReviews = (slug: string, ctx?: ApiContext) =>
-  api.get<{ summary: { count: number; average: number }; reviews: Review[] }>(
-    `${SF}/products/${slug}/reviews`,
-    ctx,
-  );
+  api.get<{
+    summary: {
+      count: number;
+      average: number;
+      breakdown: Record<number, number>;
+    };
+    reviews: Review[];
+  }>(`${SF}/products/${slug}/reviews`, ctx);
 export const submitReview = (body: {
   product_slug: string;
   rating: number;

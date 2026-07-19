@@ -80,6 +80,10 @@ const HOME_SLOTS: Record<string, unknown> = {
     "1-year atelier guarantee",
     "Reusable for 18 months+",
   ],
+  // Optional logo/mark shown between each scrolling phrase in the ribbon. Empty
+  // → a subtle dot is used. The IMAGE_HINT heuristic renders this key as an
+  // upload control automatically. Mirror in home-content.ts + seed-storefront.js.
+  marqueeImage: "",
   bundles: {
     eyebrow: "Shop the edit · ensembles",
     heading: "Curated ",

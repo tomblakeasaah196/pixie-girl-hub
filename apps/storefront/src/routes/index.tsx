@@ -61,7 +61,7 @@ function Index() {
       <CinematicPreloader />
       <main>
         <Hero content={c.hero} />
-        <Marquee items={c.marquee} />
+        <Marquee items={c.marquee} image={c.marqueeImage} />
         <SignatureCarousel head={c.signatureHead} items={signatureItems} />
         <BundleMarquee head={c.bundlesHead} items={bundleItems} />
         <ShopByShade head={c.shadesHead} items={shadeItems} />

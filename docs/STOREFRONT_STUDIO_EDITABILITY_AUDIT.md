@@ -114,17 +114,32 @@ These are **not yet editable** and are the honest remaining backlog.
   until a real image is uploaded into the matching slot. (Not user copy; these
   are just the “nothing 404s” defaults.)
 
-### Functional / transactional routes (microcopy hardcoded)
-These render mostly UI chrome (buttons, form labels, toasts) rather than
-marketing content, and read no slots today:
-`product/$slug`, `shop/$category`, `collections/$slug`, `services/$slug`,
-`shades/$slug`, `journal/$slug` (article chrome), `cart`, `checkout`,
-`checkout/thank-you`, `auth`, `account`, `track/$token`, `deliver/$token`,
-`install/$token`, `o/$slug`.
+### Functional / transactional routes — now editable ✅ (PR #605)
+Every transactional route now reads its microcopy (button labels, form
+placeholders, headings, toasts, validation messages) from `usePageSlots` +
+`withSlots`, is registered in `page-catalog.ts`, and appears in Studio → Pages:
 
-> To make any of these editable, add a `usePageSlots("<key>")` + `withSlots(...)`
+| Page | `page_key` |
+|---|---|
+| Cart | `cart` |
+| Checkout | `checkout` |
+| Order confirmation | `checkout_thank_you` |
+| Sign in / register | `auth` |
+| Account | `account` |
+| Product detail | `product_detail` |
+| Service detail (booking) | `service_detail` |
+| Shop category | `shop_category` |
+| Collection detail | `collection_detail` |
+| Shade detail | `shade_detail` |
+| Journal article chrome | `journal_article` |
+| Order tracking link | `track_order` |
+| Care hub (install link) | `install_hub` |
+| Delivery confirmation (agent) | `deliver_confirm` |
+| Pay-by-link checkout | `order_link` |
+
+> Pattern for any future page: add a `usePageSlots("<key>")` + `withSlots(...)`
 > read in the route, a catalog entry in `page-catalog.ts`, and a seed row in
-> `scripts/seed-storefront.js` — the same pattern the content pages now use.
+> `scripts/seed-storefront.js`.
 
 ---
 

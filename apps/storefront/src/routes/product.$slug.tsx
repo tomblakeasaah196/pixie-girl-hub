@@ -13,6 +13,9 @@ import { useCurrency, notifyCartChanged } from "@/lib/useStore";
 import { usePageSlots, withSlots } from "@/lib/site-config";
 import { Section, ErrorState } from "@/components/parts";
 import { YouTubeFacade, youtubeId } from "@/components/site/VideoEmbed";
+import { ProductGallery } from "@/components/site/ProductGallery";
+import { ProductReviews } from "@/components/site/ProductReviews";
+import { YouMayAlsoLove } from "@/components/site/YouMayAlsoLove";
 
 export const Route = createFileRoute("/product/$slug")({
   loader: async ({ params }) => ssrProduct({ data: { slug: params.slug } }),
@@ -133,7 +136,14 @@ function ProductPage() {
           (g) => !g.styled_colour_id || g.styled_colour_id === colourId,
         )
       : product.gallery;
-  const hero = gallery[0]?.url || product.cover_image_url || null;
+  // Fall back to the cover image when the product has no gallery rows yet, so
+  // the media rail is never blank.
+  const galleryImages =
+    gallery.length > 0
+      ? gallery
+      : product.cover_image_url
+        ? [{ url: product.cover_image_url, alt_text: product.name }]
+        : [];
 
   const price = priceOfVariant(
     product,
@@ -194,22 +204,11 @@ function ProductPage() {
   return (
     <Section className="grid gap-10 md:grid-cols-2">
       {/* Gallery */}
-      <div>
-        <div className="aspect-[3/4] overflow-hidden rounded-md bg-secondary">
-          {hero ? (
-            <img src={hero} alt={product.name} className="h-full w-full object-cover" />
-          ) : null}
-        </div>
-        {gallery.length > 1 ? (
-          <div className="mt-3 grid grid-cols-5 gap-2">
-            {gallery.slice(0, 5).map((g, i) => (
-              <div key={i} className="aspect-square overflow-hidden rounded bg-secondary">
-                <img src={g.url} alt="" className="h-full w-full object-cover" />
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </div>
+      <ProductGallery
+        images={galleryImages}
+        videos={product.videos}
+        productName={product.name}
+      />
 
       {/* Detail */}
       <div>
@@ -335,6 +334,18 @@ function ProductPage() {
             ) : null}
           </details>
         ) : null}
+      </div>
+
+      {/* You May Also Love */}
+      {product.related_products.length > 0 ? (
+        <div className="md:col-span-2 mt-8 border-t border-border pt-12">
+          <YouMayAlsoLove products={product.related_products} currency={currency} />
+        </div>
+      ) : null}
+
+      {/* Reviews */}
+      <div className="md:col-span-2 border-t border-border pt-12">
+        <ProductReviews slug={product.slug} />
       </div>
     </Section>
   );

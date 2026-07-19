@@ -680,6 +680,83 @@ async function getSocialProof({ brand, styled_id }) {
   return rows[0] || null;
 }
 
+// Product videos (YouTube/Reels/TikTok/direct upload) for the media gallery —
+// keyed on the BASE product (product_videos is base-level merchandising,
+// shared across every styled skin built on that base).
+async function listProductVideos({ brand, product_id }) {
+  const { rows } = await query(
+    `SELECT video_id, source, external_ref, embed_url, thumbnail_url,
+            title, caption, duration_seconds, is_primary, display_order
+       FROM ${t(brand, "product_videos")}
+      WHERE product_id = $1
+      ORDER BY is_primary DESC, display_order ASC`,
+    [product_id],
+  );
+  return rows;
+}
+
+// "You May Also Love" — curated product_related pairs (admin-managed, keyed on
+// the BASE product) resolved to a LIVE styled product per related base, topped
+// up from the same category when curation doesn't fill the rail so the section
+// is never empty. DISTINCT ON collapses multiple styled skins of the same
+// related base down to its most recently published one.
+async function listRelatedProducts({
+  brand,
+  base_product_id,
+  category_id,
+  exclude_styled_id,
+  limit = 8,
+}) {
+  const { rows: curated } = await query(
+    `SELECT DISTINCT ON (r.related_product_id)
+            s.styled_id, s.name, s.slug, s.short_description,
+            s.retail_price_ngn, s.retail_price_usd,
+            COALESCE(fp.from_price_ngn, s.retail_price_ngn) AS effective_price_ngn,
+            COALESCE(fp.from_price_usd, s.retail_price_usd) AS effective_price_usd,
+            (SELECT img.cdn_url FROM ${t(brand, "product_images")} img
+              WHERE img.styled_id = s.styled_id
+              ORDER BY img.is_primary DESC, img.display_order LIMIT 1) AS cover_image_url,
+            r.display_order, r.score
+       FROM ${t(brand, "product_related")} r
+       JOIN ${t(brand, "styled_products")} s ON s.base_product_id = r.related_product_id
+       ${fromPriceLateral(brand)}
+      WHERE r.product_id = $1
+        AND s.status = 'live' AND s.is_visible_storefront = true AND s.is_deleted = false
+        AND s.styled_id <> $2
+      ORDER BY r.related_product_id, s.published_at DESC NULLS LAST`,
+    [base_product_id, exclude_styled_id],
+  );
+  curated.sort(
+    (a, b) =>
+      (a.display_order || 0) - (b.display_order || 0) ||
+      Number(b.score || 0) - Number(a.score || 0),
+  );
+  const picked = curated.slice(0, limit);
+
+  if (picked.length < limit && category_id) {
+    const have = [exclude_styled_id, ...picked.map((r) => r.styled_id)];
+    const { rows: fallback } = await query(
+      `SELECT s.styled_id, s.name, s.slug, s.short_description,
+              s.retail_price_ngn, s.retail_price_usd,
+              COALESCE(fp.from_price_ngn, s.retail_price_ngn) AS effective_price_ngn,
+              COALESCE(fp.from_price_usd, s.retail_price_usd) AS effective_price_usd,
+              (SELECT img.cdn_url FROM ${t(brand, "product_images")} img
+                WHERE img.styled_id = s.styled_id
+                ORDER BY img.is_primary DESC, img.display_order LIMIT 1) AS cover_image_url
+         FROM ${t(brand, "styled_products")} s
+         ${fromPriceLateral(brand)}
+        WHERE s.category_id = $1
+          AND s.status = 'live' AND s.is_visible_storefront = true AND s.is_deleted = false
+          AND s.styled_id <> ALL($2::uuid[])
+        ORDER BY s.published_at DESC NULLS LAST
+        LIMIT $3`,
+      [category_id, have, limit - picked.length],
+    );
+    picked.push(...fallback);
+  }
+  return picked.map(({ display_order: _display_order, score: _score, ...card }) => card);
+}
+
 async function nearbyStylists({ city, limit = 3 }) {
   const params = [];
   let where = "status = 'certified'";
@@ -726,4 +803,6 @@ module.exports = {
   listCareGuides,
   nearbyStylists,
   getSocialProof,
+  listProductVideos,
+  listRelatedProducts,
 };

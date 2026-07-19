@@ -30,6 +30,7 @@ import {
 import { formatFromNgn, settlementFor } from "@/lib/money";
 import { bootstrapAuth, getMe } from "@/lib/auth";
 import { useCurrency, useReferralCode } from "@/lib/useStore";
+import { usePageSlots, withSlots } from "@/lib/site-config";
 import {
   fetchDeliveryQuote,
   fetchGeoOptions,
@@ -49,6 +50,97 @@ function CheckoutPage() {
   const pathname = useRouterState({ select: (st) => st.location.pathname });
   const [currency] = useCurrency();
   const [busy, setBusy] = useState(false);
+  // Every user-facing string on this page (usePageSlots("checkout")). Named
+  // `copy` because `state`/`setState` below is the address-state field, not this.
+  const copy = withSlots(
+    {
+      loading: "Loading your bag…",
+      heading: "Checkout",
+      emptyTitle: "Your bag is empty.",
+      emptyCta: "Start shopping",
+      backToBag: "Back to bag",
+      contactLegend: "Contact",
+      firstNamePlaceholder: "First name",
+      lastNamePlaceholder: "Last name",
+      emailPlaceholder: "Email",
+      phonePlaceholder: "Phone",
+      fulfilmentLegend: "Fulfilment",
+      deliveryOptionLabel: "Deliver to me",
+      deliveryOptionDesc: "Ship to your address",
+      pickupOptionLabel: "Pick up",
+      pickupOptionDesc: "Collect from our store",
+      countryLabel: "Country",
+      countryPlaceholder: "Start typing your country…",
+      stateLabel: "State",
+      statePlaceholder: "Select your state…",
+      stateProvinceLabel: "State / Province",
+      stateProvincePlaceholder: "State or province",
+      cityLgaLabel: "City / LGA",
+      lgaPlaceholder: "Select your LGA…",
+      cityLabel: "City",
+      cityPlaceholder: "City / town",
+      address1Label: "Address line 1",
+      address1Placeholder: "House number and street",
+      address2Label: "Address line 2",
+      address2Placeholder: "Apartment, landmark (optional)",
+      pickupLocationLabel: "Pickup location",
+      pickupPending:
+        "We'll share the pickup address and collection time right after you order.",
+      paymentLegend: "Payment",
+      loyaltyLegend: "Loyalty",
+      redeemLabel: "Redeem points (you have {points})",
+      redeemNote: "Points are applied at payment and reduce the amount charged.",
+      summaryTitle: "Order summary",
+      subtotalLabel: "Subtotal",
+      discountLabel: "Discount",
+      deliverySummaryLabel: "Delivery",
+      deliveryFreeLabel: "Free",
+      deliveryCalculating: "Calculating…",
+      deliveryNoService: "No delivery to this address",
+      deliverySelectLocation: "Select location",
+      undeliverableNote:
+        "We can't deliver to this address yet. Double-check your country, state and city, or choose store pickup. We can't take a delivery order without a delivery fee.",
+      totalLabel: "Total",
+      referralLabel: "Referred by a friend?",
+      referralPlaceholder: "Friend's code (optional)",
+      referralApplied:
+        "Applied from your friend's link · discount is on the order total.",
+      promoToggle: "Have a promo code?",
+      promoLabel: "Promo code",
+      promoPlaceholder: "Enter code",
+      promoApplyCta: "Apply",
+      promoAppliedNote: "Code {code} applied · discount shown above.",
+      payBusy: "Starting secure payment…",
+      payCalculating: "Calculating delivery…",
+      payAddDetails: "Add delivery details",
+      payCta: "Pay {total}",
+      secureCheckoutPickup: "Secure checkout · Collect in store",
+      secureCheckoutDelivery: "Secure checkout · Delivery included",
+      secureCheckoutNoAddress: "Secure checkout · Enter a deliverable address",
+      chargedInNote: "Charged in {currency}: {amount}",
+      retrySafeNote:
+        "You'll be taken to a secure payment page. Retries are safe; you are not charged twice.",
+      modalHeading: "Almost there — where are we sending it?",
+      modalBody:
+        "We just need a delivery address we can actually ship to, so we can add your delivery fee. Pop in your country, state and city — or collect from our store instead.",
+      modalAddAddress: "Add my delivery address",
+      modalPickupInstead: "Collect from store instead",
+      errNameEmailPhone: "Please fill in your name, email and phone.",
+      errDeliveryAddress: "Please enter your delivery address.",
+      errState: "Please select your state.",
+      errCityLga: "Please select your city / LGA.",
+      errPickStateNg:
+        "Please pick your state from the list (and your LGA for Lagos) so we can calculate delivery.",
+      errPickCountry:
+        "Please pick your country from the list so we can calculate delivery.",
+      errCalculating: "Calculating delivery… give it a second, then tap Pay again.",
+      errCheckoutFailed:
+        "Checkout failed. Please review your details and try again.",
+      promoInvalid:
+        "That code isn't valid on this cart. Please double-check it and try again.",
+    },
+    usePageSlots("checkout"),
+  );
 
   // Live server-backed cart (sf_cart cookie). Drives the wig count that prices
   // the delivery tier and the summary line items.
@@ -156,8 +248,7 @@ function CheckoutPage() {
       await Promise.all([cartQ.refetch(), quoteQ.refetch()]);
     } catch (e) {
       const m =
-        (e as { userMessage?: string })?.userMessage ||
-        "That code isn't valid on this cart. Please double-check it and try again.";
+        (e as { userMessage?: string })?.userMessage || copy.promoInvalid;
       setPromoErr(m);
     } finally {
       setPromoBusy(false);
@@ -285,14 +376,14 @@ function CheckoutPage() {
   // never presented as something payable at ₦0.
   const deliveryLabel =
     fulfilment === "pickup"
-      ? "Free"
+      ? copy.deliveryFreeLabel
       : quoting
-        ? "Calculating…"
+        ? copy.deliveryCalculating
         : deliveryFee != null && deliveryFee > 0
           ? fmt(deliveryFee)
           : effectiveZone
-            ? "No delivery to this address"
-            : "Select location";
+            ? copy.deliveryNoService
+            : copy.deliverySelectLocation;
 
   // Payment rails: any FOREIGN settlement routes through Nomba only; only a NGN
   // settlement offers the Paystack alternative. Keep the selected rail valid
@@ -317,20 +408,20 @@ function CheckoutPage() {
     e.preventDefault();
     setErr(null);
     if (!first || !email || !phone) {
-      setErr("Please fill in your name, email and phone.");
+      setErr(copy.errNameEmailPhone);
       return;
     }
     if (fulfilment === "delivery") {
       if (!addressLine1 || !city) {
-        setErr("Please enter your delivery address.");
+        setErr(copy.errDeliveryAddress);
         return;
       }
       if (isNigeria && !state) {
-        setErr("Please select your state.");
+        setErr(copy.errState);
         return;
       }
       if (isLagos && !zoneCode) {
-        setErr("Please select your city / LGA.");
+        setErr(copy.errCityLga);
         return;
       }
       // The location must have RESOLVED to a billable zone. Typing a country /
@@ -338,16 +429,12 @@ function CheckoutPage() {
       // `effectiveZone` blank — the visible address looks complete but we have
       // no zone to price. Never let that pay ₦0 delivery.
       if (!effectiveZone) {
-        setErr(
-          isNigeria
-            ? "Please pick your state from the list (and your LGA for Lagos) so we can calculate delivery."
-            : "Please pick your country from the list so we can calculate delivery.",
-        );
+        setErr(isNigeria ? copy.errPickStateNg : copy.errPickCountry);
         return;
       }
       // Quote still in flight — wait for the fee rather than submitting blind.
       if (quoting) {
-        setErr("Calculating delivery… give it a second, then tap Pay again.");
+        setErr(copy.errCalculating);
         return;
       }
       // ZERO EXCEPTIONS: a delivery order must carry a real, positive fee. A ₦0
@@ -404,8 +491,7 @@ function CheckoutPage() {
       window.location.href = res.payment_url;
     } catch (e) {
       const m =
-        (e as { userMessage?: string })?.userMessage ||
-        "Checkout failed. Please review your details and try again.";
+        (e as { userMessage?: string })?.userMessage || copy.errCheckoutFailed;
       setErr(m);
       toast.error(m);
       setBusy(false);
@@ -418,22 +504,22 @@ function CheckoutPage() {
   if (cartQ.isLoading)
     return (
       <Section>
-        <p className="text-body text-muted-foreground">Loading your bag…</p>
+        <p className="text-body text-muted-foreground">{copy.loading}</p>
       </Section>
     );
 
   if (items.length === 0)
     return (
       <Section>
-        <h1 className="text-h3 font-display">Checkout</h1>
+        <h1 className="text-h3 font-display">{copy.heading}</h1>
         <EmptyState
-          title="Your bag is empty."
+          title={copy.emptyTitle}
           cta={
             <Link
               to="/shop"
               className="rounded-full bg-primary px-6 py-2.5 text-body-sm text-primary-foreground"
             >
-              Start shopping
+              {copy.emptyCta}
             </Link>
           }
         />
@@ -444,12 +530,12 @@ function CheckoutPage() {
 
   return (
     <Section className="max-w-5xl">
-      <h1 className="text-h3 font-display">Checkout</h1>
+      <h1 className="text-h3 font-display">{copy.heading}</h1>
       <Link
         to="/cart"
         className="mt-1 inline-block text-body-sm text-muted-foreground hover:text-foreground"
       >
-        Back to bag
+        {copy.backToBag}
       </Link>
 
       <form
@@ -460,11 +546,11 @@ function CheckoutPage() {
         {/* ── Left: contact, fulfilment, payment, loyalty ── */}
         <div className="space-y-8">
           <fieldset className="space-y-4">
-            <legend className="text-caption">Contact</legend>
+            <legend className="text-caption">{copy.contactLegend}</legend>
             <div className="grid grid-cols-2 gap-4">
               <input
                 className={field}
-                placeholder="First name"
+                placeholder={copy.firstNamePlaceholder}
                 value={first}
                 onChange={(e) => setFirst(e.target.value)}
                 autoComplete="given-name"
@@ -472,7 +558,7 @@ function CheckoutPage() {
               />
               <input
                 className={field}
-                placeholder="Last name"
+                placeholder={copy.lastNamePlaceholder}
                 value={last}
                 onChange={(e) => setLast(e.target.value)}
                 autoComplete="family-name"
@@ -482,7 +568,7 @@ function CheckoutPage() {
               <input
                 className={field}
                 type="email"
-                placeholder="Email"
+                placeholder={copy.emailPlaceholder}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="email"
@@ -490,7 +576,7 @@ function CheckoutPage() {
               />
               <input
                 className={field}
-                placeholder="Phone"
+                placeholder={copy.phonePlaceholder}
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 autoComplete="tel"
@@ -500,20 +586,20 @@ function CheckoutPage() {
           </fieldset>
 
           <fieldset className="space-y-4">
-            <legend className="text-caption">Fulfilment</legend>
+            <legend className="text-caption">{copy.fulfilmentLegend}</legend>
             <div className="grid grid-cols-2 gap-2">
               {(
                 [
                   {
                     v: "delivery" as const,
-                    label: "Deliver to me",
-                    desc: "Ship to your address",
+                    label: copy.deliveryOptionLabel,
+                    desc: copy.deliveryOptionDesc,
                     icon: Truck,
                   },
                   {
                     v: "pickup" as const,
-                    label: "Pick up",
-                    desc: "Collect from our store",
+                    label: copy.pickupOptionLabel,
+                    desc: copy.pickupOptionDesc,
                     icon: Store,
                   },
                 ]
@@ -541,7 +627,7 @@ function CheckoutPage() {
             {fulfilment === "delivery" ? (
               <div id="delivery-address" className="space-y-4">
                 {/* Country — searchable, choose from the dropdown */}
-                <FieldLabel label="Country" required>
+                <FieldLabel label={copy.countryLabel} required>
                   <ComboBox
                     options={countries}
                     value={country}
@@ -561,14 +647,14 @@ function CheckoutPage() {
                       // wait for the state pick to resolve the zone.
                       setZoneCode(item.code === "NG" ? "" : item.code);
                     }}
-                    placeholder="Start typing your country…"
+                    placeholder={copy.countryPlaceholder}
                   />
                 </FieldLabel>
 
                 {/* State — Nigeria gets an autofill picker; every other
                     country free-types its region. */}
                 {isNigeria ? (
-                  <FieldLabel label="State" required>
+                  <FieldLabel label={copy.stateLabel} required>
                     <ComboBox
                       options={ngStates}
                       value={state}
@@ -583,17 +669,17 @@ function CheckoutPage() {
                         // Lagos is served via its LGAs — wait for the LGA.
                         setZoneCode(item.name === "Lagos" ? "" : item.code);
                       }}
-                      placeholder="Select your state…"
+                      placeholder={copy.statePlaceholder}
                     />
                   </FieldLabel>
                 ) : (
                   country && (
-                    <FieldLabel label="State / Province">
+                    <FieldLabel label={copy.stateProvinceLabel}>
                       <input
                         className={field}
                         value={state}
                         onChange={(e) => setState(e.target.value)}
-                        placeholder="State or province"
+                        placeholder={copy.stateProvincePlaceholder}
                       />
                     </FieldLabel>
                   )
@@ -602,7 +688,7 @@ function CheckoutPage() {
                 {/* City — Lagos gets the LGA picker; everywhere else
                     free-types the city. */}
                 {isLagos ? (
-                  <FieldLabel label="City / LGA" required>
+                  <FieldLabel label={copy.cityLgaLabel} required>
                     <ComboBox
                       options={lagosLgas}
                       value={city}
@@ -614,43 +700,43 @@ function CheckoutPage() {
                         setCity(item.name);
                         setZoneCode(item.code);
                       }}
-                      placeholder="Select your LGA…"
+                      placeholder={copy.lgaPlaceholder}
                     />
                   </FieldLabel>
                 ) : (
-                  <FieldLabel label="City" required>
+                  <FieldLabel label={copy.cityLabel} required>
                     <input
                       className={field}
                       value={city}
                       onChange={(e) => setCity(e.target.value)}
                       required
-                      placeholder="City / town"
+                      placeholder={copy.cityPlaceholder}
                     />
                   </FieldLabel>
                 )}
 
-                <FieldLabel label="Address line 1" required>
+                <FieldLabel label={copy.address1Label} required>
                   <input
                     className={field}
                     value={addressLine1}
                     onChange={(e) => setAddressLine1(e.target.value)}
                     required
-                    placeholder="House number and street"
+                    placeholder={copy.address1Placeholder}
                   />
                 </FieldLabel>
-                <FieldLabel label="Address line 2">
+                <FieldLabel label={copy.address2Label}>
                   <input
                     className={field}
                     value={addressLine2}
                     onChange={(e) => setAddressLine2(e.target.value)}
-                    placeholder="Apartment, landmark (optional)"
+                    placeholder={copy.address2Placeholder}
                   />
                 </FieldLabel>
               </div>
             ) : (
               <div className="rounded-lg border border-border bg-secondary px-4 py-3">
                 <p className="flex items-center gap-1.5 text-caption">
-                  <MapPin size={14} /> Pickup location
+                  <MapPin size={14} /> {copy.pickupLocationLabel}
                 </p>
                 {pickupAddr?.address ? (
                   <>
@@ -665,8 +751,7 @@ function CheckoutPage() {
                   </>
                 ) : (
                   <p className="mt-1.5 text-body-sm italic text-muted-foreground">
-                    We&apos;ll share the pickup address and collection time
-                    right after you order.
+                    {copy.pickupPending}
                   </p>
                 )}
               </div>
@@ -674,7 +759,7 @@ function CheckoutPage() {
           </fieldset>
 
           <fieldset className="space-y-3">
-            <legend className="text-caption">Payment</legend>
+            <legend className="text-caption">{copy.paymentLegend}</legend>
             <div className="flex gap-2">
               {rails.map((g) => (
                 <button
@@ -695,9 +780,9 @@ function CheckoutPage() {
 
           {points > 0 ? (
             <fieldset className="space-y-2">
-              <legend className="text-caption">Loyalty</legend>
+              <legend className="text-caption">{copy.loyaltyLegend}</legend>
               <label className="block text-body-sm text-muted-foreground">
-                Redeem points (you have {points})
+                {copy.redeemLabel.replace("{points}", String(points))}
               </label>
               <input
                 type="number"
@@ -715,7 +800,7 @@ function CheckoutPage() {
                 className={field}
               />
               <p className="text-caption text-muted-foreground">
-                Points are applied at payment and reduce the amount charged.
+                {copy.redeemNote}
               </p>
             </fieldset>
           ) : null}
@@ -724,7 +809,7 @@ function CheckoutPage() {
         {/* ── Right: order summary ── */}
         <aside className="h-fit lg:sticky lg:top-6">
           <div className="rounded-lg border border-border p-6">
-            <h2 className="text-h6 font-display">Order summary</h2>
+            <h2 className="text-h6 font-display">{copy.summaryTitle}</h2>
 
             <ul className="mt-4 space-y-3">
               {items.map((it) => (
@@ -754,7 +839,7 @@ function CheckoutPage() {
 
             <dl className="mt-4 space-y-2 border-t border-border pt-4 text-body-sm">
               <div className="flex justify-between">
-                <dt className="text-muted-foreground">Subtotal</dt>
+                <dt className="text-muted-foreground">{copy.subtotalLabel}</dt>
                 <dd className="font-mono tabular-nums">
                   {quoteQ.data ? fmt(subtotalNgn) : "…"}
                 </dd>
@@ -762,7 +847,7 @@ function CheckoutPage() {
               {discountNgn > 0 ? (
                 <div className="flex justify-between text-rose">
                   <dt className="inline-flex items-center gap-1">
-                    Discount
+                    {copy.discountLabel}
                     {promoAppliedCode ? (
                       <span className="font-mono text-caption">
                         · {promoAppliedCode}
@@ -781,7 +866,7 @@ function CheckoutPage() {
                   ) : (
                     <Truck size={12} />
                   )}
-                  Delivery
+                  {copy.deliverySummaryLabel}
                 </dt>
                 <dd className="font-mono tabular-nums">{deliveryLabel}</dd>
               </div>
@@ -796,18 +881,13 @@ function CheckoutPage() {
                 !(deliveryFee != null && deliveryFee > 0) && (
                   <div className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2">
                     <p className="text-caption leading-snug text-muted-foreground">
-                      <span className="text-destructive">
-                        We can&apos;t deliver to this address yet.
-                      </span>{" "}
-                      Double-check your country, state and city, or choose store
-                      pickup. We can&apos;t take a delivery order without a
-                      delivery fee.
+                      {copy.undeliverableNote}
                     </p>
                   </div>
                 )}
 
               <div className="flex items-baseline justify-between border-t border-border pt-3 text-body">
-                <dt>Total</dt>
+                <dt>{copy.totalLabel}</dt>
                 <dd className="font-display text-h6 tabular-nums">
                   {quoteQ.data ? fmt(total) : "…"}
                 </dd>
@@ -820,7 +900,7 @@ function CheckoutPage() {
                 and the referrer's reward is credited on order.paid. */}
             <div className="mt-4 border-t border-border pt-4">
               <label className="block text-caption text-muted-foreground mb-2">
-                Referred by a friend?
+                {copy.referralLabel}
               </label>
               <input
                 type="text"
@@ -828,13 +908,12 @@ function CheckoutPage() {
                 onChange={(e) =>
                   setReferralCode(e.target.value.toUpperCase().slice(0, 80))
                 }
-                placeholder="Friend's code (optional)"
+                placeholder={copy.referralPlaceholder}
                 className={`${field} w-full font-mono uppercase`}
               />
               {referralCode && capturedReferral === referralCode ? (
                 <p className="mt-1 text-caption text-muted-foreground">
-                  Applied from your friend's link · discount is on the order
-                  total.
+                  {copy.referralApplied}
                 </p>
               ) : null}
             </div>
@@ -849,12 +928,12 @@ function CheckoutPage() {
                   onClick={() => setPromoOpen(true)}
                   className="inline-flex items-center gap-1 text-body-sm text-muted-foreground hover:text-foreground"
                 >
-                  Have a promo code?
+                  {copy.promoToggle}
                 </button>
               ) : (
                 <div className="space-y-2">
                   <label className="block text-caption text-muted-foreground">
-                    Promo code
+                    {copy.promoLabel}
                   </label>
                   <div className="flex gap-2">
                     <input
@@ -864,7 +943,7 @@ function CheckoutPage() {
                         setPromoCode(e.target.value.toUpperCase());
                         setPromoErr(null);
                       }}
-                      placeholder="Enter code"
+                      placeholder={copy.promoPlaceholder}
                       className={`${field} flex-1 font-mono uppercase`}
                     />
                     <button
@@ -873,14 +952,23 @@ function CheckoutPage() {
                       disabled={!promoCode.trim() || promoBusy}
                       className="rounded-full border border-primary bg-primary px-4 text-body-sm text-primary-foreground disabled:opacity-50"
                     >
-                      {promoBusy ? "…" : "Apply"}
+                      {promoBusy ? "…" : copy.promoApplyCta}
                     </button>
                   </div>
                   {promoAppliedCode && !promoErr ? (
                     <p className="text-caption text-muted-foreground">
-                      Code{" "}
-                      <span className="font-mono">{promoAppliedCode}</span>{" "}
-                      applied · discount shown above.
+                      {copy.promoAppliedNote
+                        .split("{code}")
+                        .flatMap((part, i) =>
+                          i === 0
+                            ? [part]
+                            : [
+                                <span key={i} className="font-mono">
+                                  {promoAppliedCode}
+                                </span>,
+                                part,
+                              ],
+                        )}
                     </p>
                   ) : null}
                   {promoErr ? (
@@ -913,18 +1001,18 @@ function CheckoutPage() {
               className="mt-6 flex w-full items-center justify-center gap-2 rounded-full bg-primary py-3.5 text-body text-primary-foreground disabled:opacity-60"
             >
               {busy ? (
-                "Starting secure payment…"
+                copy.payBusy
               ) : quoting ? (
                 <>
-                  <Truck size={16} /> Calculating delivery…
+                  <Truck size={16} /> {copy.payCalculating}
                 </>
               ) : !deliveryFeeOk ? (
                 <>
-                  <Truck size={16} /> Add delivery details
+                  <Truck size={16} /> {copy.payAddDetails}
                 </>
               ) : (
                 <>
-                  <Lock size={16} /> Pay {fmt(total)}
+                  <Lock size={16} /> {copy.payCta.replace("{total}", fmt(total))}
                 </>
               )}
             </button>
@@ -932,23 +1020,24 @@ function CheckoutPage() {
             <p className="mt-3 inline-flex w-full items-center justify-center gap-1 text-caption text-muted-foreground">
               <ShieldCheck size={12} />{" "}
               {fulfilment === "pickup"
-                ? "Secure checkout · Collect in store"
+                ? copy.secureCheckoutPickup
                 : deliveryFee != null && deliveryFee > 0
-                  ? "Secure checkout · Delivery included"
-                  : "Secure checkout · Enter a deliverable address"}
+                  ? copy.secureCheckoutDelivery
+                  : copy.secureCheckoutNoAddress}
             </p>
             {/* When the display currency isn't itself a settlement currency, the
                 buyer sees their currency but is charged in the settlement one
                 (USD today). Say so plainly with the exact charged figure. */}
             {settleCur !== currency && (
               <p className="mt-1 text-center text-caption text-muted-foreground">
-                Charged in {settleCur}: {formatFromNgn(total, settleCur)}
+                {copy.chargedInNote
+                  .replace("{currency}", settleCur)
+                  .replace("{amount}", formatFromNgn(total, settleCur))}
               </p>
             )}
             <p className="mt-1 text-center text-caption text-muted-foreground">
               <CreditCard size={12} className="mr-1 inline" />
-              You&apos;ll be taken to a secure payment page. Retries are safe;
-              you are not charged twice.
+              {copy.retrySafeNote}
             </p>
           </div>
         </aside>
@@ -986,12 +1075,10 @@ function CheckoutPage() {
               id="delivery-modal-title"
               className="text-h6 font-display leading-tight"
             >
-              Almost there — where are we sending it?
+              {copy.modalHeading}
             </h3>
             <p className="mt-2 text-body-sm leading-snug text-muted-foreground">
-              We just need a delivery address we can actually ship to, so we can
-              add your delivery fee. Pop in your country, state and city — or
-              collect from our store instead.
+              {copy.modalBody}
             </p>
             <div className="mt-5 grid gap-2">
               <button
@@ -1004,7 +1091,7 @@ function CheckoutPage() {
                 }}
                 className="rounded-full bg-primary py-2.5 text-body-sm text-primary-foreground"
               >
-                Add my delivery address
+                {copy.modalAddAddress}
               </button>
               <button
                 type="button"
@@ -1015,7 +1102,7 @@ function CheckoutPage() {
                 }}
                 className="inline-flex items-center justify-center gap-1.5 rounded-full border border-border py-2.5 text-body-sm text-muted-foreground hover:text-foreground"
               >
-                <Store size={14} /> Collect from store instead
+                <Store size={14} /> {copy.modalPickupInstead}
               </button>
             </div>
           </div>

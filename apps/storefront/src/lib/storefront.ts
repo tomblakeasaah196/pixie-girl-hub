@@ -303,6 +303,14 @@ export const submitReview = (body: {
   body,
 );
 
+/** Upload review photos (signed-in customer). Returns the stored public URLs
+ *  to submit with submitReview({ photo_urls }). */
+export const uploadReviewPhotos = (files: File[]) => {
+  const form = new FormData();
+  for (const f of files) form.append("photos", f);
+  return api.postForm<{ photos: { url: string }[] }>(`${SF}/reviews/photos`, form);
+};
+
 export const getContentPost = (type: string, slug: string, ctx?: ApiContext) =>
   api.get<{
     title: string;

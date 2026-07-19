@@ -13,12 +13,17 @@ export function StarRow({
   className?: string;
 }) {
   return (
-    <span className={`inline-flex items-center gap-0.5 ${className}`}>
+    <span
+      className={`inline-flex items-center gap-0.5 ${className}`}
+      role="img"
+      aria-label={`Rated ${Math.round(value * 10) / 10} out of 5`}
+    >
       {Array.from({ length: 5 }).map((_, i) => {
         const fill = Math.max(0, Math.min(1, value - i));
         return (
           <span
             key={i}
+            aria-hidden="true"
             className="relative inline-block shrink-0"
             style={{ width: size, height: size }}
           >

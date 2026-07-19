@@ -156,6 +156,12 @@ export interface GalleryProfile {
 export interface HomeContent {
   hero: HeroContent;
   marquee: string[];
+  /**
+   * Optional Studio-uploaded mark shown BETWEEN each scrolling phrase in the
+   * value-prop ribbon (Home → "Divider image"). Empty string → a subtle dot is
+   * used instead, so the ribbon looks right whether or not a logo is uploaded.
+   */
+  marqueeImage: string;
   bundlesHead: HeadContent;
   shadesHead: HeadContent;
   signatureHead: HeadContent;
@@ -198,6 +204,7 @@ export const DEFAULT_HOME: HomeContent = {
     "1-year atelier guarantee",
     "Reusable for 18 months+",
   ],
+  marqueeImage: "",
   bundlesHead: {
     eyebrow: "Shop the edit · ensembles",
     heading: "Curated ",
@@ -473,6 +480,8 @@ export function resolveHomeContent(slots: Slots): HomeContent {
   return {
     hero: merge(DEFAULT_HOME.hero, "hero"),
     marquee: Array.isArray(s.marquee) ? (s.marquee as string[]) : DEFAULT_HOME.marquee,
+    marqueeImage:
+      typeof s.marqueeImage === "string" ? s.marqueeImage : DEFAULT_HOME.marqueeImage,
     bundlesHead: merge(DEFAULT_HOME.bundlesHead, "bundles"),
     shadesHead: merge(DEFAULT_HOME.shadesHead, "shades"),
     signatureHead: merge(DEFAULT_HOME.signatureHead, "signature"),

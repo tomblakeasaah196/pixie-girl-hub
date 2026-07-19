@@ -2609,6 +2609,7 @@ const SLOT_LABELS: Record<string, string> = {
   body: "Body",
   bodyAccent: "Body — highlighted part",
   bodyAfter: "Body — after the highlight",
+  marqueeImage: "Divider image — shown between the scrolling words",
 };
 function humanizeSlot(key: string): string {
   return SLOT_LABELS[key] || humanize(key);

@@ -91,6 +91,9 @@
  */
 :root {
   --radius: 0.25rem;
+  /* Light is the opt-in mode (toggled via the header Sun/Moon). Dark is the
+     default — see `.dark` below and the boot script in routes/__root.tsx. */
+  color-scheme: light;
 
   /* Brand palette — LIGHT MODE
      ink/cream swap roles; taupe deepens for contrast on cream surfaces. */
@@ -125,7 +128,10 @@
 }
 
 .dark {
-  /* DARK MODE — original brand palette */
+  /* DARK MODE — original brand palette. This is the site's DEFAULT: the SSR
+     shell renders <html class="dark"> and the boot script keeps every visitor
+     dark unless they've explicitly saved a light preference. */
+  color-scheme: dark;
   --ink: oklch(0.14 0.012 60);
   --cream: oklch(0.96 0.018 80);
   --taupe: oklch(0.82 0.045 60);

@@ -150,6 +150,7 @@ const HOME_SLOTS = {
     "1-year atelier guarantee",
     "Reusable for 18 months+",
   ],
+  marqueeImage: "",
   bundles: {
     eyebrow: "Shop the edit · ensembles",
     heading: "Curated ",

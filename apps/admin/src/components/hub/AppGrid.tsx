@@ -38,8 +38,11 @@ const GRID =
 
 /** Hold-to-arrange duration (requirement: 2–3s press enters Edit Mode). */
 const LONG_PRESS_MS = 2000;
-/** Finger/cursor drift allowed during the hold before it cancels. */
-const LONG_PRESS_TOLERANCE = 12;
+/** Finger/cursor drift allowed during the hold before it cancels. Generous
+ *  on purpose: a real thumb wobbles well past 12px over a 2s hold, and an
+ *  aborted activation looks like "nothing happened". A scroll flick travels
+ *  far beyond this within the first frames, so scrolling still cancels. */
+const LONG_PRESS_TOLERANCE = 24;
 
 const ANCHOR = "dashboard";
 

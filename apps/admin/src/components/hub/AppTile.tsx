@@ -53,7 +53,10 @@ export function AppTile({
           !overlay && "animate-tile-in",
           editing
             ? "cursor-grab active:cursor-grabbing"
-            : "cursor-pointer hover:-translate-y-[5px] hover:border-accent/40 hover:shadow-[0_24px_56px_rgb(0_0_0/0.5)]",
+            : // The active: sink is hold-to-arrange feedback: pressing slowly
+              // shrinks the tile (delayed, so quick taps never flash) to show
+              // the hold is registering; release springs it straight back.
+              "cursor-pointer hover:-translate-y-[5px] hover:border-accent/40 hover:shadow-[0_24px_56px_rgb(0_0_0/0.5)] active:scale-[.96] active:delay-150 active:duration-[1200ms]",
         )}
       >
         <span

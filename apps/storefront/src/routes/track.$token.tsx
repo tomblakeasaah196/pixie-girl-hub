@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { trackOrder, unwrap } from "@/lib/storefront";
+import { usePageSlots, withSlots } from "@/lib/site-config";
 import { Section, ErrorState } from "@/components/parts";
 
 export const Route = createFileRoute("/track/$token")({ component: TrackPage });
@@ -22,6 +23,16 @@ interface Tracking {
 
 function TrackPage() {
   const { token } = Route.useParams();
+  const s = withSlots(
+    {
+      loading: "Loading your order...",
+      eyebrow: "Order tracking",
+      fallbackTitle: "Your order",
+      statusLabel: "Status: ",
+      noUpdates: "No updates yet - check back soon.",
+    },
+    usePageSlots("track_order"),
+  );
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["track", token],
     queryFn: async () => unwrap(await trackOrder(token)) as Tracking,
@@ -39,7 +50,7 @@ function TrackPage() {
   if (isLoading)
     return (
       <Section>
-        <p className="text-body text-muted-foreground">Loading your order...</p>
+        <p className="text-body text-muted-foreground">{s.loading}</p>
       </Section>
     );
   if (isError || !data)
@@ -53,21 +64,20 @@ function TrackPage() {
 
   return (
     <Section className="max-w-2xl">
-      <p className="text-caption">Order tracking</p>
+      <p className="text-caption">{s.eyebrow}</p>
       <h1 className="mt-2 text-h3 font-display">
-        {data.order_number || "Your order"}
+        {data.order_number || s.fallbackTitle}
       </h1>
       {data.status ? (
         <p className="mt-2 text-body capitalize text-muted-foreground">
-          Status: {String(data.status).replace(/_/g, " ")}
+          {s.statusLabel}
+          {String(data.status).replace(/_/g, " ")}
         </p>
       ) : null}
 
       <ol className="mt-8 space-y-5 border-l border-border pl-6">
         {events.length === 0 ? (
-          <li className="text-body-sm text-muted-foreground">
-            No updates yet - check back soon.
-          </li>
+          <li className="text-body-sm text-muted-foreground">{s.noUpdates}</li>
         ) : (
           events.map((e, i) => (
             <li key={i} className="relative">

@@ -8,6 +8,7 @@ import {
   type CustomerProfile,
 } from "@/lib/auth";
 import { fmt } from "@/lib/storefront";
+import { usePageSlots, withSlots } from "@/lib/site-config";
 import { Section, ErrorState } from "@/components/parts";
 import { RetentionPanel } from "@/components/retention";
 
@@ -28,6 +29,17 @@ function AccountPage() {
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
   const [orders, setOrders] = useState<OrderRow[]>([]);
+  const s = withSlots(
+    {
+      eyebrow: "Account",
+      signOutCta: "Sign out",
+      loading: "Loading your account...",
+      ordersHeading: "Orders",
+      noOrders: "You have no orders yet.",
+      trackCta: "Track",
+    },
+    usePageSlots("account"),
+  );
 
   useEffect(() => {
     let active = true;
@@ -61,7 +73,7 @@ function AccountPage() {
   if (state === "loading")
     return (
       <Section>
-        <p className="text-body text-muted-foreground">Loading your account...</p>
+        <p className="text-body text-muted-foreground">{s.loading}</p>
       </Section>
     );
   if (state === "error")
@@ -75,7 +87,7 @@ function AccountPage() {
     <Section className="max-w-2xl">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-caption">Account</p>
+          <p className="text-caption">{s.eyebrow}</p>
           <h1 className="mt-2 text-h3 font-display">
             {profile?.display_name || profile?.email}
           </h1>
@@ -87,18 +99,16 @@ function AccountPage() {
           onClick={signOut}
           className="rounded-full border border-border px-4 py-1.5 text-body-sm hover:bg-secondary"
         >
-          Sign out
+          {s.signOutCta}
         </button>
       </div>
 
       {/* Loyalty · referral · rewards (§6.23) */}
       <RetentionPanel />
 
-      <h2 className="mt-10 text-h5 font-display">Orders</h2>
+      <h2 className="mt-10 text-h5 font-display">{s.ordersHeading}</h2>
       {orders.length === 0 ? (
-        <p className="mt-4 text-body text-muted-foreground">
-          You have no orders yet.
-        </p>
+        <p className="mt-4 text-body text-muted-foreground">{s.noOrders}</p>
       ) : (
         <ul className="mt-4 divide-y divide-border">
           {orders.map((o) => (
@@ -124,7 +134,7 @@ function AccountPage() {
                     params={{ token: o.public_tracking_token }}
                     className="text-body-sm underline"
                   >
-                    Track
+                    {s.trackCta}
                   </Link>
                 ) : null}
               </div>

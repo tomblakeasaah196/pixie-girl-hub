@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { getProducts, unwrap, type ProductCard } from "@/lib/storefront";
 import { useCurrency } from "@/lib/useStore";
+import { usePageSlots, withSlots } from "@/lib/site-config";
 import {
   ProductCardLink,
   Section,
@@ -17,6 +18,10 @@ export const Route = createFileRoute("/shop/$category")({
 function CategoryPage() {
   const { category } = Route.useParams();
   const [currency] = useCurrency();
+  const s = withSlots(
+    { eyebrow: "Shop", emptyTitle: "Nothing in this category yet." },
+    usePageSlots("shop_category"),
+  );
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["products", "category", category],
     queryFn: async () =>
@@ -31,7 +36,7 @@ function CategoryPage() {
 
   return (
     <Section>
-      <p className="text-caption">Shop</p>
+      <p className="text-caption">{s.eyebrow}</p>
       <h1 className="mt-2 text-h2 font-display capitalize">{title}</h1>
       <div className="mt-10">
         {isLoading ? (
@@ -39,7 +44,7 @@ function CategoryPage() {
         ) : isError ? (
           <ErrorState onRetry={() => refetch()} />
         ) : products.length === 0 ? (
-          <EmptyState title="Nothing in this category yet." />
+          <EmptyState title={s.emptyTitle} />
         ) : (
           <div className="grid grid-cols-2 gap-6 md:grid-cols-4">
             {products.map((p) => (

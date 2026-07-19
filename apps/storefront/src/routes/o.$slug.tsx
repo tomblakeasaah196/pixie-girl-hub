@@ -18,6 +18,7 @@ import {
 import { fetchDeliveryQuote } from "@/lib/geo";
 import { formatFromNgn } from "@/lib/money";
 import { useCurrency } from "@/lib/useStore";
+import { usePageSlots, withSlots } from "@/lib/site-config";
 import { Section } from "@/components/parts";
 import {
   getOrderLink,
@@ -45,9 +46,80 @@ export const Route = createFileRoute("/o/$slug")({ component: OrderLinkCheckout 
 type Fulfilment = "delivery" | "pickup";
 const norm = (s: string) => s.trim().toLowerCase();
 
+// Studio-editable copy for the pay-by-link checkout (usePageSlots("order_link")),
+// resolved the same way in the wrapper (link/status states) and the form.
+const ORDER_LINK_DEFAULTS = {
+  linkInvalidTitle: "Sorry — this link doesn't work",
+  linkInvalidBody:
+    "This order link is no longer valid. Please ask us for a fresh one.",
+  alreadyPlacedTitle: "Order already placed 🌹",
+  alreadyPlacedWithOrder:
+    "This link was used to place order {order}. Message us on WhatsApp if you'd like to order again — we'll send a fresh link.",
+  alreadyPlacedNoOrder:
+    "This link was used to place your order. Message us on WhatsApp if you'd like to order again — we'll send a fresh link.",
+  doneTitle: "Order placed 🌹",
+  doneBody:
+    "We couldn't open the payment page just now, so we'll send you a payment link on WhatsApp in a moment. Once payment lands, your order moves into production.",
+  eyebrow: "Your order",
+  greetingPrefix: "Hi ",
+  greetingSuffix: " 💕",
+  nameFallback: "there",
+  intro:
+    "Here's a selection we picked for you. Choose what you'd like, confirm delivery, and pay.",
+  pickItemsLabel: "Pick your items",
+  itemServiceFallback: "Service",
+  itemProductFallback: "Product",
+  serviceBadge: "service",
+  unavailableNote: "Unavailable right now — we'll confirm by WhatsApp.",
+  unsupportedNote:
+    "Some items couldn't be added automatically — our team will follow up on WhatsApp to finalise those before shipping.",
+  whoLabel: "Tell us who you are",
+  firstNameLabel: "First name",
+  lastNameLabel: "Last name",
+  whatsappLabel: "WhatsApp number",
+  whatsappPlaceholder: "e.g. +2348012345678",
+  fulfilmentLabel: "How would you like it",
+  deliveryLabel: "Delivery",
+  pickupLabel: "Pickup in store",
+  deliverySectionLabel: "Delivery",
+  streetLabel: "Street / house",
+  streetPlaceholder: "e.g. 12 Admiralty Way",
+  areaLabel: "Area / neighbourhood",
+  countryLabel: "Country",
+  stateLabel: "State",
+  statePlaceholder: "Select your state…",
+  lgaLabel: "LGA",
+  lgaPlaceholder: "Select your LGA…",
+  cityLabel: "City",
+  landmarkLabel: "Landmark (helps the rider)",
+  contactLabel: "Contact",
+  phoneLabel: "Phone (for delivery)",
+  phonePlaceholder: "+234…",
+  emailLabel: "Email (receipt)",
+  payWithLabel: "Pay with",
+  subtotalLabel: "Subtotal",
+  deliverySummaryLabel: "Delivery",
+  calculating: "Calculating…",
+  totalLabel: "Total",
+  bookingCta: "Place booking request",
+  payCta: "Place order & pay {total}",
+  securedNote: "Secured by a one-time link bound to this conversation.",
+  errPickStateNg:
+    "Please pick your state (and LGA for Lagos) so we can calculate delivery.",
+  errPickCountry: "Please pick your country so we can calculate delivery.",
+  errCalculating: "Calculating delivery… give it a second, then tap Pay again.",
+  errUndeliverable:
+    "We can't price delivery to this location yet. Check your address, or choose pickup.",
+  errPlaceFailed: "Couldn't place your order. Try again.",
+};
+function useOrderLinkCopy() {
+  return withSlots(ORDER_LINK_DEFAULTS, usePageSlots("order_link"));
+}
+
 function OrderLinkCheckout() {
   const { slug } = Route.useParams();
   const [currency] = useCurrency();
+  const s = useOrderLinkCopy();
   const money = (ngn: number) => formatFromNgn(ngn, currency);
 
   const q = useQuery<OrderLinkContext>({
@@ -68,14 +140,12 @@ function OrderLinkCheckout() {
   if (q.isError || !q.data) {
     const msg =
       (q.error as { userMessage?: string } | null)?.userMessage ||
-      "This order link is no longer valid. Please ask us for a fresh one.";
+      s.linkInvalidBody;
     return (
       <Section className="max-w-xl">
         <div className="py-14 text-center">
           <AlertCircle className="mx-auto mb-3 h-8 w-8 text-destructive" />
-          <p className="text-body font-display text-lg">
-            Sorry — this link doesn&rsquo;t work
-          </p>
+          <p className="text-body font-display text-lg">{s.linkInvalidTitle}</p>
           <p className="mx-auto mt-2 max-w-sm text-body-sm text-muted-foreground">
             {msg}
           </p>
@@ -88,12 +158,11 @@ function OrderLinkCheckout() {
       <Section className="max-w-xl">
         <div className="py-14 text-center">
           <CheckCircle2 className="mx-auto mb-3 h-9 w-9 text-emerald-500" />
-          <p className="text-body font-display text-xl">Order already placed 🌹</p>
+          <p className="text-body font-display text-xl">{s.alreadyPlacedTitle}</p>
           <p className="mx-auto mt-2 max-w-sm text-body-sm text-muted-foreground">
-            This link was used to place
-            {q.data.order_number ? ` order ${q.data.order_number}` : " your order"}.
-            Message us on WhatsApp if you&rsquo;d like to order again — we&rsquo;ll
-            send a fresh link.
+            {q.data.order_number
+              ? s.alreadyPlacedWithOrder.replace("{order}", q.data.order_number)
+              : s.alreadyPlacedNoOrder}
           </p>
         </div>
       </Section>
@@ -114,6 +183,7 @@ function CheckoutForm({
 }) {
   const [stage, setStage] = useState<"form" | "submitting" | "done">("form");
   const [err, setErr] = useState<string | null>(null);
+  const s = useOrderLinkCopy();
 
   const [fulfilment, setFulfilment] = useState<Fulfilment>("delivery");
   const [geo, setGeo] = useState<GeoOptions>(GEO_FALLBACK);
@@ -299,21 +369,15 @@ function CheckoutForm({
     const wantsDelivery = !serviceOnly && fulfilment === "delivery";
     if (wantsDelivery) {
       if (!effectiveZone) {
-        setErr(
-          isNigeria
-            ? "Please pick your state (and LGA for Lagos) so we can calculate delivery."
-            : "Please pick your country so we can calculate delivery.",
-        );
+        setErr(isNigeria ? s.errPickStateNg : s.errPickCountry);
         return;
       }
       if (quoting) {
-        setErr("Calculating delivery… give it a second, then tap Pay again.");
+        setErr(s.errCalculating);
         return;
       }
       if (!(deliveryFee != null && deliveryFee > 0)) {
-        setErr(
-          "We can't price delivery to this location yet. Check your address, or choose pickup.",
-        );
+        setErr(s.errUndeliverable);
         return;
       }
     }
@@ -401,7 +465,7 @@ function CheckoutForm({
     } catch (e: unknown) {
       setErr(
         (e as { userMessage?: string })?.userMessage ||
-          (e instanceof Error ? e.message : "Couldn't place your order. Try again."),
+          (e instanceof Error ? e.message : s.errPlaceFailed),
       );
       setStage("form");
     }
@@ -412,11 +476,9 @@ function CheckoutForm({
       <Section className="max-w-xl">
         <div className="py-14 text-center">
           <CheckCircle2 className="mx-auto mb-3 h-9 w-9 text-emerald-500" />
-          <p className="text-body font-display text-xl">Order placed 🌹</p>
+          <p className="text-body font-display text-xl">{s.doneTitle}</p>
           <p className="mx-auto mt-2 max-w-sm text-body-sm text-muted-foreground">
-            We couldn&rsquo;t open the payment page just now, so we&rsquo;ll
-            send you a payment link on WhatsApp in a moment. Once payment
-            lands, your order moves into production.
+            {s.doneBody}
           </p>
         </div>
       </Section>
@@ -425,19 +487,18 @@ function CheckoutForm({
 
   return (
     <Section className="max-w-xl">
-      <p className="text-caption">Your order</p>
+      <p className="text-caption">{s.eyebrow}</p>
       <h1 className="mt-2 text-h3 font-display">
-        Hi {ctx.contact?.first_name || who.first_name || "there"} 💕
+        {s.greetingPrefix}
+        {ctx.contact?.first_name || who.first_name || s.nameFallback}
+        {s.greetingSuffix}
       </h1>
-      <p className="mt-1 text-body-sm text-muted-foreground">
-        Here&rsquo;s a selection we picked for you. Choose what you&rsquo;d like,
-        confirm delivery, and pay.
-      </p>
+      <p className="mt-1 text-body-sm text-muted-foreground">{s.intro}</p>
 
       {/* Items */}
       <div className="mt-6 space-y-2">
         <p className="text-caption mb-1 flex items-center gap-2">
-          <ShoppingBag className="h-3.5 w-3.5" /> Pick your items
+          <ShoppingBag className="h-3.5 w-3.5" /> {s.pickItemsLabel}
         </p>
         {(ctx.items ?? []).map((it, idx) => {
           const p = picks[idx] ?? { on: true, qty: it.qty || 1 };
@@ -472,10 +533,10 @@ function CheckoutForm({
                 )}
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-body-sm">
-                    {it.name ?? (isSvc ? "Service" : "Product")}
+                    {it.name ?? (isSvc ? s.itemServiceFallback : s.itemProductFallback)}
                     {isSvc && (
                       <span className="ml-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-                        service
+                        {s.serviceBadge}
                       </span>
                     )}
                   </p>
@@ -491,7 +552,7 @@ function CheckoutForm({
                   )}
                   {unavailable && (
                     <p className="mt-0.5 text-body-sm text-amber-600">
-                      Unavailable right now — we&rsquo;ll confirm by WhatsApp.
+                      {s.unavailableNote}
                     </p>
                   )}
                 </div>
@@ -534,8 +595,7 @@ function CheckoutForm({
         })}
         {unsupported.length > 0 && (
           <p className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-body-sm text-amber-700">
-            Some items couldn&rsquo;t be added automatically — our team will
-            follow up on WhatsApp to finalise those before shipping.
+            {s.unsupportedNote}
           </p>
         )}
       </div>
@@ -543,44 +603,44 @@ function CheckoutForm({
       <form onSubmit={submit} className="mt-6 space-y-5">
         {needsWho && (
           <div className="space-y-2">
-            <p className="text-caption">Tell us who you are</p>
+            <p className="text-caption">{s.whoLabel}</p>
             <div className="grid grid-cols-2 gap-2">
               <Field
-                label="First name"
+                label={s.firstNameLabel}
                 required
                 value={who.first_name}
                 onChange={(v) => setWho({ ...who, first_name: v })}
               />
               <Field
-                label="Last name"
+                label={s.lastNameLabel}
                 value={who.last_name}
                 onChange={(v) => setWho({ ...who, last_name: v })}
               />
             </div>
             <Field
-              label="WhatsApp number"
+              label={s.whatsappLabel}
               value={who.whatsapp}
               onChange={(v) => setWho({ ...who, whatsapp: v })}
-              placeholder="e.g. +2348012345678"
+              placeholder={s.whatsappPlaceholder}
             />
           </div>
         )}
 
         {!serviceOnly && (
           <div className="space-y-2">
-            <p className="text-caption">How would you like it</p>
+            <p className="text-caption">{s.fulfilmentLabel}</p>
             <div className="grid grid-cols-2 gap-2">
               <Pill
                 active={fulfilment === "delivery"}
                 onClick={() => setFulfilment("delivery")}
                 icon={<Truck className="h-3.5 w-3.5" />}
-                label="Delivery"
+                label={s.deliveryLabel}
               />
               <Pill
                 active={fulfilment === "pickup"}
                 onClick={() => setFulfilment("pickup")}
                 icon={<Store className="h-3.5 w-3.5" />}
-                label="Pickup in store"
+                label={s.pickupLabel}
               />
             </div>
           </div>
@@ -588,22 +648,22 @@ function CheckoutForm({
 
         {!serviceOnly && fulfilment === "delivery" && (
           <div className="space-y-2">
-            <p className="text-caption">Delivery</p>
+            <p className="text-caption">{s.deliverySectionLabel}</p>
             <Field
-              label="Street / house"
+              label={s.streetLabel}
               required
               value={address.line1}
               onChange={(v) => setAddress({ ...address, line1: v })}
-              placeholder="e.g. 12 Admiralty Way"
+              placeholder={s.streetPlaceholder}
             />
             <Field
-              label="Area / neighbourhood"
+              label={s.areaLabel}
               value={address.area}
               onChange={(v) => setAddress({ ...address, area: v })}
             />
             <label className="block">
               <span className="mb-1 block text-body-sm text-muted-foreground">
-                Country
+                {s.countryLabel}
               </span>
               <select
                 value={country}
@@ -627,7 +687,7 @@ function CheckoutForm({
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <label className="block">
                   <span className="mb-1 block text-body-sm text-muted-foreground">
-                    State
+                    {s.stateLabel}
                   </span>
                   <select
                     value={address.state}
@@ -636,7 +696,7 @@ function CheckoutForm({
                     }
                     className="w-full rounded-md border border-border bg-background p-3 text-body-sm outline-none focus:border-foreground/40"
                   >
-                    <option value="">Select your state…</option>
+                    <option value="">{s.statePlaceholder}</option>
                     {geo.nigeria_states.map((o) => (
                       <option key={o.code} value={o.name}>
                         {o.name}
@@ -647,7 +707,7 @@ function CheckoutForm({
                 {isLagos ? (
                   <label className="block">
                     <span className="mb-1 block text-body-sm text-muted-foreground">
-                      LGA
+                      {s.lgaLabel}
                     </span>
                     <select
                       value={address.city}
@@ -656,7 +716,7 @@ function CheckoutForm({
                       }
                       className="w-full rounded-md border border-border bg-background p-3 text-body-sm outline-none focus:border-foreground/40"
                     >
-                      <option value="">Select your LGA…</option>
+                      <option value="">{s.lgaPlaceholder}</option>
                       {geo.lagos_lgas.map((o) => (
                         <option key={o.code} value={o.name}>
                           {o.name}
@@ -674,13 +734,13 @@ function CheckoutForm({
               </div>
             ) : (
               <Field
-                label="City"
+                label={s.cityLabel}
                 value={address.city}
                 onChange={(v) => setAddress({ ...address, city: v })}
               />
             )}
             <Field
-              label="Landmark (helps the rider)"
+              label={s.landmarkLabel}
               value={address.landmark}
               onChange={(v) => setAddress({ ...address, landmark: v })}
             />
@@ -688,17 +748,17 @@ function CheckoutForm({
         )}
 
         <div className="space-y-2">
-          <p className="text-caption">Contact</p>
+          <p className="text-caption">{s.contactLabel}</p>
           <Field
-            label="Phone (for delivery)"
+            label={s.phoneLabel}
             required
             type="tel"
             value={phone}
             onChange={setPhone}
-            placeholder="+234…"
+            placeholder={s.phonePlaceholder}
           />
           <Field
-            label="Email (receipt)"
+            label={s.emailLabel}
             type="email"
             value={email}
             onChange={setEmail}
@@ -709,7 +769,7 @@ function CheckoutForm({
             the brand has one (or no reported) pickable gateway. */}
         {!serviceOnly && (payCfg?.gateways?.length ?? 0) > 1 && (
           <div className="space-y-2">
-            <p className="text-caption">Pay with</p>
+            <p className="text-caption">{s.payWithLabel}</p>
             <div className="grid grid-cols-2 gap-2">
               {(payCfg?.gateways ?? []).map((g) => (
                 <button
@@ -733,15 +793,15 @@ function CheckoutForm({
         {(hasProducts || serviceItems.length > 0) && (
           <div className="rounded-md border border-border p-4">
             <div className="flex items-center justify-between text-body-sm">
-              <span className="text-muted-foreground">Subtotal</span>
+              <span className="text-muted-foreground">{s.subtotalLabel}</span>
               <span className="tabular-nums">{money(itemsSubtotal)}</span>
             </div>
             {!serviceOnly && fulfilment === "delivery" && (
               <div className="mt-1 flex items-center justify-between text-body-sm">
-                <span className="text-muted-foreground">Delivery</span>
+                <span className="text-muted-foreground">{s.deliverySummaryLabel}</span>
                 <span className="tabular-nums">
                   {quoting
-                    ? "Calculating…"
+                    ? s.calculating
                     : deliveryDue > 0
                       ? money(deliveryDue)
                       : "—"}
@@ -750,7 +810,7 @@ function CheckoutForm({
             )}
             <div className="my-2 h-px bg-border" />
             <div className="flex items-center justify-between">
-              <span className="text-body font-medium">Total</span>
+              <span className="text-body font-medium">{s.totalLabel}</span>
               <span className="text-body font-display tabular-nums">
                 {money(orderTotal)}
               </span>
@@ -772,15 +832,15 @@ function CheckoutForm({
           {stage === "submitting" ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : serviceOnly ? (
-            "Place booking request"
+            s.bookingCta
           ) : (
-            `Place order & pay ${money(orderTotal)}`
+            s.payCta.replace("{total}", money(orderTotal))
           )}
         </button>
 
         <p className="flex items-start gap-2 text-body-sm text-muted-foreground">
           <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          Secured by a one-time link bound to this conversation.
+          {s.securedNote}
         </p>
       </form>
     </Section>

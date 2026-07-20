@@ -14,7 +14,9 @@ const documents = require("../../shared/documents/documents.service");
 const numbering = require("../../services/numbering.service");
 const {
   compressUploadChecked,
+  normalizeImageInput,
 } = require("../../services/media-compression.service");
+const { isolateSubject } = require("../../services/background-cutout.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { NotFoundError, AppError } = require("../../utils/errors");
@@ -870,6 +872,34 @@ async function uploadCoverImage({
   return { cdn_url: doc.url, document_id: doc.document_id };
 }
 
+/**
+ * Branded background — step 1: isolate a just-dropped catalogue image's subject
+ * onto transparency so the upload modal can composite it over a brand colour
+ * (default = the active brand's; other brand colours chosen from a dropdown).
+ *
+ * Returns the cut-out inline as a data URL (no temp file to reap) plus which
+ * engine ran, so the UI can note when only the basic keyer was available. The
+ * client does the colour compositing on a canvas, keeping colour switches
+ * instant and the final upload flowing through the normal image endpoints.
+ */
+async function imageCutout({ file }) {
+  if (!file || !file.buffer) {
+    throw new AppError("NO_FILE", "An image upload is required", 422);
+  }
+  // HEIC (default iPhone format) → JPEG so sharp can decode it; other images
+  // pass through untouched. Then isolate the subject.
+  const norm = await normalizeImageInput(file);
+  const res = await isolateSubject(norm.buffer);
+  return {
+    cutout_data_url: `data:image/png;base64,${res.buffer.toString("base64")}`,
+    engine: res.engine,
+    keyed: res.keyed,
+    warning: res.warning,
+    width: res.width,
+    height: res.height,
+  };
+}
+
 async function updateImage({ brand, user, request_id, id, image_id, patch }) {
   const img = await repo.updateImage({
     brand,
@@ -1116,6 +1146,7 @@ module.exports = {
   listImages,
   addImage,
   uploadCoverImage,
+  imageCutout,
   updateImage,
   removeImage,
   listVideos,

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import {
   Plus,
   Trash2,
@@ -42,6 +42,7 @@ import {
 } from "@/lib/catalogue";
 import { UploadProgress } from "@/components/ui/UploadProgress";
 import { useUploadProgress } from "@/lib/use-upload";
+import { BrandedImageUpload } from "@/components/catalogue/BrandedImageUpload";
 
 /**
  * Colour + size management for a styled product (catalogue PR).
@@ -246,7 +247,7 @@ function ColourRow({
   const removeImage = useRemoveColourImage(styledId, colour.colour_id);
   const update = useUpdateColour(styledId);
   const del = useDeleteColour(styledId);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [addOpen, setAddOpen] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [igUrl, setIgUrl] = useState(colour.external_video_url ?? "");
@@ -264,21 +265,11 @@ function ColourRow({
 
   const imgs = images.data ?? [];
 
-  const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
-    if (files.length) {
-      // Upload sequentially, reporting one combined 0–100 across the batch.
-      run(async (onProgress) => {
-        for (let i = 0; i < files.length; i += 1) {
-          await addImage.mutateAsync({
-            file: files[i],
-            onProgress: (p) =>
-              onProgress(Math.round(((i + p / 100) / files.length) * 100)),
-          });
-        }
-      }).catch(() => {});
-    }
-    if (fileRef.current) fileRef.current.value = "";
+  // The branded-upload modal hands back one finished image (natural, or the
+  // subject dropped onto a brand colour); push it through the normal
+  // colour-image endpoint, reusing the shared progress bar.
+  const onBrandedComplete = async (f: File) => {
+    await run((onProgress) => addImage.mutateAsync({ file: f, onProgress }));
   };
 
   return (
@@ -381,7 +372,7 @@ function ColourRow({
         })}
         {canEdit && imgs.length < MAX_COLOUR_IMAGES && (
           <button
-            onClick={() => fileRef.current?.click()}
+            onClick={() => setAddOpen(true)}
             disabled={addImage.isPending}
             className="w-16 h-16 rounded-[10px] border border-dashed border-line grid place-items-center text-text-faint hover:text-accent-glow hover:border-accent/40 transition-colors"
             aria-label="Add picture"
@@ -393,15 +384,15 @@ function ColourRow({
             )}
           </button>
         )}
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*,.heic,.heif"
-          multiple
-          hidden
-          onChange={onPick}
-        />
       </div>
+      {canEdit && (
+        <BrandedImageUpload
+          open={addOpen}
+          onClose={() => setAddOpen(false)}
+          onComplete={onBrandedComplete}
+          title={`Add a picture — ${colour.name}`}
+        />
+      )}
       <UploadProgress value={progress} className="mt-2" />
       {canEdit && (
         <p className="text-[11px] text-text-faint mt-1.5">

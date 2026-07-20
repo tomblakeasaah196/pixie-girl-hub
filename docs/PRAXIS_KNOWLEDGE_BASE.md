@@ -363,6 +363,12 @@ categories, collections, bundles, shades, and bookable services.
   at `/catalogue/base/<id>`.
 - *Add a sellable styled product?* Catalogue → **Styled** → **New styled**. Open
   one at `/catalogue/styled/<id>`.
+- *Add product pictures with a consistent branded background?* Open a styled
+  product → a colour → **Add a picture**. The upload modal lets you drag/drop or
+  choose an image, then optionally switch on **Use branded background** to wipe
+  the photo's backdrop and drop the product onto a brand colour (defaults to the
+  active brand's — burgundy for Pixie Girl, bronze for Faitlyn — pick another
+  from the dropdown; Flat or Soft gradient). Save uses whichever you previewed.
 - *Create a bundle?* Catalogue → **Bundles** (fixed price or % off the total).
 - *Group products for a campaign?* Catalogue → **Collections** → add to collection.
 - *Add a bookable service (Faitlyn)?* Catalogue → **Services** → **New Service Type**.

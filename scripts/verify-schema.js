@@ -66,7 +66,13 @@ const pool = new Pool({
 //     instead of a phantom counter on referrals.total_rewards_value.
 //     (000351/000353/000354 in the same audit are ALTER / trigger drops /
 //     column adds, not new tables — count unchanged by them.)
-const EXPECTED_SHARED = 199;
+//   - Crowns unified economy (000362_shared_crowns_unified_loyalty): +8 shared
+//     tables (crown_tiers, crown_earn_rules, crown_ledger, customer_crown_state,
+//     crown_streak_config, crown_streaks, crown_reward_grants,
+//     crown_action_submissions) → 199 + 8 = 207. Merges shared.loyalty_* +
+//     {brand}.streak_star_* into one status-only Crown 👑 currency (legacy
+//     tables left in place, backfilled + frozen, removed in a later cutover).
+const EXPECTED_SHARED = 207;
 const EXPECTED_PER_BRAND = 203;
 
 async function countTables(schema) {

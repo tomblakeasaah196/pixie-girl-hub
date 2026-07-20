@@ -17,8 +17,12 @@ jest.mock("../../../src/modules/retention/retention.service", () => ({
   awardStars: jest.fn().mockResolvedValue(null),
   redeemReferral: jest.fn().mockResolvedValue({}),
 }));
+jest.mock("../../../src/modules/retention/crown.service", () => ({
+  earnForOrder: jest.fn().mockResolvedValue(null),
+}));
 
 const service = require("../../../src/modules/retention/retention.service");
+const crownService = require("../../../src/modules/retention/crown.service");
 const { awardLoyaltyAndStreak } = require("../../../src/modules/retention/retention.subscribers");
 
 const base = { brand: "pixiegirl", order_id: "o1", contact_id: "c1", total_ngn: 50000 };
@@ -39,5 +43,12 @@ describe("retention subscriber — referral auto-redeem", () => {
   test("always awards purchase points", async () => {
     await awardLoyaltyAndStreak({ ...base });
     expect(service.earnForOrder).toHaveBeenCalled();
+  });
+
+  test("also earns Crowns for the order", async () => {
+    await awardLoyaltyAndStreak({ ...base });
+    expect(crownService.earnForOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ brand: "pixiegirl", order_id: "o1", contact_id: "c1" }),
+    );
   });
 });

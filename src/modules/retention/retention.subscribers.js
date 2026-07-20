@@ -21,6 +21,7 @@
 
 const outbox = require("../../shared/outbox/outbox");
 const service = require("./retention.service");
+const crownService = require("./crown.service");
 const engine = require("./strategy.engine");
 const events = require("./retention.events");
 const repo = require("./retention.repo");
@@ -269,6 +270,14 @@ async function awardLoyaltyAndStreak(payload) {
       reference_id: order_id,
     })
     .catch(swallow("streak first_order"));
+
+  // 2b. Crowns 👑 (the unified economy): flat "complete a purchase" + "money
+  //     spent" earns, plus the monthly-purchase streak. Idempotent per order.
+  //     Runs alongside the legacy earners above until the cutover PR retires
+  //     them; both legacy ledgers were backfilled into Crowns by 000362.
+  await crownService
+    .earnForOrder({ brand, contact_id, order_id, total_ngn })
+    .catch(swallow("crown earn"));
 
   // 3. Referral auto-redeem on full settlement, if the order used a code.
   if (referral_code) {

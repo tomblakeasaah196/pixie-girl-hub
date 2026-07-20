@@ -445,6 +445,11 @@ router.post(
   c.uploadCoverImage,
 );
 
+// Branded background — isolate an uploaded image's subject onto transparency so
+// the upload modal can composite it over a brand colour for a consistent
+// catalogue look. Returns the cut-out inline (data URL) + which engine ran.
+router.post("/image-cutout", can("edit"), upload.single("file"), c.imageCutout);
+
 // Self-hosted media upload → stored + queued for FFmpeg processing (W-13).
 router.post("/media", can("edit"), upload.single("file"), c.uploadMedia);
 

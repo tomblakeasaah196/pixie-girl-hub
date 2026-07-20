@@ -304,6 +304,10 @@ async function addImage(req, res) {
     }),
   });
 }
+async function imageCutout(req, res) {
+  if (!requireFile(req, res)) return;
+  res.json({ data: await service.imageCutout({ file: req.file }) });
+}
 async function uploadCoverImage(req, res) {
   if (!req.file)
     return res.status(400).json({
@@ -472,6 +476,7 @@ module.exports = {
   listImages,
   addImage,
   uploadCoverImage,
+  imageCutout,
   updateImage,
   removeImage,
   listVideos,

@@ -40,15 +40,12 @@ describe("retention subscriber — referral auto-redeem", () => {
     expect(service.redeemReferral).not.toHaveBeenCalled();
   });
 
-  test("always awards purchase points", async () => {
-    await awardLoyaltyAndStreak({ ...base });
-    expect(service.earnForOrder).toHaveBeenCalled();
-  });
-
-  test("also earns Crowns for the order", async () => {
+  test("earns Crowns, not the legacy loyalty/streak economy (cutover)", async () => {
     await awardLoyaltyAndStreak({ ...base });
     expect(crownService.earnForOrder).toHaveBeenCalledWith(
       expect.objectContaining({ brand: "pixiegirl", order_id: "o1", contact_id: "c1" }),
     );
+    expect(service.earnForOrder).not.toHaveBeenCalled();
+    expect(service.awardStars).not.toHaveBeenCalled();
   });
 });

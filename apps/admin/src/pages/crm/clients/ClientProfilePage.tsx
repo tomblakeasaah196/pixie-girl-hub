@@ -35,6 +35,8 @@ import { ActivityIcon, activityLabel } from "../shared/ActivityIcon";
 import { NewDealModal } from "../shared/NewDealModal";
 import { ContactLogActivityModal } from "./ContactLogActivityModal";
 import { StagePill } from "../shared/StagePill";
+import { CrownCustomerPanel } from "@/pages/retention/CrownCustomerPanel";
+import { useCrownWallet } from "@/lib/crown-api";
 import type { TimelineEvent } from "../types";
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -467,6 +469,9 @@ export function ClientProfilePage() {
 
   const { data: contact, isLoading, isError, refetch } = useContact(contactId);
   const { data: summary } = useContactSummary(contactId);
+  // Cutover: the header stat shows Crowns (shares the panel's query key, so
+  // TanStack dedupes to a single request).
+  const crownWallet = useCrownWallet(contactId);
 
   const name = contact?.display_name || "Client";
   useBreadcrumbs([
@@ -673,8 +678,9 @@ export function ClientProfilePage() {
         />
         <StatCard
           icon={Award}
-          label="Loyalty points"
-          value={(summary?.loyalty_points ?? 0).toLocaleString()}
+          label="Crowns"
+          value={`${(crownWallet.data?.state?.current_crowns ?? 0).toLocaleString()}👑`}
+          sub={crownWallet.data?.state?.tier_name ?? undefined}
         />
         <StatCard
           icon={HeartPulse}
@@ -755,6 +761,7 @@ export function ClientProfilePage() {
                   )}
               </div>
             </div>
+            <CrownCustomerPanel contactId={contactId} />
             <div className="p-4 rounded-[14px] bg-text-primary/[0.03] border hairline">
               <div className="micro mb-3">Latest activity</div>
               <OverviewActivity contactId={contactId} />

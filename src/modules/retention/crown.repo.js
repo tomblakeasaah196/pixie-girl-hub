@@ -358,6 +358,25 @@ async function upsertStreak({ client, brand, streak }) {
   return rows[0];
 }
 
+/** At-risk streaks with the customer + streak name, for the sales workspace. */
+async function listAtRiskStreaks({ client, brand, limit = 100 }) {
+  const { rows } = await ex(client)(
+    `SELECT s.streak_id, s.contact_id, s.streak_type, s.current_length,
+            s.status, s.deadline_at, s.freezes_available,
+            c.display_name AS contact_name,
+            cfg.display_name AS streak_name
+       FROM shared.crown_streaks s
+       LEFT JOIN shared.contacts c ON c.contact_id = s.contact_id
+       LEFT JOIN shared.crown_streak_config cfg
+         ON cfg.business = s.business AND cfg.streak_type = s.streak_type
+      WHERE s.business = $1 AND s.status = 'at_risk'
+      ORDER BY s.deadline_at ASC NULLS LAST
+      LIMIT $2`,
+    [brand, limit],
+  );
+  return rows;
+}
+
 /** Streaks whose deadline has passed or is within the nudge window. */
 async function listStreaksDue({ client, brand, streak_type, before }) {
   const { rows } = await ex(client)(
@@ -520,6 +539,24 @@ async function reviewSubmission({ client, brand, submission_id, patch }) {
   return rows[0] || null;
 }
 
+// ── Staff recipients (for in-app notifications) ────────────
+/** Active staff for a brand who hold a retention permission (view/approve). */
+async function staffWithRetentionAccess({ client, brand, action = "view" }) {
+  const { rows } = await ex(client)(
+    `SELECT DISTINCT ur.user_id
+       FROM shared.user_roles ur
+       JOIN shared.permissions p ON p.role_id = ur.role_id
+       JOIN shared.users u ON u.user_id = ur.user_id
+      WHERE ur.business = $1
+        AND p.module = 'retention'
+        AND p.action = $2
+        AND u.is_active = true
+        AND (ur.expires_at IS NULL OR ur.expires_at > now())`,
+    [brand, action],
+  );
+  return rows.map((r) => r.user_id);
+}
+
 module.exports = {
   // tiers
   listTiers,
@@ -548,6 +585,7 @@ module.exports = {
   listStreaksForContact,
   upsertStreak,
   listStreaksDue,
+  listAtRiskStreaks,
   // grants
   grantExistsForTier,
   insertGrant,
@@ -559,4 +597,6 @@ module.exports = {
   getSubmission,
   countSubmissionsInWindow,
   reviewSubmission,
+  // recipients
+  staffWithRetentionAccess,
 };

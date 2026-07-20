@@ -50,6 +50,7 @@ import { useCosSettings, useCosFollowups, type CosFollowup } from "@/lib/cos-api
 import { GoalsTab } from "./GoalsTab";
 import { NotesTab } from "./NotesTab";
 import { ChiefOfStaffTab } from "./ChiefOfStaffTab";
+import { CrownActivityCard } from "./CrownActivityCard";
 import { useGoals } from "./goals-hooks";
 import { GOAL_HEALTH_META } from "./goals-constants";
 import type { Goal } from "./goals-types";
@@ -1235,6 +1236,9 @@ function MyDayView({
           }}
         />
       )}
+
+      {/* Crown activity — pending approvals + at-risk streaks, for sales. */}
+      <CrownActivityCard />
 
       {/* Two-column layout */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

@@ -30,6 +30,7 @@ const listTiers = ({ brand }) => repo.listTiers({ brand });
 const listRules = ({ brand, action_type }) =>
   repo.listRules({ brand, action_type });
 const listStreakConfig = ({ brand }) => repo.listStreakConfig({ brand });
+const listAtRiskStreaks = ({ brand }) => repo.listAtRiskStreaks({ brand });
 
 /** The full customer-facing wallet: balance, tier, progress, streaks, vouchers. */
 async function getWallet({ brand, contact_id }) {
@@ -422,6 +423,16 @@ async function submitAction({
       },
     });
 
+    // Manual proof enters the queue → alert staff (in-app notification).
+    if (!autoApprove) {
+      events.emit("crown.submission_pending", {
+        brand,
+        contact_id,
+        submission_id: submission.submission_id,
+        action_type: rule.action_type,
+      });
+    }
+
     if (autoApprove) {
       const entry = await awardByRule({
         client,
@@ -638,6 +649,7 @@ module.exports = {
   listTiers,
   listRules,
   listStreakConfig,
+  listAtRiskStreaks,
   getWallet,
   getActiveDiscount,
   // earn

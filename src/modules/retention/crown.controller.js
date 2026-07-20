@@ -73,6 +73,10 @@ async function listStreakConfig(req, res) {
   res.json({ data: await service.listStreakConfig({ brand: req.brand }) });
 }
 
+async function listAtRiskStreaks(req, res) {
+  res.json({ data: await service.listAtRiskStreaks({ brand: req.brand }) });
+}
+
 async function getWallet(req, res) {
   res.json({
     data: await service.getWallet({
@@ -160,6 +164,7 @@ module.exports = {
   createRule,
   updateRule,
   listStreakConfig,
+  listAtRiskStreaks,
   getWallet,
   getDiscount,
   adjust,

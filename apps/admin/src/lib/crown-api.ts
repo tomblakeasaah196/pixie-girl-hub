@@ -94,6 +94,7 @@ export interface CrownState {
   tier_name: string | null;
   lifetime_discount_pct: number | null;
   next_tier_name: string | null;
+  next_tier_min: number | null;
   crowns_to_next_tier: number | null;
 }
 
@@ -203,6 +204,28 @@ export function useCrownStreakConfig() {
     queryKey: ["retention", "crown-streak-config", brand],
     queryFn: () => api.get<CrownStreakConfig[]>("/retention/crowns/streak-config"),
     staleTime: 60_000,
+  });
+}
+
+export interface CrownAtRiskStreak {
+  streak_id: string;
+  contact_id: string;
+  contact_name: string | null;
+  streak_type: string;
+  streak_name: string | null;
+  current_length: number;
+  status: string;
+  deadline_at: string | null;
+  freezes_available: number;
+}
+
+export function useCrownAtRiskStreaks() {
+  const brand = useBrand();
+  return useQuery({
+    queryKey: ["retention", "crown-at-risk", brand],
+    queryFn: () =>
+      api.get<CrownAtRiskStreak[]>("/retention/crowns/streaks/at-risk"),
+    staleTime: 30_000,
   });
 }
 

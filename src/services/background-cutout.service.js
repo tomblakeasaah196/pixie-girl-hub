@@ -1,20 +1,21 @@
 /**
  * Background cut-out — isolate the subject of a catalogue photo onto
- * transparency so the upload modal can drop it onto a brand-colour backdrop
- * (the "branded background" feature). The heavy step (subject segmentation)
- * runs here on the server; the client then composites the returned cut-out
- * over the chosen brand colour with a canvas, so switching colours is instant.
+ * transparency for the "branded background" feature. The heavy step (subject
+ * segmentation) runs here; the client then composites the returned cut-out over
+ * the chosen brand colour on a canvas, so switching colours is instant.
  *
- * Engine policy (agreed with product — mirrors the icon-pipeline stance):
- *   1. AI  — a self-hosted segmentation model (@imgly/background-removal-node).
- *            Clean cut on ANY photo (models, busy backgrounds). Optional +
- *            lazy-loaded: the app boots and this feature still works (via the
- *            keyer) even if the native model isn't installed on the box, so a
- *            failed native build never destabilises the platform. Install the
- *            package on the server to light this path up.
+ * Engine policy:
+ *   1. AI — a self-hosted segmentation model (@imgly/background-removal-node),
+ *           run in an ISOLATED CHILD PROCESS. The native onnxruntime engine and
+ *           sharp (libvips) corrupt each other's heap when loaded in the same
+ *           process — "munmap_chunk(): invalid pointer", a hard core dump that
+ *           no JS try/catch can catch. Running the model in a child that never
+ *           loads sharp both fixes the crash AND means any failure there can
+ *           only kill the child, never the backend — we fall back to the keyer.
+ *           Optional; opt out with BG_REMOVAL_AI=off.
  *   2. alpha — the upload already carries transparency; respect it untouched.
- *   3. keyer — best-effort corner-colour key. Only sound for a product shot on
- *            a flat, solid backdrop; we flag it so the UI can say so.
+ *   3. keyer — best-effort corner-colour key (flat, solid backdrops only),
+ *           flagged so the UI can say so.
  *
  * Pure-ish: takes a decodable image buffer, returns a PNG buffer + metadata.
  * HEIC normalisation and storage wiring live in the caller.
@@ -22,7 +23,11 @@
 
 "use strict";
 
-const { Blob } = require("buffer");
+const os = require("os");
+const fs = require("fs/promises");
+const path = require("path");
+const crypto = require("crypto");
+const { spawn } = require("child_process");
 const sharp = require("sharp");
 const { hasAlpha, keyOutBackground } = require("./icon-pipeline.service");
 const { logger } = require("../config/logger");
@@ -32,64 +37,107 @@ const { logger } = require("../config/logger");
 // the final composited file) light for the Nigeria-first, mobile-heavy audience.
 const CUTOUT_MAX_EDGE = 1600;
 
-// Remember why the AI engine is (un)available so the reason is logged ONCE, not
-// on every upload. It re-logs whenever the state changes (e.g. ready → failing),
-// so a genuinely new problem is never swallowed.
+// The isolated worker + how long we let it run before giving up on it.
+const AI_CHILD = path.join(__dirname, "..", "..", "scripts", "bg-removal-child.js");
+const AI_TIMEOUT_MS = 45000;
+
+// Log the engine's (un)availability / failures ONCE per distinct state, not on
+// every upload; re-logs when the state changes so a new problem is never hidden.
 let aiEngineNote = null;
+function noteOnce(key, level, obj, msg) {
+  if (aiEngineNote === key) return;
+  aiEngineNote = key;
+  logger[level](obj, msg);
+}
+
+function aiOptedOut() {
+  return String(process.env.BG_REMOVAL_AI || "").toLowerCase() === "off";
+}
 
 /**
- * Try the optional self-hosted AI segmentation engine. Returns a transparent
- * PNG buffer, or null if the engine isn't installed or fails — the caller then
- * falls back to the corner keyer. Never throws.
- *
- * Both failure modes are now logged (loudly, with the real error) so a server
- * that installed the engine but can't run it is diagnosable from the logs:
- *   • require fails  → the package isn't resolvable from the app's node_modules
- *   • inference fails → it loads but can't run (native onnxruntime / model asset)
+ * Is the AI engine usable? `require.resolve` only resolves the PATH — it does
+ * NOT execute the module, so onnxruntime is never loaded in this (sharp-owning)
+ * process. Actual inference always happens in the child.
  */
-async function tryAiCutout(buffer) {
-  let removeBackground;
+function aiEngineEnabled() {
+  if (aiOptedOut()) return false;
   try {
-    // Lazy + guarded: only pulled when present. Declared as an OPTIONAL
-    // dependency so `npm ci`/CI stay green even where the native build fails.
-    ({ removeBackground } = require("@imgly/background-removal-node"));
-  } catch (err) {
-    if (aiEngineNote !== `require:${err.message}`) {
-      aiEngineNote = `require:${err.message}`;
-      logger.warn(
-        { err: err.message },
-        "AI background-removal engine could not be loaded (require failed) — " +
-          "using the keyer fallback. Ensure @imgly/background-removal-node is " +
-          "installed in the app's node_modules and the app was restarted.",
+    require.resolve("@imgly/background-removal-node");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Run the AI cut-out in an isolated child process. Input is a PNG buffer (the
+ * caller, which owns sharp, encodes it). Returns a transparent PNG buffer, or
+ * null on ANY failure (missing engine, child crash, timeout) — the caller then
+ * falls back. Never throws; never crashes the parent.
+ */
+async function tryAiCutout(pngBuffer) {
+  if (!aiEngineEnabled()) {
+    if (!aiOptedOut()) {
+      noteOnce(
+        "missing",
+        "warn",
+        {},
+        "AI background-removal engine not resolvable — using the keyer " +
+          "fallback. Install @imgly/background-removal-node in the app's " +
+          "node_modules and restart.",
       );
     }
     return null;
   }
+
+  const stamp = crypto.randomBytes(8).toString("hex");
+  const inPath = path.join(os.tmpdir(), `bgrm-${stamp}.in.png`);
+  const outPath = path.join(os.tmpdir(), `bgrm-${stamp}.out.png`);
   try {
-    // @imgly can't sniff a raw Buffer — it throws "Unsupported format" — so
-    // hand it a typed PNG Blob, giving its decoder an unambiguous MIME type.
-    const png = await sharp(buffer).png().toBuffer();
-    const source = new Blob([png], { type: "image/png" });
-    const blob = await removeBackground(source, {
-      output: { format: "image/png" },
+    await fs.writeFile(inPath, pngBuffer);
+    const ok = await new Promise((resolve) => {
+      const child = spawn(process.execPath, [AI_CHILD, inPath, outPath], {
+        stdio: ["ignore", "ignore", "pipe"],
+      });
+      const errChunks = [];
+      let settled = false;
+      const finish = (value, failNote) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        if (failNote) {
+          noteOnce(`fail:${failNote}`, "error", { err: failNote }, "AI " +
+            "background removal failed in the worker — using the keyer fallback.");
+        }
+        resolve(value);
+      };
+      const timer = setTimeout(() => {
+        child.kill("SIGKILL");
+        finish(false, "timeout after 45s");
+      }, AI_TIMEOUT_MS);
+      child.stderr.on("data", (d) => errChunks.push(d));
+      child.on("error", (e) => finish(false, `spawn: ${e.message}`));
+      child.on("close", (code, signal) => {
+        if (code === 0) return finish(true);
+        const detail = Buffer.concat(errChunks).toString().slice(0, 400);
+        finish(false, `exit code=${code} signal=${signal} ${detail}`.trim());
+      });
     });
-    const ab = await blob.arrayBuffer();
-    if (aiEngineNote !== "ready") {
-      aiEngineNote = "ready";
-      logger.info("AI background-removal engine is active");
-    }
-    return Buffer.from(ab);
+    if (!ok) return null;
+    const out = await fs.readFile(outPath);
+    noteOnce("ready", "info", {}, "AI background-removal engine is active");
+    return out;
   } catch (err) {
-    if (aiEngineNote !== `infer:${err.message}`) {
-      aiEngineNote = `infer:${err.message}`;
-      logger.error(
-        { err: err.stack || err.message },
-        "AI background removal failed at inference — using the keyer fallback. " +
-          "This usually means the native onnxruntime binary cannot load on this " +
-          "host, or the model assets cannot be read.",
-      );
-    }
+    noteOnce(
+      `fail:${err.message}`,
+      "error",
+      { err: err.message },
+      "AI background removal failed — using the keyer fallback.",
+    );
     return null;
+  } finally {
+    fs.unlink(inPath).catch(() => {});
+    fs.unlink(outPath).catch(() => {});
   }
 }
 
@@ -108,7 +156,8 @@ async function isolateSubject(input) {
   }
 
   // Downscale + honour EXIF orientation first, so both the engine and the
-  // returned payload stay light.
+  // returned payload stay light. Format is preserved so the alpha check below
+  // can still see real transparency.
   const pre = await sharp(input, { failOn: "none" })
     .rotate()
     .resize(CUTOUT_MAX_EDGE, CUTOUT_MAX_EDGE, {
@@ -117,27 +166,33 @@ async function isolateSubject(input) {
     })
     .toBuffer();
 
+  let cut = null;
   let engine;
   let keyed = false;
   let warning = null;
-  let cut;
 
-  const ai = await tryAiCutout(pre);
-  if (ai) {
-    cut = ai;
-    engine = "ai";
-  } else if (await hasAlpha(pre)) {
-    // Already transparent — keep it exactly as uploaded.
-    cut = await sharp(pre).ensureAlpha().png().toBuffer();
-    engine = "alpha";
-  } else {
-    cut = await keyOutBackground(pre);
-    engine = "keyer";
-    keyed = true;
-    warning =
-      "The background was removed automatically from a flat backdrop. For a " +
-      "clean cut on busy photos (models, real-world scenes), enable the AI " +
-      "engine on the server.";
+  // 1. AI — encode a PNG HERE (this process owns sharp) and hand it to the
+  //    isolated worker (which must never load sharp).
+  if (aiEngineEnabled()) {
+    const aiPng = await sharp(pre).png().toBuffer();
+    cut = await tryAiCutout(aiPng);
+    if (cut) engine = "ai";
+  }
+
+  // 2/3. Fallbacks — respect existing transparency, else key a flat backdrop.
+  if (!cut) {
+    if (await hasAlpha(pre)) {
+      cut = await sharp(pre).ensureAlpha().png().toBuffer();
+      engine = "alpha";
+    } else {
+      cut = await keyOutBackground(pre);
+      engine = "keyer";
+      keyed = true;
+      warning =
+        "The background was removed automatically from a flat backdrop. For a " +
+        "clean cut on busy photos (models, real-world scenes), enable the AI " +
+        "engine on the server.";
+    }
   }
 
   const meta = await sharp(cut).metadata();
@@ -154,5 +209,6 @@ async function isolateSubject(input) {
 module.exports = {
   isolateSubject,
   tryAiCutout,
+  aiEngineEnabled,
   CUTOUT_MAX_EDGE,
 };

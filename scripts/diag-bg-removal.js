@@ -3,88 +3,102 @@
 
 /* eslint-disable no-console */
 
-/**
- * Diagnose the self-hosted AI background-removal engine.
+/*
+ * Diagnose the isolated AI background-removal worker.
  *
- * Answers what the logs alone can't: does removeBackground() actually RUN on
- * THIS host, from THIS folder's node_modules — or does it fall back to the
- * keyer, and if so, with exactly what error? Run it FROM the app directory:
+ * Generates a test PNG with sharp (in THIS process), then runs
+ * scripts/bg-removal-child.js in a SEPARATE process — which loads onnxruntime
+ * but never sharp, exactly as production does. Reports a precise verdict so
+ * there's no guesswork. Run it FROM the app directory:
  *
  *   npm run diag:bg-removal
  *
- * Exit codes: 0 = AI works · 1 = require failed · 2 = inference failed.
+ * Exit codes: 0 = works · 1 = engine not installed · 2 = worker failed.
  */
 
-const { Blob } = require("buffer");
+const os = require("os");
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
+const { spawn } = require("child_process");
 const sharp = require("sharp");
 
-(async () => {
-  console.log("node    :", process.version, `(${process.platform}/${process.arch})`);
-  console.log("cwd     :", process.cwd());
+const CHILD = path.join(__dirname, "bg-removal-child.js");
 
-  let removeBackground;
+(async () => {
+  console.log("node   :", process.version, `(${process.platform}/${process.arch})`);
+  console.log("cwd    :", process.cwd());
   try {
-    ({ removeBackground } = require("@imgly/background-removal-node"));
-    console.log(
-      "require : OK →",
-      require.resolve("@imgly/background-removal-node"),
-    );
-  } catch (err) {
-    console.error("\n✗ require FAILED —", err.message);
+    console.log("engine :", require.resolve("@imgly/background-removal-node"));
+  } catch {
     console.error(
-      "  The engine is not resolvable from this folder's node_modules.",
-    );
-    console.error(
-      "  Fix: run `npm install @imgly/background-removal-node` HERE, then restart the app.",
+      "\n✗ @imgly/background-removal-node is not installed here — run `npm install` and retry.",
     );
     process.exit(1);
   }
 
-  // A busy-ish synthetic image: a subject block sitting on a coloured field.
-  const subject = await sharp({
-    create: { width: 220, height: 220, channels: 3, background: "#c86432" },
+  const sub = await sharp({
+    create: { width: 60, height: 60, channels: 3, background: "#c86432" },
   })
     .png()
     .toBuffer();
-  const img = await sharp({
-    create: { width: 560, height: 560, channels: 3, background: "#4a6ea9" },
+  const png = await sharp({
+    create: { width: 160, height: 160, channels: 3, background: "#4a6ea9" },
   })
-    .composite([{ input: subject, top: 170, left: 170 }])
-    .jpeg()
+    .composite([{ input: sub, top: 50, left: 50 }])
+    .png()
     .toBuffer();
 
-  try {
-    const t = Date.now();
-    // Feed a typed PNG Blob — a raw Buffer throws "Unsupported format".
-    const source = new Blob([await sharp(img).png().toBuffer()], {
-      type: "image/png",
-    });
-    const blob = await removeBackground(source, {
-      output: { format: "image/png" },
-    });
-    const out = Buffer.from(await blob.arrayBuffer());
-    const meta = await sharp(out).metadata();
-    console.log(
-      `\n✓ removal OK — ${out.length} bytes, ${meta.width}x${meta.height}, alpha=${meta.hasAlpha}, ${Date.now() - t}ms`,
-    );
-    console.log(
-      "The AI engine works here. If the app still shows the keyer warning, the app",
-    );
-    console.log(
-      "process is likely on a DIFFERENT node/binary than this shell — compare",
-    );
-    console.log(
-      "`pm2 describe <app>` node version with `node -v`, then restart it under the same node.",
-    );
-  } catch (err) {
-    console.error("\n✗ removal FAILED at inference:\n", err.stack || err.message);
-    console.error(
-      "\nThe package loads but cannot run — typically the native onnxruntime binary",
-    );
-    console.error(
-      "cannot load on this host, or the model assets cannot be read. Paste this whole",
-    );
-    console.error("error back and it can be fixed precisely.");
-    process.exit(2);
-  }
-})();
+  const stamp = crypto.randomBytes(6).toString("hex");
+  const inPath = path.join(os.tmpdir(), `diag-${stamp}.in.png`);
+  const outPath = path.join(os.tmpdir(), `diag-${stamp}.out.png`);
+  fs.writeFileSync(inPath, png);
+
+  const t = Date.now();
+  const errChunks = [];
+  const child = spawn(process.execPath, [CHILD, inPath, outPath], {
+    stdio: ["ignore", "ignore", "pipe"],
+  });
+  child.stderr.on("data", (d) => errChunks.push(d));
+  child.on("close", (code, signal) => {
+    try {
+      if (code === 0) {
+        const out = fs.readFileSync(outPath);
+        console.log(
+          `\n✓ removal OK (isolated worker) — ${out.length} bytes, ${Date.now() - t}ms`,
+        );
+        console.log(
+          "The AI engine runs cleanly in its own process. Branded uploads use it;",
+        );
+        console.log(
+          "if it ever fails it falls back to the keyer without touching the backend.",
+        );
+      } else {
+        console.error(`\n✗ worker FAILED — exit code=${code} signal=${signal}`);
+        const detail = Buffer.concat(errChunks).toString().trim();
+        if (detail) console.error(detail);
+        console.error(
+          "\nThe isolated worker still can't run onnxruntime on this host — self-hosted",
+        );
+        console.error(
+          "AI isn't viable here. Paste this and we'll switch to a hosted removal API.",
+        );
+      }
+    } finally {
+      try {
+        fs.unlinkSync(inPath);
+      } catch {
+        /* ignore */
+      }
+      try {
+        fs.unlinkSync(outPath);
+      } catch {
+        /* ignore */
+      }
+      process.exit(code === 0 ? 0 : 2);
+    }
+  });
+})().catch((e) => {
+  console.error("diag error:", e.stack || e.message);
+  process.exit(3);
+});

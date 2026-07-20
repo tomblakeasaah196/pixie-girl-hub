@@ -30,6 +30,7 @@ const listTiers = ({ brand }) => repo.listTiers({ brand });
 const listRules = ({ brand, action_type }) =>
   repo.listRules({ brand, action_type });
 const listStreakConfig = ({ brand }) => repo.listStreakConfig({ brand });
+const listAtRiskStreaks = ({ brand }) => repo.listAtRiskStreaks({ brand });
 
 /** The full customer-facing wallet: balance, tier, progress, streaks, vouchers. */
 async function getWallet({ brand, contact_id }) {
@@ -422,6 +423,16 @@ async function submitAction({
       },
     });
 
+    // Manual proof enters the queue → alert staff (in-app notification).
+    if (!autoApprove) {
+      events.emit("crown.submission_pending", {
+        brand,
+        contact_id,
+        submission_id: submission.submission_id,
+        action_type: rule.action_type,
+      });
+    }
+
     if (autoApprove) {
       const entry = await awardByRule({
         client,
@@ -575,6 +586,34 @@ async function adjust({
 }
 
 // ── Tier / rule admin (thin CRUD + audit) ──────────────────
+async function createTier({ brand, user, request_id, input }) {
+  const tier = await repo.createTier({ brand, input });
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "retention.crown.tier_create",
+    target_type: "crown_tier",
+    target_id: tier.tier_id,
+    after: { tier_key: tier.tier_key },
+    request_id,
+  });
+  return tier;
+}
+
+async function createRule({ brand, user, request_id, input }) {
+  const rule = await repo.createRule({ brand, input });
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "retention.crown.rule_create",
+    target_type: "crown_earn_rule",
+    target_id: rule.rule_id,
+    after: { rule_key: rule.rule_key },
+    request_id,
+  });
+  return rule;
+}
+
 async function updateTier({ brand, user, request_id, id, patch }) {
   const tier = await repo.updateTier({ brand, id, patch });
   if (!tier) throw new NotFoundError("Crown tier");
@@ -610,6 +649,7 @@ module.exports = {
   listTiers,
   listRules,
   listStreakConfig,
+  listAtRiskStreaks,
   getWallet,
   getActiveDiscount,
   // earn
@@ -623,6 +663,8 @@ module.exports = {
   reviewSubmission,
   // adjust + admin
   adjust,
+  createTier,
   updateTier,
+  createRule,
   updateRule,
 };

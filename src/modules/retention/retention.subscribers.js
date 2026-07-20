@@ -245,41 +245,16 @@ async function awardLoyaltyAndStreak(payload) {
   const { brand, order_id, contact_id, total_ngn, referral_code } = payload;
   if (!contact_id) return;
 
-  // 1. Loyalty purchase points (config-driven earn rules).
-  await service
-    .earnForOrder({ brand, contact_id, order_id, total_ngn })
-    .catch(swallow("loyalty earn"));
-
-  // 2. Streak Stars (money spent + first order).
-  await service
-    .awardStars({
-      brand,
-      contact_id,
-      action_type: "money_spent",
-      reference_type: "sales_order",
-      reference_id: order_id,
-      amount_ngn: total_ngn,
-    })
-    .catch(swallow("streak money_spent"));
-  await service
-    .awardStars({
-      brand,
-      contact_id,
-      action_type: "first_order",
-      reference_type: "sales_order",
-      reference_id: order_id,
-    })
-    .catch(swallow("streak first_order"));
-
-  // 2b. Crowns 👑 (the unified economy): flat "complete a purchase" + "money
-  //     spent" earns, plus the monthly-purchase streak. Idempotent per order.
-  //     Runs alongside the legacy earners above until the cutover PR retires
-  //     them; both legacy ledgers were backfilled into Crowns by 000362.
+  // 1. Crowns 👑 — the unified economy (cutover: this REPLACES the legacy
+  //    loyalty-points + Streak-Stars earners, which no longer run). Awards the
+  //    flat "complete a purchase" + per-₦ "money spent" Crowns and advances the
+  //    monthly-purchase streak. Idempotent per order. Both legacy ledgers were
+  //    backfilled 1:1 into Crowns by migration 000362.
   await crownService
     .earnForOrder({ brand, contact_id, order_id, total_ngn })
     .catch(swallow("crown earn"));
 
-  // 3. Referral auto-redeem on full settlement, if the order used a code.
+  // 2. Referral auto-redeem on full settlement, if the order used a code.
   if (referral_code) {
     await service
       .redeemReferral({
@@ -336,12 +311,27 @@ function register() {
       .trigger({ brand, trigger_type: "tier_upgrade", contact_id })
       .catch(swallow("strategy tier_upgrade"));
   });
-  events.on("referral.redeemed", ({ brand, referrer_contact_id }) => {
-    if (!referrer_contact_id) return;
-    engine
-      .trigger({ brand, trigger_type: "referral_completed", contact_id: referrer_contact_id })
-      .catch(swallow("strategy referral_completed"));
-  });
+  events.on(
+    "referral.redeemed",
+    ({ brand, referrer_contact_id, referred_contact_id }) => {
+      if (!referrer_contact_id) return;
+      // Cutover: the referrer's reward is Crowns 👑 (was legacy loyalty points,
+      // now removed from redeemReferral). Keyed on the referred friend so each
+      // distinct conversion earns once.
+      crownService
+        .awardForAction({
+          brand,
+          contact_id: referrer_contact_id,
+          action_type: "refer_friend_purchase",
+          reference_type: "referral",
+          reference_id: referred_contact_id,
+        })
+        .catch(swallow("crown referral"));
+      engine
+        .trigger({ brand, trigger_type: "referral_completed", contact_id: referrer_contact_id })
+        .catch(swallow("strategy referral_completed"));
+    },
+  );
   events.on("quiz.completed", ({ brand, quiz_id, response_id }) => {
     engine
       .trigger({
@@ -355,7 +345,7 @@ function register() {
   });
 
   logger.info(
-    "retention subscribers registered (order.paid → loyalty + streak + referral + strategy spine)",
+    "retention subscribers registered (order.paid → Crowns + referral + strategy spine)",
   );
 }
 

@@ -56,6 +56,24 @@ const TIER_COLS = [
 ];
 const TIER_JSON = new Set(["benefits"]);
 
+async function createTier({ brand, input }) {
+  const cols = ["business", "tier_key"];
+  const ph = ["$1", "$2"];
+  const p = [brand, input.tier_key];
+  let i = 3;
+  for (const c of TIER_COLS) {
+    if (input[c] === undefined) continue;
+    cols.push(c);
+    ph.push(TIER_JSON.has(c) ? `$${i++}::jsonb` : `$${i++}`);
+    p.push(TIER_JSON.has(c) ? JSON.stringify(input[c]) : input[c]);
+  }
+  const { rows } = await query(
+    `INSERT INTO shared.crown_tiers (${cols.join(",")}) VALUES (${ph.join(",")}) RETURNING *`,
+    p,
+  );
+  return rows[0];
+}
+
 async function updateTier({ brand, id, patch }) {
   const keys = Object.keys(patch).filter((k) => TIER_COLS.includes(k));
   if (keys.length === 0) return null;
@@ -117,6 +135,24 @@ const RULE_COLS = [
   "display_order",
 ];
 const RULE_JSON = new Set(["eligibility_criteria"]);
+
+async function createRule({ brand, input }) {
+  const cols = ["business", "rule_key", "action_type"];
+  const ph = ["$1", "$2", "$3"];
+  const p = [brand, input.rule_key, input.action_type];
+  let i = 4;
+  for (const c of RULE_COLS) {
+    if (input[c] === undefined) continue;
+    cols.push(c);
+    ph.push(RULE_JSON.has(c) ? `$${i++}::jsonb` : `$${i++}`);
+    p.push(RULE_JSON.has(c) ? JSON.stringify(input[c]) : input[c]);
+  }
+  const { rows } = await query(
+    `INSERT INTO shared.crown_earn_rules (${cols.join(",")}) VALUES (${ph.join(",")}) RETURNING *`,
+    p,
+  );
+  return rows[0];
+}
 
 async function updateRule({ brand, id, patch }) {
   const keys = Object.keys(patch).filter((k) => RULE_COLS.includes(k));
@@ -322,6 +358,25 @@ async function upsertStreak({ client, brand, streak }) {
   return rows[0];
 }
 
+/** At-risk streaks with the customer + streak name, for the sales workspace. */
+async function listAtRiskStreaks({ client, brand, limit = 100 }) {
+  const { rows } = await ex(client)(
+    `SELECT s.streak_id, s.contact_id, s.streak_type, s.current_length,
+            s.status, s.deadline_at, s.freezes_available,
+            c.display_name AS contact_name,
+            cfg.display_name AS streak_name
+       FROM shared.crown_streaks s
+       LEFT JOIN shared.contacts c ON c.contact_id = s.contact_id
+       LEFT JOIN shared.crown_streak_config cfg
+         ON cfg.business = s.business AND cfg.streak_type = s.streak_type
+      WHERE s.business = $1 AND s.status = 'at_risk'
+      ORDER BY s.deadline_at ASC NULLS LAST
+      LIMIT $2`,
+    [brand, limit],
+  );
+  return rows;
+}
+
 /** Streaks whose deadline has passed or is within the nudge window. */
 async function listStreaksDue({ client, brand, streak_type, before }) {
   const { rows } = await ex(client)(
@@ -484,15 +539,35 @@ async function reviewSubmission({ client, brand, submission_id, patch }) {
   return rows[0] || null;
 }
 
+// ── Staff recipients (for in-app notifications) ────────────
+/** Active staff for a brand who hold a retention permission (view/approve). */
+async function staffWithRetentionAccess({ client, brand, action = "view" }) {
+  const { rows } = await ex(client)(
+    `SELECT DISTINCT ur.user_id
+       FROM shared.user_roles ur
+       JOIN shared.permissions p ON p.role_id = ur.role_id
+       JOIN shared.users u ON u.user_id = ur.user_id
+      WHERE ur.business = $1
+        AND p.module = 'retention'
+        AND p.action = $2
+        AND u.is_active = true
+        AND (ur.expires_at IS NULL OR ur.expires_at > now())`,
+    [brand, action],
+  );
+  return rows.map((r) => r.user_id);
+}
+
 module.exports = {
   // tiers
   listTiers,
   getTierById,
   tierForLifetime,
+  createTier,
   updateTier,
   // earn rules
   listRules,
   getRuleByKey,
+  createRule,
   updateRule,
   // ledger
   insertLedger,
@@ -510,6 +585,7 @@ module.exports = {
   listStreaksForContact,
   upsertStreak,
   listStreaksDue,
+  listAtRiskStreaks,
   // grants
   grantExistsForTier,
   insertGrant,
@@ -521,4 +597,6 @@ module.exports = {
   getSubmission,
   countSubmissionsInWindow,
   reviewSubmission,
+  // recipients
+  staffWithRetentionAccess,
 };

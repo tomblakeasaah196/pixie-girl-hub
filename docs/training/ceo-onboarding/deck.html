@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pixie Girl Hub — CEO Onboarding</title>
+<link rel="stylesheet" href="fonts.css">
+<style>
+  :root{
+    --ink:#0b0708; --ink2:#150a0c; --ink3:#1c0d10;
+    --maroon:#690909; --maroon2:#8f1616; --ember:#c1402f;
+    --gold:#c9a86a; --gold-soft:rgba(201,168,106,.55);
+    --line:rgba(201,168,106,.22);
+    --cream:#f6efe6; --text:#e7dcd4; --muted:#a4948b; --faint:#6f635e;
+    --panel:rgba(255,255,255,.035); --panel2:rgba(255,255,255,.055);
+    --serif:'Playfair Display',Georgia,'Times New Roman',serif;
+    --sans:'Montserrat','Helvetica Neue',Arial,system-ui,sans-serif;
+    --mono:'JetBrains Mono','SFMono-Regular',Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  @page{ size:13.333in 7.5in; margin:0; }
+  html,body{ background:var(--ink); }
+  body{ font-family:var(--sans); color:var(--text); -webkit-font-smoothing:antialiased; }
+
+  .slide{
+    position:relative; width:13.333in; height:7.5in; overflow:hidden;
+    background:
+      radial-gradient(120% 90% at 88% -10%, rgba(105,9,9,.42) 0%, rgba(105,9,9,0) 46%),
+      radial-gradient(90% 80% at -8% 112%, rgba(105,9,9,.30) 0%, rgba(105,9,9,0) 44%),
+      linear-gradient(160deg,#0d090a 0%, #0b0708 55%, #080506 100%);
+    padding:58px 74px 56px; display:flex; flex-direction:column;
+    page-break-after:always;
+  }
+  .slide:last-child{ page-break-after:auto; }
+  .slide::after{ /* thin gold frame */
+    content:""; position:absolute; inset:16px; border:1px solid rgba(201,168,106,.14);
+    border-radius:6px; pointer-events:none;
+  }
+
+  /* ---- header ---- */
+  .head{ display:flex; align-items:center; justify-content:space-between; z-index:2; }
+  .head .idx{ font-family:var(--mono); font-size:12.5px; letter-spacing:.32em; color:var(--gold); }
+  .head .sec{ font-family:var(--mono); font-size:11px; letter-spacing:.42em; text-transform:uppercase; color:var(--muted); }
+  .head .lead-sec{ display:flex; align-items:center; gap:16px; }
+  .brandmark{ display:flex; align-items:center; gap:9px; font-family:var(--mono); font-size:10.5px; letter-spacing:.34em; text-transform:uppercase; color:var(--faint); }
+  .brandmark .dot{ width:6px;height:6px;border-radius:50%; background:var(--maroon2); box-shadow:0 0 0 3px rgba(143,22,22,.25); }
+  .rule{ height:1px; margin:16px 0 0; background:linear-gradient(90deg,var(--gold-soft),rgba(201,168,106,.05) 60%,transparent); z-index:2; }
+
+  /* ---- generic ---- */
+  .body{ flex:1; display:flex; flex-direction:column; justify-content:center; z-index:2; }
+  h2.title{ font-family:var(--serif); font-weight:700; color:var(--cream); font-size:52px; line-height:1.03; letter-spacing:-.01em; }
+  h2.title .accent{ color:var(--gold); font-style:italic; font-weight:600; }
+  .lead{ font-size:16.5px; line-height:1.6; color:var(--muted); max-width:900px; }
+  .lead strong{ color:var(--text); font-weight:600; }
+  .kick{ font-family:var(--mono); font-size:11.5px; letter-spacing:.34em; text-transform:uppercase; color:var(--ember); margin-bottom:16px; }
+  .em{ color:var(--gold); }
+  .mono{ font-family:var(--mono); }
+  .route{ font-family:var(--mono); font-size:.92em; color:var(--gold); background:rgba(201,168,106,.09); border:1px solid var(--line); padding:2px 8px; border-radius:5px; white-space:nowrap; }
+
+  /* watermark numeral */
+  .wm{ position:absolute; right:40px; bottom:-26px; font-family:var(--serif); font-weight:900;
+       font-size:280px; line-height:1; color:rgba(201,168,106,.05); z-index:1; user-select:none; }
+
+  /* ---- cards / grids ---- */
+  .grid{ display:grid; gap:16px; }
+  .card{ background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:20px 22px; }
+  .card h3{ font-family:var(--sans); font-weight:700; color:var(--cream); font-size:16px; letter-spacing:.01em; margin-bottom:6px; display:flex; align-items:center; gap:10px; }
+  .card p{ font-size:13.5px; line-height:1.5; color:var(--muted); }
+  .card .ic{ color:var(--gold); flex:none; }
+
+  /* ---- practice band ---- */
+  .practice{ margin-top:24px; z-index:2;
+    background:linear-gradient(100deg, rgba(105,9,9,.32), rgba(105,9,9,.10));
+    border:1px solid rgba(201,168,106,.3); border-left:4px solid var(--gold);
+    border-radius:12px; padding:16px 22px 18px; display:flex; gap:26px; align-items:center; }
+  .practice .plabel{ flex:none; width:132px; }
+  .practice .plabel .t{ font-family:var(--mono); font-size:12px; letter-spacing:.16em; color:var(--gold); font-weight:700; display:flex; align-items:center; gap:8px; }
+  .practice .plabel .m{ font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; color:var(--muted); margin-top:6px; }
+  .steps{ display:flex; gap:18px; flex:1; }
+  .step{ display:flex; gap:11px; align-items:flex-start; flex:1; }
+  .step .n{ flex:none; width:24px; height:24px; border-radius:50%; border:1px solid var(--gold-soft);
+    color:var(--gold); font-family:var(--mono); font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+  .step .tx{ font-size:12.7px; line-height:1.42; color:var(--text); padding-top:2px; }
+  .step .tx b{ color:var(--cream); font-weight:600; }
+
+  /* ---- pills / chips ---- */
+  .pills{ display:flex; flex-wrap:wrap; gap:10px; }
+  .pill{ font-family:var(--mono); font-size:12px; letter-spacing:.06em; color:var(--text);
+    background:var(--panel2); border:1px solid var(--line); border-radius:999px; padding:8px 15px; display:flex; align-items:center; gap:8px; }
+  .pill .g{ color:var(--gold); font-weight:700; }
+  .kbd{ font-family:var(--mono); font-size:14px; color:var(--cream); background:linear-gradient(180deg,#241014,#170a0d);
+    border:1px solid rgba(201,168,106,.4); border-bottom-width:3px; border-radius:8px; padding:7px 12px; box-shadow:0 2px 0 rgba(0,0,0,.4); }
+
+  /* ---- flow ---- */
+  .flow{ display:flex; align-items:stretch; gap:0; }
+  .fstep{ flex:1; text-align:center; padding:16px 8px; background:var(--panel); border:1px solid var(--line); border-radius:12px; position:relative; }
+  .fstep .fn{ font-family:var(--mono); color:var(--gold); font-size:11px; letter-spacing:.2em; }
+  .fstep .ft{ font-family:var(--serif); color:var(--cream); font-size:18px; margin-top:6px; font-weight:600; }
+  .fstep .fd{ font-size:11.5px; color:var(--muted); margin-top:5px; line-height:1.35; }
+  .farrow{ align-self:center; color:var(--gold-soft); font-family:var(--mono); font-size:18px; padding:0 8px; flex:none; }
+
+  /* ---- stat tiles ---- */
+  .stats{ display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+  .stat{ background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px 18px; }
+  .stat .sl{ font-size:11px; text-transform:uppercase; letter-spacing:.12em; color:var(--muted); }
+  .stat .sv{ font-family:var(--mono); font-weight:700; color:var(--cream); font-size:27px; margin-top:9px; letter-spacing:-.01em; }
+  .stat .sd{ font-size:11.5px; margin-top:6px; color:var(--gold); font-family:var(--mono); }
+
+  /* ---- brand diagram ---- */
+  .diagram{ display:flex; align-items:stretch; gap:0; margin-top:6px; }
+  .node{ flex:1; border-radius:14px; padding:22px 20px; border:1px solid var(--line); background:var(--panel); }
+  .node.core{ background:linear-gradient(160deg, rgba(105,9,9,.45), rgba(105,9,9,.16)); border-color:rgba(201,168,106,.4); }
+  .node .tag{ font-family:var(--mono); font-size:11px; letter-spacing:.2em; color:var(--gold); }
+  .node .nm{ font-family:var(--serif); font-size:23px; color:var(--cream); margin-top:8px; font-weight:700; }
+  .node .ds{ font-size:12.5px; color:var(--muted); margin-top:8px; line-height:1.45; }
+  .node.core .nm{ font-size:20px; }
+  .connect{ align-self:center; flex:none; width:44px; height:2px; background:linear-gradient(90deg,var(--gold-soft),transparent,var(--gold-soft)); position:relative; }
+  .connect::before,.connect::after{ content:""; position:absolute; top:50%; width:6px;height:6px;border-radius:50%; background:var(--gold); transform:translateY(-50%); }
+  .connect::before{ left:-1px } .connect::after{ right:-1px }
+
+  /* ---- cover ---- */
+  .cover{ text-align:left; display:flex; flex-direction:column; height:100%; }
+  .cover .top{ display:flex; align-items:center; justify-content:space-between; }
+  .cover .mid{ flex:1; display:flex; flex-direction:column; justify-content:center; }
+  .emblem{ width:78px;height:78px; margin-bottom:30px; }
+  h1.cover-title{ font-family:var(--serif); font-weight:800; font-size:88px; line-height:.98; color:var(--cream); letter-spacing:-.02em; }
+  h1.cover-title .it{ font-style:italic; font-weight:600; color:var(--gold); }
+  .cover .sub{ font-size:19px; color:var(--muted); margin-top:24px; letter-spacing:.01em; }
+  .cover .brands{ display:flex; gap:18px; align-items:center; margin-top:30px; font-family:var(--mono); font-size:13px; letter-spacing:.14em; color:var(--text); text-transform:uppercase; }
+  .cover .brands .sep{ width:5px;height:5px;border-radius:50%; background:var(--gold); }
+  .cover .foot{ display:flex; align-items:center; justify-content:space-between; font-family:var(--mono); font-size:11px; letter-spacing:.16em; color:var(--faint); text-transform:uppercase; }
+
+  .footline{ position:absolute; left:74px; right:74px; bottom:30px; display:flex; justify-content:space-between; align-items:center;
+    font-family:var(--mono); font-size:10px; letter-spacing:.2em; text-transform:uppercase; color:var(--faint); z-index:2; }
+</style>
+</head>
+<body>
+
+<!-- ============ 01 · COVER ============ -->
+<section class="slide">
+  <div class="cover">
+    <div class="top">
+      <div class="brandmark"><span class="dot"></span> Pixie Girl Hub · V2.2</div>
+      <div class="head idx">01 / 10</div>
+    </div>
+    <div class="mid">
+      <svg class="emblem" viewBox="0 0 100 100" fill="none">
+        <circle cx="38" cy="50" r="27" stroke="#c9a86a" stroke-width="1.5" opacity=".9"/>
+        <circle cx="62" cy="50" r="27" stroke="#8f1616" stroke-width="2.4"/>
+        <path d="M50 34 l3.2 9.6 10.1.1 -8.2 6 3.1 9.7 -8.2-6 -8.2 6 3.1-9.7 -8.2-6 10.1-.1z" fill="#c9a86a"/>
+      </svg>
+      <div class="kick" style="margin-bottom:22px">CEO Onboarding · 60 Minutes · Hands-On</div>
+      <h1 class="cover-title">Command of<br>the <span class="it">Hub</span></h1>
+      <div class="sub">One platform. Two businesses. Total visibility.</div>
+      <div class="brands">
+        Pixie Girl Global <span class="sep"></span> Faitlyn Hair
+      </div>
+    </div>
+    <div class="foot">
+      <span>Prepared for the Chief Executive</span>
+      <span>10 Slides · Practice on every one</span>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 02 · BIG PICTURE ============ -->
+<section class="slide">
+  <div class="head">
+    <div class="lead-sec"><span class="idx">02 / 10</span><span class="sec">The Big Picture</span></div>
+    <div class="brandmark"><span class="dot"></span> Pixie Girl Hub</div>
+  </div>
+  <div class="rule"></div>
+  <div class="body">
+    <div class="kick">What you are logging into</div>
+    <h2 class="title">One system runs <span class="accent">both businesses</span></h2>
+    <p class="lead" style="margin:18px 0 26px">
+      ERP + CRM + E‑commerce in one place — sales, stock, imports, invoicing, accounting, HR, marketing and an AI operator.
+      <strong>37 modules, one login.</strong>
+    </p>
+    <div class="diagram">
+      <div class="node">
+        <div class="tag">PXG</div>
+        <div class="nm">Pixie Girl Global</div>
+        <div class="ds">Hair · retail · stylist partner network</div>
+      </div>
+      <div class="connect"></div>
+      <div class="node core">
+        <div class="tag">THE HUB · SHARED CORE</div>
+        <div class="nm">Identity · AI · Audit · Documents</div>
+        <div class="ds">Each business keeps its own customers, stock &amp; books — separated by design.</div>
+      </div>
+      <div class="connect"></div>
+      <div class="node">
+        <div class="tag">FLH</div>
+        <div class="nm">Faitlyn Hair</div>
+        <div class="ds">Hair · in‑house styling studio</div>
+      </div>
+    </div>
+    <p class="lead" style="margin-top:22px">
+      Your <span class="em">CEO login sees everything</span> — no permission wall. Every naira, order and message, in one place.
+    </p>
+  </div>
+  <div class="footline"><span>Pixie Girl Hub</span><span>CEO Onboarding</span></div>
+  <div class="wm">02</div>
+</section>
+
+<!-- ============ 03 · SWITCH BUSINESS ============ -->
+<section class="slide">
+  <div class="head">
+    <div class="lead-sec"><span class="idx">03 / 10</span><span class="sec">The First Habit</span></div>
+    <div class="brandmark"><span class="dot"></span> Pixie Girl Hub</div>
+  </div>
+  <div class="rule"></div>
+  <div class="body">
+    <div class="kick">Top-left, always</div>
+    <h2 class="title">Know which business <span class="accent">you're in</span></h2>
+    <p class="lead" style="margin:18px 0 24px; max-width:760px">
+      The business chip at the top-left is a switch. Flip it and <strong>every list, KPI and total on screen re‑loads</strong> for that business. Same screens, different money.
+    </p>
+    <div class="grid" style="grid-template-columns:1.1fr 1fr; align-items:center">
+      <div class="card" style="padding:22px 24px">
+        <div style="display:flex; gap:12px; align-items:center">
+          <div class="pill" style="background:linear-gradient(160deg,rgba(105,9,9,.5),rgba(105,9,9,.2)); border-color:var(--gold-soft)">
+            <span class="g">◈</span> Faitlyn Hair <span style="color:var(--muted)">▾</span>
+          </div>
+          <span class="mono" style="color:var(--faint); font-size:12px">← click to switch</span>
+        </div>
+        <div style="margin-top:16px; display:flex; flex-direction:column; gap:9px">
+          <div class="pill" style="justify-content:flex-start"><span class="g">●</span> Pixie Girl Global</div>
+          <div class="pill" style="justify-content:flex-start; border-color:var(--gold-soft)"><span class="g">◈</span> Faitlyn Hair <span style="margin-left:auto;color:var(--gold)">✓</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3><span class="ic">◆</span> One rule to remember</h3>
+        <p>If a number looks wrong, check the switcher first. You may simply be reading the <strong>other</strong> business. Switching is safe — it changes nothing, it just re-scopes the view.</p>
+      </div>
+    </div>
+  </div>
+  <div class="practice">
+    <div class="plabel"><div class="t">▶ TRY IT NOW</div><div class="m">~3 min</div></div>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><div class="tx">Find the <b>business chip</b>, top-left of any screen.</div></div>
+      <div class="step"><div class="n">2</div><div class="tx">Switch <b>Pixie Girl Global → Faitlyn Hair</b>.</div></div>
+      <div class="step"><div class="n">3</div><div class="tx">Watch the dashboard <b>totals change</b>. Switch back.</div></div>
+    </div>
+  </div>
+  <div class="wm">03</div>
+</section>
+
+<!-- ============ 04 · NAVIGATION / ⌘K ============ -->
+<section class="slide">
+  <div class="head">
+    <div class="lead-sec"><span class="idx">04 / 10</span><span class="sec">Getting Around</span></div>
+    <div class="brandmark"><span class="dot"></span> Pixie Girl Hub</div>
+  </div>
+  <div class="rule"></div>
+  <div class="body">
+    <div class="kick">Never go hunting</div>
+    <h2 class="title">Get anywhere in <span class="accent">two seconds</span></h2>
+    <p class="lead" style="margin:18px 0 22px; max-width:820px">
+      The left sidebar groups every module. But the fastest route is the command palette — one box that finds records, jumps to any page <em>or tab</em>, and runs commands.
+    </p>
+    <div class="pills" style="margin-bottom:22px">
+      <span class="pill"><span class="g">▸</span> Run</span>
+      <span class="pill"><span class="g">▸</span> Operate</span>
+      <span class="pill"><span class="g">▸</span> Finance</span>
+      <span class="pill"><span class="g">▸</span> People</span>
+      <span class="pill"><span class="g">▸</span> Grow</span>
+      <span class="pill"><span class="g">▸</span> System</span>
+    </div>
+    <div class="grid" style="grid-template-columns:auto 1fr; align-items:center; gap:22px">
+      <div style="display:flex; align-items:center; gap:10px">
+        <span class="kbd">⌘</span><span class="mono" style="color:var(--faint)">+</span><span class="kbd">K</span>
+        <span class="mono" style="color:var(--faint); font-size:12px; margin-left:8px">(Ctrl-K on Windows)</span>
+      </div>
+      <p class="lead" style="margin:0">
+        Type a <span class="em">module</span> (“invoicing”), a <span class="em">tab</span> (“chart of accounts”), a <span class="em">record</span>, or a <span class="em">command</span> (“new order”). The floating <span class="em">Praxis</span> button is on every screen too.
+      </p>
+    </div>
+  </div>
+  <div class="practice">
+    <div class="plabel"><div class="t">▶ TRY IT NOW</div><div class="m">~5 min</div></div>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><div class="tx">Press <b>⌘K</b> (or Ctrl-K).</div></div>
+      <div class="step"><div class="n">2</div><div class="tx">Type <b>“invoicing”</b> → Enter.</div></div>
+      <div class="step"><div class="n">3</div><div class="tx">⌘K again → <b>“cash”</b> → open Cash Requests.</div></div>
+    </div>
+  </div>
+  <div class="wm">04</div>
+</section>
+
+<!-- ============ 05 · COMMAND CENTER ============ -->
+<section class="slide">
+  <div class="head">
+    <div class="lead-sec"><span class="idx">05 / 10</span><span class="sec">Your Command Center</span></div>
+    <div class="brandmark"><span class="dot"></span> Pixie Girl Hub</div>
+  </div>
+  <div class="rule"></div>
+  <div class="body">
+    <div class="kick">Home &amp; dashboard</div>
+    <h2 class="title">Your morning in <span class="accent">one screen</span></h2>
+    <p class="lead" style="margin:18px 0 20px; max-width:860px">
+      Home is your <strong>Command Center</strong> — a role KPI strip, quick actions, Praxis insights and your app grid. <span class="route">/dashboard</span> is the deeper numbers view.
+    </p>
+    <div class="stats">
+      <div class="stat"><div class="sl">Revenue · today</div><div class="sv">₦ ▦▦▦</div><div class="sd">▲ vs. yesterday</div></div>
+      <div class="stat"><div class="sl">Orders · today</div><div class="sv">▦▦</div><div class="sd">live count</div></div>
+      <div class="stat"><div class="sl">Cash position</div><div class="sv">₦ ▦▦▦</div><div class="sd">across accounts</div></div>
+      <div class="stat"><div class="sl">Awaiting you</div><div class="sv">▦</div><div class="sd">approvals pending</div></div>
+    </div>
+    <p class="lead" style="margin-top:14px; font-size:13px; color:var(--faint)">
+      Illustrative — your live figures appear here, and re-scope the moment you switch business.
+    </p>
+  </div>
+  <div class="practice">
+    <div class="plabel"><div class="t">▶ TRY IT NOW</div><div class="m">~5 min</div></div>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><div class="tx">Open <b>Dashboard</b> from the sidebar.</div></div>
+      <div class="step"><div class="n">2</div><div class="tx">Read the <b>four headline KPIs</b> aloud.</div></div>
+      <div class="step"><div class="n">3</div><div class="tx"><b>Switch business</b> and compare the two.</div></div>
+    </div>
+  </div>
+  <div class="wm">05</div>
+</section>
+
+<!-- ============ 06 · PRAXIS ============ -->
+<section class="slide">
+  <div class="head">
+    <div class="lead-sec"><span class="idx">06 / 10</span><span class="sec">Praxis · Your AI</span></div>
+    <div class="brandmark"><span class="dot"></span> Pixie Girl Hub</div>
+  </div>
+  <div class="rule"></div>
+  <div class="body">
+    <div class="kick">Ask, don't hunt</div>
+    <h2 class="title">Praxis, your <span class="accent">AI chief of staff</span></h2>
+    <div class="grid" style="grid-template-columns:1fr 1fr; gap:16px; margin:20px 0 6px">
+      <div class="card">
+        <h3><span class="ic">✦</span> How it behaves</h3>
+        <p><b style="color:var(--text)">Reads</b> freely · <b style="color:var(--text)">writes</b> only with your sign-off · <b style="color:var(--text)">acts</b> only with your permissions. Ask in plain English; get an answer and a link.</p>
+      </div>
+      <div class="card">
+        <h3><span class="ic">◒</span> Where to find it</h3>
+        <p>The floating <span class="em">✦ button</span> on every screen, the full workspace at <span class="route">/praxis</span>, and proactive alerts under <span class="route">/insights</span>.</p>
+      </div>
+    </div>
+    <p class="lead" style="margin-top:8px">Treat it like a sharp analyst who never sleeps and already has every number.</p>
+  </div>
+  <div class="practice">
+    <div class="plabel"><div class="t">▶ ASK PRAXIS</div><div class="m">~8 min</div></div>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><div class="tx">“<b>What needs my approval today?</b>”</div></div>
+      <div class="step"><div class="n">2</div><div class="tx">“<b>Top 5 customers this month</b> for Faitlyn Hair.”</div></div>
+      <div class="step"><div class="n">3</div><div class="tx">“<b>How is cash</b> across both businesses?”</div></div>
+    </div>
+  </div>
+  <div class="wm">06</div>
+</section>
+
+<!-- ============ 07 · APPROVALS ============ -->
+<section class="slide">
+  <div class="head">
+    <div class="lead-sec"><span class="idx">07 / 10</span><span class="sec">Approvals &amp; Workflow</span></div>
+    <div class="brandmark"><span class="dot"></span> Pixie Girl Hub</div>
+  </div>
+  <div class="rule"></div>
+  <div class="body">
+    <div class="kick">The buck stops here</div>
+    <h2 class="title">Approvals come <span class="accent">to you</span></h2>
+    <p class="lead" style="margin:18px 0 22px; max-width:880px">
+      Expenses, cash requests, purchase orders and price/discount changes route through the <strong>workflow engine</strong>. You see the full approval chain before you sign — and every decision is logged.
+    </p>
+    <div class="flow">
+      <div class="fstep"><div class="fn">RAISED</div><div class="ft">Request</div><div class="fd">Staff submit an expense, PO or discount</div></div>
+      <div class="farrow">→</div>
+      <div class="fstep"><div class="fn">ROUTED</div><div class="ft">Chain</div><div class="fd">Rules pick the approvers &amp; thresholds</div></div>
+      <div class="farrow">→</div>
+      <div class="fstep" style="border-color:var(--gold-soft); background:linear-gradient(160deg,rgba(105,9,9,.4),rgba(105,9,9,.14))"><div class="fn" style="color:var(--gold)">YOU</div><div class="ft">Decide</div><div class="fd">Approve, or return with a note</div></div>
+      <div class="farrow">→</div>
+      <div class="fstep"><div class="fn">LOGGED</div><div class="ft">Audit</div><div class="fd">Recorded, actioned, notified</div></div>
+    </div>
+  </div>
+  <div class="practice">
+    <div class="plabel"><div class="t">▶ TRY IT NOW</div><div class="m">~7 min</div></div>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><div class="tx">Open <b>Org &amp; Workflow</b> <span class="route">/org-workflow</span> → Approvals.</div></div>
+      <div class="step"><div class="n">2</div><div class="tx">Open a pending item; <b>read the chain</b>.</div></div>
+      <div class="step"><div class="n">3</div><div class="tx"><b>Approve</b>, or return with a note.</div></div>
+    </div>
+  </div>
+  <div class="wm">07</div>
+</section>
+
+<!-- ============ 08 · MONEY ============ -->
+<section class="slide">
+  <div class="head">
+    <div class="lead-sec"><span class="idx">08 / 10</span><span class="sec">Follow the Money</span></div>
+    <div class="brandmark"><span class="dot"></span> Pixie Girl Hub</div>
+  </div>
+  <div class="rule"></div>
+  <div class="body">
+    <div class="kick">Naira, always</div>
+    <h2 class="title">Where the <span class="accent">money</span> lives</h2>
+    <div class="grid" style="grid-template-columns:repeat(3,1fr); gap:14px; margin:20px 0 18px">
+      <div class="card"><h3><span class="ic">▤</span> Invoicing</h3><p>Live accounts receivable — who owes what, right now. <span class="route">/invoicing</span></p></div>
+      <div class="card"><h3><span class="ic">▦</span> Accounting</h3><p>The books — ledgers, chart of accounts, reports. <span class="route">/accounting</span></p></div>
+      <div class="card"><h3><span class="ic">◇</span> Expenses &amp; Cash</h3><p>Claims, advances and disbursements. <span class="route">/expenses</span></p></div>
+    </div>
+    <p class="lead">
+      Every figure is in <span class="em">Naira</span>. History is never re-computed with today's FX — what happened, stays as it happened.
+    </p>
+  </div>
+  <div class="practice">
+    <div class="plabel"><div class="t">▶ TRY IT NOW</div><div class="m">~7 min</div></div>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><div class="tx"><b>Invoicing</b> → read outstanding <b>AR</b>.</div></div>
+      <div class="step"><div class="n">2</div><div class="tx"><b>Switch business</b>; read the other AR.</div></div>
+      <div class="step"><div class="n">3</div><div class="tx">Ask Praxis: “<b>cash position, both businesses</b>.”</div></div>
+    </div>
+  </div>
+  <div class="wm">08</div>
+</section>
+
+<!-- ============ 09 · PEOPLE & ACCESS ============ -->
+<section class="slide">
+  <div class="head">
+    <div class="lead-sec"><span class="idx">09 / 10</span><span class="sec">People &amp; Control</span></div>
+    <div class="brandmark"><span class="dot"></span> Pixie Girl Hub</div>
+  </div>
+  <div class="rule"></div>
+  <div class="body">
+    <div class="kick">You hold the keys</div>
+    <h2 class="title">People, access &amp; <span class="accent">control</span></h2>
+    <div class="grid" style="grid-template-columns:repeat(2,1fr); gap:16px; margin:20px 0 18px">
+      <div class="card"><h3><span class="ic">◈</span> Org &amp; Workflow</h3><p>Structure, roles and approval rules. Decide what each role can see and do. <span class="route">/org-workflow</span></p></div>
+      <div class="card"><h3><span class="ic">▣</span> IAM &amp; Security</h3><p>Users, sessions and the full audit trail — every action, attributable. <span class="route">/iam-security</span></p></div>
+      <div class="card"><h3><span class="ic">◧</span> HR &amp; Payroll</h3><p>People, attendance, pay runs and payslips. <span class="route">/hr</span> · <span class="route">/payroll</span></p></div>
+      <div class="card"><h3><span class="ic">✦</span> AI Control</h3><p>Govern what Praxis knows and may do; usage per business. <span class="route">/ai-control</span></p></div>
+    </div>
+    <p class="lead">Grant it, revoke it, and the system <span class="em">enforces it everywhere</span> — UI and API alike.</p>
+  </div>
+  <div class="practice">
+    <div class="plabel"><div class="t">▶ TRY IT NOW</div><div class="m">~7 min</div></div>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><div class="tx"><b>IAM &amp; Security → Users</b>; open one person.</div></div>
+      <div class="step"><div class="n">2</div><div class="tx">See their <b>role &amp; access</b>.</div></div>
+      <div class="step"><div class="n">3</div><div class="tx"><b>Org &amp; Workflow → Roles</b>; view a role's modules.</div></div>
+    </div>
+  </div>
+  <div class="wm">09</div>
+</section>
+
+<!-- ============ 10 · DAILY ROUTINE ============ -->
+<section class="slide">
+  <div class="head">
+    <div class="lead-sec"><span class="idx">10 / 10</span><span class="sec">Make It a Habit</span></div>
+    <div class="brandmark"><span class="dot"></span> Pixie Girl Hub</div>
+  </div>
+  <div class="rule"></div>
+  <div class="body">
+    <div class="kick">From today</div>
+    <h2 class="title">Your daily <span class="accent">10 minutes</span></h2>
+    <div class="flow" style="margin:22px 0 22px">
+      <div class="fstep"><div class="fn">01</div><div class="ft">Pick</div><div class="fd">Set the business</div></div>
+      <div class="farrow">→</div>
+      <div class="fstep"><div class="fn">02</div><div class="ft">Dashboard</div><div class="fd">Read the numbers</div></div>
+      <div class="farrow">→</div>
+      <div class="fstep"><div class="fn">03</div><div class="ft">Insights</div><div class="fd">See what Praxis flagged</div></div>
+      <div class="farrow">→</div>
+      <div class="fstep"><div class="fn">04</div><div class="ft">Approvals</div><div class="fd">Clear your queue</div></div>
+      <div class="farrow">→</div>
+      <div class="fstep"><div class="fn">05</div><div class="ft">Ask</div><div class="fd">One question to Praxis</div></div>
+    </div>
+    <div class="grid" style="grid-template-columns:1.4fr 1fr; gap:20px; align-items:center">
+      <div>
+        <div class="kick" style="color:var(--muted); margin-bottom:10px">Cheat sheet</div>
+        <div class="pills">
+          <span class="pill"><span class="g">⌘K</span> anywhere</span>
+          <span class="pill">/dashboard</span>
+          <span class="pill">/insights</span>
+          <span class="pill">/org-workflow</span>
+          <span class="pill">/invoicing</span>
+          <span class="pill">/praxis</span>
+        </div>
+      </div>
+      <div class="card" style="border-color:var(--gold-soft)">
+        <h3><span class="ic">★</span> This week</h3>
+        <p>Log in daily · clear approvals · ask Praxis one question a day · move between <b style="color:var(--text)">both</b> businesses.</p>
+      </div>
+    </div>
+  </div>
+  <div class="footline"><span>The Hub works for you — ask it anything.</span><span>End · Pixie Girl Hub</span></div>
+  <div class="wm">10</div>
+</section>
+
+</body>
+</html>

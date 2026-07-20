@@ -246,7 +246,9 @@ export function usePostCosMessage() {
       // No cached detail to patch (first message raced the initial fetch) —
       // refetch so the turn's messages appear.
       if (!qc.getQueryData(cosKeys.conversation(vars.conversationId))) {
-        qc.invalidateQueries({ queryKey: cosKeys.conversation(vars.conversationId) });
+        qc.invalidateQueries({
+          queryKey: cosKeys.conversation(vars.conversationId),
+        });
       }
       qc.invalidateQueries({ queryKey: cosKeys.conversations });
     },
@@ -257,7 +259,9 @@ export function usePostCosMessage() {
           prev
             ? {
                 ...prev,
-                messages: prev.messages.filter((m) => m.message_id !== ctx?.tempId),
+                messages: prev.messages.filter(
+                  (m) => m.message_id !== ctx?.tempId,
+                ),
               }
             : prev,
       );
@@ -330,7 +334,13 @@ export function useSendCosFeedback() {
                 ...prev,
                 messages: prev.messages.map((m) =>
                   m.message_id === messageId
-                    ? { ...m, feedback: { rating, comment: comment ?? m.feedback?.comment ?? null } }
+                    ? {
+                        ...m,
+                        feedback: {
+                          rating,
+                          comment: comment ?? m.feedback?.comment ?? null,
+                        },
+                      }
                     : m,
                 ),
               }
@@ -552,7 +562,9 @@ export function useSnoozeFollowup() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, until }: { id: string; until?: string }) =>
-      api.post<{ followup: CosFollowup }>(`/cos/followups/${id}/snooze`, { until }),
+      api.post<{ followup: CosFollowup }>(`/cos/followups/${id}/snooze`, {
+        until,
+      }),
     onSuccess: () => invalidateFollowups(qc),
     onError: (err) => toastReport("Chief of Staff → Follow-up", "Snooze", err),
   });
@@ -593,8 +605,18 @@ export interface MeetingPrep {
     progress_pct: number;
     target_date: string | null;
   } | null;
-  open_milestones: { milestone_id: string; title: string; status: string; target_date: string | null }[];
-  recent_notes: { note_id: string; title: string | null; excerpt: string; created_at: string }[];
+  open_milestones: {
+    milestone_id: string;
+    title: string;
+    status: string;
+    target_date: string | null;
+  }[];
+  recent_notes: {
+    note_id: string;
+    title: string | null;
+    excerpt: string;
+    created_at: string;
+  }[];
   participants: {
     participant_id: string;
     name: string;
@@ -639,7 +661,12 @@ export interface CrossBrandBrand {
 }
 export interface CrossBrandOverview {
   brands: CrossBrandBrand[];
-  totals: { active_goals: number; at_risk: number; behind: number; overdue_total: number };
+  totals: {
+    active_goals: number;
+    at_risk: number;
+    behind: number;
+    overdue_total: number;
+  };
   generated_at: string;
 }
 
@@ -650,7 +677,11 @@ export interface GoalTemplate {
   description: string | null;
   structure: {
     goal?: { priority?: string };
-    milestones?: { title: string; offset_days: number; tasks?: { title: string; offset_days: number }[] }[];
+    milestones?: {
+      title: string;
+      offset_days: number;
+      tasks?: { title: string; offset_days: number }[];
+    }[];
     tasks?: { title: string; offset_days: number }[];
   };
   source_goal_id: string | null;
@@ -703,7 +734,8 @@ export function useFindFocus() {
   return useMutation({
     mutationFn: (input: { duration?: number; within?: number }) =>
       api.post<FocusResult>("/cos/schedule/focus", input),
-    onError: (err) => toastReport("Chief of Staff → Scheduling", "Find focus time", err),
+    onError: (err) =>
+      toastReport("Chief of Staff → Scheduling", "Find focus time", err),
   });
 }
 
@@ -711,27 +743,39 @@ export function useBatchReschedule() {
   return useMutation({
     mutationFn: (input: { match: string; days?: number }) =>
       api.post<Plan>("/cos/schedule/reschedule", input),
-    onError: (err) => toastReport("Chief of Staff → Scheduling", "Reschedule tasks", err),
+    onError: (err) =>
+      toastReport("Chief of Staff → Scheduling", "Reschedule tasks", err),
   });
 }
 
 export function useSaveTemplate() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { goal_id: string; name?: string; description?: string }) =>
-      api.post<GoalTemplate>("/cos/templates", input),
+    mutationFn: (input: {
+      goal_id: string;
+      name?: string;
+      description?: string;
+    }) => api.post<GoalTemplate>("/cos/templates", input),
     onSuccess: () => qc.invalidateQueries({ queryKey: intelKeys.templates }),
-    onError: (err) => toastReport("Chief of Staff → Playbooks", "Save as playbook", err),
+    onError: (err) =>
+      toastReport("Chief of Staff → Playbooks", "Save as playbook", err),
   });
 }
 
 export function useInstantiateTemplate() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ templateId, ...input }: { templateId: string; start_date?: string; name?: string }) =>
-      api.post<Plan>(`/cos/templates/${templateId}/instantiate`, input),
+    mutationFn: ({
+      templateId,
+      ...input
+    }: {
+      templateId: string;
+      start_date?: string;
+      name?: string;
+    }) => api.post<Plan>(`/cos/templates/${templateId}/instantiate`, input),
     onSuccess: () => qc.invalidateQueries({ queryKey: intelKeys.templates }),
-    onError: (err) => toastReport("Chief of Staff → Playbooks", "Use playbook", err),
+    onError: (err) =>
+      toastReport("Chief of Staff → Playbooks", "Use playbook", err),
   });
 }
 
@@ -771,15 +815,33 @@ export function useCosSettings(enabled = true) {
   });
 }
 
+/**
+ * Upload an image file to use as the assistant's avatar (alternative to pasting
+ * a URL). The server compresses + stores it and persists the URL on the CoS
+ * settings row; the returned URL is cache-busted so a re-upload takes effect.
+ */
+export async function uploadCosAvatar(
+  blob: Blob,
+  onProgress?: (percent: number) => void,
+): Promise<{ avatar_url: string }> {
+  const form = new FormData();
+  form.append("avatar", blob, "cos-avatar.jpg");
+  return api.postForm<{ avatar_url: string }>("/cos/settings/avatar", form, {
+    onProgress,
+  });
+}
+
 export function useUpdateCosSettings() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (patch: CosSettingsPatch) => api.put<CosSettings>("/cos/settings", patch),
+    mutationFn: (patch: CosSettingsPatch) =>
+      api.put<CosSettings>("/cos/settings", patch),
     onSuccess: (updated) => {
       qc.setQueryData(cosSettingsKey, updated);
       // The assistant name drives the Workspace tab label + chat header.
       qc.invalidateQueries({ queryKey: cosSettingsKey });
     },
-    onError: (err) => toastReport("Chief of Staff → Settings", "Save settings", err),
+    onError: (err) =>
+      toastReport("Chief of Staff → Settings", "Save settings", err),
   });
 }

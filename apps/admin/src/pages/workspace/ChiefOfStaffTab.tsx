@@ -125,7 +125,9 @@ function FeedbackBar({
 }) {
   const send = useSendCosFeedback();
   const toast = useToast("Chief of Staff");
-  const [rating, setRating] = useState<FeedbackRating | null>(msg.feedback?.rating ?? null);
+  const [rating, setRating] = useState<FeedbackRating | null>(
+    msg.feedback?.rating ?? null,
+  );
   const [commenting, setCommenting] = useState(false);
   const [comment, setComment] = useState(msg.feedback?.comment ?? "");
 
@@ -145,7 +147,12 @@ function FeedbackBar({
   const saveCorrection = () => {
     const c = comment.trim();
     send.mutate(
-      { conversationId, messageId: msg.message_id, rating: "down", comment: c || undefined },
+      {
+        conversationId,
+        messageId: msg.message_id,
+        rating: "down",
+        comment: c || undefined,
+      },
       {
         onSuccess: () => {
           setCommenting(false);
@@ -223,7 +230,11 @@ function FeedbackBar({
               disabled={send.isPending}
               className="inline-flex items-center gap-1.5 rounded-lg bg-accent text-bg px-3 py-1.5 text-[12px] font-semibold hover:bg-accent-glow disabled:opacity-50"
             >
-              {send.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+              {send.isPending ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <Check className="w-3 h-3" />
+              )}
               Teach the Chief of Staff
             </button>
             <button
@@ -245,22 +256,32 @@ function Bubble({
   avatarUrl,
   tts,
   conversationId,
+  pending,
 }: {
   msg: CosMessage;
   avatarUrl?: string | null;
   tts: ReadAloudApi;
   conversationId: string | null;
+  /** In-flight user message (optimistic) — shows a "Sent" tick under it. */
+  pending?: boolean;
 }) {
   const text = msg.content || msg.transcribed_text || "";
   if (msg.role === "user") {
     return (
       <div className="flex flex-col items-end gap-1">
         {msg.input_mode === "voice" && (
-          <span className="pr-1 text-[9.5px] uppercase tracking-[0.18em] text-text-faint font-bold">voice</span>
+          <span className="pr-1 text-[9.5px] uppercase tracking-[0.18em] text-text-faint font-bold">
+            voice
+          </span>
         )}
         <div className="max-w-[85%] md:max-w-[82%] rounded-[20px] rounded-br-md bg-accent-deep/90 text-[#F4E9D9] px-4 py-2.5 text-[14px] leading-relaxed whitespace-pre-wrap break-words shadow-[0_4px_16px_rgb(var(--accent-deep)/0.35)]">
           {text}
         </div>
+        {pending && (
+          <span className="pr-1 inline-flex items-center gap-1 text-[10.5px] text-text-faint">
+            <Check className="w-3 h-3" /> Sent
+          </span>
+        )}
       </div>
     );
   }
@@ -280,7 +301,9 @@ function Bubble({
           </div>
         )}
         {/* Rate the reply so the CoS learns the CEO's preferences. */}
-        {text.trim() && conversationId && <FeedbackBar conversationId={conversationId} msg={msg} />}
+        {text.trim() && conversationId && (
+          <FeedbackBar conversationId={conversationId} msg={msg} />
+        )}
       </div>
     </div>
   );
@@ -432,7 +455,11 @@ function SavedNoteFooter({
             disabled={busy}
             className="inline-flex items-center gap-1 rounded-[7px] px-2 py-0.5 text-text-muted hover:text-text-primary"
           >
-            {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCw className="w-3 h-3" />}
+            {busy ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <RotateCw className="w-3 h-3" />
+            )}
             Refresh
           </button>
           <button
@@ -451,7 +478,10 @@ function SavedNoteFooter({
 /** One-tap openers — each sends straight into the CoS as a first message. */
 const SUGGESTIONS: { icon: typeof Target; text: string }[] = [
   { icon: Target, text: "Plan a product launch for next month" },
-  { icon: CalendarClock, text: "Find me two hours of deep-focus time this week" },
+  {
+    icon: CalendarClock,
+    text: "Find me two hours of deep-focus time this week",
+  },
   { icon: Gauge, text: "What's slipping across my goals right now?" },
   { icon: StickyNote, text: "Set up a weekly review every Friday afternoon" },
 ];
@@ -472,7 +502,10 @@ function Welcome({
   return (
     <div className="flex flex-col items-center text-center pt-6 md:pt-10 pb-2 animate-fade-in">
       <div className="relative mb-5">
-        <div className="absolute inset-0 rounded-[26px] bg-accent/25 blur-2xl scale-125" aria-hidden />
+        <div
+          className="absolute inset-0 rounded-[26px] bg-accent/25 blur-2xl scale-125"
+          aria-hidden
+        />
         {avatarUrl ? (
           <img
             src={avatarUrl}
@@ -489,8 +522,9 @@ function Welcome({
         {getGreeting()}, {userName}
       </h2>
       <p className="mt-2 text-[13px] leading-relaxed text-text-muted max-w-[420px] px-2">
-        I'm {name}. Tell me what you want done — I'll draft the goal, milestones,
-        tasks and reminders, and run the whole plan once you approve it.
+        I'm {name}. Tell me what you want done — I'll draft the goal,
+        milestones, tasks and reminders, and run the whole plan once you approve
+        it.
       </p>
 
       <div className="mt-7 w-full max-w-[520px] space-y-2 text-left">
@@ -506,7 +540,9 @@ function Welcome({
             <span className="grid place-items-center w-8 h-8 rounded-[10px] bg-accent/10 text-accent-glow shrink-0">
               <s.icon className="w-4 h-4" />
             </span>
-            <span className="flex-1 text-[13px] text-text-muted leading-snug">{s.text}</span>
+            <span className="flex-1 text-[13px] text-text-muted leading-snug">
+              {s.text}
+            </span>
             <ChevronRight className="w-3.5 h-3.5 text-text-faint shrink-0" />
           </button>
         ))}
@@ -545,7 +581,10 @@ function ConversationRows({
     return (
       <div className="space-y-2 p-2">
         {[0, 1, 2].map((i) => (
-          <div key={i} className="h-[52px] rounded-[12px] bg-text-primary/[0.05] animate-pulse" />
+          <div
+            key={i}
+            className="h-[52px] rounded-[12px] bg-text-primary/[0.05] animate-pulse"
+          />
         ))}
       </div>
     );
@@ -582,7 +621,8 @@ function ConversationRows({
             </div>
             <div className="text-[10.5px] text-text-faint mt-0.5">
               {relTime(c.last_activity_at)}
-              {c.message_count != null && ` · ${c.message_count} message${c.message_count === 1 ? "" : "s"}`}
+              {c.message_count != null &&
+                ` · ${c.message_count} message${c.message_count === 1 ? "" : "s"}`}
             </div>
           </button>
           <button
@@ -634,11 +674,16 @@ function HistorySheet({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="md:hidden grid place-items-center pt-2.5">
-          <span className="h-1 w-9 rounded-full bg-text-primary/20" aria-hidden />
+          <span
+            className="h-1 w-9 rounded-full bg-text-primary/20"
+            aria-hidden
+          />
         </div>
         <div className="flex items-center gap-2 p-4 pb-3 border-b hairline shrink-0">
           <History className="w-4 h-4 text-accent-glow" />
-          <h2 className="font-display text-[15px] font-medium flex-1">Conversations</h2>
+          <h2 className="font-display text-[15px] font-medium flex-1">
+            Conversations
+          </h2>
           <button
             type="button"
             onClick={onClose}
@@ -706,7 +751,9 @@ function ConversationsPane({
     <aside className="w-[264px] shrink-0 border-r hairline flex flex-col min-h-0">
       <div className="flex items-center gap-2 px-3 h-[52px] shrink-0 border-b hairline">
         <History className="w-4 h-4 text-accent-glow shrink-0" />
-        <span className="font-display text-[14px] font-medium flex-1 truncate">Conversations</span>
+        <span className="font-display text-[14px] font-medium flex-1 truncate">
+          Conversations
+        </span>
         <button
           type="button"
           onClick={onToggle}
@@ -734,7 +781,13 @@ function ConversationsPane({
 }
 
 /** Desktop right pane — always-on insights, collapsible to a slim icon rail. */
-function InsightsPane({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+function InsightsPane({
+  open,
+  onToggle,
+}: {
+  open: boolean;
+  onToggle: () => void;
+}) {
   if (!open) {
     return (
       <div className="w-[52px] shrink-0 border-l hairline flex flex-col items-center gap-2 py-3">
@@ -755,7 +808,9 @@ function InsightsPane({ open, onToggle }: { open: boolean; onToggle: () => void 
     <aside className="w-[360px] xl:w-[400px] shrink-0 border-l hairline flex flex-col min-h-0">
       <div className="flex items-center gap-2 px-3 h-[52px] shrink-0 border-b hairline">
         <LayoutGrid className="w-4 h-4 text-accent-glow shrink-0" />
-        <span className="font-display text-[14px] font-medium flex-1 truncate">Insights</span>
+        <span className="font-display text-[14px] font-medium flex-1 truncate">
+          Insights
+        </span>
         <button
           type="button"
           onClick={onToggle}
@@ -799,7 +854,8 @@ function HeaderIconButton({
         active
           ? "bg-accent-deep/90 text-[#F4E9D9]"
           : "bg-text-primary/[0.05] text-text-muted hover:text-text-primary hover:bg-text-primary/10",
-        disabled && "opacity-40 cursor-not-allowed hover:bg-text-primary/[0.05] hover:text-text-muted",
+        disabled &&
+          "opacity-40 cursor-not-allowed hover:bg-text-primary/[0.05] hover:text-text-muted",
       )}
     >
       {children}
@@ -856,16 +912,30 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
   const [view, setView] = useState<"chat" | "insights">("chat");
   const [activeId, setActiveId] = useState<string | null>(null);
   const [pendingSend, setPendingSend] = useState(false);
+  // The message currently being sent — echoed into the thread the instant the
+  // CEO hits send, so a brand-new conversation (where the cos-api optimistic
+  // echo is skipped, no cache to patch yet) still shows the bubble + "Sent"
+  // straight away instead of sitting on the welcome screen while the LLM runs.
+  const [pendingMessage, setPendingMessage] = useState<{
+    content: string;
+    input_mode: "text" | "voice";
+  } | null>(null);
   // Live "thinking" status streamed over the socket during a turn (PR2-D).
   const [turnStatus, setTurnStatus] = useState<string | null>(null);
   // Continuation hint from the LAST turn (reprompt kind only — incomplete
   // plans carry their own "Continue building" on the plan card).
-  const [continuation, setContinuation] = useState<CosContinuation | null>(null);
+  const [continuation, setContinuation] = useState<CosContinuation | null>(
+    null,
+  );
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   // Desktop only — the two collapsible side panes (conversations, insights).
-  const [leftOpen, setLeftOpen] = useState(() => readPaneOpen(LEFT_PANE_KEY, true));
-  const [rightOpen, setRightOpen] = useState(() => readPaneOpen(RIGHT_PANE_KEY, true));
+  const [leftOpen, setLeftOpen] = useState(() =>
+    readPaneOpen(LEFT_PANE_KEY, true),
+  );
+  const [rightOpen, setRightOpen] = useState(() =>
+    readPaneOpen(RIGHT_PANE_KEY, true),
+  );
   const [dismissedSuggestions, setDismissedSuggestions] = useState<Set<string>>(
     () => readDismissed(),
   );
@@ -907,9 +977,15 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
     }
   }, [convos.data, activeId]);
 
-  const messages = useMemo(() => detail.data?.messages ?? [], [detail.data?.messages]);
+  const messages = useMemo(
+    () => detail.data?.messages ?? [],
+    [detail.data?.messages],
+  );
   const plans = useMemo(
-    () => [...(detail.data?.plans ?? [])].sort((a, b) => a.created_at.localeCompare(b.created_at)),
+    () =>
+      [...(detail.data?.plans ?? [])].sort((a, b) =>
+        a.created_at.localeCompare(b.created_at),
+      ),
     [detail.data?.plans],
   );
   // Anchor each plan card under the assistant bubble that proposed it (#5);
@@ -934,6 +1010,12 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
   const thinking = pendingSend || post.isPending;
   const savedNote = detail.data?.saved_note ?? null;
   const hasAssistantReply = messages.some((m) => m.role === "assistant");
+  // The cos-api optimistic echo (existing conversations) adds a user bubble with
+  // a `pending-…` id. For a brand-NEW conversation that echo is skipped (no
+  // cache to patch yet), so render our own in-flight bubble to cover the gap —
+  // guarded by !echoPresent so the two never double up.
+  const echoPresent = messages.some((m) => m.message_id.startsWith("pending-"));
+  const showLocalPending = thinking && !!pendingMessage && !echoPresent;
   const tts = useReadAloud();
 
   useEffect(() => {
@@ -963,7 +1045,8 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
       setTurnStatus(text);
     }
     window.addEventListener("pgh:cos_turn:progress", onProgress);
-    return () => window.removeEventListener("pgh:cos_turn:progress", onProgress);
+    return () =>
+      window.removeEventListener("pgh:cos_turn:progress", onProgress);
   }, [activeId]);
 
   // The status line belongs to the in-flight turn only — clear it when idle.
@@ -971,8 +1054,13 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
     if (!thinking) setTurnStatus(null);
   }, [thinking]);
 
-  async function handleSend(input: { content: string; input_mode: "text" | "voice"; transcribed_text?: string }) {
+  async function handleSend(input: {
+    content: string;
+    input_mode: "text" | "voice";
+    transcribed_text?: string;
+  }) {
     setPendingSend(true);
+    setPendingMessage({ content: input.content, input_mode: input.input_mode });
     setContinuation(null);
     navigator.vibrate?.(8);
     try {
@@ -981,14 +1069,18 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
       // connection). The mutation's onError has already surfaced a toast.
       let id = activeId;
       if (!id) {
-        const conv = await create.mutateAsync({ title: input.content.slice(0, 60) });
+        const conv = await create.mutateAsync({
+          title: input.content.slice(0, 60),
+        });
         id = conv.conversation_id;
         setActiveId(id);
       }
       const turn = await post.mutateAsync({ conversationId: id, ...input });
-      if (turn.continuation?.kind === "reprompt") setContinuation(turn.continuation);
+      if (turn.continuation?.kind === "reprompt")
+        setContinuation(turn.continuation);
     } finally {
       setPendingSend(false);
+      setPendingMessage(null);
     }
   }
 
@@ -1034,7 +1126,8 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
     setView("chat");
   };
   const hasThread = messages.length > 0 || plans.length > 0;
-  const canSaveNote = !!activeId && hasThread && !thinking && !saveNote.isPending;
+  const canSaveNote =
+    !!activeId && hasThread && !thinking && !saveNote.isPending;
   const showSaveSuggestion =
     !!activeId &&
     hasAssistantReply &&
@@ -1064,16 +1157,21 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
   // The thread's four states and the composer are identical whether they sit
   // in the phone/tablet column or the desktop centre pane — build them once.
   const threadInner =
-    detail.isLoading && activeId ? (
+    detail.isLoading && activeId && !thinking ? (
       <div className="space-y-4">
         {[0, 1, 2].map((i) => (
-          <div key={i} className="h-16 rounded-2xl bg-text-primary/[0.04] animate-pulse" />
+          <div
+            key={i}
+            className="h-16 rounded-2xl bg-text-primary/[0.04] animate-pulse"
+          />
         ))}
       </div>
-    ) : detail.isError ? (
+    ) : detail.isError && !thinking ? (
       <div className="flex flex-col items-center gap-3 pt-10 text-center">
         <AlertCircle className="w-6 h-6 text-danger" />
-        <p className="text-[13px] text-text-muted">Couldn't load this conversation.</p>
+        <p className="text-[13px] text-text-muted">
+          Couldn't load this conversation.
+        </p>
         <button
           type="button"
           onClick={() => detail.refetch()}
@@ -1082,7 +1180,7 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
           <RotateCw className="w-3.5 h-3.5" /> Retry
         </button>
       </div>
-    ) : !hasThread ? (
+    ) : !hasThread && !thinking ? (
       <Welcome
         name={cosName}
         userName={(user?.name ?? "there").split(" ")[0]}
@@ -1094,7 +1192,13 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
       <div className="flex flex-col gap-6">
         {messages.map((m) => (
           <div key={m.message_id} className="flex flex-col gap-6">
-            <Bubble msg={m} avatarUrl={avatarUrl} tts={tts} conversationId={activeId} />
+            <Bubble
+              msg={m}
+              avatarUrl={avatarUrl}
+              tts={tts}
+              conversationId={activeId}
+              pending={m.message_id.startsWith("pending-")}
+            />
             {(plansByMessage.get(m.message_id) ?? []).map((p) => (
               <div key={p.plan_id} className="md:pl-11">
                 <BatchPlanCard plan={p} conversationId={activeId!} />
@@ -1129,7 +1233,27 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
             busy={saveNote.isPending}
           />
         )}
-        {thinking && <Thinking name={cosName} avatarUrl={avatarUrl} status={turnStatus} />}
+        {showLocalPending && pendingMessage && (
+          <Bubble
+            msg={
+              {
+                message_id: "local-pending",
+                conversation_id: activeId ?? "",
+                role: "user",
+                content: pendingMessage.content,
+                input_mode: pendingMessage.input_mode,
+                created_at: new Date().toISOString(),
+              } as CosMessage
+            }
+            avatarUrl={avatarUrl}
+            tts={tts}
+            conversationId={activeId}
+            pending
+          />
+        )}
+        {thinking && (
+          <Thinking name={cosName} avatarUrl={avatarUrl} status={turnStatus} />
+        )}
       </div>
     );
 
@@ -1165,7 +1289,9 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
           <div className="flex items-center gap-2 shrink-0 px-4 h-[52px] border-b hairline">
             <Sparkles className="w-4 h-4 text-accent-glow shrink-0" />
             <div className="min-w-0 flex-1">
-              <div className="font-display text-[15px] font-medium leading-tight truncate">{cosName}</div>
+              <div className="font-display text-[15px] font-medium leading-tight truncate">
+                {cosName}
+              </div>
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
               <button
@@ -1211,13 +1337,18 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
           </div>
 
           <div className="shrink-0 pt-2 pb-3">
-            <div className="w-full max-w-[720px] mx-auto px-5">{composerBody}</div>
+            <div className="w-full max-w-[720px] mx-auto px-5">
+              {composerBody}
+            </div>
           </div>
         </div>
 
         <InsightsPane open={rightOpen} onToggle={toggleRight} />
 
-        <CosSettings open={showSettings} onClose={() => setShowSettings(false)} />
+        <CosSettings
+          open={showSettings}
+          onClose={() => setShowSettings(false)}
+        />
       </div>
     );
   }
@@ -1257,7 +1388,9 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
             <Sparkles className="w-4 h-4 text-accent-glow shrink-0" />
           )}
           <div className="min-w-0">
-            <div className="font-display text-[15px] font-medium leading-tight truncate">{cosName}</div>
+            <div className="font-display text-[15px] font-medium leading-tight truncate">
+              {cosName}
+            </div>
             {/* Sub-line only when the CEO named her assistant — under the
                 default name it would just repeat the title and truncate. */}
             {isPhone && cosName !== DEFAULT_COS_NAME && (
@@ -1289,17 +1422,25 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
                   <Plus className="w-[18px] h-[18px]" />
                 </HeaderIconButton>
               )}
-              <HeaderIconButton label="Past conversations" onClick={() => setShowHistory(true)}>
+              <HeaderIconButton
+                label="Past conversations"
+                onClick={() => setShowHistory(true)}
+              >
                 <History className="w-4 h-4" />
               </HeaderIconButton>
               <HeaderIconButton
                 label={view === "insights" ? "Back to chat" : "Insights"}
                 active={view === "insights"}
-                onClick={() => setView(view === "insights" ? "chat" : "insights")}
+                onClick={() =>
+                  setView(view === "insights" ? "chat" : "insights")
+                }
               >
                 <LayoutGrid className="w-4 h-4" />
               </HeaderIconButton>
-              <HeaderIconButton label={`${cosName} settings`} onClick={() => setShowSettings(true)}>
+              <HeaderIconButton
+                label={`${cosName} settings`}
+                onClick={() => setShowSettings(true)}
+              >
                 <Settings2 className="w-4 h-4" />
               </HeaderIconButton>
             </>
@@ -1333,17 +1474,21 @@ export function ChiefOfStaffTab({ onExit }: { onExit?: () => void }) {
               )}
               {/* Chat / Insights toggle */}
               <div className="inline-flex rounded-lg border hairline p-0.5 bg-text-primary/[0.03]">
-                {([
-                  { k: "chat", label: "Chat", icon: MessageSquare },
-                  { k: "insights", label: "Insights", icon: LayoutGrid },
-                ] as const).map((v) => (
+                {(
+                  [
+                    { k: "chat", label: "Chat", icon: MessageSquare },
+                    { k: "insights", label: "Insights", icon: LayoutGrid },
+                  ] as const
+                ).map((v) => (
                   <button
                     key={v.k}
                     type="button"
                     onClick={() => setView(v.k)}
                     className={cn(
                       "inline-flex items-center gap-1.5 rounded-[7px] px-2.5 py-1 text-[12px] font-medium transition-colors whitespace-nowrap",
-                      view === v.k ? "bg-accent-deep/90 text-[#F4E9D9]" : "text-text-muted hover:text-text-primary",
+                      view === v.k
+                        ? "bg-accent-deep/90 text-[#F4E9D9]"
+                        : "text-text-muted hover:text-text-primary",
                     )}
                   >
                     <v.icon className="w-3.5 h-3.5" /> {v.label}

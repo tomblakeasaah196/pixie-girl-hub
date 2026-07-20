@@ -9,14 +9,30 @@
  * already CEO-gated, so no separate permission-denied state).
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Sparkles, X, RotateCw, Save } from "lucide-react";
+import {
+  Sparkles,
+  X,
+  RotateCw,
+  Save,
+  Camera,
+  Trash2,
+  Loader2,
+} from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/primitives";
 import { Toggle, Select } from "@/components/ui/controls";
+import { UploadProgress } from "@/components/ui/UploadProgress";
+import { PhotoCropModal } from "@/components/profile/PhotoCropModal";
+import { useUploadProgress } from "@/lib/use-upload";
+import { toViewableImage } from "@/lib/heic";
+import { toastReport } from "@/lib/error-report";
 import {
   useCosSettings,
   useUpdateCosSettings,
+  uploadCosAvatar,
+  cosSettingsKey,
   type CosSettings as Settings,
   type CosSettingsPatch,
   type CosTone,
@@ -68,8 +84,10 @@ function diff(form: FormState, base: Settings): CosSettingsPatch {
     patch.assistant_name = form.assistant_name.trim();
   if (form.pronoun !== base.pronoun) patch.pronoun = form.pronoun;
   if (form.tone !== base.tone) patch.tone = form.tone;
-  if (form.avatar_url !== bAvatar) patch.avatar_url = form.avatar_url.trim() || null;
-  if (form.timezone.trim() && form.timezone !== base.timezone) patch.timezone = form.timezone.trim();
+  if (form.avatar_url !== bAvatar)
+    patch.avatar_url = form.avatar_url.trim() || null;
+  if (form.timezone.trim() && form.timezone !== base.timezone)
+    patch.timezone = form.timezone.trim();
   for (const k of [
     "work_start",
     "work_end",
@@ -80,17 +98,31 @@ function diff(form: FormState, base: Settings): CosSettingsPatch {
   ] as const) {
     if (form[k] && form[k] !== hhmm(base[k])) patch[k] = form[k];
   }
-  if (form.celebrate_wins !== base.celebrate_wins) patch.celebrate_wins = form.celebrate_wins;
-  if (form.adaptive_timing !== base.adaptive_timing) patch.adaptive_timing = form.adaptive_timing;
+  if (form.celebrate_wins !== base.celebrate_wins)
+    patch.celebrate_wins = form.celebrate_wins;
+  if (form.adaptive_timing !== base.adaptive_timing)
+    patch.adaptive_timing = form.adaptive_timing;
   return patch;
 }
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
   return (
     <label className="block">
-      <span className="block text-[12px] font-semibold text-text-primary mb-1">{label}</span>
+      <span className="block text-[12px] font-semibold text-text-primary mb-1">
+        {label}
+      </span>
       {children}
-      {hint && <span className="block text-[11px] text-text-faint mt-1">{hint}</span>}
+      {hint && (
+        <span className="block text-[11px] text-text-faint mt-1">{hint}</span>
+      )}
     </label>
   );
 }
@@ -120,10 +152,21 @@ function TimeField({
   );
 }
 
-export function CosSettings({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function CosSettings({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
   const q = useCosSettings(open);
   const update = useUpdateCosSettings();
+  const qc = useQueryClient();
   const [form, setForm] = useState<FormState | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [cropFile, setCropFile] = useState<File | null>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const { progress: avatarProgress, run: runAvatar } = useUploadProgress();
 
   useEffect(() => {
     if (q.data) setForm(toForm(q.data));
@@ -142,7 +185,11 @@ export function CosSettings({ open, onClose }: { open: boolean; onClose: () => v
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setForm((f) => (f ? { ...f, [k]: v } : f));
 
-  const dirty = !!(form && q.data && Object.keys(diff(form, q.data)).length > 0);
+  const dirty = !!(
+    form &&
+    q.data &&
+    Object.keys(diff(form, q.data)).length > 0
+  );
 
   async function save() {
     if (!form || !q.data) return;
@@ -156,179 +203,335 @@ export function CosSettings({ open, onClose }: { open: boolean; onClose: () => v
     }
   }
 
+  /** Crop → upload → persist the assistant's avatar, reflecting it at once. */
+  async function handleAvatarBlob(blob: Blob) {
+    setCropFile(null);
+    setAvatarBusy(true);
+    try {
+      const { avatar_url } = await runAvatar((onProgress) =>
+        uploadCosAvatar(blob, onProgress),
+      );
+      // Reflect immediately in the working form AND the cached base, so the
+      // Save button doesn't treat the just-uploaded photo as a pending change.
+      setForm((f) => (f ? { ...f, avatar_url } : f));
+      qc.setQueryData<Settings | undefined>(cosSettingsKey, (prev) =>
+        prev ? { ...prev, avatar_url } : prev,
+      );
+    } catch (e) {
+      toastReport("Chief of Staff → Settings", "Upload avatar", e);
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
+
   return createPortal(
-    <div
-      // z-[120]: must clear the CoS immersive layer (z-[100]) on phones.
-      className="fixed inset-0 z-[120] bg-black/50 backdrop-blur-[3px] flex md:justify-end"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Chief of Staff settings"
-    >
-      <div
-        className="mt-auto md:mt-0 w-full md:w-[440px] max-h-[92dvh] md:max-h-none md:h-full overflow-y-auto dropglass rounded-t-[22px] md:rounded-none md:rounded-l-[22px] animate-slide-up md:animate-none"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="md:hidden grid place-items-center pt-2.5 -mb-1">
-          <span className="h-1 w-9 rounded-full bg-text-primary/20" aria-hidden />
-        </div>
-        {/* Header */}
-        <div className="sticky top-0 z-10 flex items-center gap-2 p-4 border-b hairline dropglass">
-          <Sparkles className="w-4 h-4 text-accent-glow" />
-          <h2 className="font-display text-[15px] font-medium flex-1">Chief of Staff settings</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close settings"
-            className="w-8 h-8 grid place-items-center rounded-lg text-text-faint hover:text-text-primary hover:bg-text-primary/[0.06] transition-colors"
+    <>
+      {!cropFile && (
+        <div
+          // z-[120]: must clear the CoS immersive layer (z-[100]) on phones.
+          className="fixed inset-0 z-[120] bg-black/50 backdrop-blur-[3px] flex md:justify-end"
+          onClick={onClose}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Chief of Staff settings"
+        >
+          <div
+            className="mt-auto md:mt-0 w-full md:w-[440px] max-h-[92dvh] md:max-h-none md:h-full overflow-y-auto dropglass rounded-t-[22px] md:rounded-none md:rounded-l-[22px] animate-slide-up md:animate-none"
+            onClick={(e) => e.stopPropagation()}
           >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+            <div className="md:hidden grid place-items-center pt-2.5 -mb-1">
+              <span
+                className="h-1 w-9 rounded-full bg-text-primary/20"
+                aria-hidden
+              />
+            </div>
+            {/* Header */}
+            <div className="sticky top-0 z-10 flex items-center gap-2 p-4 border-b hairline dropglass">
+              <Sparkles className="w-4 h-4 text-accent-glow" />
+              <h2 className="font-display text-[15px] font-medium flex-1">
+                Chief of Staff settings
+              </h2>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close settings"
+                className="w-8 h-8 grid place-items-center rounded-lg text-text-faint hover:text-text-primary hover:bg-text-primary/[0.06] transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
-        {/* Body */}
-        <div className="p-4">
-          {q.isLoading || !form ? (
-            <div className="space-y-3">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="h-[52px] rounded-[12px] bg-text-primary/[0.05] animate-pulse" />
-              ))}
-            </div>
-          ) : q.isError ? (
-            <div className="flex flex-col items-center gap-3 py-10 text-center">
-              <p className="text-[13px] text-text-muted">Couldn't load your settings.</p>
-              <Button variant="secondary" size="sm" icon={<RotateCw className="w-3.5 h-3.5" />} onClick={() => q.refetch()}>
-                Retry
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-5">
-              {/* Identity */}
-              <section className="space-y-3">
-                <h3 className="text-[11px] font-bold uppercase tracking-wide text-text-faint">Personality</h3>
-                <Field label="Name" hint="What your assistant is called — in the tab, chat and every reminder. Praxis keeps its own name.">
-                  <input
-                    type="text"
-                    value={form.assistant_name}
-                    maxLength={60}
-                    onChange={(e) => set("assistant_name", e.target.value)}
-                    placeholder="Chief of Staff"
-                    className={inputCls}
-                    aria-label="Assistant name"
-                  />
-                </Field>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Pronoun">
-                    <Select<CosPronoun>
-                      value={form.pronoun}
-                      onChange={(v) => set("pronoun", v)}
-                      ariaLabel="Pronoun"
-                      options={[
-                        { value: "she", label: "She" },
-                        { value: "he", label: "He" },
-                        { value: "they", label: "They" },
-                        { value: "it", label: "It" },
-                      ]}
+            {/* Body */}
+            <div className="p-4">
+              {q.isLoading || !form ? (
+                <div className="space-y-3">
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="h-[52px] rounded-[12px] bg-text-primary/[0.05] animate-pulse"
                     />
-                  </Field>
-                  <Field label="Tone">
-                    <Select<CosTone>
-                      value={form.tone}
-                      onChange={(v) => set("tone", v)}
-                      ariaLabel="Tone"
-                      options={[
-                        { value: "warm", label: "Warm" },
-                        { value: "concise", label: "Concise" },
-                        { value: "formal", label: "Formal" },
-                      ]}
-                    />
-                  </Field>
+                  ))}
                 </div>
-                <Field label="Avatar image URL" hint="Optional — link to an image for your assistant.">
-                  <input
-                    type="url"
-                    value={form.avatar_url}
-                    onChange={(e) => set("avatar_url", e.target.value)}
-                    placeholder="https://…"
-                    className={inputCls}
-                    aria-label="Avatar image URL"
-                  />
-                </Field>
-              </section>
+              ) : q.isError ? (
+                <div className="flex flex-col items-center gap-3 py-10 text-center">
+                  <p className="text-[13px] text-text-muted">
+                    Couldn't load your settings.
+                  </p>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon={<RotateCw className="w-3.5 h-3.5" />}
+                    onClick={() => q.refetch()}
+                  >
+                    Retry
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  {/* Identity */}
+                  <section className="space-y-3">
+                    <h3 className="text-[11px] font-bold uppercase tracking-wide text-text-faint">
+                      Personality
+                    </h3>
+                    <Field
+                      label="Name"
+                      hint="What your assistant is called — in the tab, chat and every reminder. Praxis keeps its own name."
+                    >
+                      <input
+                        type="text"
+                        value={form.assistant_name}
+                        maxLength={60}
+                        onChange={(e) => set("assistant_name", e.target.value)}
+                        placeholder="Chief of Staff"
+                        className={inputCls}
+                        aria-label="Assistant name"
+                      />
+                    </Field>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="Pronoun">
+                        <Select<CosPronoun>
+                          value={form.pronoun}
+                          onChange={(v) => set("pronoun", v)}
+                          ariaLabel="Pronoun"
+                          options={[
+                            { value: "she", label: "She" },
+                            { value: "he", label: "He" },
+                            { value: "they", label: "They" },
+                            { value: "it", label: "It" },
+                          ]}
+                        />
+                      </Field>
+                      <Field label="Tone">
+                        <Select<CosTone>
+                          value={form.tone}
+                          onChange={(v) => set("tone", v)}
+                          ariaLabel="Tone"
+                          options={[
+                            { value: "warm", label: "Warm" },
+                            { value: "concise", label: "Concise" },
+                            { value: "formal", label: "Formal" },
+                          ]}
+                        />
+                      </Field>
+                    </div>
+                    <Field
+                      label="Avatar"
+                      hint="Upload a photo for your assistant — or paste an image link below."
+                    >
+                      <div className="flex items-center gap-3">
+                        {form.avatar_url ? (
+                          <img
+                            src={form.avatar_url}
+                            alt=""
+                            className="w-14 h-14 rounded-[16px] object-cover ring-1 ring-line shrink-0"
+                          />
+                        ) : (
+                          <div className="w-14 h-14 rounded-[16px] grid place-items-center bg-[linear-gradient(140deg,rgb(var(--accent)),var(--biz-2))] text-[#F4E9D9] shrink-0">
+                            <Sparkles className="w-6 h-6" />
+                          </div>
+                        )}
+                        <div className="flex flex-col gap-1.5 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => fileRef.current?.click()}
+                              disabled={avatarBusy}
+                              className="inline-flex items-center gap-1.5 rounded-[10px] bg-text-primary/[0.06] border border-line px-3 h-8 text-[12px] font-medium text-text-primary hover:bg-text-primary/10 transition-colors disabled:opacity-50"
+                            >
+                              {avatarBusy ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Camera className="w-3.5 h-3.5" />
+                              )}
+                              {form.avatar_url
+                                ? "Change photo"
+                                : "Upload photo"}
+                            </button>
+                            {form.avatar_url && (
+                              <button
+                                type="button"
+                                onClick={() => set("avatar_url", "")}
+                                disabled={avatarBusy}
+                                className="inline-flex items-center gap-1.5 rounded-[10px] px-2.5 h-8 text-[12px] text-text-muted hover:text-danger transition-colors disabled:opacity-50"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" /> Remove
+                              </button>
+                            )}
+                          </div>
+                          <UploadProgress
+                            value={avatarProgress}
+                            className="w-40"
+                            label="Uploading…"
+                          />
+                        </div>
+                        <input
+                          ref={fileRef}
+                          type="file"
+                          accept="image/*,.heic,.heif"
+                          className="hidden"
+                          onChange={async (e) => {
+                            const f = e.target.files?.[0];
+                            e.target.value = "";
+                            if (f) setCropFile(await toViewableImage(f));
+                          }}
+                        />
+                      </div>
+                      <input
+                        type="url"
+                        value={form.avatar_url}
+                        onChange={(e) => set("avatar_url", e.target.value)}
+                        placeholder="…or paste an image URL (https://…)"
+                        className={`${inputCls} mt-2`}
+                        aria-label="Avatar image URL"
+                      />
+                    </Field>
+                  </section>
 
-              {/* Hours */}
-              <section className="space-y-3">
-                <h3 className="text-[11px] font-bold uppercase tracking-wide text-text-faint">Working &amp; quiet hours</h3>
-                <Field label="Timezone" hint="Used for reminders, briefings and quiet hours.">
-                  <input
-                    type="text"
-                    value={form.timezone}
-                    onChange={(e) => set("timezone", e.target.value)}
-                    placeholder="Africa/Lagos"
-                    className={inputCls}
-                    aria-label="Timezone"
-                  />
-                </Field>
-                <div className="grid grid-cols-2 gap-3">
-                  <TimeField label="Work starts" value={form.work_start} onChange={(v) => set("work_start", v)} />
-                  <TimeField label="Work ends" value={form.work_end} onChange={(v) => set("work_end", v)} />
-                  <TimeField label="Morning brief" value={form.morning_brief_at} onChange={(v) => set("morning_brief_at", v)} />
-                  <TimeField label="Evening review" value={form.evening_review_at} onChange={(v) => set("evening_review_at", v)} />
-                  <TimeField label="Quiet from" value={form.quiet_start} onChange={(v) => set("quiet_start", v)} />
-                  <TimeField label="Quiet until" value={form.quiet_end} onChange={(v) => set("quiet_end", v)} />
-                </div>
-                <p className="text-[11px] text-text-faint">No reminders are sent during quiet hours.</p>
-              </section>
+                  {/* Hours */}
+                  <section className="space-y-3">
+                    <h3 className="text-[11px] font-bold uppercase tracking-wide text-text-faint">
+                      Working &amp; quiet hours
+                    </h3>
+                    <Field
+                      label="Timezone"
+                      hint="Used for reminders, briefings and quiet hours."
+                    >
+                      <input
+                        type="text"
+                        value={form.timezone}
+                        onChange={(e) => set("timezone", e.target.value)}
+                        placeholder="Africa/Lagos"
+                        className={inputCls}
+                        aria-label="Timezone"
+                      />
+                    </Field>
+                    <div className="grid grid-cols-2 gap-3">
+                      <TimeField
+                        label="Work starts"
+                        value={form.work_start}
+                        onChange={(v) => set("work_start", v)}
+                      />
+                      <TimeField
+                        label="Work ends"
+                        value={form.work_end}
+                        onChange={(v) => set("work_end", v)}
+                      />
+                      <TimeField
+                        label="Morning brief"
+                        value={form.morning_brief_at}
+                        onChange={(v) => set("morning_brief_at", v)}
+                      />
+                      <TimeField
+                        label="Evening review"
+                        value={form.evening_review_at}
+                        onChange={(v) => set("evening_review_at", v)}
+                      />
+                      <TimeField
+                        label="Quiet from"
+                        value={form.quiet_start}
+                        onChange={(v) => set("quiet_start", v)}
+                      />
+                      <TimeField
+                        label="Quiet until"
+                        value={form.quiet_end}
+                        onChange={(v) => set("quiet_end", v)}
+                      />
+                    </div>
+                    <p className="text-[11px] text-text-faint">
+                      No reminders are sent during quiet hours.
+                    </p>
+                  </section>
 
-              {/* Behaviour */}
-              <section className="space-y-3">
-                <h3 className="text-[11px] font-bold uppercase tracking-wide text-text-faint">Behaviour</h3>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-[13px] font-semibold text-text-primary">Celebrate wins</div>
-                    <div className="text-[11px] text-text-faint">A note of congratulations when you finish a milestone or hit a goal.</div>
-                  </div>
-                  <Toggle
-                    checked={form.celebrate_wins}
-                    onChange={(v) => set("celebrate_wins", v)}
-                    ariaLabel="Celebrate wins"
-                  />
+                  {/* Behaviour */}
+                  <section className="space-y-3">
+                    <h3 className="text-[11px] font-bold uppercase tracking-wide text-text-faint">
+                      Behaviour
+                    </h3>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-[13px] font-semibold text-text-primary">
+                          Celebrate wins
+                        </div>
+                        <div className="text-[11px] text-text-faint">
+                          A note of congratulations when you finish a milestone
+                          or hit a goal.
+                        </div>
+                      </div>
+                      <Toggle
+                        checked={form.celebrate_wins}
+                        onChange={(v) => set("celebrate_wins", v)}
+                        ariaLabel="Celebrate wins"
+                      />
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-[13px] font-semibold text-text-primary">
+                          Adaptive timing
+                        </div>
+                        <div className="text-[11px] text-text-faint">
+                          Learn when you usually engage and nudge you around
+                          then (within work hours).
+                        </div>
+                      </div>
+                      <Toggle
+                        checked={form.adaptive_timing}
+                        onChange={(v) => set("adaptive_timing", v)}
+                        ariaLabel="Adaptive timing"
+                      />
+                    </div>
+                  </section>
                 </div>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-[13px] font-semibold text-text-primary">Adaptive timing</div>
-                    <div className="text-[11px] text-text-faint">Learn when you usually engage and nudge you around then (within work hours).</div>
-                  </div>
-                  <Toggle
-                    checked={form.adaptive_timing}
-                    onChange={(v) => set("adaptive_timing", v)}
-                    ariaLabel="Adaptive timing"
-                  />
-                </div>
-              </section>
+              )}
             </div>
-          )}
-        </div>
 
-        {/* Footer */}
-        {form && !q.isError && (
-          <div className="sticky bottom-0 flex items-center justify-end gap-2 p-4 pb-[max(env(safe-area-inset-bottom,0px),16px)] md:pb-4 border-t hairline dropglass">
-            <Button variant="ghost" size="sm" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              icon={<Save className="w-3.5 h-3.5" />}
-              onClick={save}
-              disabled={!dirty || update.isPending}
-            >
-              {update.isPending ? "Saving…" : "Save"}
-            </Button>
+            {/* Footer */}
+            {form && !q.isError && (
+              <div className="sticky bottom-0 flex items-center justify-end gap-2 p-4 pb-[max(env(safe-area-inset-bottom,0px),16px)] md:pb-4 border-t hairline dropglass">
+                <Button variant="ghost" size="sm" onClick={onClose}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={<Save className="w-3.5 h-3.5" />}
+                  onClick={save}
+                  disabled={!dirty || update.isPending}
+                >
+                  {update.isPending ? "Saving…" : "Save"}
+                </Button>
+              </div>
+            )}
           </div>
-        )}
-      </div>
-    </div>,
+        </div>
+      )}
+      {cropFile && (
+        <PhotoCropModal
+          file={cropFile}
+          onDone={handleAvatarBlob}
+          onCancel={() => setCropFile(null)}
+        />
+      )}
+    </>,
     document.body,
   );
 }

@@ -108,3 +108,10 @@ export function useExpenseMutations() {
     createCategory,
   };
 }
+
+/** Read a receipt (+ optional voice/note) into a suggested draft. Read-only. */
+export function useExtractExpense() {
+  return useMutation({
+    mutationFn: expApi.extractExpenseFromReceipt,
+  });
+}

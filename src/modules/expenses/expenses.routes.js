@@ -77,6 +77,19 @@ router.post(
   controller.settleAdvance,
 );
 
+// Receipt AI: read a receipt/invoice (+ optional voice note) into a suggested
+// draft expense. Declared before /:id so the literal 'ai' isn't captured as an
+// id. Needs `create` (it proposes an expense to create); writes nothing itself.
+router.post(
+  "/ai/extract",
+  can("create"),
+  upload.fields([
+    { name: "file", maxCount: 1 },
+    { name: "audio", maxCount: 1 },
+  ]),
+  controller.extractReceipt,
+);
+
 // Expenses
 router.get("/", canRead(), controller.listExpenses);
 // KPIs before /:id so the literal isn't captured as an id.

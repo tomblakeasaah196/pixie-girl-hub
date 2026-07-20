@@ -11,12 +11,21 @@
 
 const express = require("express");
 const rateLimit = require("express-rate-limit");
+const multer = require("multer");
 const c = require("./cos.controller");
 const v = require("./cos.validator");
 const { AppError } = require("../../utils/errors");
 const { redisRateLimitStore, lazyLimiter } = require("../../middleware");
 
 const router = express.Router();
+
+// Assistant-avatar upload: in-memory (the service compresses + stores), 5MB cap
+// to match the user-avatar endpoint. The raster ceiling is enforced downstream
+// by the compression service.
+const avatarUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
 
 // Per-user burst guard on the CoS turn (PR6 hardening). The governance daily
 // cap (canUseFeature) already governs spend; this blunts a runaway client loop
@@ -32,7 +41,8 @@ const cosTurnLimiter = lazyLimiter(() =>
     validate: { creationStack: false },
     store: redisRateLimitStore("rl:cos:turn:"),
     passOnStoreError: true,
-    keyGenerator: (req) => (req.user && req.user.user_id) || req.ip || "unknown",
+    keyGenerator: (req) =>
+      (req.user && req.user.user_id) || req.ip || "unknown",
     message: {
       error: {
         code: "TOO_MANY_REQUESTS",
@@ -47,16 +57,25 @@ const cosTurnLimiter = lazyLimiter(() =>
 function requireCeo(req, _res, next) {
   if (req.user && req.user.is_ceo) return next();
   next(
-    new AppError("FORBIDDEN", "The Chief of Staff is available to the CEO only.", 403, {
-      user_message: "The Chief of Staff isn't available for your role yet.",
-    }),
+    new AppError(
+      "FORBIDDEN",
+      "The Chief of Staff is available to the CEO only.",
+      403,
+      {
+        user_message: "The Chief of Staff isn't available for your role yet.",
+      },
+    ),
   );
 }
 router.use(requireCeo);
 
 // ── Conversations ──────────────────────────────────────────
 router.get("/conversations", c.listConversations);
-router.post("/conversations", v.validateConversationCreate, c.createConversation);
+router.post(
+  "/conversations",
+  v.validateConversationCreate,
+  c.createConversation,
+);
 router.get("/conversations/:id", c.getConversation);
 router.delete("/conversations/:id", c.archiveConversation);
 router.post(
@@ -74,7 +93,11 @@ router.post(
 
 // Rate an assistant reply 👍/👎 (Phase 1 training loop). A 👎 + comment becomes
 // a durable CoS correction. Cheap + idempotent (upsert), so no turn limiter.
-router.post("/messages/:messageId/feedback", v.validateFeedback, c.recordFeedback);
+router.post(
+  "/messages/:messageId/feedback",
+  v.validateFeedback,
+  c.recordFeedback,
+);
 
 // ── Plans (batch-plan approval) ────────────────────────────
 router.get("/plans/:planId", c.getPlan);
@@ -92,10 +115,18 @@ router.patch(
 
 // ── Follow-ups (accountability state machine, PR4) ─────────
 router.get("/followups", c.listFollowups);
-router.post("/followups/:id/respond", v.validateFollowupRespond, c.respondFollowup);
+router.post(
+  "/followups/:id/respond",
+  v.validateFollowupRespond,
+  c.respondFollowup,
+);
 router.post("/followups/:id/reason", v.validateReason, c.reasonFollowup);
 router.post("/followups/:id/act", v.validateFollowupAct, c.actFollowup);
-router.post("/followups/:id/snooze", v.validateFollowupSnooze, c.snoozeFollowup);
+router.post(
+  "/followups/:id/snooze",
+  v.validateFollowupSnooze,
+  c.snoozeFollowup,
+);
 router.post("/followups/:id/dismiss", c.dismissFollowup);
 
 // ── Intelligence (PR5) ─────────────────────────────────────
@@ -105,7 +136,11 @@ router.get("/prep/:eventId", c.getPrep);
 // Smart scheduling & focus protection.
 router.post("/schedule/focus", v.validateScheduleFocus, c.findFocus);
 router.get("/schedule/load", c.scheduleLoad);
-router.post("/schedule/reschedule", v.validateScheduleReschedule, c.batchReschedule);
+router.post(
+  "/schedule/reschedule",
+  v.validateScheduleReschedule,
+  c.batchReschedule,
+);
 
 // Cross-brand command (already behind requireCeo above).
 router.get("/cross-brand/overview", c.crossBrandOverview);
@@ -113,10 +148,21 @@ router.get("/cross-brand/overview", c.crossBrandOverview);
 // Playbook templates.
 router.get("/templates", c.listTemplates);
 router.post("/templates", v.validateTemplateSave, c.saveTemplate);
-router.post("/templates/:id/instantiate", v.validateTemplateInstantiate, c.instantiateTemplate);
+router.post(
+  "/templates/:id/instantiate",
+  v.validateTemplateInstantiate,
+  c.instantiateTemplate,
+);
 
 // ── Settings / personalisation (PR6) ───────────────────────
 router.get("/settings", c.getSettings);
 router.put("/settings", v.validateSettingsUpdate, c.updateSettings);
+// Upload an image to use as the assistant's avatar (alternative to pasting a
+// URL). Stores + compresses server-side, then saves the URL on cos_settings.
+router.post(
+  "/settings/avatar",
+  avatarUpload.single("avatar"),
+  c.uploadSettingsAvatar,
+);
 
 module.exports = router;

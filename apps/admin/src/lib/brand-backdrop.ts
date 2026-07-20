@@ -7,23 +7,25 @@
  * over the chosen brand colour on a canvas — so switching colour/style is
  * instant and the final image flows through the normal upload endpoints.
  *
- * Palette policy (owner directive): BRAND COLOURS ONLY — no free hex, no
- * off-brand neutrals — so backgrounds stay consistent across the site. The
- * options come from the active brand's theme (DB-driven via the branding feed),
- * defaulting to the brand's primary: burgundy for Pixie Girl, bronze for
- * Faitlyn Hair.
+ * Palette source: the ACTIVE brand's full palette from the Storefront Studio
+ * Branding/Theme tab (the same CSS-variable tokens the live website paints
+ * with) — every core colour and brand accent, not just the primary — reusing
+ * the shared `useBrandPalette` reader so the two stay in lockstep. Defaults to
+ * the brand primary (the first swatch). Falls back to the storefront's shipped
+ * defaults when the theme is unset or the studio API is unreadable. The upload
+ * modal also lets an operator paste a bespoke hex (see `normaliseHex`) to
+ * append to this list for a one-off background.
  */
 
 import { useMemo } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { useBranding, type BusinessBranding } from "@/lib/branding";
-import { useBusinessStore } from "@/stores/business";
+import { useBrandPalette } from "@/lib/brand-colors";
 
 export type BackdropStyle = "flat" | "gradient";
 
 export interface BrandColour {
-  /** Stable id for the option (theme token key). */
+  /** Stable id for the option (swatch label). */
   token: string;
   /** Human label shown in the dropdown. */
   label: string;
@@ -31,55 +33,38 @@ export interface BrandColour {
   hex: string;
 }
 
-// Seed fallback mirrors migration 000208 so the dropdown is populated even
-// before the branding feed resolves, or for a brand with no theme configured
-// yet. The live branding data takes precedence when present.
-const SEED: Record<string, BrandColour[]> = {
-  pixiegirl: [
-    { token: "accent", label: "Burgundy", hex: "#690909" },
-    { token: "grad1", label: "Crimson", hex: "#A81D1D" },
-    { token: "accent_deep", label: "Deep Maroon", hex: "#3A0505" },
-  ],
-  faitlynhair: [
-    { token: "accent", label: "Bronze", hex: "#7F703D" },
-    { token: "accent_deep", label: "Deep Bronze", hex: "#5B4F2A" },
-    { token: "secondary", label: "Champagne", hex: "#D5B8A4" },
-  ],
-};
+const HEX_INPUT = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
-const HEX6 = /^#?[0-9a-fA-F]{6}$/;
-const norm = (hex?: string | null) =>
-  hex && HEX6.test(hex) ? (hex.startsWith("#") ? hex : `#${hex}`) : null;
-
-/** Build the brand ramp from a business's live branding, de-duped by colour. */
-function rampFromBusiness(biz?: BusinessBranding): BrandColour[] {
-  if (!biz) return [];
-  const theme = biz.brand_theme ?? {};
-  const out: BrandColour[] = [];
-  const push = (token: string, label: string, hex?: string | null) => {
-    const n = norm(hex);
-    if (!n) return;
-    if (out.some((o) => o.hex.toLowerCase() === n.toLowerCase())) return;
-    out.push({ token, label, hex: n });
-  };
-  push("accent", "Brand primary", theme.accent ?? biz.accent_colour);
-  push("accent_deep", "Deep", theme.accent_deep);
-  push("secondary", "Secondary", biz.secondary_colour);
-  push("grad1", "Gradient top", theme.grad1);
-  push("grad2", "Gradient base", theme.grad2);
-  return out;
+/**
+ * Normalise a pasted hex to canonical #rrggbb (lower-case), or null if it
+ * isn't a valid 3- or 6-digit hex. Tolerates a missing `#`, surrounding
+ * whitespace, and expands shorthand (`#abc` → `#aabbcc`). Used by the
+ * "Add colour" field so an operator can drop in a bespoke background hex.
+ */
+export function normaliseHex(input: string): string | null {
+  const m = HEX_INPUT.exec(input.trim());
+  if (!m) return null;
+  let h = m[1].toLowerCase();
+  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+  return `#${h}`;
 }
 
-/** The brand-colour palette + default for the ACTIVE brand. */
+/**
+ * The brand-colour palette + default for the ACTIVE brand, sourced from the
+ * Storefront Studio Branding/Theme tab. De-duped by colour so two tokens that
+ * resolve to the same hex show once. Defaults to the first (brand primary).
+ */
 export function useBrandBackdrop(): { colours: BrandColour[]; defaultHex: string } {
-  const { data } = useBranding();
-  const activeKey = useBusinessStore((s) => s.activeKey);
+  const palette = useBrandPalette();
   return useMemo(() => {
-    const biz = data?.businesses?.find((b) => b.business_key === activeKey);
-    let colours = rampFromBusiness(biz);
-    if (colours.length === 0) colours = SEED[activeKey ?? ""] ?? SEED.pixiegirl;
+    const colours: BrandColour[] = [];
+    for (const s of palette) {
+      const hex = s.hex.toLowerCase();
+      if (colours.some((c) => c.hex.toLowerCase() === hex)) continue;
+      colours.push({ token: s.label, label: s.label, hex: s.hex });
+    }
     return { colours, defaultHex: colours[0]?.hex ?? "#690909" };
-  }, [data, activeKey]);
+  }, [palette]);
 }
 
 // ── Server cut-out ────────────────────────────────────────

@@ -19,6 +19,7 @@ const earnRouter = require("./earn.routes");
 const referralAdminRouter = require("./referral-admin.routes");
 const analyticsRouter = require("./analytics.routes");
 const maintenanceRouter = require("./maintenance.routes");
+const crownRouter = require("./crown.routes");
 const { requirePermission } = require("../../middleware/rbac");
 
 // Side-effect: register order.paid → loyalty + streak earners + strategy spine.
@@ -47,6 +48,9 @@ router.use("/referral-program", referralAdminRouter);
 router.use("/analytics", analyticsRouter);
 // Maintenance plans (Faitlyn salon subscriptions, §6.23)
 router.use("/maintenance", maintenanceRouter);
+// Crowns 👑 — unified loyalty + streak economy (§6.23). Merges the loyalty
+// points + Streak Stars economies into one status-only Crown currency.
+router.use("/crowns", crownRouter);
 
 // Loyalty
 router.get("/loyalty/tiers", can("view"), controller.listTiers);

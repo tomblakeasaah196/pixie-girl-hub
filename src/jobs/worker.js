@@ -179,6 +179,7 @@ async function startWorkers() {
   const {
     runRetentionStrategyScan,
   } = require("./schedulers/retention-strategy-scan");
+  const { runCrownStreakScan } = require("./schedulers/crown-streak-scan");
   const {
     runSubscriptionBilling,
   } = require("./schedulers/subscription-billing");
@@ -377,6 +378,8 @@ async function startWorkers() {
     "30 2 * * *",
     runRetentionStrategyScan,
   );
+  // Crown streaks: daily nudge/freeze/break sweep (08:15 UTC = 09:15 Lagos).
+  scheduleCron("crown-streak-scan", "15 8 * * *", runCrownStreakScan);
   // CRM: nightly churn-risk recency scoring (02:45) feeds the Win-back
   // buckets + contact-360 churn pill; segment presets + counts at 04:00.
   scheduleCron("churn-risk-scoring", "45 2 * * *", runChurnRiskScoring);

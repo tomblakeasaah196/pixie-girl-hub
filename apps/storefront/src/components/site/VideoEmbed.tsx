@@ -36,6 +36,127 @@ export function youtubeId(url: string): string | null {
  * secondary) so it inherits the active brand skin rather than the landing's
  * palette.
  */
+/**
+ * Shared "facade" play tile — a branded poster + play button that mounts the
+ * real embed iframe only after the first click. Keeps the page light and avoids
+ * every gallery video hammering Instagram/TikTok on load.
+ */
+function PlayFacade({
+  onPlay,
+  label,
+  poster,
+}: {
+  onPlay: () => void;
+  label: string;
+  poster?: string | null;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onPlay}
+      aria-label={`Play ${label} video`}
+      className="group relative block h-full w-full overflow-hidden bg-ink"
+    >
+      {poster ? (
+        <img
+          src={poster}
+          alt=""
+          loading="lazy"
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      ) : null}
+      <span className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-black/20" />
+      <span className="absolute inset-0 grid place-items-center">
+        <span className="grid h-16 w-16 place-items-center rounded-full bg-primary shadow-[0_8px_30px_rgba(0,0,0,0.45)] transition-transform duration-300 group-hover:scale-110">
+          <Play
+            className="h-6 w-6 translate-x-0.5 text-primary-foreground"
+            fill="currentColor"
+          />
+        </span>
+      </span>
+      <span className="absolute bottom-3 right-3 rounded-full bg-background/80 px-3 py-1 text-caption backdrop-blur">
+        {label}
+      </span>
+    </button>
+  );
+}
+
+/**
+ * Instagram Reel/post, embedded inline. We derive the first-party `/embed`
+ * iframe URL from the pasted link (stripping tracking params and preserving the
+ * reel/p/tv path), so the clip plays IN the page instead of bouncing the shopper
+ * out to instagram.com. A quiet "Watch on Instagram" link is the escape hatch.
+ */
+export function InstagramEmbed({ url, title }: { url: string; title: string }) {
+  const [playing, setPlaying] = useState(false);
+  const embedSrc = useMemo(() => {
+    const clean = url.split(/[?#]/)[0].replace(/\/+$/, "");
+    return `${clean}/embed`;
+  }, [url]);
+
+  if (!playing) return <PlayFacade onPlay={() => setPlaying(true)} label="Instagram" />;
+  return (
+    <div className="relative h-full w-full bg-white">
+      <iframe
+        src={embedSrc}
+        title={title}
+        loading="lazy"
+        scrolling="no"
+        allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+        allowFullScreen
+        className="absolute inset-0 h-full w-full"
+      />
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="absolute bottom-2 right-2 rounded-full bg-background/80 px-3 py-1 text-caption backdrop-blur transition-opacity hover:opacity-90"
+      >
+        Watch on Instagram ↗
+      </a>
+    </div>
+  );
+}
+
+/**
+ * TikTok video, embedded inline via the first-party `/embed/v2/{id}` player.
+ * `videoId` must be the numeric id; short-link forms that don't expose it fall
+ * back to a plain link upstream in the gallery.
+ */
+export function TikTokEmbed({
+  videoId,
+  url,
+  title,
+}: {
+  videoId: string;
+  url: string;
+  title: string;
+}) {
+  const [playing, setPlaying] = useState(false);
+  if (!playing) return <PlayFacade onPlay={() => setPlaying(true)} label="TikTok" />;
+  return (
+    <div className="relative h-full w-full bg-ink">
+      <iframe
+        src={`https://www.tiktok.com/embed/v2/${videoId}`}
+        title={title}
+        loading="lazy"
+        scrolling="no"
+        allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+        allowFullScreen
+        className="absolute inset-0 h-full w-full"
+      />
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="absolute bottom-2 right-2 rounded-full bg-background/80 px-3 py-1 text-caption backdrop-blur transition-opacity hover:opacity-90"
+      >
+        Watch on TikTok ↗
+      </a>
+    </div>
+  );
+}
+
 export function YouTubeFacade({
   videoId,
   title,

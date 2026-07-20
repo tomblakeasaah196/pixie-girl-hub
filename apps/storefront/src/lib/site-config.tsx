@@ -188,6 +188,11 @@ export interface PromoItem {
 }
 export interface SiteChrome {
   promo: { items: PromoItem[] };
+  /** Optional brand mark shown BETWEEN the phrases on BOTH announcement bars —
+   *  the scrolling promo bar (top) and the value-prop ribbon below the hero.
+   *  Empty → a subtle dot is used. Managed in Studio → Site chrome; falls back to
+   *  the legacy Home "Divider image" upload so existing marks keep showing. */
+  dividerImage: string;
   footer: { blurb: string; signature: string; copyrightName: string };
   drawer: {
     featureEyebrow: string;
@@ -210,6 +215,7 @@ export const DEFAULT_SITE_CHROME: SiteChrome = {
       { text: "Refer & earn up to $50 atelier credit", url: "/account" },
     ],
   },
+  dividerImage: "",
   footer: {
     blurb:
       "A Lagos-born atelier of luxury natural hair. Curated, ethically sourced, finished by hand.",
@@ -259,12 +265,21 @@ function resolvePromoItems(raw: unknown): PromoItem[] | null {
 /** Resolve the published `site_chrome` slots over the defaults. */
 export function useSiteChrome(): SiteChrome {
   const slots = usePageSlots("site_chrome");
+  // The divider mark is one shared value for BOTH bars: prefer the Site chrome
+  // slot, then fall back to the legacy Home "Divider image" (marqueeImage) so a
+  // mark already uploaded there keeps showing without a re-upload. All pages'
+  // slots are hydrated at the root, so reading "home" works on every page.
+  const homeSlots = usePageSlots("home");
   const promo = isObj(slots.promo) ? slots.promo : {};
   const footer = isObj(slots.footer) ? slots.footer : {};
   const drawer = isObj(slots.drawer) ? slots.drawer : {};
   const d = DEFAULT_SITE_CHROME;
   return {
     promo: { items: resolvePromoItems(promo.items) ?? d.promo.items },
+    dividerImage:
+      (typeof slots.dividerImage === "string" && slots.dividerImage) ||
+      (typeof homeSlots.marqueeImage === "string" && homeSlots.marqueeImage) ||
+      "",
     footer: {
       blurb: str(footer.blurb, d.footer.blurb),
       signature: str(footer.signature, d.footer.signature),

@@ -271,6 +271,9 @@ function pagesFor(brand) {
             { text: "Refer & earn up to $50 atelier credit", emphasis: "", url: "/account" },
           ],
         },
+        // Shared brand mark shown between phrases on BOTH announcement bars (top
+        // promo bar + the ribbon below the hero). Empty → a subtle dot.
+        dividerImage: "",
         footer: {
           blurb: "A Lagos-born atelier of luxury natural hair. Curated, ethically sourced, finished by hand.",
           signature: "Maison Faitlyn — fait à la main à Lagos",

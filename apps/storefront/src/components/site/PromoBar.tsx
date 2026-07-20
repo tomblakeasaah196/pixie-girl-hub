@@ -7,7 +7,8 @@ import { useSiteChrome } from "@/lib/site-config";
  * (Pages → “Site chrome” → Promo bar); falls back to the maison defaults.
  */
 export function PromoBar() {
-  const items = useSiteChrome().promo.items;
+  const { promo, dividerImage } = useSiteChrome();
+  const items = promo.items;
   if (!items.length) return null;
   const loop = [...items, ...items];
   return (
@@ -36,7 +37,16 @@ export function PromoBar() {
               ) : (
                 content
               )}
-              <span className="w-1 h-1 rounded-full bg-rose/60" />
+              {dividerImage ? (
+                <img
+                  src={dividerImage}
+                  alt=""
+                  aria-hidden="true"
+                  className="h-4 w-auto max-w-[2.5rem] shrink-0 object-contain opacity-80"
+                />
+              ) : (
+                <span className="w-1 h-1 rounded-full bg-rose/60" />
+              )}
             </span>
           );
         })}

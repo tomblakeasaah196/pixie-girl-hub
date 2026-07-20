@@ -2610,6 +2610,7 @@ const SLOT_LABELS: Record<string, string> = {
   bodyAccent: "Body — highlighted part",
   bodyAfter: "Body — after the highlight",
   marqueeImage: "Divider image — shown between the scrolling words",
+  dividerImage: "Divider image — brand mark shown between the phrases on BOTH announcement bars",
 };
 function humanizeSlot(key: string): string {
   return SLOT_LABELS[key] || humanize(key);

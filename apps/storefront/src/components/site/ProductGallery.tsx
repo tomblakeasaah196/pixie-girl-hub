@@ -1,7 +1,11 @@
 import { useRef, useState } from "react";
 import { AnimatePresence } from "motion/react";
 import { ExternalLink, Maximize2, Play } from "lucide-react";
-import { YouTubeFacade } from "@/components/site/VideoEmbed";
+import {
+  YouTubeFacade,
+  InstagramEmbed,
+  TikTokEmbed,
+} from "@/components/site/VideoEmbed";
 import { ImageLightbox } from "@/components/site/ImageLightbox";
 import type { ProductDetail } from "@/lib/storefront";
 
@@ -155,8 +159,17 @@ function InlineVideo({ video, title }: { video: GalleryVideo; title: string }) {
       />
     );
   }
-  // Instagram Reel / TikTok have no first-party inline embed here — open the
-  // live post, same treatment as the "As seen on" social-proof badge.
+  // Instagram Reels and TikTok now play INLINE via their first-party embed
+  // iframes (facade → iframe on click) rather than bouncing the shopper out to
+  // the app.
+  if (video.source === "instagram_reel") {
+    return <InstagramEmbed url={video.embed_url} title={label} />;
+  }
+  if (video.source === "tiktok" && /^\d+$/.test(video.external_ref)) {
+    return <TikTokEmbed videoId={video.external_ref} url={video.embed_url} title={label} />;
+  }
+  // Fallback ONLY for links we can't embed (e.g. a TikTok short link with no
+  // numeric id, or an unrecognised source): open the live post.
   return (
     <a
       href={video.embed_url}
@@ -174,7 +187,9 @@ function InlineVideo({ video, title }: { video: GalleryVideo; title: string }) {
         </span>
       </span>
       <span className="absolute bottom-3 right-3 inline-flex items-center gap-1 rounded-full bg-background/80 px-3 py-1 text-caption backdrop-blur">
-        {video.source === "instagram_reel" ? "Instagram" : "TikTok"}
+        {/* Only reachable for a TikTok short-link (no numeric id to embed);
+            Instagram/YouTube/direct/embeddable-TikTok all return above. */}
+        Watch video
         <ExternalLink className="h-3 w-3" />
       </span>
     </a>

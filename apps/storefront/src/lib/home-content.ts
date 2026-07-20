@@ -479,7 +479,13 @@ export function resolveHomeContent(slots: Slots): HomeContent {
     s[key] && typeof s[key] === "object" ? { ...def, ...(s[key] as object) } : def;
   return {
     hero: merge(DEFAULT_HOME.hero, "hero"),
-    marquee: Array.isArray(s.marquee) ? (s.marquee as string[]) : DEFAULT_HOME.marquee,
+    // An EMPTY published array must fall back to the defaults — otherwise a
+    // Studio publish that cleared the phrases renders the ribbon as a blank dark
+    // strip. Only a non-empty array overrides the maison defaults.
+    marquee:
+      Array.isArray(s.marquee) && s.marquee.length
+        ? (s.marquee as string[])
+        : DEFAULT_HOME.marquee,
     marqueeImage:
       typeof s.marqueeImage === "string" ? s.marqueeImage : DEFAULT_HOME.marqueeImage,
     bundlesHead: merge(DEFAULT_HOME.bundlesHead, "bundles"),

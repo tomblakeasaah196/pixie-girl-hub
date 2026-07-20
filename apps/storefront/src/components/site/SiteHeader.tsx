@@ -91,12 +91,17 @@ export function SiteHeader() {
   const showTheme = toolbar.buttons.theme;
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
-  // Prefer the published Studio nav whenever it carries any items — so edits in
-  // Storefront Studio → Navigation drive BOTH the desktop header and the mobile
-  // ☰ menu (dropdowns included, when items define children). Fall back to the
-  // built-in grouped default only when no navigation has been published yet.
+  // Prefer the published Studio nav ONLY when it actually defines dropdown
+  // groups (at least one item with children). A flat published nav — every link
+  // hoisted to the top level — otherwise overrides the grouped default and
+  // crowds the bar with no dropdowns (regression from #603). Falling back to the
+  // built-in grouped default keeps Shop ▾ / Services / Maison ▾ intact; a Studio
+  // nav that carries groups still wins, so the header stays fully editable.
   const studio = nav?.header_items;
-  const groups: NavItem[] = studio && studio.length ? studio : NAV_GROUPS;
+  const groups: NavItem[] =
+    studio && studio.some((i) => i.children && i.children.length)
+      ? studio
+      : NAV_GROUPS;
 
   // Entrance gate — play the stagger after the cinematic preloader (fast on
   // return visits where it's skipped).

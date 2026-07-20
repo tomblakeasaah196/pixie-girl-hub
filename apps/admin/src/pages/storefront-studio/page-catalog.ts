@@ -243,6 +243,11 @@ export const STOREFRONT_PAGE_CATALOG: CatalogPage[] = [
           { text: "Refer & earn up to $50 atelier credit", emphasis: "", url: "/account" },
         ],
       },
+      // Shared brand mark shown between the phrases on BOTH announcement bars
+      // (top promo bar + the ribbon below the hero). Empty → a subtle dot. The
+      // IMAGE_HINT heuristic renders this key as an upload control automatically.
+      // Read via useSiteChrome().dividerImage (site-config.tsx).
+      dividerImage: "",
       footer: {
         blurb: "A Lagos-born atelier of luxury natural hair. Curated, ethically sourced, finished by hand.",
         signature: "Maison Faitlyn — fait à la main à Lagos",

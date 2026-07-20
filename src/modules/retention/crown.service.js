@@ -575,6 +575,34 @@ async function adjust({
 }
 
 // ── Tier / rule admin (thin CRUD + audit) ──────────────────
+async function createTier({ brand, user, request_id, input }) {
+  const tier = await repo.createTier({ brand, input });
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "retention.crown.tier_create",
+    target_type: "crown_tier",
+    target_id: tier.tier_id,
+    after: { tier_key: tier.tier_key },
+    request_id,
+  });
+  return tier;
+}
+
+async function createRule({ brand, user, request_id, input }) {
+  const rule = await repo.createRule({ brand, input });
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "retention.crown.rule_create",
+    target_type: "crown_earn_rule",
+    target_id: rule.rule_id,
+    after: { rule_key: rule.rule_key },
+    request_id,
+  });
+  return rule;
+}
+
 async function updateTier({ brand, user, request_id, id, patch }) {
   const tier = await repo.updateTier({ brand, id, patch });
   if (!tier) throw new NotFoundError("Crown tier");
@@ -623,6 +651,8 @@ module.exports = {
   reviewSubmission,
   // adjust + admin
   adjust,
+  createTier,
   updateTier,
+  createRule,
   updateRule,
 };

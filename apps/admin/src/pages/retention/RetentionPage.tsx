@@ -19,13 +19,15 @@ import {
   Boxes,
   Wrench,
   BarChart3,
+  ClipboardCheck,
 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
 import { DeniedState } from "@/components/ui/controls";
 import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { StrategiesTab } from "./StrategiesTab";
-import { LoyaltyTab } from "./LoyaltyTab";
+import { CrownsTab } from "./CrownsTab";
+import { CrownApprovalsTab } from "./CrownApprovalsTab";
 import { RewardsTab } from "./RewardsTab";
 import { ReferralsTab } from "./ReferralsTab";
 import { AnalyticsTab } from "./AnalyticsTab";
@@ -33,7 +35,8 @@ import { CouponsTab, SubscriptionsTab, BundlesTab, MaintenanceTab } from "./Cata
 
 type Tab =
   | "strategies"
-  | "loyalty"
+  | "crowns"
+  | "approvals"
   | "rewards"
   | "referrals"
   | "coupons"
@@ -44,7 +47,8 @@ type Tab =
 
 const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: "strategies", label: "Strategies", icon: <Sparkles className="w-4 h-4" /> },
-  { key: "loyalty", label: "Loyalty", icon: <Crown className="w-4 h-4" /> },
+  { key: "crowns", label: "Crowns", icon: <Crown className="w-4 h-4" /> },
+  { key: "approvals", label: "Approvals", icon: <ClipboardCheck className="w-4 h-4" /> },
   { key: "rewards", label: "Rewards", icon: <Gift className="w-4 h-4" /> },
   { key: "referrals", label: "Referrals", icon: <Users className="w-4 h-4" /> },
   { key: "coupons", label: "Coupons", icon: <Ticket className="w-4 h-4" /> },
@@ -103,7 +107,8 @@ export function RetentionPage() {
       </nav>
 
       {tab === "strategies" && <StrategiesTab />}
-      {tab === "loyalty" && <LoyaltyTab />}
+      {tab === "crowns" && <CrownsTab />}
+      {tab === "approvals" && <CrownApprovalsTab />}
       {tab === "rewards" && <RewardsTab />}
       {tab === "referrals" && <ReferralsTab />}
       {tab === "coupons" && <CouponsTab />}

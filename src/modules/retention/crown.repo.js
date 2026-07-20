@@ -56,6 +56,24 @@ const TIER_COLS = [
 ];
 const TIER_JSON = new Set(["benefits"]);
 
+async function createTier({ brand, input }) {
+  const cols = ["business", "tier_key"];
+  const ph = ["$1", "$2"];
+  const p = [brand, input.tier_key];
+  let i = 3;
+  for (const c of TIER_COLS) {
+    if (input[c] === undefined) continue;
+    cols.push(c);
+    ph.push(TIER_JSON.has(c) ? `$${i++}::jsonb` : `$${i++}`);
+    p.push(TIER_JSON.has(c) ? JSON.stringify(input[c]) : input[c]);
+  }
+  const { rows } = await query(
+    `INSERT INTO shared.crown_tiers (${cols.join(",")}) VALUES (${ph.join(",")}) RETURNING *`,
+    p,
+  );
+  return rows[0];
+}
+
 async function updateTier({ brand, id, patch }) {
   const keys = Object.keys(patch).filter((k) => TIER_COLS.includes(k));
   if (keys.length === 0) return null;
@@ -117,6 +135,24 @@ const RULE_COLS = [
   "display_order",
 ];
 const RULE_JSON = new Set(["eligibility_criteria"]);
+
+async function createRule({ brand, input }) {
+  const cols = ["business", "rule_key", "action_type"];
+  const ph = ["$1", "$2", "$3"];
+  const p = [brand, input.rule_key, input.action_type];
+  let i = 4;
+  for (const c of RULE_COLS) {
+    if (input[c] === undefined) continue;
+    cols.push(c);
+    ph.push(RULE_JSON.has(c) ? `$${i++}::jsonb` : `$${i++}`);
+    p.push(RULE_JSON.has(c) ? JSON.stringify(input[c]) : input[c]);
+  }
+  const { rows } = await query(
+    `INSERT INTO shared.crown_earn_rules (${cols.join(",")}) VALUES (${ph.join(",")}) RETURNING *`,
+    p,
+  );
+  return rows[0];
+}
 
 async function updateRule({ brand, id, patch }) {
   const keys = Object.keys(patch).filter((k) => RULE_COLS.includes(k));
@@ -489,10 +525,12 @@ module.exports = {
   listTiers,
   getTierById,
   tierForLifetime,
+  createTier,
   updateTier,
   // earn rules
   listRules,
   getRuleByKey,
+  createRule,
   updateRule,
   // ledger
   insertLedger,

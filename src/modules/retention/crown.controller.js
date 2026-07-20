@@ -14,6 +14,17 @@ async function listTiers(req, res) {
   res.json({ data: await service.listTiers({ brand: req.brand }) });
 }
 
+async function createTier(req, res) {
+  res.status(201).json({
+    data: await service.createTier({
+      brand: req.brand,
+      user: req.user,
+      request_id: req.request_id,
+      input: req.body,
+    }),
+  });
+}
+
 async function updateTier(req, res) {
   res.json({
     data: await service.updateTier({
@@ -31,6 +42,17 @@ async function listRules(req, res) {
     data: await service.listRules({
       brand: req.brand,
       action_type: req.query.action_type,
+    }),
+  });
+}
+
+async function createRule(req, res) {
+  res.status(201).json({
+    data: await service.createRule({
+      brand: req.brand,
+      user: req.user,
+      request_id: req.request_id,
+      input: req.body,
     }),
   });
 }
@@ -132,8 +154,10 @@ async function reviewSubmission(req, res) {
 
 module.exports = {
   listTiers,
+  createTier,
   updateTier,
   listRules,
+  createRule,
   updateRule,
   listStreakConfig,
   getWallet,

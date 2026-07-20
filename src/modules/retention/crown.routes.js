@@ -16,8 +16,10 @@ const can = (action) => requirePermission("retention", action);
 
 // Programme config (tier ladder + earn rules + streak defs).
 router.get("/tiers", can("view"), controller.listTiers);
+router.post("/tiers", can("create"), validator.validateTierCreate, controller.createTier);
 router.patch("/tiers/:id", can("edit"), validator.validateTierUpdate, controller.updateTier);
 router.get("/earn-rules", can("view"), controller.listRules);
+router.post("/earn-rules", can("create"), validator.validateRuleCreate, controller.createRule);
 router.patch("/earn-rules/:id", can("edit"), validator.validateRuleUpdate, controller.updateRule);
 router.get("/streak-config", can("view"), controller.listStreakConfig);
 

@@ -152,6 +152,8 @@ export interface PaymentGateway {
   supported_currencies: string[];
   display_label: string | null;
   has_credentials: boolean;
+  /** Names of credential fields currently stored (values are never returned). */
+  credential_fields?: string[];
 }
 export interface DocumentTemplate {
   template_id: string;

@@ -7,14 +7,14 @@
  * over the chosen brand colour on a canvas — so switching colour/style is
  * instant and the final image flows through the normal upload endpoints.
  *
- * Palette policy (owner directive): BRAND COLOURS ONLY — no free hex, no
- * off-brand neutrals — so backgrounds stay consistent across the site. The
- * options are the ACTIVE brand's full palette from the Storefront Studio
+ * Palette source: the ACTIVE brand's full palette from the Storefront Studio
  * Branding/Theme tab (the same CSS-variable tokens the live website paints
  * with) — every core colour and brand accent, not just the primary — reusing
  * the shared `useBrandPalette` reader so the two stay in lockstep. Defaults to
  * the brand primary (the first swatch). Falls back to the storefront's shipped
- * defaults when the theme is unset or the studio API is unreadable.
+ * defaults when the theme is unset or the studio API is unreadable. The upload
+ * modal also lets an operator paste a bespoke hex (see `normaliseHex`) to
+ * append to this list for a one-off background.
  */
 
 import { useMemo } from "react";
@@ -31,6 +31,22 @@ export interface BrandColour {
   label: string;
   /** #rrggbb. */
   hex: string;
+}
+
+const HEX_INPUT = /^#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
+/**
+ * Normalise a pasted hex to canonical #rrggbb (lower-case), or null if it
+ * isn't a valid 3- or 6-digit hex. Tolerates a missing `#`, surrounding
+ * whitespace, and expands shorthand (`#abc` → `#aabbcc`). Used by the
+ * "Add colour" field so an operator can drop in a bespoke background hex.
+ */
+export function normaliseHex(input: string): string | null {
+  const m = HEX_INPUT.exec(input.trim());
+  if (!m) return null;
+  let h = m[1].toLowerCase();
+  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+  return `#${h}`;
 }
 
 /**

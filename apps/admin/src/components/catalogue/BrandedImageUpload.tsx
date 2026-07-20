@@ -6,6 +6,7 @@ import {
   RefreshCw,
   AlertTriangle,
   Sparkles,
+  Plus,
 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/primitives";
@@ -16,7 +17,9 @@ import {
   useBrandBackdrop,
   useImageCutout,
   compositeBranded,
+  normaliseHex,
   type BackdropStyle,
+  type BrandColour,
   type CutoutResult,
 } from "@/lib/brand-backdrop";
 import { cn } from "@/lib/cn";
@@ -26,6 +29,8 @@ import { cn } from "@/lib/cn";
  * backgrounds). Drop or pick an image, see the natural photo, then optionally
  * flip on "Use branded background" to wipe the backdrop and drop the subject
  * onto a brand colour (default = the active brand's; others via the dropdown).
+ * The dropdown is seeded from the Storefront Studio palette; an operator can
+ * also paste a bespoke hex into "Add a colour" to append and select it.
  *
  * The subject is isolated on the server; the colour is composited on a canvas
  * here so switching colour/style is instant. On save the chosen image (natural
@@ -53,6 +58,10 @@ export function BrandedImageUpload({
   const [branded, setBranded] = useState(false);
   const [cut, setCut] = useState<CutoutResult | null>(null);
   const [hex, setHex] = useState(defaultHex);
+  // Operator-added hex codes, appended to the brand palette in the dropdown.
+  const [custom, setCustom] = useState<BrandColour[]>([]);
+  const [newHex, setNewHex] = useState("");
+  const [addErr, setAddErr] = useState<string | null>(null);
   const [style, setStyle] = useState<BackdropStyle>("flat");
   const [preview, setPreview] = useState<string | null>(null);
   const [brandedFile, setBrandedFile] = useState<File | null>(null);
@@ -81,6 +90,9 @@ export function BrandedImageUpload({
     setPreview(null);
     setBrandedFile(null);
     setStyle("flat");
+    setCustom([]);
+    setNewHex("");
+    setAddErr(null);
     setErr(null);
   }, []);
 
@@ -149,6 +161,34 @@ export function BrandedImageUpload({
     // file?.name is stable for a given file; intentionally not a dep.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [branded, cut, hex, style]);
+
+  // Brand palette + any operator-added hex codes, de-duped by colour.
+  const options = [
+    ...colours,
+    ...custom.filter(
+      (c) => !colours.some((b) => b.hex.toLowerCase() === c.hex.toLowerCase()),
+    ),
+  ];
+
+  const parsedNewHex = normaliseHex(newHex);
+
+  // Validate the pasted hex, add it to the dropdown (if new) and select it.
+  const addCustomColour = () => {
+    const n = parsedNewHex;
+    if (!n) {
+      setAddErr("Enter a hex colour like #836F5E.");
+      return;
+    }
+    if (!options.some((c) => c.hex.toLowerCase() === n.toLowerCase())) {
+      setCustom((prev) => [
+        ...prev,
+        { token: `custom-${n}`, label: "Custom", hex: n },
+      ]);
+    }
+    setHex(n);
+    setNewHex("");
+    setAddErr(null);
+  };
 
   const toggleBranded = async (on: boolean) => {
     setErr(null);
@@ -304,7 +344,7 @@ export function BrandedImageUpload({
 
               {branded && (
                 <div className="space-y-3 pt-1">
-                  {/* Colour dropdown — brand colours only */}
+                  {/* Colour dropdown — brand palette + any added hex */}
                   <div className="flex items-center gap-2.5">
                     <span
                       className="w-9 h-9 rounded-[10px] border border-line shrink-0"
@@ -320,12 +360,56 @@ export function BrandedImageUpload({
                       onChange={(e) => setHex(e.target.value)}
                       className="flex-1 h-[40px] px-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
                     >
-                      {colours.map((c) => (
+                      {options.map((c) => (
                         <option key={c.token} value={c.hex}>
                           {c.label} ({c.hex.toUpperCase()})
                         </option>
                       ))}
                     </select>
+                  </div>
+
+                  {/* Add a custom hex — paste a colour and add it above */}
+                  <div>
+                    <div className="flex items-center gap-2.5">
+                      <span
+                        className="w-9 h-9 rounded-[10px] border border-line shrink-0"
+                        style={{ background: parsedNewHex ?? "transparent" }}
+                        aria-hidden
+                      />
+                      <label className="sr-only" htmlFor="brand-bg-add-hex">
+                        Add a colour by hex
+                      </label>
+                      <input
+                        id="brand-bg-add-hex"
+                        type="text"
+                        value={newHex}
+                        onChange={(e) => {
+                          setNewHex(e.target.value);
+                          setAddErr(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            addCustomColour();
+                          }
+                        }}
+                        placeholder="Add a colour — paste a hex, e.g. #836F5E"
+                        spellCheck={false}
+                        autoComplete="off"
+                        className="flex-1 h-[40px] px-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50 placeholder:text-text-faint"
+                      />
+                      <Button
+                        variant="secondary"
+                        onClick={addCustomColour}
+                        disabled={!parsedNewHex}
+                        icon={<Plus className="w-3.5 h-3.5" />}
+                      >
+                        Add
+                      </Button>
+                    </div>
+                    {addErr && (
+                      <p className="mt-1.5 text-[11px] text-danger">{addErr}</p>
+                    )}
                   </div>
 
                   {/* Style — Flat / Gradient */}

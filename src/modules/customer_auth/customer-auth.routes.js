@@ -10,6 +10,7 @@ const controller = require("./customer-auth.controller");
 const retention = require("./customer-retention.controller");
 const retentionController = require("../retention/retention.controller");
 const retentionValidator = require("../retention/retention.validator");
+const crownValidator = require("../retention/crown.validator");
 const {
   customerAuthOptional,
   requireCustomer,
@@ -37,6 +38,15 @@ router.get("/loyalty", ...authed, retention.loyalty);
 router.get("/referral", ...authed, retention.referral);
 router.get("/rewards", ...authed, retention.rewards);
 router.post("/rewards/:id/redeem", ...authed, retention.redeem);
+
+// Crowns 👑 (§6.23 unified economy) — the shopper's own wallet + earning.
+// The programme (tier ladder + ways to earn) is public for the marketing page;
+// the wallet, discount, submit and check-in are scoped to the signed-in shopper.
+router.get("/crowns/programme", retention.crownProgramme);
+router.get("/crowns", ...authed, retention.crownWallet);
+router.get("/crowns/discount", ...authed, retention.crownDiscount);
+router.post("/crowns/submit", ...authed, crownValidator.validateSubmitAction, retention.crownSubmit);
+router.post("/crowns/check-in", ...authed, retention.crownCheckIn);
 
 // Hair-quiz submit (customer-authed). P0-7: the public /api/public/hair-quiz
 // route strips contact_id from the body (so no anonymous star farming), and

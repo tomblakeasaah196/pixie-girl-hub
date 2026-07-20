@@ -26,6 +26,8 @@ const { requirePermission } = require("../../middleware/rbac");
 require("./retention.subscribers");
 // Side-effect: register Crown events → staff in-app notifications.
 require("./crown.notifications");
+// Side-effect: register Crown events → customer emails (Comms Studio).
+require("./crown.customer-comms");
 
 const router = express.Router();
 const can = (action) => requirePermission("retention", action);

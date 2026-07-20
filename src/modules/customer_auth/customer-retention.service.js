@@ -10,6 +10,8 @@
 
 const retentionService = require("../retention/retention.service");
 const rewardsService = require("../retention/rewards.service");
+const crownService = require("../retention/crown.service");
+const crownStreak = require("../retention/crown.streak");
 const tasksService = require("../../shared/tasks/tasks.service");
 const { getBroadcaster } = require("../../realtime/emitter");
 const { logger } = require("../../config/logger");
@@ -85,7 +87,7 @@ async function redeem({ brand, contact_id, reward_id, request_id }) {
   // transaction (contact-bound, single-use, per-reward expiry). The
   // customer-facing wrapper just surfaces the code and, for physical
   // rewards, opens a fulfilment task.
-  let voucher_code = result.voucher_code || null;
+  const voucher_code = result.voucher_code || null;
   let fulfilment_task_id = null;
   const f = result.fulfilment || {};
   if (f.kind === "free_product" || f.kind === "gift") {
@@ -157,4 +159,124 @@ async function redeem({ brand, contact_id, reward_id, request_id }) {
   };
 }
 
-module.exports = { loyalty, referral, rewards, redeem };
+// ── Crowns 👑 (§6.23 unified economy) ──────────────────────
+/** The shopper's own wallet: balance, tier + progress, streaks, vouchers, history. */
+async function crownWallet({ brand, contact_id }) {
+  const w = await crownService.getWallet({ brand, contact_id });
+  const st = w.state;
+  return {
+    balance: st ? Number(st.current_crowns || 0) : 0,
+    lifetime_earned: st ? Number(st.lifetime_earned || 0) : 0,
+    tier: st && st.tier_key
+      ? {
+          key: st.tier_key,
+          name: st.tier_name,
+          lifetime_discount_pct: Number(st.lifetime_discount_pct || 0),
+        }
+      : null,
+    next_tier: st && st.next_tier_name
+      ? { name: st.next_tier_name, crowns_to_go: Number(st.crowns_to_next_tier || 0) }
+      : null,
+    streaks: (w.streaks || []).map((s) => ({
+      streak_type: s.streak_type,
+      current_length: s.current_length,
+      longest_length: s.longest_length,
+      status: s.status,
+      deadline_at: s.deadline_at,
+      freezes_available: s.freezes_available,
+    })),
+    vouchers: (w.grants || []).map((g) => ({
+      grant_type: g.grant_type,
+      discount_pct:
+        g.discount_pct !== null && g.discount_pct !== undefined
+          ? Number(g.discount_pct)
+          : null,
+      tier_name: g.tier_name,
+      expires_at: g.expires_at,
+    })),
+    ledger: (w.ledger || []).slice(0, 15).map((e) => ({
+      transaction_type: e.transaction_type,
+      crowns: e.crowns,
+      description: e.description || e.earn_action_type,
+      occurred_at: e.occurred_at,
+    })),
+  };
+}
+
+/** The public programme: tier ladder + ways to earn + streak defs (marketing page). */
+async function crownProgramme({ brand }) {
+  const [tiers, rules, streaks] = await Promise.all([
+    crownService.listTiers({ brand }),
+    crownService.listRules({ brand }),
+    crownService.listStreakConfig({ brand }),
+  ]);
+  return {
+    tiers: tiers.map((t) => ({
+      tier_key: t.tier_key,
+      tier_name: t.tier_name,
+      description: t.description,
+      min_crowns: Number(t.min_crowns),
+      next_purchase_discount_pct: Number(t.next_purchase_discount_pct),
+      lifetime_discount_pct: Number(t.lifetime_discount_pct),
+      grants_free_shipping_next: t.grants_free_shipping_next,
+      benefits: t.benefits || {},
+      badge_colour_hex: t.badge_colour_hex,
+    })),
+    earn_rules: rules.map((r) => ({
+      rule_key: r.rule_key,
+      display_name: r.display_name,
+      description: r.description,
+      action_type: r.action_type,
+      crowns_mode: r.crowns_mode,
+      crown_value: r.crown_value,
+      unit_currency_per_crown:
+        r.unit_currency_per_crown !== null && r.unit_currency_per_crown !== undefined
+          ? Number(r.unit_currency_per_crown)
+          : null,
+      verification_mode: r.verification_mode,
+      social_platform: r.social_platform,
+    })),
+    streaks: streaks.map((s) => ({
+      streak_type: s.streak_type,
+      display_name: s.display_name,
+      description: s.description,
+      period_unit: s.period_unit,
+    })),
+  };
+}
+
+/** The shopper's checkout entitlement (lifetime + best one-time voucher). */
+function crownDiscount({ brand, contact_id }) {
+  return crownService.getActiveDiscount({ brand, contact_id });
+}
+
+/** Submit a social/UGC action (honor auto-approves; manual queues for review). */
+function crownSubmit({ brand, contact_id, input }) {
+  return crownService.submitAction({
+    brand,
+    contact_id,
+    rule_key: input.rule_key,
+    social_handle: input.social_handle,
+    proof_url: input.proof_url,
+    media_asset_id: input.media_asset_id,
+    note: input.note,
+  });
+}
+
+/** Weekly engagement check-in — advances the shopper's check-in streak. */
+async function crownCheckIn({ brand, contact_id }) {
+  const streaks = await crownStreak.checkIn({ brand, contact_id });
+  return { streaks };
+}
+
+module.exports = {
+  loyalty,
+  referral,
+  rewards,
+  redeem,
+  crownWallet,
+  crownProgramme,
+  crownDiscount,
+  crownSubmit,
+  crownCheckIn,
+};

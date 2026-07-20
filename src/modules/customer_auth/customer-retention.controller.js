@@ -53,4 +53,56 @@ async function redeem(req, res) {
   });
 }
 
-module.exports = { loyalty, referral, rewards, redeem };
+// ── Crowns 👑 ──────────────────────────────────────────────
+async function crownWallet(req, res) {
+  res.json({
+    data: await service.crownWallet({
+      brand: brandHint(req),
+      contact_id: req.customer.contact_id,
+    }),
+  });
+}
+
+async function crownProgramme(req, res) {
+  res.json({ data: await service.crownProgramme({ brand: brandHint(req) }) });
+}
+
+async function crownDiscount(req, res) {
+  res.json({
+    data: await service.crownDiscount({
+      brand: brandHint(req),
+      contact_id: req.customer.contact_id,
+    }),
+  });
+}
+
+async function crownSubmit(req, res) {
+  res.status(201).json({
+    data: await service.crownSubmit({
+      brand: brandHint(req),
+      contact_id: req.customer.contact_id,
+      input: req.body,
+    }),
+  });
+}
+
+async function crownCheckIn(req, res) {
+  res.status(201).json({
+    data: await service.crownCheckIn({
+      brand: brandHint(req),
+      contact_id: req.customer.contact_id,
+    }),
+  });
+}
+
+module.exports = {
+  loyalty,
+  referral,
+  rewards,
+  redeem,
+  crownWallet,
+  crownProgramme,
+  crownDiscount,
+  crownSubmit,
+  crownCheckIn,
+};

@@ -22,6 +22,7 @@
 
 "use strict";
 
+const { Blob } = require("buffer");
 const sharp = require("sharp");
 const { hasAlpha, keyOutBackground } = require("./icon-pipeline.service");
 const { logger } = require("../config/logger");
@@ -31,31 +32,63 @@ const { logger } = require("../config/logger");
 // the final composited file) light for the Nigeria-first, mobile-heavy audience.
 const CUTOUT_MAX_EDGE = 1600;
 
+// Remember why the AI engine is (un)available so the reason is logged ONCE, not
+// on every upload. It re-logs whenever the state changes (e.g. ready → failing),
+// so a genuinely new problem is never swallowed.
+let aiEngineNote = null;
+
 /**
  * Try the optional self-hosted AI segmentation engine. Returns a transparent
  * PNG buffer, or null if the engine isn't installed or fails — the caller then
  * falls back to the corner keyer. Never throws.
+ *
+ * Both failure modes are now logged (loudly, with the real error) so a server
+ * that installed the engine but can't run it is diagnosable from the logs:
+ *   • require fails  → the package isn't resolvable from the app's node_modules
+ *   • inference fails → it loads but can't run (native onnxruntime / model asset)
  */
 async function tryAiCutout(buffer) {
   let removeBackground;
   try {
-    // Lazy + guarded: only pulled when present. Kept out of package.json until
-    // validated on the VPS, so `npm ci`/CI stay green regardless.
+    // Lazy + guarded: only pulled when present. Declared as an OPTIONAL
+    // dependency so `npm ci`/CI stay green even where the native build fails.
     ({ removeBackground } = require("@imgly/background-removal-node"));
-  } catch {
-    return null; // engine not provisioned — expected; keyer takes over
+  } catch (err) {
+    if (aiEngineNote !== `require:${err.message}`) {
+      aiEngineNote = `require:${err.message}`;
+      logger.warn(
+        { err: err.message },
+        "AI background-removal engine could not be loaded (require failed) — " +
+          "using the keyer fallback. Ensure @imgly/background-removal-node is " +
+          "installed in the app's node_modules and the app was restarted.",
+      );
+    }
+    return null;
   }
   try {
-    const blob = await removeBackground(buffer, {
+    // @imgly can't sniff a raw Buffer — it throws "Unsupported format" — so
+    // hand it a typed PNG Blob, giving its decoder an unambiguous MIME type.
+    const png = await sharp(buffer).png().toBuffer();
+    const source = new Blob([png], { type: "image/png" });
+    const blob = await removeBackground(source, {
       output: { format: "image/png" },
     });
     const ab = await blob.arrayBuffer();
+    if (aiEngineNote !== "ready") {
+      aiEngineNote = "ready";
+      logger.info("AI background-removal engine is active");
+    }
     return Buffer.from(ab);
   } catch (err) {
-    logger.warn(
-      { err: err.message },
-      "AI background removal failed; falling back to corner keyer",
-    );
+    if (aiEngineNote !== `infer:${err.message}`) {
+      aiEngineNote = `infer:${err.message}`;
+      logger.error(
+        { err: err.stack || err.message },
+        "AI background removal failed at inference — using the keyer fallback. " +
+          "This usually means the native onnxruntime binary cannot load on this " +
+          "host, or the model assets cannot be read.",
+      );
+    }
     return null;
   }
 }

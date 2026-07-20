@@ -15,6 +15,7 @@
  * Exit codes: 0 = AI works · 1 = require failed · 2 = inference failed.
  */
 
+const { Blob } = require("buffer");
 const sharp = require("sharp");
 
 (async () => {
@@ -54,7 +55,13 @@ const sharp = require("sharp");
 
   try {
     const t = Date.now();
-    const blob = await removeBackground(img, { output: { format: "image/png" } });
+    // Feed a typed PNG Blob — a raw Buffer throws "Unsupported format".
+    const source = new Blob([await sharp(img).png().toBuffer()], {
+      type: "image/png",
+    });
+    const blob = await removeBackground(source, {
+      output: { format: "image/png" },
+    });
     const out = Buffer.from(await blob.arrayBuffer());
     const meta = await sharp(out).metadata();
     console.log(

@@ -22,6 +22,7 @@
 
 "use strict";
 
+const { Blob } = require("buffer");
 const sharp = require("sharp");
 const { hasAlpha, keyOutBackground } = require("./icon-pipeline.service");
 const { logger } = require("../config/logger");
@@ -65,7 +66,11 @@ async function tryAiCutout(buffer) {
     return null;
   }
   try {
-    const blob = await removeBackground(buffer, {
+    // @imgly can't sniff a raw Buffer — it throws "Unsupported format" — so
+    // hand it a typed PNG Blob, giving its decoder an unambiguous MIME type.
+    const png = await sharp(buffer).png().toBuffer();
+    const source = new Blob([png], { type: "image/png" });
+    const blob = await removeBackground(source, {
       output: { format: "image/png" },
     });
     const ab = await blob.arrayBuffer();

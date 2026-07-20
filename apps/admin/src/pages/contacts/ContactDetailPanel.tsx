@@ -35,7 +35,7 @@ import {
 import { ContactFormModal } from "./ContactFormModal";
 import { AddressFormModal } from "./AddressFormModal";
 import { LogActivityModal } from "./LogActivityModal";
-import { LoyaltyTab } from "./LoyaltyTab";
+import { CrownCustomerPanel } from "@/pages/retention/CrownCustomerPanel";
 import { TagPicker } from "./TagPicker";
 import {
   TasksTab,
@@ -892,10 +892,7 @@ export function ContactDetailPanel({
         <PreferencesTab contactId={contact.contact_id} />
       )}
       {activeTab === "loyalty" && (
-        <LoyaltyTab
-          contactId={contact.contact_id}
-          contactName={contact.display_name}
-        />
+        <CrownCustomerPanel contactId={contact.contact_id} />
       )}
       {activeTab === "employment" && <EmploymentTab contact={contact} />}
       {activeTab === "purchasing" && <PurchasingTab contact={contact} />}

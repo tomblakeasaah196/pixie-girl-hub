@@ -14,6 +14,17 @@ async function listTiers(req, res) {
   res.json({ data: await service.listTiers({ brand: req.brand }) });
 }
 
+async function createTier(req, res) {
+  res.status(201).json({
+    data: await service.createTier({
+      brand: req.brand,
+      user: req.user,
+      request_id: req.request_id,
+      input: req.body,
+    }),
+  });
+}
+
 async function updateTier(req, res) {
   res.json({
     data: await service.updateTier({
@@ -35,6 +46,17 @@ async function listRules(req, res) {
   });
 }
 
+async function createRule(req, res) {
+  res.status(201).json({
+    data: await service.createRule({
+      brand: req.brand,
+      user: req.user,
+      request_id: req.request_id,
+      input: req.body,
+    }),
+  });
+}
+
 async function updateRule(req, res) {
   res.json({
     data: await service.updateRule({
@@ -49,6 +71,10 @@ async function updateRule(req, res) {
 
 async function listStreakConfig(req, res) {
   res.json({ data: await service.listStreakConfig({ brand: req.brand }) });
+}
+
+async function listAtRiskStreaks(req, res) {
+  res.json({ data: await service.listAtRiskStreaks({ brand: req.brand }) });
 }
 
 async function getWallet(req, res) {
@@ -132,10 +158,13 @@ async function reviewSubmission(req, res) {
 
 module.exports = {
   listTiers,
+  createTier,
   updateTier,
   listRules,
+  createRule,
   updateRule,
   listStreakConfig,
+  listAtRiskStreaks,
   getWallet,
   getDiscount,
   adjust,

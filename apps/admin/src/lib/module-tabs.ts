@@ -231,7 +231,13 @@ export const MODULE_TABS: ModuleTab[] = [
   ]),
   ...tabs("retention", [
     { key: "strategies", label: "Strategies", keywords: ["campaigns", "automation"] },
-    { key: "loyalty", label: "Loyalty", keywords: ["points", "tiers"] },
+    { key: "crowns", label: "Crowns", keywords: ["loyalty", "points", "tiers", "streak", "stars", "rewards"] },
+    {
+      key: "approvals",
+      label: "Approvals",
+      keywords: ["crown", "moderation", "ugc", "review queue"],
+      requires: { module: "retention", action: "approve" },
+    },
     { key: "rewards", label: "Rewards", keywords: ["gifts"] },
     { key: "referrals", label: "Referrals" },
     { key: "coupons", label: "Coupons", keywords: ["discount", "voucher"] },

@@ -563,21 +563,9 @@ async function redeemReferral({
         },
       });
     }
-    // Credit the referrer's loyalty balance.
-    const referralEntry = await repo.insertLoyaltyLedger({
-      client,
-      brand,
-      entry: {
-        contact_id: ref.contact_id,
-        transaction_type: "earned_referral",
-        points: rewardPoints,
-        reference_type: "referral_redemption",
-        reference_id: redemption.redemption_id,
-        notes: `Referral reward (${code})`,
-      },
-    });
-    await postLoyaltyGl({ client, brand, entry: referralEntry });
-    await recomputeTier({ client, brand, contact_id: ref.contact_id });
+    // Cutover: the referrer's reward is now Crowns 👑, awarded by the retention
+    // subscriber on this event — not legacy loyalty points. The ₦ store credit
+    // above (a real financial primitive) is unaffected.
     events.emit("referral.redeemed", {
       brand,
       referral_id: ref.referral_id,

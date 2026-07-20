@@ -94,6 +94,9 @@ export interface ProductDetail {
    *  alongside the photo gallery on the product detail page. */
   videos: {
     video_id: string;
+    /** null → base-product video (shown for every colour); otherwise scoped to
+     *  the matching colour swatch, like that colour's pictures. */
+    styled_colour_id?: string | null;
     source: "youtube" | "instagram_reel" | "tiktok" | "direct_upload";
     external_ref: string;
     embed_url: string;

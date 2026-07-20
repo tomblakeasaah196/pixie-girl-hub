@@ -145,6 +145,13 @@ function ProductPage() {
         ? [{ url: product.cover_image_url, alt_text: product.name }]
         : [];
 
+  // Videos follow the same swatch scoping as pictures: base-product videos
+  // (styled_colour_id null) always show; a colour's own video shows only while
+  // that colour is selected.
+  const galleryVideos = product.videos.filter(
+    (v) => !v.styled_colour_id || v.styled_colour_id === colourId,
+  );
+
   const price = priceOfVariant(
     product,
     selectedVariant?.styled_variant_id ?? null,
@@ -206,7 +213,7 @@ function ProductPage() {
       {/* Gallery */}
       <ProductGallery
         images={galleryImages}
-        videos={product.videos}
+        videos={galleryVideos}
         productName={product.name}
       />
 

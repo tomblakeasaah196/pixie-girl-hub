@@ -77,6 +77,12 @@ const buildRecipients = z
   .object({ contact_ids: z.array(z.string().uuid()).optional() })
   .strict();
 
+// Test send: extra sign-off addresses (the requester is always included by the
+// service). Bounded so it can't be turned into an ad-hoc blaster.
+const testSend = z
+  .object({ emails: z.array(z.string().email()).max(5).optional() })
+  .strict();
+
 const eventIngest = z
   .object({
     email: z.string().email(),
@@ -177,6 +183,7 @@ module.exports = {
   validateCampaignCreate: mk(campaignCreate),
   validateCampaignUpdate: mk(campaignUpdate),
   validateBuildRecipients: mk(buildRecipients),
+  validateTestSend: mk(testSend),
   validateEventIngest: mk(eventIngest),
   validateNewsletter: mk(newsletter),
   validateVariantCreate: mk(variantCreate),

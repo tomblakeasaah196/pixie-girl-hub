@@ -96,6 +96,18 @@ test("passes ready Nodemailer attachment objects through untouched", async () =>
   ]);
 });
 
+test("resolveSenderIdentity exposes the From + conversational Reply-To the send resolves", async () => {
+  // This is the identity email marketing shows read-only and sends with — no
+  // per-campaign entry. With the default relay it falls to SMTP_FROM_* and the
+  // sales@<domain> reply-to, exactly what the live send would use.
+  const identity = await email.resolveSenderIdentity();
+  expect(identity).toEqual({
+    from_name: "Test Brand",
+    from_email: "hello@example.com",
+    reply_to: "sales@example.com",
+  });
+});
+
 test("throws a clear error (does not send) when a stored file is missing", async () => {
   mockStorageGet.mockRejectedValueOnce(new Error("ENOENT"));
   await expect(

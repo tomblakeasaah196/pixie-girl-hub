@@ -15,6 +15,7 @@ import {
   FileCode2,
   Users,
   Paintbrush,
+  Lock,
 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { ModuleInsights } from "@/components/insights/ModuleInsights";
@@ -36,8 +37,10 @@ import {
   useEmailSegments,
   useEmailTemplates,
   useEmailStats,
+  useEmailSenderIdentity,
   useCampaignPreview,
   useSendEmailCampaign,
+  useSendTestCampaign,
   usePauseEmailCampaign,
   useCancelEmailCampaign,
   useScheduleEmailCampaign,
@@ -246,17 +249,16 @@ function CampaignBuilder({ onClose }: { onClose: () => void }) {
   const segments = segmentsQ.data ?? [];
   const templates = templatesQ.data ?? [];
 
-  const domain = brandDomain(business.key);
+  // The From ADDRESS and Reply-To are resolved from Messaging Settings (the
+  // Outbound Email connection) — the single source of truth — and shown
+  // read-only. Only the From display NAME is campaign-editable.
+  const identityQ = useEmailSenderIdentity();
+  const identity = identityQ.data;
   const [name, setName] = useState("");
   const [type, setType] = useState<EmailCampaignType>("one_off");
   const [segmentId, setSegmentId] = useState("");
   const [templateId, setTemplateId] = useState("");
-  // Prefill the sender identity from the active brand. From is the brand's
-  // noreply@ mailbox; Reply-To is the monitored sales@ inbox so replies thread
-  // back into the conversation (EMAIL_TWO_WAY_SETUP).
   const [fromName, setFromName] = useState(business.name);
-  const [fromEmail, setFromEmail] = useState(`noreply@${domain}`);
-  const [replyTo, setReplyTo] = useState(`sales@${domain}`);
   const [scheduledFor, setScheduledFor] = useState("");
   const [whatsapp, setWhatsapp] = useState(false);
 
@@ -267,9 +269,8 @@ function CampaignBuilder({ onClose }: { onClose: () => void }) {
         campaign_type: type,
         segment_id: segmentId || undefined,
         default_template_id: templateId || undefined,
+        // From name only — the address + Reply-To come from Messaging Settings.
         from_name: fromName || undefined,
-        from_email: fromEmail || undefined,
-        reply_to_email: replyTo || undefined,
         scheduled_for: scheduledFor
           ? new Date(scheduledFor).toISOString()
           : undefined,
@@ -352,17 +353,52 @@ function CampaignBuilder({ onClose }: { onClose: () => void }) {
           )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Labelled label="From name">
-            <TextInput value={fromName} onChange={setFromName} placeholder="Pixie Girl" />
-          </Labelled>
-          <Labelled label="From email">
-            <TextInput value={fromEmail} onChange={setFromEmail} placeholder="noreply@brand.com" mono />
-          </Labelled>
-        </div>
-        <Labelled label="Reply-To (customer replies thread back here)">
-          <TextInput value={replyTo} onChange={setReplyTo} placeholder="sales@brand.com" mono />
+        <Labelled label="From name">
+          <TextInput value={fromName} onChange={setFromName} placeholder="Pixie Girl" />
         </Labelled>
+
+        {/* From address + Reply-To are read-only: they come from the Outbound
+            Email connection in Messaging Settings so marketing mail always
+            sends from the authenticated mailbox and replies thread into the
+            monitored inbox. Nothing here is typed by hand. */}
+        <div className="rounded-xl border border-line bg-text-primary/[0.02] p-3.5 space-y-2.5">
+          <div className="flex items-center gap-1.5 micro">
+            <Lock className="w-3 h-3" />
+            Sender · managed in Messaging Settings
+          </div>
+          {identityQ.isLoading ? (
+            <Skeleton style={{ height: 44 }} />
+          ) : identityQ.isError ? (
+            <p className="text-[12px] text-danger">
+              Couldn&rsquo;t load the sender identity.
+            </p>
+          ) : !identity?.from_email ? (
+            <p className="text-[12px] text-warn">
+              No outbound sender is configured yet. Set it in Messaging →
+              Settings → Outbound Email before sending, or the campaign will
+              fail to send.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div>
+                <div className="text-[10px] uppercase tracking-widest text-text-faint">
+                  From
+                </div>
+                <div className="text-[12.5px] font-mono text-text-muted break-all">
+                  {identity.from_email}
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-widest text-text-faint">
+                  Reply-To
+                </div>
+                <div className="text-[12.5px] font-mono text-text-muted break-all">
+                  {identity.reply_to ?? "—"}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
 
         <Labelled label="Schedule for (optional)">
           <input
@@ -435,6 +471,96 @@ function CampaignMailSection({ campaign }: { campaign: EmailCampaign }) {
   );
 }
 
+/** Send a [TEST] copy of the mail to yourself, and optionally route it to a
+ *  reviewer (e.g. the CEO) for sign-off before the real send. No recipients,
+ *  counters or status change — just the exact mail in an inbox. */
+function CampaignTestSend({ campaign }: { campaign: EmailCampaign }) {
+  const test = useSendTestCampaign(campaign.campaign_id);
+  const [approver, setApprover] = useState("");
+  const [note, setNote] = useState<string | null>(null);
+
+  function run(emails?: string[]) {
+    setNote(null);
+    test.mutate(emails, {
+      onSuccess: (r) => {
+        setNote(
+          r.sent.length
+            ? `Test sent to ${r.sent.join(", ")}.`
+            : "No test was sent.",
+        );
+        if (emails) setApprover("");
+      },
+    });
+  }
+
+  return (
+    <div className="rounded-xl border border-line p-3 space-y-2.5">
+      <div className="micro">Send a test</div>
+      <p className="text-[12px] text-text-muted">
+        Sends the exact mail (marked{" "}
+        <span className="font-mono text-text-faint">[TEST]</span>) to your inbox
+        — no tracking, no recipients. Add an address to route it to someone for
+        approval first.
+      </p>
+      <div className="flex flex-col sm:flex-row gap-2">
+        <div className="flex-1">
+          <TextInput
+            value={approver}
+            onChange={setApprover}
+            placeholder="approver@brand.com (e.g. CEO — optional)"
+            mono
+          />
+        </div>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={!approver.trim() || test.isPending}
+          onClick={() => run([approver.trim()])}
+        >
+          Send for approval
+        </Button>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          disabled={test.isPending}
+          onClick={() => run(undefined)}
+          icon={
+            test.isPending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Send className="w-4 h-4" />
+            )
+          }
+        >
+          Send test to me
+        </Button>
+        {note && <span className="text-[12px] text-success">{note}</span>}
+        {test.isError && (
+          <span className="text-[12px] text-danger">
+            Couldn&rsquo;t send the test — check the outbound email config.
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Where customer replies thread back to — the live Reply-To resolved from
+ *  Messaging Settings (falling back to a campaign's stored value for legacy
+ *  campaigns sent before the sync). */
+function CampaignReplyToNote({ campaign }: { campaign: EmailCampaign }) {
+  const identityQ = useEmailSenderIdentity();
+  const replyTo = identityQ.data?.reply_to ?? campaign.reply_to_email;
+  if (!replyTo) return null;
+  return (
+    <p className="text-[12px] text-text-faint">
+      Replies thread to{" "}
+      <span className="font-mono text-text-muted">{replyTo}</span>.
+    </p>
+  );
+}
+
 function CampaignDetail({
   campaign,
   onClose,
@@ -474,6 +600,9 @@ function CampaignDetail({
         {/* The mail itself — front and centre */}
         <CampaignMailSection campaign={campaign} />
 
+        {/* Send yourself (and optionally a reviewer) a test before the real send */}
+        {canEdit && <CampaignTestSend campaign={campaign} />}
+
         {wasSent && (
           <div>
             <div className="micro mb-2">Performance</div>
@@ -508,12 +637,7 @@ function CampaignDetail({
         <CampaignSaleSection campaign={campaign} />
         <CampaignVariantsSection campaign={campaign} />
 
-        {campaign.reply_to_email && (
-          <p className="text-[12px] text-text-faint">
-            Replies thread to{" "}
-            <span className="font-mono text-text-muted">{campaign.reply_to_email}</span>.
-          </p>
-        )}
+        <CampaignReplyToNote campaign={campaign} />
 
         {canEdit && (campaign.status === "draft" || campaign.status === "scheduled") && (
           <div className="rounded-xl border border-line p-3 space-y-2">
@@ -627,12 +751,3 @@ function ListSkeleton() {
   );
 }
 
-/** The public email domain for a brand. Used to prefill the sender (noreply@)
- *  and the conversational Reply-To (sales@) in the campaign builder. */
-function brandDomain(brandKey: string): string {
-  const map: Record<string, string> = {
-    pixiegirl: "pixiegirlglobal.com",
-    faitlynhair: "faitlynhair.com",
-  };
-  return map[brandKey] ?? `${brandKey}.com`;
-}

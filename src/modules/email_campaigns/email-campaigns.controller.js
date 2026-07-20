@@ -83,6 +83,18 @@ async function sendCampaign(req, res) {
     data: await service.sendCampaign({ ...base(req), id: req.params.id }),
   });
 }
+// Send a [TEST] copy of the mail to the requester (+ optional sign-off
+// addresses like the CEO's) for approval — no recipients, counters or status
+// change on the real campaign.
+async function sendTestCampaign(req, res) {
+  res.json({
+    data: await service.sendTest({
+      ...base(req),
+      id: req.params.id,
+      emails: req.body.emails,
+    }),
+  });
+}
 async function pauseCampaign(req, res) {
   res.json({
     data: await service.setStatus({
@@ -191,6 +203,11 @@ async function previewCampaign(req, res) {
   res.json({
     data: await service.previewCampaign({ brand: req.brand, id: req.params.id }),
   });
+}
+// The read-only From/Reply-To the campaign builder shows — resolved from the
+// messaging module's Outbound Email connection, never typed per campaign.
+async function getSenderIdentity(req, res) {
+  res.json({ data: await service.getSenderIdentity({ brand: req.brand }) });
 }
 async function getFrame(req, res) {
   res.json({ data: await service.getFrame({ brand: req.brand }) });
@@ -304,6 +321,7 @@ module.exports = {
   updateCampaign,
   buildRecipients,
   sendCampaign,
+  sendTestCampaign,
   pauseCampaign,
   cancelCampaign,
   recordEvent,
@@ -319,6 +337,7 @@ module.exports = {
   previewSegment,
   previewAudience,
   previewCampaign,
+  getSenderIdentity,
   getFrame,
   updateFrame,
   frameShell,

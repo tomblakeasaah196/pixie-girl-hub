@@ -173,6 +173,17 @@ function toGeminiParts(content) {
         },
       };
     }
+    // Non-image inline documents (e.g. a PDF receipt) ride the same inlineData
+    // channel — Gemini reads application/pdf natively, so a scanned invoice
+    // needn't be rasterised first. mime_type is required here (no image default).
+    if (p && (p.type === "file" || p.type === "document") && p.data && p.mime_type) {
+      return {
+        inlineData: {
+          mimeType: String(p.mime_type),
+          data: String(p.data),
+        },
+      };
+    }
     return { text: String((p && p.text) || "") };
   });
 }

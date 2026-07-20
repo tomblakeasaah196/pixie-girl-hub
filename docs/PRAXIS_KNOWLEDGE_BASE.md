@@ -482,9 +482,18 @@ spend, and advance settlements, with approval routing.
 **Who can see it.** `expenses` permission.
 **What's inside.** Filter by type (Reimbursement, Company card, Direct invoice,
 Advance settlement) and status (Draft, Pending, Approved, Paid, Partially Paid,
-Rejected).
+Rejected). Two ways to create: **New Expense** (fill the form yourself) and
+**Scan Receipt** (let Praxis read a receipt for you).
 **Common tasks.**
-- *Claim an expense / reimbursement?* Expenses → **New** (add receipts) →
+- *Log an expense from a receipt or invoice without typing it?* Expenses →
+  **Scan Receipt** (needs `create`). Upload a photo or PDF of the receipt and,
+  optionally, record a short voice note (or type one) explaining what the money
+  was for. Praxis reads the vendor, date, amount, VAT and line items — mapped to
+  your real expense categories — and proposes an expense. You review and edit
+  the suggestion, then **Create & Submit** (routes it for approval) or **Save as
+  Draft**. Nothing is written until you confirm, and it all stays inside the
+  Expenses screen — you're never sent to the Praxis chat.
+- *Claim an expense / reimbursement?* Expenses → **New Expense** (add receipts) →
   **Submit for Approval**. It routes to your approver. Picking **Save as
   Draft** instead records it without submitting.
 - *Submit a draft expense you saved earlier?* Open it from the list →
@@ -1071,7 +1080,8 @@ Use this as the fast lookup. Format: **task → module (group) → link**.
 - **Create a cash request** → Cash Requests (Finance) → `/cash-requests` (New Cash Request)
 - Approve a cash request → Cash Requests → `/cash-requests` (Approval Queue)
 - Settle a cash request with receipts → open the request → Settlement wizard
-- Claim an expense / reimbursement → Expenses (Finance) → `/expenses` (New)
+- Claim an expense / reimbursement → Expenses (Finance) → `/expenses` (New Expense)
+- Log an expense from a receipt/invoice (photo or PDF + optional voice note) → Expenses → `/expenses` (Scan Receipt)
 - Settle a cash advance → Expenses → `/expenses` (Advance settlement)
 - Raise a purchase order → Purchasing (Operate) → `/purchasing` (Create PO)
 - Fund the China factory → Production (Operate) → `/production` (Factory Account)

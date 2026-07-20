@@ -5,6 +5,7 @@
 "use strict";
 
 const service = require("./expenses.service");
+const aiService = require("./expenses.ai.service");
 const { parsePagination } = require("../../utils/pagination");
 
 const base = (req) => ({
@@ -94,6 +95,31 @@ const markPaid = async (req, res) =>
       input: req.body,
     }),
   });
+
+// Receipt AI (multipart: receipt `file` + optional voice `audio` + `note`).
+// Returns a SUGGESTED draft only — writes nothing. The client reviews it, then
+// the normal create → submit path does the actual write.
+async function extractReceipt(req, res) {
+  const file = req.files && req.files.file && req.files.file[0];
+  const audio = req.files && req.files.audio && req.files.audio[0];
+  if (!file)
+    return res.status(400).json({
+      error: {
+        code: "NO_FILE",
+        message: "Multipart field 'file' (the receipt) is required",
+      },
+      request_id: req.request_id,
+    });
+  res.json({
+    data: await aiService.extractFromReceipt({
+      brand: req.brand,
+      user: req.user,
+      file,
+      audio,
+      note: req.body.note,
+    }),
+  });
+}
 
 // Cash advances
 async function listAdvances(req, res) {
@@ -200,6 +226,7 @@ module.exports = {
   approve,
   reject,
   markPaid,
+  extractReceipt,
   listAdvances,
   getAdvance,
   requestAdvance,

@@ -1,5 +1,5 @@
 import { useState, lazy, Suspense } from "react";
-import { Receipt, Plus, Lock } from "lucide-react";
+import { Receipt, Plus, Lock, Sparkles } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { ModuleInsights } from "@/components/insights/ModuleInsights";
@@ -25,6 +25,11 @@ const CreateExpenseDrawer = lazy(() =>
     default: m.CreateExpenseDrawer,
   })),
 );
+const PraxisReceiptDrawer = lazy(() =>
+  import("./PraxisReceiptDrawer").then((m) => ({
+    default: m.PraxisReceiptDrawer,
+  })),
+);
 
 export default function ExpensesPage() {
   useBreadcrumbs([{ label: "Expenses" }]);
@@ -34,6 +39,7 @@ export default function ExpensesPage() {
   const [page, setPage] = useState(1);
   const [selectedEx, setSelectedEx] = useState<Expense | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [showScan, setShowScan] = useState(false);
 
   if (!can("expenses", "view")) {
     return (
@@ -58,13 +64,22 @@ export default function ExpensesPage() {
           </p>
         </div>
         {can("expenses", "create") && (
-          <Button
-            variant="primary"
-            icon={<Plus className="w-4 h-4" />}
-            onClick={() => setShowCreate(true)}
-          >
-            New Expense
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              icon={<Sparkles className="w-4 h-4" />}
+              onClick={() => setShowScan(true)}
+            >
+              Scan Receipt
+            </Button>
+            <Button
+              variant="primary"
+              icon={<Plus className="w-4 h-4" />}
+              onClick={() => setShowCreate(true)}
+            >
+              New Expense
+            </Button>
+          </div>
         )}
       </div>
 
@@ -87,6 +102,9 @@ export default function ExpensesPage() {
         )}
         {showCreate && (
           <CreateExpenseDrawer onClose={() => setShowCreate(false)} />
+        )}
+        {showScan && (
+          <PraxisReceiptDrawer onClose={() => setShowScan(false)} />
         )}
       </Suspense>
     </div>

@@ -46,6 +46,7 @@
     "backfill:instagram-profiles": "node scripts/backfill-instagram-profiles.js",
     "backfill:instagram-history": "node scripts/backfill-instagram-history.js",
     "diag:instagram-echoes": "node scripts/diagnose-instagram-echoes.js",
+    "diag:bg-removal": "node scripts/diag-bg-removal.js",
     "cleanup:unpaid-deliveries": "node scripts/cleanup-unpaid-deliveries.js",
     "report:pending-unpaid": "node scripts/report-pending-unpaid-orders.js",
     "workers:start": "node src/jobs/worker.js",

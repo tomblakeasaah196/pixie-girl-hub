@@ -206,6 +206,27 @@ function replyToFor(fromEmail) {
 }
 
 /**
+ * The read-only sender identity email marketing (and any caller) will actually
+ * send with — the From address and Reply-To resolved from the brand's Outbound
+ * Email connection (Messaging Settings → Connections → Outbound Email) → then
+ * Business Setup. This is the SINGLE SOURCE OF TRUTH: campaigns never store or
+ * type these; they resolve them here at send time. Surfaced to the campaign
+ * builder so an operator can see (not edit) the From/Reply-To, and where a
+ * customer's reply threads back to.
+ */
+async function resolveSenderIdentity(brand) {
+  const s = await getSender(brand);
+  const fromEmail = s.fromEmail || null;
+  return {
+    from_name: s.fromName || null,
+    from_email: fromEmail,
+    // Same precedence the live send applies: configured Reply-To → the From
+    // address → the conversational sales@<domain> fallback.
+    reply_to: s.replyTo || replyToFor(fromEmail) || null,
+  };
+}
+
+/**
  * Turn caller-supplied attachment specs into the shape Nodemailer's
  * `attachments` array expects. Two forms are accepted:
  *   • `{ filename, storage_key, content_type }` — a file already in local
@@ -362,4 +383,10 @@ async function verifyConnection(brand) {
   }
 }
 
-module.exports = { send, checkConfigAtBoot, verifyConnection, invalidateTransporter };
+module.exports = {
+  send,
+  checkConfigAtBoot,
+  verifyConnection,
+  invalidateTransporter,
+  resolveSenderIdentity,
+};

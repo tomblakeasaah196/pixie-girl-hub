@@ -812,6 +812,19 @@ was retired; the module is email-only.)
 - *Send an email campaign?* Marketing → **Campaigns** → **New campaign** →
   name it, pick a segment + template → build the audience → **Send now** (or
   set a schedule).
+- *Send myself a test / get a campaign approved first?* Marketing →
+  **Campaigns** → open the campaign → **Send a test**. **Send test to me**
+  drops the exact mail (marked **[TEST]**) in your inbox — no tracking, no
+  recipients. To route it for sign-off, type a reviewer's address (e.g. the
+  CEO's) and **Send for approval**; they review it in their inbox before you
+  hit **Send now** (the real send needs `email_campaigns:approve`).
+- *Set the From address / Reply-To on a campaign?* You don't — it's **not**
+  typed per campaign. The From address and Reply-To are resolved from the
+  brand's **Outbound Email** connection in **Messaging → Settings →
+  Connections → Email** (`/smartcomm`, the gear → Connections → Email) so
+  every mail sends from the authenticated mailbox and customer replies thread
+  back into Messaging. The campaign builder shows them read-only; only the
+  From **display name** is editable.
 - *See the exact mail a past campaign sent?* Marketing → **Campaigns** → open
   the campaign — the full mail is previewed at the top, with performance
   (sent/opened/clicked) below it.

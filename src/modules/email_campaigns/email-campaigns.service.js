@@ -24,6 +24,7 @@ const { logger } = require("../../config/logger");
 const { NotFoundError, AppError } = require("../../utils/errors");
 
 const SEND_CAP = 1000; // synchronous send cap per call
+const TEST_SEND_CAP = 5; // max addresses a single test send may target
 
 // ── Templates ──────────────────────────────────────────────
 function listTemplates({ brand }) {
@@ -195,12 +196,14 @@ async function sendCampaign({ brand, user, request_id, id }) {
         html,
         text,
         headers,
+        // The From NAME stays campaign-editable (e.g. "Faith from Faitlyn").
+        // The From ADDRESS and Reply-To are NOT typed per campaign — they are
+        // resolved centrally by email.service from the brand's Outbound Email
+        // connection (Messaging Settings → Connections → Outbound Email), the
+        // single source of truth. That keeps the From on a mailbox the relay
+        // is authorised to send as, and threads customer replies into the
+        // monitored inbox the messaging module also polls. (EMAIL_TWO_WAY_SETUP)
         from_name: campaign.from_name || template.from_name,
-        from_email: campaign.from_email || template.from_email,
-        // EMAIL_TWO_WAY_SETUP: pass the brand so the sender resolves the right
-        // FROM identity, and a conversational Reply-To (sales@<brand>) so a
-        // customer's reply threads back into the conversation.
-        reply_to: campaign.reply_to_email || template.reply_to_email,
         brand,
       });
       await repo.setRecipientStatus({
@@ -220,10 +223,15 @@ async function sendCampaign({ brand, user, request_id, id }) {
       await repo.incCampaignCounter({ brand, id, column: "total_sent" });
       sent += 1;
     } catch (err) {
+      // Persist WHY it failed on the recipient row, not just in the log, so the
+      // reason is visible in the UI and a "did it send?" query without shelling
+      // into the app logs. (failure_reason is TEXT; keep it bounded.)
+      const reason = String(err && err.message ? err.message : err).slice(0, 500);
       await repo.setRecipientStatus({
         brand,
         recipient_id: r.recipient_id,
         status: "failed",
+        fields: { failure_reason: reason },
       });
       logger.error(
         { err: err.message, brand, recipient_id: r.recipient_id },
@@ -621,6 +629,128 @@ async function previewCampaign({ brand, id }) {
   };
 }
 
+/**
+ * Send a one-off TEST copy of the campaign mail — the exact mail the live send
+ * produces (same render pipeline, real brand frame + tokens, sender identity
+ * resolved from Messaging Settings) but with tracking off, no recipient rows,
+ * no counters and no status change. Always goes to the requesting user; extra
+ * addresses (e.g. the CEO's) can be added so a reviewer can sign off in their
+ * inbox before the real send. Subject is prefixed [TEST] so it can't be
+ * mistaken for the live mail.
+ */
+async function sendTest({ brand, user, request_id, id, emails }) {
+  const campaign = await repo.getCampaign({ brand, id });
+  if (!campaign) throw new NotFoundError("Campaign");
+  if (!campaign.default_template_id)
+    throw new AppError(
+      "NO_TEMPLATE",
+      "Pick a template for this campaign before sending a test",
+      422,
+    );
+  const template = await repo.getTemplate({
+    brand,
+    id: campaign.default_template_id,
+  });
+  if (!template) throw new NotFoundError("Template");
+
+  // Recipients: the requester first, then any sign-off addresses. De-dup
+  // case-insensitively and cap the count so this can't become a blaster.
+  const extra = Array.isArray(emails) ? emails : [];
+  const seen = new Set();
+  const recipients = [];
+  for (const addr of [user.email, ...extra]) {
+    const clean = String(addr || "").trim();
+    if (!clean) continue;
+    const key = clean.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    recipients.push(clean);
+  }
+  if (recipients.length === 0)
+    throw new AppError(
+      "NO_TEST_RECIPIENT",
+      "No address to send the test to",
+      422,
+    );
+  if (recipients.length > TEST_SEND_CAP)
+    throw new AppError(
+      "TOO_MANY_TEST_RECIPIENTS",
+      `A test can go to at most ${TEST_SEND_CAP} addresses`,
+      422,
+    );
+
+  // Render once with a sample recipient so every token resolves; tracking off
+  // (there is no recipient row to attribute a pixel/click to).
+  const brandTokens = await render.resolveBrandTokens(brand);
+  const frame = await render.resolveBrandFrame(brand);
+  const campaignTokens = render.resolveCampaignTokens(campaign);
+  const { subject, html, text, headers } = render.buildEmail({
+    template,
+    brandTokens,
+    campaignTokens: { ...campaignTokens, ...personalise.sampleDisplayTokens() },
+    recipient: SAMPLE_RECIPIENT,
+    brand,
+    frame,
+    tracking: false,
+  });
+
+  const sent = [];
+  const failed = [];
+  for (const to of recipients) {
+    try {
+      await email.send({
+        to,
+        subject: `[TEST] ${subject}`,
+        html,
+        text,
+        headers,
+        // From name stays campaign-editable; address + Reply-To resolve from
+        // Messaging Settings — identical to the live send.
+        from_name: campaign.from_name || template.from_name,
+        brand,
+      });
+      sent.push(to);
+    } catch (err) {
+      logger.error(
+        { err: err.message, brand, campaign_id: id, to },
+        "email campaign test send failed",
+      );
+      failed.push({ email: to, error: err.message });
+    }
+  }
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "email_campaigns.test_send",
+    target_type: "email_campaign",
+    target_id: id,
+    after: { sent, failed: failed.map((f) => f.email) },
+    request_id,
+  });
+  // Surface a hard failure (e.g. SMTP not configured) rather than reporting a
+  // silent success when nothing actually went out.
+  if (sent.length === 0)
+    throw new AppError(
+      "TEST_SEND_FAILED",
+      failed[0]
+        ? `Test send failed: ${failed[0].error}`
+        : "Test send failed",
+      502,
+    );
+  return { sent, failed };
+}
+
+// ── Sender identity (read-only — the SSOT is the messaging module) ──
+/**
+ * The From address + Reply-To this brand's campaigns will send with, resolved
+ * from the Outbound Email connection in Messaging Settings. The campaign
+ * builder shows this read-only so the sender is never typed by hand; only the
+ * From display name stays campaign-editable.
+ */
+async function getSenderIdentity({ brand }) {
+  return email.resolveSenderIdentity(brand);
+}
+
 // ── Brand frame (header/footer around every campaign mail) ─
 /** The brand's email frame config with defaults applied. */
 async function getFrame({ brand }) {
@@ -890,6 +1020,7 @@ module.exports = {
   updateCampaign,
   buildRecipients,
   sendCampaign,
+  sendTest,
   setStatus,
   recordEvent,
   subscribeNewsletter,
@@ -907,6 +1038,7 @@ module.exports = {
   previewAudience,
   previewCampaign,
   uploadImage,
+  getSenderIdentity,
   getFrame,
   updateFrame,
   frameShell,

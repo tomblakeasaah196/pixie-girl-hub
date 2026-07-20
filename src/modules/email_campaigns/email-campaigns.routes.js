@@ -45,6 +45,11 @@ router.post(
   c.uploadImage,
 );
 
+// Sender identity — the read-only From/Reply-To resolved from the messaging
+// module's Outbound Email connection (never typed per campaign). Declared
+// before "/:id" so the literal path isn't captured as a campaign id.
+router.get("/sender-identity", can("view"), c.getSenderIdentity);
+
 // Brand frame (the header/footer wrapped around every campaign mail)
 router.get("/frame", can("view"), c.getFrame);
 router.put("/frame", can("edit"), v.validateFramePatch, c.updateFrame);
@@ -106,6 +111,14 @@ router.post(
 );
 router.post("/:id/schedule", can("edit"), v.validateSchedule, c.schedule);
 router.post("/:id/send", can("approve"), c.sendCampaign);
+// Test send — a marketer can preview/route the mail for sign-off (edit), but
+// only an approver can trigger the real send above.
+router.post(
+  "/:id/test-send",
+  can("edit"),
+  v.validateTestSend,
+  c.sendTestCampaign,
+);
 router.post("/:id/pause", can("edit"), c.pauseCampaign);
 router.post("/:id/cancel", can("edit"), c.cancelCampaign);
 router.post("/:id/events", can("edit"), v.validateEventIngest, c.recordEvent);

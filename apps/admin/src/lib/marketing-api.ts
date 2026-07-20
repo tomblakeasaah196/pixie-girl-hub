@@ -241,9 +241,9 @@ export function useCreateEmailCampaign() {
       campaign_type?: EmailCampaignType;
       segment_id?: string;
       default_template_id?: string;
+      // From display name is campaign-editable; the From address and Reply-To
+      // are resolved from Messaging Settings and never sent from here.
       from_name?: string;
-      from_email?: string;
-      reply_to_email?: string;
       scheduled_for?: string;
     }) => api.post<EmailCampaign>("/email-campaigns", body),
     onSuccess: () =>
@@ -287,6 +287,27 @@ export function useCampaignPreview(id: string | undefined, enabled = true) {
     queryKey: ["email", "preview", brand, id],
     queryFn: () => api.get<CampaignPreview>(`/email-campaigns/${id}/preview`),
     retry: false,
+  });
+}
+
+// ── Sender identity (read-only — resolved from Messaging Settings) ──
+/** The From address + Reply-To campaigns actually send with, resolved from the
+ *  brand's Outbound Email connection in Messaging Settings. Not editable here —
+ *  only the campaign's From display name is. */
+export interface SenderIdentity {
+  from_name: string | null;
+  from_email: string | null;
+  reply_to: string | null;
+}
+
+export function useEmailSenderIdentity() {
+  const brand = useBrand();
+  return useQuery({
+    enabled: Boolean(brand),
+    queryKey: ["email", "sender-identity", brand],
+    queryFn: () =>
+      api.get<SenderIdentity>("/email-campaigns/sender-identity"),
+    staleTime: 60_000,
   });
 }
 
@@ -521,6 +542,18 @@ export function useSendEmailCampaign() {
       qc.invalidateQueries({ queryKey: ["email", "campaigns", brand] });
       qc.invalidateQueries({ queryKey: ["email", "campaign", brand] });
     },
+  });
+}
+
+/** Send a [TEST] copy of the campaign mail to yourself, plus any sign-off
+ *  addresses (e.g. the CEO's) for approval before the real send. */
+export function useSendTestCampaign(id: string | undefined) {
+  return useMutation({
+    mutationFn: (emails?: string[]) =>
+      api.post<{ sent: string[]; failed: Array<{ email: string; error: string }> }>(
+        `/email-campaigns/${id}/test-send`,
+        { emails: emails && emails.length ? emails : undefined },
+      ),
   });
 }
 

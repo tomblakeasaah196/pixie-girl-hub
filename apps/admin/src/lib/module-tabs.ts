@@ -83,6 +83,7 @@ export const MODULE_TABS: ModuleTab[] = [
   ...tabs("sales", [
     { key: "quick-sale", label: "Quick Sale", keywords: ["pos", "sell", "counter"] },
     { key: "orders", label: "Orders", keywords: ["sales orders"] },
+    { key: "preorders", label: "Pre-orders", keywords: ["pre-order", "made to order", "backorder", "production"] },
     { key: "quotations", label: "Quotations", keywords: ["quotes", "estimate"] },
     { key: "delivery-pending", label: "Delivery Pending", keywords: ["fee", "awaiting"] },
     { key: "pos-reconciliation", label: "POS Reconciliation", keywords: ["cash up", "till"] },

@@ -6,6 +6,7 @@ import {
   Save,
   ShieldCheck,
   DollarSign,
+  CalendarClock,
 } from "lucide-react";
 import { Button, Card } from "@/components/ui/primitives";
 import { Toggle, NumberField, ErrorState } from "@/components/ui/controls";
@@ -16,6 +17,7 @@ import {
   useSaveSizeConfig,
   useUsdPricing,
   type LaceSize,
+  type CatalogueConfig,
 } from "@/lib/catalogue";
 import { UsdRepriceModal } from "./UsdRepriceModal";
 
@@ -40,6 +42,13 @@ export function CatalogueSettingsTab() {
 
   return (
     <div className="space-y-5">
+      {/* Pre-orders */}
+      <PreorderCard
+        config={cfg.data?.config ?? null}
+        loading={cfg.isLoading}
+        canEdit={canEdit}
+      />
+
       {/* Categories toggle */}
       <Card className="p-5">
         <div className="flex items-start gap-3">
@@ -100,6 +109,111 @@ export function CatalogueSettingsTab() {
         </div>
       </Card>
     </div>
+  );
+}
+
+/** Pre-orders — master switch + the production delivery window shown to buyers
+ *  when an item is out of stock. Universal: any out-of-stock item is offered as
+ *  a pre-order (unless a product is opted out on its own page). */
+function PreorderCard({
+  config,
+  loading,
+  canEdit,
+}: {
+  config: CatalogueConfig | null;
+  loading: boolean;
+  canEdit: boolean;
+}) {
+  const save = useSaveSizeConfig();
+  const enabled = config?.preorder_enabled ?? true;
+  const [minW, setMinW] = useState<string>("");
+  const [maxW, setMaxW] = useState<string>("");
+
+  // Seed the week inputs from the server whenever config (re)loads.
+  useEffect(() => {
+    setMinW(String(config?.preorder_min_weeks ?? 4));
+    setMaxW(String(config?.preorder_max_weeks ?? 8));
+  }, [config?.preorder_min_weeks, config?.preorder_max_weeks]);
+
+  const dirty =
+    minW !== String(config?.preorder_min_weeks ?? 4) ||
+    maxW !== String(config?.preorder_max_weeks ?? 8);
+  const invalid =
+    minW === "" ||
+    maxW === "" ||
+    Number(minW) < 0 ||
+    Number(maxW) < Number(minW);
+
+  return (
+    <Card className="p-5">
+      <div className="flex items-start gap-3">
+        <div className="grid place-items-center w-10 h-10 rounded-[11px] bg-accent/10 text-accent-glow shrink-0">
+          <CalendarClock className="w-5 h-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="text-[15px] font-semibold">Pre-orders</h3>
+          <p className="text-[12.5px] text-text-muted mt-0.5">
+            {enabled
+              ? "ON — when an item is out of stock the buyer is told it's made to order and can pre-order on the window below. Turn off on a single product from its page."
+              : "OFF — out-of-stock items read as “Sold out” and can’t be bought until restocked."}
+          </p>
+        </div>
+        <Toggle
+          checked={enabled}
+          disabled={!canEdit || save.isPending || loading}
+          onChange={(v) => save.mutate({ preorder_enabled: v })}
+          label={enabled ? "On" : "Off"}
+        />
+      </div>
+
+      {enabled && (
+        <div className="mt-4 pt-4 border-t border-line">
+          <p className="text-[12.5px] text-text-muted mb-3">
+            Production window shown to buyers — e.g. “ships in ~
+            {minW || 4}–{maxW || 8} weeks”.
+          </p>
+          <div className="grid grid-cols-[120px_120px_auto] gap-2.5 items-end">
+            <Field label="Min weeks">
+              <NumberField
+                value={minW}
+                onChange={setMinW}
+                suffix="wks"
+              />
+            </Field>
+            <Field label="Max weeks">
+              <NumberField
+                value={maxW}
+                onChange={setMaxW}
+                suffix="wks"
+              />
+            </Field>
+            {canEdit && (
+              <div className="pb-1.5">
+                <Button
+                  size="sm"
+                  variant="primary"
+                  icon={<Save className="w-3.5 h-3.5" />}
+                  disabled={save.isPending || !dirty || invalid}
+                  onClick={() =>
+                    save.mutate({
+                      preorder_min_weeks: Number(minW),
+                      preorder_max_weeks: Number(maxW),
+                    })
+                  }
+                >
+                  {save.isPending ? "Saving…" : "Save window"}
+                </Button>
+              </div>
+            )}
+          </div>
+          {invalid && (
+            <p className="text-[12px] text-danger mt-2">
+              Max weeks must be at least the min.
+            </p>
+          )}
+        </div>
+      )}
+    </Card>
   );
 }
 

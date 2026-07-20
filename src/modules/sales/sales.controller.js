@@ -64,19 +64,26 @@ async function exportReport(req, res) {
   );
   res.send(buffer);
 }
-const createOrder = async (req, res) =>
-  res.status(201).json({
-    data: await service.createOrder({
-      ...base(req),
-      // Staff attribution (Performance → Insights): whoever raises the order
-      // here (Quick Sale) is the closer by default. A supervisor logging a
-      // sale for a colleague can override via `closed_by_user_id` in the body.
-      input: {
-        ...req.body,
-        closed_by_user_id: req.body.closed_by_user_id || req.user?.user_id || null,
-      },
-    }),
+const createOrder = async (req, res) => {
+  const order = await service.createOrder({
+    ...base(req),
+    // Staff attribution (Performance → Insights): whoever raises the order
+    // here (Quick Sale) is the closer by default. A supervisor logging a
+    // sale for a colleague can override via `closed_by_user_id` in the body.
+    input: {
+      ...req.body,
+      closed_by_user_id: req.body.closed_by_user_id || req.user?.user_id || null,
+    },
   });
+  // Surface the pre-order result (000086) so Quick Sale can confirm to staff
+  // that a line went in as made-to-order. `_preorder` is non-enumerable on the
+  // order, so attach it explicitly (spread drops it otherwise).
+  const pre =
+    order && order._preorder && order._preorder.is_preorder
+      ? order._preorder
+      : null;
+  res.status(201).json({ data: pre ? { ...order, preorder: pre } : order });
+};
 const updateOrder = async (req, res) =>
   res.json({
     data: await service.updateOrder({

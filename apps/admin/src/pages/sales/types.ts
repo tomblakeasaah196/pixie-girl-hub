@@ -161,6 +161,21 @@ export interface SalesOrder {
   created_by: string;
   created_at: string;
   updated_at: string;
+  /** Pre-orders (000086): order carries a made-to-order line; ready_by is the
+   *  deadline shown in the Pre-orders tab (placement + max production weeks). */
+  is_preorder?: boolean;
+  preorder_ready_by?: string | null;
+  preorder_min_weeks?: number | null;
+  preorder_max_weeks?: number | null;
+  /** Pre-order confirmation returned by createOrder (000086) — present only when
+   *  a line actually went in as made-to-order, so Quick Sale can toast it. */
+  preorder?: {
+    is_preorder: boolean;
+    line_count: number;
+    names?: string[];
+    window_label?: string | null;
+    message?: string;
+  } | null;
   /** Distinct line kinds on the order (list endpoint only) — drives the
    *  register's Kind column: base product vs styled vs service vs bundle. */
   line_kinds?: Array<"product" | "styled" | "bundle" | "service"> | null;

@@ -80,6 +80,7 @@ const productCreate = z
     // Pre-order / production timeline (P0-7). When the base is out of stock
     // and pre-order is enabled, styled listings show production-framed copy.
     preorder_enabled: z.boolean().optional(),
+    preorder_excluded: z.boolean().optional(),
     expected_ready_date: z.string().date().nullable().optional(),
     production_lead_days: z.coerce
       .number()

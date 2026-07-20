@@ -55,6 +55,9 @@ export interface BaseProduct {
   lace_size_codes: string[] | null;
   // Pre-order / production timeline (P0-7).
   preorder_enabled: boolean;
+  // Universal pre-orders (000086) — opt this base OUT so it reads "Sold out"
+  // when it runs out instead of becoming a pre-order.
+  preorder_excluded: boolean;
   expected_ready_date: string | null;
   production_lead_days: number | null;
   primary_image_url?: string | null;
@@ -272,6 +275,11 @@ export interface CatalogueConfig {
   // One-click: allow base (stock-room) products in collections + bundles.
   // Off by default — only styled products may be added.
   allow_base_in_collections_bundles: boolean;
+  // Universal pre-orders (000086). Master switch + the production delivery
+  // window shown to buyers when an item is out of stock ("ships in ~4–8 weeks").
+  preorder_enabled: boolean;
+  preorder_min_weeks: number;
+  preorder_max_weeks: number;
 }
 export interface SizeConfig {
   tiers: SizeTier[];
@@ -1512,6 +1520,9 @@ export interface SaveSizeConfigInput {
   head_size_video_url?: string | null;
   categories_enabled?: boolean;
   allow_base_in_collections_bundles?: boolean;
+  preorder_enabled?: boolean;
+  preorder_min_weeks?: number;
+  preorder_max_weeks?: number;
 }
 
 /** Convenience: may base products be added to collections + bundles? Defaults to

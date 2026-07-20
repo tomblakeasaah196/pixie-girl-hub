@@ -228,6 +228,42 @@ function fulfilmentPanel({ isPickup, order, settings, accent }) {
  * Compose the confirmation letter for a brand + order + recipient.
  * @returns {{subject:string, html:string, text:string}}
  */
+/** Pre-order production window block (000086) — shown instead of the normal
+ *  delivery ETA when the order carries a made-to-order line. */
+function preorderNoticeBlock(order, accent) {
+  const min = order.preorder_min_weeks;
+  const max = order.preorder_max_weeks;
+  const win =
+    min && max && min !== max
+      ? `${min}–${max} weeks`
+      : max || min
+        ? `${max || min} weeks`
+        : null;
+  let by = null;
+  if (order.preorder_ready_by) {
+    const d = new Date(`${order.preorder_ready_by}T00:00:00Z`);
+    if (!Number.isNaN(d.getTime())) {
+      by = d.toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      });
+    }
+  }
+  return [
+    T.eyebrow("Pre-order · made to order"),
+    T.paragraph(
+      `Some of your items are crafted to order. ${
+        win
+          ? `They ship in about <strong style="color:${accent}">${win}</strong>`
+          : "They are going into production"
+      }${
+        by ? ` — expected ready by <strong>${esc(by)}</strong>` : ""
+      }. We'll keep you updated at every step as your piece is made.`,
+    ),
+  ].join("");
+}
+
 function buildOrderConfirmationEmail({
   brandTokens,
   order,
@@ -236,6 +272,7 @@ function buildOrderConfirmationEmail({
   settings,
   copyEmail = {},
 }) {
+  const isPreorder = Boolean(order.is_preorder);
   const name = (firstName || "").trim();
   const brandName = brandTokens.brand_name || "our atelier";
   const accent = brandTokens.brand_color || "#690909";
@@ -261,7 +298,7 @@ function buildOrderConfirmationEmail({
       )}</strong>`;
 
   const content = [
-    T.eyebrow("Payment confirmed"),
+    T.eyebrow(isPreorder ? "Pre-order confirmed" : "Payment confirmed"),
     T.heading(`${greeting} — your order is on its way to being made real.`),
     introBlock,
     T.paragraph(
@@ -277,8 +314,11 @@ function buildOrderConfirmationEmail({
     orderTotals(order, accent),
     T.spacer(8),
     T.divider(),
-    // When to expect it (delivery ETA or pickup window) — Settings-driven.
-    fulfilmentPanel({ isPickup, order, settings, accent }),
+    // When to expect it. A pre-order shows the production window (000086);
+    // everything else shows the delivery ETA / pickup window (Settings-driven).
+    isPreorder
+      ? preorderNoticeBlock(order, accent)
+      : fulfilmentPanel({ isPickup, order, settings, accent }),
     T.spacer(18),
     T.paragraph(
       `If anything at all isn't perfect, simply reply to this email${
@@ -299,7 +339,9 @@ function buildOrderConfirmationEmail({
 
   const html = emailRender.renderStr(
     T.wrapEmail({
-      preheader: `Payment received — your ${brandName} order ${order.order_number} is confirmed.`,
+      preheader: isPreorder
+        ? `Pre-order confirmed — your ${brandName} order ${order.order_number} is being made.`
+        : `Payment received — your ${brandName} order ${order.order_number} is confirmed.`,
       content,
     }),
     {
@@ -310,7 +352,9 @@ function buildOrderConfirmationEmail({
   );
 
   return {
-    subject: `Payment confirmed — your ${brandName} order ${order.order_number} 🌹`,
+    subject: isPreorder
+      ? `Pre-order confirmed — your ${brandName} order ${order.order_number} 🌹`
+      : `Payment confirmed — your ${brandName} order ${order.order_number} 🌹`,
     html,
     text: T.toPlainText(html),
   };

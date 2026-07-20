@@ -582,6 +582,7 @@ async function createOrderTx({ brand, user, request_id, input }) {
       },
     });
 
+    const insertedLines = [];
     for (const lr of lineRows) {
       // Strip the internal helper field before persisting — it is not a DB column.
       const { _campaign_resolve_discount_ngn, ...lineForDb } = lr;
@@ -590,6 +591,7 @@ async function createOrderTx({ brand, user, request_id, input }) {
         brand,
         line: { ...lineForDb, order_id: order.order_id },
       });
+      insertedLines.push(line);
       // Per-line campaign discount row: record only the resolveDiscount share
       // (percentage / fixed / price-override). Order-level discounts (coupon,
       // points, bundle, deal-ladder) each have their own breakdown rows below,
@@ -770,13 +772,38 @@ async function createOrderTx({ brand, user, request_id, input }) {
     // back just that savepoint (the transaction stays healthy) and record the
     // line as a PRE-ORDER. We accept pre-orders, so checkout never fails on
     // stock — the buyer is told the item ships on the pre-order timeline.
+    //
+    // Universal pre-orders (000086): a stock-short line is recorded as a
+    // PRE-ORDER and the buyer is told it ships on the production window
+    // (Catalogue → Config, default 4–8 weeks). The only time a stock-short line
+    // BLOCKS the sale is when pre-orders are switched off for the brand, or that
+    // specific product is opted out (preorder_excluded) — a genuine "sold out".
+    const preorderPolicy = await repo.getPreorderPolicy({ client, brand });
+    const excludedPreorder = await repo.excludedPreorderProductIds({
+      client,
+      brand,
+      product_ids: insertedLines.map((l) => l.product_id),
+    });
+    const preorderAllowed = (line) =>
+      preorderPolicy.enabled && !excludedPreorder.has(line.product_id);
+    const blockSoldOut = (line) => {
+      throw new AppError(
+        "OUT_OF_STOCK",
+        `stock short and pre-order unavailable (variant ${line.variant_id})`,
+        409,
+        {
+          user_message: `${line.product_name_snapshot || "This item"} is out of stock.`,
+        },
+      );
+    };
     const preorderLines = [];
     {
       const loc = await stockRepo.getDefaultLocation({ client, brand });
-      for (const lr of lineRows) {
-        if (!lr.variant_id) continue;
+      for (const line of insertedLines) {
+        if (!line.variant_id) continue;
         if (!loc) {
-          preorderLines.push(lr);
+          if (!preorderAllowed(line)) blockSoldOut(line);
+          preorderLines.push(line);
           continue;
         }
         await client.query("SAVEPOINT pgh_reserve");
@@ -784,9 +811,9 @@ async function createOrderTx({ brand, user, request_id, input }) {
           await stockService.reserveForOrder({
             client,
             brand,
-            variant_id: lr.variant_id,
+            variant_id: line.variant_id,
             location_id: loc.location_id,
-            quantity: lr.quantity,
+            quantity: line.quantity,
             reference_id: order.order_id,
             user_id: user.user_id,
           });
@@ -794,24 +821,64 @@ async function createOrderTx({ brand, user, request_id, input }) {
         } catch (err) {
           await client.query("ROLLBACK TO SAVEPOINT pgh_reserve");
           await client.query("RELEASE SAVEPOINT pgh_reserve").catch(() => {});
-          preorderLines.push(lr);
+          if (!preorderAllowed(line)) blockSoldOut(line);
+          preorderLines.push(line);
           logger.info(
             {
               err: err.message,
               order_id: order.order_id,
-              variant_id: lr.variant_id,
+              variant_id: line.variant_id,
             },
             "stock short — line recorded as pre-order",
           );
         }
       }
     }
+
+    // Persist pre-order state (order + lines) so the Sales → Pre-orders tab,
+    // the invoice and the confirmation email read it back. Deadline = placement
+    // + the max production weeks. `preorderInfo` is also threaded to the caller.
+    let preorderInfo = null;
     if (preorderLines.length) {
-      notices.push({
-        code: "PREORDER_ITEMS",
-        message:
-          "Some items in your order are pre-order and will ship on the pre-order timeline.",
+      const weeks = preorderPolicy.max_weeks || preorderPolicy.min_weeks || 0;
+      const readyBy = weeks
+        ? new Date(Date.now() + weeks * 7 * 86_400_000)
+            .toISOString()
+            .slice(0, 10)
+        : null;
+      const windowLabel =
+        preorderPolicy.min_weeks &&
+        preorderPolicy.max_weeks &&
+        preorderPolicy.min_weeks !== preorderPolicy.max_weeks
+          ? `${preorderPolicy.min_weeks}–${preorderPolicy.max_weeks} weeks`
+          : `${weeks} week${weeks === 1 ? "" : "s"}`;
+      await repo.markOrderPreorder({
+        client,
+        brand,
+        order_id: order.order_id,
+        ready_by: readyBy,
+        min_weeks: preorderPolicy.min_weeks,
+        max_weeks: preorderPolicy.max_weeks,
       });
+      await repo.markLinesPreorder({
+        client,
+        brand,
+        line_ids: preorderLines.map((l) => l.line_id),
+      });
+      preorderInfo = {
+        is_preorder: true,
+        line_count: preorderLines.length,
+        variant_ids: preorderLines.map((l) => l.variant_id),
+        names: preorderLines
+          .map((l) => l.product_name_snapshot)
+          .filter(Boolean),
+        min_weeks: preorderPolicy.min_weeks,
+        max_weeks: preorderPolicy.max_weeks,
+        ready_by: readyBy,
+        window_label: windowLabel,
+        message: `Some items are made to order — your pre-order ships in about ${windowLabel}.`,
+      };
+      notices.push({ code: "PREORDER_ITEMS", message: preorderInfo.message });
     }
 
     await audit({
@@ -841,19 +908,17 @@ async function createOrderTx({ brand, user, request_id, input }) {
     // Thread soft notices + pre-order detail back to the caller (public
     // checkout) without persisting them on the row. Non-enumerable so they
     // never leak into JSON serialisation of the order itself.
-    if (finalOrder && (notices.length || preorderLines.length)) {
+    if (finalOrder && (notices.length || preorderInfo)) {
       Object.defineProperty(finalOrder, "_notices", {
         value: notices,
         enumerable: false,
       });
       Object.defineProperty(finalOrder, "_preorder", {
-        value: {
-          is_preorder: preorderLines.length > 0,
-          line_count: preorderLines.length,
-          variant_ids: preorderLines.map((l) => l.variant_id),
-          names: preorderLines
-            .map((l) => l.product_name_snapshot)
-            .filter(Boolean),
+        value: preorderInfo || {
+          is_preorder: false,
+          line_count: 0,
+          variant_ids: [],
+          names: [],
         },
         enumerable: false,
       });

@@ -15,6 +15,7 @@ const repo = require("./storefront.repo");
 // size tiers / lace ladder / size-guide config come from the same module.
 const styledRepo = require("../catalogue/styled.repo");
 const styledVariantsRepo = require("../catalogue/styled_variants.repo");
+const { computeAvailability } = require("../catalogue/availability");
 const salesService = require("../sales/sales.service");
 const bundleRepo = require("../retention/bundle.repo");
 const bundleService = require("../retention/bundle.service");
@@ -124,8 +125,37 @@ function colourVideos(colours) {
 }
 
 // ── Catalogue ──────────────────────────────────────────────
-function listProducts(args) {
-  return repo.listProducts(args);
+async function listProducts(args) {
+  const [result, cfg] = await Promise.all([
+    repo.listProducts(args),
+    styledVariantsRepo.getConfig({ brand: args.brand }),
+  ]);
+  const policy = {
+    enabled: cfg ? cfg.preorder_enabled : true,
+    min_weeks: cfg ? cfg.preorder_min_weeks : 4,
+    max_weeks: cfg ? cfg.preorder_max_weeks : 8,
+  };
+  // Enrich each card with its in-stock / pre-order / sold-out state, then drop
+  // the raw base columns the card query carried only to compute it.
+  const data = (result.data || []).map((row) => {
+    const availability = computeAvailability(row.base_available, {
+      base: {
+        preorder_enabled: row.preorder_enabled,
+        preorder_excluded: row.preorder_excluded,
+        expected_ready_date: row.expected_ready_date,
+        production_lead_days: row.production_lead_days,
+      },
+      policy,
+    });
+    const card = { ...row, availability };
+    delete card.base_available;
+    delete card.preorder_enabled;
+    delete card.preorder_excluded;
+    delete card.expected_ready_date;
+    delete card.production_lead_days;
+    return card;
+  });
+  return { ...result, data };
 }
 
 /**
@@ -143,7 +173,7 @@ async function getProduct({ brand, slug }) {
     throw new NotFoundError("Product");
   }
 
-  const [allVariants, gallery, colours, tiers, laces, cfg, socialProof, videos, relatedProducts] =
+  const [allVariants, gallery, colours, tiers, laces, cfg, socialProof, videos, relatedProducts, baseAvailable] =
     await Promise.all([
       styledVariantsRepo.listVariants({ brand, styled_id }),
       repo.listStyledGallery({ brand, styled_id }),
@@ -159,7 +189,29 @@ async function getProduct({ brand, slug }) {
         category_id: styled.category_id,
         exclude_styled_id: styled_id,
       }),
+      styledRepo.baseAvailability({
+        brand,
+        base_product_id: styled.base_product_id,
+        base_variant_id: styled.base_variant_id,
+      }),
     ]);
+
+  // In stock / pre-order / sold out (000086). Universal pre-orders: an
+  // out-of-stock item is offered as a pre-order on the brand's production
+  // window (Catalogue → Config) unless the product is opted out.
+  const availability = computeAvailability(baseAvailable, {
+    base: {
+      preorder_enabled: styled.preorder_enabled,
+      preorder_excluded: styled.preorder_excluded,
+      expected_ready_date: styled.expected_ready_date,
+      production_lead_days: styled.production_lead_days,
+    },
+    policy: {
+      enabled: cfg ? cfg.preorder_enabled : true,
+      min_weeks: cfg ? cfg.preorder_min_weeks : 4,
+      max_weeks: cfg ? cfg.preorder_max_weeks : 8,
+    },
+  });
 
   // Show ONLY variants a buyer can actually purchase — the same is_active +
   // is_deleted gate add-to-cart applies (listVariants already drops is_deleted).
@@ -181,6 +233,7 @@ async function getProduct({ brand, slug }) {
     slug: styled.slug,
     short_description: styled.short_description,
     long_description: styled.long_description,
+    availability,
     retail_price_ngn: styled.retail_price_ngn,
     retail_price_usd: styled.retail_price_usd,
     anchor_price_ngn: styled.retail_price_ngn,
@@ -608,6 +661,12 @@ async function submitOrderForm({ brand, input, request_id }) {
       public_tracking_token: (order && order.public_tracking_token) || null,
       contact_id: contact.contact_id,
       booking_count: bookings.length,
+      // Pre-order notice threaded off the created order (000086) so the /o
+      // order-link page can tell the buyer some items are made to order.
+      preorder:
+        order && order._preorder && order._preorder.is_preorder
+          ? order._preorder
+          : null,
     };
   });
 
@@ -1477,6 +1536,10 @@ async function checkout({ brand, cart_id, sessionCustomerId = null, input = {} }
     order_number: order.order_number,
     payment_url: payResult.checkout_url,
     public_tracking_token: order.public_tracking_token || null,
+    // Pre-order notice threaded off the created order (000086) so the website
+    // checkout + thank-you page can tell the buyer some items are made to order.
+    preorder:
+      order._preorder && order._preorder.is_preorder ? order._preorder : null,
     // Flexi Pay (PR-2): plan + balance summary so the thank-you page can show
     // the running balance and the permanent pay link.
     ...(order.payment_plan === "instalment"

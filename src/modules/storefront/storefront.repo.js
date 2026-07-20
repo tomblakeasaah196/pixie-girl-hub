@@ -53,13 +53,19 @@ async function getLiveStyledIdBySlug({ brand, slug }) {
 // product page can swap images on swatch select. Mirrors the rule the campaign
 // detail enforces. Display data only — no pricing.
 async function listStyledGallery({ brand, styled_id }) {
+  // Order so the owner's explicit "module primary" (styled_products
+  // .primary_image_id — the ⭐ star in the Catalogue) leads its colour, matching
+  // the module card / listing cover. Falls back to the per-image is_primary flag
+  // then display order, so nothing changes when no star is set.
   const { rows } = await query(
-    `SELECT image_id, styled_colour_id,
-            COALESCE(cdn_url, file_path) AS url,
-            alt_text, is_primary, display_order
-       FROM ${t(brand, "product_images")}
-      WHERE styled_id = $1
-      ORDER BY is_primary DESC, display_order ASC NULLS LAST`,
+    `SELECT pi.image_id, pi.styled_colour_id,
+            COALESCE(pi.cdn_url, pi.file_path) AS url,
+            pi.alt_text, pi.is_primary, pi.display_order
+       FROM ${t(brand, "product_images")} pi
+       JOIN ${t(brand, "styled_products")} s ON s.styled_id = pi.styled_id
+      WHERE pi.styled_id = $1
+      ORDER BY (pi.image_id = s.primary_image_id) DESC NULLS LAST,
+               pi.is_primary DESC, pi.display_order ASC NULLS LAST`,
     [styled_id],
   );
   return rows;

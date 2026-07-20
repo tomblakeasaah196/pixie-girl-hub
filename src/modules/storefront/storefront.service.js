@@ -33,6 +33,96 @@ const { config } = require("../../config/env");
 
 const SYSTEM_USER = { user_id: null };
 
+// ── Colour videos → gallery media ──────────────────────────
+// A colour can carry ONE merchandising video: a self-hosted upload
+// (styled_product_colours.video_url) or a link the owner pastes in the
+// Catalogue's "Video / Instagram link" box (external_video_url). The product
+// detail gallery renders the SAME shape as the base-level product_videos rows,
+// so we classify the pasted URL into that shape here. Same host regexes the
+// storefront/landing players already use; unrecognised links are dropped rather
+// than shown with a mislabeled play button.
+const YT_RE =
+  /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/;
+const IG_RE = /instagram\.com\/(?:reel|reels|p|tv)\/([A-Za-z0-9_-]+)/i;
+const TT_RE =
+  /tiktok\.com\/(?:@[^/]+\/video\/(\d+)|v\/(\d+)|t\/([A-Za-z0-9]+))/i;
+const VIDEO_FILE_RE = /\.(mp4|webm|mov|m4v|ogg)(\?.*)?$/i;
+
+/**
+ * Turn a raw pasted colour URL into the storefront gallery-video shape
+ * ({ source, external_ref, embed_url, thumbnail_url }), or null when it isn't a
+ * link we can render. `selfHosted` marks the video_url column — a playable file
+ * by contract — so it falls back to a native <video> (direct_upload) when it
+ * doesn't match a known host.
+ */
+function classifyColourVideo(rawUrl, { selfHosted = false } = {}) {
+  const url = String(rawUrl || "").trim();
+  if (!url) return null;
+
+  const yt = url.match(YT_RE);
+  if (yt) {
+    return {
+      source: "youtube",
+      external_ref: yt[1],
+      embed_url: url,
+      thumbnail_url: `https://i.ytimg.com/vi/${yt[1]}/hqdefault.jpg`,
+    };
+  }
+  const ig = url.match(IG_RE);
+  if (ig) {
+    return {
+      source: "instagram_reel",
+      external_ref: ig[1],
+      embed_url: url,
+      thumbnail_url: null,
+    };
+  }
+  const tt = url.match(TT_RE);
+  if (tt) {
+    return {
+      source: "tiktok",
+      external_ref: tt[1] || tt[2] || tt[3] || url,
+      embed_url: url,
+      thumbnail_url: null,
+    };
+  }
+  if (selfHosted || VIDEO_FILE_RE.test(url)) {
+    return {
+      source: "direct_upload",
+      external_ref: url,
+      embed_url: url,
+      thumbnail_url: null,
+    };
+  }
+  return null;
+}
+
+/**
+ * Build gallery-video rows for a product's colours. Each colour surfaces at most
+ * one video (its self-hosted upload wins over a pasted link), tagged with
+ * styled_colour_id so the detail page scopes it to the matching swatch — the
+ * same rule its pictures already follow.
+ */
+function colourVideos(colours) {
+  const out = [];
+  for (const c of colours || []) {
+    const item =
+      classifyColourVideo(c.video_url, { selfHosted: true }) ||
+      classifyColourVideo(c.external_video_url);
+    if (!item) continue;
+    out.push({
+      video_id: `colour:${c.colour_id}`,
+      styled_colour_id: c.colour_id,
+      title: c.name || null,
+      caption: null,
+      duration_seconds: null,
+      is_primary: false,
+      ...item,
+    });
+  }
+  return out;
+}
+
 // ── Catalogue ──────────────────────────────────────────────
 function listProducts(args) {
   return repo.listProducts(args);
@@ -166,19 +256,25 @@ async function getProduct({ brand, slug }) {
           author_handle: socialProof.oembed_author_handle,
         }
       : null,
-    // Media gallery videos (YouTube/Reels/TikTok/direct upload) — merchandised
-    // on the base product, shown on every styled skin built on it.
-    videos: videos.map((v) => ({
-      video_id: v.video_id,
-      source: v.source,
-      external_ref: v.external_ref,
-      embed_url: v.embed_url,
-      thumbnail_url: v.thumbnail_url,
-      title: v.title,
-      caption: v.caption,
-      duration_seconds: v.duration_seconds,
-      is_primary: v.is_primary,
-    })),
+    // Media gallery videos (YouTube/Reels/TikTok/direct upload). Two sources
+    // feed the rail: base-product videos (product_videos, merchandised once and
+    // shown on every styled skin — styled_colour_id null so they always show)
+    // and each colour's own pasted/uploaded video (scoped to its swatch).
+    videos: [
+      ...videos.map((v) => ({
+        video_id: v.video_id,
+        styled_colour_id: null,
+        source: v.source,
+        external_ref: v.external_ref,
+        embed_url: v.embed_url,
+        thumbnail_url: v.thumbnail_url,
+        title: v.title,
+        caption: v.caption,
+        duration_seconds: v.duration_seconds,
+        is_primary: v.is_primary,
+      })),
+      ...colourVideos(colours),
+    ],
     // "You May Also Love" — curated product_related, topped up from the same
     // category so the rail is never empty.
     related_products: relatedProducts.map((p) => ({

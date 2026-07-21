@@ -29,25 +29,36 @@ const NGN_FMT = "#,##0.00;[Red]-#,##0.00";
 const INT_FMT = "#,##0";
 const FX_FMT = "#,##0.0000";
 
-// PAID_STATES mirrors sales.service — the states that count as realised revenue.
-const PAID_STATES = new Set(["paid", "awaiting_dispatch", "completed"]);
+// PAID_STATES mirrors the order lifecycle SSOT (order-status.js REVENUE_STATES)
+// — the states that count as realised revenue.
+const PAID_STATES = new Set([
+  "paid",
+  "assigned",
+  "order_ready",
+  "dispatched",
+  "completed",
+]);
 
 const STATUS_LABELS = {
   draft: "Draft",
   pending_payment: "Pending Payment",
+  partially_paid: "Partially Paid",
   paid: "Paid",
-  awaiting_dispatch: "Awaiting Dispatch",
-  in_production: "In Production",
-  with_stylist: "With Stylist",
-  ready_for_dispatch: "Ready for Dispatch",
+  assigned: "Assigned",
+  order_ready: "Order Ready",
   dispatched: "Dispatched",
-  in_transit: "In Transit",
-  out_for_delivery: "Out for Delivery",
-  delivered: "Delivered",
   completed: "Completed",
   cancellation_requested: "Cancellation Requested",
   cancelled: "Cancelled",
   refunded: "Refunded",
+  // Legacy values (pre-lifecycle-collapse) kept so historical exports still label.
+  awaiting_dispatch: "Order Ready",
+  in_production: "Assigned",
+  with_stylist: "Assigned",
+  ready_for_dispatch: "Order Ready",
+  in_transit: "Dispatched",
+  out_for_delivery: "Dispatched",
+  delivered: "Completed",
   returned: "Returned",
   failed: "Failed",
 };

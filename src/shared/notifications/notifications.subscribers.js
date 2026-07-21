@@ -120,13 +120,16 @@ function register() {
   if (registered) return;
   registered = true;
   outbox.register("order.paid", "notifications", notifyRepOnSale);
+  // Customer order-confirmation fires at PLACEMENT (order.created), not on paid,
+  // so Pending/Partially-Paid orders are acknowledged immediately. The paid-time
+  // receipt is handled separately by invoicing on order.paid.
   outbox.register(
-    "order.paid",
+    "order.created",
     "customer-confirmation-email",
     sendCustomerConfirmation,
   );
   logger.info(
-    "notifications subscribers registered (outbox order.paid → rep + customer confirmation email/WhatsApp)",
+    "notifications subscribers registered (order.paid → rep notify; order.created → customer confirmation email/WhatsApp)",
   );
 }
 

@@ -9,10 +9,10 @@
 -- This file contains only CREATE INDEX statements (no tables).
 -- ============================================================
 
--- ── Dispatch queue: paid orders awaiting fulfilment ──────
+-- ── Dispatch queue: packed orders waiting for the courier ──────
 CREATE INDEX idx_{{BUSINESS}}_dispatch_queue
   ON {{BUSINESS}}.sales_orders (paid_at)
-  WHERE status = 'awaiting_dispatch'
+  WHERE status = 'order_ready'
     AND order_type = 'dispatch';
 
 -- ── Today's stock-out: variants with available <= 0 anywhere ──

@@ -26,7 +26,7 @@ const { NotFoundError } = require("../../utils/errors");
 // the lifecycle `status`. Kept in one place so the campaign-spend rollup and the
 // lifetime-spend promotion check can never drift apart.
 const PAID_ORDER_STATUSES =
-  "('paid','awaiting_dispatch','dispatched','completed')";
+  "('paid','assigned','order_ready','dispatched','completed')";
 
 /**
  * Compute the top-N spenders for a campaign + their order info, ready

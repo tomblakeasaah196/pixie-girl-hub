@@ -20,14 +20,9 @@ const { VALID_BRANDS, t } = require("../../config/brands");
 // Order statuses that count as recognised campaign revenue.
 const SOLD_STATUSES = [
   "paid",
-  "awaiting_dispatch",
-  "in_production",
-  "with_stylist",
-  "ready_for_dispatch",
+  "assigned",
+  "order_ready",
   "dispatched",
-  "in_transit",
-  "out_for_delivery",
-  "delivered",
   "completed",
 ];
 

@@ -27,6 +27,7 @@ import {
   useAddPayment,
   usePaymentSettings,
   useCancelOrder,
+  useSetOrderStatus,
   useOrderInvoice,
   useSendOrderInvoice,
   useOrderServiceJob,
@@ -38,7 +39,12 @@ import { useToastStore } from "@/components/notifications/NotificationToast";
 import { toastReport } from "@/lib/error-report";
 import { saveFileFromUrl } from "@/lib/api";
 import { formatDate, formatDateTime, money } from "@/lib/format";
-import { ORDER_STATUS, SALES_CHANNELS, fulfilmentLabel } from "./constants";
+import {
+  ORDER_STATUS,
+  ORDER_STATUS_FLOW,
+  SALES_CHANNELS,
+  fulfilmentLabel,
+} from "./constants";
 import type { OrderPayment, SalesOrder } from "./types";
 
 // ── Studio job status → friendly label + tone ────────────────
@@ -103,6 +109,7 @@ export function OrderDetail({
   const sendInvoice = useSendOrderInvoice(orderId);
   const createLink = useCreatePaymentLink(orderId ?? "");
   const cancelOrder = useCancelOrder();
+  const setStatus = useSetOrderStatus();
   const { data: paymentSettings } = usePaymentSettings();
   const navigate = useNavigate();
   const [payModalOpen, setPayModalOpen] = useState(false);
@@ -198,6 +205,23 @@ export function OrderDetail({
       fireToast("Order Cancelled", "The order has been cancelled.");
     } catch {
       fireToast("Cancel Failed", "Failed to cancel order.", "order", "high");
+    }
+  };
+
+  const handleMoveStatus = async (status: string) => {
+    if (!orderId || !status) return;
+    try {
+      await setStatus.mutateAsync({ id: orderId, status });
+      const label =
+        ORDER_STATUS[status as keyof typeof ORDER_STATUS]?.label ?? status;
+      fireToast("Status Updated", `Order moved to ${label}.`);
+    } catch {
+      fireToast(
+        "Update Failed",
+        "Couldn't move this order's status — is it paid yet?",
+        "order",
+        "high",
+      );
     }
   };
 
@@ -862,6 +886,32 @@ export function OrderDetail({
                 >
                   {receiptLoading ? "Generating…" : "Download Receipt"}
                 </Button>
+              )}
+              {/* Manual fulfilment-stage move (payment + cancel stay automatic). */}
+              {[
+                "partially_paid",
+                "paid",
+                "assigned",
+                "order_ready",
+                "dispatched",
+              ].includes(order.status) && (
+                <Select
+                  value=""
+                  onChange={handleMoveStatus}
+                  disabled={setStatus.isPending}
+                  className="w-[150px]"
+                  options={[
+                    { value: "", label: "Move to…" },
+                    ...ORDER_STATUS_FLOW.filter((s) =>
+                      [
+                        "assigned",
+                        "order_ready",
+                        "dispatched",
+                        "completed",
+                      ].includes(s),
+                    ).map((s) => ({ value: s, label: ORDER_STATUS[s].label })),
+                  ]}
+                />
               )}
               {order.status !== "cancelled" && order.status !== "completed" && (
                 <Button

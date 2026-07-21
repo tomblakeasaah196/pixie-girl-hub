@@ -25,12 +25,12 @@ async function salesKpis({ brand, from, to }) {
   const toExpr = to ? `$${params.push(to)}::timestamptz` : "now()";
   const { rows } = await query(
     `SELECT
-        count(*) FILTER (WHERE status IN ('paid','awaiting_dispatch','completed'))::int AS orders_mtd,
-        COALESCE(SUM(total_ngn) FILTER (WHERE status IN ('paid','awaiting_dispatch','completed')),0)::text AS revenue_mtd,
+        count(*) FILTER (WHERE status IN ('paid','assigned','order_ready','dispatched','completed'))::int AS orders_mtd,
+        COALESCE(SUM(total_ngn) FILTER (WHERE status IN ('paid','assigned','order_ready','dispatched','completed')),0)::text AS revenue_mtd,
         count(*) FILTER (WHERE status = 'pending_payment')::int AS pending_payment_count,
         COALESCE(ROUND(
-          SUM(total_ngn) FILTER (WHERE status IN ('paid','awaiting_dispatch','completed'))
-          / NULLIF(count(*) FILTER (WHERE status IN ('paid','awaiting_dispatch','completed')), 0)
+          SUM(total_ngn) FILTER (WHERE status IN ('paid','assigned','order_ready','dispatched','completed'))
+          / NULLIF(count(*) FILTER (WHERE status IN ('paid','assigned','order_ready','dispatched','completed')), 0)
         , 2), 0)::text AS avg_order_value
        FROM ${t(brand, "sales_orders")}
       WHERE COALESCE(placed_at, created_at) BETWEEN ${fromExpr} AND ${toExpr}`,

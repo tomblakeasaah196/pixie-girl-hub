@@ -238,6 +238,14 @@ const setDeliveryFee = z
   .object({ fee_ngn: z.coerce.number().nonnegative() })
   .strict();
 
+// Manual status move from the drawer — only the fulfilment stages are settable
+// here (payment + cancel states are automatic; the service rejects anything else).
+const orderStatusSet = z
+  .object({
+    status: z.enum(["assigned", "order_ready", "dispatched", "completed"]),
+  })
+  .strict();
+
 // Sales Report export — query params. from/to are inclusive 'YYYY-MM-DD' (both
 // optional; omitting both exports all orders). Unknown query keys are stripped.
 const reportExport = z.object({
@@ -270,6 +278,7 @@ module.exports = {
   validateCancellationRequest: mw(cancellationRequest),
   validateCancellationReview: mw(cancellationReview),
   validateSetDeliveryFee: mw(setDeliveryFee),
+  validateOrderStatusSet: mw(orderStatusSet),
   validateReportExport: mwQuery(reportExport),
   orderCreate,
   orderUpdate,

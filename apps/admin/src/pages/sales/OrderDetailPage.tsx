@@ -50,6 +50,7 @@ import {
   useOrderTimeline,
   useCreatePaymentLink,
   useCancelOrder,
+  useSetOrderStatus,
   useOrderInvoice,
   useSendOrderInvoice,
   useOrderServiceJob,
@@ -62,7 +63,12 @@ import { useToastStore } from "@/components/notifications/NotificationToast";
 import { toastReport } from "@/lib/error-report";
 import { saveFileFromUrl } from "@/lib/api";
 import { formatDate, formatDateTime } from "@/lib/format";
-import { ORDER_STATUS, SALES_CHANNELS, fulfilmentLabel } from "./constants";
+import {
+  ORDER_STATUS,
+  ORDER_STATUS_FLOW,
+  SALES_CHANNELS,
+  fulfilmentLabel,
+} from "./constants";
 import type { OrderPayment } from "./types";
 import { useJobReferences } from "@/pages/service-jobs/hooks";
 
@@ -132,7 +138,13 @@ function computeRisks(args: {
   if (!order) return [];
   const now = Date.now();
   const risks: RiskSignal[] = [];
-  const paidStates = new Set(["paid", "awaiting_dispatch", "completed"]);
+  const paidStates = new Set([
+    "paid",
+    "assigned",
+    "order_ready",
+    "dispatched",
+    "completed",
+  ]);
   const orderPaid = paidStates.has(order.status);
 
   if (order.status === "cancellation_requested") {
@@ -243,6 +255,7 @@ export function OrderDetailPage() {
   const sendInvoice = useSendOrderInvoice(orderId);
   const createLink = useCreatePaymentLink(orderId ?? "");
   const cancelOrder = useCancelOrder();
+  const setStatus = useSetOrderStatus();
 
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [receiptLoading, setReceiptLoading] = useState(false);
@@ -308,6 +321,23 @@ export function OrderDetailPage() {
         "Link Failed",
         "Failed to generate payment link.",
         "payment",
+        "high",
+      );
+    }
+  };
+
+  const handleMoveStatus = async (status: string) => {
+    if (!orderId || !status) return;
+    try {
+      await setStatus.mutateAsync({ id: orderId, status });
+      const label =
+        ORDER_STATUS[status as keyof typeof ORDER_STATUS]?.label ?? status;
+      fireToast("Status Updated", `Order moved to ${label}.`);
+    } catch {
+      fireToast(
+        "Update Failed",
+        "Couldn't move this order's status — is it paid yet?",
+        "order",
         "high",
       );
     }
@@ -625,6 +655,38 @@ export function OrderDetailPage() {
                 Logistics
               </Button>
             )}
+            {/* Manual fulfilment-stage move — staff can nudge a paid order
+                forward themselves (e.g. mark a walk-in Completed). Payment +
+                cancel states are automatic, so they're not offered here. */}
+            {order &&
+              [
+                "partially_paid",
+                "paid",
+                "assigned",
+                "order_ready",
+                "dispatched",
+              ].includes(order.status) && (
+                <Select
+                  value=""
+                  onChange={handleMoveStatus}
+                  disabled={setStatus.isPending}
+                  className="w-[150px]"
+                  options={[
+                    { value: "", label: "Move to…" },
+                    ...ORDER_STATUS_FLOW.filter((s) =>
+                      [
+                        "assigned",
+                        "order_ready",
+                        "dispatched",
+                        "completed",
+                      ].includes(s),
+                    ).map((s) => ({
+                      value: s,
+                      label: ORDER_STATUS[s].label,
+                    })),
+                  ]}
+                />
+              )}
             {order &&
               order.status !== "cancelled" &&
               order.status !== "completed" && (

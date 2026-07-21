@@ -13,17 +13,33 @@ interface StatusMeta {
 }
 
 export const ORDER_STATUS: Record<OrderStatus, StatusMeta> = {
-  draft: { label: "Draft", tone: "neutral" },
   pending_payment: { label: "Pending Payment", tone: "warn" },
+  partially_paid: { label: "Partially Paid", tone: "warn" },
   paid: { label: "Paid", tone: "success" },
-  in_production: { label: "In Production", tone: "info" },
-  awaiting_dispatch: { label: "Awaiting Dispatch", tone: "info" },
-  partially_fulfilled: { label: "Partially Fulfilled", tone: "warn" },
-  fulfilled: { label: "Fulfilled", tone: "success" },
+  assigned: { label: "Assigned", tone: "info" },
+  order_ready: { label: "Order Ready", tone: "info" },
+  dispatched: { label: "Dispatched", tone: "info" },
   completed: { label: "Completed", tone: "success" },
-  cancelled: { label: "Cancelled", tone: "danger" },
   cancellation_requested: { label: "Cancel Requested", tone: "danger" },
+  cancelled: { label: "Cancelled", tone: "danger" },
+  // Rare/legacy side-states.
+  draft: { label: "Draft", tone: "neutral" },
+  refunded: { label: "Refunded", tone: "danger" },
+  failed: { label: "Failed", tone: "danger" },
 };
+
+// The linear happy-path order, for the drawer's manual status stepper. Excludes
+// the side-states (draft/cancel/refunded/failed), which are reached via their
+// own actions, not by stepping forward.
+export const ORDER_STATUS_FLOW: OrderStatus[] = [
+  "pending_payment",
+  "partially_paid",
+  "paid",
+  "assigned",
+  "order_ready",
+  "dispatched",
+  "completed",
+];
 
 export const QUOTE_STATUS: Record<QuoteStatus, StatusMeta> = {
   draft: { label: "Draft", tone: "neutral" },

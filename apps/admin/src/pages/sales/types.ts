@@ -1,14 +1,18 @@
 export type OrderStatus =
-  | "draft"
   | "pending_payment"
+  | "partially_paid"
   | "paid"
-  | "in_production"
-  | "awaiting_dispatch"
-  | "partially_fulfilled"
-  | "fulfilled"
+  | "assigned"
+  | "order_ready"
+  | "dispatched"
   | "completed"
+  | "cancellation_requested"
   | "cancelled"
-  | "cancellation_requested";
+  // Rare/legacy side-states — never produced by the current flow, kept so old
+  // rows and refunds still render.
+  | "draft"
+  | "refunded"
+  | "failed";
 
 export type QuoteStatus =
   | "draft"

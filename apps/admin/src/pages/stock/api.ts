@@ -63,6 +63,18 @@ export const stockApi = {
     page_size?: number;
   }) => api.get<Paginated<StockMovement>>(`/stock/movements${qs(params)}`),
 
+  /** Download the WHOLE movement log as .xlsx (all rows, not the current page),
+   *  optionally filtered by type/location. Server-side + un-paginated. */
+  exportMovements: (params?: {
+    movement_type?: string;
+    location_id?: string;
+    variant_id?: string;
+  }) =>
+    api.download(
+      `/stock/movements/export${qs(params ?? {})}`,
+      "stock-movements.xlsx",
+    ),
+
   recordMovement: (input: Record<string, unknown>) =>
     api.post<StockMovement>("/stock/movements", input),
 

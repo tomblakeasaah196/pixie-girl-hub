@@ -260,6 +260,64 @@ async function exportOnHand({ brand }) {
   return buildWorkbook({ sheets });
 }
 
+const MOVEMENT_COLUMNS = [
+  { header: "Date", key: "date", width: 20 },
+  { header: "Movement #", key: "movement_number", width: 18 },
+  { header: "Type", key: "movement_type", width: 16 },
+  { header: "Product", key: "product_name", width: 40 },
+  { header: "Variant", key: "variant_name", width: 22 },
+  { header: "SKU", key: "sku", width: 16 },
+  { header: "Location", key: "location_name", width: 24 },
+  { header: "Qty", key: "quantity", width: 8 },
+  { header: "Unit cost (NGN)", key: "unit_cost_ngn", width: 16 },
+  { header: "Channel", key: "sales_channel", width: 14 },
+  { header: "Reference", key: "reference", width: 22 },
+  { header: "Notes", key: "notes", width: 30 },
+  { header: "Performed by", key: "performed_by_email", width: 26 },
+];
+
+// dd/mm/yyyy HH:MM — matches the on-screen movement timestamps.
+function fmtTs(v) {
+  if (!v) return "";
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return String(v);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/**
+ * ALL stock movements as a single-sheet .xlsx — the complete log, never a
+ * page. Respects the Movements tab's type + location filters so a filtered
+ * view exports exactly what it shows (minus the client-only text search).
+ * Returns an .xlsx Buffer.
+ */
+async function exportMovements({ brand, filters = {} }) {
+  const rows = await repo.movementsForExport({ brand, filters });
+  const sheetRows = rows.map((r) => ({
+    date: fmtTs(r.performed_at),
+    movement_number: r.movement_number || "",
+    movement_type: r.movement_type || "",
+    product_name: r.product_name || "",
+    variant_name: r.variant_name || "",
+    sku: r.sku || "",
+    location_name: r.location_name || "",
+    quantity: Number(r.quantity) || 0,
+    unit_cost_ngn:
+      r.unit_cost_ngn === null || r.unit_cost_ngn === undefined
+        ? ""
+        : Number(r.unit_cost_ngn),
+    sales_channel: r.sales_channel || "",
+    reference: r.reference_id
+      ? `${r.reference_type || "ref"}:${r.reference_id}`
+      : "",
+    notes: r.notes || "",
+    performed_by_email: r.performed_by_email || "",
+  }));
+  return buildWorkbook({
+    sheets: [{ name: "Movements", columns: MOVEMENT_COLUMNS, rows: sheetRows }],
+  });
+}
+
 // Levels
 function listLevels({ brand, variant_id, location_id, page, page_size }) {
   const offset = (page - 1) * page_size;
@@ -1188,6 +1246,7 @@ module.exports = {
   updateLocation,
   valuation,
   exportOnHand,
+  exportMovements,
   listLevels,
   variantStock,
   listMovements,

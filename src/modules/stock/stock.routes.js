@@ -38,6 +38,7 @@ router.get("/levels", can("view"), c.listLevels);
 router.get("/levels/variant/:variantId", can("view"), c.variantStock);
 
 // Movements (the only write path to stock quantity)
+router.get("/movements/export", can("view"), c.exportMovements);
 router.get("/movements", can("view"), c.listMovements);
 router.post(
   "/movements",

@@ -248,6 +248,48 @@ async function listMovements({
     },
   };
 }
+
+/**
+ * Every movement matching the filters — UN-PAGINATED — for the .xlsx export.
+ * Mirrors listMovements' joins (SKU, variant, product) and adds the location
+ * name + the performer, so the exported log is self-contained. Supports the
+ * same filters the Movements tab exposes (type + location), newest first.
+ */
+async function movementsForExport({ client, brand, filters = {} }) {
+  const where = [];
+  const params = [];
+  let i = 1;
+  if (filters.movement_type) {
+    where.push(`sm.movement_type = $${i++}`);
+    params.push(filters.movement_type);
+  }
+  if (filters.location_id) {
+    where.push(`sm.location_id = $${i++}`);
+    params.push(filters.location_id);
+  }
+  if (filters.variant_id) {
+    where.push(`sm.variant_id = $${i++}`);
+    params.push(filters.variant_id);
+  }
+  const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const { rows } = await ex(client)(
+    `SELECT sm.movement_number, sm.performed_at, sm.movement_type,
+            sm.quantity, sm.unit_cost_ngn, sm.sales_channel,
+            sm.reference_type, sm.reference_id, sm.notes,
+            pv.sku, pv.variant_name, p.name AS product_name,
+            loc.display_name AS location_name,
+            u.email AS performed_by_email
+       FROM ${t(brand, "stock_movements")} sm
+       LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sm.variant_id
+       LEFT JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
+       LEFT JOIN ${t(brand, "stock_locations")} loc ON loc.location_id = sm.location_id
+       LEFT JOIN shared.users u ON u.user_id = sm.performed_by
+       ${w} ORDER BY sm.performed_at DESC`,
+    params,
+  );
+  return rows;
+}
+
 async function recordMovement({ client, brand, input, user_id }) {
   const movement_number = await nextMovementNumber({ client, brand });
   const { f, ph, p } = ins(MOV, input, {
@@ -935,6 +977,7 @@ module.exports = {
   nextDocNumber,
   defaultVariantForProduct,
   listMovements,
+  movementsForExport,
   recordMovement,
   lockVariantCosting,
   updateVariantCosting,

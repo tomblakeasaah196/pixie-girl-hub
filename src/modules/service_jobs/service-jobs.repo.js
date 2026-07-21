@@ -70,6 +70,18 @@ async function getDefaultServiceType({ client, brand }) {
   );
   return rows[0] || null;
 }
+// Resolve a specific active service type by its stable key (e.g. 'styling',
+// 'installation'). Used to open styled-product jobs as Styling rather than the
+// arbitrary display_order=1 default. Returns null when the brand has no such
+// (active) type — callers fall back to the brand default.
+async function getServiceTypeByKey({ client, brand, key }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM ${t(brand, "service_types")}
+      WHERE service_key = $1 AND is_active = true LIMIT 1`,
+    [key],
+  );
+  return rows[0] || null;
+}
 async function findServiceType({ client, brand, id }) {
   const { rows } = await ex(client)(
     `SELECT * FROM ${t(brand, "service_types")} WHERE service_type_id = $1`,
@@ -1163,6 +1175,7 @@ module.exports = {
   listStylistScorecards,
   getStylistScorecard,
   getDefaultServiceType,
+  getServiceTypeByKey,
   findServiceType,
   createServiceType,
   updateServiceType,

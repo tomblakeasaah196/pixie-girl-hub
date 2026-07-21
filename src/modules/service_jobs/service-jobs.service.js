@@ -462,18 +462,34 @@ async function createForOrder({ brand, order }) {
     const dna = line.styled_id
       ? await repo.getStyledDNA({ client, brand, styled_id: line.styled_id })
       : null;
-    const service_type_id =
-      (dna && dna.default_service_type_id) || (st && st.service_type_id);
+    // Service type. A styled-product sale IS styling work by definition, so its
+    // job opens as Styling — never the arbitrary display_order=1 default (which
+    // is Installation: getDefaultServiceType returns the first active type and
+    // 'installation' seeds at display_order=1). Genuine service lines
+    // (styled_id NULL) keep the brand default, unchanged.
+    //
+    // Per-style service types (styled_products.default_service_type_id) are
+    // intentionally NOT honoured here — every styled sale is Styling. To support
+    // per-style types later, prefer dna.default_service_type_id ahead of the
+    // styling lookup.
+    const stylingType = line.styled_id
+      ? await repo.getServiceTypeByKey({ client, brand, key: "styling" })
+      : null;
+    // The type actually used: Styling for a styled line, else the brand default.
+    const serviceType = stylingType || st;
+    const service_type_id = serviceType && serviceType.service_type_id;
     if (!service_type_id) return null; // brand runs no styling services (e.g. PXG)
     // Pricing: styled = already paid (use the styled add-on as the internal
     // figure); service line = the line's own price; else the service-type cost.
     const agreed = dna
-      ? (dna.style_addon_price_ngn ?? (st ? st.standard_cost_ngn : 0))
-      : (line.unit_price_ngn ?? (st ? st.standard_cost_ngn : 0));
+      ? (dna.style_addon_price_ngn ??
+        (serviceType ? serviceType.standard_cost_ngn : 0))
+      : (line.unit_price_ngn ??
+        (serviceType ? serviceType.standard_cost_ngn : 0));
     // Turnaround → expected completion + SLA clock.
     const turnaround =
       (dna && dna.standard_turnaround_days) ||
-      (st && st.standard_turnaround_days) ||
+      (serviceType && serviceType.standard_turnaround_days) ||
       null;
     const expected = turnaround
       ? new Date(Date.now() + turnaround * 86400000).toISOString()

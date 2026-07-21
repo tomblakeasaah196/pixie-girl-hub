@@ -50,6 +50,11 @@ export const stockApi = {
   variantStock: (variantId: string) =>
     api.get<StockLevel[]>(`/stock/levels/variant/${variantId}`),
 
+  /** Download the full stock-on-hand snapshot .xlsx (All Locations summary +
+   *  one sheet per location). Server-side + un-paginated, so it is the whole
+   *  tracked catalogue in one file. Filename comes from the response header. */
+  exportOnHand: () => api.download("/stock/export", "stock-on-hand.xlsx"),
+
   listMovements: (params: {
     variant_id?: string;
     movement_type?: string;

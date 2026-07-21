@@ -49,6 +49,21 @@ const valuation = async (req, res) =>
       product_id: req.query.product_id,
     }),
   });
+
+// Full stock-on-hand snapshot as .xlsx (All Locations + one sheet per location).
+async function exportOnHand(req, res) {
+  const buffer = await service.exportOnHand({ brand: req.brand });
+  const date = new Date().toISOString().slice(0, 10);
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="stock-on-hand-${req.brand}-${date}.xlsx"`,
+  );
+  res.send(buffer);
+}
 const variantStock = async (req, res) =>
   res.json({
     data: await service.variantStock({
@@ -245,6 +260,7 @@ module.exports = {
   createLocation,
   updateLocation,
   valuation,
+  exportOnHand,
   listLevels,
   variantStock,
   listMovements,

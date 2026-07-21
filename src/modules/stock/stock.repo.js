@@ -894,12 +894,38 @@ async function valuation({ client, brand, filters = {} }) {
   return { lines, summary: summary[0] };
 }
 
+/**
+ * Full stock-on-hand snapshot — ONE un-paginated row per variant × location,
+ * with the product/variant/location names, on-hand/reserved/available and the
+ * variant's unit cost + line value. This is the source for the .xlsx export
+ * (the "export my total stock" file); unlike listLevels it is never paginated,
+ * so every tracked SKU is present. Ordered for a readable stocktake.
+ */
+async function onHandSnapshot({ client, brand }) {
+  const { rows } = await ex(client)(
+    `SELECT sl.variant_id, sl.location_id,
+            loc.display_name AS location_name,
+            p.product_id, p.name AS product_name, p.product_code,
+            pv.sku, pv.variant_name,
+            sl.on_hand, sl.reserved, sl.available,
+            COALESCE(pv.cost_price_ngn, 0) AS unit_cost_ngn,
+            (sl.on_hand * COALESCE(pv.cost_price_ngn, 0))::numeric(14,2) AS value_ngn
+       FROM ${t(brand, "stock_levels")} sl
+       JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sl.variant_id
+       JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
+       JOIN ${t(brand, "stock_locations")} loc ON loc.location_id = sl.location_id
+      ORDER BY loc.display_name ASC, p.name ASC, pv.sku ASC`,
+  );
+  return rows;
+}
+
 module.exports = {
   listLocations,
   getDefaultLocation,
   createLocation,
   updateLocation,
   valuation,
+  onHandSnapshot,
   listLevels,
   levelsForVariant,
   seedLevel,

@@ -16,6 +16,7 @@ const costing = require("./stock.costing");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { NotFoundError, AppError } = require("../../utils/errors");
+const { buildWorkbook } = require("../../services/spreadsheet.service");
 
 // GL treatment per movement type (policies Q5/Q6). 'sale' is EXCLUDED —
 // the order.paid sale journal owns COGS/inventory relief for sales.
@@ -151,6 +152,112 @@ function valuation({ brand, location_id, variant_id, product_id }) {
     brand,
     filters: { location_id, variant_id, product_id },
   });
+}
+
+// Excel sheet names: ≤31 chars, none of : \ / ? * [ ]; non-blank; unique.
+function sheetName(raw, used) {
+  let name = String(raw || "Location")
+    .replace(/[:\\/?*[\]]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 31);
+  if (!name) name = "Location";
+  let candidate = name;
+  let n = 2;
+  while (used.has(candidate.toLowerCase())) {
+    const suffix = ` (${n++})`;
+    candidate = `${name.slice(0, 31 - suffix.length)}${suffix}`;
+  }
+  used.add(candidate.toLowerCase());
+  return candidate;
+}
+
+const SNAPSHOT_COLUMNS = [
+  { header: "Product", key: "product_name", width: 40 },
+  { header: "Variant", key: "variant_name", width: 26 },
+  { header: "SKU", key: "sku", width: 16 },
+  { header: "On hand", key: "on_hand", width: 10 },
+  { header: "Reserved", key: "reserved", width: 10 },
+  { header: "Available", key: "available", width: 10 },
+  { header: "Unit cost (NGN)", key: "unit_cost_ngn", width: 16 },
+  { header: "Value (NGN)", key: "value_ngn", width: 16 },
+];
+
+function toSheetRow(r) {
+  return {
+    product_name: r.product_name,
+    variant_name: r.variant_name || "",
+    sku: r.sku || "",
+    on_hand: Number(r.on_hand) || 0,
+    reserved: Number(r.reserved) || 0,
+    available: Number(r.available) || 0,
+    unit_cost_ngn: Number(r.unit_cost_ngn) || 0,
+    value_ngn: Number(r.value_ngn) || 0,
+  };
+}
+
+/**
+ * Build the stock-on-hand .xlsx: one "All Locations" summary sheet (each SKU
+ * once, quantities + value summed across locations) followed by one sheet per
+ * stock location. Un-paginated — the whole tracked catalogue in a single file.
+ * Returns an .xlsx Buffer.
+ */
+async function exportOnHand({ brand }) {
+  const rows = await repo.onHandSnapshot({ brand });
+
+  // Summary: collapse to one row per variant, summing across locations. Unit
+  // cost is per-variant (constant across locations), so it is carried, not
+  // summed; value re-sums so it reflects the summed on-hand.
+  const byVariant = new Map();
+  for (const r of rows) {
+    const key = r.variant_id;
+    const cur = byVariant.get(key) || {
+      product_name: r.product_name,
+      variant_name: r.variant_name,
+      sku: r.sku,
+      on_hand: 0,
+      reserved: 0,
+      available: 0,
+      unit_cost_ngn: Number(r.unit_cost_ngn) || 0,
+      value_ngn: 0,
+    };
+    cur.on_hand += Number(r.on_hand) || 0;
+    cur.reserved += Number(r.reserved) || 0;
+    cur.available += Number(r.available) || 0;
+    cur.value_ngn += Number(r.value_ngn) || 0;
+    byVariant.set(key, cur);
+  }
+  const summaryRows = [...byVariant.values()]
+    .sort(
+      (a, b) =>
+        String(a.product_name).localeCompare(String(b.product_name)) ||
+        String(a.sku).localeCompare(String(b.sku)),
+    )
+    .map(toSheetRow);
+
+  const sheets = [
+    { name: "All Locations", columns: SNAPSHOT_COLUMNS, rows: summaryRows },
+  ];
+
+  // One sheet per location, in the order locations first appear (rows are
+  // already ordered by location name).
+  const used = new Set(["all locations"]);
+  const byLocation = new Map();
+  for (const r of rows) {
+    if (!byLocation.has(r.location_id)) {
+      byLocation.set(r.location_id, { name: r.location_name, rows: [] });
+    }
+    byLocation.get(r.location_id).rows.push(toSheetRow(r));
+  }
+  for (const loc of byLocation.values()) {
+    sheets.push({
+      name: sheetName(loc.name, used),
+      columns: SNAPSHOT_COLUMNS,
+      rows: loc.rows,
+    });
+  }
+
+  return buildWorkbook({ sheets });
 }
 
 // Levels
@@ -1080,6 +1187,7 @@ module.exports = {
   createLocation,
   updateLocation,
   valuation,
+  exportOnHand,
   listLevels,
   variantStock,
   listMovements,

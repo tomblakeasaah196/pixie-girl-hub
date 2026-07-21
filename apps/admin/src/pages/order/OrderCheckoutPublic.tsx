@@ -552,6 +552,22 @@ export function OrderCheckoutPublic() {
       // tell the buyer some items are made to order (the gateway redirect below
       // usually navigates away first; this shows on the fallback confirmation).
       setPreorderInfo(result?.preorder ?? null);
+      // Parity with the storefront order-link (o.$slug): stash the pre-order
+      // notice so the page the buyer returns to after paying can greet them with
+      // it — this page redirects to the gateway (below) before the confirmation
+      // screen renders, so React state alone doesn't survive the round-trip.
+      // Covers both the primary and the /pay fallback redirect. Best-effort;
+      // storage may be unavailable (private mode / blocked).
+      if (result?.preorder?.is_preorder) {
+        try {
+          sessionStorage.setItem(
+            "pgh_preorder",
+            JSON.stringify(result.preorder),
+          );
+        } catch {
+          /* storage unavailable */
+        }
+      }
 
       // Straight to the payment gateway: the order-form mints the checkout
       // link server-side (buyer's gateway pick preferred) and returns it —

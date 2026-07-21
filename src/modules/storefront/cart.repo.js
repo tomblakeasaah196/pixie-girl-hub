@@ -244,7 +244,7 @@ async function styledVariantBaseAvailability({ client, brand, styled_variant_ids
                      ELSE pv.product_id = s.base_product_id AND pv.is_active = true
                 END
        ) av ON true
-      WHERE sv.styled_variant_id = ANY($1)`,
+      WHERE sv.styled_variant_id = ANY($1::uuid[])`,
     [styled_variant_ids],
   );
   return rows;
@@ -261,7 +261,7 @@ async function baseVariantAvailability({ client, brand, variant_ids }) {
        FROM ${t(brand, "product_variants")} pv
        JOIN ${t(brand, "products")} b ON b.product_id = pv.product_id
        LEFT JOIN ${t(brand, "stock_levels")} sl ON sl.variant_id = pv.variant_id
-      WHERE pv.variant_id = ANY($1)
+      WHERE pv.variant_id = ANY($1::uuid[])
       GROUP BY pv.variant_id, b.preorder_enabled, b.preorder_excluded,
                b.expected_ready_date, b.production_lead_days`,
     [variant_ids],
@@ -296,7 +296,7 @@ async function bundleComponentAvailability({ client, brand, bundle_ids }) {
                   ELSE pv.product_id = bp.product_id AND pv.is_active = true
                 END
        ) av ON true
-      WHERE bp.bundle_id = ANY($1)`,
+      WHERE bp.bundle_id = ANY($1::uuid[])`,
     [bundle_ids],
   );
   return rows;

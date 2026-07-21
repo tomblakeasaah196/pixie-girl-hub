@@ -177,44 +177,46 @@ async function attachAvailability(brand, cards, policy = null) {
 
 /**
  * Compute BUNDLE-level availability IN PLACE for one or more bundles (000086).
- * Each component resolves to its base (styled → base, else the raw base
- * product); the components' states reduce to a bundle badge via
- * reduceBundleAvailability — sold out if any piece is a hard sold-out,
- * pre-order on the longest window if any piece is made to order, else in stock.
- * Sets bundle.availability. Components with no resolvable styled/base are
- * ignored (they can't constrain what we can't price).
+ * Resolves each component's base availability through the SAME query the cart
+ * uses (cart.repo.bundleComponentAvailability), keyed by bundle_id — so the
+ * bundle list/detail page and the bag compute from IDENTICAL inputs. That query
+ * counts BOTH styled components (styled → base) AND raw base-product components
+ * (bundle_offer_products.product_id with a null styled_id), via COALESCE, so a
+ * bundle whose out-of-stock item is a raw base product no longer reads
+ * "in stock" on the page while the cart shows pre-order/sold-out (a real
+ * divergence once catalogue_config.allow_base_in_collections_bundles is on).
+ * The component states reduce to a bundle badge via reduceBundleAvailability —
+ * sold out if any piece is a hard sold-out, pre-order on the longest window if
+ * any piece is made to order, else in stock. Sets bundle.availability.
  */
 async function attachBundleAvailability(brand, bundles) {
   const list = (Array.isArray(bundles) ? bundles : [bundles]).filter(Boolean);
   if (!list.length) return bundles;
-  const styledIds = new Set();
-  for (const b of list) {
-    for (const comp of b.components || []) {
-      if (comp && comp.styled_id) styledIds.add(comp.styled_id);
-    }
-  }
+  const bundleIds = list.map((b) => b.bundle_id).filter(Boolean);
   const [rows, pol] = await Promise.all([
-    styledIds.size
-      ? repo.availabilityForStyled({ brand, styled_ids: [...styledIds] })
+    bundleIds.length
+      ? cartRepo.bundleComponentAvailability({ brand, bundle_ids: bundleIds })
       : Promise.resolve([]),
     preorderPolicy(brand),
   ]);
-  const byId = new Map(rows.map((r) => [r.styled_id, r]));
+  const byBundle = new Map();
+  for (const r of rows) {
+    const arr = byBundle.get(r.bundle_id) || [];
+    arr.push(r);
+    byBundle.set(r.bundle_id, arr);
+  }
   for (const b of list) {
-    const parts = (b.components || [])
-      .filter((c) => c && c.styled_id && byId.has(c.styled_id))
-      .map((c) => {
-        const base = byId.get(c.styled_id);
-        return computeAvailability(base.base_available, {
-          base: {
-            preorder_enabled: base.preorder_enabled,
-            preorder_excluded: base.preorder_excluded,
-            expected_ready_date: base.expected_ready_date,
-            production_lead_days: base.production_lead_days,
-          },
-          policy: pol,
-        });
-      });
+    const parts = (byBundle.get(b.bundle_id) || []).map((row) =>
+      computeAvailability(row.base_available, {
+        base: {
+          preorder_enabled: row.preorder_enabled,
+          preorder_excluded: row.preorder_excluded,
+          expected_ready_date: row.expected_ready_date,
+          production_lead_days: row.production_lead_days,
+        },
+        policy: pol,
+      }),
+    );
     b.availability = reduceBundleAvailability(parts);
   }
   return bundles;

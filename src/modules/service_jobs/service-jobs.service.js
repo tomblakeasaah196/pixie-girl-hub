@@ -442,123 +442,138 @@ async function recordOutcome({ brand, user, request_id, id, input }) {
 async function createForOrder({ brand, order }) {
   if (!order) return null;
   return transaction(async (client) => {
-    if (
-      await repo.serviceJobExistsForOrder({
-        client,
-        brand,
-        order_id: order.order_id,
-      })
-    )
-      return null;
-    // Only open a job when a line needs styling work.
-    const line = await repo.firstStudioLine({
+    // One service job per HAIR. Every styling line (styled or service) becomes
+    // `quantity` jobs — a line of qty 3 opens 3 independently-assignable jobs —
+    // so a multi-hair order can be split across several stylists. Idempotent
+    // per line: we only ever open the shortfall (want − already-open), so the
+    // deposit/paid subscribers and the backfill can all re-run without dupes.
+    const lines = await repo.allStudioLines({
       client,
       brand,
       order_id: order.order_id,
     });
-    if (!line) return null; // plain product order — nothing to style
-    const st = await repo.getDefaultServiceType({ client, brand });
-    // Inherit production DNA from the styled product when present.
-    const dna = line.styled_id
-      ? await repo.getStyledDNA({ client, brand, styled_id: line.styled_id })
-      : null;
-    // Service type. A styled-product sale IS styling work by definition, so its
-    // job opens as Styling — never the arbitrary display_order=1 default (which
-    // is Installation: getDefaultServiceType returns the first active type and
-    // 'installation' seeds at display_order=1). Genuine service lines
-    // (styled_id NULL) keep the brand default, unchanged.
-    //
-    // Per-style service types (styled_products.default_service_type_id) are
-    // intentionally NOT honoured here — every styled sale is Styling. To support
-    // per-style types later, prefer dna.default_service_type_id ahead of the
-    // styling lookup.
-    const stylingType = line.styled_id
-      ? await repo.getServiceTypeByKey({ client, brand, key: "styling" })
-      : null;
-    // The type actually used: Styling for a styled line, else the brand default.
-    const serviceType = stylingType || st;
-    const service_type_id = serviceType && serviceType.service_type_id;
-    if (!service_type_id) return null; // brand runs no styling services (e.g. PXG)
-    // Pricing: styled = already paid (use the styled add-on as the internal
-    // figure); service line = the line's own price; else the service-type cost.
-    const agreed = dna
-      ? (dna.style_addon_price_ngn ??
-        (serviceType ? serviceType.standard_cost_ngn : 0))
-      : (line.unit_price_ngn ??
-        (serviceType ? serviceType.standard_cost_ngn : 0));
-    // Turnaround → expected completion + SLA clock.
-    const turnaround =
-      (dna && dna.standard_turnaround_days) ||
-      (serviceType && serviceType.standard_turnaround_days) ||
-      null;
-    const expected = turnaround
-      ? new Date(Date.now() + turnaround * 86400000).toISOString()
-      : null;
-    const job_number = await repo.nextNumber({
-      client,
-      brand,
-      type: "service_job",
-    });
-    const job = await repo.createServiceJob({
-      client,
-      brand,
-      job: {
-        job_number,
-        service_type_id,
-        hair_variant_id:
-          line.variant_id || (dna && dna.base_variant_id) || null,
-        sales_order_id: order.order_id,
-        sales_order_line_id: line.line_id,
-        customer_contact_id: order.contact_id,
-        status: "pending",
-        recipe_id: (dna && dna.default_recipe_id) || null,
-        specification:
-          dna && dna.sop_steps ? { sop_steps: dna.sop_steps } : null,
-        expected_completion_at: expected,
-        agreed_cost_ngn: agreed,
-      },
-    });
-    // Stamp the columns createServiceJob doesn't take (styled provenance, the
-    // reserved base wig, and the promised-delivery SLA).
-    const stamp = {};
-    if (line.styled_id) stamp.styled_id = line.styled_id;
-    if (line.variant_id) stamp.reserved_variant_id = line.variant_id;
-    if (expected) stamp.sla_due_at = expected;
-    if (Object.keys(stamp).length)
-      await repo.setServiceJobStatus({
+    if (!lines.length) return null; // plain product order — nothing to style
+    const created = [];
+    for (const line of lines) {
+      const want = Math.max(1, Number(line.quantity) || 1);
+      const have = await repo.countJobsForLine({
         client,
         brand,
-        id: job.job_id,
-        status: "pending",
-        fields: stamp,
+        line_id: line.line_id,
       });
-    // Carry the customer's request from the order line straight onto the job
-    // as a locked brief, so the stylist opens the job already knowing what
-    // was asked for (no user — this is a system-opened job).
-    if (line.notes && line.notes.trim())
-      await addLockedBrief({
-        client,
-        brand,
-        job_id: job.job_id,
-        brief: { body: line.notes },
-        user: null,
-      });
-    await A(
+      for (let n = have; n < want; n++) {
+        const job = await openStudioJobForLine({ client, brand, order, line });
+        if (job) created.push(job);
+      }
+    }
+    return created.length ? created : null;
+  });
+}
+
+// Open one hair's service job from a single order line. Split out of
+// createForOrder so the first open and the per-unit fan-out share one path;
+// runs inside the caller's transaction. Returns null when the brand runs no
+// styling services (e.g. PXG), so the caller simply opens nothing for it.
+async function openStudioJobForLine({ client, brand, order, line }) {
+  const st = await repo.getDefaultServiceType({ client, brand });
+  // Inherit production DNA from the styled product when present.
+  const dna = line.styled_id
+    ? await repo.getStyledDNA({ client, brand, styled_id: line.styled_id })
+    : null;
+  // Service type. A styled-product sale IS styling work by definition, so its
+  // job opens as Styling — never the arbitrary display_order=1 default (which
+  // is Installation: getDefaultServiceType returns the first active type and
+  // 'installation' seeds at display_order=1). Genuine service lines
+  // (styled_id NULL) keep the brand default, unchanged.
+  //
+  // Per-style service types (styled_products.default_service_type_id) are
+  // intentionally NOT honoured here — every styled sale is Styling. To support
+  // per-style types later, prefer dna.default_service_type_id ahead of the
+  // styling lookup.
+  const stylingType = line.styled_id
+    ? await repo.getServiceTypeByKey({ client, brand, key: "styling" })
+    : null;
+  // The type actually used: Styling for a styled line, else the brand default.
+  const serviceType = stylingType || st;
+  const service_type_id = serviceType && serviceType.service_type_id;
+  if (!service_type_id) return null; // brand runs no styling services (e.g. PXG)
+  // Pricing is per hair: the styled add-on and the line unit price are already
+  // per-unit figures, so each hair's job takes the same amount (no division).
+  const agreed = dna
+    ? (dna.style_addon_price_ngn ??
+      (serviceType ? serviceType.standard_cost_ngn : 0))
+    : (line.unit_price_ngn ??
+      (serviceType ? serviceType.standard_cost_ngn : 0));
+  // Turnaround → expected completion + SLA clock.
+  const turnaround =
+    (dna && dna.standard_turnaround_days) ||
+    (serviceType && serviceType.standard_turnaround_days) ||
+    null;
+  const expected = turnaround
+    ? new Date(Date.now() + turnaround * 86400000).toISOString()
+    : null;
+  const job_number = await repo.nextNumber({
+    client,
+    brand,
+    type: "service_job",
+  });
+  const job = await repo.createServiceJob({
+    client,
+    brand,
+    job: {
+      job_number,
+      service_type_id,
+      hair_variant_id: line.variant_id || (dna && dna.base_variant_id) || null,
+      sales_order_id: order.order_id,
+      sales_order_line_id: line.line_id,
+      customer_contact_id: order.contact_id,
+      status: "pending",
+      recipe_id: (dna && dna.default_recipe_id) || null,
+      specification: dna && dna.sop_steps ? { sop_steps: dna.sop_steps } : null,
+      expected_completion_at: expected,
+      agreed_cost_ngn: agreed,
+    },
+  });
+  // Stamp the columns createServiceJob doesn't take (styled provenance, the
+  // reserved base wig, and the promised-delivery SLA).
+  const stamp = {};
+  if (line.styled_id) stamp.styled_id = line.styled_id;
+  if (line.variant_id) stamp.reserved_variant_id = line.variant_id;
+  if (expected) stamp.sla_due_at = expected;
+  if (Object.keys(stamp).length)
+    await repo.setServiceJobStatus({
+      client,
       brand,
-      null,
-      "service_jobs.from_order",
-      "service_job",
-      job.job_id,
-      { order_id: order.order_id, line_kind: line.line_kind },
-      null,
-    );
-    events.emit("created", {
+      id: job.job_id,
+      status: "pending",
+      fields: stamp,
+    });
+  // Carry the customer's request from the order line straight onto the job as a
+  // locked brief, so the stylist opens the job already knowing what was asked
+  // for (no user — this is a system-opened job).
+  if (line.notes && line.notes.trim())
+    await addLockedBrief({
+      client,
       brand,
       job_id: job.job_id,
-      order_id: order.order_id,
+      brief: { body: line.notes },
+      user: null,
     });
-    return job;
+  await A(
+    brand,
+    null,
+    "service_jobs.from_order",
+    "service_job",
+    job.job_id,
+    { order_id: order.order_id, line_kind: line.line_kind },
+    null,
+  );
+  events.emit("created", {
+    brand,
+    job_id: job.job_id,
+    order_id: order.order_id,
   });
+  return job;
 }
 
 // ── Chemical recipes (F-7c) ────────────────────────────────

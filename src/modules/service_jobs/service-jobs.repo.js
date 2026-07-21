@@ -696,6 +696,27 @@ async function firstStudioLine({ client, brand, order_id }) {
   );
   return rows[0] || null;
 }
+// Every styling line on an order (styled or service), in display order —
+// createForOrder fans each out into `quantity` hair-jobs.
+async function allStudioLines({ client, brand, order_id }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM ${t(brand, "sales_order_lines")}
+      WHERE order_id = $1 AND line_kind IN ('styled','service')
+      ORDER BY display_order, line_id`,
+    [order_id],
+  );
+  return rows;
+}
+// How many service jobs already exist for one order line — the per-line
+// idempotency count so createForOrder only opens the missing hairs.
+async function countJobsForLine({ client, brand, line_id }) {
+  const { rows } = await ex(client)(
+    `SELECT COUNT(*)::int AS n FROM ${t(brand, "service_jobs")}
+      WHERE sales_order_line_id = $1`,
+    [line_id],
+  );
+  return rows[0] ? rows[0].n : 0;
+}
 
 // ── time sessions ──────────────────────────────────────────
 async function getOpenTimeSession({ client, brand, job_id }) {
@@ -1195,6 +1216,8 @@ module.exports = {
   getStyledDNA,
   listStyledBom,
   firstStudioLine,
+  allStudioLines,
+  countJobsForLine,
   getOpenTimeSession,
   getUsersOpenSession,
   openTimeSession,

@@ -5,9 +5,10 @@
  *   • `order.paid`        — fully-paid order (no deposit gate); the common path
  *                           for storefront + walk-in campaigns.
  * Durable + POST-COMMIT via the transactional outbox (H-2). Best-effort +
- * idempotent (createForOrder checks serviceJobExistsForOrder and no-ops if a
- * job exists or the order has no styling/service line), so at-least-once
- * redelivery is safe and the two subscribers never double-open.
+ * idempotent: createForOrder opens one job per hair and only ever creates the
+ * per-line shortfall (see countJobsForLine), and no-ops when the order has no
+ * styling/service line — so at-least-once redelivery is safe and the
+ * deposit_met + paid subscribers never double-open.
  *
  * Registered in the worker (the outbox dispatcher) — see src/jobs/worker.js —
  * and harmlessly in the web process via service-jobs.routes.

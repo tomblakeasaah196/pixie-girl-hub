@@ -166,11 +166,17 @@ const COMMITTED_STATES = [
             skipped += 1;
             continue;
           }
-          const job = await service.createForOrder({ brand, order });
-          if (job) {
-            opened += 1;
+          // createForOrder now opens one job PER HAIR and returns the array of
+          // jobs it created (null when none), so a multi-hair order rescued
+          // here fans out into several jobs at once.
+          const result = await service.createForOrder({ brand, order });
+          const jobs = Array.isArray(result) ? result : result ? [result] : [];
+          if (jobs.length) {
+            opened += jobs.length;
             console.warn(
-              `  ${c.order_number} → job ${job.job_number} (${job.status})`,
+              `  ${c.order_number} → ${jobs
+                .map((j) => j.job_number)
+                .join(", ")}`,
             );
           } else {
             skipped += 1;

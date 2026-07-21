@@ -321,15 +321,22 @@ function JobCard({
         <p className="text-xs text-text-muted truncate">{job.hair_description}</p>
       )}
       <div className="flex items-center justify-between gap-2 pt-0.5">
-        <span className="text-xs text-text-muted">
+        <span
+          className="text-xs text-text-muted truncate min-w-0"
+          title={
+            job.assigned_staff_user_id
+              ? (job.assigned_staff_name ?? "Staff assigned")
+              : undefined
+          }
+        >
           {job.assigned_staff_user_id
-            ? "Staff assigned"
+            ? (job.assigned_staff_name ?? "Staff assigned")
             : job.assigned_stylist_id
               ? "Stylist assigned"
               : "Unassigned"}
         </span>
         {job.scheduled_for && (
-          <span className="text-xs font-mono text-text-muted">
+          <span className="text-xs font-mono text-text-muted shrink-0">
             {formatDate(job.scheduled_for)}
           </span>
         )}
@@ -695,6 +702,41 @@ function IntercompanyPanel({ job }: { job: ServiceJob }) {
 // Nothing here is decorative — the entire HR + tasks + performance chain
 // waits on the assignment happening through the /assign route rather than
 // through a bare status advance.
+// ── Burnout guardrail ──────────────────────────────────────
+// A stylist holding more than this share of the whole bench's open workload is
+// flagged light-red in the assignment picker so work gets spread out; at or
+// under it they read green (safe to load). Share = the stylist's open jobs ÷ the
+// team's total open jobs, so an idle stylist is 0% (green) and an obvious pick.
+const BURNOUT_THRESHOLD_PCT = 30;
+
+function workloadPct(openJobs: number, teamOpenJobs: number): number {
+  if (teamOpenJobs <= 0) return 0;
+  return Math.round((openJobs / teamOpenJobs) * 100);
+}
+
+function WorkloadPill({
+  openJobs,
+  teamOpenJobs,
+}: {
+  openJobs: number;
+  teamOpenJobs: number;
+}) {
+  const pct = workloadPct(openJobs, teamOpenJobs);
+  const burnout = pct > BURNOUT_THRESHOLD_PCT;
+  return (
+    <span
+      className="shrink-0"
+      title={
+        burnout
+          ? `${pct}% of the team's open workload — over ${BURNOUT_THRESHOLD_PCT}%, risk of burnout`
+          : `${pct}% of the team's open workload — healthy`
+      }
+    >
+      <Pill tone={burnout ? "danger" : "success"}>{pct}%</Pill>
+    </span>
+  );
+}
+
 function AssignmentPanel({
   job,
   jobId,
@@ -745,6 +787,7 @@ function AssignedRow({
   const current = stylists.find(
     (s) => s.user_id === job.assigned_staff_user_id,
   );
+  const teamOpenJobs = stylists.reduce((sum, s) => sum + s.open_jobs_count, 0);
   return (
     <div className="glass p-3 rounded-lg flex items-center gap-3">
       <div className="w-9 h-9 rounded-full bg-accent/[0.12] grid place-items-center overflow-hidden shrink-0">
@@ -776,6 +819,12 @@ function AssignedRow({
           )}
         </div>
       </div>
+      {current && (
+        <WorkloadPill
+          openJobs={current.open_jobs_count}
+          teamOpenJobs={teamOpenJobs}
+        />
+      )}
       {job.assigned_staff_user_id && (
         <Button
           variant="ghost"
@@ -810,6 +859,7 @@ function StylistPicker({
 }) {
   const { assign } = useJobActions(jobId);
   const { data: stylists = [], isLoading } = useAssignableStylists(true);
+  const teamOpenJobs = stylists.reduce((sum, s) => sum + s.open_jobs_count, 0);
 
   if (isLoading) {
     return (
@@ -831,6 +881,13 @@ function StylistPicker({
 
   return (
     <div className="glass p-2 rounded-lg space-y-1">
+      <p className="text-[10.5px] text-text-muted px-1.5 pt-0.5 pb-1 leading-snug">
+        Load = each stylist&rsquo;s share of the{" "}
+        {teamOpenJobs > 0 ? `${teamOpenJobs} ` : ""}open job
+        {teamOpenJobs === 1 ? "" : "s"} across the bench. Green is safe to
+        assign; light red is over {BURNOUT_THRESHOLD_PCT}% — spread the work to
+        avoid burnout.
+      </p>
       {stylists.map((s) => {
         const isCurrent = s.user_id === currentUserId;
         const disabled = s.on_leave_today || assign.isPending;
@@ -876,6 +933,10 @@ function StylistPicker({
                 {s.on_leave_today ? " · on leave today" : ""}
               </div>
             </div>
+            <WorkloadPill
+              openJobs={s.open_jobs_count}
+              teamOpenJobs={teamOpenJobs}
+            />
             {!isCurrent && !disabled && (
               <UserPlus className="w-4 h-4 text-text-muted shrink-0" />
             )}

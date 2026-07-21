@@ -59,6 +59,9 @@ export interface ServiceJob {
   service_key?: string;
   assigned_stylist_id: string | null;
   assigned_staff_user_id: string | null;
+  // Joined display name of the assigned staff member (from the list / getJob
+  // query) so job cards read "who has it", not a UUID or a generic label.
+  assigned_staff_name?: string | null;
   hair_variant_id: string | null;
   hair_unit_id: string | null;
   hair_description: string | null;

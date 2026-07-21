@@ -549,11 +549,21 @@ export function ServiceJobsPage() {
   useBreadcrumbs([{ label: "Stylist Studio" }]);
   const navigate = useNavigate();
   const can = useAuthStore((s) => s.can);
-  const scopeFor = useAuthStore((s) => s.scopeFor);
-  // Own-scope users (individual stylists) get the personal cockpit only —
-  // Job Board / QC Queue / Wig Accountability / Team Scorecards / Types /
-  // Recipes / Reconciliation are all Ops surfaces and stay hidden.
-  const isOwnScope = scopeFor("service_jobs", "view") === "own";
+  // The full studio — Job Board, QC Queue, Wig Accountability, Team Scorecards,
+  // Service Types, Chemical Reconciliation — is for the people who MANAGE the
+  // studio: the operations manager / CEO, i.e. anyone holding the `approve`
+  // right on this module. Everyone else (individual stylists, and the front
+  // desk) gets the personal cockpit: just "My Jobs" plus the Recipe library
+  // they need to actually do the work.
+  //
+  // We key on the approve right rather than on view record-scope on purpose: a
+  // stylist who also holds a broader-scoped role (e.g. the front-desk
+  // `service_jobs view:all` grant) would slip past a scope check and see the
+  // entire board — assignments, everyone else's jobs, the accountability
+  // ledger — which is the exact leak this gate closes. The API still enforces
+  // every call regardless.
+  const isStudioManager = can("service_jobs", "approve");
+  const personalCockpit = !isStudioManager;
   // Tab lives in the URL so deep links from Orders / notifications land on the
   // right pane (?tab=board&job=<id> opens the board with the job drawer up).
   const [sp, setSp] = useSearchParams();
@@ -573,7 +583,7 @@ export function ServiceJobsPage() {
     </button>
   ) : null;
   const urlTab = sp.get("tab") as Tab | null;
-  const defaultTab: Tab = isOwnScope ? "my" : "board";
+  const defaultTab: Tab = personalCockpit ? "my" : "board";
   const tab: Tab = urlTab && TAB_IDS.includes(urlTab) ? urlTab : defaultTab;
   const setTab = (t: Tab) =>
     setSp((p) => {
@@ -614,11 +624,12 @@ export function ServiceJobsPage() {
     { id: "recipes", label: "Recipes", icon: Sparkles },
     { id: "reconciliation", label: "Chemical Reconciliation", icon: FlaskConical },
   ];
-  // Own-scope stylists see only their queue + the recipe library (they need
-  // it to actually do the work). Every ops-only surface — the board, QC
-  // queue, wig accountability ledger, team scorecards, service types,
-  // reconciliation — is hidden. The API enforces the same rules regardless.
-  const tabs = isOwnScope
+  // Personal-cockpit users (stylists / front desk without the approve right)
+  // see only their own queue + the recipe library (they need it to actually do
+  // the work). Every ops-only surface — the board, QC queue, wig accountability
+  // ledger, team scorecards, service types, reconciliation — is hidden. The API
+  // enforces the same rules regardless.
+  const tabs = personalCockpit
     ? allTabs.filter((t) => t.id === "my" || t.id === "recipes")
     : allTabs;
   // If someone lands on a hidden tab via a stale URL, silently redirect to
@@ -630,14 +641,14 @@ export function ServiceJobsPage() {
     <div className="p-4 md:p-6 space-y-5">
       {backToOrder}
       <ModuleInsights module="service_jobs" />
-      {/* Own-scope stylists get a persistent "You're working on Job X —
+      {/* Personal-cockpit stylists get a persistent "You're working on Job X —
           47m elapsed [Pause]" strip when a time session is running, so the
           Pause control is always one tap away no matter which tab they're
           on. Renders nothing when no clock is running (or for Ops). */}
-      <WorkingNowStrip enabled={isOwnScope} />
+      <WorkingNowStrip enabled={personalCockpit} />
       {/* KPI strip is an ops-wide summary — a stylist doesn't need "no-sale
           risk" or team happiness on their personal cockpit. */}
-      {!isOwnScope && <KpiStrip />}
+      {!personalCockpit && <KpiStrip />}
 
       {/* Tabs — glassy pills */}
       <div className="flex gap-1 p-1 rounded-[13px] glass shadow-glass overflow-x-auto">

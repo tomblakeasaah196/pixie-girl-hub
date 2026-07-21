@@ -271,11 +271,13 @@ styling jobs from booking through QC. A QC pass marks the job **completed**
 and hands the wig over to Logistics; shipping + delivery live on the Sales
 Order / Logistics side.
 **Where.** Run → **Stylist Studio** · `/service-jobs`
-**Who can see it.** `service_jobs` permission. **Scope matters:**
-- `own`-scope users (individual stylists) see **only their own queue** —
-  My Jobs + Recipes tabs; every ops surface is hidden.
-- `all`/`team` (Ops Manager / CEO) see every tab: My Jobs · Job Board · QC
-  Queue · Wig Accountability · Team Scorecards · Service Types · Recipes ·
+**Who can see it.** `service_jobs` permission. **The `approve` right decides
+the layout:**
+- **Without `approve`** (individual stylists, and the front desk) see **only
+  their own queue** — the **My Jobs** and **Recipes** tabs. Every ops surface
+  is hidden, and the API only ever returns their own jobs.
+- **With `approve`** (Ops Manager / CEO) see every tab: My Jobs · Job Board ·
+  QC Queue · Wig Accountability · Team Scorecards · Service Types · Recipes ·
   Chemical Reconciliation.
 
 **Lifecycle (6 states).** `pending → assigned → in_progress → returned_for_qc
@@ -290,12 +292,19 @@ Order / Logistics side.
   **defaults to 48 hours** from now (editable). That deadline becomes the job's
   due date **and** the due date of the task raised on the stylist's Workspace,
   so the job shows up on their **My Day**.
-- *Work on my own job?* Stylist → **My Jobs** (`/service-jobs?tab=my`) →
-  Start → hand back for QC.
-- *See or download the style photo?* Open the job from the Job Board
-  (`/service-jobs?tab=board`) — the photo sits at the top of the job drawer;
-  **click it** for a full-screen view with a **Download** button, so you can
-  save it to your phone and work from it.
+- *Work on my own job?* Stylist → **My Jobs** (`/service-jobs?tab=my`). Each
+  wig is a **picture-first card** (photo, customer, tag, order, deadline);
+  **tap the card** to open its drawer, then **Start** → hand back for QC.
+- *Find one of my jobs fast?* Stylist → **My Jobs** → the **search box** at the
+  top matches on the **tag** written on the wig, the **product** name, the
+  **customer** name, or the **order** number.
+- *See or download the style photo?* Stylist → **My Jobs** → tap the job → the
+  photo sits at the top of the drawer; **tap it** for a full-screen view with a
+  **Download** button, so you can save it to your phone and work from it. (Ops
+  can do the same from the Job Board drawer.)
+- *Where are the notes from my manager?* They're in the job drawer under **The
+  style & notes for you** — the customer's locked brief plus any notes the
+  operations manager / assigner added.
 - *QC pass or fail a returned job?* Ops → **QC Queue** tab. Pass = job
   completed + wig auto-dispatched to Logistics; fail = back to stylist for
   rework.

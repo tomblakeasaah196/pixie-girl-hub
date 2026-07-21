@@ -6,151 +6,155 @@
 -- cross-module queries. Per-table indexes are declared alongside
 -- their tables in templates 16-32.
 --
--- This file contains only CREATE INDEX statements (no tables).
+-- This file contains only CREATE INDEX statements (no tables). Because it has
+-- no CREATE TABLE sentinel, repair-business-schema.js cannot "skip if exists"
+-- and re-runs it on EVERY deploy — so every statement uses IF NOT EXISTS to
+-- stay idempotent. Without it the repair errored ("relation … already exists")
+-- and stalled a production deploy.
 -- ============================================================
 
 -- ── Dispatch queue: paid orders awaiting fulfilment ──────
-CREATE INDEX idx_{{BUSINESS}}_dispatch_queue
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_dispatch_queue
   ON {{BUSINESS}}.sales_orders (paid_at)
   WHERE status = 'awaiting_dispatch'
     AND order_type = 'dispatch';
 
 -- ── Today's stock-out: variants with available <= 0 anywhere ──
 -- (already covered by stock_levels.idx_low; this is the "any-location" view)
-CREATE INDEX idx_{{BUSINESS}}_variants_oos_anywhere
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_variants_oos_anywhere
   ON {{BUSINESS}}.stock_levels (variant_id)
   WHERE available <= 0;
 
 -- ── Cash flow: open invoices by due date ─────────────────
-CREATE INDEX idx_{{BUSINESS}}_invoices_balance_due_age
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_invoices_balance_due_age
   ON {{BUSINESS}}.invoices (due_date, balance_due_ngn)
   WHERE balance_due_ngn > 0 AND status NOT IN ('paid','void','refunded');
 
 -- ── CRM: deals stuck in stage past SLA ───────────────────
-CREATE INDEX idx_{{BUSINESS}}_crm_deals_in_stage_stale
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_crm_deals_in_stage_stale
   ON {{BUSINESS}}.crm_deals (stage_entered_at, current_stage_id)
   WHERE status = 'open' AND is_deleted = false;
 
 -- ── POS: today by terminal ───────────────────────────────
-CREATE INDEX idx_{{BUSINESS}}_pos_transactions_today
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_pos_transactions_today
   ON {{BUSINESS}}.pos_transactions (terminal_id, created_at DESC)
   WHERE status = 'completed';
 
 -- ── Production: open runs by expected arrival ────────────
-CREATE INDEX idx_{{BUSINESS}}_production_runs_pipeline
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_production_runs_pipeline
   ON {{BUSINESS}}.production_runs (expected_arrival_date, status)
   WHERE status NOT IN ('received','closed','cancelled');
 
 -- ── Service jobs: today's open jobs by stylist ───────────
-CREATE INDEX idx_{{BUSINESS}}_service_jobs_today_stylist
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_service_jobs_today_stylist
   ON {{BUSINESS}}.service_jobs (assigned_stylist_id, expected_completion_at)
   WHERE assigned_stylist_id IS NOT NULL
     AND status IN ('pending','in_progress');
 
 -- ── Service jobs: today's open jobs by staff ─────────────
-CREATE INDEX idx_{{BUSINESS}}_service_jobs_today_staff
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_service_jobs_today_staff
   ON {{BUSINESS}}.service_jobs (assigned_staff_user_id, expected_completion_at)
   WHERE assigned_staff_user_id IS NOT NULL
     AND status IN ('pending','in_progress');
 
 -- ── Service jobs: by customer for history view ───────────
-CREATE INDEX idx_{{BUSINESS}}_service_jobs_customer
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_service_jobs_customer
   ON {{BUSINESS}}.service_jobs (customer_contact_id, completed_at DESC)
   WHERE customer_contact_id IS NOT NULL;
 
 -- ── Purchasing: open POs by supplier ─────────────────────
-CREATE INDEX idx_{{BUSINESS}}_po_supplier_open
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_po_supplier_open
   ON {{BUSINESS}}.purchase_orders (supplier_id, expected_delivery)
   WHERE status NOT IN ('received','closed','cancelled');
 
 -- ── Supplier invoices: aging buckets ─────────────────────
-CREATE INDEX idx_{{BUSINESS}}_supplier_invoices_aging
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_supplier_invoices_aging
   ON {{BUSINESS}}.supplier_invoices (due_date, balance_due_ngn)
   WHERE balance_due_ngn > 0 AND status NOT IN ('paid','void');
 
 -- ── Journal: trial balance by account ────────────────────
-CREATE INDEX idx_{{BUSINESS}}_journal_lines_account_period
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_journal_lines_account_period
   ON {{BUSINESS}}.journal_lines (account_id, entry_id);
 
 -- ── AR ageing by contact ─────────────────────────────────
-CREATE INDEX idx_{{BUSINESS}}_invoices_ar_ageing
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_invoices_ar_ageing
   ON {{BUSINESS}}.invoices (contact_id, due_date, balance_due_ngn)
   WHERE balance_due_ngn > 0 AND status NOT IN ('paid','void','refunded');
 
 -- ── Commission accruals by user / month ──────────────────
-CREATE INDEX idx_{{BUSINESS}}_commission_earned_user_month
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_commission_earned_user_month
   ON {{BUSINESS}}.commission_earned (user_id, earned_at);
 
 -- ── Performance scoring: cycle progress ──────────────────
-CREATE INDEX idx_{{BUSINESS}}_performance_reviews_cycle_status
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_performance_reviews_cycle_status
   ON {{BUSINESS}}.performance_reviews (cycle_id, status);
 
 -- ── Deliveries: courier-day ops view ─────────────────────
-CREATE INDEX idx_{{BUSINESS}}_deliveries_today_courier
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_deliveries_today_courier
   ON {{BUSINESS}}.deliveries (courier_id, expected_delivery_at)
   WHERE status IN ('booked','picked_up','in_transit','out_for_delivery');
 
 -- ── POD reconciliation queue ─────────────────────────────
-CREATE INDEX idx_{{BUSINESS}}_pod_pending_reconciliation
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_pod_pending_reconciliation
   ON {{BUSINESS}}.pay_on_delivery_collections (created_at)
   WHERE status IN ('collected_by_courier','remitted');
 
 -- ── Stock movements: variant velocity (last 30 days) ─────
 -- (used for reorder recompute job)
-CREATE INDEX idx_{{BUSINESS}}_stock_movements_sales_recent
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_stock_movements_sales_recent
   ON {{BUSINESS}}.stock_movements (variant_id, performed_at DESC)
   WHERE movement_type IN ('sale','consignment_return');
 
 -- ── Active campaigns: live + recent ──────────────────────
-CREATE INDEX idx_{{BUSINESS}}_sales_campaigns_active_window
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_sales_campaigns_active_window
   ON {{BUSINESS}}.sales_campaigns (status, starts_at, ends_at)
   WHERE status IN ('scheduled','live');
 
 -- ── Sales orders by campaign + day (campaign attribution) ──
-CREATE INDEX idx_{{BUSINESS}}_sales_orders_campaign_day
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_sales_orders_campaign_day
   ON {{BUSINESS}}.sales_orders (sales_campaign_id, paid_at)
   WHERE sales_campaign_id IS NOT NULL;
 
 -- ── Customer activity: last touch per contact ────────────
-CREATE INDEX idx_{{BUSINESS}}_crm_activities_contact_recent
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_crm_activities_contact_recent
   ON {{BUSINESS}}.crm_activities (contact_id, performed_at DESC)
   WHERE contact_id IS NOT NULL;
 
 -- ── Cancellation requests: pending review ───────────────
-CREATE INDEX idx_{{BUSINESS}}_cancellation_requests_queue
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_cancellation_requests_queue
   ON {{BUSINESS}}.cancellation_requests (created_at)
   WHERE status = 'pending_review';
 
 -- ── Email campaign delivery monitor ──────────────────────
-CREATE INDEX idx_{{BUSINESS}}_email_campaigns_active_sending
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_email_campaigns_active_sending
   ON {{BUSINESS}}.email_campaigns (send_started_at DESC)
   WHERE status = 'sending';
 
 -- ── Maintenance subscriptions due ────────────────────────
-CREATE INDEX idx_{{BUSINESS}}_maintenance_subs_billing_due
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_maintenance_subs_billing_due
   ON {{BUSINESS}}.maintenance_subscriptions (next_billing_at)
   WHERE status = 'active';
 
 -- ── Retention workflow execution lag ─────────────────────
-CREATE INDEX idx_{{BUSINESS}}_retention_executions_queued
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_retention_executions_queued
   ON {{BUSINESS}}.retention_workflow_executions (queued_at)
   WHERE status = 'queued';
 
 -- ── Account balances by period (trial balance query) ─────
-CREATE INDEX idx_{{BUSINESS}}_account_balances_period_account
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_account_balances_period_account
   ON {{BUSINESS}}.account_balances (fiscal_period_id, account_id);
 
 -- ── Cost components: per-run aggregation ─────────────────
-CREATE INDEX idx_{{BUSINESS}}_cost_components_run_type
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_cost_components_run_type
   ON {{BUSINESS}}.cost_components (run_id, cost_type);
 
 -- ── Service jobs aged in 'in_progress' (stale styling) ───
-CREATE INDEX idx_{{BUSINESS}}_service_jobs_in_progress_age
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_service_jobs_in_progress_age
   ON {{BUSINESS}}.service_jobs (started_at)
   WHERE status = 'in_progress';
 
 -- ── Consignment movements: unsettled per partner ─────────
-CREATE INDEX idx_{{BUSINESS}}_consignment_movements_partner_unsettled
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_consignment_movements_partner_unsettled
   ON {{BUSINESS}}.consignment_movements (partner_id, recorded_at)
   WHERE settlement_id IS NULL;
 
@@ -158,7 +162,7 @@ CREATE INDEX idx_{{BUSINESS}}_consignment_movements_partner_unsettled
 -- Exactly one ('sales', order_id) journal per order, so an at-least-once
 -- outbox re-delivery cannot duplicate revenue. Scoped to source_type='sales'
 -- so 'fx_revaluation' (one per foreign payment, same source_id) is unaffected.
-CREATE UNIQUE INDEX journal_entries_sales_src_uidx
+CREATE UNIQUE INDEX IF NOT EXISTS journal_entries_sales_src_uidx
   ON {{BUSINESS}}.journal_entries (source_id)
   WHERE source_type = 'sales' AND source_id IS NOT NULL;
 
@@ -167,7 +171,7 @@ CREATE UNIQUE INDEX journal_entries_sales_src_uidx
 -- "post this exactly once" guarantee outside the sales path (payment fees,
 -- realised FX, intercompany legs). NULL keys (the majority of postings) are
 -- excluded by the partial WHERE — unaffected, no behaviour change.
-CREATE UNIQUE INDEX journal_entries_idempotency_uidx
+CREATE UNIQUE INDEX IF NOT EXISTS journal_entries_idempotency_uidx
   ON {{BUSINESS}}.journal_entries (idempotency_key)
   WHERE idempotency_key IS NOT NULL;
 

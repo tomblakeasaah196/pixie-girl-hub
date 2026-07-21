@@ -716,6 +716,7 @@ function VariantsCard({
                 <th className="py-2 font-semibold">Lace</th>
                 <th className="py-2 font-semibold">SKU</th>
                 <th className="py-2 font-semibold">Base</th>
+                <th className="py-2 font-semibold text-right">Stock</th>
                 <th className="py-2 font-semibold text-right">Retail</th>
                 <th className="py-2 font-semibold text-right">Override ₦</th>
                 <th className="py-2 font-semibold text-right">Override $</th>
@@ -791,6 +792,21 @@ function VariantRow({
       <td className="py-2 font-mono text-[10.5px] text-text-faint">{v.sku}</td>
       <td className="py-2 text-[11px] text-text-muted max-w-[120px] truncate">
         {v.base_product_name ?? "—"}
+      </td>
+      <td className="py-2 text-right">
+        {v.base_available != null ? (
+          <span
+            className={
+              Number(v.base_available) > 0
+                ? "text-[12px] font-mono text-success"
+                : "text-[12px] font-mono text-danger"
+            }
+          >
+            {Number(v.base_available)}
+          </span>
+        ) : (
+          <span className="text-text-faint">—</span>
+        )}
       </td>
       <td className="py-2 text-right">
         {v.effective_price_ngn != null ? (

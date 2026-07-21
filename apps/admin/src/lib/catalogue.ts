@@ -216,6 +216,8 @@ export interface StyledVariant {
   lace_premium_ngn: number | null;
   lace_premium_usd: number | null;
   base_product_name?: string | null;
+  // Live stock behind this variant's own base (falls back to the seed base).
+  base_available?: number | null;
   anchor_price_ngn: number | null;
   anchor_price_usd: number | null;
   effective_price_ngn: number | null;

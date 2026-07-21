@@ -78,12 +78,13 @@ function enrichRow(styled, available, base_price) {
   };
 }
 
-/** Attach computed price + availability to a single styled row (2 reads). */
+/** Attach computed price + availability to a single styled row (2 reads).
+ *  Availability is variant-aware: it sums stock across the bases behind the
+ *  styled product's active variants, not just the seed base. */
 async function enrich({ brand, styled }) {
-  const available = await repo.baseAvailability({
+  const available = await repo.styledAvailability({
     brand,
-    base_product_id: styled.base_product_id,
-    base_variant_id: styled.base_variant_id,
+    styled_id: styled.styled_id,
   });
   const base_price = await repo.basePrice({
     brand,

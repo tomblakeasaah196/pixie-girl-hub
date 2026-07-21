@@ -759,6 +759,13 @@ positions, roles, the permission matrix, and approval routing rules.
 **Common tasks.**
 - *Create a role / edit what a role can do?* Org & Workflow → **Add a role** /
   the role × module permission matrix.
+- *Assign a role to several staff at once / can more than one person hold the
+  same role?* Yes — a role can be held by any number of staff. Org & Workflow →
+  **Permissions** → open the role → **Members** section → **Add members**: tick
+  everyone who should hold it (e.g. all your junior stylists) and assign in one
+  go. Roles attach to people with a Hub login; each gets the role's permissions
+  on their next request. (An org-chart *position* is a single seat with one
+  holder — that's separate from a role, which is shared.)
 - *Limit which contact types a role sees (clients vs suppliers)?* Org & Workflow
   → open the role → **Contact visibility**: "Sees all contact types" (default)
   or "Limit to selected types" (customers, suppliers, staff, retail/stylist

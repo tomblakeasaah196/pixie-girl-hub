@@ -96,6 +96,26 @@ async function listUserRoles(req, res) {
   res.json(await service.listUserRoles({ user_id: req.params.user_id }));
 }
 
+async function listGrantableUsers(req, res) {
+  res.json(
+    await service.listGrantableUsers({
+      brand: req.brand,
+      search: req.query.search,
+    }),
+  );
+}
+
+async function grantRoleMembers(req, res) {
+  const result = await service.grantRoleMembers({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    role_id: req.params.role_id,
+    input: req.body,
+  });
+  res.status(201).json(result);
+}
+
 async function grantUserRole(req, res) {
   const grant = await service.grantUserRole({
     brand: req.brand,
@@ -150,7 +170,9 @@ module.exports = {
   getRoleContactTypes,
   setRoleContactTypes,
   listUserRoles,
+  listGrantableUsers,
   grantUserRole,
+  grantRoleMembers,
   revokeUserRole,
   getUserAccess,
   setUserAccess,

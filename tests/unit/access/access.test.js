@@ -7,10 +7,14 @@
 
 const catalog = require("../../../src/shared/access/access.catalog");
 const guards = require("../../../src/shared/access/access.guards");
+const { grantMembersSchema } = require("../../../src/shared/access/access.validator");
 const {
   PermissionDeniedError,
   ConflictError,
 } = require("../../../src/utils/errors");
+
+const UUID_A = "11111111-1111-1111-1111-111111111111";
+const UUID_B = "22222222-2222-2222-2222-222222222222";
 
 const owner = { user_id: "u-owner", is_ceo: true };
 const admin = { user_id: "u-admin", is_ceo: false };
@@ -84,5 +88,29 @@ describe("escalation guards", () => {
     expect(() => guards.assertCanGrantRole(owner, ownerRole)).not.toThrow();
     // A delegated admin can still grant ordinary roles.
     expect(() => guards.assertCanGrantRole(admin, customRole)).not.toThrow();
+  });
+});
+
+describe("bulk role-members grant schema", () => {
+  test("accepts a list of user UUIDs with a business", () => {
+    const parsed = grantMembersSchema.parse({
+      user_ids: [UUID_A, UUID_B],
+      business: "pixiegirl",
+    });
+    expect(parsed.user_ids).toEqual([UUID_A, UUID_B]);
+    expect(parsed.business).toBe("pixiegirl");
+  });
+
+  test("rejects an empty user list and non-UUID members", () => {
+    expect(() =>
+      grantMembersSchema.parse({ user_ids: [], business: "pixiegirl" }),
+    ).toThrow();
+    expect(() =>
+      grantMembersSchema.parse({ user_ids: ["not-a-uuid"], business: "flh" }),
+    ).toThrow();
+  });
+
+  test("requires a business key", () => {
+    expect(() => grantMembersSchema.parse({ user_ids: [UUID_A] })).toThrow();
   });
 });

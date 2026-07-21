@@ -29,6 +29,7 @@ import {
   Network,
   FileDown,
   Users,
+  UserPlus,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DataTable, type Column } from "@/components/ui/DataTable";
@@ -64,9 +65,11 @@ import {
   type CatalogEntry,
   type Catalog,
   type ContactTypeOption,
+  type GrantableUser,
   ACTION_META,
   RECORD_SCOPE_LABELS,
 } from "@/lib/access-api";
+import { useBusinessStore } from "@/stores/business";
 import {
   moduleLabel,
   moduleDescription,
@@ -1014,6 +1017,206 @@ const ACTION_ORDER = ["view", "create", "edit", "delete", "approve", "export"];
 // too (access.guards). Keep in sync with OWNER_ROLE_ID there.
 const OWNER_ROLE_ID = "11111111-1111-1111-1111-000000000001";
 
+// Bulk-assign one role to several staff at once. Roles attach to login accounts,
+// so the picker lists grantable users of the active brand; anyone who already
+// holds the role is shown as such and can't be re-selected. Grants for the
+// active brand (the API extends brand access when a target can't yet enter it).
+function AddMembersModal({
+  roleId,
+  roleName,
+  existingUserIds,
+  onClose,
+}: {
+  roleId: string;
+  roleName: string;
+  existingUserIds: Set<string>;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const brand = useBusinessStore((s) => s.activeKey);
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+
+  const { data: users = [], isLoading } = useQuery({
+    queryKey: ["grantable-users", brand],
+    queryFn: () => accessApi.listGrantableUsers(),
+  });
+
+  // A user already holds the role if they're a current member or the picker
+  // reports the role among their grants (covers grants in another business).
+  const holdsRole = (u: GrantableUser) =>
+    existingUserIds.has(u.user_id) || u.role_ids.includes(roleId);
+
+  const q = search.trim().toLowerCase();
+  const filtered = useMemo(
+    () =>
+      users.filter((u) => {
+        if (!q) return true;
+        return (
+          (u.display_name ?? "").toLowerCase().includes(q) ||
+          u.email.toLowerCase().includes(q) ||
+          (u.job_title ?? "").toLowerCase().includes(q)
+        );
+      }),
+    [users, q],
+  );
+
+  function toggle(u: GrantableUser) {
+    if (holdsRole(u)) return;
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(u.user_id)) next.delete(u.user_id);
+      else next.add(u.user_id);
+      return next;
+    });
+  }
+
+  async function handleAssign() {
+    if (selected.size === 0) return;
+    setSaving(true);
+    try {
+      const res = await accessApi.grantRoleMembers(roleId, {
+        user_ids: [...selected],
+        business: brand,
+      });
+      qc.invalidateQueries({ queryKey: ["role-detail", roleId] });
+      qc.invalidateQueries({ queryKey: ["roles"] });
+      qc.invalidateQueries({ queryKey: ["roles-permissions-all"] });
+      toast.success(
+        `${roleName} assigned to ${res.granted_count} ${
+          res.granted_count === 1 ? "person" : "people"
+        }`,
+        res.skipped_count
+          ? {
+              description: `${res.skipped_count} skipped — no matching login account.`,
+            }
+          : undefined,
+      );
+      onClose();
+    } catch (e) {
+      toastReport("Org & Workflow → Permissions", "Assign role to staff", e);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="md"
+      title={
+        <span className="flex items-center gap-2">
+          <UserPlus className="w-4 h-4 text-[rgb(var(--accent))]" />
+          Assign <span className="font-mono">{roleName}</span> to staff
+        </span>
+      }
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            disabled={selected.size === 0 || saving}
+            onClick={handleAssign}
+          >
+            {saving
+              ? "Assigning…"
+              : selected.size
+                ? `Assign ${selected.size} ${
+                    selected.size === 1 ? "person" : "people"
+                  }`
+                : "Select staff"}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <p className="text-[12.5px] text-[rgb(var(--text-muted))] leading-snug">
+          Pick everyone who should hold this role — e.g. all your junior
+          stylists. They each get its permissions on their next request. Only
+          people with a Hub login appear here.
+        </p>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[rgb(var(--text-faint))]" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search staff by name, email or title…"
+            className="w-full bg-[rgb(var(--panel-2)/0.6)] border border-[rgb(var(--border-c))] rounded-xl pl-9 pr-3 py-2.5 text-[13px] focus:outline-none focus:border-[rgb(var(--accent)/0.5)]"
+            autoComplete="off"
+            data-lpignore="true"
+            data-1p-ignore=""
+            data-form-type="other"
+          />
+        </div>
+        <div className="max-h-[46vh] overflow-y-auto -mx-1 px-1 space-y-1">
+          {isLoading ? (
+            Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-14 rounded-xl" />
+            ))
+          ) : filtered.length === 0 ? (
+            <div className="py-10 text-center text-[13px] text-[rgb(var(--text-muted))]">
+              {users.length === 0
+                ? "No staff with a Hub login in this business yet."
+                : "No staff match your search."}
+            </div>
+          ) : (
+            filtered.map((u) => {
+              const has = holdsRole(u);
+              const checked = has || selected.has(u.user_id);
+              const name = u.display_name || u.email;
+              return (
+                <button
+                  key={u.user_id}
+                  type="button"
+                  disabled={has}
+                  onClick={() => toggle(u)}
+                  className={cn(
+                    "w-full flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors",
+                    has
+                      ? "border-[rgb(var(--border-c))] opacity-60 cursor-default"
+                      : checked
+                        ? "border-[rgb(var(--accent)/0.55)] bg-[rgb(var(--accent)/0.10)]"
+                        : "border-[rgb(var(--border-c))] hover:border-[rgb(var(--accent)/0.35)]",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "w-5 h-5 shrink-0 rounded-md border grid place-items-center",
+                      checked
+                        ? "bg-[rgb(var(--accent))] border-transparent text-[rgb(var(--bg))]"
+                        : "border-[rgb(var(--border-c))]",
+                    )}
+                  >
+                    {checked && <Check className="w-3.5 h-3.5" />}
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-[13px] font-semibold truncate">
+                      {name}
+                    </span>
+                    <span className="block text-[11px] text-[rgb(var(--text-faint))] truncate">
+                      {u.job_title ? `${u.job_title} · ` : ""}
+                      {u.email}
+                    </span>
+                  </span>
+                  {has && (
+                    <span className="shrink-0 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-[rgb(var(--success)/0.15)] text-[rgb(var(--success))]">
+                      Assigned
+                    </span>
+                  )}
+                </button>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function RoleEditorDrawer({
   roleId,
   catalog,
@@ -1042,6 +1245,8 @@ function RoleEditorDrawer({
   const [ctDirty, setCtDirty] = useState(false);
   const [pendingCtRestricted, setPendingCtRestricted] = useState(false);
   const [pendingCtTypes, setPendingCtTypes] = useState<Set<string>>(new Set());
+  // Bulk-assign this role to several staff at once.
+  const [showAddMembers, setShowAddMembers] = useState(false);
   // Delete-role confirmation (checkbox acknowledgement).
   const [showDelete, setShowDelete] = useState(false);
   const [deleteAck, setDeleteAck] = useState(false);
@@ -1324,6 +1529,57 @@ function RoleEditorDrawer({
               </span>
             </div>
           )}
+          {/* Members — who holds this role. Bulk-assign it to several staff at
+              once (e.g. all your junior stylists) with "Add members". */}
+          <div className="mb-4 p-3 rounded-xl border border-[rgb(var(--border-c))] bg-[rgb(var(--panel-2)/0.4)]">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <Users className="w-4 h-4 text-[rgb(var(--accent))] shrink-0" />
+                <div className="text-[13px] font-semibold">
+                  Members{" "}
+                  <span className="text-[rgb(var(--text-faint))] font-normal">
+                    ({memberCount})
+                  </span>
+                </div>
+              </div>
+              {canEdit && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon={<UserPlus className="w-3.5 h-3.5" />}
+                  onClick={() => setShowAddMembers(true)}
+                >
+                  Add members
+                </Button>
+              )}
+            </div>
+            <p className="text-[11.5px] text-[rgb(var(--text-muted))] leading-snug mb-2">
+              Everyone who holds this role. Assign it to several staff at once —
+              more than one person can hold the same role.
+            </p>
+            {role?.members && role.members.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {role.members.slice(0, 24).map((m) => (
+                  <span
+                    key={`${m.user_id}-${m.business}`}
+                    title={m.email ?? m.user_id}
+                    className="text-[11px] px-2 py-0.5 rounded-full bg-[rgb(var(--text)/0.05)] border border-[rgb(var(--border-c))] truncate max-w-[220px]"
+                  >
+                    {m.email ?? m.user_id}
+                  </span>
+                ))}
+                {role.members.length > 24 && (
+                  <span className="text-[11px] px-2 py-0.5 text-[rgb(var(--text-faint))]">
+                    +{role.members.length - 24} more
+                  </span>
+                )}
+              </div>
+            ) : (
+              <p className="text-[11.5px] text-[rgb(var(--text-faint))]">
+                No one holds this role yet.
+              </p>
+            )}
+          </div>
           {/* Contact visibility (contacts §6.12) — which contact TYPES this
               role may see. Independent of the module grid below; applies to the
               Contacts module and every 360° surface that reads contacts. */}
@@ -1617,6 +1873,15 @@ function RoleEditorDrawer({
             ))}
           </div>
         </>
+      )}
+
+      {showAddMembers && role && (
+        <AddMembersModal
+          roleId={role.role_id}
+          roleName={role.role_name}
+          existingUserIds={new Set((role.members ?? []).map((m) => m.user_id))}
+          onClose={() => setShowAddMembers(false)}
+        />
       )}
 
       {showDelete && role && (

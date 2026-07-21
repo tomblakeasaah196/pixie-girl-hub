@@ -8,6 +8,7 @@
 
 const { query } = require("../../config/database");
 const { t } = require("../../config/brands");
+const { styledVariantStockSql } = require("../catalogue/availability");
 const ex = (client) => (client ? client.query.bind(client) : query);
 
 // ── Carts ─────────────────────────────────────────────────
@@ -219,31 +220,27 @@ async function updateCart({ client, cart_id, patch }) {
 
 // ── Cart line availability inputs (000086 universal pre-orders) ──
 // Base stock + pre-order flags for cart lines, resolved to the base product
-// behind each line kind. Every query mirrors the stock lateral in
-// storefront.repo.listProducts (pinned base_variant_id → that variant, else
-// every active variant of the base). The service pairs these with the brand
-// policy + computeAvailability to tag each line in-stock / pre-order / sold-out.
+// behind each line kind, under the same variant-aware rules as the catalogue
+// + storefront (catalogue/availability.js styledStockSql). The service pairs
+// these with the brand policy + computeAvailability to tag each line
+// in-stock / pre-order / sold-out.
 
-// Styled-variant lines → the styled product's base availability.
+// Styled-variant lines → the stock behind each line's OWN base: the picked
+// colour×size variant's base_product_id, else the styled product's seed base
+// (styledVariantStockSql) — so a Medium in the bag reads Medium's base, not
+// the seed's. Pre-order framing comes from the same resolved base.
 async function styledVariantBaseAvailability({ client, brand, styled_variant_ids }) {
   if (!styled_variant_ids || !styled_variant_ids.length) return [];
   const { rows } = await ex(client)(
     `SELECT sv.styled_variant_id,
             b.preorder_enabled, b.preorder_excluded,
             b.expected_ready_date, b.production_lead_days,
-            COALESCE(av.available, 0)::int AS base_available
+            COALESCE(vstock.available, 0)::int AS base_available
        FROM ${t(brand, "styled_product_variants")} sv
        JOIN ${t(brand, "styled_products")} s ON s.styled_id = sv.styled_id
-       LEFT JOIN ${t(brand, "products")} b ON b.product_id = s.base_product_id
-       LEFT JOIN LATERAL (
-         SELECT COALESCE(SUM(sl.available), 0)::int AS available
-           FROM ${t(brand, "stock_levels")} sl
-           JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sl.variant_id
-          WHERE CASE WHEN s.base_variant_id IS NOT NULL
-                     THEN pv.variant_id = s.base_variant_id
-                     ELSE pv.product_id = s.base_product_id AND pv.is_active = true
-                END
-       ) av ON true
+       LEFT JOIN ${t(brand, "products")} b
+              ON b.product_id = COALESCE(sv.base_product_id, s.base_product_id)
+       ${styledVariantStockSql(brand, "sv", "s")}
       WHERE sv.styled_variant_id = ANY($1::uuid[])`,
     [styled_variant_ids],
   );
@@ -271,17 +268,38 @@ async function baseVariantAvailability({ client, brand, variant_ids }) {
 
 // Bundle lines → one row per component's base (styled → base, else the raw
 // base product), so the service can reduce them to a bundle-level state.
+// Styled components are VARIANT-AWARE (vav, mirroring styledStockSql): stock
+// is summed across the bases of the styled product's active variants, with
+// the old single-base lateral kept as the fallback for raw base-product
+// components and variant-less styled drafts.
 async function bundleComponentAvailability({ client, brand, bundle_ids }) {
   if (!bundle_ids || !bundle_ids.length) return [];
   const { rows } = await ex(client)(
     `SELECT bp.bundle_id,
             b.preorder_enabled, b.preorder_excluded,
             b.expected_ready_date, b.production_lead_days,
-            COALESCE(av.available, 0)::int AS base_available
+            COALESCE(vav.available, av.available, 0)::int AS base_available
        FROM ${t(brand, "bundle_offer_products")} bp
        LEFT JOIN ${t(brand, "styled_products")} s ON s.styled_id = bp.styled_id
        LEFT JOIN ${t(brand, "products")} b
               ON b.product_id = COALESCE(s.base_product_id, bp.product_id)
+       LEFT JOIN LATERAL (
+         SELECT SUM(src.available)::int AS available
+           FROM (SELECT DISTINCT COALESCE(v.base_product_id, s.base_product_id) AS src_product_id
+                   FROM ${t(brand, "styled_product_variants")} v
+                  WHERE v.styled_id = s.styled_id
+                    AND v.is_active = true AND v.is_deleted = false) bases
+          CROSS JOIN LATERAL (
+            SELECT COALESCE(SUM(sl.available), 0)::int AS available
+              FROM ${t(brand, "stock_levels")} sl
+              JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sl.variant_id
+             WHERE CASE WHEN s.base_variant_id IS NOT NULL
+                             AND bases.src_product_id = s.base_product_id
+                        THEN sl.variant_id = s.base_variant_id
+                        ELSE pv.product_id = bases.src_product_id AND pv.is_active = true
+                   END
+          ) src
+       ) vav ON true
        LEFT JOIN LATERAL (
          SELECT COALESCE(SUM(sl.available), 0)::int AS available
            FROM ${t(brand, "stock_levels")} sl

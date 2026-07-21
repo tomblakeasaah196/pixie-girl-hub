@@ -128,22 +128,57 @@ async function listCampaignBundles({ client, brand, campaign_id }) {
           LIMIT 1
        ) fallback_img ON bo.hero_image_url IS NULL
        LEFT JOIN LATERAL (
+         -- Per component: a pinned raw variant reads just that variant; a
+         -- styled component is VARIANT-AWARE (mirrors catalogue/availability
+         -- styledStockSql restricted to storefront locations) — stock summed
+         -- across the bases of its active colour×size variants, falling back
+         -- to the seed base when it has none; a raw product reads its default
+         -- variant as before. MIN(component stock / qty) = bundles buildable.
          SELECT MIN(
            COALESCE(
-             (SELECT SUM(sl.available)
-                FROM ${t(brand, "stock_levels")} sl
-                JOIN ${t(brand, "stock_locations")} loc ON loc.location_id = sl.location_id
-               WHERE sl.variant_id = COALESCE(
-                       bop.variant_id,
-                       sp.base_variant_id,
-                       (SELECT pv.variant_id
-                          FROM ${t(brand, "product_variants")} pv
-                         WHERE pv.product_id = COALESCE(sp.base_product_id, bop.product_id)
-                           AND pv.is_active = true
-                         ORDER BY pv.is_default DESC, pv.display_order ASC
-                         LIMIT 1)
-                     )
-                 AND loc.available_for_storefront = true),
+             CASE
+               WHEN bop.variant_id IS NOT NULL THEN
+                 (SELECT SUM(sl.available)
+                    FROM ${t(brand, "stock_levels")} sl
+                    JOIN ${t(brand, "stock_locations")} loc ON loc.location_id = sl.location_id
+                   WHERE sl.variant_id = bop.variant_id
+                     AND loc.available_for_storefront = true)
+               WHEN bop.styled_id IS NOT NULL AND EXISTS (
+                      SELECT 1 FROM ${t(brand, "styled_product_variants")} v0
+                       WHERE v0.styled_id = sp.styled_id
+                         AND v0.is_active = true AND v0.is_deleted = false) THEN
+                 (SELECT SUM(src.available)
+                    FROM (SELECT DISTINCT COALESCE(v.base_product_id, sp.base_product_id) AS src_product_id
+                            FROM ${t(brand, "styled_product_variants")} v
+                           WHERE v.styled_id = sp.styled_id
+                             AND v.is_active = true AND v.is_deleted = false) bases
+                   CROSS JOIN LATERAL (
+                     SELECT COALESCE(SUM(sl.available), 0) AS available
+                       FROM ${t(brand, "product_variants")} pv
+                       JOIN ${t(brand, "stock_levels")} sl ON sl.variant_id = pv.variant_id
+                       JOIN ${t(brand, "stock_locations")} loc ON loc.location_id = sl.location_id
+                      WHERE pv.product_id = bases.src_product_id
+                        AND (sp.base_variant_id IS NULL
+                             OR bases.src_product_id <> sp.base_product_id
+                             OR pv.variant_id = sp.base_variant_id)
+                        AND loc.available_for_storefront = true
+                        AND pv.is_active = true
+                   ) src)
+               ELSE
+                 (SELECT SUM(sl.available)
+                    FROM ${t(brand, "stock_levels")} sl
+                    JOIN ${t(brand, "stock_locations")} loc ON loc.location_id = sl.location_id
+                   WHERE sl.variant_id = COALESCE(
+                           sp.base_variant_id,
+                           (SELECT pv.variant_id
+                              FROM ${t(brand, "product_variants")} pv
+                             WHERE pv.product_id = COALESCE(sp.base_product_id, bop.product_id)
+                               AND pv.is_active = true
+                             ORDER BY pv.is_default DESC, pv.display_order ASC
+                             LIMIT 1)
+                         )
+                     AND loc.available_for_storefront = true)
+             END,
              0
            ) / GREATEST(bop.quantity, 1)
          )::INTEGER AS live_stock

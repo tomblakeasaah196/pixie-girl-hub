@@ -10,6 +10,7 @@
 
 const { query, ex } = require("../../config/database");
 const { VALID_BRANDS, t } = require("../../config/brands");
+const { styledStockSql } = require("../catalogue/availability");
 // SINGLE SOURCE for the storefront "from" price (lowest variant price) in BOTH
 // currencies. The expression MIRRORS catalogue/styled_variants.repo.listVariants
 // (effective_price_ngn/usd) so list cards and the detail page never diverge — we
@@ -139,6 +140,9 @@ async function listProducts({ brand, filters = {}, page = 1, page_size = 24 }) {
     params,
   );
   const offset = (page - 1) * page_size;
+  // Stock is variant-aware (styledStockSql): each colour×size variant reads
+  // its own base, so a card stays purchasable while ANY size has stock.
+  const stock = styledStockSql(brand, "s");
   const { rows } = await query(
     `SELECT s.styled_id, s.styled_code, s.name, s.slug, s.short_description,
             s.retail_price_ngn, s.retail_price_usd, s.compare_at_price_ngn,
@@ -147,7 +151,7 @@ async function listProducts({ brand, filters = {}, page = 1, page_size = 24 }) {
             COALESCE(fp.from_price_usd, s.retail_price_usd) AS effective_price_usd,
             b.preorder_enabled, b.preorder_excluded,
             b.expected_ready_date, b.production_lead_days,
-            COALESCE(av.available, 0) AS base_available,
+            ${stock.expr} AS base_available,
             (SELECT img.cdn_url FROM ${t(brand, "product_images")} img
               WHERE img.styled_id = s.styled_id
               ORDER BY img.is_primary DESC, img.display_order LIMIT 1)
@@ -155,15 +159,7 @@ async function listProducts({ brand, filters = {}, page = 1, page_size = 24 }) {
        FROM ${t(brand, "styled_products")} s
        LEFT JOIN ${t(brand, "product_categories")} cat ON cat.category_id = s.category_id
        LEFT JOIN ${t(brand, "products")} b ON b.product_id = s.base_product_id
-       LEFT JOIN LATERAL (
-         SELECT COALESCE(SUM(sl.available), 0)::int AS available
-           FROM ${t(brand, "stock_levels")} sl
-           JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sl.variant_id
-          WHERE CASE WHEN s.base_variant_id IS NOT NULL
-                     THEN pv.variant_id = s.base_variant_id
-                     ELSE pv.product_id = s.base_product_id AND pv.is_active = true
-                END
-       ) av ON true
+       ${stock.joins}
        ${fromPriceLateral(brand)}
       ${whereSql}
       ORDER BY s.published_at DESC NULLS LAST, s.name
@@ -232,22 +228,15 @@ async function getProductCardsBySlugs({ brand, slugs }) {
 // from the shop grid. Order is not guaranteed; callers key by styled_id.
 async function availabilityForStyled({ brand, styled_ids }) {
   if (!styled_ids || styled_ids.length === 0) return [];
+  const stock = styledStockSql(brand, "s");
   const { rows } = await query(
     `SELECT s.styled_id,
             b.preorder_enabled, b.preorder_excluded,
             b.expected_ready_date, b.production_lead_days,
-            COALESCE(av.available, 0)::int AS base_available
+            ${stock.expr}::int AS base_available
        FROM ${t(brand, "styled_products")} s
        LEFT JOIN ${t(brand, "products")} b ON b.product_id = s.base_product_id
-       LEFT JOIN LATERAL (
-         SELECT COALESCE(SUM(sl.available), 0)::int AS available
-           FROM ${t(brand, "stock_levels")} sl
-           JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sl.variant_id
-          WHERE CASE WHEN s.base_variant_id IS NOT NULL
-                     THEN pv.variant_id = s.base_variant_id
-                     ELSE pv.product_id = s.base_product_id AND pv.is_active = true
-                END
-       ) av ON true
+       ${stock.joins}
       WHERE s.styled_id = ANY($1::uuid[])`,
     [styled_ids],
   );

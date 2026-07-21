@@ -286,11 +286,7 @@ async function getProduct({ brand, slug }) {
         category_id: styled.category_id,
         exclude_styled_id: styled_id,
       }),
-      styledRepo.baseAvailability({
-        brand,
-        base_product_id: styled.base_product_id,
-        base_variant_id: styled.base_variant_id,
-      }),
+      styledRepo.styledAvailability({ brand, styled_id }),
     ]);
 
   // In stock / pre-order / sold out (000086). Universal pre-orders: an
@@ -367,6 +363,19 @@ async function getProduct({ brand, slug }) {
       effective_price_ngn: Number(v.effective_price_ngn || 0),
       effective_price_usd: num(v.effective_price_usd),
       is_default: Boolean(v.colour_is_default),
+      // Per-variant stock behind this colour×size's OWN base (falls back to
+      // the seed base), so the size picker can grey out sold-out sizes while
+      // others stay purchasable.
+      available: Number(v.base_available || 0),
+      availability: computeAvailability(v.base_available, {
+        base: {
+          preorder_enabled: styled.preorder_enabled,
+          preorder_excluded: styled.preorder_excluded,
+          expected_ready_date: styled.expected_ready_date,
+          production_lead_days: styled.production_lead_days,
+        },
+        policy,
+      }),
     })),
     size_tiers: tiers
       .filter((r) => usedSize.has(r.size_code))
@@ -1032,7 +1041,18 @@ async function resolveStyledLine({ brand, item }) {
       "This item isn't available for purchase right now.",
       409,
     );
-  let baseVariantId = styled.base_variant_id;
+  // Stock/fulfilment attaches to the picked variant's OWN base when it has
+  // one (a size repointed to its per-size base SKU deducts from that SKU);
+  // otherwise the styled-level pin, then the seed base's default variant —
+  // the same resolution order the availability reads use (styledStockSql).
+  let baseVariantId = null;
+  if (v.base_product_id && v.base_product_id !== styled.base_product_id) {
+    baseVariantId = await defaultVariantId({
+      brand,
+      product_id: v.base_product_id,
+    });
+  }
+  if (!baseVariantId) baseVariantId = styled.base_variant_id;
   if (!baseVariantId)
     baseVariantId = await defaultVariantId({
       brand,

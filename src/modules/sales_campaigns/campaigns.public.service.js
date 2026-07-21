@@ -1001,20 +1001,37 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
         );
       }
 
-      // Resolve a base variant for stock/fulfilment.
-      let baseVariantId = sv.base_variant_id;
-      if (!baseVariantId) {
-        const baseProductId = sv.sv_base_product_id || sv.sp_base_product_id;
-        if (baseProductId) {
-          const { rows: bv } = await query(
-            `SELECT variant_id FROM ${resolvedBrand}.product_variants
-               WHERE product_id = $1 AND is_active = true
-               ORDER BY is_default DESC, display_order ASC, created_at ASC
-               LIMIT 1`,
-            [baseProductId],
-          );
-          baseVariantId = bv[0] ? bv[0].variant_id : null;
-        }
+      // Resolve a base variant for stock/fulfilment. The picked colour×size
+      // variant's OWN base wins when it has one (a size repointed to its
+      // per-size base SKU deducts from that SKU); else the styled-level
+      // base_variant_id pin, else the seed base's default variant — the same
+      // order the availability reads use (styledStockSql).
+      let baseVariantId = null;
+      const ownBase =
+        sv.sv_base_product_id &&
+        sv.sv_base_product_id !== sv.sp_base_product_id
+          ? sv.sv_base_product_id
+          : null;
+      if (ownBase) {
+        const { rows: bv } = await query(
+          `SELECT variant_id FROM ${resolvedBrand}.product_variants
+             WHERE product_id = $1 AND is_active = true
+             ORDER BY is_default DESC, display_order ASC, created_at ASC
+             LIMIT 1`,
+          [ownBase],
+        );
+        baseVariantId = bv[0] ? bv[0].variant_id : null;
+      }
+      if (!baseVariantId) baseVariantId = sv.base_variant_id;
+      if (!baseVariantId && sv.sp_base_product_id) {
+        const { rows: bv } = await query(
+          `SELECT variant_id FROM ${resolvedBrand}.product_variants
+             WHERE product_id = $1 AND is_active = true
+             ORDER BY is_default DESC, display_order ASC, created_at ASC
+             LIMIT 1`,
+          [sv.sp_base_product_id],
+        );
+        baseVariantId = bv[0] ? bv[0].variant_id : null;
       }
       if (!baseVariantId) {
         throw new AppError(

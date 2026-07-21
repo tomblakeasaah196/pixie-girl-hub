@@ -14,6 +14,7 @@
 
 const { ex } = require("../../config/database");
 const { t } = require("../../config/brands");
+const { styledVariantStockSql } = require("./availability");
 function setClause(cols, src, start = 1) {
   const f = [];
   const p = [];
@@ -400,10 +401,13 @@ const VARIANT_COLS = [
   "display_order",
 ];
 
-/** Variants with the computed effective price (anchor + colour/size/lace premiums). */
+/** Variants with the computed effective price (anchor + colour/size/lace
+ *  premiums) and the live stock behind each variant's OWN base (falling back
+ *  to the styled product's seed base) as base_available. */
 async function listVariants({ client, brand, styled_id }) {
   const { rows } = await ex(client)(
     `SELECT v.*,
+            vstock.available AS base_available,
             c.name AS colour_name, c.hex AS colour_hex, c.premium_ngn AS colour_premium_ngn,
             c.premium_usd AS colour_premium_usd,
             c.display_order AS colour_order, c.is_default AS colour_is_default,
@@ -436,6 +440,7 @@ async function listVariants({ client, brand, styled_id }) {
        LEFT JOIN ${t(brand, "styled_lace_sizes")} ls ON ls.lace_code = v.lace_code
        LEFT JOIN ${t(brand, "products")} pr ON pr.product_id = v.base_product_id
        JOIN ${t(brand, "styled_products")} sp ON sp.styled_id = v.styled_id
+       ${styledVariantStockSql(brand, "v", "sp")}
       WHERE v.styled_id = $1 AND v.is_deleted = false
       ORDER BY c.display_order, c.name, st.display_order, ls.display_order`,
     [styled_id],

@@ -50,6 +50,13 @@ const grantRoleSchema = z.object({
   expires_at: z.string().datetime().nullable().optional(),
 });
 
+// Bulk-assign one role (from the route :role_id) to many users at once.
+const grantMembersSchema = z.object({
+  user_ids: z.array(uuid).min(1).max(200),
+  business: z.string().min(1).max(60), // brand key or '*'
+  expires_at: z.string().datetime().nullable().optional(),
+});
+
 const userAccessSchema = z
   .object({
     permitted_businesses: z.array(z.string().min(1).max(60)).max(50).optional(),
@@ -80,9 +87,11 @@ module.exports = {
   validatePermissions: makeBody(permissionsSchema),
   validateContactTypes: makeBody(contactTypesSchema),
   validateGrantRole: makeBody(grantRoleSchema),
+  validateGrantMembers: makeBody(grantMembersSchema),
   validateUserAccess: makeBody(userAccessSchema),
   validateRevokeQuery: makeQuery(revokeQuerySchema),
   roleCreateSchema,
   permissionsSchema,
   grantRoleSchema,
+  grantMembersSchema,
 };

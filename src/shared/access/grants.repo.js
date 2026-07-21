@@ -34,6 +34,42 @@ async function listUserRoles({ client, user_id }) {
   return rows;
 }
 
+/**
+ * Login users who can be granted a role in `business` — i.e. those who already
+ * have access to it — each with their current role_ids so the bulk-assign
+ * picker can flag people who already hold the role. Roles attach to login
+ * accounts (shared.users), never to bare staff_profiles, so this is the correct
+ * candidate set. `search` matches email or display name (user or contact).
+ */
+async function listGrantableUsers({ client, business, search }) {
+  const params = [business];
+  let filter = "";
+  if (search) {
+    filter = ` AND (u.email ILIKE $2 OR u.display_name ILIKE $2 OR c.display_name ILIKE $2)`;
+    params.push(`%${search}%`);
+  }
+  const { rows } = await exec(client)(
+    `SELECT u.user_id, u.email,
+            COALESCE(u.display_name, c.display_name) AS display_name,
+            u.profile_type, u.status, u.external_label,
+            sp.profile_id, sp.job_title,
+            COALESCE(
+              (SELECT array_agg(ur.role_id::text)
+                 FROM shared.user_roles ur
+                WHERE ur.user_id = u.user_id),
+              '{}'::text[]
+            ) AS role_ids
+       FROM shared.users u
+       LEFT JOIN shared.staff_profiles sp ON sp.profile_id = u.staff_profile_id
+       LEFT JOIN shared.contacts c ON c.contact_id = sp.contact_id
+      WHERE $1 = ANY(u.permitted_businesses)${filter}
+      ORDER BY COALESCE(u.display_name, c.display_name, u.email) ASC
+      LIMIT 500`,
+    params,
+  );
+  return rows;
+}
+
 /** Users holding a given role (for the role detail view). */
 async function listRoleMembers({ client, role_id }) {
   const { rows } = await exec(client)(
@@ -144,6 +180,7 @@ async function validBrands({ client }) {
 module.exports = {
   userExists,
   listUserRoles,
+  listGrantableUsers,
   listRoleMembers,
   grantRole,
   revokeRole,

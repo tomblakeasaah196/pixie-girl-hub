@@ -7,6 +7,8 @@
  *   /catalog                              the module×action grid for the matrix
  *   /roles, /roles/:id                    role definitions
  *   /roles/:id/permissions                the role's permission matrix
+ *   /roles/:id/members                    bulk-grant a role to many users
+ *   /users                                grantable-user picker (bulk assign)
  *   /users/:id/roles, .../roles/:role_id  user-role grants
  *   /users/:id/access                     per-user brand access
  */
@@ -56,6 +58,14 @@ router.delete(
   controller.deleteRole,
 );
 
+// ── role membership (bulk grant) ───────────────────────────
+router.post(
+  "/roles/:role_id/members",
+  requirePermission("settings", "create"),
+  validator.validateGrantMembers,
+  controller.grantRoleMembers,
+);
+
 // ── permission matrix ──────────────────────────────────────
 router.get(
   "/roles/:role_id/permissions",
@@ -83,6 +93,13 @@ router.put(
 );
 
 // ── user-role grants ───────────────────────────────────────
+// Grantable-user picker for the bulk-assign modal — registered before the
+// parameterised /users/:user_id routes so it is not shadowed by them.
+router.get(
+  "/users",
+  requirePermission("settings", "view"),
+  controller.listGrantableUsers,
+);
 router.get(
   "/users/:user_id/roles",
   requirePermission("settings", "view"),

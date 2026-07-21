@@ -162,9 +162,17 @@ export function advanceJob(
   });
 }
 
-export function assignStaff(id: string, assigned_staff_user_id: string) {
+export function assignStaff(
+  id: string,
+  assigned_staff_user_id: string,
+  // Deadline chosen at the assigning level (ISO 8601). Sets the job's
+  // expected_completion_at + SLA clock and, via the DB trigger, the stylist's
+  // Workspace task due date. Omit to let the backend default it to +48h.
+  expected_completion_at?: string,
+) {
   return api.post<ServiceJob>(`${BASE}/${id}/assign`, {
     assigned_staff_user_id,
+    ...(expected_completion_at ? { expected_completion_at } : {}),
   });
 }
 

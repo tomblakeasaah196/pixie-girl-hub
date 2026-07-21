@@ -101,7 +101,14 @@ const jobAdvance = z
   .strict();
 
 const assignStaff = z
-  .object({ assigned_staff_user_id: z.string().uuid() })
+  .object({
+    assigned_staff_user_id: z.string().uuid(),
+    // Deadline set at the assigning level. Flows onto the job's
+    // expected_completion_at (+ the SLA clock) and, via the task-creation
+    // trigger, onto the stylist's Workspace task due date. The frontend
+    // pre-fills this to +48h; omitting it lets the service apply that default.
+    expected_completion_at: z.string().datetime().optional(),
+  })
   .strict();
 
 const outcome = z

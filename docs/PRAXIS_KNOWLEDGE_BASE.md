@@ -285,6 +285,11 @@ Order / Logistics side.
 **Common tasks.**
 - *Create a styling job?* Ops → Stylist Studio → **New Service Job**
   (`/service-jobs?tab=board`).
+- *Assign a stylist and set the deadline?* Open the job → **Assignment** panel →
+  pick a stylist. The **Due date** field there sets the job's deadline; it
+  **defaults to 48 hours** from now (editable). That deadline becomes the job's
+  due date **and** the due date of the task raised on the stylist's Workspace,
+  so the job shows up on their **My Day**.
 - *Work on my own job?* Stylist → **My Jobs** (`/service-jobs?tab=my`) →
   Start → hand back for QC.
 - *See or download the style photo?* Open the job from the Job Board
@@ -325,11 +330,19 @@ goals, the AI Chief of Staff, and **My HR** (your own attendance, leave, payslip
 **What's inside (tabs).** **My Day** · **Tasks** · **Calendar** (Month/Week/Day/
 Agenda) · **My HR** · **Goals** *(CEO)* · **Notes** *(CEO)* · **AI Chief of Staff**.
 **Common tasks.**
+- *See what's on today — and what's coming up?* Workspace → **My Day**. It shows
+  **Today's Schedule** (today's events) and **Tasks Due** (overdue + due today),
+  and — so an empty day still points you forward — an **Upcoming** section under
+  each: the next events and the next tasks with a future due date (a task due
+  tomorrow, an event later in the month, a styling job's 48-hour deadline). Each
+  Upcoming list shows up to **10** items with a **View more** link into the full
+  **Calendar** / **Tasks** tab.
 - *See my to-dos / add a task?* Workspace → **Tasks** → **New Task** / **Create Task**.
   The tab shows **your** tasks (assigned to you or created by you) — including
-  tasks auto-raised when a service job is assigned to you. Managers/CEO with
-  team-wide task access get a **My tasks / Everyone** switch at the top of the
-  Tasks tab; My Day counts are always personal.
+  tasks auto-raised when a service job is assigned to you (they carry the
+  deadline set on the job at assignment). Managers/CEO with team-wide task
+  access get a **My tasks / Everyone** switch at the top of the Tasks tab; My
+  Day counts are always personal.
 - *Work through my tasks on my phone?* The Tasks tab is a deadline-first list
   grouped **Overdue · Today · This Week · Later · Done Today** (tap a heading to
   expand/collapse). **Swipe a task right to mark it done**, **swipe left to

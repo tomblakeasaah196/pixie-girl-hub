@@ -26,6 +26,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Lightbox } from "@/components/ui/Lightbox";
 import { Select } from "@/components/ui/controls";
 import { ErrorState } from "@/components/ui/controls";
+import { TextInput } from "@/components/ui/Form";
 import { ApiError } from "@/lib/api";
 import type { ServiceJob, ServiceType, JobStatus, JobReference } from "./types";
 
@@ -82,6 +83,33 @@ import {
   CUSTOMER_HAPPINESS_FACES,
   HAPPINESS_EMOJI,
 } from "./constants";
+
+// ── Deadline helpers (assign-time due date) ────────────────
+// `datetime-local` inputs speak local wall-clock, not ISO/UTC, so we convert
+// on the way in and out. Empty string ⇢ no value (input renders blank).
+
+/** ISO/UTC string → `YYYY-MM-DDTHH:mm` in the viewer's local time. */
+function toDatetimeLocalInput(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** The default deadline: 48 hours from now, as a `datetime-local` value. */
+function plus48hLocalInput(): string {
+  return toDatetimeLocalInput(
+    new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+  );
+}
+
+/** `datetime-local` value → ISO string (or undefined when blank). */
+function localInputToIso(local: string): string | undefined {
+  if (!local) return undefined;
+  const d = new Date(local);
+  return isNaN(d.getTime()) ? undefined : d.toISOString();
+}
 
 // Human-readable label for each audit action_key the job lifecycle writes.
 const ACTIVITY_LABELS: Record<string, string> = {
@@ -777,6 +805,7 @@ function AssignmentPanel({
         <StylistPicker
           jobId={jobId}
           currentUserId={job.assigned_staff_user_id}
+          defaultDue={job.expected_completion_at}
           onDone={() => setPicking(false)}
           onAssigned={(assignedJob) => {
             if (assignedJob.is_new_tag && assignedJob.tag_code)
@@ -865,17 +894,27 @@ function AssignedRow({
 function StylistPicker({
   jobId,
   currentUserId,
+  defaultDue,
   onDone,
   onAssigned,
 }: {
   jobId: string;
   currentUserId: string | null;
+  // The job's existing promised date, if any. Pre-fills the deadline field;
+  // when absent the field defaults to 48 hours from now.
+  defaultDue?: string | null;
   onDone: () => void;
   onAssigned?: (job: ServiceJob) => void;
 }) {
   const { assign } = useJobActions(jobId);
   const { data: stylists = [], isLoading } = useAssignableStylists(true);
   const teamOpenJobs = stylists.reduce((sum, s) => sum + s.open_jobs_count, 0);
+  // Deadline captured at the assigning level. Defaults to the job's promised
+  // date if it already has one, otherwise +48h — so every assigned job lands on
+  // the stylist's My Day with a clock, and the SLA scorecards have a target.
+  const [due, setDue] = useState<string>(() =>
+    toDatetimeLocalInput(defaultDue) || plus48hLocalInput(),
+  );
 
   if (isLoading) {
     return (
@@ -897,6 +936,23 @@ function StylistPicker({
 
   return (
     <div className="glass p-2 rounded-lg space-y-1">
+      {/* Deadline set at the assigning level — defaults to 48h, editable. It
+          becomes the job's due date and lands on the stylist's My Day. */}
+      <div className="px-1.5 pt-1 pb-2 border-b border-line/60 mb-1">
+        <label className="block text-[10.5px] text-text-muted uppercase tracking-wide font-semibold mb-1">
+          Due date
+        </label>
+        <TextInput
+          type="datetime-local"
+          value={due}
+          onChange={(e) => setDue(e.target.value)}
+          className="h-9 text-[13px]"
+        />
+        <p className="text-[10.5px] text-text-muted mt-1 leading-snug">
+          Defaults to 48 hours from now. This is the deadline the stylist sees
+          on their My&nbsp;Day.
+        </p>
+      </div>
       <p className="text-[10.5px] text-text-muted px-1.5 pt-0.5 pb-1 leading-snug">
         Load = each stylist&rsquo;s share of the{" "}
         {teamOpenJobs > 0 ? `${teamOpenJobs} ` : ""}open job
@@ -913,12 +969,18 @@ function StylistPicker({
             type="button"
             disabled={disabled}
             onClick={() => {
-              assign.mutate(s.user_id, {
-                onSuccess: (assignedJob) => {
-                  onAssigned?.(assignedJob);
-                  onDone();
+              assign.mutate(
+                {
+                  userId: s.user_id,
+                  expected_completion_at: localInputToIso(due),
                 },
-              });
+                {
+                  onSuccess: (assignedJob) => {
+                    onAssigned?.(assignedJob);
+                    onDone();
+                  },
+                },
+              );
             }}
             className={
               "w-full flex items-center gap-3 px-2.5 py-2 rounded-md text-left transition-colors " +

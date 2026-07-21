@@ -488,6 +488,16 @@ function CheckoutPage() {
       // Referral code is single-use per order (createOrder consumes it in the
       // same transaction); clear the captured value so it never re-applies.
       clearReferral();
+      // Pre-order (000086): the checkout redirects straight to the gateway, so
+      // stash the notice for the thank-you page to greet the buyer with once
+      // they return from paying.
+      if (res.preorder?.is_preorder) {
+        try {
+          sessionStorage.setItem("pgh_preorder", JSON.stringify(res.preorder));
+        } catch {
+          /* storage unavailable — the confirmation email still tells them */
+        }
+      }
       window.location.href = res.payment_url;
     } catch (e) {
       const m =

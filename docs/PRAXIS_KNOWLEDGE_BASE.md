@@ -204,11 +204,20 @@ stock health, and other KPIs at a glance.
 chasing deliveries, matching stray in-store terminal payments, and payment settings.
 **Where.** Run → **Sales** · `/sales`
 **Who can see it.** `sales` permission.
-**What's inside (tabs).** **Quick Sale** · **Orders** · **Quotations** ·
-**Delivery Pending** · **POS Reconciliation** · **Payments**.
+**What's inside (tabs).** **Quick Sale** · **Orders** · **Pre-orders** ·
+**Quotations** · **Delivery Pending** · **POS Reconciliation** · **Payments**.
 **Common tasks.**
 - *Ring up a fast sale?* Sales → **Quick Sale** tab (`/sales`). Fill the Quick
-  Sale Form, add items, take payment. (This replaced the old POS.)
+  Sale Form, add items, take payment. (This replaced the old POS.) If an item is
+  out of stock it still sells — as a **pre-order** — and a toast confirms it went
+  in as made-to-order.
+- *See pre-orders and their production deadlines?* Sales → **Pre-orders** tab
+  (`/sales?tab=preorders`). Every order carrying a made-to-order line, soonest
+  ship-by first, with overdue/urgent flags — click through to the order.
+- *Turn pre-orders on/off or change the delivery window?* Catalogue → **Config**
+  (`/catalogue?tab=config`) → **Pre-orders**: master switch + the production
+  window buyers see (default 4–8 weeks). Exclude a single product from its own
+  page (base product → Pre-order · production → "Exclude from pre-orders").
 - *Create a full order and send a pay link?* Sales → **Orders** → **New Sale** /
   **Create Order & Send Pay Link**. The customer gets a short checkout link
   (`/o/<slug>`), picks their gateway (Nomba / Paystack, whichever are active),

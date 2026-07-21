@@ -56,7 +56,7 @@ export function PraxisDrawer() {
         aria-modal="true"
         aria-label="Praxis AI"
         className={cn(
-          "fixed top-0 right-0 h-full z-[90] flex flex-col dropglass border-l",
+          "fixed top-0 right-0 h-full z-[90] flex flex-col dropglass border-l pt-safe",
           "shadow-[-30px_0_80px_rgb(0_0_0/0.5)] transition-[transform,visibility] duration-300 ease-brand",
           "w-[min(440px,96vw)] lg:w-[480px]",
           open

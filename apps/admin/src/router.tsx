@@ -2,60 +2,14 @@ import { lazy, Suspense, type ComponentType } from "react";
 import { createBrowserRouter, Navigate } from "react-router-dom";
 import { AppShell } from "@/components/shell/AppShell";
 import { RequireAuth } from "@/components/auth/RequireAuth";
-import { CommandCenter } from "@/pages/CommandCenter";
-import { ContactsPage } from "@/pages/contacts/ContactsPage";
-import { ContactProfilePage } from "@/pages/contacts/ContactProfilePage";
-import { EmployeeOnboardingPage } from "@/pages/contacts/EmployeeOnboardingPage";
-import { MilestonesPage } from "@/pages/contacts/MilestonesPage";
-import { ContactTagsPage } from "@/pages/ContactTagsPage";
-import { CrmPage } from "@/pages/crm/CrmPage";
-import { ClientProfilePage } from "@/pages/crm/clients/ClientProfilePage";
-import { SalesPage } from "@/pages/sales/SalesPage";
-import { OrderDetailPage } from "@/pages/sales/OrderDetailPage";
-import { DashboardPage } from "@/pages/dashboard/DashboardPage";
-import { DealDetailPage } from "@/pages/crm/deals/DealDetailPage";
-import { CataloguePage } from "@/pages/catalogue/CataloguePage";
-import { BaseProductPage } from "@/pages/catalogue/BaseProductPage";
-import { StyledProductPage } from "@/pages/catalogue/StyledProductPage";
-import { AppearancePage } from "@/pages/AppearancePage";
-import { LoginEditorPage } from "@/pages/LoginEditorPage";
-import { ModulePlaceholder } from "@/pages/ModulePlaceholder";
 import { RouteFallback } from "@/components/common/RouteFallback";
-import { OrgWorkflowPage } from "@/pages/OrgWorkflowPage";
+// Only the pre-auth entry screens stay in the eager bundle: they ARE the
+// first paint. Every page behind the shell is lazy (see below) so the
+// startup download is the shell + login, not all 37 modules — critical for
+// mobile PWA cold-start time.
 import { LoginPage } from "@/pages/LoginPage";
 import { ResetPasswordPage } from "@/pages/ResetPasswordPage";
 import { SelectEntityPage } from "@/pages/SelectEntityPage";
-// Settings (full module)
-import { SettingsHome } from "@/pages/SettingsHome";
-import { BusinessSetupPage } from "@/pages/BusinessSetupPage";
-import { BusinessesPage } from "@/pages/BusinessesPage";
-import { CurrenciesPage } from "@/pages/CurrenciesPage";
-import { TaxRatesPage } from "@/pages/TaxRatesPage";
-import { PaymentGatewaysPage } from "@/pages/PaymentGatewaysPage";
-import { BankAccountsPage } from "@/pages/BankAccountsPage";
-import { DocumentNumberingPage } from "@/pages/DocumentNumberingPage";
-import { CustomFieldsPage } from "@/pages/CustomFieldsPage";
-import { PipelineStagesPage } from "@/pages/PipelineStagesPage";
-import { DocumentTemplatesPage } from "@/pages/DocumentTemplatesPage";
-import { EmailSignaturesPage } from "@/pages/EmailSignaturesPage";
-import { NotificationPreferencesPage } from "@/pages/NotificationPreferencesPage";
-import { ScheduledReportsPage } from "@/pages/ScheduledReportsPage";
-import { IntegrationSecretsPage } from "@/pages/IntegrationSecretsPage";
-import { BusinessPoliciesPage } from "@/pages/BusinessPoliciesPage";
-// IAM & Security (full module)
-import { IamSecurityPage } from "@/pages/IamSecurityPage";
-import { IamUsersPage } from "@/pages/IamUsersPage";
-import { IamAuditPage } from "@/pages/IamAuditPage";
-import { IamSecurityEventsPage } from "@/pages/IamSecurityEventsPage";
-import { IamSessionsPage } from "@/pages/IamSessionsPage";
-import { IamAccessReviewsPage } from "@/pages/IamAccessReviewsPage";
-import { IamMfaPage } from "@/pages/IamMfaPage";
-// Notifications
-import { NotificationsPage } from "@/pages/NotificationsPage";
-// Other module placeholders
-import { HelpCenterPage } from "@/pages/HelpCenterPage";
-import { HelpArticlePage } from "@/pages/HelpArticlePage";
-import { HelpEditorPage } from "@/pages/HelpEditorPage";
 
 
 /**
@@ -92,6 +46,199 @@ function lazyWithRetry<T extends ComponentType<any>>( // eslint-disable-line @ty
     }
   });
 }
+
+// A tiny helper for the (many) pages exported as a named symbol.
+function lazyNamed<M, K extends keyof M>(loader: () => Promise<M>, name: K) {
+  return lazyWithRetry(() =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    loader().then((m) => ({ default: m[name] as ComponentType<any> })),
+  );
+}
+
+// In-shell pages (all render inside <AppShell/>, which provides the single
+// Suspense boundary — no per-route <Suspense> wrapper needed for these).
+const CommandCenter = lazyNamed(
+  () => import("@/pages/CommandCenter"),
+  "CommandCenter",
+);
+const ContactsPage = lazyNamed(
+  () => import("@/pages/contacts/ContactsPage"),
+  "ContactsPage",
+);
+const ContactProfilePage = lazyNamed(
+  () => import("@/pages/contacts/ContactProfilePage"),
+  "ContactProfilePage",
+);
+const EmployeeOnboardingPage = lazyNamed(
+  () => import("@/pages/contacts/EmployeeOnboardingPage"),
+  "EmployeeOnboardingPage",
+);
+const MilestonesPage = lazyNamed(
+  () => import("@/pages/contacts/MilestonesPage"),
+  "MilestonesPage",
+);
+const ContactTagsPage = lazyNamed(
+  () => import("@/pages/ContactTagsPage"),
+  "ContactTagsPage",
+);
+const CrmPage = lazyNamed(() => import("@/pages/crm/CrmPage"), "CrmPage");
+const ClientProfilePage = lazyNamed(
+  () => import("@/pages/crm/clients/ClientProfilePage"),
+  "ClientProfilePage",
+);
+const SalesPage = lazyNamed(
+  () => import("@/pages/sales/SalesPage"),
+  "SalesPage",
+);
+const OrderDetailPage = lazyNamed(
+  () => import("@/pages/sales/OrderDetailPage"),
+  "OrderDetailPage",
+);
+const DashboardPage = lazyNamed(
+  () => import("@/pages/dashboard/DashboardPage"),
+  "DashboardPage",
+);
+const DealDetailPage = lazyNamed(
+  () => import("@/pages/crm/deals/DealDetailPage"),
+  "DealDetailPage",
+);
+const CataloguePage = lazyNamed(
+  () => import("@/pages/catalogue/CataloguePage"),
+  "CataloguePage",
+);
+const BaseProductPage = lazyNamed(
+  () => import("@/pages/catalogue/BaseProductPage"),
+  "BaseProductPage",
+);
+const StyledProductPage = lazyNamed(
+  () => import("@/pages/catalogue/StyledProductPage"),
+  "StyledProductPage",
+);
+const AppearancePage = lazyNamed(
+  () => import("@/pages/AppearancePage"),
+  "AppearancePage",
+);
+const LoginEditorPage = lazyNamed(
+  () => import("@/pages/LoginEditorPage"),
+  "LoginEditorPage",
+);
+const ModulePlaceholder = lazyNamed(
+  () => import("@/pages/ModulePlaceholder"),
+  "ModulePlaceholder",
+);
+const OrgWorkflowPage = lazyNamed(
+  () => import("@/pages/OrgWorkflowPage"),
+  "OrgWorkflowPage",
+);
+// Settings (full module)
+const SettingsHome = lazyNamed(
+  () => import("@/pages/SettingsHome"),
+  "SettingsHome",
+);
+const BusinessSetupPage = lazyNamed(
+  () => import("@/pages/BusinessSetupPage"),
+  "BusinessSetupPage",
+);
+const BusinessesPage = lazyNamed(
+  () => import("@/pages/BusinessesPage"),
+  "BusinessesPage",
+);
+const CurrenciesPage = lazyNamed(
+  () => import("@/pages/CurrenciesPage"),
+  "CurrenciesPage",
+);
+const TaxRatesPage = lazyNamed(
+  () => import("@/pages/TaxRatesPage"),
+  "TaxRatesPage",
+);
+const PaymentGatewaysPage = lazyNamed(
+  () => import("@/pages/PaymentGatewaysPage"),
+  "PaymentGatewaysPage",
+);
+const BankAccountsPage = lazyNamed(
+  () => import("@/pages/BankAccountsPage"),
+  "BankAccountsPage",
+);
+const DocumentNumberingPage = lazyNamed(
+  () => import("@/pages/DocumentNumberingPage"),
+  "DocumentNumberingPage",
+);
+const CustomFieldsPage = lazyNamed(
+  () => import("@/pages/CustomFieldsPage"),
+  "CustomFieldsPage",
+);
+const PipelineStagesPage = lazyNamed(
+  () => import("@/pages/PipelineStagesPage"),
+  "PipelineStagesPage",
+);
+const DocumentTemplatesPage = lazyNamed(
+  () => import("@/pages/DocumentTemplatesPage"),
+  "DocumentTemplatesPage",
+);
+const EmailSignaturesPage = lazyNamed(
+  () => import("@/pages/EmailSignaturesPage"),
+  "EmailSignaturesPage",
+);
+const NotificationPreferencesPage = lazyNamed(
+  () => import("@/pages/NotificationPreferencesPage"),
+  "NotificationPreferencesPage",
+);
+const ScheduledReportsPage = lazyNamed(
+  () => import("@/pages/ScheduledReportsPage"),
+  "ScheduledReportsPage",
+);
+const IntegrationSecretsPage = lazyNamed(
+  () => import("@/pages/IntegrationSecretsPage"),
+  "IntegrationSecretsPage",
+);
+const BusinessPoliciesPage = lazyNamed(
+  () => import("@/pages/BusinessPoliciesPage"),
+  "BusinessPoliciesPage",
+);
+// IAM & Security (full module)
+const IamSecurityPage = lazyNamed(
+  () => import("@/pages/IamSecurityPage"),
+  "IamSecurityPage",
+);
+const IamUsersPage = lazyNamed(
+  () => import("@/pages/IamUsersPage"),
+  "IamUsersPage",
+);
+const IamAuditPage = lazyNamed(
+  () => import("@/pages/IamAuditPage"),
+  "IamAuditPage",
+);
+const IamSecurityEventsPage = lazyNamed(
+  () => import("@/pages/IamSecurityEventsPage"),
+  "IamSecurityEventsPage",
+);
+const IamSessionsPage = lazyNamed(
+  () => import("@/pages/IamSessionsPage"),
+  "IamSessionsPage",
+);
+const IamAccessReviewsPage = lazyNamed(
+  () => import("@/pages/IamAccessReviewsPage"),
+  "IamAccessReviewsPage",
+);
+const IamMfaPage = lazyNamed(() => import("@/pages/IamMfaPage"), "IamMfaPage");
+// Notifications
+const NotificationsPage = lazyNamed(
+  () => import("@/pages/NotificationsPage"),
+  "NotificationsPage",
+);
+// Help Center
+const HelpCenterPage = lazyNamed(
+  () => import("@/pages/HelpCenterPage"),
+  "HelpCenterPage",
+);
+const HelpArticlePage = lazyNamed(
+  () => import("@/pages/HelpArticlePage"),
+  "HelpArticlePage",
+);
+const HelpEditorPage = lazyNamed(
+  () => import("@/pages/HelpEditorPage"),
+  "HelpEditorPage",
+);
 
 const CashRequestsPage = lazyWithRetry(
   () => import("@/pages/cash-requests/CashRequestsPage"),

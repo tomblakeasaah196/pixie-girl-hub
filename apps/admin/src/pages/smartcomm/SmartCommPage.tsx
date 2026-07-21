@@ -147,7 +147,7 @@ export function SmartCommPage() {
         // this is the only chrome left on screen. See PageTransition.tsx's
         // note on why `position: fixed` here is safe to rely on.
         immersive &&
-          "max-md:fixed max-md:inset-0 max-md:z-[100] max-md:m-0 max-md:h-[100dvh] max-md:min-h-0 max-md:border-0 max-md:rounded-none",
+          "max-md:fixed max-md:inset-0 max-md:z-[100] max-md:m-0 max-md:h-[100dvh] max-md:min-h-0 max-md:border-0 max-md:rounded-none max-md:pt-safe",
       )}
     >
       <div

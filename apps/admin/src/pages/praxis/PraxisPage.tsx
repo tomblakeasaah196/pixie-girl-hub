@@ -451,7 +451,7 @@ function SlideOver({
         aria-modal="true"
         aria-label={title}
         className={cn(
-          "fixed top-0 h-full z-[80] flex flex-col dropglass w-[min(340px,88vw)] transition-[transform,visibility] duration-300 ease-brand lg:hidden",
+          "fixed top-0 h-full z-[80] flex flex-col dropglass w-[min(340px,88vw)] transition-[transform,visibility] duration-300 ease-brand lg:hidden pt-safe",
           side === "left"
             ? "left-0 border-r shadow-[30px_0_80px_rgb(0_0_0/0.5)]"
             : "right-0 border-l shadow-[-30px_0_80px_rgb(0_0_0/0.5)]",

@@ -49,7 +49,10 @@ export function TopBar() {
     <>
       {/* Bar background spans the viewport; its content aligns to the same
           centered container as the page body so nothing is misaligned. */}
-      <header className="sticky top-0 z-30 glass border-b">
+      {/* pt-safe: on iOS standalone (black-translucent status bar +
+          viewport-fit=cover) the webview extends under the notch/status bar —
+          without the inset padding the status bar covers the top of this bar. */}
+      <header className="sticky top-0 z-30 glass border-b pt-safe">
         <div className="mx-auto w-full max-w-[var(--content-max)] flex items-center gap-3.5 p-[12px_34px] max-md:p-[10px_16px]">
           {!isDesktop && (
             <button

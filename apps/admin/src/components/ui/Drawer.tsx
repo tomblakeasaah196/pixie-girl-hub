@@ -74,7 +74,7 @@ export function Drawer({
           // panel stays visible while it slides out, then flips to hidden —
           // otherwise the big left-spreading shadow bleeds back on-screen and
           // the drawer appears to "hang" at the right edge when closed.
-          "fixed top-0 right-0 h-full flex flex-col dropglass border-l shadow-[-30px_0_80px_rgb(0_0_0/0.5)] transition-[transform,visibility] duration-300 ease-brand",
+          "fixed top-0 right-0 h-full flex flex-col dropglass border-l shadow-[-30px_0_80px_rgb(0_0_0/0.5)] transition-[transform,visibility] duration-300 ease-brand pt-safe",
           elevated ? "z-[96]" : "z-[90]",
           // Mobile widths are frozen (min() caps); the lg:/xl: overrides only
           // widen the panel on the desktop tier (≥1024px) so detail/edit

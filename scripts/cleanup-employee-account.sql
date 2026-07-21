@@ -36,15 +36,17 @@
 --     sudo -u postgres psql -d pixiedata -f - < scripts/cleanup-employee-account.sql
 --   Review the BEFORE list + AFTER (must be all-zeros), then COMMIT or ROLLBACK.
 --
---   Change the target on the next line only.
+--   Change the target on the _target line below only.
 -- ============================================================
-\set EMP 'FLH-EMP-0002'
 \pset pager off
 
 BEGIN;
 SET LOCAL lock_timeout = '5s';
 SET LOCAL idle_in_transaction_session_timeout = '120s';
 SET LOCAL statement_timeout = '5min';
+
+-- ── Target employee number (plain SQL literal — no psql variables) ──
+CREATE TEMP TABLE _target ON COMMIT DROP AS SELECT 'FLH-EMP-0002'::text AS emp;
 
 -- ── 1) Resolve identity + guard (must be exactly one profile) ────────
 CREATE TEMP TABLE _emp ON COMMIT DROP AS
@@ -62,14 +64,15 @@ SELECT sp.profile_id,
   FROM shared.staff_profiles sp
   JOIN shared.contacts       c ON c.contact_id = sp.contact_id
   LEFT JOIN shared.users     u ON u.staff_profile_id = sp.profile_id
- WHERE sp.employee_number = :'EMP';
+ WHERE sp.employee_number = (SELECT emp FROM _target);
 
 DO $$
 DECLARE n int; v_biz text;
 BEGIN
   SELECT count(*) INTO n FROM _emp;
   IF n <> 1 THEN
-    RAISE EXCEPTION 'Expected exactly 1 staff_profile for the employee_number set at the top of this script, found % — aborting.', n;
+    RAISE EXCEPTION 'Expected exactly 1 staff_profile for employee_number %, found % — aborting.',
+      (SELECT emp FROM _target), n;
   END IF;
   SELECT business INTO v_biz FROM _emp;
   IF v_biz NOT IN ('pixiegirl','faitlynhair') THEN

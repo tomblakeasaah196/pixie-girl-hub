@@ -67,4 +67,44 @@ function computeAvailability(available, { base = {}, policy = null } = {}) {
   return { state: "out_of_stock", available: 0 };
 }
 
-module.exports = { computeAvailability, preorderWindowLabel };
+/**
+ * Reduce a set of component availabilities to a BUNDLE-level state (000086).
+ * A bundle can only be fully in stock when every component is; if any single
+ * component is a hard sold-out (opted out of pre-orders AND out of stock) the
+ * whole bundle can't be fulfilled, so it's sold out; otherwise if any component
+ * must be made to order the bundle is a pre-order on the LONGEST such window
+ * (it ships once the slowest piece is ready). An empty set is in stock.
+ *
+ * Shared by the storefront bundle pages and the cart so a bundle's badge is
+ * computed in exactly one place.
+ *
+ * @param {Array<{state:string, max_weeks?:number}>} parts component availabilities
+ */
+function reduceBundleAvailability(parts = []) {
+  let state = "in_stock";
+  let preorder = null;
+  for (const a of parts) {
+    if (!a) continue;
+    if (a.state === "out_of_stock") {
+      state = "out_of_stock";
+    } else if (a.state === "preorder" && state !== "out_of_stock") {
+      state = "preorder";
+      // Keep the component with the longest production window — the bundle
+      // can't ship until its slowest piece is ready.
+      if (!preorder || (Number(a.max_weeks) || 0) > (Number(preorder.max_weeks) || 0)) {
+        preorder = a;
+      }
+    }
+  }
+  if (state === "out_of_stock") return { state: "out_of_stock", available: 0 };
+  if (state === "preorder" && preorder) {
+    return { ...preorder, state: "preorder", available: 0 };
+  }
+  return { state: "in_stock", available: 0 };
+}
+
+module.exports = {
+  computeAvailability,
+  preorderWindowLabel,
+  reduceBundleAvailability,
+};

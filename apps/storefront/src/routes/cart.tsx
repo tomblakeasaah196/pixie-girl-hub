@@ -14,6 +14,7 @@ import { formatFromNgn, settlementFor } from "@/lib/money";
 import { useCurrency, notifyCartChanged } from "@/lib/useStore";
 import { usePageSlots, withSlots } from "@/lib/site-config";
 import { Section, EmptyState, ErrorState } from "@/components/parts";
+import { preorderText } from "@/components/availability";
 
 export const Route = createFileRoute("/cart")({ component: CartPage });
 
@@ -110,6 +111,12 @@ function CartPage() {
                 <p className="text-body font-display">{it.product_name_snapshot}</p>
                 {it.variant_label_snapshot ? (
                   <p className="text-body-sm text-muted-foreground">{it.variant_label_snapshot}</p>
+                ) : null}
+                {/* Per-line pre-order / sold-out tag (000086); nothing in-stock. */}
+                {preorderText(it.availability) ? (
+                  <span className="mt-1 inline-block rounded-full border border-taupe/40 px-2 py-0.5 text-[0.55rem] font-medium uppercase tracking-[0.2em] text-taupe">
+                    {preorderText(it.availability)}
+                  </span>
                 ) : null}
                 <div className="mt-2 flex items-center gap-2">
                   <button

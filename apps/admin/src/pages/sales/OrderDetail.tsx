@@ -13,6 +13,7 @@ import {
   Package,
   CreditCard,
   Landmark,
+  Clock,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Drawer } from "@/components/ui/Drawer";
@@ -252,6 +253,16 @@ export function OrderDetail({
 
   const statusMeta = order ? ORDER_STATUS[order.status] : null;
 
+  // Pre-order (000086): production window label from the order's snapshot.
+  const preorderWindow = (() => {
+    if (!order?.is_preorder) return null;
+    const min = order.preorder_min_weeks ?? null;
+    const max = order.preorder_max_weeks ?? null;
+    if (min && max && min !== max) return `${min}–${max} weeks`;
+    const w = max || min;
+    return w ? `${w} week${w === 1 ? "" : "s"}` : null;
+  })();
+
   return (
     <>
       <Drawer
@@ -343,7 +354,33 @@ export function OrderDetail({
                   Delivery: {deliveryMeta?.label ?? "Not booked yet"}
                 </Pill>
               )}
+              {order.is_preorder && (
+                <Pill tone="accent">
+                  <Clock className="w-3 h-3 inline mr-1" />
+                  Pre-order
+                </Pill>
+              )}
             </div>
+
+            {/* Pre-order deadline + production window (000086). The order
+                carries a made-to-order line; ship-by is placement + the max
+                production weeks, snapshotted at checkout. */}
+            {order.is_preorder && (
+              <div className="flex items-start gap-2 p-3 rounded-[11px] bg-accent/[0.06] border border-accent/20">
+                <Clock className="w-4 h-4 text-accent-glow shrink-0 mt-0.5" />
+                <div className="text-[12.5px]">
+                  <span className="font-semibold">Pre-order</span>
+                  {" — made to order."}
+                  {preorderWindow ? ` Ships in about ${preorderWindow}.` : ""}
+                  {order.preorder_ready_by ? (
+                    <span className="text-text-muted">
+                      {" "}
+                      Ready by {formatDate(order.preorder_ready_by)}.
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            )}
 
             {/* Invoice link + delivery status */}
             {invoice && (

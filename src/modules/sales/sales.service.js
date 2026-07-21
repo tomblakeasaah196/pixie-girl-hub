@@ -784,6 +784,22 @@ async function createOrderTx({ brand, user, request_id, input }) {
       brand,
       product_ids: insertedLines.map((l) => l.product_id),
     });
+    // Cross-channel decision (000086, gap-8): this guard is the ONE authority on
+    // whether an out-of-stock line may pre-order, and it applies to EVERY channel
+    // — storefront, order-links, quick-sale AND sales-campaigns — with no
+    // exceptions. `preorder_excluded` is a deliberate per-product merchant opt-out
+    // meaning "genuinely sold out when it hits zero — never back-order this", and
+    // the brand master switch off means "this brand doesn't take pre-orders at
+    // all". A campaign is just another sales channel; special-casing it to force a
+    // pre-order would silently override the merchant's explicit intent and raise
+    // an order they said should never exist. So we intentionally let createOrder
+    // throw OUT_OF_STOCK for an excluded/switched-off product even inside a
+    // campaign whose landing page shows "SOLD OUT — PRE-ORDER OPEN" (a display
+    // built from the campaign's own preorder_enabled flag). With the default
+    // switch ON and products NOT excluded — the overwhelmingly common case —
+    // campaigns pre-order exactly like every other channel; the only divergence is
+    // the deliberately-excluded edge, where OUT_OF_STOCK is the CORRECT outcome and
+    // the campaign's badge is what should be corrected, not this backstop.
     const preorderAllowed = (line) =>
       preorderPolicy.enabled && !excludedPreorder.has(line.product_id);
     const blockSoldOut = (line) => {
@@ -1479,6 +1495,16 @@ async function markPaid({ client, brand, user, _request_id, order }) {
  * charge as a paid Sales order so subscription revenue resolves in Sales and
  * posts to the GL. A flat charge (no product lines); the wig fulfilment/
  * selection is handled separately. Idempotent on client_idempotency_key.
+ *
+ * Universal pre-orders (000086) — DELIBERATELY NOT APPLIED HERE. This path calls
+ * repo.createOrder directly (a flat `digital` revenue order with ZERO
+ * stock-bearing lines), so the reserve-per-line-in-a-SAVEPOINT / mark-as-
+ * pre-order logic in createOrder has nothing to act on: there is no variant to
+ * be short on. The physical wig that a subscription entitles the member to is
+ * selected and raised through a SEPARATE order that DOES flow through
+ * createOrder and therefore gets full pre-order treatment. Giving this charge
+ * "reserve/persist parity" would be meaningless (no lines) and wrong (it would
+ * imply the membership fee itself can be back-ordered), so it stays excluded.
  */
 async function recordSubscriptionCharge({
   brand,

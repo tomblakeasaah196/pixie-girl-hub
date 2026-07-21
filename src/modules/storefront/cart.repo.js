@@ -7,6 +7,7 @@
 "use strict";
 
 const { query } = require("../../config/database");
+const { t } = require("../../config/brands");
 const ex = (client) => (client ? client.query.bind(client) : query);
 
 // ── Carts ─────────────────────────────────────────────────
@@ -216,6 +217,91 @@ async function updateCart({ client, cart_id, patch }) {
   return rows[0] || null;
 }
 
+// ── Cart line availability inputs (000086 universal pre-orders) ──
+// Base stock + pre-order flags for cart lines, resolved to the base product
+// behind each line kind. Every query mirrors the stock lateral in
+// storefront.repo.listProducts (pinned base_variant_id → that variant, else
+// every active variant of the base). The service pairs these with the brand
+// policy + computeAvailability to tag each line in-stock / pre-order / sold-out.
+
+// Styled-variant lines → the styled product's base availability.
+async function styledVariantBaseAvailability({ client, brand, styled_variant_ids }) {
+  if (!styled_variant_ids || !styled_variant_ids.length) return [];
+  const { rows } = await ex(client)(
+    `SELECT sv.styled_variant_id,
+            b.preorder_enabled, b.preorder_excluded,
+            b.expected_ready_date, b.production_lead_days,
+            COALESCE(av.available, 0)::int AS base_available
+       FROM ${t(brand, "styled_product_variants")} sv
+       JOIN ${t(brand, "styled_products")} s ON s.styled_id = sv.styled_id
+       LEFT JOIN ${t(brand, "products")} b ON b.product_id = s.base_product_id
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(SUM(sl.available), 0)::int AS available
+           FROM ${t(brand, "stock_levels")} sl
+           JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sl.variant_id
+          WHERE CASE WHEN s.base_variant_id IS NOT NULL
+                     THEN pv.variant_id = s.base_variant_id
+                     ELSE pv.product_id = s.base_product_id AND pv.is_active = true
+                END
+       ) av ON true
+      WHERE sv.styled_variant_id = ANY($1)`,
+    [styled_variant_ids],
+  );
+  return rows;
+}
+
+// Base-product/variant lines (legacy + auth carts) → that variant's product.
+async function baseVariantAvailability({ client, brand, variant_ids }) {
+  if (!variant_ids || !variant_ids.length) return [];
+  const { rows } = await ex(client)(
+    `SELECT pv.variant_id,
+            b.preorder_enabled, b.preorder_excluded,
+            b.expected_ready_date, b.production_lead_days,
+            COALESCE(SUM(sl.available), 0)::int AS base_available
+       FROM ${t(brand, "product_variants")} pv
+       JOIN ${t(brand, "products")} b ON b.product_id = pv.product_id
+       LEFT JOIN ${t(brand, "stock_levels")} sl ON sl.variant_id = pv.variant_id
+      WHERE pv.variant_id = ANY($1)
+      GROUP BY pv.variant_id, b.preorder_enabled, b.preorder_excluded,
+               b.expected_ready_date, b.production_lead_days`,
+    [variant_ids],
+  );
+  return rows;
+}
+
+// Bundle lines → one row per component's base (styled → base, else the raw
+// base product), so the service can reduce them to a bundle-level state.
+async function bundleComponentAvailability({ client, brand, bundle_ids }) {
+  if (!bundle_ids || !bundle_ids.length) return [];
+  const { rows } = await ex(client)(
+    `SELECT bp.bundle_id,
+            b.preorder_enabled, b.preorder_excluded,
+            b.expected_ready_date, b.production_lead_days,
+            COALESCE(av.available, 0)::int AS base_available
+       FROM ${t(brand, "bundle_offer_products")} bp
+       LEFT JOIN ${t(brand, "styled_products")} s ON s.styled_id = bp.styled_id
+       LEFT JOIN ${t(brand, "products")} b
+              ON b.product_id = COALESCE(s.base_product_id, bp.product_id)
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(SUM(sl.available), 0)::int AS available
+           FROM ${t(brand, "stock_levels")} sl
+           JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sl.variant_id
+          WHERE CASE
+                  WHEN s.base_variant_id IS NOT NULL
+                       THEN pv.variant_id = s.base_variant_id
+                  WHEN s.base_product_id IS NOT NULL
+                       THEN pv.product_id = s.base_product_id AND pv.is_active = true
+                  WHEN bp.variant_id IS NOT NULL
+                       THEN pv.variant_id = bp.variant_id
+                  ELSE pv.product_id = bp.product_id AND pv.is_active = true
+                END
+       ) av ON true
+      WHERE bp.bundle_id = ANY($1)`,
+    [bundle_ids],
+  );
+  return rows;
+}
+
 // ── Wishlists ─────────────────────────────────────────────
 
 async function listWishlistItems({ client, contact_id, business }) {
@@ -296,6 +382,9 @@ module.exports = {
   removeCartItem,
   clearCartItems,
   updateCart,
+  styledVariantBaseAvailability,
+  baseVariantAvailability,
+  bundleComponentAvailability,
   listWishlistItems,
   findWishlistItem,
   addWishlistItem,

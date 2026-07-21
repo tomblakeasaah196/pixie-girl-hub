@@ -12,6 +12,7 @@ import {
   Trophy,
   Sparkles,
   Maximize2,
+  RotateCcw,
 } from "lucide-react";
 import {
   Button,
@@ -26,6 +27,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Lightbox } from "@/components/ui/Lightbox";
 import { Select } from "@/components/ui/controls";
 import { ErrorState } from "@/components/ui/controls";
+import { useAuthStore } from "@/stores/auth";
 import { ApiError } from "@/lib/api";
 import type { ServiceJob, ServiceType, JobStatus, JobReference } from "./types";
 
@@ -753,6 +755,122 @@ function WorkloadPill({
   );
 }
 
+// Confirmation gate before an assignment lands — "never make a mistake". Shows
+// the job + stylist to review, and warns that reversing needs CEO approval.
+function AssignConfirmModal({
+  job,
+  stylistName,
+  onConfirm,
+  onCancel,
+  pending,
+  error,
+}: {
+  job: ServiceJob;
+  stylistName: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  pending: boolean;
+  error?: string | null;
+}) {
+  const label = job.styled_product_name || job.service_type_name || "this job";
+  return (
+    <Modal
+      open
+      onClose={onCancel}
+      title="Confirm assignment"
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel} disabled={pending}>
+            Cancel
+          </Button>
+          <Button
+            onClick={onConfirm}
+            disabled={pending}
+            icon={<UserCheck className="w-3.5 h-3.5" />}
+          >
+            {pending ? "Assigning…" : "Confirm"}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3 py-1">
+        <p className="text-sm leading-relaxed">
+          Assign <span className="font-semibold">{job.job_number}</span> —{" "}
+          <span className="font-semibold">{label}</span> to{" "}
+          <span className="font-semibold text-accent-glow">{stylistName}</span>?
+        </p>
+        <div className="glass rounded-lg p-3 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 text-warn shrink-0 mt-0.5" />
+          <p className="text-[11px] text-text-muted leading-snug">
+            Review this before confirming. To reverse it you&rsquo;ll need
+            approval from hierarchy — only a CEO can revert an assignment.
+          </p>
+        </div>
+        {error && <p className="text-xs text-danger">{error}</p>}
+      </div>
+    </Modal>
+  );
+}
+
+// CEO-only override to pull a just-assigned job back to Unassigned.
+function RevertConfirmModal({
+  job,
+  stylistName,
+  onConfirm,
+  onCancel,
+  pending,
+  error,
+}: {
+  job: ServiceJob;
+  stylistName: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  pending: boolean;
+  error?: string | null;
+}) {
+  return (
+    <Modal
+      open
+      onClose={onCancel}
+      title="Revert to unassigned"
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel} disabled={pending}>
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            onClick={onConfirm}
+            disabled={pending}
+            icon={<RotateCcw className="w-3.5 h-3.5" />}
+          >
+            {pending ? "Reverting…" : "Revert to unassigned"}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3 py-1">
+        <p className="text-sm leading-relaxed">
+          Take <span className="font-semibold">{job.job_number}</span> back from{" "}
+          <span className="font-semibold">{stylistName}</span> and return it to
+          the Unassigned queue?
+        </p>
+        <div className="glass rounded-lg p-3 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 text-warn shrink-0 mt-0.5" />
+          <p className="text-[11px] text-text-muted leading-snug">
+            CEO-only override. The reserved wig is returned to custody and the
+            job drops back to Pending. Only possible before the stylist has
+            started work.
+          </p>
+        </div>
+        {error && <p className="text-xs text-danger">{error}</p>}
+      </div>
+    </Modal>
+  );
+}
+
 function AssignmentPanel({
   job,
   jobId,
@@ -775,6 +893,7 @@ function AssignmentPanel({
       )}
       {showPicker && (
         <StylistPicker
+          job={job}
           jobId={jobId}
           currentUserId={job.assigned_staff_user_id}
           onDone={() => setPicking(false)}
@@ -799,75 +918,114 @@ function AssignedRow({
   onChange: () => void;
 }) {
   const navigate = useNavigate();
+  const isCeo = useAuthStore((s) => s.user?.isCeo ?? false);
+  const { unassign } = useJobActions(job.job_id);
+  const [reverting, setReverting] = useState(false);
   const { data: stylists = [] } = useAssignableStylists(true);
   const current = stylists.find(
     (s) => s.user_id === job.assigned_staff_user_id,
   );
   const teamOpenJobs = stylists.reduce((sum, s) => sum + s.open_jobs_count, 0);
+  // The CEO can revert only while the job is still just 'assigned' (not started).
+  const canRevert = isCeo && job.status === "assigned";
   return (
-    <div className="glass p-3 rounded-lg flex items-center gap-3">
-      <div className="w-9 h-9 rounded-full bg-accent/[0.12] grid place-items-center overflow-hidden shrink-0">
-        {current?.avatar_url ? (
-          // eslint-disable-next-line jsx-a11y/img-redundant-alt
-          <img
-            src={current.avatar_url}
-            alt={current.full_name}
-            className="w-full h-full object-cover"
+    <>
+      <div className="glass p-3 rounded-lg flex items-center gap-3">
+        <div className="w-9 h-9 rounded-full bg-accent/[0.12] grid place-items-center overflow-hidden shrink-0">
+          {current?.avatar_url ? (
+            // eslint-disable-next-line jsx-a11y/img-redundant-alt
+            <img
+              src={current.avatar_url}
+              alt={current.full_name}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <UserCheck className="w-4 h-4 text-accent-glow" />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold truncate">
+            {current?.full_name ?? "Assigned stylist"}
+          </div>
+          <div className="text-[11px] text-text-muted truncate flex items-center gap-1.5">
+            <span>{current?.job_title ?? "Stylist"}</span>
+            {current && (
+              <span>
+                · {current.open_jobs_count} open job
+                {current.open_jobs_count === 1 ? "" : "s"} right now
+              </span>
+            )}
+            {current?.on_leave_today && <Pill tone="warn">On leave today</Pill>}
+          </div>
+        </div>
+        {current && (
+          <WorkloadPill
+            openJobs={current.open_jobs_count}
+            teamOpenJobs={teamOpenJobs}
           />
-        ) : (
-          <UserCheck className="w-4 h-4 text-accent-glow" />
         )}
+        {job.assigned_staff_user_id && (
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<Trophy className="w-3.5 h-3.5" />}
+            onClick={() =>
+              navigate(
+                `/service-jobs?tab=scorecards&stylist=${job.assigned_staff_user_id}`,
+              )
+            }
+          >
+            Scorecard
+          </Button>
+        )}
+        {canRevert && (
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<RotateCcw className="w-3.5 h-3.5" />}
+            onClick={() => setReverting(true)}
+          >
+            Revert
+          </Button>
+        )}
+        <Button variant="ghost" size="sm" onClick={onChange}>
+          Change
+        </Button>
       </div>
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-semibold truncate">
-          {current?.full_name ?? "Assigned stylist"}
-        </div>
-        <div className="text-[11px] text-text-muted truncate flex items-center gap-1.5">
-          <span>{current?.job_title ?? "Stylist"}</span>
-          {current && (
-            <span>
-              · {current.open_jobs_count} open job
-              {current.open_jobs_count === 1 ? "" : "s"} right now
-            </span>
-          )}
-          {current?.on_leave_today && (
-            <Pill tone="warn">On leave today</Pill>
-          )}
-        </div>
-      </div>
-      {current && (
-        <WorkloadPill
-          openJobs={current.open_jobs_count}
-          teamOpenJobs={teamOpenJobs}
+      {reverting && (
+        <RevertConfirmModal
+          job={job}
+          stylistName={current?.full_name ?? "this stylist"}
+          pending={unassign.isPending}
+          error={
+            unassign.isError
+              ? ((unassign.error as Error)?.message ??
+                "Could not revert — try again.")
+              : null
+          }
+          onCancel={() => {
+            unassign.reset();
+            setReverting(false);
+          }}
+          onConfirm={() =>
+            unassign.mutate(undefined, {
+              onSuccess: () => setReverting(false),
+            })
+          }
         />
       )}
-      {job.assigned_staff_user_id && (
-        <Button
-          variant="ghost"
-          size="sm"
-          icon={<Trophy className="w-3.5 h-3.5" />}
-          onClick={() =>
-            navigate(
-              `/service-jobs?tab=scorecards&stylist=${job.assigned_staff_user_id}`,
-            )
-          }
-        >
-          Scorecard
-        </Button>
-      )}
-      <Button variant="ghost" size="sm" onClick={onChange}>
-        Change
-      </Button>
-    </div>
+    </>
   );
 }
 
 function StylistPicker({
+  job,
   jobId,
   currentUserId,
   onDone,
   onAssigned,
 }: {
+  job: ServiceJob;
   jobId: string;
   currentUserId: string | null;
   onDone: () => void;
@@ -876,6 +1034,11 @@ function StylistPicker({
   const { assign } = useJobActions(jobId);
   const { data: stylists = [], isLoading } = useAssignableStylists(true);
   const teamOpenJobs = stylists.reduce((sum, s) => sum + s.open_jobs_count, 0);
+  // Stylist awaiting confirmation — clicking a row opens the confirm modal
+  // rather than assigning straight away, so a misclick can never commit.
+  const [pending, setPending] = useState<(typeof stylists)[number] | null>(
+    null,
+  );
 
   if (isLoading) {
     return (
@@ -912,14 +1075,7 @@ function StylistPicker({
             key={s.user_id}
             type="button"
             disabled={disabled}
-            onClick={() => {
-              assign.mutate(s.user_id, {
-                onSuccess: (assignedJob) => {
-                  onAssigned?.(assignedJob);
-                  onDone();
-                },
-              });
-            }}
+            onClick={() => setPending(s)}
             className={
               "w-full flex items-center gap-3 px-2.5 py-2 rounded-md text-left transition-colors " +
               (disabled
@@ -959,10 +1115,31 @@ function StylistPicker({
           </button>
         );
       })}
-      {assign.isError && (
-        <p className="text-xs text-danger px-2 pt-1">
-          {(assign.error as Error)?.message ?? "Could not assign — try again."}
-        </p>
+      {pending && (
+        <AssignConfirmModal
+          job={job}
+          stylistName={pending.full_name}
+          pending={assign.isPending}
+          error={
+            assign.isError
+              ? ((assign.error as Error)?.message ??
+                "Could not assign — try again.")
+              : null
+          }
+          onCancel={() => {
+            assign.reset();
+            setPending(null);
+          }}
+          onConfirm={() =>
+            assign.mutate(pending.user_id, {
+              onSuccess: (assignedJob) => {
+                onAssigned?.(assignedJob);
+                setPending(null);
+                onDone();
+              },
+            })
+          }
+        />
       )}
       {currentUserId && (
         <div className="pt-1 flex justify-end">

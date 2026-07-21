@@ -855,6 +855,46 @@ async function deductBaseWig({ client, brand, job, user_id, channel }) {
   }
 }
 
+// Exact reverse of deductBaseWig — put the base wig back on unassign. Mirrors
+// the same orderAlreadyDrewWig guard, so for order-linked jobs (where the sale
+// owned the draw and the Studio never deducted) this is a clean no-op. Best-
+// effort, like the deduction it undoes.
+async function restockBaseWig({ client, brand, job, user_id }) {
+  const variant_id = job.reserved_variant_id || job.hair_variant_id;
+  if (!variant_id) return;
+  if (
+    await repo.orderAlreadyDrewWig({
+      client,
+      brand,
+      sales_order_id: job.sales_order_id,
+      variant_id,
+    })
+  )
+    return;
+  try {
+    const stockService = require("../stock/stock.service");
+    const stockRepo = require("../stock/stock.repo");
+    const loc = await stockRepo.getDefaultLocation({ client, brand });
+    if (!loc) return;
+    await stockService.receiveStock({
+      client,
+      brand,
+      variant_id,
+      location_id: loc.location_id,
+      quantity: 1,
+      reference_id: job.job_id,
+      reference_type: "service_job",
+      unit_cost_ngn: null,
+      user_id,
+    });
+  } catch (err) {
+    logger.warn(
+      { err, job_id: job.job_id },
+      "studio base-wig restock skipped",
+    );
+  }
+}
+
 /**
  * Assign an in-house stylist (staff). Reserves + deducts the base wig, writes a
  * custody OUT row (so the wig is now accounted for in the stylist's hands), and
@@ -970,6 +1010,73 @@ async function assignStylist({
     // tag" confirmation modal — only on the assignment that actually
     // allocated the code, never on a later reassignment of the same job.
     return { ...job, is_new_tag: isNewTag };
+  });
+}
+
+/**
+ * Revert an assignment back to Unassigned — CEO-only (gated at the route via
+ * requireCeo). Only a job still in 'assigned' (not yet started) can be reverted;
+ * once work has begun the wind-back involves custody/QC and is out of scope
+ * here. Reverses exactly what assignStylist did: clears the assignee + assigned
+ * timestamp, drops the job back to 'pending', balances the custody OUT with a
+ * matching RETURN (so the wig frees up and Wig Accountability stays correct),
+ * and puts the base wig back if the Studio had drawn it. The physical tag_code
+ * and the reserved base wig are intentionally kept — the tag is written on the
+ * hair and must survive a later re-assignment of the same job.
+ */
+async function unassignStaff({ brand, user, request_id, id }) {
+  return transaction(async (client) => {
+    const before = await repo.getServiceJob({ client, brand, id });
+    if (!before) throw new NotFoundError("Service job");
+    if (!before.assigned_staff_user_id) {
+      throw new AppError("NOT_ASSIGNED", "This job is not assigned to anyone.", 409, {
+        user_message: "This job is already unassigned.",
+      });
+    }
+    if (before.status !== "assigned") {
+      throw new AppError(
+        "INVALID_STATE",
+        "Only a job still in 'assigned' (not yet started) can be reverted to unassigned.",
+        409,
+        {
+          user_message:
+            "This job has already moved past assignment, so it can't be reverted here.",
+        },
+      );
+    }
+    const job = await repo.setServiceJobStatus({
+      client,
+      brand,
+      id,
+      status: "pending",
+      fields: { assigned_staff_user_id: null, assigned_at: null },
+    });
+    // Balance the assignment's custody OUT so the wig is no longer "with" the
+    // removed stylist — otherwise it reads as still out and can't be reassigned.
+    await repo.addCustody({
+      client,
+      brand,
+      c: {
+        job_id: id,
+        event: "return",
+        quantity: 1,
+        stylist_user_id: before.assigned_staff_user_id,
+        created_by: user.user_id,
+        reason: "assignment reverted to unassigned (CEO)",
+      },
+    });
+    await restockBaseWig({ client, brand, job: before, user_id: user.user_id });
+    await A(
+      brand,
+      user,
+      "service_jobs.unassign",
+      "service_job",
+      id,
+      { reverted_assignee: before.assigned_staff_user_id },
+      request_id,
+    );
+    events.emit("advanced", { brand, job_id: id, status: "pending" });
+    return job;
   });
 }
 
@@ -1576,6 +1683,7 @@ module.exports = {
   advanceJob,
   assignStaff,
   assignStylist,
+  unassignStaff,
   listAssignableStylists,
   listStylistScorecards,
   getStylistScorecard,

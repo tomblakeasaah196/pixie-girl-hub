@@ -65,7 +65,8 @@ import { saveFileFromUrl } from "@/lib/api";
 import { formatDate, formatDateTime } from "@/lib/format";
 import {
   ORDER_STATUS,
-  ORDER_STATUS_FLOW,
+  MANUAL_MOVE_STATUSES,
+  statusMoveImpact,
   SALES_CHANNELS,
   fulfilmentLabel,
 } from "./constants";
@@ -258,6 +259,7 @@ export function OrderDetailPage() {
   const setStatus = useSetOrderStatus();
 
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<string | null>(null);
   const [receiptLoading, setReceiptLoading] = useState(false);
   const [showInvoiceSend, setShowInvoiceSend] = useState(false);
   const [invoiceSentVia, setInvoiceSentVia] = useState("email");
@@ -326,7 +328,10 @@ export function OrderDetailPage() {
     }
   };
 
-  const handleMoveStatus = async (status: string) => {
+  // The dropdown only arms the move; the actual write happens after the
+  // impact-confirmation modal below.
+  const handleConfirmMove = async () => {
+    const status = pendingStatus;
     if (!orderId || !status) return;
     try {
       await setStatus.mutateAsync({ id: orderId, status });
@@ -340,6 +345,8 @@ export function OrderDetailPage() {
         "order",
         "high",
       );
+    } finally {
+      setPendingStatus(null);
     }
   };
 
@@ -668,19 +675,12 @@ export function OrderDetailPage() {
               ].includes(order.status) && (
                 <Select
                   value=""
-                  onChange={handleMoveStatus}
+                  onChange={(v) => v && setPendingStatus(v)}
                   disabled={setStatus.isPending}
                   className="w-[150px]"
                   options={[
                     { value: "", label: "Move to…" },
-                    ...ORDER_STATUS_FLOW.filter((s) =>
-                      [
-                        "assigned",
-                        "order_ready",
-                        "dispatched",
-                        "completed",
-                      ].includes(s),
-                    ).map((s) => ({
+                    ...MANUAL_MOVE_STATUSES.map((s) => ({
                       value: s,
                       label: ORDER_STATUS[s].label,
                     })),
@@ -1492,6 +1492,37 @@ export function OrderDetailPage() {
         confirmLabel="Cancel Order"
         busy={cancelOrder.isPending}
       />
+      {pendingStatus &&
+        (() => {
+          const impact = statusMoveImpact(pendingStatus);
+          return (
+            <ConfirmDialog
+              open={!!pendingStatus}
+              onClose={() => setPendingStatus(null)}
+              onConfirm={handleConfirmMove}
+              title={impact.title}
+              confirmLabel={impact.confirmLabel}
+              busy={setStatus.isPending}
+              message={
+                <div className="space-y-3">
+                  <p>{impact.note}</p>
+                  {impact.effects.length > 0 && (
+                    <div>
+                      <p className="text-sm font-medium mb-1">
+                        What this does:
+                      </p>
+                      <ul className="list-disc pl-5 space-y-1 text-sm opacity-90">
+                        {impact.effects.map((e) => (
+                          <li key={e}>{e}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              }
+            />
+          );
+        })()}
     </div>
   );
 }

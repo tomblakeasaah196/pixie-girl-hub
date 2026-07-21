@@ -39,6 +39,8 @@ export interface OrderListParams {
   search?: string;
   /** Flexi Pay (PR-3): committed instalment orders with a balance still due. */
   part_paid?: boolean;
+  /** Pre-orders tab (000086): orders carrying a made-to-order line. */
+  preorder?: boolean;
   page?: number;
   page_size?: number;
 }
@@ -46,10 +48,16 @@ export interface OrderListParams {
 export const listOrders = ({
   search,
   part_paid,
+  preorder,
   ...rest
 }: OrderListParams = {}) =>
   api.get<PaginatedResponse<SalesOrder>>(
-    `${S}/orders${qs({ ...rest, q: search, part_paid: part_paid || undefined })}`,
+    `${S}/orders${qs({
+      ...rest,
+      q: search,
+      part_paid: part_paid || undefined,
+      preorder: preorder || undefined,
+    })}`,
   );
 
 export const getOrder = (id: string) =>

@@ -171,15 +171,20 @@ async function upsertConfig({ client, brand, patch, user_id }) {
   const { rows } = await ex(client)(
     `INSERT INTO ${t(brand, "catalogue_config")}
        (singleton, size_guide_title, head_size_guide_md, head_size_video_url,
-        categories_enabled, allow_base_in_collections_bundles, updated_by)
+        categories_enabled, allow_base_in_collections_bundles,
+        preorder_enabled, preorder_min_weeks, preorder_max_weeks, updated_by)
      VALUES (true, COALESCE($1,'How to find your head size'), $2, $6,
-             COALESCE($3,false), COALESCE($5,false), $4)
+             COALESCE($3,false), COALESCE($5,false),
+             COALESCE($8,true), COALESCE($9,4), COALESCE($10,8), $4)
      ON CONFLICT (singleton) DO UPDATE SET
        size_guide_title = COALESCE(EXCLUDED.size_guide_title, ${t(brand, "catalogue_config")}.size_guide_title),
        head_size_guide_md = COALESCE(EXCLUDED.head_size_guide_md, ${t(brand, "catalogue_config")}.head_size_guide_md),
        head_size_video_url = CASE WHEN $7::boolean THEN $6 ELSE ${t(brand, "catalogue_config")}.head_size_video_url END,
        categories_enabled = COALESCE($3, ${t(brand, "catalogue_config")}.categories_enabled),
        allow_base_in_collections_bundles = COALESCE($5, ${t(brand, "catalogue_config")}.allow_base_in_collections_bundles),
+       preorder_enabled = COALESCE($8, ${t(brand, "catalogue_config")}.preorder_enabled),
+       preorder_min_weeks = COALESCE($9, ${t(brand, "catalogue_config")}.preorder_min_weeks),
+       preorder_max_weeks = COALESCE($10, ${t(brand, "catalogue_config")}.preorder_max_weeks),
        updated_by = EXCLUDED.updated_by,
        updated_at = now()
      RETURNING *`,
@@ -191,6 +196,9 @@ async function upsertConfig({ client, brand, patch, user_id }) {
       patch.allow_base_in_collections_bundles ?? null,
       patch.head_size_video_url ?? null,
       videoProvided,
+      patch.preorder_enabled ?? null,
+      patch.preorder_min_weeks ?? null,
+      patch.preorder_max_weeks ?? null,
     ],
   );
   return rows[0];

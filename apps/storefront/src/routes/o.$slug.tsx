@@ -28,6 +28,7 @@ import {
   getPayConfig,
   type OrderLinkContext,
   type OrderLinkItem,
+  type OrderFormResult,
   type PayConfig,
 } from "@/lib/order-link";
 
@@ -183,6 +184,9 @@ function CheckoutForm({
 }) {
   const [stage, setStage] = useState<"form" | "submitting" | "done">("form");
   const [err, setErr] = useState<string | null>(null);
+  // Pre-order notice (000086) surfaced on the confirmation screen.
+  const [preorderInfo, setPreorderInfo] =
+    useState<OrderFormResult["preorder"]>(null);
   const s = useOrderLinkCopy();
 
   const [fulfilment, setFulfilment] = useState<Fulfilment>("delivery");
@@ -440,9 +444,21 @@ function CheckoutForm({
         client_idempotency_key: `order:${slug}`,
       });
 
+      setPreorderInfo(result?.preorder ?? null);
       // Straight to the gateway (Nomba). The order-form mints the checkout
-      // link server-side and returns it — redirect in one step.
+      // link server-side and returns it — redirect in one step. Stash the
+      // pre-order notice so the thank-you page can greet the buyer after paying.
       if (result?.payment_url) {
+        if (result.preorder?.is_preorder) {
+          try {
+            sessionStorage.setItem(
+              "pgh_preorder",
+              JSON.stringify(result.preorder),
+            );
+          } catch {
+            /* storage unavailable */
+          }
+        }
         window.location.href = result.payment_url;
         return;
       }
@@ -480,6 +496,19 @@ function CheckoutForm({
           <p className="mx-auto mt-2 max-w-sm text-body-sm text-muted-foreground">
             {s.doneBody}
           </p>
+          {preorderInfo?.is_preorder ? (
+            <div className="mx-auto mt-5 max-w-sm rounded-lg border border-taupe/30 bg-taupe/10 px-4 py-3 text-left">
+              <span className="text-[0.62rem] font-medium uppercase tracking-[0.22em] text-taupe">
+                Pre-order
+              </span>
+              <p className="mt-1 text-body-sm text-foreground/80">
+                {preorderInfo.message ||
+                  (preorderInfo.window_label
+                    ? `Some of your items are made to order and ship in about ${preorderInfo.window_label}.`
+                    : "Some of your items are made to order. We'll keep you posted.")}
+              </p>
+            </div>
+          ) : null}
         </div>
       </Section>
     );

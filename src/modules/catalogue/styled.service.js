@@ -18,9 +18,9 @@ const repo = require("./styled.repo");
 const variantsRepo = require("./styled_variants.repo");
 const events = require("./catalogue.events");
 const { audit } = require("../../middleware/audit");
-const { formatDate } = require("../../utils/dates");
 const { transaction } = require("../../config/database");
 const { NotFoundError, AppError } = require("../../utils/errors");
+const { computeAvailability } = require("./availability");
 
 const A = (brand, user_id, action_key, target_id, after, request_id, before) =>
   audit({
@@ -36,31 +36,12 @@ const A = (brand, user_id, action_key, target_id, after, request_id, before) =>
 
 const money = (v) => (v === null || v === undefined ? 0 : Number(v));
 
-/** Translate base stock into a customer-facing availability state. */
-function availabilityState(available, base) {
-  if (available > 0) return { state: "in_stock", available };
-  if (base && base.preorder_enabled) {
-    let message;
-    if (base.expected_ready_date) {
-      const when = formatDate(
-        base.expected_ready_date,
-        String(base.expected_ready_date),
-      );
-      message = `In production · ready ~${when}`;
-    } else if (base.production_lead_days) {
-      message = `Made to order · ~${base.production_lead_days} days in production`;
-    } else {
-      message = "Made to order · in production";
-    }
-    return {
-      state: "preorder",
-      available: 0,
-      expected_ready_date: base.expected_ready_date || null,
-      production_lead_days: base.production_lead_days || null,
-      message,
-    };
-  }
-  return { state: "out_of_stock", available: 0 };
+/** Translate base stock into a customer-facing availability state. Delegates to
+ *  the shared helper; an optional brand `policy` switches on universal
+ *  pre-orders (storefront), while the catalogue keeps the legacy per-product
+ *  opt-in when no policy is passed. */
+function availabilityState(available, base, policy = null) {
+  return computeAvailability(available, { base, policy });
 }
 
 /** Pure: attach computed price + availability given the base's stock + price.

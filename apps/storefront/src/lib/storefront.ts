@@ -20,6 +20,21 @@ import type { ContentBlock } from "./content-blocks";
 // currency feed (see getCurrencies / lib/money).
 export type Currency = string;
 
+/** In-stock / pre-order / sold-out state, computed server-side (000086).
+ *  Universal pre-orders: an out-of-stock item is offered as a pre-order with a
+ *  production window (`message`, e.g. "Made to order · ships in ~4–8 weeks"). */
+export type AvailabilityState = "in_stock" | "preorder" | "out_of_stock";
+export interface Availability {
+  state: AvailabilityState;
+  available: number;
+  message?: string;
+  window_label?: string | null;
+  min_weeks?: number | null;
+  max_weeks?: number | null;
+  expected_ready_date?: string | null;
+  production_lead_days?: number | null;
+}
+
 export interface ProductCard {
   styled_id: string;
   name: string;
@@ -28,6 +43,7 @@ export interface ProductCard {
   cover_image_url?: string | null;
   effective_price_ngn?: string | number | null;
   effective_price_usd?: string | number | null;
+  availability?: Availability | null;
 }
 
 export interface VariantOption {
@@ -50,6 +66,7 @@ export interface ProductDetail {
   slug: string;
   short_description?: string | null;
   long_description?: string | null;
+  availability?: Availability | null;
   retail_price_ngn?: string | number | null;
   retail_price_usd?: string | number | null;
   cover_image_url?: string | null;
@@ -401,12 +418,26 @@ export interface CheckoutInput {
   redeem_points?: number;
   client_idempotency_key: string;
 }
+/** Pre-order notice threaded off the created order (000086). Present only when
+ *  a line went in as made-to-order. */
+export interface PreorderNoticeData {
+  is_preorder: boolean;
+  line_count: number;
+  names?: string[];
+  window_label?: string | null;
+  min_weeks?: number | null;
+  max_weeks?: number | null;
+  ready_by?: string | null;
+  message?: string;
+}
+
 export const checkout = (body: CheckoutInput) =>
   api.post<{
     order_id: string;
     order_number: string;
     payment_url: string;
     public_tracking_token: string;
+    preorder?: PreorderNoticeData | null;
   }>(`${SF}/checkout`, body);
 
 export const getDeliveryQuote = (params: string) =>

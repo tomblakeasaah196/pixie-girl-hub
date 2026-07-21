@@ -219,6 +219,7 @@ function BaseEditor({
 
   // Pre-order / production timeline state.
   const [preorder, setPreorder] = useState(p.preorder_enabled);
+  const [excluded, setExcluded] = useState(p.preorder_excluded ?? false);
   const [readyDate, setReadyDate] = useState(p.expected_ready_date ?? "");
   const [leadDays, setLeadDays] = useState(
     p.production_lead_days != null ? String(p.production_lead_days) : "",
@@ -230,6 +231,7 @@ function BaseEditor({
     setLace(p.lace_type ?? "");
     setLength(p.hair_length_inches != null ? String(p.hair_length_inches) : "");
     setPreorder(p.preorder_enabled);
+    setExcluded(p.preorder_excluded ?? false);
     setReadyDate(p.expected_ready_date ?? "");
     setLeadDays(
       p.production_lead_days != null ? String(p.production_lead_days) : "",
@@ -252,6 +254,7 @@ function BaseEditor({
 
   const preorderDirty =
     preorder !== p.preorder_enabled ||
+    excluded !== (p.preorder_excluded ?? false) ||
     readyDate !== (p.expected_ready_date ?? "") ||
     leadDays !==
       (p.production_lead_days != null ? String(p.production_lead_days) : "");
@@ -259,6 +262,7 @@ function BaseEditor({
   const savePreorder = () =>
     update.mutate({
       preorder_enabled: preorder,
+      preorder_excluded: excluded,
       // Normalise to YYYY-MM-DD: the API can return DATE as a full ISO
       // timestamp, and the server validates expected_ready_date as a plain
       // date — sending the raw ISO string would 400.
@@ -399,38 +403,53 @@ function BaseEditor({
         <div className="space-y-4">
           <Card className="p-4">
             <div className="micro mb-3">Pre-order · production</div>
+            <p className="text-[11px] text-text-faint mb-3">
+              Pre-orders are on for the whole catalogue (Catalogue → Config).
+              When this base runs out, its styled listings are offered as a
+              pre-order on the brand window — unless you exclude it below.
+            </p>
             <Toggle
-              checked={preorder}
-              onChange={setPreorder}
+              checked={excluded}
+              onChange={setExcluded}
               disabled={!canEdit}
-              label="Allow pre-order when out of stock"
+              label="Exclude from pre-orders (show “Sold out” instead)"
             />
-            {preorder && (
+            {!excluded && (
               <div className="mt-3 space-y-3">
-                <Field label="Expected ready date" hint="optional">
-                  <input
-                    type="date"
-                    value={readyDate ? readyDate.slice(0, 10) : ""}
-                    disabled={!canEdit}
-                    onChange={(e) => setReadyDate(e.target.value)}
-                    className={inputCls}
-                  />
-                </Field>
-                <Field label="Production lead days" hint="used if no date">
-                  <NumberField
-                    value={leadDays}
-                    onChange={setLeadDays}
-                    allowDecimal={false}
-                    disabled={!canEdit}
-                    suffix="days"
-                  />
-                </Field>
-                <p className="text-[11px] text-text-faint">
-                  When stock hits zero, styled listings show “In production ·
-                  ready ~
-                  {readyDate ? formatDate(readyDate) : "{date}"}
-                  ”.
-                </p>
+                <Toggle
+                  checked={preorder}
+                  onChange={setPreorder}
+                  disabled={!canEdit}
+                  label="Use a custom production window for this product"
+                />
+                {preorder && (
+                  <>
+                    <Field label="Expected ready date" hint="optional">
+                      <input
+                        type="date"
+                        value={readyDate ? readyDate.slice(0, 10) : ""}
+                        disabled={!canEdit}
+                        onChange={(e) => setReadyDate(e.target.value)}
+                        className={inputCls}
+                      />
+                    </Field>
+                    <Field label="Production lead days" hint="used if no date">
+                      <NumberField
+                        value={leadDays}
+                        onChange={setLeadDays}
+                        allowDecimal={false}
+                        disabled={!canEdit}
+                        suffix="days"
+                      />
+                    </Field>
+                    <p className="text-[11px] text-text-faint">
+                      When stock hits zero, styled listings show “In production ·
+                      ready ~
+                      {readyDate ? formatDate(readyDate) : "{date}"}
+                      ” instead of the brand’s default window.
+                    </p>
+                  </>
+                )}
               </div>
             )}
             {canEdit && (

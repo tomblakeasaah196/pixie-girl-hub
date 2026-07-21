@@ -8,6 +8,7 @@ import {
   FileSpreadsheet,
   CreditCard,
   Landmark,
+  CalendarClock,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button, KpiTile } from "@/components/ui/primitives";
@@ -21,6 +22,7 @@ import {
 } from "./hooks";
 import { QuickSaleForm } from "./QuickSaleForm";
 import { OrdersView } from "./OrdersView";
+import { PreordersView } from "./PreordersView";
 import { QuotationsView } from "./QuotationsView";
 import { DeliveryPendingView } from "./DeliveryPendingView";
 import { PosReconciliationView } from "./PosReconciliationView";
@@ -30,6 +32,7 @@ import { SalesReportExportModal } from "./SalesReportExportModal";
 type SalesTab =
   | "quick-sale"
   | "orders"
+  | "preorders"
   | "quotations"
   | "delivery-pending"
   | "pos-reconciliation"
@@ -37,6 +40,7 @@ type SalesTab =
 const TABS: { key: SalesTab; label: string; icon: typeof Zap }[] = [
   { key: "quick-sale", label: "Quick Sale", icon: Zap },
   { key: "orders", label: "Orders", icon: ShoppingBag },
+  { key: "preorders", label: "Pre-orders", icon: CalendarClock },
   { key: "quotations", label: "Quotations", icon: FileText },
   { key: "delivery-pending", label: "Delivery Pending", icon: Truck },
   { key: "pos-reconciliation", label: "POS Reconciliation", icon: Landmark },
@@ -145,6 +149,7 @@ export function SalesPage() {
 
       {tab === "quick-sale" && <QuickSaleForm />}
       {tab === "orders" && <OrdersView />}
+      {tab === "preorders" && <PreordersView />}
       {tab === "quotations" && <QuotationsView />}
       {tab === "delivery-pending" && <DeliveryPendingView />}
       {tab === "pos-reconciliation" && <PosReconciliationView />}

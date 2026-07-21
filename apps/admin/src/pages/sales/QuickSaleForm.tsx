@@ -272,6 +272,18 @@ export function QuickSaleForm() {
             : "full",
       };
       const order = await createOrder.mutateAsync(input);
+      // Pre-order confirmation (000086): if a line went out of stock it was
+      // recorded as made-to-order — tell the staff member so they can set the
+      // customer's expectation before taking payment.
+      if (order.preorder?.is_preorder) {
+        fireToast(
+          "Pre-order",
+          order.preorder.message ||
+            `${order.preorder.line_count} item(s) are made to order and will ship on the pre-order window.`,
+          "order",
+          "high",
+        );
+      }
       // Take the customer's own wig into custody (chain of custody).
       if (ownWig && contactId) {
         try {

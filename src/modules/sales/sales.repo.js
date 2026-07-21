@@ -414,6 +414,10 @@ async function listOrders({
       `so.payment_plan = 'instalment' AND so.amount_paid_ngn > 0 AND so.balance_due_ngn > 0 AND so.status NOT IN ('cancelled','refunded')`,
     );
   }
+  if (filters.is_preorder) {
+    // Sales → Pre-orders tab (000086): orders carrying a made-to-order line.
+    where.push(`so.is_preorder = true`);
+  }
   if (filters.fee_pending) {
     // internal_notes is a TEXT column that stores a JSON-stringified object
     // (written by the public checkout in campaigns.public.service), so jsonb
@@ -445,7 +449,7 @@ async function listOrders({
            FROM ${t(brand, "sales_order_lines")} sol
           WHERE sol.order_id = so.order_id
        ) lk ON true
-       ${w} ORDER BY so.created_at DESC LIMIT $${i++} OFFSET $${i++}`,
+       ${w} ORDER BY ${filters.is_preorder ? "so.preorder_ready_by ASC NULLS LAST, " : ""}so.created_at DESC LIMIT $${i++} OFFSET $${i++}`,
     [...params, page_size, offset],
   );
   return {
@@ -1240,7 +1244,67 @@ async function setDeliveryFee({ client, brand, id, fee_ngn }) {
   return rows[0] || null;
 }
 
+// ── Pre-orders (migration 000086) ────────────────────────
+/** Brand pre-order policy from catalogue_config, with safe defaults when the
+ *  singleton row predates the feature (master switch on, 4–8 week window). */
+async function getPreorderPolicy({ client, brand }) {
+  const { rows } = await ex(client)(
+    `SELECT preorder_enabled, preorder_min_weeks, preorder_max_weeks
+       FROM ${t(brand, "catalogue_config")} WHERE singleton = true`,
+  );
+  const r = rows[0] || {};
+  return {
+    enabled: r.preorder_enabled ?? true,
+    min_weeks: r.preorder_min_weeks ?? 4,
+    max_weeks: r.preorder_max_weeks ?? 8,
+  };
+}
+
+/** Which of these product_ids are explicitly opted OUT of pre-orders (so going
+ *  out of stock is a true "sold out" rather than a pre-order). */
+async function excludedPreorderProductIds({ client, brand, product_ids }) {
+  const ids = (product_ids || []).filter(Boolean);
+  if (!ids.length) return new Set();
+  const { rows } = await ex(client)(
+    `SELECT product_id FROM ${t(brand, "products")}
+      WHERE product_id = ANY($1::uuid[]) AND preorder_excluded = true`,
+    [ids],
+  );
+  return new Set(rows.map((r) => r.product_id));
+}
+
+async function markOrderPreorder({
+  client,
+  brand,
+  order_id,
+  ready_by,
+  min_weeks,
+  max_weeks,
+}) {
+  await ex(client)(
+    `UPDATE ${t(brand, "sales_orders")}
+        SET is_preorder = true, preorder_ready_by = $2,
+            preorder_min_weeks = $3, preorder_max_weeks = $4
+      WHERE order_id = $1`,
+    [order_id, ready_by, min_weeks, max_weeks],
+  );
+}
+
+async function markLinesPreorder({ client, brand, line_ids }) {
+  const ids = (line_ids || []).filter(Boolean);
+  if (!ids.length) return;
+  await ex(client)(
+    `UPDATE ${t(brand, "sales_order_lines")}
+        SET is_preorder = true WHERE line_id = ANY($1::uuid[])`,
+    [ids],
+  );
+}
+
 module.exports = {
+  getPreorderPolicy,
+  excludedPreorderProductIds,
+  markOrderPreorder,
+  markLinesPreorder,
   updateOrderHeader,
   listDiscounts,
   nextNumber,

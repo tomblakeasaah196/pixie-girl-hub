@@ -21,6 +21,7 @@
 
 const repo = require("./payment-gateways.repo");
 const crypto = require("../../services/encryption.service");
+const nomba = require("../../services/nomba.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { config } = require("../../config/env");
@@ -137,7 +138,7 @@ async function configureGateway({ brand, user, request_id, input }) {
       });
       const bag = existing ? decryptBag(existing.credentials_enc) : {};
       for (const [k, v] of Object.entries(input.credentials)) {
-        const val = v == null ? "" : String(v).trim();
+        const val = v === null || v === undefined ? "" : String(v).trim();
         if (val) bag[k] = val;
       }
       if (Object.keys(bag).length)
@@ -232,6 +233,76 @@ async function removeGateway({ brand, user, request_id, provider }) {
     target_id: ok.gateway_id,
     request_id,
   });
+}
+
+/**
+ * Live connection test for a provider in a brand (Settings → Payment gateways →
+ * Test). Uses the SAVED credentials (resolveCredentials: DB bag over env), so
+ * configure + save before testing. Returns { provider, ok, checks[] } where each
+ * check is { key, label, ok, detail, ... }. Deep live checks (auth + webhook +
+ * a real checkout link) are implemented for Nomba; other providers report only
+ * whether credentials are present. Never returns secret VALUES.
+ */
+async function testGateway({
+  brand,
+  user,
+  request_id,
+  provider,
+  options = {},
+}) {
+  if (!PROVIDERS.includes(provider))
+    throw new AppError("BAD_PROVIDER", `Unknown gateway ${provider}`, 422);
+
+  const creds = await resolveCredentials({ brand, provider });
+  let result;
+  if (!creds) {
+    result = {
+      ok: false,
+      checks: [
+        {
+          key: "credentials",
+          label: "Credentials present",
+          ok: false,
+          detail:
+            "No credentials are configured for this gateway in this business. Add them above and save first.",
+        },
+      ],
+    };
+  } else if (provider === "nomba") {
+    result = await nomba.testConnection(creds, { brand, ...options });
+  } else {
+    result = {
+      ok: true,
+      checks: [
+        {
+          key: "credentials",
+          label: "Credentials present",
+          ok: true,
+          detail: `Credentials are configured. A live connection test is currently implemented for Nomba only.`,
+        },
+      ],
+    };
+  }
+
+  // Audit against the gateway's UUID (record_id is UUID) — null if unconfigured.
+  let gatewayId = null;
+  try {
+    const row = await repo.getRaw({ brand, provider });
+    gatewayId = row ? row.gateway_id : null;
+  } catch {
+    gatewayId = null;
+  }
+  await audit({
+    business: brand,
+    user_id: user ? user.user_id : null,
+    action_key: "business_setup.payment_gateway.test",
+    target_type: "payment_gateway",
+    target_id: gatewayId,
+    after: { provider, ok: result.ok },
+    request_id,
+  });
+
+  return { provider, ...result };
 }
 
 function maskRow(r) {
@@ -332,6 +403,7 @@ module.exports = {
   setActive,
   setRole,
   removeGateway,
+  testGateway,
   resolveCredentials,
   getActiveChain,
 };

@@ -1,6 +1,14 @@
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useEffect, useState } from "react";
-import { CheckCircle2, KeyRound, Loader2, Plug } from "lucide-react";
+import {
+  Activity,
+  CheckCircle2,
+  ExternalLink,
+  KeyRound,
+  Loader2,
+  Plug,
+  XCircle,
+} from "lucide-react";
 import { Button, Card, Pill } from "@/components/ui/primitives";
 import { Drawer } from "@/components/ui/Drawer";
 import {
@@ -18,6 +26,7 @@ import {
   useSaveBusinessConfig,
   useSetGatewayActive,
   useSetGatewayRole,
+  useTestGateway,
   type PaymentGateway,
 } from "@/lib/settings";
 
@@ -284,16 +293,19 @@ function ConfigureDrawer({
   onClose: () => void;
 }) {
   const configure = useConfigureGateway();
+  const test = useTestGateway();
+  const resetTest = test.reset;
   const fields = provider ? CREDENTIAL_FIELDS[provider] : [];
   const [values, setValues] = useState<Record<string, string>>({});
   const [currencies, setCurrencies] = useState("");
 
-  // Reset write-only fields each time the drawer opens for a provider.
+  // Reset write-only fields + any prior test result each time the drawer opens.
   useEffect(() => {
     if (!provider) return;
     setValues({});
     setCurrencies((row?.supported_currencies ?? []).join(", "));
-  }, [provider, row]);
+    resetTest();
+  }, [provider, row, resetTest]);
 
   const setValue = (key: string, v: string) =>
     setValues((s) => ({ ...s, [key]: v }));
@@ -395,6 +407,91 @@ function ConfigureDrawer({
               : "Could not save credentials."}
           </p>
         )}
+
+        <div className="pt-4 mt-1 border-t border-line/60 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[13px] font-semibold">Test connection</div>
+              <div className="text-[11px] text-text-faint">
+                Runs against the <strong>saved</strong> credentials
+                {provider === "nomba"
+                  ? " — authentication, webhook signature key, and a live checkout link."
+                  : "."}{" "}
+                Save first, then test.
+              </div>
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={test.isPending || !provider}
+              onClick={() => provider && test.mutate({ provider })}
+              icon={
+                test.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Activity className="w-4 h-4" />
+                )
+              }
+            >
+              {test.isPending ? "Testing…" : "Test connection"}
+            </Button>
+          </div>
+
+          {test.isError && (
+            <p className="text-[12px] text-danger">
+              {test.error instanceof Error
+                ? test.error.message
+                : "The test could not be run."}
+            </p>
+          )}
+
+          {test.data && (
+            <div className="space-y-2.5">
+              <div
+                className={`inline-flex items-center gap-1.5 text-[12px] font-semibold ${
+                  test.data.ok ? "text-success" : "text-danger"
+                }`}
+              >
+                {test.data.ok ? (
+                  <CheckCircle2 className="w-4 h-4" />
+                ) : (
+                  <XCircle className="w-4 h-4" />
+                )}
+                {test.data.ok ? "All checks passed" : "Some checks failed"}
+              </div>
+              <ul className="space-y-2">
+                {test.data.checks.map((c) => (
+                  <li key={c.key} className="flex items-start gap-2">
+                    {c.ok ? (
+                      <CheckCircle2 className="w-4 h-4 text-success mt-0.5 shrink-0" />
+                    ) : (
+                      <XCircle className="w-4 h-4 text-danger mt-0.5 shrink-0" />
+                    )}
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-medium">{c.label}</div>
+                      {c.detail && (
+                        <div className="text-[11px] text-text-muted break-words">
+                          {c.detail}
+                        </div>
+                      )}
+                      {c.checkout_url && (
+                        <a
+                          href={c.checkout_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-[11px] text-accent mt-1 hover:underline"
+                        >
+                          <ExternalLink className="w-3 h-3" /> Open test
+                          checkout
+                        </a>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
       </div>
     </Drawer>
   );

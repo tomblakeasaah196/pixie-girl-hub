@@ -191,6 +191,10 @@ export function useJobActions(jobId: string) {
       mutationFn: (userId: string) => api.assignStaff(jobId, userId),
       onSuccess: invalidate,
     }),
+    unassign: useMutation({
+      mutationFn: () => api.unassignStaff(jobId),
+      onSuccess: invalidate,
+    }),
     outcome: useMutation({
       mutationFn: (input: Parameters<typeof api.recordOutcome>[1]) =>
         api.recordOutcome(jobId, input),

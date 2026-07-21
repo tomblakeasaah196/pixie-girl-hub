@@ -115,6 +115,16 @@ async function assignStaff(req, res) {
     }),
   });
 }
+// Revert an assignment back to Unassigned — CEO-only (gated by requireCeo on the
+// route). No body: the job id in the path is all it needs.
+async function unassignStaff(req, res) {
+  res.json({
+    data: await service.unassignStaff({
+      ...base(req),
+      id: req.params.id,
+    }),
+  });
+}
 // Options for the drawer's assignment picker: every Operations-department
 // employee with an active login + live workload + leave state. No pagination —
 // a brand's Operations bench is small and the picker needs it all at once.
@@ -370,6 +380,7 @@ module.exports = {
   updateJob,
   advanceJob,
   assignStaff,
+  unassignStaff,
   listAssignableStylists,
   listStylistScorecards,
   getStylistScorecard,

@@ -858,6 +858,31 @@ async function hasCustodyEvent({ client, brand, job_id, event }) {
   );
   return rows.length > 0;
 }
+// True when the sales order this job was spawned from ALREADY pulled this base
+// wig out of stock at payment: markPaid posts a non-studio 'sale' movement
+// against (order_id, variant_id). When it did, the Studio must NOT deduct again
+// — it only moves the wig into stylist custody. Standalone/walk-in jobs (no
+// sales_order_id, or an order whose line carried no stock-backed product) have
+// no such movement and DO deduct in the Studio. Guards the styled-order
+// double-deduction where one physical wig lost two units (sale + assignment).
+async function orderAlreadyDrewWig({
+  client,
+  brand,
+  sales_order_id,
+  variant_id,
+}) {
+  if (!sales_order_id || !variant_id) return false;
+  const { rows } = await ex(client)(
+    `SELECT 1 FROM ${t(brand, "stock_movements")}
+      WHERE reference_id = $1
+        AND variant_id = $2
+        AND movement_type = 'sale'
+        AND sales_channel IS DISTINCT FROM 'service_job'
+      LIMIT 1`,
+    [sales_order_id, variant_id],
+  );
+  return rows.length > 0;
+}
 // Net wigs this job currently has OUT: Σ(out) − Σ(return|dispatched|write_off).
 // > 0 means the wig is physically with a stylist right now.
 async function jobCustodyBalance({ client, brand, job_id }) {
@@ -1168,6 +1193,7 @@ module.exports = {
   deleteReference,
   addCustody,
   hasCustodyEvent,
+  orderAlreadyDrewWig,
   jobCustodyBalance,
   listCustody,
   custodyBalances,

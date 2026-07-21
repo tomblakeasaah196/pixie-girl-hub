@@ -457,7 +457,7 @@ export function ProfileDrawer({
         aria-modal="true"
         aria-label="My profile"
         className={cn(
-          "fixed top-0 right-0 h-full z-[95] flex flex-col dropglass border-l shadow-[-30px_0_80px_rgb(0_0_0/0.5)]",
+          "fixed top-0 right-0 h-full z-[95] flex flex-col dropglass border-l shadow-[-30px_0_80px_rgb(0_0_0/0.5)] pt-safe",
           "w-[min(400px,95vw)] transition-transform duration-300 ease-brand",
           open ? "translate-x-0" : "translate-x-full",
         )}

@@ -62,6 +62,25 @@ export default defineConfig({
       },
     },
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        // Pin the React runtime (+ router) into one stable vendor chunk so
+        // its hash only changes when React itself is upgraded — repeat
+        // visitors keep it in HTTP/SW cache across app deploys instead of
+        // re-downloading it inside a giant re-hashed entry chunk.
+        manualChunks(id: string) {
+          if (
+            /node_modules\/(react|react-dom|scheduler|react-router|react-router-dom|@remix-run)\//.test(
+              id,
+            )
+          ) {
+            return "react-vendor";
+          }
+        },
+      },
+    },
+  },
   resolve: {
     alias: {
       // Shared landing renderer + config, consumed as source. Listed before

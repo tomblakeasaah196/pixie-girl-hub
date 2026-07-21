@@ -102,7 +102,7 @@ export function Sidebar() {
       )}
       <aside
         className={cn(
-          "fixed top-0 left-0 bottom-0 z-50 flex flex-col glass border-r transition-[width,transform] duration-300 ease-brand",
+          "fixed top-0 left-0 bottom-0 z-50 flex flex-col glass border-r transition-[width,transform] duration-300 ease-brand pt-safe",
           collapsed ? "w-[var(--side-c)]" : "w-[var(--side-w)]",
           !isDesktop &&
             (mobileSidebarOpen ? "translate-x-0" : "-translate-x-full"),

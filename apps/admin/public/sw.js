@@ -14,8 +14,18 @@ const BUILD_ID = "__PGH_BUILD__";
 
 // The cache name embeds BUILD_ID so the activate handler (which deletes every
 // cache that isn't CACHE_NAME) also evicts the previous deploy's shell cache.
-const CACHE_NAME = "pixie-hub-shell-v5-" + BUILD_ID;
+const CACHE_NAME = "pixie-hub-shell-v6-" + BUILD_ID;
 const OFFLINE_URL = "/offline.html";
+// Fixed cache key for the last successfully fetched app HTML. Every SPA route
+// serves the same document, so one cached copy covers every start URL.
+const SHELL_URL = "/__app-shell__";
+// How long a PWA launch waits on the network for index.html before starting
+// from the cached copy instead. This is what caps the "blank screen" time on
+// a slow/flaky mobile connection: a healthy network answers well inside this
+// budget (and is served fresh); a bad one no longer holds the app hostage for
+// 10–30s — the last known-good shell boots and the update banner still
+// surfaces new builds when they exist.
+const NAV_NETWORK_TIMEOUT_MS = 2000;
 const SHELL_ASSETS = [
   "/favicon.svg",
   "/pwa-icon.svg",
@@ -56,25 +66,82 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-// Network-first with shell asset cache fallback.
+/**
+ * Navigation strategy: network-first with a hard time budget.
+ * - Fresh network HTML wins whenever it arrives inside the budget (deploys
+ *   stay immediately visible on a healthy connection) and refreshes the
+ *   cached shell copy for next launch.
+ * - Past the budget — or on outright failure — the last good shell serves
+ *   instantly and the app boots from cached assets, so a cold PWA start on
+ *   bad mobile data paints in ~1–2s instead of hanging blank.
+ * - No cached shell yet (very first visit): wait for the network like before,
+ *   with offline.html as the terminal fallback.
+ */
+async function handleNavigation(request) {
+  const cache = await caches.open(CACHE_NAME);
+  const cachedShell = await cache.match(SHELL_URL);
+
+  const networkFetch = fetch(request).then((res) => {
+    // Never cache a redirected document — replaying it for a future
+    // navigation is rejected by some browsers ("redirect mode is not
+    // follow"), which would brick cached startups.
+    if (res && res.ok && !res.redirected) cache.put(SHELL_URL, res.clone());
+    return res;
+  });
+
+  if (!cachedShell) {
+    try {
+      return await networkFetch;
+    } catch {
+      return (await cache.match(OFFLINE_URL)) || Response.error();
+    }
+  }
+
+  const winner = await Promise.race([
+    networkFetch.catch(() => null),
+    new Promise((resolve) =>
+      setTimeout(() => resolve(null), NAV_NETWORK_TIMEOUT_MS),
+    ),
+  ]);
+  // Serve fresh HTML when the network answered in time with a good response;
+  // otherwise boot from the cached shell (a late network success still
+  // refreshes the cache above for the NEXT launch).
+  if (winner && winner.ok) return winner;
+  return cachedShell;
+}
+
+/**
+ * Vite build assets are content-hashed (immutable): cache-first is safe and
+ * makes every repeat launch serve JS/CSS from disk with zero network wait.
+ * The per-build cache name means a new deploy starts a fresh cache and the
+ * activate handler wipes the old build's files.
+ */
+async function handleAsset(request) {
+  const cache = await caches.open(CACHE_NAME);
+  const cached = await cache.match(request);
+  if (cached) return cached;
+  const res = await fetch(request);
+  if (res && res.ok) cache.put(request, res.clone());
+  return res;
+}
+
 // A real fetch handler (not an empty no-op) is required by Edge and
 // Samsung Internet to consider the PWA installable.
 self.addEventListener("fetch", (event) => {
+  if (event.request.method !== "GET") return;
   const url = new URL(event.request.url);
 
   // Only handle same-origin requests
   if (url.origin !== self.location.origin) return;
 
-  // For navigation requests, always go to network first (SPA handles
-  // routing) — only fall back to the precached offline page once the
-  // network request itself has failed (offline, DNS failure, unreachable
-  // server). We don't retry the network here: an immediate re-fetch of the
-  // same failed request essentially never succeeds and just delays the
-  // friendly fallback from appearing.
   if (event.request.mode === "navigate") {
-    event.respondWith(
-      fetch(event.request).catch(() => caches.match(OFFLINE_URL)),
-    );
+    event.respondWith(handleNavigation(event.request));
+    return;
+  }
+
+  // Hashed build assets: cache-first (immutable per deploy).
+  if (url.pathname.startsWith("/assets/")) {
+    event.respondWith(handleAsset(event.request));
     return;
   }
 
@@ -88,7 +155,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Everything else: network only (API calls, dynamic assets)
+  // Everything else: network only (API calls, media, dynamic requests)
 });
 
 self.addEventListener("push", (event) => {

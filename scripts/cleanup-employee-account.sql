@@ -69,7 +69,7 @@ DECLARE n int; v_biz text;
 BEGIN
   SELECT count(*) INTO n FROM _emp;
   IF n <> 1 THEN
-    RAISE EXCEPTION 'Expected exactly 1 staff_profile for employee_number %, found % — aborting.', :'EMP', n;
+    RAISE EXCEPTION 'Expected exactly 1 staff_profile for the employee_number set at the top of this script, found % — aborting.', n;
   END IF;
   SELECT business INTO v_biz FROM _emp;
   IF v_biz NOT IN ('pixiegirl','faitlynhair') THEN

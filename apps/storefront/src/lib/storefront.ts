@@ -140,6 +140,9 @@ export interface CartItem {
   unit_price_ngn: string | number;
   unit_display_price?: string | number | null;
   display_currency?: string;
+  /** In-stock / pre-order / sold-out state for this line, resolved to the base
+   *  product behind it server-side (000086). */
+  availability?: Availability | null;
 }
 
 export interface Cart {
@@ -228,6 +231,8 @@ export const getBundles = (ctx?: ApiContext) =>
         role?: string;
         price_ngn?: string;
       }[];
+      /** Bundle-level in-stock / pre-order / sold-out state (000086). */
+      availability?: Availability | null;
     }[]
   >(`${SF}/bundles`, ctx);
 export const getBundleDetail = (slug: string, ctx?: ApiContext) =>
@@ -246,6 +251,8 @@ export const getBundleDetail = (slug: string, ctx?: ApiContext) =>
       role?: string;
       price_ngn?: string;
     }[];
+    /** Bundle-level in-stock / pre-order / sold-out state (000086). */
+    availability?: Availability | null;
   }>(`${SF}/bundles/${slug}`, ctx);
 
 // --- Services (bookable offerings) ---

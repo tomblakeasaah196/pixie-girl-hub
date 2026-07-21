@@ -6,6 +6,7 @@ import { getBundleDetail, addCartItem, fmt } from "@/lib/storefront";
 import { useCurrency, notifyCartChanged } from "@/lib/useStore";
 import { Section, LoadingGrid, ErrorState } from "@/components/parts";
 import { usePageSlots, withSlots } from "@/lib/site-config";
+import { PreorderNotice } from "@/components/availability";
 
 export const Route = createFileRoute("/bundles/$slug")({
   component: BundleDetail,
@@ -80,6 +81,9 @@ function BundleDetail() {
         {data.description ? (
           <p className="mt-4 text-body text-muted-foreground">{data.description}</p>
         ) : null}
+
+        {/* Bundle-level pre-order / sold-out notice (000086). */}
+        <PreorderNotice availability={data.availability} className="mt-6" />
 
         {data.components?.length ? (
           <div className="mt-8">

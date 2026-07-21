@@ -7,6 +7,7 @@ import { getBundles, addCartItem, fmt } from "@/lib/storefront";
 import { useCurrency, notifyCartChanged } from "@/lib/useStore";
 import { usePageSlots, withSlots } from "@/lib/site-config";
 import { bundleEffectiveNgn } from "@/lib/home-content";
+import { preorderText } from "@/components/availability";
 
 export const Route = createFileRoute("/bundles")({
   head: () => ({ meta: [{ title: "Bundles — Better Together · Faitlyn Hair" }] }),
@@ -116,6 +117,14 @@ function BundlesPage() {
                 </div>
                 <div className="p-8 md:p-14 flex flex-col justify-center">
                   <p className="text-[0.62rem] tracking-[0.4em] uppercase text-rose">Bundle · Meilleur ensemble</p>
+                  {/* Bundle-level pre-order / sold-out chip (000086). The image
+                      corner already carries the savings badge, so the state
+                      reads here in the detail column. */}
+                  {preorderText(b.availability) ? (
+                    <p className="mt-3 w-fit rounded-full border border-taupe/40 px-3 py-1 text-[0.55rem] font-medium uppercase tracking-[0.22em] text-taupe">
+                      {preorderText(b.availability)}
+                    </p>
+                  ) : null}
                   <h2 className="mt-4 font-display text-4xl md:text-5xl leading-tight">{b.display_name}</h2>
                   {b.description ? <p className="mt-4 text-cream/70 leading-relaxed max-w-md">{b.description}</p> : null}
                   {comps.length ? (

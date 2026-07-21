@@ -248,7 +248,7 @@ async function availabilityForStyled({ brand, styled_ids }) {
                      ELSE pv.product_id = s.base_product_id AND pv.is_active = true
                 END
        ) av ON true
-      WHERE s.styled_id = ANY($1)`,
+      WHERE s.styled_id = ANY($1::uuid[])`,
     [styled_ids],
   );
   return rows;

@@ -12,22 +12,30 @@
 --                                 device bindings, push subs, MFA, performance
 --                                 scores/reviews
 --   • their pay records        -> payslips (+lines), commission_earned,
---                                 bonuses_awarded  (these DON'T cascade / would
---                                 otherwise block the login delete)
---   • their contact card       -> cascades addresses, tags, social handles and
+--                                 bonuses_awarded  (guarded; may be zero)
+--   • their contact card       -> cascades addresses, tags, social handles,
+--                                 customer sessions/email tokens/referrals and
 --                                 any customer-side loyalty/crown/wishlist rows
---   • their audit-log entries  -> soft ref; removed so the footprint reads clean
+--   • tasks they CREATED        -> deleted (created_by is NOT NULL/RESTRICT and
+--                                 would block the login delete; cascades subtasks)
+--   • messages they SENT        -> deleted (would otherwise linger de-attributed)
+--   • their product reviews     -> deleted (NO ACTION FK would block the contact)
 --
--- Places where the account is only REFERENCED (created_by, assigned_to,
--- stylist_user_id on service jobs, sender on messages, reports_to, org
--- position, …) are left in place and auto-nulled by the DB's SET NULL rules —
--- we do NOT delete other people's records just because this account touched
--- them. If a business record the account AUTHORED is protected by a hard FK
--- (a NOT NULL created_by / initiated_by / submitted_by, e.g. a task, goal,
--- workflow, cash request, e-signature), the DELETE below will ERROR and name
--- that constraint. That is by design: the whole thing rolls back untouched and
--- you tell me what blocked, so we handle those specific rows deliberately
--- (reassign or delete) instead of silently nuking them.
+-- RETAINED on purpose:
+--   • audit_log — a system trigger makes it append-only, so it CANNOT be
+--     deleted and we do not try; its user_id is a soft ref (no FK), so after
+--     the login is gone those rows simply carry a dangling id. Reported, not
+--     deleted. (Removing them would require disabling the audit guard — say so
+--     explicitly if that is really what you want.)
+--
+-- Places where the account is only REFERENCED (assigned_to on tasks/social,
+-- stylist_user_id on service jobs, reports_to, org position, …) are left in
+-- place and auto-nulled by the DB's SET NULL rules — we do NOT delete other
+-- people's records just because this account touched them. If some other
+-- business record the account AUTHORED is protected by a hard FK we did not
+-- pre-clear, the DELETE below ERRORs and names that constraint; the whole thing
+-- rolls back untouched and you tell me what blocked, so we handle it
+-- deliberately instead of silently nuking it.
 --
 --   Run it FIRST as a dry run:  scripts/inspect-employee-account.sql
 --   Then on the VPS:
@@ -128,40 +136,57 @@ SELECT match_kind, schema_name, table_name, column_name, rows
 SELECT match_kind, count(*) AS tables_touched, sum(rows) AS total_rows
   FROM _fp GROUP BY match_kind ORDER BY match_kind;
 
--- ── 3) Delete OWNED rows that don't cascade / would block the login ──
---     (brand pay records + their own audit-log entries)
+-- ── 3) Clear rows that would otherwise BLOCK the parent deletes, plus this
+--        account's own authored content. audit_log is RETAINED on purpose
+--        (a system trigger makes it append-only; its user_id is a soft ref,
+--        so leaving it does not block anything).
 DO $$
-DECLARE v_biz text; v_user uuid; v_profile uuid; d bigint;
+DECLARE v_biz text; v_user uuid; v_profile uuid; v_contact uuid; d bigint; a bigint;
 BEGIN
-  SELECT business, login_user_id, profile_id INTO v_biz, v_user, v_profile FROM _emp;
+  SELECT business, login_user_id, profile_id, contact_id
+    INTO v_biz, v_user, v_profile, v_contact FROM _emp;
 
-  -- performance scores/reviews cascade from the user delete, but clear them
-  -- explicitly too so a NO-ACTION variant can never block. Guarded by table
-  -- existence so it is safe on any brand.
-  IF v_user IS NOT NULL THEN
-    IF to_regclass(format('%I.commission_earned', v_biz)) IS NOT NULL THEN
-      EXECUTE format('DELETE FROM %I.commission_earned WHERE user_id = $1', v_biz) USING v_user;
-      GET DIAGNOSTICS d = ROW_COUNT; RAISE NOTICE 'commission_earned: % rows', d;
-    END IF;
-    IF to_regclass(format('%I.bonuses_awarded', v_biz)) IS NOT NULL THEN
-      EXECUTE format('DELETE FROM %I.bonuses_awarded WHERE user_id = $1', v_biz) USING v_user;
-      GET DIAGNOSTICS d = ROW_COUNT; RAISE NOTICE 'bonuses_awarded: % rows', d;
-    END IF;
+  -- Brand pay owned by the login / profile (guarded; may legitimately be zero).
+  IF v_user IS NOT NULL AND to_regclass(format('%I.commission_earned', v_biz)) IS NOT NULL THEN
+    EXECUTE format('DELETE FROM %I.commission_earned WHERE user_id = $1', v_biz) USING v_user;
+    GET DIAGNOSTICS d = ROW_COUNT; RAISE NOTICE 'commission_earned: % rows', d;
   END IF;
-
-  -- payslips (cascades payslip_lines; also clears payroll_deductions if those
-  -- hang off the payslip). Keyed by profile and/or login.
+  IF v_user IS NOT NULL AND to_regclass(format('%I.bonuses_awarded', v_biz)) IS NOT NULL THEN
+    EXECUTE format('DELETE FROM %I.bonuses_awarded WHERE user_id = $1', v_biz) USING v_user;
+    GET DIAGNOSTICS d = ROW_COUNT; RAISE NOTICE 'bonuses_awarded: % rows', d;
+  END IF;
   IF to_regclass(format('%I.payslips', v_biz)) IS NOT NULL THEN
     EXECUTE format('DELETE FROM %I.payslips WHERE staff_profile_id = $1 OR user_id = $2', v_biz)
       USING v_profile, v_user;
     GET DIAGNOSTICS d = ROW_COUNT; RAISE NOTICE 'payslips: % rows', d;
   END IF;
 
-  -- Their own audit-log entries (soft ref — no FK). Comment this line out if
-  -- you would rather RETAIN the audit trail (it will just point at a gone id).
   IF v_user IS NOT NULL THEN
-    DELETE FROM shared.audit_log WHERE user_id = v_user;
-    GET DIAGNOSTICS d = ROW_COUNT; RAISE NOTICE 'audit_log: % rows', d;
+    -- Tasks this account CREATED. created_by is NOT NULL / ON DELETE RESTRICT,
+    -- so it would block the login delete. Cascades task_subtasks. Tasks merely
+    -- ASSIGNED to them (created by someone else) are left and just un-assigned
+    -- (assigned_to is SET NULL when the login goes).
+    DELETE FROM shared.tasks WHERE created_by = v_user;
+    GET DIAGNOSTICS d = ROW_COUNT; RAISE NOTICE 'tasks (created_by): % rows', d;
+
+    -- Messages this account SENT. sender_user_id is SET NULL, so they would
+    -- otherwise survive de-attributed; remove them so nothing of theirs lingers.
+    -- Replies stay, their reply_to link nulls.
+    DELETE FROM shared.messages WHERE sender_user_id = v_user;
+    GET DIAGNOSTICS d = ROW_COUNT; RAISE NOTICE 'messages (sent): % rows', d;
+  END IF;
+
+  -- Product reviews under their contact. contact_id here is NOT NULL / NO ACTION
+  -- and would block the contact delete.
+  IF v_contact IS NOT NULL AND to_regclass('shared.product_reviews') IS NOT NULL THEN
+    DELETE FROM shared.product_reviews WHERE contact_id = v_contact;
+    GET DIAGNOSTICS d = ROW_COUNT; RAISE NOTICE 'product_reviews: % rows', d;
+  END IF;
+
+  -- audit_log: append-only by design — NOT deleted. Reported for transparency.
+  IF v_user IS NOT NULL THEN
+    SELECT count(*) INTO a FROM shared.audit_log WHERE user_id = v_user;
+    RAISE NOTICE 'audit_log: % rows RETAINED (append-only; user_id becomes a dangling id)', a;
   END IF;
 END $$;
 
@@ -196,6 +221,8 @@ BEGIN
        AND ( c.column_name IN ('profile_id','staff_profile_id')
              OR c.column_name LIKE '%contact_id'
              OR c.column_name = 'user_id' )
+       -- audit_log is append-only and intentionally retained; not a leftover.
+       AND NOT (c.table_schema = 'shared' AND c.table_name = 'audit_log')
   LOOP
     IF r.col IN ('profile_id','staff_profile_id') THEN tgt := v_profile;
     ELSIF r.col LIKE '%contact_id' THEN tgt := v_contact;

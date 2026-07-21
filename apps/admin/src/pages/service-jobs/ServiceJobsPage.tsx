@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Scissors,
   LayoutGrid,
@@ -11,6 +11,7 @@ import {
   UserRound,
   Plus,
   Trophy,
+  ArrowLeft,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import {
@@ -546,6 +547,7 @@ const TAB_IDS: Tab[] = [
 
 export function ServiceJobsPage() {
   useBreadcrumbs([{ label: "Stylist Studio" }]);
+  const navigate = useNavigate();
   const can = useAuthStore((s) => s.can);
   const scopeFor = useAuthStore((s) => s.scopeFor);
   // Own-scope users (individual stylists) get the personal cockpit only —
@@ -555,6 +557,21 @@ export function ServiceJobsPage() {
   // Tab lives in the URL so deep links from Orders / notifications land on the
   // right pane (?tab=board&job=<id> opens the board with the job drawer up).
   const [sp, setSp] = useSearchParams();
+  // When Studio was opened from an order (deep-link carries fromOrder), offer a
+  // clear way back to that exact order-detail page — the global floating Back
+  // pill only returns to the Command Center.
+  const fromOrder = sp.get("fromOrder");
+  const fromOrderNo = sp.get("fromOrderNo");
+  const backToOrder = fromOrder ? (
+    <button
+      type="button"
+      onClick={() => navigate(`/sales/orders/${fromOrder}`)}
+      className="inline-flex items-center gap-1.5 h-9 px-3 rounded-[10px] border border-line text-[13px] font-semibold text-text-muted hover:text-text-primary hover:bg-text-primary/[0.05] transition-colors"
+    >
+      <ArrowLeft className="w-4 h-4" />
+      Back to order{fromOrderNo ? ` ${fromOrderNo}` : ""}
+    </button>
+  ) : null;
   const urlTab = sp.get("tab") as Tab | null;
   const defaultTab: Tab = isOwnScope ? "my" : "board";
   const tab: Tab = urlTab && TAB_IDS.includes(urlTab) ? urlTab : defaultTab;
@@ -569,7 +586,8 @@ export function ServiceJobsPage() {
 
   if (!can("service_jobs", "view")) {
     return (
-      <div className="p-6">
+      <div className="p-6 space-y-4">
+        {backToOrder}
         <div className="glass rounded-[16px] shadow-glass p-8 text-center space-y-3 max-w-md mx-auto">
           <span className="grid place-items-center w-12 h-12 mx-auto rounded-[14px] bg-text-primary/[0.05] border border-line text-text-faint">
             <Scissors className="w-6 h-6" />
@@ -610,6 +628,7 @@ export function ServiceJobsPage() {
 
   return (
     <div className="p-4 md:p-6 space-y-5">
+      {backToOrder}
       <ModuleInsights module="service_jobs" />
       {/* Own-scope stylists get a persistent "You're working on Job X —
           47m elapsed [Pause]" strip when a time session is running, so the

@@ -177,7 +177,10 @@ function computeRisks(args: {
         tone: "danger",
         action: {
           label: "Open Studio",
-          to: `/service-jobs?tab=board&job=${job.job_id}`,
+          to:
+            `/service-jobs?tab=board&job=${job.job_id}` +
+            `&fromOrder=${order.order_id}` +
+            `&fromOrderNo=${encodeURIComponent(order.order_number)}`,
         },
       });
     }
@@ -407,6 +410,15 @@ export function OrderDetailPage() {
     (l) => l.line_kind === "styled" || l.line_kind === "service",
   );
   const needsDelivery = order?.order_type === "dispatch";
+  // Deep-links into Stylist Studio carry a return reference so Studio can show a
+  // "Back to order" button that lands back on THIS detail page. (Studio's own
+  // floating Back pill only goes to the Command Center, so without this the user
+  // has no way back to the order they came from.)
+  const studioFrom =
+    `&fromOrder=${orderId ?? ""}` +
+    (order?.order_number
+      ? `&fromOrderNo=${encodeURIComponent(order.order_number)}`
+      : "");
   const jobMeta = job ? JOB_STATUS[job.status] : null;
   const jobDone = job ? JOB_TERMINAL.has(job.status) : false;
   const deliveryMeta = delivery ? DELIVERY_STATUS[delivery.status] : null;
@@ -638,8 +650,8 @@ export function OrderDetailPage() {
                 onClick={() =>
                   navigate(
                     job
-                      ? `/service-jobs?tab=board&job=${job.job_id}`
-                      : `/service-jobs?tab=board`,
+                      ? `/service-jobs?tab=board&job=${job.job_id}${studioFrom}`
+                      : `/service-jobs?tab=board${studioFrom}`,
                   )
                 }
               >
@@ -1065,7 +1077,9 @@ export function OrderDetailPage() {
                           size="sm"
                           icon={<ExternalLink className="w-3.5 h-3.5" />}
                           onClick={() =>
-                            navigate(`/service-jobs?tab=board&job=${job.job_id}`)
+                            navigate(
+                              `/service-jobs?tab=board&job=${job.job_id}${studioFrom}`,
+                            )
                           }
                         >
                           Open Job {job.job_number}
@@ -1196,7 +1210,9 @@ export function OrderDetailPage() {
                       <button
                         type="button"
                         className="text-accent hover:underline"
-                        onClick={() => navigate("/service-jobs?tab=board")}
+                        onClick={() =>
+                          navigate(`/service-jobs?tab=board${studioFrom}`)
+                        }
                       >
                         Job Board
                       </button>{" "}

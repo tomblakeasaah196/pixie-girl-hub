@@ -339,7 +339,8 @@ async function listServiceJobs({
   const { rows } = await query(
     `SELECT sj.*, so.order_number AS sales_order_number,
             u.display_name AS assigned_staff_name,
-            c.display_name AS customer_name
+            c.display_name AS customer_name,
+            sty.name AS styled_product_name
        FROM ${t(brand, "service_jobs")} sj
        LEFT JOIN ${t(brand, "sales_orders")} so
          ON so.order_id = sj.sales_order_id
@@ -347,6 +348,8 @@ async function listServiceJobs({
          ON u.user_id = sj.assigned_staff_user_id
        LEFT JOIN shared.contacts c
          ON c.contact_id = sj.customer_contact_id
+       LEFT JOIN ${t(brand, "styled_products")} sty
+         ON sty.styled_id = sj.styled_id
       ${w}
       ORDER BY sj.created_at DESC LIMIT $${i++} OFFSET $${i}`,
     [...params, page_size, offset],
@@ -692,6 +695,27 @@ async function firstStudioLine({ client, brand, order_id }) {
     [order_id],
   );
   return rows[0] || null;
+}
+// Every styling line on an order (styled or service), in display order —
+// createForOrder fans each out into `quantity` hair-jobs.
+async function allStudioLines({ client, brand, order_id }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM ${t(brand, "sales_order_lines")}
+      WHERE order_id = $1 AND line_kind IN ('styled','service')
+      ORDER BY display_order, line_id`,
+    [order_id],
+  );
+  return rows;
+}
+// How many service jobs already exist for one order line — the per-line
+// idempotency count so createForOrder only opens the missing hairs.
+async function countJobsForLine({ client, brand, line_id }) {
+  const { rows } = await ex(client)(
+    `SELECT COUNT(*)::int AS n FROM ${t(brand, "service_jobs")}
+      WHERE sales_order_line_id = $1`,
+    [line_id],
+  );
+  return rows[0] ? rows[0].n : 0;
 }
 
 // ── time sessions ──────────────────────────────────────────
@@ -1192,6 +1216,8 @@ module.exports = {
   getStyledDNA,
   listStyledBom,
   firstStudioLine,
+  allStudioLines,
+  countJobsForLine,
   getOpenTimeSession,
   getUsersOpenSession,
   openTimeSession,

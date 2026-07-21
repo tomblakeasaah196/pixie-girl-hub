@@ -112,6 +112,12 @@ const setOrderStatus = async (req, res) =>
       status: req.body.status,
     }),
   });
+// Live on/off state of the customer messages each manual status move fires —
+// powers the order drawer's impact modal (definite "will send"/"won't send").
+const getStatusAutomations = async (req, res) =>
+  res.json({
+    data: await service.getStatusAutomationStates({ brand: req.brand }),
+  });
 const createPaymentLink = async (req, res) =>
   res.status(201).json({
     data: await paymentLink.createPaymentLink({
@@ -261,6 +267,7 @@ module.exports = {
   createOrder,
   updateOrder,
   setOrderStatus,
+  getStatusAutomations,
   addPayment,
   cancelOrder,
   createPaymentLink,

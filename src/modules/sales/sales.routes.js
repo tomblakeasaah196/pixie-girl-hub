@@ -36,6 +36,9 @@ router.get(
 
 router.get("/orders", can("view"), c.listOrders);
 router.post("/orders", can("create"), v.validateOrderCreate, c.createOrder);
+// Impact-modal live state: on/off of the messages a manual move fires.
+// Declared before "/orders/:id" so the literal path isn't shadowed by :id.
+router.get("/orders/status-automations", can("view"), c.getStatusAutomations);
 router.get("/orders/:id", can("view"), c.getById);
 router.post("/orders/:id/receipt", can("view"), c.receiptPdf);
 router.patch("/orders/:id", can("edit"), v.validateOrderUpdate, c.updateOrder);

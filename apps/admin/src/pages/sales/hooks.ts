@@ -126,6 +126,24 @@ export function useSetOrderStatus() {
   });
 }
 
+/**
+ * Live on/off state of the customer messages a manual status move fires, so
+ * the drawer's impact modal can show a definite "will send"/"won't send".
+ * Brand-scoped and cached (5-min staleTime) — the CEO's Messaging toggles
+ * change rarely, so opening the modal repeatedly reuses one fetch rather than
+ * hitting the API per open. Gate on `enabled` so it only loads while a drawer
+ * is actually open.
+ */
+export function useStatusAutomations(enabled = true) {
+  const biz = useBiz();
+  return useQuery({
+    queryKey: ["sales-status-automations", biz],
+    queryFn: salesApi.getStatusAutomations,
+    staleTime: 5 * 60_000,
+    enabled,
+  });
+}
+
 export function useOrderTimeline(orderId: string | null) {
   const biz = useBiz();
   return useQuery({

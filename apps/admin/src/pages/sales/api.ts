@@ -16,6 +16,7 @@ import type {
   FlexiPaySettingsPatch,
   PosTerminalReconciliation,
   PosReconOrderCandidate,
+  OrderStatus,
 } from "./types";
 
 const S = "/sales";
@@ -91,6 +92,31 @@ export const setOrderStatus = (id: string, status: string) =>
 
 export const generateReceipt = (id: string) =>
   api.post<{ url: string }>(`${S}/orders/${id}/receipt`);
+
+/** Live on/off state of the customer message a manual fulfilment move fires. */
+export interface StatusAutomationState {
+  /** Comms Studio automation this move triggers (e.g. "order_ready"). */
+  event_key: string;
+  /** An automation row exists for this event on the active brand. */
+  configured: boolean;
+  /** Switched On in Messaging settings — i.e. this message will actually send. */
+  is_active: boolean;
+  /** Configured channel_preference ("whatsapp" | "email" | …), when known. */
+  channel: string | null;
+}
+
+/**
+ * On/off state of the message each manual status move fires, keyed by target
+ * status. Only message-bearing moves appear (order_ready, dispatched);
+ * assigned/completed send nothing and are absent. Powers the drawer's impact
+ * modal so it shows a definite "will send"/"won't send — it's off".
+ */
+export type StatusAutomationMap = Partial<
+  Record<OrderStatus, StatusAutomationState>
+>;
+
+export const getStatusAutomations = () =>
+  api.get<StatusAutomationMap>(`${S}/orders/status-automations`);
 
 export const getOrderTimeline = (id: string) =>
   api.get<TimelineEvent[]>(`${S}/orders/${id}/timeline`);

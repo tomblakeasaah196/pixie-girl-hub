@@ -400,10 +400,17 @@ async function listOrders({
   }
   if (filters.q) {
     // Match the order number OR the customer's name / phone / email so staff
-    // can find an order by who placed it, not just by document number.
+    // can find an order by who placed it, not just by document number — plus
+    // the product / style / service names on the order's lines, so a search
+    // like "frontal" or a styled-product name surfaces every order carrying it.
     const ph = `$${i++}`;
     where.push(
-      `(so.order_number ILIKE ${ph} OR c.display_name ILIKE ${ph} OR c.primary_phone ILIKE ${ph} OR c.email ILIKE ${ph})`,
+      `(so.order_number ILIKE ${ph} OR c.display_name ILIKE ${ph} OR c.primary_phone ILIKE ${ph} OR c.email ILIKE ${ph}
+        OR EXISTS (
+          SELECT 1 FROM ${t(brand, "sales_order_lines")} sol_q
+           WHERE sol_q.order_id = so.order_id
+             AND sol_q.product_name_snapshot ILIKE ${ph}
+        ))`,
     );
     params.push(`%${filters.q}%`);
   }
@@ -441,7 +448,8 @@ async function listOrders({
   );
   const { rows } = await run(
     `SELECT so.*, c.display_name AS contact_name,
-            lk.line_kinds
+            lk.line_kinds,
+            li.line_items
        FROM ${t(brand, "sales_orders")} so
        LEFT JOIN shared.contacts c ON c.contact_id = so.contact_id
        LEFT JOIN LATERAL (
@@ -449,6 +457,18 @@ async function listOrders({
            FROM ${t(brand, "sales_order_lines")} sol
           WHERE sol.order_id = so.order_id
        ) lk ON true
+       LEFT JOIN LATERAL (
+         SELECT json_agg(
+                  json_build_object(
+                    'name', sol.product_name_snapshot,
+                    'variant', sol.variant_label_snapshot,
+                    'quantity', sol.quantity,
+                    'kind', sol.line_kind
+                  ) ORDER BY sol.display_order
+                ) AS line_items
+           FROM ${t(brand, "sales_order_lines")} sol
+          WHERE sol.order_id = so.order_id
+       ) li ON true
        ${w} ORDER BY ${filters.is_preorder ? "so.preorder_ready_by ASC NULLS LAST, " : ""}so.created_at DESC LIMIT $${i++} OFFSET $${i++}`,
     [...params, page_size, offset],
   );

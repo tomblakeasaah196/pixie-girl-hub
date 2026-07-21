@@ -21,6 +21,32 @@ import {
 import type { SalesOrder, OrderStatus, FulfilmentType } from "./types";
 
 const LAST_OPENED_KEY = "sales-orders-last";
+// Opening an order navigates to a separate page, which unmounts this list and
+// drops its filter state. Persisting the toolbar filters (status / search /
+// part-paid / page) for the browsing session means "Back" returns the register
+// exactly as the user left it — a PAID filter stays PAID.
+const FILTERS_KEY = "sales-orders-filters";
+interface PersistedFilters {
+  status: string;
+  search: string;
+  partPaid: boolean;
+  page: number;
+}
+function loadFilters(): PersistedFilters {
+  const empty: PersistedFilters = {
+    status: "",
+    search: "",
+    partPaid: false,
+    page: 1,
+  };
+  if (typeof window === "undefined") return empty;
+  try {
+    const raw = sessionStorage.getItem(FILTERS_KEY);
+    return raw ? { ...empty, ...JSON.parse(raw) } : empty;
+  } catch {
+    return empty;
+  }
+}
 
 const columns: Column<SalesOrder>[] = [
   {
@@ -65,6 +91,45 @@ const columns: Column<SalesOrder>[] = [
             o.sales_channel)}
       </span>
     ),
+  },
+  {
+    key: "products",
+    header: "Products",
+    width: "230px",
+    render: (o) => {
+      const items = (o.line_items ?? []).filter((it) => it && it.name);
+      if (!items.length)
+        return <span className="text-[12px] text-text-faint">—</span>;
+      // Show the first few names + qty inline; long orders collapse the tail
+      // into a "+N more" hint (full list on hover) so the row stays compact.
+      const shown = items.slice(0, 3);
+      const extra = items.length - shown.length;
+      return (
+        <div className="flex flex-col gap-0.5 max-w-[230px]">
+          {shown.map((it, idx) => (
+            <span
+              key={idx}
+              className="text-[12px] leading-tight truncate"
+              title={`${it.name}${it.variant ? ` · ${it.variant}` : ""} ×${it.quantity}`}
+            >
+              <span className="text-text-primary">{it.name}</span>
+              <span className="text-text-faint"> ×{it.quantity}</span>
+            </span>
+          ))}
+          {extra > 0 && (
+            <span
+              className="text-[10px] text-text-faint"
+              title={items
+                .slice(3)
+                .map((it) => `${it.name} ×${it.quantity}`)
+                .join(", ")}
+            >
+              +{extra} more
+            </span>
+          )}
+        </div>
+      );
+    },
   },
   {
     key: "kind",
@@ -230,11 +295,28 @@ const columns: Column<SalesOrder>[] = [
 
 export function OrdersView() {
   const navigate = useNavigate();
-  const [status, setStatus] = useState("");
-  const [search, setSearch] = useState("");
-  const [partPaid, setPartPaid] = useState(false);
-  const [page, setPage] = useState(1);
+  // Seed from the persisted filters so a return from an order detail restores
+  // the register exactly (see FILTERS_KEY). `useState(loadFilters)` reads
+  // sessionStorage once, on mount.
+  const [persisted] = useState(loadFilters);
+  const [status, setStatus] = useState(persisted.status);
+  const [search, setSearch] = useState(persisted.search);
+  const [partPaid, setPartPaid] = useState(persisted.partPaid);
+  const [page, setPage] = useState(persisted.page);
   const [sp, setSp] = useSearchParams();
+
+  // Keep the persisted copy in step with the live filters so the next
+  // remount (after opening an order) picks them up.
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(
+        FILTERS_KEY,
+        JSON.stringify({ status, search, partPaid, page }),
+      );
+    } catch {
+      /* sessionStorage unavailable — filters just won't persist */
+    }
+  }, [status, search, partPaid, page]);
 
   // "Which row is highlighted right now?" — driven by three sources:
   //   1. ?order=<id> in the URL (deep link or return-from-detail)
@@ -356,7 +438,7 @@ export function OrdersView() {
                 <div className="relative flex-1 min-w-[180px]">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint pointer-events-none" />
                   <input
-                    placeholder="Search by order # or customer…"
+                    placeholder="Search by order #, customer, or product…"
                     value={search}
                     onChange={(e) => {
                       setSearch(e.target.value);

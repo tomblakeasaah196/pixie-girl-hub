@@ -183,6 +183,15 @@ export interface SalesOrder {
   /** Distinct line kinds on the order (list endpoint only) — drives the
    *  register's Kind column: base product vs styled vs service vs bundle. */
   line_kinds?: Array<"product" | "styled" | "bundle" | "service"> | null;
+  /** Per-line name + quantity summary (list endpoint only) — drives the
+   *  register's Products column so staff can read the actual item names
+   *  (styled / base product / service / bundle) without opening the order. */
+  line_items?: Array<{
+    name: string;
+    variant: string | null;
+    quantity: number;
+    kind: "product" | "styled" | "bundle" | "service" | null;
+  }> | null;
   lines?: OrderLine[];
   payments?: OrderPayment[];
   discounts?: OrderDiscount[];

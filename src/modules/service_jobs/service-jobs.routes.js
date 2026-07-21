@@ -11,7 +11,7 @@
 const express = require("express");
 const c = require("./service-jobs.controller");
 const v = require("./service-jobs.validator");
-const { requirePermission } = require("../../middleware/rbac");
+const { requirePermission, requireCeo } = require("../../middleware/rbac");
 require("./service-jobs.subscribers");
 
 const router = express.Router();
@@ -78,6 +78,10 @@ router.get("/:id", can("view"), c.getJob);
 router.patch("/:id", can("edit"), v.validateJobUpdate, c.updateJob);
 router.post("/:id/advance", can("edit"), v.validateJobAdvance, c.advanceJob);
 router.post("/:id/assign", can("edit"), v.validateAssignStaff, c.assignStaff);
+// Revert an assignment back to Unassigned — reserved to the CEO (hard gate; no
+// role grant satisfies it). Undoes the base-wig custody/stock and clears the
+// assignee. Path-param only, so it can sit with the other /:id routes.
+router.post("/:id/unassign", requireCeo, c.unassignStaff);
 router.post("/:id/outcome", can("edit"), v.validateOutcome, c.recordOutcome);
 
 // ── Stylist Studio (PR2) lifecycle ─────────────────────────

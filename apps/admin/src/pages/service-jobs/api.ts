@@ -176,6 +176,12 @@ export function assignStaff(
   });
 }
 
+// Revert an assignment back to Unassigned. CEO-only (the API enforces via a hard
+// gate); the UI only surfaces the control to a CEO.
+export function unassignStaff(id: string) {
+  return api.post<ServiceJob>(`${BASE}/${id}/unassign`, {});
+}
+
 // Options for the drawer's assignment picker: stylists (Junior/Senior/Head
 // Stylist) in the Operations department with an active login in the current
 // brand, with live workload + leave state. Their job_title is shown as their

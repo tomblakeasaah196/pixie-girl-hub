@@ -340,7 +340,10 @@ async function listServiceJobs({
     `SELECT sj.*, so.order_number AS sales_order_number,
             u.display_name AS assigned_staff_name,
             c.display_name AS customer_name,
-            sty.name AS styled_product_name
+            sty.name AS styled_product_name,
+            -- Hero photo so cards can lead with the picture — the fastest way
+            -- for a stylist to recognise their wig (mirrors getServiceJob).
+            ${primaryStyledImageSql(brand, "sty")} AS styled_product_image_url
        FROM ${t(brand, "service_jobs")} sj
        LEFT JOIN ${t(brand, "sales_orders")} so
          ON so.order_id = sj.sales_order_id

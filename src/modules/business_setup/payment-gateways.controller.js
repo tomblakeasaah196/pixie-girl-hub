@@ -43,5 +43,14 @@ async function remove(req, res) {
   await service.removeGateway({ ...base(req), provider: req.params.provider });
   res.status(204).end();
 }
+async function test(req, res) {
+  res.json({
+    data: await service.testGateway({
+      ...base(req),
+      provider: req.params.provider,
+      options: req.body || {},
+    }),
+  });
+}
 
-module.exports = { list, configure, setActive, setRole, remove };
+module.exports = { list, configure, setActive, setRole, remove, test };

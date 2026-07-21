@@ -188,6 +188,12 @@ router.patch(
   gatewayValidator.validateSetRole,
   gateways.setRole,
 );
+router.post(
+  "/payment-gateways/:provider/test",
+  can("edit"),
+  gatewayValidator.validateTest,
+  gateways.test,
+);
 router.delete("/payment-gateways/:provider", can("delete"), gateways.remove);
 
 module.exports = router;

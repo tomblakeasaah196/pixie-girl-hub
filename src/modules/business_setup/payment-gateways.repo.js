@@ -12,6 +12,7 @@ async function list({ brand }) {
   const { rows } = await query(
     `SELECT gateway_id, business, provider, is_active, role,
             (credentials_enc IS NOT NULL) AS has_credentials,
+            credentials_enc,
             supported_currencies, display_label, configured_by,
             created_at, updated_at
        FROM shared.payment_gateways
@@ -31,13 +32,19 @@ async function getRaw({ client, brand, provider }) {
 }
 
 async function activeForCurrency({ brand, ngn }) {
-  // NGN gateways are the local pair (paystack/opay) ordered primary-first;
-  // non-NGN resolves to stripe. nomba is POS (excluded from online chain).
+  // Return every active gateway eligible for the currency; getActiveChain()
+  // applies the owner-directed per-currency filtering + preference ordering.
+  // Owner-directed routing (June 2026 rev.):
+  //   • NGN     → Nomba primary, Paystack fallback, Stripe last-resort
+  //     (OPay stays eligible as an enabled fallback if configured).
+  //   • non-NGN → Nomba primary, Stripe fallback (Nomba's USD wallet is the
+  //     sole first-line rail; Stripe backstops a Nomba outage).
+  // Nomba MUST be selectable here — it is the online primary, not POS-only.
   const { rows } = await query(
     `SELECT * FROM shared.payment_gateways
       WHERE business = $1 AND is_active = true
-        AND ( ($2::boolean AND provider IN ('paystack','opay'))
-           OR (NOT $2::boolean AND provider = 'stripe') )
+        AND ( ($2::boolean AND provider IN ('nomba','paystack','opay','stripe'))
+           OR (NOT $2::boolean AND provider IN ('nomba','stripe')) )
       ORDER BY CASE role WHEN 'primary' THEN 0 WHEN 'fallback' THEN 1 ELSE 2 END,
                provider`,
     [brand, ngn],

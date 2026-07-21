@@ -152,6 +152,8 @@ export interface PaymentGateway {
   supported_currencies: string[];
   display_label: string | null;
   has_credentials: boolean;
+  /** Names of credential fields currently stored (values are never returned). */
+  credential_fields?: string[];
 }
 export interface DocumentTemplate {
   template_id: string;
@@ -494,6 +496,42 @@ export function useSetGatewayRole() {
       api.patch(`/business-setup/payment-gateways/${provider}/role`, { role }),
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: ["payment-gateways", brand] }),
+  });
+}
+
+/** One row in a gateway connection-test result (values are never returned). */
+export interface GatewayTestCheck {
+  key: string;
+  label: string;
+  ok: boolean;
+  detail?: string;
+  checkout_url?: string;
+  reference?: string;
+}
+export interface GatewayTestResult {
+  provider: string;
+  ok: boolean;
+  checks: GatewayTestCheck[];
+}
+/**
+ * Run a live connection test against the SAVED credentials for a provider.
+ * Tests what's stored (DB over env), so save before testing. For Nomba this
+ * exercises auth, the webhook signature key, and a real checkout link.
+ */
+export function useTestGateway() {
+  return useMutation<
+    GatewayTestResult,
+    Error,
+    {
+      provider: string;
+      options?: { amount?: number | string; currency?: string };
+    }
+  >({
+    mutationFn: ({ provider, options }) =>
+      api.post<GatewayTestResult>(
+        `/business-setup/payment-gateways/${provider}/test`,
+        options ?? {},
+      ),
   });
 }
 

@@ -339,6 +339,17 @@ async function assignStaff({
     request_id,
   );
   events.emit("assigned", { brand, job_id: id });
+  // Advance the linked order into 'assigned' (see assignStylist). Guarded — only
+  // moves a paid / partially-paid order forward, never rewinds a later stage.
+  if (job.sales_order_id) {
+    const salesRepo = require("../sales/sales.repo");
+    await salesRepo.advanceStatus({
+      brand,
+      id: job.sales_order_id,
+      to: "assigned",
+      from: ["paid", "partially_paid", "assigned"],
+    });
+  }
   return job;
 }
 
@@ -901,6 +912,20 @@ async function assignStylist({
       request_id,
     );
     events.emit("assigned", { brand, job_id: id });
+    // Advance the linked order into 'assigned' — the customer-facing signal
+    // that a stylist is now working on it. Guarded so it only moves a paid /
+    // partially-paid (deposit-cleared) order forward, never rewinds one already
+    // packed/dispatched/completed, and never touches a cancelled order.
+    if (job.sales_order_id) {
+      const salesRepo = require("../sales/sales.repo");
+      await salesRepo.advanceStatus({
+        client,
+        brand,
+        id: job.sales_order_id,
+        to: "assigned",
+        from: ["paid", "partially_paid", "assigned"],
+      });
+    }
     await notifyUser({
       brand,
       user_id: assigned_staff_user_id,
@@ -1258,6 +1283,20 @@ async function recordQc({ brand, user, request_id, id, input }) {
           reason: "QC passed → to logistics",
         },
       });
+      // Styling is done and the wig is packed → advance the linked order to
+      // 'order_ready' (packed, waiting for the courier). Deliberately NOT
+      // 'dispatched' — the parcel hasn't left, so the customer is never told it
+      // shipped at QC. Guarded so a re-QC can't rewind a later stage.
+      if (before.sales_order_id) {
+        const salesRepo = require("../sales/sales.repo");
+        await salesRepo.advanceStatus({
+          client,
+          brand,
+          id: before.sales_order_id,
+          to: "order_ready",
+          from: ["paid", "partially_paid", "assigned", "order_ready"],
+        });
+      }
     }
     await A(
       brand,
@@ -1286,7 +1325,11 @@ async function recordQc({ brand, user, request_id, id, input }) {
     try {
       const salesRepo = require("../sales/sales.repo");
       const logistics = require("../logistics/logistics.service");
+      const orderComms = require("../sales/order-comms");
       const order = await salesRepo.findById({ brand, id: job.sales_order_id });
+      // "Order Ready" customer message (gated by Messaging settings; no-op if the
+      // CEO toggled it Off). Best-effort — never blocks the logistics handoff.
+      if (order) await orderComms.orderReady({ brand, order });
       const delivery = order
         ? await logistics.createForOrder({ brand, order })
         : null;

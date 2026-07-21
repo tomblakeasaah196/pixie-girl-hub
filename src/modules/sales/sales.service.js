@@ -51,8 +51,12 @@ const { computePointsRedemption } = require("./pricing/points");
 const { assertBundleComplete, computeBundleDiscount } = require("./pricing/bundle");
 const { exitIntentMatches } = require("./pricing/exit-intent");
 const { computeTotalsAndLines, computeDepositPolicy } = require("./pricing/totals");
+const { REVENUE_STATES } = require("./order-status");
 
-const PAID_STATES = new Set(["paid", "awaiting_dispatch", "completed"]);
+// Fully-settled states: an order can only reach any of these once it was paid
+// in full, so they gate "don't re-run markPaid / don't cancel here / don't send
+// a part-payment receipt". SSOT lives in order-status.js.
+const PAID_STATES = new Set(REVENUE_STATES);
 
 // GL account codes resolved through the accounting posting map — the SSOT
 // for all journal account codes (V2.2 §6.6, ratified policy Q4/Q7/Q8).
@@ -911,6 +915,21 @@ async function createOrderTx({ brand, user, request_id, input }) {
       order_id: order.order_id,
       contact_id: order.contact_id,
     });
+    // Durable placement event (H-2): the customer's order-confirmation message
+    // fires HERE, at placement — so a Pending/Partially-Paid order is
+    // acknowledged immediately, not only once it's fully paid. Post-commit,
+    // idempotent (dedup on the order id). The paid-time receipt is a separate
+    // message driven by order.paid → invoicing (receipt.sent).
+    await outbox.enqueue(client, {
+      business: brand,
+      event_type: "order.created",
+      payload: {
+        brand,
+        order_id: order.order_id,
+        contact_id: order.contact_id,
+      },
+      dedup_key: `order.created:${order.order_id}`,
+    });
     // Prepaid-only (owner directive): the business never ships pay-on-delivery,
     // so an unpaid order must NOT enter the logistics queue. The delivery is
     // created only once payment clears — logistics subscribes to `order.paid`
@@ -1223,10 +1242,16 @@ async function addPayment({ brand, user, request_id, id, input }) {
     // Trigger recomputed amount_paid_ngn; re-read.
     const updated = await repo.findById({ client, brand, id });
     let result = updated;
-    if (
-      !PAID_STATES.has(updated.status) &&
-      money(updated.amount_paid_ngn).gte(money(updated.total_ngn))
-    ) {
+    const paidNow = money(updated.amount_paid_ngn);
+    const totalDue = money(updated.total_ngn);
+    const paidBefore = money(order.amount_paid_ngn || 0);
+
+    if (paidBefore.lt(totalDue) && paidNow.gte(totalDue)) {
+      // This payment just completed the order → run the settle side-effects
+      // (stock deduction + order.paid fan-out) exactly once. Detected from the
+      // payment crossing full, NOT the status — a deposit order paying its
+      // balance may already be 'assigned'/'order_ready', and markPaid keeps that
+      // fulfilment status rather than rewinding it to 'paid'.
       result = await markPaid({
         client,
         brand,
@@ -1234,24 +1259,40 @@ async function addPayment({ brand, user, request_id, id, input }) {
         request_id,
         order: updated,
       });
-    } else if (
-      updated.payment_model === "deposit_triggered" &&
-      !updated.deposit_met_at &&
-      updated.required_deposit_ngn !== null &&
-      updated.required_deposit_ngn !== undefined &&
-      money(updated.amount_paid_ngn).gte(money(updated.required_deposit_ngn))
-    ) {
-      // Deposit cleared (V2.2 §6.2): unlock production now; the balance is
-      // collected before dispatch via the normal full-payment path.
-      const flipped = await repo.markDepositMet({ client, brand, id });
-      if (flipped) {
-        result = flipped;
+    } else if (paidNow.gt(money(0)) && paidNow.lt(totalDue)) {
+      // Part payment recorded → reflect 'partially_paid' so the drawer and
+      // reports stop showing a stale 'pending_payment'. Only advances a still-
+      // open order; never rewinds one already further along the lifecycle
+      // (e.g. an assigned order taking its balance instalment).
+      if (["pending_payment", "partially_paid"].includes(updated.status)) {
+        const flipped = await repo.setStatus({
+          client,
+          brand,
+          id,
+          status: "partially_paid",
+        });
+        if (flipped) result = flipped;
+      }
+      // Deposit-triggered orders open their styling job the moment the required
+      // deposit clears — the status stays 'partially_paid' (the balance is still
+      // outstanding); production is unlocked via order.deposit_met. Detect the
+      // crossing from the payment delta: the payment DB trigger stamps
+      // deposit_met_at itself, so we can't gate on it here. The outbox dedup key
+      // guarantees the job opens exactly once.
+      const reqDep = updated.required_deposit_ngn;
+      if (
+        updated.payment_model === "deposit_triggered" &&
+        reqDep !== null &&
+        reqDep !== undefined &&
+        paidBefore.lt(money(reqDep)) &&
+        paidNow.gte(money(reqDep))
+      ) {
         events.emit("order.deposit_met", {
           brand,
           order_id: id,
-          contact_id: flipped.contact_id,
-          required_deposit_ngn: flipped.required_deposit_ngn,
-          amount_paid_ngn: flipped.amount_paid_ngn,
+          contact_id: updated.contact_id,
+          required_deposit_ngn: reqDep,
+          amount_paid_ngn: updated.amount_paid_ngn,
         });
         // Durable + post-commit (H-2): Service Jobs opens a styling job for the
         // committed order. Keeps the in-process emit for realtime.
@@ -1261,9 +1302,9 @@ async function addPayment({ brand, user, request_id, id, input }) {
           payload: {
             brand,
             order_id: id,
-            contact_id: flipped.contact_id,
-            required_deposit_ngn: flipped.required_deposit_ngn,
-            amount_paid_ngn: flipped.amount_paid_ngn,
+            contact_id: updated.contact_id,
+            required_deposit_ngn: reqDep,
+            amount_paid_ngn: updated.amount_paid_ngn,
           },
           dedup_key: `order.deposit_met:${id}`,
         });
@@ -1275,7 +1316,7 @@ async function addPayment({ brand, user, request_id, id, input }) {
     // payment-comms subscriber renders through the Comms Studio automations
     // (payment_received / payment_milestone), so the copy stays CEO-editable.
     // Fully-paid orders skip this: order.paid drives the final receipt flow.
-    if (!PAID_STATES.has(result.status)) {
+    if (paidNow.lt(totalDue)) {
       await outbox.enqueue(client, {
         business: brand,
         event_type: "order.payment_recorded",
@@ -1459,12 +1500,18 @@ async function markPaid({ client, brand, user, _request_id, order }) {
       discount_ngn: campaignDiscountNgn,
     });
   }
-  const paid = await repo.setStatus({
-    client,
-    brand,
-    id: order.order_id,
-    status: "paid",
-  });
+  // Move to 'paid' ONLY from a pre-fulfilment state. A deposit order paying its
+  // balance may already be 'assigned'/'order_ready'/'dispatched' (styling under
+  // way) — settling the money must not rewind that fulfilment progress. When the
+  // guard doesn't match, keep the current status (re-read to return the row).
+  const paid =
+    (await repo.advanceStatus({
+      client,
+      brand,
+      id: order.order_id,
+      to: "paid",
+      from: ["draft", "pending_payment", "partially_paid"],
+    })) || (await repo.findById({ client, brand, id: order.order_id }));
   // Cross-module fan-out (H-2): enqueue `order.paid` to the transactional
   // outbox atomically with this transaction. After COMMIT the worker's
   // dispatcher invokes every registered consumer (accounting GL, invoicing,
@@ -1662,6 +1709,78 @@ async function cancelOrder({ brand, user, request_id, id, reason }) {
     });
     return o;
   });
+}
+
+// Manual status move from the order drawer (V2.2 §6.2). Staff can nudge an
+// order along the FULFILMENT stages themselves — e.g. mark a walk-in Completed
+// the moment the customer's happy, or Dispatched when the rider takes it. The
+// PAYMENT states (pending_payment / partially_paid / paid) and the CANCEL states
+// are deliberately NOT settable here: those carry money + stock side-effects and
+// stay automatic (payments → paid via markPaid; cancel → cancelOrder). Moving to
+// a customer-facing stage fires the matching Comms Studio message (gated by
+// Messaging settings), so a manual "Dispatched" still truthfully tells the buyer
+// it's on its way.
+const MANUAL_STATUSES = new Set([
+  "assigned",
+  "order_ready",
+  "dispatched",
+  "completed",
+]);
+const MANUAL_ALLOWED_FROM = new Set([
+  "partially_paid",
+  "paid",
+  "assigned",
+  "order_ready",
+  "dispatched",
+  "completed",
+]);
+
+async function setOrderStatus({ brand, user, request_id, id, status }) {
+  if (!MANUAL_STATUSES.has(status)) {
+    throw new AppError(
+      "INVALID_STATUS",
+      `'${status}' cannot be set manually`,
+      422,
+      {
+        user_message:
+          "Payment and cancellation states are managed automatically — record a payment or use Cancel instead.",
+      },
+    );
+  }
+  const updated = await transaction(async (client) => {
+    const before = await repo.findById({ client, brand, id });
+    if (!before) throw new NotFoundError("Order");
+    if (!MANUAL_ALLOWED_FROM.has(before.status)) {
+      throw new AppError(
+        "INVALID_STATE",
+        `A '${before.status}' order cannot be moved to '${status}'`,
+        409,
+        {
+          user_message:
+            "This order isn't paid yet — record the payment before moving it forward.",
+        },
+      );
+    }
+    const row = await repo.setStatus({ client, brand, id, status });
+    await audit({
+      business: brand,
+      user_id: user.user_id,
+      action_key: "sales.order.status_set",
+      target_type: "sales_order",
+      target_id: id,
+      before: { status: before.status },
+      after: { status },
+      request_id,
+    });
+    events.emit("order.updated", { brand, order_id: id });
+    return row;
+  });
+  // Fire the matching customer message (best-effort; no-op if toggled Off).
+  const orderComms = require("./order-comms");
+  if (status === "order_ready") await orderComms.orderReady({ brand, order: updated });
+  else if (status === "dispatched")
+    await orderComms.orderShipped({ brand, order: updated });
+  return updated;
 }
 
 // ── Quotations ───────────────────────────────────────────
@@ -2439,6 +2558,7 @@ module.exports = {
   addPayment,
   recordSubscriptionCharge,
   cancelOrder, // orders are cancelled (the 'archive' equivalent), never hard-deleted
+  setOrderStatus,
   listQuotations,
   getQuotation,
   quotationPdf,

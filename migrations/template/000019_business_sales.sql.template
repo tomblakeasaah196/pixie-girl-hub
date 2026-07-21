@@ -161,21 +161,16 @@ CREATE TABLE {{BUSINESS}}.sales_orders (
   status                TEXT        NOT NULL DEFAULT 'draft'
                         CHECK (status IN (
                           'draft',                  -- being built
-                          'pending_payment',        -- awaiting payment confirmation
-                          'paid',                   -- payment in; ready for fulfilment
-                          'awaiting_dispatch',      -- paid, queued for logistics
-                          'in_production',          -- custom wig being made
-                          'with_stylist',           -- styling (Flow-1 intercompany)
-                          'ready_for_dispatch',     -- packed
-                          'dispatched',             -- with courier
-                          'in_transit',
-                          'out_for_delivery',
-                          'delivered',
-                          'completed',              -- terminal happy state
+                          'pending_payment',        -- placed, awaiting payment
+                          'partially_paid',         -- part payment in, balance outstanding
+                          'paid',                   -- paid in full; ready for fulfilment
+                          'assigned',               -- stylist assigned / being worked
+                          'order_ready',            -- packed, queued for courier
+                          'dispatched',             -- handed to courier / on its way
+                          'completed',              -- terminal happy state (delivered / collected)
                           'cancellation_requested', -- customer initiated
                           'cancelled',              -- terminal — refund handling separate
                           'refunded',
-                          'returned',
                           'failed'                  -- payment timeout etc.
                         )),
   -- ── MONEY (NGN base + customer's display currency)
@@ -284,7 +279,7 @@ CREATE INDEX idx_{{BUSINESS}}_sales_orders_subscription
   ON {{BUSINESS}}.sales_orders (subscription_id) WHERE subscription_id IS NOT NULL;
 CREATE INDEX idx_{{BUSINESS}}_sales_orders_dispatch_queue
   ON {{BUSINESS}}.sales_orders (paid_at)
-  WHERE order_type = 'dispatch' AND status = 'awaiting_dispatch';
+  WHERE order_type = 'dispatch' AND status = 'order_ready';
 
 -- Wire deferred FK on quotations.converted_sales_order_id
 ALTER TABLE {{BUSINESS}}.quotations

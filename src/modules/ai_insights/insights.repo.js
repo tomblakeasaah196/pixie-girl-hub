@@ -419,7 +419,7 @@ async function fulfillmentDelayedOrders({ brand, limit = 500 }) {
     `SELECT order_id, order_number, contact_id, total_ngn, status,
             (EXTRACT(EPOCH FROM (now() - COALESCE(paid_at, placed_at, created_at))) / 86400)::int AS age_days
        FROM ${t(brand, "sales_orders")}
-      WHERE status IN ('paid','awaiting_dispatch','ready_for_dispatch')
+      WHERE status IN ('paid','assigned','order_ready')
         AND COALESCE(paid_at, placed_at, created_at) < now() - interval '3 days'
       ORDER BY COALESCE(paid_at, placed_at, created_at) ASC LIMIT $1`,
     [limit],

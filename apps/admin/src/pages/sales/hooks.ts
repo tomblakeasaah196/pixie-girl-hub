@@ -112,6 +112,20 @@ export function useCancelOrder() {
   });
 }
 
+export function useSetOrderStatus() {
+  const qc = useQueryClient();
+  const biz = useBiz();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      salesApi.setOrderStatus(id, status),
+    onSuccess: (_data, { id }) => {
+      qc.invalidateQueries({ queryKey: ["sales-orders", biz] });
+      qc.invalidateQueries({ queryKey: ["sales-orders", biz, "detail", id] });
+      qc.invalidateQueries({ queryKey: ["sales-kpis", biz] });
+    },
+  });
+}
+
 export function useOrderTimeline(orderId: string | null) {
   const biz = useBiz();
   return useQuery({

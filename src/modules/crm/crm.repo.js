@@ -605,7 +605,7 @@ async function stampChurnWorkflowTriggered({ client, brand, contact_id }) {
 // ── Clients (contacts + commercial roll-up) ──────────────
 // The spend definition matches the contact-360 header (contacts.timeline.repo
 // summary()): total_ngn over paid-ish orders, all orders counted for count.
-const PAID_STATUSES = "('paid','awaiting_dispatch','completed')";
+const PAID_STATUSES = "('paid','assigned','order_ready','dispatched','completed')";
 
 /** MMDD-window birthday clause with year-end wrap (same logic campaigns use). */
 function birthdayClause(alias, idx) {

@@ -50,6 +50,7 @@ import {
   useOrderTimeline,
   useCreatePaymentLink,
   useCancelOrder,
+  useSetOrderStatus,
   useOrderInvoice,
   useSendOrderInvoice,
   useOrderServiceJob,
@@ -62,7 +63,13 @@ import { useToastStore } from "@/components/notifications/NotificationToast";
 import { toastReport } from "@/lib/error-report";
 import { saveFileFromUrl } from "@/lib/api";
 import { formatDate, formatDateTime } from "@/lib/format";
-import { ORDER_STATUS, SALES_CHANNELS, fulfilmentLabel } from "./constants";
+import {
+  ORDER_STATUS,
+  MANUAL_MOVE_STATUSES,
+  statusMoveImpact,
+  SALES_CHANNELS,
+  fulfilmentLabel,
+} from "./constants";
 import type { OrderPayment } from "./types";
 import { useJobReferences } from "@/pages/service-jobs/hooks";
 
@@ -132,7 +139,13 @@ function computeRisks(args: {
   if (!order) return [];
   const now = Date.now();
   const risks: RiskSignal[] = [];
-  const paidStates = new Set(["paid", "awaiting_dispatch", "completed"]);
+  const paidStates = new Set([
+    "paid",
+    "assigned",
+    "order_ready",
+    "dispatched",
+    "completed",
+  ]);
   const orderPaid = paidStates.has(order.status);
 
   if (order.status === "cancellation_requested") {
@@ -243,8 +256,10 @@ export function OrderDetailPage() {
   const sendInvoice = useSendOrderInvoice(orderId);
   const createLink = useCreatePaymentLink(orderId ?? "");
   const cancelOrder = useCancelOrder();
+  const setStatus = useSetOrderStatus();
 
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<string | null>(null);
   const [receiptLoading, setReceiptLoading] = useState(false);
   const [showInvoiceSend, setShowInvoiceSend] = useState(false);
   const [invoiceSentVia, setInvoiceSentVia] = useState("email");
@@ -310,6 +325,28 @@ export function OrderDetailPage() {
         "payment",
         "high",
       );
+    }
+  };
+
+  // The dropdown only arms the move; the actual write happens after the
+  // impact-confirmation modal below.
+  const handleConfirmMove = async () => {
+    const status = pendingStatus;
+    if (!orderId || !status) return;
+    try {
+      await setStatus.mutateAsync({ id: orderId, status });
+      const label =
+        ORDER_STATUS[status as keyof typeof ORDER_STATUS]?.label ?? status;
+      fireToast("Status Updated", `Order moved to ${label}.`);
+    } catch {
+      fireToast(
+        "Update Failed",
+        "Couldn't move this order's status — is it paid yet?",
+        "order",
+        "high",
+      );
+    } finally {
+      setPendingStatus(null);
     }
   };
 
@@ -625,6 +662,31 @@ export function OrderDetailPage() {
                 Logistics
               </Button>
             )}
+            {/* Manual fulfilment-stage move — staff can nudge a paid order
+                forward themselves (e.g. mark a walk-in Completed). Payment +
+                cancel states are automatic, so they're not offered here. */}
+            {order &&
+              [
+                "partially_paid",
+                "paid",
+                "assigned",
+                "order_ready",
+                "dispatched",
+              ].includes(order.status) && (
+                <Select
+                  value=""
+                  onChange={(v) => v && setPendingStatus(v)}
+                  disabled={setStatus.isPending}
+                  className="w-[150px]"
+                  options={[
+                    { value: "", label: "Move to…" },
+                    ...MANUAL_MOVE_STATUSES.map((s) => ({
+                      value: s,
+                      label: ORDER_STATUS[s].label,
+                    })),
+                  ]}
+                />
+              )}
             {order &&
               order.status !== "cancelled" &&
               order.status !== "completed" && (
@@ -1430,6 +1492,37 @@ export function OrderDetailPage() {
         confirmLabel="Cancel Order"
         busy={cancelOrder.isPending}
       />
+      {pendingStatus &&
+        (() => {
+          const impact = statusMoveImpact(pendingStatus);
+          return (
+            <ConfirmDialog
+              open={!!pendingStatus}
+              onClose={() => setPendingStatus(null)}
+              onConfirm={handleConfirmMove}
+              title={impact.title}
+              confirmLabel={impact.confirmLabel}
+              busy={setStatus.isPending}
+              message={
+                <div className="space-y-3">
+                  <p>{impact.note}</p>
+                  {impact.effects.length > 0 && (
+                    <div>
+                      <p className="text-sm font-medium mb-1">
+                        What this does:
+                      </p>
+                      <ul className="list-disc pl-5 space-y-1 text-sm opacity-90">
+                        {impact.effects.map((e) => (
+                          <li key={e}>{e}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              }
+            />
+          );
+        })()}
     </div>
   );
 }

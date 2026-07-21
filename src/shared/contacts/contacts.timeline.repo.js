@@ -216,7 +216,7 @@ async function timeline({
 
 /** Roll-up counters for the contact header (cheap targeted aggregates). */
 async function summary({ brand, contact_id }) {
-  const paid = "('paid','awaiting_dispatch','completed')";
+  const paid = "('paid','assigned','order_ready','dispatched','completed')";
 
   // Build "last activity" only from sources whose table exists (POS in
   // particular can be retired). Referencing a missing table would 500 the

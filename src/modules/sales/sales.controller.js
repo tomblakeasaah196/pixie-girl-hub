@@ -104,6 +104,14 @@ const cancelOrder = async (req, res) =>
   res.json({
     data: await service.cancelOrder({ ...base(req), id: req.params.id }),
   });
+const setOrderStatus = async (req, res) =>
+  res.json({
+    data: await service.setOrderStatus({
+      ...base(req),
+      id: req.params.id,
+      status: req.body.status,
+    }),
+  });
 const createPaymentLink = async (req, res) =>
   res.status(201).json({
     data: await paymentLink.createPaymentLink({
@@ -252,6 +260,7 @@ module.exports = {
   exportReport,
   createOrder,
   updateOrder,
+  setOrderStatus,
   addPayment,
   cancelOrder,
   createPaymentLink,

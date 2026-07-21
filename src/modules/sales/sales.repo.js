@@ -471,13 +471,36 @@ async function setStatus({ client, brand, id, status }) {
 }
 
 /**
+ * Guarded lifecycle advance: set the order to `to` ONLY when it is currently in
+ * one of `from`. Used by the fulfilment triggers (stylist assign → assigned, QC
+ * pass → order_ready, delivery dispatch → dispatched, delivered → completed) so
+ * an out-of-order or duplicate event can never rewind an order that a human (or
+ * a later stage) has already moved on. Returns the updated row, or null when the
+ * guard didn't match (already past that state / cancelled) — callers treat null
+ * as "nothing to do".
+ */
+async function advanceStatus({ client, brand, id, to, from }) {
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "sales_orders")}
+        SET status = $2
+      WHERE order_id = $1 AND status = ANY($3::text[])
+      RETURNING *`,
+    [id, to, from],
+  );
+  return rows[0] || null;
+}
+
+/**
  * Deposit-triggered (V2.2 §6.2): stamp the moment accumulated payments first
- * crossed the required deposit and move the order into production.
+ * crossed the required deposit. The status stays 'partially_paid' (the balance
+ * is still outstanding) — production is unlocked via the order.deposit_met
+ * event, not a status change. (The payment DB trigger also stamps
+ * deposit_met_at; this is the idempotent app-side backstop.)
  */
 async function markDepositMet({ client, brand, id }) {
   const { rows } = await ex(client)(
     `UPDATE ${t(brand, "sales_orders")}
-        SET status = 'in_production', deposit_met_at = now()
+        SET deposit_met_at = now()
       WHERE order_id = $1 AND deposit_met_at IS NULL
       RETURNING *`,
     [id],
@@ -1320,6 +1343,7 @@ module.exports = {
   findById,
   listOrders,
   setStatus,
+  advanceStatus,
   markDepositMet,
   listAbandonableLayaway,
   listLayawayDueForReminder,

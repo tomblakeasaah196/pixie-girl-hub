@@ -233,6 +233,22 @@ chasing deliveries, matching stray in-store terminal payments, and payment setti
   cross-brand section until it's resolved.
 - *Open one order?* Sales → **Orders**, click the order → `/sales/orders/<orderId>`.
 - *Record a payment against an order?* Open the order, **Record Payment**.
+- *What do the order statuses mean?* An order moves through seven stages:
+  **Pending Payment** (placed, nothing paid) → **Partially Paid** (part payment
+  in; the deposit sits as a liability, not yet revenue) → **Paid** (paid in
+  full) → **Assigned** (a stylist is working on it) → **Order Ready** (packed,
+  waiting for the courier) → **Dispatched** (handed to the courier / on its
+  way) → **Completed** (delivered or collected). Most of these move
+  automatically: recording payment drives Partially Paid / Paid; assigning a
+  stylist in Studio sets Assigned; a Studio QC pass sets Order Ready; the
+  courier hand-off sets Dispatched; delivery sets Completed. Cancellations are a
+  separate side-flow (**Cancel Requested** / **Cancelled**).
+- *Move an order's status myself?* Open the order → use the **Move to…**
+  dropdown in the top action bar to nudge a paid order forward (e.g. mark a
+  walk-in **Completed** the moment the customer's happy, or **Dispatched** when
+  the rider takes it). Only the fulfilment stages are offered — payment and
+  cancellation states are handled automatically. Moving to a customer-facing
+  stage sends the matching message if it's switched on in **Messaging settings**.
 
 ### 4.3 CRM
 **What it's for.** Customer relationships: your daily follow-ups, the deal

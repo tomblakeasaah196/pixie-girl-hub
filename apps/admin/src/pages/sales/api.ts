@@ -84,6 +84,11 @@ export const createPaymentLink = (
 export const cancelOrder = (id: string) =>
   api.post<SalesOrder>(`${S}/orders/${id}/cancel`);
 
+// Manual fulfilment-stage move (assigned / order_ready / dispatched / completed).
+// Payment + cancellation states are managed automatically by the backend.
+export const setOrderStatus = (id: string, status: string) =>
+  api.post<SalesOrder>(`${S}/orders/${id}/status`, { status });
+
 export const generateReceipt = (id: string) =>
   api.post<{ url: string }>(`${S}/orders/${id}/receipt`);
 

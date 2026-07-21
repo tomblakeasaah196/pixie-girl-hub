@@ -28,6 +28,7 @@ import {
   useAddPayment,
   usePaymentSettings,
   useCancelOrder,
+  useSetOrderStatus,
   useOrderInvoice,
   useSendOrderInvoice,
   useOrderServiceJob,
@@ -39,7 +40,13 @@ import { useToastStore } from "@/components/notifications/NotificationToast";
 import { toastReport } from "@/lib/error-report";
 import { saveFileFromUrl } from "@/lib/api";
 import { formatDate, formatDateTime, money } from "@/lib/format";
-import { ORDER_STATUS, SALES_CHANNELS, fulfilmentLabel } from "./constants";
+import {
+  ORDER_STATUS,
+  MANUAL_MOVE_STATUSES,
+  statusMoveImpact,
+  SALES_CHANNELS,
+  fulfilmentLabel,
+} from "./constants";
 import type { OrderPayment, SalesOrder } from "./types";
 
 // ── Studio job status → friendly label + tone ────────────────
@@ -104,6 +111,7 @@ export function OrderDetail({
   const sendInvoice = useSendOrderInvoice(orderId);
   const createLink = useCreatePaymentLink(orderId ?? "");
   const cancelOrder = useCancelOrder();
+  const setStatus = useSetOrderStatus();
   const { data: paymentSettings } = usePaymentSettings();
   const navigate = useNavigate();
   const [payModalOpen, setPayModalOpen] = useState(false);
@@ -135,6 +143,7 @@ export function OrderDetail({
   );
 
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<string | null>(null);
   const [receiptLoading, setReceiptLoading] = useState(false);
   const [showInvoiceSend, setShowInvoiceSend] = useState(false);
   const [invoiceSentVia, setInvoiceSentVia] = useState("email");
@@ -199,6 +208,27 @@ export function OrderDetail({
       fireToast("Order Cancelled", "The order has been cancelled.");
     } catch {
       fireToast("Cancel Failed", "Failed to cancel order.", "order", "high");
+    }
+  };
+
+  // The dropdown only arms the move; the write happens after the impact modal.
+  const handleConfirmMove = async () => {
+    const status = pendingStatus;
+    if (!orderId || !status) return;
+    try {
+      await setStatus.mutateAsync({ id: orderId, status });
+      const label =
+        ORDER_STATUS[status as keyof typeof ORDER_STATUS]?.label ?? status;
+      fireToast("Status Updated", `Order moved to ${label}.`);
+    } catch {
+      fireToast(
+        "Update Failed",
+        "Couldn't move this order's status — is it paid yet?",
+        "order",
+        "high",
+      );
+    } finally {
+      setPendingStatus(null);
     }
   };
 
@@ -900,6 +930,28 @@ export function OrderDetail({
                   {receiptLoading ? "Generating…" : "Download Receipt"}
                 </Button>
               )}
+              {/* Manual fulfilment-stage move (payment + cancel stay automatic). */}
+              {[
+                "partially_paid",
+                "paid",
+                "assigned",
+                "order_ready",
+                "dispatched",
+              ].includes(order.status) && (
+                <Select
+                  value=""
+                  onChange={(v) => v && setPendingStatus(v)}
+                  disabled={setStatus.isPending}
+                  className="w-[150px]"
+                  options={[
+                    { value: "", label: "Move to…" },
+                    ...MANUAL_MOVE_STATUSES.map((s) => ({
+                      value: s,
+                      label: ORDER_STATUS[s].label,
+                    })),
+                  ]}
+                />
+              )}
               {order.status !== "cancelled" && order.status !== "completed" && (
                 <Button
                   variant="danger"
@@ -924,6 +976,38 @@ export function OrderDetail({
         confirmLabel="Cancel Order"
         busy={cancelOrder.isPending}
       />
+
+      {pendingStatus &&
+        (() => {
+          const impact = statusMoveImpact(pendingStatus);
+          return (
+            <ConfirmDialog
+              open={!!pendingStatus}
+              onClose={() => setPendingStatus(null)}
+              onConfirm={handleConfirmMove}
+              title={impact.title}
+              confirmLabel={impact.confirmLabel}
+              busy={setStatus.isPending}
+              message={
+                <div className="space-y-3">
+                  <p>{impact.note}</p>
+                  {impact.effects.length > 0 && (
+                    <div>
+                      <p className="text-sm font-medium mb-1">
+                        What this does:
+                      </p>
+                      <ul className="list-disc pl-5 space-y-1 text-sm opacity-90">
+                        {impact.effects.map((e) => (
+                          <li key={e}>{e}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              }
+            />
+          );
+        })()}
 
       {order && payModalOpen && (
         <PaymentActionsModal

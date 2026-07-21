@@ -24,15 +24,11 @@
 // engines agree on what an "order" is.
 const COUNTED_ORDER_STATUSES = [
   "pending_payment",
+  "partially_paid",
   "paid",
-  "awaiting_dispatch",
-  "in_production",
-  "with_stylist",
-  "ready_for_dispatch",
+  "assigned",
+  "order_ready",
   "dispatched",
-  "in_transit",
-  "out_for_delivery",
-  "delivered",
   "completed",
 ];
 

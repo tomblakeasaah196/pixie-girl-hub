@@ -147,7 +147,7 @@ async function firstTimeOk({ brand, contact_id }) {
   if (!contact_id) return true;
   const { rows } = await query(
     `SELECT count(*)::int AS c FROM ${brand}.sales_orders
-      WHERE contact_id = $1 AND status IN ('paid','awaiting_dispatch','completed')`,
+      WHERE contact_id = $1 AND status IN ('paid','assigned','order_ready','dispatched','completed')`,
     [contact_id],
   );
   return rows[0].c === 0;

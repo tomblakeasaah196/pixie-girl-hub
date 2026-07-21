@@ -20,8 +20,8 @@
 const { query } = require("../../config/database");
 const { t } = require("../../config/brands");
 
-// Mirrors sales.service PAID_STATES — realised revenue.
-const REVENUE_STATES = `('paid','awaiting_dispatch','completed')`;
+// Mirrors the order lifecycle SSOT (order-status.js REVENUE_STATES).
+const REVENUE_STATES = `('paid','assigned','order_ready','dispatched','completed')`;
 const ACTIVE_DELIVERY_STATES = `('queued','booked','picked_up','in_transit','arrived_destination_city','out_for_delivery')`;
 const TZ = `'Africa/Lagos'`;
 

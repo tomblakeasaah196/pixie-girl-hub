@@ -19,7 +19,7 @@ const { logger } = require("../../config/logger");
 
 const { BRANDS } = require("../../config/brands");
 
-const PAID = `('paid','awaiting_dispatch','completed')`;
+const PAID = `('paid','assigned','order_ready','dispatched','completed')`;
 
 function lastWeekWindow() {
   const end = new Date();

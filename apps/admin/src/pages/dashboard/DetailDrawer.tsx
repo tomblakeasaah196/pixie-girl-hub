@@ -29,8 +29,11 @@ const FILTERABLE: Record<string, ("status" | "sales_channel")[]> = {
 const STATUS_OPTIONS: Record<string, string[]> = {
   "sales.orders": [
     "pending_payment",
+    "partially_paid",
     "paid",
-    "awaiting_dispatch",
+    "assigned",
+    "order_ready",
+    "dispatched",
     "completed",
     "cancelled",
     "refunded",

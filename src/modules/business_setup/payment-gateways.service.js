@@ -3,9 +3,11 @@
  *
  * CEO-managed (Business Setup) per-business gateway config: credentials
  * (encrypted at rest), active/primary/fallback status, supported currencies.
- * Paystack + OPay are the local-NGN pair (one primary, one automatic fallback);
- * Nomba is POS; Stripe international. The fee SCHEDULE lives in
- * business_config.payment_gateway_fees (§6.25).
+ * Owner-directed routing (June 2026): Nomba is the ONLINE primary for both NGN
+ * and USD (its USD wallet is the sole foreign-currency rail); Paystack + OPay
+ * are NGN fallbacks; Stripe is the universal last-resort. The per-currency
+ * ordering is decided by getActiveChain, not the stored role. The fee SCHEDULE
+ * lives in business_config.payment_gateway_fees (§6.25).
  *
  * Two consumers:
  *   - HTTP admin (list/configure/activate/role/remove) — credentials are NEVER
@@ -19,6 +21,7 @@
 
 const repo = require("./payment-gateways.repo");
 const crypto = require("../../services/encryption.service");
+const nomba = require("../../services/nomba.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { config } = require("../../config/env");
@@ -89,8 +92,22 @@ function decryptBag(credentials_enc) {
 }
 
 // ── Admin (HTTP) ───────────────────────────────────────────
-function listGateways({ brand }) {
-  return repo.list({ brand });
+/**
+ * List gateways for the brand. Credential VALUES are never returned; we surface
+ * only `credential_fields` — the NAMES of the fields currently stored in the
+ * encrypted bag — so the UI can show a per-field "set" indicator and honour the
+ * "leave blank to keep" rotation contract. The raw `credentials_enc` is stripped.
+ */
+async function listGateways({ brand }) {
+  const rows = await repo.list({ brand });
+  return rows.map((r) => {
+    const { credentials_enc, ...rest } = r;
+    const bag = decryptBag(credentials_enc);
+    const credential_fields = Object.entries(bag)
+      .filter(([, v]) => v !== null && v !== undefined && String(v) !== "")
+      .map(([k]) => k);
+    return { ...rest, credential_fields };
+  });
 }
 
 async function configureGateway({ brand, user, request_id, input }) {
@@ -100,17 +117,34 @@ async function configureGateway({ brand, user, request_id, input }) {
       `Unknown gateway ${input.provider}`,
       422,
     );
-  // Nomba is POS and Stripe is international → force 'standalone'.
+  // Nomba is the online primary and Stripe is international → force 'standalone'
+  // (per-currency ordering is decided by getActiveChain, not the stored role).
   let role = input.role;
   if (input.provider === "nomba" || input.provider === "stripe")
     role = "standalone";
 
-  const credentials_enc =
-    input.credentials && Object.keys(input.credentials).length
-      ? crypto.encrypt(JSON.stringify(input.credentials))
-      : undefined;
-
   const saved = await transaction(async (client) => {
+    // Merge only the non-empty submitted fields into the EXISTING credential
+    // bag, so a partial rotation (fill one field, leave the rest blank) keeps
+    // the previously-stored values instead of wiping the whole bag. This makes
+    // the UI's "leave blank to keep the current value" contract true at the DB
+    // layer, independent of the env fallback. Encrypted at rest.
+    let credentials_enc;
+    if (input.credentials && Object.keys(input.credentials).length) {
+      const existing = await repo.getRaw({
+        client,
+        brand,
+        provider: input.provider,
+      });
+      const bag = existing ? decryptBag(existing.credentials_enc) : {};
+      for (const [k, v] of Object.entries(input.credentials)) {
+        const val = v === null || v === undefined ? "" : String(v).trim();
+        if (val) bag[k] = val;
+      }
+      if (Object.keys(bag).length)
+        credentials_enc = crypto.encrypt(JSON.stringify(bag));
+    }
+
     if (role === "primary")
       await repo.demoteExistingPrimary({
         client,
@@ -201,6 +235,76 @@ async function removeGateway({ brand, user, request_id, provider }) {
   });
 }
 
+/**
+ * Live connection test for a provider in a brand (Settings → Payment gateways →
+ * Test). Uses the SAVED credentials (resolveCredentials: DB bag over env), so
+ * configure + save before testing. Returns { provider, ok, checks[] } where each
+ * check is { key, label, ok, detail, ... }. Deep live checks (auth + webhook +
+ * a real checkout link) are implemented for Nomba; other providers report only
+ * whether credentials are present. Never returns secret VALUES.
+ */
+async function testGateway({
+  brand,
+  user,
+  request_id,
+  provider,
+  options = {},
+}) {
+  if (!PROVIDERS.includes(provider))
+    throw new AppError("BAD_PROVIDER", `Unknown gateway ${provider}`, 422);
+
+  const creds = await resolveCredentials({ brand, provider });
+  let result;
+  if (!creds) {
+    result = {
+      ok: false,
+      checks: [
+        {
+          key: "credentials",
+          label: "Credentials present",
+          ok: false,
+          detail:
+            "No credentials are configured for this gateway in this business. Add them above and save first.",
+        },
+      ],
+    };
+  } else if (provider === "nomba") {
+    result = await nomba.testConnection(creds, { brand, ...options });
+  } else {
+    result = {
+      ok: true,
+      checks: [
+        {
+          key: "credentials",
+          label: "Credentials present",
+          ok: true,
+          detail: `Credentials are configured. A live connection test is currently implemented for Nomba only.`,
+        },
+      ],
+    };
+  }
+
+  // Audit against the gateway's UUID (record_id is UUID) — null if unconfigured.
+  let gatewayId = null;
+  try {
+    const row = await repo.getRaw({ brand, provider });
+    gatewayId = row ? row.gateway_id : null;
+  } catch {
+    gatewayId = null;
+  }
+  await audit({
+    business: brand,
+    user_id: user ? user.user_id : null,
+    action_key: "business_setup.payment_gateway.test",
+    target_type: "payment_gateway",
+    target_id: gatewayId,
+    after: { provider, ok: result.ok },
+    request_id,
+  });
+
+  return { provider, ...result };
+}
+
 function maskRow(r) {
   if (!r) return r;
   const { credentials_enc, ...rest } = r;
@@ -260,7 +364,9 @@ async function getActiveChain({ brand, currency = "NGN" }) {
     : allowed.filter((p) => p === "nomba" || p === "stripe");
   // Stable preference order — Nomba first, then the local fallback, Stripe last.
   // Wins over DB ordering so the fallback sequence is deterministic.
-  const preference = ngn ? ["nomba", "paystack", "stripe"] : ["nomba", "stripe"];
+  const preference = ngn
+    ? ["nomba", "paystack", "stripe"]
+    : ["nomba", "stripe"];
   const sortPref = (a, b) => {
     const ai = preference.indexOf(a.provider);
     const bi = preference.indexOf(b.provider);
@@ -279,9 +385,7 @@ async function getActiveChain({ brand, currency = "NGN" }) {
   } else {
     // No DB config → env fallback (single-tenant), restricted to the gateways
     // enabled for this deployment, in owner preference order.
-    const candidates = preference.filter((p) =>
-      allowedForCurrency.includes(p),
-    );
+    const candidates = preference.filter((p) => allowedForCurrency.includes(p));
     for (const p of candidates) {
       const creds = await resolveCredentials({ brand, provider: p });
       if (creds) chain.push({ provider: p, credentials: creds });
@@ -299,6 +403,7 @@ module.exports = {
   setActive,
   setRole,
   removeGateway,
+  testGateway,
   resolveCredentials,
   getActiveChain,
 };

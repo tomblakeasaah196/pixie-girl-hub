@@ -184,6 +184,7 @@ async function getById({ client, brand, id }) {
   const { rows } = await ex(client)(
     `SELECT s.*, b.name AS base_name, b.product_code AS base_product_code,
             b.preorder_enabled, b.expected_ready_date, b.production_lead_days,
+            b.preorder_excluded,
             b.lace_size_codes AS base_lace_size_codes,
             ${primaryImageSql(brand, "s")} AS primary_image_url
        FROM ${t(brand, "styled_products")} s

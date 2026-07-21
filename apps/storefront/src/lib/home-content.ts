@@ -22,7 +22,7 @@ import {
   bundleSavingsPct,
   type Pillar,
 } from "./site-data";
-import type { ProductCard } from "./storefront";
+import type { Availability, ProductCard } from "./storefront";
 
 /* ── resolved item shapes the components consume ─────────────── */
 
@@ -33,6 +33,8 @@ export interface SignatureItem {
   priceUsd?: number | null;
   priceNgn?: number | null;
   image?: string | null;
+  /** In-stock / pre-order / sold-out state from the catalogue (000086). */
+  availability?: Availability | null;
 }
 export interface BundleItem {
   slug: string;
@@ -292,6 +294,7 @@ export function mapProducts(cards: ProductCard[]): SignatureItem[] {
     priceUsd: num(p.effective_price_usd),
     priceNgn: num(p.effective_price_ngn),
     image: p.cover_image_url ?? null,
+    availability: p.availability ?? null,
   }));
 }
 

@@ -1,0 +1,58 @@
+-- ============================================================
+-- TEMPLATE 000086 — Universal pre-orders:
+--   • Brand-wide pre-order master switch + delivery window (Catalogue → Config)
+--   • Per-product opt-out (exclude a product from pre-order → true "sold out")
+--   • Persist pre-order state + deadline on orders and lines (Sales → Pre-orders)
+-- Pixie Girl Hub · JBS Praxis · V2.2
+--
+-- Owner directive: when an item is out of stock we do NOT block the sale — the
+-- buyer is ALWAYS informed and can pre-order, with a PRODUCTION-framed delivery
+-- window (default 4–8 weeks, configurable per brand). Everything ships through
+-- the same order engine, so this only adds the switch, the window, and the
+-- persistence needed to see pre-orders and their deadlines.
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- ALTER-only + ADD COLUMN IF NOT EXISTS → idempotent; safe to re-run on repair.
+-- ============================================================
+
+-- ── 1. Brand-wide pre-order controls (catalogue_config singleton) ──
+-- preorder_enabled  = master switch. ON (default) → any out-of-stock sellable
+--                     item is offered as a pre-order (unless the product opts
+--                     out). OFF → out-of-stock items are truly "sold out" and
+--                     the engine blocks the line.
+-- preorder_min/max_weeks = the customer-facing production window shown as
+--                     "ships in ~{min}–{max} weeks". Defaults 4–8.
+ALTER TABLE {{BUSINESS}}.catalogue_config
+  ADD COLUMN IF NOT EXISTS preorder_enabled   BOOLEAN  NOT NULL DEFAULT true,
+  ADD COLUMN IF NOT EXISTS preorder_min_weeks SMALLINT NOT NULL DEFAULT 4
+    CHECK (preorder_min_weeks >= 0),
+  ADD COLUMN IF NOT EXISTS preorder_max_weeks SMALLINT NOT NULL DEFAULT 8
+    CHECK (preorder_max_weeks >= 0);
+
+-- ── 2. Per-product opt-out ───────────────────────────────
+-- Universal pre-orders are the default; a specific product can be excluded so
+-- that going out of stock reads as a genuine "Sold out" (no add-to-cart, engine
+-- refuses the line). This is the "per-product override" half of the setting.
+ALTER TABLE {{BUSINESS}}.products
+  ADD COLUMN IF NOT EXISTS preorder_excluded BOOLEAN NOT NULL DEFAULT false;
+
+-- ── 3. Persist pre-order state on the order + lines ──────
+-- The order engine already records a stock-short line as a pre-order (savepoint
+-- rollback). We now persist it so the Sales → Pre-orders tab, the invoice and
+-- the confirmation email can read it back.
+--   is_preorder        — order has ≥1 pre-order line / line couldn't be reserved
+--   preorder_ready_by  — deadline shown to ops (placed_at + max_weeks)
+--   preorder_min/max_weeks — window snapshot at order time (config may change)
+ALTER TABLE {{BUSINESS}}.sales_orders
+  ADD COLUMN IF NOT EXISTS is_preorder        BOOLEAN  NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS preorder_ready_by  DATE,
+  ADD COLUMN IF NOT EXISTS preorder_min_weeks SMALLINT,
+  ADD COLUMN IF NOT EXISTS preorder_max_weeks SMALLINT;
+
+ALTER TABLE {{BUSINESS}}.sales_order_lines
+  ADD COLUMN IF NOT EXISTS is_preorder BOOLEAN NOT NULL DEFAULT false;
+
+-- Fast lookup for the Pre-orders tab (open pre-orders, soonest deadline first).
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_sales_orders_preorder
+  ON {{BUSINESS}}.sales_orders (preorder_ready_by)
+  WHERE is_preorder = true;

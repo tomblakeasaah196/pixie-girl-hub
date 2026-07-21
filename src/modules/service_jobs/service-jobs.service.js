@@ -261,15 +261,30 @@ async function advanceJob({
     );
     events.emit("advanced", { brand, job_id: id, status });
     // GAP-5: deduct stock for the wig consumed when service job completes —
-    // unless the Stylist Studio assign flow already pulled it (custody OUT),
-    // which would otherwise double-deduct.
+    // unless the Stylist Studio assign flow already pulled it (custody OUT), OR
+    // the originating sales order already drew this wig at payment (styled
+    // products sold as an order deduct in markPaid). Either case, deducting here
+    // would remove a second unit for one physical wig.
     const alreadyOut = await repo.hasCustodyEvent({
       client,
       brand,
       job_id: id,
       event: "out",
     });
-    if (status === "completed" && job.hair_variant_id && !alreadyOut) {
+    const orderDrewWig = job.hair_variant_id
+      ? await repo.orderAlreadyDrewWig({
+          client,
+          brand,
+          sales_order_id: job.sales_order_id,
+          variant_id: job.hair_variant_id,
+        })
+      : false;
+    if (
+      status === "completed" &&
+      job.hair_variant_id &&
+      !alreadyOut &&
+      !orderDrewWig
+    ) {
       try {
         const stockService = require("../stock/stock.service");
         const stockRepo = require("../stock/stock.repo");
@@ -772,6 +787,19 @@ async function notifyUser({
 async function deductBaseWig({ client, brand, job, user_id, channel }) {
   const variant_id = job.reserved_variant_id || job.hair_variant_id;
   if (!variant_id) return;
+  // Do NOT double-deduct: if this job came from a sales order whose payment
+  // already pulled the base wig from stock (markPaid → deductForSale), the sale
+  // owns that draw and the Studio only takes custody. Without this guard a
+  // styled product sold as an order lost two units for one physical wig.
+  if (
+    await repo.orderAlreadyDrewWig({
+      client,
+      brand,
+      sales_order_id: job.sales_order_id,
+      variant_id,
+    })
+  )
+    return;
   try {
     const stockService = require("../stock/stock.service");
     const stockRepo = require("../stock/stock.repo");

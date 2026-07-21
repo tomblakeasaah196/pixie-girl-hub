@@ -1,6 +1,7 @@
 import useEmblaCarousel from "embla-carousel-react";
 import { Link } from "@tanstack/react-router";
 import { Price } from "@/components/site/Price";
+import { AvailabilityPill } from "@/components/availability";
 import {
   DEFAULT_HOME,
   DEMO_SIGNATURE,
@@ -45,6 +46,8 @@ export function SignatureCarousel({
               params={{ slug: p.slug }}
               className="group flex-[0_0_75%] sm:flex-[0_0_45%] lg:flex-[0_0_28%] relative aspect-[3/4] overflow-hidden bg-card rounded-lg"
             >
+              {/* Pre-order / sold-out corner pill (000086); nothing in-stock. */}
+              <AvailabilityPill availability={p.availability} />
               {p.image ? (
                 <img src={p.image} alt={p.name} loading="lazy" className="w-full h-full object-cover transition-transform duration-1000 group-hover:scale-110" />
               ) : null}

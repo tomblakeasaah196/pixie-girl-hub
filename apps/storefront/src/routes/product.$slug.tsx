@@ -12,6 +12,7 @@ import { ssrProduct } from "@/lib/server";
 import { useCurrency, notifyCartChanged } from "@/lib/useStore";
 import { usePageSlots, withSlots } from "@/lib/site-config";
 import { Section, ErrorState } from "@/components/parts";
+import { PreorderNotice } from "@/components/availability";
 import { YouTubeFacade, youtubeId } from "@/components/site/VideoEmbed";
 import { ProductGallery } from "@/components/site/ProductGallery";
 import { ProductReviews } from "@/components/site/ProductReviews";
@@ -76,6 +77,14 @@ function ProductPage() {
   const [currency] = useCurrency();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
+  // Pre-order (000086): an out-of-stock item is offered as a pre-order; tapping
+  // "Add to bag" first opens a confirm dialog so the buyer knows it's made to
+  // order before it lands in the bag. A truly sold-out (opted-out) item can't
+  // be added at all.
+  const availability = product?.availability ?? null;
+  const isPreorder = availability?.state === "preorder";
+  const soldOut = availability?.state === "out_of_stock";
+  const [confirmPreorder, setConfirmPreorder] = useState(false);
   // Named `copy` (not `s`) — `s` is used as a size map param further down.
   const copy = withSlots(
     {
@@ -89,6 +98,12 @@ function ProductPage() {
       chooseVariantError: "Please choose colour, size and lace.",
       addedToast: "Added to bag",
       addErrorToast: "Couldn't add to bag. Please try again.",
+      preorderCta: "Pre-order",
+      preorderTitle: "This is a pre-order",
+      preorderConfirm: "Add pre-order",
+      preorderCancel: "Not now",
+      preorderAddedToast: "Pre-order added — we'll craft it just for you.",
+      soldOutCta: "Sold out",
       socialProofPrefix: "As seen on",
       sizeGuideFallbackTitle: "Head size guide",
     },
@@ -179,12 +194,27 @@ function ProductPage() {
         display_currency: currency,
       });
       notifyCartChanged();
-      toast.success(copy.addedToast);
+      setConfirmPreorder(false);
+      toast.success(isPreorder ? copy.preorderAddedToast : copy.addedToast);
     } catch {
       toast.error(copy.addErrorToast);
     } finally {
       setBusy(false);
     }
+  }
+
+  // Tap "Add" → validate the variant choice first, then either open the
+  // pre-order confirm dialog (out of stock) or add straight to the bag.
+  function onAddClick() {
+    if (!unstyled && !selectedVariant) {
+      toast.error(copy.chooseVariantError);
+      return;
+    }
+    if (isPreorder) {
+      setConfirmPreorder(true);
+      return;
+    }
+    void add();
   }
 
   const Box = ({
@@ -298,13 +328,21 @@ function ProductPage() {
           {copy.unstyledLabel}
         </label>
 
+        <PreorderNotice availability={availability} className="mt-6" />
+
         <div className="mt-8 flex gap-3">
           <button
-            onClick={add}
-            disabled={busy}
+            onClick={onAddClick}
+            disabled={busy || soldOut}
             className="rounded-full bg-primary px-8 py-3 text-body text-primary-foreground disabled:opacity-60"
           >
-            {busy ? copy.addBusyLabel : copy.addCta}
+            {soldOut
+              ? copy.soldOutCta
+              : busy
+                ? copy.addBusyLabel
+                : isPreorder
+                  ? copy.preorderCta
+                  : copy.addCta}
           </button>
           <button
             onClick={() => navigate({ to: "/cart" })}
@@ -313,6 +351,46 @@ function ProductPage() {
             {copy.viewBagCta}
           </button>
         </div>
+
+        {confirmPreorder ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-ink/70 p-6 backdrop-blur-sm"
+            onClick={() => setConfirmPreorder(false)}
+          >
+            <div
+              className="w-full max-w-sm rounded-2xl border border-taupe/25 bg-card p-6 text-center shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p className="text-[0.62rem] font-medium uppercase tracking-[0.24em] text-taupe">
+                Pre-order
+              </p>
+              <h3 className="mt-2 font-display text-2xl">
+                {copy.preorderTitle}
+              </h3>
+              <p className="mt-3 text-body-sm text-foreground/75">
+                {availability?.message ||
+                  (availability?.window_label
+                    ? `This piece is made to order and ships in about ${availability.window_label}.`
+                    : "This piece is made to order and crafted just for you.")}
+              </p>
+              <div className="mt-6 flex flex-col gap-2">
+                <button
+                  onClick={add}
+                  disabled={busy}
+                  className="rounded-full bg-primary px-8 py-3 text-body text-primary-foreground disabled:opacity-60"
+                >
+                  {busy ? copy.addBusyLabel : copy.preorderConfirm}
+                </button>
+                <button
+                  onClick={() => setConfirmPreorder(false)}
+                  className="rounded-full px-6 py-2.5 text-body-sm text-muted-foreground hover:text-foreground"
+                >
+                  {copy.preorderCancel}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {product.size_guide &&
         (product.size_guide.guide_md || videoUrl) ? (

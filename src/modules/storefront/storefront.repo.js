@@ -145,12 +145,25 @@ async function listProducts({ brand, filters = {}, page = 1, page_size = 24 }) {
             s.published_at,
             COALESCE(fp.from_price_ngn, s.retail_price_ngn) AS effective_price_ngn,
             COALESCE(fp.from_price_usd, s.retail_price_usd) AS effective_price_usd,
+            b.preorder_enabled, b.preorder_excluded,
+            b.expected_ready_date, b.production_lead_days,
+            COALESCE(av.available, 0) AS base_available,
             (SELECT img.cdn_url FROM ${t(brand, "product_images")} img
               WHERE img.styled_id = s.styled_id
               ORDER BY img.is_primary DESC, img.display_order LIMIT 1)
               AS cover_image_url
        FROM ${t(brand, "styled_products")} s
        LEFT JOIN ${t(brand, "product_categories")} cat ON cat.category_id = s.category_id
+       LEFT JOIN ${t(brand, "products")} b ON b.product_id = s.base_product_id
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(SUM(sl.available), 0)::int AS available
+           FROM ${t(brand, "stock_levels")} sl
+           JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sl.variant_id
+          WHERE CASE WHEN s.base_variant_id IS NOT NULL
+                     THEN pv.variant_id = s.base_variant_id
+                     ELSE pv.product_id = s.base_product_id AND pv.is_active = true
+                END
+       ) av ON true
        ${fromPriceLateral(brand)}
       ${whereSql}
       ORDER BY s.published_at DESC NULLS LAST, s.name
@@ -206,6 +219,37 @@ async function getProductCardsBySlugs({ brand, slugs }) {
       WHERE s.slug = ANY($1) AND s.status = 'live'
         AND s.is_visible_storefront = true AND s.is_deleted = false`,
     [slugs],
+  );
+  return rows;
+}
+
+// Batch base-availability inputs for a set of styled products (000086 universal
+// pre-orders). Returns one row per styled_id with its base product's pre-order
+// flags + total available units, resolved through the SAME stock lateral as
+// listProducts (pinned base_variant_id → that variant, else every active variant
+// of the base). The service pairs each row with the brand policy + computeAvailability
+// to set card.availability, so home/collections/shades/related cards never diverge
+// from the shop grid. Order is not guaranteed; callers key by styled_id.
+async function availabilityForStyled({ brand, styled_ids }) {
+  if (!styled_ids || styled_ids.length === 0) return [];
+  const { rows } = await query(
+    `SELECT s.styled_id,
+            b.preorder_enabled, b.preorder_excluded,
+            b.expected_ready_date, b.production_lead_days,
+            COALESCE(av.available, 0)::int AS base_available
+       FROM ${t(brand, "styled_products")} s
+       LEFT JOIN ${t(brand, "products")} b ON b.product_id = s.base_product_id
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(SUM(sl.available), 0)::int AS available
+           FROM ${t(brand, "stock_levels")} sl
+           JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sl.variant_id
+          WHERE CASE WHEN s.base_variant_id IS NOT NULL
+                     THEN pv.variant_id = s.base_variant_id
+                     ELSE pv.product_id = s.base_product_id AND pv.is_active = true
+                END
+       ) av ON true
+      WHERE s.styled_id = ANY($1)`,
+    [styled_ids],
   );
   return rows;
 }
@@ -786,6 +830,7 @@ module.exports = {
   listProducts,
   listCatalogueDigestForAI,
   getProductCardsBySlugs,
+  availabilityForStyled,
   getLiveStyledIdBySlug,
   listStyledGallery,
   listColourGalleries,

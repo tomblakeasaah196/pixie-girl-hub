@@ -73,8 +73,20 @@ const sizeConfig = z
     // One-click: allow base (stock-room) products in collections + bundles.
     // Default off — only styled products may be added.
     allow_base_in_collections_bundles: z.boolean().optional(),
+    // Universal pre-orders (migration 000086). Master switch + the production
+    // delivery window shown to buyers ("ships in ~min–max weeks").
+    preorder_enabled: z.boolean().optional(),
+    preorder_min_weeks: z.coerce.number().int().min(0).max(52).optional(),
+    preorder_max_weeks: z.coerce.number().int().min(0).max(52).optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (v) =>
+      v.preorder_min_weeks === undefined ||
+      v.preorder_max_weeks === undefined ||
+      v.preorder_max_weeks >= v.preorder_min_weeks,
+    { message: "Max weeks must be ≥ min weeks", path: ["preorder_max_weeks"] },
+  );
 
 const colourCreate = z
   .object({

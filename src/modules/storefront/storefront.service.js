@@ -15,6 +15,10 @@ const repo = require("./storefront.repo");
 // size tiers / lace ladder / size-guide config come from the same module.
 const styledRepo = require("../catalogue/styled.repo");
 const styledVariantsRepo = require("../catalogue/styled_variants.repo");
+const {
+  computeAvailability,
+  reduceBundleAvailability,
+} = require("../catalogue/availability");
 const salesService = require("../sales/sales.service");
 const bundleRepo = require("../retention/bundle.repo");
 const bundleService = require("../retention/bundle.service");
@@ -124,8 +128,129 @@ function colourVideos(colours) {
 }
 
 // ── Catalogue ──────────────────────────────────────────────
-function listProducts(args) {
-  return repo.listProducts(args);
+
+/** Resolve the brand's pre-order policy for computeAvailability (000086).
+ *  Defaults to on / 4–8 weeks when the catalogue_config row is missing. */
+async function preorderPolicy(brand) {
+  const cfg = await styledVariantsRepo.getConfig({ brand }).catch(() => null);
+  return {
+    enabled: cfg ? cfg.preorder_enabled : true,
+    min_weeks: cfg ? cfg.preorder_min_weeks : 4,
+    max_weeks: cfg ? cfg.preorder_max_weeks : 8,
+  };
+}
+
+/**
+ * Enrich a set of product cards with their in-stock / pre-order / sold-out
+ * state IN PLACE (000086). Batches one availabilityForStyled read + the brand
+ * policy, then sets card.availability via computeAvailability — the same result
+ * the shop grid derives inline — so home carousels, collection/shade pages,
+ * related rails and AI-search cards all read one shared computation. A caller
+ * that already resolved the policy can pass it to avoid a second config read.
+ * Cards without a styled_id are left untouched.
+ */
+async function attachAvailability(brand, cards, policy = null) {
+  const list = (Array.isArray(cards) ? cards : []).filter(
+    (c) => c && c.styled_id,
+  );
+  if (!list.length) return cards;
+  const pol = policy || (await preorderPolicy(brand));
+  const rows = await repo.availabilityForStyled({
+    brand,
+    styled_ids: [...new Set(list.map((c) => c.styled_id))],
+  });
+  const byId = new Map(rows.map((r) => [r.styled_id, r]));
+  for (const card of list) {
+    const base = byId.get(card.styled_id) || {};
+    card.availability = computeAvailability(base.base_available, {
+      base: {
+        preorder_enabled: base.preorder_enabled,
+        preorder_excluded: base.preorder_excluded,
+        expected_ready_date: base.expected_ready_date,
+        production_lead_days: base.production_lead_days,
+      },
+      policy: pol,
+    });
+  }
+  return cards;
+}
+
+/**
+ * Compute BUNDLE-level availability IN PLACE for one or more bundles (000086).
+ * Each component resolves to its base (styled → base, else the raw base
+ * product); the components' states reduce to a bundle badge via
+ * reduceBundleAvailability — sold out if any piece is a hard sold-out,
+ * pre-order on the longest window if any piece is made to order, else in stock.
+ * Sets bundle.availability. Components with no resolvable styled/base are
+ * ignored (they can't constrain what we can't price).
+ */
+async function attachBundleAvailability(brand, bundles) {
+  const list = (Array.isArray(bundles) ? bundles : [bundles]).filter(Boolean);
+  if (!list.length) return bundles;
+  const styledIds = new Set();
+  for (const b of list) {
+    for (const comp of b.components || []) {
+      if (comp && comp.styled_id) styledIds.add(comp.styled_id);
+    }
+  }
+  const [rows, pol] = await Promise.all([
+    styledIds.size
+      ? repo.availabilityForStyled({ brand, styled_ids: [...styledIds] })
+      : Promise.resolve([]),
+    preorderPolicy(brand),
+  ]);
+  const byId = new Map(rows.map((r) => [r.styled_id, r]));
+  for (const b of list) {
+    const parts = (b.components || [])
+      .filter((c) => c && c.styled_id && byId.has(c.styled_id))
+      .map((c) => {
+        const base = byId.get(c.styled_id);
+        return computeAvailability(base.base_available, {
+          base: {
+            preorder_enabled: base.preorder_enabled,
+            preorder_excluded: base.preorder_excluded,
+            expected_ready_date: base.expected_ready_date,
+            production_lead_days: base.production_lead_days,
+          },
+          policy: pol,
+        });
+      });
+    b.availability = reduceBundleAvailability(parts);
+  }
+  return bundles;
+}
+
+async function listProducts(args) {
+  const [result, cfg] = await Promise.all([
+    repo.listProducts(args),
+    styledVariantsRepo.getConfig({ brand: args.brand }),
+  ]);
+  const policy = {
+    enabled: cfg ? cfg.preorder_enabled : true,
+    min_weeks: cfg ? cfg.preorder_min_weeks : 4,
+    max_weeks: cfg ? cfg.preorder_max_weeks : 8,
+  };
+  // Enrich each card with its in-stock / pre-order / sold-out state, then drop
+  // the raw base columns the card query carried only to compute it.
+  const data = (result.data || []).map((row) => {
+    const availability = computeAvailability(row.base_available, {
+      base: {
+        preorder_enabled: row.preorder_enabled,
+        preorder_excluded: row.preorder_excluded,
+        expected_ready_date: row.expected_ready_date,
+        production_lead_days: row.production_lead_days,
+      },
+      policy,
+    });
+    const card = { ...row, availability };
+    delete card.base_available;
+    delete card.preorder_enabled;
+    delete card.preorder_excluded;
+    delete card.expected_ready_date;
+    delete card.production_lead_days;
+    return card;
+  });
+  return { ...result, data };
 }
 
 /**
@@ -143,7 +268,7 @@ async function getProduct({ brand, slug }) {
     throw new NotFoundError("Product");
   }
 
-  const [allVariants, gallery, colours, tiers, laces, cfg, socialProof, videos, relatedProducts] =
+  const [allVariants, gallery, colours, tiers, laces, cfg, socialProof, videos, relatedProducts, baseAvailable] =
     await Promise.all([
       styledVariantsRepo.listVariants({ brand, styled_id }),
       repo.listStyledGallery({ brand, styled_id }),
@@ -159,7 +284,33 @@ async function getProduct({ brand, slug }) {
         category_id: styled.category_id,
         exclude_styled_id: styled_id,
       }),
+      styledRepo.baseAvailability({
+        brand,
+        base_product_id: styled.base_product_id,
+        base_variant_id: styled.base_variant_id,
+      }),
     ]);
+
+  // In stock / pre-order / sold out (000086). Universal pre-orders: an
+  // out-of-stock item is offered as a pre-order on the brand's production
+  // window (Catalogue → Config) unless the product is opted out.
+  const policy = {
+    enabled: cfg ? cfg.preorder_enabled : true,
+    min_weeks: cfg ? cfg.preorder_min_weeks : 4,
+    max_weeks: cfg ? cfg.preorder_max_weeks : 8,
+  };
+  const availability = computeAvailability(baseAvailable, {
+    base: {
+      preorder_enabled: styled.preorder_enabled,
+      preorder_excluded: styled.preorder_excluded,
+      expected_ready_date: styled.expected_ready_date,
+      production_lead_days: styled.production_lead_days,
+    },
+    policy,
+  });
+  // "You May Also Love" cards carry the same in-stock / pre-order / sold-out
+  // badge as the shop grid (000086). Reuse the policy we just resolved.
+  await attachAvailability(brand, relatedProducts, policy);
 
   // Show ONLY variants a buyer can actually purchase — the same is_active +
   // is_deleted gate add-to-cart applies (listVariants already drops is_deleted).
@@ -181,6 +332,7 @@ async function getProduct({ brand, slug }) {
     slug: styled.slug,
     short_description: styled.short_description,
     long_description: styled.long_description,
+    availability,
     retail_price_ngn: styled.retail_price_ngn,
     retail_price_usd: styled.retail_price_usd,
     anchor_price_ngn: styled.retail_price_ngn,
@@ -285,6 +437,7 @@ async function getProduct({ brand, slug }) {
       cover_image_url: p.cover_image_url,
       effective_price_ngn: p.effective_price_ngn,
       effective_price_usd: p.effective_price_usd,
+      availability: p.availability ?? null,
     })),
   };
 }
@@ -299,6 +452,8 @@ async function listCategories({ brand }) {
 async function getCollection({ brand, slug }) {
   const collection = await repo.getCollectionBySlug({ brand, slug });
   if (!collection) throw new NotFoundError("Collection");
+  // Pre-order / sold-out badge per product card (000086).
+  await attachAvailability(brand, collection.products);
   return collection;
 }
 
@@ -309,6 +464,8 @@ function listShades({ brand }) {
 async function getShade({ brand, slug }) {
   const shade = await repo.getShadeBySlug({ brand, slug });
   if (!shade) throw new NotFoundError("Shade");
+  // Pre-order / sold-out badge per product card (000086).
+  await attachAvailability(brand, shade.products);
   return shade;
 }
 
@@ -316,14 +473,19 @@ function listCollections({ brand }) {
   return repo.listCollections({ brand });
 }
 
-function listBundles({ brand }) {
-  return repo.listBundles({ brand });
+async function listBundles({ brand }) {
+  const bundles = await repo.listBundles({ brand });
+  // Bundle-level pre-order / sold-out badge on the bundles grid (000086).
+  await attachBundleAvailability(brand, bundles);
+  return bundles;
 }
 
 async function getBundle({ brand, slug }) {
   // URL "slug" is the bundle_code (bundle_offers has no slug column).
   const bundle = await repo.getBundleByCode({ brand, code: slug });
   if (!bundle) throw new NotFoundError("Bundle");
+  // Bundle-level pre-order / sold-out badge on the bundle detail (000086).
+  await attachBundleAvailability(brand, bundle);
   return bundle;
 }
 
@@ -608,6 +770,12 @@ async function submitOrderForm({ brand, input, request_id }) {
       public_tracking_token: (order && order.public_tracking_token) || null,
       contact_id: contact.contact_id,
       booking_count: bookings.length,
+      // Pre-order notice threaded off the created order (000086) so the /o
+      // order-link page can tell the buyer some items are made to order.
+      preorder:
+        order && order._preorder && order._preorder.is_preorder
+          ? order._preorder
+          : null,
     };
   });
 
@@ -1477,6 +1645,10 @@ async function checkout({ brand, cart_id, sessionCustomerId = null, input = {} }
     order_number: order.order_number,
     payment_url: payResult.checkout_url,
     public_tracking_token: order.public_tracking_token || null,
+    // Pre-order notice threaded off the created order (000086) so the website
+    // checkout + thank-you page can tell the buyer some items are made to order.
+    preorder:
+      order._preorder && order._preorder.is_preorder ? order._preorder : null,
     // Flexi Pay (PR-2): plan + balance summary so the thank-you page can show
     // the running balance and the permanent pay link.
     ...(order.payment_plan === "instalment"
@@ -1671,6 +1843,7 @@ async function getInstallHub({ token }) {
 module.exports = {
   listProducts,
   getProduct,
+  attachAvailability,
   listCategories,
   getCollection,
   listShades,

@@ -56,6 +56,7 @@ const PROD_COLS = [
   "lace_size_codes",
   // Pre-order / production timeline (P0-7).
   "preorder_enabled",
+  "preorder_excluded",
   "expected_ready_date",
   "production_lead_days",
 ];

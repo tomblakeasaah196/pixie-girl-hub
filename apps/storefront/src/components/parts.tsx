@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { priceFor, type Currency, type ProductCard } from "@/lib/storefront";
+import { AvailabilityPill } from "@/components/availability";
 
 /** Product card - links to the detail page, shows the display-currency price. */
 export function ProductCardLink({
@@ -16,7 +17,9 @@ export function ProductCardLink({
       params={{ slug: p.slug }}
       className="group block"
     >
-      <div className="aspect-[3/4] overflow-hidden rounded-md bg-secondary">
+      <div className="relative aspect-[3/4] overflow-hidden rounded-md bg-secondary">
+        {/* Pre-order / sold-out corner pill (000086); renders nothing in-stock. */}
+        <AvailabilityPill availability={p.availability} />
         {p.cover_image_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img

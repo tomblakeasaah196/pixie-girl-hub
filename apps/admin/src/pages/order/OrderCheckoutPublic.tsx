@@ -122,6 +122,18 @@ interface OrderFormResult {
   public_tracking_token: string | null;
   contact_id: string;
   booking_count: number;
+  // Pre-order notice (000086) — present only when a line actually went in as
+  // made-to-order, so the confirmation screen can tell the buyer it's coming.
+  preorder?: {
+    is_preorder: boolean;
+    line_count: number;
+    names?: string[];
+    window_label?: string | null;
+    min_weeks?: number | null;
+    max_weeks?: number | null;
+    ready_by?: string | null;
+    message?: string;
+  } | null;
 }
 
 type Stage = "loading" | "form" | "submitting" | "done" | "used" | "error";
@@ -134,6 +146,9 @@ export function OrderCheckoutPublic() {
   const [stage, setStage] = useState<Stage>("loading");
   const [ctx, setCtx] = useState<PrefillContext | null>(null);
   const [errMsg, setErrMsg] = useState<string | null>(null);
+  // Pre-order notice (000086) surfaced on the confirmation screen.
+  const [preorderInfo, setPreorderInfo] =
+    useState<OrderFormResult["preorder"]>(null);
 
   const [fulfilment, setFulfilment] = useState<Fulfilment>("delivery");
   // Flexi Pay (PR-2): offer the instalment plan when the channel enables it.
@@ -533,6 +548,11 @@ export function OrderCheckoutPublic() {
         "public",
       );
 
+      // Capture the pre-order notice (000086) so the confirmation screen can
+      // tell the buyer some items are made to order (the gateway redirect below
+      // usually navigates away first; this shows on the fallback confirmation).
+      setPreorderInfo(result?.preorder ?? null);
+
       // Straight to the payment gateway: the order-form mints the checkout
       // link server-side (buyer's gateway pick preferred) and returns it —
       // redirect in ONE step. Gating this on public_tracking_token was the
@@ -611,6 +631,19 @@ export function OrderCheckoutPublic() {
             WhatsApp you a payment link in a moment. Once payment lands, your
             order moves into production.
           </p>
+          {preorderInfo?.is_preorder ? (
+            <div className="mx-auto mt-5 max-w-[360px] rounded-xl border border-accent/30 bg-accent/5 px-4 py-3 text-left">
+              <span className="text-[10px] font-semibold uppercase tracking-widest text-accent-glow">
+                Pre-order
+              </span>
+              <p className="mt-1 text-[12.5px] text-text-muted">
+                {preorderInfo.message ||
+                  (preorderInfo.window_label
+                    ? `Some of your items are made to order and ship in about ${preorderInfo.window_label}.`
+                    : "Some of your items are made to order. We'll keep you posted.")}
+              </p>
+            </div>
+          ) : null}
         </div>
       </Shell>
     );

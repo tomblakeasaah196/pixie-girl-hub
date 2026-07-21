@@ -100,9 +100,12 @@ async function findById({ client, brand, id }) {
     `SELECT i.*, c.display_name AS contact_name, c.email AS contact_email,
             c.primary_phone AS contact_phone,
             addr.line1 AS cust_line1, addr.line2 AS cust_line2,
-            addr.area AS cust_area, addr.city AS cust_city, addr.state AS cust_state
+            addr.area AS cust_area, addr.city AS cust_city, addr.state AS cust_state,
+            so.is_preorder, so.preorder_ready_by,
+            so.preorder_min_weeks, so.preorder_max_weeks
        FROM ${t(brand, "invoices")} i
        LEFT JOIN shared.contacts c ON c.contact_id = i.contact_id
+       LEFT JOIN ${t(brand, "sales_orders")} so ON so.order_id = i.order_id
        LEFT JOIN LATERAL (
          SELECT line1, line2, area, city, state
            FROM shared.contact_addresses a

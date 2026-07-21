@@ -272,6 +272,11 @@ async function search({ brand, device_id, ip, query: userQuery, history = [] }) 
 
     const slugs = (advice.product_slugs || []).slice(0, MAX_RESULTS);
     const cards = slugs.length ? await repo.getProductCardsBySlugs({ brand, slugs }) : [];
+    if (cards.length) {
+      // Carry the same in-stock / pre-order / sold-out badge as the shop grid
+      // (000086). Lazy-require avoids a load-order cycle with storefront.service.
+      await require("./storefront.service").attachAvailability(brand, cards);
+    }
     const bySlug = new Map(cards.map((c) => [c.slug, c]));
     const ordered = slugs.map((s) => bySlug.get(s)).filter(Boolean);
 

@@ -470,6 +470,31 @@ function buildInvoiceDoc({ invoice, brandObj, copy }) {
   const brandName = brandObj.brand_name;
   const legalName = brandObj.brand_legal_name;
 
+  // Pre-order banner (000086): when the linked order has a made-to-order line
+  // the invoice must say so clearly, with the production window + ship-by date.
+  const preorderMeta = [];
+  let preorderNote = "";
+  if (invoice.is_preorder) {
+    const min = invoice.preorder_min_weeks;
+    const max = invoice.preorder_max_weeks;
+    const win =
+      min && max && min !== max
+        ? `${min}–${max} weeks`
+        : max || min
+          ? `${max || min} weeks`
+          : null;
+    const by = invoice.preorder_ready_by
+      ? dayISO(invoice.preorder_ready_by)
+      : null;
+    preorderMeta.push([
+      "Pre-order",
+      by ? `Made to order · ships by ${by}` : "Made to order",
+    ]);
+    preorderNote = `This is a PRE-ORDER — your item is made to order${
+      win ? ` and ships in about ${win}` : ""
+    }${by ? ` (by ${by})` : ""}. `;
+  }
+
   return {
     status_label: INVOICE_STATUS_LABEL[invoice.status] || invoice.status,
     status_tone: paid ? "paid" : "due",
@@ -495,6 +520,7 @@ function buildInvoiceDoc({ invoice, brandObj, copy }) {
       email: invoice.contact_email,
     },
     meta: [
+      ...preorderMeta,
       ["Invoice #", invoice.invoice_number],
       ["Issue date", dayISO(invoice.issue_date || invoice.created_at)],
       [
@@ -522,8 +548,8 @@ function buildInvoiceDoc({ invoice, brandObj, copy }) {
     total_ngn: invoice.total_ngn,
     amount_paid_ngn: invoice.amount_paid_ngn,
     balance_due_ngn: invoice.balance_due_ngn,
-    notes_label: noteLabel,
-    notes: docCopy.fillTokens(noteText, tokens),
+    notes_label: invoice.is_preorder ? "Pre-order" : noteLabel,
+    notes: docCopy.fillTokens(preorderNote + (noteText || ""), tokens),
     thanks: docCopy.fillTokens(c.message, tokens),
   };
 }

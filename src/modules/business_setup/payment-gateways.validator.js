@@ -24,6 +24,15 @@ const configure = z
 const setActive = z.object({ is_active: z.boolean() }).strict();
 const setRole = z.object({ role: ROLE }).strict();
 
+// Optional overrides for the live connection test (e.g. a bespoke test amount /
+// currency). Unknown keys are dropped; an empty body is valid.
+const test = z
+  .object({
+    amount: z.union([z.number(), z.string()]).optional(),
+    currency: z.string().length(3).optional(),
+  })
+  .strip();
+
 const mk = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body || {});
   next();
@@ -33,4 +42,5 @@ module.exports = {
   validateConfigure: mk(configure),
   validateSetActive: mk(setActive),
   validateSetRole: mk(setRole),
+  validateTest: mk(test),
 };

@@ -41,8 +41,11 @@ const columns: Column<SalesOrder>[] = [
     header: "Order #",
     width: "130px",
     render: (o) => (
-      <span className="font-mono text-[13px] font-semibold">
-        {o.order_number}
+      <span className="inline-flex flex-col gap-1">
+        <span className="font-mono text-[13px] font-semibold">
+          {o.order_number}
+        </span>
+        {o.is_preorder && <Pill tone="warn">Pre-order</Pill>}
       </span>
     ),
   },

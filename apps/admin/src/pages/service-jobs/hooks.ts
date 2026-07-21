@@ -188,7 +188,13 @@ export function useJobActions(jobId: string) {
       onSuccess: invalidate,
     }),
     assign: useMutation({
-      mutationFn: (userId: string) => api.assignStaff(jobId, userId),
+      mutationFn: ({
+        userId,
+        expected_completion_at,
+      }: {
+        userId: string;
+        expected_completion_at?: string;
+      }) => api.assignStaff(jobId, userId, expected_completion_at),
       onSuccess: invalidate,
     }),
     unassign: useMutation({

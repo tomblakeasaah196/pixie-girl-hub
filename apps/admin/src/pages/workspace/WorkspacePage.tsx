@@ -112,6 +112,11 @@ const CAL_VIEWS: { key: CalendarViewMode; label: string }[] = [
   { key: "agenda", label: "Agenda" },
 ];
 
+// My Day's "Upcoming" sections show at most this many items before offering a
+// "View more" jump to the full Calendar / Tasks tab. Keeps the day view a
+// glanceable summary, not a second task list.
+const MY_DAY_UPCOMING_LIMIT = 10;
+
 // Goals still in play — mirrors GoalsTab's filter so the "At Risk / Behind"
 // KPI counts the same population the Goals tab shows.
 const ACTIVE_GOAL_STATUSES = new Set(["active", "on_hold"]);
@@ -402,6 +407,40 @@ export function WorkspacePage() {
     [myTasks, todayStr],
   );
 
+  // Upcoming (tomorrow onwards) — so an empty day still surfaces what's coming
+  // and the stylist studio jobs raised with a 48h deadline show up before
+  // they're due. Sorted soonest-first, capped by the view.
+  const upcomingEvents = useMemo(
+    () =>
+      events
+        .filter((e) => {
+          const start = new Date(e.start_at);
+          return start > today && !isSameDay(start, today);
+        })
+        .sort(
+          (a, b) =>
+            new Date(a.start_at).getTime() - new Date(b.start_at).getTime(),
+        ),
+    [events, todayStr],
+  );
+
+  const upcomingTasks = useMemo(
+    () =>
+      myTasks
+        .filter((t) => {
+          if (!t.due_at || t.status === "done" || t.status === "cancelled")
+            return false;
+          const due = new Date(t.due_at);
+          return due > today && !isSameDay(due, today);
+        })
+        .sort(
+          (a, b) =>
+            new Date(a.due_at as string).getTime() -
+            new Date(b.due_at as string).getTime(),
+        ),
+    [myTasks, todayStr],
+  );
+
   // CoS-access (CEO) users trade the backward-looking "Overdue / Completed"
   // tiles for two strategic signals: goal health and the Chief-of-Staff
   // accountability queue. Both fetch only when the tiles are shown.
@@ -609,8 +648,10 @@ export function WorkspacePage() {
               userName={user?.name ?? "there"}
               isCeo={isCeo}
               todayEvents={todayEvents}
+              upcomingEvents={upcomingEvents}
               dueTodayTasks={dueTodayTasks}
               overdueTasks={overdueTasks}
+              upcomingTasks={upcomingTasks}
               completedToday={completedToday}
               atRiskGoals={atRiskGoals}
               goalsLoading={goalsLoading}
@@ -1101,8 +1142,10 @@ function MyDayView({
   userName,
   isCeo,
   todayEvents,
+  upcomingEvents,
   dueTodayTasks,
   overdueTasks,
+  upcomingTasks,
   completedToday,
   atRiskGoals,
   goalsLoading,
@@ -1123,8 +1166,10 @@ function MyDayView({
   userName: string;
   isCeo: boolean;
   todayEvents: CalendarEvent[];
+  upcomingEvents: CalendarEvent[];
   dueTodayTasks: Task[];
   overdueTasks: Task[];
+  upcomingTasks: Task[];
   completedToday: Task[];
   atRiskGoals: Goal[];
   goalsLoading: boolean;
@@ -1272,44 +1317,58 @@ function MyDayView({
                 ))}
               </div>
             )}
-            {!eventsLoading && !eventsError && todayEvents.length === 0 && (
-              <EmptyState
-                icon={<CalendarDays className="w-6 h-6" />}
-                title="No events today"
-                message="Your day is clear."
-                action={
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    icon={<Plus className="w-3 h-3" />}
-                    onClick={onCreateEvent}
-                  >
-                    New Event
-                  </Button>
-                }
-              />
-            )}
             {!eventsLoading &&
               !eventsError &&
-              todayEvents.map((ev) => (
-                <button
-                  key={ev.event_id}
-                  onClick={() => onSelectEvent(ev)}
-                  className="w-full text-left flex items-center gap-3 p-2.5 rounded-xl hover:bg-text-primary/[0.04] transition-colors"
-                >
-                  <div className="w-1 h-10 rounded-full bg-accent/40 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[13px] font-semibold text-text-primary truncate">
-                      {ev.title}
-                    </div>
-                    <div className="text-[11px] text-text-faint">
-                      {ev.all_day
-                        ? "All day"
-                        : `${formatTime(ev.start_at)} - ${formatTime(ev.end_at)}`}
-                    </div>
-                  </div>
-                </button>
-              ))}
+              todayEvents.length === 0 &&
+              upcomingEvents.length === 0 && (
+                <EmptyState
+                  icon={<CalendarDays className="w-6 h-6" />}
+                  title="No events today"
+                  message="Your day is clear — and nothing coming up either."
+                  action={
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      icon={<Plus className="w-3 h-3" />}
+                      onClick={onCreateEvent}
+                    >
+                      New Event
+                    </Button>
+                  }
+                />
+              )}
+            {!eventsLoading && !eventsError && todayEvents.length > 0 && (
+              <div>
+                {todayEvents.map((ev) => (
+                  <EventScheduleRow
+                    key={ev.event_id}
+                    event={ev}
+                    onClick={() => onSelectEvent(ev)}
+                  />
+                ))}
+              </div>
+            )}
+            {!eventsLoading && !eventsError && upcomingEvents.length > 0 && (
+              <div className={todayEvents.length > 0 ? "mt-3" : ""}>
+                <div className="text-[10px] font-bold uppercase tracking-wide text-text-faint mb-2 px-1">
+                  Upcoming
+                </div>
+                {upcomingEvents.slice(0, MY_DAY_UPCOMING_LIMIT).map((ev) => (
+                  <EventScheduleRow
+                    key={ev.event_id}
+                    event={ev}
+                    showDate
+                    onClick={() => onSelectEvent(ev)}
+                  />
+                ))}
+                {upcomingEvents.length > MY_DAY_UPCOMING_LIMIT && (
+                  <ViewMoreRow
+                    count={upcomingEvents.length - MY_DAY_UPCOMING_LIMIT}
+                    onClick={() => onOpenTab("calendar")}
+                  />
+                )}
+              </div>
+            )}
           </div>
         </Card>
 
@@ -1344,11 +1403,12 @@ function MyDayView({
             {!boardLoading &&
               !boardError &&
               overdueTasks.length === 0 &&
-              dueTodayTasks.length === 0 && (
+              dueTodayTasks.length === 0 &&
+              upcomingTasks.length === 0 && (
                 <EmptyState
                   icon={<CheckCircle2 className="w-6 h-6" />}
                   title="All caught up"
-                  message="No tasks due today."
+                  message="Nothing due today, and nothing coming up."
                   action={
                     <Button
                       variant="primary"
@@ -1379,7 +1439,7 @@ function MyDayView({
                   </div>
                 )}
                 {dueTodayTasks.length > 0 && (
-                  <div>
+                  <div className="mb-3">
                     <div className="text-[10px] font-bold uppercase tracking-wide text-text-faint mb-2">
                       Due Today
                     </div>
@@ -1390,6 +1450,26 @@ function MyDayView({
                         onClick={() => onSelectTask(t)}
                       />
                     ))}
+                  </div>
+                )}
+                {upcomingTasks.length > 0 && (
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-text-faint mb-2">
+                      Upcoming
+                    </div>
+                    {upcomingTasks.slice(0, MY_DAY_UPCOMING_LIMIT).map((t) => (
+                      <TaskRow
+                        key={t.task_id}
+                        task={t}
+                        onClick={() => onSelectTask(t)}
+                      />
+                    ))}
+                    {upcomingTasks.length > MY_DAY_UPCOMING_LIMIT && (
+                      <ViewMoreRow
+                        count={upcomingTasks.length - MY_DAY_UPCOMING_LIMIT}
+                        onClick={() => onOpenTab("tasks")}
+                      />
+                    )}
                   </div>
                 )}
               </>
@@ -1432,6 +1512,52 @@ function TaskRow({
           {formatDate(task.due_at)}
         </span>
       )}
+    </button>
+  );
+}
+
+/** Event row for My Day's schedule + upcoming lists. `showDate` prefixes the
+ *  calendar date (upcoming events span future days; today's don't need it). */
+function EventScheduleRow({
+  event,
+  showDate,
+  onClick,
+}: {
+  event: CalendarEvent;
+  showDate?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full text-left flex items-center gap-3 p-2.5 rounded-xl hover:bg-text-primary/[0.04] transition-colors"
+    >
+      <div className="w-1 h-10 rounded-full bg-accent/40 shrink-0" />
+      <div className="flex-1 min-w-0">
+        <div className="text-[13px] font-semibold text-text-primary truncate">
+          {event.title}
+        </div>
+        <div className="text-[11px] text-text-faint">
+          {showDate && `${formatDate(event.start_at)} · `}
+          {event.all_day
+            ? "All day"
+            : `${formatTime(event.start_at)} - ${formatTime(event.end_at)}`}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+/** "View more" affordance closing an Upcoming list that was capped for space —
+ *  jumps to the full Calendar / Tasks tab where the rest lives. */
+function ViewMoreRow({ count, onClick }: { count: number; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full flex items-center justify-center gap-1.5 mt-1 p-2 rounded-xl text-[12px] font-semibold text-accent-glow hover:bg-text-primary/[0.04] transition-colors"
+    >
+      View {count} more
+      <ChevronRight className="w-3.5 h-3.5" />
     </button>
   );
 }

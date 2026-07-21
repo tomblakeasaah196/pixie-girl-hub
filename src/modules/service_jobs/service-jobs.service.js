@@ -13,6 +13,7 @@
 
 const repo = require("./service-jobs.repo");
 const icRepo = require("../intercompany/intercompany.repo");
+const sharedTasksRepo = require("../../shared/tasks/tasks.repo");
 const events = require("./service-jobs.events");
 const ai = require("./service-jobs.ai");
 const { audit } = require("../../middleware/audit");
@@ -855,6 +856,11 @@ async function deductBaseWig({ client, brand, job, user_id, channel }) {
   }
 }
 
+// A stylist studio job assigned with no promised date still needs a clock so
+// it surfaces on the stylist's My Day and counts on the SLA scorecards. When
+// the assigner doesn't set (or override) a deadline, default it to 48h out.
+const DEFAULT_STUDIO_TURNAROUND_MS = 48 * 60 * 60 * 1000;
+
 // Exact reverse of deductBaseWig — put the base wig back on unassign. Mirrors
 // the same orderAlreadyDrewWig guard, so for order-linked jobs (where the sale
 // owned the draw and the Studio never deducted) this is a clean no-op. Best-
@@ -899,6 +905,12 @@ async function restockBaseWig({ client, brand, job, user_id }) {
  * Assign an in-house stylist (staff). Reserves + deducts the base wig, writes a
  * custody OUT row (so the wig is now accounted for in the stylist's hands), and
  * notifies them. The DB trigger separately raises a task on their Workspace.
+ *
+ * The deadline is set here, at the assigning level: `expected_completion_at`
+ * (explicit assigner value) wins, else the job's existing promised date is
+ * kept, else it defaults to +48h. Stamping it in the same UPDATE that sets the
+ * assignee means the BEFORE trigger writes it onto the freshly-raised task's
+ * due date; on a reassignment (task already exists) we sync it below.
  */
 async function assignStylist({
   brand,
@@ -906,14 +918,24 @@ async function assignStylist({
   request_id,
   id,
   assigned_staff_user_id,
+  expected_completion_at,
 }) {
-  return transaction(async (client) => {
+  const outcome = await transaction(async (client) => {
     const before = await repo.getServiceJob({ client, brand, id });
     if (!before) throw new NotFoundError("Service job");
+    const deadline =
+      expected_completion_at ||
+      before.expected_completion_at ||
+      new Date(Date.now() + DEFAULT_STUDIO_TURNAROUND_MS).toISOString();
     const fields = {
       assigned_staff_user_id,
       assigned_at: new Date().toISOString(),
+      expected_completion_at: deadline,
     };
+    // Keep the promised-delivery SLA clock in step: stamp it on first set, and
+    // move it when the assigner explicitly re-sets the deadline.
+    if (!before.sla_due_at || expected_completion_at)
+      fields.sla_due_at = deadline;
     if (!before.reserved_variant_id && before.hair_variant_id)
       fields.reserved_variant_id = before.hair_variant_id;
     // Allocate the physical hand-off tag once, on first assignment — it's
@@ -929,6 +951,10 @@ async function assignStylist({
       );
       fields.tag_code = `${seq}${initials}`;
     }
+    // The create-task trigger only fires on FIRST assignment (task_id was
+    // NULL). When the job already carries a task, a reassignment must move it
+    // to the new stylist and re-stamp its due date — done post-commit below.
+    const priorTaskId = before.task_id;
     const job = await repo.setServiceJobStatus({
       client,
       brand,
@@ -1009,8 +1035,28 @@ async function assignStylist({
     // is_new_tag tells the drawer whether to show the "copy this onto the
     // tag" confirmation modal — only on the assignment that actually
     // allocated the code, never on a later reassignment of the same job.
-    return { ...job, is_new_tag: isNewTag };
+    return { job, isNewTag, priorTaskId, deadline };
   });
+
+  const { job, isNewTag, priorTaskId, deadline } = outcome;
+  // Reassignment: the create-task trigger left the existing task untouched, so
+  // move it onto the new stylist and re-stamp its due date here (best-effort,
+  // post-commit — a failed sync must never undo a committed assignment).
+  if (priorTaskId) {
+    try {
+      await sharedTasksRepo.updateTask({
+        brand,
+        id: priorTaskId,
+        patch: { assigned_to: assigned_staff_user_id, due_at: deadline },
+      });
+    } catch (err) {
+      logger.warn(
+        { err, brand, job_id: id, task_id: priorTaskId },
+        "service_jobs: failed to sync task on reassignment",
+      );
+    }
+  }
+  return { ...job, is_new_tag: isNewTag };
 }
 
 /**

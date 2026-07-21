@@ -27,6 +27,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Lightbox } from "@/components/ui/Lightbox";
 import { Select } from "@/components/ui/controls";
 import { ErrorState } from "@/components/ui/controls";
+import { TextInput } from "@/components/ui/Form";
 import { useAuthStore } from "@/stores/auth";
 import { ApiError } from "@/lib/api";
 import type { ServiceJob, ServiceType, JobStatus, JobReference } from "./types";
@@ -84,6 +85,33 @@ import {
   CUSTOMER_HAPPINESS_FACES,
   HAPPINESS_EMOJI,
 } from "./constants";
+
+// ── Deadline helpers (assign-time due date) ────────────────
+// `datetime-local` inputs speak local wall-clock, not ISO/UTC, so we convert
+// on the way in and out. Empty string ⇢ no value (input renders blank).
+
+/** ISO/UTC string → `YYYY-MM-DDTHH:mm` in the viewer's local time. */
+function toDatetimeLocalInput(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** The default deadline: 48 hours from now, as a `datetime-local` value. */
+function plus48hLocalInput(): string {
+  return toDatetimeLocalInput(
+    new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+  );
+}
+
+/** `datetime-local` value → ISO string (or undefined when blank). */
+function localInputToIso(local: string): string | undefined {
+  if (!local) return undefined;
+  const d = new Date(local);
+  return isNaN(d.getTime()) ? undefined : d.toISOString();
+}
 
 // Human-readable label for each audit action_key the job lifecycle writes.
 const ACTIVITY_LABELS: Record<string, string> = {
@@ -760,6 +788,7 @@ function WorkloadPill({
 function AssignConfirmModal({
   job,
   stylistName,
+  dueLabel,
   onConfirm,
   onCancel,
   pending,
@@ -767,6 +796,9 @@ function AssignConfirmModal({
 }: {
   job: ServiceJob;
   stylistName: string;
+  // The deadline about to be stamped (formatted), so it's reviewed before it
+  // commits — this is what lands on the stylist's My Day.
+  dueLabel?: string | null;
   onConfirm: () => void;
   onCancel: () => void;
   pending: boolean;
@@ -800,6 +832,12 @@ function AssignConfirmModal({
           <span className="font-semibold">{label}</span> to{" "}
           <span className="font-semibold text-accent-glow">{stylistName}</span>?
         </p>
+        {dueLabel && (
+          <p className="text-[12px] text-text-muted">
+            Due <span className="font-semibold text-text-primary">{dueLabel}</span>
+            {" "}· shows on their My Day.
+          </p>
+        )}
         <div className="glass rounded-lg p-3 flex items-start gap-2">
           <AlertTriangle className="w-4 h-4 text-warn shrink-0 mt-0.5" />
           <p className="text-[11px] text-text-muted leading-snug">
@@ -896,6 +934,7 @@ function AssignmentPanel({
           job={job}
           jobId={jobId}
           currentUserId={job.assigned_staff_user_id}
+          defaultDue={job.expected_completion_at}
           onDone={() => setPicking(false)}
           onAssigned={(assignedJob) => {
             if (assignedJob.is_new_tag && assignedJob.tag_code)
@@ -1022,18 +1061,28 @@ function StylistPicker({
   job,
   jobId,
   currentUserId,
+  defaultDue,
   onDone,
   onAssigned,
 }: {
   job: ServiceJob;
   jobId: string;
   currentUserId: string | null;
+  // The job's existing promised date, if any. Pre-fills the deadline field;
+  // when absent the field defaults to 48 hours from now.
+  defaultDue?: string | null;
   onDone: () => void;
   onAssigned?: (job: ServiceJob) => void;
 }) {
   const { assign } = useJobActions(jobId);
   const { data: stylists = [], isLoading } = useAssignableStylists(true);
   const teamOpenJobs = stylists.reduce((sum, s) => sum + s.open_jobs_count, 0);
+  // Deadline captured at the assigning level. Defaults to the job's promised
+  // date if it already has one, otherwise +48h — so every assigned job lands on
+  // the stylist's My Day with a clock, and the SLA scorecards have a target.
+  const [due, setDue] = useState<string>(() =>
+    toDatetimeLocalInput(defaultDue) || plus48hLocalInput(),
+  );
   // Stylist awaiting confirmation — clicking a row opens the confirm modal
   // rather than assigning straight away, so a misclick can never commit.
   const [pending, setPending] = useState<(typeof stylists)[number] | null>(
@@ -1060,6 +1109,23 @@ function StylistPicker({
 
   return (
     <div className="glass p-2 rounded-lg space-y-1">
+      {/* Deadline set at the assigning level — defaults to 48h, editable. It
+          becomes the job's due date and lands on the stylist's My Day. */}
+      <div className="px-1.5 pt-1 pb-2 border-b border-line/60 mb-1">
+        <label className="block text-[10.5px] text-text-muted uppercase tracking-wide font-semibold mb-1">
+          Due date
+        </label>
+        <TextInput
+          type="datetime-local"
+          value={due}
+          onChange={(e) => setDue(e.target.value)}
+          className="h-9 text-[13px]"
+        />
+        <p className="text-[10.5px] text-text-muted mt-1 leading-snug">
+          Defaults to 48 hours from now. This is the deadline the stylist sees
+          on their My&nbsp;Day.
+        </p>
+      </div>
       <p className="text-[10.5px] text-text-muted px-1.5 pt-0.5 pb-1 leading-snug">
         Load = each stylist&rsquo;s share of the{" "}
         {teamOpenJobs > 0 ? `${teamOpenJobs} ` : ""}open job
@@ -1119,6 +1185,7 @@ function StylistPicker({
         <AssignConfirmModal
           job={job}
           stylistName={pending.full_name}
+          dueLabel={due ? formatDateTime(localInputToIso(due) ?? due) : null}
           pending={assign.isPending}
           error={
             assign.isError
@@ -1131,13 +1198,19 @@ function StylistPicker({
             setPending(null);
           }}
           onConfirm={() =>
-            assign.mutate(pending.user_id, {
-              onSuccess: (assignedJob) => {
-                onAssigned?.(assignedJob);
-                setPending(null);
-                onDone();
+            assign.mutate(
+              {
+                userId: pending.user_id,
+                expected_completion_at: localInputToIso(due),
               },
-            })
+              {
+                onSuccess: (assignedJob) => {
+                  onAssigned?.(assignedJob);
+                  setPending(null);
+                  onDone();
+                },
+              },
+            )
           }
         />
       )}

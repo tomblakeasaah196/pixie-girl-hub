@@ -79,6 +79,16 @@ async function repairBusiness(business) {
 
   const client = await pool.connect();
   try {
+    // Never let a blocked or slow DDL stall the whole production deploy. A
+    // non-concurrent CREATE INDEX waits on a lock held by live traffic; on a
+    // busy schema that wait can outlast the deploy's 28-minute SSH command
+    // timeout, burning the entire window and failing the deploy (as happened
+    // when 000033's non-idempotent indexes re-ran). Cap lock waits and
+    // per-statement time so a stuck step fails fast — the per-template
+    // try/catch below rolls it back to its savepoint, logs it, and the repair
+    // carries on instead of hanging.
+    await client.query("SET lock_timeout = '30s'");
+    await client.query("SET statement_timeout = '180s'");
     await client.query(`CREATE SCHEMA IF NOT EXISTS ${business}`);
     await client.query("BEGIN");
 

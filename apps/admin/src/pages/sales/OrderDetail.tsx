@@ -34,6 +34,7 @@ import {
   useOrderServiceJob,
   useOrderDelivery,
   useContactRecentOrders,
+  useStatusAutomations,
 } from "./hooks";
 import { generateReceipt } from "./api";
 import { useToastStore } from "@/components/notifications/NotificationToast";
@@ -44,10 +45,11 @@ import {
   ORDER_STATUS,
   MANUAL_MOVE_STATUSES,
   statusMoveImpact,
+  messagingChannelLabel,
   SALES_CHANNELS,
   fulfilmentLabel,
 } from "./constants";
-import type { OrderPayment, SalesOrder } from "./types";
+import type { OrderPayment, OrderStatus, SalesOrder } from "./types";
 
 // ── Studio job status → friendly label + tone ────────────────
 type Tone = "success" | "warn" | "danger" | "info" | "accent" | "neutral";
@@ -112,6 +114,9 @@ export function OrderDetail({
   const createLink = useCreatePaymentLink(orderId ?? "");
   const cancelOrder = useCancelOrder();
   const setStatus = useSetOrderStatus();
+  // Live on/off state of the stage messages, for the status-move impact modal.
+  const { data: statusAutomations, isLoading: automationsLoading } =
+    useStatusAutomations(!!orderId);
   const { data: paymentSettings } = usePaymentSettings();
   const navigate = useNavigate();
   const [payModalOpen, setPayModalOpen] = useState(false);
@@ -980,6 +985,7 @@ export function OrderDetail({
       {pendingStatus &&
         (() => {
           const impact = statusMoveImpact(pendingStatus);
+          const auto = statusAutomations?.[pendingStatus as OrderStatus];
           return (
             <ConfirmDialog
               open={!!pendingStatus}
@@ -1003,6 +1009,47 @@ export function OrderDetail({
                       </ul>
                     </div>
                   )}
+                  {/* Message-bearing moves show the automation's *live* on/off
+                      state so staff get a definite "will send"/"won't send"
+                      rather than a hedge. Falls back to the honest conditional
+                      wording if the live state can't be read. */}
+                  {impact.message &&
+                    (() => {
+                      const label = impact.message.label;
+                      if (automationsLoading && !statusAutomations) {
+                        return (
+                          <p className="text-sm opacity-70">
+                            Checking whether the {label} message will send…
+                          </p>
+                        );
+                      }
+                      if (!auto) {
+                        return (
+                          <p className="text-sm opacity-90">
+                            Sends the customer the {label} message — if it's
+                            switched on in Messaging settings.
+                          </p>
+                        );
+                      }
+                      const channel = messagingChannelLabel(auto.channel);
+                      return auto.is_active ? (
+                        <div className="flex items-start gap-2 rounded-[9px] px-3 py-2 text-sm bg-success/[0.08] border border-success/25">
+                          <Send className="w-4 h-4 text-success shrink-0 mt-0.5" />
+                          <span>
+                            Will send the customer the {label} message
+                            {channel ? ` via ${channel}` : ""}.
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-start gap-2 rounded-[9px] px-3 py-2 text-sm bg-warn/[0.08] border border-warn/25">
+                          <XCircle className="w-4 h-4 text-warn shrink-0 mt-0.5" />
+                          <span>
+                            Won't send the {label} message — it's switched off in
+                            Messaging settings.
+                          </span>
+                        </div>
+                      );
+                    })()}
                 </div>
               }
             />

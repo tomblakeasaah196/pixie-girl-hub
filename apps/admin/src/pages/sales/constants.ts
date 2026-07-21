@@ -54,12 +54,20 @@ export interface StatusMoveImpact {
   confirmLabel: string;
   note: string;
   effects: string[];
+  /**
+   * Present when this move fires a customer message. The drawer resolves the
+   * automation's live on/off state (useStatusAutomations) and renders a
+   * definite "will send" / "won't send — it's off" line in its place; `label`
+   * is the message's friendly name (already curly-quoted for the sentence).
+   */
+  message?: { label: string };
 }
 
 // What a manual status move does — shown in the drawer's confirmation modal so
 // staff see the impact (and which customer message fires) before committing.
-// The messages only actually send if their automation is switched on under
-// Messaging → Automations, hence the "if it's switched on" wording.
+// Message-bearing moves carry a `message` descriptor rather than a baked-in
+// effect line, so the modal can show whether that message is *actually*
+// switched on right now (see OrderDetail's impact modal).
 export function statusMoveImpact(status: string): StatusMoveImpact {
   switch (status) {
     case "assigned":
@@ -78,20 +86,16 @@ export function statusMoveImpact(status: string): StatusMoveImpact {
         title: "Move to Order Ready?",
         confirmLabel: "Mark Order Ready",
         note: "Marks the order packed and ready for the courier.",
-        effects: [
-          "Order status becomes Order Ready",
-          "Sends the customer the “Order Ready” message — if it's switched on in Messaging settings",
-        ],
+        effects: ["Order status becomes Order Ready"],
+        message: { label: "“Order Ready”" },
       };
     case "dispatched":
       return {
         title: "Move to Dispatched?",
         confirmLabel: "Mark Dispatched",
         note: "This tells the customer the order is on its way — only do it once the courier actually has the parcel.",
-        effects: [
-          "Order status becomes Dispatched",
-          "Sends the customer the “On its way” message — if it's switched on in Messaging settings",
-        ],
+        effects: ["Order status becomes Dispatched"],
+        message: { label: "“On its way”" },
       };
     case "completed":
       return {
@@ -111,6 +115,23 @@ export function statusMoveImpact(status: string): StatusMoveImpact {
         note: `Move this order to ${ORDER_STATUS[status as OrderStatus]?.label ?? status}.`,
         effects: [],
       };
+  }
+}
+
+// Friendly channel name for the impact modal's "will send … via WhatsApp" line.
+export function messagingChannelLabel(channel: string | null): string | null {
+  switch (channel) {
+    case "whatsapp":
+      return "WhatsApp";
+    case "email":
+      return "email";
+    case "instagram":
+      return "Instagram";
+    case "sms":
+      return "SMS";
+    default:
+      // respect_contact_pref / in_app_only / unknown → don't name a channel.
+      return null;
   }
 }
 

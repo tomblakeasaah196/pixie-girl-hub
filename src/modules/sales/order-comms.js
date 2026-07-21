@@ -72,4 +72,30 @@ const outForDelivery = ({ brand, order }) =>
 const deliveryFailed = ({ brand, order }) =>
   send({ brand, order, event_key: "delivery_failed" });
 
-module.exports = { orderReady, orderShipped, outForDelivery, deliveryFailed };
+/**
+ * The single source of truth for which manual fulfilment move fires which
+ * customer automation. `sales.service.setOrderStatus` dispatches from this map,
+ * and the order-status impact modal reads the live on/off state of the very
+ * same event_keys — so "what the modal promises" and "what actually sends" can
+ * never drift. A stage not listed here sends nothing on a manual move.
+ */
+const MANUAL_STATUS_EVENT = Object.freeze({
+  order_ready: "order_ready",
+  dispatched: "order_shipped",
+});
+
+/** Fire the automation for a manual fulfilment move, if the stage has one. */
+async function forStatus({ brand, order, status }) {
+  const event_key = MANUAL_STATUS_EVENT[status];
+  if (!event_key) return;
+  await send({ brand, order, event_key });
+}
+
+module.exports = {
+  orderReady,
+  orderShipped,
+  outForDelivery,
+  deliveryFailed,
+  MANUAL_STATUS_EVENT,
+  forStatus,
+};

@@ -1776,11 +1776,48 @@ async function setOrderStatus({ brand, user, request_id, id, status }) {
     return row;
   });
   // Fire the matching customer message (best-effort; no-op if toggled Off).
+  // Routed through the shared MANUAL_STATUS_EVENT map so the impact modal's
+  // live-state read (getStatusAutomationStates) can never promise a send this
+  // path wouldn't make.
   const orderComms = require("./order-comms");
-  if (status === "order_ready") await orderComms.orderReady({ brand, order: updated });
-  else if (status === "dispatched")
-    await orderComms.orderShipped({ brand, order: updated });
+  await orderComms.forStatus({ brand, order: updated, status });
   return updated;
+}
+
+/**
+ * Live on/off state of the customer messages a manual fulfilment move fires,
+ * keyed by the target status — so the order drawer's impact modal can show a
+ * definite "will send" / "won't send — it's off" instead of static copy.
+ *
+ * Only statuses that actually fire a message appear (order_ready, dispatched);
+ * assigned/completed send nothing and are simply absent. Reads from the same
+ * MANUAL_STATUS_EVENT map setOrderStatus dispatches from, so the promise and
+ * the send stay in lockstep.
+ */
+async function getStatusAutomationStates({ brand }) {
+  const orderComms = require("./order-comms");
+  const commsStudio = require("../comms_studio/comms-studio.service");
+  const statusToEvent = orderComms.MANUAL_STATUS_EVENT;
+  const statuses = Object.keys(statusToEvent);
+  const event_keys = statuses.map((s) => statusToEvent[s]);
+  const states = await commsStudio.getAutomationStates({ brand, event_keys });
+  const byEvent = new Map(states.map((s) => [s.event_key, s]));
+  const out = {};
+  for (const status of statuses) {
+    const event_key = statusToEvent[status];
+    const st = byEvent.get(event_key) || {
+      configured: false,
+      is_active: false,
+      channel: null,
+    };
+    out[status] = {
+      event_key,
+      configured: !!st.configured,
+      is_active: !!st.is_active,
+      channel: st.channel || null,
+    };
+  }
+  return out;
 }
 
 // ── Quotations ───────────────────────────────────────────
@@ -2559,6 +2596,7 @@ module.exports = {
   recordSubscriptionCharge,
   cancelOrder, // orders are cancelled (the 'archive' equivalent), never hard-deleted
   setOrderStatus,
+  getStatusAutomationStates,
   listQuotations,
   getQuotation,
   quotationPdf,

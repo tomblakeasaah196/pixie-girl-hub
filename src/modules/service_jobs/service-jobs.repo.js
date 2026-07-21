@@ -339,7 +339,8 @@ async function listServiceJobs({
   const { rows } = await query(
     `SELECT sj.*, so.order_number AS sales_order_number,
             u.display_name AS assigned_staff_name,
-            c.display_name AS customer_name
+            c.display_name AS customer_name,
+            sty.name AS styled_product_name
        FROM ${t(brand, "service_jobs")} sj
        LEFT JOIN ${t(brand, "sales_orders")} so
          ON so.order_id = sj.sales_order_id
@@ -347,6 +348,8 @@ async function listServiceJobs({
          ON u.user_id = sj.assigned_staff_user_id
        LEFT JOIN shared.contacts c
          ON c.contact_id = sj.customer_contact_id
+       LEFT JOIN ${t(brand, "styled_products")} sty
+         ON sty.styled_id = sj.styled_id
       ${w}
       ORDER BY sj.created_at DESC LIMIT $${i++} OFFSET $${i}`,
     [...params, page_size, offset],

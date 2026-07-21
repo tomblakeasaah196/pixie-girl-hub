@@ -311,6 +311,22 @@ function JobCard({
           {job.sales_order_number ?? "Order"}
         </span>
       )}
+      {/* Who it's for + what's being styled — so the floor reads the card
+          without opening the drawer. */}
+      {(job.customer_name || job.styled_product_name) && (
+        <div className="space-y-0.5">
+          {job.customer_name && (
+            <p className="text-xs text-text-primary/90 truncate">
+              {job.customer_name}
+            </p>
+          )}
+          {job.styled_product_name && (
+            <p className="text-[11px] text-text-muted truncate">
+              {job.styled_product_name}
+            </p>
+          )}
+        </div>
+      )}
       <div className="flex items-center gap-1.5">
         <span>{icon}</span>
         <span className="text-sm font-medium truncate">
@@ -1866,7 +1882,8 @@ export function JobBoard({ canCreate }: { canCreate: boolean }) {
         (j) =>
           j.tag_code?.includes(tagQueryTrimmed) ||
           j.customer_name?.toLowerCase().includes(tagQueryLower) ||
-          j.sales_order_number?.toLowerCase().includes(tagQueryLower),
+          j.sales_order_number?.toLowerCase().includes(tagQueryLower) ||
+          j.styled_product_name?.toLowerCase().includes(tagQueryLower),
       )
     : allJobs;
 
@@ -1925,7 +1942,7 @@ export function JobBoard({ canCreate }: { canCreate: boolean }) {
             type="text"
             value={tagQuery}
             onChange={(e) => setTagQuery(e.target.value)}
-            placeholder="Tag, customer, order…"
+            placeholder="Tag, customer, order, product…"
             className="input w-44 text-sm"
             aria-label="Search by tag code, customer, or order number"
           />

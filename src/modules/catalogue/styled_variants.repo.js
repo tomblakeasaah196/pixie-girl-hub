@@ -106,11 +106,92 @@ const LACE_COLS = [
 ];
 
 async function listLaceSizes({ client, brand, activeOnly = false }) {
-  const where = activeOnly ? "WHERE is_active = true" : "";
+  // Trashed lace constructions never appear in the ladder or any picker.
+  const conds = ["is_deleted = false"];
+  if (activeOnly) conds.push("is_active = true");
   const { rows } = await ex(client)(
-    `SELECT * FROM ${t(brand, "styled_lace_sizes")} ${where} ORDER BY display_order, lace_code`,
+    `SELECT * FROM ${t(brand, "styled_lace_sizes")}
+      WHERE ${conds.join(" AND ")} ORDER BY display_order, lace_code`,
   );
   return rows;
+}
+
+/** Live styled variants (not trashed) using a lace construction, plus the
+ *  distinct products they belong to — powers the "in use" delete guard. */
+async function countVariantsUsingLace({ client, brand, lace_code }) {
+  const { rows } = await ex(client)(
+    `SELECT COUNT(*)::int AS variant_count,
+            COUNT(DISTINCT styled_id)::int AS product_count
+       FROM ${t(brand, "styled_product_variants")}
+      WHERE lace_code = $1 AND is_deleted = false`,
+    [lace_code],
+  );
+  return rows[0] || { variant_count: 0, product_count: 0 };
+}
+
+/** Repoint every live variant on `from_code` to `to_code`. Where the target
+ *  combo already exists (a live variant with the same styled/colour/size and
+ *  the replacement lace), the redundant `from` variant is trashed instead of
+ *  repointed — so the partial-unique (styled,colour,size,lace) index holds.
+ *  Returns { repointed, merged }. */
+async function repointVariantsLace({ client, brand, from_code, to_code }) {
+  const run = ex(client);
+  // 1. Move the ones that WON'T collide with an existing target-lace variant.
+  const moved = await run(
+    `UPDATE ${t(brand, "styled_product_variants")} v
+        SET lace_code = $2, updated_at = now()
+      WHERE v.lace_code = $1 AND v.is_deleted = false
+        AND NOT EXISTS (
+          SELECT 1 FROM ${t(brand, "styled_product_variants")} w
+           WHERE w.styled_id = v.styled_id AND w.colour_id = v.colour_id
+             AND w.size_code = v.size_code AND w.lace_code = $2
+             AND w.is_deleted = false
+             AND w.styled_variant_id <> v.styled_variant_id
+        )`,
+    [from_code, to_code],
+  );
+  // 2. Anything still on `from_code` collides with an existing target variant
+  //    → the combo is already covered, so trash the duplicate.
+  const merged = await run(
+    `UPDATE ${t(brand, "styled_product_variants")}
+        SET is_deleted = true, deleted_at = now(), updated_at = now()
+      WHERE lace_code = $1 AND is_deleted = false`,
+    [from_code],
+  );
+  return { repointed: moved.rowCount, merged: merged.rowCount };
+}
+
+/** Soft-delete a lace construction → Trash (15-day purge). Also deactivates it
+ *  so it can't be picked while trashed. */
+async function softDeleteLace({ client, brand, lace_code }) {
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "styled_lace_sizes")}
+        SET is_deleted = true, deleted_at = now(), is_active = false
+      WHERE lace_code = $1 AND is_deleted = false RETURNING *`,
+    [lace_code],
+  );
+  return rows[0] || null;
+}
+
+/** Trashed lace constructions with their purge date (deleted_at + 15 days). */
+async function listTrashedLace({ client, brand }) {
+  const { rows } = await ex(client)(
+    `SELECT *, (deleted_at + INTERVAL '15 days') AS purge_at
+       FROM ${t(brand, "styled_lace_sizes")}
+      WHERE is_deleted = true ORDER BY deleted_at DESC NULLS LAST`,
+  );
+  return rows;
+}
+
+/** Restore a trashed lace construction back into the active ladder. */
+async function restoreLace({ client, brand, lace_code }) {
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "styled_lace_sizes")}
+        SET is_deleted = false, deleted_at = null, is_active = true
+      WHERE lace_code = $1 AND is_deleted = true RETURNING *`,
+    [lace_code],
+  );
+  return rows[0] || null;
 }
 
 async function getLaceSize({ client, brand, lace_code }) {
@@ -672,6 +753,11 @@ module.exports = {
   getLaceSize,
   createLaceSize,
   updateLaceSize,
+  countVariantsUsingLace,
+  repointVariantsLace,
+  softDeleteLace,
+  listTrashedLace,
+  restoreLace,
   getConfig,
   upsertConfig,
   allowBaseTargets,

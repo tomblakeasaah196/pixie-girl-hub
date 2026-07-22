@@ -146,6 +146,21 @@ router.put(
   styledVar.saveSizeConfig,
 );
 
+// Lace ladder delete → Trash. Literal "trash" before the :laceCode param.
+router.get("/lace-sizes/trash", can("view"), styledVar.listLaceTrash);
+router.get("/lace-sizes/:laceCode/usage", can("view"), styledVar.laceUsage);
+router.delete(
+  "/lace-sizes/:laceCode",
+  can("edit"),
+  styledVarV.validateLaceDelete,
+  styledVar.deleteLaceType,
+);
+router.post(
+  "/lace-sizes/:laceCode/restore",
+  can("edit"),
+  styledVar.restoreLaceType,
+);
+
 // ── USD pricing: bulk "Apply exchange rate" tool (Catalogue → Config) ──
 // One NGN-per-USD rate recomputes every USD price from its NGN value; the run
 // is snapshotted so it can be undone. Reads are view; writes are edit.

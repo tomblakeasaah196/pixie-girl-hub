@@ -138,6 +138,13 @@ const variantUpdate = z
   })
   .strict();
 
+// Deleting a lace construction: an optional replacement code (required by the
+// service only when the lace is in use — the empty-body case is the "not in
+// use, just trash it" path).
+const laceDelete = z
+  .object({ replacement_code: z.string().max(40).optional() })
+  .strict();
+
 const mw = (s) => (req, _res, next) => {
   req.body = s.parse(req.body ?? {});
   next();
@@ -149,4 +156,5 @@ module.exports = {
   validateColourUpdate: mw(colourUpdate),
   validateVariantBulkCreate: mw(variantBulkCreate),
   validateVariantUpdate: mw(variantUpdate),
+  validateLaceDelete: mw(laceDelete),
 };

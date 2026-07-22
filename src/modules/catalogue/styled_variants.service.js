@@ -196,6 +196,115 @@ async function saveSizeConfig({ brand, user, request_id, input }) {
   });
 }
 
+// ── Lace ladder: delete → Trash (with in-use replacement repoint) ──
+
+/** How many live variants (and distinct products) use a lace construction —
+ *  drives the delete guard's "N variants use this" message. */
+async function laceUsage({ brand, lace_code }) {
+  const lace = await repo.getLaceSize({ brand, lace_code });
+  if (!lace || lace.is_deleted) throw new NotFoundError("Lace construction");
+  return repo.countVariantsUsingLace({ brand, lace_code });
+}
+
+/**
+ * Delete a lace construction → Trash (15-day purge). If any live variant uses
+ * it, a `replacement_code` is REQUIRED: every affected variant is repointed to
+ * the replacement first (redundant combos are trashed), so the trashed row
+ * carries no references and the ON DELETE RESTRICT FK is never violated.
+ */
+async function deleteLaceType({ brand, user, request_id, lace_code, replacement_code }) {
+  return transaction(async (client) => {
+    const lace = await repo.getLaceSize({ client, brand, lace_code });
+    if (!lace || lace.is_deleted) throw new NotFoundError("Lace construction");
+
+    const { variant_count, product_count } = await repo.countVariantsUsingLace({
+      client,
+      brand,
+      lace_code,
+    });
+
+    let repointed = 0;
+    let merged = 0;
+    if (variant_count > 0) {
+      if (!replacement_code) {
+        throw new AppError(
+          "LACE_IN_USE",
+          "This lace construction is in use — pick a replacement to move those variants to",
+          409,
+          {
+            variant_count,
+            product_count,
+            user_message: `${variant_count} variant${variant_count === 1 ? "" : "s"} across ${product_count} product${product_count === 1 ? "" : "s"} use “${lace.label}”. Choose another lace to move them to, then it can be deleted.`,
+          },
+        );
+      }
+      if (replacement_code === lace_code) {
+        throw new AppError(
+          "LACE_REPLACEMENT_SAME",
+          "The replacement must be a different lace construction",
+          422,
+        );
+      }
+      const replacement = await repo.getLaceSize({
+        client,
+        brand,
+        lace_code: replacement_code,
+      });
+      if (!replacement || replacement.is_deleted) {
+        throw new AppError(
+          "LACE_REPLACEMENT_INVALID",
+          "Replacement lace construction not found",
+          422,
+        );
+      }
+      const moved = await repo.repointVariantsLace({
+        client,
+        brand,
+        from_code: lace_code,
+        to_code: replacement_code,
+      });
+      repointed = moved.repointed;
+      merged = moved.merged;
+    }
+
+    const trashed = await repo.softDeleteLace({ client, brand, lace_code });
+    await A(
+      brand,
+      user.user_id,
+      "catalogue.lace.delete",
+      "styled_lace_size",
+      lace_code,
+      { trashed: true, replacement_code: replacement_code || null, repointed, merged },
+      request_id,
+      { label: lace.label },
+    );
+    events.emit("catalogue.size_config.updated", { brand });
+    return { trashed: true, lace: trashed, repointed, merged };
+  });
+}
+
+/** Restore a trashed lace construction back into the active ladder. */
+async function restoreLaceType({ brand, user, request_id, lace_code }) {
+  const lace = await repo.restoreLace({ brand, lace_code });
+  if (!lace) throw new NotFoundError("Lace construction");
+  await A(
+    brand,
+    user.user_id,
+    "catalogue.lace.restore",
+    "styled_lace_size",
+    lace_code,
+    { label: lace.label },
+    request_id,
+  );
+  events.emit("catalogue.size_config.updated", { brand });
+  return lace;
+}
+
+/** The lace Trash bin: soft-deleted constructions with their purge date. */
+function listLaceTrash({ brand }) {
+  return repo.listTrashedLace({ brand });
+}
+
 // ── Colours ──────────────────────────────────────────────
 async function listColours({ brand, styled_id }) {
   await loadStyled({ brand, styled_id });
@@ -826,6 +935,10 @@ module.exports = {
   colourShort,
   getSizeConfig,
   saveSizeConfig,
+  laceUsage,
+  deleteLaceType,
+  restoreLaceType,
+  listLaceTrash,
   listColours,
   createColour,
   updateColour,

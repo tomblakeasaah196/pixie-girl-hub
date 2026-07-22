@@ -636,6 +636,77 @@ export function useCreateBaseProduct() {
   });
 }
 
+// ── Base-product wizard: batch create + clone + "create other sizes" ──
+export interface WizardVariantInput {
+  price_storefront_ngn?: number;
+  price_storefront_usd?: number;
+  price_wholesale_ngn?: number;
+  price_wholesale_usd?: number;
+  weight_g?: number;
+  variant_cap_size?: string;
+}
+export interface WizardBaseItem {
+  name: string;
+  category_id?: string | null;
+  texture_type?: string | null;
+  lace_type?: string | null;
+  hair_length_inches?: number | null;
+  cap_size?: string | null;
+  lace_size_codes?: string[] | null;
+  preorder_excluded?: boolean;
+  short_description?: string | null;
+  variant?: WizardVariantInput;
+}
+export interface BaseCreated {
+  product_id: string;
+  product_code: string;
+  name: string;
+  cap_size: string | null;
+  variant_id: string;
+}
+
+/** Create a whole size run at once — one base (+ default variant) per item. */
+export function useCreateBaseProducts() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (products: WizardBaseItem[]) =>
+      api.post<{ created: BaseCreated[]; count: number }>(
+        "/catalogue/products/batch",
+        { products },
+      ),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["catalogue", "base", brand] }),
+  });
+}
+
+/** Duplicate a base (+ its default variant) into a new base. */
+export function useCloneBaseProduct() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post<BaseCreated>(`/catalogue/products/${id}/clone`),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["catalogue", "base", brand] }),
+  });
+}
+
+/** Clone a base into sibling bases for the requested sizes. */
+export function useCreateSiblingSizes(id: string) {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (sizes: { name: string; cap_size?: string | null }[]) =>
+      api.post<{ created: BaseCreated[]; count: number }>(
+        `/catalogue/products/${id}/create-sizes`,
+        { sizes },
+      ),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["catalogue", "base", brand] }),
+  });
+}
+
 // ── Bulk import (Excel/CSV) ───────────────────────────────
 /** One spreadsheet row, normalised. Codes/slugs/SKUs are generated server-side
  *  — the operator's sheet only carries the merchandising fields. Weight (g)

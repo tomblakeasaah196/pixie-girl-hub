@@ -169,6 +169,197 @@ async function createProduct({ brand, user, request_id, input }) {
   });
 }
 
+// ── Wizard / clone: base + stock-bearing default variant ──
+
+// Descriptive fields copied when a base is cloned (never code/slug/visibility).
+const CLONE_PROD_FIELDS = [
+  "category_id",
+  "name",
+  "short_description",
+  "long_description",
+  "texture_type",
+  "lace_type",
+  "hair_length_inches",
+  "density",
+  "cap_size",
+  "primary_colour",
+  "hair_origin",
+  "care_instructions",
+  "product_type",
+  "lace_size_codes",
+  "preorder_excluded",
+  "production_lead_days",
+];
+
+/** Create the stock-bearing default variant for a wizard/clone base, carrying
+ *  the prices + physical fields the wizard collects. */
+function createDefaultVariantWithPrices(client, brand, product, variant = {}) {
+  return repo.createVariant({
+    client,
+    brand,
+    product_id: product.product_id,
+    input: {
+      sku: product.product_code,
+      variant_name: product.name.slice(0, 160),
+      variant_length_inches: product.hair_length_inches ?? undefined,
+      variant_cap_size: variant.variant_cap_size ?? product.cap_size ?? undefined,
+      price_storefront_ngn: variant.price_storefront_ngn ?? undefined,
+      price_storefront_usd: variant.price_storefront_usd ?? undefined,
+      price_wholesale_ngn: variant.price_wholesale_ngn ?? undefined,
+      price_wholesale_usd: variant.price_wholesale_usd ?? undefined,
+      weight_g: variant.weight_g ?? undefined,
+      is_default: true,
+      is_active: true,
+    },
+  });
+}
+
+/** Audit + emit product.created / variant.created (+ outbox for the stock
+ *  seed) for a freshly created base + its default variant. */
+async function emitBaseCreated(client, brand, request_id, user, product, dv, source) {
+  await A(
+    brand,
+    user.user_id,
+    "catalogue.product.create",
+    "product",
+    product.product_id,
+    { ...product, source },
+    request_id,
+  );
+  events.emit("product.created", { brand, id: product.product_id });
+  events.emit("variant.created", {
+    brand,
+    product_id: product.product_id,
+    variant_id: dv.variant_id,
+    reorder_point: dv.reorder_point,
+  });
+  await outbox.enqueue(client, {
+    business: brand,
+    event_type: "variant.created",
+    payload: {
+      brand,
+      product_id: product.product_id,
+      variant_id: dv.variant_id,
+      reorder_point: dv.reorder_point,
+    },
+    dedup_key: `variant.created:${dv.variant_id}`,
+  });
+}
+
+/** Create one base + default variant inside an open transaction. */
+async function createOneBase(client, brand, request_id, user, spec, source) {
+  const { variant = {}, ...prodFields } = spec;
+  const prepared = denyBasePublish(stripUndefined(prodFields));
+  prepared.product_code = await numbering.nextProductCode(client, brand);
+  prepared.slug = await uniqueSlug(
+    client,
+    brand,
+    prepared.name,
+    prepared.product_code,
+  );
+  const product = await repo.createProduct({
+    client,
+    brand,
+    input: prepared,
+    user_id: user.user_id,
+  });
+  const dv = await createDefaultVariantWithPrices(client, brand, product, variant);
+  await emitBaseCreated(client, brand, request_id, user, product, dv, source);
+  return {
+    product_id: product.product_id,
+    product_code: product.product_code,
+    name: product.name,
+    cap_size: product.cap_size,
+    variant_id: dv.variant_id,
+  };
+}
+
+/**
+ * Create one OR MANY base products in a single transaction, each with its
+ * stock-bearing default variant. Powers the base-product wizard (a whole size
+ * run at once). Each spec is a full base plus an optional `variant` sub-object
+ * for prices/weight.
+ */
+async function createBaseProducts({ brand, user, request_id, input }) {
+  const specs = input.products || [];
+  return transaction(async (client) => {
+    const created = [];
+    for (const spec of specs) {
+      created.push(
+        await createOneBase(client, brand, request_id, user, spec, "wizard"),
+      );
+    }
+    return { created, count: created.length };
+  });
+}
+
+/** Read a source base's descriptive fields + its default variant's prices,
+ *  for cloning. */
+async function loadCloneSource(client, brand, id) {
+  const src = await repo.findProductById({ client, brand, id });
+  if (!src || src.is_deleted) throw new NotFoundError("Base product");
+  const srcVariant = await repo.getDefaultVariant({ client, brand, product_id: id });
+  const fields = {};
+  for (const c of CLONE_PROD_FIELDS) {
+    if (src[c] !== null && src[c] !== undefined) fields[c] = src[c];
+  }
+  const variant = srcVariant
+    ? {
+        price_storefront_ngn: srcVariant.price_storefront_ngn,
+        price_storefront_usd: srcVariant.price_storefront_usd,
+        price_wholesale_ngn: srcVariant.price_wholesale_ngn,
+        price_wholesale_usd: srcVariant.price_wholesale_usd,
+        weight_g: srcVariant.weight_g,
+        variant_cap_size: srcVariant.variant_cap_size,
+      }
+    : {};
+  return { fields, variant };
+}
+
+/**
+ * Clone a base product (+ its default variant) into a brand-new base. Copies
+ * every descriptive field and the default variant's prices, allocates a fresh
+ * code/slug, and keeps the same name unless overridden (products aren't
+ * name-unique). Used by the "Clone" button.
+ */
+async function cloneProduct({ brand, user, request_id, id }) {
+  return transaction(async (client) => {
+    const { fields, variant } = await loadCloneSource(client, brand, id);
+    return createOneBase(
+      client,
+      brand,
+      request_id,
+      user,
+      { ...fields, variant },
+      "clone",
+    );
+  });
+}
+
+/**
+ * "Create other sizes": clone a base into sibling bases for each requested
+ * size. Each size supplies a name (family + size suffix) and cap_size; every
+ * other field + the prices are inherited from the source. One transaction.
+ */
+async function createSiblingSizes({ brand, user, request_id, id, sizes }) {
+  return transaction(async (client) => {
+    const { fields, variant } = await loadCloneSource(client, brand, id);
+    const created = [];
+    for (const s of sizes || []) {
+      const spec = {
+        ...fields,
+        name: s.name,
+        cap_size: s.cap_size ?? fields.cap_size,
+        variant: { ...variant, variant_cap_size: s.cap_size ?? variant.variant_cap_size },
+      };
+      created.push(
+        await createOneBase(client, brand, request_id, user, spec, "sibling_size"),
+      );
+    }
+    return { created, count: created.length };
+  });
+}
+
 /**
  * Bulk import base products from a spreadsheet (Excel/CSV parsed client-side).
  *
@@ -1125,6 +1316,9 @@ module.exports = {
   listProducts,
   getProduct,
   createProduct,
+  createBaseProducts,
+  cloneProduct,
+  createSiblingSizes,
   bulkImportProducts,
   updateProduct,
   deleteProduct,

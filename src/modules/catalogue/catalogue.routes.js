@@ -55,6 +55,14 @@ router.post(
   v.validateProductCreate,
   c.createProduct,
 );
+// Base-product wizard: create a whole size run at once (each base + its
+// stock-bearing default variant). Literal segment before :id.
+router.post(
+  "/products/batch",
+  can("create"),
+  v.validateProductBatch,
+  c.createBaseProducts,
+);
 // Bulk import (Excel/CSV → catalogue). Literal segment declared before :id so
 // it is never shadowed by the param route. Codes are auto-generated server-side.
 router.post(
@@ -76,6 +84,15 @@ router.patch(
 router.delete("/products/:id", can("delete"), c.deleteProduct);
 // Restore a soft-deleted product (frees-name model — see 000041).
 router.post("/products/:id/restore", can("edit"), c.restoreProduct);
+// Clone a base (+ its default variant) into a new base; "create other sizes"
+// clones it into sibling bases for the requested sizes.
+router.post("/products/:id/clone", can("create"), c.cloneProduct);
+router.post(
+  "/products/:id/create-sizes",
+  can("create"),
+  v.validateSiblingSizes,
+  c.createSiblingSizes,
+);
 
 // Variants (under a product)
 router.get("/products/:id/variants", can("view"), c.listVariants);

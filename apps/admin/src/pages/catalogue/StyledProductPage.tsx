@@ -580,8 +580,8 @@ function StyledEditor({
                 </div>
                 <p className="text-[11px] text-text-faint mt-1.5">
                   {s.status === "draft"
-                    ? "wholesale base · stock source"
-                    : "wholesale base · stock source — unpublish to a draft to change"}
+                    ? "wholesale seed base · each size draws stock from its own base"
+                    : "wholesale seed base · each size draws stock from its own base — unpublish to a draft to change"}
                 </p>
               </>
             )}

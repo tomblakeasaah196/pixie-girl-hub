@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Search,
@@ -7,6 +7,8 @@ import {
   Phone,
   ChevronRight,
   ChevronDown,
+  Globe,
+  X,
 } from "lucide-react";
 import { Button, Pill, Skeleton, MoneyText } from "@/components/ui/primitives";
 import { useCrmClients } from "../hooks";
@@ -81,6 +83,37 @@ const CHURN_TONE = {
   high: "warn",
   critical: "danger",
 } as const;
+
+// ── Session-persisted filters ─────────────────────────────────────────────
+// The clients filters (incl. the country box) survive navigation and reload,
+// and reset only when the browser session ends — same sessionStorage pattern
+// as the Sales Orders view. Wrapped in try/catch for private-mode/quota edges.
+
+const FILTERS_KEY = "pgh_crm_clients_filters";
+
+interface PersistedFilters {
+  search: string;
+  chip: ClientChip | "all";
+  sort: ClientSort;
+  country: string;
+}
+
+const EMPTY_FILTERS: PersistedFilters = {
+  search: "",
+  chip: "all",
+  sort: "recent",
+  country: "",
+};
+
+function loadFilters(): PersistedFilters {
+  if (typeof window === "undefined") return EMPTY_FILTERS;
+  try {
+    const raw = sessionStorage.getItem(FILTERS_KEY);
+    return raw ? { ...EMPTY_FILTERS, ...JSON.parse(raw) } : EMPTY_FILTERS;
+  } catch {
+    return EMPTY_FILTERS;
+  }
+}
 
 // ── Client row ────────────────────────────────────────────────────────────
 
@@ -184,16 +217,31 @@ function ClientRow({ client, onOpen }: { client: CrmClient; onOpen: () => void }
 
 export function ClientsTab() {
   const navigate = useNavigate();
-  const [search, setSearch] = useState("");
-  const [chip, setChip] = useState<ClientChip | "all">("all");
-  const [sort, setSort] = useState<ClientSort>("recent");
+  const initial = loadFilters();
+  const [search, setSearch] = useState(initial.search);
+  const [chip, setChip] = useState<ClientChip | "all">(initial.chip);
+  const [sort, setSort] = useState<ClientSort>(initial.sort);
+  const [country, setCountry] = useState(initial.country);
   const [page, setPage] = useState(1);
   const [showCreate, setShowCreate] = useState(false);
+
+  // Persist filters for the session (not page — always reopen on page 1).
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(
+        FILTERS_KEY,
+        JSON.stringify({ search, chip, sort, country }),
+      );
+    } catch {
+      /* sessionStorage unavailable — filters just won't persist */
+    }
+  }, [search, chip, sort, country]);
 
   const { data, isLoading, isError, refetch } = useCrmClients({
     q: search || undefined,
     chip: chip === "all" ? undefined : chip,
     sort,
+    country: country.trim() || undefined,
     page,
     page_size: 20,
   });
@@ -203,9 +251,9 @@ export function ClientsTab() {
 
   return (
     <div>
-      {/* Search + sort + add */}
-      <div className="flex gap-2 mb-4">
-        <div className="relative flex-1">
+      {/* Search + country + sort + add */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        <div className="relative flex-1 min-w-[180px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint pointer-events-none" />
           <input
             type="text"
@@ -217,6 +265,39 @@ export function ClientsTab() {
             placeholder="Find a client — name, phone, email…"
             className="w-full h-[38px] pl-9 pr-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-[13px] text-text-primary placeholder:text-text-faint focus:outline-none focus:border-accent/40 transition-colors" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
+        </div>
+        {/* Country filter — type a dialing code (+234 / 234) or ISO2 (NG). */}
+        <div className="relative w-[150px]">
+          <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint pointer-events-none" />
+          <input
+            type="text"
+            value={country}
+            onChange={(e) => {
+              setCountry(e.target.value);
+              setPage(1);
+            }}
+            placeholder="Country +234 / NG"
+            aria-label="Filter clients by country code"
+            className="w-full h-[38px] pl-9 pr-7 rounded-[11px] bg-text-primary/[0.04] border border-line text-[13px] text-text-primary placeholder:text-text-faint focus:outline-none focus:border-accent/40 transition-colors"
+            autoComplete="off"
+            data-lpignore="true"
+            data-1p-ignore=""
+            data-form-type="other"
+          />
+          {country && (
+            <button
+              type="button"
+              onClick={() => {
+                setCountry("");
+                setPage(1);
+              }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 grid place-items-center rounded-full text-text-faint hover:text-text-primary transition-colors"
+              title="Clear country filter"
+              aria-label="Clear country filter"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
         </div>
         <div className="relative">
           <select

@@ -262,6 +262,10 @@ kanban) · **Clients** · **Reports** (forecast, close time).
   at `/crm/deals/<id>`.
 - *See a client's full history?* CRM → **Clients**, click the client →
   `/crm/clients/<contactId>`.
+- *Filter clients by country?* CRM → **Clients** → type a country code in the
+  **Country** box — a dialing code (`+234`, `+44`) or an ISO code (`NG`, `GB`).
+  It matches the phone dialing prefix or the saved country, and the filter
+  sticks for the rest of your browser session (clears on a new session).
 - *Log a call / activity?* Open the client or deal → **Log Activity**.
 - *See who to follow up with today?* CRM → **Today** tab.
 

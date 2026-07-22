@@ -88,6 +88,8 @@ export interface CrmClientsParams {
   q?: string;
   chip?: ClientChip;
   sort?: ClientSort;
+  /** Dialing code (+234 / 234), ISO2 (NG), or a full phone number. */
+  country?: string;
   page?: number;
   page_size?: number;
 }

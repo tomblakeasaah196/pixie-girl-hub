@@ -9,6 +9,7 @@
 const { ex, query } = require("../../config/database");
 const { t } = require("../../config/brands");
 const P = require("./crm.presets");
+const { resolveCountry } = require("./country-codes");
 const PIPE = [
   "pipeline_key",
   "display_name",
@@ -651,6 +652,24 @@ async function listClients({
     );
     params.push(`%${filters.q}%`);
     i++;
+  }
+  // Country filter — accepts a dialing code (+234 / 234), an ISO2 (NG), or a
+  // full number. Matches the phone dialing prefix OR the country_code column,
+  // so it works today on raw phone data and gets sharper as country_code fills.
+  if (filters.country) {
+    const { iso, dial } = resolveCountry(filters.country);
+    const ors = [];
+    if (dial) {
+      params.push(`${dial}%`);
+      ors.push(`regexp_replace(c.primary_phone, '[^0-9]', '', 'g') LIKE $${i}`);
+      i++;
+    }
+    if (iso) {
+      params.push(iso);
+      ors.push(`c.country_code = $${i}`);
+      i++;
+    }
+    if (ors.length) where.push(`(${ors.join(" OR ")})`);
   }
   switch (filters.chip) {
     case "vip":

@@ -1553,6 +1553,75 @@ export function useSaveSizeConfig() {
   });
 }
 
+// ── Lace ladder: delete → Trash (with replacement repoint) ───
+export interface LaceUsage {
+  variant_count: number;
+  product_count: number;
+}
+export interface LaceTrashItem extends LaceSize {
+  purge_at: string | null;
+}
+
+/** How many live variants/products use a lace code — fetched when the delete
+ *  modal opens so it can force a replacement pick if the lace is in use. */
+export function useLaceUsage(laceCode: string | null) {
+  const brand = useBrand();
+  return useQuery<LaceUsage>({
+    queryKey: ["catalogue", "lace-usage", brand, laceCode],
+    queryFn: () =>
+      api.get<LaceUsage>(
+        `/catalogue/lace-sizes/${encodeURIComponent(laceCode!)}/usage`,
+      ),
+    enabled: !!laceCode,
+  });
+}
+
+export function useLaceTrash(enabled: boolean) {
+  const brand = useBrand();
+  return useQuery<LaceTrashItem[]>({
+    queryKey: ["catalogue", "lace-trash", brand],
+    queryFn: () => api.get<LaceTrashItem[]>("/catalogue/lace-sizes/trash"),
+    enabled,
+  });
+}
+
+function invalidateLace(qc: ReturnType<typeof useQueryClient>, brand: string) {
+  qc.invalidateQueries({ queryKey: ["catalogue", "size-config", brand] });
+  qc.invalidateQueries({ queryKey: ["catalogue", "lace-trash", brand] });
+  qc.invalidateQueries({ queryKey: ["catalogue", "styled", brand] });
+}
+
+export function useDeleteLaceType() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: ({
+      laceCode,
+      replacementCode,
+    }: {
+      laceCode: string;
+      replacementCode?: string;
+    }) =>
+      api.delete<{ trashed: boolean; repointed: number; merged: number }>(
+        `/catalogue/lace-sizes/${encodeURIComponent(laceCode)}`,
+        replacementCode ? { replacement_code: replacementCode } : {},
+      ),
+    onSuccess: () => invalidateLace(qc, brand),
+  });
+}
+
+export function useRestoreLaceType() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (laceCode: string) =>
+      api.post<LaceSize>(
+        `/catalogue/lace-sizes/${encodeURIComponent(laceCode)}/restore`,
+      ),
+    onSuccess: () => invalidateLace(qc, brand),
+  });
+}
+
 // ── USD pricing: bulk "Apply exchange rate" tool ─────────
 export type UsdRounding = "exact" | "whole" | "ninety_nine";
 

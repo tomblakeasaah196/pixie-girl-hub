@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Plus,
   Tags,
@@ -7,15 +7,25 @@ import {
   ShieldCheck,
   DollarSign,
   CalendarClock,
+  Trash2,
+  Undo2,
+  X,
+  AlertTriangle,
 } from "lucide-react";
 import { Button, Card } from "@/components/ui/primitives";
-import { Toggle, NumberField, ErrorState } from "@/components/ui/controls";
+import { Toggle, NumberField, ErrorState, Select } from "@/components/ui/controls";
 import { Field } from "@/components/ui/Form";
+import { Modal } from "@/components/ui/Modal";
 import { useAuthStore } from "@/stores/auth";
+import { toastReport } from "@/lib/error-report";
 import {
   useSizeConfig,
   useSaveSizeConfig,
   useUsdPricing,
+  useLaceUsage,
+  useLaceTrash,
+  useDeleteLaceType,
+  useRestoreLaceType,
   type LaceSize,
   type CatalogueConfig,
 } from "@/lib/catalogue";
@@ -272,6 +282,21 @@ function LaceLadderCard({
 }) {
   const save = useSaveSizeConfig();
   const [rows, setRows] = useState<LaceRow[]>([]);
+  // Which server-side lace the delete modal is targeting, and whether the
+  // Trash bin is open.
+  const [deleting, setDeleting] = useState<{ code: string; label: string } | null>(
+    null,
+  );
+  const [trashOpen, setTrashOpen] = useState(false);
+  const trash = useLaceTrash(trashOpen);
+  const restore = useRestoreLaceType();
+
+  // Codes that exist on the server (deletable → Trash). Locally-added, unsaved
+  // rows aren't here; those get a plain "remove from list" instead.
+  const serverCodes = useMemo(
+    () => new Set(laceSizes.map((l) => l.lace_code)),
+    [laceSizes],
+  );
 
   // Seed the editable rows from the server whenever the config (re)loads.
   useEffect(() => {
@@ -304,6 +329,10 @@ function LaceLadderCard({
         display_order: prev.length + 1,
       },
     ]);
+
+  // Drop an unsaved (not-yet-on-server) row from the local list.
+  const removeRow = (i: number) =>
+    setRows((prev) => prev.filter((_, idx) => idx !== i));
 
   const submit = () => {
     const clean = rows
@@ -338,7 +367,7 @@ function LaceLadderCard({
           {rows.map((r, i) => (
             <div
               key={i}
-              className="grid grid-cols-[88px_1fr_120px_120px_auto] gap-2.5 items-end"
+              className="grid grid-cols-[88px_1fr_110px_110px_auto_28px] gap-2.5 items-end"
             >
               <Field label="Code">
                 <input
@@ -385,19 +414,54 @@ function LaceLadderCard({
                   label="Active"
                 />
               </div>
+              {canEdit &&
+                (serverCodes.has(r.lace_code) ? (
+                  // Exists on the server → delete goes to Trash (with a
+                  // replacement pick if it's in use).
+                  <button
+                    type="button"
+                    title="Delete lace construction"
+                    onClick={() =>
+                      setDeleting({ code: r.lace_code, label: r.label })
+                    }
+                    className="pb-2.5 text-text-faint hover:text-danger transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                ) : (
+                  // Unsaved local row → just drop it from the list.
+                  <button
+                    type="button"
+                    title="Remove"
+                    onClick={() => removeRow(i)}
+                    className="pb-2.5 text-text-faint hover:text-text-primary transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                ))}
             </div>
           ))}
 
           {canEdit && (
             <div className="flex items-center justify-between pt-1">
-              <Button
-                size="sm"
-                variant="ghost"
-                icon={<Plus className="w-3.5 h-3.5" />}
-                onClick={addRow}
-              >
-                Add lace size
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  icon={<Plus className="w-3.5 h-3.5" />}
+                  onClick={addRow}
+                >
+                  Add lace size
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  icon={<Trash2 className="w-3.5 h-3.5" />}
+                  onClick={() => setTrashOpen(true)}
+                >
+                  Trash
+                </Button>
+              </div>
               <Button
                 size="sm"
                 variant="primary"
@@ -411,6 +475,161 @@ function LaceLadderCard({
           )}
         </div>
       )}
+
+      {deleting && (
+        <DeleteLaceModal
+          code={deleting.code}
+          label={deleting.label}
+          options={laceSizes
+            .filter((l) => l.lace_code !== deleting.code && l.is_active)
+            .map((l) => ({ value: l.lace_code, label: `${l.label} (${l.lace_code})` }))}
+          onClose={() => setDeleting(null)}
+        />
+      )}
+
+      <Modal
+        open={trashOpen}
+        onClose={() => setTrashOpen(false)}
+        title="Lace ladder — Trash"
+        size="sm"
+      >
+        {trash.isLoading ? (
+          <p className="text-[12.5px] text-text-muted py-4 text-center">Loading…</p>
+        ) : !trash.data || trash.data.length === 0 ? (
+          <p className="text-[12.5px] text-text-muted py-6 text-center">
+            No lace constructions in the trash.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {trash.data.map((l) => (
+              <div
+                key={l.lace_code}
+                className="flex items-center justify-between p-3 rounded-[11px] bg-text-primary/[0.03] border border-line"
+              >
+                <div>
+                  <div className="text-[13px]">{l.label}</div>
+                  <div className="text-[11px] font-mono text-text-faint">
+                    {l.lace_code}
+                    {l.purge_at && (
+                      <span className="text-danger">
+                        {" "}
+                        · purges {new Date(l.purge_at).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon={<Undo2 className="w-3.5 h-3.5" />}
+                  disabled={restore.isPending}
+                  onClick={() =>
+                    restore.mutate(l.lace_code, {
+                      onError: (err) =>
+                        toastReport("Catalogue → Lace ladder", "Restore lace", err),
+                    })
+                  }
+                >
+                  Restore
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Modal>
     </Card>
+  );
+}
+
+/** Delete-a-lace-construction modal. Fetches usage on open; if any variant uses
+ *  it, a replacement lace must be picked (its variants are repointed there
+ *  before the original is trashed). Unused lace deletes straight to Trash. */
+function DeleteLaceModal({
+  code,
+  label,
+  options,
+  onClose,
+}: {
+  code: string;
+  label: string;
+  options: { value: string; label: string }[];
+  onClose: () => void;
+}) {
+  const usage = useLaceUsage(code);
+  const del = useDeleteLaceType();
+  const [replacement, setReplacement] = useState("");
+
+  const inUse = (usage.data?.variant_count ?? 0) > 0;
+  const needsReplacement = inUse && !replacement;
+
+  const confirm = () => {
+    del.mutate(
+      { laceCode: code, replacementCode: inUse ? replacement : undefined },
+      {
+        onSuccess: onClose,
+        onError: (err) =>
+          toastReport("Catalogue → Lace ladder", "Delete lace", err),
+      },
+    );
+  };
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Delete “${label}”`}
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            disabled={usage.isLoading || needsReplacement || del.isPending}
+            onClick={confirm}
+          >
+            {del.isPending ? "Deleting…" : "Delete to Trash"}
+          </Button>
+        </>
+      }
+    >
+      {usage.isLoading ? (
+        <p className="text-[12.5px] text-text-muted py-4">Checking usage…</p>
+      ) : inUse ? (
+        <div className="space-y-3">
+          <div className="flex items-start gap-2 text-[12.5px] text-text-primary">
+            <AlertTriangle className="w-4 h-4 text-warn shrink-0 mt-0.5" />
+            <span>
+              <strong>{usage.data!.variant_count}</strong> variant
+              {usage.data!.variant_count === 1 ? "" : "s"} across{" "}
+              <strong>{usage.data!.product_count}</strong> product
+              {usage.data!.product_count === 1 ? "" : "s"} use “{label}”. Pick a
+              replacement — those variants move to it, then “{label}” goes to
+              Trash.
+            </span>
+          </div>
+          <Field label="Replacement lace">
+            {options.length === 0 ? (
+              <p className="text-[12px] text-danger">
+                No other active lace construction to move them to. Add one first.
+              </p>
+            ) : (
+              <Select
+                value={replacement}
+                onChange={setReplacement}
+                options={[{ value: "", label: "Select a replacement…" }, ...options]}
+              />
+            )}
+          </Field>
+        </div>
+      ) : (
+        <p className="text-[12.5px] text-text-muted py-1">
+          Not used by any variant. It moves to Trash and can be restored within
+          15 days before it's purged for good.
+        </p>
+      )}
+    </Modal>
   );
 }

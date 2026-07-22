@@ -191,6 +191,35 @@ async function getById({ client, brand, id }) {
   return rows[0] || null;
 }
 
+/** Where a styled product currently lives: the collections it's curated into
+ *  and the bundles it's a component of. Powers the detail page's "already in"
+ *  chips so an operator can see (and undo) memberships without hunting through
+ *  every collection/bundle. Only live (is_active) parents are returned; the
+ *  bundle rows carry `bundle_product_id` so the component can be removed by id. */
+async function listMemberships({ client, brand, id }) {
+  const [collections, bundles] = await Promise.all([
+    ex(client)(
+      `SELECT c.collection_id, c.name, c.slug, c.is_visible_storefront
+         FROM ${t(brand, "product_collection_members")} m
+         JOIN ${t(brand, "product_collections")} c
+           ON c.collection_id = m.collection_id
+        WHERE m.styled_id = $1 AND c.is_active = true
+        ORDER BY c.name`,
+      [id],
+    ),
+    ex(client)(
+      `SELECT b.bundle_id, bop.bundle_product_id, b.display_name,
+              b.is_visible_storefront
+         FROM ${t(brand, "bundle_offer_products")} bop
+         JOIN ${t(brand, "bundle_offers")} b ON b.bundle_id = bop.bundle_id
+        WHERE bop.styled_id = $1 AND b.is_active = true
+        ORDER BY b.display_name`,
+      [id],
+    ),
+  ]);
+  return { collections: collections.rows, bundles: bundles.rows };
+}
+
 async function baseProduct({ client, brand, base_product_id }) {
   const { rows } = await ex(client)(
     `SELECT product_id, name, product_code, is_deleted, track_stock,
@@ -426,6 +455,7 @@ module.exports = {
   nextCode,
   list,
   getById,
+  listMemberships,
   baseProduct,
   basePrice,
   create,

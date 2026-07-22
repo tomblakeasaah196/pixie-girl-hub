@@ -405,6 +405,9 @@ export interface VaultGrant {
   grant_id: string;
   user_id: string;
   user_email: string | null;
+  /** The grantee's display name (joined from shared.users). May be null for a
+   *  user with no display name set — fall back to email, then the id. */
+  user_name: string | null;
   business: string;
   granted_by: string | null;
   granted_at: string;

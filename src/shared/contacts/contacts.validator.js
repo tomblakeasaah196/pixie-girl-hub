@@ -103,6 +103,17 @@ const tagCreate = z
   })
   .strict();
 
+// Bulk import from the browser preview: a kind + already-parsed, header-keyed
+// rows. Row shape stays open (any header→cell) — the io service maps headers to
+// fields and re-validates every cell with contactCreateChecked, so this only
+// guards the envelope + row count (matches the io MAX_IMPORT_ROWS ceiling).
+const importRows = z
+  .object({
+    kind: z.string().min(1).max(40).optional(),
+    rows: z.array(z.record(z.any())).min(1).max(5000),
+  })
+  .strict();
+
 const mw = (s) => (req, _res, next) => {
   req.body = s.parse(req.body ?? {});
   next();
@@ -116,6 +127,7 @@ module.exports = {
   validateAddressCreate: mw(addressCreate),
   validateAddressUpdate: mw(addressCreate.partial()),
   validateTagCreate: mw(tagCreate),
+  validateImportRows: mw(importRows),
   contactCreate,
   contactCreateChecked,
   segmentCreate,

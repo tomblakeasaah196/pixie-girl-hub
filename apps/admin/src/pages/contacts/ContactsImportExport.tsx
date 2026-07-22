@@ -6,22 +6,22 @@ import {
   ChevronDown,
   Users,
   Truck,
+  Store,
+  Scissors,
+  Bell,
+  type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { toastReport } from "@/lib/error-report";
 import { Button } from "@/components/ui/primitives";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/controls";
 import { useAuthStore } from "@/stores/auth";
 import { api } from "@/lib/api";
-import { UploadProgress } from "@/components/ui/UploadProgress";
-import { useUploadProgress } from "@/lib/use-upload";
+import { ContactBulkImportModal } from "./ContactBulkImportModal";
 import {
   contactsTemplatePath,
   contactsExportPath,
-  importContacts,
   type ContactImportKind,
-  type ContactImportResult,
 } from "./api";
 
 const isoToday = () => new Date().toISOString().slice(0, 10);
@@ -31,19 +31,21 @@ const isoDaysAgo = (n: number) =>
 const KIND_ITEMS: {
   kind: ContactImportKind;
   label: string;
-  icon: typeof Users;
+  icon: LucideIcon;
 }[] = [
   { kind: "clients", label: "Clients", icon: Users },
   { kind: "suppliers", label: "Suppliers", icon: Truck },
+  { kind: "retail_partners", label: "Retail partners", icon: Store },
+  { kind: "stylists", label: "Stylists", icon: Scissors },
+  { kind: "subscribers", label: "Subscribers", icon: Bell },
 ];
 
 /**
  * Bulk import/export controls for the Contacts directory.
  *
- *  • Template — a dropdown (Clients / Suppliers); each downloads a CSV with the
- *    column headers + one sample row.
- *  • Import   — a dropdown (Clients / Suppliers); picks a filled CSV/Excel file
- *    and bulk-creates contacts, then shows a per-row summary.
+ *  • Import   — opens the guided engine (pick a kind → template → preview →
+ *    confirm). One modal, five stakeholder kinds; see ContactBulkImportModal.
+ *  • Template — a quick per-kind CSV download (also available inside the modal).
  *  • Export   — OWNER (CEO) ONLY: pick a period and download a CSV. Hidden for
  *    everyone else (the API hard-gates it too).
  */
@@ -52,27 +54,18 @@ export function ContactsImportExport({
   variant = "toolbar",
 }: {
   onImported?: () => void;
-  /** "toolbar" = inline dropdown buttons (default). "sheet" = flat tiles with
-   *  an inline Clients/Suppliers chooser, for use inside the Add bottom-sheet
-   *  where absolute dropdowns would be clipped. */
+  /** "toolbar" = inline buttons (default). "sheet" = flat tiles, for use inside
+   *  the Add bottom-sheet where absolute dropdowns would be clipped. */
   variant?: "toolbar" | "sheet";
 }) {
   const isCeo = useAuthStore((s) => s.user?.isCeo ?? false);
 
-  const fileRef = useRef<HTMLInputElement>(null);
-  const pendingKind = useRef<ContactImportKind>("clients");
-
-  const [busy, setBusy] = useState<null | "template" | "import" | "export">(
-    null,
-  );
-  const [result, setResult] = useState<ContactImportResult | null>(null);
+  const [busy, setBusy] = useState<null | "template" | "export">(null);
   const [error, setError] = useState<string | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
-  // Sheet variant: which tool is awaiting a Clients/Suppliers choice.
-  const [pendingTool, setPendingTool] = useState<null | "template" | "import">(
-    null,
-  );
-  const { progress, run } = useUploadProgress();
+  const [importOpen, setImportOpen] = useState(false);
+  // Sheet variant: whether the Template kind-chooser is expanded.
+  const [templateOpen, setTemplateOpen] = useState(false);
 
   const downloadTemplate = async (kind: ContactImportKind) => {
     setBusy("template");
@@ -86,55 +79,19 @@ export function ContactsImportExport({
     }
   };
 
-  const startImport = (kind: ContactImportKind) => {
-    pendingKind.current = kind;
-    fileRef.current?.click();
-  };
-
-  const onPick = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    setBusy("import");
-    setError(null);
-    try {
-      const res = await run((onProgress) =>
-        importContacts(pendingKind.current, file, onProgress),
-      );
-      setResult(res);
-      onImported?.();
-    } catch (err) {
-      toastReport("Contacts → Import/export", "Import contacts", err);
-      setError(err instanceof Error ? err.message : "Import failed.");
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const hiddenInput = (
-    <input
-      ref={fileRef}
-      type="file"
-      accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-      hidden
-      onChange={onPick}
-    />
-  );
-
   // Sheet variant — flat tiles (Import · Export · Template) with an inline
-  // Clients/Suppliers chooser, so it drops cleanly into the Add bottom-sheet.
+  // template kind-chooser, so it drops cleanly into the Add bottom-sheet.
   const sheetControls = (
     <div>
       <div className="grid grid-cols-3 gap-2">
         <SheetTile
           icon={<Upload className="w-[18px] h-[18px]" />}
           label="Import"
-          active={pendingTool === "import"}
-          busy={busy === "import"}
           disabled={busy !== null}
-          onClick={() =>
-            setPendingTool((t) => (t === "import" ? null : "import"))
-          }
+          onClick={() => {
+            setTemplateOpen(false);
+            setImportOpen(true);
+          }}
         />
         {isCeo && (
           <SheetTile
@@ -142,7 +99,7 @@ export function ContactsImportExport({
             label="Export"
             disabled={busy !== null}
             onClick={() => {
-              setPendingTool(null);
+              setTemplateOpen(false);
               setExportOpen(true);
             }}
           />
@@ -150,39 +107,33 @@ export function ContactsImportExport({
         <SheetTile
           icon={<FileSpreadsheet className="w-[18px] h-[18px]" />}
           label="Template"
-          active={pendingTool === "template"}
+          active={templateOpen}
           busy={busy === "template"}
           disabled={busy !== null}
-          onClick={() =>
-            setPendingTool((t) => (t === "template" ? null : "template"))
-          }
+          onClick={() => setTemplateOpen((t) => !t)}
         />
       </div>
 
-      {pendingTool && (
-        <div className="mt-2.5 flex items-center gap-2 p-2.5 rounded-[11px] bg-text-primary/[0.04] border hairline">
-          <span className="micro flex-1">
-            {pendingTool === "import"
-              ? "Import which records?"
-              : "Template for which records?"}
-          </span>
-          {KIND_ITEMS.map((it) => (
-            <button
-              key={it.kind}
-              type="button"
-              disabled={busy !== null}
-              onClick={() => {
-                const kind = it.kind;
-                setPendingTool(null);
-                if (pendingTool === "template") downloadTemplate(kind);
-                else startImport(kind);
-              }}
-              className="inline-flex items-center gap-1.5 h-[30px] px-3 rounded-[9px] text-[12px] font-semibold bg-text-primary/[0.05] border border-line text-text-primary hover:bg-text-primary/[0.1] transition-colors disabled:opacity-50"
-            >
-              <it.icon className="w-3.5 h-3.5" />
-              {it.label}
-            </button>
-          ))}
+      {templateOpen && (
+        <div className="mt-2.5 p-2.5 rounded-[11px] bg-text-primary/[0.04] border hairline">
+          <span className="micro block mb-2">Template for which records?</span>
+          <div className="flex flex-wrap gap-1.5">
+            {KIND_ITEMS.map((it) => (
+              <button
+                key={it.kind}
+                type="button"
+                disabled={busy !== null}
+                onClick={() => {
+                  setTemplateOpen(false);
+                  downloadTemplate(it.kind);
+                }}
+                className="inline-flex items-center gap-1.5 h-[30px] px-3 rounded-[9px] text-[12px] font-semibold bg-text-primary/[0.05] border border-line text-text-primary hover:bg-text-primary/[0.1] transition-colors disabled:opacity-50"
+              >
+                <it.icon className="w-3.5 h-3.5" />
+                {it.label}
+              </button>
+            ))}
+          </div>
         </div>
       )}
     </div>
@@ -204,20 +155,15 @@ export function ContactsImportExport({
         }))}
       />
 
-      <MenuButton
-        label="Import"
-        icon={<Upload className="w-3.5 h-3.5" />}
+      <Button
+        size="sm"
         variant="secondary"
-        busy={busy === "import"}
-        busyLabel="Importing…"
+        icon={<Upload className="w-3.5 h-3.5" />}
         disabled={busy !== null}
-        items={KIND_ITEMS.map((it) => ({
-          key: it.kind,
-          label: it.label,
-          icon: <it.icon className="w-4 h-4" />,
-          onSelect: () => startImport(it.kind),
-        }))}
-      />
+        onClick={() => setImportOpen(true)}
+      >
+        Import
+      </Button>
 
       {isCeo && (
         <Button
@@ -236,12 +182,14 @@ export function ContactsImportExport({
   return (
     <>
       {variant === "sheet" ? sheetControls : toolbarControls}
-      {hiddenInput}
 
-      {busy === "import" && (
-        <UploadProgress value={progress} label="Importing…" className="mt-2" />
-      )}
       {error && <p className="text-[11.5px] text-danger mt-1">{error}</p>}
+
+      <ContactBulkImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={onImported}
+      />
 
       {isCeo && exportOpen && (
         <ExportModal
@@ -250,8 +198,6 @@ export function ContactsImportExport({
           setBusy={(b) => setBusy(b ? "export" : null)}
         />
       )}
-
-      <ImportResultModal result={result} onClose={() => setResult(null)} />
     </>
   );
 }
@@ -383,65 +329,6 @@ function DateInput({
       onChange={(e) => onChange(e.target.value)}
       className="w-full h-[36px] px-3 rounded-[10px] bg-text-primary/[0.04] border border-line text-[13px] text-text-primary focus:outline-none focus:border-accent/50 transition-colors [color-scheme:dark]"
     />
-  );
-}
-
-// ── Import result summary ────────────────────────────────────────────────
-function ImportResultModal({
-  result,
-  onClose,
-}: {
-  result: ContactImportResult | null;
-  onClose: () => void;
-}) {
-  const problems = (result?.results ?? []).filter(
-    (r) => r.status !== "created",
-  );
-  return (
-    <Modal
-      open={!!result}
-      onClose={onClose}
-      title={`Import ${result?.kind ?? "contacts"}`}
-    >
-      {result && (
-        <div className="space-y-3">
-          <div className="flex flex-wrap gap-4 text-[13px]">
-            <span className="text-success font-semibold">
-              {result.created} created
-            </span>
-            {result.duplicates > 0 && (
-              <span className="text-accent-glow font-semibold">
-                {result.duplicates} already on file
-              </span>
-            )}
-            <span className="text-text-faint">{result.total} rows read</span>
-          </div>
-          {problems.length > 0 && (
-            <div className="max-h-[280px] overflow-y-auto rounded-[10px] border border-line divide-y divide-line/60">
-              {problems.map((p, i) => (
-                <div key={i} className="px-3 py-2 text-[12px]">
-                  <span className="text-text-faint">row {p.row ?? "?"}</span>{" "}
-                  <span
-                    className={cn(
-                      "font-medium",
-                      p.status === "error"
-                        ? "text-danger"
-                        : p.status === "duplicate"
-                          ? "text-accent-glow"
-                          : "text-warn",
-                    )}
-                  >
-                    {p.status}
-                  </span>
-                  {p.name ? ` — ${p.name}` : ""}
-                  {p.reason ? `: ${p.reason}` : ""}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-    </Modal>
   );
 }
 

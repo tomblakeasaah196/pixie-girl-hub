@@ -681,6 +681,16 @@ with (customers, suppliers, staff, partners), with tags and milestones.
 **Common tasks.**
 - *Add a contact?* Contacts → **New Contact** / **Create Contact** / **Add Contact**.
 - *Open a contact?* Contacts → click a row → `/contacts/<id>`.
+- *Bulk-import contacts (clients / suppliers / retail partners / stylists /
+  subscribers)?* Contacts → **Import** → pick the record type → download that
+  type's template → fill it in Excel/CSV → upload to **preview** every row →
+  **Confirm**. Each type has its own template and columns; rows already on file
+  (matched by phone or email) are skipped, not duplicated. Employees are not
+  bulk-imported here — onboard them via `/contacts/staff/new`.
+- *Get an import template?* Contacts → **Template** → pick the record type (or
+  use the **Import** modal's download button).
+- *Export contacts?* Contacts → **Export** (owner/CEO only) — pick records + a
+  period → downloads a CSV.
 - *See birthdays / milestones?* Contacts → **Milestones** (`/contacts/milestones`).
 - *Add a new staff member?* `/contacts/staff/new`.
 - *Manage contact tags?* Settings → **Contact Tags** (`/settings/contact-tags`).
@@ -1141,6 +1151,9 @@ Use this as the fast lookup. Format: **task → module (group) → link**.
 - Add a CRM deal → CRM (Run) → `/crm` (Pipeline → New Deal)
 - See a client's history → CRM → `/crm/clients/<id>`
 - Add a contact → Contacts (People) → `/contacts` (New Contact)
+- Bulk-import contacts (clients / suppliers / retail partners / stylists /
+  subscribers) → Contacts (People) → `/contacts` (Import → pick type → template →
+  preview → confirm)
 
 **Money in**
 - Create an invoice → Invoicing (Finance) → `/invoicing` (Invoices → New Invoice)

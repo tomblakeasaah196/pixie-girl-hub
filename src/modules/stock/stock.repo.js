@@ -248,6 +248,48 @@ async function listMovements({
     },
   };
 }
+
+/**
+ * Every movement matching the filters — UN-PAGINATED — for the .xlsx export.
+ * Mirrors listMovements' joins (SKU, variant, product) and adds the location
+ * name + the performer, so the exported log is self-contained. Supports the
+ * same filters the Movements tab exposes (type + location), newest first.
+ */
+async function movementsForExport({ client, brand, filters = {} }) {
+  const where = [];
+  const params = [];
+  let i = 1;
+  if (filters.movement_type) {
+    where.push(`sm.movement_type = $${i++}`);
+    params.push(filters.movement_type);
+  }
+  if (filters.location_id) {
+    where.push(`sm.location_id = $${i++}`);
+    params.push(filters.location_id);
+  }
+  if (filters.variant_id) {
+    where.push(`sm.variant_id = $${i++}`);
+    params.push(filters.variant_id);
+  }
+  const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const { rows } = await ex(client)(
+    `SELECT sm.movement_number, sm.performed_at, sm.movement_type,
+            sm.quantity, sm.unit_cost_ngn, sm.sales_channel,
+            sm.reference_type, sm.reference_id, sm.notes,
+            pv.sku, pv.variant_name, p.name AS product_name,
+            loc.display_name AS location_name,
+            u.email AS performed_by_email
+       FROM ${t(brand, "stock_movements")} sm
+       LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sm.variant_id
+       LEFT JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
+       LEFT JOIN ${t(brand, "stock_locations")} loc ON loc.location_id = sm.location_id
+       LEFT JOIN shared.users u ON u.user_id = sm.performed_by
+       ${w} ORDER BY sm.performed_at DESC`,
+    params,
+  );
+  return rows;
+}
+
 async function recordMovement({ client, brand, input, user_id }) {
   const movement_number = await nextMovementNumber({ client, brand });
   const { f, ph, p } = ins(MOV, input, {
@@ -894,12 +936,38 @@ async function valuation({ client, brand, filters = {} }) {
   return { lines, summary: summary[0] };
 }
 
+/**
+ * Full stock-on-hand snapshot — ONE un-paginated row per variant × location,
+ * with the product/variant/location names, on-hand/reserved/available and the
+ * variant's unit cost + line value. This is the source for the .xlsx export
+ * (the "export my total stock" file); unlike listLevels it is never paginated,
+ * so every tracked SKU is present. Ordered for a readable stocktake.
+ */
+async function onHandSnapshot({ client, brand }) {
+  const { rows } = await ex(client)(
+    `SELECT sl.variant_id, sl.location_id,
+            loc.display_name AS location_name,
+            p.product_id, p.name AS product_name, p.product_code,
+            pv.sku, pv.variant_name,
+            sl.on_hand, sl.reserved, sl.available,
+            COALESCE(pv.cost_price_ngn, 0) AS unit_cost_ngn,
+            (sl.on_hand * COALESCE(pv.cost_price_ngn, 0))::numeric(14,2) AS value_ngn
+       FROM ${t(brand, "stock_levels")} sl
+       JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sl.variant_id
+       JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
+       JOIN ${t(brand, "stock_locations")} loc ON loc.location_id = sl.location_id
+      ORDER BY loc.display_name ASC, p.name ASC, pv.sku ASC`,
+  );
+  return rows;
+}
+
 module.exports = {
   listLocations,
   getDefaultLocation,
   createLocation,
   updateLocation,
   valuation,
+  onHandSnapshot,
   listLevels,
   levelsForVariant,
   seedLevel,
@@ -909,6 +977,7 @@ module.exports = {
   nextDocNumber,
   defaultVariantForProduct,
   listMovements,
+  movementsForExport,
   recordMovement,
   lockVariantCosting,
   updateVariantCosting,

@@ -7,6 +7,8 @@ import { ErrorState, Select, NumberField } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
 import { VariantPicker } from "@/components/catalogue/VariantPicker";
 import { useAuthStore } from "@/stores/auth";
+import { toastReport } from "@/lib/error-report";
+import { stockApi } from "./api";
 import {
   useStockMovements,
   useStockLocations,
@@ -67,44 +69,6 @@ function relativeTime(iso: string): string {
   const days = Math.floor(hrs / 24);
   if (days < 30) return `${days}d ago`;
   return fmtDate(iso);
-}
-
-/* ── CSV export ────────────────────────────────────────────────────── */
-function exportCsv(rows: StockMovement[], locationMap: Map<string, string>) {
-  const header = [
-    "Date",
-    "Type",
-    "Product",
-    "SKU",
-    "Variant",
-    "Location",
-    "Qty",
-    "Reference",
-    "Performed By",
-  ];
-  const lines = rows.map((r) => [
-    fmtDate(r.performed_at),
-    r.movement_type,
-    r.product_name ?? "",
-    r.sku ?? "",
-    r.variant_name ?? "",
-    locationMap.get(r.location_id) ?? r.location_id,
-    String(r.quantity),
-    r.notes ?? r.reference_id ?? "",
-    r.performed_by ?? "",
-  ]);
-  const csv = [header, ...lines]
-    .map((row) =>
-      row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","),
-    )
-    .join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `stock-movements-${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 /* ── Log Movement Modal ────────────────────────────────────────────── */
@@ -248,6 +212,7 @@ export default function MovementsTab() {
   const [locationFilter, setLocationFilter] = useState("");
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   // Single movement-type filter ("" = all); passed straight to the API.
   const apiMovementType = typeFilter || undefined;
@@ -309,9 +274,22 @@ export default function MovementsTab() {
     return rows;
   }, [movementsData?.data, locationFilter, search]);
 
-  const handleExport = useCallback(() => {
-    exportCsv(filteredRows, locationMap);
-  }, [filteredRows, locationMap]);
+  // Export the WHOLE movement log server-side (all rows, not the current page),
+  // respecting the type + location filters shown. The client-only text search
+  // isn't sent — an export is the full filtered set, not the on-screen subset.
+  const handleExport = useCallback(async () => {
+    setExporting(true);
+    try {
+      await stockApi.exportMovements({
+        movement_type: typeFilter || undefined,
+        location_id: locationFilter || undefined,
+      });
+    } catch (err) {
+      toastReport("Stock → Movements", "Export movements", err);
+    } finally {
+      setExporting(false);
+    }
+  }, [typeFilter, locationFilter]);
 
   /* ── Columns ──────────────────────────────────────────────────────── */
   const columns: Column<StockMovement>[] = useMemo(
@@ -459,8 +437,9 @@ export default function MovementsTab() {
               size="sm"
               icon={<Download className="w-4 h-4" />}
               onClick={handleExport}
+              disabled={exporting}
             >
-              Export CSV
+              {exporting ? "Preparing…" : "Export (.xlsx)"}
             </Button>
           )}
           {isCeo && (

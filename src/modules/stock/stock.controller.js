@@ -49,6 +49,35 @@ const valuation = async (req, res) =>
       product_id: req.query.product_id,
     }),
   });
+
+function sendXlsx(res, buffer, filename) {
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  res.send(buffer);
+}
+const today = () => new Date().toISOString().slice(0, 10);
+
+// Full stock-on-hand snapshot as .xlsx (All Locations + one sheet per location).
+async function exportOnHand(req, res) {
+  const buffer = await service.exportOnHand({ brand: req.brand });
+  sendXlsx(res, buffer, `stock-on-hand-${req.brand}-${today()}.xlsx`);
+}
+
+// Full movement log as .xlsx (all rows, respecting type + location filters).
+async function exportMovements(req, res) {
+  const buffer = await service.exportMovements({
+    brand: req.brand,
+    filters: {
+      movement_type: req.query.movement_type,
+      location_id: req.query.location_id,
+      variant_id: req.query.variant_id,
+    },
+  });
+  sendXlsx(res, buffer, `stock-movements-${req.brand}-${today()}.xlsx`);
+}
 const variantStock = async (req, res) =>
   res.json({
     data: await service.variantStock({
@@ -245,6 +274,8 @@ module.exports = {
   createLocation,
   updateLocation,
   valuation,
+  exportOnHand,
+  exportMovements,
   listLevels,
   variantStock,
   listMovements,

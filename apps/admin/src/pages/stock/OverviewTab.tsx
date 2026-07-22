@@ -1,9 +1,18 @@
-import { useMemo } from "react";
-import { ArrowDownUp, Package, TrendingDown } from "lucide-react";
-import { Card, KpiTile, MoneyText, Skeleton } from "@/components/ui/primitives";
+import { useMemo, useState } from "react";
+import { ArrowDownUp, Download, Package, TrendingDown } from "lucide-react";
+import {
+  Button,
+  Card,
+  KpiTile,
+  MoneyText,
+  Skeleton,
+} from "@/components/ui/primitives";
 import { ErrorState } from "@/components/ui/controls";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { moneyCompact, formatDate } from "@/lib/format";
+import { useAuthStore } from "@/stores/auth";
+import { toastReport } from "@/lib/error-report";
+import { stockApi } from "./api";
 import {
   useStockValuation,
   useStockLocations,
@@ -48,6 +57,23 @@ export default function OverviewTab() {
   const levels = useStockLevels({ page: 1, page_size: 100 });
   const alerts = useStockAlerts({ status: "open", page: 1, page_size: 5 });
   const movements = useStockMovements({ page: 1, page_size: 10 });
+
+  const can = useAuthStore((s) => s.can);
+  const [exporting, setExporting] = useState(false);
+
+  // Full stock-on-hand snapshot .xlsx — every tracked SKU, server-side and
+  // un-paginated (All Locations summary + one sheet per location), not the
+  // current on-screen page.
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      await stockApi.exportOnHand();
+    } catch (err) {
+      toastReport("Stock → Overview", "Export stock", err);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   /* Aggregate levels per location */
   const locationRows = useMemo<LocationRow[]>(() => {
@@ -226,6 +252,21 @@ export default function OverviewTab() {
 
   return (
     <div className="flex flex-col gap-5">
+      {/* ── Toolbar: export the full on-hand snapshot ── */}
+      {can("stock", "view") && (
+        <div className="flex items-center justify-end">
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<Download className="w-4 h-4" />}
+            onClick={handleExport}
+            disabled={exporting}
+          >
+            {exporting ? "Preparing…" : "Export stock (.xlsx)"}
+          </Button>
+        </div>
+      )}
+
       {/* ── Row 1: KPI tiles ── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {isLoading ? (

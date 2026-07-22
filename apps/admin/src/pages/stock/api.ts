@@ -50,6 +50,11 @@ export const stockApi = {
   variantStock: (variantId: string) =>
     api.get<StockLevel[]>(`/stock/levels/variant/${variantId}`),
 
+  /** Download the full stock-on-hand snapshot .xlsx (All Locations summary +
+   *  one sheet per location). Server-side + un-paginated, so it is the whole
+   *  tracked catalogue in one file. Filename comes from the response header. */
+  exportOnHand: () => api.download("/stock/export", "stock-on-hand.xlsx"),
+
   listMovements: (params: {
     variant_id?: string;
     movement_type?: string;
@@ -57,6 +62,18 @@ export const stockApi = {
     page?: number;
     page_size?: number;
   }) => api.get<Paginated<StockMovement>>(`/stock/movements${qs(params)}`),
+
+  /** Download the WHOLE movement log as .xlsx (all rows, not the current page),
+   *  optionally filtered by type/location. Server-side + un-paginated. */
+  exportMovements: (params?: {
+    movement_type?: string;
+    location_id?: string;
+    variant_id?: string;
+  }) =>
+    api.download(
+      `/stock/movements/export${qs(params ?? {})}`,
+      "stock-movements.xlsx",
+    ),
 
   recordMovement: (input: Record<string, unknown>) =>
     api.post<StockMovement>("/stock/movements", input),

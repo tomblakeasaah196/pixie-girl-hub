@@ -1941,6 +1941,8 @@ export interface BulkVariantInput {
   // Optional lace axis — generate colour × size × lace. Omit for no lace.
   all_lace?: boolean;
   lace_codes?: string[];
+  // Auto-map each generated size to its own matching per-size base product.
+  auto_map_bases?: boolean;
 }
 export function useBulkCreateVariants(styledId: string) {
   const qc = useQueryClient();

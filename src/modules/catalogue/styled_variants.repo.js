@@ -183,6 +183,17 @@ async function listTrashedLace({ client, brand }) {
   return rows;
 }
 
+/** Find a live base product by exact (case-insensitive) name — used by the
+ *  "auto-map each size to its own base" variant generator. */
+async function findBaseByName({ client, brand, name }) {
+  const { rows } = await ex(client)(
+    `SELECT product_id, name FROM ${t(brand, "products")}
+      WHERE lower(name) = lower($1) AND is_deleted = false LIMIT 1`,
+    [name],
+  );
+  return rows[0] || null;
+}
+
 /** Restore a trashed lace construction back into the active ladder. */
 async function restoreLace({ client, brand, lace_code }) {
   const { rows } = await ex(client)(
@@ -758,6 +769,7 @@ module.exports = {
   softDeleteLace,
   listTrashedLace,
   restoreLace,
+  findBaseByName,
   getConfig,
   upsertConfig,
   allowBaseTargets,

@@ -43,6 +43,8 @@ import {
 import { UploadProgress } from "@/components/ui/UploadProgress";
 import { useUploadProgress } from "@/lib/use-upload";
 import { BrandedImageUpload } from "@/components/catalogue/BrandedImageUpload";
+import { Modal } from "@/components/ui/Modal";
+import { BaseProductPicker } from "./BaseProductPicker";
 
 /**
  * Colour + size management for a styled product (catalogue PR).
@@ -584,6 +586,8 @@ function VariantsCard({
   const [pickedSizes, setPickedSizes] = useState<string[]>([]);
   const [withLace, setWithLace] = useState(false);
   const [pickedLace, setPickedLace] = useState<string[]>([]);
+  // Default ON: point each size at its own per-size base where one exists.
+  const [autoMapBases, setAutoMapBases] = useState(true);
 
   const prices = variants
     .filter((v) => v.is_active && v.effective_price_ngn != null)
@@ -597,6 +601,7 @@ function VariantsCard({
     bulk.mutate({
       all_sizes: allSizes,
       size_codes: allSizes ? undefined : pickedSizes,
+      auto_map_bases: autoMapBases,
       // Lace axis is opt-in; when on, pick a subset or use all supported lace.
       ...(hasLace && withLace
         ? pickedLace.length
@@ -690,6 +695,18 @@ function VariantsCard({
             </div>
           )}
 
+          <div className="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t hairline">
+            <Toggle
+              checked={autoMapBases}
+              onChange={setAutoMapBases}
+              label="Auto-map each size to its own base"
+            />
+            <span className="text-[11px] text-text-faint">
+              matches “{"{name}"} - Small/Medium/…” bases; falls back to the seed
+              base when none exists
+            </span>
+          </div>
+
           <p className="text-[11px] text-text-faint mt-2">
             Creates a SKU for every colour × size{hasLace ? " × lace" : ""}.
             Existing combinations are skipped, so it's safe to run again after
@@ -758,6 +775,17 @@ function VariantRow({
   const [overrideUsd, setOverrideUsd] = useState(
     v.price_override_usd != null ? String(v.price_override_usd) : "",
   );
+  // Per-variant base picker: each colour×size variant draws stock from its own
+  // base, so the Base cell is a link → modal to repoint just this variant.
+  const [baseOpen, setBaseOpen] = useState(false);
+  const [pickedBase, setPickedBase] = useState(v.base_product_id ?? "");
+
+  const saveBase = () => {
+    update.mutate(
+      { variantId: v.styled_variant_id, patch: { base_product_id: pickedBase } },
+      { onSuccess: () => setBaseOpen(false) },
+    );
+  };
 
   const ngnStr = v.price_override_ngn != null ? String(v.price_override_ngn) : "";
   const usdStr = v.price_override_usd != null ? String(v.price_override_usd) : "";
@@ -790,8 +818,52 @@ function VariantRow({
         {v.lace_label ?? v.lace_code ?? "—"}
       </td>
       <td className="py-2 font-mono text-[10.5px] text-text-faint">{v.sku}</td>
-      <td className="py-2 text-[11px] text-text-muted max-w-[120px] truncate">
-        {v.base_product_name ?? "—"}
+      <td className="py-2 text-[11px] max-w-[140px]">
+        {canEdit ? (
+          <button
+            type="button"
+            onClick={() => {
+              setPickedBase(v.base_product_id ?? "");
+              setBaseOpen(true);
+            }}
+            title={v.base_product_name ?? "Set base"}
+            className="text-left text-accent-glow hover:underline truncate max-w-[140px] block"
+          >
+            {v.base_product_name ?? "Set base"}
+          </button>
+        ) : (
+          <span className="text-text-muted truncate max-w-[140px] block">
+            {v.base_product_name ?? "—"}
+          </span>
+        )}
+        <Modal
+          open={baseOpen}
+          onClose={() => setBaseOpen(false)}
+          title="Change base for this variant"
+          size="sm"
+          footer={
+            <>
+              <Button variant="ghost" size="sm" onClick={() => setBaseOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={!pickedBase || update.isPending}
+                onClick={saveBase}
+              >
+                {update.isPending ? "Saving…" : "Save base"}
+              </Button>
+            </>
+          }
+        >
+          <p className="text-[12.5px] text-text-muted mb-3">
+            {v.colour_name} · {v.size_code}
+            {v.lace_code ? ` · ${v.lace_code}` : ""} draws its stock from this
+            base SKU. Repointing changes only this variant.
+          </p>
+          <BaseProductPicker value={pickedBase} onChange={setPickedBase} />
+        </Modal>
       </td>
       <td className="py-2 text-right">
         {v.base_available != null ? (

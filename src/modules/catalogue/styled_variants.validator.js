@@ -117,6 +117,9 @@ const variantBulkCreate = z
     // Lace axis (optional): generate colour × size × lace. Omit for no lace.
     all_lace: z.boolean().optional(),
     lace_codes: z.array(laceCode).optional(),
+    // Auto-map each generated size to its own matching per-size base product
+    // (by name family), instead of seeding every variant on the styled base.
+    auto_map_bases: z.boolean().optional(),
   })
   .strict()
   .refine((v) => v.all_sizes || (v.size_codes && v.size_codes.length), {

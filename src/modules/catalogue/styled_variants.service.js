@@ -661,6 +661,33 @@ async function bulkCreateVariants({
       throw new AppError("INVALID_SIZES", "Pick at least one valid size", 422);
     }
 
+    // Auto-map each size to its OWN per-size base (P0 catalogue UX): from the
+    // seed base's family name (its name minus the size suffix), look up a base
+    // named "{family} - {size label}" and use it for that size's variants.
+    // Falls back to the seed base when no sibling exists. Off unless requested.
+    const baseBySize = new Map();
+    if (input.auto_map_bases && styled.base_name) {
+      const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      let family = styled.base_name.trim();
+      for (const tier of tiers) {
+        const re = new RegExp(`\\s*-\\s*${esc(tier.label)}\\s*$`, "i");
+        if (re.test(family)) {
+          family = family.replace(re, "").trim();
+          break;
+        }
+      }
+      for (const code of sizeCodes) {
+        const tier = tierByCode.get(code);
+        if (!tier) continue;
+        const match = await repo.findBaseByName({
+          client,
+          brand,
+          name: `${family} - ${tier.label}`,
+        });
+        if (match) baseBySize.set(code, match.product_id);
+      }
+    }
+
     // Resolve the lace set: the styled product's own list overrides, else it
     // inherits the base's supported lace, else the product has no lace axis.
     const laceTiers = await repo.listLaceSizes({
@@ -722,10 +749,12 @@ async function bulkCreateVariants({
               colour_id: colour.colour_id,
               size_code,
               lace_code,
-              // Every variant carries its own base. The matrix generator seeds
-              // it from the styled product's base; the variant editor / import
-              // can repoint any single combo to a different base SKU.
-              base_product_id: styled.base_product_id,
+              // Every variant carries its own base. With auto-map on, each size
+              // resolves to its matching per-size base; otherwise (and as the
+              // fallback) it seeds from the styled product's base. The variant
+              // editor / import can still repoint any single combo afterwards.
+              base_product_id:
+                baseBySize.get(size_code) || styled.base_product_id,
               sku,
               is_default,
               display_order: order++,

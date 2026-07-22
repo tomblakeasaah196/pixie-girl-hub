@@ -51,9 +51,15 @@ const KIND_ITEMS: {
  */
 export function ContactsImportExport({
   onImported,
+  onOpenModal,
   variant = "toolbar",
 }: {
   onImported?: () => void;
+  /** Fired when a tool that opens a full-screen modal (Import / Export) is
+   *  launched. When this component lives inside the Add bottom-sheet, the parent
+   *  passes its close handler here so the sheet steps out of the way — otherwise
+   *  the import/export modal would stack behind it. */
+  onOpenModal?: () => void;
   /** "toolbar" = inline buttons (default). "sheet" = flat tiles, for use inside
    *  the Add bottom-sheet where absolute dropdowns would be clipped. */
   variant?: "toolbar" | "sheet";
@@ -66,6 +72,19 @@ export function ContactsImportExport({
   const [importOpen, setImportOpen] = useState(false);
   // Sheet variant: whether the Template kind-chooser is expanded.
   const [templateOpen, setTemplateOpen] = useState(false);
+
+  // Opening either full-screen tool closes the host sheet (if any) so the
+  // modal is never stacked behind it, then shows the tool.
+  const openImport = () => {
+    setTemplateOpen(false);
+    onOpenModal?.();
+    setImportOpen(true);
+  };
+  const openExport = () => {
+    setTemplateOpen(false);
+    onOpenModal?.();
+    setExportOpen(true);
+  };
 
   const downloadTemplate = async (kind: ContactImportKind) => {
     setBusy("template");
@@ -88,20 +107,14 @@ export function ContactsImportExport({
           icon={<Upload className="w-[18px] h-[18px]" />}
           label="Import"
           disabled={busy !== null}
-          onClick={() => {
-            setTemplateOpen(false);
-            setImportOpen(true);
-          }}
+          onClick={openImport}
         />
         {isCeo && (
           <SheetTile
             icon={<Download className="w-[18px] h-[18px]" />}
             label="Export"
             disabled={busy !== null}
-            onClick={() => {
-              setTemplateOpen(false);
-              setExportOpen(true);
-            }}
+            onClick={openExport}
           />
         )}
         <SheetTile
@@ -160,7 +173,7 @@ export function ContactsImportExport({
         variant="secondary"
         icon={<Upload className="w-3.5 h-3.5" />}
         disabled={busy !== null}
-        onClick={() => setImportOpen(true)}
+        onClick={openImport}
       >
         Import
       </Button>
@@ -171,7 +184,7 @@ export function ContactsImportExport({
           variant="ghost"
           icon={<Download className="w-3.5 h-3.5" />}
           disabled={busy !== null}
-          onClick={() => setExportOpen(true)}
+          onClick={openExport}
         >
           Export
         </Button>

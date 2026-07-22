@@ -971,7 +971,11 @@ function AddSheet({
         {showDataTools && (
           <div className="pt-3">
             <div className="micro mb-2.5">Data tools</div>
-            <ContactsImportExport variant="sheet" onImported={onImported} />
+            <ContactsImportExport
+              variant="sheet"
+              onImported={onImported}
+              onOpenModal={onClose}
+            />
           </div>
         )}
       </div>

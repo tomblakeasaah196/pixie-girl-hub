@@ -292,7 +292,10 @@ export function ContactBulkImportModal({
   return createPortal(
     <div
       className={cn(
-        "fixed inset-0 z-[92] grid place-items-center p-4 bg-black/50 backdrop-blur-[3px] transition-[opacity,visibility] duration-300",
+        // z-[120]: this modal is opened from inside the "Add a contact" sheet,
+        // which is a shared Modal at z-[110]. Sit above it (and we also close
+        // that sheet on open) so the import flow is never rendered behind it.
+        "fixed inset-0 z-[120] grid place-items-center p-4 bg-black/50 backdrop-blur-[3px] transition-[opacity,visibility] duration-300",
         open ? "opacity-100 visible" : "opacity-0 invisible pointer-events-none",
       )}
       onClick={close}

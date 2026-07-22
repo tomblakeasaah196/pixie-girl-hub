@@ -1,0 +1,34 @@
+-- ============================================================
+-- TEMPLATE 000087 — Lace ladder soft-delete (Trash + 15-day purge)
+-- Pixie Girl Hub · JBS Praxis · V2.2
+--
+-- Adds a Trash lifecycle to the brand lace ladder (styled_lace_sizes) so a
+-- lace construction can be DELETED (→ Trash, restorable for 15 days) instead
+-- of only toggled inactive. This is what lets Operations clean up the
+-- duplicate constructions that earlier imports minted (e.g. 13X4 + 134FRONTAL,
+-- 13X6 + 136FRONTAL, 6X6 + 6X6FRONTAL — same label, different code).
+--
+-- Referential safety: styled_product_variants.lace_code REFERENCES
+-- styled_lace_sizes(lace_code) ON DELETE RESTRICT, so a lace still used by a
+-- variant cannot be hard-deleted. The app gates this at delete time — deleting
+-- an in-use lace REQUIRES picking a replacement, and every affected variant is
+-- repointed to it BEFORE the original is trashed — so a trashed row never
+-- carries references and the 15-day purge sweep can hard-delete it cleanly.
+--
+-- lace_code stays globally UNIQUE (incl. trashed rows): a trashed code remains
+-- reserved until purged, and a restore brings back the same code. No unique
+-- index change is needed.
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- ADD COLUMN IF NOT EXISTS → idempotent; safe to re-run on repair.
+-- ============================================================
+
+ALTER TABLE {{BUSINESS}}.styled_lace_sizes
+  ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN     NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+
+-- Trash sweep reads (is_deleted, deleted_at); a partial index keeps the daily
+-- purge scan cheap even as the ladder grows.
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_styled_lace_sizes_trash
+  ON {{BUSINESS}}.styled_lace_sizes (deleted_at)
+  WHERE is_deleted = true;

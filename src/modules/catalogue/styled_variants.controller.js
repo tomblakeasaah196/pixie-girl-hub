@@ -23,6 +23,36 @@ async function saveSizeConfig(req, res) {
   });
 }
 
+// ── Lace ladder: delete → Trash ──────────────────────────
+async function laceUsage(req, res) {
+  res.json({
+    data: await service.laceUsage({
+      brand: req.brand,
+      lace_code: req.params.laceCode,
+    }),
+  });
+}
+async function deleteLaceType(req, res) {
+  res.json({
+    data: await service.deleteLaceType({
+      ...base(req),
+      lace_code: req.params.laceCode,
+      replacement_code: req.body?.replacement_code,
+    }),
+  });
+}
+async function restoreLaceType(req, res) {
+  res.json({
+    data: await service.restoreLaceType({
+      ...base(req),
+      lace_code: req.params.laceCode,
+    }),
+  });
+}
+async function listLaceTrash(req, res) {
+  res.json({ data: await service.listLaceTrash({ brand: req.brand }) });
+}
+
 // ── Colours ──────────────────────────────────────────────
 async function listColours(req, res) {
   res.json({
@@ -174,6 +204,10 @@ async function restoreVariant(req, res) {
 module.exports = {
   getSizeConfig,
   saveSizeConfig,
+  laceUsage,
+  deleteLaceType,
+  restoreLaceType,
+  listLaceTrash,
   listColours,
   createColour,
   updateColour,

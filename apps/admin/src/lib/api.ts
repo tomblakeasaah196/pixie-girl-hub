@@ -554,8 +554,8 @@ export const api = {
     request<T>(path, { method: "PATCH", body, scope }),
   put: <T>(path: string, body?: Json, scope: Options["scope"] = "v1") =>
     request<T>(path, { method: "PUT", body, scope }),
-  delete: <T>(path: string, scope: Options["scope"] = "v1") =>
-    request<T>(path, { method: "DELETE", scope }),
+  delete: <T>(path: string, body?: Json, scope: Options["scope"] = "v1") =>
+    request<T>(path, { method: "DELETE", body, scope }),
 };
 
 export { ApiError };

@@ -658,6 +658,77 @@ export function useCreateBaseProduct() {
   });
 }
 
+// ── Base-product wizard: batch create + clone + "create other sizes" ──
+export interface WizardVariantInput {
+  price_storefront_ngn?: number;
+  price_storefront_usd?: number;
+  price_wholesale_ngn?: number;
+  price_wholesale_usd?: number;
+  weight_g?: number;
+  variant_cap_size?: string;
+}
+export interface WizardBaseItem {
+  name: string;
+  category_id?: string | null;
+  texture_type?: string | null;
+  lace_type?: string | null;
+  hair_length_inches?: number | null;
+  cap_size?: string | null;
+  lace_size_codes?: string[] | null;
+  preorder_excluded?: boolean;
+  short_description?: string | null;
+  variant?: WizardVariantInput;
+}
+export interface BaseCreated {
+  product_id: string;
+  product_code: string;
+  name: string;
+  cap_size: string | null;
+  variant_id: string;
+}
+
+/** Create a whole size run at once — one base (+ default variant) per item. */
+export function useCreateBaseProducts() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (products: WizardBaseItem[]) =>
+      api.post<{ created: BaseCreated[]; count: number }>(
+        "/catalogue/products/batch",
+        { products },
+      ),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["catalogue", "base", brand] }),
+  });
+}
+
+/** Duplicate a base (+ its default variant) into a new base. */
+export function useCloneBaseProduct() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post<BaseCreated>(`/catalogue/products/${id}/clone`),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["catalogue", "base", brand] }),
+  });
+}
+
+/** Clone a base into sibling bases for the requested sizes. */
+export function useCreateSiblingSizes(id: string) {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (sizes: { name: string; cap_size?: string | null }[]) =>
+      api.post<{ created: BaseCreated[]; count: number }>(
+        `/catalogue/products/${id}/create-sizes`,
+        { sizes },
+      ),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["catalogue", "base", brand] }),
+  });
+}
+
 // ── Bulk import (Excel/CSV) ───────────────────────────────
 /** One spreadsheet row, normalised. Codes/slugs/SKUs are generated server-side
  *  — the operator's sheet only carries the merchandising fields. Weight (g)
@@ -1579,6 +1650,75 @@ export function useSaveSizeConfig() {
   });
 }
 
+// ── Lace ladder: delete → Trash (with replacement repoint) ───
+export interface LaceUsage {
+  variant_count: number;
+  product_count: number;
+}
+export interface LaceTrashItem extends LaceSize {
+  purge_at: string | null;
+}
+
+/** How many live variants/products use a lace code — fetched when the delete
+ *  modal opens so it can force a replacement pick if the lace is in use. */
+export function useLaceUsage(laceCode: string | null) {
+  const brand = useBrand();
+  return useQuery<LaceUsage>({
+    queryKey: ["catalogue", "lace-usage", brand, laceCode],
+    queryFn: () =>
+      api.get<LaceUsage>(
+        `/catalogue/lace-sizes/${encodeURIComponent(laceCode!)}/usage`,
+      ),
+    enabled: !!laceCode,
+  });
+}
+
+export function useLaceTrash(enabled: boolean) {
+  const brand = useBrand();
+  return useQuery<LaceTrashItem[]>({
+    queryKey: ["catalogue", "lace-trash", brand],
+    queryFn: () => api.get<LaceTrashItem[]>("/catalogue/lace-sizes/trash"),
+    enabled,
+  });
+}
+
+function invalidateLace(qc: ReturnType<typeof useQueryClient>, brand: string) {
+  qc.invalidateQueries({ queryKey: ["catalogue", "size-config", brand] });
+  qc.invalidateQueries({ queryKey: ["catalogue", "lace-trash", brand] });
+  qc.invalidateQueries({ queryKey: ["catalogue", "styled", brand] });
+}
+
+export function useDeleteLaceType() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: ({
+      laceCode,
+      replacementCode,
+    }: {
+      laceCode: string;
+      replacementCode?: string;
+    }) =>
+      api.delete<{ trashed: boolean; repointed: number; merged: number }>(
+        `/catalogue/lace-sizes/${encodeURIComponent(laceCode)}`,
+        replacementCode ? { replacement_code: replacementCode } : {},
+      ),
+    onSuccess: () => invalidateLace(qc, brand),
+  });
+}
+
+export function useRestoreLaceType() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (laceCode: string) =>
+      api.post<LaceSize>(
+        `/catalogue/lace-sizes/${encodeURIComponent(laceCode)}/restore`,
+      ),
+    onSuccess: () => invalidateLace(qc, brand),
+  });
+}
+
 // ── USD pricing: bulk "Apply exchange rate" tool ─────────
 export type UsdRounding = "exact" | "whole" | "ninety_nine";
 
@@ -1827,6 +1967,8 @@ export interface BulkVariantInput {
   // Optional lace axis — generate colour × size × lace. Omit for no lace.
   all_lace?: boolean;
   lace_codes?: string[];
+  // Auto-map each generated size to its own matching per-size base product.
+  auto_map_bases?: boolean;
 }
 export function useBulkCreateVariants(styledId: string) {
   const qc = useQueryClient();

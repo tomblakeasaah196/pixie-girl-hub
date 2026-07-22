@@ -11,6 +11,24 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-22 — Lace ladder Trash (delete + 15-day purge)
+
+**Source:** Owner directive (catalogue UX pass) — clean up duplicate lace
+constructions that earlier imports minted (13X4 + 134FRONTAL, etc.).
+
+**Files:** `migrations/template/000087_business_lace_ladder_soft_delete.sql.template`.
+
+Adds `is_deleted` / `deleted_at` (+ a partial trash index) to
+`{{BUSINESS}}.styled_lace_sizes` so a lace construction can be deleted to
+Trash (restorable 15 days) rather than only deactivated. Deleting a lace
+still used by variants is gated in the app: a replacement must be picked and
+every affected variant repointed before the row is trashed, so a trashed lace
+never violates the `styled_product_variants.lace_code` `ON DELETE RESTRICT`
+FK. The daily `catalogue-trash-purge` sweep hard-deletes lace rows past the
+15-day window alongside styled products/colours/variants.
+
+---
+
 ## 2026-07-17 — HR clock-out overtime + close-time reminders
 
 **Source:** owner directive — "edit an employee's work days/times after

@@ -38,15 +38,23 @@ async function purgeBrand(brand) {
     `DELETE FROM ${brand}.styled_product_variants
       WHERE is_deleted = true AND deleted_at IS NOT NULL AND deleted_at < ${cutoff}`,
   );
+  // Lace constructions trashed from the ladder. The delete flow repoints any
+  // variants off a lace before trashing it, so a trashed lace has no
+  // references and the ON DELETE RESTRICT FK can't block this hard-delete.
+  const lace = await query(
+    `DELETE FROM ${brand}.styled_lace_sizes
+      WHERE is_deleted = true AND deleted_at IS NOT NULL AND deleted_at < ${cutoff}`,
+  );
   return {
     products: products.rowCount,
     colours: colours.rowCount,
     variants: variants.rowCount,
+    lace: lace.rowCount,
   };
 }
 
 async function runCatalogueTrashPurge() {
-  let totals = { products: 0, colours: 0, variants: 0 };
+  let totals = { products: 0, colours: 0, variants: 0, lace: 0 };
   for (const brand of BRANDS) {
     try {
       const r = await purgeBrand(brand);
@@ -54,12 +62,13 @@ async function runCatalogueTrashPurge() {
         products: totals.products + r.products,
         colours: totals.colours + r.colours,
         variants: totals.variants + r.variants,
+        lace: totals.lace + r.lace,
       };
     } catch (err) {
       logger.error({ err, brand }, "catalogue trash purge failed for brand");
     }
   }
-  if (totals.products || totals.colours || totals.variants) {
+  if (totals.products || totals.colours || totals.variants || totals.lace) {
     logger.info(totals, "catalogue trash purged (15-day window)");
   }
   return totals;

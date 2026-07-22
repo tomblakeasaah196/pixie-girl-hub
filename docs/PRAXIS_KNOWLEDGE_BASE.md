@@ -410,10 +410,26 @@ categories, collections, bundles, shades, and bookable services.
 **What's inside (tabs).** **Styled** · **Base** · **Categories** · **Collections**
 · **Shades** · **Bundles** · **Services** · **Config**.
 **Common tasks.**
-- *Add a raw/base product?* Catalogue → **Base** → **New base product**. Open one
-  at `/catalogue/base/<id>`.
+- *Add a raw/base product?* Catalogue → **Base** → **New base product** opens a
+  guided **wizard**: Step 1 basics (name, texture, lace, length, category, cap
+  size — from your size config — and supported lace) plus a **Sizes** pick;
+  Step 2 sets price per size. Ticking several sizes creates the **whole run at
+  once** (one base per size). Open one at `/catalogue/base/<id>`.
+- *Create the other sizes of a base I already made?* Open the base →
+  **Create other sizes** (top-right) → pick the sizes; it clones this base into
+  new sibling bases (same everything, size differs).
+- *Duplicate a base to tweak one thing?* Open the base → **Clone** (top-right).
+- *Set a base's cap size?* Open the base → Details → **Cap size** (dropdown from
+  your size config, plus Adjustable).
 - *Add a sellable styled product?* Catalogue → **Styled** → **New styled**. Open
   one at `/catalogue/styled/<id>`.
+- *Point one styled colour×size at a different base SKU?* Open the styled product
+  → Sizes & variants → click the **Base** link on that row → pick the base.
+- *Generate the colour×size matrix on the right per-size bases?* Styled product →
+  **Generate variants** with **Auto-map each size to its own base** on (default).
+- *Remove a duplicate lace construction?* Catalogue → **Config** → Lace ladder →
+  the row's **trash** icon. If it's in use you must pick a replacement (its
+  variants move there first); deleted lace sits in **Trash** for 15 days.
 - *Add product pictures with a consistent branded background?* Open a styled
   product → a colour → **Add a picture**. The upload modal lets you drag/drop or
   choose an image, then optionally switch on **Use branded background** to wipe

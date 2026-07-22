@@ -32,11 +32,16 @@ function requireFile(req, res) {
   return false;
 }
 
-// ── Bulk import / export (clients & suppliers) ───────────
+// ── Bulk import / export (clients · suppliers · retail partners · stylists ·
+//    subscribers) ────────────────────────────────────────
 async function importTemplate(req, res) {
-  const kind =
-    io.normaliseKind(req.query.kind) === "suppliers" ? "suppliers" : "clients";
+  const kind = io.importKind(req.query.kind);
   sendCsv(res, io.template({ kind }), `${kind}-import-template.csv`);
+}
+
+// Column spec for the browser preview (expected columns + per-row validation).
+async function importSpec(req, res) {
+  res.json({ data: io.importSpec(req.query.kind) });
 }
 
 async function importContacts(req, res) {
@@ -48,6 +53,17 @@ async function importContacts(req, res) {
       kind,
       buffer: req.file.buffer,
       filename: req.file.originalname,
+    }),
+  });
+}
+
+// JSON ingest — already-parsed rows from the preview (confirm step).
+async function importRows(req, res) {
+  res.status(201).json({
+    data: await io.importParsedRows({
+      ...base(req),
+      kind: req.body.kind,
+      rows: req.body.rows,
     }),
   });
 }
@@ -275,7 +291,9 @@ module.exports = {
   mergeTags,
   milestones,
   importTemplate,
+  importSpec,
   importContacts,
+  importRows,
   exportContacts,
   list,
   getById,

@@ -418,6 +418,10 @@ categories, collections, bundles, shades, and bookable services.
   from the dropdown; Flat or Soft gradient). Save uses whichever you previewed.
 - *Create a bundle?* Catalogue → **Bundles** (fixed price or % off the total).
 - *Group products for a campaign?* Catalogue → **Collections** → add to collection.
+- *Put a product in / take it out of a collection, bundle, or shade?* Open the
+  styled product → the right sidebar's **Add to collection**, **Add to bundle**,
+  and **Shop by shade** pickers show where it already lives as chips; click a
+  chip's **✕** to remove it, or search to add it somewhere new.
 - *Add a bookable service (Faitlyn)?* Catalogue → **Services** → **New Service Type**.
 
 ### 4.9 Logistics

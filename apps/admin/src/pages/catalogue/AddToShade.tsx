@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
-import { Palette, Plus, Check, Search } from "lucide-react";
+import { useRef, useState } from "react";
+import { Palette, Plus, Check, Search, X } from "lucide-react";
 import {
   useShades,
   useAssignShadeMembers,
+  useRemoveShadeMember,
   useCreateShade,
 } from "@/lib/catalogue";
+import { AnchoredDropdown } from "@/components/ui/AnchoredDropdown";
 
 function slugify(s: string) {
   return s
@@ -20,7 +22,8 @@ function slugify(s: string) {
  * this *re-homes* it: search an existing shade and assign in one click, or
  * create one inline. Together with the Shades tab this is what lets the
  * storefront "shop by shade" — every styled product can be placed in its colour
- * from either side.
+ * from either side. When it already sits in a shade, that shade shows with a
+ * one-click "remove" so it can be taken out entirely, not only moved.
  */
 export function AddToShade({
   styledId,
@@ -31,21 +34,12 @@ export function AddToShade({
 }) {
   const shades = useShades();
   const assign = useAssignShadeMembers();
+  const removeShade = useRemoveShadeMember(currentShadeId ?? "");
   const createShade = useCreateShade();
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [done, setDone] = useState<string | null>(null);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const handle = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node))
-        setOpen(false);
-    };
-    document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, [open]);
+  const anchorRef = useRef<HTMLDivElement>(null);
 
   const all = (shades.data ?? []).filter((s) => s.is_active);
   const current =
@@ -81,22 +75,34 @@ export function AddToShade({
   };
 
   return (
-    <div ref={ref} className="relative">
+    <div className="relative">
       <div className="flex items-center gap-2 mb-2">
         <Palette className="w-4 h-4 text-accent-glow" />
         <span className="micro">Shop by shade</span>
       </div>
 
       {current && !done && (
-        <p className="text-[11.5px] text-text-faint mb-1.5">
-          Currently in{" "}
-          <span className="text-text-primary font-semibold">
-            {current.name}
-          </span>
-        </p>
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <p className="text-[11.5px] text-text-faint">
+            Currently in{" "}
+            <span className="text-text-primary font-semibold">
+              {current.name}
+            </span>
+          </p>
+          <button
+            type="button"
+            disabled={removeShade.isPending}
+            onClick={() => removeShade.mutate(styledId)}
+            aria-label={`Remove from ${current.name}`}
+            title={`Remove from ${current.name}`}
+            className="grid place-items-center w-[18px] h-[18px] rounded-full text-text-faint hover:text-danger hover:bg-danger/[0.12] disabled:opacity-50 transition-colors"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
       )}
 
-      <div className="relative">
+      <div className="relative" ref={anchorRef}>
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-faint pointer-events-none" />
         <input
           value={q}
@@ -119,44 +125,47 @@ export function AddToShade({
         </p>
       )}
 
-      {open && (
-        <div className="select-dropdown-list absolute z-50 top-[calc(100%+4px)] left-0 right-0 rounded-[11px] overflow-hidden py-1 max-h-[260px] overflow-y-auto">
-          {matches.map((s) => {
-            const isCurrent = s.shade_id === currentShadeId;
-            return (
-              <button
-                key={s.shade_id}
-                type="button"
-                disabled={busy || isCurrent}
-                onClick={() => add(s.shade_id, s.name)}
-                className="w-full px-[13px] py-2 text-left text-[13px] text-text-primary transition-colors hover:bg-text-primary/[0.06] disabled:opacity-50 flex items-center justify-between gap-2"
-              >
-                <span className="truncate">{s.name}</span>
-                {isCurrent && (
-                  <span className="text-[10.5px] text-text-faint shrink-0">
-                    current
-                  </span>
-                )}
-              </button>
-            );
-          })}
-          {term && !exact && (
+      <AnchoredDropdown
+        anchorRef={anchorRef}
+        open={open}
+        onClose={() => setOpen(false)}
+        maxHeight={260}
+      >
+        {matches.map((s) => {
+          const isCurrent = s.shade_id === currentShadeId;
+          return (
             <button
+              key={s.shade_id}
               type="button"
-              disabled={busy}
-              onClick={createAndAdd}
-              className="w-full px-[13px] py-2 text-left text-[13px] text-accent-glow font-semibold transition-colors hover:bg-text-primary/[0.06] disabled:opacity-50 flex items-center gap-1.5 border-t hairline"
+              disabled={busy || isCurrent}
+              onClick={() => add(s.shade_id, s.name)}
+              className="w-full px-[13px] py-2 text-left text-[13px] text-text-primary transition-colors hover:bg-text-primary/[0.06] disabled:opacity-60 disabled:hover:bg-transparent flex items-center justify-between gap-2"
             >
-              <Plus className="w-3.5 h-3.5" /> Create “{q.trim()}” &amp; add
+              <span className="truncate">{s.name}</span>
+              {isCurrent && (
+                <span className="text-[10.5px] text-text-faint shrink-0">
+                  current
+                </span>
+              )}
             </button>
-          )}
-          {!matches.length && !term && (
-            <div className="px-[13px] py-3 text-[12.5px] text-text-faint">
-              No shades yet — type a name to create one.
-            </div>
-          )}
-        </div>
-      )}
+          );
+        })}
+        {term && !exact && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={createAndAdd}
+            className="w-full px-[13px] py-2 text-left text-[13px] text-accent-glow font-semibold transition-colors hover:bg-text-primary/[0.06] disabled:opacity-50 flex items-center gap-1.5 border-t hairline"
+          >
+            <Plus className="w-3.5 h-3.5" /> Create “{q.trim()}” &amp; add
+          </button>
+        )}
+        {!matches.length && !term && (
+          <div className="px-[13px] py-3 text-[12.5px] text-text-faint">
+            No shades yet — type a name to create one.
+          </div>
+        )}
+      </AnchoredDropdown>
     </div>
   );
 }

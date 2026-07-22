@@ -111,9 +111,10 @@ async function getById({ brand, id }) {
   const enriched = await enrich({ brand, styled });
   // Attach the colour options + the colour×size variant matrix with their
   // computed retail prices, plus the headline price range across live variants.
-  const [colours, variants] = await Promise.all([
+  const [colours, variants, memberships] = await Promise.all([
     variantsRepo.listColours({ brand, styled_id: id }),
     variantsRepo.listVariants({ brand, styled_id: id }),
+    repo.listMemberships({ brand, id }),
   ]);
   const prices = variants
     .filter((v) => v.is_active && v.effective_price_ngn !== null)
@@ -123,6 +124,10 @@ async function getById({ brand, id }) {
     .map((v) => Number(v.effective_price_usd));
   enriched.colours = colours;
   enriched.variants = variants;
+  // Where this listing currently lives — its collections + bundles — so the
+  // detail page can show (and undo) memberships in place.
+  enriched.collections = memberships.collections;
+  enriched.bundles = memberships.bundles;
   enriched.price_range = prices.length
     ? { min: Math.min(...prices), max: Math.max(...prices) }
     : null;

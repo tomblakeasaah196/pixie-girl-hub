@@ -654,12 +654,15 @@ function StyledEditor({
           </Card>
           {canEdit && (
             <Card className="p-4">
-              <AddToCollection styledId={s.styled_id} />
+              <AddToCollection
+                styledId={s.styled_id}
+                current={s.collections ?? []}
+              />
             </Card>
           )}
           {canEdit && (
             <Card className="p-4">
-              <AddToBundle styledId={s.styled_id} />
+              <AddToBundle styledId={s.styled_id} current={s.bundles ?? []} />
             </Card>
           )}
           {canEdit && (

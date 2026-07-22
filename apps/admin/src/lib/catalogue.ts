@@ -102,6 +102,23 @@ export interface Availability {
   production_lead_days?: number | null;
 }
 
+/** A collection this styled product is curated into (detail fetch). */
+export interface StyledCollectionMembership {
+  collection_id: string;
+  name: string;
+  slug: string;
+  is_visible_storefront: boolean;
+}
+
+/** A bundle this styled product is a component of (detail fetch). Carries the
+ *  `bundle_product_id` so the component can be removed by id. */
+export interface StyledBundleMembership {
+  bundle_id: string;
+  bundle_product_id: string;
+  display_name: string;
+  is_visible_storefront: boolean;
+}
+
 /** A STYLED product — a storefront skin over exactly one base product. No
  *  stock of its own; availability + price are derived from the base. */
 export interface StyledProduct {
@@ -152,6 +169,11 @@ export interface StyledProduct {
   // Attached on the detail fetch.
   colours?: StyledColour[];
   variants?: StyledVariant[];
+  // Where this listing currently lives (detail fetch only) — the collections it
+  // is curated into and the bundles it is a component of. Drives the "already
+  // in" chips + inline removal on the detail page.
+  collections?: StyledCollectionMembership[];
+  bundles?: StyledBundleMembership[];
   price_range?: { min: number; max: number } | null;
   // USD price range across variants that carry a USD price (NULL when none).
   price_range_usd?: { min: number; max: number } | null;
@@ -1443,7 +1465,11 @@ export function useRemoveBundleComponent(bundleId: string) {
       api.delete<void>(
         `/retention/bundles/${bundleId}/components/${componentId}`,
       ),
-    onSuccess: () => invalidateBundle(qc, brand, bundleId),
+    onSuccess: () => {
+      invalidateBundle(qc, brand, bundleId);
+      // Refresh any styled detail so its "already in" bundle chips update.
+      invalidateStyled(qc, brand);
+    },
   });
 }
 
@@ -1980,6 +2006,8 @@ export function useAddCollectionMember() {
       qc.invalidateQueries({
         queryKey: ["catalogue", "collections", brand, "one", vars.collectionId],
       });
+      // Refresh the styled detail so its "already in" collection chips update.
+      invalidateStyled(qc, brand);
     },
   });
 }
@@ -2003,7 +2031,11 @@ export function useAddStyledToBundle() {
         quantity: 1,
         role: "core",
       }),
-    onSuccess: (_d, vars) => invalidateBundle(qc, brand, vars.bundleId),
+    onSuccess: (_d, vars) => {
+      invalidateBundle(qc, brand, vars.bundleId);
+      // Refresh the styled detail so its "already in" bundle chips update.
+      invalidateStyled(qc, brand);
+    },
   });
 }
 
@@ -2020,6 +2052,8 @@ export function useRemoveCollectionMember(collectionId: string) {
       qc.invalidateQueries({
         queryKey: ["catalogue", "collections", brand, "one", collectionId],
       });
+      // Refresh the styled detail so its "already in" collection chips update.
+      invalidateStyled(qc, brand);
     },
   });
 }

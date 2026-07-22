@@ -348,9 +348,12 @@ function LaceLadderCard({
         <h3 className="text-[15px] font-semibold">Lace ladder</h3>
       </div>
       <p className="text-[12.5px] text-text-muted mb-4">
-        The lace constructions a styled product can sell. The premium is added
-        to the styled anchor price for that construction. The USD premium is
-        independent — set it for USD-priced products; leave it blank to skip.
+        The lace constructions a styled product can sell. Lace is a physical
+        property of the base — a listing offers a construction by drawing from a
+        base built that way (an HD6x6 base = a 6×6 option), so a base only
+        exposes the lace it's actually made in. The premium is added to the
+        styled anchor price for that construction; the USD premium is
+        independent — set it for USD-priced products, or leave it blank to skip.
       </p>
 
       {loading ? (

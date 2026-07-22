@@ -692,6 +692,11 @@ function VariantsCard({
                     : "all supported lace"}
                 </span>
               )}
+              <span className="w-full text-[11px] text-text-faint">
+                Lace = the base's construction — this list is what the base(s)
+                behind this style are built in. To offer another construction,
+                add a variant on a base made that way.
+              </span>
             </div>
           )}
 

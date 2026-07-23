@@ -54,14 +54,9 @@ const submissionPayload = z
     notes: z.string().max(2000).optional(),
   })
   .strict()
-  .refine(
-    (v) =>
-      v.primary_phone || v.whatsapp_number || v.email || v.instagram_handle,
-    {
-      message:
-        "Provide at least one contact method: phone, WhatsApp, email or Instagram handle",
-    },
-  );
+  .refine((v) => v.primary_phone || v.whatsapp_number || v.email, {
+    message: "Provide at least a phone number or an email",
+  });
 
 const createLink = z
   .object({

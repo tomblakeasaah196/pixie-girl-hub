@@ -86,6 +86,37 @@ describe("autocomplete", () => {
     expect(out[0]).toMatchObject({ formatted: "A", lat: 6.5, lng: 3.4, place_id: "p1" });
   });
 
+  it("maps structured address components for delivery-address capture", async () => {
+    axios.get.mockResolvedValue({
+      data: {
+        results: [
+          {
+            formatted: "12 Admiralty Way, Lekki, Lagos, Nigeria",
+            lat: 6.43,
+            lon: 3.42,
+            address_line1: "12 Admiralty Way",
+            city: "Lagos",
+            county: "Eti-Osa",
+            state: "Lagos",
+            state_code: "LA",
+            postcode: "106104",
+            country: "Nigeria",
+            country_code: "ng",
+          },
+        ],
+      },
+    });
+    const out = await geoapify.autocomplete("admiralty way", { lat: 6.43, lng: 3.42 });
+    expect(out[0]).toMatchObject({
+      address_line1: "12 Admiralty Way",
+      county: "Eti-Osa",
+      state: "Lagos",
+      state_code: "LA",
+      postcode: "106104",
+      country_code: "NG",
+    });
+  });
+
   it("biases by proximity to the supplied coordinates (lon,lat order)", async () => {
     axios.get.mockResolvedValue({ data: { results: [] } });
     await geoapify.autocomplete("victoria island", { lat: 6.4281, lng: 3.4219 });

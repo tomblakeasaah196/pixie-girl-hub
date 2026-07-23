@@ -35,6 +35,15 @@ async function getPublic(req, res) {
   res.json(data);
 }
 
+async function geoSearch(req, res) {
+  const data = await service.searchAddress({
+    token: req.params.token,
+    text: req.query.text,
+  });
+  res.set("Cache-Control", "private, max-age=60");
+  res.json({ data });
+}
+
 async function submitPublic(req, res) {
   const data = await service.submitPublic({
     token: req.params.token,
@@ -44,4 +53,4 @@ async function submitPublic(req, res) {
   res.status(201).json(data);
 }
 
-module.exports = { createLink, listAdmin, getPublic, submitPublic };
+module.exports = { createLink, listAdmin, getPublic, geoSearch, submitPublic };

@@ -31,6 +31,21 @@ describe("customer onboarding validators", () => {
     expect(error).toBeDefined();
   });
 
+  test("rejects Instagram-handle-alone (phone or email is required)", () => {
+    const { error } = run(v.validateSubmission, {
+      first_name: "Ada",
+      instagram_handle: "ada",
+      delivery_address: {
+        line1: "12 Admiralty Way",
+        city: "Lagos",
+        state: "Lagos",
+        country: "Nigeria",
+        country_code: "NG",
+      },
+    });
+    expect(error).toBeDefined();
+  });
+
   test("accepts a complete submission", () => {
     const { called, req } = run(v.validateSubmission, {
       first_name: "Ada",

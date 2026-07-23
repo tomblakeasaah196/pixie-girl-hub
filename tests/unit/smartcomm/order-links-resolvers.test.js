@@ -23,6 +23,12 @@ jest.mock("../../../src/modules/retention/bundle.service", () => ({
 jest.mock("../../../src/modules/catalogue/styled.repo", () => ({
   getById: jest.fn(),
 }));
+// Rewig adjacency (000088) is a separate concern from bundle/styled item
+// resolution — stub it to "no substitution" so these tests aren't coupled to
+// its own DB queries (catalogue_config / sibling lookups), unfixtured here.
+jest.mock("../../../src/modules/catalogue/rewig.service", () => ({
+  pickRewigDonorProductId: jest.fn().mockResolvedValue(null),
+}));
 
 const { query } = require("../../../src/config/database");
 const bundleService = require("../../../src/modules/retention/bundle.service");

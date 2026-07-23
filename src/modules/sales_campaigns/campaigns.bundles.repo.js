@@ -44,6 +44,7 @@ async function listBundleItems({ client, brand, bundle_id }) {
             sp.slug                     AS styled_slug,
             sp.base_variant_id          AS styled_base_variant_id,
             sp.base_product_id          AS styled_base_product_id,
+            sp.rewig_override           AS styled_rewig_override,
             pv.sku                      AS variant_sku,
             COALESCE(
               sp.retail_price_ngn,

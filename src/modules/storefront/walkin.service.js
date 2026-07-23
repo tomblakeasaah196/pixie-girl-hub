@@ -19,6 +19,7 @@ const { config } = require("../../config/env");
 const { VALID } = require("../../config/brands");
 const { AppError } = require("../../utils/errors");
 const { sendWelcomeEmail } = require("../../services/welcome-email");
+const geoapify = require("../../services/geoapify.service");
 
 function assertBrand(brand) {
   if (!brand || !VALID.has(brand))
@@ -119,6 +120,20 @@ async function registerWalkIn({ brand, input }) {
 }
 
 /**
+ * Delivery-address search for the public walk-in form — proxies the
+ * server-side Geoapify integration (the same one HR's office-location
+ * picker and the customer-onboarding form use). The walk-in link is a
+ * standing per-brand QR (not a one-time token), so this is brand-scoped
+ * rather than gated on a per-submission token.
+ */
+async function searchAddress({ brand, text }) {
+  assertBrand(brand);
+  // Lagos bias — both brands ship from Lagos, so nearby matches rank first
+  // for the common case; worldwide addresses still come back unfiltered.
+  return geoapify.autocomplete(text, { lat: 6.5244, lng: 3.3792 });
+}
+
+/**
  * Build the per-brand walk-in registration URL and a QR encoding it (PNG data
  * URL, ready to embed or print). An optional location tags where the QR lives.
  */
@@ -140,4 +155,4 @@ async function generateQr({ brand, location }) {
   return { url, qr_data_url };
 }
 
-module.exports = { registerWalkIn, generateQr };
+module.exports = { registerWalkIn, generateQr, searchAddress };

@@ -1,16 +1,30 @@
 import { useEffect, useRef, useState } from "react";
 import { MapPin, Loader2 } from "lucide-react";
-import {
-  searchOnboardingAddress,
-  type OnboardingGeoSuggestion,
-} from "@/lib/onboarding-geo";
 
 /**
- * Delivery-address search backed by Geoapify (via the server-side proxy —
- * see lib/onboarding-geo.ts), used on the public customer-onboarding form.
- * Type-ahead: a dropdown of suggestions appears as the customer types;
- * picking one fills the structured address fields below.
+ * Delivery-address search backed by Geoapify — provider-agnostic over
+ * WHICH server-side proxy answers `search` (onboarding is token-gated,
+ * walk-in is brand-scoped; both forward to src/services/geoapify.service.js
+ * and never ship an API key to the browser). Type-ahead: a dropdown of
+ * suggestions appears as the customer types; picking one fills the
+ * structured address fields below.
  */
+export interface GeoSuggestion {
+  formatted: string;
+  lat: number;
+  lng: number;
+  place_id: string | null;
+  category: string | null;
+  address_line1: string | null;
+  city: string | null;
+  county: string | null;
+  state: string | null;
+  state_code: string | null;
+  postcode: string | null;
+  country: string | null;
+  country_code: string | null;
+}
+
 export interface GeoAddress {
   line1: string;
   area: string;
@@ -24,7 +38,7 @@ export interface GeoAddress {
   formatted_address: string;
 }
 
-function toGeoAddress(s: OnboardingGeoSuggestion): GeoAddress {
+function toGeoAddress(s: GeoSuggestion): GeoAddress {
   return {
     line1: s.address_line1 || s.formatted.split(",")[0] || "",
     area: "",
@@ -42,7 +56,8 @@ function toGeoAddress(s: OnboardingGeoSuggestion): GeoAddress {
 }
 
 interface Props {
-  token: string;
+  /** Resolves a typed query to ranked suggestions — bind the right proxy per caller. */
+  search: (text: string) => Promise<GeoSuggestion[]>;
   value: string;
   onChange: (raw: string) => void;
   onAddressSelected: (address: GeoAddress) => void;
@@ -50,13 +65,13 @@ interface Props {
 }
 
 export function GeoapifyAddressSearch({
-  token,
+  search,
   value,
   onChange,
   onAddressSelected,
   placeholder = "Start typing your address…",
 }: Props) {
-  const [results, setResults] = useState<OnboardingGeoSuggestion[]>([]);
+  const [results, setResults] = useState<GeoSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const debounce = useRef<ReturnType<typeof setTimeout>>();
@@ -83,7 +98,7 @@ export function GeoapifyAddressSearch({
     debounce.current = setTimeout(async () => {
       setLoading(true);
       try {
-        const r = await searchOnboardingAddress(token, text);
+        const r = await search(text);
         setResults(r);
         setOpen(r.length > 0);
       } catch {

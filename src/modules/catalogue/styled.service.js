@@ -7,9 +7,11 @@
  * out-of-stock — or into a PRODUCTION-framed pre-order if the base has
  * pre-order enabled (P0-7). Final price = base selling price + add-on.
  *
- * Lifecycle: draft → live → archived. Only a user with catalogue.publish
- * may promote a draft to live (enforced at the route). AI may create a
- * draft but never publishes (P0-8).
+ * Lifecycle: draft → live → archived. Only a user with catalogue.approve
+ * may promote a draft to live (enforced at the route — the same "commit"
+ * gate every other publish-style endpoint uses: storefront_studio, social,
+ * email_campaigns, retail_partners). AI may create a draft but never
+ * publishes (P0-8).
  */
 
 "use strict";

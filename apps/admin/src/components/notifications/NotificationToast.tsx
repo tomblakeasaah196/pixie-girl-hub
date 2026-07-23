@@ -2,7 +2,7 @@
  * NotificationToast — glass toast stack (bottom-right).
  *
  * Urgent: stays until dismissed, red left-border.
- * High: 6 s auto-dismiss, amber border.
+ * High: 10 s auto-dismiss, amber border.
  * Normal: 4 s auto-dismiss, accent border.
  * Low: 3 s auto-dismiss, no border.
  *
@@ -84,7 +84,7 @@ function Toast({ item }: { item: ToastItem }) {
   const { notif } = item;
   const p = notif.priority ?? "normal";
   const autoMs =
-    p === "urgent" ? 0 : p === "high" ? 6000 : p === "low" ? 3000 : 4000;
+    p === "urgent" ? 0 : p === "high" ? 10000 : p === "low" ? 3000 : 4000;
 
   useEffect(() => {
     if (!autoMs) return;

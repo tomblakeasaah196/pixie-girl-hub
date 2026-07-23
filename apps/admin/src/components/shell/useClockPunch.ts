@@ -69,10 +69,6 @@ export function useClockPunch(): ClockPunch {
     body = "",
     priority: "low" | "normal" | "high" = "normal",
   ) => {
-    if (priority === "high") {
-      toastReport("HR → Clock in/out", title, body || "Something went wrong.");
-      return;
-    }
     toast.add({
       notification_id: crypto.randomUUID(),
       user_id: "",
@@ -147,11 +143,14 @@ export function useClockPunch(): ClockPunch {
       // Location prompts and "already clocked" conflicts are expected user
       // states — surface them as a normal toast, not the report-to-admin path.
       const benign = /location|already clocked/i.test(msg);
-      notify(
-        benign ? "Confirm your location" : "Clock in/out failed",
-        msg,
-        benign ? "normal" : "high",
-      );
+      if (benign) {
+        notify("Confirm your location", msg, "normal");
+      } else {
+        // A genuine unexpected failure (API/network) — this is the one case
+        // that should reach JBS Praxis, unlike the device/offsite/late
+        // confirmations above which are expected clock-in outcomes, not bugs.
+        toastReport("HR → Clock in/out", "Clock in/out failed", msg || "Something went wrong.");
+      }
     },
   });
 

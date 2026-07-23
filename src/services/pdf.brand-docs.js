@@ -274,6 +274,11 @@ function documentHtml(brand, doc) {
       <table class="meta">${metaRows}</table>
     </div>
 
+    ${doc.pay_url ? `<div style="margin:14px 0;padding:12px 16px;border:1px solid ${accent};border-radius:8px;background:${tint(accent, 0.94)}">
+      <div class="eyebrow" style="color:${accent};margin-bottom:4px">Pay online</div>
+      <a href="${esc(doc.pay_url)}" style="color:${accent};font-weight:600;word-break:break-all">${esc(doc.pay_url)}</a>
+    </div>` : ""}
+
     <table class="items">
       <thead><tr>${itemsHead}</tr></thead>
       <tbody>${itemsBody}</tbody>

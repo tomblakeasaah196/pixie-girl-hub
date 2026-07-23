@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect, type ReactNode } from "react";
+import { useState, useRef, type ReactNode } from "react";
 import { AlertTriangle, ChevronDown, Lock, RefreshCw, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Modal } from "./Modal";
+import { AnchoredDropdown } from "./AnchoredDropdown";
 
 /**
  * Extra form + state controls shared across the Settings module.
@@ -133,22 +134,8 @@ export function Select<T extends string>({
   ariaLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const selected = options.find((o) => o.value === value);
-
-  useEffect(() => {
-    if (!open) return;
-    const handle = (e: MouseEvent) => {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(e.target as Node)
-      ) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, [open]);
 
   const handleKey = (e: React.KeyboardEvent) => {
     if (disabled) return;
@@ -172,8 +159,9 @@ export function Select<T extends string>({
   };
 
   return (
-    <div ref={containerRef} className={cn("relative", className)}>
+    <div className={cn("relative", className)}>
       <button
+        ref={triggerRef}
         type="button"
         disabled={disabled}
         aria-label={ariaLabel}
@@ -191,28 +179,26 @@ export function Select<T extends string>({
           )}
         />
       </button>
-      {open && (
-        <div className="select-dropdown-list absolute z-50 top-[calc(100%+4px)] left-0 right-0 rounded-[11px] overflow-hidden py-1">
-          {options.map((o) => (
-            <button
-              key={o.value}
-              type="button"
-              onClick={() => {
-                onChange(o.value);
-                setOpen(false);
-              }}
-              className={cn(
-                "w-full px-[11px] py-[9px] text-[13px] text-left transition-colors hover:bg-text-primary/[0.06]",
-                o.value === value
-                  ? "text-accent-glow font-semibold"
-                  : "text-text-primary",
-              )}
-            >
-              {o.label}
-            </button>
-          ))}
-        </div>
-      )}
+      <AnchoredDropdown anchorRef={triggerRef} open={open} onClose={() => setOpen(false)}>
+        {options.map((o) => (
+          <button
+            key={o.value}
+            type="button"
+            onClick={() => {
+              onChange(o.value);
+              setOpen(false);
+            }}
+            className={cn(
+              "w-full px-[11px] py-[9px] text-[13px] text-left transition-colors hover:bg-text-primary/[0.06]",
+              o.value === value
+                ? "text-accent-glow font-semibold"
+                : "text-text-primary",
+            )}
+          >
+            {o.label}
+          </button>
+        ))}
+      </AnchoredDropdown>
     </div>
   );
 }

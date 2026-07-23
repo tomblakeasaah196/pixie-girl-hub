@@ -211,6 +211,12 @@ chasing deliveries, matching stray in-store terminal payments, and payment setti
   Sale Form, add items, take payment. (This replaced the old POS.) If an item is
   out of stock it still sells — as a **pre-order** — and a toast confirms it went
   in as made-to-order.
+- *Get a walk-in customer's details without typing them in?* Quick Sale →
+  Customer step → **QR Code** button — shows a scannable code for the order
+  capture link. The customer fills their own name/phone/email on their phone;
+  the moment they submit, they're matched (by phone → WhatsApp → email →
+  Instagram handle, creating a new lead if nothing matches) and auto-selected
+  on this screen in real time — no manual search needed.
 - *See pre-orders and their production deadlines?* Sales → **Pre-orders** tab
   (`/sales?tab=preorders`). Every order carrying a made-to-order line, soonest
   ship-by first, with overdue/urgent flags — click through to the order.

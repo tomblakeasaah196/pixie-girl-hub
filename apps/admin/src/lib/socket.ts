@@ -85,6 +85,14 @@ export function getSocket(): Socket {
   socket.on("device:changed", (detail) => {
     window.dispatchEvent(new CustomEvent("pgh:device:changed", { detail }));
   });
+  // Customer onboarding form submitted (brand:{brand}:customer_onboarding) —
+  // Quick Sale's QR panel matches submission_id against the link it minted
+  // to auto-select the resulting contact.
+  socket.on("onboarding:submission.completed", (detail) => {
+    window.dispatchEvent(
+      new CustomEvent("pgh:onboarding:submission.completed", { detail }),
+    );
+  });
   // WhatsApp voice calls (brand:{brand}:calls + user:{id}:calls) — the
   // CallLayer subscribes to these to ring, stop ringing, and settle.
   for (const evt of [
@@ -137,6 +145,7 @@ export const rooms = {
   insights: (brand: string) => `brand:${brand}:insights`,
   attendance: (brand: string) => `brand:${brand}:attendance`,
   hrDevices: (brand: string) => `brand:${brand}:hr_devices`,
+  customerOnboarding: (brand: string) => `brand:${brand}:customer_onboarding`,
 };
 
 /** Join a Socket.io room (idempotent on the server). */

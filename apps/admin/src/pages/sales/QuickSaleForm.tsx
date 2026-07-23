@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   Search,
   User,
@@ -50,6 +50,8 @@ import {
 import { useToastStore } from "@/components/notifications/NotificationToast";
 import { toastReport } from "@/lib/error-report";
 import { onboardingApi } from "@/lib/smartcomm-api";
+import { joinRoom, leaveRoom, rooms } from "@/lib/socket";
+import { getContact } from "@/pages/contacts/api";
 import { useBusinessStore } from "@/stores/business";
 import * as salesApi from "./api";
 import { api } from "@/lib/api";
@@ -115,6 +117,12 @@ export function QuickSaleForm() {
   const [contactName, setContactName] = useState("");
   const [contactResults, setContactResults] = useState<SearchResult[]>([]);
   const [showQr, setShowQr] = useState(false);
+  // The onboarding link's submission_id — set the moment the QR is minted so
+  // the realtime effect below knows which incoming "submission completed"
+  // push (of potentially many, brand-wide) is actually this customer.
+  const [captureSubmissionId, setCaptureSubmissionId] = useState<
+    string | null
+  >(null);
 
   // Step 3: Products
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -242,6 +250,55 @@ export function QuickSaleForm() {
     setContactResults([]);
     setStep(3);
   };
+
+  // ── Realtime auto-select: the QR-code capture link this screen minted
+  // (Step 2) just got submitted — the moment the socket push names this
+  // submission_id, pull the resulting contact and select it without staff
+  // ever touching the search box.
+  useEffect(() => {
+    if (!captureSubmissionId || contactId) return;
+    const room = rooms.customerOnboarding(activeBiz ?? "pixiegirl");
+    joinRoom(room);
+
+    const onSubmissionCompleted = (e: Event) => {
+      const detail = (e as CustomEvent).detail as
+        | { submission_id?: string; contact_id?: string }
+        | undefined;
+      if (!detail?.contact_id || detail.submission_id !== captureSubmissionId) {
+        return;
+      }
+      getContact(detail.contact_id)
+        .then((contact) => {
+          setContactId(contact.contact_id);
+          setContactName(contact.display_name);
+          setContactSearch(contact.display_name);
+          setContactResults([]);
+          setShowQr(false);
+          setStep(3);
+          fireToast(
+            "Customer found",
+            `${contact.display_name} filled the form and was auto-selected.`,
+          );
+        })
+        .catch(() => {
+          // Submission completed but the contact fetch failed — staff can
+          // still pick them manually from the search box above.
+        });
+    };
+
+    window.addEventListener(
+      "pgh:onboarding:submission.completed",
+      onSubmissionCompleted,
+    );
+    return () => {
+      window.removeEventListener(
+        "pgh:onboarding:submission.completed",
+        onSubmissionCompleted,
+      );
+      leaveRoom(room);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [captureSubmissionId, contactId, activeBiz]);
 
   // ── Product pick (type-first picker → resolved order lines) ──
   const addResolvedLines = (lines: ResolvedLine[]) => {
@@ -486,6 +543,7 @@ export function QuickSaleForm() {
     setBundleId(null);
     setPaymentUrl(null);
     setCaptureUrl(null);
+    setCaptureSubmissionId(null);
     setShowQr(false);
   };
 
@@ -607,6 +665,7 @@ export function QuickSaleForm() {
                         source: "walkin",
                       });
                       setCaptureUrl(toAbsoluteUrl(res.url));
+                      setCaptureSubmissionId(res.submission_id);
                       setShowQr(true);
                     } catch {
                       fireToast(

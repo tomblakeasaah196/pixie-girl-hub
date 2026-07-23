@@ -19,6 +19,7 @@
 
 const crypto = require("crypto");
 const repo = require("./customer-onboarding.repo");
+const events = require("./customer-onboarding.events");
 const smartcommRepo = require("../smartcomm/smartcomm.repo");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
@@ -320,6 +321,15 @@ async function submitPublic({ token, ip, payload }) {
       submission_id: finalised.submission_id,
       contact_id: contact.contact_id,
     };
+  });
+
+  // Realtime push FIRST — a staff screen watching this submission_id (Quick
+  // Sale's QR code) should auto-select the contact the instant the form
+  // clears, not after the (network-bound) welcome email below.
+  events.emit("submission.completed", {
+    brand: link.business,
+    submission_id: result.submission_id,
+    contact_id: result.contact_id,
   });
 
   // Best-effort welcome (never throws; registration already committed).

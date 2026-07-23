@@ -20,6 +20,11 @@ const ROOMS = {
   // Sales order/quotation lifecycle — the Sales board & KPI tiles re-read when
   // an order is created/paid/cancelled anywhere (POS, storefront, campaign).
   sales: (brand) => `brand:${brand}:sales`,
+  // Customer onboarding — a public capture-link (Quick Sale's QR code, the
+  // walk-in counter link, an online link) being submitted. Quick Sale
+  // matches the submission_id against the link it minted to auto-select the
+  // resulting contact the instant the customer finishes the form.
+  customer_onboarding: (brand) => `brand:${brand}:customer_onboarding`,
   deliveries: (brand) => `brand:${brand}:deliveries`,
   service_jobs: (brand) => `brand:${brand}:service_jobs`,
   pos_session: (brand, sessionId) => `brand:${brand}:pos_session:${sessionId}`,

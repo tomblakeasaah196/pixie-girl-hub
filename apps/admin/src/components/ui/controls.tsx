@@ -18,6 +18,7 @@ import { AnchoredDropdown } from "./AnchoredDropdown";
 export function NumberField({
   value,
   onChange,
+  onBlur,
   allowDecimal = true,
   allowNegative = false,
   placeholder,
@@ -27,6 +28,7 @@ export function NumberField({
 }: {
   value: string;
   onChange: (v: string) => void;
+  onBlur?: () => void;
   allowDecimal?: boolean;
   allowNegative?: boolean;
   placeholder?: string;
@@ -55,6 +57,7 @@ export function NumberField({
         disabled={disabled}
         placeholder={placeholder}
         onChange={(e) => onChange(sanitize(e.target.value))}
+        onBlur={onBlur}
         className={cn(
           "w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none transition-colors focus:border-accent/50 tabular-nums",
           suffix && "pr-12",

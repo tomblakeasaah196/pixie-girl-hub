@@ -14,12 +14,18 @@ import {
 import { QRCodeSVG } from "qrcode.react";
 import { cn } from "@/lib/cn";
 import { Card, Button, MoneyText } from "@/components/ui/primitives";
-import { Toggle, Select, NumberField } from "@/components/ui/controls";
+import {
+  Toggle,
+  Select,
+  NumberField,
+  ConfirmDialog,
+} from "@/components/ui/controls";
 import { FormGrid, Field, TextInput } from "@/components/ui/Form";
 import {
   AddressAutocomplete,
   type PlaceAddress,
 } from "@/components/ui/AddressAutocomplete";
+import { useZoneQuote } from "@/lib/logistics-api";
 import { ProductPicker } from "@/components/catalogue/ProductPicker";
 import {
   StyledVariantPicker,
@@ -80,6 +86,8 @@ const CURRENCY_OPTIONS = [
   { value: "EUR", label: "EUR" },
 ];
 
+const ngn = (v: number) => `₦${v.toLocaleString()}`;
+
 export function QuickSaleForm() {
   const createOrder = useCreateOrder();
   const [step, setStep] = useState(1);
@@ -114,8 +122,22 @@ export function QuickSaleForm() {
   const [paymentPlan, setPaymentPlan] = useState<"full" | "instalment">("full");
   const [fulfilment, setFulfilment] = useState<FulfilmentType>("walk_in");
   const [addressText, setAddressText] = useState("");
-  const [, setAddress] = useState<PlaceAddress | null>(null);
   const [shippingFee, setShippingFee] = useState("");
+  // The delivery-zone engine's own rate for the picked address — the SAME
+  // rate-card the website/order-link checkouts charge. null until an address
+  // with a resolvable zone is picked. Compared against the (editable)
+  // shippingFee field so a manual change always prompts a confirmation
+  // relative to the real system rate, not a chain of prior overrides.
+  const zoneQuote = useZoneQuote();
+  const [systemFee, setSystemFee] = useState<number | null>(null);
+  const [zoneStatus, setZoneStatus] = useState<
+    "priced" | "free" | "pending" | "unserviceable" | null
+  >(null);
+  const [confirmedFee, setConfirmedFee] = useState<number | null>(null);
+  const [feeConfirm, setFeeConfirm] = useState<{
+    from: number;
+    to: number;
+  } | null>(null);
 
   // Step 5: Send
   const [sendVia, setSendVia] = useState<"email" | "whatsapp">("email");
@@ -285,6 +307,44 @@ export function QuickSaleForm() {
       prev.map((l) => (l.id === id ? { ...l, quantity: Math.max(1, qty) } : l)),
     );
 
+  // ── Delivery fee (real zone/rate-card engine, same one the website and
+  // order-link checkouts charge from) ──────────────────────
+  const handleAddressPick = async (place: PlaceAddress) => {
+    setConfirmedFee(null);
+    if (place.latitude == null || place.longitude == null) {
+      setSystemFee(null);
+      setZoneStatus(null);
+      return;
+    }
+    try {
+      const q = await zoneQuote.mutateAsync({
+        lat: place.latitude,
+        lng: place.longitude,
+        country: place.country_code || undefined,
+      });
+      setZoneStatus(q.fee_status ?? (q.fee_ngn != null ? "priced" : "unserviceable"));
+      if (q.fee_ngn != null) {
+        setSystemFee(q.fee_ngn);
+        setShippingFee(String(q.fee_ngn));
+      } else {
+        setSystemFee(null);
+      }
+    } catch {
+      setSystemFee(null);
+      setZoneStatus(null);
+    }
+  };
+
+  // Any manual edit that lands away from the system's own rate needs an
+  // explicit "yes, really" — staff can still override (an unconfigured zone,
+  // a goodwill discount, a phone-negotiated deal), but never silently.
+  const handleShippingBlur = () => {
+    if (systemFee == null) return;
+    const typed = Number(shippingFee) || 0;
+    if (typed === systemFee || typed === confirmedFee) return;
+    setFeeConfirm({ from: systemFee, to: typed });
+  };
+
   // ── Submit ───────────────────────────────────────────────
   const handleSubmit = async () => {
     if (!contactId || cart.length === 0) return;
@@ -403,8 +463,11 @@ export function QuickSaleForm() {
     setPaymentPlan("full");
     setFulfilment("walk_in");
     setAddressText("");
-    setAddress(null);
     setShippingFee("");
+    setSystemFee(null);
+    setZoneStatus(null);
+    setConfirmedFee(null);
+    setFeeConfirm(null);
     setSentOrderId(null);
     setBundleId(null);
     setPaymentUrl(null);
@@ -782,20 +845,78 @@ export function QuickSaleForm() {
                   <AddressAutocomplete
                     value={addressText}
                     onChange={setAddressText}
-                    onPlaceSelected={(p) => setAddress(p)}
+                    onPlaceSelected={handleAddressPick}
                   />
                 </Field>
                 <Field label="Shipping Fee (NGN)">
                   <NumberField
                     value={shippingFee}
                     onChange={setShippingFee}
+                    onBlur={handleShippingBlur}
                     placeholder="0.00"
                     suffix="NGN"
                   />
                 </Field>
+                {zoneQuote.isPending && (
+                  <p className="text-[12px] text-text-faint">
+                    Looking up the delivery rate for this address…
+                  </p>
+                )}
+                {!zoneQuote.isPending && zoneStatus === "unserviceable" && (
+                  <p className="text-[12px] text-amber-300">
+                    No delivery zone covers this address — enter the fee
+                    manually.
+                  </p>
+                )}
+                {!zoneQuote.isPending && zoneStatus === "pending" && (
+                  <p className="text-[12px] text-amber-300">
+                    This zone resolved to ₦0 but isn&rsquo;t marked
+                    free-delivery — confirm the real fee with Logistics
+                    before dispatch.
+                  </p>
+                )}
+                {!zoneQuote.isPending &&
+                  systemFee != null &&
+                  (zoneStatus === "priced" || zoneStatus === "free") && (
+                    <p className="text-[12px] text-text-faint">
+                      System rate for this address: {ngn(systemFee)}
+                      {Number(shippingFee) !== systemFee &&
+                        " (overridden below)"}
+                    </p>
+                  )}
               </div>
             )}
           </div>
+
+          {feeConfirm && (
+            <ConfirmDialog
+              open
+              onClose={() => {
+                // Cancel reverts to the system's own rate.
+                setShippingFee(String(feeConfirm.from));
+                setFeeConfirm(null);
+              }}
+              onConfirm={() => {
+                setConfirmedFee(feeConfirm.to);
+                setFeeConfirm(null);
+              }}
+              title="Change delivery fee?"
+              tone="accent"
+              confirmLabel="Yes, change it"
+              message={
+                <>
+                  You&rsquo;re {feeConfirm.to > feeConfirm.from
+                    ? "increasing"
+                    : "reducing"}{" "}
+                  the delivery fee for dispatch to{" "}
+                  <strong>{addressText || "this address"}</strong> from{" "}
+                  <strong>{ngn(feeConfirm.from)}</strong> to{" "}
+                  <strong>{ngn(feeConfirm.to)}</strong>. Do you want to
+                  confirm?
+                </>
+              }
+            />
+          )}
 
           {step < 5 && (
             <Button

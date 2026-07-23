@@ -560,6 +560,12 @@ export interface ZoneQuote {
   country_code: string | null;
   courier_key: string | null;
   fee_ngn: number | null;
+  // 'priced' = a real positive fee; 'free' = an explicitly free-delivery
+  // zone (charge ₦0 on purpose); 'pending' = resolved to ₦0 but not marked
+  // free (a rate-card gap — confirm before dispatch); 'unserviceable' = no
+  // zone covers this location at all (fee_ngn is null).
+  fee_status?: "priced" | "free" | "pending" | "unserviceable";
+  is_free_delivery?: boolean;
   rate_card: RateCard | null;
   currency: string;
 }

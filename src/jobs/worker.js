@@ -26,6 +26,7 @@
  *   every 2m         — Workspace task/event reminder sweep (remind_at)
  *   every 1m         — HR clock-out reminders (−5 / at / +5 min of close time)
  *   every 30m        — Webhook replay sweep (H-4 — re-drive stuck webhooks)
+ *   every 10m        — Nomba ledger reconciliation (pull-based webhook safety net)
  *   daily 03:00      — Soft-FK reconciliation sweep (F-13)
  *   daily 03:30      — Catalogue Trash purge (15-day grace window)
  *   Sun 02:00        — GeoLite2-Country database auto-update (MaxMind)
@@ -192,6 +193,9 @@ async function startWorkers() {
   } = require("./schedulers/chemical-reconciliation");
   const { runMissingWigCheck } = require("./schedulers/missing-wig-check");
   const { runWebhookReplaySweep } = require("./schedulers/webhook-replay");
+  const {
+    runNombaLedgerSyncSweep,
+  } = require("./schedulers/nomba-ledger-sync");
   const { runIgTokenRefreshSweep } = require("./schedulers/ig-token-refresh");
   const {
     runIgEchoSubscriptionWatchdog,
@@ -398,6 +402,14 @@ async function startWorkers() {
   );
   scheduleCron("invoice-reminders", "*/30 * * * *", runInvoiceReminderSweep);
   scheduleCron("webhook-replay", "*/30 * * * *", runWebhookReplaySweep);
+  // Nomba ledger reconciliation (owner decision 2026-07): pull-based safety
+  // net independent of webhooks — asks the account's own credit/debit ledger
+  // every 10 min and parks any unmatched CREDIT into POS Reconciliation.
+  scheduleCron(
+    "nomba-ledger-sync",
+    "*/10 * * * *",
+    runNombaLedgerSyncSweep,
+  );
   // IG long-lived tokens die after ~60 days; rotate weekly so the two
   // brands' Instagram inboxes never silently disconnect.
   scheduleCron("ig-token-refresh", "20 3 * * *", runIgTokenRefreshSweep);

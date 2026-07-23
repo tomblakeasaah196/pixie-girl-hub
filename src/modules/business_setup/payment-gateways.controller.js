@@ -53,4 +53,31 @@ async function test(req, res) {
   });
 }
 
-module.exports = { list, configure, setActive, setRole, remove, test };
+async function testWebhook(req, res) {
+  res.json({
+    data: await service.sendTestWebhook({
+      ...base(req),
+      provider: req.params.provider,
+    }),
+  });
+}
+
+async function webhookLog(req, res) {
+  res.json({
+    data: await service.recentWebhookActivity({
+      provider: req.params.provider,
+      limit: Math.min(parseInt(req.query.limit || "20", 10), 100),
+    }),
+  });
+}
+
+module.exports = {
+  list,
+  configure,
+  setActive,
+  setRole,
+  remove,
+  test,
+  testWebhook,
+  webhookLog,
+};

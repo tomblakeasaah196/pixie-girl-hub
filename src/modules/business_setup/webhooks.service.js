@@ -65,31 +65,65 @@ function verifyOpay(rawBody, headers) {
  * Verify a Nomba webhook signature.
  *
  * Nomba's signature key is a SEPARATE secret from the API client_secret.
- * It is set in the Nomba dashboard (Developer → Webhook Setup) and must be
- * stored in env as NOMBA_WEBHOOK_SIG_KEY (plus per-brand overrides).
+ * It is set in the Nomba dashboard (Developer → Webhook Setup). It can be
+ * rotated two ways: (a) via Business Setup → Payment Gateways (stored
+ * encrypted per-brand in shared.payment_gateways), or (b) via env vars
+ * (NOMBA_WEBHOOK_SIG_KEY / PIXIE_NOMBA_WEBHOOK_SIG_KEY /
+ * FAITLYN_NOMBA_WEBHOOK_SIG_KEY).
  *
- * This function tries each configured webhook signature key (per-brand + legacy
- * fallback). If any key produces a valid signature → accept.
- * If all keys are present-but-invalid → reject (401).
- * If no keys are configured → return null (log only, do not process).
+ * BUG THIS FIXES (2026-07): this function used to check ONLY the env vars.
+ * A key rotated through the Settings UI updated the DB bag but never touched
+ * env, so every subsequent real webhook — signed with the new key — failed
+ * verification silently (logged with signature_valid=false, never processed,
+ * no visible error). This is almost certainly why webhooks "used to work,
+ * then stopped" with no code change: someone rotated the key in Settings.
+ *
+ * Fix: try the DB-stored per-brand key for EVERY brand first (a webhook
+ * carries no brand at receive time), then fall back to the env vars for
+ * legacy/single-tenant setups. If any key produces a valid signature →
+ * accept. If all keys present are invalid → reject (401). If none are
+ * configured anywhere → return null (log only, do not process).
  */
-function verifyNomba(rawBody, headers) {
-  // Collect all configured webhook signature keys:
-  // 1. Per-brand env vars (same naming convention as API keys)
-  // 2. Generic env var
-  // NOTE: these are WEBHOOK SIG KEYS, not API client_secrets.
-  const sigKeys = [
+async function verifyNomba(rawBody, headers) {
+  const gateways = require("./payment-gateways.service");
+  const sigKeys = [];
+
+  for (const brand of VALID_BRANDS) {
+    try {
+      const creds = await gateways.resolveCredentials({
+        brand,
+        provider: "nomba",
+      });
+      if (creds && creds.webhook_signature_key) {
+        sigKeys.push(creds.webhook_signature_key);
+      }
+    } catch (err) {
+      logger.warn(
+        { brand, err: err.message },
+        "Nomba webhook: failed to resolve DB-stored signature key for brand",
+      );
+    }
+  }
+
+  // Legacy/env fallback — de-duped against what resolveCredentials already
+  // returned (resolveCredentials itself falls back to env when no DB row
+  // exists, but a DB row with OTHER fields set and no webhook_signature_key
+  // would still miss the env value, so keep this explicit).
+  for (const k of [
     config.PIXIE_NOMBA_WEBHOOK_SIG_KEY,
     config.FAITLYN_NOMBA_WEBHOOK_SIG_KEY,
     config.NOMBA_WEBHOOK_SIG_KEY,
-  ].filter(Boolean);
+  ]) {
+    if (k && !sigKeys.includes(k)) sigKeys.push(k);
+  }
 
   if (!sigKeys.length) {
-    // No webhook signature key configured — log only, do NOT process.
-    // This is the safe default: an unverified payload must never be acted on.
+    // No webhook signature key configured anywhere — log only, do NOT
+    // process. This is the safe default: an unverified payload must never
+    // be acted on.
     logger.warn(
-      "Nomba webhook: no webhook signature key configured; " +
-      "set NOMBA_WEBHOOK_SIG_KEY (or brand-specific override) to enable verification",
+      "Nomba webhook: no webhook signature key configured (checked DB per-brand " +
+      "+ env); set it in Business Setup → Payment Gateways or NOMBA_WEBHOOK_SIG_KEY",
     );
     return null;
   }
@@ -232,17 +266,17 @@ function verifyCloudflareEmail(rawBody, headers) {
   return safeEqual(expected, sig);
 }
 
-// Sync verifiers only. Meta verifiers are async (require a DB lookup
-// to resolve per-brand secrets) and are dispatched separately below.
+// Sync verifiers only. Meta and Nomba verifiers are async (require a DB
+// lookup to resolve per-brand secrets) and are dispatched separately below.
 const VERIFIERS = {
   paystack: verifyPaystack,
   opay: verifyOpay,
-  nomba: verifyNomba,
   stripe: verifyStripe,
   cloudflare_email: verifyCloudflareEmail,
 };
 
 const META_SOURCES = new Set(["meta_whatsapp", "meta_instagram"]);
+const ASYNC_VERIFIERS = { nomba: verifyNomba };
 
 function extractExternalId(source, payload) {
   if (source === "paystack") {
@@ -349,6 +383,9 @@ async function receive(source, { rawBody, headers, ip }) {
   if (META_SOURCES.has(source)) {
     verifierPresent = true;
     verdict = await verifyMetaHmac(source, rawBody, headers || {}, payload);
+  } else if (ASYNC_VERIFIERS[source]) {
+    verifierPresent = true;
+    verdict = await ASYNC_VERIFIERS[source](rawBody, headers || {});
   } else {
     const verifier = VERIFIERS[source];
     if (verifier) {

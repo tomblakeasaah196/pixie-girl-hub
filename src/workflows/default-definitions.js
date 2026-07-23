@@ -27,18 +27,17 @@
 "use strict";
 
 const DEFINITIONS = {
-  // ── Expenses (§6.7) — the CEO approves every expense ────────────────────
+  // ── Expenses (§6.7) — the CEO or the COO approves every expense ─────────
   // Single unconditional stage: every submitted expense, of any amount, waits
-  // on the CEO to approve or reject. This is the deliberate "CEO approves all"
-  // route (owner's call). To reintroduce a manager tier later, edit this
-  // workflow in Org & Workflow → Workflows: add a first stage with an
-  // `approvers: [{ type: "role", value: "manager" }]` and a
-  // `threshold_ngn_lte` bound, and keep this stage bounded to the amounts
-  // above it.
+  // on the CEO OR the Chief Operating Officer to approve or reject (either one
+  // acting completes the stage). The COO is the owner's delegate for expense
+  // sign-off, so the queue is never blocked behind the CEO alone.
+  // To reintroduce a manager tier or amount thresholds later, edit this
+  // workflow in Org & Workflow → Workflows.
   "expenses:submit": {
     name: "Expense Approval",
     description:
-      "The CEO approves (or rejects) every expense, of any amount. Edit this workflow in Org & Workflow to add a manager tier or amount thresholds.",
+      "The CEO or the Chief Operating Officer approves (or rejects) every expense, of any amount. Edit this workflow in Org & Workflow to add a manager tier or amount thresholds.",
     trigger_module: "expenses",
     trigger_action: "submit",
     definition: {
@@ -46,8 +45,11 @@ const DEFINITIONS = {
       stages: [
         {
           order: 1,
-          name: "CEO approval",
-          approvers: [{ type: "role", value: "ceo" }],
+          name: "Executive approval (CEO or COO)",
+          approvers: [
+            { type: "role", value: "ceo" },
+            { type: "role", value: "chief_operating_officer" },
+          ],
           timeout_hours: 48,
           on_timeout: "escalate",
           fallback_to_deputy: false,

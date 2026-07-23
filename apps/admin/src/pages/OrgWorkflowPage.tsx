@@ -2429,16 +2429,82 @@ const MODULE_KEYS = [
   "org_workflow",
 ];
 
+/**
+ * Approver value picker — replaces the old free-text box. You pick a real
+ * role / position / person from the org rather than typing an identifier that
+ * has to match the backend exactly. The stored value stays the same shape the
+ * workflow engine matches on: role name, position key, or user id.
+ */
+function ApproverValuePicker({
+  type,
+  value,
+  roles,
+  positions,
+  staff,
+  onChange,
+}: {
+  type: "role" | "position" | "user";
+  value: string;
+  roles: Role[];
+  positions: OrgPosition[];
+  staff: StaffRow[];
+  onChange: (v: string) => void;
+}) {
+  const options: Array<{ value: string; label: string }> =
+    type === "role"
+      ? roles.map((r) => ({ value: r.role_name, label: r.role_name }))
+      : type === "position"
+        ? positions.map((p) => ({
+            value: p.position_key,
+            label: p.display_name || p.position_key,
+          }))
+        : staff
+            .filter((s) => s.user_id)
+            .map((s) => ({ value: s.user_id as string, label: s.display_name }));
+
+  // Never silently drop a value that isn't in the list (older hand-authored
+  // workflow, or the lists still loading) — keep it selectable.
+  const hasCurrent = !value || options.some((o) => o.value === value);
+  const placeholder =
+    type === "role"
+      ? "Select a role…"
+      : type === "position"
+        ? "Select a position…"
+        : "Select a person…";
+
+  return (
+    <select
+      className="flex-1 min-w-0 bg-[rgb(var(--panel-2)/0.6)] border border-[rgb(var(--border-c))] rounded-lg px-2.5 py-1.5 text-[12px] focus:outline-none focus:border-[rgb(var(--accent)/0.5)]"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      <option value="">{placeholder}</option>
+      {!hasCurrent && <option value={value}>{value} (not in list)</option>}
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 function StageEditor({
   stage,
   onChange,
   onRemove,
   index,
+  roles,
+  positions,
+  staff,
 }: {
   stage: WorkflowStage;
   onChange: (s: WorkflowStage) => void;
   onRemove: () => void;
   index: number;
+  roles: Role[];
+  positions: OrgPosition[];
+  staff: StaffRow[];
 }) {
   const [condType, setCondType] = useState<"none" | "lte" | "gt" | "range">(
     stage.threshold_ngn_lte != null && stage.threshold_ngn_gt != null
@@ -2455,6 +2521,10 @@ function StageEditor({
     approvers[i] = {
       ...approvers[i],
       [field]: val,
+      // Switching the kind of approver invalidates the previously-picked
+      // value (a role name is not a user id) — clear it so the picker
+      // returns to its placeholder rather than carrying a stale selection.
+      ...(field === "type" ? { value: "" } : {}),
     } as WorkflowStage["approvers"][number];
     onChange({ ...stage, approvers });
   }
@@ -2531,17 +2601,13 @@ function StageEditor({
                 <option value="position">Position</option>
                 <option value="user">User</option>
               </select>
-              <input
-                className="flex-1 bg-[rgb(var(--panel-2)/0.6)] border border-[rgb(var(--border-c))] rounded-lg px-2.5 py-1.5 text-[12px] focus:outline-none focus:border-[rgb(var(--accent)/0.5)]"
+              <ApproverValuePicker
+                type={app.type}
                 value={app.value}
-                onChange={(e) => updateApprover(i, "value", e.target.value)}
-                placeholder={
-                  app.type === "role"
-                    ? "e.g. manager"
-                    : app.type === "position"
-                      ? "e.g. head_of_finance"
-                      : "user_id"
-                } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+                roles={roles}
+                positions={positions}
+                staff={staff}
+                onChange={(v) => updateApprover(i, "value", v)}
               />
               <button
                 onClick={() => removeApprover(i)}
@@ -2714,6 +2780,22 @@ function WorkflowBuilderDrawer({
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Feed the approver pickers: roles, org positions, and staff (for the
+  // user picker). These are the same sources the org-chart editor uses.
+  const { data: roles = [] } = useQuery({
+    queryKey: ["access-roles"],
+    queryFn: () => accessApi.listRoles(),
+  });
+  const { data: positions = [] } = useQuery({
+    queryKey: ["org-positions"],
+    queryFn: () => orgApi.listPositions(),
+  });
+  const { data: staffResp } = useQuery({
+    queryKey: ["hr", "staff-picker"],
+    queryFn: () => listStaff({ page_size: "200" }),
+  });
+  const staff = staffResp?.data ?? [];
 
   function addStage() {
     setStages((prev) => [
@@ -2895,6 +2977,9 @@ function WorkflowBuilderDrawer({
                     index={i}
                     onChange={(s) => updateStage(i, s)}
                     onRemove={() => removeStage(i)}
+                    roles={roles}
+                    positions={positions}
+                    staff={staff}
                   />
                 </div>
               ))}

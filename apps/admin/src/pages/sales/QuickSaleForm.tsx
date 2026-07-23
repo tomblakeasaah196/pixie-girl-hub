@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import {
   Search,
   User,
@@ -50,6 +50,8 @@ import {
 import { useToastStore } from "@/components/notifications/NotificationToast";
 import { toastReport } from "@/lib/error-report";
 import { onboardingApi } from "@/lib/smartcomm-api";
+import { joinRoom, leaveRoom, rooms } from "@/lib/socket";
+import { getContact } from "@/pages/contacts/api";
 import { useBusinessStore } from "@/stores/business";
 import * as salesApi from "./api";
 import { api } from "@/lib/api";
@@ -88,6 +90,20 @@ const CURRENCY_OPTIONS = [
 
 const ngn = (v: number) => `₦${v.toLocaleString()}`;
 
+/**
+ * Make a backend-issued onboarding link absolute. When no storefront/admin
+ * domain is configured the backend returns a bare path (e.g.
+ * `/welcome/faitlynhair/<token>`), which a phone camera can't resolve when
+ * scanned from a QR code — there's no browser origin to fall back on. The
+ * `/welcome` route is served by this admin SPA, so the current origin is a
+ * correct, always-available host. An already-absolute URL passes through
+ * unchanged. (Same fix as OnlineQR.tsx's helper.)
+ */
+function toAbsoluteUrl(url: string): string {
+  if (!url || /^https?:\/\//i.test(url)) return url;
+  return `${window.location.origin}/${url.replace(/^\/+/, "")}`;
+}
+
 export function QuickSaleForm() {
   const createOrder = useCreateOrder();
   const [step, setStep] = useState(1);
@@ -101,6 +117,12 @@ export function QuickSaleForm() {
   const [contactName, setContactName] = useState("");
   const [contactResults, setContactResults] = useState<SearchResult[]>([]);
   const [showQr, setShowQr] = useState(false);
+  // The onboarding link's submission_id — set the moment the QR is minted so
+  // the realtime effect below knows which incoming "submission completed"
+  // push (of potentially many, brand-wide) is actually this customer.
+  const [captureSubmissionId, setCaptureSubmissionId] = useState<
+    string | null
+  >(null);
 
   // Step 3: Products
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -228,6 +250,55 @@ export function QuickSaleForm() {
     setContactResults([]);
     setStep(3);
   };
+
+  // ── Realtime auto-select: the QR-code capture link this screen minted
+  // (Step 2) just got submitted — the moment the socket push names this
+  // submission_id, pull the resulting contact and select it without staff
+  // ever touching the search box.
+  useEffect(() => {
+    if (!captureSubmissionId || contactId) return;
+    const room = rooms.customerOnboarding(activeBiz ?? "pixiegirl");
+    joinRoom(room);
+
+    const onSubmissionCompleted = (e: Event) => {
+      const detail = (e as CustomEvent).detail as
+        | { submission_id?: string; contact_id?: string }
+        | undefined;
+      if (!detail?.contact_id || detail.submission_id !== captureSubmissionId) {
+        return;
+      }
+      getContact(detail.contact_id)
+        .then((contact) => {
+          setContactId(contact.contact_id);
+          setContactName(contact.display_name);
+          setContactSearch(contact.display_name);
+          setContactResults([]);
+          setShowQr(false);
+          setStep(3);
+          fireToast(
+            "Customer found",
+            `${contact.display_name} filled the form and was auto-selected.`,
+          );
+        })
+        .catch(() => {
+          // Submission completed but the contact fetch failed — staff can
+          // still pick them manually from the search box above.
+        });
+    };
+
+    window.addEventListener(
+      "pgh:onboarding:submission.completed",
+      onSubmissionCompleted,
+    );
+    return () => {
+      window.removeEventListener(
+        "pgh:onboarding:submission.completed",
+        onSubmissionCompleted,
+      );
+      leaveRoom(room);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [captureSubmissionId, contactId, activeBiz]);
 
   // ── Product pick (type-first picker → resolved order lines) ──
   const addResolvedLines = (lines: ResolvedLine[]) => {
@@ -472,6 +543,7 @@ export function QuickSaleForm() {
     setBundleId(null);
     setPaymentUrl(null);
     setCaptureUrl(null);
+    setCaptureSubmissionId(null);
     setShowQr(false);
   };
 
@@ -592,7 +664,8 @@ export function QuickSaleForm() {
                         business: activeBiz ?? "pixiegirl",
                         source: "walkin",
                       });
-                      setCaptureUrl(res.url);
+                      setCaptureUrl(toAbsoluteUrl(res.url));
+                      setCaptureSubmissionId(res.submission_id);
                       setShowQr(true);
                     } catch {
                       fireToast(
@@ -612,10 +685,13 @@ export function QuickSaleForm() {
               </div>
               {showQr && captureUrl && (
                 <div className="p-4 rounded-[11px] bg-text-primary/[0.03] border border-line text-center">
-                  <p className="text-[12px] text-text-muted mb-2">
+                  <p className="text-[12px] text-text-muted mb-3">
                     Share the order capture link — customer fills their details
                     and is auto-selected.
                   </p>
+                  <div className="inline-block bg-white p-3 rounded-[14px] mb-3">
+                    <QRCodeSVG value={captureUrl} size={160} level="M" />
+                  </div>
                   <div className="flex items-center gap-2 justify-center">
                     <code className="text-[11px] text-text-faint font-mono break-all">
                       {captureUrl}

@@ -94,6 +94,11 @@ async function initSocketIo(httpServer) {
   const { registerSalesRealtime } = require("../realtime/sales-realtime");
   registerSalesRealtime();
 
+  const {
+    registerOnboardingRealtime,
+  } = require("../realtime/onboarding-realtime");
+  registerOnboardingRealtime();
+
   // Goals progress recompute — listens to tasks domain events (not a socket
   // relay, but registered here so it's live in the API process too).
   const {

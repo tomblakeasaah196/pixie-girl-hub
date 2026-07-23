@@ -48,6 +48,8 @@ function useExpenseDetail(initial: Expense, onDone: () => void) {
   const [paymentReference, setPaymentReference] = useState("");
   const [paymentReceipt, setPaymentReceipt] = useState<File | null>(null);
 
+  const [actionError, setActionError] = useState<string | null>(null);
+
   const e = ex ?? initial;
   const canApprove = can("expenses", "approve");
   const canEdit = can("expenses", "edit");
@@ -57,22 +59,45 @@ function useExpenseDetail(initial: Expense, onDone: () => void) {
     mutations.reject.isPending ||
     mutations.pay.isPending;
 
+  // A failed approve/reject/pay used to fail silently — the mutation carried
+  // no onError, so a 403 (e.g. the workflow stage requires a role the caller
+  // lacks) left the button re-enabled with no feedback, reading as "Reject
+  // does nothing". Surface the server's message instead.
+  const errMsg = (err: unknown) =>
+    (err as { body?: { error?: { message?: string } }; message?: string })?.body
+      ?.error?.message ||
+    (err as { message?: string })?.message ||
+    "Something went wrong. Please try again.";
+
   function handleSubmit() {
-    mutations.submitExpense.mutate(e.expense_id, { onSuccess: onDone });
+    setActionError(null);
+    mutations.submitExpense.mutate(e.expense_id, {
+      onSuccess: onDone,
+      onError: (err) => setActionError(errMsg(err)),
+    });
   }
   function handleApprove() {
-    mutations.approve.mutate(e.expense_id, { onSuccess: onDone });
+    setActionError(null);
+    mutations.approve.mutate(e.expense_id, {
+      onSuccess: onDone,
+      onError: (err) => setActionError(errMsg(err)),
+    });
   }
   function handleReject() {
     if (!rejectReason.trim()) return;
+    setActionError(null);
     mutations.reject.mutate(
       { id: e.expense_id, reason: rejectReason },
-      { onSuccess: onDone },
+      {
+        onSuccess: onDone,
+        onError: (err) => setActionError(errMsg(err)),
+      },
     );
   }
   function handlePay() {
     if (!paymentMethod) return;
     const receipt = paymentReceipt;
+    setActionError(null);
     mutations.pay.mutate(
       {
         id: e.expense_id,
@@ -87,6 +112,7 @@ function useExpenseDetail(initial: Expense, onDone: () => void) {
             mutations.addReceipt.mutate({ id: e.expense_id, file: receipt });
           onDone();
         },
+        onError: (err) => setActionError(errMsg(err)),
       },
     );
   }
@@ -102,6 +128,8 @@ function useExpenseDetail(initial: Expense, onDone: () => void) {
     canSubmit,
     canPay,
     isBusy,
+    actionError,
+    setActionError,
     rejectReason,
     setRejectReason,
     showReject,
@@ -128,6 +156,7 @@ type ExpenseDetail = ReturnType<typeof useExpenseDetail>;
 function ExpenseDetailContent({ d }: { d: ExpenseDetail }) {
   const {
     e,
+    actionError,
     rejectReason,
     setRejectReason,
     showReject,
@@ -154,6 +183,18 @@ function ExpenseDetailContent({ d }: { d: ExpenseDetail }) {
 
   return (
     <div className="space-y-5">
+      {/* Action error — a failed approve/reject/pay (e.g. a workflow-stage
+          permission block) must say why instead of silently doing nothing. */}
+      {actionError && (
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-xl border border-danger/40 bg-danger/10 px-3 py-2.5 text-[13px] text-danger"
+        >
+          <XCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>{actionError}</span>
+        </div>
+      )}
+
       {/* Status */}
       <div className="flex items-center gap-2">
         <Pill tone={meta.tone}>

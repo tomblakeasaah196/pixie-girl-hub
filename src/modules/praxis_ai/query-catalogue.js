@@ -210,7 +210,7 @@ const QUERIES = [
     title: "Pending cash requests",
     description:
       "Cash requests awaiting approval (pending_finance or pending_ceo) for the current brand, ordered by submission date.",
-    module: "expenses",
+    module: "cash_request",
     parameters: {
       type: "object",
       properties: {
@@ -236,7 +236,7 @@ const QUERIES = [
     title: "Cash request KPIs",
     description:
       "Summary KPIs for cash requests: pending count, unsettled advances, disbursed this month.",
-    module: "expenses",
+    module: "cash_request",
     parameters: { type: "object", properties: {} },
     run: ({ brand }) =>
       cashRequestRepo.kpis({ brand, scope: "all", user_id: null }),

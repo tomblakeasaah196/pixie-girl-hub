@@ -28,6 +28,14 @@ export interface StyledPick {
   colour_id: string | null;
   colour_name: string | null;
   price: number | null;
+  /** The chosen variant's OWN base product — may differ from the styled
+   *  product's seed base (each size/colour can be cut from its own SKU).
+   *  Callers that resolve a stock variant for THIS pick (Quick Sale,
+   *  Quotation) need this to sell through the right base. */
+  base_product_id: string | null;
+  /** The chosen variant's own SKU (falls back to the styled product's own
+   *  code when there is no matrix). */
+  sku: string | null;
   /** Human label for the chosen combo, e.g. "Medium · 6×6 Frontal · Spicy Copper". */
   spec: string;
 }
@@ -76,6 +84,8 @@ export function StyledVariantPicker({
       lace_label: null,
       colour_id: null,
       colour_name: null,
+      base_product_id: null,
+      sku: null,
       price: anchorPrice,
       spec: "",
     });
@@ -124,6 +134,8 @@ export function StyledVariantPicker({
       lace_label: match.lace_label ?? null,
       colour_id: match.colour_id ?? null,
       colour_name: match.colour_name ?? null,
+      base_product_id: match.base_product_id ?? null,
+      sku: match.sku ?? null,
       price: match.effective_price_ngn ?? null,
       spec: specLabel(match),
     });

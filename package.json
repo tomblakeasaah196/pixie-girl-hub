@@ -46,6 +46,7 @@
     "backfill:instagram-profiles": "node scripts/backfill-instagram-profiles.js",
     "backfill:instagram-history": "node scripts/backfill-instagram-history.js",
     "backfill:contact-country-codes": "node scripts/backfill-contact-country-codes.js",
+    "backfill:styled-order-line-names": "node scripts/backfill-styled-order-line-names.js",
     "diag:instagram-echoes": "node scripts/diagnose-instagram-echoes.js",
     "diag:bg-removal": "node scripts/diag-bg-removal.js",
     "cleanup:unpaid-deliveries": "node scripts/cleanup-unpaid-deliveries.js",

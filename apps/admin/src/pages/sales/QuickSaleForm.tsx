@@ -21,7 +21,16 @@ import {
   type PlaceAddress,
 } from "@/components/ui/AddressAutocomplete";
 import { ProductPicker } from "@/components/catalogue/ProductPicker";
-import { resolvePick, type ProductHit } from "@/lib/product-search";
+import {
+  StyledVariantPicker,
+  type StyledPick,
+} from "@/components/catalogue/StyledVariantPicker";
+import {
+  resolvePick,
+  resolveStyledPick,
+  type ProductHit,
+  type ResolvedLine,
+} from "@/lib/product-search";
 import {
   SALES_CHANNELS,
   SALES_CHANNEL_GROUPS,
@@ -52,6 +61,10 @@ interface CartLine {
   sku: string;
   unit_price: number;
   quantity: number;
+  // Snapshot overrides from a styled head-size/lace/colour pick — see
+  // ResolvedLine. Falls back to `label`/undefined for every other kind.
+  product_name_snapshot?: string;
+  variant_label_snapshot?: string;
 }
 
 interface SearchResult {
@@ -83,6 +96,9 @@ export function QuickSaleForm() {
 
   // Step 3: Products
   const [cart, setCart] = useState<CartLine[]>([]);
+  // A styled pick awaiting its head-size/lace/colour choice before it can be
+  // added to the cart (StyledVariantPicker); null when nothing is pending.
+  const [pendingStyled, setPendingStyled] = useState<ProductHit | null>(null);
   // Own-wig check-in (walk-in revamp): take the customer's wig into custody.
   const [ownWig, setOwnWig] = useState(false);
   const [wigCondition, setWigCondition] = useState("");
@@ -192,7 +208,36 @@ export function QuickSaleForm() {
   };
 
   // ── Product pick (type-first picker → resolved order lines) ──
+  const addResolvedLines = (lines: ResolvedLine[]) => {
+    setCart((prev) => {
+      const next = [...prev];
+      for (const l of lines) {
+        // Merge on the strongest identity for this kind: service_offering_id
+        // for services (variant_id is "" for every service so it can't be the
+        // key), else variant_id + styled provenance (a base wig and its
+        // styled sibling share a variant but are different lines).
+        const i = next.findIndex((c) =>
+          l.service_offering_id
+            ? c.service_offering_id === l.service_offering_id
+            : c.variant_id === l.variant_id &&
+              (c.styled_id || null) === (l.styled_id || null),
+        );
+        if (i >= 0)
+          next[i] = { ...next[i], quantity: next[i].quantity + l.quantity };
+        else next.push({ id: crypto.randomUUID(), ...l });
+      }
+      return next;
+    });
+  };
+
   const handlePick = async (hit: ProductHit) => {
+    // A styled product prices by head size × lace × colour — send it through
+    // the variant picker first so the line carries the exact combo instead of
+    // always the anchor price/seed variant.
+    if (hit.kind === "styled") {
+      setPendingStyled(hit);
+      return;
+    }
     try {
       const { lines, bundle_id } = await resolvePick(hit);
       if (bundle_id) setBundleId(bundle_id);
@@ -205,25 +250,28 @@ export function QuickSaleForm() {
         );
         return;
       }
-      setCart((prev) => {
-        const next = [...prev];
-        for (const l of lines) {
-          // Merge on the strongest identity for this kind: service_offering_id
-          // for services (variant_id is "" for every service so it can't be the
-          // key), else variant_id + styled provenance (a base wig and its
-          // styled sibling share a variant but are different lines).
-          const i = next.findIndex((c) =>
-            l.service_offering_id
-              ? c.service_offering_id === l.service_offering_id
-              : c.variant_id === l.variant_id &&
-                (c.styled_id || null) === (l.styled_id || null),
-          );
-          if (i >= 0)
-            next[i] = { ...next[i], quantity: next[i].quantity + l.quantity };
-          else next.push({ id: crypto.randomUUID(), ...l });
-        }
-        return next;
-      });
+      addResolvedLines(lines);
+    } catch {
+      fireToast("Error", "Failed to add product", "order", "high");
+    }
+  };
+
+  const handleStyledPick = async (pick: StyledPick) => {
+    const hit = pendingStyled;
+    setPendingStyled(null);
+    if (!hit) return;
+    try {
+      const { lines } = await resolveStyledPick(hit, pick);
+      if (lines.length === 0) {
+        fireToast(
+          "Nothing to add",
+          "That product has no active variant to sell.",
+          "order",
+          "high",
+        );
+        return;
+      }
+      addResolvedLines(lines);
     } catch {
       fireToast("Error", "Failed to add product", "order", "high");
     }
@@ -258,6 +306,16 @@ export function QuickSaleForm() {
                 variant_id: l.variant_id,
                 quantity: l.quantity,
                 unit_price_ngn: l.unit_price || undefined,
+                // The shop-facing name (styled product or bundle) resolved at
+                // pick time — stamp it as the order line's snapshot so
+                // invoices/receipts show what the customer actually bought,
+                // not the warehouse stock item it sells through. A styled
+                // pick carries the pure name + its size/lace/colour spec
+                // separately; every other kind falls back to the combined
+                // display label.
+                product_name_snapshot: l.product_name_snapshot ?? l.label,
+                variant_label_snapshot: l.variant_label_snapshot,
+                sku_snapshot: l.sku,
                 ...(l.styled_id
                   ? { styled_id: l.styled_id, line_kind: "styled" as const }
                   : {}),
@@ -526,6 +584,18 @@ export function QuickSaleForm() {
           <div className="mb-3">
             <ProductPicker onPick={handlePick} />
           </div>
+
+          {pendingStyled && (
+            <StyledVariantPicker
+              styledId={pendingStyled.id}
+              productName={pendingStyled.label}
+              anchorPrice={
+                pendingStyled.price != null ? Number(pendingStyled.price) : null
+              }
+              onCancel={() => setPendingStyled(null)}
+              onConfirm={handleStyledPick}
+            />
+          )}
 
           {/* Own-wig check-in — only when a service is being sold */}
           {cart.some((l) => l.service_offering_id) && (

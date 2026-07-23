@@ -3,10 +3,10 @@ import { useParams } from "react-router-dom";
 import { CheckCircle2, Loader2, Store } from "lucide-react";
 import { api } from "@/lib/api";
 import {
-  AddressAutocomplete,
-  StaticMapImage,
-  type PlaceAddress,
-} from "@/components/ui/AddressAutocomplete";
+  GeoapifyAddressSearch,
+  type GeoAddress,
+} from "@/components/common/GeoapifyAddressSearch";
+import { searchWalkInAddress } from "@/lib/walkin-geo";
 
 /**
  * Public Walk-in Registration form.
@@ -14,7 +14,11 @@ import {
  * URL: /walkin/:brand  — no auth. A walk-in customer scans the counter QR,
  * lands here, and self-registers in ~30 seconds: name, a way to reach them
  * (phone or email — at least one), an optional birthday, and their delivery
- * address captured via Google Places (so dispatch has real lat/lng).
+ * address captured via Geoapify (server-side key, the same integration HR's
+ * office-location picker and the customer-onboarding form use — no browser
+ * API key to misconfigure). Area/City/State/Country stay manually editable
+ * below the search box, so a down or slow Geoapify never blocks a walk-in
+ * from typing their address by hand.
  *
  * Mirrors the Online-QR onboarding form's mobile-first shell; posts to the
  * public endpoint POST /api/public/walk-in (IP-throttled, de-dupes on
@@ -50,7 +54,6 @@ const emptyAddress = {
   country: "Nigeria",
   country_code: "NG",
   postal_code: "",
-  google_maps_url: "",
   latitude: null as number | null,
   longitude: null as number | null,
 };
@@ -85,19 +88,18 @@ export function WalkInPublic() {
   const set = (k: keyof typeof blankForm, v: string) =>
     setForm((f) => ({ ...f, [k]: v }));
 
-  const onPlace = (p: PlaceAddress) =>
-    setAddress({
-      line1: p.line1,
-      area: p.area,
+  const onPlace = (p: GeoAddress) =>
+    setAddress((a) => ({
+      line1: p.line1 || a.line1,
+      area: p.area || a.area,
       city: p.city || "Lagos",
       state: p.state || "Lagos",
       country: p.country || "Nigeria",
       country_code: p.country_code || "NG",
       postal_code: p.postal_code,
-      google_maps_url: p.google_maps_url,
       latitude: p.latitude,
       longitude: p.longitude,
-    });
+    }));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -124,7 +126,6 @@ export function WalkInPublic() {
             country: address.country || undefined,
             country_code: address.country_code || undefined,
             postal_code: address.postal_code || undefined,
-            google_maps_url: address.google_maps_url || undefined,
             latitude: address.latitude ?? undefined,
             longitude: address.longitude ?? undefined,
           },
@@ -231,21 +232,17 @@ export function WalkInPublic() {
             <span className="block text-[11.5px] text-text-muted mb-1">
               Search your address<span className="text-danger ml-1">*</span>
             </span>
-            <AddressAutocomplete
+            <GeoapifyAddressSearch
+              search={(text) => searchWalkInAddress(brand, text)}
               value={address.line1}
               onChange={(v) => setAddress((a) => ({ ...a, line1: v }))}
-              onPlaceSelected={onPlace}
-              countryCode={address.country_code || "NG"}
+              onAddressSelected={onPlace}
               placeholder="Start typing your street, estate or landmark…"
             />
           </label>
-          {address.latitude != null && address.longitude != null && (
-            <StaticMapImage
-              lat={address.latitude}
-              lng={address.longitude}
-              label={form.first_name || brandName}
-            />
-          )}
+          <p className="text-[10.5px] text-text-faint -mt-1">
+            Can&rsquo;t find it? Just type the fields below by hand.
+          </p>
           <Row>
             <Field
               label="Area"

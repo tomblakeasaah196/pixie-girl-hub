@@ -56,6 +56,17 @@ publicRouter.post("/", async (req, res) => {
   res.status(201).json({ data: result });
 });
 
+// Delivery-address search — proxies Geoapify (server-side key) so the public
+// form gets live suggestions without ever shipping an API key to the browser.
+publicRouter.get("/:brand/geo/search", async (req, res) => {
+  const data = await service.searchAddress({
+    brand: req.params.brand,
+    text: req.query.text,
+  });
+  res.set("Cache-Control", "private, max-age=60");
+  res.json({ data });
+});
+
 // ── Admin QR generation ────────────────────────────────────
 const adminRouter = express.Router();
 adminRouter.get("/qr", requirePermission("crm", "view"), async (req, res) => {

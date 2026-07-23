@@ -16,6 +16,7 @@ import {
   GeoapifyAddressSearch,
   type GeoAddress,
 } from "@/components/common/GeoapifyAddressSearch";
+import { searchOnboardingAddress } from "@/lib/onboarding-geo";
 
 /**
  * Public Customer Onboarding form (the "Online QR" link customers fill).
@@ -360,7 +361,7 @@ export function CustomerOnboardingPublic() {
           defaultOpen
         >
           <GeoapifyAddressSearch
-            token={token}
+            search={(text) => searchOnboardingAddress(token, text)}
             value={form.delivery_line1}
             onChange={(v) =>
               setForm((f) => ({ ...f, delivery_line1: v }))

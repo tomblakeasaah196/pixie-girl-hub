@@ -10,6 +10,7 @@ import {
   Copy,
   CheckCircle2,
   Smartphone,
+  MessageCircle,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { cn } from "@/lib/cn";
@@ -692,7 +693,7 @@ export function QuickSaleForm() {
                   <div className="inline-block bg-white p-3 rounded-[14px] mb-3">
                     <QRCodeSVG value={captureUrl} size={160} level="M" />
                   </div>
-                  <div className="flex items-center gap-2 justify-center">
+                  <div className="flex items-center gap-2 justify-center flex-wrap">
                     <code className="text-[11px] text-text-faint font-mono break-all">
                       {captureUrl}
                     </code>
@@ -706,6 +707,21 @@ export function QuickSaleForm() {
                       }}
                     >
                       Copy
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={<MessageCircle className="w-3 h-3 text-[#25D366]" />}
+                      onClick={() => {
+                        const text = `Fill in your details to complete your order: ${captureUrl}`;
+                        window.open(
+                          `https://wa.me/?text=${encodeURIComponent(text)}`,
+                          "_blank",
+                          "noopener",
+                        );
+                      }}
+                    >
+                      Share
                     </Button>
                   </div>
                 </div>
@@ -1176,10 +1192,15 @@ export function QuickSaleForm() {
                   <div className="text-[11px] text-text-faint mb-1">
                     Payment Link
                   </div>
-                  <div className="flex items-center gap-2 justify-center">
+                  <div className="inline-block bg-white p-3 rounded-[14px] my-2">
+                    <QRCodeSVG value={paymentUrl} size={160} level="M" />
+                  </div>
+                  <div className="flex items-center gap-2 justify-center flex-wrap">
                     <code className="text-[11px] text-accent-glow font-mono break-all">
                       {paymentUrl}
                     </code>
+                  </div>
+                  <div className="flex items-center gap-2 justify-center flex-wrap mt-2">
                     <Button
                       variant="ghost"
                       size="sm"
@@ -1190,6 +1211,31 @@ export function QuickSaleForm() {
                       }}
                     >
                       Copy
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={<MessageCircle className="w-3 h-3 text-[#25D366]" />}
+                      onClick={() => {
+                        const waNumber = (
+                          watchedOrder?.contact_whatsapp ||
+                          watchedOrder?.contact_phone ||
+                          ""
+                        ).replace(/\D/g, "");
+                        const text = `Hi${
+                          watchedOrder?.contact_name ? ` ${watchedOrder.contact_name}` : ""
+                        }, here's your payment link${
+                          watchedOrder?.order_number
+                            ? ` for order ${watchedOrder.order_number}`
+                            : ""
+                        }: ${paymentUrl}`;
+                        const shareUrl = waNumber
+                          ? `https://wa.me/${waNumber}?text=${encodeURIComponent(text)}`
+                          : `https://wa.me/?text=${encodeURIComponent(text)}`;
+                        window.open(shareUrl, "_blank", "noopener");
+                      }}
+                    >
+                      Share
                     </Button>
                   </div>
                 </div>

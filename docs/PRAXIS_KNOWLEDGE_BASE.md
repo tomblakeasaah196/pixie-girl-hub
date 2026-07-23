@@ -430,6 +430,13 @@ categories, collections, bundles, shades, and bookable services.
 - *Remove a duplicate lace construction?* Catalogue → **Config** → Lace ladder →
   the row's **trash** icon. If it's in use you must pick a replacement (its
   variants move there first); deleted lace sits in **Trash** for 15 days.
+- *A variant shows "made to order" but a similar size is in stock — why, and how
+  do I fix it?* A base one size up or down (never further) can be rewigged to
+  fill an order — same styling job, no separate service. Turn it on/off, choose
+  whether it applies to every listing automatically or only listings switched on,
+  and pick which size is drawn from first (cut down vs built up) at Catalogue →
+  **Config** → **Rewig adjacency**. A single listing can override the brand
+  setting from its own Sizes & variants tab.
 - *Add product pictures with a consistent branded background?* Open a styled
   product → a colour → **Add a picture**. The upload modal lets you drag/drop or
   choose an image, then optionally switch on **Use branded background** to wipe

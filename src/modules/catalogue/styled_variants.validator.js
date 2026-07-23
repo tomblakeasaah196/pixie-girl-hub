@@ -78,6 +78,13 @@ const sizeConfig = z
     preorder_enabled: z.boolean().optional(),
     preorder_min_weeks: z.coerce.number().int().min(0).max(52).optional(),
     preorder_max_weeks: z.coerce.number().int().min(0).max(52).optional(),
+    // Rewig adjacency (000088): a base one size up/down may fill an order
+    // when its own size is short — same styling job, no separate service.
+    rewig_enabled: z.boolean().optional(),
+    rewig_mode: z.enum(["automatic", "opt_in"]).optional(),
+    rewig_direction: z
+      .enum(["down_first", "up_first", "no_preference"])
+      .optional(),
   })
   .strict()
   .refine(

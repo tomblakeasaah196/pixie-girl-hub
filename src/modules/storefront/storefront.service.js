@@ -1060,6 +1060,74 @@ async function defaultVariantId({ brand, product_id }) {
   return rows[0] ? rows[0].variant_id : null;
 }
 
+async function productAvailableStock({ brand, product_id }) {
+  const { rows } = await query(
+    `SELECT COALESCE(SUM(sl.available), 0)::int AS available
+       FROM ${brand}.stock_levels sl
+       JOIN ${brand}.product_variants pv ON pv.variant_id = sl.variant_id
+      WHERE pv.product_id = $1 AND pv.is_active = true`,
+    [product_id],
+  );
+  return rows[0] ? rows[0].available : 0;
+}
+
+/**
+ * Rewig adjacency (000088): if `originProductId`'s own stock can't cover
+ * `quantity`, draw from a size-adjacent sibling base instead — one size up or
+ * down only, same styling job, no separate service or SKU. Governed entirely
+ * by Catalogue → Config → Rewig settings (master switch, automatic/opt-in
+ * mode, direction preference) plus the styled product's own override, so this
+ * can be tuned without a code change. Returns the variant_id to actually
+ * reserve against; falls back to `fallbackVariantId` (the variant's own base)
+ * whenever rewig is off, not applicable, or no eligible donor has enough —
+ * the existing pre-order safety net in sales.service.js takes it from there.
+ */
+async function pickRewigSourceVariant({
+  brand,
+  styled,
+  originProductId,
+  fallbackVariantId,
+  quantity,
+}) {
+  if (!originProductId) return fallbackVariantId;
+  const cfg = await styledVariantsRepo.getConfig({ brand });
+  if (!cfg || !cfg.rewig_enabled) return fallbackVariantId;
+
+  const override = styled ? styled.rewig_override : null;
+  const allowed =
+    override === "enabled"
+      ? true
+      : override === "disabled"
+        ? false
+        : cfg.rewig_mode === "automatic";
+  if (!allowed) return fallbackVariantId;
+
+  const ownAvailable = await productAvailableStock({
+    brand,
+    product_id: originProductId,
+  });
+  if (ownAvailable >= quantity) return fallbackVariantId;
+
+  const siblings = await styledVariantsRepo.listRewigSiblings({
+    brand,
+    base_product_id: originProductId,
+  });
+  const withEnough = siblings.filter((s) => s.available >= quantity);
+  if (!withEnough.length) return fallbackVariantId;
+
+  const direction = cfg.rewig_direction || "down_first";
+  withEnough.sort((a, b) => {
+    if (direction === "down_first") return a.size_diff - b.size_diff;
+    if (direction === "up_first") return b.size_diff - a.size_diff;
+    return b.available - a.available; // no_preference: most stock first
+  });
+  const donorVariantId = await defaultVariantId({
+    brand,
+    product_id: withEnough[0].product_id,
+  });
+  return donorVariantId || fallbackVariantId;
+}
+
 // Re-price a styled cart line server-side (snapshots are never trusted) using
 // the catalogue composer, and resolve the base variant for stock/fulfilment.
 async function resolveStyledLine({ brand, item }) {
@@ -1120,6 +1188,17 @@ async function resolveStyledLine({ brand, item }) {
       "This item isn't available for purchase right now.",
       409,
     );
+  // Rewig adjacency (000088): the resolved base above is deterministic, not
+  // stock-aware — if it's short, draw from a size-adjacent sibling base
+  // instead so the reservation below (sales.service.js) actually succeeds
+  // against real inventory rather than falling through to pre-order.
+  baseVariantId = await pickRewigSourceVariant({
+    brand,
+    styled,
+    originProductId: v.base_product_id || styled.base_product_id,
+    fallbackVariantId: baseVariantId,
+    quantity: item.quantity,
+  });
   const label = item.unstyled
     ? [v.colour_name, v.size_label, "Unstyled"].filter(Boolean).join(" · ")
     : [v.colour_name, v.size_label, v.lace_label || v.lace_code]
@@ -1171,6 +1250,16 @@ async function resolveStorefrontBundle({ brand, bundle_id, copies }) {
           brand,
           product_id: styled && styled.base_product_id,
         }));
+      // Rewig adjacency (000088) — same fallback as a direct styled line.
+      if (variant_id && styled) {
+        variant_id = await pickRewigSourceVariant({
+          brand,
+          styled,
+          originProductId: styled.base_product_id,
+          fallbackVariantId: variant_id,
+          quantity: compQty * units,
+        });
+      }
     }
     if (!variant_id && comp.product_id)
       variant_id = await defaultVariantId({

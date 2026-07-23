@@ -265,10 +265,12 @@ async function upsertConfig({ client, brand, patch, user_id }) {
     `INSERT INTO ${t(brand, "catalogue_config")}
        (singleton, size_guide_title, head_size_guide_md, head_size_video_url,
         categories_enabled, allow_base_in_collections_bundles,
-        preorder_enabled, preorder_min_weeks, preorder_max_weeks, updated_by)
+        preorder_enabled, preorder_min_weeks, preorder_max_weeks,
+        rewig_enabled, rewig_mode, rewig_direction, updated_by)
      VALUES (true, COALESCE($1,'How to find your head size'), $2, $6,
              COALESCE($3,false), COALESCE($5,false),
-             COALESCE($8,true), COALESCE($9,4), COALESCE($10,8), $4)
+             COALESCE($8,true), COALESCE($9,4), COALESCE($10,8),
+             COALESCE($11,true), COALESCE($12,'automatic'), COALESCE($13,'down_first'), $4)
      ON CONFLICT (singleton) DO UPDATE SET
        size_guide_title = COALESCE(EXCLUDED.size_guide_title, ${t(brand, "catalogue_config")}.size_guide_title),
        head_size_guide_md = COALESCE(EXCLUDED.head_size_guide_md, ${t(brand, "catalogue_config")}.head_size_guide_md),
@@ -278,6 +280,9 @@ async function upsertConfig({ client, brand, patch, user_id }) {
        preorder_enabled = COALESCE($8, ${t(brand, "catalogue_config")}.preorder_enabled),
        preorder_min_weeks = COALESCE($9, ${t(brand, "catalogue_config")}.preorder_min_weeks),
        preorder_max_weeks = COALESCE($10, ${t(brand, "catalogue_config")}.preorder_max_weeks),
+       rewig_enabled = COALESCE($11, ${t(brand, "catalogue_config")}.rewig_enabled),
+       rewig_mode = COALESCE($12, ${t(brand, "catalogue_config")}.rewig_mode),
+       rewig_direction = COALESCE($13, ${t(brand, "catalogue_config")}.rewig_direction),
        updated_by = EXCLUDED.updated_by,
        updated_at = now()
      RETURNING *`,
@@ -292,9 +297,45 @@ async function upsertConfig({ client, brand, patch, user_id }) {
       patch.preorder_enabled ?? null,
       patch.preorder_min_weeks ?? null,
       patch.preorder_max_weeks ?? null,
+      patch.rewig_enabled ?? null,
+      patch.rewig_mode ?? null,
+      patch.rewig_direction ?? null,
     ],
   );
   return rows[0];
+}
+
+/** Size-adjacent (one hop only) sibling bases eligible for a rewig fallback,
+ *  ordered by available stock desc. Used at order-placement time to pick a
+ *  donor base when a styled variant's own base is short of the requested
+ *  quantity — folded into the SAME styling job, no separate service (000088). */
+async function listRewigSiblings({ client, brand, base_product_id }) {
+  const { rows } = await ex(client)(
+    `SELECT sib.product_id, sib.name,
+            (st.display_order - ot.display_order) AS size_diff,
+            COALESCE(stock.available, 0)::int AS available
+       FROM ${t(brand, "products")} origin
+       JOIN ${t(brand, "styled_size_tiers")} ot ON ot.size_code = origin.size_code
+       JOIN ${t(brand, "products")} sib
+         ON sib.base_family_id = origin.base_family_id
+        AND sib.product_id <> origin.product_id
+        AND sib.is_deleted = false
+        AND sib.rewig_eligible = true
+       JOIN ${t(brand, "styled_size_tiers")} st ON st.size_code = sib.size_code
+       JOIN LATERAL (
+         SELECT COALESCE(SUM(sl.available), 0)::int AS available
+           FROM ${t(brand, "stock_levels")} sl
+           JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sl.variant_id
+          WHERE pv.product_id = sib.product_id AND pv.is_active = true
+       ) stock ON true
+      WHERE origin.product_id = $1
+        AND origin.rewig_eligible = true
+        AND origin.base_family_id IS NOT NULL
+        AND ABS(st.display_order - ot.display_order) = 1
+      ORDER BY stock.available DESC`,
+    [base_product_id],
+  );
+  return rows;
 }
 
 /** The one-click flag: may base (stock-room) products join collections/bundles?
@@ -773,6 +814,7 @@ module.exports = {
   getConfig,
   upsertConfig,
   allowBaseTargets,
+  listRewigSiblings,
   listColours,
   listTrashedColours,
   getColour,

@@ -89,6 +89,12 @@ const productCreate = z
       .max(365)
       .nullable()
       .optional(),
+    // Rewig adjacency (000088). size_code/base_family_id are normally set by
+    // the backfill or the auto-map-bases flow; rewig_eligible is the everyday
+    // per-base toggle (default true — every base is eligible out of the box).
+    size_code: z.string().max(8).nullable().optional(),
+    base_family_id: z.string().uuid().nullable().optional(),
+    rewig_eligible: z.boolean().optional(),
   })
   .strict();
 

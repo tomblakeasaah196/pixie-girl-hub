@@ -43,6 +43,9 @@ const styledCreate = z
     // "Shop by shade" membership (NULL = unshaded). Bulk-assign is the primary
     // path; a single product can also be (un)shaded directly here.
     shade_id: z.string().uuid().nullable().optional(),
+    // Rewig adjacency (000088): override the brand-wide rewig_mode for just
+    // this listing. NULL = follow the brand mode.
+    rewig_override: z.enum(["enabled", "disabled"]).nullable().optional(),
   })
   .strict();
 

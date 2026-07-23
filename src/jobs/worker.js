@@ -448,6 +448,7 @@ async function startWorkers() {
   require("../modules/sales/timeline.subscribers"); // order.paid → timeline event
   require("../modules/sales/receipt.subscribers"); // order.paid → archive receipt PDF
   require("../modules/sales/payment-comms.subscribers"); // part-payment receipt + milestone → Comms Studio
+  require("../modules/sales/order-lifecycle-comms.subscribers"); // order.created → proforma invoice + placement email; order.paid → payment-confirmed email
   require("../modules/sales/duplicate-resolve.subscribers"); // order.paid → cancel pending duplicate twins
   require("../modules/stock/stock.subscribers"); // variant.created → seed stock level
   require("../modules/service_jobs/service-jobs.subscribers"); // order.deposit_met + order.paid → service job

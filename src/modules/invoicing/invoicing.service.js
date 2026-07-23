@@ -135,10 +135,28 @@ async function postInvoiceAccrual({ client, brand, inv, user_id }) {
   });
 }
 
+// Statuses that mean an invoice is already at (or past) its final state —
+// nothing here should be auto-finalized a second time. Everything else
+// (draft, sent, partially_paid, overdue) is a proforma still waiting on the
+// order's own payment to land, and order.paid finalizing it is exactly the
+// point.
+const ALREADY_FINAL_STATUSES = [
+  "paid",
+  "void",
+  "refunded",
+  "partially_refunded",
+  "disputed",
+];
+
 /**
- * Create a fully-paid invoice from a settled sales order. Idempotent: returns
- * the existing invoice if one already exists for the order. Pass a client to
- * run inside the order transaction.
+ * Create a fully-paid invoice from a settled sales order. Idempotent: if an
+ * invoice already exists for the order — most commonly the proforma draft
+ * createDraftFromOrder raised at order placement — and it's still awaiting
+ * payment, this FINALIZES that same invoice (applies the payment, issues the
+ * receipt) instead of creating a duplicate or leaving it stuck in draft.
+ * Only a genuinely already-final invoice (paid/void/refunded/…) short-
+ * circuits to a plain return, so a re-delivered order.paid event is a no-op.
+ * Pass a client to run inside the order transaction.
  */
 async function createFromOrder({ client, brand, order, user_id }) {
   const existing = await repo.findByOrderId({
@@ -146,7 +164,10 @@ async function createFromOrder({ client, brand, order, user_id }) {
     brand,
     order_id: order.order_id,
   });
-  if (existing) return existing;
+  if (existing) {
+    if (ALREADY_FINAL_STATUSES.includes(existing.status)) return existing;
+    return finalizeDraftInvoice({ client, brand, existing, order, user_id });
+  }
   const run = async (c) => {
     const invoice_number = await repo.nextNumber({
       client: c,
@@ -252,6 +273,178 @@ async function createFromOrder({ client, brand, order, user_id }) {
   return client ? run(client) : transaction(run);
 }
 
+/**
+ * Finalize a proforma (draft/sent) invoice once its order is genuinely fully
+ * paid: apply the outstanding balance as a payment (the invoice_payments
+ * trigger flips status to 'paid' on its own), issue the receipt, audit, and
+ * emit invoice.issued — the same shape createFromOrder always produced, just
+ * reached via "upgrade the existing draft" instead of "insert paid from
+ * scratch". Capped to whatever the invoice actually still shows outstanding,
+ * so a draft that already took a manual partial payment is topped up rather
+ * than double-applied.
+ */
+async function finalizeDraftInvoice({ client, brand, existing, order, user_id }) {
+  const run = async (c) => {
+    const outstanding = money(existing.balance_due_ngn || 0);
+    if (outstanding.gt(0)) {
+      await repo.applyPayment({
+        client: c,
+        brand,
+        payment: {
+          invoice_id: existing.invoice_id,
+          amount_applied_ngn: toCurrencyString(outstanding),
+          applied_by: user_id,
+          notes: "Auto-applied from paid order",
+        },
+      });
+    }
+    const updated = await repo.findById({ client: c, brand, id: existing.invoice_id });
+    if (updated.status === "paid") {
+      // Fully paid → stop chasing it (a no-op for the common case: a
+      // system-raised draft never had reminders scheduled in the first
+      // place, since those only ever get set up from send()).
+      await repo.cancelScheduledReminders({
+        client: c,
+        brand,
+        invoice_id: existing.invoice_id,
+      });
+      const existingReceipts = await repo.listReceipts({
+        client: c,
+        brand,
+        invoice_id: existing.invoice_id,
+      });
+      if (!existingReceipts.length) {
+        await issueReceiptInternal({
+          client: c,
+          brand,
+          invoice: updated,
+          amount_ngn: updated.total_ngn,
+          payment_method: "gateway",
+          user_id,
+        });
+      }
+    }
+    await A(
+      brand,
+      user_id,
+      "invoicing.invoice.auto_finalize",
+      "invoice",
+      existing.invoice_id,
+      { invoice_number: existing.invoice_number, order_id: order.order_id },
+      null,
+    );
+    events.emit("invoice.issued", {
+      brand,
+      invoice_id: existing.invoice_id,
+      order_id: order.order_id,
+    });
+    return repo.findById({ client: c, brand, id: existing.invoice_id });
+  };
+  return client ? run(client) : transaction(run);
+}
+
+/**
+ * Create a DRAFT (proforma) invoice from a freshly-PLACED sales order —
+ * before any payment has landed. Idempotent (mirrors createFromOrder's own
+ * guard): returns the existing invoice if one already exists for the order.
+ * Never applies a payment or issues a receipt — createFromOrder (via the
+ * order.paid subscriber) later finds THIS row and finalizes it instead of
+ * creating a duplicate. See ALREADY_FINAL_STATUSES / finalizeDraftInvoice.
+ */
+async function createDraftFromOrder({ client, brand, order, user_id = null }) {
+  const existing = await repo.findByOrderId({
+    client,
+    brand,
+    order_id: order.order_id,
+  });
+  if (existing) return existing;
+  const run = async (c) => {
+    const invoice_number = await repo.nextNumber({
+      client: c,
+      brand,
+      type: "invoice",
+    });
+    const displayCurrency = order.display_currency || "NGN";
+    const fxRate = order.fx_rate_used || 1;
+    const totalNgn = money(order.total_ngn);
+    const displayTotal =
+      order.display_total !== null && order.display_total !== undefined
+        ? money(order.display_total)
+        : totalNgn;
+    const displaySubtotal = totalNgn.gt(0)
+      ? displayTotal.times(money(order.subtotal_ngn)).dividedBy(totalNgn)
+      : money(order.subtotal_ngn);
+    const inv = await repo.createInvoice({
+      client: c,
+      brand,
+      invoice: {
+        invoice_number,
+        order_id: order.order_id,
+        contact_id: order.contact_id,
+        status: "draft",
+        subtotal_ngn: order.subtotal_ngn,
+        discount_amount_ngn: order.discount_amount_ngn,
+        tax_amount_ngn: order.tax_amount_ngn,
+        wht_rate: 0,
+        wht_amount_ngn: 0,
+        shipping_fee_ngn: order.shipping_fee_ngn,
+        total_ngn: order.total_ngn,
+        display_currency: displayCurrency,
+        display_subtotal: toCurrencyString(displaySubtotal),
+        display_total: toCurrencyString(displayTotal),
+        fx_rate_used: fxRate,
+        issue_date: todayISO(),
+        // A proforma's due date is really "whenever the order's own payment
+        // is due" — it never triggers reminders on its own (those only ever
+        // get scheduled from send(), which a system-raised draft never
+        // calls), so this is a display date on the PDF, not a chase clock.
+        due_date: addDays(todayISO(), 7).slice(0, 10),
+        payment_terms: "Payable via the secure link on this invoice",
+      },
+    });
+    for (const l of order.lines || []) {
+      await repo.insertLine({
+        client: c,
+        brand,
+        line: {
+          invoice_id: inv.invoice_id,
+          sales_order_line_id: l.line_id,
+          product_id: l.product_id,
+          variant_id: l.variant_id,
+          description:
+            [l.product_name_snapshot, l.variant_label_snapshot]
+              .filter(Boolean)
+              .join(" — ") || l.product_name_snapshot,
+          sku_snapshot: l.sku_snapshot,
+          quantity: l.quantity,
+          unit_price_ngn: l.unit_price_ngn,
+          line_discount_ngn: l.line_discount_ngn,
+          tax_rate: l.tax_rate,
+          tax_amount_ngn: l.tax_amount_ngn,
+          line_total_ngn: l.line_total_ngn,
+          display_order: l.display_order,
+        },
+      });
+    }
+    await A(
+      brand,
+      user_id,
+      "invoicing.invoice.auto_create_draft",
+      "invoice",
+      inv.invoice_id,
+      { invoice_number, order_id: order.order_id },
+      null,
+    );
+    events.emit("invoice.created", {
+      brand,
+      invoice_id: inv.invoice_id,
+      order_id: order.order_id,
+    });
+    return repo.findById({ client: c, brand, id: inv.invoice_id });
+  };
+  return client ? run(client) : transaction(run);
+}
+
 async function createManual({ brand, user, request_id, input }) {
   return transaction(async (client) => {
     let subtotal = money(0),
@@ -339,6 +532,11 @@ async function getById({ brand, id }) {
   const inv = await repo.findById({ brand, id });
   if (!inv) throw new NotFoundError("Invoice");
   return inv;
+}
+/** The invoice raised for a sales order, if any — null for an order that has
+ *  none (pre-feature legacy order, or the draft-creation step never ran). */
+function findByOrderId({ brand, order_id }) {
+  return repo.findByOrderId({ brand, order_id });
 }
 async function send({ brand, user, request_id, id, input = {} }) {
   const inv = await repo.findById({ brand, id });
@@ -551,6 +749,11 @@ function buildInvoiceDoc({ invoice, brandObj, copy }) {
     notes_label: invoice.is_preorder ? "Pre-order" : noteLabel,
     notes: docCopy.fillTokens(preorderNote + (noteText || ""), tokens),
     thanks: docCopy.fillTokens(c.message, tokens),
+    // A proforma (or any invoice still owing) carries its order's own
+    // permanent "pay any amount, anytime" link right on the document — the
+    // same link every other checkout confirmation already uses. Never shown
+    // once paid: nothing left to pay.
+    pay_url: !paid ? invoice.pay_url || null : null,
   };
 }
 
@@ -562,6 +765,10 @@ async function _renderInvoicePdf({ brand, user, id }) {
     emailRender.resolveBrandTokens(brand),
     docCopy.resolveCopy(brand),
   ]);
+  if (full.public_tracking_token) {
+    const brandUrls = require("../../utils/brand-urls");
+    full.pay_url = await brandUrls.payLinkUrl(brand, full.public_tracking_token);
+  }
   const brandObj = brandDocs.brandFromTokens(tokens);
   const html = brandDocs.invoiceHtml(
     brandObj,
@@ -1331,9 +1538,11 @@ async function updateDocumentSettings({ brand, user, request_id, input }) {
 module.exports = {
   buildInvoiceAccrualLines,
   createFromOrder,
+  createDraftFromOrder,
   createManual,
   listInvoices,
   getById,
+  findByOrderId,
   send,
   recordPayment,
   voidInvoice,

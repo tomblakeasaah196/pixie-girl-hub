@@ -1343,11 +1343,27 @@ async function markLinesPreorder({ client, brand, line_ids }) {
   );
 }
 
+// Rewig adjacency (000088): re-point an already-inserted line onto the donor
+// base's variant/product after a successful sibling-stock reservation, so
+// everything downstream (deduction on payment, release on cancel, the
+// order's own display) reads the SAME physical item that was actually
+// reserved — never the origin size's variant, which never got the units.
+// The customer-facing snapshot (name/label/SKU/price) is untouched: same
+// styling job, no separate SKU from the buyer's point of view.
+async function repointLineVariant({ client, brand, line_id, variant_id, product_id }) {
+  await ex(client)(
+    `UPDATE ${t(brand, "sales_order_lines")}
+        SET variant_id = $1, product_id = $2 WHERE line_id = $3`,
+    [variant_id, product_id, line_id],
+  );
+}
+
 module.exports = {
   getPreorderPolicy,
   excludedPreorderProductIds,
   markOrderPreorder,
   markLinesPreorder,
+  repointLineVariant,
   updateOrderHeader,
   listDiscounts,
   nextNumber,

@@ -366,8 +366,13 @@ export function QuickSaleForm() {
         return;
       }
       addResolvedLines(lines);
-    } catch {
-      fireToast("Error", "Failed to add product", "order", "high");
+    } catch (err) {
+      fireToast(
+        "Error",
+        err instanceof Error ? err.message : "Failed to add product",
+        "order",
+        "high",
+      );
     }
   };
 

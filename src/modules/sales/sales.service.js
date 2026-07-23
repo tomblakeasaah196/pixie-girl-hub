@@ -31,6 +31,8 @@ const docCopy = require("../../services/document-copy");
 const emailRender = require("../email_campaigns/email-render");
 const stockService = require("../stock/stock.service");
 const stockRepo = require("../stock/stock.repo");
+const rewigService = require("../catalogue/rewig.service");
+const styledRepo = require("../catalogue/styled.repo");
 const businessConfig = require("../business_setup/business-config.repo");
 const paymentSettings = require("./payment-settings.service");
 const salesReportExport = require("./sales-report.export");
@@ -66,6 +68,21 @@ const {
   settlementAccountForProvider,
 } = require("../accounting/posting-map");
 const salesPostings = require("./sales.postings");
+
+// The active default variant for a base product — same tie-break every
+// rewig-aware checkout path uses (storefront, sales-campaigns, WhatsApp
+// order-links): explicit default first, then lowest display_order.
+async function defaultVariantId({ brand, product_id }) {
+  if (!product_id) return null;
+  const { rows } = await query(
+    `SELECT variant_id FROM ${brand}.product_variants
+      WHERE product_id = $1 AND is_active = true
+      ORDER BY is_default DESC, display_order ASC, created_at ASC
+      LIMIT 1`,
+    [product_id],
+  );
+  return rows[0] ? rows[0].variant_id : null;
+}
 
 async function createOrder({ brand, user, request_id, input }) {
   // Idempotency (H-9): a double-submitted public checkout must not create two
@@ -841,6 +858,81 @@ async function createOrderTx({ brand, user, request_id, input }) {
         } catch (err) {
           await client.query("ROLLBACK TO SAVEPOINT pgh_reserve");
           await client.query("RELEASE SAVEPOINT pgh_reserve").catch(() => {});
+
+          // Rewig adjacency (000088): before giving up to pre-order, try a
+          // size-adjacent sibling base — the same fallback the storefront,
+          // sales-campaign and WhatsApp order-link checkouts already get
+          // (catalogue/rewig.service, shared decision). Quick Sale and
+          // Quotations resolve their variant_id client-side with no stock
+          // awareness, so this is the one place in that path that can still
+          // catch a genuinely-adjacent-in-stock situation before it becomes
+          // a needless pre-order.
+          let rewigged = false;
+          try {
+            const originProductId = line.product_id;
+            const styled = line.styled_id
+              ? await styledRepo.getById({ client, brand, id: line.styled_id })
+              : null;
+            const donorProductId = await rewigService.pickRewigDonorProductId({
+              brand,
+              styled,
+              originProductId,
+              quantity: line.quantity,
+            });
+            const donorVariantId = donorProductId
+              ? await defaultVariantId({ brand, product_id: donorProductId })
+              : null;
+            if (donorVariantId) {
+              await client.query("SAVEPOINT pgh_reserve_rewig");
+              try {
+                await stockService.reserveForOrder({
+                  client,
+                  brand,
+                  variant_id: donorVariantId,
+                  location_id: loc.location_id,
+                  quantity: line.quantity,
+                  reference_id: order.order_id,
+                  user_id: user.user_id,
+                });
+                await client.query("RELEASE SAVEPOINT pgh_reserve_rewig");
+                await repo.repointLineVariant({
+                  client,
+                  brand,
+                  line_id: line.line_id,
+                  variant_id: donorVariantId,
+                  product_id: donorProductId,
+                });
+                line.variant_id = donorVariantId;
+                line.product_id = donorProductId;
+                rewigged = true;
+                logger.info(
+                  {
+                    order_id: order.order_id,
+                    line_id: line.line_id,
+                    origin_product_id: originProductId,
+                    donor_product_id: donorProductId,
+                  },
+                  "stock short — line rewigged to a size-adjacent sibling base",
+                );
+              } catch (rewigErr) {
+                await client.query("ROLLBACK TO SAVEPOINT pgh_reserve_rewig");
+                await client
+                  .query("RELEASE SAVEPOINT pgh_reserve_rewig")
+                  .catch(() => {});
+                logger.info(
+                  { err: rewigErr.message, order_id: order.order_id },
+                  "rewig donor reserve failed — falling back to pre-order",
+                );
+              }
+            }
+          } catch (lookupErr) {
+            logger.info(
+              { err: lookupErr.message, order_id: order.order_id },
+              "rewig donor lookup failed — falling back to pre-order",
+            );
+          }
+          if (rewigged) continue;
+
           if (!preorderAllowed(line)) blockSoldOut(line);
           preorderLines.push(line);
           logger.info(

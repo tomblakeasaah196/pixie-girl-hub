@@ -110,6 +110,8 @@ interface VariantRow {
   price_storefront_ngn: string | number | null;
   price_pos_ngn: string | number | null;
   is_active: boolean;
+  is_default?: boolean;
+  display_order?: number | null;
 }
 interface StyledDetail {
   styled_id: string;
@@ -334,46 +336,49 @@ export interface StyledVariantChoice {
   spec: string;
 }
 
+// The variant a base product's own catalogue setup treats as canonical —
+// mirrors the backend's own tie-break (catalogue.repo.getDefaultVariant):
+// the explicit default first, then lowest display_order. Active only; a
+// soft-deleted or deactivated variant is never a silent substitute.
+function pickDefaultActiveVariant(variants: VariantRow[]): VariantRow | null {
+  const active = variants.filter((v) => v.is_active);
+  if (!active.length) return null;
+  return (
+    active.find((v) => v.is_default) ??
+    [...active].sort(
+      (a, b) => (a.display_order ?? 0) - (b.display_order ?? 0),
+    )[0]
+  );
+}
+
 /**
  * Resolve a STYLED hit into a sellable line once the operator has chosen a
  * head size / lace / colour combination (or the product has no matrix at
  * all, in which case `pick` carries all-null fields + the anchor price —
- * see StyledVariantPicker's auto-confirm). Mirrors the base-variant
- * resolution every other styled checkout already uses (the storefront cart
- * and the order-link resolver): stock always sells through a BASE variant —
- * the picked combo's OWN base when it has one, else the styled product's
- * pinned seed variant, else the seed base's default variant.
+ * see StyledVariantPicker's auto-confirm).
+ *
+ * Every styled_variants row is cut from its OWN base product (a size-adjacent
+ * combo is very often a DIFFERENT physical base than the styled listing's own
+ * seed — see docs on StyledPick.base_product_id / "Auto-map each size to its
+ * own base"). So once the operator has picked a combo, stock MUST resolve
+ * strictly within that combo's own base — never fall back to the styled
+ * product's seed variant, which belongs to a different size/colour/lace and
+ * would silently reserve (or pre-order) the wrong stock item. If that base
+ * genuinely has no active variant configured, that's surfaced as an error
+ * rather than papered over.
  */
 export async function resolveStyledPick(
   hit: ProductHit,
   pick: StyledVariantChoice,
 ): Promise<ResolvedPick> {
   const sp = await api.get<StyledDetail>(`/catalogue/styled-products/${hit.id}`);
-  let variantId: string | null = null;
-  let sku = pick.sku || sp.styled_code;
-  if (pick.base_product_id && pick.base_product_id !== sp.base_product_id) {
-    const variants = await api.get<VariantRow[]>(
-      `/catalogue/products/${pick.base_product_id}/variants`,
-    );
-    const match = variants.find((v) => v.is_active) ?? variants[0];
-    variantId = match?.variant_id ?? null;
-  }
-  if (!variantId) variantId = sp.base_variant_id;
-  if (!variantId) {
-    const variants = await api.get<VariantRow[]>(
-      `/catalogue/products/${sp.base_product_id}/variants`,
-    );
-    const match = variants.find((v) => v.is_active) ?? variants[0];
-    variantId = match?.variant_id ?? null;
-    if (!pick.sku) sku = match?.sku ?? sp.styled_code;
-  }
-  if (!variantId) return { lines: [] };
   const spec = pick.spec || "";
-  return {
+  const label = spec ? `${sp.name} — ${spec}` : sp.name;
+  const line = (variant_id: string, sku: string): ResolvedPick => ({
     lines: [
       {
-        variant_id: variantId,
-        label: spec ? `${sp.name} — ${spec}` : sp.name,
+        variant_id,
+        label,
         sku,
         unit_price: pick.price != null ? pick.price : num(sp.retail_price_ngn),
         quantity: 1,
@@ -382,5 +387,36 @@ export async function resolveStyledPick(
         variant_label_snapshot: spec || undefined,
       },
     ],
-  };
+  });
+
+  if (pick.base_product_id) {
+    // The picked combo's base happens to BE the styled listing's own seed —
+    // honour the listing's deliberately pinned base_variant_id (it may not
+    // be the base's "default" variant; it was chosen on purpose) before
+    // falling back to that base's own default variant.
+    if (pick.base_product_id === sp.base_product_id && sp.base_variant_id) {
+      return line(sp.base_variant_id, pick.sku || sp.styled_code);
+    }
+    const variants = await api.get<VariantRow[]>(
+      `/catalogue/products/${pick.base_product_id}/variants`,
+    );
+    const match = pickDefaultActiveVariant(variants);
+    if (!match) {
+      throw new Error(
+        `${sp.name}${spec ? ` — ${spec}` : ""} has no stock variant on its base yet — add one in Catalogue before selling this combination.`,
+      );
+    }
+    return line(match.variant_id, pick.sku || match.sku);
+  }
+
+  // No matrix combo was picked at all (a matrix-less styled product) — sell
+  // through the styled product's own seed base, exactly as before this
+  // feature existed.
+  if (sp.base_variant_id) return line(sp.base_variant_id, pick.sku || sp.styled_code);
+  const variants = await api.get<VariantRow[]>(
+    `/catalogue/products/${sp.base_product_id}/variants`,
+  );
+  const match = variants.find((v) => v.is_active) ?? variants[0];
+  if (!match) return { lines: [] };
+  return line(match.variant_id, pick.sku || match.sku);
 }

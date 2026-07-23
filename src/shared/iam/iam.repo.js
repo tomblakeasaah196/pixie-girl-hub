@@ -38,6 +38,7 @@ async function getSecurityStats(business) {
     `SELECT COUNT(*)::int AS count
        FROM shared.users u
       WHERE u.status = 'active'
+        AND u.deleted_at IS NULL
         AND ($1 = ANY(u.permitted_businesses) OR u.is_ceo = true)
         AND (u.last_login_at IS NULL OR u.last_login_at < now() - interval '90 days')`,
     [business],
@@ -47,7 +48,8 @@ async function getSecurityStats(business) {
   const lockedQ = query(
     `SELECT COUNT(*)::int AS count
        FROM shared.users
-      WHERE status = 'locked'`,
+      WHERE status = 'locked'
+        AND deleted_at IS NULL`,
   );
 
   // Pending staff invitations
@@ -62,6 +64,7 @@ async function getSecurityStats(business) {
     `SELECT COUNT(*)::int AS count
        FROM shared.users
       WHERE status = 'active'
+        AND deleted_at IS NULL
         AND (totp_enabled = false OR totp_enabled IS NULL)`,
   );
 
@@ -69,7 +72,8 @@ async function getSecurityStats(business) {
   const totalUsersQ = query(
     `SELECT COUNT(*)::int AS count
        FROM shared.users
-      WHERE status = 'active'`,
+      WHERE status = 'active'
+        AND deleted_at IS NULL`,
   );
 
   // Active sessions
@@ -148,6 +152,9 @@ async function listUsers({
   where.push(`($${i} = ANY(u.permitted_businesses) OR u.is_ceo = true)`);
   params.push(business);
   i++;
+
+  // Trashed users live only in the Trash view, never the active list.
+  where.push("u.deleted_at IS NULL");
 
   if (search) {
     where.push(
@@ -362,12 +369,279 @@ async function findUserById(userId) {
     `SELECT user_id, email, display_name, password_hash, status,
             is_ceo, permitted_businesses, default_business_key,
             COALESCE(totp_enabled, false) AS totp_enabled,
-            totp_secret_enc, profile_type
+            totp_secret_enc, profile_type, staff_profile_id, deleted_at
        FROM shared.users
       WHERE user_id = $1`,
     [userId],
   );
   return rows[0] || null;
+}
+
+// ── Email change ────────────────────────────────────────────
+
+/** Update a login's email. `email` is CITEXT UNIQUE, so a collision surfaces
+ *  as a 23505 the service translates into a friendly ConflictError. */
+async function updateEmail(client, userId, email) {
+  const run = client ? client.query.bind(client) : query;
+  const { rows } = await run(
+    `UPDATE shared.users
+        SET email = $2, updated_at = now()
+      WHERE user_id = $1 AND deleted_at IS NULL
+     RETURNING user_id, email, display_name, status, profile_type`,
+    [userId, email],
+  );
+  return rows[0] || null;
+}
+
+// ── Trash (soft delete) / restore ───────────────────────────
+
+/** The identity chain (login → staff profile → contact) plus the fields the
+ *  trash guards need, regardless of trashed state. */
+async function getPersonForTrash(userId) {
+  const { rows } = await query(
+    `SELECT u.user_id, u.email, u.status, u.is_ceo, u.deleted_at,
+            u.profile_type, u.staff_profile_id,
+            COALESCE(u.display_name, c.display_name, u.email) AS display_name,
+            sp.contact_id
+       FROM shared.users u
+       LEFT JOIN shared.staff_profiles sp ON sp.profile_id = u.staff_profile_id
+       LEFT JOIN shared.contacts c ON c.contact_id = sp.contact_id
+      WHERE u.user_id = $1`,
+    [userId],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Move a person to the Trash. Disables + stamps the login, drops tracked
+ * sessions, and — when the account is a staff member — soft-deletes the
+ * linked staff profile and contact so the person vanishes from HR, Payroll,
+ * Performance and Contacts (all of which already filter is_deleted = false).
+ */
+async function trashUser(client, { userId, deletedBy, reason }) {
+  const { rows } = await client.query(
+    `UPDATE shared.users
+        SET deleted_at = now(), deleted_by = $2, deletion_reason = $3,
+            status = 'disabled', updated_at = now()
+      WHERE user_id = $1 AND deleted_at IS NULL
+     RETURNING user_id, email, status, staff_profile_id`,
+    [userId, deletedBy, reason || null],
+  );
+  const user = rows[0] || null;
+  if (!user) return null;
+
+  await client.query(`DELETE FROM shared.user_sessions WHERE user_id = $1`, [
+    userId,
+  ]);
+
+  if (user.staff_profile_id) {
+    const { rows: sp } = await client.query(
+      `UPDATE shared.staff_profiles
+          SET is_deleted = true, deleted_at = now(),
+              deleted_by = $2, deletion_reason = $3
+        WHERE profile_id = $1 AND is_deleted = false
+       RETURNING contact_id`,
+      [user.staff_profile_id, deletedBy, reason || null],
+    );
+    const contactId = sp[0] && sp[0].contact_id;
+    if (contactId) {
+      await client.query(
+        `UPDATE shared.contacts
+            SET is_deleted = true, deleted_at = now()
+          WHERE contact_id = $1 AND is_deleted = false`,
+        [contactId],
+      );
+    }
+  }
+
+  return user;
+}
+
+/** Reverse trashUser: bring the login, profile and contact back. */
+async function restoreUser(client, userId) {
+  const { rows } = await client.query(
+    `UPDATE shared.users
+        SET deleted_at = NULL, deleted_by = NULL, deletion_reason = NULL,
+            status = 'active', updated_at = now()
+      WHERE user_id = $1 AND deleted_at IS NOT NULL
+     RETURNING user_id, email, status, staff_profile_id`,
+    [userId],
+  );
+  const user = rows[0] || null;
+  if (!user) return null;
+
+  if (user.staff_profile_id) {
+    const { rows: sp } = await client.query(
+      `UPDATE shared.staff_profiles
+          SET is_deleted = false, deleted_at = NULL,
+              deleted_by = NULL, deletion_reason = NULL
+        WHERE profile_id = $1
+       RETURNING contact_id`,
+      [user.staff_profile_id],
+    );
+    const contactId = sp[0] && sp[0].contact_id;
+    if (contactId) {
+      await client.query(
+        `UPDATE shared.contacts
+            SET is_deleted = false, deleted_at = NULL
+          WHERE contact_id = $1`,
+        [contactId],
+      );
+    }
+  }
+
+  return user;
+}
+
+async function listTrashedUsers({ business, page = 1, limit = 25 }) {
+  const offset = (page - 1) * limit;
+  const params = [business];
+
+  const where = `WHERE u.deleted_at IS NOT NULL
+        AND ($1 = ANY(u.permitted_businesses) OR u.is_ceo = true)`;
+
+  const countQ = query(
+    `SELECT count(*)::int AS total FROM shared.users u ${where}`,
+    params,
+  );
+  const dataQ = query(
+    `SELECT u.user_id, u.email,
+            COALESCE(u.display_name, c.display_name, u.email) AS display_name,
+            u.profile_type, u.external_label, u.status,
+            u.staff_profile_id, sp.contact_id,
+            u.deleted_at, u.deletion_reason, u.deleted_by,
+            COALESCE(du.display_name, du.email) AS deleted_by_name
+       FROM shared.users u
+       LEFT JOIN shared.staff_profiles sp ON sp.profile_id = u.staff_profile_id
+       LEFT JOIN shared.contacts c ON c.contact_id = sp.contact_id
+       LEFT JOIN shared.users du ON du.user_id = u.deleted_by
+       ${where}
+      ORDER BY u.deleted_at DESC
+      LIMIT $2 OFFSET $3`,
+    [...params, limit, offset],
+  );
+  const [countRes, dataRes] = await Promise.all([countQ, dataQ]);
+  return { rows: dataRes.rows, total: countRes.rows[0].total };
+}
+
+/** A trashed user with the identity chain ids needed for purge. */
+async function getTrashedUser(userId) {
+  const { rows } = await query(
+    `SELECT u.user_id, u.email, u.staff_profile_id, sp.contact_id,
+            COALESCE(u.display_name, c.display_name, u.email) AS display_name
+       FROM shared.users u
+       LEFT JOIN shared.staff_profiles sp ON sp.profile_id = u.staff_profile_id
+       LEFT JOIN shared.contacts c ON c.contact_id = sp.contact_id
+      WHERE u.user_id = $1 AND u.deleted_at IS NOT NULL`,
+    [userId],
+  );
+  return rows[0] || null;
+}
+
+// ── Reference scan (purge guard) ────────────────────────────
+//
+// Every real foreign key that points at this person's identity keys is a
+// "connected table". The person's own auth/identity rows (sessions, tokens,
+// role grants, and the login→profile→contact self-links) are excluded because
+// they belong to the account and are removed by the purge itself. If anything
+// survives that filter the person is genuinely referenced and must stay in the
+// Trash; only a person with zero surviving references can be purged for good.
+
+// Fully-qualified child columns that belong to the account itself.
+const SELF_REF_SKIP = new Set([
+  "shared.user_sessions.user_id",
+  "shared.refresh_tokens.user_id",
+  "shared.user_roles.user_id",
+  "shared.users.staff_profile_id", // login → own profile
+  "shared.staff_profiles.contact_id", // profile → own contact
+]);
+
+async function foreignKeysToPerson() {
+  const { rows } = await query(
+    `SELECT ns.nspname   AS child_schema,
+            cl.relname   AS child_table,
+            att.attname  AS child_column,
+            pcl.relname  AS parent_table,
+            patt.attname AS parent_column
+       FROM pg_constraint con
+       JOIN pg_class cl        ON cl.oid = con.conrelid
+       JOIN pg_namespace ns    ON ns.oid = cl.relnamespace
+       JOIN pg_class pcl       ON pcl.oid = con.confrelid
+       JOIN pg_namespace pns   ON pns.oid = pcl.relnamespace
+       JOIN unnest(con.conkey)  WITH ORDINALITY AS ck(attnum, ord)  ON true
+       JOIN unnest(con.confkey) WITH ORDINALITY AS cfk(attnum, ord2)
+             ON ck.ord = cfk.ord2
+       JOIN pg_attribute att  ON att.attrelid = con.conrelid  AND att.attnum = ck.attnum
+       JOIN pg_attribute patt ON patt.attrelid = con.confrelid AND patt.attnum = cfk.attnum
+      WHERE con.contype = 'f'
+        AND pns.nspname = 'shared'
+        AND (
+          (pcl.relname = 'users'          AND patt.attname = 'user_id') OR
+          (pcl.relname = 'staff_profiles' AND patt.attname = 'profile_id') OR
+          (pcl.relname = 'contacts'       AND patt.attname = 'contact_id')
+        )`,
+  );
+  return rows;
+}
+
+/**
+ * Return the list of tables that still reference this person (excluding the
+ * account's own auth/identity rows). An empty array means the person can be
+ * permanently purged.
+ */
+async function listReferencesToPerson({ userId, profileId, contactId }) {
+  const fks = await foreignKeysToPerson();
+
+  const keyParam = { users: "$1", staff_profiles: "$2", contacts: "$3" };
+  const selects = [];
+  for (const fk of fks) {
+    const fq = `${fk.child_schema}.${fk.child_table}.${fk.child_column}`;
+    if (SELF_REF_SKIP.has(fq)) continue;
+    const param = keyParam[fk.parent_table];
+    if (!param) continue;
+    selects.push(
+      `SELECT '${fk.child_schema}.${fk.child_table}' AS ref_table,
+              '${fk.child_column}' AS ref_column,
+              EXISTS(SELECT 1 FROM "${fk.child_schema}"."${fk.child_table}"
+                      WHERE "${fk.child_column}" = ${param}) AS present`,
+    );
+  }
+  if (selects.length === 0) return [];
+
+  // Anchor row: references $1/$2/$3 so the bound parameter count is always 3,
+  // even if no generated branch happens to use $2 or $3. Always filtered out.
+  const anchor = `SELECT NULL::text AS ref_table, NULL::text AS ref_column,
+              ($1 IS NULL AND $2 IS NULL AND $3 IS NULL AND false) AS present`;
+
+  const { rows } = await query(
+    `SELECT ref_table, ref_column FROM (
+       ${[anchor, ...selects].join("\n       UNION ALL\n       ")}
+     ) t WHERE present = true
+     ORDER BY ref_table, ref_column`,
+    [userId, profileId || null, contactId || null],
+  );
+  return rows;
+}
+
+/**
+ * Permanently delete the person. Runs after the reference scan has confirmed
+ * nothing points at them. Order matters: the login first (cascades sessions,
+ * role grants and refresh tokens), then the staff profile, then the contact.
+ * Wrapped by the caller's transaction, so any unexpected FK still aborts.
+ */
+async function purgeUser(client, { userId, profileId, contactId }) {
+  await client.query(`DELETE FROM shared.users WHERE user_id = $1`, [userId]);
+  if (profileId) {
+    await client.query(
+      `DELETE FROM shared.staff_profiles WHERE profile_id = $1`,
+      [profileId],
+    );
+  }
+  if (contactId) {
+    await client.query(`DELETE FROM shared.contacts WHERE contact_id = $1`, [
+      contactId,
+    ]);
+  }
 }
 
 // ── Sessions ────────────────────────────────────────────────
@@ -672,6 +946,7 @@ async function snapshotActiveUsers(client, business) {
        LEFT JOIN shared.user_roles ur ON ur.user_id = u.user_id
        LEFT JOIN shared.roles r ON r.role_id = ur.role_id
       WHERE u.status = 'active'
+        AND u.deleted_at IS NULL
         AND ($1 = ANY(u.permitted_businesses) OR u.is_ceo = true)
       ORDER BY u.email`,
     [business],
@@ -952,6 +1227,15 @@ module.exports = {
   updateUserStatus,
   findUserById,
   updatePassword,
+  updateEmail,
+  // Trash / restore / purge
+  getPersonForTrash,
+  trashUser,
+  restoreUser,
+  listTrashedUsers,
+  getTrashedUser,
+  listReferencesToPerson,
+  purgeUser,
   // Sessions
   createSession,
   listSessions,

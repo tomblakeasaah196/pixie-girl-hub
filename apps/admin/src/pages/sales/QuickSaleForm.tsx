@@ -88,6 +88,20 @@ const CURRENCY_OPTIONS = [
 
 const ngn = (v: number) => `₦${v.toLocaleString()}`;
 
+/**
+ * Make a backend-issued onboarding link absolute. When no storefront/admin
+ * domain is configured the backend returns a bare path (e.g.
+ * `/welcome/faitlynhair/<token>`), which a phone camera can't resolve when
+ * scanned from a QR code — there's no browser origin to fall back on. The
+ * `/welcome` route is served by this admin SPA, so the current origin is a
+ * correct, always-available host. An already-absolute URL passes through
+ * unchanged. (Same fix as OnlineQR.tsx's helper.)
+ */
+function toAbsoluteUrl(url: string): string {
+  if (!url || /^https?:\/\//i.test(url)) return url;
+  return `${window.location.origin}/${url.replace(/^\/+/, "")}`;
+}
+
 export function QuickSaleForm() {
   const createOrder = useCreateOrder();
   const [step, setStep] = useState(1);
@@ -592,7 +606,7 @@ export function QuickSaleForm() {
                         business: activeBiz ?? "pixiegirl",
                         source: "walkin",
                       });
-                      setCaptureUrl(res.url);
+                      setCaptureUrl(toAbsoluteUrl(res.url));
                       setShowQr(true);
                     } catch {
                       fireToast(
@@ -612,10 +626,13 @@ export function QuickSaleForm() {
               </div>
               {showQr && captureUrl && (
                 <div className="p-4 rounded-[11px] bg-text-primary/[0.03] border border-line text-center">
-                  <p className="text-[12px] text-text-muted mb-2">
+                  <p className="text-[12px] text-text-muted mb-3">
                     Share the order capture link — customer fills their details
                     and is auto-selected.
                   </p>
+                  <div className="inline-block bg-white p-3 rounded-[14px] mb-3">
+                    <QRCodeSVG value={captureUrl} size={160} level="M" />
+                  </div>
                   <div className="flex items-center gap-2 justify-center">
                     <code className="text-[11px] text-text-faint font-mono break-all">
                       {captureUrl}

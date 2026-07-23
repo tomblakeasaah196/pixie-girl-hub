@@ -62,6 +62,13 @@ export interface BaseProduct {
   production_lead_days: number | null;
   primary_image_url?: string | null;
   is_deleted?: boolean;
+  // Rewig adjacency (000088): this base's own tier + sibling family group.
+  // Normally set by the backfill/auto-map flow, not hand-edited.
+  size_code?: string | null;
+  base_family_id?: string | null;
+  // Per-base opt-out from ever donating/receiving a rewig substitution.
+  // Default true — every base is eligible out of the box.
+  rewig_eligible?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -151,6 +158,9 @@ export interface StyledProduct {
   primary_image_url?: string | null;
   // "Shop by shade" membership (NULL = unshaded). Set via the Shades tab.
   shade_id?: string | null;
+  // Rewig adjacency (000088): override the brand-wide rewig_mode for just this
+  // listing. NULL = follow the brand mode; 'enabled'/'disabled' always win.
+  rewig_override?: "enabled" | "disabled" | null;
   // AI provenance (P0-8).
   ai_drafted?: boolean;
   ai_model?: string | null;
@@ -304,6 +314,16 @@ export interface CatalogueConfig {
   preorder_enabled: boolean;
   preorder_min_weeks: number;
   preorder_max_weeks: number;
+  // Rewig adjacency (000088): a base one size up/down may fill an order when
+  // its own size is short — same styling job, no separate service.
+  rewig_enabled: boolean;
+  /** 'automatic' = every listing gets the fallback unless explicitly excluded
+   *  (styled_products.rewig_override='disabled'); 'opt_in' = no listing gets
+   *  it unless explicitly included ('enabled'). */
+  rewig_mode: "automatic" | "opt_in";
+  /** Which sibling to draw from first when more than one qualifies. Never
+   *  changes the total reported count — only reservation order. */
+  rewig_direction: "down_first" | "up_first" | "no_preference";
 }
 export interface SizeConfig {
   tiers: SizeTier[];
@@ -1625,6 +1645,9 @@ export interface SaveSizeConfigInput {
   preorder_enabled?: boolean;
   preorder_min_weeks?: number;
   preorder_max_weeks?: number;
+  rewig_enabled?: boolean;
+  rewig_mode?: "automatic" | "opt_in";
+  rewig_direction?: "down_first" | "up_first" | "no_preference";
 }
 
 /** Convenience: may base products be added to collections + bundles? Defaults to

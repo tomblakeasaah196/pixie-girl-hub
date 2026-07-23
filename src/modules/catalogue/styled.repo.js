@@ -54,6 +54,9 @@ const STYLED_COLS = [
   "primary_image_id",
   // "Shop by shade" section membership (NULL = unshaded). One shade per listing.
   "shade_id",
+  // Rewig adjacency (000088): override the brand-wide rewig_mode for THIS
+  // listing only. NULL = follow the brand mode; 'enabled'/'disabled' always win.
+  "rewig_override",
 ];
 
 function insert(cols, src, extra = {}) {

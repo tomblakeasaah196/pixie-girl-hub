@@ -156,7 +156,10 @@ async function saveSizeConfig({ brand, user, request_id, input }) {
       input.allow_base_in_collections_bundles !== undefined ||
       input.preorder_enabled !== undefined ||
       input.preorder_min_weeks !== undefined ||
-      input.preorder_max_weeks !== undefined
+      input.preorder_max_weeks !== undefined ||
+      input.rewig_enabled !== undefined ||
+      input.rewig_mode !== undefined ||
+      input.rewig_direction !== undefined
     ) {
       // Only forward keys the caller explicitly set so the repo's
       // "deliberate NULL clears the field" guard for head_size_video_url
@@ -170,6 +173,9 @@ async function saveSizeConfig({ brand, user, request_id, input }) {
         preorder_enabled: input.preorder_enabled,
         preorder_min_weeks: input.preorder_min_weeks,
         preorder_max_weeks: input.preorder_max_weeks,
+        rewig_enabled: input.rewig_enabled,
+        rewig_mode: input.rewig_mode,
+        rewig_direction: input.rewig_direction,
       };
       if (input.head_size_video_url !== undefined) {
         patch.head_size_video_url = input.head_size_video_url;

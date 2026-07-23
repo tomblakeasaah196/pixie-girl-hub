@@ -11,6 +11,7 @@ import {
   Undo2,
   X,
   AlertTriangle,
+  Scissors,
 } from "lucide-react";
 import { Button, Card } from "@/components/ui/primitives";
 import { Toggle, NumberField, ErrorState, Select } from "@/components/ui/controls";
@@ -54,6 +55,13 @@ export function CatalogueSettingsTab() {
     <div className="space-y-5">
       {/* Pre-orders */}
       <PreorderCard
+        config={cfg.data?.config ?? null}
+        loading={cfg.isLoading}
+        canEdit={canEdit}
+      />
+
+      {/* Rewig adjacency */}
+      <RewigCard
         config={cfg.data?.config ?? null}
         loading={cfg.isLoading}
         canEdit={canEdit}
@@ -221,6 +229,91 @@ function PreorderCard({
               Max weeks must be at least the min.
             </p>
           )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/** Rewig adjacency — a base one size up/down may fill an order when its own
+ *  size is short (e.g. a Medium base cut down for a Small, or built up for a
+ *  Large — never further). Same styling job, no separate service or SKU.
+ *  Master switch + mode (automatic for every listing vs. opt-in per listing)
+ *  + which sibling to draw from first when more than one qualifies — all
+ *  editable here so the behaviour can be retuned without a code change. */
+function RewigCard({
+  config,
+  loading,
+  canEdit,
+}: {
+  config: CatalogueConfig | null;
+  loading: boolean;
+  canEdit: boolean;
+}) {
+  const save = useSaveSizeConfig();
+  const enabled = config?.rewig_enabled ?? true;
+  const mode = config?.rewig_mode ?? "automatic";
+  const direction = config?.rewig_direction ?? "down_first";
+
+  return (
+    <Card className="p-5">
+      <div className="flex items-start gap-3">
+        <div className="grid place-items-center w-10 h-10 rounded-[11px] bg-accent/10 text-accent-glow shrink-0">
+          <Scissors className="w-5 h-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="text-[15px] font-semibold">Rewig adjacency</h3>
+          <p className="text-[12.5px] text-text-muted mt-0.5">
+            {enabled
+              ? "ON — when a size's own base runs out, a base one size up or down (never further) can fill the order. It's the same styling job, no separate service."
+              : "OFF — every variant reads only its own base's stock; a size with no direct stock shows made-to-order even if an adjacent size has units."}
+          </p>
+        </div>
+        <Toggle
+          checked={enabled}
+          disabled={!canEdit || save.isPending || loading}
+          onChange={(v) => save.mutate({ rewig_enabled: v })}
+          label={enabled ? "On" : "Off"}
+        />
+      </div>
+
+      {enabled && (
+        <div className="mt-4 pt-4 border-t border-line grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Field label="Applies to">
+            <Select
+              value={mode}
+              disabled={!canEdit || save.isPending}
+              onChange={(v) =>
+                save.mutate({ rewig_mode: v as "automatic" | "opt_in" })
+              }
+              options={[
+                { value: "automatic", label: "Every listing (automatic)" },
+                {
+                  value: "opt_in",
+                  label: "Only listings switched on (opt-in)",
+                },
+              ]}
+            />
+          </Field>
+          <Field label="Draw from first">
+            <Select
+              value={direction}
+              disabled={!canEdit || save.isPending}
+              onChange={(v) =>
+                save.mutate({
+                  rewig_direction: v as
+                    | "down_first"
+                    | "up_first"
+                    | "no_preference",
+                })
+              }
+              options={[
+                { value: "down_first", label: "The size above (cut down)" },
+                { value: "up_first", label: "The size below (built up)" },
+                { value: "no_preference", label: "Whichever has more stock" },
+              ]}
+            />
+          </Field>
         </div>
       )}
     </Card>

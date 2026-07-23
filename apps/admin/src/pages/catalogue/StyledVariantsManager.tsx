@@ -18,6 +18,7 @@ import {
   Toggle,
   MultiSelect,
   ConfirmDialog,
+  Select,
 } from "@/components/ui/controls";
 import {
   useStyledProduct,
@@ -573,6 +574,10 @@ function VariantsCard({
 }) {
   const sizeCfg = useSizeConfig();
   const bulk = useBulkCreateVariants(styledId);
+  const styled = useStyledProduct(styledId);
+  const setStyled = useUpdateStyled(styledId);
+  const rewigOverride = styled.data?.rewig_override ?? "";
+  const rewigMode = sizeCfg.data?.config?.rewig_mode ?? "automatic";
   const tiers = (sizeCfg.data?.tiers ?? []).filter((t) => t.is_active);
   const laceLadder = sizeCfg.data?.lace_sizes ?? [];
   // Label each supported lace code from the brand ladder (falls back to code).
@@ -709,6 +714,31 @@ function VariantsCard({
             <span className="text-[11px] text-text-faint">
               matches “{"{name}"} - Small/Medium/…” bases; falls back to the seed
               base when none exists
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t hairline">
+            <span className="text-[12.5px] shrink-0">Rewig for this listing</span>
+            <Select
+              value={rewigOverride}
+              disabled={!canEdit || setStyled.isPending}
+              onChange={(v) =>
+                setStyled.mutate({
+                  rewig_override: (v || null) as "enabled" | "disabled" | null,
+                })
+              }
+              options={[
+                {
+                  value: "",
+                  label: `Follow brand setting (currently ${rewigMode === "automatic" ? "on for every listing" : "opt-in"})`,
+                },
+                { value: "enabled", label: "Always on for this listing" },
+                { value: "disabled", label: "Always off for this listing" },
+              ]}
+            />
+            <span className="text-[11px] text-text-faint">
+              Only matters when Catalogue → Config → Rewig adjacency is set to
+              opt-in — otherwise every listing already gets it.
             </span>
           </div>
 

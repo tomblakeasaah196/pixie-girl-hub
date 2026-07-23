@@ -105,6 +105,59 @@ function reduceBundleAvailability(parts = []) {
 }
 
 /**
+ * SQL: extra fulfillable stock from REWIG-eligible size-adjacent sibling bases
+ * — one size up or one size down ONLY, never chained further (000088). A
+ * sibling is a base sharing `base_family_id` (same texture/lace/colour, only
+ * size differs) whose `styled_size_tiers.display_order` is exactly ±1 from the
+ * origin base's own tier. Gated by the brand master switch, the brand mode
+ * ('automatic' = on by default, 'opt_in' = off by default) crossed with the
+ * styled product's own `rewig_override` (NULL = follow the brand mode; an
+ * explicit 'enabled'/'disabled' always wins), and each base's own
+ * `rewig_eligible` flag (both the origin AND the donor must be eligible).
+ *
+ * `originExpr` is a SQL expression resolving to the origin base's
+ * products.product_id; `styledAlias` is the in-scope styled_products row
+ * (carries rewig_override). Returns a scalar subquery — safe to add directly
+ * into a SUM(...)/available expression. Direction preference
+ * (catalogue_config.rewig_direction) doesn't affect this total — a rewig
+ * consumes exactly one donor unit per order, so every eligible sibling's
+ * stock genuinely adds to how many of THIS size can be fulfilled; direction
+ * only decides which donor is drawn from first at reservation time.
+ */
+function rewigBonusSql(brand, originExpr, styledAlias) {
+  return `(
+    SELECT COALESCE(SUM(sib_stock.available), 0)::int
+      FROM (
+        SELECT DISTINCT sib.product_id
+          FROM ${t(brand, "products")} origin
+          JOIN ${t(brand, "styled_size_tiers")} ot ON ot.size_code = origin.size_code
+          JOIN ${t(brand, "products")} sib
+            ON sib.base_family_id = origin.base_family_id
+           AND sib.product_id <> origin.product_id
+           AND sib.is_deleted = false
+           AND sib.rewig_eligible = true
+          JOIN ${t(brand, "styled_size_tiers")} st ON st.size_code = sib.size_code
+         WHERE origin.product_id = ${originExpr}
+           AND origin.base_family_id IS NOT NULL
+           AND origin.rewig_eligible = true
+           AND ABS(st.display_order - ot.display_order) = 1
+           AND (SELECT rewig_enabled FROM ${t(brand, "catalogue_config")} WHERE singleton = true) = true
+           AND CASE ${styledAlias}.rewig_override
+                 WHEN 'enabled' THEN true
+                 WHEN 'disabled' THEN false
+                 ELSE (SELECT rewig_mode FROM ${t(brand, "catalogue_config")} WHERE singleton = true) = 'automatic'
+               END
+      ) sibs
+      JOIN LATERAL (
+        SELECT COALESCE(SUM(sl.available), 0)::int AS available
+          FROM ${t(brand, "stock_levels")} sl
+          JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sl.variant_id
+         WHERE pv.product_id = sibs.product_id AND pv.is_active = true
+      ) sib_stock ON true
+  )`;
+}
+
+/**
  * SQL: the two LATERAL joins that resolve a styled product's stock the
  * VARIANT-AWARE way, for a query whose outer styled_products row is aliased
  * `alias`. Every styled colour×size variant carries its own base product
@@ -116,7 +169,9 @@ function reduceBundleAvailability(parts = []) {
  *   - the styled-level base_variant_id pin only applies when the resolved
  *     source IS the seed base (a repointed variant reads its own base whole);
  *   - a styled product with no active variants (a draft mid-setup) falls back
- *     to the seed base, exactly as before.
+ *     to the seed base, exactly as before;
+ *   - each resolved base's own stock is topped up with any REWIG-eligible
+ *     size-adjacent sibling's stock (rewigBonusSql, 000088).
  *
  * Use as: `... FROM styled_products s ${joins} ...` then select `${expr}`.
  * The aliases `vav`/`sav` are reserved by this fragment.
@@ -129,7 +184,8 @@ function styledStockSql(brand, alias = "s") {
                   WHERE v.styled_id = ${alias}.styled_id
                     AND v.is_active = true AND v.is_deleted = false) bases
           CROSS JOIN LATERAL (
-            SELECT COALESCE(SUM(sl.available), 0)::int AS available
+            SELECT COALESCE(SUM(sl.available), 0)::int
+                   + ${rewigBonusSql(brand, "bases.src_product_id", alias)} AS available
               FROM ${t(brand, "stock_levels")} sl
               JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sl.variant_id
              WHERE CASE WHEN ${alias}.base_variant_id IS NOT NULL
@@ -140,7 +196,8 @@ function styledStockSql(brand, alias = "s") {
           ) src
        ) vav ON true
        LEFT JOIN LATERAL (
-         SELECT COALESCE(SUM(sl.available), 0)::int AS available
+         SELECT COALESCE(SUM(sl.available), 0)::int
+                + ${rewigBonusSql(brand, `${alias}.base_product_id`, alias)} AS available
            FROM ${t(brand, "stock_levels")} sl
            JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sl.variant_id
           WHERE CASE WHEN ${alias}.base_variant_id IS NOT NULL
@@ -156,13 +213,14 @@ function styledStockSql(brand, alias = "s") {
 /**
  * SQL: one LATERAL join resolving the stock behind a SINGLE styled variant
  * row (aliased `variantAlias`, its styled_products row aliased `styledAlias`),
- * under the same rules as styledStockSql. Reserves the alias `vstock`;
- * select `vstock.available`.
+ * under the same rules as styledStockSql (including the rewig sibling
+ * top-up). Reserves the alias `vstock`; select `vstock.available`.
  */
 function styledVariantStockSql(brand, variantAlias = "v", styledAlias = "sp") {
   const src = `COALESCE(${variantAlias}.base_product_id, ${styledAlias}.base_product_id)`;
   return `LEFT JOIN LATERAL (
-         SELECT COALESCE(SUM(sl.available), 0)::int AS available
+         SELECT COALESCE(SUM(sl.available), 0)::int
+                + ${rewigBonusSql(brand, src, styledAlias)} AS available
            FROM ${t(brand, "stock_levels")} sl
            JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sl.variant_id
           WHERE CASE WHEN ${styledAlias}.base_variant_id IS NOT NULL
@@ -177,6 +235,7 @@ module.exports = {
   computeAvailability,
   preorderWindowLabel,
   reduceBundleAvailability,
+  rewigBonusSql,
   styledStockSql,
   styledVariantStockSql,
 };

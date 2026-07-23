@@ -305,6 +305,62 @@ async function testGateway({
   return { provider, ...result };
 }
 
+/**
+ * Real end-to-end webhook test (separate from testGateway's in-process
+ * signature roundtrip) — signs a sample payload with the SAVED per-brand key
+ * and posts it to our OWN public webhook URL over the real network path, so
+ * it catches things the in-process check can't: wrong ADMIN_BASE_URL, a
+ * reverse-proxy/firewall blocking the path, raw-body capture breaking, or —
+ * per the bug this ships alongside — a key that was rotated in this UI but
+ * never made it into the running verifier. 200 back proves the deployed
+ * server accepts a genuine Nomba-shaped request RIGHT NOW.
+ */
+async function sendTestWebhook({ brand, user, request_id, provider }) {
+  if (provider !== "nomba")
+    throw new AppError(
+      "NOT_SUPPORTED",
+      "Live webhook test is currently implemented for Nomba only.",
+      422,
+    );
+  const creds = await resolveCredentials({ brand, provider: "nomba" });
+  if (!creds || !creds.webhook_signature_key) {
+    return {
+      ok: false,
+      error:
+        "No webhook signature key is saved for this business. Add it above and save first.",
+    };
+  }
+  const { hubBaseUrl } = require("../../utils/brand-urls");
+  const url = `${hubBaseUrl()}/api/webhooks/nomba`;
+  const result = await nomba.sendTestWebhook({
+    url,
+    webhook_signature_key: creds.webhook_signature_key,
+  });
+
+  await audit({
+    business: brand,
+    user_id: user ? user.user_id : null,
+    action_key: "business_setup.payment_gateway.test_webhook",
+    target_type: "payment_gateway",
+    target_id: null,
+    after: { provider, ok: result.ok, status: result.status },
+    request_id,
+  });
+  return result;
+}
+
+/**
+ * Recent real Nomba webhook deliveries — lets staff see actual traffic
+ * (did Nomba call in, did it verify, did it process) instead of guessing
+ * from an empty reconciliation screen. Not brand-scoped: webhooks carry no
+ * brand at receive time (see webhooks.service.js), so this is the same feed
+ * for both businesses.
+ */
+async function recentWebhookActivity({ provider, limit = 20 }) {
+  const webhooksRepo = require("./webhooks.repo");
+  return webhooksRepo.listRecent({ source: provider, limit });
+}
+
 function maskRow(r) {
   if (!r) return r;
   const { credentials_enc, ...rest } = r;
@@ -404,6 +460,8 @@ module.exports = {
   setRole,
   removeGateway,
   testGateway,
+  sendTestWebhook,
+  recentWebhookActivity,
   resolveCredentials,
   getActiveChain,
 };

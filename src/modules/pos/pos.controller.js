@@ -67,6 +67,12 @@ async function ignore(req, res) {
   res.json({ data: updated });
 }
 
+async function syncNombaLedger(req, res) {
+  const { runNombaLedgerSync } = require("./ledger-sync.service");
+  const result = await runNombaLedgerSync();
+  res.json({ data: result });
+}
+
 module.exports = {
   listPending,
   listUnresolved,
@@ -74,4 +80,5 @@ module.exports = {
   suggestions,
   match,
   ignore,
+  syncNombaLedger,
 };

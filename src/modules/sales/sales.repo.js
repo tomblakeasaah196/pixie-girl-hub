@@ -856,6 +856,25 @@ async function paymentExistsByProviderRef({
   return rows.length > 0;
 }
 
+/**
+ * Same dedup check as paymentExistsByProviderRef but WITHOUT an order_id —
+ * used by the Nomba ledger reconciliation sweep, which sees a raw account
+ * credit and doesn't know which order (if any) it already settled.
+ */
+async function paymentExistsByProviderRefAnyOrder({
+  client,
+  brand,
+  provider_reference,
+}) {
+  if (!provider_reference) return false;
+  const { rows } = await ex(client)(
+    `SELECT 1 FROM ${t(brand, "sales_order_payments")}
+      WHERE provider_reference = $1 LIMIT 1`,
+    [provider_reference],
+  );
+  return rows.length > 0;
+}
+
 // ── Quotations (+ lines) ─────────────────────────────────
 const QUOTE_COLS = [
   "quotation_number",
@@ -1377,6 +1396,7 @@ module.exports = {
   listPayments,
   findReconcilablePosOrders,
   paymentExistsByProviderRef,
+  paymentExistsByProviderRefAnyOrder,
   claimReminderSend,
   createQuotation,
   insertQuotationLine,

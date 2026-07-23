@@ -92,4 +92,29 @@ async function listReplayable({
   return rows;
 }
 
-module.exports = { insertLog, findById, markProcessed, listReplayable };
+/**
+ * Most recent deliveries for a source, newest first — for the Settings →
+ * Payment Gateways "recent webhook activity" panel. Deliberately excludes
+ * the raw payload (may carry card/bank PII) — just the fields staff need to
+ * see whether Nomba is actually calling in and whether it's verifying.
+ */
+async function listRecent({ source, limit = 20 }) {
+  const { rows } = await query(
+    `SELECT webhook_id, source, event_type, external_id, signature_valid,
+            processed, error_message, retry_count, received_at, processed_at
+       FROM shared.webhook_log
+      WHERE source = $1
+      ORDER BY received_at DESC
+      LIMIT $2`,
+    [source, limit],
+  );
+  return rows;
+}
+
+module.exports = {
+  insertLog,
+  findById,
+  markProcessed,
+  listReplayable,
+  listRecent,
+};

@@ -231,10 +231,12 @@ async function listMovements({
     params,
   );
   const { rows } = await run(
-    `SELECT sm.*, pv.sku, pv.variant_name, p.name AS product_name
+    `SELECT sm.*, pv.sku, pv.variant_name, p.name AS product_name,
+            COALESCE(u.display_name, u.email) AS performed_by_name
        FROM ${t(brand, "stock_movements")} sm
        LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sm.variant_id
        LEFT JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
+       LEFT JOIN shared.users u ON u.user_id = sm.performed_by
        ${w} ORDER BY sm.performed_at DESC LIMIT $${i++} OFFSET $${i++}`,
     [...params, page_size, offset],
   );
@@ -508,6 +510,33 @@ async function setAdjustmentStatus({ client, brand, id, status, approved_by }) {
     params,
   );
   return rows[0] || null;
+}
+
+// Who to notify when an adjustment is submitted for approval: the CEO
+// (bypasses the permission matrix entirely) plus anyone holding a `stock`
+// module `approve` grant under this brand (or an all-brands '*' grant).
+// Mirrors the exact tables requirePermission()/identityCache check — see
+// src/middleware/rbac.js — so this list never drifts from what the approve
+// endpoints themselves actually accept.
+async function listAdjustmentApprovers({ client, brand }) {
+  const { rows } = await ex(client)(
+    `SELECT DISTINCT u.user_id, u.email, u.display_name
+       FROM shared.users u
+      WHERE u.is_active = true
+        AND (
+          u.is_ceo = true
+          OR u.user_id IN (
+            SELECT ur.user_id
+              FROM shared.user_roles ur
+              JOIN shared.permissions p ON p.role_id = ur.role_id
+             WHERE p.module = 'stock' AND p.action = 'approve'
+               AND (ur.business = '*' OR ur.business = $1)
+               AND (ur.expires_at IS NULL OR ur.expires_at > now())
+          )
+        )`,
+    [brand],
+  );
+  return rows;
 }
 
 // ── Transfers (+ lines) ──────────────────────────────────
@@ -988,6 +1017,7 @@ module.exports = {
   getAdjustment,
   listAdjustments,
   setAdjustmentStatus,
+  listAdjustmentApprovers,
   createTransfer,
   addTransferLine,
   listTransferLines,

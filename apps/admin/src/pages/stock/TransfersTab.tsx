@@ -567,7 +567,14 @@ export default function TransfersTab() {
         width: "200px",
         render: (r) => (
           <div className="flex items-center gap-1.5">
-            {r.status === "draft" && can("stock", "create") && (
+            {/* Legacy-only: createTransfer now dispatches immediately on
+                creation, so no new transfer ever lands in 'draft'. This stays
+                so any transfer already in 'draft' from before that change can
+                still be sent. Gated on "edit" to match what the backend
+                route (POST /transfers/:id/dispatch) actually requires — it
+                previously checked "create" here, which happened to work only
+                because every seeded role bundles the two together. */}
+            {r.status === "draft" && can("stock", "edit") && (
               <Button
                 variant="secondary"
                 size="sm"
@@ -581,7 +588,7 @@ export default function TransfersTab() {
               </Button>
             )}
             {(r.status === "dispatched" || r.status === "in_transit") &&
-              can("stock", "create") && (
+              can("stock", "edit") && (
                 <Button
                   variant="secondary"
                   size="sm"

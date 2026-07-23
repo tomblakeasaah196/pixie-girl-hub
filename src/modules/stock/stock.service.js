@@ -871,6 +871,53 @@ async function getTransfer({ brand, id }) {
   if (!tr) throw new NotFoundError("Transfer");
   return tr;
 }
+// Posts the transfer_out movements at the source + stamps the transfer
+// 'dispatched' — the shared core of both createTransfer (which now dispatches
+// immediately on creation) and the standalone dispatch endpoint (kept so any
+// pre-existing 'draft' transfer from before this change can still be sent).
+// Runs on the caller's client/transaction — never opens its own, so it's safe
+// to call from inside createTransfer's transaction as well as its own.
+async function dispatchTransferLines({ client, brand, user_id, request_id, transfer }) {
+  for (const line of transfer.lines) {
+    await applyMovement({
+      client,
+      brand,
+      user_id,
+      input: {
+        variant_id: line.variant_id,
+        location_id: transfer.from_location_id,
+        quantity: -Math.abs(line.qty_dispatched),
+        movement_type: "transfer_out",
+        reference_type: "transfer",
+        reference_id: transfer.transfer_id,
+      },
+    });
+  }
+  const out = await repo.setTransferStatus({
+    client,
+    brand,
+    id: transfer.transfer_id,
+    status: "dispatched",
+    field: "dispatched",
+    user_id,
+  });
+  await A(
+    brand,
+    user_id,
+    "stock.transfer.dispatch",
+    "stock_transfer",
+    transfer.transfer_id,
+    { status: "dispatched" },
+    request_id,
+  );
+  events.emit("transfer.dispatched", { brand, id: transfer.transfer_id });
+  return out;
+}
+// A transfer between two of our own locations has no meaningful "in transit"
+// checkpoint worth an extra confirmation click — creating it immediately
+// deducts the source (dispatchTransferLines, above), so Ops only has to act
+// once. Receiving at the destination stays a separate, deliberate step (the
+// physical-arrival checkpoint), unchanged below.
 async function createTransfer({ brand, user, request_id, input }) {
   return transaction(async (client) => {
     const tr = await repo.createTransfer({
@@ -895,9 +942,20 @@ async function createTransfer({ brand, user, request_id, input }) {
       tr,
       request_id,
     );
+    const full = await repo.getTransfer({ client, brand, id: tr.transfer_id });
+    await dispatchTransferLines({
+      client,
+      brand,
+      user_id: user.user_id,
+      request_id,
+      transfer: full,
+    });
     return repo.getTransfer({ client, brand, id: tr.transfer_id });
   });
 }
+// Kept for any transfer still sitting in 'draft' from before transfers began
+// dispatching on creation — createTransfer no longer produces a 'draft' row,
+// so this endpoint is legacy-only going forward.
 async function dispatchTransfer({ brand, user, request_id, id }) {
   return transaction(async (client) => {
     const tr = await repo.getTransfer({ client, brand, id });
@@ -908,40 +966,13 @@ async function dispatchTransfer({ brand, user, request_id, id }) {
         `Cannot dispatch a '${tr.status}' transfer`,
         409,
       );
-    for (const line of tr.lines) {
-      await applyMovement({
-        client,
-        brand,
-        user_id: user.user_id,
-        input: {
-          variant_id: line.variant_id,
-          location_id: tr.from_location_id,
-          quantity: -Math.abs(line.qty_dispatched),
-          movement_type: "transfer_out",
-          reference_type: "transfer",
-          reference_id: id,
-        },
-      });
-    }
-    const out = await repo.setTransferStatus({
+    return dispatchTransferLines({
       client,
       brand,
-      id,
-      status: "dispatched",
-      field: "dispatched",
       user_id: user.user_id,
-    });
-    await A(
-      brand,
-      user.user_id,
-      "stock.transfer.dispatch",
-      "stock_transfer",
-      id,
-      { status: "dispatched" },
       request_id,
-    );
-    events.emit("transfer.dispatched", { brand, id });
-    return out;
+      transfer: tr,
+    });
   });
 }
 async function receiveTransfer({ brand, user, request_id, id, input = {} }) {

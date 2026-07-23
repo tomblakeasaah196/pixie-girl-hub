@@ -136,7 +136,7 @@ export function QuickSaleForm() {
 
   // Step 4: Config
   const [currency, setCurrency] = useState("NGN");
-  const [applyVat, setApplyVat] = useState(true);
+  const [applyVat, setApplyVat] = useState(false);
   const [coupon, setCoupon] = useState("");
   // Flexi Pay: offer the instalment plan when this channel enables it.
   const { data: flexiSettings } = usePaymentSettings();
@@ -530,7 +530,7 @@ export function QuickSaleForm() {
     setContactSearch("");
     setCart([]);
     setCurrency("NGN");
-    setApplyVat(true);
+    setApplyVat(false);
     setCoupon("");
     setPaymentPlan("full");
     setFulfilment("walk_in");

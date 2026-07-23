@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { Button, Card, Pill } from "@/components/ui/primitives";
+import { toast } from "@/stores/toast";
 import {
   ErrorState,
   Select,
@@ -63,6 +64,18 @@ const WRITEOFF_REASONS = [
   { value: "theft", label: "Theft" },
 ] as const;
 
+// The backend's adjustment_type enum (stock.validator.js) doesn't carry these
+// exact labels — map each write-off reason to the closest real enum value so
+// submission doesn't 400 on an unrecognised type. User-facing labels above
+// are unaffected; this only changes what's sent over the wire.
+const WRITEOFF_REASON_TO_ADJUSTMENT_TYPE: Record<string, string> = {
+  damaged: "damage",
+  lost: "other",
+  tester_display: "sample",
+  quality_reject: "quality_reject",
+  theft: "theft",
+};
+
 const STATUS_OPTIONS = [
   { value: "", label: "All statuses" },
   { value: "draft", label: "Draft" },
@@ -94,6 +107,11 @@ export default function AdjustmentsTab() {
   const { can, user } = useAuthStore();
   const canCreate = can("stock", "create");
   const isCeo = user?.isCeo ?? false;
+  // Anyone actually granted stock:approve can act on the queue — not just the
+  // literal CEO account. Previously this whole section (and its two buttons)
+  // was gated on isCeo alone, so a role granted approve via the permission
+  // matrix passed the server-side check but never saw the button.
+  const canApprove = can("stock", "approve") || isCeo;
 
   /* filters & pagination */
   const [statusFilter, setStatusFilter] = useState("");
@@ -128,7 +146,7 @@ export default function AdjustmentsTab() {
   const adjustments = adjustmentsQ.data?.data ?? [];
   const meta = adjustmentsQ.data?.meta;
 
-  /* approval queue (CEO only) */
+  /* approval queue */
   const approvalQ = useStockAdjustments({
     status: "submitted",
     page: 1,
@@ -143,16 +161,25 @@ export default function AdjustmentsTab() {
 
   const handleApprove = useCallback(
     async (id: string) => {
-      await mutations.approveAdjustment.mutateAsync(id);
-      await mutations.postAdjustment.mutateAsync(id);
+      try {
+        await mutations.approveAdjustment.mutateAsync(id);
+        await mutations.postAdjustment.mutateAsync(id);
+        toast.success("Adjustment approved and posted");
+      } catch {
+        /* the failing mutation's own onError (hooks.ts) already toasted */
+      }
     },
     [mutations],
   );
 
   const handleReject = useCallback(async () => {
     if (!rejectTarget) return;
-    await mutations.rejectAdjustment.mutateAsync(rejectTarget);
-    setRejectTarget(null);
+    try {
+      await mutations.rejectAdjustment.mutateAsync(rejectTarget);
+      setRejectTarget(null);
+    } catch {
+      /* onError already toasted; leave the dialog open so they can retry */
+    }
   }, [rejectTarget, mutations]);
 
   /* ─── Columns ─── */
@@ -252,8 +279,8 @@ export default function AdjustmentsTab() {
 
   return (
     <div className="space-y-6">
-      {/* ── CEO Approval Queue ── */}
-      {isCeo && pendingApprovals.length > 0 && (
+      {/* ── Approval Queue ── */}
+      {canApprove && pendingApprovals.length > 0 && (
         <Card className="p-5 space-y-4">
           <h3 className="text-[14px] font-semibold text-text-primary flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-accent" />
@@ -515,11 +542,15 @@ function StocktakeDrawer({
 
       if (summary.hasWriteDown) {
         await mutations.submitAdjustment.mutateAsync(adj.adjustment_id);
+        toast.success("Stocktake submitted for approval");
       } else {
         await mutations.postAdjustment.mutateAsync(adj.adjustment_id);
+        toast.success("Stocktake posted");
       }
 
       handleClose();
+    } catch {
+      /* the failing mutation's own onError (hooks.ts) already toasted */
     } finally {
       setSubmitting(false);
     }
@@ -828,23 +859,35 @@ function WriteoffDrawer({
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      const adjLines = lines.map((l) => ({
-        variant_id: l.variant_id,
-        system_count: 0,
-        physical_count: 0,
-        delta: -Math.abs(Number(l.qty)),
-        notes: l.notes || undefined,
-      }));
+      // The backend derives delta as a GENERATED column (physical_count -
+      // system_count) — it doesn't accept a delta field at all, and sending
+      // system_count=physical_count=0 makes that difference exactly zero,
+      // which the post step then silently skips (no stock movement at all).
+      // Use each variant's real on-hand as system_count so physical_count
+      // (on-hand minus the qty being written off) produces the actual delta.
+      const adjLines = lines.map((l) => {
+        const lv = levels.find((x) => x.variant_id === l.variant_id);
+        const systemCount = lv?.on_hand ?? 0;
+        return {
+          variant_id: l.variant_id,
+          system_count: systemCount,
+          physical_count: systemCount - Math.abs(Number(l.qty)),
+          notes: l.notes || undefined,
+        };
+      });
 
       const adj = await mutations.createAdjustment.mutateAsync({
         location_id: locationId,
-        adjustment_type: reason,
+        adjustment_type: WRITEOFF_REASON_TO_ADJUSTMENT_TYPE[reason] ?? "other",
         reason: `Write-off: ${reason.replace(/_/g, " ")}`,
         lines: adjLines,
       });
 
       await mutations.submitAdjustment.mutateAsync(adj.adjustment_id);
+      toast.success("Write-off submitted for approval");
       handleClose();
+    } catch {
+      /* the failing mutation's own onError (hooks.ts) already toasted */
     } finally {
       setSubmitting(false);
     }

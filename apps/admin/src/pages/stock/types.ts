@@ -43,6 +43,7 @@ export interface StockMovement {
   unit_cost_ngn?: string | null;
   notes?: string | null;
   performed_by: string | null;
+  performed_by_name?: string | null;
   performed_at: string;
   sku?: string;
   variant_name?: string;

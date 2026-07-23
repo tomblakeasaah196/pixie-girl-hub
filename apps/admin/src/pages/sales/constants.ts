@@ -208,12 +208,13 @@ export function salesChannelLabel(value: SalesChannel | string): string {
 }
 
 export const FULFILMENT_OPTIONS = [
-  { value: "walk_in", label: "Walk-in (Pickup)" },
+  { value: "walk_in", label: "Pick-up" },
   { value: "dispatch", label: "Delivery" },
 ] as const;
 
 // How each order_type reads to staff. `collection` = customer picks up later,
-// `walk_in` = took it in person at POS, `dispatch` = courier delivery, `digital`
+// `walk_in` = took it in person at POS (same in-store handover as `collection`,
+// so both read as "Pick-up" to staff), `dispatch` = courier delivery, `digital`
 // = nothing to ship. Used by the orders list column + order detail so "did they
 // pick Pick-up?" is answerable at a glance (no logistics fee + Pick-up = correct;
 // no fee + Delivery = fee still pending).
@@ -223,7 +224,7 @@ export const FULFILMENT_LABELS: Record<
 > = {
   dispatch: { label: "Delivery", tone: "info" },
   collection: { label: "Pick-up", tone: "accent" },
-  walk_in: { label: "Walk-in", tone: "neutral" },
+  walk_in: { label: "Pick-up", tone: "accent" },
   digital: { label: "Digital", tone: "neutral" },
 };
 

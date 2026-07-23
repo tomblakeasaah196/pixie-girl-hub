@@ -363,6 +363,7 @@ export interface QuotationCreateInput {
     // Snapshot overrides — record the shop-facing name/SKU (a styled
     // product) instead of the underlying stock variant's own name.
     product_name_snapshot?: string;
+    variant_label_snapshot?: string;
     sku_snapshot?: string;
   }>;
   valid_until?: string;

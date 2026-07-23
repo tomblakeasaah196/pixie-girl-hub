@@ -5,7 +5,16 @@ import { Button, MoneyText } from "@/components/ui/primitives";
 import { Select, NumberField } from "@/components/ui/controls";
 import { FormGrid, Field, TextInput } from "@/components/ui/Form";
 import { ProductPicker } from "@/components/catalogue/ProductPicker";
-import { resolvePick, type ProductHit } from "@/lib/product-search";
+import {
+  StyledVariantPicker,
+  type StyledPick,
+} from "@/components/catalogue/StyledVariantPicker";
+import {
+  resolvePick,
+  resolveStyledPick,
+  type ProductHit,
+  type ResolvedLine,
+} from "@/lib/product-search";
 import { useCreateQuotation } from "./hooks";
 import { useToastStore } from "@/components/notifications/NotificationToast";
 import { toastReport } from "@/lib/error-report";
@@ -21,6 +30,10 @@ interface QuoteLine {
   quantity: number;
   unit_price: number;
   discount: number;
+  // Snapshot overrides from a styled head-size/lace/colour pick — see
+  // ResolvedLine. Falls back to `label`/undefined for every other kind.
+  product_name_snapshot?: string;
+  variant_label_snapshot?: string;
 }
 
 interface ContactHit {
@@ -74,6 +87,9 @@ export function QuoteFormModal({
 
   // Step 2: Products
   const [lines, setLines] = useState<QuoteLine[]>([]);
+  // A styled pick awaiting its head-size/lace/colour choice before it can be
+  // added to the quote; null when nothing is pending.
+  const [pendingStyled, setPendingStyled] = useState<ProductHit | null>(null);
 
   // Step 3: Terms
   const [validUntil, setValidUntil] = useState("");
@@ -112,7 +128,38 @@ export function QuoteFormModal({
     }, 300);
   }, []);
 
+  const addResolvedLines = (resolved: ResolvedLine[]) => {
+    setLines((prev) => {
+      const next = [...prev];
+      for (const l of resolved) {
+        const i = next.findIndex((x) => x.variant_id === l.variant_id);
+        if (i >= 0)
+          next[i] = { ...next[i], quantity: next[i].quantity + l.quantity };
+        else
+          next.push({
+            id: crypto.randomUUID(),
+            variant_id: l.variant_id,
+            label: l.label,
+            sku: l.sku,
+            quantity: l.quantity,
+            unit_price: l.unit_price,
+            discount: 0,
+            product_name_snapshot: l.product_name_snapshot,
+            variant_label_snapshot: l.variant_label_snapshot,
+          });
+      }
+      return next;
+    });
+  };
+
   const handlePick = async (hit: ProductHit) => {
+    // A styled product prices by head size × lace × colour — send it through
+    // the variant picker first so the line carries the exact combo instead of
+    // always the anchor price/seed variant.
+    if (hit.kind === "styled") {
+      setPendingStyled(hit);
+      return;
+    }
     try {
       const { lines: resolved } = await resolvePick(hit);
       if (resolved.length === 0) {
@@ -124,25 +171,28 @@ export function QuoteFormModal({
         );
         return;
       }
-      setLines((prev) => {
-        const next = [...prev];
-        for (const l of resolved) {
-          const i = next.findIndex((x) => x.variant_id === l.variant_id);
-          if (i >= 0)
-            next[i] = { ...next[i], quantity: next[i].quantity + l.quantity };
-          else
-            next.push({
-              id: crypto.randomUUID(),
-              variant_id: l.variant_id,
-              label: l.label,
-              sku: l.sku,
-              quantity: l.quantity,
-              unit_price: l.unit_price,
-              discount: 0,
-            });
-        }
-        return next;
-      });
+      addResolvedLines(resolved);
+    } catch {
+      fireToast("Error", "Failed to add product", "order", "high");
+    }
+  };
+
+  const handleStyledPick = async (pick: StyledPick) => {
+    const hit = pendingStyled;
+    setPendingStyled(null);
+    if (!hit) return;
+    try {
+      const { lines: resolved } = await resolveStyledPick(hit, pick);
+      if (resolved.length === 0) {
+        fireToast(
+          "Nothing to add",
+          "That product has no active variant to quote.",
+          "order",
+          "high",
+        );
+        return;
+      }
+      addResolvedLines(resolved);
     } catch {
       fireToast("Error", "Failed to add product", "order", "high");
     }
@@ -159,8 +209,11 @@ export function QuoteFormModal({
         line_discount_ngn: l.discount || undefined,
         // The shop-facing name (styled product or bundle) resolved at pick
         // time — without this the quote falls back to the raw base-product
-        // name/SKU it sells through.
-        product_name_snapshot: l.label,
+        // name/SKU it sells through. A styled pick carries the pure name +
+        // its size/lace/colour spec separately; every other kind falls back
+        // to the combined display label.
+        product_name_snapshot: l.product_name_snapshot ?? l.label,
+        variant_label_snapshot: l.variant_label_snapshot,
         sku_snapshot: l.sku,
       })),
       valid_until: validUntil || undefined,
@@ -297,6 +350,18 @@ export function QuoteFormModal({
       {formStep === 2 && (
         <div className="space-y-3">
           <ProductPicker onPick={handlePick} autoFocus />
+
+          {pendingStyled && (
+            <StyledVariantPicker
+              styledId={pendingStyled.id}
+              productName={pendingStyled.label}
+              anchorPrice={
+                pendingStyled.price != null ? Number(pendingStyled.price) : null
+              }
+              onCancel={() => setPendingStyled(null)}
+              onConfirm={handleStyledPick}
+            />
+          )}
 
           {lines.length > 0 && (
             <div className="space-y-2">

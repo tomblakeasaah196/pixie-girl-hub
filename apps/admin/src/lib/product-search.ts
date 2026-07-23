@@ -56,6 +56,13 @@ export interface ResolvedLine {
   // Set when the pick was a service. Sales writes line_kind='service' and skips
   // stock reservation; the customer pays the service's base price up-front.
   service_offering_id?: string;
+  // Snapshot overrides for a styled/bundle pick — the shop-facing name and
+  // (for a styled variant) its head-size/lace/colour spec, distinct from
+  // `label` (a caller may still want a single combined display string).
+  // Sales stamps these onto the order/quote line instead of falling back to
+  // the base variant's own name.
+  product_name_snapshot?: string;
+  variant_label_snapshot?: string;
 }
 
 export interface ResolvedPick {
@@ -314,4 +321,66 @@ export async function resolvePick(hit: ProductHit): Promise<ResolvedPick> {
     });
   }
   return { lines, bundle_id: bundle.bundle_id };
+}
+
+/** A confirmed head-size/lace/colour pick from StyledVariantPicker — kept
+ * structurally compatible with (a subset of) that component's `StyledPick`
+ * so callers can pass it straight through. */
+export interface StyledVariantChoice {
+  styled_variant_id: string | null;
+  base_product_id?: string | null;
+  sku: string | null;
+  price: number | null;
+  spec: string;
+}
+
+/**
+ * Resolve a STYLED hit into a sellable line once the operator has chosen a
+ * head size / lace / colour combination (or the product has no matrix at
+ * all, in which case `pick` carries all-null fields + the anchor price —
+ * see StyledVariantPicker's auto-confirm). Mirrors the base-variant
+ * resolution every other styled checkout already uses (the storefront cart
+ * and the order-link resolver): stock always sells through a BASE variant —
+ * the picked combo's OWN base when it has one, else the styled product's
+ * pinned seed variant, else the seed base's default variant.
+ */
+export async function resolveStyledPick(
+  hit: ProductHit,
+  pick: StyledVariantChoice,
+): Promise<ResolvedPick> {
+  const sp = await api.get<StyledDetail>(`/catalogue/styled-products/${hit.id}`);
+  let variantId: string | null = null;
+  let sku = pick.sku || sp.styled_code;
+  if (pick.base_product_id && pick.base_product_id !== sp.base_product_id) {
+    const variants = await api.get<VariantRow[]>(
+      `/catalogue/products/${pick.base_product_id}/variants`,
+    );
+    const match = variants.find((v) => v.is_active) ?? variants[0];
+    variantId = match?.variant_id ?? null;
+  }
+  if (!variantId) variantId = sp.base_variant_id;
+  if (!variantId) {
+    const variants = await api.get<VariantRow[]>(
+      `/catalogue/products/${sp.base_product_id}/variants`,
+    );
+    const match = variants.find((v) => v.is_active) ?? variants[0];
+    variantId = match?.variant_id ?? null;
+    if (!pick.sku) sku = match?.sku ?? sp.styled_code;
+  }
+  if (!variantId) return { lines: [] };
+  const spec = pick.spec || "";
+  return {
+    lines: [
+      {
+        variant_id: variantId,
+        label: spec ? `${sp.name} — ${spec}` : sp.name,
+        sku,
+        unit_price: pick.price != null ? pick.price : num(sp.retail_price_ngn),
+        quantity: 1,
+        styled_id: sp.styled_id,
+        product_name_snapshot: sp.name,
+        variant_label_snapshot: spec || undefined,
+      },
+    ],
+  };
 }

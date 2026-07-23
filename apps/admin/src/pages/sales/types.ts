@@ -283,6 +283,11 @@ export interface OrderCreateInput {
     quantity: number;
     unit_price_ngn?: number;
     notes?: string;
+    // Snapshot overrides — record the shop-facing name/SKU (a styled product
+    // or bundle) instead of whatever the underlying stock variant is called.
+    product_name_snapshot?: string;
+    variant_label_snapshot?: string;
+    sku_snapshot?: string;
   }>;
   sales_campaign_id?: string;
   campaign_slug?: string;
@@ -355,6 +360,10 @@ export interface QuotationCreateInput {
     unit_price_ngn?: number;
     line_discount_ngn?: number;
     notes?: string;
+    // Snapshot overrides — record the shop-facing name/SKU (a styled
+    // product) instead of the underlying stock variant's own name.
+    product_name_snapshot?: string;
+    sku_snapshot?: string;
   }>;
   valid_until?: string;
   payment_terms?: string;

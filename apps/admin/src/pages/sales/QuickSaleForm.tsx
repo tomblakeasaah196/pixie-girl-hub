@@ -258,6 +258,14 @@ export function QuickSaleForm() {
                 variant_id: l.variant_id,
                 quantity: l.quantity,
                 unit_price_ngn: l.unit_price || undefined,
+                // The cart line's label/sku are the shop-facing name (styled
+                // product or bundle) resolved at pick time — stamp them as the
+                // order line's snapshot so invoices/receipts show what the
+                // customer actually bought, not the warehouse stock item it
+                // sells through. Without this, Sales falls back to the raw
+                // base-product name for every styled/bundle Quick Sale line.
+                product_name_snapshot: l.label,
+                sku_snapshot: l.sku,
                 ...(l.styled_id
                   ? { styled_id: l.styled_id, line_kind: "styled" as const }
                   : {}),

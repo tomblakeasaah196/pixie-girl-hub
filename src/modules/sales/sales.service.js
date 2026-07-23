@@ -1868,9 +1868,12 @@ async function buildQuotationLines({
     out.push({
       product_id: ctx.product_id,
       variant_id: li.variant_id,
-      product_name_snapshot: ctx.product_name,
-      variant_label_snapshot: ctx.variant_name,
-      sku_snapshot: ctx.sku,
+      // Snapshot overrides let a caller (e.g. a styled-product quote line)
+      // record the styled name/label/SKU instead of the base variant's —
+      // mirrors computeTotalsAndLines (pricing/totals.js) for real orders.
+      product_name_snapshot: li.product_name_snapshot ?? ctx.product_name,
+      variant_label_snapshot: li.variant_label_snapshot ?? ctx.variant_name,
+      sku_snapshot: li.sku_snapshot ?? ctx.sku,
       quantity: li.quantity,
       unit_price_ngn: toCurrencyString(unit),
       line_discount_ngn: toCurrencyString(lineDiscount),
@@ -2162,6 +2165,12 @@ async function convertQuotation({ brand, user, request_id, id, input = {} }) {
           variant_id: l.variant_id,
           quantity: l.quantity,
           unit_price_ngn: l.unit_price_ngn,
+          // Carry the quote's own name/label/SKU snapshot forward — without
+          // this a converted styled-product quote reverts to the raw
+          // base-product name on the resulting order.
+          product_name_snapshot: l.product_name_snapshot,
+          variant_label_snapshot: l.variant_label_snapshot,
+          sku_snapshot: l.sku_snapshot,
         })),
       shipping_fee_ngn: q.shipping_fee_ngn,
     },

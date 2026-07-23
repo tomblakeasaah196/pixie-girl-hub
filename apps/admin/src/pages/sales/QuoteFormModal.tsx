@@ -17,6 +17,7 @@ interface QuoteLine {
   id: string;
   variant_id: string;
   label: string;
+  sku: string;
   quantity: number;
   unit_price: number;
   discount: number;
@@ -134,6 +135,7 @@ export function QuoteFormModal({
               id: crypto.randomUUID(),
               variant_id: l.variant_id,
               label: l.label,
+              sku: l.sku,
               quantity: l.quantity,
               unit_price: l.unit_price,
               discount: 0,
@@ -155,6 +157,11 @@ export function QuoteFormModal({
         quantity: l.quantity,
         unit_price_ngn: l.unit_price,
         line_discount_ngn: l.discount || undefined,
+        // The shop-facing name (styled product or bundle) resolved at pick
+        // time — without this the quote falls back to the raw base-product
+        // name/SKU it sells through.
+        product_name_snapshot: l.label,
+        sku_snapshot: l.sku,
       })),
       valid_until: validUntil || undefined,
       payment_terms: payTerms || undefined,

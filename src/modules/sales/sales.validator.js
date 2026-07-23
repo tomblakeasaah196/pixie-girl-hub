@@ -160,6 +160,10 @@ const quoteLine = z
     unit_price_ngn: money.optional(),
     line_discount_ngn: money.optional(),
     notes: z.string().max(500).optional(),
+    // Snapshot overrides (e.g. a styled-product quote line) — see lineInput.
+    product_name_snapshot: z.string().max(300).optional(),
+    variant_label_snapshot: z.string().max(300).optional(),
+    sku_snapshot: z.string().max(120).optional(),
   })
   .strict();
 const quotationCreate = z

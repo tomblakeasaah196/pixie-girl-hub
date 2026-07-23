@@ -608,6 +608,13 @@ async function submitOrderForm({ brand, input, request_id }) {
     order_link_slug: input.order_link_slug,
   });
 
+  // Shop-facing name/SKU/provenance per line, same "trust the link row"
+  // rule as the price above — see resolveOrderLinkLineMeta.
+  const lineMetaByVariant = await resolveOrderLinkLineMeta({
+    brand,
+    order_link_slug: input.order_link_slug,
+  });
+
   // Credit the catalogue sharer for a link-driven checkout (Performance →
   // Insights). Resolved from the link row, never the POST body. Null for a
   // plain public order form → the sale counts in totals but is unattributed.
@@ -669,6 +676,11 @@ async function submitOrderForm({ brand, input, request_id }) {
           ...(styledUnitPriceByVariant.has(it.variant_id)
             ? { unit_price_ngn: styledUnitPriceByVariant.get(it.variant_id) }
             : {}),
+          // Shop-facing name/SKU/provenance (resolved from the link row, never
+          // the POST body) — without this a styled pick sells through its base
+          // stock variant with no name override, so Sales falls back to the
+          // raw base-product name on the invoice/receipt.
+          ...(lineMetaByVariant.get(it.variant_id) || {}),
         })),
         shipping_fee_ngn,
         utm_source: input.utm_source,
@@ -970,6 +982,50 @@ async function resolveStyledUnitPrices({ brand, order_link_slug }) {
     }
   } catch {
     // unknown / cross-brand slug — no overrides.
+  }
+  return map;
+}
+
+/**
+ * Resolve the shop-facing name/SKU/provenance for each order-link line,
+ * keyed by the sellable base variant_id — the same "trust the link row, not
+ * the POST body" rule as resolveStyledUnitPrices above. Without this, a
+ * styled/base pick shared via an order link (WhatsApp/Instagram "Tap to
+ * order", or a walk-in Online QR checkout) sells through its base stock
+ * variant but the order line has no name override to fall back on, so Sales
+ * stamps the raw base-product name as product_name_snapshot — the customer's
+ * invoice shows a warehouse SKU they never saw, not what they actually
+ * bought. A bundle expands to N component lines with no per-component name
+ * from the resolver, so it is deliberately left out here — those lines keep
+ * pricing/naming from Sales as before (unchanged, not made worse).
+ */
+async function resolveOrderLinkLineMeta({ brand, order_link_slug }) {
+  const map = new Map();
+  if (!order_link_slug) return map;
+  try {
+    const orderLinksRepo = require("../smartcomm/smartcomm.order-links.repo");
+    const resolvers = require("../smartcomm/smartcomm.order-links.resolvers");
+    const link = await orderLinksRepo.getBySlug({ slug: order_link_slug });
+    if (!link || link.business !== brand || !Array.isArray(link.items)) {
+      return map;
+    }
+    const resolved = await resolvers.resolveItems(brand, link.items);
+    for (const r of resolved) {
+      const lines = r.lines || [];
+      if (lines.length !== 1) continue; // bundle — left as-is, see above
+      if (r.kind !== "styled" && r.kind !== "base") continue;
+      const meta = {
+        product_name_snapshot: r.name || undefined,
+        sku_snapshot: r.product_code || undefined,
+      };
+      if (r.kind === "styled" && r.ref_id) {
+        meta.styled_id = r.ref_id;
+        meta.line_kind = "styled";
+      }
+      if (lines[0].variant_id) map.set(lines[0].variant_id, meta);
+    }
+  } catch {
+    // unknown/cross-brand slug — no overrides; lines price/name as before.
   }
   return map;
 }

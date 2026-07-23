@@ -186,7 +186,10 @@ export function useSecurityStats() {
 // ════════════════════════════════════════════════════════════
 // Users
 // ════════════════════════════════════════════════════════════
-export function useIamUsers(filters: UserFilters = {}) {
+export function useIamUsers(
+  filters: UserFilters = {},
+  options: { enabled?: boolean } = {},
+) {
   const brand = useBrand();
   const qs = new URLSearchParams();
   if (filters.search) qs.set("search", filters.search);
@@ -201,6 +204,7 @@ export function useIamUsers(filters: UserFilters = {}) {
       api.get<{ rows: IamUser[]; total: number }>(
         `/iam/users${q ? `?${q}` : ""}`,
       ),
+    enabled: options.enabled ?? true,
   });
 }
 

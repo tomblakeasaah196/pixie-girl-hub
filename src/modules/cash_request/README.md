@@ -1,7 +1,8 @@
 # CashRequest module
 
 **Spec:** Cash Request & Disbursement (V2.2 §6.32 — NEW MODULE — pending schema)
-**Permission key:** `expenses`
+**Permission key:** `cash_request` (split out of `expenses` so the disbursement
+queue can be granted independently of the expense ledger)
 
 ## Backing tables
 

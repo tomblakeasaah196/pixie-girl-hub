@@ -39,7 +39,7 @@ export default function CashRequestsPage() {
 
   // Approval-only tabs must not be selectable (even via a hand-typed ?tab=)
   // by a user who can't approve — the valid-list falls them back to My Requests.
-  const canApproveTabs = can("expenses", "approve");
+  const canApproveTabs = can("cash_request", "approve");
   const [tab, setTab] = useUrlTab<Tab>(
     "my-requests",
     canApproveTabs
@@ -53,7 +53,7 @@ export default function CashRequestsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [showSettle, setShowSettle] = useState<CashRequest | null>(null);
 
-  if (!can("expenses", "view")) {
+  if (!can("cash_request", "view")) {
     return (
       <div className="py-20">
         <EmptyState
@@ -65,7 +65,7 @@ export default function CashRequestsPage() {
     );
   }
 
-  const canApprove = can("expenses", "approve");
+  const canApprove = can("cash_request", "approve");
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode; show: boolean }[] =
     [
@@ -105,7 +105,7 @@ export default function CashRequestsPage() {
             Requests, approvals &amp; disbursements
           </p>
         </div>
-        {can("expenses", "create") && (
+        {can("cash_request", "create") && (
           <Button
             variant="primary"
             icon={<Plus className="w-4 h-4" />}
@@ -145,7 +145,7 @@ export default function CashRequestsPage() {
           onPage={setPage}
           onSelect={setSelectedCr}
           onCreate={() => setShowCreate(true)}
-          canCreate={can("expenses", "create")}
+          canCreate={can("cash_request", "create")}
         />
       )}
       {tab === "drafts" && (
@@ -156,7 +156,7 @@ export default function CashRequestsPage() {
           onPage={setPage}
           onSelect={setSelectedCr}
           onCreate={() => setShowCreate(true)}
-          canCreate={can("expenses", "create")}
+          canCreate={can("cash_request", "create")}
           lockStatus
         />
       )}

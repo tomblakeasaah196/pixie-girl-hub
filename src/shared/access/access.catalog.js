@@ -78,7 +78,8 @@ const MODULE_CATALOG = [
   // ── Finance ──────────────────────────────────────────────
   { key: "invoicing", group: "finance", label: "Invoicing", description: "Billing & live accounts receivable" },
   { key: "accounting", group: "finance", label: "Accounting", description: "The books — ledgers & journals" },
-  { key: "expenses", group: "finance", label: "Expenses", description: "Claims, advances & cash requests" },
+  { key: "expenses", group: "finance", label: "Expenses", description: "Claims, advances & reimbursements" },
+  { key: "cash_request", group: "finance", label: "Cash Requests", description: "Cash disbursement requests & settlements" },
   { key: "pricing", group: "finance", label: "Pricing", description: "Margins, fees & price changes" },
 
   // ── People ───────────────────────────────────────────────
@@ -113,7 +114,7 @@ const MODULE_CATALOG = [
   { key: "geoapify_settings", group: "system", label: "Geoapify Integration", description: "Reverse-geocoding & map credentials (HR clock-in locations)" },
 ];
 
-// The distinct requirePermission keys enforced across src/ (47 modules).
+// The distinct requirePermission keys enforced across src/ (48 modules).
 // Derived from the catalog above so the label/group data can never drift from
 // the enforced key set. `settings`/`iam` gate the admin surfaces themselves.
 const MODULES = MODULE_CATALOG.map((m) => m.key);

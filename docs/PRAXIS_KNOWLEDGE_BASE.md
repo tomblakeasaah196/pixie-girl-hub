@@ -572,7 +572,9 @@ price floors, overrides, and proposals that go through approval.
 **What it's for.** **Disbursements** — asking for cash to be released (petty cash,
 supplier payment, float), getting it approved, paid out, and settled afterwards.
 **Where.** Finance → **Cash Requests** · `/cash-requests`
-**Who can see it.** `expenses` permission (Cash Requests share the expenses gate).
+**Who can see it.** `cash_request` permission — its own gate, separate from
+`expenses`, so access to the disbursement queue can be granted independently of
+the expense ledger.
 **What's inside (tabs).** **My Requests** · **Drafts** · **Approval Queue**
 *(approvers)* · **All Cash Requests** *(approvers)*.
 **Common tasks.**

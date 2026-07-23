@@ -265,7 +265,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "cash",
-    permission: "expenses",
+    permission: "cash_request",
     label: "Cash Requests",
     description: "Disbursements",
     group: "finance",

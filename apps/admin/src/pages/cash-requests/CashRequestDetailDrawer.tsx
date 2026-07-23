@@ -81,7 +81,7 @@ function useCashRequestDetail(
   const [showDisburse, setShowDisburse] = useState(false);
   const uploadReceipt = useUploadDocument();
 
-  const canApprove = can("expenses", "approve");
+  const canApprove = can("cash_request", "approve");
   const isBusy =
     mutations.submit.isPending ||
     mutations.finance.isPending ||

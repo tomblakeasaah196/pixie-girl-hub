@@ -408,7 +408,7 @@ const ENTITIES = [
     label: "Cash requests",
     group: "finance",
     icon: "Wallet",
-    module: "expenses",
+    module: "cash_request",
     action: "view",
     scoped: "shared",
     async resolve({ ex, brand, q, limit }) {

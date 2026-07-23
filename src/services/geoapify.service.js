@@ -137,7 +137,7 @@ async function reverseGeocode(lat, lng) {
  *
  * @param {string} text  the partial address the user is typing
  * @param {{lat?:number,lng?:number,limit?:number}} [opts]
- * @returns {Promise<Array<{formatted:string,lat:number,lng:number,place_id:string|null,category:string|null,city:string|null,country:string|null}>>}
+ * @returns {Promise<Array<{formatted:string,lat:number,lng:number,place_id:string|null,category:string|null,address_line1:string|null,city:string|null,county:string|null,state:string|null,state_code:string|null,postcode:string|null,country:string|null,country_code:string|null}>>}
  */
 async function autocomplete(text, opts = {}) {
   const apiKey = await getApiKey();
@@ -166,8 +166,18 @@ async function autocomplete(text, opts = {}) {
         lng: Number(r.lon),
         place_id: r.place_id || null,
         category: r.category || r.result_type || null,
+        // Structured components — added for the customer-onboarding delivery
+        // address form (a full ship-to needs more than a label + coords).
+        // Nigeria's LGA has no first-class slot in Geoapify's schema; it
+        // surfaces as `county` (OSM admin_level=6), so that's the best fit.
+        address_line1: r.address_line1 || r.street || r.name || null,
         city: r.city || r.town || r.village || null,
+        county: r.county || null,
+        state: r.state || null,
+        state_code: r.state_code || null,
+        postcode: r.postcode || null,
         country: r.country || null,
+        country_code: r.country_code ? r.country_code.toUpperCase() : null,
       }))
       .filter((r) => r.formatted && !Number.isNaN(r.lat) && !Number.isNaN(r.lng));
   } catch (err) {

@@ -1,21 +1,41 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { CheckCircle2, Loader2, AlertCircle } from "lucide-react";
+import { parsePhoneNumberFromString } from "libphonenumber-js/min";
 import { api } from "@/lib/api";
-import { GooglePlacesAutocomplete } from "@/components/common/GooglePlacesAutocomplete";
 import { PublicBrandShell } from "@/components/public/PublicBrandShell";
+import { Collapsible } from "@/components/ui/Collapsible";
+import { Toggle } from "@/components/ui/controls";
+import {
+  PhoneField,
+  phoneToE164,
+  DEFAULT_PHONE_VALUE,
+  type PhoneValue,
+} from "@/components/ui/PhoneField";
+import {
+  GeoapifyAddressSearch,
+  type GeoAddress,
+} from "@/components/common/GeoapifyAddressSearch";
 
 /**
  * Public Customer Onboarding form (the "Online QR" link customers fill).
  *
  * URL: /welcome/:business/:token  — no auth, token-protected on the
- * backend. Mobile-first, single-column, generous tap targets.
- *
- * We don't ship Google Places autocomplete in this PR — a clean
- * structured form already collects the data we need. The lat/lng
- * pickup over Places lands in a follow-up PR where we'll also add
- * the address pin map.
+ * backend. Mobile-first, single-column, generous tap targets. Always
+ * light mode (forced on PublicBrandShell) — a form filled on a stranger's
+ * phone camera reads better on a light page than the app's dark default.
  */
+
+/** Best-effort: a seeded phone string → a PhoneValue for the picker. */
+function seedPhone(raw?: string): PhoneValue {
+  if (!raw) return { ...DEFAULT_PHONE_VALUE };
+  const parsed = parsePhoneNumberFromString(raw, "NG");
+  if (parsed) {
+    return { country: parsed.country ?? "NG", national: parsed.nationalNumber };
+  }
+  return { country: "NG", national: raw.replace(/[^\d]/g, "") };
+}
+
 export function CustomerOnboardingPublic() {
   const { business = "", token = "" } = useParams<{
     business: string;
@@ -26,16 +46,18 @@ export function CustomerOnboardingPublic() {
     "loading" | "form" | "submitting" | "done" | "error"
   >("loading");
   const [errMsg, setErrMsg] = useState<string | null>(null);
+  const [phone, setPhone] = useState<PhoneValue>(DEFAULT_PHONE_VALUE);
+  const [sameAsPhoneForWhatsapp, setSameAsPhoneForWhatsapp] = useState(true);
+  const [whatsapp, setWhatsapp] = useState<PhoneValue>(DEFAULT_PHONE_VALUE);
   const [form, setForm] = useState({
     first_name: "",
     last_name: "",
-    primary_phone: "",
-    whatsapp_number: "",
     email: "",
     instagram_handle: "",
     preferred_channel: "" as "" | "whatsapp" | "instagram" | "email",
     dob_day: "",
     dob_month: "",
+    special_events: "",
     delivery_line1: "",
     delivery_area: "",
     delivery_city: "Lagos",
@@ -46,14 +68,8 @@ export function CustomerOnboardingPublic() {
     delivery_landmark: "",
     delivery_latitude: undefined as number | undefined,
     delivery_longitude: undefined as number | undefined,
-    delivery_google_maps_url: "",
-    billing_same_as_delivery: true,
-    billing_line1: "",
-    billing_city: "Lagos",
-    billing_state: "Lagos",
     notes: "",
   });
-  const [internationalAddress, setInternationalAddress] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -64,20 +80,19 @@ export function CustomerOnboardingPublic() {
           seed: Record<string, unknown>;
         }>(`/onboarding/${token}`, "public");
         if (cancelled) return;
-        // Pre-fill known fields
+        const seed = data.seed ?? {};
         setForm((f) => ({
           ...f,
-          first_name: String(data.seed?.first_name ?? f.first_name),
-          last_name: String(data.seed?.last_name ?? f.last_name),
-          primary_phone: String(data.seed?.primary_phone ?? f.primary_phone),
-          whatsapp_number: String(
-            data.seed?.whatsapp_number ?? f.whatsapp_number,
-          ),
-          email: String(data.seed?.email ?? f.email),
-          instagram_handle: String(
-            data.seed?.instagram_handle ?? f.instagram_handle,
-          ),
+          first_name: String(seed.first_name ?? f.first_name),
+          last_name: String(seed.last_name ?? f.last_name),
+          email: String(seed.email ?? f.email),
+          instagram_handle: String(seed.instagram_handle ?? f.instagram_handle),
         }));
+        if (seed.primary_phone) setPhone(seedPhone(String(seed.primary_phone)));
+        if (seed.whatsapp_number && seed.whatsapp_number !== seed.primary_phone) {
+          setSameAsPhoneForWhatsapp(false);
+          setWhatsapp(seedPhone(String(seed.whatsapp_number)));
+        }
         setStage("form");
       } catch (e: unknown) {
         if (cancelled) return;
@@ -92,18 +107,33 @@ export function CustomerOnboardingPublic() {
     };
   }, [token]);
 
-  const canSubmit = useMemo(() => {
-    return (
-      !!form.first_name &&
-      !!form.delivery_line1 &&
-      !!(
-        form.primary_phone ||
-        form.whatsapp_number ||
-        form.email ||
-        form.instagram_handle
-      )
-    );
-  }, [form]);
+  // A typed-but-invalid number blocks submit outright (rather than silently
+  // going out as junk) — an empty field is just "not given," which is fine
+  // as long as some other contact method covers it.
+  const phoneE164 = phoneToE164(phone);
+  const phoneTouched = phone.national.trim().length > 0;
+  const phoneInvalid = phoneTouched && !phoneE164;
+  const whatsappE164 = sameAsPhoneForWhatsapp ? phoneE164 : phoneToE164(whatsapp);
+  const whatsappTouched =
+    !sameAsPhoneForWhatsapp && whatsapp.national.trim().length > 0;
+  const whatsappInvalid = whatsappTouched && !whatsappE164;
+  const hasContactMethod = !!phoneE164 || !!whatsappE164 || !!form.email.trim();
+
+  const canSubmit = useMemo(
+    () =>
+      !!form.first_name.trim() &&
+      !!form.delivery_line1.trim() &&
+      hasContactMethod &&
+      !phoneInvalid &&
+      !whatsappInvalid,
+    [
+      form.first_name,
+      form.delivery_line1,
+      hasContactMethod,
+      phoneInvalid,
+      whatsappInvalid,
+    ],
+  );
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -111,11 +141,18 @@ export function CustomerOnboardingPublic() {
     setStage("submitting");
     setErrMsg(null);
     try {
+      const combinedNotes = [
+        form.special_events.trim() &&
+          `Special occasions: ${form.special_events.trim()}`,
+        form.notes.trim(),
+      ]
+        .filter(Boolean)
+        .join("\n\n");
       const payload: Record<string, unknown> = {
         first_name: form.first_name,
         last_name: form.last_name || undefined,
-        primary_phone: form.primary_phone || undefined,
-        whatsapp_number: form.whatsapp_number || undefined,
+        primary_phone: phoneE164 || undefined,
+        whatsapp_number: whatsappE164 || undefined,
         email: form.email || undefined,
         instagram_handle: form.instagram_handle || undefined,
         preferred_channel: form.preferred_channel || undefined,
@@ -132,19 +169,8 @@ export function CustomerOnboardingPublic() {
           landmark: form.delivery_landmark || undefined,
           latitude: form.delivery_latitude,
           longitude: form.delivery_longitude,
-          google_maps_url: form.delivery_google_maps_url || undefined,
         },
-        billing_same_as_delivery: form.billing_same_as_delivery,
-        billing_address: form.billing_same_as_delivery
-          ? undefined
-          : {
-              line1: form.billing_line1,
-              city: form.billing_city || "Lagos",
-              state: form.billing_state || "Lagos",
-              country: "Nigeria",
-              country_code: "NG",
-            },
-        notes: form.notes || undefined,
+        notes: combinedNotes || undefined,
       };
       await api.post(`/onboarding/${token}`, payload, "public");
       setStage("done");
@@ -199,7 +225,7 @@ export function CustomerOnboardingPublic() {
 
   return (
     <Shell business={business}>
-      <form onSubmit={submit} className="space-y-5">
+      <form onSubmit={submit} className="space-y-4">
         <p className="text-[13px] text-text-muted leading-relaxed">
           One quick form so we can deliver to you exactly the way you want.
           Takes about 60 seconds.
@@ -223,151 +249,139 @@ export function CustomerOnboardingPublic() {
 
         <Section title="How can we reach you?">
           <p className="text-[11.5px] text-text-faint -mt-2 mb-2">
-            Any one of these works. We&rsquo;ll use your preferred channel
-            below.
+            At least a phone number or an email — we&rsquo;ll use your
+            preferred channel below.
           </p>
-          <Row>
-            <Field
+          <PhoneField label="Phone number" value={phone} onChange={setPhone} />
+          <Toggle
+            checked={sameAsPhoneForWhatsapp}
+            onChange={setSameAsPhoneForWhatsapp}
+            label="This is my WhatsApp number too"
+          />
+          {!sameAsPhoneForWhatsapp && (
+            <PhoneField
               label="WhatsApp number"
-              type="tel"
-              value={form.whatsapp_number}
-              onChange={(v) => setForm({ ...form, whatsapp_number: v })}
-              placeholder="+234…"
+              value={whatsapp}
+              onChange={setWhatsapp}
             />
-            <Field
-              label="Phone"
-              type="tel"
-              value={form.primary_phone}
-              onChange={(v) => setForm({ ...form, primary_phone: v })}
-              placeholder="+234…"
-            />
-          </Row>
-          <Row>
-            <Field
-              label="Email"
-              type="email"
-              value={form.email}
-              onChange={(v) => setForm({ ...form, email: v })}
-            />
-            <Field
-              label="Instagram handle"
-              value={form.instagram_handle}
-              onChange={(v) =>
-                setForm({ ...form, instagram_handle: v.replace(/^@/, "") })
-              }
-              placeholder="username"
-            />
-          </Row>
-          <div className="grid grid-cols-1">
-            <Select
-              label="Preferred channel"
-              value={form.preferred_channel}
-              onChange={(v) =>
-                setForm({
-                  ...form,
-                  preferred_channel: v as typeof form.preferred_channel,
-                })
-              }
-              options={[
-                { value: "", label: "No preference" },
-                { value: "email", label: "Email" },
-                { value: "instagram", label: "Instagram DM" },
-                { value: "whatsapp", label: "WhatsApp" },
-              ]}
-            />
+          )}
+          <Field
+            label="Email"
+            type="email"
+            value={form.email}
+            onChange={(v) => setForm({ ...form, email: v })}
+          />
+          <Field
+            label="Instagram handle"
+            value={form.instagram_handle}
+            onChange={(v) =>
+              setForm({ ...form, instagram_handle: v.replace(/^@/, "") })
+            }
+            placeholder="username"
+          />
+        </Section>
+
+        <Collapsible
+          title="To better understand you"
+          subtitle="Preferred channel, birthday, special occasions — all optional"
+        >
+          <Select
+            label="Preferred channel"
+            value={form.preferred_channel}
+            onChange={(v) =>
+              setForm({
+                ...form,
+                preferred_channel: v as typeof form.preferred_channel,
+              })
+            }
+            options={[
+              { value: "", label: "No preference" },
+              { value: "email", label: "Email" },
+              { value: "instagram", label: "Instagram DM" },
+              { value: "whatsapp", label: "WhatsApp" },
+            ]}
+          />
+          <div className="pt-2">
+            <div className="text-[11px] uppercase tracking-widest text-text-faint mb-1">
+              Birthday
+            </div>
+            <p className="text-[11.5px] text-text-faint mb-2">
+              We&rsquo;ll send you a little something. No year needed.
+            </p>
+            <Row>
+              <Select
+                label="Day"
+                value={form.dob_day}
+                onChange={(v) => setForm({ ...form, dob_day: v })}
+                options={[
+                  { value: "", label: "Day" },
+                  ...Array.from({ length: 31 }, (_, i) => ({
+                    value: String(i + 1),
+                    label: String(i + 1),
+                  })),
+                ]}
+              />
+              <Select
+                label="Month"
+                value={form.dob_month}
+                onChange={(v) => setForm({ ...form, dob_month: v })}
+                options={[
+                  { value: "", label: "Month" },
+                  ...[
+                    "Jan",
+                    "Feb",
+                    "Mar",
+                    "Apr",
+                    "May",
+                    "Jun",
+                    "Jul",
+                    "Aug",
+                    "Sep",
+                    "Oct",
+                    "Nov",
+                    "Dec",
+                  ].map((m, i) => ({ value: String(i + 1), label: m })),
+                ]}
+              />
+            </Row>
           </div>
-        </Section>
+          <Field
+            label="Special occasions (optional)"
+            value={form.special_events}
+            onChange={(v) => setForm({ ...form, special_events: v })}
+            placeholder="An anniversary, a birthday to remember, anything else worth marking"
+            textarea
+          />
+        </Collapsible>
 
-        <Section title="Birthday (optional)">
-          <p className="text-[11.5px] text-text-faint -mt-2 mb-2">
-            We&rsquo;ll send you a little something. No year needed.
-          </p>
-          <Row>
-            <Select
-              label="Day"
-              value={form.dob_day}
-              onChange={(v) => setForm({ ...form, dob_day: v })}
-              options={[
-                { value: "", label: "Day" },
-                ...Array.from({ length: 31 }, (_, i) => ({
-                  value: String(i + 1),
-                  label: String(i + 1),
-                })),
-              ]}
-            />
-            <Select
-              label="Month"
-              value={form.dob_month}
-              onChange={(v) => setForm({ ...form, dob_month: v })}
-              options={[
-                { value: "", label: "Month" },
-                ...[
-                  "Jan",
-                  "Feb",
-                  "Mar",
-                  "Apr",
-                  "May",
-                  "Jun",
-                  "Jul",
-                  "Aug",
-                  "Sep",
-                  "Oct",
-                  "Nov",
-                  "Dec",
-                ].map((m, i) => ({ value: String(i + 1), label: m })),
-              ]}
-            />
-          </Row>
-        </Section>
-
-        <Section title="Delivery address">
-          <GooglePlacesAutocomplete
-            label="Search your address"
-            required
-            countryRestriction={internationalAddress ? null : "ng"}
-            initial={{
-              line1: form.delivery_line1,
-              latitude: form.delivery_latitude,
-              longitude: form.delivery_longitude,
-              formatted_address: [
-                form.delivery_line1,
-                form.delivery_area,
-                form.delivery_city,
-                form.delivery_state,
-              ]
-                .filter(Boolean)
-                .join(", "),
-            }}
-            onChange={(p) =>
+        <Collapsible
+          title="Delivery address"
+          subtitle="So your order finds you"
+          defaultOpen
+        >
+          <GeoapifyAddressSearch
+            token={token}
+            value={form.delivery_line1}
+            onChange={(v) =>
+              setForm((f) => ({ ...f, delivery_line1: v }))
+            }
+            onAddressSelected={(addr: GeoAddress) =>
               setForm((f) => ({
                 ...f,
-                // Defensive merge: a manually-typed address sends only line1
-                // (empty siblings), so keep the existing values rather than
-                // wiping city/state/area on every keystroke.
-                delivery_line1: p.line1 || f.delivery_line1,
-                delivery_area: p.area || f.delivery_area,
-                delivery_city: p.city || f.delivery_city,
-                delivery_state: p.state || f.delivery_state,
-                delivery_country: p.country || f.delivery_country,
+                delivery_line1: addr.line1 || f.delivery_line1,
+                delivery_area: addr.area || f.delivery_area,
+                delivery_city: addr.city || f.delivery_city,
+                delivery_state: addr.state || f.delivery_state,
+                delivery_country: addr.country || f.delivery_country,
                 delivery_country_code:
-                  p.country_code || f.delivery_country_code,
-                delivery_postal_code: p.postal_code || f.delivery_postal_code,
-                delivery_latitude: p.latitude ?? f.delivery_latitude,
-                delivery_longitude: p.longitude ?? f.delivery_longitude,
-                delivery_google_maps_url:
-                  p.google_maps_url || f.delivery_google_maps_url,
+                  addr.country_code || f.delivery_country_code,
+                delivery_postal_code:
+                  addr.postal_code || f.delivery_postal_code,
+                delivery_latitude: addr.latitude ?? f.delivery_latitude,
+                delivery_longitude: addr.longitude ?? f.delivery_longitude,
               }))
             }
           />
-          <label className="flex items-center gap-2 text-[12px] text-text-muted">
-            <input
-              type="checkbox"
-              checked={internationalAddress}
-              onChange={(e) => setInternationalAddress(e.target.checked)}
-              className="rounded accent-accent"
-            />
-            Delivering outside Nigeria
-          </label>
           <Field
             label="Apartment / floor / extra detail (optional)"
             value={form.delivery_area}
@@ -379,47 +393,12 @@ export function CustomerOnboardingPublic() {
             value={form.delivery_landmark}
             onChange={(v) => setForm({ ...form, delivery_landmark: v })}
           />
-        </Section>
+        </Collapsible>
 
-        <Section title="Billing address">
-          <label className="flex items-center gap-2 text-[12.5px] text-text-muted">
-            <input
-              type="checkbox"
-              checked={form.billing_same_as_delivery}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  billing_same_as_delivery: e.target.checked,
-                })
-              }
-              className="rounded accent-accent"
-            />
-            Same as delivery address
-          </label>
-          {!form.billing_same_as_delivery && (
-            <div className="mt-3 space-y-2">
-              <Field
-                label="Street / house"
-                value={form.billing_line1}
-                onChange={(v) => setForm({ ...form, billing_line1: v })}
-              />
-              <Row>
-                <Field
-                  label="City"
-                  value={form.billing_city}
-                  onChange={(v) => setForm({ ...form, billing_city: v })}
-                />
-                <Field
-                  label="State"
-                  value={form.billing_state}
-                  onChange={(v) => setForm({ ...form, billing_state: v })}
-                />
-              </Row>
-            </div>
-          )}
-        </Section>
-
-        <Section title="Anything we should know?">
+        <Collapsible
+          title="Anything we should know?"
+          subtitle="Inspiration, sizing, allergies, special requests"
+        >
           <Field
             label="Notes (optional)"
             value={form.notes}
@@ -427,7 +406,7 @@ export function CustomerOnboardingPublic() {
             placeholder="Inspiration, sizing, allergies, special requests…"
             textarea
           />
-        </Section>
+        </Collapsible>
 
         {errMsg && (
           <p className="text-[12px] text-danger flex items-center gap-2">
@@ -435,6 +414,15 @@ export function CustomerOnboardingPublic() {
             {errMsg}
           </p>
         )}
+        {form.first_name.trim() &&
+          form.delivery_line1.trim() &&
+          !hasContactMethod && (
+            <p className="text-[12px] text-danger flex items-center gap-2">
+              <AlertCircle className="w-3.5 h-3.5" />
+              Please add at least a phone number or an email so we can reach
+              you.
+            </p>
+          )}
 
         <button
           type="submit"
@@ -471,6 +459,7 @@ function Shell({
       brand={business}
       subtitle="Welcome — let's get you set up"
       maxWidth={520}
+      forceTheme="light"
     >
       {children}
     </PublicBrandShell>

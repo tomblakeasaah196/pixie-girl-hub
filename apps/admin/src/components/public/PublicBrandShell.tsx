@@ -153,6 +153,15 @@ interface PublicBrandShellProps {
   footer?: ReactNode;
   /** Card surface. Default glassmorphic. */
   surface?: "glass" | "panel";
+  /**
+   * Pin this page to one theme regardless of the visitor's/device's global
+   * `data-theme` (set by ThemeProvider on <html>, which this shell normally
+   * just inherits). `[data-theme="..."]` token overrides in index.css apply
+   * to any element carrying the attribute, not just <html>, so setting it
+   * here cascades to every descendant without touching other public pages
+   * (checkout, e-sign, offer packet) that don't pass this prop.
+   */
+  forceTheme?: "light" | "dark";
   children: ReactNode;
 }
 
@@ -163,6 +172,7 @@ export function PublicBrandShell({
   maxWidth = 560,
   footer,
   surface = "glass",
+  forceTheme,
   children,
 }: PublicBrandShellProps) {
   const id = useBrandIdentity(brand, brandNameFallback);
@@ -175,6 +185,7 @@ export function PublicBrandShell({
     // the top, can't scroll" bug. h-[100dvh] caps it to the viewport so
     // overflow-y-auto scrolls the content internally.
     <div
+      data-theme={forceTheme}
       className="relative h-[100dvh] overflow-y-auto overscroll-contain bg-bg text-text-primary"
       style={id.vars}
     >

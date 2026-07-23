@@ -381,6 +381,233 @@ async function sendResetLink(ctx, userId) {
   return { sent: true };
 }
 
+async function updateUserEmail(ctx, userId, rawEmail) {
+  const email = String(rawEmail || "").trim();
+  const existing = await repo.findUserById(userId);
+  if (!existing) throw new NotFoundError("User");
+  if (existing.deleted_at) {
+    throw new ConflictError("Restore this user before editing their email");
+  }
+  if (existing.email.toLowerCase() === email.toLowerCase()) {
+    // No-op change — return the current record without an audit entry.
+    return {
+      user_id: existing.user_id,
+      email: existing.email,
+      display_name: existing.display_name,
+      status: existing.status,
+      profile_type: existing.profile_type,
+    };
+  }
+
+  let updated;
+  try {
+    updated = await transaction(async (client) => {
+      return repo.updateEmail(client, userId, email);
+    });
+  } catch (err) {
+    if (err && err.code === "23505") {
+      throw new ConflictError(`Email ${email} is already in use`);
+    }
+    throw err;
+  }
+  if (!updated) throw new NotFoundError("User");
+
+  await audit({
+    business: ctx.business,
+    user_id: ctx.user_id,
+    action_key: "update_email",
+    target_type: "users",
+    target_id: userId,
+    before: { email: existing.email },
+    after: { email: updated.email },
+    request_id: ctx.request_id,
+    is_sensitive: true,
+  });
+  events.emit("user_email_changed", {
+    business: ctx.business,
+    user_id: userId,
+  });
+
+  return updated;
+}
+
+// ── Trash (soft delete) / restore / purge ───────────────────
+
+async function trashUser(ctx, userId, reason) {
+  const person = await repo.getPersonForTrash(userId);
+  if (!person) throw new NotFoundError("User");
+  if (person.deleted_at) {
+    throw new ConflictError("User is already in the trash");
+  }
+  if (person.is_ceo) {
+    throw new AppError(
+      "CANNOT_TRASH_CEO",
+      "The CEO account cannot be moved to the trash",
+      403,
+    );
+  }
+  if (String(userId) === String(ctx.user_id)) {
+    throw new AppError(
+      "CANNOT_TRASH_SELF",
+      "You cannot move your own account to the trash",
+      403,
+    );
+  }
+
+  const user = await transaction(async (client) => {
+    return repo.trashUser(client, {
+      userId,
+      deletedBy: ctx.user_id,
+      reason,
+    });
+  });
+  if (!user) throw new ConflictError("User is already in the trash");
+
+  // Kill any live refresh tokens so the disabled account cannot refresh in.
+  await revokeAllRedisTokens(userId);
+
+  await audit({
+    business: ctx.business,
+    user_id: ctx.user_id,
+    action_key: "trash_user",
+    target_type: "users",
+    target_id: userId,
+    before: { status: person.status, deleted_at: null },
+    after: { status: "disabled", deleted_at: "now" },
+    metadata: {
+      display_name: person.display_name,
+      profile_type: person.profile_type,
+      reason: reason || null,
+    },
+    request_id: ctx.request_id,
+    is_sensitive: true,
+  });
+  events.emit("user_trashed", { business: ctx.business, user_id: userId });
+
+  return { user_id: userId, trashed: true };
+}
+
+async function restoreUser(ctx, userId) {
+  const person = await repo.getPersonForTrash(userId);
+  if (!person) throw new NotFoundError("User");
+  if (!person.deleted_at) {
+    throw new ConflictError("User is not in the trash");
+  }
+
+  let user;
+  try {
+    user = await transaction(async (client) => {
+      return repo.restoreUser(client, userId);
+    });
+  } catch (err) {
+    // The one-login-per-profile trigger raises unique_violation if another
+    // active login now holds this staff profile.
+    if (err && err.code === "23505") {
+      throw new ConflictError(
+        "This staff profile already has another active login — deactivate it first",
+      );
+    }
+    throw err;
+  }
+  if (!user) throw new ConflictError("User is not in the trash");
+
+  await audit({
+    business: ctx.business,
+    user_id: ctx.user_id,
+    action_key: "restore_user",
+    target_type: "users",
+    target_id: userId,
+    before: { deleted_at: person.deleted_at },
+    after: { status: "active", deleted_at: null },
+    metadata: { display_name: person.display_name },
+    request_id: ctx.request_id,
+    is_sensitive: true,
+  });
+  events.emit("user_restored", { business: ctx.business, user_id: userId });
+
+  return { user_id: userId, restored: true };
+}
+
+async function listTrashedUsers(ctx, { page, limit }) {
+  return repo.listTrashedUsers({ business: ctx.business, page, limit });
+}
+
+/** Which tables still reference a trashed person (and can they be purged). */
+async function getUserReferences(ctx, userId) {
+  const person = await repo.getTrashedUser(userId);
+  if (!person) throw new NotFoundError("Trashed user");
+  const references = await repo.listReferencesToPerson({
+    userId: person.user_id,
+    profileId: person.staff_profile_id,
+    contactId: person.contact_id,
+  });
+  return {
+    user_id: person.user_id,
+    display_name: person.display_name,
+    references,
+    reference_count: references.length,
+    can_purge: references.length === 0,
+  };
+}
+
+async function purgeUser(ctx, userId) {
+  const person = await repo.getTrashedUser(userId);
+  if (!person) throw new NotFoundError("Trashed user");
+
+  const references = await repo.listReferencesToPerson({
+    userId: person.user_id,
+    profileId: person.staff_profile_id,
+    contactId: person.contact_id,
+  });
+  if (references.length > 0) {
+    throw new AppError(
+      "USER_HAS_REFERENCES",
+      "This person is referenced by other records and cannot be permanently " +
+        "deleted. They will stay in the trash to preserve those links.",
+      409,
+      { references },
+    );
+  }
+
+  try {
+    await transaction(async (client) => {
+      await repo.purgeUser(client, {
+        userId: person.user_id,
+        profileId: person.staff_profile_id,
+        contactId: person.contact_id,
+      });
+    });
+  } catch (err) {
+    // A foreign-key violation means a reference the scan couldn't see (e.g. a
+    // RESTRICT link) still exists — keep the person in the trash.
+    if (err && err.code === "23503") {
+      throw new AppError(
+        "USER_HAS_REFERENCES",
+        "This person is still referenced by other records and cannot be " +
+          "permanently deleted.",
+        409,
+      );
+    }
+    throw err;
+  }
+
+  await revokeAllRedisTokens(userId);
+
+  await audit({
+    business: ctx.business,
+    user_id: ctx.user_id,
+    action_key: "purge_user",
+    target_type: "users",
+    target_id: userId,
+    before: { email: person.email, display_name: person.display_name },
+    request_id: ctx.request_id,
+    is_sensitive: true,
+  });
+  events.emit("user_purged", { business: ctx.business, user_id: userId });
+
+  return { user_id: userId, purged: true };
+}
+
 // ── Sessions ────────────────────────────────────────────────
 
 async function listAllSessions(ctx, { page, limit }) {
@@ -792,6 +1019,13 @@ module.exports = {
   reactivateUser,
   adminResetPassword,
   sendResetLink,
+  updateUserEmail,
+  // Trash / restore / purge
+  trashUser,
+  restoreUser,
+  listTrashedUsers,
+  getUserReferences,
+  purgeUser,
   // Sessions
   listAllSessions,
   listUserSessions,

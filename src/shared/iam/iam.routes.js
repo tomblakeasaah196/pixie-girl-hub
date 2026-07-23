@@ -38,6 +38,14 @@ router.get(
   validator.validateListQuery,
   controller.listUsers,
 );
+// Trash view — literal segment, registered before the :userId param route so
+// "trash" is never matched as a user id.
+router.get(
+  "/users/trash",
+  can("view"),
+  validator.validateListQuery,
+  controller.listTrashedUsers,
+);
 router.get("/users/:userId", can("view"), controller.getUserDetail);
 router.post(
   "/users/provision-staff/:profileId",
@@ -71,6 +79,27 @@ router.post(
   can("edit"),
   controller.sendResetLink,
 );
+router.patch(
+  "/users/:userId/email",
+  can("edit"),
+  validator.validateUpdateEmail,
+  controller.updateUserEmail,
+);
+
+// ── Trash (soft delete) / restore / purge ───────────────────
+router.post(
+  "/users/:userId/trash",
+  can("delete"),
+  validator.validateTrashUser,
+  controller.trashUser,
+);
+router.post("/users/:userId/restore", can("edit"), controller.restoreUser);
+router.get(
+  "/users/:userId/references",
+  can("delete"),
+  controller.getUserReferences,
+);
+router.delete("/users/:userId/purge", can("delete"), controller.purgeUser);
 
 // ── Sessions (admin) ────────────────────────────────────────
 router.get(

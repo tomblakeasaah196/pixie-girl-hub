@@ -1012,6 +1012,14 @@ focused settings page.
 `/iam-security/mfa`.
 **Common tasks.**
 - *Create a user / give someone access?* IAM → **Users** (`/iam-security/users`).
+- *Change someone's login email?* IAM → **Users** → row ⋯ menu → **Edit email**.
+- *Remove an employee / user from everywhere?* IAM → **Users** → row ⋯ menu →
+  **Move to trash**. They disappear from HR, Payroll, Contacts and this list and
+  their login is disabled. Nothing is lost — they sit in the **Trash** tab.
+- *Restore a deleted person?* IAM → **Users** → **Trash** tab → **Restore**.
+- *Delete someone permanently?* IAM → **Users** → **Trash** tab → **Delete**.
+  Only possible when no other records reference them; if they're still linked
+  they stay in the Trash to preserve those connections.
 - *See who did what (audit trail)?* IAM → **Audit** (`/iam-security/audit`).
 - *Force-log-out a session?* IAM → **Sessions**.
 - *Turn on MFA?* IAM → **MFA**.

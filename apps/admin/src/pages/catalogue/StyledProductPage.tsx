@@ -176,7 +176,7 @@ function StyledDetail({ id }: { id: string }) {
   return (
     <StyledEditor
       s={styled.data}
-      canPublish={can("catalogue", "publish")}
+      canPublish={can("catalogue", "approve")}
       canEdit={can("catalogue", "edit")}
       onBack={() => nav("/catalogue?tab=styled")}
     />

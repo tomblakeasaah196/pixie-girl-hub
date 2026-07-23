@@ -251,12 +251,17 @@ router.post(
 router.delete("/styled-products/:id/bom/:bomId", can("edit"), styled.removeBom);
 // Restore a soft-deleted styled product.
 router.post("/styled-products/:id/restore", can("edit"), styled.restore);
-// Promote draft → live, and the reverse — both gated by catalogue.publish
+// Promote draft → live, and the reverse — both gated by catalogue.approve
 // (the "Ops can publish" rule; Sales/Marketing edit drafts but can't publish).
-router.post("/styled-products/:id/publish", can("publish"), styled.publish);
+// Reuses the standard `approve` action — the same "commit" gate every other
+// publish-style endpoint uses (storefront_studio, social, email_campaigns,
+// retail_partners) — rather than a bespoke `publish` action, which isn't part
+// of the RBAC vocabulary (src/shared/access/access.catalog.js ACTIONS) and so
+// could never be granted to a role through the Roles UI.
+router.post("/styled-products/:id/publish", can("approve"), styled.publish);
 router.post(
   "/styled-products/:id/unpublish",
-  can("publish"),
+  can("approve"),
   styledV.validateUnpublish,
   styled.unpublish,
 );

@@ -466,12 +466,14 @@ export function QuickSaleForm() {
       // recorded as made-to-order — tell the staff member so they can set the
       // customer's expectation before taking payment.
       if (order.preorder?.is_preorder) {
+        // Expected outcome of a successful order, not a failure — don't route
+        // it through the "Contact System Admin" (JBS Praxis) report path.
         fireToast(
           "Pre-order",
           order.preorder.message ||
             `${order.preorder.line_count} item(s) are made to order and will ship on the pre-order window.`,
           "order",
-          "high",
+          "normal",
         );
       }
       // Take the customer's own wig into custody (chain of custody).

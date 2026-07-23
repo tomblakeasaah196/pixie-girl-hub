@@ -2,8 +2,12 @@ import { useState, useCallback, useMemo, useRef } from "react";
 import { Search, X, Plus, Minus } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button, MoneyText } from "@/components/ui/primitives";
-import { Select, NumberField } from "@/components/ui/controls";
+import { Select, NumberField, ConfirmDialog } from "@/components/ui/controls";
 import { FormGrid, Field, TextInput } from "@/components/ui/Form";
+import {
+  AddressAutocomplete,
+  type PlaceAddress,
+} from "@/components/ui/AddressAutocomplete";
 import { ProductPicker } from "@/components/catalogue/ProductPicker";
 import {
   StyledVariantPicker,
@@ -15,6 +19,7 @@ import {
   type ProductHit,
   type ResolvedLine,
 } from "@/lib/product-search";
+import { useZoneQuote } from "@/lib/logistics-api";
 import { useCreateQuotation } from "./hooks";
 import { useToastStore } from "@/components/notifications/NotificationToast";
 import { toastReport } from "@/lib/error-report";
@@ -41,6 +46,8 @@ interface ContactHit {
   label: string;
   sub: string;
 }
+
+const ngn = (v: number) => `₦${v.toLocaleString()}`;
 
 export function QuoteFormModal({
   open,
@@ -97,7 +104,24 @@ export function QuoteFormModal({
   const [notes, setNotes] = useState("");
   const [internalNotes, setInternalNotes] = useState("");
   const [deliveryType, setDeliveryType] = useState<FulfilmentType>("walk_in");
+  const [addressText, setAddressText] = useState("");
   const [shippingFee, setShippingFee] = useState("");
+  // The delivery-zone engine's own rate for the picked address — the SAME
+  // rate-card the website/order-link checkouts charge. Compared against the
+  // (editable) shippingFee field so a manual change always prompts a
+  // confirmation relative to the real system rate. Matters here too: an
+  // unvalidated quote carries its shipping_fee_ngn straight through to the
+  // real order when accepted and converted.
+  const zoneQuote = useZoneQuote();
+  const [systemFee, setSystemFee] = useState<number | null>(null);
+  const [zoneStatus, setZoneStatus] = useState<
+    "priced" | "free" | "pending" | "unserviceable" | null
+  >(null);
+  const [confirmedFee, setConfirmedFee] = useState<number | null>(null);
+  const [feeConfirm, setFeeConfirm] = useState<{
+    from: number;
+    to: number;
+  } | null>(null);
 
   const subtotal = useMemo(
     () => lines.reduce((s, l) => s + l.unit_price * l.quantity - l.discount, 0),
@@ -198,6 +222,43 @@ export function QuoteFormModal({
     }
   };
 
+  // ── Delivery fee (real zone/rate-card engine, same one the website and
+  // order-link checkouts charge from) ──────────────────────
+  const handleAddressPick = async (place: PlaceAddress) => {
+    setConfirmedFee(null);
+    if (place.latitude == null || place.longitude == null) {
+      setSystemFee(null);
+      setZoneStatus(null);
+      return;
+    }
+    try {
+      const q = await zoneQuote.mutateAsync({
+        lat: place.latitude,
+        lng: place.longitude,
+        country: place.country_code || undefined,
+      });
+      setZoneStatus(q.fee_status ?? (q.fee_ngn != null ? "priced" : "unserviceable"));
+      if (q.fee_ngn != null) {
+        setSystemFee(q.fee_ngn);
+        setShippingFee(String(q.fee_ngn));
+      } else {
+        setSystemFee(null);
+      }
+    } catch {
+      setSystemFee(null);
+      setZoneStatus(null);
+    }
+  };
+
+  // Any manual edit that lands away from the system's own rate needs an
+  // explicit "yes, really" — staff can still override, but never silently.
+  const handleShippingBlur = () => {
+    if (systemFee == null) return;
+    const typed = Number(shippingFee) || 0;
+    if (typed === systemFee || typed === confirmedFee) return;
+    setFeeConfirm({ from: systemFee, to: typed });
+  };
+
   const handleSubmit = async () => {
     if (!contactId || lines.length === 0) return;
     const input: QuotationCreateInput = {
@@ -250,7 +311,12 @@ export function QuoteFormModal({
     setPayTerms("");
     setNotes("");
     setInternalNotes("");
+    setAddressText("");
     setShippingFee("");
+    setSystemFee(null);
+    setZoneStatus(null);
+    setConfirmedFee(null);
+    setFeeConfirm(null);
     onClose();
   };
 
@@ -478,15 +544,84 @@ export function QuoteFormModal({
                 placeholder="e.g. 50% deposit, balance on delivery"
               />
             </Field>
-            <Field label="Shipping Fee (NGN)" hint="optional">
-              <NumberField
-                value={shippingFee}
-                onChange={setShippingFee}
-                placeholder="0.00"
-                suffix="NGN"
-              />
-            </Field>
           </FormGrid>
+
+          {deliveryType === "dispatch" && (
+            <div className="space-y-3">
+              <Field label="Delivery Address">
+                <AddressAutocomplete
+                  value={addressText}
+                  onChange={setAddressText}
+                  onPlaceSelected={handleAddressPick}
+                />
+              </Field>
+              <Field label="Shipping Fee (NGN)">
+                <NumberField
+                  value={shippingFee}
+                  onChange={setShippingFee}
+                  onBlur={handleShippingBlur}
+                  placeholder="0.00"
+                  suffix="NGN"
+                />
+              </Field>
+              {zoneQuote.isPending && (
+                <p className="text-[12px] text-text-faint">
+                  Looking up the delivery rate for this address…
+                </p>
+              )}
+              {!zoneQuote.isPending && zoneStatus === "unserviceable" && (
+                <p className="text-[12px] text-amber-300">
+                  No delivery zone covers this address — enter the fee
+                  manually.
+                </p>
+              )}
+              {!zoneQuote.isPending && zoneStatus === "pending" && (
+                <p className="text-[12px] text-amber-300">
+                  This zone resolved to ₦0 but isn&rsquo;t marked
+                  free-delivery — confirm the real fee with Logistics before
+                  dispatch.
+                </p>
+              )}
+              {!zoneQuote.isPending &&
+                systemFee != null &&
+                (zoneStatus === "priced" || zoneStatus === "free") && (
+                  <p className="text-[12px] text-text-faint">
+                    System rate for this address: {ngn(systemFee)}
+                    {Number(shippingFee) !== systemFee && " (overridden below)"}
+                  </p>
+                )}
+            </div>
+          )}
+
+          {feeConfirm && (
+            <ConfirmDialog
+              open
+              onClose={() => {
+                setShippingFee(String(feeConfirm.from));
+                setFeeConfirm(null);
+              }}
+              onConfirm={() => {
+                setConfirmedFee(feeConfirm.to);
+                setFeeConfirm(null);
+              }}
+              title="Change delivery fee?"
+              tone="accent"
+              confirmLabel="Yes, change it"
+              message={
+                <>
+                  You&rsquo;re {feeConfirm.to > feeConfirm.from
+                    ? "increasing"
+                    : "reducing"}{" "}
+                  the delivery fee for dispatch to{" "}
+                  <strong>{addressText || "this address"}</strong> from{" "}
+                  <strong>{ngn(feeConfirm.from)}</strong> to{" "}
+                  <strong>{ngn(feeConfirm.to)}</strong>. Do you want to
+                  confirm?
+                </>
+              }
+            />
+          )}
+
           <Field label="Notes to customer" hint="optional">
             <textarea
               value={notes}

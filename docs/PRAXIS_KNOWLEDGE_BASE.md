@@ -213,10 +213,20 @@ chasing deliveries, matching stray in-store terminal payments, and payment setti
   in as made-to-order.
 - *Get a walk-in customer's details without typing them in?* Quick Sale →
   Customer step → **QR Code** button — shows a scannable code for the order
-  capture link. The customer fills their own name/phone/email on their phone;
-  the moment they submit, they're matched (by phone → WhatsApp → email →
-  Instagram handle, creating a new lead if nothing matches) and auto-selected
-  on this screen in real time — no manual search needed.
+  capture link, next to a **Share** button that opens WhatsApp with the link
+  pre-filled so you can send it to any chat (a `wa.me` deep link — free, no
+  phone number needed since no customer is picked yet). The customer fills
+  their own name/phone/email on their phone; the moment they submit, they're
+  matched (by phone → WhatsApp → email → Instagram handle, creating a new
+  lead if nothing matches) and auto-selected on this screen in real time —
+  no manual search needed.
+- *Get the customer their payment link after Quick Sale creates the order?*
+  The "Order Created!" confirmation screen shows a **QR Code** to scan on
+  the spot plus a **Share** button — a `wa.me` WhatsApp deep link addressed
+  straight to the customer's own WhatsApp/phone number when one is on file
+  (falls back to picking a chat manually if not). Free either way — this is
+  a plain click-to-chat link, not the metered WhatsApp Business API, so it
+  never triggers a per-message charge; the sender still taps Send themselves.
 - *See pre-orders and their production deadlines?* Sales → **Pre-orders** tab
   (`/sales?tab=preorders`). Every order carrying a made-to-order line, soonest
   ship-by first, with overdue/urgent flags — click through to the order.

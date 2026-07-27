@@ -108,7 +108,11 @@ function toAbsoluteUrl(url: string): string {
 
 export function QuickSaleForm() {
   const createOrder = useCreateOrder();
-  const [step, setStep] = useState(1);
+  // Starts at 2 (Customer), not 1: the channel below already defaults to
+  // Walk-in and shows as selected, so the Customer card must be visible
+  // immediately too — otherwise the picker looks clicked but nothing
+  // advanced.
+  const [step, setStep] = useState(2);
 
   // Step 1: Channel — defaults to Walk-in since Quick Sale is the counter/POS
   // flow; staff pick a different channel only when the sale didn't start
@@ -528,8 +532,8 @@ export function QuickSaleForm() {
   };
 
   const reset = () => {
-    setStep(1);
-    setChannel("instagram");
+    setStep(2);
+    setChannel("walk_in");
     setContactId(null);
     setContactName("");
     setContactSearch("");

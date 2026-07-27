@@ -23,11 +23,13 @@ import {
   ConfirmDialog,
 } from "@/components/ui/controls";
 import { FormGrid, Field, TextInput } from "@/components/ui/Form";
+import { GeoComboBox } from "@/components/ui/GeoComboBox";
 import {
-  AddressAutocomplete,
-  type PlaceAddress,
-} from "@/components/ui/AddressAutocomplete";
-import { useZoneQuote } from "@/lib/logistics-api";
+  fetchGeoOptions,
+  fetchDeliveryQuote,
+  GEO_FALLBACK,
+  type GeoOptions,
+} from "@/lib/order-checkout-geo";
 import { ProductPicker } from "@/components/catalogue/ProductPicker";
 import {
   StyledVariantPicker,
@@ -154,18 +156,31 @@ export function QuickSaleForm() {
     !!flexiSettings && flexiSettings.channels[channel] !== false;
   const [paymentPlan, setPaymentPlan] = useState<"full" | "instalment">("full");
   const [fulfilment, setFulfilment] = useState<FulfilmentType>("walk_in");
-  const [addressText, setAddressText] = useState("");
+  // Delivery address — same country → state → LGA zone-code picker as the
+  // storefront checkout and the public order-link page (order-checkout-geo),
+  // so Quick Sale prices delivery against the EXACT same delivery-zone
+  // engine and codes, not a separate lat/lng geocode lookup.
+  const [geo, setGeo] = useState<GeoOptions>(GEO_FALLBACK);
+  const [addressLine1, setAddressLine1] = useState("");
+  const [addressLine2, setAddressLine2] = useState("");
+  const [city, setCity] = useState("");
+  const [addrState, setAddrState] = useState("");
+  const [country, setCountry] = useState("Nigeria");
+  const [countryCode, setCountryCode] = useState("NG");
+  // Committed only via a GeoComboBox pick (never a typed-but-unselected
+  // value) — the delivery-zone code that actually prices the order.
+  const [zoneCode, setZoneCode] = useState("");
   const [shippingFee, setShippingFee] = useState("");
   // The delivery-zone engine's own rate for the picked address — the SAME
   // rate-card the website/order-link checkouts charge. null until an address
   // with a resolvable zone is picked. Compared against the (editable)
   // shippingFee field so a manual change always prompts a confirmation
   // relative to the real system rate, not a chain of prior overrides.
-  const zoneQuote = useZoneQuote();
   const [systemFee, setSystemFee] = useState<number | null>(null);
   const [zoneStatus, setZoneStatus] = useState<
     "priced" | "free" | "pending" | "unserviceable" | null
   >(null);
+  const [quotingFee, setQuotingFee] = useState(false);
   const [confirmedFee, setConfirmedFee] = useState<number | null>(null);
   const [feeConfirm, setFeeConfirm] = useState<{
     from: number;
@@ -223,6 +238,12 @@ export function QuickSaleForm() {
 
   const subtotal = useMemo(
     () => cart.reduce((sum, l) => sum + l.unit_price * l.quantity, 0),
+    [cart],
+  );
+  // Wig count — drives the delivery fee's quantity tier, same as the
+  // storefront checkout (wigQty) and the public order-link page (totalQty).
+  const totalQty = useMemo(
+    () => Math.max(1, cart.reduce((s, l) => s + l.quantity, 0)),
     [cart],
   );
   const vatAmount = applyVat ? subtotal * 0.075 : 0;
@@ -391,31 +412,75 @@ export function QuickSaleForm() {
 
   // ── Delivery fee (real zone/rate-card engine, same one the website and
   // order-link checkouts charge from) ──────────────────────
-  const handleAddressPick = async (place: PlaceAddress) => {
-    setConfirmedFee(null);
-    if (place.latitude == null || place.longitude == null) {
+  // Picker options, loaded once per mount — identical endpoint + fallback
+  // list the storefront checkout uses, so the codes always match the seeded
+  // delivery zones.
+  useEffect(() => {
+    let alive = true;
+    fetchGeoOptions(activeBiz ?? undefined).then((g) => {
+      if (alive) setGeo(g);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [activeBiz]);
+
+  const norm = (s: string) => s.trim().toLowerCase();
+  const isNigeria = country === "Nigeria" || countryCode === "NG";
+  const isLagos = isNigeria && norm(addrState) === "lagos";
+  // Resolve the zone even when the field was typed to an exact match without
+  // tapping the dropdown — never guesses the WRONG zone, only recognises an
+  // exact, case-insensitive one. Non-NG: the country IS the zone (DHL). NG:
+  // waits for the state (and, for Lagos, the LGA) pick.
+  const resolvedCountryCode =
+    countryCode ||
+    geo.countries.find((o) => norm(o.name) === norm(country))?.code ||
+    "";
+  const resolvedNgZone = zoneCode
+    ? zoneCode
+    : !isNigeria
+      ? ""
+      : isLagos
+        ? geo.lagos_lgas.find((o) => norm(o.name) === norm(city))?.code || ""
+        : geo.nigeria_states.find((o) => norm(o.name) === norm(addrState))
+            ?.code || "";
+  const effectiveZone = isNigeria ? resolvedNgZone : resolvedCountryCode;
+
+  // Re-quote whenever the resolved zone or the basket size changes — same
+  // POST /storefront/delivery-quote the storefront checkout and the public
+  // order-link page call, so the fee always agrees to the naira.
+  useEffect(() => {
+    if (fulfilment !== "dispatch" || !effectiveZone) {
       setSystemFee(null);
       setZoneStatus(null);
+      setQuotingFee(false);
       return;
     }
-    try {
-      const q = await zoneQuote.mutateAsync({
-        lat: place.latitude,
-        lng: place.longitude,
-        country: place.country_code || undefined,
+    let cancelled = false;
+    setQuotingFee(true);
+    fetchDeliveryQuote({
+      brand: activeBiz ?? undefined,
+      zoneCode: effectiveZone,
+      qty: totalQty,
+    })
+      .then((q) => {
+        if (cancelled) return;
+        setConfirmedFee(null);
+        setZoneStatus(q?.fee_status ?? (q?.fee_ngn != null ? "priced" : "unserviceable"));
+        if (q?.fee_ngn != null) {
+          setSystemFee(q.fee_ngn);
+          setShippingFee(String(q.fee_ngn));
+        } else {
+          setSystemFee(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setQuotingFee(false);
       });
-      setZoneStatus(q.fee_status ?? (q.fee_ngn != null ? "priced" : "unserviceable"));
-      if (q.fee_ngn != null) {
-        setSystemFee(q.fee_ngn);
-        setShippingFee(String(q.fee_ngn));
-      } else {
-        setSystemFee(null);
-      }
-    } catch {
-      setSystemFee(null);
-      setZoneStatus(null);
-    }
-  };
+    return () => {
+      cancelled = true;
+    };
+  }, [fulfilment, effectiveZone, totalQty, activeBiz]);
 
   // Any manual edit that lands away from the system's own rate needs an
   // explicit "yes, really" — staff can still override (an unconfigured zone,
@@ -546,7 +611,13 @@ export function QuickSaleForm() {
     setCoupon("");
     setPaymentPlan("full");
     setFulfilment("walk_in");
-    setAddressText("");
+    setAddressLine1("");
+    setAddressLine2("");
+    setCity("");
+    setAddrState("");
+    setCountry("Nigeria");
+    setCountryCode("NG");
+    setZoneCode("");
     setShippingFee("");
     setSystemFee(null);
     setZoneStatus(null);
@@ -961,13 +1032,103 @@ export function QuickSaleForm() {
 
             {fulfilment === "dispatch" && (
               <div className="space-y-3">
-                <Field label="Delivery Address">
-                  <AddressAutocomplete
-                    value={addressText}
-                    onChange={setAddressText}
-                    onPlaceSelected={handleAddressPick}
+                {/* Country → state → LGA zone picker — identical fields,
+                    codes and endpoint as the storefront checkout, so the
+                    fee below always agrees with what the customer would be
+                    charged online. */}
+                <Field label="Country">
+                  <GeoComboBox
+                    options={geo.countries}
+                    value={country}
+                    onChange={(name) => {
+                      setCountry(name);
+                      setCountryCode("");
+                      setAddrState("");
+                      setCity("");
+                      setZoneCode("");
+                    }}
+                    onSelect={(item) => {
+                      setCountry(item.name);
+                      setCountryCode(item.code);
+                      setAddrState("");
+                      setCity("");
+                      setZoneCode(item.code === "NG" ? "" : item.code);
+                    }}
+                    placeholder="Start typing your country…"
                   />
                 </Field>
+
+                {isNigeria ? (
+                  <Field label="State">
+                    <GeoComboBox
+                      options={geo.nigeria_states}
+                      value={addrState}
+                      onChange={(name) => {
+                        setAddrState(name);
+                        setZoneCode("");
+                        setCity("");
+                      }}
+                      onSelect={(item) => {
+                        setAddrState(item.name);
+                        setCity("");
+                        setZoneCode(item.name === "Lagos" ? "" : item.code);
+                      }}
+                      placeholder="Select your state…"
+                    />
+                  </Field>
+                ) : (
+                  country && (
+                    <Field label="State / Province">
+                      <TextInput
+                        value={addrState}
+                        onChange={(e) => setAddrState(e.target.value)}
+                        placeholder="State or province"
+                      />
+                    </Field>
+                  )
+                )}
+
+                {isLagos ? (
+                  <Field label="City / LGA">
+                    <GeoComboBox
+                      options={geo.lagos_lgas}
+                      value={city}
+                      onChange={(name) => {
+                        setCity(name);
+                        setZoneCode("");
+                      }}
+                      onSelect={(item) => {
+                        setCity(item.name);
+                        setZoneCode(item.code);
+                      }}
+                      placeholder="Select your LGA…"
+                    />
+                  </Field>
+                ) : (
+                  <Field label="City">
+                    <TextInput
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                      placeholder="City / town"
+                    />
+                  </Field>
+                )}
+
+                <Field label="Address line 1">
+                  <TextInput
+                    value={addressLine1}
+                    onChange={(e) => setAddressLine1(e.target.value)}
+                    placeholder="House number and street"
+                  />
+                </Field>
+                <Field label="Address line 2" hint="optional">
+                  <TextInput
+                    value={addressLine2}
+                    onChange={(e) => setAddressLine2(e.target.value)}
+                    placeholder="Apartment, landmark (optional)"
+                  />
+                </Field>
+
                 <Field label="Shipping Fee (NGN)">
                   <NumberField
                     value={shippingFee}
@@ -977,25 +1138,31 @@ export function QuickSaleForm() {
                     suffix="NGN"
                   />
                 </Field>
-                {zoneQuote.isPending && (
+                {!effectiveZone && (
+                  <p className="text-[12px] text-text-faint">
+                    Pick the country (and state/LGA for Nigeria) from the
+                    dropdown to calculate delivery.
+                  </p>
+                )}
+                {quotingFee && (
                   <p className="text-[12px] text-text-faint">
                     Looking up the delivery rate for this address…
                   </p>
                 )}
-                {!zoneQuote.isPending && zoneStatus === "unserviceable" && (
+                {!quotingFee && zoneStatus === "unserviceable" && (
                   <p className="text-[12px] text-amber-300">
                     No delivery zone covers this address — enter the fee
                     manually.
                   </p>
                 )}
-                {!zoneQuote.isPending && zoneStatus === "pending" && (
+                {!quotingFee && zoneStatus === "pending" && (
                   <p className="text-[12px] text-amber-300">
                     This zone resolved to ₦0 but isn&rsquo;t marked
                     free-delivery — confirm the real fee with Logistics
                     before dispatch.
                   </p>
                 )}
-                {!zoneQuote.isPending &&
+                {!quotingFee &&
                   systemFee != null &&
                   (zoneStatus === "priced" || zoneStatus === "free") && (
                     <p className="text-[12px] text-text-faint">
@@ -1029,7 +1196,12 @@ export function QuickSaleForm() {
                     ? "increasing"
                     : "reducing"}{" "}
                   the delivery fee for dispatch to{" "}
-                  <strong>{addressText || "this address"}</strong> from{" "}
+                  <strong>
+                    {[addressLine1, city, addrState, country]
+                      .filter(Boolean)
+                      .join(", ") || "this address"}
+                  </strong>{" "}
+                  from{" "}
                   <strong>{ngn(feeConfirm.from)}</strong> to{" "}
                   <strong>{ngn(feeConfirm.to)}</strong>. Do you want to
                   confirm?

@@ -8,6 +8,7 @@ import {
   Send,
   QrCode,
   Copy,
+  Check,
   CheckCircle2,
   Smartphone,
   MessageCircle,
@@ -109,8 +110,10 @@ export function QuickSaleForm() {
   const createOrder = useCreateOrder();
   const [step, setStep] = useState(1);
 
-  // Step 1: Channel
-  const [channel, setChannel] = useState<SalesChannel>("instagram");
+  // Step 1: Channel — defaults to Walk-in since Quick Sale is the counter/POS
+  // flow; staff pick a different channel only when the sale didn't start
+  // in-store.
+  const [channel, setChannel] = useState<SalesChannel>("walk_in");
 
   // Step 2: Customer
   const [contactSearch, setContactSearch] = useState("");
@@ -555,7 +558,12 @@ export function QuickSaleForm() {
     <div className="max-w-3xl space-y-4">
       {/* Step 1: Channel — grouped Digital / Physical per V2.2 §6.4 */}
       <Card className="p-5">
-        <div className="micro mb-3">Sales Channel</div>
+        <div className="flex items-baseline justify-between mb-3">
+          <div className="micro">Sales Channel</div>
+          <div className="text-[11px] text-text-faint">
+            Where is this sale coming from? Tap to change.
+          </div>
+        </div>
         <div className="space-y-4">
           {SALES_CHANNEL_GROUPS.map((group) => (
             <div key={group.key}>
@@ -572,12 +580,13 @@ export function QuickSaleForm() {
                       if (step < 2) setStep(2);
                     }}
                     className={cn(
-                      "px-3 py-1.5 rounded-full text-[12px] font-semibold border transition-colors",
+                      "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[12px] font-semibold border transition-colors",
                       ch.value === channel
                         ? "border-accent/50 text-accent-glow bg-accent/[0.1]"
-                        : "border-line text-text-muted hover:text-text-primary",
+                        : "border-line text-text-muted hover:text-text-primary hover:border-text-muted/50",
                     )}
                   >
+                    {ch.value === channel && <Check className="w-3 h-3" />}
                     {ch.label}
                   </button>
                 ))}

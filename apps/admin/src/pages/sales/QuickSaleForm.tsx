@@ -1066,9 +1066,31 @@ export function QuickSaleForm() {
                 {SALES_CHANNELS.find((c) => c.value === channel)?.label}
               </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-text-muted">Items</span>
-              <span>{cart.reduce((s, l) => s + l.quantity, 0)}</span>
+            <div className="h-px bg-line my-2" />
+            <div className="space-y-2">
+              {cart.map((line) => (
+                <div key={line.id} className="flex items-center gap-3">
+                  <div className="w-8 h-8 shrink-0 rounded-[7px] overflow-hidden bg-text-primary/[0.06]">
+                    {line.image_url && (
+                      <img
+                        src={line.image_url}
+                        alt=""
+                        className="w-full h-full object-cover"
+                      />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="truncate">{line.label}</div>
+                  </div>
+                  <span className="text-text-muted shrink-0">
+                    ×{line.quantity}
+                  </span>
+                  <MoneyText
+                    ngn={line.unit_price * line.quantity}
+                    className="shrink-0 w-20 text-right"
+                  />
+                </div>
+              ))}
             </div>
             <div className="h-px bg-line my-2" />
             <div className="flex justify-between">

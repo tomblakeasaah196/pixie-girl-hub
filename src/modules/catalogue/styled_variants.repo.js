@@ -309,7 +309,24 @@ async function upsertConfig({ client, brand, patch, user_id }) {
  *  ordered by available stock desc. Used at order-placement time to pick a
  *  donor base when a styled variant's own base is short of the requested
  *  quantity — folded into the SAME styling job, no separate service (000088). */
-async function listRewigSiblings({ client, brand, base_product_id }) {
+/**
+ * Size-adjacent sibling bases of `base_product_id` and how much each can
+ * actually donate.
+ *
+ * `location_id` scopes the stock sum to the ONE location the sale will reserve
+ * against (sales.service.js resolves it via stockRepo.getDefaultLocation). Pass
+ * it whenever the answer drives a reservation: summing every location here
+ * reports stock that the reserve cannot reach, so a donor gets picked and then
+ * fails to reserve — silently becoming the pre-order this feature exists to
+ * prevent. Omit it for display-only reads, which fall back to every
+ * storefront-sellable location.
+ */
+async function listRewigSiblings({
+  client,
+  brand,
+  base_product_id,
+  location_id = null,
+}) {
   const { rows } = await ex(client)(
     `SELECT sib.product_id, sib.name,
             (st.display_order - ot.display_order) AS size_diff,
@@ -326,14 +343,20 @@ async function listRewigSiblings({ client, brand, base_product_id }) {
          SELECT COALESCE(SUM(sl.available), 0)::int AS available
            FROM ${t(brand, "stock_levels")} sl
            JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sl.variant_id
-          WHERE pv.product_id = sib.product_id AND pv.is_active = true
+           JOIN ${t(brand, "stock_locations")} loc ON loc.location_id = sl.location_id
+          WHERE pv.product_id = sib.product_id
+            AND pv.is_active = true
+            AND CASE WHEN $2::uuid IS NOT NULL
+                     THEN sl.location_id = $2::uuid
+                     ELSE loc.is_active = true AND loc.available_for_storefront = true
+                END
        ) stock ON true
       WHERE origin.product_id = $1
         AND origin.rewig_eligible = true
         AND origin.base_family_id IS NOT NULL
         AND ABS(st.display_order - ot.display_order) = 1
       ORDER BY stock.available DESC`,
-    [base_product_id],
+    [base_product_id, location_id],
   );
   return rows;
 }

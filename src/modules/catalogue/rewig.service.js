@@ -14,15 +14,37 @@
 const { query } = require("../../config/database");
 const repo = require("./styled_variants.repo");
 
-/** Total sellable stock behind one base product (all its active variants). */
-async function productAvailableStock({ brand, product_id }) {
+/** Run on the caller's transaction when one is supplied, else the pool. */
+const ex = (client) =>
+  client ? client.query.bind(client) : (sql, params) => query(sql, params);
+
+/**
+ * Sellable stock behind one base product (all its active variants).
+ *
+ * `location_id` scopes the sum to the single location a sale reserves against;
+ * without it the sum spans every storefront-sellable location. Reservation
+ * callers MUST pass it — an unscoped sum reports stock the reserve cannot
+ * reach, which is exactly how an in-stock item ends up pre-ordered.
+ */
+async function productAvailableStock({
+  client,
+  brand,
+  product_id,
+  location_id = null,
+}) {
   if (!product_id) return 0;
-  const { rows } = await query(
+  const { rows } = await ex(client)(
     `SELECT COALESCE(SUM(sl.available), 0)::int AS available
        FROM ${brand}.stock_levels sl
        JOIN ${brand}.product_variants pv ON pv.variant_id = sl.variant_id
-      WHERE pv.product_id = $1 AND pv.is_active = true`,
-    [product_id],
+       JOIN ${brand}.stock_locations loc ON loc.location_id = sl.location_id
+      WHERE pv.product_id = $1
+        AND pv.is_active = true
+        AND CASE WHEN $2::uuid IS NOT NULL
+                 THEN sl.location_id = $2::uuid
+                 ELSE loc.is_active = true AND loc.available_for_storefront = true
+            END`,
+    [product_id, location_id],
   );
   return rows[0] ? rows[0].available : 0;
 }
@@ -43,13 +65,15 @@ async function productAvailableStock({ brand, product_id }) {
  * existed (the existing pre-order / "unavailable" handling is untouched).
  */
 async function pickRewigDonorProductId({
+  client,
   brand,
   styled,
   originProductId,
   quantity,
+  location_id = null,
 }) {
   if (!originProductId) return null;
-  const cfg = await repo.getConfig({ brand });
+  const cfg = await repo.getConfig({ client, brand });
   if (!cfg || !cfg.rewig_enabled) return null;
 
   const override = styled ? styled.rewig_override : null;
@@ -62,15 +86,19 @@ async function pickRewigDonorProductId({
   if (!allowed) return null;
 
   const ownAvailable = await productAvailableStock({
+    client,
     brand,
     product_id: originProductId,
+    location_id,
   });
   const qty = Number(quantity) || 1;
   if (ownAvailable >= qty) return null;
 
   const siblings = await repo.listRewigSiblings({
+    client,
     brand,
     base_product_id: originProductId,
+    location_id,
   });
   const withEnough = siblings.filter((s) => s.available >= qty);
   if (!withEnough.length) return null;

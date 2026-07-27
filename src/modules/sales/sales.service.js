@@ -31,6 +31,7 @@ const docCopy = require("../../services/document-copy");
 const emailRender = require("../email_campaigns/email-render");
 const stockService = require("../stock/stock.service");
 const stockRepo = require("../stock/stock.repo");
+const rewigService = require("../catalogue/rewig.service");
 const businessConfig = require("../business_setup/business-config.repo");
 const paymentSettings = require("./payment-settings.service");
 const salesReportExport = require("./sales-report.export");
@@ -89,6 +90,77 @@ async function createOrder({ brand, user, request_id, input }) {
       if (existingId) return repo.findById({ brand, id: existingId });
     }
     throw err;
+  }
+}
+
+/**
+ * Rewig adjacency (000088) donor lookup for a stock-short order line.
+ *
+ * Resolves the line's own base product to a size-adjacent sibling that can
+ * cover `line.quantity` AT `location_id` — the same single location the reserve
+ * targets — and then to a concrete variant of that sibling which actually holds
+ * the units. Both steps are location-scoped on purpose: availability reads sum
+ * every location, so an unscoped answer names a donor the reserve cannot reach
+ * and the line pre-orders anyway.
+ *
+ * Runs on the caller's `client` so it sees reservations already taken by
+ * earlier lines of this same order — two units of the same short size cannot
+ * both be promised the last sibling on the shelf.
+ *
+ * Returns null (caller falls through to pre-order) whenever rewig is switched
+ * off, the listing opted out, the line isn't styled, or no sibling qualifies.
+ */
+async function resolveRewigDonor({ client, brand, line, location_id }) {
+  if (!line.product_id || !location_id) return null;
+  try {
+    // rewig_override is a per-listing opt in/out that beats the brand mode.
+    // A non-styled line has no listing row and simply follows the brand mode.
+    let styled = null;
+    if (line.styled_id) {
+      const { rows } = await client.query(
+        `SELECT rewig_override FROM ${brand}.styled_products WHERE styled_id = $1`,
+        [line.styled_id],
+      );
+      styled = rows[0] || null;
+    }
+    const donorProductId = await rewigService.pickRewigDonorProductId({
+      client,
+      brand,
+      styled,
+      originProductId: line.product_id,
+      quantity: line.quantity,
+      location_id,
+    });
+    if (!donorProductId) return null;
+
+    const variant = await stockRepo.variantWithStockForProduct({
+      client,
+      brand,
+      product_id: donorProductId,
+      location_id,
+      quantity: line.quantity,
+    });
+    if (!variant) return null;
+
+    const { rows: prod } = await client.query(
+      `SELECT name FROM ${brand}.products WHERE product_id = $1`,
+      [donorProductId],
+    );
+    return {
+      product_id: donorProductId,
+      product_name: prod[0] ? prod[0].name : "sibling size",
+      variant_id: variant.variant_id,
+      sku: variant.sku,
+      origin_variant_id: line.variant_id,
+    };
+  } catch (err) {
+    // A donor lookup must never cost the order. Reads only, so there is no
+    // partial state to unwind — log and let the line pre-order as before.
+    logger.warn(
+      { err: err.message, line_id: line.line_id },
+      "rewig donor lookup failed — falling through to pre-order",
+    );
+    return null;
   }
 }
 
@@ -817,41 +889,116 @@ async function createOrderTx({ brand, user, request_id, input }) {
       );
     };
     const preorderLines = [];
+    const rewigSubstitutions = [];
     {
       const loc = await stockRepo.getDefaultLocation({ client, brand });
-      for (const line of insertedLines) {
-        if (!line.variant_id) continue;
-        if (!loc) {
-          if (!preorderAllowed(line)) blockSoldOut(line);
-          preorderLines.push(line);
-          continue;
-        }
+      // One reserve attempt, isolated in its own savepoint so a failure leaves
+      // the transaction healthy. Resolves to null on success, else the error.
+      const tryReserve = async (variant_id, quantity) => {
         await client.query("SAVEPOINT pgh_reserve");
         try {
           await stockService.reserveForOrder({
             client,
             brand,
-            variant_id: line.variant_id,
+            variant_id,
             location_id: loc.location_id,
-            quantity: line.quantity,
+            quantity,
             reference_id: order.order_id,
             user_id: user.user_id,
           });
           await client.query("RELEASE SAVEPOINT pgh_reserve");
+          return null;
         } catch (err) {
           await client.query("ROLLBACK TO SAVEPOINT pgh_reserve");
           await client.query("RELEASE SAVEPOINT pgh_reserve").catch(() => {});
+          return err;
+        }
+      };
+
+      for (const line of insertedLines) {
+        if (!line.variant_id) continue;
+        if (!loc) {
           if (!preorderAllowed(line)) blockSoldOut(line);
           preorderLines.push(line);
-          logger.info(
-            {
-              err: err.message,
-              order_id: order.order_id,
-              variant_id: line.variant_id,
-            },
-            "stock short — line recorded as pre-order",
+          logger.warn(
+            { order_id: order.order_id, line_id: line.line_id },
+            "no active stock location — line recorded as pre-order",
           );
+          continue;
         }
+        let err = await tryReserve(line.variant_id, line.quantity);
+        if (!err) continue;
+
+        // Rewig adjacency (000088) — the line's own base is short, so before
+        // falling through to pre-order, try a size-adjacent sibling base that
+        // can actually cover it at THIS location.
+        //
+        // This lives here, below every channel, on purpose. It used to sit only
+        // in the three checkout callers (storefront, sales-campaigns, order
+        // links), so Quick Sale and Quotations — which resolve a styled variant
+        // to its base in the browser (apps/admin/src/lib/product-search.ts) and
+        // post a bare variant_id — never consulted it at all, and pre-ordered
+        // straight past a sibling sitting in stock. createOrder is the one point
+        // every channel converges on, so putting the fallback here fixes those
+        // paths and any channel added later. It is idempotent for the callers
+        // that already resolved a donor: their reserve succeeds first try and
+        // this block never runs.
+        const donor = await resolveRewigDonor({
+          client,
+          brand,
+          line,
+          location_id: loc.location_id,
+        });
+        if (donor) {
+          const donorErr = await tryReserve(donor.variant_id, line.quantity);
+          if (!donorErr) {
+            const note = `Rewig substitution: fulfil from ${donor.product_name} (${donor.sku}) — resize to ${line.variant_label_snapshot || "the ordered size"}.`;
+            await repo.repointLineVariant({
+              client,
+              brand,
+              line_id: line.line_id,
+              product_id: donor.product_id,
+              variant_id: donor.variant_id,
+              note,
+            });
+            // Keep the in-memory row in step: payment-time deductForSale reads
+            // these same objects when the order is paid in the same request.
+            line.product_id = donor.product_id;
+            line.variant_id = donor.variant_id;
+            rewigSubstitutions.push({
+              line_id: line.line_id,
+              from_variant_id: donor.origin_variant_id,
+              to_variant_id: donor.variant_id,
+              donor_sku: donor.sku,
+              donor_product_name: donor.product_name,
+            });
+            logger.info(
+              {
+                order_id: order.order_id,
+                line_id: line.line_id,
+                donor_sku: donor.sku,
+              },
+              "rewig substitution — reserved from size-adjacent sibling base",
+            );
+            continue;
+          }
+          err = donorErr;
+        }
+
+        if (!preorderAllowed(line)) blockSoldOut(line);
+        preorderLines.push(line);
+        logger.info(
+          {
+            err: err.message,
+            order_id: order.order_id,
+            line_id: line.line_id,
+            variant_id: line.variant_id,
+            location_id: loc.location_id,
+            quantity: line.quantity,
+            rewig_donor_found: !!donor,
+          },
+          "stock short — line recorded as pre-order",
+        );
       }
     }
 
@@ -899,6 +1046,17 @@ async function createOrderTx({ brand, user, request_id, input }) {
         message: `Some items are made to order — your pre-order ships in about ${windowLabel}.`,
       };
       notices.push({ code: "PREORDER_ITEMS", message: preorderInfo.message });
+    }
+
+    // Rewig substitutions (000088): the customer's size is being cut from a
+    // sibling unit, so the picklist and the stylist brief must say so — the
+    // order line already carries the note, this surfaces it to the caller.
+    if (rewigSubstitutions.length) {
+      notices.push({
+        code: "REWIG_SUBSTITUTION",
+        message: `${rewigSubstitutions.length === 1 ? "One item" : `${rewigSubstitutions.length} items`} will be resized from an adjacent size in stock.`,
+        details: rewigSubstitutions,
+      });
     }
 
     await audit({

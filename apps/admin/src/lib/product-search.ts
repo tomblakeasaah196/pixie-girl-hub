@@ -63,6 +63,9 @@ export interface ResolvedLine {
   // the base variant's own name.
   product_name_snapshot?: string;
   variant_label_snapshot?: string;
+  // Carried from the pick's ProductHit so cart/line UIs can show a thumbnail
+  // instead of just a name — helps reps who don't know products by name.
+  image_url?: string | null;
 }
 
 export interface ResolvedPick {
@@ -233,6 +236,7 @@ export async function resolvePick(hit: ProductHit): Promise<ResolvedPick> {
         sku: v.sku,
         unit_price: num(v.price_storefront_ngn ?? v.price_pos_ngn),
         quantity: 1,
+        image_url: hit.image_url,
       }));
     return { lines };
   }
@@ -264,6 +268,7 @@ export async function resolvePick(hit: ProductHit): Promise<ResolvedPick> {
           unit_price: num(sp.retail_price_ngn),
           quantity: 1,
           styled_id: sp.styled_id,
+          image_url: hit.image_url,
         },
       ],
     };
@@ -281,6 +286,7 @@ export async function resolvePick(hit: ProductHit): Promise<ResolvedPick> {
           sku: "Service",
           unit_price: num(hit.price ?? 0),
           quantity: 1,
+          image_url: hit.image_url,
         },
       ],
     };
@@ -318,6 +324,7 @@ export async function resolvePick(hit: ProductHit): Promise<ResolvedPick> {
       sku,
       unit_price: price,
       quantity: comp.quantity,
+      image_url: hit.image_url,
     });
   }
   return { lines, bundle_id: bundle.bundle_id };
@@ -380,6 +387,7 @@ export async function resolveStyledPick(
         styled_id: sp.styled_id,
         product_name_snapshot: sp.name,
         variant_label_snapshot: spec || undefined,
+        image_url: hit.image_url,
       },
     ],
   };

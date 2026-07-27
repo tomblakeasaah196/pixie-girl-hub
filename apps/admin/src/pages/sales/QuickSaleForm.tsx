@@ -75,6 +75,9 @@ interface CartLine {
   // ResolvedLine. Falls back to `label`/undefined for every other kind.
   product_name_snapshot?: string;
   variant_label_snapshot?: string;
+  // Thumbnail from the pick — shown on the cart line so staff can confirm
+  // by sight, not just name.
+  image_url?: string | null;
 }
 
 interface SearchResult {
@@ -108,7 +111,11 @@ function toAbsoluteUrl(url: string): string {
 
 export function QuickSaleForm() {
   const createOrder = useCreateOrder();
-  const [step, setStep] = useState(1);
+  // Starts at 2 (Customer), not 1: the channel below already defaults to
+  // Walk-in and shows as selected, so the Customer card must be visible
+  // immediately too — otherwise the picker looks clicked but nothing
+  // advanced.
+  const [step, setStep] = useState(2);
 
   // Step 1: Channel — defaults to Walk-in since Quick Sale is the counter/POS
   // flow; staff pick a different channel only when the sale didn't start
@@ -528,8 +535,8 @@ export function QuickSaleForm() {
   };
 
   const reset = () => {
-    setStep(1);
-    setChannel("instagram");
+    setStep(2);
+    setChannel("walk_in");
     setContactId(null);
     setContactName("");
     setContactSearch("");
@@ -755,6 +762,7 @@ export function QuickSaleForm() {
             <StyledVariantPicker
               styledId={pendingStyled.id}
               productName={pendingStyled.label}
+              imageUrl={pendingStyled.image_url}
               anchorPrice={
                 pendingStyled.price != null ? Number(pendingStyled.price) : null
               }
@@ -793,6 +801,15 @@ export function QuickSaleForm() {
                   key={line.id}
                   className="flex items-center gap-3 p-3 rounded-[11px] bg-text-primary/[0.03] border border-line"
                 >
+                  <div className="w-10 h-10 shrink-0 rounded-[8px] overflow-hidden bg-text-primary/[0.06]">
+                    {line.image_url && (
+                      <img
+                        src={line.image_url}
+                        alt=""
+                        className="w-full h-full object-cover"
+                      />
+                    )}
+                  </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-[13px] font-semibold truncate">
                       {line.label}
@@ -1049,9 +1066,31 @@ export function QuickSaleForm() {
                 {SALES_CHANNELS.find((c) => c.value === channel)?.label}
               </span>
             </div>
-            <div className="flex justify-between">
-              <span className="text-text-muted">Items</span>
-              <span>{cart.reduce((s, l) => s + l.quantity, 0)}</span>
+            <div className="h-px bg-line my-2" />
+            <div className="space-y-2">
+              {cart.map((line) => (
+                <div key={line.id} className="flex items-center gap-3">
+                  <div className="w-8 h-8 shrink-0 rounded-[7px] overflow-hidden bg-text-primary/[0.06]">
+                    {line.image_url && (
+                      <img
+                        src={line.image_url}
+                        alt=""
+                        className="w-full h-full object-cover"
+                      />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="truncate">{line.label}</div>
+                  </div>
+                  <span className="text-text-muted shrink-0">
+                    ×{line.quantity}
+                  </span>
+                  <MoneyText
+                    ngn={line.unit_price * line.quantity}
+                    className="shrink-0 w-20 text-right"
+                  />
+                </div>
+              ))}
             </div>
             <div className="h-px bg-line my-2" />
             <div className="flex justify-between">

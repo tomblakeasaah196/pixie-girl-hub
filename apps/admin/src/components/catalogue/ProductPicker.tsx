@@ -31,6 +31,12 @@ const KIND_NOUN: Record<ProductKind, string> = {
   service: "services",
 };
 
+/** Fallback glyph shown in the result thumbnail when a hit has no image. */
+function KIND_ICON_EL({ kind }: { kind: ProductKind }) {
+  const Icon = KIND_ICON[kind];
+  return <Icon className="w-4 h-4 text-text-faint" />;
+}
+
 export function ProductPicker({
   onPick,
   autoFocus,
@@ -144,10 +150,27 @@ export function ProductPicker({
                 key={h.id}
                 type="button"
                 onClick={() => pick(h)}
-                className="w-full px-4 py-2.5 text-left hover:bg-text-primary/[0.06] transition-colors"
+                className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-text-primary/[0.06] transition-colors"
               >
-                <div className="text-[13px] font-semibold">{h.label}</div>
-                <div className="text-[11px] text-text-faint">{h.sub}</div>
+                <div className="w-9 h-9 shrink-0 rounded-[8px] overflow-hidden bg-text-primary/[0.06] grid place-items-center">
+                  {h.image_url ? (
+                    <img
+                      src={h.image_url}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <KIND_ICON_EL kind={h.kind} />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[13px] font-semibold truncate">
+                    {h.label}
+                  </div>
+                  <div className="text-[11px] text-text-faint truncate">
+                    {h.sub}
+                  </div>
+                </div>
               </button>
             ))
           )}

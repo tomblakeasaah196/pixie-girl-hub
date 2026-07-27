@@ -75,6 +75,9 @@ interface CartLine {
   // ResolvedLine. Falls back to `label`/undefined for every other kind.
   product_name_snapshot?: string;
   variant_label_snapshot?: string;
+  // Thumbnail from the pick — shown on the cart line so staff can confirm
+  // by sight, not just name.
+  image_url?: string | null;
 }
 
 interface SearchResult {
@@ -759,6 +762,7 @@ export function QuickSaleForm() {
             <StyledVariantPicker
               styledId={pendingStyled.id}
               productName={pendingStyled.label}
+              imageUrl={pendingStyled.image_url}
               anchorPrice={
                 pendingStyled.price != null ? Number(pendingStyled.price) : null
               }
@@ -797,6 +801,15 @@ export function QuickSaleForm() {
                   key={line.id}
                   className="flex items-center gap-3 p-3 rounded-[11px] bg-text-primary/[0.03] border border-line"
                 >
+                  <div className="w-10 h-10 shrink-0 rounded-[8px] overflow-hidden bg-text-primary/[0.06]">
+                    {line.image_url && (
+                      <img
+                        src={line.image_url}
+                        alt=""
+                        className="w-full h-full object-cover"
+                      />
+                    )}
+                  </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-[13px] font-semibold truncate">
                       {line.label}

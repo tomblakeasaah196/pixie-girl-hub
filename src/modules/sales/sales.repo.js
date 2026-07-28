@@ -29,6 +29,12 @@ const ORDER = [
   "shipping_fee_ngn",
   "total_ngn",
   "coupon_code",
+  // The quote this order was converted from (000090 pay-link rail, and the
+  // manual Convert button). quotations.converted_sales_order_id points forward;
+  // this is the back-pointer, which had never been written despite the column
+  // existing since 000019 — so "which quote produced this order?" was
+  // unanswerable from the order side.
+  "quotation_id",
   "client_idempotency_key",
   // Flexi Pay (D1): the buyer's explicit plan choice — distinct from
   // payment_model, which is the policy snapshot derived from it.
@@ -888,6 +894,63 @@ async function findQuotationById({ client, brand, id }) {
   );
   return { ...rows[0], lines };
 }
+/**
+ * Mint (or return) the quotation's public pay token — the `/quote/:token` link
+ * a customer opens to pay a quote without logging in. Mirrors
+ * ensurePublicTrackingToken on the order side: the column has no default, so
+ * the token is created on first need and then fixed forever. Idempotent —
+ * COALESCE only fills a NULL, and the row lock serialises concurrent callers,
+ * so re-sending a quote never invalidates the link already in the customer's
+ * inbox.
+ */
+async function ensureQuotationPayToken({ client, brand, id }) {
+  if (!id) return null;
+  const token = require("crypto").randomBytes(18).toString("base64url");
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "quotations")}
+        SET public_pay_token = COALESCE(public_pay_token, $2)
+      WHERE quotation_id = $1
+      RETURNING public_pay_token`,
+    [id, token],
+  );
+  return rows[0] ? rows[0].public_pay_token : null;
+}
+/**
+ * Resolve a quotation by its public pay token. Header only — the pay page's
+ * preview needs totals and status, not the full line set.
+ */
+async function findQuotationByPayToken({ client, brand, token }) {
+  if (!token) return null;
+  const { rows } = await ex(client)(
+    `SELECT quotation_id, quotation_number, status, contact_id, total_ngn,
+            valid_until, display_currency, fx_rate_used, payment_terms,
+            converted_sales_order_id
+       FROM ${t(brand, "quotations")}
+      WHERE public_pay_token = $1 LIMIT 1`,
+    [token],
+  );
+  return rows[0] || null;
+}
+/**
+ * Resolve a quotation by its human number ('PXG-QUO-0001').
+ *
+ * Nomba's checkout API accepts no metadata — only an `orderReference` — so a
+ * quote paid through Nomba comes back as `nomba-PXG-QUO-0001-<ts>` and the
+ * webhook has nothing but that string to identify the document. This is the
+ * quote-side twin of findByOrderNumber, which serves the same purpose for
+ * orders.
+ */
+async function findQuotationByNumber({ client, brand, quotation_number }) {
+  if (!quotation_number) return null;
+  const { rows } = await ex(client)(
+    `SELECT quotation_id, quotation_number, status, total_ngn,
+            converted_sales_order_id
+       FROM ${t(brand, "quotations")}
+      WHERE quotation_number = $1 LIMIT 1`,
+    [quotation_number],
+  );
+  return rows[0] || null;
+}
 async function listQuotations({
   client,
   brand,
@@ -1354,6 +1417,9 @@ module.exports = {
   createQuotation,
   insertQuotationLine,
   findQuotationById,
+  ensureQuotationPayToken,
+  findQuotationByPayToken,
+  findQuotationByNumber,
   listQuotations,
   setQuotationStatus,
   createCancellation,

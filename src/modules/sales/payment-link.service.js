@@ -103,21 +103,32 @@ async function settlementFxRate({ brand, order, currency }) {
   return currencyService.systemFxRate({ brand, currency: cur });
 }
 
+/**
+ * Initialise a checkout on one gateway.
+ *
+ * `subject` is what the money is FOR — an order or (000090) a quotation:
+ *   { doc_number, metadata, callback_params }
+ * The gateway only ever sees `metadata`, and the inbound webhook keys off it to
+ * decide what to do: `order_id` → record against that order; `quotation_id` →
+ * convert the quote to an order first, then record against the new order.
+ */
 async function initOnGateway({
   provider,
   credentials,
-  brand,
-  order,
+  subject,
   amount_ngn,
   currency,
   charge_amount,
   email,
   return_url_base,
 }) {
-  const reference = makeReference(provider, order.order_number);
-  const metadata = { brand, order_id: order.order_id, amount_ngn };
+  const reference = makeReference(provider, subject.doc_number);
+  const metadata = { ...subject.metadata, amount_ngn };
+  const callbackParams = Object.entries(subject.callback_params || {})
+    .map(([k, v]) => `&${k}=${encodeURIComponent(v)}`)
+    .join("");
   const callback_url = return_url_base
-    ? `${return_url_base.replace(/\/$/, "")}?ref=${encodeURIComponent(reference)}&order_id=${encodeURIComponent(order.order_id)}`
+    ? `${return_url_base.replace(/\/$/, "")}?ref=${encodeURIComponent(reference)}${callbackParams}`
     : `${config.APP_URL.replace(/\/$/, "")}/pay/callback?ref=${reference}`;
 
   if (provider === "paystack") {
@@ -316,8 +327,11 @@ async function createPaymentLink({
       const res = await initOnGateway({
         provider: link.provider,
         credentials: link.credentials,
-        brand,
-        order,
+        subject: {
+          doc_number: order.order_number,
+          metadata: { brand, order_id: order.order_id },
+          callback_params: { order_id: order.order_id },
+        },
         amount_ngn: amountStr,
         currency: settleCurrency,
         charge_amount: chargeAmount,
@@ -339,6 +353,232 @@ async function createPaymentLink({
     502,
     { metadata: { attempts } },
   );
+}
+
+// ── Quotation pay-link (000090 — pay the quote, order minted on payment) ──
+//
+// The quote never holds money. The checkout carries metadata.quotation_id and
+// the webhook converts the quote → order at confirmation, then records the
+// payment against that order through the ordinary rail. Unlike an order link
+// this is always the FULL quote total: a quote has no payment history to net
+// off, and the Flexi Pay minimums are policy on an order that doesn't exist
+// yet. Deposits on quotes are deliberately out of scope here — a deposit-
+// triggered quote should be accepted-and-converted first (the order-first
+// fallback), then paid part-way on the order's own link.
+
+const QUOTE_PAYABLE_STATUSES = new Set(["sent", "viewed", "accepted"]);
+
+async function assertQuotationPayable(q) {
+  if (q.status === "converted")
+    throw new AppError(
+      "ALREADY_CONVERTED",
+      "This quotation has already become an order",
+      409,
+      {
+        user_message:
+          "This quote has already been converted to an order — pay on the order instead.",
+      },
+    );
+  if (!QUOTE_PAYABLE_STATUSES.has(q.status))
+    throw new AppError(
+      "INVALID_STATE",
+      `Cannot pay a '${q.status}' quote`,
+      409,
+    );
+  // valid_until is a DATE — the quote stays payable through the whole of its
+  // last day, so compare against end-of-day rather than the raw timestamp.
+  if (q.valid_until) {
+    const expiry = new Date(q.valid_until);
+    expiry.setHours(23, 59, 59, 999);
+    if (Date.now() > expiry.getTime())
+      throw new AppError("QUOTE_EXPIRED", "This quotation has expired", 409, {
+        user_message:
+          "This quote has expired. Please ask us for an updated one.",
+      });
+  }
+}
+
+/**
+ * Create a checkout link for a QUOTATION, walking the same gateway chain with
+ * the same automatic fallback as the order link. Returns
+ * { provider, reference, checkout_url, amount_ngn, attempts }.
+ */
+async function createQuotationPaymentLink({
+  brand,
+  quotation_id,
+  currency,
+  return_url_base,
+  preferred_provider,
+}) {
+  const quote = await salesRepo.findQuotationById({ brand, id: quotation_id });
+  if (!quote) throw new NotFoundError("Quotation");
+  await assertQuotationPayable(quote);
+
+  const amt = money(quote.total_ngn);
+  if (amt.lte(0))
+    throw new AppError("NOTHING_DUE", "Quotation has no amount due", 409);
+  const amountStr = toCurrencyString(amt);
+
+  // Settle in the currency the quote was priced in, at the rate locked ON the
+  // quote — same precedence as an order (settlementFxRate reads fx_rate_used /
+  // display_currency, both of which quotations carry). A quote has no campaign,
+  // so campaignFxRate short-circuits to null and we fall through to the system
+  // rate when nothing was locked.
+  const settleCurrency = String(
+    currency || quote.display_currency || "NGN",
+  ).toUpperCase();
+  let chargeAmount = amountStr;
+  if (settleCurrency !== "NGN") {
+    const rate = await settlementFxRate({
+      brand,
+      order: quote,
+      currency: settleCurrency,
+    });
+    if (!rate || rate <= 0)
+      throw new AppError(
+        "NO_FX_RATE",
+        `No exchange rate is configured for ${settleCurrency} settlement on this quotation`,
+        422,
+      );
+    chargeAmount = amt.dividedBy(money(rate)).ceil().toString();
+  }
+
+  const email = await contactEmail(quote.contact_id);
+  const chain = await gateways.getActiveChain({
+    brand,
+    currency: settleCurrency,
+  });
+  if (!chain.length)
+    throw new AppError(
+      "NO_GATEWAY",
+      "No active payment gateway is configured for this currency",
+      503,
+    );
+  if (preferred_provider) {
+    chain.sort((a, b) => {
+      if (a.provider === preferred_provider) return -1;
+      if (b.provider === preferred_provider) return 1;
+      return 0;
+    });
+  }
+
+  const attempts = [];
+  for (const link of chain) {
+    try {
+      const res = await initOnGateway({
+        provider: link.provider,
+        credentials: link.credentials,
+        subject: {
+          doc_number: quote.quotation_number,
+          metadata: { brand, quotation_id: quote.quotation_id },
+          callback_params: { quotation_id: quote.quotation_id },
+        },
+        amount_ngn: amountStr,
+        currency: settleCurrency,
+        charge_amount: chargeAmount,
+        email,
+        return_url_base,
+      });
+      return { ...res, amount_ngn: amountStr, attempts };
+    } catch (err) {
+      attempts.push({ provider: link.provider, error: err.message });
+      logger.warn(
+        { provider: link.provider, quotation_id, err: err.message },
+        "quotation payment gateway init failed — trying fallback",
+      );
+    }
+  }
+  throw new AppError(
+    "ALL_GATEWAYS_FAILED",
+    "All configured gateways failed to initialise payment",
+    502,
+    { metadata: { attempts } },
+  );
+}
+
+/**
+ * Mint (idempotently) the quote's public pay token and return the customer-
+ * facing `/quote/:token` URL — what staff paste into WhatsApp or an email.
+ */
+async function quotationPayLink({ brand, quotation_id }) {
+  const quote = await salesRepo.findQuotationById({ brand, id: quotation_id });
+  if (!quote) throw new NotFoundError("Quotation");
+  const token = await salesRepo.ensureQuotationPayToken({
+    brand,
+    id: quotation_id,
+  });
+  let url = "";
+  try {
+    url = await brandUrls.quotePayUrl(brand, token);
+  } catch {
+    url = "";
+  }
+  return {
+    quotation_id,
+    quotation_number: quote.quotation_number,
+    status: quote.status,
+    total_ngn: toCurrencyString(money(quote.total_ngn)),
+    public_pay_token: token,
+    pay_url: url,
+  };
+}
+
+async function resolveQuotationByToken(token) {
+  if (!token) return null;
+  for (const brand of VALID) {
+    const quote = await salesRepo.findQuotationByPayToken({ brand, token });
+    if (quote) return { brand, quote };
+  }
+  return null;
+}
+
+/** Public, no-auth preview of a quotation for its pay page. */
+async function previewQuotationByToken({ token }) {
+  const found = await resolveQuotationByToken(token);
+  if (!found) throw new NotFoundError("Quotation");
+  const { brand, quote } = found;
+  return {
+    brand,
+    quotation_number: quote.quotation_number,
+    status: quote.status,
+    // Already paid → the page redirects the customer to the order's own pay
+    // page (balance, receipts) instead of offering to charge them twice.
+    converted_sales_order_id: quote.converted_sales_order_id || null,
+    display_currency: quote.display_currency || "NGN",
+    display_fx_rate:
+      quote.fx_rate_used !== null && quote.fx_rate_used !== undefined
+        ? Number(quote.fx_rate_used)
+        : null,
+    total_ngn: toCurrencyString(money(quote.total_ngn)),
+    valid_until: quote.valid_until || null,
+    payment_terms: quote.payment_terms || null,
+    // Server-computed so the page never has to reason about expiry or status.
+    payable: await assertQuotationPayable(quote).then(
+      () => true,
+      () => false,
+    ),
+  };
+}
+
+/** Public, no-auth: generate a checkout link for a tokenised quotation. */
+async function createPublicQuotationPaymentLink({ token, currency }) {
+  const found = await resolveQuotationByToken(token);
+  if (!found) throw new NotFoundError("Quotation");
+  // Return the buyer to THIS quote page after the gateway. Resolved server-side
+  // from the brand's own public base — never a client-supplied URL — so it
+  // can't become an open redirect.
+  let returnUrlBase;
+  try {
+    returnUrlBase = await brandUrls.quotePayUrl(found.brand, token);
+  } catch {
+    returnUrlBase = undefined;
+  }
+  return createQuotationPaymentLink({
+    brand: found.brand,
+    quotation_id: found.quote.quotation_id,
+    currency,
+    return_url_base: returnUrlBase,
+  });
 }
 
 // ── Public (tokenised) pay-link (§6.2 — customer-facing "pay any amount") ──
@@ -436,4 +676,8 @@ module.exports = {
   createPaymentLink,
   previewByToken,
   createPublicPaymentLink,
+  createQuotationPaymentLink,
+  quotationPayLink,
+  previewQuotationByToken,
+  createPublicQuotationPaymentLink,
 };

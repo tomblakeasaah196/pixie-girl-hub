@@ -173,6 +173,17 @@ const acceptQuotation = async (req, res) =>
       ...base(req),
       id: req.params.quoId,
       decision: "accept",
+      // Order-first fallback: accept AND mint the order in one step, for sales
+      // taken offline rather than through the quote's own pay link.
+      convert: req.body.convert === true,
+      sales_channel: req.body.sales_channel,
+    }),
+  });
+const getQuotationPayLink = async (req, res) =>
+  res.json({
+    data: await paymentLink.quotationPayLink({
+      brand: req.brand,
+      quotation_id: req.params.quoId,
     }),
   });
 const rejectQuotation = async (req, res) =>
@@ -280,6 +291,7 @@ module.exports = {
   createQuotation,
   sendQuotation,
   acceptQuotation,
+  getQuotationPayLink,
   rejectQuotation,
   convertQuotation,
   requestCancellation,

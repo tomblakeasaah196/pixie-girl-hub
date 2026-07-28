@@ -166,6 +166,7 @@ const publicTrackingRouter = require("../modules/logistics/tracking.routes");
 const publicInvoiceRouter = require("../modules/invoicing/invoice-public.routes");
 const publicOrderTimelineRouter = require("../modules/sales/order-timeline.routes");
 const publicPayLinkRouter = require("../modules/sales/payment-link.public.routes");
+const publicQuotationPayRouter = require("../modules/sales/quotation-pay.public.routes");
 const publicOrderFormRouter = require("../modules/storefront/order-form.routes");
 const publicInstallHubRouter = require("../modules/storefront/install-hub.routes");
 const publicStorefrontGeoRouter = require("../modules/storefront/geo.routes");
@@ -321,6 +322,9 @@ function mountRoutes(app) {
   // POSTs live cart activity. Write-limited (the activity POST).
   publicRouter.use("/order-link", publicWriteLimiter, orderLinkPublicRouter);
   publicRouter.use("/pay", publicWriteLimiter, publicPayLinkRouter);
+  // Quotation pay-link — the `/quote/<token>` page. Paying it converts the
+  // quote into an order at webhook confirmation (000090).
+  publicRouter.use("/quote", publicWriteLimiter, publicQuotationPayRouter);
   publicRouter.use("/email", publicEmailTrackingRouter);
   // Unauthenticated branding feed — the login page calls this before
   // a token exists so the shell can theme itself.

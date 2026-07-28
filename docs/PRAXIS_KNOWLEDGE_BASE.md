@@ -239,6 +239,23 @@ chasing deliveries, matching stray in-store terminal payments, and payment setti
   (`/o/<slug>`), picks their gateway (Nomba / Paystack, whichever are active),
   and is redirected straight to payment.
 - *Send a quotation?* Sales → **Quotations** → **New Quotation** / **Create Quotation**.
+- *Let a customer PAY a quotation (and turn it into an order automatically)?*
+  Sales → **Quotations** → open the quote → **Payment Link**. That mints a
+  customer link (`/quote/<token>`) you can paste into WhatsApp or email. When
+  the customer pays it, the quote becomes a sales order by itself — nobody has
+  to press Convert, and the payment, invoice and receipt all land on the new
+  order exactly as with any other sale. The link works while the quote is sent /
+  viewed / accepted and not yet expired; once it's been paid the link stops
+  offering payment and points at the resulting order instead.
+- *Convert a quotation to an order manually?* Open the quote → **Convert to
+  Order** (once it's accepted), or **Accept & Create Order** straight from a
+  sent/viewed quote. Use this when the customer is paying offline — bank
+  transfer or cash — so there's an order to record the money against. For a
+  deposit ("50% now, balance on delivery"), convert first, then take the part
+  payment on the order's own pay link, which is what enforces the plan minimums.
+- *Which quote did an order come from?* The order carries the quotation it was
+  converted from, and the quote shows the order it became — the link is stamped
+  both ways at conversion.
 - *See orders waiting to ship?* Sales → **Delivery Pending** tab.
 - *An in-store card/terminal payment came in but no order matched it?* Sales →
   **POS Reconciliation** tab (`/sales?tab=pos-reconciliation`). Pick the
@@ -1194,6 +1211,8 @@ candidates). They don't need a Hub account:
 | Purpose | Link shape | Who uses it |
 |---|---|---|
 | Order checkout | `/o/<slug>` | A customer pays for an order a staffer built. |
+| Order pay-link | `/pay/<token>` | A customer pays (or part-pays) the balance on an existing order. |
+| Quotation pay-link | `/quote/<token>` | A customer pays a quotation — paying it turns the quote into a sales order automatically. |
 | Walk-in registration | `/walkin/<brand>` | The counter QR — a walk-in customer registers. |
 | Online welcome / onboarding | `/welcome/<business>/<token>` | New customer intake via a QR/token link. |
 | Document e-signature | `/sign/<token>` | Anyone signing a document emailed to them. |
@@ -1211,6 +1230,10 @@ Use this as the fast lookup. Format: **task → module (group) → link**.
 - Ring up a quick sale → Sales (Run) → `/sales` (Quick Sale tab)
 - Create an order + pay link → Sales → `/sales` (Orders → Create Order & Send Pay Link)
 - Send a quotation → Sales → `/sales` (Quotations → New Quotation)
+- Let a customer pay a quotation (auto-converts to an order) → Sales → `/sales`
+  (Quotations → open the quote → Payment Link → `/quote/<token>`)
+- Convert a quotation to an order by hand → open the quote → Convert to Order
+  (or Accept & Create Order on a sent/viewed quote)
 - Record a payment on an order → open the order → `/sales/orders/<id>` → Record Payment
 - Match an unattributed in-store terminal payment to an order → Sales →
   `/sales?tab=pos-reconciliation` → Match (or Ignore with a reason)

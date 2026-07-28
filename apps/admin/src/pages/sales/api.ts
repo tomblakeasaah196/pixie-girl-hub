@@ -10,6 +10,8 @@ import type {
   QuotationCreateInput,
   QuotationSendInput,
   QuotationConvertInput,
+  QuotationAcceptInput,
+  QuotationPayLink,
   CancellationRequestInput,
   PaginatedResponse,
   FlexiPaySettings,
@@ -240,8 +242,18 @@ export const createQuotation = (input: QuotationCreateInput) =>
 export const sendQuotation = (id: string, input: QuotationSendInput = {}) =>
   api.post<Quotation>(`${S}/quotations/${id}/send`, input);
 
-export const acceptQuotation = (id: string) =>
-  api.post<Quotation>(`${S}/quotations/${id}/accept`);
+export const acceptQuotation = (
+  id: string,
+  input: QuotationAcceptInput = {},
+) => api.post<Quotation>(`${S}/quotations/${id}/accept`, input);
+
+/**
+ * Mint (idempotently) the quote's customer-facing pay link. Sending it is what
+ * lets the customer pay the quote directly; the order is created from the quote
+ * when that payment confirms.
+ */
+export const getQuotationPayLink = (id: string) =>
+  api.get<QuotationPayLink>(`${S}/quotations/${id}/pay-link`);
 
 export const rejectQuotation = (id: string, reason?: string) =>
   api.post<Quotation>(`${S}/quotations/${id}/reject`, { reason });

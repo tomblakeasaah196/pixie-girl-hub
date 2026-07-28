@@ -7342,7 +7342,83 @@ paths:
         x-required-permission: "sales.edit",
         x-entity-scope: brand,
         x-is-write: true,
+        requestBody:
+          {
+            required: false,
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      {
+                        type: object,
+                        properties:
+                          {
+                            convert:
+                              {
+                                type: boolean,
+                                description: Also create the sales order now (order-first fallback, for sales settled offline),
+                              },
+                            sales_channel: { type: string },
+                          },
+                      },
+                  },
+              },
+          },
         responses: { "200": { description: Accepted } },
+      }
+  /sales/quotations/{quoId}/pay-link:
+    get:
+      {
+        summary: Customer pay link for a quotation,
+        description: "Mints (idempotently) the quote's public pay token and returns the /quote/<token> URL. When the customer pays that link the quotation is converted into a sales order automatically at gateway confirmation.",
+        tags: [sales],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: quoId,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "sales.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses:
+          {
+            "200":
+              {
+                description: Pay link,
+                content:
+                  {
+                    application/json:
+                      {
+                        schema:
+                          {
+                            type: object,
+                            properties:
+                              {
+                                data:
+                                  {
+                                    type: object,
+                                    properties:
+                                      {
+                                        quotation_id: { type: string, format: uuid },
+                                        quotation_number: { type: string },
+                                        status: { type: string },
+                                        total_ngn: { type: string },
+                                        public_pay_token: { type: string, nullable: true },
+                                        pay_url: { type: string },
+                                      },
+                                  },
+                              },
+                          },
+                      },
+                  },
+              },
+          },
       }
   /sales/quotations/{quoId}/reject:
     post:
@@ -11796,6 +11872,53 @@ paths:
         "201": { description: Checkout link }
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { description: Below the plan minimum / exceeds balance }
+
+  # ── Public tokenised quotation pay-link (served at /api/public/quote) ──
+  # Paying a quotation converts it into a sales order at webhook confirmation:
+  # the checkout carries metadata.quotation_id (no order exists yet), and the
+  # gateway webhook mints the order, then records the payment against it.
+  /quote/{token}:
+    get:
+      summary: "PUBLIC: preview a quotation for payment — total, validity, terms, whether it is still payable, and the order it became if already paid (backs the /quote/{token} page; served at /api/public/quote/{token})"
+      tags: [sales, public]
+      security: []
+      parameters:
+        [{ name: token, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200":
+          description: Quote total + payable flag + display_fx_rate
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      brand: { type: string }
+                      quotation_number: { type: string }
+                      status: { type: string }
+                      converted_sales_order_id:
+                        { type: string, format: uuid, nullable: true }
+                      display_currency: { type: string }
+                      display_fx_rate: { type: number, nullable: true }
+                      total_ngn: { type: string }
+                      valid_until: { type: string, nullable: true }
+                      payment_terms: { type: string, nullable: true }
+                      payable: { type: boolean }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      summary: "PUBLIC: generate a checkout link for a quotation by token. Always the FULL quote total — a quote has no balance to part-pay. Paying it converts the quote into a sales order."
+      tags: [sales, public]
+      security: []
+      parameters:
+        [{ name: token, in: path, required: true, schema: { type: string } }]
+      responses:
+        "201": { description: Checkout link }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Quote is a draft, already converted, or expired
+        "422": { description: No FX rate configured for the settlement currency }
 
   # ── Payment gateways (B / §6.21 — CEO-managed, secrets write-only) ─
   /business-setup/payment-gateways:

@@ -383,6 +383,28 @@ export interface QuotationConvertInput {
   sales_channel?: SalesChannel;
 }
 
+/**
+ * Accept, optionally minting the order in the same step (order-first fallback,
+ * for sales settled offline rather than through the quote's own pay link).
+ */
+export interface QuotationAcceptInput {
+  convert?: boolean;
+  sales_channel?: SalesChannel;
+}
+
+/**
+ * The customer-facing pay link for a quote. Paying it converts the quote to a
+ * sales order at gateway confirmation — the order does not exist until then.
+ */
+export interface QuotationPayLink {
+  quotation_id: string;
+  quotation_number: string;
+  status: QuoteStatus;
+  total_ngn: string;
+  public_pay_token: string | null;
+  pay_url: string;
+}
+
 export interface CancellationRequestInput {
   reason: string;
   reason_category?: CancellationCategory;

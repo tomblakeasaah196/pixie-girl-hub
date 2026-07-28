@@ -8,6 +8,7 @@ import {
   FileText,
   TrendingUp,
   Plus,
+  ListPlus,
   Lock,
   AlertTriangle,
   ChevronDown,
@@ -815,7 +816,32 @@ function CreatePoDrawer({
   const [error, setError] = useState<string | null>(null);
   const [lines, setLines] = useState<PoLineDraft[]>([{ ...EMPTY_LINE }]);
 
+  const [bulkOpen, setBulkOpen] = useState(false);
+
   const addLine = () => setLines((p) => [...p, { ...EMPTY_LINE }]);
+  /** Bulk add — one line per ticked product. Untouched placeholder lines are
+   *  swallowed rather than left dangling above the batch, so ticking 12 wigs
+   *  on a fresh PO gives exactly 12 lines. */
+  const addLinesFromHits = (hits: { id: string; label: string }[]) => {
+    if (!hits.length) return;
+    const fresh = hits.map((h) => ({
+      ...EMPTY_LINE,
+      product_id: h.id,
+      product_label: h.label,
+      description: h.label,
+    }));
+    setLines((p) => {
+      const kept = p.filter(
+        (l) =>
+          l.product_id ||
+          l.description.trim() ||
+          l.unit_price.trim() ||
+          l.qty !== "1",
+      );
+      return [...kept, ...fresh];
+    });
+    setBulkOpen(false);
+  };
   const removeLine = (i: number) =>
     setLines((p) => p.filter((_, j) => j !== i));
   const setLineF = (i: number, k: keyof PoLineDraft, v: string | boolean) =>
@@ -844,6 +870,7 @@ function CreatePoDrawer({
     setExpected("");
     setError(null);
     setLines([{ ...EMPTY_LINE }]);
+    setBulkOpen(false);
   };
 
   const handleCreate = () => {
@@ -1031,15 +1058,42 @@ function CreatePoDrawer({
               {lines.length} line{lines.length !== 1 ? "s" : ""} · prices in{" "}
               {currency}
             </span>
-            <Button
-              size="sm"
-              variant="ghost"
-              icon={<Plus className="w-3.5 h-3.5" />}
-              onClick={addLine}
-            >
-              Add Line
-            </Button>
+            <div className="flex items-center gap-1.5">
+              <Button
+                size="sm"
+                variant={bulkOpen ? "primary" : "ghost"}
+                icon={<ListPlus className="w-3.5 h-3.5" />}
+                onClick={() => setBulkOpen((v) => !v)}
+              >
+                Bulk Add
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={<Plus className="w-3.5 h-3.5" />}
+                onClick={addLine}
+              >
+                Add Line
+              </Button>
+            </div>
           </div>
+
+          {/* Tick several products in one pass instead of one line at a time —
+              a factory restock is twenty near-identical wigs. */}
+          {bulkOpen && (
+            <div className="glass rounded-xl p-4 space-y-2.5">
+              <p className="text-[12px] text-text-muted">
+                Pick a product type, search, and tick everything you're ordering
+                — each one becomes its own line with quantity 1.
+              </p>
+              <ProductPicker
+                multi
+                autoFocus
+                addLabel="Add lines ·"
+                onPickMany={addLinesFromHits}
+              />
+            </div>
+          )}
           {lines.map((line, i) => (
             <div key={i} className="glass rounded-xl p-4 space-y-3">
               <div className="flex justify-between items-start gap-2">

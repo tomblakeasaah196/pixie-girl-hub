@@ -652,6 +652,11 @@ goods-received notes (GRNs), and supplier invoices.
   receive it later — plus quantity, unit price and optional wig attributes.
   A line with no base product still orders fine (freight, samples, a style not
   yet in the catalogue); it just can't be received straight into stock.
+  Ordering many items? Use **Bulk Add** on step 2: pick a product type, search,
+  and tick everything you're buying (the ticks survive changing the search term
+  and the type, so one batch can mix bases, styled products and bundles), then
+  press **Add lines** — each ticked product becomes its own line at quantity 1,
+  ready for you to set quantities and prices.
 - *Add a supplier?* Purchasing → **New Supplier** / **Create Supplier**.
 - *Receive goods against a PO?* Open the PO → **Receive goods**. It opens Stock
   → **Goods Reception** already filled in: the delivery location from the

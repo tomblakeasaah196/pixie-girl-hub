@@ -761,9 +761,22 @@ async function findExistingPayment({ client, brand, payment }) {
   }
   return null;
 }
+/**
+ * Payments ledger for one order, each row naming the staff member who took the
+ * money. `recorded_by` is only a UUID on the row; a staff member's display name
+ * lives on the contact behind their staff profile, so resolve it here (email is
+ * the fallback for users without a profile, NULL for gateway-captured payments
+ * that no human recorded).
+ */
 async function listPayments({ client, brand, order_id }) {
   const { rows } = await ex(client)(
-    `SELECT * FROM ${t(brand, "sales_order_payments")} WHERE order_id = $1 ORDER BY recorded_at`,
+    `SELECT p.*, COALESCE(rc.display_name, ru.email) AS recorded_by_name
+       FROM ${t(brand, "sales_order_payments")} p
+       LEFT JOIN shared.users ru ON ru.user_id = p.recorded_by
+       LEFT JOIN shared.staff_profiles rsp ON rsp.profile_id = ru.staff_profile_id
+       LEFT JOIN shared.contacts rc ON rc.contact_id = rsp.contact_id
+      WHERE p.order_id = $1
+      ORDER BY p.recorded_at`,
     [order_id],
   );
   return rows;

@@ -84,14 +84,22 @@ export interface InvoicePayment {
   sales_order_payment_id: string | null;
   amount_applied_ngn: string;
   applied_by: string | null;
+  /** Staff member who applied it — null when a gateway captured it. */
+  applied_by_name: string | null;
   applied_at: string;
   notes: string | null;
+  /** Set when the row mirrors a payment recorded against the sales order. */
+  payment_number: string | null;
+  payment_method: string | null;
 }
 
 export interface Invoice {
   invoice_id: string;
   invoice_number: string;
   order_id: string | null;
+  /** Number + status of the order this bills for (detail fetch only). */
+  order_number?: string | null;
+  order_status?: string | null;
   intercompany_transaction_id: string | null;
   contact_id: string;
   contact_name: string | null;

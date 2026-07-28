@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Download, Send, CreditCard, XCircle, FileText, Plus, X } from "lucide-react";
+import { Download, Send, CreditCard, XCircle, FileText, Plus, X, Package, UserCheck } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { Drawer } from "@/components/ui/Drawer";
 import { Card, Pill, MoneyText, Button } from "@/components/ui/primitives";
 import { ErrorState, ConfirmDialog, Select, NumberField } from "@/components/ui/controls";
@@ -46,6 +47,7 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
   const { data: reminders } = useInvoiceReminders(invoiceId);
   const cancelReminder = useCancelReminder(invoiceId ?? "");
   const { data: delivery, isLoading: deliveryLoading } = useInvoiceDelivery(invoiceId);
+  const navigate = useNavigate();
 
   const toast = useToastStore();
   const fireToast = (title: string, body: string, priority: "normal" | "high" = "normal") => {
@@ -202,6 +204,38 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
               </Button>
             </div>
 
+            {/* Source order — the invoice used to name no order at all, leaving
+                staff with no way back. Mirrors the invoice strip on the order
+                drawer, so the two documents cross-link both ways. */}
+            {invoice.order_id && (
+              <div className="flex items-center justify-between gap-3 p-3 rounded-[11px] bg-accent/[0.06] border border-accent/20">
+                <div className="flex items-center gap-2 min-w-0">
+                  <Package className="w-4 h-4 text-accent-glow shrink-0" />
+                  <div className="min-w-0">
+                    <button
+                      type="button"
+                      className="text-[13px] font-semibold hover:text-accent hover:underline"
+                      onClick={() => navigate(`/sales?tab=orders&order=${invoice.order_id}`)}
+                    >
+                      Order {invoice.order_number ?? invoice.order_id.slice(0, 8)}
+                    </button>
+                    {invoice.order_status && (
+                      <div className="text-[11px] text-text-faint capitalize">
+                        {invoice.order_status.replace(/_/g, " ")} — record payments on the order to keep both in step
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate(`/sales?tab=orders&order=${invoice.order_id}`)}
+                >
+                  View Order
+                </Button>
+              </div>
+            )}
+
             {/* Balance ribbon */}
             {canPay && (
               <div className="flex items-center justify-between p-4 rounded-[12px] bg-warn/[0.08] border border-warn/20">
@@ -319,18 +353,38 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
               </Card>
             )}
 
-            {/* Payments ledger */}
+            {/* Payments ledger — names whoever accepted each payment and when,
+                the same permanent trail the order drawer shows. */}
             {invoice.payments && invoice.payments.length > 0 && (
               <Card className="p-4">
                 <div className="micro mb-3">Payments</div>
                 <div className="space-y-2">
                   {invoice.payments.map((p) => (
-                    <div key={p.invoice_payment_id} className="flex items-center justify-between text-[13px] p-2 rounded-lg bg-text-primary/[0.02]">
-                      <div>
-                        <div className="font-semibold"><MoneyText ngn={Number(p.amount_applied_ngn)} /></div>
-                        {p.notes && <div className="text-[11px] text-text-faint">{p.notes}</div>}
+                    <div key={p.invoice_payment_id} className="text-[13px] p-2.5 rounded-lg bg-text-primary/[0.02]">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="font-semibold"><MoneyText ngn={Number(p.amount_applied_ngn)} /></div>
+                          {p.payment_method && (
+                            <div className="text-[11px] text-text-faint capitalize">
+                              {p.payment_method.replace(/_/g, " ")}
+                              {p.payment_number ? ` · ${p.payment_number}` : ""}
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-text-faint shrink-0">{formatDate(p.applied_at)}</div>
                       </div>
-                      <div className="text-[10px] text-text-faint">{formatDate(p.applied_at)}</div>
+                      <div className="mt-1.5 pt-1.5 border-t border-line/60 text-[11px] text-text-muted flex items-start gap-1.5">
+                        <UserCheck className="w-3 h-3 mt-[2px] shrink-0 text-text-faint" />
+                        <span>
+                          {p.applied_by_name ? (
+                            <>Accepted by <span className="font-semibold text-text-primary">{p.applied_by_name}</span></>
+                          ) : (
+                            "Captured automatically by the payment gateway"
+                          )}{" "}
+                          · {formatDateTime(p.applied_at)}
+                        </span>
+                      </div>
+                      {p.notes && <div className="mt-1 text-[11px] text-text-faint">{p.notes}</div>}
                     </div>
                   ))}
                 </div>

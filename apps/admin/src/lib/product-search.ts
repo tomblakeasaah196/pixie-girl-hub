@@ -63,6 +63,11 @@ export interface ResolvedLine {
   // the base variant's own name.
   product_name_snapshot?: string;
   variant_label_snapshot?: string;
+  /** Live sellable units behind this line's base at pick time, so the cart can
+   *  say "3 left" vs "made to order" before the operator commits. Already
+   *  includes any rewig-adjacent sibling stock (styledVariantStockSql). Null
+   *  when the pick carries no stock reading (services, matrix-less styled). */
+  available?: number | null;
 }
 
 export interface ResolvedPick {
@@ -332,6 +337,9 @@ export interface StyledVariantChoice {
   sku: string | null;
   price: number | null;
   spec: string;
+  /** Live stock behind the chosen combo's base — passed straight through to
+   *  the resolved line so the cart can show it. */
+  available?: number | null;
 }
 
 /**
@@ -380,6 +388,7 @@ export async function resolveStyledPick(
         styled_id: sp.styled_id,
         product_name_snapshot: sp.name,
         variant_label_snapshot: spec || undefined,
+        available: pick.available ?? null,
       },
     ],
   };

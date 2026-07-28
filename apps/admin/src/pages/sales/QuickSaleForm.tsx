@@ -38,6 +38,7 @@ import {
   type ProductHit,
   type ResolvedLine,
 } from "@/lib/product-search";
+import { useSizeConfig } from "@/lib/catalogue";
 import {
   SALES_CHANNELS,
   SALES_CHANNEL_GROUPS,
@@ -74,6 +75,9 @@ interface CartLine {
   // ResolvedLine. Falls back to `label`/undefined for every other kind.
   product_name_snapshot?: string;
   variant_label_snapshot?: string;
+  /** Sellable units behind this line at pick time — drives the in-stock /
+   *  made-to-order badge. Null/undefined = no stock reading (e.g. a service). */
+  available?: number | null;
 }
 
 interface SearchResult {
@@ -103,6 +107,65 @@ const ngn = (v: number) => `₦${v.toLocaleString()}`;
 function toAbsoluteUrl(url: string): string {
   if (!url || /^https?:\/\//i.test(url)) return url;
   return `${window.location.origin}/${url.replace(/^\/+/, "")}`;
+}
+
+/**
+ * Per-line stock read-out for the cart: units left when there are any, else the
+ * pre-order window from Catalogue → Config so the operator can tell the customer
+ * how long the wait is before taking payment.
+ *
+ * `available` already includes any rewig-adjacent sibling stock, so a size whose
+ * own base is empty but which can be cut from a neighbour reads as in stock —
+ * matching what checkout will actually do with it.
+ */
+function StockBadge({
+  available,
+  quantity,
+}: {
+  available?: number | null;
+  quantity: number;
+}) {
+  const { data: sizeCfg } = useSizeConfig();
+  if (available == null) return null;
+
+  const cfg = sizeCfg?.config;
+  if (available > 0) {
+    const short = available < quantity;
+    return (
+      <div
+        className={cn(
+          "mt-1 text-[11px] font-medium",
+          short ? "text-amber-400" : "text-emerald-400",
+        )}
+      >
+        {short
+          ? `Only ${available} left — ${quantity - available} will be made to order`
+          : `In stock · ${available} left`}
+      </div>
+    );
+  }
+
+  // Out of stock. Pre-orders switched off brand-wide means a genuine sold-out.
+  if (cfg && cfg.preorder_enabled === false) {
+    return (
+      <div className="mt-1 text-[11px] font-medium text-red-400">
+        Out of stock
+      </div>
+    );
+  }
+  const min = cfg?.preorder_min_weeks;
+  const max = cfg?.preorder_max_weeks;
+  const window =
+    min != null && max != null && min !== max
+      ? `${min}–${max} weeks`
+      : max != null
+        ? `${max} week${max === 1 ? "" : "s"}`
+        : null;
+  return (
+    <div className="mt-1 text-[11px] font-medium text-amber-400">
+      {window ? `Made to order · ready in ~${window}` : "Made to order"}
+    </div>
+  );
 }
 
 export function QuickSaleForm() {
@@ -791,6 +854,10 @@ export function QuickSaleForm() {
                     <div className="text-[11px] text-text-faint">
                       {line.sku}
                     </div>
+                    <StockBadge
+                      available={line.available}
+                      quantity={line.quantity}
+                    />
                   </div>
                   <div className="flex items-center gap-2">
                     <button

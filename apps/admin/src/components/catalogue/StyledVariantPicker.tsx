@@ -38,6 +38,9 @@ export interface StyledPick {
   sku: string | null;
   /** Human label for the chosen combo, e.g. "Medium · 6×6 Frontal · Spicy Copper". */
   spec: string;
+  /** Live sellable units behind the chosen combo's base (includes rewig-adjacent
+   *  sibling stock). Null when the product has no variant matrix to read. */
+  available: number | null;
 }
 
 const ngn = (v: number | null | undefined) =>
@@ -88,6 +91,7 @@ export function StyledVariantPicker({
       sku: null,
       price: anchorPrice,
       spec: "",
+      available: null,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, active.length]);
@@ -138,6 +142,7 @@ export function StyledVariantPicker({
       sku: match.sku ?? null,
       price: match.effective_price_ngn ?? null,
       spec: specLabel(match),
+      available: match.base_available ?? null,
     });
   }
 

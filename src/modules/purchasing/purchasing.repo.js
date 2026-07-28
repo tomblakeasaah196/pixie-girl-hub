@@ -13,6 +13,9 @@
 const { query } = require("../../config/database");
 
 const { t } = require("../../config/brands");
+const {
+  nextDocumentNumber,
+} = require("../../shared/numbering/document-number");
 const ex = (client) => (client ? client.query.bind(client) : query);
 
 function buildUpdate(cols, src, start = 1) {
@@ -27,12 +30,19 @@ function buildUpdate(cols, src, start = 1) {
   return { f, p, next: i };
 }
 
+/**
+ * Document numbers go through the GUARDED helper, never the raw SQL function.
+ *
+ * `fn_next_document_number` RAISEs when shared.document_numbering has no row
+ * for (brand, type) — and nothing in this codebase ever seeded 'purchase_order',
+ * 'rfq', 'goods_received_note' or 'supplier_invoice'. A RAISE aborts the whole
+ * enclosing transaction, so creating a purchase order failed every single time,
+ * for every brand: the number was the first thing createPo asked for. The
+ * helper provisions the row inside a savepoint on first use and retries.
+ * (Stock hit exactly this and was fixed the same way — see the helper's header.)
+ */
 async function nextNumber({ client, brand, type }) {
-  const { rows } = await ex(client)(
-    `SELECT ${t(brand, "fn_next_document_number")}($1) AS num`,
-    [type],
-  );
-  return rows[0].num;
+  return nextDocumentNumber({ client, brand, type });
 }
 
 // ── Suppliers ────────────────────────────────────────────
@@ -474,12 +484,23 @@ async function createPo({ client, brand, row }) {
   );
   return rows[0];
 }
+/**
+ * The COALESCE parameters are CAST explicitly, and must stay that way.
+ *
+ * In `COALESCE($11, 0)` Postgres infers the parameter's type from the literal
+ * `0` — an INTEGER. tax_amount_ngn is always a money string ("0.00"), so every
+ * insert died with `invalid input syntax for type integer: "0.00"`, which
+ * meant NO purchase order could ever be created: createPo adds its lines
+ * inside the same transaction, so the whole thing rolled back.
+ */
 async function addPoLine({ client, brand, line }) {
   const { rows } = await ex(client)(
     `INSERT INTO ${t(brand, "po_lines")}
        (po_id, variant_id, description, supplier_sku, qty_ordered, unit_price, unit_price_ngn, line_total, line_total_ngn,
         tax_rate, tax_amount_ngn, display_order, notes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,COALESCE($10,0),COALESCE($11,0),COALESCE($12,0),$13) RETURNING *`,
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,
+             COALESCE($10::numeric,0),COALESCE($11::numeric,0),
+             COALESCE($12::smallint,0),$13) RETURNING *`,
     [
       line.po_id,
       line.variant_id || null,
@@ -505,6 +526,28 @@ async function listPoLines({ client, brand, po_id }) {
   );
   return rows;
 }
+/**
+ * PO lines with what is still outstanding, resolved to the BASE PRODUCT that
+ * Goods Reception receives against. Backs the "receive this PO" prefill: the
+ * warehouse sees the product name, what was ordered, what has already landed,
+ * and what is still due.
+ */
+async function outstandingPoLines({ client, brand, po_id }) {
+  const { rows } = await ex(client)(
+    `SELECT l.line_id, l.po_id, l.variant_id, l.description, l.supplier_sku,
+            l.qty_ordered, l.qty_received, l.qty_rejected, l.qty_outstanding,
+            pv.sku, pv.variant_name, pv.product_id,
+            p.name AS product_name
+       FROM ${t(brand, "po_lines")} l
+       LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = l.variant_id
+       LEFT JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
+      WHERE l.po_id = $1
+      ORDER BY l.display_order`,
+    [po_id],
+  );
+  return rows;
+}
+
 async function getPoLine({ client, brand, line_id }) {
   const { rows } = await ex(client)(
     `SELECT * FROM ${t(brand, "po_lines")} WHERE line_id = $1`,
@@ -958,6 +1001,7 @@ module.exports = {
   createPo,
   addPoLine,
   listPoLines,
+  outstandingPoLines,
   getPoLine,
   findGrnLineForPoLine,
   getPo,

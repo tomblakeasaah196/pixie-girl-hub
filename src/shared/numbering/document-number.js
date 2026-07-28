@@ -40,6 +40,14 @@ const DOC_SUFFIX = {
   stock_count: "CNT",
   inbound_shipment: "IN",
   cancellation_request: "CR",
+  // Purchasing called the RAW function for these — nothing ever seeded them,
+  // so the RAISE aborted the transaction and creating a purchase order failed
+  // outright. Same defect the stock_movement entry above documents.
+  purchase_order: "PO",
+  rfq: "RFQ",
+  goods_received_note: "GRN",
+  supplier_invoice: "SINV",
+  purchase_return: "PRET",
 };
 
 /**

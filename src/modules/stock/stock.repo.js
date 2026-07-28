@@ -9,6 +9,9 @@
 
 const { ex } = require("../../config/database");
 const { t } = require("../../config/brands");
+const {
+  nextDocumentNumber,
+} = require("../../shared/numbering/document-number");
 const LOC = [
   "location_code",
   "display_name",
@@ -221,11 +224,18 @@ async function outstandingReservationForOrder({
 }
 
 // Movements (the only way to change on_hand)
+/**
+ * Movement numbers go through the guarded helper, never the raw SQL function.
+ *
+ * `fn_next_document_number` RAISEs when shared.document_numbering has no row for
+ * (brand, 'stock_movement') — and nothing in this codebase ever seeded that
+ * type. Because a RAISE aborts the enclosing transaction, the unguarded call
+ * here made EVERY stock movement insert fail, so every checkout reservation
+ * failed and every order line was written as a pre-order no matter how much
+ * stock was on hand. The helper provisions the row on first use.
+ */
 async function nextMovementNumber({ client, brand }) {
-  const { rows } = await ex(client)(
-    `SELECT ${t(brand, "fn_next_document_number")}('stock_movement') AS n`,
-  );
-  return rows[0].n;
+  return nextDocumentNumber({ client, brand, type: "stock_movement" });
 }
 async function listMovements({
   client,
@@ -387,12 +397,9 @@ async function getCostBasisForVariants({ client, brand, variant_ids }) {
   return map;
 }
 
+/** Transfers / adjustments / counts — same guard, same reason as above. */
 async function nextDocNumber({ client, brand, type }) {
-  const { rows } = await ex(client)(
-    `SELECT ${t(brand, "fn_next_document_number")}($1) AS n`,
-    [type],
-  );
-  return rows[0].n;
+  return nextDocumentNumber({ client, brand, type });
 }
 
 // ── Adjustments (+ lines) ────────────────────────────────

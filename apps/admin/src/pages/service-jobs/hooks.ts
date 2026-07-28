@@ -191,10 +191,18 @@ export function useJobActions(jobId: string) {
       mutationFn: ({
         userId,
         expected_completion_at,
+        acknowledge_unlinked,
       }: {
         userId: string;
         expected_completion_at?: string;
-      }) => api.assignStaff(jobId, userId, expected_completion_at),
+        acknowledge_unlinked?: boolean;
+      }) =>
+        api.assignStaff(
+          jobId,
+          userId,
+          expected_completion_at,
+          acknowledge_unlinked,
+        ),
       onSuccess: invalidate,
     }),
     unassign: useMutation({

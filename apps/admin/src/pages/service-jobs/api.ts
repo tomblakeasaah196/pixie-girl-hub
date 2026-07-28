@@ -169,10 +169,15 @@ export function assignStaff(
   // expected_completion_at + SLA clock and, via the DB trigger, the stylist's
   // Workspace task due date. Omit to let the backend default it to +48h.
   expected_completion_at?: string,
+  // Set when the assigner has acknowledged the warning shown for a job with no
+  // sales order behind it (no stock movement, nothing to reconcile against).
+  // The API rejects an unlinked assignment without it.
+  acknowledge_unlinked?: boolean,
 ) {
   return api.post<ServiceJob>(`${BASE}/${id}/assign`, {
     assigned_staff_user_id,
     ...(expected_completion_at ? { expected_completion_at } : {}),
+    ...(acknowledge_unlinked ? { acknowledge_unlinked: true } : {}),
   });
 }
 

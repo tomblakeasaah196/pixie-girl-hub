@@ -922,6 +922,35 @@ async function orderAlreadyDrewWig({
   );
   return rows.length > 0;
 }
+/**
+ * Net units this job itself drew out of stock — Σ(studio 'sale' movements)
+ * minus Σ(studio restocks). Only LEGACY jobs can be non-zero: since the sale
+ * became the sole owner of the draw, assignment never writes a stock movement.
+ *
+ * This replaces the old time-dependent `orderAlreadyDrewWig` test on the
+ * restock path. That test asked "did the sale draw this wig?" at unassign
+ * time, but the sale may have been paid AFTER the assignment deducted — so it
+ * answered "yes", skipped the restock, and the unit was lost for good. Asking
+ * "did THIS job draw, and has it been put back?" is a fact about this job's
+ * own ledger and cannot change underneath us.
+ */
+async function studioDrawBalanceForJob({ client, brand, job_id }) {
+  const { rows } = await ex(client)(
+    `SELECT COALESCE(SUM(CASE
+              WHEN movement_type = 'sale' THEN -quantity   -- stored negative
+              WHEN movement_type = 'receive' THEN -quantity -- stored positive
+              ELSE 0 END), 0)::int AS net
+       FROM ${t(brand, "stock_movements")}
+      WHERE reference_id = $1
+        AND (
+          (movement_type = 'sale' AND sales_channel = 'service_job')
+          OR (movement_type = 'receive' AND reference_type = 'service_job')
+        )`,
+    [job_id],
+  );
+  return rows[0].net;
+}
+
 // Net wigs this job currently has OUT: Σ(out) − Σ(return|dispatched|write_off).
 // > 0 means the wig is physically with a stylist right now.
 async function jobCustodyBalance({ client, brand, job_id }) {
@@ -1236,6 +1265,7 @@ module.exports = {
   addCustody,
   hasCustodyEvent,
   orderAlreadyDrewWig,
+  studioDrawBalanceForJob,
   jobCustodyBalance,
   listCustody,
   custodyBalances,

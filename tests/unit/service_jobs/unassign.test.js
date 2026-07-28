@@ -7,8 +7,10 @@
  * Guarded to jobs still in 'assigned' (not yet started).
  *
  * Pure-unit: database/transaction, audit, events and the repo are stubbed. The
- * order-linked path (orderAlreadyDrewWig → true) skips the stock restock, so the
- * stock modules never load.
+ * restock is decided from the job's OWN movement ledger
+ * (studioDrawBalanceForJob → 0 means this job never drew stock, which is the
+ * case for every job assigned since the sale became the sole owner of the
+ * draw), so the stock modules never load.
  */
 
 jest.mock("../../../src/config/database", () => ({
@@ -26,6 +28,7 @@ jest.mock("../../../src/modules/service_jobs/service-jobs.repo", () => ({
   setServiceJobStatus: jest.fn(),
   addCustody: jest.fn(),
   orderAlreadyDrewWig: jest.fn(),
+  studioDrawBalanceForJob: jest.fn(),
 }));
 
 const repo = require("../../../src/modules/service_jobs/service-jobs.repo");
@@ -36,7 +39,10 @@ const base = { brand: "faitlynhair", user: CEO, request_id: "req-1" };
 
 beforeEach(() => {
   jest.clearAllMocks();
-  repo.orderAlreadyDrewWig.mockResolvedValue(true); // order-linked → no restock
+  repo.orderAlreadyDrewWig.mockResolvedValue(true);
+  // Nothing of this job's own is out — assignment no longer deducts, so there
+  // is nothing to put back.
+  repo.studioDrawBalanceForJob.mockResolvedValue(0);
   repo.setServiceJobStatus.mockResolvedValue({
     job_id: "job-1",
     status: "pending",

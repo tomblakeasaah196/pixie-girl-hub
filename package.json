@@ -43,6 +43,7 @@
     "db:create-admin": "node scripts/create-admin.js",
     "catalogue:wipe": "node scripts/wipe-catalogue.js",
     "backfill:service-jobs": "node scripts/backfill-service-jobs.js",
+    "repair:studio-double-deducts": "node scripts/repair-studio-double-deducts.js",
     "backfill:instagram-profiles": "node scripts/backfill-instagram-profiles.js",
     "backfill:instagram-history": "node scripts/backfill-instagram-history.js",
     "backfill:contact-country-codes": "node scripts/backfill-contact-country-codes.js",

@@ -364,6 +364,17 @@ the layout:**
   **defaults to 48 hours** from now (editable). That deadline becomes the job's
   due date **and** the due date of the task raised on the stylist's Workspace,
   so the job shows up on their **My Day**.
+- *Does assigning a stylist take the hair out of stock?* **No.** The **sale**
+  is the only thing that deducts stock (when the order is paid). Assigning a
+  stylist moves the hair into that stylist's **custody** and holds the unit so
+  it can't be sold to someone else while they have it — it never deducts, so
+  one hair is never counted out twice.
+- *Assigning a job that has no sales order?* Allowed, but the confirm dialog
+  shows a red **"No sale behind this job"** warning and you must tick the
+  acknowledgement before **Confirm** unlocks. Such a job moves **no stock at
+  all** — if the hair was really sold, cancel and raise the order first; if it
+  is a sample, rework or shoot, correct the count afterwards in Stock →
+  **Adjustments**.
 - *Work on my own job?* Stylist → **My Jobs** (`/service-jobs?tab=my`). Each
   wig is a **picture-first card** (photo, customer, tag, order, deadline);
   **tap the card** to open its drawer, then **Start** → hand back for QC.
@@ -477,6 +488,11 @@ stock between locations, transfers, adjustments, low-stock alerts.
   this files a **stock adjustment** (system count vs the correct physical
   count) and submits it to the normal approval queue on Stock →
   **Adjustments**; the count changes only once it is approved and posted.
+- *A wig was counted out twice (sale + stylist assignment)?* Historic
+  double-deductions are repaired by a one-off run that files **found**
+  adjustments into Stock → **Adjustments**; approve and post them to put the
+  units back. New assignments can no longer double-count — the sale is the only
+  path that deducts.
 - *See what's running low?* Stock → **Alerts** tab.
 - *Add a warehouse / location?* Stock → **Locations** → **Add Location**.
 

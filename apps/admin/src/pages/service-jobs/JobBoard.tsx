@@ -9,6 +9,7 @@ import {
   Check,
   Clock,
   AlertTriangle,
+  ShieldAlert,
   Trophy,
   Sparkles,
   Maximize2,
@@ -785,6 +786,12 @@ function WorkloadPill({
 
 // Confirmation gate before an assignment lands — "never make a mistake". Shows
 // the job + stylist to review, and warns that reversing needs CEO approval.
+//
+// A job with NO sales order behind it gets a second, sterner gate. The sale is
+// the only thing that draws stock, so an unlinked job moves no stock at all and
+// nothing downstream ever reconciles it against a sale — the assigner has to
+// tick the acknowledgement before Confirm unlocks, and the API rejects the
+// assignment without it.
 function AssignConfirmModal({
   job,
   stylistName,
@@ -799,12 +806,14 @@ function AssignConfirmModal({
   // The deadline about to be stamped (formatted), so it's reviewed before it
   // commits — this is what lands on the stylist's My Day.
   dueLabel?: string | null;
-  onConfirm: () => void;
+  onConfirm: (acknowledgeUnlinked: boolean) => void;
   onCancel: () => void;
   pending: boolean;
   error?: string | null;
 }) {
   const label = job.styled_product_name || job.service_type_name || "this job";
+  const unlinked = !job.sales_order_id;
+  const [acknowledged, setAcknowledged] = useState(false);
   return (
     <Modal
       open
@@ -817,8 +826,8 @@ function AssignConfirmModal({
             Cancel
           </Button>
           <Button
-            onClick={onConfirm}
-            disabled={pending}
+            onClick={() => onConfirm(unlinked && acknowledged)}
+            disabled={pending || (unlinked && !acknowledged)}
             icon={<UserCheck className="w-3.5 h-3.5" />}
           >
             {pending ? "Assigning…" : "Confirm"}
@@ -845,6 +854,40 @@ function AssignConfirmModal({
             approval from hierarchy — only a CEO can revert an assignment.
           </p>
         </div>
+
+        {unlinked && (
+          <div className="rounded-lg p-3.5 border border-danger/40 bg-danger/[0.07] space-y-2.5">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-danger shrink-0" />
+              <span className="text-[12px] font-bold uppercase tracking-wide text-danger">
+                No sale behind this job
+              </span>
+            </div>
+            <p className="text-[12px] text-text-secondary leading-relaxed">
+              This job has <span className="font-semibold">no sales order</span>,
+              so <span className="font-semibold">no stock will be deducted</span>{" "}
+              — the hair leaves the shelf physically but the count stays where it
+              is, and nothing will ever reconcile it against a sale.
+            </p>
+            <p className="text-[12px] text-text-secondary leading-relaxed">
+              If this hair was sold, cancel and raise the order first. If it is a
+              sample, rework or shoot, correct the count afterwards through{" "}
+              <span className="font-semibold">Stock → Adjustments</span>.
+            </p>
+            <label className="flex items-start gap-2.5 cursor-pointer pt-0.5">
+              <input
+                type="checkbox"
+                checked={acknowledged}
+                onChange={(e) => setAcknowledged(e.target.checked)}
+                className="mt-0.5 w-4 h-4 accent-[rgb(var(--danger))] cursor-pointer"
+              />
+              <span className="text-[12px] text-text-primary font-medium leading-snug">
+                I understand no stock will move, and I am accountable for this
+                hair leaving without a sale.
+              </span>
+            </label>
+          </div>
+        )}
         {error && <p className="text-xs text-danger">{error}</p>}
       </div>
     </Modal>
@@ -1197,11 +1240,12 @@ function StylistPicker({
             assign.reset();
             setPending(null);
           }}
-          onConfirm={() =>
+          onConfirm={(acknowledgeUnlinked) =>
             assign.mutate(
               {
                 userId: pending.user_id,
                 expected_completion_at: localInputToIso(due),
+                acknowledge_unlinked: acknowledgeUnlinked,
               },
               {
                 onSuccess: (assignedJob) => {

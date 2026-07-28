@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { MapPin, Loader2 } from "lucide-react";
+import { AnchoredDropdown } from "@/components/ui/AnchoredDropdown";
 
 /**
  * Delivery-address search backed by Geoapify — provider-agnostic over
@@ -8,6 +9,13 @@ import { MapPin, Loader2 } from "lucide-react";
  * and never ship an API key to the browser). Type-ahead: a dropdown of
  * suggestions appears as the customer types; picking one fills the
  * structured address fields below.
+ *
+ * Both callers (CustomerOnboardingPublic, WalkInPublic) render this inside a
+ * Collapsible section, whose `overflow-hidden` root clips a plain
+ * `absolute`-positioned dropdown at the section's edge — the suggestions
+ * looked "invisible", really just clipped/overlapping the field below. A
+ * body-level AnchoredDropdown portal sidesteps that entirely (same fix as
+ * the catalogue ProductPicker).
  */
 export interface GeoSuggestion {
   formatted: string;
@@ -75,17 +83,7 @@ export function GeoapifyAddressSearch({
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const debounce = useRef<ReturnType<typeof setTimeout>>();
-  const boxRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const onClickAway = (e: MouseEvent) => {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", onClickAway);
-    return () => document.removeEventListener("mousedown", onClickAway);
-  }, []);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const handleType = (text: string) => {
     onChange(text);
@@ -110,9 +108,10 @@ export function GeoapifyAddressSearch({
   };
 
   return (
-    <div className="relative" ref={boxRef}>
+    <div className="relative">
       <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint pointer-events-none" />
       <input
+        ref={inputRef}
         type="text"
         value={value}
         onChange={(e) => handleType(e.target.value)}
@@ -124,26 +123,30 @@ export function GeoapifyAddressSearch({
       {loading && (
         <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint animate-spin" />
       )}
-      {open && results.length > 0 && (
-        <div className="absolute z-40 top-[calc(100%+4px)] left-0 right-0 rounded-xl bg-panel-2 border hairline shadow-lg overflow-hidden max-h-[260px] overflow-y-auto">
-          {results.map((r, i) => (
-            <button
-              key={r.place_id ?? i}
-              type="button"
-              onClick={() => {
-                onChange(r.address_line1 || r.formatted);
-                onAddressSelected(toGeoAddress(r));
-                setResults([]);
-                setOpen(false);
-              }}
-              className="w-full flex items-start gap-2 px-3 py-2.5 text-left hover:bg-text-primary/[0.06] transition-colors border-b hairline last:border-0"
-            >
-              <MapPin className="w-3.5 h-3.5 text-text-faint shrink-0 mt-0.5" />
-              <span className="text-[12.5px] leading-snug">{r.formatted}</span>
-            </button>
-          ))}
-        </div>
-      )}
+      <AnchoredDropdown
+        anchorRef={inputRef}
+        open={open && results.length > 0}
+        onClose={() => setOpen(false)}
+        maxHeight={260}
+        className="bg-panel-2 border hairline shadow-lg"
+      >
+        {results.map((r, i) => (
+          <button
+            key={r.place_id ?? i}
+            type="button"
+            onClick={() => {
+              onChange(r.address_line1 || r.formatted);
+              onAddressSelected(toGeoAddress(r));
+              setResults([]);
+              setOpen(false);
+            }}
+            className="w-full flex items-start gap-2 px-3 py-2.5 text-left hover:bg-text-primary/[0.06] transition-colors border-b hairline last:border-0"
+          >
+            <MapPin className="w-3.5 h-3.5 text-text-faint shrink-0 mt-0.5" />
+            <span className="text-[12.5px] leading-snug">{r.formatted}</span>
+          </button>
+        ))}
+      </AnchoredDropdown>
     </div>
   );
 }

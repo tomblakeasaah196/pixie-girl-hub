@@ -1,4 +1,5 @@
 import { useState, useRef, type KeyboardEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   X,
   Calendar,
@@ -10,6 +11,7 @@ import {
   CheckSquare,
   Edit2,
   Clock,
+  ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button, IconButton, Pill, Skeleton } from "@/components/ui/primitives";
@@ -103,6 +105,7 @@ export default function TaskDetailPanel({
   onClose,
   onEdit,
 }: TaskDetailPanelProps) {
+  const navigate = useNavigate();
   const { data: task, isLoading } = useTask(taskId);
   const addSubtask = useAddSubtask(taskId);
   const toggleSubtask = useToggleSubtask(taskId);
@@ -250,6 +253,25 @@ export default function TaskDetailPanel({
               value={formatDate(task.created_at)}
             />
           </div>
+
+          {/* ── The record this task is about ──
+              An approval task used to be a dead end: "Approve FLH-ADJ-0007"
+              with no way to reach FLH-ADJ-0007. The server derives the route
+              from the task's reference, so one button lands the holder on the
+              thing they have to act on — where deciding also closes this
+              task. */}
+          {task.action_url && (
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<ExternalLink className="w-3.5 h-3.5" />}
+              onClick={() => navigate(task.action_url as string)}
+            >
+              Open{task.reference_type
+                ? ` ${task.reference_type.replace(/_/g, " ")}`
+                : " record"}
+            </Button>
+          )}
 
           {/* ── Description ── */}
           {task.description && (

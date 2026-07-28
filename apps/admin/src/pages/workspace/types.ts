@@ -35,6 +35,9 @@ export interface Task {
   milestone_id?: string | null;
   reference_type?: string | null;
   reference_id?: string | null;
+  /** Route to the record this task is about (approval request, order, job).
+   *  Derived server-side from reference_type/_id — see shared/links. */
+  action_url?: string | null;
   completed_at?: string | null;
   created_by: string;
   created_by_name?: string | null;

@@ -474,6 +474,10 @@ async function startWorkers() {
   // webhook.received → WhatsApp voice-call ingest (durable leg of the calls
   // fast path — same "must register in THIS process" reasoning as above).
   require("../modules/calls/calls.subscribers");
+  // Approval inbox wiring — needed here too, because the workflow TIMEOUT
+  // sweep runs in this process and escalates stages (which must move the task
+  // to the new approver).
+  require("../shared/approvals/approvals.subscribers");
 
   // ── Realtime relays (DEFECT-3) ──────────────────────────
   // The outbox consumers and cron sweeps above emit domain events IN THIS

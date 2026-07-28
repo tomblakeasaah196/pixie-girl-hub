@@ -767,7 +767,13 @@ async function approveAdjustment({ brand, user, request_id, id }) {
     { status: "approved" },
     request_id,
   );
-  events.emit("adjustment.approved", { brand, id });
+  events.emit("adjustment.approved", {
+    brand,
+    id,
+    actor: user.display_name || user.email,
+    requested_by: adj.created_by,
+    adjustment_number: adj.adjustment_number,
+  });
   return updated;
 }
 
@@ -795,7 +801,13 @@ async function rejectAdjustment({ brand, user, request_id, id }) {
     { status: "rejected" },
     request_id,
   );
-  events.emit("adjustment.rejected", { brand, id });
+  events.emit("adjustment.rejected", {
+    brand,
+    id,
+    actor: user.display_name || user.email,
+    requested_by: adj.created_by,
+    adjustment_number: adj.adjustment_number,
+  });
   return updated;
 }
 

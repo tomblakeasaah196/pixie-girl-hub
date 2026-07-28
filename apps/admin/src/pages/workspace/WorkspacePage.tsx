@@ -270,6 +270,23 @@ export function WorkspacePage() {
 
   // Selection state
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  /* A task notification links to /workspace?tab=tasks&task=<id>; open that
+     task's panel on arrival so the link isn't a dead end. Takes the id
+     straight from the URL — no need to wait for the list, the panel fetches
+     the task itself. */
+  const linkedTaskId = searchParams.get("task");
+  useEffect(() => {
+    if (!linkedTaskId) return;
+    setSelectedTaskId(linkedTaskId);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("task");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [linkedTaskId, setSearchParams]);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(
     null,
   );

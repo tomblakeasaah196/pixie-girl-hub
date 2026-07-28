@@ -30,12 +30,26 @@ LANGUAGE plpgsql AS $$
 BEGIN
   -- 'reserve' moves on_hand → reserved (no net change); 'release_reserve' reverses
   IF NEW.movement_type = 'reserve' THEN
-    INSERT INTO {{BUSINESS}}.stock_levels (variant_id, location_id, on_hand, reserved, last_movement_at)
-    VALUES (NEW.variant_id, NEW.location_id, 0, ABS(NEW.quantity), NEW.performed_at)
-    ON CONFLICT (variant_id, location_id) DO UPDATE
-      SET reserved = {{BUSINESS}}.stock_levels.reserved + ABS(EXCLUDED.reserved),
-          last_movement_at = EXCLUDED.last_movement_at,
-          updated_at = now();
+    -- UPDATE-first, for the same reason as the net-change branch below:
+    -- PostgreSQL evaluates CHECK constraints against the PROPOSED insert tuple
+    -- before it can arbitrate ON CONFLICT. Proposing (on_hand 0, reserved N)
+    -- therefore always violated stock_reserved_le_on_hand and raised even when
+    -- the row already existed with ample stock, so EVERY reservation failed and
+    -- every order line silently became a pre-order. See template 000089.
+    UPDATE {{BUSINESS}}.stock_levels
+       SET reserved = reserved + ABS(NEW.quantity),
+           last_movement_at = NEW.performed_at,
+           updated_at = now()
+     WHERE variant_id = NEW.variant_id AND location_id = NEW.location_id;
+
+    -- No level row means there is genuinely nothing to hold; insert so the
+    -- CHECK rejects it for the right reason (a real stock-out).
+    IF NOT FOUND THEN
+      INSERT INTO {{BUSINESS}}.stock_levels
+        (variant_id, location_id, on_hand, reserved, last_movement_at)
+      VALUES
+        (NEW.variant_id, NEW.location_id, 0, ABS(NEW.quantity), NEW.performed_at);
+    END IF;
   ELSIF NEW.movement_type = 'release_reserve' THEN
     UPDATE {{BUSINESS}}.stock_levels
        SET reserved = GREATEST(0, reserved - ABS(NEW.quantity)),

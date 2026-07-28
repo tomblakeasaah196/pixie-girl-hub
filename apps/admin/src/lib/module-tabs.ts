@@ -172,9 +172,9 @@ export const MODULE_TABS: ModuleTab[] = [
 
   // ── Finance ────────────────────────────────────────────
   ...tabs("invoicing", [
-    { key: "ar-ageing", label: "AR Ageing", keywords: ["receivable", "debtors", "aging"] },
     { key: "invoices", label: "Invoices", keywords: ["bills"] },
-    { key: "credit-notes", label: "Credit Notes", keywords: ["refund", "cn"] },
+    { key: "ar-ageing", label: "Owed to Us", keywords: ["receivable", "debtors", "aging", "ar ageing"] },
+    { key: "credit-notes", label: "Refunds", keywords: ["credit notes", "cn"] },
     { key: "settings", label: "Settings", keywords: ["document settings"] },
   ]),
   ...tabs("accounting", [

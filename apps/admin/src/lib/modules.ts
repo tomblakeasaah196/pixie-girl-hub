@@ -230,7 +230,7 @@ export const MODULES: AppModule[] = [
     key: "invoicing",
     permission: "invoicing",
     label: "Invoicing",
-    description: "Billing & live AR",
+    description: "Invoices, refunds & who owes us",
     group: "finance",
     route: "/invoicing",
     icon: FileText,

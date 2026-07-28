@@ -36,6 +36,10 @@ const courierCreate = z
     preferred_pickup_location: z.string().max(300).optional(),
     internal_rating: z.coerce.number().int().min(1).max(5).optional(),
     internal_notes: z.string().max(1000).optional(),
+    // How this courier is paid — decides where its delivery costs settle.
+    // 'invoice' = agency bills periodically (DHL, GIGL); 'per_drop' = paid at
+    // pickup (Uber and similar).
+    settlement_mode: z.enum(["invoice", "per_drop"]).optional(),
   })
   .strict();
 const courierUpdate = courierCreate
@@ -105,6 +109,11 @@ const deliveryBook = z
     driver_name: z.string().max(120).optional(),
     driver_phone: z.string().max(40).optional(),
     scheduled_pickup_at: z.string().datetime().optional(),
+    // Booking a delivery whose order isn't packed or whose wig is still in the
+    // studio is allowed, but must be deliberate — the service refuses without
+    // this, and records the reason on the state history.
+    acknowledge_not_ready: z.boolean().optional(),
+    not_ready_reason: z.string().max(300).optional(),
   })
   .strict();
 const deliveryAdvance = z
@@ -127,6 +136,32 @@ const deliveryAdvance = z
   .strict();
 const deliveryCancel = z
   .object({ reason: z.string().max(500).optional() })
+  .strict();
+// What a delivery actually cost us. Deliberately does NOT cap the amount
+// against the customer-billed shipping fee — an overspend is recorded and
+// flagged, not rejected.
+const deliveryCost = z
+  .object({
+    cost_type: z
+      .enum([
+        "outbound",
+        "redelivery",
+        "return_leg",
+        "waiting_time",
+        "packaging",
+        "other",
+      ])
+      .optional(),
+    amount_ngn: money.positive(),
+    courier_id: z.string().uuid().optional(),
+    incurred_at: z.string().datetime().optional(),
+    settlement_mode: z.enum(["invoice", "per_drop"]).optional(),
+    receipt_document_id: z.string().uuid().optional(),
+    notes: z.string().max(500).optional(),
+  })
+  .strict();
+const feeWaiver = z
+  .object({ reason: z.string().max(300).nullable().optional() })
   .strict();
 
 const attempt = z
@@ -166,14 +201,6 @@ const proof = z
     recipient_id_type: z.string().max(40).optional(),
     recipient_id_last4: z.string().max(8).optional(),
     otp_code_used: z.string().max(8).optional(),
-    notes: z.string().max(500).optional(),
-  })
-  .strict();
-
-const driverConfirm = z
-  .object({
-    reported_lat: lat.optional(),
-    reported_lng: lng.optional(),
     notes: z.string().max(500).optional(),
   })
   .strict();
@@ -232,7 +259,8 @@ module.exports = {
   validateDeliveryCancel: mw(deliveryCancel),
   validateAttempt: mw(attempt),
   validateProof: mw(proof),
-  validateDriverConfirm: mw(driverConfirm),
+  validateDeliveryCost: mw(deliveryCost),
+  validateFeeWaiver: mw(feeWaiver),
   validateWebhookIngest: mw(webhookIngest),
   validatePodCreate: mw(podCreate),
   validatePodCollected: mw(podCollected),

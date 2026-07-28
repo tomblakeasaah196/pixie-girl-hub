@@ -22,7 +22,6 @@ const { ACCOUNTS } = require("../accounting/posting-map");
 const brandDocs = require("../../services/pdf.brand-docs");
 const docCopy = require("../../services/document-copy");
 const emailRender = require("../email_campaigns/email-render");
-const documentsService = require("../../shared/documents/documents.service");
 const emailService = require("../../services/email.service");
 const { logger } = require("../../config/logger");
 const repo = require("./logistics.repo");
@@ -76,6 +75,47 @@ const DATE_FIELD = {
   returned_to_sender: "returned_at",
   cancelled: "cancelled_at",
 };
+// States a delivery can no longer move out of. A completion shortcut is
+// refused from these — "delivered" after "cancelled" is a mistake, not a
+// shortcut.
+const TERMINAL = new Set([
+  "delivered",
+  "returned_to_sender",
+  "cancelled",
+  "lost",
+  "damaged",
+]);
+// The happy path, in order. Used to synthesise the states a direct
+// "mark delivered" jumped over.
+const HAPPY_PATH = [
+  "queued",
+  "booked",
+  "picked_up",
+  "in_transit",
+  "out_for_delivery",
+  "delivered",
+];
+/**
+ * States between `from` and `to` on the happy path, exclusive of both. Returns
+ * [] when `from` is off the happy path (e.g. 'attempted_failed') — nothing
+ * sensible can be inferred there, so nothing is invented.
+ */
+function skippedStatesTo(from, to) {
+  const a = HAPPY_PATH.indexOf(from);
+  const b = HAPPY_PATH.indexOf(to);
+  if (a < 0 || b < 0 || b <= a + 1) return [];
+  return HAPPY_PATH.slice(a + 1, b);
+}
+/**
+ * Whether "mark delivered" from `from` is a legitimate shortcut rather than a
+ * normal transition. True only when delivered isn't already a legal next step
+ * and the delivery is still live — completing a cancelled or lost delivery is
+ * a mistake, not a shortcut.
+ */
+function canShortcutToDelivered(from) {
+  const allowed = FLOW[from] || [];
+  return !allowed.includes("delivered") && !TERMINAL.has(from);
+}
 
 // ── couriers ─────────────────────────────────────────────
 async function createCourier({ brand, user, request_id, input }) {
@@ -140,10 +180,6 @@ async function createDelivery({ brand, user, request_id, input }) {
     const token =
       input.public_tracking_token ||
       crypto.randomBytes(16).toString("base64url");
-    // Deliberately distinct from public_tracking_token (customer-facing,
-    // read-only) — this one is handed only to the driver and authorises the
-    // one write action (self-service delivery confirmation) a driver can do.
-    const driverToken = crypto.randomBytes(16).toString("base64url");
     const delivery = await repo.createDelivery({
       client,
       brand,
@@ -151,7 +187,6 @@ async function createDelivery({ brand, user, request_id, input }) {
         ...input,
         delivery_number,
         public_tracking_token: token,
-        driver_confirmation_token: driverToken,
         created_by: user?.user_id,
       },
     });
@@ -257,6 +292,15 @@ async function bookDelivery({ brand, user, request_id, id, input }) {
     if (!delivery) throw new NotFoundError("Delivery not found");
     if (delivery.status !== "queued")
       throw new ConflictError(`Cannot book a '${delivery.status}' delivery`);
+    // Readiness is advisory, not a gate: booking a courier for tomorrow while
+    // the wig finishes tonight is a legitimate workflow. But an unready
+    // booking must be a deliberate act, so the client has to pass
+    // `acknowledge_not_ready` and the reason lands in the state history.
+    const notReady = delivery.readiness && delivery.readiness !== "ready";
+    if (notReady && !input?.acknowledge_not_ready)
+      throw new ConflictError(
+        `This delivery is not ready to dispatch (${delivery.readiness.replace(/_/g, " ")}). Confirm to book anyway.`,
+      );
     if (input?.courier_id && input.courier_id !== delivery.courier_id) {
       const courier = await repo.getCourier({
         client,
@@ -273,7 +317,9 @@ async function bookDelivery({ brand, user, request_id, id, input }) {
       extra: {
         booked_at: new Date().toISOString(),
         courier_id: input?.courier_id ?? delivery.courier_id,
-        courier_fee_ngn: input?.courier_fee_ngn ?? delivery.courier_fee_ngn,
+        // `courier_fee_ngn` is deliberately NOT set here — it is the maintained
+        // total of the delivery's cost rows. The fee agreed at booking is
+        // recorded as an 'outbound' cost below so there is one source of truth.
         courier_tracking_ref:
           input?.courier_tracking_ref ?? delivery.courier_tracking_ref,
         courier_tracking_url:
@@ -286,6 +332,43 @@ async function bookDelivery({ brand, user, request_id, id, input }) {
           input?.scheduled_pickup_at ?? delivery.scheduled_pickup_at,
       },
     });
+    // The fee agreed with the courier at booking is the first cost on this
+    // delivery. Recording it here (rather than writing the column directly)
+    // means the loss check runs at booking time too — an agency quoting more
+    // than the customer paid is flagged before the parcel even moves.
+    const agreedFee = Number(input?.courier_fee_ngn ?? 0);
+    if (agreedFee > 0) {
+      const existing = await repo.listDeliveryCosts({
+        client,
+        brand,
+        delivery_id: id,
+      });
+      if (existing.length === 0) {
+        const courier_id = input?.courier_id ?? delivery.courier_id;
+        const courier = courier_id
+          ? await repo.getCourier({ client, brand, id: courier_id })
+          : null;
+        await repo.addDeliveryCost({
+          client,
+          brand,
+          cost: {
+            delivery_id: id,
+            cost_type: "outbound",
+            amount_ngn: agreedFee,
+            courier_id,
+            settlement_mode: courier?.settlement_mode || "invoice",
+            notes: "Fee agreed at booking",
+            recorded_by: user?.user_id,
+          },
+        });
+        await repo.recomputeDeliveryCostTotals({
+          client,
+          brand,
+          id,
+          user_id: user?.user_id,
+        });
+      }
+    }
     await repo.addStateHistory({
       client,
       brand,
@@ -294,6 +377,11 @@ async function bookDelivery({ brand, user, request_id, id, input }) {
         from_status: "queued",
         to_status: "booked",
         changed_by: user?.user_id,
+        notes: notReady
+          ? `Booked before ready (${delivery.readiness})${
+              input?.not_ready_reason ? ` — ${input.not_ready_reason}` : ""
+            }`
+          : null,
       },
     });
     await A(
@@ -302,11 +390,22 @@ async function bookDelivery({ brand, user, request_id, id, input }) {
       "logistics.delivery.book",
       "delivery",
       id,
-      { courier_tracking_ref: updated.courier_tracking_ref },
+      {
+        courier_tracking_ref: updated.courier_tracking_ref,
+        ...(notReady
+          ? {
+              booked_not_ready: true,
+              readiness: delivery.readiness,
+              not_ready_reason: input?.not_ready_reason || null,
+            }
+          : {}),
+      },
       request_id,
     );
     events.emit("delivery.booked", { brand, delivery_id: id });
-    return updated;
+    // Re-read: the agreed fee above recomputes the cost totals, so `updated`
+    // (captured before that) would report a stale courier_fee_ngn.
+    return repo.getDelivery({ client, brand, id });
   });
 }
 async function advanceDelivery({
@@ -322,13 +421,26 @@ async function advanceDelivery({
     const delivery = await repo.getDelivery({ client, brand, id });
     if (!delivery) throw new NotFoundError("Delivery not found");
     const allowed = FLOW[delivery.status] || [];
-    if (!allowed.includes(to_status))
+    // "Mark delivered" is always offered, from any live state. Riders phone in
+    // "delivered" without anyone having clicked through picked_up →
+    // in_transit → out_for_delivery, and refusing the update just leaves the
+    // delivery stranded in an intermediate state forever. The skip is recorded
+    // rather than prevented — see the synthesised history rows below.
+    const isCompletionShortcut =
+      to_status === "delivered" && canShortcutToDelivered(delivery.status);
+    if (!allowed.includes(to_status) && !isCompletionShortcut)
       throw new ConflictError(
         `Cannot move a '${delivery.status}' delivery to '${to_status}'`,
       );
     const extra = {};
     if (DATE_FIELD[to_status])
       extra[DATE_FIELD[to_status]] = new Date().toISOString();
+    // Completion attribution — denormalised so "who delivered this, when" is a
+    // column rather than a per-row subquery into state history.
+    if (to_status === "delivered") {
+      extra.completed_by = user?.user_id ?? null;
+      extra.completed_at = new Date().toISOString();
+    }
     const updated = await repo.setDeliveryStatus({
       client,
       brand,
@@ -336,16 +448,41 @@ async function advanceDelivery({
       status: to_status,
       extra,
     });
+    // A skipped-ahead completion writes the states it jumped over as
+    // system-sourced rows, so "time in transit" analytics and the customer
+    // timeline stay coherent instead of showing a hole.
+    if (isCompletionShortcut) {
+      let prev = delivery.status;
+      for (const skipped of skippedStatesTo(delivery.status, "delivered")) {
+        await repo.addStateHistory({
+          client,
+          brand,
+          h: {
+            delivery_id: id,
+            from_status: prev,
+            to_status: skipped,
+            changed_by_source: "system",
+            changed_by: user?.user_id,
+            notes: "Inferred — staff marked delivered directly",
+          },
+        });
+        prev = skipped;
+      }
+    }
     await repo.addStateHistory({
       client,
       brand,
       h: {
         delivery_id: id,
-        from_status: delivery.status,
+        from_status: isCompletionShortcut ? "out_for_delivery" : delivery.status,
         to_status,
         changed_by_source: source || "user",
         changed_by: user?.user_id,
-        notes,
+        notes: isCompletionShortcut
+          ? [notes, `Marked delivered directly from '${delivery.status}'`]
+              .filter(Boolean)
+              .join(" — ")
+          : notes,
       },
     });
     await A(
@@ -354,7 +491,11 @@ async function advanceDelivery({
       "logistics.delivery.advance",
       "delivery",
       id,
-      { from: delivery.status, to: to_status },
+      {
+        from: delivery.status,
+        to: to_status,
+        ...(isCompletionShortcut ? { skipped_states: true } : {}),
+      },
       request_id,
     );
     events.emit("delivery.status", {
@@ -491,6 +632,163 @@ async function recordProof({ brand, user, request_id, id, input }) {
     return proof;
   });
 }
+
+// ── delivery costs + loss ────────────────────────────────
+/**
+ * Record what a delivery actually cost us.
+ *
+ * The rule the business asked for: the amount paid out should be at or below
+ * what the customer was charged for shipping. When it is not, we do NOT
+ * block the save — the money was genuinely spent, and refusing the entry only
+ * teaches staff to key in a number that fits. Instead the shortfall is
+ * computed, flagged on the delivery, and returned to the caller so the UI can
+ * show it at the moment of entry.
+ *
+ * Several costs per delivery are expected: a failed attempt means a real
+ * second courier fee against the same one-time revenue, and that is exactly
+ * where losses accumulate.
+ */
+async function addDeliveryCost({ brand, user, request_id, id, input }) {
+  return transaction(async (client) => {
+    const delivery = await repo.getDelivery({ client, brand, id });
+    if (!delivery) throw new NotFoundError("Delivery not found");
+
+    // Default the paying courier and the settlement route from the delivery's
+    // courier: agencies (DHL, GIGL) bill periodically, per-drop riders are
+    // paid at pickup.
+    const courier_id = input.courier_id || delivery.courier_id;
+    let settlement_mode = input.settlement_mode;
+    if (!settlement_mode && courier_id) {
+      const courier = await repo.getCourier({ client, brand, id: courier_id });
+      settlement_mode = courier?.settlement_mode || "invoice";
+    }
+
+    const cost = await repo.addDeliveryCost({
+      client,
+      brand,
+      cost: {
+        ...input,
+        delivery_id: id,
+        courier_id,
+        settlement_mode: settlement_mode || "invoice",
+        recorded_by: user?.user_id,
+      },
+    });
+    const updated = await repo.recomputeDeliveryCostTotals({
+      client,
+      brand,
+      id,
+      user_id: user?.user_id,
+    });
+
+    const revenue = money(delivery.order_shipping_fee_ngn || 0);
+    const cost_total = money(updated.courier_fee_ngn || 0);
+    const loss = money(updated.delivery_loss_ngn || 0);
+
+    await A(
+      brand,
+      user?.user_id,
+      "logistics.delivery.cost_add",
+      "delivery",
+      id,
+      {
+        cost_id: cost.cost_id,
+        cost_type: cost.cost_type,
+        amount_ngn: toCurrencyString(money(cost.amount_ngn)),
+        cost_total_ngn: toCurrencyString(cost_total),
+        revenue_ngn: toCurrencyString(revenue),
+        loss_ngn: toCurrencyString(loss),
+        over_collected: updated.has_delivery_loss,
+      },
+      request_id,
+    );
+    if (updated.has_delivery_loss) {
+      events.emit("delivery.loss", {
+        brand,
+        delivery_id: id,
+        loss_ngn: toCurrencyString(loss),
+      });
+    }
+    return {
+      cost,
+      delivery: await repo.getDelivery({ client, brand, id }),
+      // Surfaced so the client can flag the overspend inline rather than
+      // having to recompute the comparison itself.
+      loss: {
+        revenue_ngn: toCurrencyString(revenue),
+        cost_ngn: toCurrencyString(cost_total),
+        loss_ngn: toCurrencyString(loss),
+        has_loss: updated.has_delivery_loss,
+      },
+    };
+  });
+}
+
+async function removeDeliveryCost({ brand, user, request_id, id, cost_id }) {
+  return transaction(async (client) => {
+    const cost = await repo.getDeliveryCost({ client, brand, id: cost_id });
+    if (!cost || cost.delivery_id !== id)
+      throw new NotFoundError("Delivery cost not found");
+    // A settled cost has already been carried into an expense or a cash
+    // request; unpicking it here would silently desync finance.
+    if (cost.settled_at)
+      throw new ConflictError(
+        "This cost has already been settled and cannot be removed",
+      );
+    await repo.deleteDeliveryCost({ client, brand, id: cost_id });
+    await repo.recomputeDeliveryCostTotals({
+      client,
+      brand,
+      id,
+      user_id: user?.user_id,
+    });
+    await A(
+      brand,
+      user?.user_id,
+      "logistics.delivery.cost_remove",
+      "delivery",
+      id,
+      { cost_id, amount_ngn: cost.amount_ngn },
+      request_id,
+    );
+    return repo.getDelivery({ client, brand, id });
+  });
+}
+
+/**
+ * Record why a delivery was deliberately not charged for (promo, remake,
+ * apology reship). Without this every free delivery reads as a 100% loss and
+ * buries the genuine overspends in the report.
+ */
+async function setFeeWaiver({ brand, user, request_id, id, reason }) {
+  return transaction(async (client) => {
+    const delivery = await repo.getDelivery({ client, brand, id });
+    if (!delivery) throw new NotFoundError("Delivery not found");
+    const updated = await repo.setDeliveryStatus({
+      client,
+      brand,
+      id,
+      status: delivery.status,
+      extra: { fee_waiver_reason: reason || null },
+    });
+    await A(
+      brand,
+      user?.user_id,
+      "logistics.delivery.fee_waiver",
+      "delivery",
+      id,
+      { reason: reason || null },
+      request_id,
+    );
+    return updated;
+  });
+}
+
+const deliveryReconciliation = ({ brand, from, to }) =>
+  repo.deliveryReconciliation({ client: null, brand, from, to });
+
+const listUnsettledCosts = ({ brand, courier_id, to }) =>
+  repo.listUnsettledCosts({ client: null, brand, courier_id, to });
 
 // ── courier webhook ingest ───────────────────────────────
 async function ingestCourierEvent({ brand, input }) {
@@ -861,136 +1159,6 @@ async function trackPublic({ token }) {
   throw new NotFoundError("Tracking reference not found");
 }
 
-// Statuses a driver can no longer act on — the link is a one-shot confirmation,
-// not a general status editor.
-const DRIVER_TERMINAL = new Set([
-  "delivered",
-  "returned_to_sender",
-  "cancelled",
-  "lost",
-  "damaged",
-]);
-
-/** Public driver view (no auth) — what the driver sees before confirming. */
-async function driverView({ token }) {
-  for (const brand of ["pixiegirl", "faitlynhair"]) {
-    const result = await repo.getDeliveryByDriverToken({
-      client: null,
-      brand,
-      token,
-    });
-    if (result) return { ...result, brand };
-  }
-  throw new NotFoundError("Delivery link not found");
-}
-
-/**
- * Public driver self-confirmation (no auth, token-scoped). A photo is
- * mandatory (decision: drivers submit photo + optional signature + GPS, no
- * bare "delivered" tap). Reuses the same attempt/proof/state-history tables
- * a staff-recorded attempt would use, tagged changed_by_source
- * 'courier_portal' so it's distinguishable in the audit trail from a staff
- * click. Emits the same 'delivery.status' event a staff advance would, so
- * the client-confirmation email (subscriber) fires identically either way.
- */
-async function driverConfirm({ token, file, reported_lat, reported_lng, notes }) {
-  let brand = null;
-  let delivery = null;
-  for (const b of ["pixiegirl", "faitlynhair"]) {
-    const found = await repo.getDeliveryByDriverToken({
-      client: null,
-      brand: b,
-      token,
-    });
-    if (found) {
-      brand = b;
-      delivery = found;
-      break;
-    }
-  }
-  if (!delivery) throw new NotFoundError("Delivery link not found");
-  if (DRIVER_TERMINAL.has(delivery.status))
-    throw new ConflictError(`This delivery is already '${delivery.status}'`);
-  if (!file) throw new ValidationError("A delivery photo is required to confirm");
-
-  return transaction(async (client) => {
-    const doc = await documentsService.store({
-      brand,
-      user_id: null,
-      buffer: file.buffer,
-      filename: file.originalname,
-      mime_type: file.mimetype,
-      document_type: "delivery_proof",
-      title: `Delivery proof - ${delivery.delivery_number}`,
-      reference_type: "delivery",
-      reference_id: delivery.delivery_id,
-      client,
-    });
-    const attempt_number = await repo.incrementAttemptCount({
-      client,
-      brand,
-      id: delivery.delivery_id,
-    });
-    const attempt = await repo.addAttempt({
-      client,
-      brand,
-      attempt: {
-        delivery_id: delivery.delivery_id,
-        attempt_number,
-        attempted_at: new Date().toISOString(),
-        outcome: "delivered",
-        rider_name: delivery.driver_name || null,
-        rider_phone: delivery.driver_phone || null,
-        reported_lat: reported_lat ?? null,
-        reported_lng: reported_lng ?? null,
-      },
-    });
-    await repo.addProof({
-      client,
-      brand,
-      proof: {
-        delivery_id: delivery.delivery_id,
-        delivery_attempt_id: attempt.attempt_id,
-        proof_type: "photo_at_door",
-        document_id: doc.document_id,
-        notes: notes || null,
-      },
-    });
-    await repo.setDeliveryStatus({
-      client,
-      brand,
-      id: delivery.delivery_id,
-      status: "delivered",
-      extra: { delivered_at: new Date().toISOString() },
-    });
-    await repo.addStateHistory({
-      client,
-      brand,
-      h: {
-        delivery_id: delivery.delivery_id,
-        from_status: delivery.status,
-        to_status: "delivered",
-        changed_by_source: "courier_portal",
-        notes: notes || "Driver self-confirmed via public delivery link",
-      },
-    });
-    await A(
-      brand,
-      null,
-      "logistics.delivery.driver_confirm",
-      "delivery",
-      delivery.delivery_id,
-      { via: "driver_link" },
-      null,
-    );
-    events.emit("delivery.status", {
-      brand,
-      delivery_id: delivery.delivery_id,
-      status: "delivered",
-    });
-    return repo.getDelivery({ client, brand, id: delivery.delivery_id });
-  });
-}
 
 function deliveredEmailHtml({ firstName, orderNumber, deliveredAtText }) {
   return `
@@ -1172,8 +1340,15 @@ module.exports = {
   cancelDelivery,
   recordAttempt,
   recordProof,
+  addDeliveryCost,
+  removeDeliveryCost,
+  setFeeWaiver,
+  deliveryReconciliation,
+  listUnsettledCosts,
   ingestCourierEvent,
   listWebhookEvents,
+  // Pure state-machine helpers, exported for unit tests.
+  _internals: { FLOW, TERMINAL, HAPPY_PATH, skippedStatesTo, canShortcutToDelivered },
   createPodCollection,
   getPodCollection,
   listPodCollections,
@@ -1182,8 +1357,6 @@ module.exports = {
   reconcilePodCollection,
   trackByToken,
   trackPublic,
-  driverView,
-  driverConfirm,
   sendDeliveredEmail,
   notifyDelivered,
 };

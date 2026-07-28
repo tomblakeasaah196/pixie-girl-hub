@@ -74,6 +74,12 @@ router.post(
   controller.ingestCourierEvent,
 );
 
+// ── Reconciliation (delivery P&L) ────────────────────────
+// Revenue (order.shipping_fee_ngn) vs actual cost per completed delivery,
+// rolled up by courier and destination — where a wrong rate card shows up.
+router.get("/reconciliation", can("view"), controller.deliveryReconciliation);
+router.get("/unsettled-costs", can("view"), controller.listUnsettledCosts);
+
 // ── Deliveries ───────────────────────────────────────────
 router.get("/deliveries", can("view"), controller.listDeliveries);
 router.post(
@@ -114,6 +120,27 @@ router.post(
   validator.validateProof,
   controller.recordProof,
 );
+// ── Delivery costs (what we actually paid the courier) ───
+// Recorded against the delivery, not against an expense document — logistics
+// owns whether the figure is right, finance owns whether it was paid.
+router.post(
+  "/deliveries/:id/costs",
+  can("edit"),
+  validator.validateDeliveryCost,
+  controller.addDeliveryCost,
+);
+router.delete(
+  "/deliveries/:id/costs/:cost_id",
+  can("edit"),
+  controller.removeDeliveryCost,
+);
+router.post(
+  "/deliveries/:id/fee-waiver",
+  can("edit"),
+  validator.validateFeeWaiver,
+  controller.setFeeWaiver,
+);
+
 router.get(
   "/deliveries/:id/webhook-events",
   can("view"),

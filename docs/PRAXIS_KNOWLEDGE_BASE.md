@@ -452,7 +452,20 @@ categories, collections, bundles, shades, and bookable services.
   whether it applies to every listing automatically or only listings switched on,
   and pick which size is drawn from first (cut down vs built up) at Catalogue →
   **Config** → **Rewig adjacency**. A single listing can override the brand
-  setting from its own Sizes & variants tab.
+  setting from its own Sizes & variants tab — note **"Always off for this
+  listing" beats the brand setting**, so a listing set that way never substitutes
+  even while adjacency is on everywhere else. The substitution applies on every
+  channel that raises an order: storefront, sales campaigns, WhatsApp/Instagram
+  order links, **and the Sales → Quick Sale form and Quotations**. When it fires,
+  the order line is repointed to the sibling SKU actually taken off the shelf and
+  carries a note telling the stylist which unit to resize, so the picklist never
+  sends out the wrong size unresized.
+- *The screen says units are in stock but the order still pre-ordered — why?*
+  Stock only counts locations marked **available for storefront** (Stock →
+  Locations), and a sale reserves against a single location. Stock parked at a
+  location that isn't storefront-enabled is deliberately not sellable and won't
+  be counted or reserved — enable that location, or transfer the units to one
+  that is.
 - *Add product pictures with a consistent branded background?* Open a styled
   product → a colour → **Add a picture**. The upload modal lets you drag/drop or
   choose an image, then optionally switch on **Use branded background** to wipe

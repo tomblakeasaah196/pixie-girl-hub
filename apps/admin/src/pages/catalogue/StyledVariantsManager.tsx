@@ -737,8 +737,10 @@ function VariantsCard({
               ]}
             />
             <span className="text-[11px] text-text-faint">
-              Only matters when Catalogue → Config → Rewig adjacency is set to
-              opt-in — otherwise every listing already gets it.
+              &ldquo;Always off&rdquo; wins over the brand setting — this listing
+              will never resize from an adjacent size, even while Catalogue →
+              Config → Rewig adjacency is on for everything else. Leave it on
+              &ldquo;Follow brand setting&rdquo; unless you mean to override.
             </span>
           </div>
 

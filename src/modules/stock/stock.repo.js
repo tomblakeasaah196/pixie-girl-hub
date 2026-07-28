@@ -75,9 +75,35 @@ async function listLocations({ client, brand }) {
   );
   return rows;
 }
+/**
+ * The single location every sale reserves and deducts against.
+ *
+ * `is_default` is NOT globally unique — 000017 indexes it UNIQUE per
+ * `location_type`, so a brand can legitimately carry a default warehouse AND a
+ * default production/in_transit/reserved_holding row at the same time. The
+ * original `ORDER BY is_default DESC, created_at` therefore tiebroke on
+ * whichever default happened to be created first, which could hand every
+ * reservation to a location that holds no sellable stock (and, when two rows
+ * shared a created_at, was not even deterministic).
+ *
+ * Ordering — never filtering, so a brand whose only location is an odd type
+ * still resolves rather than pre-ordering everything:
+ *   1. is_default
+ *   2. a genuinely sellable type (warehouse/showroom) over transit/production
+ *   3. storefront-sellable, then POS-sellable
+ *   4. created_at, then location_id — a total order, so the result is stable.
+ */
 async function getDefaultLocation({ client, brand }) {
   const { rows } = await ex(client)(
-    `SELECT * FROM ${t(brand, "stock_locations")} WHERE is_active = true ORDER BY is_default DESC, created_at LIMIT 1`,
+    `SELECT * FROM ${t(brand, "stock_locations")}
+      WHERE is_active = true
+      ORDER BY is_default DESC,
+               (location_type IN ('warehouse','showroom')) DESC,
+               available_for_storefront DESC,
+               available_for_pos DESC,
+               created_at ASC,
+               location_id ASC
+      LIMIT 1`,
   );
   return rows[0] || null;
 }
@@ -761,6 +787,43 @@ async function defaultVariantForProduct({ client, brand, product_id }) {
   return rows[0] || null;
 }
 
+/**
+ * The best variant of `product_id` to draw `quantity` units from AT
+ * `location_id` — i.e. one whose reservation is guaranteed to succeed against
+ * the `reserved <= on_hand` invariant.
+ *
+ * Deliberately different from `defaultVariantForProduct`, which is ordering-
+ * based and stock-blind: it can hand back an inactive variant, or an active one
+ * with nothing on the shelf, which then fails to reserve and silently becomes a
+ * pre-order. Availability reads sum stock across every location while the sale
+ * only ever reserves at ONE, so a donor must be chosen against that same
+ * location or the two disagree.
+ *
+ * Returns null when no single variant of this product can cover `quantity`
+ * there — callers fall back to their existing pre-order handling.
+ */
+async function variantWithStockForProduct({
+  client,
+  brand,
+  product_id,
+  location_id,
+  quantity,
+}) {
+  const { rows } = await ex(client)(
+    `SELECT pv.variant_id, pv.sku, pv.variant_name, sl.available
+       FROM ${t(brand, "product_variants")} pv
+       JOIN ${t(brand, "stock_levels")} sl
+         ON sl.variant_id = pv.variant_id AND sl.location_id = $2
+      WHERE pv.product_id = $1
+        AND pv.is_active = true
+        AND sl.available >= $3
+      ORDER BY sl.available DESC, pv.display_order ASC, pv.created_at ASC
+      LIMIT 1`,
+    [product_id, location_id, quantity],
+  );
+  return rows[0] || null;
+}
+
 // ── Inbound shipments (+ lines) ──────────────────────────
 // destination_location_id / received_at / received_by_name / notes / status /
 // created_by are all optional on insert — the detailed shipment flow omits the
@@ -1005,6 +1068,7 @@ module.exports = {
   nextMovementNumber,
   nextDocNumber,
   defaultVariantForProduct,
+  variantWithStockForProduct,
   listMovements,
   movementsForExport,
   recordMovement,

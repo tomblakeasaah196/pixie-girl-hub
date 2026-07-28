@@ -295,6 +295,38 @@ async function insertLine({ client, brand, line }) {
   );
   return rows[0];
 }
+/**
+ * Repoint a line at the base variant a rewig substitution actually reserved
+ * (000088). The line keeps its styled snapshot — the customer still bought
+ * "Nala Sleek Bangs Black — Medium" — but product_id/variant_id must follow the
+ * physical unit so payment-time deductForSale, reservation release on cancel,
+ * and COGS all hit the SKU that was really taken off the shelf. `note` is
+ * appended to the line's existing notes so the picklist tells the stylist the
+ * unit needs resizing.
+ */
+async function repointLineVariant({
+  client,
+  brand,
+  line_id,
+  product_id,
+  variant_id,
+  note,
+}) {
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "sales_order_lines")}
+        SET product_id = $2,
+            variant_id = $3,
+            notes = CASE
+                      WHEN notes IS NULL OR notes = '' THEN $4::text
+                      ELSE notes || E'\n' || $4::text
+                    END
+      WHERE line_id = $1
+      RETURNING *`,
+    [line_id, product_id, variant_id, note],
+  );
+  return rows[0] || null;
+}
+
 async function insertDiscount({ client, brand, disc }) {
   const { f, ph, p } = ins(DISC, disc);
   await ex(client)(
@@ -1378,6 +1410,7 @@ module.exports = {
   findByPublicToken,
   findByOrderNumber,
   insertLine,
+  repointLineVariant,
   insertDiscount,
   findById,
   listOrders,

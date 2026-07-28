@@ -105,6 +105,28 @@ function reduceBundleAvailability(parts = []) {
 }
 
 /**
+ * SQL: restrict a stock_levels row (aliased `slAlias`) to a location whose
+ * stock is genuinely sellable.
+ *
+ * Availability used to sum EVERY location — including in-transit, production
+ * and any warehouse a merchant had deliberately flagged
+ * `available_for_storefront = false` — while a sale only ever reserves at the
+ * one location `stockRepo.getDefaultLocation` resolves. That mismatch reports
+ * stock the checkout cannot reach, and the line then pre-orders despite the
+ * screen showing units in stock. Sales-campaigns already filtered this way
+ * (campaigns.repo.js, campaigns.bundles.repo.js); this brings the catalogue and
+ * storefront reads onto the same definition.
+ */
+function sellableLocation(brand, slAlias) {
+  return `EXISTS (
+    SELECT 1 FROM ${t(brand, "stock_locations")} loc
+     WHERE loc.location_id = ${slAlias}.location_id
+       AND loc.is_active = true
+       AND loc.available_for_storefront = true
+  )`;
+}
+
+/**
  * SQL: extra fulfillable stock from REWIG-eligible size-adjacent sibling bases
  * — one size up or one size down ONLY, never chained further (000088). A
  * sibling is a base sharing `base_family_id` (same texture/lace/colour, only
@@ -153,6 +175,7 @@ function rewigBonusSql(brand, originExpr, styledAlias) {
           FROM ${t(brand, "stock_levels")} sl
           JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sl.variant_id
          WHERE pv.product_id = sibs.product_id AND pv.is_active = true
+           AND ${sellableLocation(brand, "sl")}
       ) sib_stock ON true
   )`;
 }
@@ -193,6 +216,7 @@ function styledStockSql(brand, alias = "s") {
                         THEN sl.variant_id = ${alias}.base_variant_id
                         ELSE pv.product_id = bases.src_product_id AND pv.is_active = true
                    END
+               AND ${sellableLocation(brand, "sl")}
           ) src
        ) vav ON true
        LEFT JOIN LATERAL (
@@ -204,6 +228,7 @@ function styledStockSql(brand, alias = "s") {
                      THEN sl.variant_id = ${alias}.base_variant_id
                      ELSE pv.product_id = ${alias}.base_product_id AND pv.is_active = true
                 END
+            AND ${sellableLocation(brand, "sl")}
        ) sav ON true`;
   // vav.available is NULL (not 0) when there are no active variants → seed.
   const expr = `COALESCE(vav.available, sav.available, 0)`;
@@ -228,6 +253,7 @@ function styledVariantStockSql(brand, variantAlias = "v", styledAlias = "sp") {
                      THEN sl.variant_id = ${styledAlias}.base_variant_id
                      ELSE pv.product_id = ${src} AND pv.is_active = true
                 END
+            AND ${sellableLocation(brand, "sl")}
        ) vstock ON true`;
 }
 

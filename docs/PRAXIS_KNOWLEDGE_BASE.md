@@ -414,6 +414,31 @@ Dismissed.
 - *Act on an insight?* Open it → Acknowledge / Resolve / Dismiss, or "Open in
   Praxis" to dig in.
 
+### 4.5b How approvals reach you (every module)
+
+**What it is.** One behaviour for every approval in the Hub — stock
+adjustments, cash requests, expenses, purchase orders, price changes,
+campaigns, intercompany.
+
+**When a request is submitted.** Everyone who can approve it gets **a task on
+their Workspace and a notification**, both linking straight to the request.
+Two-tier approvals ask one tier at a time: the second tier is only asked once
+the first has passed it up.
+
+**When you click either one.** You land on the request itself — the stock
+adjustment in Stock → **Adjustments**, the cash request in Cash Requests →
+**Approval Queue**, the expense in **Expenses** — with the detail and the
+Approve / Reject buttons in front of you.
+
+**When a decision is made.** Every approver's task for that request closes
+itself (including tiers that never got to act), and the person who raised it
+is notified of the outcome with a link back. Nobody marks approval tasks done
+by hand.
+
+**If nothing arrived.** The request may not have been *submitted* (a draft
+notifies nobody), or no one holds the module's **approve** permission — check
+Org & Workflow → the permission matrix.
+
 ### 4.6 Workspace
 **What it's for.** Your personal cockpit — your day, calendar, tasks, notes,
 goals, the AI Chief of Staff, and **My HR** (your own attendance, leave, payslips).
@@ -430,6 +455,12 @@ Agenda) · **My HR** · **Goals** *(CEO)* · **Notes** *(CEO)* · **AI Chief of 
   Upcoming list shows up to **10** items with a **View more** link into the full
   **Calendar** / **Tasks** tab.
 - *See my to-dos / add a task?* Workspace → **Tasks** → **New Task** / **Create Task**.
+- *A task says "Approve …" — where do I actually approve it?* Open the task
+  and click **Open <record>** at the top of the detail panel. It takes you
+  straight to the request (the adjustment, the cash request, the expense),
+  where the Approve / Reject buttons are. Clicking the notification does the
+  same in one hop. **You never tick an approval task off yourself** — deciding
+  closes it automatically, for every approver at every tier.
   The tab shows **your** tasks (assigned to you or created by you) — including
   tasks auto-raised when a service job is assigned to you (they carry the
   deadline set on the job at assignment). Managers/CEO with team-wide task

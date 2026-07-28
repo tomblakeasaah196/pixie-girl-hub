@@ -24,6 +24,7 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { cn } from "@/lib/cn";
 import { moneyCompact, formatDate as fmtDateCanon } from "@/lib/format";
 import { useCashRequests, useCashRequestKpis } from "./hooks";
+import { useDeepLinkedRecord } from "@/hooks/useDeepLinkedRecord";
 import { CR_STATUS_META, CR_STATUS_TABS, URGENCY_META } from "./constants";
 import type { CashRequest, CashRequestStatus } from "./types";
 
@@ -347,6 +348,15 @@ function RequestsTab({
     page,
   });
 
+  /* Same deep link, for the submitter opening their own request from the
+     outcome notification ("your cash request was approved"). */
+  useDeepLinkedRecord<CashRequest>(
+    "request",
+    data?.data,
+    (r) => r.cash_request_id,
+    onSelect,
+  );
+
   const cols: Column<CashRequest>[] = [
     {
       key: "no",
@@ -478,6 +488,15 @@ function ApprovalQueueTab({
       new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
   );
   const isLoading = pending.isLoading || pendingCeo.isLoading;
+
+  /* An approver arriving from a task or notification
+     (/cash-requests?tab=approval-queue&request=<id>) opens that request. */
+  useDeepLinkedRecord<CashRequest>(
+    "request",
+    rows,
+    (r) => r.cash_request_id,
+    onSelect,
+  );
 
   const cols: Column<CashRequest>[] = [
     {

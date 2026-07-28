@@ -23,36 +23,65 @@
 const outbox = require("../../shared/outbox/outbox");
 const events = require("./stock.events");
 const repo = require("./stock.repo");
-const tasksService = require("../../shared/tasks/tasks.service");
+const {
+  requestApproval,
+  settleApproval,
+} = require("../../shared/approvals/approval-requests");
 const { logger } = require("../../config/logger");
 
 let registered = false;
 
-async function notifyApprovers({ brand, id }) {
+/**
+ * A write-off / write-down went out for approval. The shared approval spine
+ * raises ONE deep-linked task + notification per approver, so the approver
+ * lands on this adjustment in the Adjustments queue rather than being told a
+ * decision is waiting somewhere.
+ */
+async function askApprovers({ brand, id }) {
   const adj = await repo.getAdjustment({ brand, id });
   if (!adj) return;
   const approvers = await repo.listAdjustmentApprovers({ brand });
-  for (const u of approvers) {
-    try {
-      await tasksService.createFromModule({
-        brand,
-        created_by: adj.created_by,
-        task: {
-          title: `Approve stock ${adj.adjustment_type.replace(/_/g, " ")} ${adj.adjustment_number}`,
-          description: adj.reason,
-          priority: "high",
-          assigned_to: u.user_id,
-          reference_type: "stock_adjustment",
-          reference_id: id,
-        },
-      });
-    } catch (err) {
-      logger.warn(
-        { err, brand, id, user_id: u.user_id },
-        "stock: failed to notify/task an adjustment approver",
-      );
-    }
-  }
+  const units = (adj.lines || []).reduce(
+    (sum, l) => sum + (l.physical_count - l.system_count),
+    0,
+  );
+  await requestApproval({
+    brand,
+    reference_type: "stock_adjustment",
+    reference_id: id,
+    approver_user_ids: approvers.map((u) => u.user_id),
+    requested_by: adj.created_by,
+    priority: "high",
+    title: `Approve stock ${adj.adjustment_type.replace(/_/g, " ")} ${adj.adjustment_number}`,
+    description: `${adj.reason}${units ? ` · ${units > 0 ? "+" : ""}${units} unit(s)` : ""}`,
+  });
+}
+
+/**
+ * The decision landed. Every approver's task for this adjustment closes
+ * itself — including the second tier's, which never gets to act once the
+ * first decision is final — and the person who raised it is told, with a link
+ * back to the adjustment.
+ */
+async function closeOutApprovers({
+  brand,
+  id,
+  outcome,
+  actor,
+  requested_by,
+  adjustment_number,
+}) {
+  await settleApproval({
+    brand,
+    reference_type: "stock_adjustment",
+    reference_id: id,
+    outcome,
+    requester_user_id: requested_by,
+    actor_name: actor,
+    title: adjustment_number
+      ? `Stock adjustment ${adjustment_number}`
+      : undefined,
+  });
 }
 
 function register() {
@@ -73,15 +102,31 @@ function register() {
     }
   });
   events.on("adjustment.submitted", ({ brand, id }) => {
-    notifyApprovers({ brand, id }).catch((err) =>
+    askApprovers({ brand, id }).catch((err) =>
       logger.warn(
         { err, brand, id },
         "stock: adjustment.submitted approver-notify failed",
       ),
     );
   });
+  // The decision retires the request. Without these, approving in the queue
+  // left every approver's task open at every tier — the approver had to
+  // remember to tick off work the system already knew was finished.
+  for (const [event, outcome] of [
+    ["adjustment.approved", "approved"],
+    ["adjustment.rejected", "rejected"],
+  ]) {
+    events.on(event, (payload) => {
+      closeOutApprovers({ ...payload, outcome }).catch((err) =>
+        logger.warn(
+          { err, brand: payload && payload.brand, id: payload && payload.id },
+          `stock: ${event} approval close-out failed`,
+        ),
+      );
+    });
+  }
   logger.info(
-    "stock subscribers registered (outbox variant.created → seed level; adjustment.submitted → notify approvers)",
+    "stock subscribers registered (outbox variant.created → seed level; adjustment submit/decide → approval tasks)",
   );
 }
 

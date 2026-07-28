@@ -10,6 +10,7 @@
 "use strict";
 
 const repo = require("./tasks.repo");
+const { deepLinkFor } = require("../links/deep-links");
 const events = require("./tasks.events");
 const notifications = require("../../services/notifications.service");
 const { audit } = require("../../middleware/audit");
@@ -48,6 +49,12 @@ async function notifyAssignee({ brand, task }) {
       body: task.title,
       reference_type: "task",
       reference_id: task.task_id,
+      // Point at the RECORD when the task is about one (an approval, an
+      // order), and at the task itself otherwise. Being dropped on a task
+      // that says "approve X" is one hop short of where the holder is going.
+      action_url:
+        deepLinkFor(task.reference_type, task.reference_id) ||
+        deepLinkFor("task", task.task_id),
     });
   } catch (err) {
     logger.error(
@@ -77,9 +84,32 @@ function canSee(task, scope, user) {
   return task.assigned_to === uid || task.created_by === uid;
 }
 
-function listTasks({ scope, user, ...args }) {
+/**
+ * Stamp every task with the route to the record it is about.
+ *
+ * A task that says "Approve stock write-off FLH-ADJ-0007" and gives you no
+ * way to open FLH-ADJ-0007 is a memo, not a task — the holder has to go and
+ * find it by hand. Derived on READ (not stored) so existing tasks gain their
+ * link the moment a route is added, and one change to deep-links.js moves
+ * every task pointing at that record.
+ */
+function withLink(task) {
+  if (!task) return task;
+  return {
+    ...task,
+    action_url: deepLinkFor(task.reference_type, task.reference_id),
+  };
+}
+
+async function listTasks({ scope, user, ...args }) {
   if (scope === "own") args.visible_to = user.user_id;
-  return repo.listTasks(args);
+  const result = await repo.listTasks(args);
+  // The repo returns either a bare array or { data, meta } depending on the
+  // caller — handle both rather than assuming.
+  if (Array.isArray(result)) return result.map(withLink);
+  if (result && Array.isArray(result.data))
+    return { ...result, data: result.data.map(withLink) };
+  return result;
 }
 
 /**
@@ -100,7 +130,7 @@ async function getBoard({ brand, scope, user, assigned_to }) {
   });
   const board = { to_do: [], in_progress: [], in_review: [], done: [] };
   for (const t of rows) {
-    if (board[t.status]) board[t.status].push(t);
+    if (board[t.status]) board[t.status].push(withLink(t));
   }
   return board;
 }
@@ -108,7 +138,7 @@ async function getTask({ brand, scope, user, id }) {
   const task = await repo.findTask({ brand, id });
   if (!task || !canSee(task, scope, user)) throw new NotFoundError("Task");
   task.subtasks = await repo.listSubtasks({ task_id: id });
-  return task;
+  return withLink(task);
 }
 async function createTask({ brand, user, request_id, input }) {
   return transaction(async (client) => {

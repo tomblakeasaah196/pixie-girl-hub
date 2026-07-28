@@ -10,6 +10,7 @@
 const { query } = require("../config/database");
 const { getBroadcaster } = require("../realtime/emitter");
 const { ROOMS } = require("../realtime/rooms");
+const { deepLinkFor } = require("../shared/links/deep-links");
 
 const VALID_PRIORITY = new Set(["low", "normal", "high", "urgent"]);
 
@@ -63,6 +64,15 @@ async function notify({
   }
   const prio = VALID_PRIORITY.has(priority) ? priority : "normal";
   const actionsArr = Array.isArray(actions) ? actions : [];
+  // Every notification already names the record it is about
+  // (reference_type + reference_id) but almost none passed a link, so the bell
+  // dropped the reader on a dead end — nowhere more so than an approval, where
+  // the approver had to go hunting for the request. Resolve the link from the
+  // reference when the caller didn't give one, so a module gets a working
+  // deep link by naming its record, and one route change fixes every notice
+  // pointing at it. An explicit action_url always wins.
+  const link =
+    action_url || deepLinkFor(reference_type, reference_id) || null;
   const { rows } = await query(
     `INSERT INTO shared.notifications
        (user_id, business, type, priority, title, body, reference_type, reference_id, action_url, actions)
@@ -77,7 +87,7 @@ async function notify({
       body || null,
       reference_type || null,
       reference_id || null,
-      action_url || null,
+      link,
       JSON.stringify(actionsArr),
     ],
   );
@@ -87,7 +97,7 @@ async function notify({
     title,
     body,
     priority: prio,
-    action_url: action_url || null,
+    action_url: link,
     actions: actionsArr,
     created_at: rows[0].created_at,
   };

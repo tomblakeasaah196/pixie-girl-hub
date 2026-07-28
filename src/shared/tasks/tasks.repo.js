@@ -176,6 +176,54 @@ async function setStatus({ brand, id, status, completed }) {
   );
   return rows[0] || null;
 }
+/**
+ * Every still-open task raised for one record — used to close an approval's
+ * tasks the moment the decision lands, and to keep `requestApproval`
+ * idempotent (never two open tasks for the same approver and record).
+ */
+async function openTasksForReference({
+  client,
+  brand,
+  reference_type,
+  reference_id,
+}) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM shared.tasks
+      WHERE business = $1 AND reference_type = $2 AND reference_id = $3
+        AND is_deleted = false AND status NOT IN ('done','cancelled')`,
+    [brand, reference_type, reference_id],
+  );
+  return rows;
+}
+
+/**
+ * Close every open task raised for a record, in one statement.
+ *
+ * An approver's task IS the request: once the request is approved, rejected
+ * or withdrawn, the task has no work left in it. Leaving it open made every
+ * approver tidy up by hand, and a stale "Approve FLH-ADJ-0007" is worse than
+ * no task at all — it says something is pending when nothing is.
+ */
+async function closeTasksForReference({
+  client,
+  brand,
+  reference_type,
+  reference_id,
+  status = "done",
+}) {
+  const { rows } = await ex(client)(
+    `UPDATE shared.tasks
+        SET status = $4,
+            completed_at = CASE WHEN $4 = 'done' THEN now() ELSE completed_at END,
+            updated_at = now()
+      WHERE business = $1 AND reference_type = $2 AND reference_id = $3
+        AND is_deleted = false AND status NOT IN ('done','cancelled')
+      RETURNING task_id, assigned_to`,
+    [brand, reference_type, reference_id, status],
+  );
+  return rows;
+}
+
 async function softDeleteTask({ brand, id }) {
   const { rows } = await query(
     `UPDATE shared.tasks SET is_deleted = true, updated_at = now()
@@ -333,6 +381,8 @@ module.exports = {
   updateTask,
   setStatus,
   softDeleteTask,
+  openTasksForReference,
+  closeTasksForReference,
   listSubtasks,
   addSubtask,
   setSubtaskDone,

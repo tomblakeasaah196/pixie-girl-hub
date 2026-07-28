@@ -16,6 +16,7 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { cn } from "@/lib/cn";
 import { money, moneyCompact, formatDate as fmtDateCanon } from "@/lib/format";
 import { useExpenses, useExpenseKpis } from "./hooks";
+import { useDeepLinkedRecord } from "@/hooks/useDeepLinkedRecord";
 import { EXPENSE_STATUS_META, EXPENSE_STATUS_TABS } from "./constants";
 import type { Expense } from "./types";
 
@@ -255,6 +256,15 @@ function ExpensesTable({
     status: statusFilter || undefined,
     page,
   });
+
+  /* An approver (or the submitter, on the outcome notice) arriving from a
+     task or notification: /expenses?expense=<id> opens that expense. */
+  useDeepLinkedRecord<Expense>(
+    "expense",
+    data?.data,
+    (e) => e.expense_id,
+    onSelect,
+  );
 
   const cols: Column<Expense>[] = [
     {

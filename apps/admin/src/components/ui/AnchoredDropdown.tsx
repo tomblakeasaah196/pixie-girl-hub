@@ -31,6 +31,9 @@ export function AnchoredDropdown({
   children,
   maxHeight = 300,
   className,
+  id,
+  role,
+  "aria-label": ariaLabel,
 }: {
   anchorRef: RefObject<HTMLElement | null>;
   open: boolean;
@@ -38,6 +41,11 @@ export function AnchoredDropdown({
   children: ReactNode;
   maxHeight?: number;
   className?: string;
+  /** Element id, so a trigger can point at this panel via aria-controls. */
+  id?: string;
+  /** ARIA role for the panel, e.g. "listbox" or "menu". */
+  role?: string;
+  "aria-label"?: string;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{
@@ -106,6 +114,9 @@ export function AnchoredDropdown({
   return createPortal(
     <div
       ref={panelRef}
+      id={id}
+      role={role}
+      aria-label={ariaLabel}
       className={cn(
         "select-dropdown-list fixed z-[120] rounded-[11px] overflow-hidden py-1 overflow-y-auto",
         className,

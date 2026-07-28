@@ -12,6 +12,7 @@ const { t } = require("../../config/brands");
 const {
   nextDocumentNumber,
 } = require("../../shared/numbering/document-number");
+const { logger } = require("../../config/logger");
 const LOC = [
   "location_code",
   "display_name",
@@ -246,6 +247,13 @@ async function nextMovementNumber({ client, brand }) {
  *
  * Each join is guarded on reference_type so a UUID that happens to exist in
  * two tables can never cross-match.
+ *
+ * NO POS JOIN: the POS terminal module was retired and template 000074 DROPs
+ * every per-brand pos_* table, so `pos_transactions` does not exist in any
+ * live brand schema. Joining it made Postgres fail at PARSE time, which took
+ * the whole Movements tab (and the Overview strip) down with a 500 — a
+ * historic 'pos_transaction' movement now reads from its reference_type alone.
+ * Only join tables the migrations still create.
  */
 function movementJoins(brand) {
   return `LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sm.variant_id
@@ -255,8 +263,6 @@ function movementJoins(brand) {
        LEFT JOIN ${t(brand, "sales_orders")} so
               ON sm.reference_type = 'sales_order' AND so.order_id = sm.reference_id
        LEFT JOIN shared.contacts ct ON ct.contact_id = so.contact_id
-       LEFT JOIN ${t(brand, "pos_transactions")} pos
-              ON sm.reference_type = 'pos_transaction' AND pos.transaction_id = sm.reference_id
        LEFT JOIN ${t(brand, "stock_adjustments")} adj
               ON sm.reference_type = 'adjustment' AND adj.adjustment_id = sm.reference_id
        LEFT JOIN ${t(brand, "stock_transfers")} trf
@@ -274,12 +280,11 @@ const MOVEMENT_SELECT = `sm.*, pv.sku, pv.variant_name, p.name AS product_name,
             so.order_type, so.placed_at AS order_placed_at,
             so.sales_channel AS order_sales_channel,
             ct.display_name AS customer_name,
-            pos.transaction_number AS pos_transaction_number,
             adj.adjustment_id, adj.adjustment_number, adj.status AS adjustment_status,
             adj.adjustment_type, adj.reason AS adjustment_reason,
             trf.transfer_id, trf.transfer_number, trf.status AS transfer_status,
             shp.shipment_id, shp.shipment_number, shp.status AS shipment_status,
-            COALESCE(so.order_number, pos.transaction_number, adj.adjustment_number,
+            COALESCE(so.order_number, adj.adjustment_number,
                      trf.transfer_number, shp.shipment_number) AS reference_number`;
 
 /**
@@ -359,13 +364,47 @@ async function listMovements({
     `SELECT COUNT(*)::int AS total FROM ${t(brand, "stock_movements")} sm ${w}`,
     params,
   );
-  const { rows } = await run(
-    `SELECT ${MOVEMENT_SELECT}
+  const paged = [...params, page_size, offset];
+  const limitPh = `$${i++}`;
+  const offsetPh = `$${i++}`;
+  let rows;
+  try {
+    rows = (
+      await run(
+        `SELECT ${MOVEMENT_SELECT}
        FROM ${t(brand, "stock_movements")} sm
        ${movementJoins(brand)}
-       ${w} ORDER BY sm.performed_at DESC LIMIT $${i++} OFFSET $${i++}`,
-    [...params, page_size, offset],
-  );
+       ${w} ORDER BY sm.performed_at DESC LIMIT ${limitPh} OFFSET ${offsetPh}`,
+        paged,
+      )
+    ).rows;
+  } catch (err) {
+    // The movement ledger is the one screen that must always render. Resolving
+    // the source documents reaches into five other modules' tables, and a
+    // module can be RETIRED between releases — POS was, and its dropped table
+    // turned every request here into a 500 that blanked the Movements tab and
+    // the Overview strip. Enrichment is a nicety; the ledger is not. Fall back
+    // to the bare movements so the page still works, and log loudly enough
+    // that the broken join gets fixed rather than silently tolerated.
+    logger.error(
+      { err: err.message, brand },
+      "stock: movement source enrichment failed — serving un-enriched rows",
+    );
+    rows = (
+      await run(
+        `SELECT sm.*, pv.sku, pv.variant_name, p.name AS product_name,
+            loc.display_name AS location_name,
+            COALESCE(u.display_name, u.email) AS performed_by_name
+       FROM ${t(brand, "stock_movements")} sm
+       LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sm.variant_id
+       LEFT JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
+       LEFT JOIN ${t(brand, "stock_locations")} loc ON loc.location_id = sm.location_id
+       LEFT JOIN shared.users u ON u.user_id = sm.performed_by
+       ${w} ORDER BY sm.performed_at DESC LIMIT ${limitPh} OFFSET ${offsetPh}`,
+        paged,
+      )
+    ).rows;
+  }
   return {
     data: rows,
     meta: {

@@ -101,6 +101,13 @@ async function listMovements(req, res) {
     }),
   });
 }
+const getMovement = async (req, res) =>
+  res.json({
+    data: await service.getMovement({
+      brand: req.brand,
+      movement_id: req.params.movId,
+    }),
+  });
 const recordMovement = async (req, res) =>
   res.status(201).json({
     data: await service.recordMovement({ ...base(req), input: req.body }),
@@ -279,6 +286,7 @@ module.exports = {
   listLevels,
   variantStock,
   listMovements,
+  getMovement,
   recordMovement,
   listAdjustments,
   getAdjustment,

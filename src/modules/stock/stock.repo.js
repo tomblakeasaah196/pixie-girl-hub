@@ -237,6 +237,99 @@ async function outstandingReservationForOrder({
 async function nextMovementNumber({ client, brand }) {
   return nextDocumentNumber({ client, brand, type: "stock_movement" });
 }
+/**
+ * Every movement carries a soft FK (reference_type + reference_id) to the
+ * document that caused it. Reading "SALE −1" without that document is what
+ * made the ledger unreadable: you couldn't tell WHICH order, WHICH channel or
+ * WHO processed it. These joins resolve the source document inline so both the
+ * table and the detail view can name it — one query, no N+1.
+ *
+ * Each join is guarded on reference_type so a UUID that happens to exist in
+ * two tables can never cross-match.
+ */
+function movementJoins(brand) {
+  return `LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sm.variant_id
+       LEFT JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
+       LEFT JOIN ${t(brand, "stock_locations")} loc ON loc.location_id = sm.location_id
+       LEFT JOIN shared.users u ON u.user_id = sm.performed_by
+       LEFT JOIN ${t(brand, "sales_orders")} so
+              ON sm.reference_type = 'sales_order' AND so.order_id = sm.reference_id
+       LEFT JOIN shared.contacts ct ON ct.contact_id = so.contact_id
+       LEFT JOIN ${t(brand, "pos_transactions")} pos
+              ON sm.reference_type = 'pos_transaction' AND pos.transaction_id = sm.reference_id
+       LEFT JOIN ${t(brand, "stock_adjustments")} adj
+              ON sm.reference_type = 'adjustment' AND adj.adjustment_id = sm.reference_id
+       LEFT JOIN ${t(brand, "stock_transfers")} trf
+              ON sm.reference_type = 'transfer' AND trf.transfer_id = sm.reference_id
+       LEFT JOIN ${t(brand, "inbound_shipments")} shp
+              ON sm.reference_type IN ('inbound_shipment','goods_received_note')
+             AND shp.shipment_id = sm.reference_id`;
+}
+
+/** Columns shared by the movements list and the single-movement detail. */
+const MOVEMENT_SELECT = `sm.*, pv.sku, pv.variant_name, p.name AS product_name,
+            loc.display_name AS location_name,
+            COALESCE(u.display_name, u.email) AS performed_by_name,
+            so.order_id, so.order_number, so.status AS order_status,
+            so.order_type, so.placed_at AS order_placed_at,
+            so.sales_channel AS order_sales_channel,
+            ct.display_name AS customer_name,
+            pos.transaction_number AS pos_transaction_number,
+            adj.adjustment_id, adj.adjustment_number, adj.status AS adjustment_status,
+            adj.adjustment_type, adj.reason AS adjustment_reason,
+            trf.transfer_id, trf.transfer_number, trf.status AS transfer_status,
+            shp.shipment_id, shp.shipment_number, shp.status AS shipment_status,
+            COALESCE(so.order_number, pos.transaction_number, adj.adjustment_number,
+                     trf.transfer_number, shp.shipment_number) AS reference_number`;
+
+/**
+ * One movement, fully resolved — the detail modal's payload. Adds the parties
+ * the list doesn't need (adjustment raiser/approver, transfer endpoints) so an
+ * operator can answer "where did this come from and who did it?" in one look.
+ */
+async function getMovementById({ client, brand, movement_id }) {
+  const { rows } = await ex(client)(
+    `SELECT ${MOVEMENT_SELECT},
+            adj.created_at AS adjustment_created_at,
+            adj.approved_at AS adjustment_approved_at,
+            COALESCE(adju.display_name, adju.email) AS adjustment_created_by_name,
+            COALESCE(adja.display_name, adja.email) AS adjustment_approved_by_name,
+            trf_from.display_name AS transfer_from_location_name,
+            trf_to.display_name AS transfer_to_location_name
+       FROM ${t(brand, "stock_movements")} sm
+       ${movementJoins(brand)}
+       LEFT JOIN shared.users adju ON adju.user_id = adj.created_by
+       LEFT JOIN shared.users adja ON adja.user_id = adj.approved_by
+       LEFT JOIN ${t(brand, "stock_locations")} trf_from ON trf_from.location_id = trf.from_location_id
+       LEFT JOIN ${t(brand, "stock_locations")} trf_to ON trf_to.location_id = trf.to_location_id
+      WHERE sm.movement_id = $1`,
+    [movement_id],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Sibling movements from the same source document (the other lines of the
+ * order, the other lines of the adjustment). Lets the detail view show the
+ * whole operation, not just the one line that was clicked.
+ */
+async function siblingMovements({ client, brand, movement }) {
+  if (!movement.reference_type || !movement.reference_id) return [];
+  const { rows } = await ex(client)(
+    `SELECT sm.movement_id, sm.movement_number, sm.movement_type, sm.quantity,
+            sm.unit_cost_ngn, sm.performed_at, pv.sku, pv.variant_name,
+            p.name AS product_name
+       FROM ${t(brand, "stock_movements")} sm
+       LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sm.variant_id
+       LEFT JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
+      WHERE sm.reference_type = $1 AND sm.reference_id = $2
+        AND sm.movement_id <> $3
+      ORDER BY sm.performed_at ASC LIMIT 50`,
+    [movement.reference_type, movement.reference_id, movement.movement_id],
+  );
+  return rows;
+}
+
 async function listMovements({
   client,
   brand,
@@ -267,12 +360,9 @@ async function listMovements({
     params,
   );
   const { rows } = await run(
-    `SELECT sm.*, pv.sku, pv.variant_name, p.name AS product_name,
-            COALESCE(u.display_name, u.email) AS performed_by_name
+    `SELECT ${MOVEMENT_SELECT}
        FROM ${t(brand, "stock_movements")} sm
-       LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sm.variant_id
-       LEFT JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
-       LEFT JOIN shared.users u ON u.user_id = sm.performed_by
+       ${movementJoins(brand)}
        ${w} ORDER BY sm.performed_at DESC LIMIT $${i++} OFFSET $${i++}`,
     [...params, page_size, offset],
   );
@@ -1077,6 +1167,8 @@ module.exports = {
   defaultVariantForProduct,
   variantWithStockForProduct,
   listMovements,
+  getMovementById,
+  siblingMovements,
   movementsForExport,
   recordMovement,
   lockVariantCosting,

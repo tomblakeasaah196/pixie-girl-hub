@@ -49,6 +49,51 @@ export interface StockMovement {
   variant_name?: string;
   product_name?: string;
   location_name?: string;
+  /* ── Source document, resolved server-side from reference_type/_id ──
+     A movement on its own ("SALE −1") can't be read; these name the document
+     that caused it so the ledger answers "which order / which adjustment?". */
+  reference_number?: string | null;
+  order_id?: string | null;
+  order_number?: string | null;
+  order_status?: string | null;
+  order_type?: string | null;
+  order_placed_at?: string | null;
+  order_sales_channel?: string | null;
+  customer_name?: string | null;
+  pos_transaction_number?: string | null;
+  adjustment_id?: string | null;
+  adjustment_number?: string | null;
+  adjustment_status?: string | null;
+  adjustment_type?: string | null;
+  adjustment_reason?: string | null;
+  transfer_id?: string | null;
+  transfer_number?: string | null;
+  transfer_status?: string | null;
+  shipment_id?: string | null;
+  shipment_number?: string | null;
+  shipment_status?: string | null;
+}
+
+/** A movement plus the parties on its source document and the sibling lines
+ *  of the same operation — the Movement Detail modal's payload. */
+export interface StockMovementDetail extends StockMovement {
+  adjustment_created_at?: string | null;
+  adjustment_approved_at?: string | null;
+  adjustment_created_by_name?: string | null;
+  adjustment_approved_by_name?: string | null;
+  transfer_from_location_name?: string | null;
+  transfer_to_location_name?: string | null;
+  related_movements?: Array<{
+    movement_id: string;
+    movement_number: string;
+    movement_type: string;
+    quantity: number;
+    unit_cost_ngn?: string | null;
+    performed_at: string;
+    sku?: string | null;
+    variant_name?: string | null;
+    product_name?: string | null;
+  }>;
 }
 
 export interface StockAdjustment {

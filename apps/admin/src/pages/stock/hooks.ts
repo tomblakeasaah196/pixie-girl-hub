@@ -64,6 +64,16 @@ export function useStockMovements(params: {
   });
 }
 
+/** Detail for a single movement — the source document behind it. */
+export function useStockMovement(id: string | null) {
+  const brand = useBrand();
+  return useQuery({
+    queryKey: [brand, "stock", "movement", id],
+    queryFn: () => stockApi.getMovement(id!),
+    enabled: !!id,
+  });
+}
+
 export function useStockAdjustments(params: {
   status?: string;
   location_id?: string;

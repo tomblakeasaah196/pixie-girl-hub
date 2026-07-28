@@ -3839,10 +3839,28 @@ paths:
             required: true,
             schema: { type: string, format: uuid },
           }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [assigned_staff_user_id]
+              properties:
+                assigned_staff_user_id: { type: string, format: uuid }
+                expected_completion_at: { type: string, format: date-time }
+                acknowledge_unlinked:
+                  type: boolean
+                  description: >-
+                    Required (true) when the job has no sales order behind it.
+                    Such a job moves no stock, so the assigner must acknowledge
+                    the warning; without it the API returns 409
+                    UNLINKED_JOB_NOT_ACKNOWLEDGED.
       x-required-permission: "service_jobs.edit"
       x-entity-scope: brand
       x-is-write: true
-      responses: { "200": { description: Assigned } }
+      responses:
+        { "200": { description: Assigned },
+          "409": { description: Unacknowledged unlinked job, or wig already out } }
   /service-jobs/{id}/outcome:
     post:
       summary: Record quality / customer outcome on a job

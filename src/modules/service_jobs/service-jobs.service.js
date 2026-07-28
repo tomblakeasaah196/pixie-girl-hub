@@ -261,52 +261,16 @@ async function advanceJob({
       request_id,
     );
     events.emit("advanced", { brand, job_id: id, status });
-    // GAP-5: deduct stock for the wig consumed when service job completes —
-    // unless the Stylist Studio assign flow already pulled it (custody OUT), OR
-    // the originating sales order already drew this wig at payment (styled
-    // products sold as an order deduct in markPaid). Either case, deducting here
-    // would remove a second unit for one physical wig.
-    const alreadyOut = await repo.hasCustodyEvent({
-      client,
-      brand,
-      job_id: id,
-      event: "out",
-    });
-    const orderDrewWig = job.hair_variant_id
-      ? await repo.orderAlreadyDrewWig({
-          client,
-          brand,
-          sales_order_id: job.sales_order_id,
-          variant_id: job.hair_variant_id,
-        })
-      : false;
-    if (
-      status === "completed" &&
-      job.hair_variant_id &&
-      !alreadyOut &&
-      !orderDrewWig
-    ) {
-      try {
-        const stockService = require("../stock/stock.service");
-        const stockRepo = require("../stock/stock.repo");
-        const loc = await stockRepo.getDefaultLocation({ client, brand });
-        if (loc) {
-          await stockService.deductForSale({
-            client,
-            brand,
-            variant_id: job.hair_variant_id,
-            location_id: loc.location_id,
-            quantity: 1,
-            reference_id: id,
-            sales_channel: "service_job",
-            unit_cost_ngn: job.actual_cost_ngn || null,
-            user_id: user.user_id,
-          });
-        }
-      } catch (err) {
-        logger.warn({ err, job_id: id }, "service job stock deduction skipped");
-      }
-    }
+    // Completing a job deducts NOTHING. This was a third writer of the same
+    // draw (after markPaid and the old assign-time deduction), guarded by yet
+    // another pair of heuristics — "no custody OUT" and "the sale hasn't drawn
+    // yet" — both of which a deposit-triggered order could satisfy while the
+    // balance was still outstanding, taking a second unit for one wig.
+    //
+    // The sale is the single writer now: an order-linked job's wig is drawn by
+    // markPaid, and an unlinked job (sample, rework, shoot) never moves stock
+    // at all — the assign screen says so, and stock is corrected through the
+    // Adjustments queue if such a job did consume a tracked unit.
     if (status === "completed") events.emit("completed", { brand, job_id: id });
     return job;
   });
@@ -814,45 +778,70 @@ async function notifyUser({
   }
 }
 
-// Pull the base wig out of stock (best-effort — never blocks the assignment;
-// a physical wig may exist outside tracked stock).
-async function deductBaseWig({ client, brand, job, user_id, channel }) {
+/**
+ * THE SALE OWNS THE STOCK DRAW. Assigning a stylist never deducts.
+ *
+ * There used to be two paths that wrote a 'sale' movement for one physical
+ * wig — markPaid on the order, and the Studio on assignment — with a guard on
+ * the Studio side only ("has the sale drawn yet?"). That guard asked a
+ * question whose answer changes over time, so on a deposit-triggered order
+ * (job opens at deposit, balance paid later) it answered "no", the Studio
+ * deducted, and markPaid deducted the same unit again: −2 for one wig. An
+ * unlinked job had no order to ask about at all and always deducted.
+ *
+ * The rule now: `markPaid` is the single writer of the 'sale' movement.
+ * Assignment moves the wig into stylist custody and holds it against being
+ * sold twice, which is the guarantee that actually matters while the balance
+ * is outstanding.
+ *
+ * Holding it: every order reserves its lines at placement, so an order-linked
+ * job's unit is already held and this is a no-op. It only reserves when that
+ * hold is missing (legacy orders placed before reservation-at-placement), so
+ * the unit can never be sold out from under a stylist who physically has it.
+ * Unlinked jobs have no order to reserve against and, by decision, never
+ * touch stock — the assign screen warns the assigner in so many words.
+ */
+async function holdBaseWigForStylist({ client, brand, job, user_id }) {
   const variant_id = job.reserved_variant_id || job.hair_variant_id;
-  if (!variant_id) return;
-  // Do NOT double-deduct: if this job came from a sales order whose payment
-  // already pulled the base wig from stock (markPaid → deductForSale), the sale
-  // owns that draw and the Studio only takes custody. Without this guard a
-  // styled product sold as an order lost two units for one physical wig.
-  if (
-    await repo.orderAlreadyDrewWig({
-      client,
-      brand,
-      sales_order_id: job.sales_order_id,
-      variant_id,
-    })
-  )
-    return;
+  if (!variant_id || !job.sales_order_id) return;
   try {
     const stockService = require("../stock/stock.service");
     const stockRepo = require("../stock/stock.repo");
     const loc = await stockRepo.getDefaultLocation({ client, brand });
     if (!loc) return;
-    await stockService.deductForSale({
+    // Already drawn by the sale (order paid) → nothing left to hold.
+    if (
+      await repo.orderAlreadyDrewWig({
+        client,
+        brand,
+        sales_order_id: job.sales_order_id,
+        variant_id,
+      })
+    )
+      return;
+    // Already held by the order's own reservation → don't stack a second hold.
+    const held = await stockRepo.outstandingReservationForOrder({
+      client,
+      brand,
+      variant_id,
+      location_id: loc.location_id,
+      reference_id: job.sales_order_id,
+    });
+    if (held > 0) return;
+    await stockService.reserveForOrder({
       client,
       brand,
       variant_id,
       location_id: loc.location_id,
       quantity: 1,
-      reference_id: job.job_id,
-      sales_channel: channel || "service_job",
-      unit_cost_ngn: null,
+      reference_id: job.sales_order_id,
       user_id,
     });
   } catch (err) {
-    logger.warn(
-      { err, job_id: job.job_id },
-      "studio base-wig deduction skipped",
-    );
+    // Best-effort: a hold that can't be placed (no tracked stock, nothing on
+    // hand) must never block the assignment — the wig is physical and already
+    // in the stylist's hands.
+    logger.warn({ err, job_id: job.job_id }, "studio base-wig hold skipped");
   }
 }
 
@@ -861,22 +850,28 @@ async function deductBaseWig({ client, brand, job, user_id, channel }) {
 // the assigner doesn't set (or override) a deadline, default it to 48h out.
 const DEFAULT_STUDIO_TURNAROUND_MS = 48 * 60 * 60 * 1000;
 
-// Exact reverse of deductBaseWig — put the base wig back on unassign. Mirrors
-// the same orderAlreadyDrewWig guard, so for order-linked jobs (where the sale
-// owned the draw and the Studio never deducted) this is a clean no-op. Best-
-// effort, like the deduction it undoes.
+/**
+ * Put back what THIS job took out, on unassign.
+ *
+ * Since the sale owns the draw, a job assigned today takes nothing out and
+ * this is a clean no-op. It exists for LEGACY jobs assigned before that rule,
+ * which do carry a Studio 'sale' movement — and it decides from that job's own
+ * movement ledger rather than from the state of the sale.
+ *
+ * The old version asked `orderAlreadyDrewWig` here too. On a job assigned
+ * before payment and unassigned after it, that returned true and skipped the
+ * restock — even though the Studio really had deducted — and the unit was
+ * gone for good. Asking "what does this job still have out?" can't drift.
+ */
 async function restockBaseWig({ client, brand, job, user_id }) {
   const variant_id = job.reserved_variant_id || job.hair_variant_id;
   if (!variant_id) return;
-  if (
-    await repo.orderAlreadyDrewWig({
-      client,
-      brand,
-      sales_order_id: job.sales_order_id,
-      variant_id,
-    })
-  )
-    return;
+  const drawn = await repo.studioDrawBalanceForJob({
+    client,
+    brand,
+    job_id: job.job_id,
+  });
+  if (drawn <= 0) return; // nothing of this job's own is out — nothing to undo
   try {
     const stockService = require("../stock/stock.service");
     const stockRepo = require("../stock/stock.repo");
@@ -919,10 +914,29 @@ async function assignStylist({
   id,
   assigned_staff_user_id,
   expected_completion_at,
+  acknowledge_unlinked,
 }) {
   const outcome = await transaction(async (client) => {
     const before = await repo.getServiceJob({ client, brand, id });
     if (!before) throw new NotFoundError("Service job");
+    // A job with no sales order behind it is allowed out — samples, rework,
+    // shoots are real work — but it moves no stock and nothing downstream
+    // will ever reconcile it against a sale. The assigner has to say, in one
+    // deliberate click, that they know that. The UI shows the warning; this
+    // is the server-side half, so the acknowledgement can't be skipped by
+    // calling the API directly.
+    if (!before.sales_order_id && acknowledge_unlinked !== true) {
+      throw new AppError(
+        "UNLINKED_JOB_NOT_ACKNOWLEDGED",
+        "Assigning a job with no sales order requires explicit acknowledgement",
+        409,
+        {
+          user_message:
+            "This job has no sale behind it. Stock will not move — acknowledge the warning to assign it anyway.",
+          metadata: { job_id: id, requires_acknowledgement: true },
+        },
+      );
+    }
     const deadline =
       expected_completion_at ||
       before.expected_completion_at ||
@@ -980,12 +994,11 @@ async function assignStylist({
         },
       );
     }
-    await deductBaseWig({
+    await holdBaseWigForStylist({
       client,
       brand,
       job,
       user_id: user.user_id,
-      channel: "service_job",
     });
     await repo.addCustody({
       client,
@@ -1005,7 +1018,11 @@ async function assignStylist({
       "service_jobs.assign",
       "service_job",
       id,
-      { assigned_staff_user_id },
+      {
+        assigned_staff_user_id,
+        // Who waved through a no-sale assignment is worth keeping.
+        ...(before.sales_order_id ? {} : { unlinked_acknowledged: true }),
+      },
       request_id,
     );
     events.emit("assigned", { brand, job_id: id });

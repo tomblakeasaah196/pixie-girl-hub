@@ -113,6 +113,7 @@ async function assignStaff(req, res) {
       id: req.params.id,
       assigned_staff_user_id: req.body.assigned_staff_user_id,
       expected_completion_at: req.body.expected_completion_at,
+      acknowledge_unlinked: req.body.acknowledge_unlinked,
     }),
   });
 }

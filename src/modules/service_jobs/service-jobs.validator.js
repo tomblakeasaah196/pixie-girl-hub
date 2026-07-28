@@ -108,6 +108,10 @@ const assignStaff = z
     // trigger, onto the stylist's Workspace task due date. The frontend
     // pre-fills this to +48h; omitting it lets the service apply that default.
     expected_completion_at: z.string().datetime().optional(),
+    // Set by the assign screen's warning modal when the job has no sales order
+    // behind it. The service rejects an unlinked assignment without it, so the
+    // acknowledgement can't be bypassed by calling the API directly.
+    acknowledge_unlinked: z.boolean().optional(),
   })
   .strict();
 

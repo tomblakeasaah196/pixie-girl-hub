@@ -492,6 +492,46 @@ export const confirmDriverDelivery = (
   ctx?: ApiContext,
 ) => api.postForm<unknown>(`/api/public/tracking/driver/${token}/confirm`, form, ctx);
 
+// --- Public "pay any amount, anytime" link (no auth, token-scoped) ---
+// Backs the permanent /pay/:token page — the link sent by the order-placement
+// email, layaway reminders, abandoned-checkout nudges, invoicing and the
+// sales-campaign checkout all point here (see brand-urls.js payLinkUrl).
+export interface PayLinkPayment {
+  payment_number: string;
+  amount_ngn: string;
+  method: string;
+  paid_at: string;
+}
+export interface PayLinkPreview {
+  brand: string;
+  order_number: string;
+  status: string;
+  payment_plan: "full" | "instalment";
+  plan_display_name?: string | null;
+  plan_terms?: string[] | null;
+  display_currency: string;
+  display_fx_rate: number | null;
+  total_ngn: string;
+  amount_paid_ngn: string;
+  outstanding_ngn: string;
+  min_next_payment_ngn: string;
+  payments: PayLinkPayment[];
+}
+export const previewPayLink = (token: string, ctx?: ApiContext) =>
+  api.get<PayLinkPreview>(`/api/public/pay/${token}`, ctx);
+
+export interface PayLinkCheckout {
+  provider: string;
+  reference: string;
+  checkout_url: string;
+  amount_ngn: string;
+}
+export const createPayLinkCheckout = (
+  token: string,
+  body: { amount_ngn?: number; currency?: string },
+  ctx?: ApiContext,
+) => api.post<PayLinkCheckout>(`/api/public/pay/${token}`, body, ctx);
+
 // --- Helpers ---
 export function unwrap<T>(r: T | { data: T }): T {
   return r && typeof r === "object" && "data" in (r as object)

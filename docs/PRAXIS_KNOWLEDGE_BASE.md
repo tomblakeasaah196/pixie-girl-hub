@@ -499,15 +499,49 @@ categories, collections, bundles, shades, and bookable services.
 
 ### 4.9 Logistics
 **What it's for.** Getting orders to customers — the delivery queue, active
-deliveries, couriers/agencies, and shipping rates.
+deliveries, couriers/agencies, shipping rates, and the per-delivery
+profit/loss reconciliation.
 **Where.** Operate → **Logistics** · `/logistics`
 **Who can see it.** `logistics` permission.
 **What's inside (tabs).** **Queue** · **Active** · **Delivered** · **Issues** ·
-**All** · **Agencies** · **Shipping Rates**.
+**All** · **Reconciliation** · **Agencies** · **Shipping Rates**.
+
+**The Queue is banded.** A delivery is created automatically the moment an
+order is *paid*, which is usually before the wig is finished. So the Queue
+splits into **Ready to dispatch** (the order is packed and any styling job is
+out of the studio) and **Not ready yet** (still with a stylist, or the order
+isn't packed). The number on the Queue tab counts only the ready ones. Unready
+deliveries stay visible so couriers can be pre-arranged for out-of-state drops.
+
+**Marking a delivery complete.** Staff do this in the Hub — open the delivery
+and press **Mark delivered**. It is available from any live state: if a rider
+phones in a delivery that was never clicked through the intermediate states,
+the Hub records the skip on the timeline rather than refusing the update. Every
+completed delivery shows **who marked it and when** on the Delivered list and
+in the detail panel. *(There is no longer a public driver confirmation link —
+it was retired; drivers report in and staff mark it.)*
+
+**Delivery money.** Two figures, never mixed up: what the customer was charged
+for shipping (from the sales order), and what we actually paid the courier
+(recorded on the delivery). A delivery can carry several costs — a redelivery
+after a failed attempt is real money against the same one-time revenue. If the
+amount paid out exceeds what the customer paid, the Hub **does not block the
+entry** — it saves it, calculates the shortfall, and flags the delivery as a
+loss. Free deliveries should be marked with a **fee waiver reason** (promo,
+remake, apology reship) so they don't read as losses in the report.
+
 **Common tasks.**
-- *Dispatch / assign a delivery?* Logistics → **Queue** tab, assign a courier.
+- *Dispatch / assign a delivery?* Logistics → **Queue** tab → **Ready to dispatch** → open it → **Book delivery**.
+- *Book a courier before the wig is finished?* Same flow — the Hub warns that it isn't ready and asks you to confirm; the early booking is recorded on the timeline.
+- *Mark a delivery completed?* Logistics → open the delivery → **Mark delivered**.
+- *See who completed a delivery and when?* Logistics → **Delivered** tab (shown on each row), or open the delivery for the full timeline with names.
+- *Record what a delivery cost us?* Open the delivery → **Delivery cost** → **Add cost**.
+- *See deliveries that lost money?* Logistics → **Reconciliation**, or look for the red "Loss" chip on a delivery row.
+- *Find deliveries nobody costed?* Logistics → **Reconciliation** → "with no cost recorded", or the "Cost not recorded" chip on the row.
+- *See which courier or destination loses money?* Logistics → **Reconciliation** → **By courier** / **By destination**.
+- *Mark a delivery as deliberately free?* Open the delivery → **Mark fee waived**.
 - *Track a delivery / see failed attempts?* Logistics → **Active** or **Issues**.
-- *Add a courier/agency?* Logistics → **Agencies**.
+- *Add a courier/agency?* Logistics → **Agencies**. Set **How we pay them** — invoice (DHL, GIGL) or per drop (Uber and similar).
 - *Set shipping rates by destination?* Logistics → **Shipping Rates**.
 
 ### 4.10 Purchasing
@@ -1274,9 +1308,14 @@ Use this as the fast lookup. Format: **task → module (group) → link**.
 - Create a bundle → Catalogue → `/catalogue` (Bundles)
 
 **Delivery**
-- Dispatch a delivery → Logistics (Operate) → `/logistics` (Queue)
+- Dispatch a delivery → Logistics (Operate) → `/logistics` (Queue → Ready to dispatch)
+- Mark a delivery completed → Logistics → `/logistics` (open the delivery → Mark delivered)
+- See who completed a delivery → Logistics → `/logistics` (Delivered)
+- Record what a delivery cost → Logistics → `/logistics` (open the delivery → Delivery cost → Add cost)
+- See delivery losses / margin by courier → Logistics → `/logistics` (Reconciliation)
 - Track / fix a failed delivery → Logistics → `/logistics` (Active / Issues)
 - Set shipping rates → Logistics → `/logistics` (Shipping Rates)
+- Set how a courier is paid → Logistics → `/logistics` (Agencies)
 
 **People & pay**
 - Onboard a new staff member → HR (People) → `/hr` (Onboarding) or `/contacts/staff/new`

@@ -55,6 +55,20 @@ async function listDeliveries(req, res) {
           req.query.is_pay_on_delivery === undefined
             ? undefined
             : req.query.is_pay_on_delivery === "true",
+        // Comma-separated, so the Queue/Active tabs can ask for their own
+        // status sets in one call.
+        status_in: req.query.status_in
+          ? String(req.query.status_in).split(",").filter(Boolean)
+          : undefined,
+        readiness: req.query.readiness,
+        has_delivery_loss:
+          req.query.has_delivery_loss === undefined
+            ? undefined
+            : req.query.has_delivery_loss === "true",
+        cost_missing: req.query.cost_missing === "true",
+        completed_by: req.query.completed_by,
+        delivered_from: req.query.delivered_from,
+        delivered_to: req.query.delivered_to,
       },
       page,
       page_size,
@@ -191,22 +205,51 @@ const reconcilePodCollection = async (req, res) =>
     }),
   });
 
-// ── public tracking (no auth) ────────────────────────────
-const trackPublic = async (req, res) =>
-  res.json({ data: await service.trackPublic({ token: req.params.token }) });
-const driverView = async (req, res) =>
-  res.json({ data: await service.driverView({ token: req.params.token }) });
-const driverConfirm = async (req, res) =>
+// ── delivery costs + reconciliation ──────────────────────
+const addDeliveryCost = async (req, res) =>
+  res.status(201).json({
+    data: await service.addDeliveryCost({
+      ...base(req),
+      id: req.params.id,
+      input: req.body,
+    }),
+  });
+const removeDeliveryCost = async (req, res) =>
   res.json({
-    data: await service.driverConfirm({
-      token: req.params.token,
-      file: req.file,
-      reported_lat: req.body.reported_lat,
-      reported_lng: req.body.reported_lng,
-      notes: req.body.notes,
+    data: await service.removeDeliveryCost({
+      ...base(req),
+      id: req.params.id,
+      cost_id: req.params.cost_id,
+    }),
+  });
+const setFeeWaiver = async (req, res) =>
+  res.json({
+    data: await service.setFeeWaiver({
+      ...base(req),
+      id: req.params.id,
+      reason: req.body.reason,
+    }),
+  });
+const deliveryReconciliation = async (req, res) =>
+  res.json({
+    data: await service.deliveryReconciliation({
+      brand: req.brand,
+      from: req.query.from,
+      to: req.query.to,
+    }),
+  });
+const listUnsettledCosts = async (req, res) =>
+  res.json({
+    data: await service.listUnsettledCosts({
+      brand: req.brand,
+      courier_id: req.query.courier_id,
+      to: req.query.to,
     }),
   });
 
+// ── public tracking (no auth) ────────────────────────────
+const trackPublic = async (req, res) =>
+  res.json({ data: await service.trackPublic({ token: req.params.token }) });
 module.exports = {
   listCouriers,
   getCourier,
@@ -221,6 +264,11 @@ module.exports = {
   cancelDelivery,
   recordAttempt,
   recordProof,
+  addDeliveryCost,
+  removeDeliveryCost,
+  setFeeWaiver,
+  deliveryReconciliation,
+  listUnsettledCosts,
   listWebhookEvents,
   notifyDelivered,
   ingestCourierEvent,
@@ -231,6 +279,4 @@ module.exports = {
   remitPodCollection,
   reconcilePodCollection,
   trackPublic,
-  driverView,
-  driverConfirm,
 };

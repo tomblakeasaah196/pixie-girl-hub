@@ -114,6 +114,16 @@ export interface OrderPayment {
   status: string;
   captured_at: string;
   created_at: string;
+  // Acceptance trail — who took the money and when. Stamped server-side on
+  // every payment; `recorded_by_name` is resolved from the staff profile and
+  // is null for gateway captures that no human recorded.
+  recorded_by: string | null;
+  recorded_by_name: string | null;
+  recorded_at: string;
+  manual_bank_transaction_id: string | null;
+  manual_bank_name: string | null;
+  manual_recorded_by: string | null;
+  notes: string | null;
 }
 
 export interface OrderDiscount {

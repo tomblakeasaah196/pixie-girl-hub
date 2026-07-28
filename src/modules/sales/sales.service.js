@@ -1473,6 +1473,54 @@ async function addPayment({ brand, user, request_id, id, input }) {
       }
     }
 
+    // Mirror a PART payment onto the order's proforma invoice so both screens
+    // agree. Recording money on the order used to leave the invoice showing the
+    // untouched balance until the order settled in full — staff who took the
+    // payment from the order drawer then saw a stale "Balance due" in Invoicing.
+    // GL-safe: applyPayment posts no journal of its own, and the invoice-side
+    // entries are skipped for order-backed invoices (invoicing.recordPayment)
+    // precisely because the order's capture journal already booked the cash.
+    // Full settlement is deliberately NOT mirrored here — order.paid runs
+    // createFromOrder → finalizeDraftInvoice, which applies the whole
+    // outstanding balance AND issues the receipt; flipping the invoice to
+    // 'paid' first would short-circuit that (ALREADY_FINAL_STATUSES).
+    if (paidNow.lt(totalDue)) {
+      const invoicingRepo = require("../invoicing/invoicing.repo");
+      const openInvoice = await invoicingRepo.findByOrderId({
+        client,
+        brand,
+        order_id: id,
+      });
+      if (
+        openInvoice &&
+        !["paid", "void", "refunded"].includes(openInvoice.status)
+      ) {
+        // Cap at whatever the invoice still shows outstanding: an order can
+        // carry charges the proforma doesn't (or vice versa), and the
+        // balance_due_ngn generated column must never be driven negative.
+        const invOutstanding = money(openInvoice.balance_due_ngn || 0);
+        const thisPayment = money(input.amount_ngn);
+        const toApply = thisPayment.gt(invOutstanding)
+          ? invOutstanding
+          : thisPayment;
+        if (toApply.gt(0)) {
+          await invoicingRepo.applyPayment({
+            client,
+            brand,
+            payment: {
+              invoice_id: openInvoice.invoice_id,
+              sales_order_payment_id: paymentRow.payment_id,
+              amount_applied_ngn: toCurrencyString(toApply),
+              applied_by: user.user_id || null,
+              notes:
+                input.notes ||
+                `Recorded on ${order.order_number} (${paymentRow.payment_number})`,
+            },
+          });
+        }
+      }
+    }
+
     // Part-payment comms (Flexi Pay D15): receipt after every instalment +
     // a one-time halfway celebration. Post-commit via the outbox — the
     // payment-comms subscriber renders through the Comms Studio automations

@@ -46,6 +46,7 @@ const CHANNEL_LABEL: Record<string, string> = {
 
 const REFERENCE_LABEL: Record<string, string> = {
   sales_order: "Sales order",
+  // POS was retired; historic movements still carry the type.
   pos_transaction: "POS transaction",
   adjustment: "Stock adjustment",
   transfer: "Stock transfer",
@@ -515,14 +516,6 @@ function SourceSection({
         />
         {m.order_type && (
           <Row label="Order type" value={m.order_type.replace(/_/g, " ")} />
-        )}
-        {m.pos_transaction_number && (
-          <Row
-            label="POS receipt"
-            value={
-              <span className="font-mono">{m.pos_transaction_number}</span>
-            }
-          />
         )}
       </Section>
     );

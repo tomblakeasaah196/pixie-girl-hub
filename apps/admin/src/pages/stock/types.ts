@@ -60,7 +60,6 @@ export interface StockMovement {
   order_placed_at?: string | null;
   order_sales_channel?: string | null;
   customer_name?: string | null;
-  pos_transaction_number?: string | null;
   adjustment_id?: string | null;
   adjustment_number?: string | null;
   adjustment_status?: string | null;

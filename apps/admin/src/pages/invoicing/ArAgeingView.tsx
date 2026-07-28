@@ -31,13 +31,13 @@ export function ArAgeingView() {
     },
     {
       key: "current",
-      header: "Current (0-30)",
+      header: "New (this month)",
       align: "right",
       render: (p) => <MoneyText ngn={Number(p.current_0_30_ngn)} />,
     },
     {
       key: "31-60",
-      header: "31-60 days",
+      header: "1 Month Late",
       align: "right",
       render: (p) => (
         <MoneyText
@@ -48,7 +48,7 @@ export function ArAgeingView() {
     },
     {
       key: "61-90",
-      header: "61-90 days",
+      header: "2 Months Late",
       align: "right",
       render: (p) => (
         <MoneyText
@@ -59,7 +59,7 @@ export function ArAgeingView() {
     },
     {
       key: "90plus",
-      header: "90+ days",
+      header: "Very Late",
       align: "right",
       render: (p) => (
         <MoneyText
@@ -70,7 +70,7 @@ export function ArAgeingView() {
     },
     {
       key: "total",
-      header: "Total Outstanding",
+      header: "Total Unpaid",
       align: "right",
       render: (p) => (
         <span className={p.party_id === TOTAL_ROW_ID ? "font-semibold" : undefined}>
@@ -84,7 +84,7 @@ export function ArAgeingView() {
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="font-display text-lg font-medium">Accounts Receivable Ageing</h2>
+          <h2 className="font-display text-lg font-medium">Customers Who Still Owe Us</h2>
           <p className="text-[12px] text-text-muted mt-0.5">
             Outstanding customer balances by age bucket.
           </p>
@@ -102,11 +102,11 @@ export function ArAgeingView() {
 
       {totals && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <KpiTile label="Current (0-30)" value={money(Number(totals.current_0_30_ngn))} />
-          <KpiTile label="31-60 days" value={money(Number(totals.days_31_60_ngn))} tone="warn" />
-          <KpiTile label="61-90 days" value={money(Number(totals.days_61_90_ngn))} tone="warn" />
-          <KpiTile label="90+ days" value={money(Number(totals.days_90_plus_ngn))} tone="warn" />
-          <KpiTile label="Total Outstanding" value={money(Number(totals.total_ngn))} />
+          <KpiTile label="New (this month)" value={money(Number(totals.current_0_30_ngn))} />
+          <KpiTile label="1 Month Late" value={money(Number(totals.days_31_60_ngn))} tone="warn" />
+          <KpiTile label="2 Months Late" value={money(Number(totals.days_61_90_ngn))} tone="warn" />
+          <KpiTile label="Very Late" value={money(Number(totals.days_90_plus_ngn))} tone="warn" />
+          <KpiTile label="Total Unpaid" value={money(Number(totals.total_ngn))} />
         </div>
       )}
 

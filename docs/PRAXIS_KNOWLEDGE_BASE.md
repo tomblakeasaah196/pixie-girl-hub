@@ -583,16 +583,16 @@ payouts.
 
 ### 4.14 Invoicing
 **What it's for.** Billing customers and watching what they owe — invoices,
-credit notes, and live **AR ageing** (who's overdue).
+refunds, and a live view of who still owes us (accounts receivable ageing).
 **Where.** Finance → **Invoicing** · `/invoicing`
 **Who can see it.** `invoicing` permission.
-**What's inside (tabs).** **Invoices** · **Credit Notes** · **AR Ageing** ·
+**What's inside (tabs).** **Invoices** · **Owed to Us** · **Refunds** ·
 **Settings**.
 **Common tasks.**
 - *Create an invoice?* Invoicing → **Invoices** → **New Invoice** / **Create Invoice**.
-- *Issue a credit note / refund a customer on the books?* Invoicing → **Credit
-  Notes** → **New Credit Note** / **Issue Credit Note**.
-- *See who's overdue?* Invoicing → **AR Ageing** tab.
+- *Issue a credit note / refund a customer on the books?* Invoicing → **Refunds**
+  → **New Credit Note** / **Issue Credit Note**.
+- *See who's overdue?* Invoicing → **Owed to Us** tab.
 - *Record a payment against an invoice?* Open the invoice → **Record Payment**.
 
 ### 4.15 Accounting
@@ -1257,8 +1257,8 @@ Use this as the fast lookup. Format: **task → module (group) → link**.
 
 **Money in**
 - Create an invoice → Invoicing (Finance) → `/invoicing` (Invoices → New Invoice)
-- Issue a credit note → Invoicing → `/invoicing` (Credit Notes)
-- See overdue customers → Invoicing → `/invoicing` (AR Ageing)
+- Issue a credit note → Invoicing → `/invoicing` (Refunds)
+- See overdue customers → Invoicing → `/invoicing` (Owed to Us)
 
 **Money out**
 - **Create a cash request** → Cash Requests (Finance) → `/cash-requests` (New Cash Request)

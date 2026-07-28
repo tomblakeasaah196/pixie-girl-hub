@@ -1,4 +1,4 @@
-import { useState, useRef, type ReactNode } from "react";
+import { useId, useState, useRef, type ReactNode } from "react";
 import { AlertTriangle, ChevronDown, Lock, RefreshCw, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Modal } from "./Modal";
@@ -139,6 +139,13 @@ export function Select<T extends string>({
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const selected = options.find((o) => o.value === value);
+  const listboxId = useId();
+  const optionId = (v: T) => `${listboxId}-opt-${v}`;
+
+  const close = () => {
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
 
   const handleKey = (e: React.KeyboardEvent) => {
     if (disabled) return;
@@ -146,18 +153,33 @@ export function Select<T extends string>({
       e.preventDefault();
       setOpen((o) => !o);
     }
-    if (e.key === "Escape") setOpen(false);
+    if (e.key === "Escape" && open) {
+      e.preventDefault();
+      close();
+    }
     if (e.key === "ArrowDown") {
       e.preventDefault();
+      if (!open) setOpen(true);
       const idx = options.findIndex((o) => o.value === value);
       const next = options[Math.min(idx + 1, options.length - 1)];
       if (next) onChange(next.value);
     }
     if (e.key === "ArrowUp") {
       e.preventDefault();
+      if (!open) setOpen(true);
       const idx = options.findIndex((o) => o.value === value);
       const prev = options[Math.max(idx - 1, 0)];
       if (prev) onChange(prev.value);
+    }
+    if (e.key === "Home") {
+      e.preventDefault();
+      const first = options[0];
+      if (first) onChange(first.value);
+    }
+    if (e.key === "End") {
+      e.preventDefault();
+      const last = options[options.length - 1];
+      if (last) onChange(last.value);
     }
   };
 
@@ -168,8 +190,11 @@ export function Select<T extends string>({
         type="button"
         disabled={disabled}
         aria-label={ariaLabel}
+        role="combobox"
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-controls={listboxId}
+        aria-activedescendant={selected ? optionId(selected.value) : undefined}
         onClick={() => !disabled && setOpen((o) => !o)}
         onKeyDown={handleKey}
         className="w-full h-[42px] px-[11px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus-visible:border-accent/50 disabled:opacity-50 flex items-center justify-between gap-2 text-left transition-colors"
@@ -180,16 +205,27 @@ export function Select<T extends string>({
             "w-4 h-4 shrink-0 text-text-faint transition-transform duration-150",
             open && "rotate-180",
           )}
+          aria-hidden="true"
         />
       </button>
-      <AnchoredDropdown anchorRef={triggerRef} open={open} onClose={() => setOpen(false)}>
+      <AnchoredDropdown
+        anchorRef={triggerRef}
+        open={open}
+        onClose={close}
+        id={listboxId}
+        role="listbox"
+        aria-label={ariaLabel}
+      >
         {options.map((o) => (
           <button
             key={o.value}
+            id={optionId(o.value)}
             type="button"
+            role="option"
+            aria-selected={o.value === value}
             onClick={() => {
               onChange(o.value);
-              setOpen(false);
+              close();
             }}
             className={cn(
               "w-full px-[11px] py-[9px] text-[13px] text-left transition-colors hover:bg-text-primary/[0.06]",

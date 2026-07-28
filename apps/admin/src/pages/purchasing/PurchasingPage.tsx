@@ -966,17 +966,13 @@ function CreatePoDrawer({
               </Field>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Currency">
-                  <select
+                  <Select
                     value={currency}
-                    onChange={(e) => setCurrency(e.target.value)}
-                    className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 text-[13px]"
-                  >
-                    {PO_CURRENCIES.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setCurrency}
+                    options={PO_CURRENCIES.map((c) => ({ value: c, label: c }))}
+                    ariaLabel="Currency"
+                    className="[&>button]:h-[38px]"
+                  />
                 </Field>
                 <Field label={`FX to NGN (1 ${currency} = ?)`}>
                   <input
@@ -993,18 +989,19 @@ function CreatePoDrawer({
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Deliver to">
-                  <select
+                  <Select
                     value={locationId}
-                    onChange={(e) => setLocationId(e.target.value)}
-                    className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 text-[13px]"
-                  >
-                    <option value="">— Select location —</option>
-                    {(locations ?? []).map((l) => (
-                      <option key={l.location_id} value={l.location_id}>
-                        {l.display_name}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setLocationId}
+                    options={[
+                      { value: "", label: "— Select location —" },
+                      ...(locations ?? []).map((l) => ({
+                        value: l.location_id,
+                        label: l.display_name,
+                      })),
+                    ]}
+                    ariaLabel="Deliver to"
+                    className="[&>button]:h-[38px]"
+                  />
                 </Field>
                 <Field label="Expected delivery">
                   <input

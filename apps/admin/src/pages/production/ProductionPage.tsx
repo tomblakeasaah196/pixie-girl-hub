@@ -26,19 +26,10 @@ import {
   MoneyText,
 } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/DataTable";
-import { Drawer } from "@/components/ui/Drawer";
-import { Field } from "@/components/ui/Form";
-import { NumberField } from "@/components/ui/controls";
 import { cn } from "@/lib/cn";
 import { formatDate } from "@/lib/format";
-import {
-  useFactoryAccounts,
-  useShipments,
-  useProductionRuns,
-  useCreateProductionRun,
-  useAdvanceProductionRun,
-  useProductionRun,
-} from "./hooks";
+import { useFactoryAccounts, useShipments, useProductionRuns } from "./hooks";
+import { CreateRunDrawer, RunDetailDrawer } from "./RunDrawers";
 import { RUN_STATUS_META } from "./constants";
 import type { FactoryAccount, ProductionRun } from "./types";
 
@@ -64,7 +55,7 @@ export function ProductionPage() {
   useBreadcrumbs([{ label: "Production" }]);
   const can = useAuthStore((s) => s.can);
   const user = useAuthStore((s) => s.user);
-  const { i18n } = useTranslation("factory");
+  const { t, i18n } = useTranslation("factory");
   const { languages } = useFactoryLanguages();
 
   const [tab, setTab] = useUrlTab<MainTab>("overview", [
@@ -84,32 +75,41 @@ export function ProductionPage() {
     autoDefaultFactoryLang(user?.isFactoryManager ?? false);
   }, [user?.isFactoryManager]);
 
-  if (!can("purchasing", "view")) {
+  // The API enforces `production` on every route in this module (and
+  // `purchasing` on the factory-account routes), so gate on `production` —
+  // gating on `purchasing` locked a factory manager out of the page they own.
+  if (!can("production", "view") && !can("purchasing", "view")) {
     return (
       <div className="py-20">
         <EmptyState
           icon={<Lock className="w-8 h-8" />}
-          title="Access restricted"
-          message="You don't have permission to view Production & Factory accounts."
+          title={t("accessRestricted")}
+          message={t("accessRestrictedMsg")}
         />
       </div>
     );
   }
 
+  const canEditRuns = can("production", "edit");
+  const canCreateRuns = can("production", "create");
+  // Receiving books goods into a Lagos location, so it needs stock rights too
+  // — the API requires both. Hiding it here keeps the China-side UI honest.
+  const canReceive = canEditRuns && can("stock", "edit");
+
   const tabs: { key: MainTab; label: string; icon: React.ReactNode }[] = [
     {
       key: "overview",
-      label: "Overview",
+      label: t("overviewTab"),
       icon: <TrendingUp className="w-4 h-4" />,
     },
     {
       key: "factory",
-      label: "Factory Account",
+      label: t("factoryAccountTab"),
       icon: <Wallet className="w-4 h-4" />,
     },
     {
       key: "runs",
-      label: "Production Runs",
+      label: t("productionRunsTab"),
       icon: <Factory className="w-4 h-4" />,
     },
   ];
@@ -120,9 +120,11 @@ export function ProductionPage() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="font-display text-2xl font-medium">Production</h1>
+          <h1 className="font-display text-2xl font-medium">
+            {t("productionTitle")}
+          </h1>
           <p className="text-text-muted text-sm mt-0.5">
-            China factory account · shipments · production runs
+            {t("productionSubtitle")}
           </p>
         </div>
         <div className="flex gap-2">
@@ -152,14 +154,14 @@ export function ProductionPage() {
               ))}
             </select>
           </div>
-          {tab === "runs" && can("purchasing", "create") && (
+          {tab === "runs" && canCreateRuns && (
             <Button
               variant="primary"
               size="sm"
               icon={<Plus className="w-4 h-4" />}
               onClick={() => setShowCreateRun(true)}
             >
-              New Run
+              {t("newRun")}
             </Button>
           )}
         </div>
@@ -198,7 +200,7 @@ export function ProductionPage() {
         <RunsTab
           onSelect={setSelectedRun}
           onCreate={() => setShowCreateRun(true)}
-          canCreate={can("purchasing", "create")}
+          canCreate={canCreateRuns}
         />
       )}
 
@@ -207,6 +209,8 @@ export function ProductionPage() {
         <RunDetailDrawer
           run={selectedRun}
           onClose={() => setSelectedRun(null)}
+          canEdit={canEditRuns}
+          canReceive={canReceive}
         />
       )}
 
@@ -222,6 +226,7 @@ export function ProductionPage() {
 // ── Overview Tab ──────────────────────────────────────────
 
 function OverviewTab() {
+  const { t } = useTranslation("factory");
   const accounts = useFactoryAccounts();
   const shipments = useShipments({ status: "in_transit" });
   const runs = useProductionRuns({ status: "in_production" });
@@ -250,22 +255,24 @@ function OverviewTab() {
     <div className="space-y-5">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiTile
-          label="Active Factory Accounts"
+          label={t("kpiActiveAccounts")}
           value={String(activeAccounts)}
           tone="accent"
         />
         <KpiTile
-          label={`Total Balance (${accounts.data?.[0]?.base_currency ?? "CNY"})`}
+          label={t("kpiTotalBalance", {
+            currency: accounts.data?.[0]?.base_currency ?? "CNY",
+          })}
           value={`¥${totalBalance.toLocaleString("en", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
           tone="warn"
         />
         <KpiTile
-          label="Shipments in Transit"
+          label={t("kpiShipmentsInTransit")}
           value={String(inTransit)}
           tone="info"
         />
         <KpiTile
-          label="Runs in Production"
+          label={t("kpiRunsInProduction")}
           value={String(activeRuns)}
           tone="accent"
         />
@@ -275,7 +282,7 @@ function OverviewTab() {
       {accounts.data && accounts.data.length > 0 && (
         <div>
           <h2 className="font-display text-base font-medium mb-3">
-            Factory Accounts
+            {t("factoryAccountsHeading")}
           </h2>
           <div className="grid gap-3 sm:grid-cols-2">
             {accounts.data.map((a) => (
@@ -290,7 +297,7 @@ function OverviewTab() {
                     </div>
                   </div>
                   <Pill tone={a.is_active ? "success" : "neutral"} dot={false}>
-                    {a.is_active ? "Active" : "Inactive"}
+                    {a.is_active ? t("active") : t("inactive")}
                   </Pill>
                 </div>
                 <div className="mt-3 font-mono text-[20px] font-bold">
@@ -330,7 +337,7 @@ function FactoryTab({
     return (
       <EmptyState
         icon={<AlertTriangle className="w-6 h-6" />}
-        title="Failed to load"
+        title={t("failedToLoad")}
       />
     );
   if (!accounts || accounts.length === 0) {
@@ -378,7 +385,7 @@ function FactoryTab({
           </div>
         </div>
         <Pill tone={active.is_active ? "success" : "neutral"}>
-          {active.is_active ? "Active" : "Inactive"}
+          {active.is_active ? t("active") : t("inactive")}
         </Pill>
       </Card>
 
@@ -438,35 +445,47 @@ function RunsTab({
   onCreate: () => void;
   canCreate: boolean;
 }) {
+  const { t } = useTranslation("factory");
   const { data, isLoading, isError, refetch } = useProductionRuns();
   const runs = data?.data ?? [];
+  // The server omits NGN columns for roles that may not see cost — when none
+  // of the rows carry them, drop the money columns rather than show a wall of
+  // dashes to a factory manager.
+  const showsCost = runs.some((r) => r.total_landed_cost_ngn != null);
 
   const cols: Column<ProductionRun>[] = [
     {
       key: "no",
-      header: "Run #",
+      header: t("runNumber"),
       width: "110px",
       render: (r) => <span className="font-mono text-xs">{r.run_number}</span>,
     },
     {
       key: "title",
-      header: "Title",
+      header: t("title"),
       render: (r) => (
-        <span className="font-semibold text-[13px]">{r.title}</span>
+        <div className="min-w-0">
+          <div className="font-semibold text-[13px] truncate">{r.title}</div>
+          {(r.supplier_name || r.po_number) && (
+            <div className="text-[11px] text-text-faint truncate">
+              {[r.supplier_name, r.po_number].filter(Boolean).join(" · ")}
+            </div>
+          )}
+        </div>
       ),
     },
     {
       key: "status",
-      header: "Status",
+      header: t("status"),
       width: "160px",
       render: (r) => {
         const meta = RUN_STATUS_META[r.status];
-        return <Pill tone={meta.tone}>{meta.label}</Pill>;
+        return <Pill tone={meta.tone}>{t(meta.i18nKey)}</Pill>;
       },
     },
     {
       key: "units",
-      header: "Units",
+      header: t("units"),
       width: "100px",
       render: (r) => (
         <span className="font-mono text-xs">
@@ -474,33 +493,40 @@ function RunsTab({
         </span>
       ),
     },
-    {
-      key: "cost",
-      header: "Total Cost",
-      align: "right",
-      width: "140px",
-      render: (r) =>
-        r.total_landed_cost_ngn != null ? (
-          <MoneyText ngn={r.total_landed_cost_ngn} className="text-[13px]" />
-        ) : (
-          <span className="text-text-faint text-xs">—</span>
-        ),
-    },
-    {
-      key: "per_unit",
-      header: "Per Unit",
-      align: "right",
-      width: "120px",
-      render: (r) =>
-        r.per_unit_cost_ngn != null ? (
-          <MoneyText ngn={r.per_unit_cost_ngn} className="text-[13px]" />
-        ) : (
-          <span className="text-text-faint text-xs">—</span>
-        ),
-    },
+    ...(showsCost
+      ? ([
+          {
+            key: "cost",
+            header: t("totalCost"),
+            align: "right",
+            width: "140px",
+            render: (r: ProductionRun) =>
+              r.total_landed_cost_ngn != null ? (
+                <MoneyText
+                  ngn={r.total_landed_cost_ngn}
+                  className="text-[13px]"
+                />
+              ) : (
+                <span className="text-text-faint text-xs">—</span>
+              ),
+          },
+          {
+            key: "per_unit",
+            header: t("perUnitCost"),
+            align: "right",
+            width: "120px",
+            render: (r: ProductionRun) =>
+              r.per_unit_cost_ngn != null ? (
+                <MoneyText ngn={r.per_unit_cost_ngn} className="text-[13px]" />
+              ) : (
+                <span className="text-text-faint text-xs">—</span>
+              ),
+          },
+        ] as Column<ProductionRun>[])
+      : []),
     {
       key: "date",
-      header: "Created",
+      header: t("created"),
       width: "100px",
       render: (r) => (
         <span className="text-text-muted text-xs">{fmt(r.created_at)}</span>
@@ -512,11 +538,11 @@ function RunsTab({
     return (
       <EmptyState
         icon={<AlertTriangle className="w-7 h-7" />}
-        title="Failed to load"
-        message="Could not load production runs."
+        title={t("failedToLoad")}
+        message={t("couldNotLoadRuns")}
         action={
           <Button size="sm" onClick={() => refetch()}>
-            Retry
+            {t("retry")}
           </Button>
         }
       />
@@ -532,198 +558,18 @@ function RunsTab({
       loading={isLoading}
       empty={{
         icon: <Factory className="w-7 h-7" />,
-        title: "No production runs",
-        message: "Track a production batch from factory to Lagos warehouse.",
+        title: t("noRuns"),
+        message: t("noRunsMsg"),
         action: canCreate ? (
           <Button
             variant="primary"
             icon={<Plus className="w-4 h-4" />}
             onClick={onCreate}
           >
-            New Production Run
+            {t("newProductionRun")}
           </Button>
         ) : undefined,
       }}
     />
-  );
-}
-
-// ── Run Detail Drawer ─────────────────────────────────────
-
-function RunDetailDrawer({
-  run: initialRun,
-  onClose,
-}: {
-  run: ProductionRun;
-  onClose: () => void;
-}) {
-  const { data: run } = useProductionRun(initialRun.run_id);
-  const advance = useAdvanceProductionRun(initialRun.run_id);
-  const current = run ?? initialRun;
-  const meta = RUN_STATUS_META[current.status];
-
-  const STATUS_FLOW: Record<string, string[]> = {
-    planned: ["funded", "in_production", "cancelled"],
-    funded: ["in_production", "cancelled"],
-    in_production: ["quality_check", "ready_to_ship"],
-    quality_check: ["ready_to_ship", "in_production"],
-    ready_to_ship: ["in_transit"],
-    in_transit: ["arrived_lagos"],
-    arrived_lagos: ["cleared_customs"],
-    cleared_customs: ["received"],
-    received: ["completed"],
-  };
-  const nextStatuses = STATUS_FLOW[current.status] ?? [];
-
-  return (
-    <Drawer
-      open
-      onClose={onClose}
-      wide
-      title={<span className="font-mono">{current.run_number}</span>}
-      subtitle={<Pill tone={meta.tone}>{meta.label}</Pill>}
-    >
-      <div className="space-y-6">
-        <div>
-          <h3 className="font-display text-lg font-medium mb-1">
-            {current.title}
-          </h3>
-          <div className="text-[13px] text-text-muted">
-            {current.units_received}/{current.units_planned} units received
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          {current.total_landed_cost_ngn != null && (
-            <div>
-              <div className="micro mb-1">Total Cost</div>
-              <MoneyText
-                ngn={current.total_landed_cost_ngn}
-                className="text-[22px]"
-              />
-            </div>
-          )}
-          {current.per_unit_cost_ngn != null && (
-            <div>
-              <div className="micro mb-1">Per Unit Cost</div>
-              <MoneyText
-                ngn={current.per_unit_cost_ngn}
-                className="text-[22px]"
-              />
-            </div>
-          )}
-        </div>
-
-        {current.cost_components && current.cost_components.length > 0 && (
-          <div>
-            <div className="micro mb-2">Cost Components</div>
-            <div className="space-y-2">
-              {current.cost_components.map((c) => (
-                <div
-                  key={c.component_id}
-                  className="flex items-center justify-between glass rounded-xl p-3 text-[13px]"
-                >
-                  <div>
-                    <div className="font-semibold">{c.cost_type}</div>
-                    <div className="text-xs text-text-faint font-mono">
-                      {c.currency}
-                    </div>
-                  </div>
-                  <MoneyText ngn={c.amount_ngn} className="text-[13px]" />
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {nextStatuses.length > 0 && (
-          <div>
-            <div className="micro mb-2">Advance Status</div>
-            <div className="flex gap-2 flex-wrap">
-              {nextStatuses.map((s) => {
-                const m = RUN_STATUS_META[s as keyof typeof RUN_STATUS_META];
-                return (
-                  <Button
-                    key={s}
-                    size="sm"
-                    variant={s === "cancelled" ? "danger" : "secondary"}
-                    disabled={advance.isPending}
-                    onClick={() => advance.mutate(s, { onSuccess: onClose })}
-                  >
-                    → {m?.label ?? s}
-                  </Button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
-    </Drawer>
-  );
-}
-
-// ── Create Run Drawer ─────────────────────────────────────
-
-function CreateRunDrawer({
-  open,
-  onClose,
-}: {
-  open: boolean;
-  onClose: () => void;
-}) {
-  const create = useCreateProductionRun();
-  const [title, setTitle] = useState("");
-  const [units, setUnits] = useState("0");
-
-  const handleSubmit = () => {
-    if (!title) return;
-    create.mutate(
-      { title, units_planned: parseInt(units) || 0 },
-      {
-        onSuccess: () => {
-          setTitle("");
-          setUnits("0");
-          onClose();
-        },
-      },
-    );
-  };
-
-  return (
-    <Drawer
-      open={open}
-      onClose={onClose}
-      title="New Production Run"
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            disabled={create.isPending || !title}
-            onClick={handleSubmit}
-          >
-            {create.isPending ? "Creating…" : "Create Run"}
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-4">
-        <Field label="Run Title">
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="e.g. 13×6 Lace Front — June Batch"
-            className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50"
-            autoFocus autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
-          />
-        </Field>
-        <Field label="Units Planned">
-          <NumberField value={units} onChange={setUnits} placeholder="0" />
-        </Field>
-      </div>
-    </Drawer>
   );
 }

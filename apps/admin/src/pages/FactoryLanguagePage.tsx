@@ -217,9 +217,10 @@ function AddLanguageForm({ onSuccess }: { onSuccess: () => void }) {
               </span>
             </div>
             <p className="text-text-faint text-xs mb-3 ml-7">
-              The guide contains all 61 translation keys with context, plus a
-              ready-to-paste AI prompt. Upload it to Claude, ChatGPT, or any AI
-              — it will return the exact JSON you need.
+              The guide contains all {REQUIRED_KEYS.length} translation keys
+              with context, plus a ready-to-paste AI prompt. Upload it to
+              Claude, ChatGPT, or any AI — it will return the exact JSON you
+              need.
             </p>
             <a
               href="/factory-i18n-guide.md"

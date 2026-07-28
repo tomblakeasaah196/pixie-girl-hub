@@ -123,14 +123,59 @@ export interface ShipmentPage {
   total: number;
 }
 
+// The 14 cost_components.cost_type values the DB CHECK allows. Mirrored from
+// migrations/template/000025_business_production.sql.template.
+export type CostType =
+  | "factory_unit_cost"
+  | "factory_overhead"
+  | "raw_hair"
+  | "freight_international"
+  | "customs_duty"
+  | "customs_clearing_fee"
+  | "port_storage"
+  | "3pl_lagos"
+  | "styling_intercompany"
+  | "packaging"
+  | "quality_inspection"
+  | "wastage"
+  | "samples"
+  | "misc";
+
 export interface CostComponent {
   component_id: string;
   run_id: string;
-  cost_type: string;
+  cost_type: CostType;
   amount: number;
   currency: string;
-  amount_ngn: number;
+  /** Absent when the caller's role may not see NGN cost (factory managers). */
+  amount_ngn?: number;
+  fx_rate_used?: number;
+  applies_to_units: number | null;
+  description: string | null;
+  invoice_reference: string | null;
+  recorded_by_name: string | null;
   incurred_at: string | null;
+  recorded_at: string;
+}
+
+/** A run's units, grouped by (variant, status) — the API returns this shape. */
+export interface RunUnitGroup {
+  variant_id: string | null;
+  status: string;
+  quantity: number;
+  first_unit_code: string;
+  sku_snapshot: string | null;
+  sku: string | null;
+  variant_name: string | null;
+  product_name: string | null;
+}
+
+/** One product being made, as the create/add-products form collects it. */
+export interface ProductLineInput {
+  variant_id?: string;
+  quantity: number;
+  unit_cost?: number;
+  description?: string;
 }
 
 export interface ProductionRun {
@@ -140,11 +185,22 @@ export interface ProductionRun {
   status: ProductionRunStatus;
   units_planned: number;
   units_received: number;
-  total_landed_cost_ngn: number | null;
-  per_unit_cost_ngn: number | null;
+  /** NGN cost fields are omitted entirely for roles that may not see cost. */
+  total_landed_cost_ngn?: number | null;
+  per_unit_cost_ngn?: number | null;
+  /** True when the server stripped the NGN cost columns for this caller. */
+  cost_redacted?: boolean;
+  supplier_id: string | null;
+  supplier_name: string | null;
+  po_id: string | null;
+  po_number: string | null;
+  funding_currency: string | null;
+  unit_count?: number;
+  notes: string | null;
   created_at: string;
   updated_at: string;
-  cost_components?: CostComponent[];
+  units?: RunUnitGroup[];
+  components?: CostComponent[];
 }
 
 export interface ProductionRunPage {

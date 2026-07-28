@@ -675,13 +675,48 @@ goods-received notes (GRNs), and supplier invoices.
 the factory, tracking runs from planned → in production → arrived, and building
 **landed cost** (product + shipping + customs) so margins are real.
 **Where.** Operate → **Production** · `/production`
-**Who can see it.** `production` permission.
-**What's inside (tabs).** **Overview** · **Production** (runs) · **Factory Account**.
+**Who can see it.** `production` permission (`production:create` to open a run,
+`production:edit` to add products and costs). Worked by **both the CEO and the
+China factory manager** — the page defaults to Chinese for `factory_manager`
+users and the language selector sits in the page header.
+**What's inside (tabs).** **Overview** · **Factory Account** · **Production Runs**.
 **Common tasks.**
-- *Start a production run?* Production → **New Production Run** / **Create Run**.
+- *Start a production run?* Production → **Production Runs** → **New Run**.
+  Step 1 is the title, the **factory currency** (CNY/USD/NGN…), an optional
+  **purchase order** to build the run from, and expected arrival. Step 2 is the
+  products: search the catalogue (or **Bulk Add** to tick several at once), set
+  a **quantity** and a **unit cost** per product. Each unit gets its own code
+  (`FLH-RUN-0002-001`), and the priced lines become the run's factory cost.
+- *Where does the cost come from?* Two places, both landing in the run's **Cost
+  Components**: (1) the **product lines** on the run — quantity × unit cost,
+  which is what the factory invoices; (2) **Add Cost** on an open run for
+  everything else — international freight, customs duty, clearing fees, port
+  storage, 3PL Lagos, packaging, styling, wastage, samples. Foreign amounts are
+  converted to NGN at the system FX rate, which is pre-filled and editable if
+  you converted at a different rate. The Hub re-computes the run's **per-unit
+  landed cost** after every cost added — that figure is the cost basis for
+  pricing and COGS.
+- *Add more products to a run already open?* Open the run → **Add Products**.
+- *Record what the factory charged?* Open the run → **Add Cost** → pick the cost
+  type, amount and currency, add the invoice reference.
+- *Move a run along?* Open the run → **Advance Status**: planned → funded → in
+  production → quality check → ready to ship → in transit → arrived Lagos →
+  cleared customs → received → completed.
+- *Receive finished units into stock?* Open the run → **Receive Units** → choose
+  the product, the **Lagos location** and the quantity. This posts a
+  `production_in` stock movement at the run's per-unit landed cost. Needs
+  `stock:edit` as well as `production:edit`, so it is a Lagos-side action — the
+  China factory manager does not see this button.
 - *Fund the factory / record a factory payment?* Production → **Factory Account**
   (records payments, charges, credits in CNY/NGN).
-- *See landed cost of a batch?* Open the production run in the **Production** tab.
+- *See landed cost of a batch?* Open the production run in the **Production
+  Runs** tab. Note: **Naira cost is hidden from the `factory_manager` role** —
+  they see and enter the factory's own currency figures, never the NGN landed
+  cost or per-unit cost.
+- *The screen is in English but I chose Chinese?* The whole Production module is
+  translated. If a language added under Settings → **Factory Languages** is
+  missing keys, those strings fall back to English — re-upload the bundle with
+  the full key list from the downloadable guide.
 
 ### 4.12 Retail Partners
 **What it's for.** **Consignment** — stock placed with retail partners, tracking
@@ -1418,6 +1453,16 @@ Use this as the fast lookup. Format: **task → module (group) → link**.
 - Settle a cash advance → Expenses → `/expenses` (Advance settlement)
 - Raise a purchase order → Purchasing (Operate) → `/purchasing` (Create PO)
 - Fund the China factory → Production (Operate) → `/production` (Factory Account)
+- Start a production run with products and costs → Production (Operate) →
+  `/production` (Production Runs → New Run)
+- Record what the factory charged for a batch → Production → `/production`
+  (open the run → Add Cost)
+- Add more products to an open run → Production → `/production` (open the run →
+  Add Products)
+- Receive finished production units into stock → Production → `/production`
+  (open the run → Receive Units)
+- See a batch's landed cost / per-unit cost → Production → `/production`
+  (open the run in Production Runs)
 
 **The books**
 - See Profit & Loss / Balance Sheet → Accounting (Finance) → `/accounting` (Reports)

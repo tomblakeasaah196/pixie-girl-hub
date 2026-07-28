@@ -67,10 +67,24 @@ describe("getMovementById", () => {
     expect(sql).toContain("sm.reference_type = 'sales_order'");
     expect(sql).toContain("sm.reference_type = 'adjustment'");
     expect(sql).toContain("sm.reference_type = 'transfer'");
-    expect(sql).toContain("sm.reference_type = 'pos_transaction'");
     expect(sql).toContain(
       "sm.reference_type IN ('inbound_shipment','goods_received_note')",
     );
+  });
+
+  /**
+   * POS was retired and template 000074 DROPs every per-brand pos_* table.
+   * Joining pos_transactions made Postgres fail at PARSE time, so every
+   * movements request 500'd and the whole tab (plus the Overview strip) went
+   * blank. Only ever join tables the migrations still create.
+   */
+  test("never joins a retired module's table", async () => {
+    await repo.getMovementById({ brand: BRAND, movement_id: "mov-1" });
+    await repo.listMovements({ brand: BRAND, page: 1, page_size: 10 });
+
+    for (const { sql } of captured) {
+      expect(sql).not.toContain("pos_transactions");
+    }
   });
 
   test("the list query resolves the same source columns", async () => {

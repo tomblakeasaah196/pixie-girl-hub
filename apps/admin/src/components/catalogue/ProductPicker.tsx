@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Search, Package, Layers, Box, Sparkles } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { AnchoredDropdown } from "@/components/ui/AnchoredDropdown";
 import {
   PRODUCT_KINDS,
   searchByKind,
@@ -30,6 +31,12 @@ const KIND_NOUN: Record<ProductKind, string> = {
   service: "services",
 };
 
+/** Fallback glyph shown in the result thumbnail when a hit has no image. */
+function KIND_ICON_EL({ kind }: { kind: ProductKind }) {
+  const Icon = KIND_ICON[kind];
+  return <Icon className="w-4 h-4 text-text-faint" />;
+}
+
 export function ProductPicker({
   onPick,
   autoFocus,
@@ -44,17 +51,8 @@ export function ProductPicker({
   const [hits, setHits] = useState<ProductHit[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const debounce = useRef<ReturnType<typeof setTimeout>>();
-
-  useEffect(() => {
-    const handle = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node))
-        setOpen(false);
-    };
-    document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, []);
 
   const runSearch = (term: string) => {
     setQ(term);
@@ -91,7 +89,7 @@ export function ProductPicker({
   };
 
   return (
-    <div ref={ref} className={cn("space-y-2.5", className)}>
+    <div className={cn("space-y-2.5", className)}>
       {/* Step 1 — pick the product type */}
       <div className="flex flex-wrap gap-1.5">
         {PRODUCT_KINDS.map((k) => {
@@ -120,6 +118,7 @@ export function ProductPicker({
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint pointer-events-none" />
         <input
+          ref={inputRef}
           autoFocus={autoFocus}
           disabled={!kind}
           value={q}
@@ -130,31 +129,52 @@ export function ProductPicker({
           }
           className="w-full h-[42px] pl-9 pr-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50 disabled:opacity-50 disabled:cursor-not-allowed" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
-        {open && kind && q.trim().length >= 2 && (
-          <div className="absolute z-50 top-[calc(100%+4px)] left-0 right-0 rounded-[11px] dropglass overflow-hidden py-1 max-h-[260px] overflow-y-auto">
-            {loading ? (
-              <div className="px-4 py-2.5 text-[12px] text-text-faint">
-                Searching…
-              </div>
-            ) : hits.length === 0 ? (
-              <div className="px-4 py-2.5 text-[12px] text-text-faint">
-                No {KIND_NOUN[kind]} match “{q.trim()}”.
-              </div>
-            ) : (
-              hits.map((h) => (
-                <button
-                  key={h.id}
-                  type="button"
-                  onClick={() => pick(h)}
-                  className="w-full px-4 py-2.5 text-left hover:bg-text-primary/[0.06] transition-colors"
-                >
-                  <div className="text-[13px] font-semibold">{h.label}</div>
-                  <div className="text-[11px] text-text-faint">{h.sub}</div>
-                </button>
-              ))
-            )}
-          </div>
-        )}
+        <AnchoredDropdown
+          anchorRef={inputRef}
+          open={open && !!kind && q.trim().length >= 2}
+          onClose={() => setOpen(false)}
+          maxHeight={260}
+          className="dropglass"
+        >
+          {loading ? (
+            <div className="px-4 py-2.5 text-[12px] text-text-faint">
+              Searching…
+            </div>
+          ) : hits.length === 0 ? (
+            <div className="px-4 py-2.5 text-[12px] text-text-faint">
+              No {kind ? KIND_NOUN[kind] : "products"} match “{q.trim()}”.
+            </div>
+          ) : (
+            hits.map((h) => (
+              <button
+                key={h.id}
+                type="button"
+                onClick={() => pick(h)}
+                className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-text-primary/[0.06] transition-colors"
+              >
+                <div className="w-9 h-9 shrink-0 rounded-[8px] overflow-hidden bg-text-primary/[0.06] grid place-items-center">
+                  {h.image_url ? (
+                    <img
+                      src={h.image_url}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <KIND_ICON_EL kind={h.kind} />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[13px] font-semibold truncate">
+                    {h.label}
+                  </div>
+                  <div className="text-[11px] text-text-faint truncate">
+                    {h.sub}
+                  </div>
+                </div>
+              </button>
+            ))
+          )}
+        </AnchoredDropdown>
       </div>
 
       {!kind && (

@@ -60,12 +60,16 @@ function specLabel(parts: {
 export function StyledVariantPicker({
   styledId,
   productName,
+  imageUrl = null,
   anchorPrice = null,
   onCancel,
   onConfirm,
 }: {
   styledId: string;
   productName: string;
+  /** The styled product's own picture — shown in the header so reps unsure
+   *  of the name can confirm by sight before picking size/lace. */
+  imageUrl?: string | null;
   /** Fallback price when the product has no variant matrix. */
   anchorPrice?: number | null;
   onCancel: () => void;
@@ -158,6 +162,15 @@ export function StyledVariantPicker({
         className="flex w-full max-h-[88dvh] flex-col overflow-hidden rounded-t-[22px] dropglass md:w-[min(92vw,440px)] md:rounded-[18px]"
       >
         <div className="flex items-center gap-3 border-b hairline p-4 shrink-0">
+          <div className="w-11 h-11 shrink-0 rounded-[10px] overflow-hidden bg-text-primary/[0.06]">
+            {imageUrl && (
+              <img
+                src={imageUrl}
+                alt=""
+                className="w-full h-full object-cover"
+              />
+            )}
+          </div>
           <div className="min-w-0 flex-1">
             <div className="text-[10.5px] uppercase tracking-widest text-text-faint">
               Choose size &amp; lace

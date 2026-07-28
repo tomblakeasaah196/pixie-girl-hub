@@ -176,6 +176,15 @@ const getPo = async (req, res) =>
   res.json({
     data: await service.getPo({ brand: req.brand, id: req.params.poId }),
   });
+// What Goods Reception prefills from — outstanding lines resolved to base
+// products, plus the delivery location the PO named.
+const poReceivingPlan = async (req, res) =>
+  res.json({
+    data: await service.poReceivingPlan({
+      brand: req.brand,
+      id: req.params.poId,
+    }),
+  });
 const poPdf = async (req, res) =>
   res.status(201).json({
     data: await service.poPdf({
@@ -327,6 +336,7 @@ module.exports = {
   awardQuote,
   listPos,
   getPo,
+  poReceivingPlan,
   poPdf,
   createPo,
   submitPo,

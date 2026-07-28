@@ -39,11 +39,19 @@ const ROUTES = {
   cash_requests: (id) => `/cash-requests?tab=approval-queue&request=${id}`,
   expense: (id) => `/expenses?expense=${id}`,
   expenses: (id) => `/expenses?expense=${id}`,
-  purchase_order: (id) => `/purchasing?order=${id}`,
-  purchase_orders: (id) => `/purchasing?order=${id}`,
+  purchase_order: (id) => `/purchasing?tab=purchase-orders&order=${id}`,
+  purchase_orders: (id) => `/purchasing?tab=purchase-orders&order=${id}`,
   price_change: (id) => `/pricing?change=${id}`,
   intercompany_transaction: (id) => `/intercompany?transaction=${id}`,
   sales_campaign: (id) => `/sales-campaigns/${id}`,
+  // The workflow engine stores reference_table, so the plural table names have
+  // to resolve too — an approval on a campaign or an advance must land on the
+  // record, not nowhere.
+  sales_campaigns: (id) => `/sales-campaigns/${id}`,
+  cash_advance: (id) => `/expenses?advance=${id}`,
+  cash_advances: (id) => `/expenses?advance=${id}`,
+  intercompany_transactions: (id) => `/intercompany?transaction=${id}`,
+  social_content_plans: (id) => `/social?tab=calendar&plan=${id}`,
 
   // ── Records people get pointed at for reasons other than approval ──
   sales_order: (id) => `/sales/orders/${id}`,

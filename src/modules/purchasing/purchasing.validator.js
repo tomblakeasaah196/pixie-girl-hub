@@ -135,6 +135,11 @@ const award = z.object({ quote_id: z.string().uuid() }).strict();
 const poLine = z
   .object({
     variant_id: z.string().uuid().optional(),
+    // What the BASE PRODUCT picker sends. po_lines store a variant, so the
+    // service resolves this to the product's default stock-bearing variant —
+    // the same resolution Goods Reception uses, so an ordered line and a
+    // received line always mean the same SKU.
+    product_id: z.string().uuid().optional(),
     description: z.string().min(1).max(500),
     supplier_sku: z.string().max(120).optional(),
     qty_ordered: z.coerce.number().int().positive(),

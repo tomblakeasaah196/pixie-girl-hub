@@ -8652,6 +8652,26 @@ paths:
         x-is-write: false,
         responses: { "200": { description: Movement detail } },
       }
+  /purchasing/purchase-orders/{poId}/receiving-plan:
+    get:
+      {
+        summary: Outstanding PO lines resolved to base products (prefills Goods Reception),
+        tags: [purchasing],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: poId,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "purchasing.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Receiving plan } },
+      }
   /stock/adjustments:
     get:
       {

@@ -30,7 +30,7 @@ import {
   Skeleton,
   EmptyState,
 } from "@/components/ui/primitives";
-import { ErrorState, Select } from "@/components/ui/controls";
+import { ErrorState, Select, ConfirmDialog } from "@/components/ui/controls";
 import { Drawer } from "@/components/ui/Drawer";
 import {
   useZones,
@@ -159,6 +159,7 @@ export function ShippingRatesTab() {
   const [downloading, setDownloading] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<DeliveryZone | null>(null);
 
   const zones = zonesQ.data ?? [];
 
@@ -348,9 +349,7 @@ export function ShippingRatesTab() {
               zone={z}
               last={i === filtered.length - 1}
               onEdit={() => setEditing(z)}
-              onDelete={() => {
-                if (window.confirm(`Delete zone "${z.name}"?`)) delZone.mutate(z.zone_id);
-              }}
+              onDelete={() => setDeleting(z)}
               canEdit={can("logistics", "edit")}
               canDelete={can("logistics", "delete")}
             />
@@ -365,6 +364,23 @@ export function ShippingRatesTab() {
         />
       )}
       {quoteOpen && <RateQuoteDrawer onClose={() => setQuoteOpen(false)} />}
+      <ConfirmDialog
+        open={deleting !== null}
+        onClose={() => setDeleting(null)}
+        onConfirm={() => {
+          if (deleting) delZone.mutate(deleting.zone_id);
+          setDeleting(null);
+        }}
+        title="Delete zone"
+        message={
+          <>
+            Delete <strong>{deleting?.name}</strong>? Deliveries already quoted
+            against this zone keep their fee — only future quotes change.
+          </>
+        }
+        confirmLabel="Delete zone"
+        busy={delZone.isPending}
+      />
     </div>
   );
 }

@@ -432,6 +432,27 @@ async function advanceDelivery({
       throw new ConflictError(
         `Cannot move a '${delivery.status}' delivery to '${to_status}'`,
       );
+    // Completing a delivery REQUIRES knowing what it cost us. Completion is
+    // the only moment the figure is actually available — the dispatcher is on
+    // the phone with the rider, and once the delivery leaves the actionable
+    // queue nobody opens it again. An uncosted delivery is worse than a blank:
+    // it reports as ₦0 paid, i.e. 100% margin, silently inflating the P&L and
+    // burying the real losses. A deliberate fee waiver satisfies the gate.
+    //
+    // Only enforced for staff-driven completions — a courier webhook must
+    // still be able to close a delivery, and those surface in the
+    // "cost not recorded" Issues list instead.
+    if (to_status === "delivered" && (source || "user") === "user") {
+      const costs = await repo.listDeliveryCosts({
+        client,
+        brand,
+        delivery_id: id,
+      });
+      if (costs.length === 0 && !delivery.fee_waiver_reason)
+        throw new ValidationError(
+          "Record what this delivery cost (agency + amount) before marking it delivered.",
+        );
+    }
     const extra = {};
     if (DATE_FIELD[to_status])
       extra[DATE_FIELD[to_status]] = new Date().toISOString();

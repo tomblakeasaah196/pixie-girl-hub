@@ -18,7 +18,7 @@ import {
   Skeleton,
   EmptyState,
 } from "@/components/ui/primitives";
-import { Select } from "@/components/ui/controls";
+import { Select, ConfirmDialog } from "@/components/ui/controls";
 import { Drawer } from "@/components/ui/Drawer";
 import {
   useZones,
@@ -53,6 +53,7 @@ export function ZonesManagerDrawer({ onClose }: { onClose: () => void }) {
   const [editing, setEditing] = useState<DeliveryZone | "new" | null>(null);
   const [testing, setTesting] = useState(false);
   const [bulk, setBulk] = useState(false);
+  const [deleting, setDeleting] = useState<DeliveryZone | null>(null);
   const zones = zonesQ.data ?? [];
 
   return (
@@ -108,7 +109,7 @@ export function ZonesManagerDrawer({ onClose }: { onClose: () => void }) {
                 <span className="font-mono text-[12px]">{money(z.fee_ngn)}</span>
                 {can("logistics", "delete") && (
                   <button
-                    onClick={() => window.confirm(`Delete zone "${z.name}"?`) && del.mutate(z.zone_id)}
+                    onClick={() => setDeleting(z)}
                     className="rounded-lg bg-panel-2 border border-line p-1.5 hover:border-danger/40"
                     title="Delete"
                   >
@@ -129,6 +130,23 @@ export function ZonesManagerDrawer({ onClose }: { onClose: () => void }) {
       )}
       {testing && <PointTester onClose={() => setTesting(false)} />}
       {bulk && <BulkRatesDrawer onClose={() => setBulk(false)} />}
+      <ConfirmDialog
+        open={deleting !== null}
+        onClose={() => setDeleting(null)}
+        onConfirm={() => {
+          if (deleting) del.mutate(deleting.zone_id);
+          setDeleting(null);
+        }}
+        title="Delete zone"
+        message={
+          <>
+            Delete <strong>{deleting?.name}</strong>? Deliveries already quoted
+            against this zone keep their fee — only future quotes change.
+          </>
+        }
+        confirmLabel="Delete zone"
+        busy={del.isPending}
+      />
     </Drawer>
   );
 }

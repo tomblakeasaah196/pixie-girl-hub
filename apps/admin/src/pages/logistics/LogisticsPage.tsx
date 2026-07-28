@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/primitives";
 import { ErrorState, DeniedState, Select } from "@/components/ui/controls";
 import { Drawer } from "@/components/ui/Drawer";
+import { Modal } from "@/components/ui/Modal";
 import {
   useDeliveries,
   useDelivery,
@@ -469,17 +470,9 @@ function DeliveryDetailDrawer({ id, onClose }: { id: string; onClose: () => void
   const isDeliveredShortcut =
     canMarkDelivered && !advanceTargets.includes("delivered");
 
-  async function markDelivered() {
-    if (!d) return;
-    if (
-      isDeliveredShortcut &&
-      !window.confirm(
-        `This delivery is '${STATUS_META[d.status]?.label ?? d.status}'. Marking it delivered will skip the states in between — the skip is recorded on the timeline. Continue?`,
-      )
-    )
-      return;
-    advance.mutate({ id: d.delivery_id, to_status: "delivered" });
-  }
+  const [marking, setMarking] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+
 
   async function uploadProof(file: File) {
     if (!d) return;
@@ -737,7 +730,7 @@ function DeliveryDetailDrawer({ id, onClose }: { id: string; onClose: () => void
                       size="sm"
                       variant="primary"
                       disabled={busy}
-                      onClick={markDelivered}
+                      onClick={() => setMarking(true)}
                       icon={<CheckCircle2 className="w-4 h-4" />}
                     >
                       Mark delivered
@@ -787,10 +780,7 @@ function DeliveryDetailDrawer({ id, onClose }: { id: string; onClose: () => void
                     size="sm"
                     variant="danger"
                     disabled={busy}
-                    onClick={() => {
-                      const reason = window.prompt("Reason for cancelling?") ?? undefined;
-                      cancel.mutate({ id, reason });
-                    }}
+                    onClick={() => setCancelling(true)}
                     icon={<Ban className="w-4 h-4" />}
                   >
                     Cancel
@@ -802,6 +792,30 @@ function DeliveryDetailDrawer({ id, onClose }: { id: string; onClose: () => void
         </div>
       )}
       {booking && d && <BookDeliveryModal delivery={d} onClose={() => setBooking(false)} />}
+      {marking && d && (
+        <MarkDeliveredModal
+          delivery={d}
+          isShortcut={Boolean(isDeliveredShortcut)}
+          onClose={() => setMarking(false)}
+        />
+      )}
+      {cancelling && d && (
+        <ReasonModal
+          title="Cancel delivery"
+          message="This closes the delivery without completing it. The reason is recorded on the timeline."
+          label="Reason for cancelling"
+          confirmLabel="Cancel delivery"
+          tone="danger"
+          busy={cancel.isPending}
+          onClose={() => setCancelling(false)}
+          onConfirm={(reason) => {
+            cancel.mutate(
+              { id, reason: reason || undefined },
+              { onSuccess: () => setCancelling(false) },
+            );
+          }}
+        />
+      )}
     </Drawer>
   );
 }
@@ -812,6 +826,290 @@ interface ContactHit {
   contact_id: string;
   display_name: string;
   primary_phone?: string | null;
+}
+
+// ── Branded dialogs ─────────────────────────────────────────
+
+/**
+ * A reason capture — replaces `window.prompt`, which is unstyled browser
+ * chrome and breaks the design canon.
+ */
+function ReasonModal({
+  title,
+  message,
+  label,
+  placeholder,
+  confirmLabel,
+  tone = "accent",
+  required,
+  busy,
+  onClose,
+  onConfirm,
+}: {
+  title: string;
+  message?: string;
+  label: string;
+  placeholder?: string;
+  confirmLabel: string;
+  tone?: "accent" | "danger";
+  required?: boolean;
+  busy?: boolean;
+  onClose: () => void;
+  onConfirm: (reason: string) => void;
+}) {
+  const [reason, setReason] = useState("");
+  const ok = !required || reason.trim().length > 0;
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={title}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Close
+          </Button>
+          <Button
+            variant={tone === "danger" ? "danger" : "primary"}
+            disabled={!ok || busy}
+            onClick={() => onConfirm(reason.trim())}
+            icon={busy ? <Loader2 className="w-4 h-4 animate-spin" /> : undefined}
+          >
+            {confirmLabel}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        {message && (
+          <p className="text-[12.5px] text-text-muted leading-relaxed">{message}</p>
+        )}
+        <label className="block">
+          <span className="block text-[11.5px] text-text-muted mb-1.5">
+            {label}
+            {required && <span className="text-danger"> *</span>}
+          </span>
+          <input
+            autoFocus
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder={placeholder}
+            className="w-full bg-transparent border border-line rounded-lg px-2.5 h-[38px] text-[13px] outline-none focus:border-accent/50"
+            autoComplete="off"
+          />
+        </label>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Marking a delivery delivered.
+ *
+ * Completion is the ONLY moment the cost is actually knowable — the dispatcher
+ * is on the phone with the rider right now. Once the delivery drops out of the
+ * actionable queue nobody opens it again, and an uncosted delivery doesn't
+ * report as "unknown", it reports as ₦0 paid out — i.e. 100% margin. That
+ * silently inflates the P&L and buries the genuine losses. So when nothing has
+ * been costed yet, the agency and the amount are REQUIRED here.
+ *
+ * The API enforces the same rule; this dialog exists so the requirement is met
+ * at the natural moment rather than surfacing as a rejected request.
+ */
+function MarkDeliveredModal({
+  delivery: d,
+  isShortcut,
+  onClose,
+}: {
+  delivery: Delivery;
+  isShortcut: boolean;
+  onClose: () => void;
+}) {
+  const couriersQ = useCouriers();
+  const couriers = (couriersQ.data ?? []).filter((c) => c.is_active);
+  const addCost = useAddDeliveryCost();
+  const advance = useAdvanceDelivery();
+
+  const needsCost = (d.costs ?? []).length === 0 && !d.fee_waiver_reason;
+  const [courierId, setCourierId] = useState(d.courier_id || "");
+  const [amount, setAmount] = useState("");
+  const [notes, setNotes] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const revenue = Number(d.order_shipping_fee_ngn ?? 0);
+  const paid = needsCost ? Number(amount || 0) : Number(d.courier_fee_ngn ?? 0);
+  const margin = revenue - paid;
+  const ready = needsCost ? Boolean(courierId) && Number(amount) > 0 : true;
+  const busy = addCost.isPending || advance.isPending;
+
+  async function confirm() {
+    setError(null);
+    try {
+      if (needsCost) {
+        await addCost.mutateAsync({
+          id: d.delivery_id,
+          amount_ngn: Number(amount),
+          courier_id: courierId,
+          cost_type: "outbound",
+          notes: notes.trim() || undefined,
+        });
+      }
+      await advance.mutateAsync({ id: d.delivery_id, to_status: "delivered" });
+      onClose();
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Couldn't mark this delivery delivered.",
+      );
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Mark delivered"
+      size="md"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            disabled={!ready || busy}
+            onClick={confirm}
+            icon={
+              busy ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4" />
+              )
+            }
+          >
+            Confirm delivered
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        {isShortcut && (
+          <div className="rounded-xl border border-warn/40 bg-warn/[0.07] p-3 flex items-start gap-2">
+            <CircleAlert className="w-4 h-4 text-warn shrink-0 mt-px" />
+            <div className="text-[12px]">
+              <div className="font-medium text-warn">
+                This delivery is &lsquo;{STATUS_META[d.status]?.label ?? d.status}&rsquo;
+              </div>
+              <div className="text-text-muted">
+                Marking it delivered skips the states in between. The skip is
+                recorded on the timeline — nothing is lost.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {needsCost ? (
+          <>
+            <div>
+              <div className="text-[12.5px] font-medium">
+                What did this delivery cost us?
+              </div>
+              <p className="text-[11.5px] text-text-faint mt-0.5">
+                Required. Recorded now while you have the figure — a delivery
+                with no cost reports as pure profit and hides real losses.
+              </p>
+            </div>
+
+            <label className="block">
+              <span className="block text-[11.5px] text-text-muted mb-1.5">
+                Agency / courier <span className="text-danger">*</span>
+              </span>
+              <Select
+                value={courierId}
+                onChange={setCourierId}
+                ariaLabel="Agency"
+                options={
+                  couriers.length
+                    ? couriers.map((c) => ({
+                        value: c.courier_id,
+                        label: c.display_name,
+                      }))
+                    : [{ value: "", label: "No active agencies — add one first" }]
+                }
+              />
+            </label>
+
+            <label className="block">
+              <span className="block text-[11.5px] text-text-muted mb-1.5">
+                Amount paid (₦) <span className="text-danger">*</span>
+              </span>
+              <input
+                autoFocus
+                type="number"
+                min="0"
+                step="0.01"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0.00"
+                className="w-full bg-transparent border border-line rounded-lg px-2.5 h-[38px] text-[13px] font-mono outline-none focus:border-accent/50"
+                autoComplete="off"
+              />
+            </label>
+
+            <label className="block">
+              <span className="block text-[11.5px] text-text-muted mb-1.5">
+                Note (optional)
+              </span>
+              <input
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Waybill number, who paid, anything useful later"
+                className="w-full bg-transparent border border-line rounded-lg px-2.5 h-[38px] text-[13px] outline-none focus:border-accent/50"
+                autoComplete="off"
+              />
+            </label>
+          </>
+        ) : (
+          <p className="text-[12.5px] text-text-muted">
+            Cost already recorded for this delivery. Confirm to complete it.
+          </p>
+        )}
+
+        {/* Live margin — the overspend is visible before the save, not after. */}
+        <div className="rounded-xl border border-line p-3 grid grid-cols-3 gap-2 text-center">
+          <div>
+            <div className="text-[10.5px] text-text-faint">Charged</div>
+            <div className="font-mono text-[12.5px]">{money(revenue)}</div>
+          </div>
+          <div>
+            <div className="text-[10.5px] text-text-faint">Paid out</div>
+            <div className="font-mono text-[12.5px]">{money(paid)}</div>
+          </div>
+          <div>
+            <div className="text-[10.5px] text-text-faint">Margin</div>
+            <div
+              className={`font-mono text-[12.5px] ${margin < 0 ? "text-danger" : "text-success"}`}
+            >
+              {money(margin)}
+            </div>
+          </div>
+        </div>
+
+        {margin < 0 && (
+          <div className="rounded-lg border border-danger/40 bg-danger/[0.07] p-2.5 text-[11.5px]">
+            <span className="font-medium text-danger">
+              This delivery loses {money(Math.abs(margin))}.
+            </span>{" "}
+            <span className="text-text-faint">
+              It will still be saved — the money was spent — and flagged as a
+              loss in the reconciliation report.
+            </span>
+          </div>
+        )}
+
+        {error && <p className="text-[12px] text-danger">{error}</p>}
+      </div>
+    </Modal>
+  );
 }
 
 // ── Delivery cost + loss ────────────────────────────────────
@@ -835,6 +1133,7 @@ function DeliveryCostPanel({
   const [costType, setCostType] = useState("outbound");
   const [notes, setNotes] = useState("");
   const [adding, setAdding] = useState(false);
+  const [waiving, setWaiving] = useState(false);
 
   const revenue = Number(d.order_shipping_fee_ngn ?? 0);
   const cost = Number(d.courier_fee_ngn ?? 0);
@@ -1007,19 +1306,32 @@ function DeliveryCostPanel({
                 size="sm"
                 variant="secondary"
                 disabled={setWaiver.isPending}
-                onClick={() => {
-                  const reason = window.prompt(
-                    "Why was delivery free for this customer? (promo, remake, apology reship…)",
-                  );
-                  if (reason)
-                    setWaiver.mutate({ id: d.delivery_id, reason });
-                }}
+                onClick={() => setWaiving(true)}
               >
                 Mark fee waived
               </Button>
             )}
           </div>
         ))}
+
+      {waiving && (
+        <ReasonModal
+          title="Mark delivery fee waived"
+          message="Records that this delivery was deliberately free, so it doesn't read as an overspend in the reconciliation report."
+          label="Why was delivery free?"
+          placeholder="Promo, remake, apology reship…"
+          confirmLabel="Save reason"
+          required
+          busy={setWaiver.isPending}
+          onClose={() => setWaiving(false)}
+          onConfirm={(reason) =>
+            setWaiver.mutate(
+              { id: d.delivery_id, reason },
+              { onSuccess: () => setWaiving(false) },
+            )
+          }
+        />
+      )}
     </div>
   );
 }

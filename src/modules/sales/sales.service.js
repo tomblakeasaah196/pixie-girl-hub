@@ -632,6 +632,10 @@ async function createOrderTx({ brand, user, request_id, input }) {
         shipping_fee_ngn: toCurrencyString(shipping),
         total_ngn: toCurrencyString(total),
         coupon_code: input.coupon_code || null,
+        // Back-pointer to the quote this order came from (convertQuotation
+        // passes it). Lets an order answer "which quote produced me?" without
+        // scanning quotations.converted_sales_order_id.
+        quotation_id: input.quotation_id || null,
         client_idempotency_key: input.client_idempotency_key || null,
         stylist_referral_code: input.stylist_referral_code || null,
         // Staff attribution (Performance → Insights). The caller decides:
@@ -2281,6 +2285,8 @@ async function decideQuotation({
   id,
   decision,
   reason,
+  convert = false,
+  sales_channel,
 }) {
   const status = decision === "accept" ? "accepted" : "rejected";
   const extra =
@@ -2301,6 +2307,26 @@ async function decideQuotation({
     after: { status },
     request_id,
   });
+  // Order-first fallback: when the customer isn't paying through the quote's
+  // own pay link (offline transfer, cash, staff taking payment by phone),
+  // accepting can mint the order straight away so there is something to take
+  // money against. Opt-in — a plain accept still just flips the status, so
+  // quotes accepted "in principle" don't litter the pipeline with unpaid
+  // orders. Converting is idempotent, so this is safe on a re-submitted accept.
+  if (decision === "accept" && convert) {
+    const order = await ensureQuotationOrder({
+      brand,
+      user,
+      request_id,
+      quotation_id: id,
+      sales_channel,
+    });
+    // Re-read: the conversion moved the status on from 'accepted' to
+    // 'converted' and stamped converted_sales_order_id, so `updated` (captured
+    // before the convert) would hand the caller a stale row.
+    const fresh = await repo.findQuotationById({ brand, id });
+    return { ...(fresh || updated), converted_order: order };
+  }
   return updated;
 }
 async function convertQuotation({ brand, user, request_id, id, input = {} }) {
@@ -2317,6 +2343,13 @@ async function convertQuotation({ brand, user, request_id, id, input = {} }) {
       contact_id: q.contact_id,
       sales_channel: input.sales_channel || "phone",
       order_type: q.delivery_type || "dispatch",
+      quotation_id: id,
+      // Race backstop for the pay-link rail: two concurrent gateway webhooks
+      // for the same quote both reach createOrder, and the partial unique index
+      // on client_idempotency_key collapses them onto ONE order (the second
+      // caller gets the first's row back rather than a twin). The status guard
+      // above catches the sequential case; this catches the simultaneous one.
+      client_idempotency_key: `quotation:${id}`,
       lines: q.lines
         .filter((l) => l.variant_id)
         .map((l) => ({
@@ -2354,6 +2387,65 @@ async function convertQuotation({ brand, user, request_id, id, input = {} }) {
     order_id: order.order_id,
   });
   return order;
+}
+
+/**
+ * Idempotently resolve the order for a quotation, converting it if it hasn't
+ * been converted yet. This is what the gateway webhook calls the moment a quote
+ * payment confirms (000090): the quote never holds money, it materialises its
+ * order just in time and the payment is then recorded against that order by the
+ * ordinary `addPayment` path.
+ *
+ * Idempotent on three levels, because a gateway will re-deliver a webhook:
+ *   1. Already converted → return the existing order, no second conversion.
+ *   2. Concurrent delivery → convertQuotation's client_idempotency_key
+ *      ('quotation:<id>') collapses both onto one order via the unique index.
+ *   3. The payment itself is deduped downstream on provider+provider_reference.
+ *
+ * `user` is `{ user_id: null }` on the webhook path — the same system-actor
+ * shape recordGatewayPayment already uses for addPayment, so the audit row
+ * attributes the conversion to the webhook rather than to a staff member.
+ */
+async function ensureQuotationOrder({
+  brand,
+  user = { user_id: null },
+  request_id,
+  quotation_id,
+  sales_channel,
+}) {
+  const q = await repo.findQuotationById({ brand, id: quotation_id });
+  if (!q) throw new NotFoundError("Quotation");
+  if (q.converted_sales_order_id) {
+    const existing = await repo.findById({
+      brand,
+      id: q.converted_sales_order_id,
+    });
+    if (existing) return existing;
+    // Status says converted but the order is gone (deleted, or a half-written
+    // legacy row). Rather than strand the payment, clear the stale pointer and
+    // convert again — a quote with no reachable order is worse than a fresh
+    // one. The status must be reset too, or convertQuotation's own guard
+    // rejects it as already converted.
+    logger.warn(
+      { brand, quotation_id, order_id: q.converted_sales_order_id },
+      "quotation marked converted but its order is missing — reconverting",
+    );
+    await repo.setQuotationStatus({
+      brand,
+      id: quotation_id,
+      status: "accepted",
+      extra: { converted_sales_order_id: null },
+    });
+  }
+  return convertQuotation({
+    brand,
+    user,
+    request_id,
+    id: quotation_id,
+    // A quote paid through its public link is a self-service sale; 'storefront'
+    // is the closest channel in the enum (there is no 'online').
+    input: { sales_channel: sales_channel || "storefront" },
+  });
 }
 
 // ── Cancellation requests (§6.4 cancellation timer) ──────
@@ -2771,6 +2863,7 @@ module.exports = {
   sendQuotation,
   decideQuotation,
   convertQuotation,
+  ensureQuotationOrder,
   listCancellations,
   getCancellation,
   requestCancellation,

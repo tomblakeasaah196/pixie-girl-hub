@@ -1,0 +1,31 @@
+-- ╔════════════════════════════════════════════════════════════════════╗
+-- ║ QUOTATION PAY LINK — pay the quote, the order is minted on payment ║
+-- ╚════════════════════════════════════════════════════════════════════╝
+--
+-- Until now a quotation could only become an order by a staff member pressing
+-- "Convert", and money could only be taken against an order (every gateway
+-- checkout carried metadata.order_id). A customer holding a quote had nothing
+-- to pay.
+--
+-- This adds the customer-facing rail: a tokenised pay link on the quotation
+-- itself. The gateway checkout carries metadata.quotation_id, and the inbound
+-- webhook converts the quote to an order at the moment of confirmation, then
+-- records the payment against that new order. Nothing about the order-side
+-- payment path changes — the quote simply materialises the order just in time.
+--
+-- `public_pay_token` mirrors sales_orders.public_tracking_token: no default,
+-- minted on first need and persisted (see sales.repo ensureQuotationPayToken),
+-- so quotes that never get a link keep a NULL and stay out of the index.
+
+ALTER TABLE {{BUSINESS}}.quotations
+  ADD COLUMN IF NOT EXISTS public_pay_token TEXT;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_{{BUSINESS}}_quotations_pay_token
+  ON {{BUSINESS}}.quotations (public_pay_token)
+  WHERE public_pay_token IS NOT NULL;
+
+-- The conversion is idempotent via sales_orders.client_idempotency_key
+-- ('quotation:<quotation_id>'), so a re-delivered webhook resolves to the order
+-- the first delivery created instead of minting a twin. That backstop is the
+-- partial unique index below, which already exists for the checkout rail — this
+-- comment records the second caller that now depends on it.

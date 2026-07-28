@@ -88,7 +88,16 @@ router.post(
   v.validateQuotationSend,
   c.sendQuotation,
 );
-router.post("/quotations/:quoId/accept", can("edit"), c.acceptQuotation);
+router.post(
+  "/quotations/:quoId/accept",
+  can("edit"),
+  v.validateQuotationAccept,
+  c.acceptQuotation,
+);
+// Customer-facing pay link for a quote (000090): mints the public token and
+// returns the /quote/:token URL to paste into WhatsApp/email. Paying it
+// converts the quote to an order at confirmation.
+router.get("/quotations/:quoId/pay-link", can("view"), c.getQuotationPayLink);
 router.post(
   "/quotations/:quoId/reject",
   can("edit"),

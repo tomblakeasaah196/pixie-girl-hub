@@ -13,6 +13,7 @@ import type {
   QuotationCreateInput,
   QuotationSendInput,
   QuotationConvertInput,
+  QuotationAcceptInput,
   CancellationRequestInput,
   FlexiPaySettingsPatch,
 } from "./types";
@@ -302,13 +303,32 @@ export function useAcceptQuotation() {
   const qc = useQueryClient();
   const biz = useBiz();
   return useMutation({
-    mutationFn: (id: string) => salesApi.acceptQuotation(id),
-    onSuccess: (_data, id) => {
+    mutationFn: ({ id, input }: { id: string; input?: QuotationAcceptInput }) =>
+      salesApi.acceptQuotation(id, input),
+    onSuccess: (_data, { id }) => {
       qc.invalidateQueries({ queryKey: ["sales-quotations", biz] });
       qc.invalidateQueries({
         queryKey: ["sales-quotations", biz, "detail", id],
       });
+      // Accept-and-convert mints an order, so the orders list is stale too.
+      qc.invalidateQueries({ queryKey: ["sales-orders", biz] });
     },
+  });
+}
+
+/**
+ * The quote's customer-facing pay link. Fetched on demand (when staff open the
+ * share control) rather than with the quote, because the GET mints the token as
+ * a side effect — we don't want every quote that's merely viewed to acquire a
+ * public link.
+ */
+export function useQuotationPayLink(id: string | null, enabled: boolean) {
+  const biz = useBiz();
+  return useQuery({
+    queryKey: ["sales-quotations", biz, "pay-link", id],
+    queryFn: () => salesApi.getQuotationPayLink(id!),
+    enabled: !!id && enabled,
+    staleTime: Infinity,
   });
 }
 

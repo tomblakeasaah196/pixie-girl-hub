@@ -1,5 +1,12 @@
 import { useState } from "react";
-import { Send, CheckCircle, ArrowRightCircle } from "lucide-react";
+import {
+  Send,
+  CheckCircle,
+  ArrowRightCircle,
+  Link2,
+  Copy,
+  Check,
+} from "lucide-react";
 import { Drawer } from "@/components/ui/Drawer";
 import { Card, Pill, MoneyText, Button } from "@/components/ui/primitives";
 import { ErrorState, ConfirmDialog, Select } from "@/components/ui/controls";
@@ -9,6 +16,7 @@ import {
   useSendQuotation,
   useAcceptQuotation,
   useConvertQuotation,
+  useQuotationPayLink,
 } from "./hooks";
 import { QUOTE_STATUS, SALES_CHANNELS } from "./constants";
 import { formatDateTime, formatDate } from "@/lib/format";
@@ -39,6 +47,11 @@ export function QuoteDetail({
     useState<NonNullable<QuotationSendInput["sent_via"]>>("email");
   const [showConvert, setShowConvert] = useState(false);
   const [convertChannel, setConvertChannel] = useState<SalesChannel>("pos");
+  // The pay link is fetched only once staff ask for it — the GET mints the
+  // public token as a side effect.
+  const [showPayLink, setShowPayLink] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const payLink = useQuotationPayLink(quoteId, showPayLink);
 
   const handleSend = async () => {
     if (!quoteId) return;
@@ -47,7 +60,26 @@ export function QuoteDetail({
 
   const handleAccept = async () => {
     if (!quoteId) return;
-    await acceptQuote.mutateAsync(quoteId);
+    await acceptQuote.mutateAsync({ id: quoteId, input: {} });
+  };
+
+  // Order-first fallback: accept AND create the order now, for a sale being
+  // settled offline (bank transfer, cash) rather than through the pay link.
+  const handleAcceptAndConvert = async () => {
+    if (!quoteId) return;
+    await acceptQuote.mutateAsync({
+      id: quoteId,
+      input: { convert: true, sales_channel: convertChannel },
+    });
+    onClose();
+  };
+
+  const handleCopyPayLink = async () => {
+    const url = payLink.data?.pay_url;
+    if (!url) return;
+    await navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleConvert = async () => {
@@ -219,6 +251,17 @@ export function QuoteDetail({
                   {acceptQuote.isPending ? "Accepting…" : "Mark Accepted"}
                 </Button>
               )}
+              {(quote.status === "sent" || quote.status === "viewed") && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={<ArrowRightCircle className="w-3.5 h-3.5" />}
+                  onClick={handleAcceptAndConvert}
+                  disabled={acceptQuote.isPending}
+                >
+                  Accept &amp; Create Order
+                </Button>
+              )}
               {quote.status === "accepted" && (
                 <Button
                   variant="primary"
@@ -229,6 +272,22 @@ export function QuoteDetail({
                   Convert to Order
                 </Button>
               )}
+              {/* Pay link — the customer pays the quote and the order is
+                  created automatically when that payment confirms. Offered
+                  while the quote is live and unconverted. */}
+              {["sent", "viewed", "accepted"].includes(quote.status) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  icon={<Link2 className="w-3.5 h-3.5" />}
+                  onClick={() => setShowPayLink(true)}
+                  disabled={showPayLink && payLink.isLoading}
+                >
+                  {showPayLink && payLink.isLoading
+                    ? "Generating…"
+                    : "Payment Link"}
+                </Button>
+              )}
               {quote.converted_sales_order_id && (
                 <div className="text-[12px] text-success flex items-center gap-1">
                   <CheckCircle className="w-3.5 h-3.5" />
@@ -236,6 +295,51 @@ export function QuoteDetail({
                 </div>
               )}
             </div>
+
+            {showPayLink && (
+              <Card>
+                <div className="text-[10.5px] uppercase tracking-[0.1em] font-bold text-text-muted mb-2">
+                  Customer Payment Link
+                </div>
+                {payLink.isLoading && (
+                  <div className="h-8 rounded bg-surface-2 animate-pulse" />
+                )}
+                {payLink.isError && (
+                  <ErrorState
+                    message="Could not generate the payment link."
+                    onRetry={() => payLink.refetch()}
+                  />
+                )}
+                {payLink.data && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 truncate text-[12px] font-mono px-2 py-1.5 rounded bg-surface-2">
+                        {payLink.data.pay_url}
+                      </code>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        icon={
+                          copied ? (
+                            <Check className="w-3.5 h-3.5" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5" />
+                          )
+                        }
+                        onClick={handleCopyPayLink}
+                      >
+                        {copied ? "Copied" : "Copy"}
+                      </Button>
+                    </div>
+                    <p className="text-[11px] text-text-muted">
+                      Send this to the customer. Paying it converts the quote
+                      into a sales order automatically — no manual conversion
+                      needed.
+                    </p>
+                  </div>
+                )}
+              </Card>
+            )}
           </div>
         )}
       </Drawer>

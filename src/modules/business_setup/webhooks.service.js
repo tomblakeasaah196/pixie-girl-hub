@@ -495,6 +495,7 @@ async function confirmPaystackCharge(log) {
   await recordGatewayPayment({
     brand,
     order_id,
+    quotation_id: (data.metadata && data.metadata.quotation_id) || null,
     reference,
     amount_ngn,
     method: mapPaystackChannel(data.channel),
@@ -531,15 +532,50 @@ async function gatewayFeeNgn({ brand, provider, amount_ngn, fx_rate }) {
 }
 
 /**
+ * Resolve the order a confirmed payment belongs to, materialising it from a
+ * quotation when the checkout was raised against a quote (000090).
+ *
+ * A quote pay-link carries metadata.quotation_id and no order_id — the order
+ * does not exist until the money lands. This converts the quote at that moment
+ * and returns the resulting order. Idempotent end to end: a re-delivered
+ * webhook resolves to the order the first delivery created (see
+ * sales.service.ensureQuotationOrder), so a gateway retry can never mint a
+ * second order or a second payment.
+ *
+ * Returns the order row, or null when there is nothing to resolve.
+ */
+async function orderForQuotation({ brand, quotation_id, webhook_id }) {
+  if (!brand || !VALID_BRANDS.has(brand) || !quotation_id) return null;
+  return requestContext.run({ brand, userId: null }, async () => {
+    const salesService = require("../sales/sales.service");
+    const order = await salesService.ensureQuotationOrder({
+      brand,
+      user: { user_id: null },
+      request_id: `webhook:${webhook_id}`,
+      quotation_id,
+    });
+    logger.info(
+      { brand, quotation_id, order_id: order.order_id },
+      "quotation converted to order on gateway payment confirmation",
+    );
+    return order;
+  });
+}
+
+/**
  * Shared tail: idempotently record a confirmed gateway payment against the
  * order under the brand's context, capturing the per-gateway processing fee
  * (§6.21/§6.6 — books to the gateway's 551x account via net_received) and, for
  * foreign-currency settlements (Stripe), the paid currency/amount/rate so the
  * realised-FX posting in addPayment fires. `amount_ngn` is a decimal string.
+ *
+ * `quotation_id` (000090) is the quote-pay-link case: no order exists yet, so
+ * one is minted from the quote before the payment is recorded.
  */
 async function recordGatewayPayment({
   brand,
   order_id,
+  quotation_id = null,
   reference,
   amount_ngn,
   method,
@@ -549,6 +585,16 @@ async function recordGatewayPayment({
   paid_amount = null,
   fx_rate_used = null,
 }) {
+  // Quote pay-link: no order exists yet — convert the quotation now and record
+  // against the order that produces.
+  if (!order_id && quotation_id) {
+    const converted = await orderForQuotation({
+      brand,
+      quotation_id,
+      webhook_id,
+    });
+    if (converted) order_id = converted.order_id;
+  }
   if (!brand || !VALID_BRANDS.has(brand) || !order_id) {
     throw new Error(
       `${provider} ${reference}: missing/invalid metadata.brand/order_id — manual review`,
@@ -621,6 +667,7 @@ async function confirmOpayCharge(log) {
   await recordGatewayPayment({
     brand: meta.brand,
     order_id: meta.order_id,
+    quotation_id: meta.quotation_id || null,
     reference,
     amount_ngn,
     method: "opay",
@@ -747,17 +794,47 @@ async function confirmNombaCharge(log) {
     if (order_id) {
       order = await salesRepo.findById({ brand: resolvedBrand, id: order_id });
     } else {
-      // Recover the order from the reference (`nomba-<order_number>-<ts>`).
+      // Recover the document from the reference (`nomba-<doc_number>-<ts>`).
+      // Nomba's checkout API takes no metadata — only orderReference — so for
+      // Nomba this string is the ONLY identifier we get back.
       const noPrefix = String(reference || "").replace(/^nomba-/, "");
       const cut = noPrefix.lastIndexOf("-");
-      const orderNumber = cut > 0 ? noPrefix.slice(0, cut) : noPrefix;
-      if (orderNumber) {
+      const docNumber = cut > 0 ? noPrefix.slice(0, cut) : noPrefix;
+      if (docNumber) {
         order = await salesRepo.findByOrderNumber({
           brand: resolvedBrand,
-          order_number: orderNumber,
+          order_number: docNumber,
         });
         if (order) order_id = order.order_id;
+        else {
+          // Not an order number — a quotation pay-link reference
+          // ('PXG-QUO-0001'). Convert the quote and take the order it makes.
+          const quote = await salesRepo.findQuotationByNumber({
+            brand: resolvedBrand,
+            quotation_number: docNumber,
+          });
+          if (quote) {
+            order = await orderForQuotation({
+              brand: resolvedBrand,
+              quotation_id: quote.quotation_id,
+              webhook_id: log.webhook_id,
+            });
+            if (order) order_id = order.order_id;
+          }
+        }
       }
+    }
+    // Quote pay-link (000090): no order exists yet. Convert the quotation NOW —
+    // before the settlement block below, which needs a real order row to derive
+    // the NGN figure for a foreign-currency capture. recordGatewayPayment would
+    // otherwise do this conversion, but too late for that calculation.
+    if (!order_id && meta.quotation_id) {
+      order = await orderForQuotation({
+        brand: resolvedBrand,
+        quotation_id: meta.quotation_id,
+        webhook_id: log.webhook_id,
+      });
+      if (order) order_id = order.order_id;
     }
   }
 
@@ -879,6 +956,10 @@ async function confirmNombaCharge(log) {
   await recordGatewayPayment({
     brand: meta.brand || resolvedBrand,
     order_id,
+    // Normally already consumed above; passed through so that if the brand
+    // could only be recovered from metadata (not from the reference), the
+    // conversion still happens there rather than failing to manual review.
+    quotation_id: meta.quotation_id || null,
     reference: reference || tx.transactionId || tx.sessionId,
     amount_ngn,
     method,
@@ -942,6 +1023,7 @@ async function confirmStripeCharge(log) {
   await recordGatewayPayment({
     brand: meta.brand,
     order_id: meta.order_id,
+    quotation_id: meta.quotation_id || null,
     reference,
     amount_ngn,
     method: "stripe_card",

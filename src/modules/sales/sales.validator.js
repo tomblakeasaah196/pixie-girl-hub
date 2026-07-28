@@ -217,6 +217,12 @@ const quotationConvert = z
       .optional(),
   })
   .strict();
+// Accept: optionally convert to an order in the same step (order-first
+// fallback, for sales paid offline rather than through the quote's pay link).
+// Reuses the convert schema's channel enum so the two stay in lockstep.
+const quotationAccept = quotationConvert
+  .extend({ convert: z.boolean().optional() })
+  .strict();
 
 const cancellationRequest = z
   .object({
@@ -277,6 +283,7 @@ module.exports = {
   validatePaymentLink: mw(paymentLink),
   validateQuotationCreate: mw(quotationCreate),
   validateQuotationSend: mw(quotationSend),
+  validateQuotationAccept: mw(quotationAccept),
   validateQuotationReject: mw(quotationReject),
   validateQuotationConvert: mw(quotationConvert),
   validateCancellationRequest: mw(cancellationRequest),

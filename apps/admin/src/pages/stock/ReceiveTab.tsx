@@ -1,4 +1,5 @@
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Package,
   PackagePlus,
@@ -18,6 +19,9 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Drawer } from "@/components/ui/Drawer";
 import { Modal } from "@/components/ui/Modal";
 import { useAuthStore } from "@/stores/auth";
+import { toast } from "@/stores/toast";
+import { toastReport } from "@/lib/error-report";
+import * as purchasingApi from "@/pages/purchasing/api";
 import { BaseProductPicker } from "@/pages/catalogue/BaseProductPicker";
 import { VariantPicker } from "@/components/catalogue/VariantPicker";
 import {
@@ -133,6 +137,14 @@ interface ReceiptLine {
   id: string;
   product_id: string;
   quantity: string;
+  /* Set when the line came from a purchase order. Carrying it through means
+     the receipt books itself back against the PO — the ordered quantity comes
+     down and the PO's status follows — instead of the warehouse and the buyer
+     keeping two versions of what has landed. */
+  po_line_id?: string;
+  label?: string;
+  ordered?: number;
+  outstanding?: number;
 }
 const emptyReceiptLine = (): ReceiptLine => ({
   id: crypto.randomUUID(),
@@ -209,14 +221,86 @@ export default function ReceiveTab() {
   const [recDate, setRecDate] = useState(todayISO());
   const [recReceiver, setRecReceiver] = useState("");
   const [recLines, setRecLines] = useState<ReceiptLine[]>([emptyReceiptLine()]);
+  /* The purchase order this reception is against, when opened from Purchasing
+     via /stock?tab=receive&po=<id>. */
+  const [recPoId, setRecPoId] = useState<string | null>(null);
+  const [recPoNumber, setRecPoNumber] = useState<string | null>(null);
 
   const openReception = useCallback(() => {
     setRecLocationId(defaultLocationId);
     setRecDate(todayISO());
     setRecReceiver(userName);
     setRecLines([emptyReceiptLine()]);
+    setRecPoId(null);
+    setRecPoNumber(null);
     setReceptionOpen(true);
   }, [defaultLocationId, userName]);
+
+  /* ── Arriving from a purchase order ──────────────────────────────
+     Purchasing links here as /stock?tab=receive&po=<id>. Fetch that order's
+     outstanding lines and open the reception form already filled in: the
+     delivery location the buyer chose, and every line still due at its
+     outstanding quantity. The receiver edits what actually turned up — a
+     short delivery just leaves the rest outstanding, and the same link works
+     again for the balance. */
+  const [searchParams, setSearchParams] = useSearchParams();
+  const poParam = searchParams.get("po");
+  const handledPo = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!poParam || handledPo.current === poParam) return;
+    handledPo.current = poParam;
+    let cancelled = false;
+    (async () => {
+      try {
+        const plan = await purchasingApi.poReceivingPlan(poParam);
+        if (cancelled) return;
+        const due = plan.lines.filter(
+          (l) => l.product_id && Number(l.qty_outstanding) > 0,
+        );
+        setRecPoId(plan.po_id);
+        setRecPoNumber(plan.po_number);
+        setRecLocationId(plan.delivery_location_id || defaultLocationId);
+        setRecDate(todayISO());
+        setRecReceiver(userName);
+        setRecLines(
+          due.length
+            ? due.map((l) => ({
+                id: crypto.randomUUID(),
+                product_id: l.product_id as string,
+                quantity: String(l.qty_outstanding),
+                po_line_id: l.line_id,
+                label: l.product_name || l.description,
+                ordered: Number(l.qty_ordered),
+                outstanding: Number(l.qty_outstanding),
+              }))
+            : [emptyReceiptLine()],
+        );
+        setReceptionOpen(true);
+        if (!due.length) {
+          toast.info("Nothing left to receive", {
+            description: `${plan.po_number} has no outstanding stock-linked lines.`,
+          });
+        }
+      } catch (err) {
+        toastReport("Stock → Goods Reception", "Open purchase order", err);
+      } finally {
+        if (!cancelled) {
+          setSearchParams(
+            (prev) => {
+              const next = new URLSearchParams(prev);
+              next.delete("po");
+              return next;
+            },
+            { replace: true },
+          );
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [poParam, defaultLocationId, userName, setSearchParams]);
 
   const addRecLine = () =>
     setRecLines((prev) => [...prev, emptyReceiptLine()]);
@@ -241,12 +325,20 @@ export default function ReceiveTab() {
         destination_location_id: recLocationId,
         received_at: recDate || undefined,
         received_by_name: recReceiver || undefined,
+        ...(recPoId ? { purchase_order_id: recPoId } : {}),
         lines: recValidLines.map((l) => ({
           product_id: l.product_id,
           quantity: Number(l.quantity),
+          ...(l.po_line_id ? { po_line_id: l.po_line_id } : {}),
         })),
       },
-      { onSuccess: () => setReceptionOpen(false) },
+      {
+        onSuccess: () => {
+          setReceptionOpen(false);
+          setRecPoId(null);
+          setRecPoNumber(null);
+        },
+      },
     );
   }, [
     recCanSubmit,
@@ -254,6 +346,7 @@ export default function ReceiveTab() {
     recDate,
     recReceiver,
     recValidLines,
+    recPoId,
     mutations.createGoodsReceipt,
   ]);
 
@@ -608,7 +701,11 @@ export default function ReceiveTab() {
         open={receptionOpen}
         onClose={() => setReceptionOpen(false)}
         title="Goods Reception"
-        subtitle="Receive base products into a location — stock updates at once"
+        subtitle={
+          recPoNumber
+            ? `Receiving against ${recPoNumber} — stock updates at once`
+            : "Receive base products into a location — stock updates at once"
+        }
         wide
         footer={
           <div className="flex justify-end gap-2 p-4 border-t hairline">
@@ -628,6 +725,18 @@ export default function ReceiveTab() {
         }
       >
         <div className="flex flex-col gap-5 p-5">
+          {/* Arrived from a purchase order: say so, and say what happens to
+              the order when this is posted. */}
+          {recPoNumber && (
+            <InfoBanner>
+              Lines and delivery location are prefilled from{" "}
+              <span className="font-mono font-semibold">{recPoNumber}</span> at
+              the quantities still outstanding. Change any quantity to what
+              actually arrived — receiving less leaves the rest on order, and
+              the purchase order updates itself when you post.
+            </InfoBanner>
+          )}
+
           {/* Header: location / date / receiver */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
@@ -694,12 +803,25 @@ export default function ReceiveTab() {
                         Base Product
                       </span>
                     )}
-                    <BaseProductPicker
-                      value={line.product_id}
-                      onChange={(id) =>
-                        updateRecLine(line.id, "product_id", id)
-                      }
-                    />
+                    {line.po_line_id ? (
+                      /* A PO line's product is fixed — swapping it would
+                         break the link back to what was ordered. */
+                      <div className="h-[42px] flex flex-col justify-center px-3 rounded-[11px] bg-accent/[0.06] border border-accent/25">
+                        <span className="text-[13px] text-text-primary truncate leading-tight">
+                          {line.label}
+                        </span>
+                        <span className="text-[10px] text-text-faint leading-tight">
+                          {line.outstanding} of {line.ordered} still due
+                        </span>
+                      </div>
+                    ) : (
+                      <BaseProductPicker
+                        value={line.product_id}
+                        onChange={(id) =>
+                          updateRecLine(line.id, "product_id", id)
+                        }
+                      />
+                    )}
                   </div>
                   <div>
                     {idx === 0 && (

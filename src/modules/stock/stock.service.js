@@ -1152,7 +1152,11 @@ async function createGoodsReceipt({ brand, user, request_id, input }) {
             metadata: { product_id: ln.product_id },
           },
         );
-      resolved.push({ variant_id: variant.variant_id, quantity: ln.quantity });
+      resolved.push({
+        variant_id: variant.variant_id,
+        quantity: ln.quantity,
+        po_line_id: ln.po_line_id || null,
+      });
     }
 
     const sh = await repo.createShipment({
@@ -1173,7 +1177,12 @@ async function createGoodsReceipt({ brand, user, request_id, input }) {
         client,
         brand,
         shipment_id: sh.shipment_id,
-        line: { variant_id: r.variant_id, qty_expected: r.quantity },
+        line: {
+          variant_id: r.variant_id,
+          qty_expected: r.quantity,
+          // Keeps the receipt traceable back to the order it satisfies.
+          po_line_id: r.po_line_id,
+        },
       });
       await repo.setShipmentLineReceived({
         client,
@@ -1209,6 +1218,24 @@ async function createGoodsReceipt({ brand, user, request_id, input }) {
       },
       request_id,
     );
+    // Book the delivery against the purchase order IN THIS TRANSACTION.
+    // Stock that went up while the PO still shows the goods outstanding is
+    // exactly the drift that makes people stop trusting either number, so if
+    // the PO update fails the stock movement rolls back with it.
+    if (input.purchase_order_id) {
+      const purchasing = require("../purchasing/purchasing.service");
+      await purchasing.applyReceiptToPo({
+        client,
+        brand,
+        user,
+        request_id,
+        po_id: input.purchase_order_id,
+        lines: resolved
+          .filter((r) => r.po_line_id)
+          .map((r) => ({ po_line_id: r.po_line_id, quantity: r.quantity })),
+      });
+    }
+
     events.emit("shipment.received", { brand, id: sh.shipment_id });
     return repo.getShipment({ client, brand, id: sh.shipment_id });
   });

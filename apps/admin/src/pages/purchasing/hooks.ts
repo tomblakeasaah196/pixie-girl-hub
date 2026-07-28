@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useBusinessStore } from "@/stores/business";
 import * as api from "./api";
+import { api as apiClient } from "@/lib/api";
 
 function useBrand() {
   return useBusinessStore((s) => s.activeKey);
@@ -163,4 +164,21 @@ export function useSupplierInvoiceActions(invoiceId: string) {
       onSuccess: invalidate,
     }),
   };
+}
+
+/**
+ * Stock locations, for the PO's "deliver to" field. Purchasing needs the same
+ * list Stock owns; asking the API directly keeps the two pages from importing
+ * each other's internals just to share a dropdown.
+ */
+export function useStockLocationOptions() {
+  const brand = useBrand();
+  return useQuery({
+    queryKey: [brand, "stock", "locations"],
+    queryFn: () =>
+      apiClient.get<Array<{ location_id: string; display_name: string }>>(
+        "/stock/locations",
+      ),
+    staleTime: 5 * 60_000,
+  });
 }

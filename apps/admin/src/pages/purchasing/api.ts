@@ -87,26 +87,70 @@ export function getPo(id: string) {
   return api.get<PurchaseOrder>(`${BASE}/purchase-orders/${id}`);
 }
 
+/**
+ * Create a purchase order. This mirrors the API's schema exactly — it is
+ * `.strict()`, so an unknown key (the old `unit_price_original`, `currency`,
+ * `quantity` per line) rejected the whole request and no PO could ever be
+ * created.
+ *
+ * `product_id` on a line is the BASE product being bought; the server resolves
+ * it to that product's stock variant, which is what lets Goods Reception
+ * receive the delivery against this order.
+ */
 export function createPo(input: {
   supplier_id: string;
+  title: string;
+  description?: string;
+  po_currency: string;
+  fx_rate?: number;
+  shipping?: number;
+  delivery_location_id?: string;
+  expected_delivery?: string;
+  payment_terms_days?: number;
+  shipping_terms?: string;
   lines: Array<{
-    description: string;
-    quantity: number;
-    unit_price_original: number;
-    currency: string;
+    product_id?: string;
     variant_id?: string;
-    lace_type?: string;
-    hair_color?: string;
-    hair_texture?: string;
-    cap_size?: string;
-    baby_hair?: string;
-    hair_length?: string;
-    density?: string;
-    manufacturing_location?: string;
-    factory_order_ref?: string;
+    description: string;
+    supplier_sku?: string;
+    qty_ordered: number;
+    unit_price: number;
+    tax_rate?: number;
+    notes?: string;
   }>;
 }) {
   return api.post<PurchaseOrder>(`${BASE}/purchase-orders`, input);
+}
+
+/** Outstanding lines for a PO, resolved to base products — what Goods
+ *  Reception prefills its form from. */
+export function poReceivingPlan(id: string) {
+  return api.get<PoReceivingPlan>(
+    `${BASE}/purchase-orders/${id}/receiving-plan`,
+  );
+}
+
+export interface PoReceivingPlanLine {
+  line_id: string;
+  variant_id: string | null;
+  product_id: string | null;
+  product_name: string | null;
+  variant_name: string | null;
+  sku: string | null;
+  description: string;
+  qty_ordered: number;
+  qty_received: number;
+  qty_outstanding: number;
+}
+
+export interface PoReceivingPlan {
+  po_id: string;
+  po_number: string;
+  status: string;
+  supplier_name: string | null;
+  delivery_location_id: string | null;
+  expected_delivery: string | null;
+  lines: PoReceivingPlanLine[];
 }
 
 export function submitPo(id: string) {
@@ -117,9 +161,11 @@ export function approvePo(id: string) {
   return api.post<PurchaseOrder>(`${BASE}/purchase-orders/${id}/approve`);
 }
 
+// The API reads `to_status`; sending `status` failed validation, so advancing
+// a PO never worked either.
 export function advancePo(id: string, status: string, notes?: string) {
   return api.post<PurchaseOrder>(`${BASE}/purchase-orders/${id}/advance`, {
-    status,
+    to_status: status,
     notes,
   });
 }

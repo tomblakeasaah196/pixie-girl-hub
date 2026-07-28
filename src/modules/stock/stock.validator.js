@@ -189,12 +189,20 @@ const goodsReceiptCreate = z
       .optional(),
     received_by_name: z.string().max(160).optional(),
     notes: z.string().max(2000).optional(),
+    // Set when this delivery is against a purchase order. The receipt then
+    // books itself back: the PO's outstanding quantities come down and its
+    // status follows (partially_received / received), so one warehouse action
+    // keeps stock and the order in step.
+    purchase_order_id: z.string().uuid().optional(),
     lines: z
       .array(
         z
           .object({
             product_id: z.string().uuid(),
             quantity: z.coerce.number().int().positive(),
+            // Which PO line this quantity satisfies. Per line, because one
+            // delivery can close some lines and leave others outstanding.
+            po_line_id: z.string().uuid().optional(),
           })
           .strict(),
       )

@@ -495,7 +495,29 @@ async function createPo({ brand, user, request_id, input }) {
       brand,
       row: { ...input, po_number, created_by: user?.user_id },
     });
-    const { lines, header } = computePoTotals(input.lines, {
+    // Base-product lines carry a product_id; po_lines hold a variant. Resolve
+    // it here, once, so the ordered SKU and the received SKU are the same
+    // thing — that identity is what lets a delivery book itself back against
+    // the order. A product with no stock-bearing variant still orders fine;
+    // the line simply isn't stock-linked (freight, samples, a style not yet in
+    // the catalogue), and reception asks for the product then.
+    const stockRepo = require("../stock/stock.repo");
+    const resolvedLines = [];
+    for (const line of input.lines) {
+      const { product_id, ...rest } = line;
+      let variant_id = rest.variant_id;
+      if (!variant_id && product_id) {
+        const variant = await stockRepo.defaultVariantForProduct({
+          client,
+          brand,
+          product_id,
+        });
+        variant_id = variant ? variant.variant_id : undefined;
+      }
+      resolvedLines.push({ ...rest, variant_id });
+    }
+
+    const { lines, header } = computePoTotals(resolvedLines, {
       fx_rate: input.fx_rate,
       shipping: input.shipping,
     });
@@ -688,6 +710,100 @@ async function advancePo({
     return updated;
   });
 }
+/**
+ * The PO's outstanding lines, resolved to base products — what Goods Reception
+ * prefills its form from.
+ */
+async function poReceivingPlan({ brand, id }) {
+  const po = await repo.getPo({ client: null, brand, id });
+  if (!po) throw new NotFoundError("Purchase order not found");
+  const lines = await repo.outstandingPoLines({ client: null, brand, po_id: id });
+  return {
+    po_id: po.po_id,
+    po_number: po.po_number,
+    status: po.status,
+    supplier_id: po.supplier_id,
+    supplier_name: po.supplier_name || null,
+    delivery_location_id: po.delivery_location_id,
+    expected_delivery: po.expected_delivery,
+    lines,
+  };
+}
+
+/**
+ * Book a delivery against a PO. Called by Stock when a goods receipt names a
+ * purchase order, so ONE warehouse action keeps both sides honest: stock goes
+ * up, and the PO's outstanding quantities come down.
+ *
+ * Partial deliveries are the norm on factory orders — 60 of 100 now, the rest
+ * next month — so the roll-up is driven by what is still outstanding across
+ * every line, never by "did this delivery cover the whole order". Runs on the
+ * caller's transaction so a failure here rolls the stock movement back with it:
+ * stock that arrived without the PO knowing is exactly the drift that makes
+ * people stop trusting the numbers.
+ */
+async function applyReceiptToPo({
+  client,
+  brand,
+  user,
+  request_id,
+  po_id,
+  lines = [],
+}) {
+  const po = await repo.getPo({ client, brand, id: po_id });
+  if (!po) throw new NotFoundError("Purchase order not found");
+
+  for (const l of lines) {
+    if (!l.po_line_id || !l.quantity) continue;
+    await repo.incrementPoLineReceived({
+      client,
+      brand,
+      po_line_id: l.po_line_id,
+      qty_received: Math.abs(Number(l.quantity)),
+    });
+  }
+  await repo.rollupPoReceived({ client, brand, po_id });
+
+  const after = await repo.outstandingPoLines({ client, brand, po_id });
+  const stillDue = after.reduce(
+    (sum, l) => sum + Math.max(0, Number(l.qty_outstanding) || 0),
+    0,
+  );
+  const nextStatus = stillDue > 0 ? "partially_received" : "received";
+
+  // Status is set directly rather than through advancePo: a delivery is a
+  // fact, and refusing to record it because the PO was left sitting in
+  // 'approved' instead of being walked through in_transit/arrived_lagos would
+  // make the paperwork override what is physically on the shelf.
+  if (po.status !== nextStatus && !["closed", "cancelled"].includes(po.status)) {
+    await repo.setPoStatus({ client, brand, id: po_id, status: nextStatus });
+    await repo.addPoHistory({
+      client,
+      brand,
+      h: {
+        po_id,
+        from_status: po.status,
+        to_status: nextStatus,
+        changed_by: user?.user_id,
+        changed_by_source: "system",
+        notes: "Goods received in Stock",
+      },
+    });
+    events.emit("po.status", { brand, po_id, status: nextStatus });
+  }
+
+  await A(
+    brand,
+    user?.user_id,
+    "purchasing.po.receive",
+    PO_TABLE,
+    po_id,
+    { lines: lines.length, still_outstanding: stillDue, status: nextStatus },
+    request_id,
+  );
+  return { po_id, status: nextStatus, still_outstanding: stillDue };
+}
+
 async function cancelPo({ brand, user, request_id, id, reason }) {
   return transaction(async (client) => {
     const po = await repo.getPo({ client, brand, id });
@@ -768,5 +884,7 @@ module.exports = {
   submitPo,
   approvePo,
   advancePo,
+  poReceivingPlan,
+  applyReceiptToPo,
   cancelPo,
 };

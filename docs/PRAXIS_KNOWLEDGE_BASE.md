@@ -645,8 +645,22 @@ goods-received notes (GRNs), and supplier invoices.
 **What's inside.** Purchase Orders · **GRNs** · **GRN & Invoices** · Suppliers.
 **Common tasks.**
 - *Raise a purchase order?* Purchasing → **New Purchase Order** / **Create PO**.
+  Step 1 picks the supplier, the **order currency** (CNY/USD/NGN…), the **FX
+  rate to NGN** (locked onto the order, so later rate moves never rewrite what
+  it cost), the **delivery location** and expected date. Step 2 adds lines:
+  pick the **base product** being bought — that is what lets the warehouse
+  receive it later — plus quantity, unit price and optional wig attributes.
+  A line with no base product still orders fine (freight, samples, a style not
+  yet in the catalogue); it just can't be received straight into stock.
 - *Add a supplier?* Purchasing → **New Supplier** / **Create Supplier**.
-- *Receive goods against a PO?* Purchasing → **GRNs** (goods-received note).
+- *Receive goods against a PO?* Open the PO → **Receive goods**. It opens Stock
+  → **Goods Reception** already filled in: the delivery location from the
+  order, and every line still due at its outstanding quantity. Change any
+  quantity to what actually arrived and post — stock goes up and the PO
+  updates itself. A short delivery leaves the balance **outstanding** and the
+  PO reads **partially received**; click **Receive goods** again when the rest
+  lands. (Purchasing → **GRNs** remains the formal goods-received note for
+  supplier-invoice matching.)
 - *Match a supplier invoice?* Purchasing → **GRN & Invoices**.
 > Big POs may need approval before they're sent — the Hub routes them through the
 > approval workflow.

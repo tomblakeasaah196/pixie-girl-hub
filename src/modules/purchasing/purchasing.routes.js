@@ -106,6 +106,12 @@ router.post(
   controller.createPo,
 );
 router.get("/purchase-orders/:poId", can("view"), controller.getPo);
+// Receiving plan — the outstanding lines Stock → Goods Reception prefills.
+router.get(
+  "/purchase-orders/:poId/receiving-plan",
+  can("view"),
+  controller.poReceivingPlan,
+);
 router.post("/purchase-orders/:poId/pdf", can("view"), controller.poPdf);
 router.post("/purchase-orders/:poId/submit", can("edit"), controller.submitPo);
 router.post(

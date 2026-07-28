@@ -165,6 +165,11 @@ export interface SalesOrder {
   created_by: string;
   created_at: string;
   updated_at: string;
+  /** Set when the order was cancelled — surfaced in the Orders archive so an
+   *  operator can see when and why before restoring. `SELECT so.*` already
+   *  returns both; they were simply absent from this type. */
+  cancelled_at?: string | null;
+  cancellation_reason?: string | null;
   /** Pre-orders (000086): order carries a made-to-order line; ready_by is the
    *  deadline shown in the Pre-orders tab (placement + max production weeks). */
   is_preorder?: boolean;

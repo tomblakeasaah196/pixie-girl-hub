@@ -22,6 +22,9 @@ async function listOrders(req, res) {
       brand: req.brand,
       filters: {
         status: req.query.status,
+        // Orders is a working list — the Archive drawer asks for cancelled
+        // rows explicitly via `status=cancelled`, everything else hides them.
+        exclude_status: req.query.exclude_status,
         contact_id: req.query.contact_id,
         sales_channel: req.query.sales_channel,
         sales_campaign_id: req.query.sales_campaign_id,
@@ -103,6 +106,20 @@ const addPayment = async (req, res) =>
 const cancelOrder = async (req, res) =>
   res.json({
     data: await service.cancelOrder({ ...base(req), id: req.params.id }),
+  });
+// Two-phase: without `confirm` the service dry-runs and may answer
+// { requires_confirmation: true, short_lines } so the UI can warn that restoring
+// brings those lines back as pre-orders. That answer is a legitimate result, not
+// a failure, so it returns 200 — the client reads the flag rather than having to
+// unpack a thrown ApiError body. Genuine refusals (not cancelled, deposit
+// forfeited) still throw from the service and surface as 409.
+const restoreOrder = async (req, res) =>
+  res.json({
+    data: await service.restoreOrder({
+      ...base(req),
+      id: req.params.id,
+      confirm: req.body.confirm === true,
+    }),
   });
 const setOrderStatus = async (req, res) =>
   res.json({
@@ -281,6 +298,7 @@ module.exports = {
   getStatusAutomations,
   addPayment,
   cancelOrder,
+  restoreOrder,
   createPaymentLink,
   setDeliveryFee,
   getPaymentSettings,

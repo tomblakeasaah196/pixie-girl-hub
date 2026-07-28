@@ -227,6 +227,17 @@ chasing deliveries, matching stray in-store terminal payments, and payment setti
   (falls back to picking a chat manually if not). Free either way — this is
   a plain click-to-chat link, not the metered WhatsApp Business API, so it
   never triggers a per-message charge; the sender still taps Send themselves.
+- *Where did a cancelled order go / how do I un-cancel one?* Cancelled orders
+  are hidden from the Orders list so it stays a working view. Open them with the
+  **archive icon** beside the **Part-paid** button on Sales → **Orders**
+  (`/sales?tab=orders`) — it lists every cancelled order with a **Restore**
+  button. (You can also still pick **Cancelled** in the status dropdown to see
+  them inline.) Restoring returns the order to the exact status it held before
+  it was cancelled and re-holds its stock. If some items have since sold out,
+  it asks first and tells you those lines will come back as **pre-orders** —
+  everything still in stock is re-held immediately. An order whose **deposit was
+  forfeited** when it was cancelled cannot be restored: that money was already
+  posted to income, so raise a new order instead.
 - *See pre-orders and their production deadlines?* Sales → **Pre-orders** tab
   (`/sales?tab=preorders`). Every order carrying a made-to-order line, soonest
   ship-by first, with overdue/urgent flags — click through to the order.

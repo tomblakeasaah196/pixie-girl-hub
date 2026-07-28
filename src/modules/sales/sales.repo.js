@@ -344,6 +344,14 @@ async function listOrders({
     where.push(`so.status = $${i++}`);
     params.push(filters.status);
   }
+  // Cancelled orders are archive material, not working list rows — the Orders
+  // table hides them by default and the Archive drawer asks for them
+  // explicitly. An explicit `status` filter always wins, so choosing
+  // "Cancelled" in the status dropdown still works.
+  if (filters.exclude_status && !filters.status) {
+    where.push(`so.status <> $${i++}`);
+    params.push(filters.exclude_status);
+  }
   if (filters.contact_id) {
     where.push(`so.contact_id = $${i++}`);
     params.push(filters.contact_id);
@@ -1198,6 +1206,34 @@ async function findPendingTwins({
  * (rather than silently vanishing). abandonment_reason is the existing TEXT
  * column for auto-cancellation rationale.
  */
+/**
+ * The status an order sat in immediately before it was cancelled, read from the
+ * state-history trail so a restore returns it exactly where it was rather than
+ * guessing. NULL when the order has no recorded cancellation transition (legacy
+ * rows) — callers fall back to their own default.
+ */
+async function statusBeforeCancellation({ client, brand, id }) {
+  const { rows } = await ex(client)(
+    `SELECT from_status
+       FROM ${t(brand, "sales_order_state_history")}
+      WHERE order_id = $1 AND to_status = 'cancelled' AND from_status IS NOT NULL
+      ORDER BY changed_at DESC
+      LIMIT 1`,
+    [id],
+  );
+  return rows[0] ? rows[0].from_status : null;
+}
+
+/** Undo the cancellation stamp when an order is restored from the archive. */
+async function clearCancellation({ client, brand, id }) {
+  await ex(client)(
+    `UPDATE ${t(brand, "sales_orders")}
+        SET cancelled_at = NULL, cancellation_reason = NULL, abandonment_reason = NULL
+      WHERE order_id = $1`,
+    [id],
+  );
+}
+
 async function setCancellationReason({ client, brand, id, reason }) {
   await ex(client)(
     `UPDATE ${t(brand, "sales_orders")}
@@ -1431,6 +1467,8 @@ module.exports = {
   findNearDuplicates,
   findPendingTwins,
   setCancellationReason,
+  statusBeforeCancellation,
+  clearCancellation,
   setDeliveryFee,
   reportOrders,
   reportLines,

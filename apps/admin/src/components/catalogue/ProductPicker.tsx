@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Search, Package, Layers, Box, Sparkles } from "lucide-react";
+import { Search, Package, Layers, Box, Sparkles, Check, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { AnchoredDropdown } from "@/components/ui/AnchoredDropdown";
 import {
@@ -16,6 +16,12 @@ import {
  * (orders, quotations, invoices, POS), so the behaviour is identical across the
  * system. On pick it hands back a normalised `ProductHit`; the caller resolves
  * it into order lines via `resolvePick` (lib/product-search).
+ *
+ * In `multi` mode the rows become checkboxes: the dropdown stays open while the
+ * operator ticks several hits (across as many searches and kinds as they like),
+ * the picks collect in a chip tray, and one "Add N" press hands the whole batch
+ * to `onPickMany`. Restocking a factory order means twenty near-identical wigs —
+ * pick → add → reopen → pick, twenty times, is the wrong shape for that job.
  */
 
 const KIND_ICON: Record<ProductKind, typeof Package> = {
@@ -39,10 +45,18 @@ function KIND_ICON_EL({ kind }: { kind: ProductKind }) {
 
 export function ProductPicker({
   onPick,
+  onPickMany,
+  multi,
+  addLabel = "Add",
   autoFocus,
   className,
 }: {
-  onPick: (hit: ProductHit) => void;
+  onPick?: (hit: ProductHit) => void;
+  /** Batch handler — required when `multi` is set. */
+  onPickMany?: (hits: ProductHit[]) => void;
+  multi?: boolean;
+  /** Verb on the batch button, e.g. "Add 3 lines". */
+  addLabel?: string;
   autoFocus?: boolean;
   className?: string;
 }) {
@@ -51,8 +65,26 @@ export function ProductPicker({
   const [hits, setHits] = useState<ProductHit[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<ProductHit[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounce = useRef<ReturnType<typeof setTimeout>>();
+
+  const isSelected = (h: ProductHit) =>
+    selected.some((s) => s.kind === h.kind && s.id === h.id);
+  const toggle = (h: ProductHit) =>
+    setSelected((prev) =>
+      prev.some((s) => s.kind === h.kind && s.id === h.id)
+        ? prev.filter((s) => !(s.kind === h.kind && s.id === h.id))
+        : [...prev, h],
+    );
+  const commit = () => {
+    if (!selected.length) return;
+    onPickMany?.(selected);
+    setSelected([]);
+    setQ("");
+    setHits([]);
+    setOpen(false);
+  };
 
   const runSearch = (term: string) => {
     setQ(term);
@@ -82,7 +114,13 @@ export function ProductPicker({
   };
 
   const pick = (h: ProductHit) => {
-    onPick(h);
+    if (multi) {
+      toggle(h);
+      // Deliberately leave the panel open and the query intact — ticking the
+      // next of five near-identical wigs shouldn't cost a re-search.
+      return;
+    }
+    onPick?.(h);
     setQ("");
     setHits([]);
     setOpen(false);
@@ -145,41 +183,102 @@ export function ProductPicker({
               No {kind ? KIND_NOUN[kind] : "products"} match “{q.trim()}”.
             </div>
           ) : (
-            hits.map((h) => (
-              <button
-                key={h.id}
-                type="button"
-                onClick={() => pick(h)}
-                className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-text-primary/[0.06] transition-colors"
-              >
-                <div className="w-9 h-9 shrink-0 rounded-[8px] overflow-hidden bg-text-primary/[0.06] grid place-items-center">
-                  {h.image_url ? (
-                    <img
-                      src={h.image_url}
-                      alt=""
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <KIND_ICON_EL kind={h.kind} />
+            hits.map((h) => {
+              const on = multi && isSelected(h);
+              return (
+                <button
+                  key={h.id}
+                  type="button"
+                  onClick={() => pick(h)}
+                  aria-pressed={multi ? on : undefined}
+                  className={cn(
+                    "flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-text-primary/[0.06] transition-colors",
+                    on && "bg-accent/[0.08]",
                   )}
-                </div>
-                <div className="min-w-0">
-                  <div className="text-[13px] font-semibold truncate">
-                    {h.label}
+                >
+                  {multi && (
+                    <span
+                      className={cn(
+                        "w-[18px] h-[18px] shrink-0 rounded-[5px] border grid place-items-center transition-colors",
+                        on
+                          ? "border-accent/60 bg-accent/80 text-white"
+                          : "border-line",
+                      )}
+                    >
+                      {on && <Check className="w-3 h-3" strokeWidth={3} />}
+                    </span>
+                  )}
+                  <div className="w-9 h-9 shrink-0 rounded-[8px] overflow-hidden bg-text-primary/[0.06] grid place-items-center">
+                    {h.image_url ? (
+                      <img
+                        src={h.image_url}
+                        alt=""
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <KIND_ICON_EL kind={h.kind} />
+                    )}
                   </div>
-                  <div className="text-[11px] text-text-faint truncate">
-                    {h.sub}
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-semibold truncate">
+                      {h.label}
+                    </div>
+                    <div className="text-[11px] text-text-faint truncate">
+                      {h.sub}
+                    </div>
                   </div>
-                </div>
-              </button>
-            ))
+                </button>
+              );
+            })
           )}
         </AnchoredDropdown>
       </div>
 
+      {/* Step 3 (multi only) — the batch tray. Selections survive changing the
+          search term and the kind, so one basket can mix bases and bundles. */}
+      {multi && selected.length > 0 && (
+        <div className="glass rounded-[11px] border border-accent/25 p-2.5 space-y-2">
+          <div className="flex flex-wrap gap-1.5">
+            {selected.map((h) => (
+              <span
+                key={`${h.kind}:${h.id}`}
+                className="inline-flex items-center gap-1.5 max-w-full pl-2.5 pr-1.5 h-7 rounded-[8px] bg-accent/[0.1] border border-accent/30 text-[12px] text-text-primary"
+              >
+                <span className="truncate">{h.label}</span>
+                <button
+                  type="button"
+                  aria-label={`Remove ${h.label}`}
+                  onClick={() => toggle(h)}
+                  className="shrink-0 text-text-muted hover:text-danger"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setSelected([])}
+              className="text-[11px] text-text-muted hover:text-text-primary"
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={commit}
+              className="inline-flex items-center gap-1.5 px-3 h-8 rounded-[9px] text-[12px] font-semibold bg-accent/80 text-white hover:bg-accent transition-colors"
+            >
+              {addLabel} {selected.length}
+            </button>
+          </div>
+        </div>
+      )}
+
       {!kind && (
         <p className="text-[11px] text-text-faint">
           Choose Base, Styled or Bundle — then the search box unlocks.
+          {multi && " Tick as many as you need, then add them all at once."}
         </p>
       )}
     </div>

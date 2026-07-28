@@ -5,11 +5,11 @@ import { Button } from "@/components/ui/primitives";
 import { formatDateTime } from "@/lib/format";
 import { ErrorState, Select, NumberField } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
-import { Drawer } from "@/components/ui/Drawer";
 import { VariantPicker } from "@/components/catalogue/VariantPicker";
 import { useAuthStore } from "@/stores/auth";
 import { toastReport } from "@/lib/error-report";
 import { stockApi } from "./api";
+import { MovementDetailModal } from "./MovementDetailModal";
 import {
   useStockMovements,
   useStockLocations,
@@ -24,6 +24,7 @@ import {
   InfoBanner,
   Pagination,
   ProductCell,
+  SourceCell,
 } from "./parts";
 
 /* ── movement type options for filter + form ───────────────────────── */
@@ -214,7 +215,7 @@ export default function MovementsTab() {
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
-  const [detailRow, setDetailRow] = useState<StockMovement | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(null);
 
   // Single movement-type filter ("" = all); passed straight to the API.
   const apiMovementType = typeFilter || undefined;
@@ -263,7 +264,9 @@ export default function MovementsTab() {
         const sku = r.sku ?? "";
         const variantName = r.variant_name ?? "";
         const productName = r.product_name ?? "";
-        const ref = r.notes ?? r.reference_id ?? "";
+        const ref = [r.notes, r.reference_number, r.customer_name]
+          .filter(Boolean)
+          .join(" ");
         return (
           sku.toLowerCase().includes(q) ||
           variantName.toLowerCase().includes(q) ||
@@ -319,7 +322,11 @@ export default function MovementsTab() {
         key: "product",
         header: "Product",
         render: (r) => (
-          <ProductCell line={r} variantId={r.variant_id} className="max-w-[240px]" />
+          <ProductCell
+            line={r}
+            variantId={r.variant_id}
+            className="max-w-[240px]"
+          />
         ),
       },
       {
@@ -352,14 +359,12 @@ export default function MovementsTab() {
         ),
       },
       {
+        // The source document, not a raw UUID: "which order was this sale?"
+        // is the question this column exists to answer.
         key: "reference",
-        header: "Reference",
-        width: "160px",
-        render: (r) => (
-          <span className="text-[13px] text-text-muted truncate max-w-[150px] block">
-            {r.notes ?? r.reference_id ?? "—"}
-          </span>
-        ),
+        header: "Source",
+        width: "190px",
+        render: (r) => <SourceCell movement={r} />,
       },
       {
         key: "who",
@@ -463,8 +468,8 @@ export default function MovementsTab() {
         rows={filteredRows}
         rowKey={(r) => r.movement_id}
         loading={isLoading}
-        onRowClick={(r) => setDetailRow(r)}
-        activeKey={detailRow?.movement_id ?? null}
+        onRowClick={(r) => setDetailId(r.movement_id)}
+        activeKey={detailId}
         empty={{
           icon: <ArrowUpDown className="w-6 h-6" />,
           title: "No stock movements",
@@ -490,70 +495,11 @@ export default function MovementsTab() {
         locations={locations}
       />
 
-      {/* Movement detail drawer */}
-      <MovementDetailDrawer
-        row={detailRow}
-        onClose={() => setDetailRow(null)}
-        locationMap={locationMap}
+      {/* Movement detail — same modal the Overview strip opens */}
+      <MovementDetailModal
+        movementId={detailId}
+        onClose={() => setDetailId(null)}
       />
     </div>
-  );
-}
-
-/* ── Movement Detail Drawer ────────────────────────────────────────── */
-function MovementDetailDrawer({
-  row,
-  onClose,
-  locationMap,
-}: {
-  row: StockMovement | null;
-  onClose: () => void;
-  locationMap: Map<string, string>;
-}) {
-  const detailRows: Array<[string, string]> = row
-    ? [
-        ["Movement #", row.movement_number],
-        ["Type", row.movement_type.replace(/_/g, " ")],
-        [
-          "Product",
-          [row.product_name, row.variant_name].filter(Boolean).join(" — ") ||
-            row.sku ||
-            "—",
-        ],
-        ["SKU", row.sku ?? "—"],
-        [
-          "Location",
-          locationMap.get(row.location_id) ?? row.location_id.slice(0, 8),
-        ],
-        ["Quantity", row.quantity > 0 ? `+${row.quantity}` : String(row.quantity)],
-        ["Unit cost (NGN)", row.unit_cost_ngn ?? "—"],
-        ["Sales channel", row.sales_channel ?? "—"],
-        ["Reference type", row.reference_type ?? "—"],
-        ["Reference #", row.notes ?? row.reference_id ?? "—"],
-        ["Performed by", row.performed_by_name ?? (row.performed_by ? "—" : "System")],
-        ["Date / time", row.performed_at ? fmtDate(row.performed_at) : "—"],
-      ]
-    : [];
-
-  return (
-    <Drawer open={!!row} onClose={onClose} title="Movement Detail">
-      {row && (
-        <div className="flex flex-col gap-3 p-1">
-          {detailRows.map(([label, value]) => (
-            <div
-              key={label}
-              className="flex items-center justify-between gap-4 py-2 border-b hairline last:border-0"
-            >
-              <span className="text-[12px] text-text-faint uppercase tracking-wide">
-                {label}
-              </span>
-              <span className="text-[13px] text-text-primary text-right truncate max-w-[60%]">
-                {value}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </Drawer>
   );
 }

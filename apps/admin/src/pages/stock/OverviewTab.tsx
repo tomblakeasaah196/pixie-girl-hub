@@ -20,7 +20,13 @@ import {
   useStockAlerts,
   useStockMovements,
 } from "./hooks";
-import { MovementTypePill, SeverityPill, LocationTypePill } from "./parts";
+import {
+  MovementTypePill,
+  SeverityPill,
+  LocationTypePill,
+  SourceCell,
+} from "./parts";
+import { MovementDetailModal } from "./MovementDetailModal";
 import type {
   StockLocation,
   StockLevel,
@@ -60,6 +66,8 @@ export default function OverviewTab() {
 
   const can = useAuthStore((s) => s.can);
   const [exporting, setExporting] = useState(false);
+  // Clicking a movement opens the same detail modal the Movements tab uses.
+  const [detailId, setDetailId] = useState<string | null>(null);
 
   // Full stock-on-hand snapshot .xlsx — every tracked SKU, server-side and
   // un-paginated (All Locations summary + one sheet per location), not the
@@ -216,6 +224,20 @@ export default function OverviewTab() {
       key: "type",
       header: "Type",
       render: (r) => <MovementTypePill type={r.movement_type} />,
+    },
+    {
+      key: "source",
+      header: "Source",
+      render: (r) => <SourceCell movement={r} />,
+    },
+    {
+      key: "who",
+      header: "Processed by",
+      render: (r) => (
+        <span className="text-[12px] text-text-muted truncate block max-w-[140px]">
+          {r.performed_by_name ?? (r.performed_by ? "—" : "System")}
+        </span>
+      ),
     },
     {
       key: "qty",
@@ -394,12 +416,23 @@ export default function OverviewTab() {
         rows={(movements.data?.data as StockMovement[]) ?? []}
         rowKey={(r) => r.movement_id}
         loading={movements.isLoading}
+        onRowClick={(r) => setDetailId(r.movement_id)}
+        activeKey={detailId}
         toolbar={
           <div className="flex items-center gap-2">
             <ArrowDownUp className="w-4 h-4 text-text-muted" />
             <span className="text-[13px] font-semibold">Recent Movements</span>
+            <span className="text-[11px] text-text-faint ml-auto">
+              Click a row for full detail
+            </span>
           </div>
         }
+      />
+
+      {/* Movement detail — order / adjustment behind the movement */}
+      <MovementDetailModal
+        movementId={detailId}
+        onClose={() => setDetailId(null)}
       />
     </div>
   );

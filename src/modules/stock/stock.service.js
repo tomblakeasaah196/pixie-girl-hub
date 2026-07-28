@@ -338,6 +338,18 @@ function listMovements({ brand, filters, page, page_size }) {
   const offset = (page - 1) * page_size;
   return repo.listMovements({ brand, filters, page, page_size, offset });
 }
+/**
+ * One movement with its source document and the other lines of the same
+ * operation. Backs the Movement Detail modal: what moved, from which document,
+ * through which channel, and who processed it.
+ */
+async function getMovement({ brand, movement_id }) {
+  const movement = await repo.getMovementById({ brand, movement_id });
+  if (!movement) throw new NotFoundError("Stock movement not found");
+  const siblings = await repo.siblingMovements({ brand, movement });
+  return { ...movement, related_movements: siblings };
+}
+
 async function recordMovement({ brand, user, request_id, input }) {
   return transaction(async (client) => {
     const m = await applyMovement({
@@ -1281,6 +1293,7 @@ module.exports = {
   listLevels,
   variantStock,
   listMovements,
+  getMovement,
   recordMovement,
   deductForSale,
   receiveStock,

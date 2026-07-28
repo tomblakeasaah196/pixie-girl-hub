@@ -3,6 +3,7 @@ import type {
   StockLocation,
   StockLevel,
   StockMovement,
+  StockMovementDetail,
   StockAdjustment,
   StockTransfer,
   StockAlert,
@@ -62,6 +63,12 @@ export const stockApi = {
     page?: number;
     page_size?: number;
   }) => api.get<Paginated<StockMovement>>(`/stock/movements${qs(params)}`),
+
+  /** One movement with its source document (order / adjustment / transfer /
+   *  shipment), the channel it came through, who processed it, and the other
+   *  lines of the same operation. */
+  getMovement: (id: string) =>
+    api.get<StockMovementDetail>(`/stock/movements/${id}`),
 
   /** Download the WHOLE movement log as .xlsx (all rows, not the current page),
    *  optionally filtered by type/location. Server-side + un-paginated. */

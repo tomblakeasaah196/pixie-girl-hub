@@ -8614,6 +8614,26 @@ paths:
         x-is-write: true,
         responses: { "201": { description: Recorded } },
       }
+  /stock/movements/{movId}:
+    get:
+      {
+        summary: Get one movement with its source document (order / adjustment / transfer / shipment),
+        tags: [stock],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: movId,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "stock.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Movement detail } },
+      }
   /stock/adjustments:
     get:
       {

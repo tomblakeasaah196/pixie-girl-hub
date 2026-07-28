@@ -466,6 +466,17 @@ stock between locations, transfers, adjustments, low-stock alerts.
 - *Do a stock count / stocktake?* Stock → **Adjustments** → **New Stocktake**.
 - *Log a write-off / damage?* Stock → **Adjustments** → **Log Write-off** /
   **Log Stock Movement**.
+- *See where a movement came from — which order, which channel, who processed
+  it?* Click any row in **Overview → Recent Movements** or in the **Movements**
+  tab. The **movement detail** panel names the source document (sales order,
+  adjustment, transfer, goods reception), the customer and sales channel, who
+  processed it, and the other lines of the same operation, with an
+  **Open order** / **Open adjustments** link straight to it.
+- *A movement looks wrong — how do I get it corrected?* Open the movement →
+  **This looks wrong — request a correction**. Movements are append-only, so
+  this files a **stock adjustment** (system count vs the correct physical
+  count) and submits it to the normal approval queue on Stock →
+  **Adjustments**; the count changes only once it is approved and posted.
 - *See what's running low?* Stock → **Alerts** tab.
 - *Add a warehouse / location?* Stock → **Locations** → **Add Location**.
 

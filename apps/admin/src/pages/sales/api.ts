@@ -36,6 +36,10 @@ function qs(params: Record<string, unknown>) {
 
 export interface OrderListParams {
   status?: string;
+  /** Hide one status from the working list — the Orders table passes
+   *  'cancelled' so archived rows only appear in the Archive drawer.
+   *  Ignored by the API when an explicit `status` is also set. */
+  exclude_status?: string;
   contact_id?: string;
   sales_channel?: string;
   sales_campaign_id?: string;
@@ -86,6 +90,34 @@ export const createPaymentLink = (
 
 export const cancelOrder = (id: string) =>
   api.post<SalesOrder>(`${S}/orders/${id}/cancel`);
+
+/** A line the archive restore can no longer re-hold from stock. */
+export interface RestoreShortLine {
+  line_id: string;
+  variant_id: string;
+  name: string | null;
+  wanted: number;
+  available: number;
+}
+
+/**
+ * Result of restoring a cancelled order. The dry run returns 200 with
+ * `requires_confirmation: true` when some lines can no longer be re-held — the
+ * caller shows the warning, then calls again with `confirm: true` to bring those
+ * lines back as pre-orders. Genuine refusals (not cancelled, deposit forfeited)
+ * throw an ApiError instead.
+ */
+export interface RestoreOrderResult {
+  requires_confirmation: boolean;
+  order_number?: string;
+  short_lines?: RestoreShortLine[];
+  message?: string;
+  restored_to?: string;
+  preorder_line_count?: number;
+}
+
+export const restoreOrder = (id: string, confirm = false) =>
+  api.post<RestoreOrderResult>(`${S}/orders/${id}/restore`, { confirm });
 
 // Manual fulfilment-stage move (assigned / order_ready / dispatched / completed).
 // Payment + cancellation states are managed automatically by the backend.

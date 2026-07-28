@@ -1781,6 +1781,179 @@ async function recordSubscriptionCharge({
   });
 }
 
+/**
+ * Restore a cancelled order from the archive.
+ *
+ * Cancelling is not a status flip — it releases the order's stock hold and, when
+ * a deposit had been paid, forfeits it to Other Income with a journal entry. So
+ * a restore has to put the stock back, and must refuse outright where money has
+ * already moved on the books.
+ *
+ * Two-phase by design. The first call is a DRY RUN: it reports whether every
+ * line can be re-reserved and returns `{ requires_confirmation: true }` with the
+ * short lines when it can't. The caller shows that warning; only a second call
+ * with `confirm: true` commits, restoring the short lines as PRE-ORDERS exactly
+ * as a new order would. This keeps "the units you had are gone" an explicit
+ * human decision instead of a silent downgrade.
+ *
+ * Refused when a deposit was forfeited: reversing that journal entry is a
+ * finance judgement, not an Orders-screen button.
+ */
+async function restoreOrder({ brand, user, request_id, id, confirm = false }) {
+  return transaction(async (client) => {
+    const order = await repo.findById({ client, brand, id });
+    if (!order) throw new NotFoundError("Order");
+    if (order.status !== "cancelled")
+      throw new AppError(
+        "INVALID_STATE",
+        `Only a cancelled order can be restored (this one is ${order.status})`,
+        409,
+        { user_message: "This order isn't cancelled, so there's nothing to restore." },
+      );
+    if (money(order.amount_paid_ngn || 0).gt(0))
+      throw new AppError(
+        "DEPOSIT_FORFEITED",
+        "Order carried a deposit that was forfeited on cancellation",
+        409,
+        {
+          user_message:
+            "This order had a deposit that was forfeited to income when it was cancelled. Restoring it would need a finance correction — raise a new order instead.",
+        },
+      );
+
+    const loc = await stockRepo.getDefaultLocation({ client, brand });
+    const lines = (order.lines || []).filter((l) => l.variant_id);
+
+    // Dry run: what can actually be re-held right now?
+    const short = [];
+    if (loc) {
+      for (const line of lines) {
+        const level = await stockRepo.variantWithStockForProduct({
+          client,
+          brand,
+          product_id: line.product_id,
+          location_id: loc.location_id,
+          quantity: line.quantity,
+        });
+        if (!level || level.variant_id !== line.variant_id) {
+          const { rows } = await client.query(
+            `SELECT COALESCE(available, 0) AS available
+               FROM ${brand}.stock_levels
+              WHERE variant_id = $1 AND location_id = $2`,
+            [line.variant_id, loc.location_id],
+          );
+          const available = rows[0] ? Number(rows[0].available) : 0;
+          if (available < line.quantity) {
+            short.push({
+              line_id: line.line_id,
+              variant_id: line.variant_id,
+              name: line.product_name_snapshot || null,
+              wanted: line.quantity,
+              available,
+            });
+          }
+        }
+      }
+    }
+
+    if (short.length && !confirm) {
+      // Nothing has been written — the transaction simply ends here.
+      return {
+        requires_confirmation: true,
+        order_number: order.order_number,
+        short_lines: short,
+        message:
+          short.length === 1
+            ? "1 item is no longer in stock. Restoring will bring it back as a pre-order."
+            : `${short.length} items are no longer in stock. Restoring will bring them back as pre-orders.`,
+      };
+    }
+
+    // Commit: re-hold everything that can be held. A short line simply stays
+    // unheld and the order is flagged as a pre-order below.
+    const restoredPreorderLines = [];
+    if (loc) {
+      for (const line of lines) {
+        await client.query("SAVEPOINT pgh_restore");
+        try {
+          await stockService.reserveForOrder({
+            client,
+            brand,
+            variant_id: line.variant_id,
+            location_id: loc.location_id,
+            quantity: line.quantity,
+            reference_id: order.order_id,
+            user_id: user.user_id,
+          });
+          await client.query("RELEASE SAVEPOINT pgh_restore");
+        } catch (err) {
+          await client.query("ROLLBACK TO SAVEPOINT pgh_restore");
+          await client.query("RELEASE SAVEPOINT pgh_restore").catch(() => {});
+          restoredPreorderLines.push(line);
+          logger.info(
+            { err: err.message, order_id: id, line_id: line.line_id },
+            "restore: line could not be re-held — kept as pre-order",
+          );
+        }
+      }
+    } else {
+      restoredPreorderLines.push(...lines);
+    }
+
+    // Back to wherever it was before the cancel; pending_payment is the safe
+    // default for legacy rows with no recorded transition.
+    const previous =
+      (await repo.statusBeforeCancellation({ client, brand, id })) ||
+      "pending_payment";
+    const o = await repo.setStatus({ client, brand, id, status: previous });
+    await repo.clearCancellation({ client, brand, id });
+
+    if (restoredPreorderLines.length) {
+      const policy = await repo.getPreorderPolicy({ client, brand });
+      const weeks = policy.max_weeks || policy.min_weeks || 0;
+      await repo.markOrderPreorder({
+        client,
+        brand,
+        order_id: id,
+        ready_by: weeks
+          ? new Date(Date.now() + weeks * 7 * 86_400_000).toISOString().slice(0, 10)
+          : null,
+        min_weeks: policy.min_weeks,
+        max_weeks: policy.max_weeks,
+      });
+      await repo.markLinesPreorder({
+        client,
+        brand,
+        line_ids: restoredPreorderLines.map((l) => l.line_id),
+      });
+    }
+
+    await audit({
+      business: brand,
+      user_id: user.user_id,
+      action_key: "sales.order.restore",
+      target_type: "sales_order",
+      target_id: id,
+      request_id,
+      metadata: {
+        restored_to: previous,
+        preorder_lines: restoredPreorderLines.length,
+      },
+    });
+    events.emit("order.restored", {
+      brand,
+      order_id: id,
+      restored_to: previous,
+    });
+    return {
+      requires_confirmation: false,
+      order: o,
+      restored_to: previous,
+      preorder_line_count: restoredPreorderLines.length,
+    };
+  });
+}
+
 async function cancelOrder({ brand, user, request_id, id, reason }) {
   return transaction(async (client) => {
     const order = await repo.findById({ client, brand, id });
@@ -2854,6 +3027,7 @@ module.exports = {
   addPayment,
   recordSubscriptionCharge,
   cancelOrder, // orders are cancelled (the 'archive' equivalent), never hard-deleted
+  restoreOrder, // un-cancel from the archive: re-holds stock, refuses forfeited deposits
   setOrderStatus,
   getStatusAutomationStates,
   listQuotations,

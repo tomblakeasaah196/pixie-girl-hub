@@ -113,6 +113,27 @@ export function useCancelOrder() {
   });
 }
 
+/**
+ * Un-cancel an archived order. Call with `confirm: false` first — if the result
+ * has `requires_confirmation`, show its `short_lines` warning and call again
+ * with `confirm: true` to restore those lines as pre-orders.
+ */
+export function useRestoreOrder() {
+  const qc = useQueryClient();
+  const biz = useBiz();
+  return useMutation({
+    mutationFn: ({ id, confirm }: { id: string; confirm: boolean }) =>
+      salesApi.restoreOrder(id, confirm),
+    onSuccess: (data, { id }) => {
+      // A dry run changed nothing — don't churn the caches for it.
+      if (data.requires_confirmation) return;
+      qc.invalidateQueries({ queryKey: ["sales-orders", biz] });
+      qc.invalidateQueries({ queryKey: ["sales-orders", biz, "detail", id] });
+      qc.invalidateQueries({ queryKey: ["sales-kpis", biz] });
+    },
+  });
+}
+
 export function useSetOrderStatus() {
   const qc = useQueryClient();
   const biz = useBiz();

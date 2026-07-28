@@ -265,6 +265,12 @@ const reportExport = z.object({
   sales_channel: z.string().max(40).optional(),
 });
 
+// Archive restore. `confirm` is the operator's explicit "yes, bring it back as
+// a pre-order" after the dry run reported lines that can no longer be re-held.
+const orderRestore = z.object({
+  confirm: z.boolean().optional(),
+});
+
 const mw = (s) => (req, _res, next) => {
   req.body = s.parse(req.body ?? {});
   next();
@@ -290,6 +296,7 @@ module.exports = {
   validateCancellationReview: mw(cancellationReview),
   validateSetDeliveryFee: mw(setDeliveryFee),
   validateOrderStatusSet: mw(orderStatusSet),
+  validateOrderRestore: mw(orderRestore),
   validateReportExport: mwQuery(reportExport),
   orderCreate,
   orderUpdate,

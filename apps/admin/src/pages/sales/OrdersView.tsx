@@ -6,12 +6,13 @@ import {
   useState,
 } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ShoppingBag, Search } from "lucide-react";
+import { ShoppingBag, Search, Archive } from "lucide-react";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Pill, MoneyText } from "@/components/ui/primitives";
 import { formatDate, formatTime } from "@/lib/format";
 import { Select, ErrorState } from "@/components/ui/controls";
 import { useOrders } from "./hooks";
+import { OrdersArchiveModal } from "./OrdersArchiveModal";
 import {
   ORDER_STATUS,
   ORDER_STATUS_OPTIONS,
@@ -302,6 +303,9 @@ export function OrdersView() {
   const [status, setStatus] = useState(persisted.status);
   const [search, setSearch] = useState(persisted.search);
   const [partPaid, setPartPaid] = useState(persisted.partPaid);
+  // Archive drawer (cancelled orders). Deliberately NOT persisted — it's a
+  // look-up, not a filter the list should reopen into.
+  const [archiveOpen, setArchiveOpen] = useState(false);
   const [page, setPage] = useState(persisted.page);
   const [sp, setSp] = useSearchParams();
 
@@ -361,6 +365,10 @@ export function OrdersView() {
 
   const { data, isLoading, isError, refetch } = useOrders({
     status: status || undefined,
+    // Cancelled orders live in the Archive drawer, not the working list. An
+    // explicit pick of "Cancelled" in the status dropdown still shows them —
+    // the API ignores exclude_status whenever status is set.
+    exclude_status: status ? undefined : "cancelled",
     search: search || undefined,
     part_paid: partPaid || undefined,
     page,
@@ -477,6 +485,15 @@ export function OrdersView() {
                 >
                   Part-paid
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setArchiveOpen(true)}
+                  title="Archived (cancelled) orders"
+                  aria-label="Archived orders"
+                  className="h-[38px] w-[38px] shrink-0 grid place-items-center rounded-[10px] border border-line text-text-muted hover:text-text-primary hover:bg-text-primary/[0.05] transition-colors"
+                >
+                  <Archive className="h-4 w-4" />
+                </button>
               </>
             }
           />
@@ -511,6 +528,12 @@ export function OrdersView() {
           </div>
         </div>
       )}
+
+      <OrdersArchiveModal
+        open={archiveOpen}
+        onClose={() => setArchiveOpen(false)}
+        onRestored={refetch}
+      />
     </>
   );
 }

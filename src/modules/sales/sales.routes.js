@@ -40,6 +40,10 @@ router.post("/orders", can("create"), v.validateOrderCreate, c.createOrder);
 // Declared before "/orders/:id" so the literal path isn't shadowed by :id.
 router.get("/orders/status-automations", can("view"), c.getStatusAutomations);
 router.get("/orders/:id", can("view"), c.getById);
+// The order's Stylist Studio job — order-scoped, gated by sales.view (NOT the
+// service_jobs module's stylist own-scope), so seeing the order is enough to
+// see its studio progress.
+router.get("/orders/:id/service-job", can("view"), c.getOrderServiceJob);
 router.post("/orders/:id/receipt", can("view"), c.receiptPdf);
 router.patch("/orders/:id", can("edit"), v.validateOrderUpdate, c.updateOrder);
 

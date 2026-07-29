@@ -219,9 +219,13 @@ export interface OrderServiceJob {
   created_at: string;
 }
 
+// Read the order's Stylist Studio job THROUGH the order (sales.view), not the
+// service_jobs list endpoint (which is stylist own-scoped). A salesperson is
+// never the assigned stylist, so the old path returned an empty list for them
+// and the Order drawer misreported "Studio: not opened yet".
 export const getOrderServiceJob = (orderId: string) =>
   api.get<PaginatedResponse<OrderServiceJob>>(
-    `/service-jobs${qs({ sales_order_id: orderId, page_size: 1 })}`,
+    `${S}/orders/${orderId}/service-job`,
   );
 
 /** The delivery attached to this order. */

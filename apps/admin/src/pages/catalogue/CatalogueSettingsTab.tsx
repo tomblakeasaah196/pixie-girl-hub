@@ -460,83 +460,93 @@ function LaceLadderCard({
         </div>
       ) : (
         <div className="space-y-2.5">
-          {rows.map((r, i) => (
-            <div
-              key={i}
-              className="grid grid-cols-[88px_1fr_110px_110px_auto_28px] gap-2.5 items-end"
-            >
-              <Field label="Code">
-                <input
-                  value={r.lace_code}
-                  disabled={!canEdit}
-                  onChange={(e) => patch(i, { lace_code: e.target.value })}
-                  placeholder="13X4"
-                  className="w-full h-[40px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] uppercase outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
-                />
-              </Field>
-              <Field label="Label">
-                <input
-                  value={r.label}
-                  disabled={!canEdit}
-                  onChange={(e) => patch(i, { label: e.target.value })}
-                  placeholder="13×4 Frontal"
-                  className="w-full h-[40px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
-                />
-              </Field>
-              <Field label="Premium (₦)">
-                <NumberField
-                  value={String(r.premium_ngn ?? 0)}
-                  onChange={(v) => patch(i, { premium_ngn: Number(v) || 0 })}
-                  suffix="₦"
-                />
-              </Field>
-              <Field label="Premium ($)">
-                <NumberField
-                  value={r.premium_usd != null ? String(r.premium_usd) : ""}
-                  onChange={(v) =>
-                    patch(i, {
-                      premium_usd: v.trim() === "" ? null : Number(v) || 0,
-                    })
+          {rows.map((r, i) => {
+            const deleteBtn = canEdit ? (
+              serverCodes.has(r.lace_code) ? (
+                // Exists on the server → delete goes to Trash (with a
+                // replacement pick if it's in use).
+                <button
+                  type="button"
+                  title="Delete lace construction"
+                  onClick={() =>
+                    setDeleting({ code: r.lace_code, label: r.label })
                   }
-                  suffix="$"
-                  placeholder="—"
-                />
-              </Field>
-              <div className="pb-1.5">
-                <Toggle
-                  checked={r.is_active}
-                  disabled={!canEdit}
-                  onChange={(v) => patch(i, { is_active: v })}
-                  label="Active"
-                />
-              </div>
-              {canEdit &&
-                (serverCodes.has(r.lace_code) ? (
-                  // Exists on the server → delete goes to Trash (with a
-                  // replacement pick if it's in use).
-                  <button
-                    type="button"
-                    title="Delete lace construction"
-                    onClick={() =>
-                      setDeleting({ code: r.lace_code, label: r.label })
+                  className="text-text-faint hover:text-danger transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              ) : (
+                // Unsaved local row → just drop it from the list.
+                <button
+                  type="button"
+                  title="Remove"
+                  onClick={() => removeRow(i)}
+                  className="text-text-faint hover:text-text-primary transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )
+            ) : null;
+
+            return (
+              <div
+                key={i}
+                className="rounded-[14px] border border-line bg-text-primary/[0.03] p-3.5 sm:border-0 sm:bg-transparent sm:p-0 sm:rounded-none grid grid-cols-2 sm:grid-cols-[88px_1fr_110px_110px_auto_28px] gap-2.5 sm:items-end"
+              >
+                <Field label="Code">
+                  <input
+                    value={r.lace_code}
+                    disabled={!canEdit}
+                    onChange={(e) => patch(i, { lace_code: e.target.value })}
+                    placeholder="13X4"
+                    className="w-full h-[40px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] uppercase outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+                  />
+                </Field>
+                <Field label="Label">
+                  <input
+                    value={r.label}
+                    disabled={!canEdit}
+                    onChange={(e) => patch(i, { label: e.target.value })}
+                    placeholder="13×4 Frontal"
+                    className="w-full h-[40px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+                  />
+                </Field>
+                <Field label="Premium (₦)">
+                  <NumberField
+                    value={String(r.premium_ngn ?? 0)}
+                    onChange={(v) => patch(i, { premium_ngn: Number(v) || 0 })}
+                    suffix="₦"
+                  />
+                </Field>
+                <Field label="Premium ($)">
+                  <NumberField
+                    value={r.premium_usd != null ? String(r.premium_usd) : ""}
+                    onChange={(v) =>
+                      patch(i, {
+                        premium_usd: v.trim() === "" ? null : Number(v) || 0,
+                      })
                     }
-                    className="pb-2.5 text-text-faint hover:text-danger transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                ) : (
-                  // Unsaved local row → just drop it from the list.
-                  <button
-                    type="button"
-                    title="Remove"
-                    onClick={() => removeRow(i)}
-                    className="pb-2.5 text-text-faint hover:text-text-primary transition-colors"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                ))}
-            </div>
-          ))}
+                    suffix="$"
+                    placeholder="—"
+                  />
+                </Field>
+                <div className="col-span-2 sm:col-span-1 flex items-center justify-between sm:block sm:pb-1.5">
+                  <Toggle
+                    checked={r.is_active}
+                    disabled={!canEdit}
+                    onChange={(v) => patch(i, { is_active: v })}
+                    label="Active"
+                  />
+                  {deleteBtn && (
+                    <div className="sm:hidden">{deleteBtn}</div>
+                  )}
+                </div>
+                {deleteBtn && (
+                  <div className="hidden sm:block pb-2.5">{deleteBtn}</div>
+                )}
+              </div>
+            );
+          })}
 
           {canEdit && (
             <div className="flex items-center justify-between pt-1">

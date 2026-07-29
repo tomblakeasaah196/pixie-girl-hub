@@ -204,7 +204,10 @@ async function getMe(req, res) {
 async function updateMe(req, res) {
   const data = await service.updateMe({
     user_id: req.user.user_id,
-    display_name: req.body?.display_name,
+    // The self-service "Display name" edits a personal alias, never the
+    // canonical name of record. `display_name` is accepted as a legacy alias
+    // for the same field so an older client can't accidentally rename the user.
+    preferred_name: req.body?.preferred_name ?? req.body?.display_name,
     phone: req.body?.phone,
   });
   res.json({ data });

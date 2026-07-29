@@ -166,7 +166,7 @@ export function CostVaultGrants({
       </div>
 
       <div className="mt-3 flex items-center justify-between gap-3">
-        <span className="text-[12px] text-text-muted truncate">
+        <span className="min-w-0 text-[12px] text-text-muted truncate">
           {selected ? (
             <>
               Grant to{" "}

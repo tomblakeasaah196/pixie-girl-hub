@@ -190,7 +190,7 @@ function PreorderCard({
             Production window shown to buyers — e.g. “ships in ~
             {minW || 4}–{maxW || 8} weeks”.
           </p>
-          <div className="grid grid-cols-[120px_120px_auto] gap-2.5 items-end">
+          <div className="grid grid-cols-2 sm:grid-cols-[120px_120px_auto] gap-2.5 items-end">
             <Field label="Min weeks">
               <NumberField
                 value={minW}
@@ -206,7 +206,7 @@ function PreorderCard({
               />
             </Field>
             {canEdit && (
-              <div className="pb-1.5">
+              <div className="col-span-2 sm:col-span-1 pb-1.5">
                 <Button
                   size="sm"
                   variant="primary"

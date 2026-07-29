@@ -224,7 +224,7 @@ function TasksSection() {
           <div className="space-y-2">
             {data.data.map((t) => (
               <Card key={t.task_id} className="flex items-center justify-between gap-3 p-3">
-                <span className="truncate text-sm text-text-primary">{t.title}</span>
+                <span className="min-w-0 flex-1 truncate text-sm text-text-primary">{t.title}</span>
                 <Pill tone={t.status === "done" ? "success" : "neutral"}>{t.status}</Pill>
               </Card>
             ))}

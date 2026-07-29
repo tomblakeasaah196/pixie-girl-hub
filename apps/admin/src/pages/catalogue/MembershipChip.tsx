@@ -27,7 +27,7 @@ export function MembershipChip({
           aria-label="Not visible on storefront"
         />
       )}
-      <span className="truncate">{label}</span>
+      <span className="min-w-0 truncate">{label}</span>
       <button
         type="button"
         disabled={busy}

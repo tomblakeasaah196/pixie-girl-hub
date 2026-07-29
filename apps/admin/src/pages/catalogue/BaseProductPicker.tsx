@@ -46,7 +46,7 @@ export function BaseProductPicker({
     return (
       <div className="flex items-center gap-2 h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line">
         <Check className="w-4 h-4 text-success shrink-0" />
-        <span className="text-[13px] truncate flex-1">{label}</span>
+        <span className="text-[13px] truncate min-w-0 flex-1">{label}</span>
         {!disabled && (
           <button
             onClick={() => setOpen(true)}

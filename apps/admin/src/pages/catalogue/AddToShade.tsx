@@ -141,7 +141,7 @@ export function AddToShade({
               onClick={() => add(s.shade_id, s.name)}
               className="w-full px-[13px] py-2 text-left text-[13px] text-text-primary transition-colors hover:bg-text-primary/[0.06] disabled:opacity-60 disabled:hover:bg-transparent flex items-center justify-between gap-2"
             >
-              <span className="truncate">{s.name}</span>
+              <span className="min-w-0 truncate">{s.name}</span>
               {isCurrent && (
                 <span className="text-[10.5px] text-text-faint shrink-0">
                   current

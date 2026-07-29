@@ -21,6 +21,16 @@ const SOCKET_URL = import.meta.env.VITE_SOCKET_URL as string | undefined;
 
 let socket: Socket | null = null;
 
+// Rooms currently wanted by the app, independent of connection state. The
+// server forgets room membership on every disconnect (Socket.IO does not
+// persist it across reconnects), so on each "connect" — first connection AND
+// every automatic reconnect after a network blip, tab sleep, or backend
+// restart — we replay joins for everything in this set. Without this, a
+// dropped/restored connection leaves the client silently off its rooms:
+// real-time events stop arriving, query caches go stale, and nothing short
+// of a full page reload (which rebuilds this set from scratch) recovers.
+const joinedRooms = new Set<string>();
+
 export function getSocket(): Socket {
   if (socket) return socket;
   socket = io(SOCKET_URL ?? "/", {
@@ -29,6 +39,13 @@ export function getSocket(): Socket {
     withCredentials: true,
     auth: (cb: (data: Record<string, string>) => void) =>
       cb({ token: getAccessToken() ?? "" }),
+  });
+
+  // Re-join every wanted room on each (re)connection — see joinedRooms above.
+  socket.on("connect", () => {
+    for (const room of joinedRooms) {
+      socket!.emit("join", { room });
+    }
   });
 
   // Forward socket events as window CustomEvents so components can subscribe
@@ -148,17 +165,19 @@ export const rooms = {
   customerOnboarding: (brand: string) => `brand:${brand}:customer_onboarding`,
 };
 
-/** Join a Socket.io room (idempotent on the server). */
+/**
+ * Join a Socket.io room (idempotent on the server). Remembered in
+ * `joinedRooms` so it survives reconnects — see the "connect" handler in
+ * getSocket().
+ */
 export function joinRoom(room: string) {
+  joinedRooms.add(room);
   const s = getSocket();
-  if (!s.connected) {
-    s.once("connect", () => s.emit("join", { room }));
-  } else {
-    s.emit("join", { room });
-  }
+  if (s.connected) s.emit("join", { room });
 }
 
 export function leaveRoom(room: string) {
+  joinedRooms.delete(room);
   const s = getSocket();
   if (s.connected) s.emit("leave", { room });
 }

@@ -908,6 +908,31 @@ disciplinary queries, targets, rewards, recruitment, and HR analytics.
 - *Run payroll?* Payroll → start a new run, review, then disburse.
 - *See / send payslips?* Payroll → the run's payslips. (Staff see their own in
   Workspace → **My HR**.)
+- *Check why someone's pay is what it is / see one employee's full breakdown?*
+  Payroll → open the run → click the employee (or **Review**). The breakdown
+  drawer shows, for that person and that period: earnings and deductions side by
+  side, **every flagged attendance day** (lateness, absence, off-site clock-in)
+  with the reason, the money at stake, the system-raised query and **whatever the
+  employee wrote back**, plus every **addition** — commission, bonuses and
+  rewards — and the recoveries being taken. No need to leave Payroll for HR &
+  Staff to work it out.
+- *Waive or uphold a lateness / attendance deduction?* Payroll → open the run →
+  click the employee → **Lateness & attendance** → **Waive** or **Uphold** on
+  that line. Waiving stops that day costing the employee; upholding lets it
+  stand. A waive can be reversed (**Reverse waiver**) while the run is still
+  open. Needs `hr_payroll` **approve** rights — view-only and edit-only users see
+  the evidence but not the buttons.
+- *Apply the waivers and update the employee's pay?* After deciding, use
+  **Apply & recalculate** at the bottom of the drawer — it recomputes that one
+  employee's payslip from the current attendance, commission and bonus truth and
+  rolls the run's totals forward. The drawer warns when a slip is out of date and
+  shows what the net will become before you commit.
+- *Why can't I waive anything?* Decisions lock once the run is **approved** or
+  **paid**. Reverse the run first.
+- *Download a payslip PDF?* Payroll → the run's payslips → **PDF** (or **PDF** in
+  the breakdown drawer). It's a branded, full-page A4 payslip: employer identity,
+  employee and period, itemised earnings and deductions, net pay in figures and
+  words, employer contributions, and how the money was paid.
 
 ### 4.21 Performance
 **What it's for.** Appraisals and reviews — score and review your team over cycles —
@@ -1493,6 +1518,8 @@ Use this as the fast lookup. Format: **task → module (group) → link**.
 - Open an employee file → HR → `/hr/employees/<id>`
 - Approve leave → HR → `/hr` (Leave)
 - Run payroll → Payroll (People) → `/payroll`
+- See one employee's full pay breakdown (lateness, deductions, bonuses) → Payroll → open the run → click the employee
+- Waive or uphold a lateness deduction → Payroll → open the run → click the employee → Lateness & attendance (needs `hr_payroll` approve)
 - See my own payslip / request leave → Workspace → `/workspace` (My HR)
 - Clock in/out → top-bar Clock in button
 - Start an appraisal → Performance (People) → `/performance` (Cycles → New cycle)

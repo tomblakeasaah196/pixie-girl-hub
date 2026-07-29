@@ -49,6 +49,7 @@ export function EmojiPicker({ onPick, onClose }: Props) {
   const [query, setQuery] = useState("");
   const [recents, setRecents] = useState<string[]>(loadRecents);
   const rootRef = useRef<HTMLDivElement>(null);
+  const tabsRef = useRef<HTMLDivElement>(null);
 
   // Close on outside-click / Escape.
   useEffect(() => {
@@ -67,6 +68,14 @@ export function EmojiPicker({ onPick, onClose }: Props) {
       document.removeEventListener("keydown", onKey);
     };
   }, [onClose]);
+
+  // Keep the active category tab in view when tabs overflow the row.
+  useEffect(() => {
+    const row = tabsRef.current;
+    if (!row) return;
+    const activeEl = row.querySelector<HTMLElement>('[data-active="true"]');
+    activeEl?.scrollIntoView({ block: "nearest", inline: "center" });
+  }, [active]);
 
   function pick(emoji: string) {
     setRecents(pushRecent(emoji));
@@ -112,26 +121,34 @@ export function EmojiPicker({ onPick, onClose }: Props) {
 
       {/* Category tabs (hidden while searching) */}
       {!searching && (
-        <div className="flex items-center gap-0.5 px-1.5 py-1 border-b hairline overflow-x-auto">
-          {hasRecents && (
-            <TabButton
-              active={active === "recents"}
-              onClick={() => setActive("recents")}
-              title="Recently used"
-            >
-              <Clock className="w-4 h-4" />
-            </TabButton>
-          )}
-          {EMOJI_CATEGORIES.map((c) => (
-            <TabButton
-              key={c.id}
-              active={active === c.id}
-              onClick={() => setActive(c.id)}
-              title={c.label}
-            >
-              <span className="text-[16px] leading-none">{c.icon}</span>
-            </TabButton>
-          ))}
+        <div className="relative border-b hairline">
+          <div
+            ref={tabsRef}
+            className="flex items-center gap-0.5 px-1.5 py-1 overflow-x-auto scrollbar-none scroll-smooth"
+          >
+            {hasRecents && (
+              <TabButton
+                active={active === "recents"}
+                onClick={() => setActive("recents")}
+                title="Recently used"
+              >
+                <Clock className="w-4 h-4" />
+              </TabButton>
+            )}
+            {EMOJI_CATEGORIES.map((c) => (
+              <TabButton
+                key={c.id}
+                active={active === c.id}
+                onClick={() => setActive(c.id)}
+                title={c.label}
+              >
+                <span className="text-[16px] leading-none">{c.icon}</span>
+              </TabButton>
+            ))}
+          </div>
+          {/* Edge fades hint that the tab row scrolls horizontally */}
+          <div className="pointer-events-none absolute inset-y-0 left-0 w-4 bg-gradient-to-r from-panel/95 to-transparent" />
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-4 bg-gradient-to-l from-panel/95 to-transparent" />
         </div>
       )}
 
@@ -184,6 +201,7 @@ function TabButton({
     <button
       onClick={onClick}
       title={title}
+      data-active={active}
       className={cn(
         "grid place-items-center w-8 h-8 rounded-lg shrink-0 transition-colors",
         active

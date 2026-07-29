@@ -42,6 +42,17 @@ const getById = async (req, res) =>
   res.json({
     data: await service.getById({ brand: req.brand, id: req.params.id }),
   });
+// The order's Stylist Studio job — served THROUGH the order (sales.view), so a
+// salesperson who can see the order sees its studio progress even though they
+// are never the assigned stylist. `meta` sibling keeps the admin api client
+// from unwrapping the {data:[...]} envelope past the array.
+const getOrderServiceJob = async (req, res) => {
+  const jobs = await service.getOrderServiceJob({
+    brand: req.brand,
+    id: req.params.id,
+  });
+  res.json({ data: jobs, meta: { count: jobs.length } });
+};
 const receiptPdf = async (req, res) =>
   res.status(201).json({
     data: await service.receiptPdf({
@@ -290,6 +301,7 @@ const updatePaymentSettings = async (req, res) =>
 module.exports = {
   listOrders,
   getById,
+  getOrderServiceJob,
   receiptPdf,
   exportReport,
   createOrder,

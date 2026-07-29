@@ -31,6 +31,7 @@ const docCopy = require("../../services/document-copy");
 const emailRender = require("../email_campaigns/email-render");
 const stockService = require("../stock/stock.service");
 const stockRepo = require("../stock/stock.repo");
+const serviceJobsRepo = require("../service_jobs/service-jobs.repo");
 const rewigService = require("../catalogue/rewig.service");
 const businessConfig = require("../business_setup/business-config.repo");
 const paymentSettings = require("./payment-settings.service");
@@ -1134,6 +1135,28 @@ async function getById({ brand, id }) {
   o.payments = await repo.listPayments({ brand, order_id: id });
   o.discounts = await repo.listDiscounts({ brand, order_id: id });
   return o;
+}
+
+/**
+ * The Stylist Studio job opened for one order — read THROUGH the order and
+ * scoped to the order itself, never to the caller's stylist own-scope. Anyone
+ * who can view the order (sales.view) sees its studio progress. A salesperson
+ * is never the assigned stylist, so the service_jobs module's own-scope would
+ * otherwise (correctly) hide the job and the Order drawer would misreport
+ * "Studio: not opened yet" for a wig that is in fact well into styling. Returns
+ * 0-or-1 job as an array; the controller wraps it in a { data, meta } envelope
+ * so the admin client preserves the shape (a bare { data } gets unwrapped past
+ * the array).
+ */
+async function getOrderServiceJob({ brand, id }) {
+  const order = await repo.findById({ brand, id });
+  if (!order) throw new NotFoundError("Order");
+  const r = await serviceJobsRepo.listServiceJobs({
+    brand,
+    sales_order_id: id,
+    page_size: 1,
+  });
+  return r.data;
 }
 
 // Edit an order while it is still editable (draft / pending_payment): header
@@ -3067,6 +3090,7 @@ async function archiveReceiptPdf({ brand, order_id }) {
 module.exports = {
   listOrders,
   getById,
+  getOrderServiceJob,
   receiptPdf,
   archiveReceiptPdf,
   exportSalesReport,

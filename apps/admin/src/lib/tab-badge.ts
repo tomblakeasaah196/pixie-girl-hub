@@ -2,6 +2,12 @@
  * Reflects the combined unread notification count on the browser tab:
  *   "(n) Pixie Hub"  in the title
  *   Canvas-drawn dot on the favicon (maroon for bell)
+ *
+ * A ringing call OVERRIDES the badge entirely (see setRingingTitle): a
+ * background tab that says "📞 Ada Obi — calling" is the only thing that will
+ * pull an agent back in time, and "(3) Pixie Hub" would bury it. This module
+ * is the single owner of document.title so the two can never fight — the last
+ * unread count is remembered and re-applied the moment the ring stops.
  */
 
 const BASE_TITLE = "Pixie Hub";
@@ -9,6 +15,10 @@ const FAVICON_HREF = "/favicon.svg";
 const DOT_COLOR = "#A81D1D"; // accent red
 
 let cachedIcon: Promise<HTMLImageElement> | null = null;
+let lastCount = 0;
+let ringingLabel: string | null = null;
+let ringFlashTimer: ReturnType<typeof setInterval> | null = null;
+let ringFlashOn = true;
 
 function loadIcon(): Promise<HTMLImageElement> {
   cachedIcon ??= new Promise((resolve, reject) => {
@@ -31,8 +41,12 @@ function faviconLink(): HTMLLinkElement {
 }
 
 export async function applyTabBadge(count: number) {
+  lastCount = count;
   const label = count > 0 ? (count > 99 ? "99+" : String(count)) : "";
-  document.title = count > 0 ? `(${label}) ${BASE_TITLE}` : BASE_TITLE;
+  // A live ring owns the title until it stops.
+  if (!ringingLabel) {
+    document.title = count > 0 ? `(${label}) ${BASE_TITLE}` : BASE_TITLE;
+  }
 
   const link = faviconLink();
   if (!count) {
@@ -55,4 +69,36 @@ export async function applyTabBadge(count: number) {
   } catch {
     // Favicon badge is best-effort; title badge still works.
   }
+}
+
+/**
+ * Flash the tab title for an incoming call, or clear it (pass null) to hand
+ * the title back to the unread badge. The 1 s alternation is what makes a
+ * ringing tab catch the eye in a strip of a dozen identical ones.
+ */
+export function setRingingTitle(callerName: string | null) {
+  if (!callerName) {
+    if (ringFlashTimer) {
+      clearInterval(ringFlashTimer);
+      ringFlashTimer = null;
+    }
+    if (ringingLabel) {
+      ringingLabel = null;
+      void applyTabBadge(lastCount); // restore "(n) Pixie Hub"
+    }
+    return;
+  }
+
+  ringingLabel = callerName;
+  if (ringFlashTimer) return; // already flashing — just took a new name
+
+  ringFlashOn = true;
+  const paint = () => {
+    document.title = ringFlashOn
+      ? `📞 ${ringingLabel} — calling`
+      : `☎️ Answer the call`;
+    ringFlashOn = !ringFlashOn;
+  };
+  paint();
+  ringFlashTimer = setInterval(paint, 1000);
 }

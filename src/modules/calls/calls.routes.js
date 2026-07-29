@@ -16,15 +16,21 @@ const c = require("./calls.controller");
 const v = require("./calls.validator");
 const { requirePermission } = require("../../middleware/rbac");
 
-// Side-effects: durable webhook.received consumer + realtime relays.
+// Side-effects: durable webhook.received consumer + realtime relays + the
+// out-of-app ring push. Order matters only in spirit — the socket relay is
+// registered first so the in-app ring is always the first thing to fire.
 require("./calls.subscribers");
 require("./calls.realtime");
+require("./calls.push");
 
 const router = express.Router();
 const can = (action) => requirePermission("smartcomm", action);
 
 // ── Call log / history ─────────────────────────────────────
 router.get("/", can("view"), c.list);
+// Live-ring reconciliation — MUST stay above /:id or "ringing" is parsed as a
+// call id. Answers "what should I be ringing for?" after a socket gap.
+router.get("/ringing", can("view"), c.ringing);
 router.get("/:id", can("view"), c.get);
 
 // ── Live call actions ──────────────────────────────────────

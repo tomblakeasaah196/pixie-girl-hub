@@ -11,6 +11,38 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-29 — Display-name alias split from the name of record
+
+**Source:** Owner directive — "this edit can be the display name only, it
+can't be changing the user's full name on the system."
+
+**Files:** `000371_shared_user_preferred_name.sql` (new, shared).
+
+`shared.users.display_name` was doing two incompatible jobs: it was the
+name ~30 modules join for "created by / assigned / actor" labels (plus IAM
+Users & Access, org-chart holder resolution and audit snapshots), *and* it
+was the field the self-service **My Profile → Display name** edit wrote. So
+a user renaming themselves silently changed how their name appeared to
+everyone, system-wide, and overrode their official HR name in the admin
+user list.
+
+Adds `preferred_name` and splits the two roles cleanly:
+
+- `display_name` — the **canonical name of record**. Read everywhere a
+  person is shown to others. No longer writable by the profile edit.
+- `preferred_name` — the **personal alias**, self-editable, surfaced only
+  in the user's own account menu and their own profile. Nothing else joins
+  it, so editing it cannot change the user's name anywhere.
+
+Backfill: each account's current label is preserved as its alias (so no
+one's header changes on deploy), then `display_name` is reset to the linked
+contact's name for staff — purging any alias a prior self-edit had baked
+into the canonical column. External users (no linked contact) keep their
+admin-set `display_name`. Idempotent: the alias copy is guarded on NULL and
+the canonical reset is a no-op on re-run.
+
+---
+
 ## 2026-07-22 — Lace ladder Trash (delete + 15-day purge)
 
 **Source:** Owner directive (catalogue UX pass) — clean up duplicate lace

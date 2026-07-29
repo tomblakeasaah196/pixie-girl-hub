@@ -94,6 +94,22 @@ only access one business, there's nothing to switch.
     It doesn't need any permission and doesn't change the company logo, fonts,
     or anyone else's view. (That company-wide branding lives at **Settings →
     Appearance**, `/settings/appearance`, which only admins can open.)
+  - **My profile** shows two names, and only one of them is yours to edit.
+    **Full name** is your *official name on record* — it's read-only here,
+    managed by HR, and it's the name everyone else sees on the records you
+    touch (orders, approvals, tasks, the org chart, Users & Access, activity
+    logs). **Display name** is a *personal label* you can edit freely: it
+    appears only in your own account menu and on this profile, and changing
+    it never renames you anywhere else in the Hub. Leave it empty to just use
+    your official name. You can also edit your **phone**, change your
+    **email** (password + a 6-digit code sent to the new address), and
+    **Change photo**.
+    - *Change my name on the system?* You can't do it yourself — editing
+      **Display name** in My Profile only sets your personal label. Your
+      official name lives on your **contact record**, so ask HR or an admin
+      with `contacts:edit` to correct it in People → **Contacts** → your row
+      (`/contacts/<id>`) → **Edit** → *Display name*. That's the one that
+      updates everywhere the Hub shows your name.
 
 ### 2.4 Global search & command palette (⌘K)
 Press **⌘K** (Mac) or **Ctrl-K** (Windows) anywhere. From one box you can:

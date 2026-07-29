@@ -32,7 +32,8 @@ async function findById(userId) {
 
 async function findByEmail(email) {
   const { rows } = await query(
-    `SELECT u.user_id, u.email, u.display_name, u.password_hash, u.pin_hash,
+    `SELECT u.user_id, u.email, u.display_name, u.preferred_name,
+            u.password_hash, u.pin_hash,
             u.status, u.is_ceo, u.avatar_url,
             u.default_business_key, u.failed_login_count,
             COALESCE(u.email_verified, false) AS email_verified,
@@ -152,16 +153,22 @@ async function recordPinSuccess(userId, { ip, user_agent }) {
 
 async function findByIdWithProfile(userId) {
   const { rows } = await query(
-    `SELECT u.user_id, u.email, u.display_name, u.is_ceo, u.default_business_key,
+    `SELECT u.user_id, u.email, u.display_name, u.preferred_name,
+            u.is_ceo, u.default_business_key,
             u.avatar_url, u.phone, u.status,
             COALESCE(u.email_verified, false) AS email_verified,
             sp.job_title, sp.department, sp.employee_number,
+            -- The official name of record: the linked contact for staff,
+            -- falling back to the canonical account name for external users
+            -- (who have no contact). NEVER the self-editable alias.
+            COALESCE(c.display_name, u.display_name) AS full_name,
             COALESCE(
               (SELECT array_agg(business_key) FROM shared.user_business_access uba WHERE uba.user_id = u.user_id),
               '{}'
             ) AS available_businesses
        FROM shared.users u
        LEFT JOIN shared.staff_profiles sp ON sp.profile_id = u.staff_profile_id
+       LEFT JOIN shared.contacts c ON c.contact_id = sp.contact_id
       WHERE u.user_id = $1
       LIMIT 1`,
     [userId],
@@ -179,12 +186,21 @@ async function setEmailVerified(userId) {
   );
 }
 
-async function updateUserProfile(userId, { display_name, avatar_url, phone }) {
+// Self-service profile edits (My Profile) may touch ONLY these fields.
+// display_name — the canonical name of record read across the whole system —
+// is deliberately NOT writable here: a user's own profile edit can never
+// change how their name appears to anyone else. The personal alias lives in
+// preferred_name; the official name is changed by HR (via the contact) or an
+// admin at provisioning.
+async function updateUserProfile(
+  userId,
+  { preferred_name, avatar_url, phone },
+) {
   const sets = [];
   const vals = [userId];
-  if (display_name !== undefined) {
-    vals.push(display_name);
-    sets.push(`display_name = $${vals.length}`);
+  if (preferred_name !== undefined) {
+    vals.push(preferred_name);
+    sets.push(`preferred_name = $${vals.length}`);
   }
   if (avatar_url !== undefined) {
     vals.push(avatar_url);

@@ -94,7 +94,10 @@ export function toUser(u: AuthUser): User {
   const roleNames = u.role_names ?? [];
   return {
     id: u.user_id,
-    name: u.display_name || u.email.split("@")[0],
+    // The header chip is the user's OWN view, so it prefers their personal
+    // alias. Everywhere the user is shown to others reads the canonical name
+    // of record (display_name), which self-service editing never changes.
+    name: u.preferred_name || u.display_name || u.email.split("@")[0],
     email: u.email,
     // Prefer the most specific identity we have: CEO / Factory Manager keep
     // their well-known labels; otherwise show a named RBAC role, then fall

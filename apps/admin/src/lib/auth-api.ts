@@ -12,6 +12,12 @@ export interface AuthUser {
   user_id: string;
   email: string;
   display_name: string;
+  /**
+   * Personal display alias, shown only in this user's own header + profile.
+   * Null until they set one — the client then falls back to display_name.
+   * Editing it never changes the official name of record anywhere else.
+   */
+  preferred_name?: string | null;
   /** Profile photo URL, if set — carried on login so the header shows it immediately. */
   avatar_url?: string | null;
   is_ceo: boolean;
@@ -167,7 +173,15 @@ export async function changePassword(
 export interface MyProfile {
   user_id: string;
   email: string;
+  /**
+   * The official name of record (HR/contact for staff, account name for
+   * external users). Read-only on the profile — changed only by HR.
+   */
+  full_name: string;
+  /** The canonical account name (kept for back-compat; not shown directly). */
   display_name: string;
+  /** The self-editable personal display alias. Null until the user sets one. */
+  preferred_name: string | null;
   avatar_url: string | null;
   phone: string | null;
   job_title: string | null;
@@ -182,7 +196,8 @@ export async function getMe(): Promise<MyProfile> {
 }
 
 export async function updateMe(data: {
-  display_name?: string;
+  /** The personal display alias — never the official name of record. */
+  preferred_name?: string;
   phone?: string;
 }): Promise<MyProfile> {
   return api.patch<MyProfile>("/auth/me", data);

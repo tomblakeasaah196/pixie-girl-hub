@@ -1,18 +1,17 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  Plus,
-  Boxes,
-  ShieldCheck,
-  Factory,
-  Upload,
-  Image as ImageIcon,
-} from "lucide-react";
+import { Plus, Boxes, ShieldCheck, Factory, Upload } from "lucide-react";
 import { Button, Card, EmptyState, Pill } from "@/components/ui/primitives";
 import { ErrorState } from "@/components/ui/controls";
 import { useAuthStore } from "@/stores/auth";
 import { useBaseProducts, type BaseProduct } from "@/lib/catalogue";
-import { SearchBox, CardGrid, CardGridSkeleton } from "./parts";
+import {
+  SearchBox,
+  CardGrid,
+  CardGridSkeleton,
+  CardShell,
+  CardImage,
+} from "./parts";
 import { CostVaultGrants } from "./CostVaultGrants";
 import { BulkImportModal } from "./BulkImportModal";
 
@@ -122,24 +121,11 @@ function BaseCard({ p, onOpen }: { p: BaseProduct; onOpen: () => void }) {
     .filter(Boolean)
     .join(" · ");
   return (
-    <button
-      onClick={onOpen}
+    <CardShell
+      onOpen={onOpen}
       className="text-left glass rounded-[var(--radius)] shadow-glass p-4 transition-all hover:border-accent/40 hover:-translate-y-0.5 focus:outline-none focus:border-accent/50"
     >
-      <div className="aspect-[4/3] -mx-4 -mt-4 mb-3 overflow-hidden rounded-t-[var(--radius)] bg-text-primary/[0.04]">
-        {p.primary_image_url ? (
-          <img
-            src={p.primary_image_url}
-            alt={p.name}
-            loading="lazy"
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="w-full h-full grid place-items-center text-text-faint">
-            <ImageIcon className="w-7 h-7" />
-          </div>
-        )}
-      </div>
+      <CardImage url={p.primary_image_url} name={p.name} />
       <div className="flex items-start justify-between gap-2 mb-2">
         <span className="font-mono text-[10.5px] text-accent-glow">
           {p.product_code}
@@ -165,6 +151,6 @@ function BaseCard({ p, onOpen }: { p: BaseProduct; onOpen: () => void }) {
           <Factory className="w-3 h-3" /> Pre-order ready
         </Pill>
       )}
-    </button>
+    </CardShell>
   );
 }

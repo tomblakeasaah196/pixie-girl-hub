@@ -330,7 +330,7 @@ export default function AdjustmentsTab() {
                     {adj.adjustment_type.replace(/_/g, " ")}
                   </Pill>
                   <ProductsSummary lines={adj.lines ?? []} />
-                  <span className="text-[12px] text-text-muted truncate">
+                  <span className="min-w-0 text-[12px] text-text-muted truncate">
                     {locationMap[adj.location_id] ?? adj.location_id}
                   </span>
                   <span

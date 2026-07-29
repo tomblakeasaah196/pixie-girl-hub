@@ -1160,15 +1160,15 @@ async function tasksForUserPage({ client, brand, userId, page = 1, page_size = 1
     `SELECT task_id, title, status, priority, due_at, reference_type
        FROM shared.tasks
       WHERE business = $1 AND assigned_to = $2 AND is_deleted = false
-        AND status <> 'cancelled'
-      ORDER BY (status = 'done') ASC, due_at ASC NULLS LAST
+        AND status NOT IN ('done', 'cancelled')
+      ORDER BY due_at ASC NULLS LAST
       LIMIT $3 OFFSET $4`,
     [brand, userId, pageSize, offset],
   );
   const { rows: cr } = await exec(client)(
     `SELECT count(*)::int AS total FROM shared.tasks
       WHERE business = $1 AND assigned_to = $2 AND is_deleted = false
-        AND status <> 'cancelled'`,
+        AND status NOT IN ('done', 'cancelled')`,
     [brand, userId],
   );
   return { data: rows, page: p, page_size: pageSize, total: cr[0].total };

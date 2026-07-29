@@ -116,7 +116,7 @@ export function AddToBundle({
               onClick={() => add(b.bundle_id, b.display_name)}
               className="w-full px-[13px] py-2 text-left text-[13px] text-text-primary transition-colors hover:bg-text-primary/[0.06] disabled:opacity-60 disabled:hover:bg-transparent flex items-center justify-between gap-2"
             >
-              <span className="truncate">{b.display_name}</span>
+              <span className="min-w-0 truncate">{b.display_name}</span>
               {inIt && (
                 <span className="shrink-0 flex items-center gap-1 text-[10.5px] text-success">
                   <Check className="w-3.5 h-3.5" /> added

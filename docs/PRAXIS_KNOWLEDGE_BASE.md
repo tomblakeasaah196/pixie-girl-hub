@@ -1099,6 +1099,40 @@ messages across WhatsApp, SMS, and other channels in one place.
   Instagram), which the hourly watchdog keeps subscribed — see
   `docs/INSTAGRAM_APP_REPLY_SYNC.md`.
 
+**Answering WhatsApp voice calls.** Customers tap the call button in the
+brand's WhatsApp chat and it rings agents **inside the Hub** — browser +
+headset, no phone system. You need `smartcomm` access to hear the ring and
+**reply** permission on WhatsApp to answer. The conversation's assigned agent
+rings first; after 15 seconds unanswered, everyone rings.
+- *Answer a call?* Press **Answer** on the ring — wherever it appears. If
+  you're already in that customer's chat the ring shows as a banner at the top
+  of the conversation; anywhere else in the Hub it's a card in the top-right;
+  with the Hub closed it's a notification on your phone or desktop with
+  **Answer** / **Decline** buttons. All three answer the same call. The first
+  answer of the session asks for **microphone** permission — allow it.
+- *Take calls when the Hub is closed or you're signed out?* Allow
+  **notifications** when the Hub asks (or Settings → **Notifications** →
+  `/settings/notifications` → *Incoming call* → Push). Tapping **Answer**
+  on that notification opens the Hub and connects the call — signing in first
+  if you were signed out. **On iPhone** this only works once the Hub is added
+  to your Home Screen (Share → *Add to Home Screen*), then opened from there.
+- *The ring appears but makes no sound?* Tap **Tap to enable ring sound** on
+  the ring card — browsers block audio until you've clicked the page once, and
+  one tap fixes it for the rest of the session. To silence rings deliberately,
+  turn the notification sound off in the notification bell menu.
+- *Covering both brands?* Calls for **every brand you have access to** ring
+  you, and each ring card names its brand. Answering doesn't move the app off
+  the brand you're working in.
+- *A call ended and it's asking for an outcome?* Every completed call needs a
+  disposition (deal closed, order placed, follow up, …). It's recorded on the
+  customer's conversation as a call card, next to their messages.
+- *Nobody answered?* The customer gets an automatic WhatsApp reply, a
+  **high-priority task** lands on the conversation's owner, and a *Missed
+  WhatsApp call* notification goes to them.
+- *Turn calling on for a number?* Messaging → the **settings gear** →
+  **WhatsApp** → *Voice calling* (needs `messaging_accounts`). See
+  `docs/WHATSAPP_CALLING.md`.
+
 ### 4.25 Org & Workflow
 **What it's for.** Company **structure, roles, and approvals** — the org chart,
 positions, roles, the permission matrix, and approval routing rules.

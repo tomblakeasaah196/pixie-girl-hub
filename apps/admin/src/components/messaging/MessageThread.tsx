@@ -64,6 +64,7 @@ import {
   isRichHtmlEmpty,
   textToMailHtml,
 } from "@/lib/html-mail";
+import { InThreadCallBanner } from "@/components/calls/InThreadCallBanner";
 import { RichMailEditor } from "@/components/marketing/RichMailEditor";
 import { UploadProgress } from "@/components/ui/UploadProgress";
 import type {
@@ -989,6 +990,12 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
           }
         />
       </div>
+
+      {/* Incoming / live WhatsApp call for THIS customer — rings right here
+          rather than as a corner toast the agent has to look away for, and
+          becomes the live-call strip once answered. Mounting this also tells
+          CallLayer to suppress its own toast for this conversation. */}
+      <InThreadCallBanner channelId={channelId} />
 
       {/* In-thread search */}
       {searchOpen && (

@@ -93,6 +93,68 @@ async function getUserName(user_id) {
 }
 
 /**
+ * Who can actually answer this call — the out-of-app ring audience.
+ *
+ * Mirrors smartcomm's customerThreadAudience, but narrowed to REPLY rights
+ * because claiming a call requires them (calls.service#claimCall asserts
+ * whatsapp/reply): pushing a ring to someone the API will refuse is a
+ * notification that can only frustrate. Members of the thread are included
+ * even without an explicit platform grant — they're already in the
+ * conversation — as is the assigned owner and every CEO.
+ *
+ * Deliberately NOT filtered by channel mute: muting a chat thread silences
+ * message noise, and a ringing customer is not noise. Inactive accounts never
+ * ring.
+ */
+async function findRingAudience({ brand, channel_id }) {
+  const { rows } = await query(
+    `SELECT u.user_id
+       FROM shared.users u
+      WHERE u.is_active = true
+        AND (
+          u.is_ceo = true
+          OR EXISTS (SELECT 1 FROM shared.message_channels mc
+                      WHERE mc.channel_id = $2 AND mc.assigned_to = u.user_id)
+          OR EXISTS (SELECT 1 FROM shared.channel_members cm
+                      WHERE cm.channel_id = $2 AND cm.user_id = u.user_id)
+          OR EXISTS (SELECT 1 FROM shared.smartcomm_platform_permissions p
+                      WHERE p.user_id = u.user_id AND p.business = $1
+                        AND p.platform = 'whatsapp' AND p.can_reply = true)
+        )`,
+    [brand, channel_id || null],
+  );
+  return rows.map((r) => r.user_id);
+}
+
+/**
+ * Rings this user should currently be hearing, for client reconciliation
+ * after a socket gap (reconnect, tab wake, cold app start from a push).
+ *
+ * This is deliberately the SQL twin of calls.realtime's routing, not a
+ * superset: a call still inside its owner-only window is returned to the
+ * assigned owner alone (their `user:{id}:calls` ring), and once `escalated_at`
+ * is set it is brand-wide (the `brand:{key}:calls` ring). Reconciling to
+ * anything wider — e.g. handing every ringing call to a CEO — would quietly
+ * undo owner-first: the reconnect read would start a ring the socket had
+ * deliberately withheld.
+ */
+async function findRingingForUser({ business, user_id }) {
+  const { rows } = await query(
+    `SELECT c.call_id, c.business, c.contact_id, c.channel_id, c.from_number,
+            c.caller_name, c.started_at, c.escalated_at,
+            mc.assigned_to
+       FROM shared.whatsapp_calls c
+       LEFT JOIN shared.message_channels mc ON mc.channel_id = c.channel_id
+      WHERE c.business = $1
+        AND c.status = 'ringing'
+        AND (c.escalated_at IS NOT NULL OR mc.assigned_to = $2)
+      ORDER BY c.started_at ASC`,
+    [business, user_id],
+  );
+  return rows;
+}
+
+/**
  * Atomic claim: exactly one agent wins the ringing call (first UPDATE
  * flips it to in_progress; everyone else sees zero rows and gets a clean
  * "already answered" error upstream).
@@ -258,6 +320,8 @@ module.exports = {
   findByCallIdUnscoped,
   getChannelOwner,
   getUserName,
+  findRingAudience,
+  findRingingForUser,
   claim,
   releaseClaim,
   markEnded,

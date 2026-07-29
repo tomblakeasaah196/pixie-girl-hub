@@ -70,6 +70,16 @@ interface Options {
   body?: Json;
   /** Use the public /api root (no /v1) instead of the protected /api/v1 base. */
   scope?: "v1" | "public";
+  /**
+   * Override X-Brand-Context for this ONE request instead of using the active
+   * brand. Almost nothing should need this — the active brand is the contract.
+   * The exception is a live WhatsApp call: a multi-brand agent rings for every
+   * brand they cover, and answering one must address the brand that is
+   * *calling*, not whichever brand the tab happens to be showing. Yanking the
+   * active brand mid-answer would remount the whole app under the agent's
+   * hands, so the call endpoints carry the brand explicitly instead.
+   */
+  brand?: string;
   /** Internal: set when this is a retry after a silent refresh. */
   _retried?: boolean;
 }
@@ -204,7 +214,13 @@ export function refreshAccessToken(): Promise<boolean> {
 }
 
 async function request<T>(path: string, opts: Options = {}): Promise<T> {
-  const { method = "GET", body, scope = "v1", _retried = false } = opts;
+  const {
+    method = "GET",
+    body,
+    scope = "v1",
+    brand: brandOverride,
+    _retried = false,
+  } = opts;
   const base = scope === "public" ? `${API_ROOT}/public` : API_BASE;
   const url = `${base}${path}`;
   // Auth routes are excluded from silent-refresh-and-retry (a 401 from
@@ -218,7 +234,7 @@ async function request<T>(path: string, opts: Options = {}): Promise<T> {
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (scope === "v1") {
     if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
-    const brand = brandContext();
+    const brand = brandOverride ?? brandContext();
     if (brand) headers["X-Brand-Context"] = brand;
     const active = activityHeader();
     if (active) headers["X-User-Activity"] = active;
@@ -556,6 +572,12 @@ export const api = {
     request<T>(path, { method: "PUT", body, scope }),
   delete: <T>(path: string, body?: Json, scope: Options["scope"] = "v1") =>
     request<T>(path, { method: "DELETE", body, scope }),
+  /** GET against an explicit brand rather than the active one — see Options.brand. */
+  getForBrand: <T>(path: string, brand?: string) =>
+    request<T>(path, { method: "GET", brand }),
+  /** POST against an explicit brand rather than the active one — see Options.brand. */
+  postForBrand: <T>(path: string, body?: Json, brand?: string) =>
+    request<T>(path, { method: "POST", body, brand }),
 };
 
 export { ApiError };

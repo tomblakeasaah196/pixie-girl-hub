@@ -158,6 +158,83 @@ self.addEventListener("fetch", (event) => {
   // Everything else: network only (API calls, media, dynamic requests)
 });
 
+// ── Push ───────────────────────────────────────────────────
+// Three shapes arrive here (see src/shared/push/push.service.js):
+//   kind absent / "generic"  ordinary notification — unchanged behaviour
+//   kind "call_ring"         a WhatsApp call is RINGING right now
+//   kind "call_cancel"       that ring is over (answered elsewhere / ended)
+//
+// A ring is not a notification, it's an interruption: it stays on screen until
+// dealt with (requireInteraction), vibrates, and carries Answer / Decline
+// buttons so the agent never has to hunt for the call inside the app.
+
+/** All open windows of the app, and whether any of them is actually on screen. */
+async function windowClients() {
+  return self.clients.matchAll({ type: "window", includeUncontrolled: true });
+}
+
+function hasVisibleClient(clients) {
+  return clients.some(
+    (c) => c.visibilityState === "visible" || c.focused === true,
+  );
+}
+
+/** Tell every open tab about a call push so the page can ring in-app. */
+function broadcast(clients, message) {
+  for (const client of clients) {
+    try {
+      client.postMessage(message);
+    } catch {
+      /* a client can go away between matchAll and postMessage */
+    }
+  }
+}
+
+async function handleCallRing(payload) {
+  const clients = await windowClients();
+  const data = payload.data || {};
+
+  // Hand the ring to the page whenever the agent is already looking at the
+  // Hub: the in-app experience (big Answer button, in-thread banner, ringtone)
+  // is strictly better than an OS chrome notification stacked on top of it,
+  // and this also covers the case where the socket died but push still works.
+  broadcast(clients, { type: "PGH_CALL_RING", data });
+  if (hasVisibleClient(clients)) return;
+
+  return self.registration.showNotification(payload.title || "Incoming call", {
+    body: payload.body || "",
+    tag: payload.tag || undefined,
+    renotify: payload.renotify !== false,
+    requireInteraction: payload.require_interaction !== false,
+    vibrate: payload.vibrate || [600, 250, 600, 250, 600],
+    icon: "/pwa-icon-192.svg",
+    badge: "/pwa-icon-192.svg",
+    actions: payload.actions || [
+      { action: "answer", title: "Answer" },
+      { action: "decline", title: "Decline" },
+    ],
+    data: {
+      kind: "call_ring",
+      url: data.answer_url || payload.url,
+      ...data,
+    },
+  });
+}
+
+async function handleCallCancel(payload) {
+  const clients = await windowClients();
+  const data = payload.data || {};
+  broadcast(clients, { type: "PGH_CALL_CANCEL", data });
+
+  // Close the ring notification wherever it is still sitting. requireInteraction
+  // means it would otherwise stay on the lock screen forever, inviting the
+  // agent to "answer" a call that ended minutes ago.
+  if (payload.tag) {
+    const open = await self.registration.getNotifications({ tag: payload.tag });
+    for (const n of open) n.close();
+  }
+}
+
 self.addEventListener("push", (event) => {
   if (!event.data) return;
   let payload = {};
@@ -166,6 +243,16 @@ self.addEventListener("push", (event) => {
   } catch {
     payload = { title: "Pixie Hub", body: event.data.text() };
   }
+
+  if (payload.kind === "call_ring") {
+    event.waitUntil(handleCallRing(payload));
+    return;
+  }
+  if (payload.kind === "call_cancel") {
+    event.waitUntil(handleCallCancel(payload));
+    return;
+  }
+
   const {
     title = "Pixie Hub",
     body = "",
@@ -183,18 +270,73 @@ self.addEventListener("push", (event) => {
   );
 });
 
-self.addEventListener("notificationclick", (event) => {
-  event.notification.close();
-  const url = event.notification.data?.url || "/notifications";
+// A push service may rotate an endpoint out from under us (browser update,
+// storage pressure, long idle). Without this the device goes quietly deaf: the
+// old row still exists server-side, every send 410s, and the agent stops
+// getting call rings with no visible symptom. Re-subscribe with the same VAPID
+// key so pushes keep landing; the next app load POSTs the new endpoint to
+// /push/subscribe (ensurePushSubscription), which is where the DB catches up —
+// the worker has no access token of its own.
+self.addEventListener("pushsubscriptionchange", (event) => {
   event.waitUntil(
     (async () => {
-      const all = await self.clients.matchAll({
-        type: "window",
-        includeUncontrolled: true,
-      });
+      const key =
+        event.oldSubscription?.options?.applicationServerKey ||
+        (await self.registration.pushManager.getSubscription())?.options
+          ?.applicationServerKey;
+      if (!key) return;
+      try {
+        await self.registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: key,
+        });
+      } catch {
+        /* the page will re-subscribe on next load */
+      }
+    })(),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  const data = event.notification.data || {};
+  event.notification.close();
+
+  // Answer / Decline on a ring notification. Neither is performed here: the
+  // service worker holds no access token (it lives in the page's memory), so
+  // both routes open the app on a URL that carries the intent and let the
+  // authenticated page do the claim or the reject. That also means a signed-out
+  // device lands on /login and still completes the action afterwards, which is
+  // the whole point of state 3.
+  let url = data.url || "/notifications";
+  if (data.kind === "call_ring") {
+    url =
+      event.action === "decline"
+        ? data.decline_url || data.url
+        : data.answer_url || data.url;
+  }
+
+  event.waitUntil(
+    (async () => {
+      const all = await windowClients();
       for (const client of all) {
         if ("focus" in client) {
           await client.focus();
+          // A focused tab can act on the intent without a navigation (which
+          // would remount the SPA and drop any live WebRTC session).
+          if (data.kind === "call_ring") {
+            try {
+              client.postMessage({
+                type:
+                  event.action === "decline"
+                    ? "PGH_CALL_DECLINE"
+                    : "PGH_CALL_ANSWER",
+                data,
+              });
+              return;
+            } catch {
+              /* fall through to navigate */
+            }
+          }
           if ("navigate" in client) await client.navigate(url);
           return;
         }

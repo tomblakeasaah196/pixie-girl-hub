@@ -4,6 +4,14 @@ import App from "./App";
 import "./styles/index.css";
 import "./i18n";
 import { registerServiceWorker } from "@/lib/push";
+import { captureCallIntentFromUrl } from "@/lib/call-intent";
+
+// A ring notification tapped on a signed-out device opens the app at
+// `?answer_call=<id>`. Lift that out of the URL BEFORE React renders: the
+// login bounce keeps only the pathname, so by the time CallLayer exists the
+// query string is long gone. Parked in sessionStorage, CallLayer claims it
+// after sign-in and answers the call that is still ringing.
+captureCallIntentFromUrl();
 
 // Registered here (not just post-login in NotificationManager) so the
 // offline-fallback shell is installed from the very first visit — e.g. the

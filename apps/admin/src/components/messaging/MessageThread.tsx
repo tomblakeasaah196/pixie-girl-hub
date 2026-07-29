@@ -126,6 +126,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
   const [recording, setRecording] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const emojiButtonRef = useRef<HTMLButtonElement>(null);
   // After a stock message (Online form link / WhatsApp handoff) is
   // inserted into the composer, this chip lets the operator persist any
   // edits as the new brand default. `token`/`value` let us swap the
@@ -1587,6 +1588,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
                   )}
                   <div className="relative">
                     <button
+                      ref={emojiButtonRef}
                       onClick={() => setEmojiOpen((v) => !v)}
                       className={cn(
                         "p-1 hover:text-text-primary",
@@ -1598,6 +1600,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
                     </button>
                     {emojiOpen && (
                       <EmojiPicker
+                        anchorRef={emojiButtonRef}
                         onPick={insertEmoji}
                         onClose={() => setEmojiOpen(false)}
                       />

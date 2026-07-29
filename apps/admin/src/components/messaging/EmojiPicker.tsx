@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
+import { createPortal } from "react-dom";
 import { Search, Clock } from "lucide-react";
 import { cn } from "@/lib/cn";
 import {
@@ -8,9 +16,15 @@ import {
 } from "@/lib/emoji-data";
 
 interface Props {
+  /** Trigger button the picker is anchored to; positioned via viewport rect, not CSS flow. */
+  anchorRef: RefObject<HTMLElement | null>;
   onPick: (emoji: string) => void;
   onClose: () => void;
 }
+
+const PICKER_WIDTH = 300;
+const PICKER_HEIGHT = 360;
+const VIEWPORT_MARGIN = 8;
 
 const RECENTS_KEY = "smartcomm.emoji.recents";
 const RECENTS_MAX = 24;
@@ -44,19 +58,57 @@ function pushRecent(emoji: string): string[] {
  * keyword search. Glassmorphism popover per the design canon; renders
  * plain Unicode glyphs so nothing loads from a CDN.
  */
-export function EmojiPicker({ onPick, onClose }: Props) {
+export function EmojiPicker({ anchorRef, onPick, onClose }: Props) {
   const [active, setActive] = useState<string>("recents");
   const [query, setQuery] = useState("");
   const [recents, setRecents] = useState<string[]>(loadRecents);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const tabsRef = useRef<HTMLDivElement>(null);
+
+  // Position as a fixed-viewport rect anchored to the trigger button, clamped
+  // so the popover always stays fully on-screen instead of clipping behind
+  // sidebars/panels or running off the viewport edge.
+  useLayoutEffect(() => {
+    function reposition() {
+      const anchor = anchorRef.current;
+      if (!anchor) return;
+      const rect = anchor.getBoundingClientRect();
+      let left = rect.right - PICKER_WIDTH;
+      left = Math.min(
+        left,
+        window.innerWidth - PICKER_WIDTH - VIEWPORT_MARGIN,
+      );
+      left = Math.max(left, VIEWPORT_MARGIN);
+
+      let top = rect.top - PICKER_HEIGHT - 8;
+      if (top < VIEWPORT_MARGIN) {
+        // Not enough room above the trigger — drop it below instead.
+        top = Math.min(
+          rect.bottom + 8,
+          window.innerHeight - PICKER_HEIGHT - VIEWPORT_MARGIN,
+        );
+      }
+      top = Math.max(top, VIEWPORT_MARGIN);
+
+      setPos({ top, left });
+    }
+    reposition();
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, true);
+    return () => {
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
+    };
+  }, [anchorRef]);
 
   // Close on outside-click / Escape.
   useEffect(() => {
     function onDown(e: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
-        onClose();
-      }
+      const target = e.target as Node;
+      if (rootRef.current?.contains(target)) return;
+      if (anchorRef.current?.contains(target)) return;
+      onClose();
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -67,7 +119,7 @@ export function EmojiPicker({ onPick, onClose }: Props) {
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
     };
-  }, [onClose]);
+  }, [onClose, anchorRef]);
 
   // Keep the active category tab in view when tabs overflow the row.
   useEffect(() => {
@@ -98,10 +150,13 @@ export function EmojiPicker({ onPick, onClose }: Props) {
       ? recents.map((e) => ({ e, k: "" }))
       : (activeCategory?.emojis ?? EMOJI_CATEGORIES[0].emojis);
 
-  return (
+  if (!pos) return null;
+
+  return createPortal(
     <div
       ref={rootRef}
-      className="absolute bottom-full mb-2 right-0 z-30 w-[300px] rounded-2xl border hairline bg-panel/95 backdrop-blur-xl shadow-2xl overflow-hidden"
+      style={{ top: pos.top, left: pos.left, width: PICKER_WIDTH }}
+      className="fixed z-[1000] rounded-2xl border hairline bg-panel/95 backdrop-blur-xl shadow-2xl overflow-hidden"
       role="dialog"
       aria-label="Emoji picker"
     >
@@ -182,7 +237,8 @@ export function EmojiPicker({ onPick, onClose }: Props) {
             : (activeCategory?.label ?? "")}
         </div>
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }
 

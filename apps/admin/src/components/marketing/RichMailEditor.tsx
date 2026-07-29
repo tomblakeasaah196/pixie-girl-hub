@@ -342,6 +342,7 @@ export function RichMailEditor({
   const [menu, setMenu] = useState<
     null | "personalise" | "emoji" | "color" | "size" | "spacing"
   >(null);
+  const emojiAnchorRef = useRef<HTMLDivElement>(null);
   const [customHex, setCustomHex] = useState("");
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -778,7 +779,7 @@ export function RichMailEditor({
         </ToolBtn>
 
         {/* Emoji */}
-        <div className="relative">
+        <div ref={emojiAnchorRef} className="relative">
           <ToolBtn
             title="Emoji"
             active={menu === "emoji"}
@@ -787,14 +788,13 @@ export function RichMailEditor({
             <Smile className="w-4 h-4" />
           </ToolBtn>
           {menu === "emoji" && (
-            <div className="absolute top-full mt-1.5 z-30 left-1/2 -translate-x-1/2">
-              <EmojiPicker
-                onPick={(emoji) => {
-                  editor.chain().focus().insertContent(emoji).run();
-                }}
-                onClose={() => setMenu(null)}
-              />
-            </div>
+            <EmojiPicker
+              anchorRef={emojiAnchorRef}
+              onPick={(emoji) => {
+                editor.chain().focus().insertContent(emoji).run();
+              }}
+              onClose={() => setMenu(null)}
+            />
           )}
         </div>
 

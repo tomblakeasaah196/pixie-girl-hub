@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
+import { createPortal } from "react-dom";
 import { Search, Clock } from "lucide-react";
 import { cn } from "@/lib/cn";
 import {
@@ -8,9 +16,15 @@ import {
 } from "@/lib/emoji-data";
 
 interface Props {
+  /** Trigger button the picker is anchored to; positioned via viewport rect, not CSS flow. */
+  anchorRef: RefObject<HTMLElement | null>;
   onPick: (emoji: string) => void;
   onClose: () => void;
 }
+
+const PICKER_WIDTH = 300;
+const PICKER_HEIGHT = 360;
+const VIEWPORT_MARGIN = 8;
 
 const RECENTS_KEY = "smartcomm.emoji.recents";
 const RECENTS_MAX = 24;
@@ -44,18 +58,57 @@ function pushRecent(emoji: string): string[] {
  * keyword search. Glassmorphism popover per the design canon; renders
  * plain Unicode glyphs so nothing loads from a CDN.
  */
-export function EmojiPicker({ onPick, onClose }: Props) {
+export function EmojiPicker({ anchorRef, onPick, onClose }: Props) {
   const [active, setActive] = useState<string>("recents");
   const [query, setQuery] = useState("");
   const [recents, setRecents] = useState<string[]>(loadRecents);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const tabsRef = useRef<HTMLDivElement>(null);
+
+  // Position as a fixed-viewport rect anchored to the trigger button, clamped
+  // so the popover always stays fully on-screen instead of clipping behind
+  // sidebars/panels or running off the viewport edge.
+  useLayoutEffect(() => {
+    function reposition() {
+      const anchor = anchorRef.current;
+      if (!anchor) return;
+      const rect = anchor.getBoundingClientRect();
+      let left = rect.right - PICKER_WIDTH;
+      left = Math.min(
+        left,
+        window.innerWidth - PICKER_WIDTH - VIEWPORT_MARGIN,
+      );
+      left = Math.max(left, VIEWPORT_MARGIN);
+
+      let top = rect.top - PICKER_HEIGHT - 8;
+      if (top < VIEWPORT_MARGIN) {
+        // Not enough room above the trigger — drop it below instead.
+        top = Math.min(
+          rect.bottom + 8,
+          window.innerHeight - PICKER_HEIGHT - VIEWPORT_MARGIN,
+        );
+      }
+      top = Math.max(top, VIEWPORT_MARGIN);
+
+      setPos({ top, left });
+    }
+    reposition();
+    window.addEventListener("resize", reposition);
+    window.addEventListener("scroll", reposition, true);
+    return () => {
+      window.removeEventListener("resize", reposition);
+      window.removeEventListener("scroll", reposition, true);
+    };
+  }, [anchorRef]);
 
   // Close on outside-click / Escape.
   useEffect(() => {
     function onDown(e: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
-        onClose();
-      }
+      const target = e.target as Node;
+      if (rootRef.current?.contains(target)) return;
+      if (anchorRef.current?.contains(target)) return;
+      onClose();
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -66,7 +119,15 @@ export function EmojiPicker({ onPick, onClose }: Props) {
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
     };
-  }, [onClose]);
+  }, [onClose, anchorRef]);
+
+  // Keep the active category tab in view when tabs overflow the row.
+  useEffect(() => {
+    const row = tabsRef.current;
+    if (!row) return;
+    const activeEl = row.querySelector<HTMLElement>('[data-active="true"]');
+    activeEl?.scrollIntoView({ block: "nearest", inline: "center" });
+  }, [active]);
 
   function pick(emoji: string) {
     setRecents(pushRecent(emoji));
@@ -89,10 +150,13 @@ export function EmojiPicker({ onPick, onClose }: Props) {
       ? recents.map((e) => ({ e, k: "" }))
       : (activeCategory?.emojis ?? EMOJI_CATEGORIES[0].emojis);
 
-  return (
+  if (!pos) return null;
+
+  return createPortal(
     <div
       ref={rootRef}
-      className="absolute bottom-full mb-2 right-0 z-30 w-[300px] rounded-2xl border hairline bg-panel/95 backdrop-blur-xl shadow-2xl overflow-hidden"
+      style={{ top: pos.top, left: pos.left, width: PICKER_WIDTH }}
+      className="fixed z-[1000] rounded-2xl border hairline bg-panel/95 backdrop-blur-xl shadow-2xl overflow-hidden"
       role="dialog"
       aria-label="Emoji picker"
     >
@@ -112,26 +176,34 @@ export function EmojiPicker({ onPick, onClose }: Props) {
 
       {/* Category tabs (hidden while searching) */}
       {!searching && (
-        <div className="flex items-center gap-0.5 px-1.5 py-1 border-b hairline overflow-x-auto">
-          {hasRecents && (
-            <TabButton
-              active={active === "recents"}
-              onClick={() => setActive("recents")}
-              title="Recently used"
-            >
-              <Clock className="w-4 h-4" />
-            </TabButton>
-          )}
-          {EMOJI_CATEGORIES.map((c) => (
-            <TabButton
-              key={c.id}
-              active={active === c.id}
-              onClick={() => setActive(c.id)}
-              title={c.label}
-            >
-              <span className="text-[16px] leading-none">{c.icon}</span>
-            </TabButton>
-          ))}
+        <div className="relative border-b hairline">
+          <div
+            ref={tabsRef}
+            className="flex items-center gap-0.5 px-1.5 py-1 overflow-x-auto scrollbar-none scroll-smooth"
+          >
+            {hasRecents && (
+              <TabButton
+                active={active === "recents"}
+                onClick={() => setActive("recents")}
+                title="Recently used"
+              >
+                <Clock className="w-4 h-4" />
+              </TabButton>
+            )}
+            {EMOJI_CATEGORIES.map((c) => (
+              <TabButton
+                key={c.id}
+                active={active === c.id}
+                onClick={() => setActive(c.id)}
+                title={c.label}
+              >
+                <span className="text-[16px] leading-none">{c.icon}</span>
+              </TabButton>
+            ))}
+          </div>
+          {/* Edge fades hint that the tab row scrolls horizontally */}
+          <div className="pointer-events-none absolute inset-y-0 left-0 w-4 bg-gradient-to-r from-panel/95 to-transparent" />
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-4 bg-gradient-to-l from-panel/95 to-transparent" />
         </div>
       )}
 
@@ -165,7 +237,8 @@ export function EmojiPicker({ onPick, onClose }: Props) {
             : (activeCategory?.label ?? "")}
         </div>
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -184,6 +257,7 @@ function TabButton({
     <button
       onClick={onClick}
       title={title}
+      data-active={active}
       className={cn(
         "grid place-items-center w-8 h-8 rounded-lg shrink-0 transition-colors",
         active

@@ -1,7 +1,8 @@
-import { type ReactNode } from "react";
-import { Search } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { Search, Maximize2, Image as ImageIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Pill, type Tone } from "@/components/ui/primitives";
+import { Lightbox } from "@/components/ui/Lightbox";
 import type { Availability, StyledStatus } from "@/lib/catalogue";
 
 /**
@@ -116,6 +117,124 @@ export function SearchBox({
         placeholder={placeholder}
         className="w-full h-10 pl-9 pr-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
       />
+    </div>
+  );
+}
+
+/* ── Clickable card shell ───────────────────────────────── */
+/**
+ * The card/row surface for the catalogue grids. A `div role="button"` rather
+ * than a real `<button>` so the image's "view full screen" control can live
+ * inside it — nesting one button in another is invalid HTML, and the expand
+ * control has to sit over the picture to be discoverable.
+ */
+export function CardShell({
+  onOpen,
+  className,
+  elRef,
+  children,
+}: {
+  onOpen: () => void;
+  className?: string;
+  elRef?: (el: HTMLDivElement | null) => void;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      ref={elRef}
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      className={cn("cursor-pointer", className)}
+    >
+      {children}
+    </div>
+  );
+}
+
+/* ── Card image + full-screen viewer ────────────────────── */
+/**
+ * Product picture with an expand control so staff (and customers over their
+ * shoulder) can see the hair properly. The control stops propagation so
+ * opening the image never navigates to the product page.
+ */
+export function CardImage({
+  url,
+  name,
+  variant = "card",
+  className,
+}: {
+  url?: string | null;
+  name?: string | null;
+  /** `card` = 4:3 bleed header in the grid; `thumb` = list-row square. */
+  variant?: "card" | "thumb";
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const isCard = variant === "card";
+  return (
+    <div
+      className={cn(
+        "relative overflow-hidden bg-text-primary/[0.04]",
+        isCard
+          ? "aspect-[4/3] -mx-4 -mt-4 mb-3 rounded-t-[var(--radius)]"
+          : "w-16 h-16 shrink-0 rounded-[10px]",
+        className,
+      )}
+    >
+      {url ? (
+        <>
+          <img
+            src={url}
+            alt={name ?? "Product image"}
+            loading="lazy"
+            className="w-full h-full object-cover"
+          />
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(true);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") e.stopPropagation();
+            }}
+            aria-label={`View ${name ?? "product image"} full screen`}
+            title="View full screen"
+            className={cn(
+              // Heavy glass, not `glass` — this chip sits over photography and
+              // has to stay legible against a bright frame.
+              "absolute grid place-items-center rounded-full dropglass text-text-primary transition-all",
+              "hover:bg-accent-deep hover:text-[#F4E9D9] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+              isCard ? "top-2 right-2 w-8 h-8" : "bottom-0.5 right-0.5 w-5 h-5",
+            )}
+          >
+            <Maximize2 className={isCard ? "w-4 h-4" : "w-3 h-3"} />
+          </button>
+        </>
+      ) : (
+        <div className="w-full h-full grid place-items-center text-text-faint">
+          <ImageIcon className={isCard ? "w-7 h-7" : "w-5 h-5"} />
+        </div>
+      )}
+      {/* The lightbox portals to <body>, but React still bubbles its events up
+          this tree — without the guard, clicking the backdrop to close would
+          also fire the card's navigate. The wrapper renders no DOM of its own
+          beyond an empty div, so it costs nothing in layout. */}
+      {open && url && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          <Lightbox url={url} name={name} onClose={() => setOpen(false)} />
+        </div>
+      )}
     </div>
   );
 }

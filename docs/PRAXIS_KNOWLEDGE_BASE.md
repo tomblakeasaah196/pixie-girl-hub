@@ -582,6 +582,12 @@ categories, collections, bundles, shades, and bookable services.
   the photo's backdrop and drop the product onto a brand colour (defaults to the
   active brand's — burgundy for Pixie Girl, bronze for Faitlyn — pick another
   from the dropdown; Flat or Soft gradient). Save uses whichever you previewed.
+- *See a product's picture in full / bigger?* On **Styled** or **Base**, every
+  product picture carries an **expand icon** (top-right of the card image, or
+  bottom-right of the thumbnail in list view). Click it to open the photo full
+  screen so you can show the hair properly — there's a download button, and Esc
+  or a click outside closes it. Clicking the card anywhere else still opens the
+  product as before.
 - *Create a bundle?* Catalogue → **Bundles** (fixed price or % off the total).
 - *Group products for a campaign?* Catalogue → **Collections** → add to collection.
 - *Put a product in / take it out of a collection, bundle, or shade?* Open the

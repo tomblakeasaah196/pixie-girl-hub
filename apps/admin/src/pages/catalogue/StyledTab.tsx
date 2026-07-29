@@ -7,7 +7,6 @@ import {
   ClipboardCheck,
   Ruler,
   Trash2,
-  Image as ImageIcon,
   LayoutGrid,
   List as ListIcon,
 } from "lucide-react";
@@ -34,6 +33,8 @@ import {
   StyledStatusBadge,
   CardGrid,
   CardGridSkeleton,
+  CardShell,
+  CardImage,
 } from "./parts";
 import { AiDraftModal } from "./AiDraftModal";
 import { SizeGuideModal } from "./SizeGuideModal";
@@ -74,7 +75,7 @@ export function StyledTab() {
 
   // Remembers which card to scroll back to + highlight when we return from
   // a styled product's edit page, so "back" doesn't dump you at the top.
-  const cardRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const openProduct = (id: string) => {
     sessionStorage.setItem(RETURN_KEY, id);
@@ -300,32 +301,19 @@ function StyledCard({
   s: StyledProduct;
   onOpen: () => void;
   highlighted?: boolean;
-  cardRef?: (el: HTMLButtonElement | null) => void;
+  cardRef?: (el: HTMLDivElement | null) => void;
 }) {
   return (
-    <button
-      ref={cardRef}
-      onClick={onOpen}
+    <CardShell
+      elRef={cardRef}
+      onOpen={onOpen}
       className={cn(
         "text-left glass rounded-[var(--radius)] shadow-glass p-4 transition-all hover:border-accent/40 hover:-translate-y-0.5 focus:outline-none focus:border-accent/50",
         highlighted &&
           "ring-2 ring-accent ring-offset-2 ring-offset-bg shadow-[0_0_0_4px_rgb(var(--accent)/0.18)]",
       )}
     >
-      <div className="aspect-[4/3] -mx-4 -mt-4 mb-3 overflow-hidden rounded-t-[var(--radius)] bg-text-primary/[0.04]">
-        {s.primary_image_url ? (
-          <img
-            src={s.primary_image_url}
-            alt={s.name}
-            loading="lazy"
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="w-full h-full grid place-items-center text-text-faint">
-            <ImageIcon className="w-7 h-7" />
-          </div>
-        )}
-      </div>
+      <CardImage url={s.primary_image_url} name={s.name} />
       <div className="flex items-start justify-between gap-2 mb-2">
         <span className="font-mono text-[10.5px] text-accent-glow">
           {s.styled_code}
@@ -354,7 +342,7 @@ function StyledCard({
           </Pill>
         </div>
       )}
-    </button>
+    </CardShell>
   );
 }
 
@@ -367,32 +355,19 @@ function StyledListRow({
   s: StyledProduct;
   onOpen: () => void;
   highlighted?: boolean;
-  cardRef?: (el: HTMLButtonElement | null) => void;
+  cardRef?: (el: HTMLDivElement | null) => void;
 }) {
   return (
-    <button
-      ref={cardRef}
-      onClick={onOpen}
+    <CardShell
+      elRef={cardRef}
+      onOpen={onOpen}
       className={cn(
         "w-full text-left glass rounded-[var(--radius)] shadow-glass p-3 flex items-center gap-4 transition-all hover:border-accent/40 focus:outline-none focus:border-accent/50",
         highlighted &&
           "ring-2 ring-accent ring-offset-2 ring-offset-bg shadow-[0_0_0_4px_rgb(var(--accent)/0.18)]",
       )}
     >
-      <div className="w-16 h-16 shrink-0 overflow-hidden rounded-[10px] bg-text-primary/[0.04]">
-        {s.primary_image_url ? (
-          <img
-            src={s.primary_image_url}
-            alt={s.name}
-            loading="lazy"
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="w-full h-full grid place-items-center text-text-faint">
-            <ImageIcon className="w-5 h-5" />
-          </div>
-        )}
-      </div>
+      <CardImage url={s.primary_image_url} name={s.name} variant="thumb" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 mb-1 flex-wrap">
           <span className="font-mono text-[10.5px] text-accent-glow">
@@ -417,6 +392,6 @@ function StyledListRow({
           <MoneyText ngn={s.effective_price_ngn} className="text-[14px]" />
         )}
       </div>
-    </button>
+    </CardShell>
   );
 }

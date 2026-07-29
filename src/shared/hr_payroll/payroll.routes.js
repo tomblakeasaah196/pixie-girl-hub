@@ -27,9 +27,20 @@ router.post("/payroll-runs/:id/approve", P("approve"), c.approveRun);
 router.post("/payroll-runs/:id/pay", P("approve"), c.payRun);
 router.post("/payroll-runs/:id/reverse", P("approve"), c.reverseRun);
 
-// ── Payslips (read-only) ───────────────────────────────────
+// ── Payslips ───────────────────────────────────────────────
+// The figures themselves are never edited by hand: a payslip changes only by
+// recalculating it from the underlying attendance / commission / bonus truth.
 router.get("/payslips", P("view"), c.listPayslips);
 router.get("/payslips/:id", P("view"), c.getPayslip);
+router.get("/payslips/:id/breakdown", P("view"), c.payslipBreakdown);
+// Waiving or upholding a line moves someone's pay — approval rights, not edit.
+router.post(
+  "/payslips/:id/attendance/:dayId/resolve",
+  P("approve"),
+  v.attendanceDecide,
+  c.resolveAttendanceLine,
+);
+router.post("/payslips/:id/recalculate", P("edit"), c.recalculatePayslip);
 router.post("/payslips/:id/pdf", P("view"), c.payslipPdf);
 
 // ── Commission earned ──────────────────────────────────────

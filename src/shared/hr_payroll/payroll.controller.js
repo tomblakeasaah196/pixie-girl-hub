@@ -75,6 +75,33 @@ async function getPayslip(req, res) {
     }),
   });
 }
+async function payslipBreakdown(req, res) {
+  res.json({
+    data: await service.payslipBreakdown({
+      brand: req.brand,
+      payslip_id: req.params.id,
+    }),
+  });
+}
+async function resolveAttendanceLine(req, res) {
+  res.json({
+    data: await service.resolveAttendanceLine({
+      ...ctx(req),
+      payslip_id: req.params.id,
+      day_id: req.params.dayId,
+      resolution: req.body.resolution,
+      note: req.body.note,
+    }),
+  });
+}
+async function recalculatePayslip(req, res) {
+  res.json({
+    data: await service.recalculatePayslip({
+      ...ctx(req),
+      payslip_id: req.params.id,
+    }),
+  });
+}
 async function payslipPdf(req, res) {
   res.status(201).json({
     data: await service.payslipPdf({
@@ -149,6 +176,9 @@ module.exports = {
   reverseRun,
   listPayslips,
   getPayslip,
+  payslipBreakdown,
+  resolveAttendanceLine,
+  recalculatePayslip,
   payslipPdf,
   listCommissions,
   accrueCommission,

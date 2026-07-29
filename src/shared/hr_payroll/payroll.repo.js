@@ -305,6 +305,84 @@ async function insertPayslip({ client, brand, _payslip_number, data }) {
   return rows[0];
 }
 
+// Money columns a single-employee recalculation may rewrite. Identity columns
+// (payslip_number, run, user, snapshots) and payment state are deliberately
+// absent — re-running the calculator must never renumber a slip or undo a payout.
+const PAYSLIP_FIGURE_COLS = [
+  "base_salary_ngn",
+  "allowances_ngn",
+  "commission_ngn",
+  "bonus_ngn",
+  "overtime_ngn",
+  "reimbursements_ngn",
+  "gross_pay_ngn",
+  "paye_ngn",
+  "pension_employee_ngn",
+  "pension_employer_ngn",
+  "nhf_ngn",
+  "attendance_deduction_ngn",
+  "days_worked",
+  "working_days_in_period",
+  "prorate_factor",
+  "loan_repayment_ngn",
+  "advance_recovery_ngn",
+  "other_deductions_ngn",
+  "total_deductions_ngn",
+  "net_pay_ngn",
+];
+
+/** Rewrite one payslip's figures in place (single-employee recalculation). */
+async function updatePayslipFigures({ client, brand, payslip_id, data }) {
+  const sets = [];
+  const params = [];
+  let i = 1;
+  for (const col of PAYSLIP_FIGURE_COLS) {
+    if (data[col] === undefined) continue;
+    sets.push(`${col} = $${i++}`);
+    params.push(data[col]);
+  }
+  if (!sets.length) return null;
+  params.push(payslip_id);
+  const { rows } = await exec(client)(
+    `UPDATE ${t(brand, "payslips")} SET ${sets.join(", ")}
+      WHERE payslip_id = $${i} RETURNING *`,
+    params,
+  );
+  return rows[0] || null;
+}
+
+async function deletePayslipLines({ client, brand, payslip_id }) {
+  await exec(client)(
+    `DELETE FROM ${t(brand, "payslip_lines")} WHERE payslip_id = $1`,
+    [payslip_id],
+  );
+}
+
+/**
+ * Re-derive a run's headline totals from its payslips. Used after a
+ * single-employee recalculation, where patching the run's running sums by hand
+ * would drift; aggregating the slips cannot.
+ */
+async function recomputeRunTotals({ client, brand, run_id }) {
+  const { rows } = await exec(client)(
+    `SELECT count(*)::int                                  AS total_staff,
+            COALESCE(sum(gross_pay_ngn),0)::numeric        AS total_gross_ngn,
+            COALESCE(sum(commission_ngn),0)::numeric       AS total_commission_ngn,
+            COALESCE(sum(bonus_ngn),0)::numeric            AS total_bonus_ngn,
+            COALESCE(sum(paye_ngn),0)::numeric             AS total_paye_ngn,
+            COALESCE(sum(pension_employee_ngn),0)::numeric AS total_pension_employee_ngn,
+            COALESCE(sum(pension_employer_ngn),0)::numeric AS total_pension_employer_ngn,
+            COALESCE(sum(nhf_ngn),0)::numeric              AS total_nhf_ngn,
+            COALESCE(sum(other_deductions_ngn + attendance_deduction_ngn
+                         + loan_repayment_ngn + advance_recovery_ngn),0)::numeric
+                                                          AS total_other_deductions_ngn,
+            COALESCE(sum(net_pay_ngn),0)::numeric          AS total_net_ngn
+       FROM ${t(brand, "payslips")} WHERE payroll_run_id = $1`,
+    [run_id],
+  );
+  return updateRun({ client, brand, run_id, patch: rows[0] });
+}
+
 async function insertPayslipLines({ client, brand, payslip_id, lines }) {
   const run = exec(client);
   for (const l of lines) {
@@ -369,10 +447,32 @@ async function listPayslips({
   return { data: rows, page, page_size, total: cr[0].total };
 }
 
+/**
+ * A payslip with the context a reader needs to make sense of it: who it belongs
+ * to (name, employee number, employment), and which run/period produced it.
+ * The join is LEFT throughout so a slip whose staff profile was later removed
+ * still resolves. Encrypted staff columns are deliberately NOT selected — the
+ * payslip's own `*_snapshot` fields already carry the cleartext the run used.
+ */
 async function findPayslip({ client, brand, payslip_id }) {
   const run = exec(client);
   const { rows } = await run(
-    `SELECT * FROM ${t(brand, "payslips")} WHERE payslip_id = $1 LIMIT 1`,
+    `SELECT ps.*,
+            c.display_name        AS staff_name,
+            sp.employee_number,
+            sp.employment_type,
+            sp.job_title          AS staff_job_title,
+            sp.department         AS staff_department,
+            sp.start_date         AS staff_start_date,
+            pr.run_number,
+            pr.pay_month, pr.pay_year, pr.pay_date,
+            pr.period_start, pr.period_end,
+            pr.status             AS run_status
+       FROM ${t(brand, "payslips")} ps
+       LEFT JOIN shared.staff_profiles sp ON sp.profile_id = ps.staff_profile_id
+       LEFT JOIN shared.contacts c        ON c.contact_id = sp.contact_id
+       LEFT JOIN ${t(brand, "payroll_runs")} pr ON pr.run_id = ps.payroll_run_id
+      WHERE ps.payslip_id = $1 LIMIT 1`,
     [payslip_id],
   );
   if (!rows[0]) return null;
@@ -381,6 +481,139 @@ async function findPayslip({ client, brand, payslip_id }) {
     [payslip_id],
   );
   return { ...rows[0], lines };
+}
+
+/**
+ * The employer identity a payslip document prints in its footer. Kept here (one
+ * tiny read) rather than widening the email brand-token map, which every
+ * campaign and transactional template also reads.
+ */
+async function businessIdentity({ client, brand }) {
+  const { rows } = await exec(client)(
+    `SELECT tin, cac_number FROM shared.business_config WHERE business_key = $1 LIMIT 1`,
+    [brand],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Bank name for the payslip's staff profile. Encrypted at rest, so it is read
+ * only for document rendering (the service decrypts) and never joined into the
+ * payslip API payload.
+ */
+async function staffBankName({ client, profile_id }) {
+  if (!profile_id) return null;
+  const { rows } = await exec(client)(
+    `SELECT bank_name FROM shared.staff_profiles WHERE profile_id = $1 LIMIT 1`,
+    [profile_id],
+  );
+  return rows[0] ? rows[0].bank_name : null;
+}
+
+// ── payslip breakdown (per-employee review) ────────────────
+/**
+ * Every reconciled day in the pay period for one employee, with the query the
+ * lateness reconciler raised against it (subject, what the employee answered,
+ * how HR resolved it). This is the evidence HR waives or upholds from — the
+ * whole point being that they never have to leave payroll to see it.
+ */
+async function attendanceDaysForPeriod({ client, brand, profile_id, from, to }) {
+  const { rows } = await exec(client)(
+    `SELECT ad.day_id,
+            ad.work_date::text            AS work_date,
+            ad.status,
+            ad.expected_start_time,
+            ad.first_clock_in_at,
+            ad.minutes_late,
+            ad.is_late,
+            ad.is_offsite,
+            ad.clock_in_address,
+            ad.daily_rate_ngn,
+            ad.deduction_pct,
+            ad.deduction_ngn,
+            ad.justified,
+            q.query_id,
+            q.query_type,
+            q.severity,
+            q.subject                     AS query_subject,
+            q.details                     AS query_details,
+            q.source                      AS query_source,
+            q.status                      AS query_status,
+            q.employee_response,
+            q.responded_at,
+            q.resolution,
+            q.resolution_note,
+            q.resolved_at,
+            rc.display_name               AS resolved_by_name
+       FROM shared.attendance_days ad
+       LEFT JOIN shared.hr_queries q ON q.query_id = ad.query_id
+       LEFT JOIN shared.users ru     ON ru.user_id = q.resolved_by
+       LEFT JOIN shared.staff_profiles rsp ON rsp.profile_id = ru.staff_profile_id
+       LEFT JOIN shared.contacts rc  ON rc.contact_id = rsp.contact_id
+      WHERE ad.business = $1
+        AND ad.profile_id = $2
+        AND ad.work_date BETWEEN $3 AND $4
+        AND (ad.deduction_ngn > 0 OR ad.is_late = true OR ad.is_offsite = true
+             OR ad.status IN ('absent','on_leave') OR ad.query_id IS NOT NULL)
+      ORDER BY ad.work_date ASC`,
+    [brand, profile_id, from, to],
+  );
+  return rows;
+}
+
+/**
+ * A single attendance day, brand-scoped (the waive/uphold target). Carries the
+ * linked query's type because the off-site rule turns on it — upholding an
+ * off-site clock-in discards the day, upholding plain lateness does not.
+ */
+async function findAttendanceDay({ client, brand, day_id }) {
+  const { rows } = await exec(client)(
+    `SELECT ad.*, ad.work_date::text AS work_date,
+            c.display_name AS staff_name,
+            q.query_type
+       FROM shared.attendance_days ad
+       LEFT JOIN shared.staff_profiles sp ON sp.profile_id = ad.profile_id
+       LEFT JOIN shared.contacts c ON c.contact_id = sp.contact_id
+       LEFT JOIN shared.hr_queries q ON q.query_id = ad.query_id
+      WHERE ad.day_id = $2 AND ad.business = $1
+      LIMIT 1`,
+    [brand, day_id],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * The commissions riding this employee's payslip: everything still payable —
+ * the same 'accrued'/'approved' set payableCommissionByUser feeds the
+ * calculator — plus whatever this run already settled, so a calculated or paid
+ * run shows the very rows it paid rather than an empty list.
+ */
+async function commissionsForPayslip({ client, brand, user_id, payroll_run_id }) {
+  const { rows } = await exec(client)(
+    `SELECT earning_id, earning_number, sale_channel, basis_amount_ngn,
+            rate_pct, rate_fixed_ngn, commission_amount_ngn, status,
+            earned_at, order_id, payroll_run_id
+       FROM ${t(brand, "commission_earned")}
+      WHERE user_id = $1
+        AND (status IN ('accrued','approved') OR payroll_run_id = $2)
+      ORDER BY earned_at ASC`,
+    [user_id, payroll_run_id || null],
+  );
+  return rows;
+}
+
+/** Bonuses / rewards on the same basis as commissionsForPayslip. */
+async function bonusesForPayslip({ client, brand, user_id, payroll_run_id }) {
+  const { rows } = await exec(client)(
+    `SELECT bonus_id, bonus_number, bonus_type, reason, amount_ngn, status,
+            awarded_at, payroll_run_id
+       FROM ${t(brand, "bonuses_awarded")}
+      WHERE user_id = $1
+        AND (status = 'approved' OR payroll_run_id = $2)
+      ORDER BY awarded_at ASC`,
+    [user_id, payroll_run_id || null],
+  );
+  return rows;
 }
 
 async function setPayslipPayment({
@@ -715,8 +948,17 @@ module.exports = {
   deletePayslipsForRun,
   insertPayslip,
   insertPayslipLines,
+  updatePayslipFigures,
+  deletePayslipLines,
+  recomputeRunTotals,
   listPayslips,
   findPayslip,
+  attendanceDaysForPeriod,
+  findAttendanceDay,
+  commissionsForPayslip,
+  bonusesForPayslip,
+  businessIdentity,
+  staffBankName,
   setPayslipPayment,
   listCommissions,
   findCommission,

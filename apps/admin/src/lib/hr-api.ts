@@ -788,6 +788,123 @@ export const listPayslips = (runId: string) =>
 export const payslipPdf = (payslipId: string) =>
   api.post<import("./documents-api").DocumentRow>(`/hr/payslips/${payslipId}/pdf`);
 
+// ── Payslip breakdown (per-employee review + waive/uphold) ──
+/** The query the reconciler raised for a flagged day, and how it went. */
+export interface BreakdownQuery {
+  query_id: string;
+  query_type: string;
+  severity: "low" | "normal" | "high";
+  subject: string;
+  details: string | null;
+  source: "auto" | "manual";
+  status: "open" | "responded" | "waived" | "upheld" | "closed";
+  employee_response: string | null;
+  responded_at: string | null;
+  resolution: "waived" | "upheld" | null;
+  resolution_note: string | null;
+  resolved_at: string | null;
+  resolved_by_name: string | null;
+}
+
+/** One reviewable attendance line — the unit HR waives or upholds. */
+export interface BreakdownAttendanceLine {
+  day_id: string;
+  work_date: string;
+  status: string;
+  reason: string;
+  minutes_late: number;
+  expected_start_time: string | null;
+  first_clock_in_at: string | null;
+  is_offsite: boolean;
+  clock_in_address: string | null;
+  daily_rate_ngn: number;
+  deduction_pct: number;
+  /** What the day is worth if upheld. */
+  at_stake_ngn: number;
+  /** What it costs the employee as things stand (0 once waived). */
+  applied_ngn: number;
+  justified: boolean;
+  decision: "waived" | "upheld" | "pending";
+  query: BreakdownQuery | null;
+}
+
+/** A commission or bonus riding this payslip. */
+export interface BreakdownAddition {
+  kind: "commission" | "bonus";
+  id: string;
+  reference: string;
+  label: string;
+  detail: string | null;
+  amount_ngn: number;
+  status: string;
+  dated: string;
+  order_id?: string | null;
+  settled: boolean;
+}
+
+export interface BreakdownTotals {
+  gross_pay_ngn: number;
+  attendance_on_slip_ngn: number;
+  attendance_live_ngn: number;
+  attendance_waived_ngn: number;
+  total_deductions_ngn: number;
+  projected_total_deductions_ngn: number;
+  net_pay_ngn: number;
+  projected_net_pay_ngn: number;
+  /** Non-zero → decisions were made after the slip was calculated. */
+  drift_ngn: number;
+  stale: boolean;
+}
+
+export interface PayslipBreakdown {
+  payslip: Payslip & {
+    employee_number?: string | null;
+    department_snapshot?: string | null;
+    period_start?: string | null;
+    period_end?: string | null;
+    run_number?: string | null;
+    days_worked?: number | null;
+    working_days_in_period?: number | null;
+    base_salary_ngn?: number;
+    commission_ngn?: number;
+    bonus_ngn?: number;
+    allowances_ngn?: number;
+    paye_ngn?: number;
+    pension_employee_ngn?: number;
+    nhf_ngn?: number;
+    loan_repayment_ngn?: number;
+    advance_recovery_ngn?: number;
+    other_deductions_ngn?: number;
+    lines?: {
+      line_id: string;
+      line_type: string;
+      description: string;
+      amount_ngn: number;
+    }[];
+  };
+  attendance: BreakdownAttendanceLine[];
+  additions: BreakdownAddition[];
+  additions_total_ngn: number;
+  totals: BreakdownTotals;
+  /** False once the run is approved/paid — decisions are locked. */
+  editable: boolean;
+  run_status: string | null;
+}
+
+export const payslipBreakdown = (payslipId: string) =>
+  api.get<PayslipBreakdown>(`/hr/payslips/${payslipId}/breakdown`);
+export const resolvePayslipAttendance = (
+  payslipId: string,
+  dayId: string,
+  body: { resolution: "waived" | "upheld"; note?: string },
+) =>
+  api.post<PayslipBreakdown>(
+    `/hr/payslips/${payslipId}/attendance/${dayId}/resolve`,
+    body,
+  );
+export const recalculatePayslip = (payslipId: string) =>
+  api.post<PayslipBreakdown>(`/hr/payslips/${payslipId}/recalculate`);
+
 // ── Performance appraisal (cycles, KPIs, reviews) ──────────
 export interface PerfCycle {
   cycle_id: string;

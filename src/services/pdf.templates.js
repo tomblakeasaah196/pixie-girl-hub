@@ -258,29 +258,9 @@ function receiptHtml({ brand, order }) {
   });
 }
 
-// Payslip (6.11)
-function payslipHtml({ brand, payslip }) {
-  const p = payslip || {};
-  const lines = Array.isArray(p.lines) ? p.lines : [];
-  const breakdown = lines.length
-    ? `<h2>Breakdown</h2><table>${lines
-        .map(
-          (l) =>
-            `<tr><td>${esc(l.description || l.line_type || "-")}</td><td class="right">${esc(ngn(l.amount_ngn ?? l.amount ?? 0))}</td></tr>`,
-        )
-        .join("")}</table>`
-    : "";
-  return render("payslip", "Payslip", {
-    brand,
-    staff_name: p.staff_name || p.employee_name || "",
-    period: p.period_label || p.period || "",
-    net_pay: ngn(p.net_pay_ngn),
-    totals:
-      totalsRow("Gross pay", p.gross_pay_ngn) +
-      totalsRow("Total deductions", p.total_deductions_ngn),
-    breakdown,
-  });
-}
+// Payslip lives in shared/hr_payroll/payslip.pdf.js — a full-page, brand-skinned
+// A4 document on the same canon as the invoice/receipt renderer, not this
+// generic shell.
 
 // Purchase order (6.8)
 function purchaseOrderHtml({ brand, po }) {
@@ -397,7 +377,6 @@ module.exports = {
   invoiceHtml,
   quotationHtml,
   receiptHtml,
-  payslipHtml,
   purchaseOrderHtml,
   statementHtml,
   contractHtml,

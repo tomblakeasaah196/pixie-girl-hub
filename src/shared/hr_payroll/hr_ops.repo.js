@@ -526,11 +526,31 @@ async function linkDayQuery({ client, dayId, queryId }) {
   );
 }
 
-/** Mark a day justified (waived) and zero its deduction. */
+/**
+ * Mark a day justified (waived) — payroll stops counting it.
+ *
+ * The deduction figure is deliberately KEPT, not zeroed: `justified` is the
+ * switch every reader already honours (payroll sums `CASE WHEN justified THEN
+ * 0`, the HR dashboards filter `justified = false`, the UI shows the amount
+ * only while unjustified), so preserving it costs nothing and is what makes a
+ * waive reversible — HR can uphold a day they waived by mistake and the
+ * original amount is still there to reinstate.
+ */
 async function justifyDay({ client, dayId }) {
   const { rows } = await exec(client)(
     `UPDATE shared.attendance_days
-        SET justified = true, deduction_ngn = 0, deduction_pct = 0
+        SET justified = true
+      WHERE day_id = $1 RETURNING *`,
+    [dayId],
+  );
+  return rows[0] || null;
+}
+
+/** Reverse a waive: the day counts against pay again. */
+async function unjustifyDay({ client, dayId }) {
+  const { rows } = await exec(client)(
+    `UPDATE shared.attendance_days
+        SET justified = false
       WHERE day_id = $1 RETURNING *`,
     [dayId],
   );
@@ -1295,6 +1315,7 @@ module.exports = {
   upsertAttendanceDay,
   linkDayQuery,
   justifyDay,
+  unjustifyDay,
   onboardingProgress,
   setOnboardingItem,
   onboardingDoneCount,

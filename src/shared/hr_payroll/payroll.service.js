@@ -20,6 +20,7 @@
 
 const repo = require("./payroll.repo");
 const calc = require("./payroll.calc");
+const breakdown = require("./payslip.breakdown");
 const latenessCalc = require("./lateness.calc");
 const postings = require("./payroll.postings");
 const pdf = require("../../services/pdf.service");
@@ -136,6 +137,88 @@ async function createRun({ brand, user, request_id, input }) {
   });
 }
 
+/**
+ * Compute ONE employee's payslip figures for a run.
+ *
+ * The single calculation path: both the whole-run calculate and the
+ * single-employee recalculation (after HR waives or upholds an attendance line)
+ * go through here, so a slip recomputed on its own can never disagree with the
+ * same slip recomputed as part of its run.
+ */
+function computeSlipForStaff({
+  staff,
+  run,
+  hrSettings,
+  configs,
+  statutoryOn,
+  advanceCapPct,
+  commission,
+  bonus,
+  attendanceForProfile,
+  periodWorkingDays,
+  outstandingAdvance,
+}) {
+  const s = staff;
+  // Statutory deductions apply only when the brand switch is on AND this
+  // employee isn't individually exempt (audit C3).
+  const deductionConfigs = statutoryOn && !s.statutory_exempt ? configs : {};
+
+  // Pro-rate the base for mid-period joiners/leavers (audit C2).
+  let prorateFactor = 1;
+  if (periodWorkingDays > 0) {
+    const empFrom =
+      s.start_date && String(s.start_date).slice(0, 10) > run.period_start
+        ? String(s.start_date).slice(0, 10)
+        : run.period_start;
+    const empTo =
+      s.end_date && String(s.end_date).slice(0, 10) < run.period_end
+        ? String(s.end_date).slice(0, 10)
+        : run.period_end;
+    if (empFrom !== run.period_start || empTo !== run.period_end) {
+      const employedDays = latenessCalc.workingDaysBetween(
+        empFrom, empTo, hrSettings.working_days,
+      );
+      prorateFactor = Math.min(1, employedDays / periodWorkingDays);
+    }
+  }
+
+  // Attendance money over the reconciled period (audit C1).
+  const att = attendanceForProfile || {};
+  const attendanceInput = {
+    deduction_ngn: Number(att.deduction_ngn || 0),
+    days_worked: att.days_worked ?? null,
+    working_days: periodWorkingDays || null,
+  };
+  const earnings = {
+    base_salary: Number(s.base_salary) || 0,
+    commission,
+    bonus,
+  };
+
+  // First pass to get net BEFORE advance recovery, so the recovery cap
+  // (% of net, decision 2026-07-04) is applied to the real net.
+  const base = calc.buildPayslip({
+    earnings,
+    deductionConfigs,
+    attendance: attendanceInput,
+    prorateFactor,
+  });
+  const advanceRecovery = calc.capAdvanceRecovery({
+    netBeforeRecovery: base.net_pay_ngn,
+    outstanding: outstandingAdvance || 0,
+    capPct: advanceCapPct,
+  });
+  return advanceRecovery > 0
+    ? calc.buildPayslip({
+        earnings,
+        deductionConfigs,
+        attendance: attendanceInput,
+        prorateFactor,
+        extraDeductions: { advance_recovery: advanceRecovery },
+      })
+    : base;
+}
+
 async function calculateRun({ brand, user, request_id, run_id }) {
   return transaction(async (client) => {
     const run = await repo.findRun({ client, brand, run_id });
@@ -200,66 +283,19 @@ async function calculateRun({ brand, user, request_id, run_id }) {
     // Advance-recovery settlements to write AFTER the run commits paid — kept
     // out of the calculate txn; recorded when the run is actually paid.
     for (const s of staff) {
-      const commission = commMap[s.user_id] || 0;
-      const bonus = bonusMap[s.user_id] || 0;
-
-      // Statutory deductions apply only when the brand switch is on AND this
-      // employee isn't individually exempt (audit C3).
-      const deductionConfigs = statutoryOn && !s.statutory_exempt ? configs : {};
-
-      // Pro-rate the base for mid-period joiners/leavers (audit C2).
-      let prorateFactor = 1;
-      if (periodWorkingDays > 0) {
-        const empFrom =
-          s.start_date && String(s.start_date).slice(0, 10) > run.period_start
-            ? String(s.start_date).slice(0, 10)
-            : run.period_start;
-        const empTo =
-          s.end_date && String(s.end_date).slice(0, 10) < run.period_end
-            ? String(s.end_date).slice(0, 10)
-            : run.period_end;
-        if (empFrom !== run.period_start || empTo !== run.period_end) {
-          const employedDays = latenessCalc.workingDaysBetween(
-            empFrom, empTo, hrSettings.working_days,
-          );
-          prorateFactor = Math.min(1, employedDays / periodWorkingDays);
-        }
-      }
-
-      // Attendance money over the reconciled period (audit C1).
-      const att = attendance[s.profile_id] || {};
-      const attendanceInput = {
-        deduction_ngn: Number(att.deduction_ngn || 0),
-        days_worked: att.days_worked ?? null,
-        working_days: periodWorkingDays || null,
-      };
-
-      // First pass to get net BEFORE advance recovery, so the recovery cap
-      // (% of net, decision 2026-07-04) is applied to the real net.
-      const base = calc.buildPayslip({
-        earnings: { base_salary: Number(s.base_salary) || 0, commission, bonus },
-        deductionConfigs,
-        attendance: attendanceInput,
-        prorateFactor,
+      const slip = computeSlipForStaff({
+        staff: s,
+        run,
+        hrSettings,
+        configs,
+        statutoryOn,
+        advanceCapPct,
+        commission: commMap[s.user_id] || 0,
+        bonus: bonusMap[s.user_id] || 0,
+        attendanceForProfile: attendance[s.profile_id],
+        periodWorkingDays,
+        outstandingAdvance: advances[s.user_id] || 0,
       });
-      const outstanding = advances[s.user_id] || 0;
-      const advanceRecovery = calc.capAdvanceRecovery({
-        netBeforeRecovery: base.net_pay_ngn,
-        outstanding,
-        capPct: advanceCapPct,
-      });
-      const slip =
-        advanceRecovery > 0
-          ? calc.buildPayslip({
-              earnings: {
-                base_salary: Number(s.base_salary) || 0, commission, bonus,
-              },
-              deductionConfigs,
-              attendance: attendanceInput,
-              prorateFactor,
-              extraDeductions: { advance_recovery: advanceRecovery },
-            })
-          : base;
 
       const payslip_number = await numbering.nextNumber(
         client,
@@ -665,6 +701,237 @@ async function getPayslip({ brand, payslip_id }) {
   return slip;
 }
 
+// ── payslip breakdown: review, waive/uphold, recalculate ───
+/**
+ * The per-employee review sheet: every flagged day in the period with the
+ * query the reconciler raised and whatever the employee wrote back, every
+ * commission and bonus being added, and a projection of the net if the run
+ * were recalculated right now. One call — HR never has to leave payroll to
+ * decide whether a deduction is fair.
+ */
+async function payslipBreakdown({ brand, payslip_id }) {
+  const payslip = await getPayslip({ brand, payslip_id });
+  const [attendanceDays, commissions, bonuses] = await Promise.all([
+    payslip.staff_profile_id && payslip.period_start && payslip.period_end
+      ? repo.attendanceDaysForPeriod({
+          brand,
+          profile_id: payslip.staff_profile_id,
+          from: payslip.period_start,
+          to: payslip.period_end,
+        })
+      : Promise.resolve([]),
+    repo.commissionsForPayslip({
+      brand,
+      user_id: payslip.user_id,
+      payroll_run_id: payslip.payroll_run_id,
+    }),
+    repo.bonusesForPayslip({
+      brand,
+      user_id: payslip.user_id,
+      payroll_run_id: payslip.payroll_run_id,
+    }),
+  ]);
+  return breakdown.buildBreakdown({
+    payslip,
+    attendanceDays,
+    commissions,
+    bonuses,
+    runStatus: payslip.run_status,
+  });
+}
+
+/** A run whose money is already committed must not be re-costed underneath. */
+function assertRunEditable(status, what) {
+  if (!["draft", "calculated", "reviewed"].includes(String(status))) {
+    throw new ConflictError(
+      `Cannot ${what} — this payroll run is ${status}. Reverse the run first.`,
+    );
+  }
+}
+
+/**
+ * Waive or uphold ONE attendance line, straight from the payroll review sheet.
+ *
+ * Waiving sets the day justified so payroll stops counting it; upholding clears
+ * that so it counts again — the amount itself is never destroyed, which is what
+ * makes a decision reversible right up until the run is approved. When the
+ * reconciler raised a query for the day, its status and resolution are kept in
+ * step so My HR and HR & Staff tell the employee the same story.
+ *
+ * Gated on hr_payroll:approve (the route) — this moves someone's pay.
+ */
+async function resolveAttendanceLine({
+  brand,
+  user,
+  request_id,
+  payslip_id,
+  day_id,
+  resolution,
+  note,
+}) {
+  if (!["waived", "upheld"].includes(resolution)) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      "resolution must be 'waived' or 'upheld'",
+      422,
+    );
+  }
+  return transaction(async (client) => {
+    const slip = await repo.findPayslip({ client, brand, payslip_id });
+    if (!slip) throw new NotFoundError("Payslip");
+    assertRunEditable(slip.run_status, "change an attendance decision");
+
+    const day = await repo.findAttendanceDay({ client, brand, day_id });
+    if (!day) throw new NotFoundError("Attendance day");
+    // The line must belong to the employee whose payslip is open, inside its
+    // period — otherwise a payslip id would be a lever on anyone's attendance.
+    if (
+      day.profile_id !== slip.staff_profile_id ||
+      day.work_date < slip.period_start ||
+      day.work_date > slip.period_end
+    ) {
+      throw new NotFoundError("Attendance day");
+    }
+
+    const before = { justified: day.justified, deduction_ngn: day.deduction_ngn };
+    const updated = await hrOps.setDayJustification({
+      client,
+      brand,
+      user,
+      day,
+      resolution,
+      note,
+      queryType: day.query_type || null,
+    });
+
+    await aud({
+      business: brand,
+      user_id: user.user_id,
+      action_key: `hr_payroll.${resolution}_attendance_day`,
+      target_type: "attendance_days",
+      target_id: day_id,
+      before,
+      after: { justified: updated.justified, deduction_ngn: updated.deduction_ngn },
+      request_id,
+      is_sensitive: true, // moves pay
+    });
+    events.emit("attendance_decision", {
+      brand,
+      day_id,
+      payslip_id,
+      resolution,
+    });
+
+    // Hand back the refreshed sheet so the drawer re-renders from truth, not
+    // from an optimistic guess about what the decision did.
+    return payslipBreakdown({ brand, payslip_id });
+  });
+}
+
+/**
+ * Recompute ONE employee's payslip in place from current attendance, commission
+ * and bonus state — the "push the amount at the bottom" step after HR has
+ * finished waiving. Same calculation path as the whole-run calculate, so the
+ * result is identical to what a full re-run would produce for this person; the
+ * run's headline totals are re-derived from its payslips afterwards.
+ *
+ * Identity, numbering and payment state are untouched: this re-costs a slip, it
+ * does not reissue one.
+ */
+async function recalculatePayslip({ brand, user, request_id, payslip_id }) {
+  await transaction(async (client) => {
+    const slip = await repo.findPayslip({ client, brand, payslip_id });
+    if (!slip) throw new NotFoundError("Payslip");
+    assertRunEditable(slip.run_status, "recalculate this payslip");
+    const run = await repo.findRun({ client, brand, run_id: slip.payroll_run_id });
+    if (!run) throw new NotFoundError("Payroll run");
+
+    const hrSettings = await hrOps.getSettings({ brand });
+    const cashSettings = await repo.cashRequestSettings({ client, brand });
+    const autoDeductAdvances =
+      cashSettings.auto_deduct_unsettled_via_payroll !== false;
+    const [staff, commByUser, bonusByUser, configs, attendance, advances] =
+      await Promise.all([
+        repo.listActiveStaffForPayroll({
+          client, brand, period_end: run.period_end,
+        }),
+        repo.payableCommissionByUser({ client, brand }),
+        repo.payableBonusByUser({ client, brand }),
+        repo.activeDeductionConfigs({ client, brand, as_of: run.pay_date }),
+        repo.attendanceSummaryForPeriod({
+          client, brand, from: run.period_start, to: run.period_end,
+        }),
+        autoDeductAdvances
+          ? repo.outstandingAdvancesByUser({ client, brand })
+          : Promise.resolve({}),
+      ]);
+
+    const me = staff.find((s) => s.user_id === slip.user_id);
+    if (!me) {
+      throw new ConflictError(
+        "This employee is no longer active for the run's period — recalculate the whole run instead.",
+      );
+    }
+    const commMap = Object.fromEntries(
+      commByUser.map((r) => [r.user_id, Number(r.total)]),
+    );
+    const bonusMap = Object.fromEntries(
+      bonusByUser.map((r) => [r.user_id, Number(r.total)]),
+    );
+    const periodWorkingDays = latenessCalc.workingDaysBetween(
+      run.period_start, run.period_end, hrSettings.working_days,
+    );
+
+    const computed = computeSlipForStaff({
+      staff: me,
+      run,
+      hrSettings,
+      configs,
+      statutoryOn: Boolean(hrSettings.statutory_deductions_enabled),
+      advanceCapPct: Number(hrSettings.advance_recovery_cap_pct),
+      commission: commMap[slip.user_id] || 0,
+      bonus: bonusMap[slip.user_id] || 0,
+      attendanceForProfile: attendance[me.profile_id],
+      periodWorkingDays,
+      outstandingAdvance: advances[slip.user_id] || 0,
+    });
+
+    const { lines, ...figures } = computed;
+    await repo.updatePayslipFigures({
+      client, brand, payslip_id, data: figures,
+    });
+    await repo.deletePayslipLines({ client, brand, payslip_id });
+    await repo.insertPayslipLines({ client, brand, payslip_id, lines });
+    await repo.recomputeRunTotals({ client, brand, run_id: run.run_id });
+
+    await aud({
+      business: brand,
+      user_id: user.user_id,
+      action_key: "hr_payroll.recalculate_payslip",
+      target_type: "payslips",
+      target_id: payslip_id,
+      before: {
+        gross_pay_ngn: slip.gross_pay_ngn,
+        attendance_deduction_ngn: slip.attendance_deduction_ngn,
+        net_pay_ngn: slip.net_pay_ngn,
+      },
+      after: {
+        gross_pay_ngn: figures.gross_pay_ngn,
+        attendance_deduction_ngn: figures.attendance_deduction_ngn,
+        net_pay_ngn: figures.net_pay_ngn,
+      },
+      request_id,
+      is_sensitive: true,
+    });
+    events.emit("payslip_recalculated", {
+      brand,
+      payslip_id,
+      run_id: run.run_id,
+    });
+  });
+  return payslipBreakdown({ brand, payslip_id });
+}
+
 // ── commissions ────────────────────────────────────────────
 async function listCommissions({ brand, filters, page, page_size }) {
   return repo.listCommissions({ brand, filters, page, page_size });
@@ -907,18 +1174,43 @@ async function reverseBonus({ brand, user, request_id, bonus_id }) {
   });
 }
 
-/** Render a payslip to PDF and persist it via Documents (§6.11 / 4.2). */
+/**
+ * Render a payslip to PDF and persist it via Documents (§6.11 / 4.2).
+ *
+ * Skinned to the brand from business_config through the same identity tokens the
+ * invoice and receipt documents use (services/pdf.brand-docs), so payroll
+ * paperwork and sales paperwork read as one company. The renderer draws its own
+ * full-bleed A4 sheet — hence brandDocs.PDF_OPTIONS (zero engine margins).
+ */
 async function payslipPdf({ brand, user, payslip_id }) {
+  const emailRender = require("../../modules/email_campaigns/email-render");
+  const brandDocs = require("../../services/pdf.brand-docs");
+  const { payslipHtml } = require("./payslip.pdf");
+
   const payslip = await getPayslip({ brand, payslip_id });
-  const { payslipHtml } = require("../../services/pdf.templates");
+  const [tokens, identity, bankName] = await Promise.all([
+    emailRender.resolveBrandTokens(brand),
+    repo.businessIdentity({ brand }),
+    repo.staffBankName({ profile_id: payslip.staff_profile_id }),
+  ]);
+  const brandObj = {
+    ...brandDocs.brandFromTokens(tokens),
+    tin: identity ? identity.tin : null,
+    cac_number: identity ? identity.cac_number : null,
+  };
+  const html = payslipHtml(brandObj, {
+    ...payslip,
+    bank_name: decryptField(bankName),
+  });
   return pdf.renderAndStore({
     brand,
     user_id: user ? user.user_id : null,
-    html: payslipHtml({ brand, payslip }),
+    html,
     title: `Payslip ${payslip.payslip_number || payslip.payslip_id || payslip_id}`,
     document_type: "payslip",
     reference_type: "payslip",
     reference_id: payslip.payslip_id || payslip_id,
+    pdfOptions: brandDocs.PDF_OPTIONS,
   });
 }
 
@@ -935,6 +1227,9 @@ module.exports = {
   reverseRun,
   listPayslips,
   getPayslip,
+  payslipBreakdown,
+  resolveAttendanceLine,
+  recalculatePayslip,
   payslipPdf,
   listCommissions,
   accrueCommission,

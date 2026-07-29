@@ -15,6 +15,7 @@ import {
   Banknote,
   ChevronLeft,
   Download,
+  ListChecks,
 } from "lucide-react";
 import { Card, Button, Pill, Skeleton, EmptyState } from "@/components/ui/primitives";
 import { DeniedState } from "@/components/ui/controls";
@@ -40,6 +41,7 @@ import {
 import { ApiError } from "@/lib/api";
 import { downloadDocument } from "@/lib/documents-api";
 import { TabBar, StatCard, SectionTitle, useNotify, errMsg, statusTone } from "./hr-shared";
+import { PayslipBreakdownDrawer } from "./PayslipBreakdownDrawer";
 
 interface UnreconciledInfo {
   period_start: string;
@@ -193,6 +195,7 @@ function RunDetail({ runId, onBack }: { runId: string; onBack: () => void }) {
   const can = useAuthStore((s) => s.can);
   const [payRun, setPayRun] = useState<PayrollRun | null>(null);
   const [unreconciled, setUnreconciled] = useState<UnreconciledInfo | null>(null);
+  const [openSlip, setOpenSlip] = useState<string | null>(null);
 
   const { data: run, isLoading } = useQuery({
     queryKey: ["payroll", "run", runId],
@@ -290,10 +293,18 @@ function RunDetail({ runId, onBack }: { runId: string; onBack: () => void }) {
           </Card>
         ) : (
           <div className="space-y-2">
+            <p className="text-xs text-text-muted">
+              Open an employee to review their lateness, deductions and additions — and waive or
+              uphold each line before the run goes for approval.
+            </p>
             {slips.map((s) => (
               <Card key={s.payslip_id} className="flex items-center justify-between gap-3 p-3">
-                <div className="min-w-0">
-                  <span className="text-sm text-text-primary">
+                <button
+                  type="button"
+                  onClick={() => setOpenSlip(s.payslip_id)}
+                  className="min-w-0 flex-1 text-left"
+                >
+                  <span className="text-sm text-text-primary hover:text-accent-glow">
                     {s.staff_name || s.payslip_number}
                   </span>
                   <div className="text-xs text-text-muted">
@@ -303,12 +314,14 @@ function RunDetail({ runId, onBack }: { runId: string; onBack: () => void }) {
                       ? ` · −${money(Number(s.attendance_deduction_ngn))} attendance`
                       : ""}
                   </div>
-                </div>
+                </button>
                 <div className="flex items-center gap-2">
                   {s.failure_reason && <span className="text-xs text-danger">{s.failure_reason}</span>}
                   <Pill tone={statusTone(s.payment_status === "paid" ? "approved" : s.payment_status === "failed" ? "rejected" : "pending")}>
                     {s.payment_status}
                   </Pill>
+                  <Button size="sm" variant="ghost" icon={<ListChecks className="h-3.5 w-3.5" />}
+                    onClick={() => setOpenSlip(s.payslip_id)}>Review</Button>
                   <Button size="sm" variant="ghost" icon={<Download className="h-3.5 w-3.5" />}
                     disabled={pdf.isPending}
                     onClick={() => pdf.mutate(s.payslip_id)}>PDF</Button>
@@ -325,6 +338,7 @@ function RunDetail({ runId, onBack }: { runId: string; onBack: () => void }) {
         onClose={() => setUnreconciled(null)}
         onDone={() => review.mutate()}
       />
+      <PayslipBreakdownDrawer payslipId={openSlip} onClose={() => setOpenSlip(null)} />
     </div>
   );
 }

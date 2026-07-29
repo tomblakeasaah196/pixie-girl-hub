@@ -229,6 +229,94 @@ async function respondToQuery({ brand, user, id, response }) {
 }
 
 /**
+ * Apply a waive/uphold decision to ONE attendance day, keeping the query the
+ * reconciler raised (if any) in step.
+ *
+ * The single place a lateness decision changes money — the query inbox and the
+ * payroll review sheet both call it, so an employee never sees one answer in My
+ * HR and payroll act on another. Reversible in both directions: waiving flips
+ * `justified` on, upholding flips it back off, and the amount at stake survives
+ * either way. Off-site clock-ins keep their extra rule — upholding one discards
+ * the day's presence entirely (the meeting decision), and waiving one restores
+ * it, in both cases re-stamping the daily earnings snapshot.
+ *
+ * Runs inside the caller's transaction. Auditing belongs to the caller, which
+ * knows the context the decision was made in.
+ */
+async function setDayJustification({
+  client,
+  brand,
+  user,
+  day,
+  resolution,
+  note,
+  queryType = null,
+}) {
+  const waived = resolution === "waived";
+  // The off-site rule only applies to the off-site query the reconciler raises;
+  // a merely off-site clock-in with no query is ordinary lateness.
+  const isOffsiteQuery = queryType === "offsite_clockin";
+
+  let updated;
+  let earned;
+  if (waived) {
+    // Restore the day: the lateness stops counting / the off-site explanation is
+    // accepted. Presence stands and earns the full day.
+    updated = await repo.justifyDay({ client, dayId: day.day_id });
+    earned = updated ? Number(updated.daily_rate_ngn || 0) : 0;
+  } else if (isOffsiteQuery) {
+    // Off-site clock-in upheld → discard presence for that day (absent), per the
+    // meeting rule. Pay for the day is lost. Unjustify first so re-deciding a
+    // previously waived day actually takes effect.
+    await repo.unjustifyDay({ client, dayId: day.day_id });
+    updated = await repo.markDayAbsent({ client, dayId: day.day_id });
+    earned = 0;
+  } else {
+    // Ordinary lateness/absence upheld → the day counts against pay again.
+    updated = await repo.unjustifyDay({ client, dayId: day.day_id });
+    earned = updated
+      ? Math.max(
+          0,
+          Number(updated.daily_rate_ngn || 0) - Number(updated.deduction_ngn || 0),
+        )
+      : 0;
+  }
+
+  if (updated) {
+    await repo.upsertEarningsDay({
+      client,
+      brand,
+      input: {
+        profile_id: updated.profile_id,
+        work_date: updated.work_date,
+        base_salary_ngn: 0,
+        daily_rate_ngn: updated.daily_rate_ngn,
+        earned_ngn: earned,
+        deduction_ngn: Number(updated.daily_rate_ngn || 0) - earned,
+        worked:
+          !isOffsiteQuery || waived
+            ? ["present", "late"].includes(updated.status)
+            : false,
+      },
+    });
+  }
+
+  // Keep the employee-facing query consistent with the decision, so My HR and
+  // payroll never tell the employee two different stories.
+  if (day.query_id) {
+    await repo.resolveQuery({
+      client,
+      brand,
+      id: day.query_id,
+      resolution,
+      userId: user.user_id,
+      note: note || null,
+    });
+  }
+  return updated || day;
+}
+
+/**
  * HR resolves a query. 'waived' restores the day's pay (justifies the linked
  * attendance day and zeroes the deduction); 'upheld' leaves the deduction so
  * it rolls into net pay (answer #3).
@@ -244,44 +332,18 @@ async function resolveQuery({ brand, user, request_id, id, resolution, note }) {
       client, brand, id, resolution, userId: user.user_id, note,
     });
     if (before.attendance_day_id) {
-      const isOffsite = before.query_type === "offsite_clockin";
-      if (resolution === "waived") {
-        // Restore the day: clear the lateness deduction / accept the off-site
-        // explanation. Presence stands and earns the full day.
-        const day = await repo.justifyDay({ client, dayId: before.attendance_day_id });
-        if (day) {
-          await repo.upsertEarningsDay({
-            client, brand,
-            input: {
-              profile_id: day.profile_id,
-              work_date: day.work_date,
-              base_salary_ngn: 0,
-              daily_rate_ngn: day.daily_rate_ngn,
-              earned_ngn: day.daily_rate_ngn,
-              deduction_ngn: 0,
-              worked: ["present", "late"].includes(day.status),
-            },
-          });
-        }
-      } else if (resolution === "upheld" && isOffsite) {
-        // Off-site clock-in upheld → discard presence for that day (absent),
-        // per the meeting rule (answer / brainstorm). Pay for the day is lost.
-        const day = await repo.markDayAbsent({ client, dayId: before.attendance_day_id });
-        if (day) {
-          await repo.upsertEarningsDay({
-            client, brand,
-            input: {
-              profile_id: day.profile_id,
-              work_date: day.work_date,
-              base_salary_ngn: 0,
-              daily_rate_ngn: day.daily_rate_ngn,
-              earned_ngn: 0,
-              deduction_ngn: day.daily_rate_ngn,
-              worked: false,
-            },
-          });
-        }
-      }
+      // One decision primitive, shared with the payroll review sheet — the
+      // query inbox and payroll can never apply a waive differently.
+      await setDayJustification({
+        client,
+        brand,
+        user,
+        // The query row already carries the link; pass a day stub so the
+        // primitive doesn't re-resolve the query it was called from.
+        day: { day_id: before.attendance_day_id, query_id: null },
+        resolution,
+        queryType: before.query_type,
+      });
     }
     await audit({
       business: brand,
@@ -1526,6 +1588,7 @@ module.exports = {
   raiseQuery,
   respondToQuery,
   resolveQuery,
+  setDayJustification,
   listTargets,
   setTarget,
   updateTargetProgress,

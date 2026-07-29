@@ -72,6 +72,12 @@ const bonusDecideSchema = z.object({
   reason: z.string().max(1000).optional(),
 });
 
+// Per-line attendance decision taken from the payslip review sheet.
+const attendanceDecideSchema = z.object({
+  resolution: z.enum(["waived", "upheld"]),
+  note: z.string().max(1000).optional(),
+});
+
 function make(schema) {
   return (req, _res, next) => {
     req.body = schema.parse(req.body || {});
@@ -84,5 +90,11 @@ module.exports = {
   commissionAccrue: make(commissionAccrueSchema),
   bonusAward: make(bonusAwardSchema),
   bonusDecide: make(bonusDecideSchema),
-  schemas: { runCreateSchema, bonusAwardSchema, commissionAccrueSchema },
+  attendanceDecide: make(attendanceDecideSchema),
+  schemas: {
+    runCreateSchema,
+    bonusAwardSchema,
+    commissionAccrueSchema,
+    attendanceDecideSchema,
+  },
 };

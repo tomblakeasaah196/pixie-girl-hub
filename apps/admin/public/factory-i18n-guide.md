@@ -1,7 +1,7 @@
 # Factory Screens — i18n Translation Guide
 
 **System**: Pixie Girl Hub admin app (`apps/admin`)  
-**Scope**: Factory-facing screens only — China Factory Account ledger and shipments  
+**Scope**: Factory-facing screens — China Factory Account ledger, shipments, and Production runs  
 **Library**: react-i18next with Vite glob-based auto-discovery  
 **Currently supported**: `en` (English), `zh` (Simplified Chinese — 简体中文)
 
@@ -67,7 +67,7 @@ Preserve these exactly in translated strings.
 
 ## Key Reference
 
-All 61 keys that must appear in every locale file.
+All 174 keys that must appear in every locale file.
 The table shows the key name, English text, Chinese text, and context notes.
 
 | Key                      | English                                                           | Chinese (简体)                   | Context / Notes                                                     |
@@ -140,6 +140,129 @@ The table shows the key name, English text, Chinese text, and context notes.
 > `label` (English) and `labelZh` (Chinese) property. When adding a new
 > language, also update those constant objects.
 
+
+### Production run screens
+
+Added when the Production module became fully operable by the China factory
+manager (open a run, add products, record what the factory charged, advance
+status). Grouped keys such as `runStatus.planned` are LITERAL key names, not
+nested objects — the bundle stays a flat map of string → string.
+
+| Key | English | Chinese (简体) | Context / Notes |
+| --- | --- | --- | --- |
+| `productionTitle` | Production | 生产 | Production run screens |
+| `productionSubtitle` | China factory account · shipments · production runs | 中国工厂账户 · 货运 · 生产批次 | Production run screens |
+| `overviewTab` | Overview | 总览 | Production run screens |
+| `factoryAccountTab` | Factory Account | 工厂账户 | Production run screens |
+| `productionRunsTab` | Production Runs | 生产批次 | Production run screens |
+| `accessRestricted` | Access restricted | 访问受限 | Production run screens |
+| `accessRestrictedMsg` | You don't have permission to view Production & Factory accounts. | 您没有查看生产与工厂账户的权限。 | Production run screens |
+| `active` | Active | 启用 | Production run screens |
+| `inactive` | Inactive | 停用 | Production run screens |
+| `factoryAccountsHeading` | Factory Accounts | 工厂账户 | Production run screens |
+| `kpiActiveAccounts` | Active Factory Accounts | 启用的工厂账户 | Production run screens |
+| `kpiTotalBalance` | Total Balance ({{currency}}) | 总余额（{{currency}}） | Production run screens — keep the {{placeholders}} exactly |
+| `kpiShipmentsInTransit` | Shipments in Transit | 运输中的货运 | Production run screens |
+| `kpiRunsInProduction` | Runs in Production | 生产中的批次 | Production run screens |
+| `runNumber` | Run # | 批次号 | Production run screens |
+| `title` | Title | 名称 | Production run screens |
+| `units` | Units | 数量 | Production run screens |
+| `totalCost` | Total Cost | 总成本 | Production run screens |
+| `perUnitCost` | Per Unit Cost | 单位成本 | Production run screens |
+| `created` | Created | 创建时间 | Production run screens |
+| `noRuns` | No production runs | 暂无生产批次 | Production run screens |
+| `noRunsMsg` | Track a production batch from the factory through to the Lagos warehouse. | 跟踪生产批次，从工厂一直到拉各斯仓库。 | Production run screens |
+| `newRun` | New Run | 新建批次 | Production run screens |
+| `newProductionRun` | New Production Run | 新建生产批次 | Production run screens |
+| `couldNotLoadRuns` | Could not load production runs. | 无法加载生产批次。 | Production run screens |
+| `stepOf` | Step {{step}} of {{total}} | 第 {{step}} 步，共 {{total}} 步 | Production run screens — keep the {{placeholders}} exactly |
+| `back` | Back | 上一步 | Production run screens |
+| `next` | Next | 下一步 | Production run screens |
+| `creating` | Creating… | 创建中… | Production run screens |
+| `createRun` | Create Run | 创建批次 | Production run screens |
+| `runTitle` | Run Title | 批次名称 | Production run screens |
+| `runTitlePlaceholder` | e.g. 13×6 Lace Front — June Batch | 例如：13×6 蕾丝前额 — 六月批次 | Production run screens |
+| `factoryCurrency` | Factory Currency | 工厂结算货币 | Production run screens |
+| `factoryCurrencyHint` | The currency the factory invoices you in. | 工厂向您开票所使用的货币。 | Production run screens |
+| `fromPo` | From Purchase Order | 来自采购订单 | Production run screens |
+| `fromPoHint` | Optional — pulls that order's lines onto this run. | 可选 — 将该订单的明细导入本批次。 | Production run screens |
+| `noPo` | No purchase order | 不关联采购订单 | Production run screens |
+| `expectedArrival` | Expected Arrival | 预计到货日期 | Production run screens |
+| `notes` | Notes | 备注 | Production run screens |
+| `notesPlaceholder` | Anything the Lagos team should know | 拉各斯团队需要了解的信息 | Production run screens |
+| `poLinesHint` | The purchase order's lines are added automatically. Add extra products below if you need to. | 采购订单的明细将自动导入。如有需要，可在下方添加其他产品。 | Production run screens |
+| `unitsPlanned` | Units Planned | 计划数量 | Production run screens |
+| `factoryCharge` | Factory Charge | 工厂费用 | Production run screens |
+| `otherCostsHint` | Freight, customs, 3PL and packaging are added to the run after it is created. | 运费、关税、拉各斯第三方物流和包装费用在批次创建后再添加。 | Production run screens |
+| `lineCount` | {{n}} product line(s) | {{n}} 条产品明细 | Production run screens — keep the {{placeholders}} exactly |
+| `bulkAdd` | Bulk Add | 批量添加 | Production run screens |
+| `addLine` | Add Line | 添加明细 | Production run screens |
+| `bulkAddHint` | Pick a product type, search, and tick everything you are making — each one becomes its own line. | 选择产品类型，搜索并勾选所有要生产的产品 — 每个产品会生成一条明细。 | Production run screens |
+| `lineN` | Line {{n}} | 第 {{n}} 条 | Production run screens — keep the {{placeholders}} exactly |
+| `removeLine` | Remove line | 删除明细 | Production run screens |
+| `product` | Product | 产品 | Production run screens |
+| `change` | Change | 更换 | Production run screens |
+| `quantity` | Quantity | 数量 | Production run screens |
+| `unitCostIn` | Unit cost ({{currency}}) | 单价（{{currency}}） | Production run screens — keep the {{placeholders}} exactly |
+| `lineTotal` | Line total | 小计 | Production run screens |
+| `fxLoading` | Loading rate… | 正在获取汇率… | Production run screens |
+| `fxMissing` | No exchange rate is configured for {{currency}} — enter the rate you converted at. | 未配置 {{currency}} 的汇率 — 请填写您实际换汇的汇率。 | Production run screens — keep the {{placeholders}} exactly |
+| `fxPreview` | At {{rate}} | 按汇率 {{rate}} | Production run screens — keep the {{placeholders}} exactly |
+| `fxRateHint` | Leave blank to use the system rate. Enter a rate only if you converted at a different one. | 留空则使用系统汇率。仅在实际换汇汇率不同时才需填写。 | Production run screens |
+| `fxNoRate` | No system rate | 无系统汇率 | Production run screens |
+| `addCost` | Add Cost | 添加成本 | Production run screens |
+| `costTypeLabel` | Cost Type | 成本类型 | Production run screens |
+| `invoiceReference` | Invoice Reference | 发票号 | Production run screens |
+| `invoiceReferencePlaceholder` | Supplier invoice number | 供应商发票号 | Production run screens |
+| `costDescriptionPlaceholder` | What this cost covers | 该笔成本的说明 | Production run screens |
+| `incurredAt` | Date Incurred | 发生日期 | Production run screens |
+| `addProducts` | Add Products | 添加产品 | Production run screens |
+| `productsInRun` | Products in this run | 本批次产品 | Production run screens |
+| `unnamedProduct` | Unnamed product | 未命名产品 | Production run screens |
+| `unitsReceivedOf` | {{received}}/{{planned}} units received | 已收货 {{received}}/{{planned}} 件 | Production run screens — keep the {{placeholders}} exactly |
+| `costComponents` | Cost Components | 成本明细 | Production run screens |
+| `costHiddenForRole` | Naira cost is not shown for your role. | 您的角色无法查看奈拉成本。 | Production run screens |
+| `receiveUnits` | Receive Units | 接收入库 | Production run screens |
+| `receiveHint` | {{n}} unit(s) still outstanding on this run. | 本批次还有 {{n}} 件待收货。 | Production run screens — keep the {{placeholders}} exactly |
+| `receiveNoProducts` | This run has no products linked to the catalogue, so nothing can be received into stock. Add products first. | 本批次没有关联产品目录，无法入库。请先添加产品。 | Production run screens |
+| `location` | Location | 仓库位置 | Production run screens |
+| `receiveQtyHint` | How many finished units arrived. | 本次到货的成品数量。 | Production run screens |
+| `receiveAtCost` | Booked in at | 入库成本 | Production run screens |
+| `runStatus.planned` | Planned | 已计划 | Production run status pill (state machine label) |
+| `runStatus.funded` | Funded | 已付款 | Production run status pill (state machine label) |
+| `runStatus.in_production` | In Production | 生产中 | Production run status pill (state machine label) |
+| `runStatus.quality_check` | Quality Check | 质检中 | Production run status pill (state machine label) |
+| `runStatus.ready_to_ship` | Ready to Ship | 待发货 | Production run status pill (state machine label) |
+| `runStatus.in_transit` | In Transit | 运输中 | Production run status pill (state machine label) |
+| `runStatus.arrived_lagos` | Arrived Lagos | 已到拉各斯 | Production run status pill (state machine label) |
+| `runStatus.cleared_customs` | Cleared Customs | 清关完成 | Production run status pill (state machine label) |
+| `runStatus.received` | Received | 已收货 | Production run status pill (state machine label) |
+| `runStatus.completed` | Completed | 已完成 | Production run status pill (state machine label) |
+| `runStatus.cancelled` | Cancelled | 已取消 | Production run status pill (state machine label) |
+| `unitStatus.planned` | Planned | 已计划 | Per-unit status pill inside a run |
+| `unitStatus.in_production` | In Production | 生产中 | Per-unit status pill inside a run |
+| `unitStatus.qc_pass` | QC Passed | 质检合格 | Per-unit status pill inside a run |
+| `unitStatus.qc_fail` | QC Failed | 质检不合格 | Per-unit status pill inside a run |
+| `unitStatus.in_transit` | In Transit | 运输中 | Per-unit status pill inside a run |
+| `unitStatus.arrived` | Arrived | 已到达 | Per-unit status pill inside a run |
+| `unitStatus.styled` | Styled | 已造型 | Per-unit status pill inside a run |
+| `unitStatus.received` | Received | 已收货 | Per-unit status pill inside a run |
+| `unitStatus.rejected` | Rejected | 已拒收 | Per-unit status pill inside a run |
+| `unitStatus.reworked` | Reworked | 已返工 | Per-unit status pill inside a run |
+| `costType.factory_unit_cost` | Factory Unit Cost | 工厂单价成本 | Cost component type — appears in the Add Cost picker and the cost list |
+| `costType.factory_overhead` | Factory Overhead | 工厂管理费 | Cost component type — appears in the Add Cost picker and the cost list |
+| `costType.raw_hair` | Raw Hair | 原料头发 | Cost component type — appears in the Add Cost picker and the cost list |
+| `costType.quality_inspection` | Quality Inspection | 质量检验费 | Cost component type — appears in the Add Cost picker and the cost list |
+| `costType.freight_international` | International Freight | 国际运费 | Cost component type — appears in the Add Cost picker and the cost list |
+| `costType.customs_duty` | Customs Duty | 关税 | Cost component type — appears in the Add Cost picker and the cost list |
+| `costType.customs_clearing_fee` | Customs Clearing Fee | 清关费 | Cost component type — appears in the Add Cost picker and the cost list |
+| `costType.port_storage` | Port Storage / Demurrage | 港口仓储费 / 滞期费 | Cost component type — appears in the Add Cost picker and the cost list |
+| `costType.3pl_lagos` | 3PL Lagos | 拉各斯第三方物流 | Cost component type — appears in the Add Cost picker and the cost list |
+| `costType.styling_intercompany` | Styling (Intercompany) | 造型费（关联公司） | Cost component type — appears in the Add Cost picker and the cost list |
+| `costType.packaging` | Packaging | 包装费 | Cost component type — appears in the Add Cost picker and the cost list |
+| `costType.wastage` | Wastage | 损耗 | Cost component type — appears in the Add Cost picker and the cost list |
+| `costType.samples` | Samples | 样品 | Cost component type — appears in the Add Cost picker and the cost list |
+| `costType.misc` | Miscellaneous | 其他费用 | Cost component type — appears in the Add Cost picker and the cost list |
 ---
 
 ## Entry Type labels (from constants.ts)

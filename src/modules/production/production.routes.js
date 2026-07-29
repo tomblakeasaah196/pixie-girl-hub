@@ -16,6 +16,9 @@ const can = (action) => requirePermission("production", action);
 
 // ── Production runs ───────────────────────────────────────
 router.get("/", can("view"), controller.listRuns);
+// Rate lookup for the cost form's NGN preview. Must sit above /:id so
+// "fx-rate" is never read as a run id.
+router.get("/fx-rate", can("view"), controller.fxRate);
 router.post(
   "/",
   can("create"),
@@ -36,14 +39,24 @@ router.post(
   controller.addCostComponent,
 );
 router.post(
+  "/:id/products",
+  can("edit"),
+  validator.validateProductsAdd,
+  controller.addProducts,
+);
+router.post(
   "/:id/units",
   can("edit"),
   validator.validateUnitAdd,
   controller.addUnit,
 );
+// Receiving posts a production_in movement into a Lagos location, so it needs
+// stock rights on top of production rights — a China factory manager runs the
+// batch but does not book goods into the Lagos warehouse.
 router.post(
   "/:id/receive",
   can("edit"),
+  requirePermission("stock", "edit"),
   validator.validateReceive,
   controller.receiveProduction,
 );

@@ -19,6 +19,7 @@ async function listRuns(req, res) {
   res.json({
     data: await service.listRuns({
       brand: req.brand,
+      user: req.user,
       status: req.query.status,
       page,
       page_size,
@@ -27,7 +28,28 @@ async function listRuns(req, res) {
 }
 async function getRun(req, res) {
   res.json({
-    data: await service.getRun({ brand: req.brand, id: req.params.id }),
+    data: await service.getRun({
+      brand: req.brand,
+      user: req.user,
+      id: req.params.id,
+    }),
+  });
+}
+async function addProducts(req, res) {
+  res.status(201).json({
+    data: await service.addProducts({
+      ...base(req),
+      id: req.params.id,
+      input: req.body,
+    }),
+  });
+}
+// The rate the cost form pre-fills with. Lives on this module (not
+// business-setup) so a factory manager can read it without holding the
+// settings permission.
+async function fxRate(req, res) {
+  res.json({
+    data: await service.fxRate({ brand: req.brand, cur: req.query.currency }),
   });
 }
 async function openRun(req, res) {
@@ -73,7 +95,11 @@ async function receiveProduction(req, res) {
 }
 async function getLandedCost(req, res) {
   res.json({
-    data: await service.getLandedCost({ brand: req.brand, id: req.params.id }),
+    data: await service.getLandedCost({
+      brand: req.brand,
+      user: req.user,
+      id: req.params.id,
+    }),
   });
 }
 async function refreshLandedCost(req, res) {
@@ -109,6 +135,8 @@ module.exports = {
   getRun,
   openRun,
   advanceRun,
+  addProducts,
+  fxRate,
   addCostComponent,
   addUnit,
   receiveProduction,

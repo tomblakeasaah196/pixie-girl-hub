@@ -1,8 +1,11 @@
 import { api } from "@/lib/api";
 import type {
+  CostComponent,
+  CostType,
   FactoryAccount,
   LedgerEntry,
   LedgerPage,
+  ProductLineInput,
   Shipment,
   ShipmentPage,
   ProductionRun,
@@ -148,11 +151,35 @@ export function getProductionRun(id: string) {
   return api.get<ProductionRun>(`${PR}/${id}`);
 }
 
+/**
+ * Open a run. `lines` is what is being made — each becomes production_run_units
+ * rows, and the priced lines roll into one `factory_unit_cost` component. Pass
+ * `po_id` alone to build the run from an existing purchase order's lines.
+ */
 export function createProductionRun(input: {
   title: string;
   units_planned?: number;
+  supplier_id?: string;
+  po_id?: string;
+  currency?: string;
+  fx_rate_used?: number;
+  lines?: ProductLineInput[];
+  expected_arrival_date?: string;
+  notes?: string;
 }) {
   return api.post<ProductionRun>(PR, input);
+}
+
+export function addProducts(
+  runId: string,
+  input: {
+    lines: ProductLineInput[];
+    currency?: string;
+    fx_rate_used?: number;
+    incurred_at?: string;
+  },
+) {
+  return api.post<ProductionRun>(`${PR}/${runId}/products`, input);
 }
 
 export function advanceProductionRun(id: string, status: string) {
@@ -162,13 +189,39 @@ export function advanceProductionRun(id: string, status: string) {
 export function addCostComponent(
   runId: string,
   input: {
-    cost_type: string;
+    cost_type: CostType;
     amount: number;
     currency: string;
     fx_rate_used?: number;
-    amount_ngn?: number;
+    applies_to_units?: number;
+    description?: string;
+    invoice_reference?: string;
     incurred_at?: string;
   },
 ) {
-  return api.post<{ component_id: string }>(`${PR}/${runId}/costs`, input);
+  return api.post<CostComponent>(`${PR}/${runId}/costs`, input);
+}
+
+/** Book finished units into a Lagos stock location at the run's landed cost. */
+export function receiveProduction(
+  runId: string,
+  input: {
+    variant_id: string;
+    location_id: string;
+    quantity: number;
+    unit_cost_ngn?: number;
+  },
+) {
+  return api.post<ProductionRun>(`${PR}/${runId}/receive`, input);
+}
+
+/**
+ * NGN per 1 unit of `currency`, for the cost form's live NGN preview. Served by
+ * the production module rather than business-setup so a factory manager can
+ * read it without holding the settings permission.
+ */
+export function getFxRate(currency: string) {
+  return api.get<{ currency: string; rate: number | null }>(
+    `${PR}/fx-rate?currency=${encodeURIComponent(currency)}`,
+  );
 }

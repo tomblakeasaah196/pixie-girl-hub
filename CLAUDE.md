@@ -164,6 +164,7 @@ Field/endpoint truth: migration SQL → `docs/openapi.yaml` → `docs/Frontend_E
 - `docs/UPLOAD_SIZE_LIMITS.md` — fixing HTTP 413 on uploads: the Cloudflare → nginx `client_max_body_size` → multer cap chain (the upload "works locally, fails live" gotcha)
 - `docs/WHATSAPP_CALLING.md` — inbound WhatsApp voice calls (Cloud API Calling): Meta setup, ring choreography, WebRTC answer flow, missed-call follow-ups
 - `docs/INSTAGRAM_APP_REPLY_SYNC.md` — staff replies sent from the Instagram app sync into the Hub via message echoes: echoes ride the `messages` webhook field (`is_echo` flag — Instagram has NO separate `message_echoes` field, that's Messenger-only), subscriptions self-healed hourly by the `ig-echo-watchdog`, the senderless-bubble constraint fix (000361), unread semantics, `npm run diag:instagram-echoes` (is it Meta or us?), `npm run backfill:instagram-history`
+- `docs/WHATSAPP_COEXISTENCE.md` — running ONE number on the WhatsApp Business app *and* the Cloud API: decision record, the three coexistence webhook fields (`smb_message_echoes` / `history` / `smb_app_state_sync`), the payload trap (WhatsApp uses a dedicated echo field with a `message_echoes[]` array and inverted `from`/`to` — the mirror image of Instagram), the one-shot 180-day history sync, onboarding runbook and operating rules
 - `docs/PRAXIS_KNOWLEDGE_BASE.md` — the whole-system navigation guide Praxis is trained on (module → route → permission → tabs → "how do I…" tasks). **Keep it seeded — see below.**
 
 ## Praxis knowledge base must stay seeded

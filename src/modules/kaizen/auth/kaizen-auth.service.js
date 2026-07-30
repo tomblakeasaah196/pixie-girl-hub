@@ -15,6 +15,7 @@ const argon2 = require("argon2");
 
 const { config } = require("../../../config/env");
 const { AppError } = require("../../../utils/errors");
+const emailService = require("../../../services/email.service");
 const repo = require("./kaizen-auth.repo");
 
 const ACCESS_AUDIENCE = "kaizen";
@@ -194,11 +195,137 @@ async function changePassword({
   await repo.writeAudit({ operatorId, action: "auth.change_password", ip });
 }
 
+async function requestPasswordReset(email, ip) {
+  const op = await repo.findOperatorByEmail(email);
+  if (!op || op.status !== "active") {
+    throw new AppError(
+      "KAIZEN_OPERATOR_NOT_FOUND",
+      "No active operator found with that email",
+      404,
+      { user_message: "No active operator found with that email." },
+    );
+  }
+
+  const code = Math.random().toString().slice(2, 8).padEnd(6, "0");
+  const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+  await repo.revokeResetTokensByEmail(email);
+  await repo.createPasswordResetToken(email, code, expiresAt);
+
+  const operatorName = op.display_name || "Operator";
+  const html = `
+    <p>Hi ${operatorName},</p>
+    <p>You requested a password reset for your Kaizen account. Use this code to reset your password:</p>
+    <h2 style="font-size: 24px; font-weight: bold; text-align: center; letter-spacing: 2px;">${code}</h2>
+    <p>This code expires in 15 minutes.</p>
+    <p>If you did not request this, please ignore this email.</p>
+  `;
+
+  await emailService.send({
+    to: email,
+    subject: "Kaizen Password Reset Code",
+    html,
+    text: `Your Kaizen password reset code is: ${code}\n\nThis code expires in 15 minutes.`,
+  });
+
+  await repo.writeAudit({
+    action: "auth.password_reset_requested",
+    metadata: { email },
+    ip,
+  });
+
+  return { email };
+}
+
+async function verifyPasswordResetCode(code) {
+  const token = await repo.findActiveResetTokenByCode(code);
+  if (!token) {
+    throw new AppError(
+      "KAIZEN_INVALID_OTP",
+      "Invalid or expired OTP",
+      401,
+      { user_message: "Invalid or expired code." },
+    );
+  }
+
+  if (token.attempt_count >= token.max_attempts) {
+    throw new AppError(
+      "KAIZEN_OTP_ATTEMPTS_EXCEEDED",
+      "Too many verification attempts",
+      429,
+      { user_message: "Too many attempts. Request a new code." },
+    );
+  }
+
+  return { email: token.email, tokenId: token.token_id };
+}
+
+async function resetPasswordWithOtp(code, newPassword, ip) {
+  const token = await repo.findActiveResetTokenByCode(code);
+  if (!token) {
+    throw new AppError(
+      "KAIZEN_INVALID_OTP",
+      "Invalid or expired OTP",
+      401,
+      { user_message: "Invalid or expired code." },
+    );
+  }
+
+  if (token.attempt_count >= token.max_attempts) {
+    throw new AppError(
+      "KAIZEN_OTP_ATTEMPTS_EXCEEDED",
+      "Too many verification attempts",
+      429,
+      { user_message: "Too many attempts. Request a new code." },
+    );
+  }
+
+  const op = await repo.findOperatorByEmail(token.email);
+  if (!op || op.status !== "active") {
+    throw new AppError("KAIZEN_OPERATOR_INACTIVE", "Operator not found", 404);
+  }
+
+  const hash = await argon2.hash(newPassword);
+  await repo.updatePassword(op.operator_id, hash);
+  await repo.markResetTokenUsed(token.token_id);
+  await repo.revokeAllSessions(op.operator_id);
+
+  await repo.writeAudit({
+    operatorId: op.operator_id,
+    action: "auth.password_reset_completed",
+    ip,
+  });
+
+  const { token: accessToken } = signAccessToken(op.operator_id);
+  const refreshToken = crypto.randomBytes(48).toString("hex");
+  const expiresAt = new Date(
+    Date.now() + config.KAIZEN_REFRESH_TTL_DAYS * 24 * 60 * 60 * 1000,
+  );
+
+  await repo.createSession({
+    operatorId: op.operator_id,
+    jti: crypto.randomUUID(),
+    refreshTokenHash: sha256(refreshToken),
+    userAgent: null,
+    ip,
+    expiresAt,
+  });
+
+  return {
+    operator: publicOperator(op),
+    access_token: accessToken,
+    refresh_token: refreshToken,
+  };
+}
+
 module.exports = {
   login,
   refresh,
   logout,
   changePassword,
+  requestPasswordReset,
+  verifyPasswordResetCode,
+  resetPasswordWithOtp,
   verifyAccessToken,
   refreshCookieOptions,
   publicOperator,

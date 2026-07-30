@@ -85,6 +85,15 @@ export function LoginPage() {
             {busy ? <Spinner className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
             Sign in
           </button>
+
+          <div className="text-center">
+            <a
+              href="/forgot-password"
+              className="text-sm text-fog-300 hover:text-fog-200"
+            >
+              Forgot your password?
+            </a>
+          </div>
         </form>
 
         <p className="mt-6 text-center text-xs text-fog-400">

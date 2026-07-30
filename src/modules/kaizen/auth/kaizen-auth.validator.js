@@ -30,4 +30,24 @@ const acceptInviteSchema = z.object({
   password,
 });
 
-module.exports = { loginSchema, changePasswordSchema, acceptInviteSchema };
+const requestPasswordResetSchema = z.object({
+  email: z.string().email(),
+});
+
+const verifyResetCodeSchema = z.object({
+  code: z.string().regex(/^\d{6}$/, "Code must be 6 digits"),
+});
+
+const resetPasswordSchema = z.object({
+  code: z.string().regex(/^\d{6}$/, "Code must be 6 digits"),
+  new_password: password,
+});
+
+module.exports = {
+  loginSchema,
+  changePasswordSchema,
+  acceptInviteSchema,
+  requestPasswordResetSchema,
+  verifyResetCodeSchema,
+  resetPasswordSchema,
+};

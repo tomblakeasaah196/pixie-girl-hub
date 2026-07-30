@@ -1330,9 +1330,20 @@ async function customer360({ contact_id, brand }) {
 
 // ── Composer settings (per-brand editable templates) ──────
 
+/** The columns the composer-settings read/write pair round-trips. */
+const COMPOSER_SETTING_COLS = [
+  "onboarding_template",
+  "whatsapp_handoff_template",
+  "whatsapp_share_number",
+  "address_template",
+  "address_share_text",
+  "hours_template",
+  "hours_share_text",
+];
+
 async function getComposerSettings({ brand }) {
   const { rows } = await query(
-    `SELECT onboarding_template, whatsapp_handoff_template, whatsapp_share_number
+    `SELECT ${COMPOSER_SETTING_COLS.join(", ")}
        FROM shared.smartcomm_composer_settings WHERE business = $1`,
     [brand],
   );
@@ -1345,16 +1356,9 @@ async function getComposerSettings({ brand }) {
  * code default / business_config.phone at read time).
  */
 async function upsertComposerSettings({ brand, patch, user_id }) {
-  const cols = [
-    "onboarding_template",
-    "whatsapp_handoff_template",
-    "whatsapp_share_number",
-  ];
-  const present = cols.filter((c) => c in patch);
+  const present = COMPOSER_SETTING_COLS.filter((c) => c in patch);
   if (present.length === 0) return getComposerSettings({ brand });
-  const setList = present
-    .map((c, i) => `${c} = $${i + 3}`)
-    .join(", ");
+  const setList = present.map((c, i) => `${c} = $${i + 3}`).join(", ");
   const insertCols = present.join(", ");
   const insertVals = present.map((_, i) => `$${i + 3}`).join(", ");
   const params = [brand, user_id, ...present.map((c) => patch[c])];
@@ -1364,19 +1368,24 @@ async function upsertComposerSettings({ brand, patch, user_id }) {
      VALUES ($1, $2, ${insertVals})
      ON CONFLICT (business) DO UPDATE
         SET ${setList}, updated_by = $2, updated_at = now()
-     RETURNING onboarding_template, whatsapp_handoff_template, whatsapp_share_number`,
+     RETURNING ${COMPOSER_SETTING_COLS.join(", ")}`,
     params,
   );
   return rows[0] || null;
 }
 
-/** The brand's Business-Setup phone — the WhatsApp number fallback. */
-async function getBrandPhone({ brand }) {
+/**
+ * The brand's Business-Setup contact details — the composer's fallbacks:
+ * `phone` seeds the WhatsApp share number, `address` seeds the
+ * "send our address" quick insert.
+ */
+async function getBrandContact({ brand }) {
   const { rows } = await query(
-    `SELECT phone FROM shared.business_config WHERE business_key = $1`,
+    `SELECT phone, address FROM shared.business_config WHERE business_key = $1`,
     [brand],
   );
-  return (rows[0] && rows[0].phone) || null;
+  const row = rows[0] || {};
+  return { phone: row.phone || null, address: row.address || null };
 }
 
 // ── Colleague directory ───────────────────────────────────
@@ -1550,7 +1559,7 @@ module.exports = {
   // Composer settings (editable per-brand templates + WA share number)
   getComposerSettings,
   upsertComposerSettings,
-  getBrandPhone,
+  getBrandContact,
   listMessages,
   getMessage,
   softDeleteMessage,

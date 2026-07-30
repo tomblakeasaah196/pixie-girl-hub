@@ -621,9 +621,14 @@ module.exports = { kaizenAuthMiddleware };
 | GET | `/api/v1/kaizen/operators` | operator | list operators |
 | POST | `/api/v1/kaizen/operators/invite` | operator | body `{ email, display_name }` → creates invite + emails link |
 | POST | `/api/v1/kaizen/auth/accept-invite` | none | body `{ token, password }` → activates operator |
+| POST | `/api/v1/kaizen/auth/forgot-password` | none | body `{ email }` → emails a 6-digit code. **Always 200**, even for an unknown address |
+| POST | `/api/v1/kaizen/auth/verify-reset-code` | none | body `{ email, code }` → checks the code without redeeming it |
+| POST | `/api/v1/kaizen/auth/reset-password` | none | body `{ email, code, new_password }` → sets the password, revokes all sessions, signs the operator in |
 | POST | `/api/v1/kaizen/operators/:id/disable` | operator | **guarded** (confirmation) — sets `status='disabled'`, revokes sessions |
 
 **Invite flow:** `invite` → insert `kaizen_operator_invites` with `token_hash = sha256(rawToken)`, `expires_at = now()+72h`; email a link `https://kaizen.pixiegirlglobal.com/accept-invite?token=<rawToken>` via `src/services/email.service.js`. `accept-invite` verifies the (unexpired, unaccepted) token, creates/updates the operator with an argon2 hash, marks invite accepted.
+
+**Password-reset flow (migration 000373):** `forgot-password` → revoke any live token for the operator, insert `kaizen_password_reset_tokens` with `code_hash = sha256(code)` (`crypto.randomInt`, 6 digits), `expires_at = now()+15min`; email the raw code. `verify-reset-code` and `reset-password` both resolve the operator **by email first**, then compare against that operator's newest live token — never by code alone, or a guessed code would match any operator's token and the 3-attempt cap would not bound a search of the 10⁶ code space. A wrong code burns one attempt (`401`); the fourth returns `429` and the operator must request a new code. Redeeming revokes every existing session, then issues a fresh one.
 
 **Seed script — `scripts/kaizen-create-operator.js`** (mirror `scripts/create-admin.js`; **never commit a password**):
 
@@ -938,7 +943,8 @@ Follow the design canon in `docs/FRONTEND_INSTRUCTION_MUST_READ.md` (token-based
 
 | Route | Screen | Notes |
 | --- | --- | --- |
-| `/login` | Operator login | + forced change-password |
+| `/login` | Operator login | + forced change-password; links to `/forgot-password` |
+| `/forgot-password` | Self-service reset | public, 3 steps in one page: email → 6-digit code → new password. Signs in on success. Wording never confirms whether an address is an operator |
 | `/accept-invite` | Set password from invite token | public |
 | `/` | **Overview** | health tiles (db/redis/queue/disk/mem/cpu), last backup + last verified restore badges, open-error count by severity, perf p95 sparkline, active alerts |
 | `/errors` | **Errors** | table, **30/page**, filters (status/severity/source/search), **multi-select → Resolve/Ignore**, **Export Markdown** button. Resolved rows leave the default view. Live badge on new criticals. |

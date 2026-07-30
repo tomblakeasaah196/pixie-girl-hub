@@ -152,28 +152,31 @@ async function writeAudit({ operatorId, action, targetType, targetId, metadata, 
   );
 }
 
-// ── Password Reset OTP ──────────────────────────────────────────────────────
+// ── Password reset OTP ─────────────────────────────────────────────────────
 
-async function createPasswordResetToken(email, code, expiresAt) {
+async function createPasswordResetToken({ operatorId, codeHash, expiresAt }) {
   const { rows } = await query(
     `INSERT INTO shared.kaizen_password_reset_tokens
-       (email, code, expires_at)
+       (operator_id, code_hash, expires_at)
      VALUES ($1, $2, $3)
-     RETURNING token_id, code, expires_at`,
-    [email.toLowerCase(), code, expiresAt],
+     RETURNING token_id, expires_at`,
+    [operatorId, codeHash, expiresAt],
   );
   return rows[0];
 }
 
-async function findActiveResetTokenByCode(code) {
+// The newest live code for an operator. Expiry is filtered here rather than in
+// the index predicate (now() is STABLE, not IMMUTABLE — see migration 000373).
+async function findLiveResetTokenByOperator(operatorId) {
   const { rows } = await query(
-    `SELECT token_id, email, code, attempt_count, max_attempts, expires_at
+    `SELECT token_id, operator_id, code_hash, attempt_count, max_attempts
        FROM shared.kaizen_password_reset_tokens
-      WHERE code = $1
+      WHERE operator_id = $1
         AND used_at IS NULL
         AND expires_at > now()
+      ORDER BY created_at DESC
       LIMIT 1`,
-    [code],
+    [operatorId],
   );
   return rows[0] || null;
 }
@@ -186,24 +189,24 @@ async function incrementResetTokenAttempts(tokenId) {
      RETURNING attempt_count, max_attempts`,
     [tokenId],
   );
-  return rows[0];
+  return rows[0] || null;
 }
 
 async function markResetTokenUsed(tokenId) {
   await query(
     `UPDATE shared.kaizen_password_reset_tokens
         SET used_at = now()
-      WHERE token_id = $1`,
+      WHERE token_id = $1 AND used_at IS NULL`,
     [tokenId],
   );
 }
 
-async function revokeResetTokensByEmail(email) {
+async function revokeResetTokensForOperator(operatorId) {
   await query(
     `UPDATE shared.kaizen_password_reset_tokens
         SET used_at = now()
-      WHERE email = $1 AND used_at IS NULL`,
-    [email.toLowerCase()],
+      WHERE operator_id = $1 AND used_at IS NULL`,
+    [operatorId],
   );
 }
 
@@ -221,8 +224,8 @@ module.exports = {
   revokeAllSessionsExcept,
   writeAudit,
   createPasswordResetToken,
-  findActiveResetTokenByCode,
+  findLiveResetTokenByOperator,
   incrementResetTokenAttempts,
   markResetTokenUsed,
-  revokeResetTokensByEmail,
+  revokeResetTokensForOperator,
 };

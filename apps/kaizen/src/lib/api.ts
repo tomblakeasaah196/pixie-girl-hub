@@ -144,6 +144,41 @@ export async function acceptInvite(token: string, password: string) {
   });
 }
 
+// ── Forgot password ──────────────────────────────────────
+// These run signed-out, and a 401 means "wrong code" rather than "stale
+// session" — so no refresh-retry, which would only clear auth state and
+// swallow the round-trip.
+const NO_RETRY = { retry: false } as const;
+
+/** Always resolves for a well-formed address, whether or not it's an operator. */
+export async function requestPasswordReset(email: string) {
+  return api<{ ok: true }>(
+    "/auth/forgot-password",
+    { method: "POST", body: JSON.stringify({ email }) },
+    NO_RETRY,
+  );
+}
+
+export async function verifyResetCode(email: string, code: string) {
+  return api<{ ok: true }>(
+    "/auth/verify-reset-code",
+    { method: "POST", body: JSON.stringify({ email, code }) },
+    NO_RETRY,
+  );
+}
+
+export async function resetPasswordWithCode(
+  email: string,
+  code: string,
+  new_password: string,
+) {
+  return api<{ operator: Operator; access_token: string }>(
+    "/auth/reset-password",
+    { method: "POST", body: JSON.stringify({ email, code, new_password }) },
+    NO_RETRY,
+  );
+}
+
 // ── Operators ────────────────────────────────────────────
 export async function listOperators() {
   const r = await api<{ data: OperatorRow[] }>("/operators");

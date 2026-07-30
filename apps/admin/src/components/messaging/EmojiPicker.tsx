@@ -18,6 +18,13 @@ import {
 interface Props {
   /** Trigger button the picker is anchored to; positioned via viewport rect, not CSS flow. */
   anchorRef: RefObject<HTMLElement | null>;
+  /**
+   * Which edge lines up with the trigger. `"end"` (default) hangs the panel
+   * leftwards from a right-hand trigger; `"start"` opens rightwards, which
+   * is what a left-hand trigger — the chat composer's emoji key, WhatsApp's
+   * position — needs so the panel covers the thread, not the inbox list.
+   */
+  align?: "start" | "end";
   onPick: (emoji: string) => void;
   onClose: () => void;
 }
@@ -58,7 +65,12 @@ function pushRecent(emoji: string): string[] {
  * keyword search. Glassmorphism popover per the design canon; renders
  * plain Unicode glyphs so nothing loads from a CDN.
  */
-export function EmojiPicker({ anchorRef, onPick, onClose }: Props) {
+export function EmojiPicker({
+  anchorRef,
+  align = "end",
+  onPick,
+  onClose,
+}: Props) {
   const [active, setActive] = useState<string>("recents");
   const [query, setQuery] = useState("");
   const [recents, setRecents] = useState<string[]>(loadRecents);
@@ -74,11 +86,8 @@ export function EmojiPicker({ anchorRef, onPick, onClose }: Props) {
       const anchor = anchorRef.current;
       if (!anchor) return;
       const rect = anchor.getBoundingClientRect();
-      let left = rect.right - PICKER_WIDTH;
-      left = Math.min(
-        left,
-        window.innerWidth - PICKER_WIDTH - VIEWPORT_MARGIN,
-      );
+      let left = align === "start" ? rect.left : rect.right - PICKER_WIDTH;
+      left = Math.min(left, window.innerWidth - PICKER_WIDTH - VIEWPORT_MARGIN);
       left = Math.max(left, VIEWPORT_MARGIN);
 
       let top = rect.top - PICKER_HEIGHT - 8;
@@ -100,7 +109,7 @@ export function EmojiPicker({ anchorRef, onPick, onClose }: Props) {
       window.removeEventListener("resize", reposition);
       window.removeEventListener("scroll", reposition, true);
     };
-  }, [anchorRef]);
+  }, [anchorRef, align]);
 
   // Close on outside-click / Escape.
   useEffect(() => {
@@ -159,6 +168,12 @@ export function EmojiPicker({ anchorRef, onPick, onClose }: Props) {
       className="fixed z-[1000] rounded-2xl border hairline bg-panel/95 backdrop-blur-xl shadow-2xl overflow-hidden"
       role="dialog"
       aria-label="Emoji picker"
+      /* Portalled to <body>, so it lives outside the chat dock's DOM. The
+         marker tells the dock's outside-click / Escape guards that a click
+         in here belongs to this popover — without it, picking an emoji in
+         the dock closed the whole dock. */
+      data-modal-root
+      data-modal-open="true"
     >
       {/* Search */}
       <div className="p-2 border-b hairline">

@@ -1066,27 +1066,39 @@ async function getCustomer360({ brand, contact_id }) {
 }
 
 // ── Composer settings ─────────────────────────────────────
-// The two "insert stock copy" composer buttons (Online welcome form +
-// WhatsApp handoff) read editable per-brand templates. {link}/{number}
-// are substituted by the frontend at insert time. These are the
-// defaults shown before the CEO saves their own wording — kept here so
-// an empty settings row degrades to sensible copy, not a blank insert.
+// The composer's "insert stock copy" actions (Online welcome form,
+// WhatsApp handoff, our address, our working hours) read editable
+// per-brand templates. {link}/{number}/{address}/{hours} are substituted
+// by the frontend at insert time. These are the defaults shown before
+// the CEO saves their own wording — kept here so an empty settings row
+// degrades to sensible copy, not a blank insert.
 const DEFAULT_ONBOARDING_TEMPLATE =
   "Welcome 🌹 We'd love to make sure your order reaches you exactly the " +
   "way you want. Could you fill in this quick form (60 sec) — it covers " +
   "your delivery address & preferences:\n\n{link}";
 const DEFAULT_WHATSAPP_HANDOFF_TEMPLATE =
   "Lovely! You can follow up with us on WhatsApp here:\n{number}";
+const DEFAULT_ADDRESS_TEMPLATE =
+  "Here's our address 📍\n\n{address}\n\nDo let us know when you're on " +
+  "your way so we can be ready for you 💕";
+const DEFAULT_HOURS_TEMPLATE =
+  "We're open {hours} 🕘\n\nCome through any time within those hours — " +
+  "we'd love to have you.";
+// business_config carries no opening-hours column, so unlike the address
+// the hours have no Settings fallback: this is the seeded first answer,
+// and the CEO's "save as default" replaces it.
+const DEFAULT_WORKING_HOURS = "Monday to Saturday, 9:00 AM – 8:00 PM";
 
 /**
  * Resolve the brand's composer settings, filling every field with its
- * default so the frontend always has usable copy + a number. The
- * WhatsApp number falls back to the brand's Business-Setup phone.
+ * default so the frontend always has usable copy plus a number, an
+ * address and opening hours. The WhatsApp number and the address fall
+ * back to the brand's Business-Setup values (Settings → Business Setup).
  */
 async function getComposerSettings({ brand }) {
-  const [row, phone] = await Promise.all([
+  const [row, contact] = await Promise.all([
     repo.getComposerSettings({ brand }),
-    repo.getBrandPhone({ brand }),
+    repo.getBrandContact({ brand }),
   ]);
   return {
     onboarding_template:
@@ -1094,14 +1106,26 @@ async function getComposerSettings({ brand }) {
     whatsapp_handoff_template:
       (row && row.whatsapp_handoff_template) ||
       DEFAULT_WHATSAPP_HANDOFF_TEMPLATE,
+    address_template: (row && row.address_template) || DEFAULT_ADDRESS_TEMPLATE,
+    hours_template: (row && row.hours_template) || DEFAULT_HOURS_TEMPLATE,
     // Explicit override wins; else the Business-Setup phone.
     whatsapp_share_number:
-      (row && row.whatsapp_share_number) || phone || null,
+      (row && row.whatsapp_share_number) || contact.phone || null,
+    // Explicit override wins; else the Business-Setup address. NULL means
+    // nobody has filled the address in yet — the composer says so rather
+    // than inserting a message with a hole in it.
+    address_share_text:
+      (row && row.address_share_text) || contact.address || null,
+    hours_share_text: (row && row.hours_share_text) || DEFAULT_WORKING_HOURS,
     // Surface whether each field is CEO-set vs a code/settings default,
     // so the UI can hint "using your saved wording" etc. if it wants.
     onboarding_is_custom: !!(row && row.onboarding_template),
     whatsapp_is_custom: !!(row && row.whatsapp_handoff_template),
     whatsapp_number_is_custom: !!(row && row.whatsapp_share_number),
+    address_is_custom: !!(row && row.address_template),
+    address_text_is_custom: !!(row && row.address_share_text),
+    hours_is_custom: !!(row && row.hours_template),
+    hours_text_is_custom: !!(row && row.hours_share_text),
   };
 }
 
@@ -1116,12 +1140,17 @@ async function updateComposerSettings({ brand, user, request_id, input }) {
     const t = String(v).trim();
     return t === "" ? null : t;
   };
-  if ("onboarding_template" in input)
-    patch.onboarding_template = norm(input.onboarding_template);
-  if ("whatsapp_handoff_template" in input)
-    patch.whatsapp_handoff_template = norm(input.whatsapp_handoff_template);
-  if ("whatsapp_share_number" in input)
-    patch.whatsapp_share_number = norm(input.whatsapp_share_number);
+  for (const field of [
+    "onboarding_template",
+    "whatsapp_handoff_template",
+    "whatsapp_share_number",
+    "address_template",
+    "address_share_text",
+    "hours_template",
+    "hours_share_text",
+  ]) {
+    if (field in input) patch[field] = norm(input[field]);
+  }
   await repo.upsertComposerSettings({
     brand,
     patch,

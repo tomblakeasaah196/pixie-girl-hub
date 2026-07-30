@@ -311,6 +311,10 @@ const composerSettingsUpdate = z
     onboarding_template: z.string().max(4000).optional(),
     whatsapp_handoff_template: z.string().max(4000).optional(),
     whatsapp_share_number: z.string().max(40).optional(),
+    address_template: z.string().max(4000).optional(),
+    address_share_text: z.string().max(1000).optional(),
+    hours_template: z.string().max(4000).optional(),
+    hours_share_text: z.string().max(300).optional(),
   })
   .strict();
 

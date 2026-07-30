@@ -1061,8 +1061,10 @@ messages across WhatsApp, SMS, and other channels in one place.
   alignment, bullet/numbered lists, links, inline **images**, and emoji from
   the editor's toolbar. Above it sits a **Subject** line (defaults to the
   thread's subject — edit it freely) and a **+ Cc** button to copy other
-  recipients; the **Attach** button stages files (PDFs, images, docs) as chips
-  to ride the same letter. One Send delivers the formatted body + subject + Cc
+  recipients; the **paperclip** below the editor stages files (PDFs, images,
+  docs) as chips to ride the same letter — and carries the same stock answers
+  (Our address, Opening hours, Catalogue, Welcome form, Quick reply) as a chat
+  does. One Send delivers the formatted body + subject + Cc
   + every file as a single **branded** email (the brand's logo, colours and
   footer are applied automatically). Press **⌘/Ctrl + Enter** to send;
   plain Enter makes a new line. (WhatsApp and Instagram stay a simple text box —
@@ -1072,8 +1074,28 @@ messages across WhatsApp, SMS, and other channels in one place.
   Email / Instagram. Choosing **Email** opens the same rich Gmail-style writer
   with Subject, Cc and attachments; WhatsApp/Instagram show a simple first-
   message box.
+- *How does the message box work?* It's laid out like WhatsApp: **emoji** on
+  the left, the message box in the middle, **Praxis** (draft this reply) and
+  the **paperclip** on the right. The round key on the far right is the
+  **microphone** while the box is empty and turns into **Send** the moment you
+  type — so a voice note is always one tap away. **Enter** sends,
+  **Shift + Enter** starts a new line, and typing **/** opens your quick
+  replies.
+- *Attach something / send a stock answer?* Everything lives behind the one
+  **paperclip**: Photos & videos · Document (Camera too, on a phone) ·
+  **Our address** · **Opening hours** · Catalogue · Welcome form ·
+  WhatsApp us · Quick reply. Tap a tile and the copy drops into the message
+  box so you can edit it before sending.
+- *Customer asks "where are you?" or "what time do you close?"* Paperclip →
+  **Our address** or **Opening hours**. The address comes from
+  **Settings → Business Setup** (the `address` field); the hours start as
+  *Monday to Saturday, 9:00 AM – 8:00 PM*. Both land in the box as normal
+  editable text — change the wording, then either just send it, or press
+  **Save as default** on the chip above the box to make your wording the one
+  that appears next time (per brand). Same pattern as the Welcome form and
+  WhatsApp follow-up inserts.
 - *Share products / a bundle / a service in a chat?* Open the conversation →
-  the **catalogue icon** in the composer → pick Base / Styled / **Bundle** /
+  the **paperclip** → **Catalogue** → pick Base / Styled / **Bundle** /
   Service items → **Send**. The customer gets photo cards plus one short
   order link (`/o/<slug>`) to pick, confirm delivery, and pay.
 - *Connect a WhatsApp/SMS number?* That's **Messaging Accounts** (permission

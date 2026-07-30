@@ -291,15 +291,31 @@ export interface ComposerSettings {
   onboarding_template: string;
   whatsapp_handoff_template: string;
   whatsapp_share_number: string | null;
+  /** "Send our address" wording; `{address}` is filled at insert time. */
+  address_template: string;
+  /** The address itself — override, else Settings → Business Setup. */
+  address_share_text: string | null;
+  /** "Send our working hours" wording; `{hours}` is filled at insert time. */
+  hours_template: string;
+  /** The opening-hours line (seeded Monday–Saturday, 9:00 AM – 8:00 PM). */
+  hours_share_text: string;
   onboarding_is_custom: boolean;
   whatsapp_is_custom: boolean;
   whatsapp_number_is_custom: boolean;
+  address_is_custom: boolean;
+  address_text_is_custom: boolean;
+  hours_is_custom: boolean;
+  hours_text_is_custom: boolean;
 }
 
 export interface ComposerSettingsInput {
   onboarding_template: string;
   whatsapp_handoff_template: string;
   whatsapp_share_number: string;
+  address_template: string;
+  address_share_text: string;
+  hours_template: string;
+  hours_share_text: string;
 }
 
 /** OG/Twitter/bare-HTML metadata for a link shared in a thread — powers the

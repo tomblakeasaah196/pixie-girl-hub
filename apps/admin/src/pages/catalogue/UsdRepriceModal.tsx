@@ -252,32 +252,34 @@ export function UsdRepriceModal({
               <div className="px-3.5 py-2 text-[11px] text-text-faint border-b hairline">
                 Sample — new USD retail at this rate
               </div>
-              <table className="w-full text-[12.5px]">
-                <tbody>
-                  {preview.data!.sample.map((s, i) => (
-                    <tr key={i} className="border-b hairline last:border-0">
-                      <td className="px-3.5 py-2 truncate max-w-[260px]">
-                        {s.name}
-                      </td>
-                      <td className="px-2 py-2 text-right text-text-muted">
-                        {fmtNgn(s.ngn)}
-                      </td>
-                      <td className="px-2 py-2 text-center text-text-faint">→</td>
-                      <td className="px-3.5 py-2 text-right">
-                        <span className="font-display text-text-primary">
-                          {fmtUsd(s.new_usd)}
-                        </span>
-                        {s.current_usd != null &&
-                          s.current_usd !== s.new_usd && (
-                            <span className="block font-mono text-[10px] text-text-faint line-through">
-                              {fmtUsd(s.current_usd)}
-                            </span>
-                          )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[420px] text-[12.5px]">
+                  <tbody>
+                    {preview.data!.sample.map((s, i) => (
+                      <tr key={i} className="border-b hairline last:border-0">
+                        <td className="px-3.5 py-2 truncate max-w-[260px]">
+                          {s.name}
+                        </td>
+                        <td className="px-2 py-2 text-right text-text-muted">
+                          {fmtNgn(s.ngn)}
+                        </td>
+                        <td className="px-2 py-2 text-center text-text-faint">→</td>
+                        <td className="px-3.5 py-2 text-right">
+                          <span className="font-display text-text-primary">
+                            {fmtUsd(s.new_usd)}
+                          </span>
+                          {s.current_usd != null &&
+                            s.current_usd !== s.new_usd && (
+                              <span className="block font-mono text-[10px] text-text-faint line-through">
+                                {fmtUsd(s.current_usd)}
+                              </span>
+                            )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 

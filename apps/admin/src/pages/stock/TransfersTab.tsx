@@ -312,7 +312,42 @@ function ReceiveModal({
               transfer.to_location_id.slice(0, 8)}
           </p>
 
-          <div className="border border-line rounded-[11px] overflow-hidden">
+          {/* Mobile: one card per line (a fixed-width table here would just
+              clip the Received input, same as the old Size & guide bug). */}
+          <div className="sm:hidden space-y-2.5">
+            {transfer.lines.map((line) => (
+              <div
+                key={line.line_id}
+                className="border border-line rounded-[11px] p-3"
+              >
+                <ProductCell line={line} variantId={line.variant_id} />
+                <div className="flex items-center justify-between gap-3 mt-2.5">
+                  <span className="text-[12px] text-text-faint">
+                    Dispatched{" "}
+                    <span className="text-text-muted tabular-nums">
+                      {line.qty_dispatched}
+                    </span>
+                  </span>
+                  <div className="w-[100px]">
+                    <NumberField
+                      value={getQty(line.line_id)}
+                      onChange={(v) =>
+                        setReceivedQtys((prev) => ({
+                          ...prev,
+                          [line.line_id]: v,
+                        }))
+                      }
+                      allowDecimal={false}
+                      allowNegative={false}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* sm+: table */}
+          <div className="hidden sm:block border border-line rounded-[11px] overflow-hidden">
             <table className="w-full text-[13px]">
               <thead>
                 <tr className="text-left text-text-faint text-[11px] uppercase tracking-wide">
@@ -412,8 +447,8 @@ function ViewTransferModal({
           {transfer.reason && (
             <p className="text-[12px] text-text-faint">{transfer.reason}</p>
           )}
-          <div className="border border-line rounded-[11px] overflow-hidden">
-            <table className="w-full text-[13px]">
+          <div className="border border-line rounded-[11px] overflow-x-auto">
+            <table className="w-full min-w-[440px] text-[13px]">
               <thead>
                 <tr className="text-left text-text-faint text-[11px] uppercase tracking-wide">
                   <th className="px-3 py-2 border-b hairline">Product</th>

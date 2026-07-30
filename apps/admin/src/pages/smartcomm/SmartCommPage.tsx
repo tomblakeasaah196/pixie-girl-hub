@@ -84,7 +84,14 @@ export function SmartCommPage() {
   // instead of us fighting their fixed heights with a magic-number calc.
   const isPhone = useIsPhone();
   const setImmersive = useUiStore((s) => s.setImmersive);
-  const immersive = isPhone && mobileShowThread && !!channelId;
+  // A thread only takes over the phone's single column when there IS a
+  // thread. Every pane visibility below reads this derived value rather than
+  // the raw flag, which makes the broken combination unrepresentable: the
+  // thread pane showing with no conversation, so the inbox list is
+  // `display: none` (`hidden md:block`) and there is nothing left to tap —
+  // "Pick a conversation to start." with no conversations to pick from.
+  const mobileThreadOpen = mobileShowThread && !!channelId;
+  const immersive = isPhone && mobileThreadOpen;
   useEffect(() => {
     setImmersive(immersive);
   }, [immersive, setImmersive]);
@@ -101,9 +108,15 @@ export function SmartCommPage() {
 
   const { data: channel } = useChannel(channelId);
 
-  // Keep mobile view in sync with selection
+  // Keep the mobile pane flag in sync with the selection. Selecting a
+  // conversation opens the thread; LOSING one falls back to the inbox list.
+  // The in-app back chevron used to be the only thing that cleared this, so
+  // any route that drops `?channel=` without passing through it — the
+  // Android back gesture or browser Back, which pops the entry `select()`
+  // pushed — left the flag stuck on and stranded the operator on the empty
+  // pane until a hard refresh remounted the page.
   useEffect(() => {
-    if (channelId) setMobileShowThread(true);
+    setMobileShowThread(!!channelId);
   }, [channelId]);
 
   function select(id: string) {
@@ -161,7 +174,7 @@ export function SmartCommPage() {
         {/* List */}
         <div
           className={
-            mobileShowThread
+            mobileThreadOpen
               ? "hidden md:block h-full overflow-hidden"
               : "h-full overflow-hidden"
           }
@@ -180,7 +193,7 @@ export function SmartCommPage() {
         <div
           className={cn(
             "h-full min-w-0 overflow-hidden",
-            !mobileShowThread && "hidden md:block",
+            !mobileThreadOpen && "hidden md:block",
           )}
         >
           {channelId ? (
@@ -215,7 +228,9 @@ export function SmartCommPage() {
             });
             setDrawAttention(false);
           }}
-          title={sidebarOpen ? "Collapse customer panel" : "Show customer panel"}
+          title={
+            sidebarOpen ? "Collapse customer panel" : "Show customer panel"
+          }
           className={cn(
             "hidden xl:grid absolute top-1/2 -translate-y-1/2 z-10 place-items-center",
             "w-6 h-12 rounded-l-lg border hairline bg-panel shadow-md",
@@ -238,7 +253,7 @@ export function SmartCommPage() {
           and phone. Same idea as the desktop collapse toggle — a tab
           hanging off the right edge — just an overlay drawer instead of a
           persistent column since there's no spare width to push into. */}
-      {channelId && channel && (mobileShowThread || !isPhone) && (
+      {channelId && channel && (mobileThreadOpen || !isPhone) && (
         <button
           onClick={() => setMobileCustomerOpen(true)}
           aria-label="Show customer details"

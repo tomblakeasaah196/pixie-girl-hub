@@ -1,105 +1,82 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { KeyRound, Mail, CheckCircle } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { ArrowLeft, KeyRound, Mail, ShieldCheck } from "lucide-react";
+import {
+  requestPasswordReset,
+  resetPasswordWithCode,
+  verifyResetCode,
+} from "@/lib/api";
+import { useAuth } from "@/stores/auth";
 import { Spinner } from "@/components/ui";
 
-type Step = "email" | "otp" | "password";
+type Step = "email" | "code" | "password";
 
 export function ForgotPasswordPage() {
   const navigate = useNavigate();
+  const setAuth = useAuth((s) => s.setAuth);
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
-  const [password, setPassword] = useState("");
+  const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function requestReset(e: React.FormEvent) {
+  function message(err: unknown, fallback: string) {
+    return err instanceof Error ? err.message : fallback;
+  }
+
+  async function onRequest(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
     setBusy(true);
+    setError(null);
     try {
-      const res = await fetch("/api/v1/kaizen/auth/forgot-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim() }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error?.user_message || "Failed to send OTP");
-      }
-      setStep("otp");
+      await requestPasswordReset(email.trim());
       setCode("");
+      setStep("code");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to send OTP");
+      setError(message(err, "Could not send the code"));
     } finally {
       setBusy(false);
     }
   }
 
-  async function verifyCode(e: React.FormEvent) {
+  async function onVerify(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
     setBusy(true);
+    setError(null);
     try {
-      const res = await fetch("/api/v1/kaizen/auth/verify-reset-code", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: code.trim() }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error?.user_message || "Invalid code");
-      }
-      setStep("password");
-      setPassword("");
+      await verifyResetCode(email.trim(), code.trim());
+      setNext("");
       setConfirm("");
+      setStep("password");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Invalid code");
+      setError(message(err, "That code is invalid or has expired"));
     } finally {
       setBusy(false);
     }
   }
 
-  async function resetPassword(e: React.FormEvent) {
+  async function onReset(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (password !== confirm) {
-      setError("Passwords do not match.");
+    if (next !== confirm) {
+      setError("New passwords do not match.");
       return;
     }
     setBusy(true);
     try {
-      const res = await fetch("/api/v1/kaizen/auth/reset-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: code.trim(), new_password: password }),
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error?.user_message || "Failed to reset password");
-      }
-      const result = await res.json();
-      localStorage.setItem("kaizen_access_token", result.access_token);
+      const { operator, access_token } = await resetPasswordWithCode(
+        email.trim(),
+        code.trim(),
+        next,
+      );
+      setAuth(access_token, operator);
       navigate("/", { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to reset password");
+      setError(message(err, "Could not reset your password"));
     } finally {
       setBusy(false);
-    }
-  }
-
-  function goBack() {
-    if (step === "otp") {
-      setStep("email");
-      setError(null);
-    } else if (step === "password") {
-      setStep("otp");
-      setError(null);
-    } else {
-      navigate("/login", { replace: true });
     }
   }
 
@@ -119,11 +96,13 @@ export function ForgotPasswordPage() {
         </div>
 
         {step === "email" && (
-          <form onSubmit={requestReset} className="card space-y-4">
+          <form onSubmit={onRequest} className="card space-y-4">
             <div className="text-center">
-              <h2 className="font-display text-lg font-semibold">Reset your password</h2>
+              <h2 className="font-display text-xl font-semibold">
+                Reset your password
+              </h2>
               <p className="mt-1 text-sm text-fog-300">
-                Enter your email to receive a reset code.
+                We'll email you a 6-digit code.
               </p>
             </div>
 
@@ -150,45 +129,40 @@ export function ForgotPasswordPage() {
 
             <button type="submit" className="btn-primary w-full" disabled={busy}>
               {busy ? <Spinner className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
-              Send Code
-            </button>
-
-            <button
-              type="button"
-              onClick={() => navigate("/login", { replace: true })}
-              className="w-full text-sm text-fog-300 hover:text-fog-200"
-            >
-              Back to login
+              Send code
             </button>
           </form>
         )}
 
-        {step === "otp" && (
-          <form onSubmit={verifyCode} className="card space-y-4">
+        {step === "code" && (
+          <form onSubmit={onVerify} className="card space-y-4">
             <div className="text-center">
-              <h2 className="font-display text-lg font-semibold">Enter your code</h2>
+              <h2 className="font-display text-xl font-semibold">Enter your code</h2>
               <p className="mt-1 text-sm text-fog-300">
-                We sent a 6-digit code to {email}
+                If <span className="text-fog-200">{email.trim()}</span> belongs to
+                an operator, a 6-digit code is on its way.
               </p>
             </div>
 
             <div>
               <label className="label" htmlFor="code">
-                Verification Code
+                Reset code
               </label>
               <input
                 id="code"
                 type="text"
                 inputMode="numeric"
+                autoComplete="one-time-code"
                 maxLength={6}
-                className="input text-center text-lg tracking-widest"
+                placeholder="000000"
+                className="input text-center font-mono text-lg tracking-[0.4em]"
                 value={code}
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-                placeholder="000000"
                 required
               />
               <p className="mt-1 text-xs text-fog-400">
-                Code expires in 15 minutes.
+                Expires in 15 minutes. Three incorrect tries and you'll need a new
+                code.
               </p>
             </div>
 
@@ -198,27 +172,40 @@ export function ForgotPasswordPage() {
               </p>
             )}
 
-            <button type="submit" className="btn-primary w-full" disabled={busy}>
-              {busy ? <Spinner className="h-4 w-4" /> : <CheckCircle className="h-4 w-4" />}
-              Verify Code
+            <button
+              type="submit"
+              className="btn-primary w-full"
+              disabled={busy || code.length !== 6}
+            >
+              {busy ? (
+                <Spinner className="h-4 w-4" />
+              ) : (
+                <ShieldCheck className="h-4 w-4" />
+              )}
+              Verify code
             </button>
 
             <button
               type="button"
-              onClick={goBack}
-              className="w-full text-sm text-fog-300 hover:text-fog-200"
+              onClick={() => {
+                setStep("email");
+                setError(null);
+              }}
+              className="w-full text-sm text-fog-400 hover:text-fog-200"
             >
-              Back
+              Use a different email
             </button>
           </form>
         )}
 
         {step === "password" && (
-          <form onSubmit={resetPassword} className="card space-y-4">
+          <form onSubmit={onReset} className="card space-y-4">
             <div className="text-center">
-              <h2 className="font-display text-lg font-semibold">Set a new password</h2>
+              <h2 className="font-display text-xl font-semibold">
+                Set a new password
+              </h2>
               <p className="mt-1 text-sm text-fog-300">
-                Create a strong password for your account.
+                This signs out every other Kaizen session.
               </p>
             </div>
 
@@ -228,8 +215,8 @@ export function ForgotPasswordPage() {
                 type="password"
                 autoComplete="new-password"
                 className="input"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                value={next}
+                onChange={(e) => setNext(e.target.value)}
                 required
               />
               <p className="mt-1 text-xs text-fog-400">
@@ -256,22 +243,24 @@ export function ForgotPasswordPage() {
             )}
 
             <button type="submit" className="btn-primary w-full" disabled={busy}>
-              {busy ? <Spinner className="h-4 w-4" /> : <KeyRound className="h-4 w-4" />}
-              Reset Password
-            </button>
-
-            <button
-              type="button"
-              onClick={goBack}
-              className="w-full text-sm text-fog-300 hover:text-fog-200"
-            >
-              Back
+              {busy ? (
+                <Spinner className="h-4 w-4" />
+              ) : (
+                <KeyRound className="h-4 w-4" />
+              )}
+              Reset password
             </button>
           </form>
         )}
 
-        <p className="mt-6 text-center text-xs text-fog-400">
-          JBS Praxis maintenance access only.
+        <p className="mt-6 text-center">
+          <Link
+            to="/login"
+            className="inline-flex items-center gap-1.5 text-sm text-fog-400 hover:text-fog-200"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Back to sign in
+          </Link>
         </p>
       </div>
     </div>

@@ -215,37 +215,39 @@ export function StylistScorecardDetail({
             message="Nothing assigned to this stylist yet."
           />
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-text-muted">
-                <th className="px-4 py-2 font-medium">Job</th>
-                <th className="px-4 py-2 font-medium">Status</th>
-                <th className="px-4 py-2 font-medium">Quality</th>
-                <th className="px-4 py-2 font-medium">Happiness</th>
-                <th className="px-4 py-2 font-medium">Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.jobs.map((j) => {
-                const m = JOB_STATUS_META[j.status];
-                return (
-                  <tr key={j.job_id} className="border-t border-border-subtle">
-                    <td className="px-4 py-2 font-mono text-xs">{j.job_number}</td>
-                    <td className="px-4 py-2">
-                      <Pill tone={m.tone}>{m.label}</Pill>
-                    </td>
-                    <td className="px-4 py-2">
-                      {j.quality_rating ? `★ ${j.quality_rating}` : "—"}
-                    </td>
-                    <td className="px-4 py-2">{j.customer_rating ?? "—"}</td>
-                    <td className="px-4 py-2 text-text-muted">
-                      {formatDate(j.created_at)}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[480px] text-sm">
+              <thead>
+                <tr className="text-left text-text-muted">
+                  <th className="px-4 py-2 font-medium">Job</th>
+                  <th className="px-4 py-2 font-medium">Status</th>
+                  <th className="px-4 py-2 font-medium">Quality</th>
+                  <th className="px-4 py-2 font-medium">Happiness</th>
+                  <th className="px-4 py-2 font-medium">Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.jobs.map((j) => {
+                  const m = JOB_STATUS_META[j.status];
+                  return (
+                    <tr key={j.job_id} className="border-t border-border-subtle">
+                      <td className="px-4 py-2 font-mono text-xs">{j.job_number}</td>
+                      <td className="px-4 py-2">
+                        <Pill tone={m.tone}>{m.label}</Pill>
+                      </td>
+                      <td className="px-4 py-2">
+                        {j.quality_rating ? `★ ${j.quality_rating}` : "—"}
+                      </td>
+                      <td className="px-4 py-2">{j.customer_rating ?? "—"}</td>
+                      <td className="px-4 py-2 text-text-muted">
+                        {formatDate(j.created_at)}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </Card>
 

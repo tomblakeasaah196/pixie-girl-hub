@@ -166,50 +166,52 @@ export function AiHealthLogsPage() {
               No AI calls in this window.
             </p>
           ) : (
-            <table className="min-w-full text-[12.5px]">
-              <thead className="bg-panel-2 text-text-faint uppercase tracking-widest text-[10px]">
-                <tr>
-                  <th className="text-left px-3 py-2 font-semibold">Vendor</th>
-                  <th className="text-right px-3 py-2 font-semibold">Calls</th>
-                  <th className="text-right px-3 py-2 font-semibold">
-                    Failures
-                  </th>
-                  <th className="text-right px-3 py-2 font-semibold">
-                    Success
-                  </th>
-                  <th className="text-right px-3 py-2 font-semibold">
-                    Avg latency
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {(rateQ.data ?? []).map((r) => (
-                  <tr key={r.vendor} className="border-t hairline">
-                    <td className="px-3 py-2 font-mono text-[11px] uppercase tracking-widest text-accent-glow">
-                      {r.vendor}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono">
-                      {r.total_calls.toLocaleString()}
-                    </td>
-                    <td
-                      className={`px-3 py-2 text-right font-mono ${r.failures > 0 ? "text-red-300" : "text-text-faint"}`}
-                    >
-                      {r.failures.toLocaleString()}
-                    </td>
-                    <td
-                      className={`px-3 py-2 text-right font-mono ${r.success_rate_pct < 90 ? "text-red-300" : r.success_rate_pct < 99 ? "text-amber-300" : "text-green-300"}`}
-                    >
-                      {r.success_rate_pct.toFixed(2)}%
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono text-text-muted">
-                      {r.avg_latency_ms != null
-                        ? `${r.avg_latency_ms}ms`
-                        : "—"}
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="min-w-[560px] w-full text-[12.5px]">
+                <thead className="bg-panel-2 text-text-faint uppercase tracking-widest text-[10px]">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-semibold">Vendor</th>
+                    <th className="text-right px-3 py-2 font-semibold">Calls</th>
+                    <th className="text-right px-3 py-2 font-semibold">
+                      Failures
+                    </th>
+                    <th className="text-right px-3 py-2 font-semibold">
+                      Success
+                    </th>
+                    <th className="text-right px-3 py-2 font-semibold">
+                      Avg latency
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {(rateQ.data ?? []).map((r) => (
+                    <tr key={r.vendor} className="border-t hairline">
+                      <td className="px-3 py-2 font-mono text-[11px] uppercase tracking-widest text-accent-glow">
+                        {r.vendor}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono">
+                        {r.total_calls.toLocaleString()}
+                      </td>
+                      <td
+                        className={`px-3 py-2 text-right font-mono ${r.failures > 0 ? "text-red-300" : "text-text-faint"}`}
+                      >
+                        {r.failures.toLocaleString()}
+                      </td>
+                      <td
+                        className={`px-3 py-2 text-right font-mono ${r.success_rate_pct < 90 ? "text-red-300" : r.success_rate_pct < 99 ? "text-amber-300" : "text-green-300"}`}
+                      >
+                        {r.success_rate_pct.toFixed(2)}%
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono text-text-muted">
+                        {r.avg_latency_ms != null
+                          ? `${r.avg_latency_ms}ms`
+                          : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </Card>
       </section>

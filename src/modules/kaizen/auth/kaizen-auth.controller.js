@@ -76,4 +76,28 @@ router.post("/change-password", kaizenAuthMiddleware, async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── Forgot Password ────────────────────────────────────────
+router.post("/forgot-password", async (req, res) => {
+  const input = v.requestPasswordResetSchema.parse(req.body);
+  await service.requestPasswordReset(input.email, req.ip);
+  res.json({ ok: true, message: "OTP sent to your email" });
+});
+
+router.post("/verify-reset-code", async (req, res) => {
+  const input = v.verifyResetCodeSchema.parse(req.body);
+  const result = await service.verifyPasswordResetCode(input.code);
+  res.json(result);
+});
+
+router.post("/reset-password", async (req, res) => {
+  const input = v.resetPasswordSchema.parse(req.body);
+  const result = await service.resetPasswordWithOtp(
+    input.code,
+    input.new_password,
+    req.ip,
+  );
+  setRefreshCookie(res, result.refresh_token);
+  res.json({ operator: result.operator, access_token: result.access_token });
+});
+
 module.exports = { router };

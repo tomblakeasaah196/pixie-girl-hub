@@ -30,6 +30,26 @@ So this is **not a new module**. It is three additions to an existing one:
 Minimum useful slice (A + B, Kaizen-only, no client access): **~1.5 days.**
 Full LPC parity + client window: **~4–6 days.**
 
+---
+
+## 0. Decisions locked (2026-07-30, Tom)
+
+1. **Kaizen is deployed and in active use** on the VPS. No deploy work needed — Phase 1 below
+   ships value the moment it merges.
+2. **Client-facing surface: yes** — a read-only page inside the admin app (Option 1 in §2).
+   Their IT/DG get visibility; resolve / ignore / reopen stay JBS-only.
+3. **Log-file reader: yes** (item D) — including the "is logging still alive?" panel.
+
+Two smaller calls taken as sensible defaults rather than sent back as questions:
+
+4. **Digest trigger: both** — the daily scheduler *and* a "Mail today's report" button. The button
+   is needed to test the scheduler anyway, so it's free.
+5. **Scope: platform-wide, clearly labelled.** Kaizen is deliberately not brand-scoped, and
+   `kaizen_error_groups` has no brand column (only occurrences do), so brand-filtering the group
+   list would be misleading. The client page shows whole-platform data with an explicit label.
+
+**Total: ~5 days across three independently deployable phases.** See §5.
+
 **No new tables are strictly required.** `shared.kaizen_settings` (key/value JSONB, migration
 `000321`) already stores config exactly like `alerts.recipients` does. One small ledger table
 for digest sends is recommended but optional.
@@ -57,9 +77,7 @@ for digest sends is recommended but optional.
 
 ---
 
-## 2. The pivotal decision: who is allowed to see it
-
-This is the only genuinely architectural question, and it needs Tom's call before any build.
+## 2. Who is allowed to see it — **decided: Option 1**
 
 At LPC the monitor lives **inside the client's own admin app** ("Espace LPC" → Administration & RH
 → Journal d'Erreurs), visible to their DG. Here, Kaizen is deliberately walled off from client
@@ -71,9 +89,9 @@ staff:
 - Served on its own subdomain, behind Cloudflare Access scoped to `@jbspraxis.com`
 - `kaizen` is **not** in `src/shared/access/access.catalog.js` and has **no** admin-app route
 
-So Pixie Girl staff have **zero visibility today**. Three ways to change that:
+So Pixie Girl staff have **zero visibility today**. Three ways to change that — **Option 1 chosen**:
 
-**Option 1 — read-only window in the admin app (recommended; matches LPC).**
+**✅ Option 1 — read-only window in the admin app (chosen; matches LPC).**
 New module key `system_monitor` in the access catalog + `apps/admin/src/lib/modules.ts` (group
 `system`, next to `platform_settings` / `audit`), a new platform-authed read-only controller that
 calls the existing Kaizen services, and one page with the four mandated states. Client IT sees
@@ -81,12 +99,12 @@ health, performance, error groups and can trigger/receive the digest — but **c
 ignore or reopen (that stays a JBS action), and gets a **redacted** view (see §4).
 Requires: catalog + nav + `docs/PRAXIS_KNOWLEDGE_BASE.md` update in the same PR (CLAUDE.md rule).
 
-**Option 2 — give their IT lead a Kaizen operator account.** Near-zero build. But it breaks the
-JBS/client identity boundary, hands them resolve/ignore powers and full stacks, and Cloudflare
-Access is currently `@jbspraxis.com`-only so the policy would have to be widened.
+*Option 2 — a Kaizen operator account for their IT lead.* Rejected: breaks the JBS/client identity
+boundary, hands them resolve/ignore powers and full stack traces, and needs the Cloudflare Access
+policy widened beyond `@jbspraxis.com`.
 
-**Option 3 — digest only, no UI for them.** Cheapest (A alone). They receive the daily mail and
-liaise from that; no console access. Good interim step, and it is a strict subset of Option 1.
+*Option 3 — digest only, no UI.* Not the destination, but note it is a **strict subset** of
+Option 1 — which is why Phase 1 below delivers exactly that, and Phase 3 adds the page on top.
 
 ---
 
@@ -143,23 +161,84 @@ unbounded on the VPS. Worth fixing regardless of what we decide here — and it'
 
 ---
 
-## 5. Sketch of the build (for when we green-light)
+## 5. Build plan — three independently deployable phases
 
-Everything lands inside the existing module shape; no new module scaffold.
+Everything lands inside the existing Kaizen module shape. No new backend module scaffold; the one
+new *platform* module is the RBAC/nav key for the client page in Phase 3.
+
+### Phase 1 — digest + errors-surface gaps (~1.5 days)
+
+Ships the whole ask minus the client page. Deployable on its own, and since Kaizen is already live
+it's visible immediately.
 
 ```
 src/modules/kaizen/errors/
-  errors.digest.js          NEW  build + send the digest (compose, attach, record)
-  errors.export.js          EDIT csv builder; Africa/Lagos timestamps
+  errors.digest.js          NEW  build + send the digest (compose, attach, record run)
+  errors.export.js          EDIT csv builder; Africa/Lagos timestamps (drop hard-coded UTC)
   errors.repo.js            EDIT date window (from/to); sort=frequency; hourly histogram query
   errors.validator.js       EDIT from/to/sort on listQuery; digest config schema
-  errors.controller.js      EDIT GET /stats/hourly; POST /digest/send-now; GET/PATCH /digest/config
+  errors.controller.js      EDIT GET /stats/hourly; POST /digest/send-now; GET+PATCH /digest/config
 src/jobs/schedulers/
-  kaizen-error-digest.js    NEW  daily ~07:00 Africa/Lagos, under withCronLock
+  kaizen-error-digest.js    NEW  daily 07:00 Africa/Lagos, under withCronLock
+src/jobs/worker.js          EDIT register the scheduler
 apps/kaizen/src/pages/
-  ErrorsPage.tsx            EDIT date range, histogram, sort toggle, "Mail today's report"
-  SettingsPage.tsx          EDIT digest config (to / cc / subject / note / schedule / on-off)
+  ErrorsPage.tsx            EDIT date range, hourly histogram, sort toggle, "Mail today's report"
+  SettingsPage.tsx          EDIT digest config (to / cc / subject / note / send time / on-off)
+migrations/
+  0003XX_shared_kaizen_digest_runs.sql   NEW (small, optional-but-recommended send ledger)
 ```
+
+### Phase 2 — log-file reader + logging health (~1.5 days)
+
+The blind-spot fix from §3. Kaizen-only for the raw tail (see the security note below).
+
+```
+src/modules/kaizen/logs/
+  logs.service.js           NEW  bounded tail, parse Pino JSON lines w/ raw fallback, group
+  logs.controller.js        NEW  GET /logs/health, GET /logs/tail
+apps/kaizen/src/pages/
+  LogsPage.tsx              NEW  "État de la journalisation" equivalent + grouped tail
+  OverviewPage.tsx          EDIT logging-alive tile
+ops/
+  pm2-logrotate.md          NEW  fix the unbounded-log finding from §3
+```
+
+- Paths from env only: `KAIZEN_LOG_PATHS` (comma list, defaulted from `ecosystem.config.js`),
+  `KAIZEN_LOG_TAIL_BYTES` (default `65536` — matches LPC's 64 KB window).
+- The client **selects a file by key/index, never by path**. No path ever crosses the wire.
+- Read with `createReadStream` from `size - tailBytes`; never load a whole file.
+- Production logs are Pino JSON lines → parse as JSON, fall back to the raw line for PM2 prefixes
+  and native crash output (which is exactly the stuff we're here to catch).
+- ⚠️ **Raw log tail stays JBS-only.** Unredacted stderr can contain anything — a connection string
+  inside a stack, a token in a dependency's error dump. The client page (Phase 3) gets the
+  *logging-health* panel (alive / size / last write / disk free), not the log contents.
+
+### Phase 3 — client-facing read-only page (~2 days)
+
+```
+src/shared/access/access.catalog.js   EDIT new module key `system_monitor` (group: system)
+src/modules/kaizen/client/
+  client-view.controller.js  NEW  platform-authed, read-only, redacted projection
+  client-view.service.js     NEW  calls existing errors/health/perf/logs services
+src/routes/index.js          EDIT mount inside the platform api router
+apps/admin/src/lib/modules.ts        EDIT nav entry, permission: "system_monitor"
+apps/admin/src/router.tsx            EDIT route /system-monitor
+apps/admin/src/pages/system-monitor/ NEW  page + four mandated states
+docs/PRAXIS_KNOWLEDGE_BASE.md        EDIT ← required in the same PR (CLAUDE.md rule)
+```
+
+- Guarded by `authMiddleware` + `requirePermission("system_monitor", "view")`. CEO bypasses.
+- **Read-only enforced in the controller, not the UI** — no resolve/ignore/reopen route exists on
+  this surface at all.
+- **Redacted projection, also enforced server-side:** title, severity, count, route pattern,
+  first/last seen, status. No stack, no occurrence `context`, no request bodies (§4.1).
+- Frontend follows the design canon — run the 10-question gate in
+  `docs/FRONTEND_INSTRUCTION_MUST_READ.md` first; tokens not hexes; loading / empty / error+retry /
+  permission-denied on every panel.
+- Also needs: seed the new permission rows, and label the page "whole platform" per decision #5.
+
+**Suggested order: 1 → 2 → 3.** Phase 1 alone satisfies the original request (the daily mail to
+`tom.asaah@jbspraxis.com`, cc `tomblakeasaah@gmail.com`); 2 and 3 widen coverage and audience.
 
 **Config** goes in `shared.kaizen_settings` under `errors.digest` — no migration needed:
 
@@ -189,15 +268,18 @@ otherwise the daily mail becomes noise and gets filtered.
 
 ---
 
-## 6. Decisions needed from Tom
+## 6. Still open
 
-1. **Who sees the console** — Option 1 (read-only window in the admin app), 2 (Kaizen operator
-   account for their IT lead), or 3 (digest only, no UI)?
-2. **Digest trigger** — automatic daily, on-demand button only, or both?
-3. **Add the log-file reader (D)?** It's the only way to catch crashes that never reach the app,
-   and it brings the "is logging still alive?" panel.
-4. **Is Kaizen live on the VPS?** If not, finishing that deploy comes first.
-5. **Per-brand or whole-platform?** Kaizen is deliberately platform-wide (not brand-scoped). A
-   client-facing view inside the brand-scoped admin app raises the question of whether Faitlynhair
-   staff should see Pixie Girl's errors. Recommend: platform-wide, gated on the new permission,
-   with a clear "whole platform" label.
+All five scope questions are settled in §0. What remains is operational, and none of it blocks
+Phase 1:
+
+1. **Which role(s) get `system_monitor` view?** Presumably the DG/CEO plus whoever acts as their IT
+   contact. Needs a name or a role so the permission gets seeded to something real (Phase 3).
+2. **Digest send time** — plan is 07:00 Africa/Lagos. Confirm, or name another hour.
+3. **SMTP deliverability check before we rely on the digest.** A daily attachment from the brand's
+   transactional sender to a Gmail address is a plausible spam-folder candidate. Run
+   `npm run smtp:doctor` on the VPS; if SPF/DKIM is shaky for that recipient pair, consider a
+   dedicated ops sender (§4.3).
+4. **Zero-error days** — plan is `skip_when_empty: true` with no mail at all. If you'd rather have a
+   daily "all clear" as a heartbeat (proof the digest itself is still running), say so — it's a
+   one-line flag either way.

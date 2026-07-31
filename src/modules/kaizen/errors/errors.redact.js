@@ -29,6 +29,9 @@ const SAFE_CONTEXT_KEYS = new Set([
   "component",
   "count",
   "code",
+  // Per-gateway failure trail on a payment-link 5xx ("nomba: HTTP 400 — …"),
+  // so the Errors console names the gateway that rejected the checkout.
+  "gateway_attempts",
 ]);
 
 // Patterns scrubbed from any free text we do keep. ORDER MATTERS: emails first,

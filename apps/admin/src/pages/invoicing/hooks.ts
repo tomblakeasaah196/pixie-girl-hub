@@ -87,6 +87,10 @@ export function useRecordPayment(id: string) {
       qc.invalidateQueries({ queryKey: ["invoices", biz, "detail", id] });
       qc.invalidateQueries({ queryKey: ["invoices", biz] });
       qc.invalidateQueries({ queryKey: ["ar-ageing", biz] });
+      // An order-backed invoice records its payment on the order itself, so
+      // the order's status/balance moved in the same commit — refresh Sales.
+      qc.invalidateQueries({ queryKey: ["sales-orders", biz] });
+      qc.invalidateQueries({ queryKey: ["sales-kpis", biz] });
     },
   });
 }

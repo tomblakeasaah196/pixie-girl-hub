@@ -131,7 +131,9 @@ async function findById({ client, brand, id }) {
   // A NULL applied_by means it landed through the gateway, not a person.
   const { rows: payments } = await ex(client)(
     `SELECT ip.*, COALESCE(ac.display_name, au.email) AS applied_by_name,
-            sop.payment_number, sop.method AS payment_method
+            sop.payment_number, sop.method AS payment_method,
+            sop.payment_path, sop.manual_bank_name,
+            sop.manual_bank_transaction_id
        FROM ${t(brand, "invoice_payments")} ip
        LEFT JOIN shared.users au ON au.user_id = ip.applied_by
        LEFT JOIN shared.staff_profiles asp ON asp.profile_id = au.staff_profile_id

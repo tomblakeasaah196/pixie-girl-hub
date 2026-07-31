@@ -89,6 +89,10 @@ export function useAddPayment(orderId: string) {
       });
       qc.invalidateQueries({ queryKey: ["sales-orders", biz] });
       qc.invalidateQueries({ queryKey: ["sales-kpis", biz] });
+      // The payment lands on the order's invoice in the same commit — refresh
+      // Invoicing too, so the two screens never disagree on the balance.
+      qc.invalidateQueries({ queryKey: ["invoices", biz] });
+      qc.invalidateQueries({ queryKey: ["ar-ageing", biz] });
     },
   });
 }

@@ -50,11 +50,19 @@ const receiptSend = z
   })
   .strict();
 
+// Recording a payment from the invoice screen. An order-backed invoice routes
+// the money through the sales order instead of applying it here (see
+// invoicing.service.recordPayment), so it carries the same staff-recorded
+// fields the order drawer collects: the bank's transaction reference and bank
+// name, mandatory because Accounting reconciles them against the statement
+// import (§6.6). Standalone invoices ignore them and apply directly.
 const paymentApply = z
   .object({
     amount_applied_ngn: z.coerce.number().positive(),
     sales_order_payment_id: z.string().uuid().optional(),
     notes: z.string().max(500).optional(),
+    manual_bank_transaction_id: z.string().min(3).max(200).optional(),
+    manual_bank_name: z.string().min(2).max(120).optional(),
   })
   .strict();
 

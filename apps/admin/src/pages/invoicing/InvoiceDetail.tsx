@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Download, Send, CreditCard, XCircle, FileText, Plus, X, Package, UserCheck } from "lucide-react";
+import { Download, Send, CreditCard, XCircle, FileText, Plus, X, Package, UserCheck, ShieldAlert } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Drawer } from "@/components/ui/Drawer";
 import { Card, Pill, MoneyText, Button } from "@/components/ui/primitives";
 import { ErrorState, ConfirmDialog, Select, NumberField } from "@/components/ui/controls";
-import { FormGrid, Field } from "@/components/ui/Form";
+import { FormGrid, Field, TextInput } from "@/components/ui/Form";
+import { usePaymentSettings } from "@/pages/sales/hooks";
 import { useToastStore } from "@/components/notifications/NotificationToast";
 import { toastReport } from "@/lib/error-report";
 import { saveFileFromUrl } from "@/lib/api";
@@ -47,6 +48,7 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
   const { data: reminders } = useInvoiceReminders(invoiceId);
   const cancelReminder = useCancelReminder(invoiceId ?? "");
   const { data: delivery, isLoading: deliveryLoading } = useInvoiceDelivery(invoiceId);
+  const { data: paymentSettings } = usePaymentSettings();
   const navigate = useNavigate();
 
   const toast = useToastStore();
@@ -77,6 +79,9 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
   const [showPayForm, setShowPayForm] = useState(false);
   const [payAmount, setPayAmount] = useState("");
   const [payNotes, setPayNotes] = useState("");
+  const [payBankRef, setPayBankRef] = useState("");
+  const [payBankName, setPayBankName] = useState("");
+  const [payError, setPayError] = useState<string | null>(null);
   const [showReceiptForm, setShowReceiptForm] = useState(false);
   const [receiptAmount, setReceiptAmount] = useState("");
   const [receiptMethod, setReceiptMethod] = useState("bank_transfer");
@@ -110,20 +115,45 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
     }
   };
 
+  // An order-backed invoice doesn't hold the money — its order does. The
+  // payment is sent to that order, which books the cash, moves the order's
+  // status and mirrors the balance straight back onto this invoice in the same
+  // commit. That's why the bank reference is mandatory here exactly as it is on
+  // the order drawer: it's the same staff-recorded payment, entered from the
+  // other screen.
   const handleRecordPayment = async () => {
-    if (!payAmount) return;
+    if (!payAmount || !invoice) return;
+    setPayError(null);
+    if (isOrderBacked && (!payBankRef.trim() || !payBankName.trim())) {
+      setPayError("The bank reference and bank name are both required.");
+      return;
+    }
     try {
-      await recordPayment.mutateAsync({ amount_applied_ngn: Number(payAmount), notes: payNotes || undefined });
+      await recordPayment.mutateAsync({
+        amount_applied_ngn: Number(payAmount),
+        notes: payNotes || undefined,
+        ...(isOrderBacked
+          ? {
+              manual_bank_transaction_id: payBankRef.trim(),
+              manual_bank_name: payBankName.trim(),
+            }
+          : {}),
+      });
       setShowPayForm(false);
       setPayAmount("");
       setPayNotes("");
-      fireToast("Payment Recorded", `₦${Number(payAmount).toLocaleString()} applied to the invoice.`);
-    } catch (err) {
+      setPayBankRef("");
+      setPayBankName("");
       fireToast(
-        "Payment Failed",
-        err instanceof Error ? err.message : "Failed to record the payment.",
-        "high",
+        "Payment Recorded",
+        isOrderBacked
+          ? `₦${Number(payAmount).toLocaleString()} accepted — order ${invoice.order_number ?? ""} and this invoice both updated, logged under your name.`
+          : `₦${Number(payAmount).toLocaleString()} applied to the invoice.`,
       );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to record the payment.";
+      setPayError(msg);
+      fireToast("Payment Failed", msg, "high");
     }
   };
 
@@ -176,6 +206,11 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
   const statusMeta = invoice ? INVOICE_STATUS[invoice.status] : null;
   const canSend = !!invoice && !["void", "refunded"].includes(invoice.status);
   const canPay = !!invoice && !["void", "refunded"].includes(invoice.status) && Number(invoice.balance_due_ngn) > 0;
+  const isOrderBacked = !!invoice?.order_id;
+  // Manual entry is the same business-level switch the order drawer honours —
+  // an order-backed invoice records through the order, so the same gate applies.
+  const manualAllowed = paymentSettings?.allow_staff_recorded_manual_payments === true;
+  const canRecordHere = canPay && (!isOrderBacked || manualAllowed);
   const canVoid = !!invoice && invoice.status !== "void" && invoice.status !== "paid";
 
   return (
@@ -221,7 +256,7 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
                     </button>
                     {invoice.order_status && (
                       <div className="text-[11px] text-text-faint capitalize">
-                        {invoice.order_status.replace(/_/g, " ")} — record payments on the order to keep both in step
+                        {invoice.order_status.replace(/_/g, " ")} — payments recorded here post to this order too
                       </div>
                     )}
                   </div>
@@ -243,9 +278,41 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
                   <div className="text-[11px] uppercase font-bold text-warn tracking-wide">Balance Due</div>
                   <MoneyText ngn={Number(invoice.balance_due_ngn)} className="text-[22px] text-warn" />
                 </div>
-                <Button variant="primary" size="sm" icon={<CreditCard className="w-3.5 h-3.5" />} onClick={() => setShowPayForm(!showPayForm)}>
-                  Record Payment
-                </Button>
+                {canRecordHere && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    icon={<CreditCard className="w-3.5 h-3.5" />}
+                    onClick={() => {
+                      setPayError(null);
+                      setPayAmount(String(invoice.balance_due_ngn));
+                      setShowPayForm(!showPayForm);
+                    }}
+                  >
+                    Record Payment
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {/* Manual entry is a business-level switch. Say so rather than
+                hiding the button and leaving staff hunting for it. */}
+            {canPay && isOrderBacked && !manualAllowed && (
+              <div className="flex items-start gap-2 p-3 rounded-[11px] bg-text-primary/[0.03] border border-line text-[12px] text-text-muted">
+                <ShieldAlert className="w-3.5 h-3.5 mt-[1px] shrink-0 text-warn" />
+                <span>
+                  Recording a payment by hand is switched off for this business —
+                  payments must arrive through a gateway. A manager can turn it on
+                  under{" "}
+                  <button
+                    type="button"
+                    className="text-accent hover:underline"
+                    onClick={() => navigate("/sales?tab=payments")}
+                  >
+                    Sales → Payments
+                  </button>
+                  .
+                </span>
               </div>
             )}
 
@@ -257,6 +324,24 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
                   <Field label="Amount (NGN)">
                     <NumberField value={payAmount} onChange={setPayAmount} placeholder="0.00" suffix="NGN" />
                   </Field>
+                  {isOrderBacked && (
+                    <>
+                      <Field label="Bank transaction reference">
+                        <TextInput
+                          value={payBankRef}
+                          onChange={(e) => setPayBankRef(e.target.value)}
+                          placeholder="e.g. GTB/2026/00123"
+                        />
+                      </Field>
+                      <Field label="Bank name">
+                        <TextInput
+                          value={payBankName}
+                          onChange={(e) => setPayBankName(e.target.value)}
+                          placeholder="e.g. GTBank"
+                        />
+                      </Field>
+                    </>
+                  )}
                   <Field label="Notes" hint="optional">
                     <input
                       value={payNotes}
@@ -266,11 +351,24 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
                     />
                   </Field>
                 </FormGrid>
+                {payError && <p className="text-[12px] text-danger mt-3">{payError}</p>}
+                <div className="flex items-start gap-1.5 text-[11px] text-text-faint mt-3">
+                  <UserCheck className="w-3.5 h-3.5 mt-[1px] shrink-0" />
+                  {isOrderBacked ? (
+                    <>
+                      Recorded under your name against order{" "}
+                      {invoice.order_number ?? "this order"} — the order, this
+                      invoice and the accounts all update together.
+                    </>
+                  ) : (
+                    <>Recorded under your name with the time you accepted it.</>
+                  )}
+                </div>
                 <div className="flex gap-2 mt-4">
                   <Button variant="primary" size="sm" onClick={handleRecordPayment} disabled={recordPayment.isPending || !payAmount}>
                     {recordPayment.isPending ? "Saving…" : "Save Payment"}
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => setShowPayForm(false)}>Cancel</Button>
+                  <Button variant="ghost" size="sm" onClick={() => { setShowPayForm(false); setPayError(null); }}>Cancel</Button>
                 </div>
               </Card>
             )}
@@ -363,10 +461,14 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
                     <div key={p.invoice_payment_id} className="text-[13px] p-2.5 rounded-lg bg-text-primary/[0.02]">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="font-semibold"><MoneyText ngn={Number(p.amount_applied_ngn)} /></div>
+                          <div className="font-semibold flex items-center gap-2 flex-wrap">
+                            <MoneyText ngn={Number(p.amount_applied_ngn)} />
+                            {p.payment_path === "staff_recorded" && <Pill tone="info">Staff recorded</Pill>}
+                          </div>
                           {p.payment_method && (
                             <div className="text-[11px] text-text-faint capitalize">
                               {p.payment_method.replace(/_/g, " ")}
+                              {p.manual_bank_name ? ` · ${p.manual_bank_name}` : ""}
                               {p.payment_number ? ` · ${p.payment_number}` : ""}
                             </div>
                           )}
@@ -382,6 +484,9 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
                             "Captured automatically by the payment gateway"
                           )}{" "}
                           · {formatDateTime(p.applied_at)}
+                          {p.manual_bank_transaction_id && (
+                            <> · ref <span className="font-mono">{p.manual_bank_transaction_id}</span></>
+                          )}
                         </span>
                       </div>
                       {p.notes && <div className="mt-1 text-[11px] text-text-faint">{p.notes}</div>}

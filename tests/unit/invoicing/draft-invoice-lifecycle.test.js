@@ -168,13 +168,14 @@ describe("createFromOrder — finalizing an existing draft on real payment", () 
     expect(repo.createReceipt).not.toHaveBeenCalled();
   });
 
-  test("does nothing further when the existing invoice is already paid (duplicate order.paid delivery)", async () => {
+  test("does nothing further when the existing invoice is already paid AND receipted (duplicate order.paid delivery)", async () => {
     const alreadyPaid = {
       invoice_id: "inv-1",
       status: "paid",
       balance_due_ngn: "0.00",
     };
     repo.findByOrderId.mockResolvedValue(alreadyPaid);
+    repo.listReceipts.mockResolvedValue([{ receipt_id: "already-there" }]);
     const inv = await service.createFromOrder({
       brand: "faitlynhair",
       order: ORDER,
@@ -183,6 +184,63 @@ describe("createFromOrder — finalizing an existing draft on real payment", () 
     expect(inv).toBe(alreadyPaid);
     expect(repo.applyPayment).not.toHaveBeenCalled();
     expect(repo.findById).not.toHaveBeenCalled();
+  });
+
+  // The order mirrors its payment onto the invoice inside the ORDER's
+  // transaction, so by the time this post-commit handler runs the invoice is
+  // already 'paid' — with no receipt yet. Short-circuiting on 'paid' alone
+  // would have swallowed the receipt entirely.
+  test("still issues the receipt when the order already settled the invoice", async () => {
+    const paidByOrder = {
+      invoice_id: "inv-1",
+      invoice_number: "FLH-INV-0042",
+      status: "paid",
+      balance_due_ngn: "0.00",
+    };
+    repo.findByOrderId.mockResolvedValue(paidByOrder);
+    repo.listReceipts.mockResolvedValue([]);
+    repo.findById.mockResolvedValue({
+      invoice_id: "inv-1",
+      status: "paid",
+      total_ngn: "418500.00",
+    });
+    await service.createFromOrder({
+      brand: "faitlynhair",
+      order: ORDER,
+      user_id: USER_ID,
+    });
+    // Nothing outstanding → no second payment, but the receipt is issued.
+    expect(repo.applyPayment).not.toHaveBeenCalled();
+    expect(repo.createReceipt).toHaveBeenCalled();
+  });
+
+  test("names a staff-recorded bank transfer on the receipt, not 'gateway'", async () => {
+    repo.findByOrderId.mockResolvedValue({
+      invoice_id: "inv-1",
+      status: "draft",
+      balance_due_ngn: "418500.00",
+    });
+    repo.listReceipts.mockResolvedValue([]);
+    repo.findById.mockResolvedValue({
+      invoice_id: "inv-1",
+      status: "paid",
+      total_ngn: "418500.00",
+    });
+    await service.createFromOrder({
+      brand: "faitlynhair",
+      order: {
+        ...ORDER,
+        payments: [
+          { method: "bank_transfer", payment_path: "staff_recorded" },
+        ],
+      },
+      user_id: USER_ID,
+    });
+    expect(repo.createReceipt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        receipt: expect.objectContaining({ payment_method: "bank_transfer" }),
+      }),
+    );
   });
 
   test("creates a brand-new paid invoice when none exists at all (legacy/no-draft path)", async () => {

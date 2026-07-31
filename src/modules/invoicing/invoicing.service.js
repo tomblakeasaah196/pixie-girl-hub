@@ -165,7 +165,22 @@ async function createFromOrder({ client, brand, order, user_id }) {
     order_id: order.order_id,
   });
   if (existing) {
-    if (ALREADY_FINAL_STATUSES.includes(existing.status)) return existing;
+    if (ALREADY_FINAL_STATUSES.includes(existing.status)) {
+      // A 'paid' invoice with no receipt yet is NOT finished: the order's own
+      // payment mirror (sales.addPayment) applies the balance inside the order
+      // transaction, so the invoice is already 'paid' by the time this
+      // post-commit handler runs — short-circuiting here would swallow the
+      // receipt. finalizeDraftInvoice is idempotent (nothing outstanding → no
+      // second payment; a receipt already on file → no second receipt), so
+      // letting it run is safe.
+      if (existing.status !== "paid") return existing;
+      const receipts = await repo.listReceipts({
+        client,
+        brand,
+        invoice_id: existing.invoice_id,
+      });
+      if (receipts.length) return existing;
+    }
     return finalizeDraftInvoice({ client, brand, existing, order, user_id });
   }
   const run = async (c) => {
@@ -284,6 +299,14 @@ async function createFromOrder({ client, brand, order, user_id }) {
  * than double-applied.
  */
 async function finalizeDraftInvoice({ client, brand, existing, order, user_id }) {
+  // Name the method the money actually arrived by. A staff-recorded bank
+  // transfer that settled the order must not print "gateway" on its receipt.
+  const lastPayment = (order.payments || [])[(order.payments || []).length - 1];
+  const receiptMethod = lastPayment
+    ? lastPayment.payment_path === "staff_recorded"
+      ? "bank_transfer"
+      : lastPayment.method || "gateway"
+    : "gateway";
   const run = async (c) => {
     const outstanding = money(existing.balance_due_ngn || 0);
     if (outstanding.gt(0)) {
@@ -319,7 +342,7 @@ async function finalizeDraftInvoice({ client, brand, existing, order, user_id })
           brand,
           invoice: updated,
           amount_ngn: updated.total_ngn,
-          payment_method: "gateway",
+          payment_method: receiptMethod,
           user_id,
         });
       }
@@ -790,7 +813,83 @@ async function _renderInvoicePdf({ brand, user, id }) {
 async function archiveInvoicePdf({ brand, user, id }) {
   await _renderInvoicePdf({ brand, user, id });
 }
+/**
+ * Record a payment against an invoice.
+ *
+ * An ORDER-BACKED invoice is only a view of the order's money: the order owns
+ * the payment ledger, the capture journal, stock deduction, the paid fan-out
+ * and the receipt. Applying money here alone left the invoice reading "Paid"
+ * while its order sat on "Pending payment" — the two screens disagreed and
+ * nothing downstream (accounting, fulfilment, comms) ever ran.
+ *
+ * So the invoice screen no longer records anything of its own for those: it
+ * hands the payment to sales.addPayment on the order, inside that service's
+ * single transaction. The order's own mirror-back (part payments) and
+ * order.paid → createFromOrder → finalizeDraftInvoice (full settlement) then
+ * update this invoice in that SAME commit — both screens flip together, or
+ * neither does. The result is re-read here and returned so the caller still
+ * gets the invoice it asked about.
+ *
+ * The mirror rows sales.addPayment writes carry `sales_order_payment_id`;
+ * those come back through here with that id set and apply directly (below),
+ * which is what stops the delegation from looping.
+ */
 async function recordPayment({ brand, user, request_id, id, input }) {
+  const existing = await repo.findById({ brand, id });
+  if (!existing) throw new NotFoundError("Invoice");
+  if (isOrderBacked(existing) && !input.sales_order_payment_id) {
+    if (["void", "refunded"].includes(existing.status))
+      throw new AppError(
+        "INVALID_STATE",
+        `Cannot pay a ${existing.status} invoice`,
+        409,
+      );
+    if (existing.status === "paid")
+      throw new AppError(
+        "INVALID_STATE",
+        "This invoice is already settled in full.",
+        409,
+      );
+    if (!input.manual_bank_transaction_id || !input.manual_bank_name)
+      throw new AppError(
+        "MANUAL_REF_REQUIRED",
+        "A bank transaction reference and bank name are required to record a manual payment",
+        422,
+      );
+    // Never let the invoice screen push the order past its own balance — the
+    // order carries charges (delivery fee, styling) the proforma may not.
+    const salesService = require("../sales/sales.service");
+    const order = await salesService.getById({ brand, id: existing.order_id });
+    if (!order)
+      throw new NotFoundError("Sales order for this invoice");
+    const amount = money(input.amount_applied_ngn);
+    if (amount.gt(money(order.balance_due_ngn || 0)))
+      throw new AppError(
+        "OVERPAYMENT",
+        `Payment exceeds the order's outstanding balance of ${toCurrencyString(money(order.balance_due_ngn || 0))}.`,
+        422,
+      );
+    const ref = String(input.manual_bank_transaction_id).trim();
+    await salesService.addPayment({
+      brand,
+      user,
+      request_id,
+      id: existing.order_id,
+      input: {
+        method: "bank_transfer",
+        provider: "manual",
+        amount_ngn: toCurrencyString(amount),
+        payment_path: "staff_recorded",
+        manual_bank_transaction_id: ref,
+        manual_bank_name: String(input.manual_bank_name).trim(),
+        notes:
+          input.notes ||
+          `Recorded from invoice ${existing.invoice_number}`,
+        client_idempotency_key: `manual:${existing.order_id}:${ref}`,
+      },
+    });
+    return repo.findById({ brand, id });
+  }
   return transaction(async (client) => {
     const inv = await repo.findById({ client, brand, id });
     if (!inv) throw new NotFoundError("Invoice");

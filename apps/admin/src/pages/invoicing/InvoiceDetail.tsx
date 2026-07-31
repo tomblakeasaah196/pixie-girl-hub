@@ -1,9 +1,25 @@
 import { useState } from "react";
-import { Download, Send, CreditCard, XCircle, FileText, Plus, X, Package, UserCheck, ShieldAlert } from "lucide-react";
+import {
+  Download,
+  Send,
+  CreditCard,
+  XCircle,
+  FileText,
+  Plus,
+  X,
+  Package,
+  UserCheck,
+  ShieldAlert,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Drawer } from "@/components/ui/Drawer";
 import { Card, Pill, MoneyText, Button } from "@/components/ui/primitives";
-import { ErrorState, ConfirmDialog, Select, NumberField } from "@/components/ui/controls";
+import {
+  ErrorState,
+  ConfirmDialog,
+  Select,
+  NumberField,
+} from "@/components/ui/controls";
 import { FormGrid, Field, TextInput } from "@/components/ui/Form";
 import { usePaymentSettings } from "@/pages/sales/hooks";
 import { useToastStore } from "@/components/notifications/NotificationToast";
@@ -37,7 +53,13 @@ const RECEIPT_PAYMENT_METHODS = [
   { value: "other", label: "Other" },
 ];
 
-export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null; onClose: () => void }) {
+export function InvoiceDetail({
+  invoiceId,
+  onClose,
+}: {
+  invoiceId: string | null;
+  onClose: () => void;
+}) {
   const { data: invoice, isLoading, isError, refetch } = useInvoice(invoiceId);
   const pdf = useInvoicePdf(invoiceId ?? "");
   const sendInvoice = useSendInvoice(invoiceId ?? "");
@@ -47,14 +69,23 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
   const issueReceipt = useIssueReceipt();
   const { data: reminders } = useInvoiceReminders(invoiceId);
   const cancelReminder = useCancelReminder(invoiceId ?? "");
-  const { data: delivery, isLoading: deliveryLoading } = useInvoiceDelivery(invoiceId);
+  const { data: delivery, isLoading: deliveryLoading } =
+    useInvoiceDelivery(invoiceId);
   const { data: paymentSettings } = usePaymentSettings();
   const navigate = useNavigate();
 
   const toast = useToastStore();
-  const fireToast = (title: string, body: string, priority: "normal" | "high" = "normal") => {
+  const fireToast = (
+    title: string,
+    body: string,
+    priority: "normal" | "high" = "normal",
+  ) => {
     if (priority === "high") {
-      toastReport("Invoicing → Invoice", title, body || "Something went wrong.");
+      toastReport(
+        "Invoicing → Invoice",
+        title,
+        body || "Something went wrong.",
+      );
       return;
     }
     toast.add({
@@ -75,7 +106,8 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
   };
 
   const [showSendForm, setShowSendForm] = useState(false);
-  const [sentVia, setSentVia] = useState<NonNullable<InvoiceSendInput["sent_via"]>>("email");
+  const [sentVia, setSentVia] =
+    useState<NonNullable<InvoiceSendInput["sent_via"]>>("email");
   const [showPayForm, setShowPayForm] = useState(false);
   const [payAmount, setPayAmount] = useState("");
   const [payNotes, setPayNotes] = useState("");
@@ -91,11 +123,16 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
   const handleDownloadPdf = async () => {
     try {
       const res = await pdf.mutateAsync();
-      await saveFileFromUrl(res.url, `${invoice?.invoice_number ?? "invoice"}.pdf`);
+      await saveFileFromUrl(
+        res.url,
+        `${invoice?.invoice_number ?? "invoice"}.pdf`,
+      );
     } catch (err) {
       fireToast(
         "PDF Failed",
-        err instanceof Error ? err.message : "Failed to generate the invoice PDF.",
+        err instanceof Error
+          ? err.message
+          : "Failed to generate the invoice PDF.",
         "high",
       );
     }
@@ -151,7 +188,8 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
           : `₦${Number(payAmount).toLocaleString()} applied to the invoice.`,
       );
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Failed to record the payment.";
+      const msg =
+        err instanceof Error ? err.message : "Failed to record the payment.";
       setPayError(msg);
       fireToast("Payment Failed", msg, "high");
     }
@@ -205,13 +243,18 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
 
   const statusMeta = invoice ? INVOICE_STATUS[invoice.status] : null;
   const canSend = !!invoice && !["void", "refunded"].includes(invoice.status);
-  const canPay = !!invoice && !["void", "refunded"].includes(invoice.status) && Number(invoice.balance_due_ngn) > 0;
+  const canPay =
+    !!invoice &&
+    !["void", "refunded"].includes(invoice.status) &&
+    Number(invoice.balance_due_ngn) > 0;
   const isOrderBacked = !!invoice?.order_id;
   // Manual entry is the same business-level switch the order drawer honours —
   // an order-backed invoice records through the order, so the same gate applies.
-  const manualAllowed = paymentSettings?.allow_staff_recorded_manual_payments === true;
+  const manualAllowed =
+    paymentSettings?.allow_staff_recorded_manual_payments === true;
   const canRecordHere = canPay && (!isOrderBacked || manualAllowed);
-  const canVoid = !!invoice && invoice.status !== "void" && invoice.status !== "paid";
+  const canVoid =
+    !!invoice && invoice.status !== "void" && invoice.status !== "paid";
 
   return (
     <>
@@ -219,13 +262,18 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
         open={!!invoiceId}
         onClose={onClose}
         title={invoice?.invoice_number ?? "Invoice"}
-        subtitle={statusMeta && <Pill tone={statusMeta.tone}>{statusMeta.label}</Pill>}
+        subtitle={
+          statusMeta && <Pill tone={statusMeta.tone}>{statusMeta.label}</Pill>
+        }
         wide
       >
         {isLoading && (
           <div className="space-y-4">
             {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-12 rounded-xl bg-text-primary/[0.04] animate-pulse" />
+              <div
+                key={i}
+                className="h-12 rounded-xl bg-text-primary/[0.04] animate-pulse"
+              />
             ))}
           </div>
         )}
@@ -234,7 +282,13 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
           <div className="space-y-5">
             {/* Top actions */}
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="secondary" size="sm" icon={<Download className="w-3.5 h-3.5" />} onClick={handleDownloadPdf} disabled={pdf.isPending}>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<Download className="w-3.5 h-3.5" />}
+                onClick={handleDownloadPdf}
+                disabled={pdf.isPending}
+              >
                 {pdf.isPending ? "Generating…" : "Download PDF"}
               </Button>
             </div>
@@ -250,13 +304,17 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
                     <button
                       type="button"
                       className="text-[13px] font-semibold hover:text-accent hover:underline"
-                      onClick={() => navigate(`/sales?tab=orders&order=${invoice.order_id}`)}
+                      onClick={() =>
+                        navigate(`/sales?tab=orders&order=${invoice.order_id}`)
+                      }
                     >
-                      Order {invoice.order_number ?? invoice.order_id.slice(0, 8)}
+                      Order{" "}
+                      {invoice.order_number ?? invoice.order_id.slice(0, 8)}
                     </button>
                     {invoice.order_status && (
                       <div className="text-[11px] text-text-faint capitalize">
-                        {invoice.order_status.replace(/_/g, " ")} — payments recorded here post to this order too
+                        {invoice.order_status.replace(/_/g, " ")} — payments
+                        recorded here post to this order too
                       </div>
                     )}
                   </div>
@@ -264,7 +322,9 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => navigate(`/sales?tab=orders&order=${invoice.order_id}`)}
+                  onClick={() =>
+                    navigate(`/sales?tab=orders&order=${invoice.order_id}`)
+                  }
                 >
                   View Order
                 </Button>
@@ -275,8 +335,13 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
             {canPay && (
               <div className="flex items-center justify-between p-4 rounded-[12px] bg-warn/[0.08] border border-warn/20">
                 <div>
-                  <div className="text-[11px] uppercase font-bold text-warn tracking-wide">Balance Due</div>
-                  <MoneyText ngn={Number(invoice.balance_due_ngn)} className="text-[22px] text-warn" />
+                  <div className="text-[11px] uppercase font-bold text-warn tracking-wide">
+                    Balance Due
+                  </div>
+                  <MoneyText
+                    ngn={Number(invoice.balance_due_ngn)}
+                    className="text-[22px] text-warn"
+                  />
                 </div>
                 {canRecordHere && (
                   <Button
@@ -301,9 +366,9 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
               <div className="flex items-start gap-2 p-3 rounded-[11px] bg-text-primary/[0.03] border border-line text-[12px] text-text-muted">
                 <ShieldAlert className="w-3.5 h-3.5 mt-[1px] shrink-0 text-warn" />
                 <span>
-                  Recording a payment by hand is switched off for this business —
-                  payments must arrive through a gateway. A manager can turn it on
-                  under{" "}
+                  Recording a payment by hand is switched off for this business
+                  — payments must arrive through a gateway. A manager can turn
+                  it on under{" "}
                   <button
                     type="button"
                     className="text-accent hover:underline"
@@ -322,7 +387,12 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
                 <div className="micro mb-3">Record Payment</div>
                 <FormGrid>
                   <Field label="Amount (NGN)">
-                    <NumberField value={payAmount} onChange={setPayAmount} placeholder="0.00" suffix="NGN" />
+                    <NumberField
+                      value={payAmount}
+                      onChange={setPayAmount}
+                      placeholder="0.00"
+                      suffix="NGN"
+                    />
                   </Field>
                   {isOrderBacked && (
                     <>
@@ -347,11 +417,17 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
                       value={payNotes}
                       onChange={(e) => setPayNotes(e.target.value)}
                       placeholder="Payment note"
-                      className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+                      className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
+                      autoComplete="off"
+                      data-lpignore="true"
+                      data-1p-ignore=""
+                      data-form-type="other"
                     />
                   </Field>
                 </FormGrid>
-                {payError && <p className="text-[12px] text-danger mt-3">{payError}</p>}
+                {payError && (
+                  <p className="text-[12px] text-danger mt-3">{payError}</p>
+                )}
                 <div className="flex items-start gap-1.5 text-[11px] text-text-faint mt-3">
                   <UserCheck className="w-3.5 h-3.5 mt-[1px] shrink-0" />
                   {isOrderBacked ? (
@@ -365,10 +441,24 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
                   )}
                 </div>
                 <div className="flex gap-2 mt-4">
-                  <Button variant="primary" size="sm" onClick={handleRecordPayment} disabled={recordPayment.isPending || !payAmount}>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleRecordPayment}
+                    disabled={recordPayment.isPending || !payAmount}
+                  >
                     {recordPayment.isPending ? "Saving…" : "Save Payment"}
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => { setShowPayForm(false); setPayError(null); }}>Cancel</Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setShowPayForm(false);
+                      setPayError(null);
+                    }}
+                  >
+                    Cancel
+                  </Button>
                 </div>
               </Card>
             )}
@@ -378,19 +468,27 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
               <FormGrid>
                 <div>
                   <div className="micro">Customer</div>
-                  <div className="text-[14px] font-semibold mt-1">{invoice.contact_name ?? invoice.contact_id.slice(0, 8)}</div>
+                  <div className="text-[14px] font-semibold mt-1">
+                    {invoice.contact_name ?? invoice.contact_id.slice(0, 8)}
+                  </div>
                 </div>
                 <div>
                   <div className="micro">Issue Date</div>
-                  <div className="text-[13px] mt-1">{formatDate(invoice.issue_date)}</div>
+                  <div className="text-[13px] mt-1">
+                    {formatDate(invoice.issue_date)}
+                  </div>
                 </div>
                 <div>
                   <div className="micro">Due Date</div>
-                  <div className="text-[13px] mt-1">{formatDate(invoice.due_date)}</div>
+                  <div className="text-[13px] mt-1">
+                    {formatDate(invoice.due_date)}
+                  </div>
                 </div>
                 <div>
                   <div className="micro">Payment Terms</div>
-                  <div className="text-[13px] mt-1">{invoice.payment_terms || "—"}</div>
+                  <div className="text-[13px] mt-1">
+                    {invoice.payment_terms || "—"}
+                  </div>
                 </div>
               </FormGrid>
             </Card>
@@ -407,16 +505,38 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
                       <Select
                         value={sentVia}
                         onChange={setSentVia}
-                        options={SEND_VIA_OPTIONS as unknown as { value: NonNullable<InvoiceSendInput["sent_via"]>; label: string }[]}
+                        options={
+                          SEND_VIA_OPTIONS as unknown as {
+                            value: NonNullable<InvoiceSendInput["sent_via"]>;
+                            label: string;
+                          }[]
+                        }
                         className="w-[140px]"
                       />
-                      <Button variant="primary" size="sm" icon={<Send className="w-3.5 h-3.5" />} onClick={handleSend} disabled={sendInvoice.isPending}>
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        icon={<Send className="w-3.5 h-3.5" />}
+                        onClick={handleSend}
+                        disabled={sendInvoice.isPending}
+                      >
                         {sendInvoice.isPending ? "Sending…" : "Confirm"}
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => setShowSendForm(false)}>Cancel</Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowSendForm(false)}
+                      >
+                        Cancel
+                      </Button>
                     </div>
                   ) : (
-                    <Button variant="secondary" size="sm" icon={<Send className="w-3.5 h-3.5" />} onClick={() => setShowSendForm(true)}>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      icon={<Send className="w-3.5 h-3.5" />}
+                      onClick={() => setShowSendForm(true)}
+                    >
                       {invoice.sent_at ? "Resend" : "Send Invoice"}
                     </Button>
                   )
@@ -430,23 +550,67 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
                 <div className="micro mb-3">Items</div>
                 <div className="space-y-2">
                   {invoice.lines.map((l) => (
-                    <div key={l.invoice_line_id} className="flex items-center justify-between text-[13px]">
+                    <div
+                      key={l.invoice_line_id}
+                      className="flex items-center justify-between text-[13px]"
+                    >
                       <div className="flex-1 min-w-0">
-                        <div className="font-semibold truncate">{l.description}</div>
-                        {l.sku_snapshot && <div className="text-[11px] text-text-faint">{l.sku_snapshot}</div>}
+                        <div className="font-semibold truncate">
+                          {l.description}
+                        </div>
+                        {l.sku_snapshot && (
+                          <div className="text-[11px] text-text-faint">
+                            {l.sku_snapshot}
+                          </div>
+                        )}
                       </div>
-                      <div className="text-text-muted mx-3">×{Number(l.quantity)}</div>
+                      <div className="text-text-muted mx-3">
+                        ×{Number(l.quantity)}
+                      </div>
                       <MoneyText ngn={Number(l.line_total_ngn)} />
                     </div>
                   ))}
                   <div className="h-px bg-line my-2" />
-                  <div className="flex justify-between text-[13px]"><span className="text-text-muted">Subtotal</span><MoneyText ngn={Number(invoice.subtotal_ngn)} /></div>
-                  {Number(invoice.discount_amount_ngn) > 0 && <div className="flex justify-between text-[13px]"><span className="text-text-muted">Discount</span><span className="text-success">−<MoneyText ngn={Number(invoice.discount_amount_ngn)} /></span></div>}
-                  {Number(invoice.tax_amount_ngn) > 0 && <div className="flex justify-between text-[13px]"><span className="text-text-muted">Tax</span><MoneyText ngn={Number(invoice.tax_amount_ngn)} /></div>}
-                  {Number(invoice.shipping_fee_ngn) > 0 && <div className="flex justify-between text-[13px]"><span className="text-text-muted">Shipping</span><MoneyText ngn={Number(invoice.shipping_fee_ngn)} /></div>}
-                  {Number(invoice.wht_amount_ngn) > 0 && <div className="flex justify-between text-[13px]"><span className="text-text-muted">Withholding Tax</span><span className="text-success">−<MoneyText ngn={Number(invoice.wht_amount_ngn)} /></span></div>}
-                  <div className="flex justify-between text-[15px] font-semibold pt-1"><span>Total</span><MoneyText ngn={Number(invoice.total_ngn)} /></div>
-                  <div className="flex justify-between text-[12px] text-text-muted"><span>Paid to date</span><MoneyText ngn={Number(invoice.amount_paid_ngn)} /></div>
+                  <div className="flex justify-between text-[13px]">
+                    <span className="text-text-muted">Subtotal</span>
+                    <MoneyText ngn={Number(invoice.subtotal_ngn)} />
+                  </div>
+                  {Number(invoice.discount_amount_ngn) > 0 && (
+                    <div className="flex justify-between text-[13px]">
+                      <span className="text-text-muted">Discount</span>
+                      <span className="text-success">
+                        −<MoneyText ngn={Number(invoice.discount_amount_ngn)} />
+                      </span>
+                    </div>
+                  )}
+                  {Number(invoice.tax_amount_ngn) > 0 && (
+                    <div className="flex justify-between text-[13px]">
+                      <span className="text-text-muted">Tax</span>
+                      <MoneyText ngn={Number(invoice.tax_amount_ngn)} />
+                    </div>
+                  )}
+                  {Number(invoice.shipping_fee_ngn) > 0 && (
+                    <div className="flex justify-between text-[13px]">
+                      <span className="text-text-muted">Shipping</span>
+                      <MoneyText ngn={Number(invoice.shipping_fee_ngn)} />
+                    </div>
+                  )}
+                  {Number(invoice.wht_amount_ngn) > 0 && (
+                    <div className="flex justify-between text-[13px]">
+                      <span className="text-text-muted">Withholding Tax</span>
+                      <span className="text-success">
+                        −<MoneyText ngn={Number(invoice.wht_amount_ngn)} />
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-[15px] font-semibold pt-1">
+                    <span>Total</span>
+                    <MoneyText ngn={Number(invoice.total_ngn)} />
+                  </div>
+                  <div className="flex justify-between text-[12px] text-text-muted">
+                    <span>Paid to date</span>
+                    <MoneyText ngn={Number(invoice.amount_paid_ngn)} />
+                  </div>
                 </div>
               </Card>
             )}
@@ -458,38 +622,62 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
                 <div className="micro mb-3">Payments</div>
                 <div className="space-y-2">
                   {invoice.payments.map((p) => (
-                    <div key={p.invoice_payment_id} className="text-[13px] p-2.5 rounded-lg bg-text-primary/[0.02]">
+                    <div
+                      key={p.invoice_payment_id}
+                      className="text-[13px] p-2.5 rounded-lg bg-text-primary/[0.02]"
+                    >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="font-semibold flex items-center gap-2 flex-wrap">
                             <MoneyText ngn={Number(p.amount_applied_ngn)} />
-                            {p.payment_path === "staff_recorded" && <Pill tone="info">Staff recorded</Pill>}
+                            {p.payment_path === "staff_recorded" && (
+                              <Pill tone="info">Staff recorded</Pill>
+                            )}
                           </div>
                           {p.payment_method && (
                             <div className="text-[11px] text-text-faint capitalize">
                               {p.payment_method.replace(/_/g, " ")}
-                              {p.manual_bank_name ? ` · ${p.manual_bank_name}` : ""}
+                              {p.manual_bank_name
+                                ? ` · ${p.manual_bank_name}`
+                                : ""}
                               {p.payment_number ? ` · ${p.payment_number}` : ""}
                             </div>
                           )}
                         </div>
-                        <div className="text-[10px] text-text-faint shrink-0">{formatDate(p.applied_at)}</div>
+                        <div className="text-[10px] text-text-faint shrink-0">
+                          {formatDate(p.applied_at)}
+                        </div>
                       </div>
                       <div className="mt-1.5 pt-1.5 border-t border-line/60 text-[11px] text-text-muted flex items-start gap-1.5">
                         <UserCheck className="w-3 h-3 mt-[2px] shrink-0 text-text-faint" />
                         <span>
                           {p.applied_by_name ? (
-                            <>Accepted by <span className="font-semibold text-text-primary">{p.applied_by_name}</span></>
+                            <>
+                              Accepted by{" "}
+                              <span className="font-semibold text-text-primary">
+                                {p.applied_by_name}
+                              </span>
+                            </>
                           ) : (
                             "Captured automatically by the payment gateway"
                           )}{" "}
                           · {formatDateTime(p.applied_at)}
                           {p.manual_bank_transaction_id && (
-                            <> · ref <span className="font-mono">{p.manual_bank_transaction_id}</span></>
+                            <>
+                              {" "}
+                              · ref{" "}
+                              <span className="font-mono">
+                                {p.manual_bank_transaction_id}
+                              </span>
+                            </>
                           )}
                         </span>
                       </div>
-                      {p.notes && <div className="mt-1 text-[11px] text-text-faint">{p.notes}</div>}
+                      {p.notes && (
+                        <div className="mt-1 text-[11px] text-text-faint">
+                          {p.notes}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -503,7 +691,12 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
                 {/* Paid invoices issue their receipt automatically; only offer a
                     manual receipt while a balance is still outstanding. */}
                 {!["paid", "void", "refunded"].includes(invoice.status) && (
-                  <Button variant="ghost" size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => setShowReceiptForm(!showReceiptForm)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={<Plus className="w-3.5 h-3.5" />}
+                    onClick={() => setShowReceiptForm(!showReceiptForm)}
+                  >
                     Issue Receipt
                   </Button>
                 )}
@@ -512,17 +705,37 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
                 <div className="mb-3 p-3 rounded-[11px] bg-text-primary/[0.03] border border-line">
                   <FormGrid>
                     <Field label="Amount (NGN)">
-                      <NumberField value={receiptAmount} onChange={setReceiptAmount} placeholder="0.00" suffix="NGN" />
+                      <NumberField
+                        value={receiptAmount}
+                        onChange={setReceiptAmount}
+                        placeholder="0.00"
+                        suffix="NGN"
+                      />
                     </Field>
                     <Field label="Method">
-                      <Select value={receiptMethod} onChange={setReceiptMethod} options={RECEIPT_PAYMENT_METHODS} />
+                      <Select
+                        value={receiptMethod}
+                        onChange={setReceiptMethod}
+                        options={RECEIPT_PAYMENT_METHODS}
+                      />
                     </Field>
                   </FormGrid>
                   <div className="flex gap-2 mt-3">
-                    <Button variant="primary" size="sm" onClick={handleIssueReceipt} disabled={issueReceipt.isPending || !receiptAmount}>
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={handleIssueReceipt}
+                      disabled={issueReceipt.isPending || !receiptAmount}
+                    >
                       {issueReceipt.isPending ? "Issuing…" : "Issue"}
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={() => setShowReceiptForm(false)}>Cancel</Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowReceiptForm(false)}
+                    >
+                      Cancel
+                    </Button>
                   </div>
                 </div>
               )}
@@ -538,7 +751,11 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
                   ))}
                 </div>
               ) : (
-                !showReceiptForm && <div className="text-[12px] text-text-faint">No receipts issued yet.</div>
+                !showReceiptForm && (
+                  <div className="text-[12px] text-text-faint">
+                    No receipts issued yet.
+                  </div>
+                )
               )}
             </Card>
 
@@ -546,44 +763,63 @@ export function InvoiceDetail({ invoiceId, onClose }: { invoiceId: string | null
             {reminders &&
               reminders.length > 0 &&
               !["paid", "void", "refunded"].includes(invoice.status) && (
-              <Card className="p-4">
-                <div className="micro mb-3">Reminders</div>
-                <div className="space-y-2">
-                  {reminders.map((r) => {
-                    const meta = REMINDER_STATUS[r.status];
-                    return (
-                      <div key={r.reminder_id} className="flex items-center justify-between text-[13px] p-2 rounded-lg bg-text-primary/[0.02]">
-                        <div>
-                          <div className="font-semibold capitalize">{r.reminder_type.replace(/_/g, " ")} · {r.channel}</div>
-                          <div className="text-[11px] text-text-faint">{formatDateTime(r.scheduled_for)}</div>
+                <Card className="p-4">
+                  <div className="micro mb-3">Reminders</div>
+                  <div className="space-y-2">
+                    {reminders.map((r) => {
+                      const meta = REMINDER_STATUS[r.status];
+                      return (
+                        <div
+                          key={r.reminder_id}
+                          className="flex items-center justify-between text-[13px] p-2 rounded-lg bg-text-primary/[0.02]"
+                        >
+                          <div>
+                            <div className="font-semibold capitalize">
+                              {r.reminder_type.replace(/_/g, " ")} · {r.channel}
+                            </div>
+                            <div className="text-[11px] text-text-faint">
+                              {formatDateTime(r.scheduled_for)}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {meta && <Pill tone={meta.tone}>{meta.label}</Pill>}
+                            {r.status === "scheduled" && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleCancelReminder(r.reminder_id)
+                                }
+                                className="p-1.5 rounded-lg text-text-faint hover:text-danger hover:bg-danger/10"
+                                aria-label="Cancel reminder"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          {meta && <Pill tone={meta.tone}>{meta.label}</Pill>}
-                          {r.status === "scheduled" && (
-                            <button
-                              type="button"
-                              onClick={() => handleCancelReminder(r.reminder_id)}
-                              className="p-1.5 rounded-lg text-text-faint hover:text-danger hover:bg-danger/10"
-                              aria-label="Cancel reminder"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </Card>
-            )}
+                      );
+                    })}
+                  </div>
+                </Card>
+              )}
 
             {/* Actions */}
             <div className="flex flex-wrap gap-2">
-              <Button variant="secondary" size="sm" icon={<FileText className="w-3.5 h-3.5" />} onClick={() => setShowCreditNote(true)}>
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<FileText className="w-3.5 h-3.5" />}
+                onClick={() => setShowCreditNote(true)}
+              >
                 New Credit Note
               </Button>
               {canVoid && (
-                <Button variant="danger" size="sm" icon={<XCircle className="w-3.5 h-3.5" />} onClick={() => setConfirmVoid(true)}>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  icon={<XCircle className="w-3.5 h-3.5" />}
+                  onClick={() => setConfirmVoid(true)}
+                >
                   Void Invoice
                 </Button>
               )}

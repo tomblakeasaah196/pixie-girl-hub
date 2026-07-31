@@ -462,9 +462,7 @@ const POS_RECON_UNRESOLVED_KEY = "pos-reconciliation-unresolved";
  *  money sitting unclaimed, so the list should feel current without staff
  *  needing to manually refresh (decision 6B extends to the list, not just
  *  the notification). */
-export function usePosReconciliation(
-  params: salesApi.PosReconListParams = {},
-) {
+export function usePosReconciliation(params: salesApi.PosReconListParams = {}) {
   const biz = useBiz();
   return useQuery({
     queryKey: [POS_RECON_KEY, biz, params],

@@ -188,9 +188,11 @@ async function listInvoices({
     params,
   );
   const { rows } = await run(
-    `SELECT i.*, c.display_name AS contact_name
+    `SELECT i.*, c.display_name AS contact_name,
+            o.order_number, o.status AS order_status
        FROM ${t(brand, "invoices")} i
        LEFT JOIN shared.contacts c ON c.contact_id = i.contact_id
+       LEFT JOIN ${t(brand, "sales_orders")} o ON o.order_id = i.order_id
        ${w}
       ORDER BY i.issue_date DESC, i.created_at DESC LIMIT $${i++} OFFSET $${i++}`,
     [...params, page_size, offset],

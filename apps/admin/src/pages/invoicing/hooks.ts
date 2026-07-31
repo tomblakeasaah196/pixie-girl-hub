@@ -152,10 +152,17 @@ export function useSendReceipt(invoiceId: string | null) {
   const qc = useQueryClient();
   const biz = useBiz();
   return useMutation({
-    mutationFn: ({ receiptId, sent_via }: { receiptId: string; sent_via?: string }) =>
-      invoicingApi.sendReceipt(receiptId, { sent_via }),
+    mutationFn: ({
+      receiptId,
+      sent_via,
+    }: {
+      receiptId: string;
+      sent_via?: string;
+    }) => invoicingApi.sendReceipt(receiptId, { sent_via }),
     onSuccess: (_data, { receiptId }) => {
-      qc.invalidateQueries({ queryKey: ["invoices", biz, "receipts", invoiceId] });
+      qc.invalidateQueries({
+        queryKey: ["invoices", biz, "receipts", invoiceId],
+      });
       qc.invalidateQueries({
         queryKey: ["invoices", biz, "receipt-delivery", receiptId],
       });
@@ -165,9 +172,7 @@ export function useSendReceipt(invoiceId: string | null) {
 
 // ── Credit notes ────────────────────────────────────────────
 
-export function useCreditNotes(
-  params: invoicingApi.CreditNoteListParams = {},
-) {
+export function useCreditNotes(params: invoicingApi.CreditNoteListParams = {}) {
   const biz = useBiz();
   return useQuery({
     queryKey: ["credit-notes", biz, params],

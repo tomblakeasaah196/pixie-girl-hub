@@ -41,14 +41,26 @@ import {
   Phone,
   Bell,
   Sparkles,
+  CreditCard,
+  Clock,
+  UserCheck,
+  ShieldAlert,
 } from "lucide-react";
 import { Card, Pill, MoneyText, Button } from "@/components/ui/primitives";
-import { ErrorState, ConfirmDialog, Select } from "@/components/ui/controls";
-import { FormGrid } from "@/components/ui/Form";
+import {
+  ErrorState,
+  ConfirmDialog,
+  Select,
+  NumberField,
+} from "@/components/ui/controls";
+import { FormGrid, Field, TextInput } from "@/components/ui/Form";
+import { useAuthStore } from "@/stores/auth";
 import {
   useOrder,
   useOrderTimeline,
   useCreatePaymentLink,
+  useAddPayment,
+  usePaymentSettings,
   useCancelOrder,
   useSetOrderStatus,
   useOrderInvoice,
@@ -57,20 +69,22 @@ import {
   useOrderDelivery,
   useContactRecentOrders,
   useInvoiceReminders,
+  useStatusAutomations,
 } from "./hooks";
 import { generateReceipt } from "./api";
 import { useToastStore } from "@/components/notifications/NotificationToast";
 import { toastReport } from "@/lib/error-report";
 import { saveFileFromUrl } from "@/lib/api";
-import { formatDate, formatDateTime } from "@/lib/format";
+import { formatDate, formatDateTime, money } from "@/lib/format";
 import {
   ORDER_STATUS,
   MANUAL_MOVE_STATUSES,
   statusMoveImpact,
+  messagingChannelLabel,
   SALES_CHANNELS,
   fulfilmentLabel,
 } from "./constants";
-import type { OrderPayment } from "./types";
+import type { OrderPayment, OrderStatus, SalesOrder } from "./types";
 import { useJobReferences } from "@/pages/service-jobs/hooks";
 
 // ── Status → label maps (kept local so the drawer + page share nothing but
@@ -257,15 +271,34 @@ export function OrderDetailPage() {
     orderId,
   );
   const sendInvoice = useSendOrderInvoice(orderId);
-  const createLink = useCreatePaymentLink(orderId ?? "");
   const cancelOrder = useCancelOrder();
   const setStatus = useSetOrderStatus();
+  // Live on/off state of the stage messages, for the status-move impact modal.
+  const { data: statusAutomations, isLoading: automationsLoading } =
+    useStatusAutomations(!!orderId);
+  const { data: paymentSettings } = usePaymentSettings();
 
   const [confirmCancel, setConfirmCancel] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
   const [receiptLoading, setReceiptLoading] = useState(false);
   const [showInvoiceSend, setShowInvoiceSend] = useState(false);
   const [invoiceSentVia, setInvoiceSentVia] = useState("email");
+  const [payLinkOpen, setPayLinkOpen] = useState(false);
+
+  // Inline payment acceptance — staff record the money right here on the order
+  // instead of hopping to the invoice. The recorder + timestamp are stamped
+  // server-side and stay on the ledger below for good. Recording here also
+  // settles the order's invoice in the same commit, so both screens agree.
+  const canEditSales = useAuthStore((s) => s.can)("sales", "edit");
+  const manualAllowed =
+    paymentSettings?.allow_staff_recorded_manual_payments === true;
+  const addPayment = useAddPayment(orderId ?? "");
+  const [showPayForm, setShowPayForm] = useState(false);
+  const [payAmount, setPayAmount] = useState("");
+  const [payBankRef, setPayBankRef] = useState("");
+  const [payBankName, setPayBankName] = useState("");
+  const [payNotes, setPayNotes] = useState("");
+  const [payError, setPayError] = useState<string | null>(null);
 
   // Return to the list, keeping the source row highlighted (?order=<id>).
   const goBack = () => {
@@ -310,24 +343,48 @@ export function OrderDetailPage() {
     });
   };
 
-  const handlePayLink = async () => {
+  // Record money the customer has already sent. Only the staff-recorded bank
+  // transfer path is open to manual entry (gateway payments arrive by webhook),
+  // so the bank's transaction reference is mandatory — it's what Accounting
+  // reconciles against the bank-statement import.
+  const handleRecordPayment = async () => {
     if (!orderId || !order) return;
+    setPayError(null);
+    const amount = Number(payAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setPayError("Enter the amount received.");
+      return;
+    }
+    if (!payBankRef.trim() || !payBankName.trim()) {
+      setPayError("The bank reference and bank name are both required.");
+      return;
+    }
     try {
-      const res = await createLink.mutateAsync({
-        amount_ngn: Number(order.balance_due_ngn),
-        ...(order.display_currency && order.display_currency !== "NGN"
-          ? { currency: order.display_currency }
-          : {}),
+      await addPayment.mutateAsync({
+        method: "bank_transfer",
+        amount_ngn: amount,
+        provider: "manual",
+        payment_path: "staff_recorded",
+        manual_bank_transaction_id: payBankRef.trim(),
+        manual_bank_name: payBankName.trim(),
+        notes: payNotes.trim() || undefined,
+        client_idempotency_key: `manual:${orderId}:${payBankRef.trim()}`,
       });
-      await navigator.clipboard.writeText(res.checkout_url);
-      fireToast("Link Copied", "Payment link copied to clipboard.");
-    } catch {
+      setShowPayForm(false);
+      setPayAmount("");
+      setPayBankRef("");
+      setPayBankName("");
+      setPayNotes("");
       fireToast(
-        "Link Failed",
-        "Failed to generate payment link.",
+        "Payment Recorded",
+        `${money(amount)} accepted on ${order.order_number} — logged under your name, and the invoice is updated too.`,
         "payment",
-        "high",
       );
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Couldn't record the payment.";
+      setPayError(msg);
+      fireToast("Payment Not Recorded", msg, "payment", "high");
     }
   };
 
@@ -422,7 +479,9 @@ export function OrderDetailPage() {
   const jobMeta = job ? JOB_STATUS[job.status] : null;
   const jobDone = job ? JOB_TERMINAL.has(job.status) : false;
   const deliveryMeta = delivery ? DELIVERY_STATUS[delivery.status] : null;
-  const deliveryDone = delivery ? DELIVERY_TERMINAL.has(delivery.status) : false;
+  const deliveryDone = delivery
+    ? DELIVERY_TERMINAL.has(delivery.status)
+    : false;
   const paidTone: Tone = ["draft", "pending_payment"].includes(
     order?.status ?? "",
   )
@@ -436,10 +495,21 @@ export function OrderDetailPage() {
         : { label: "Not sent", tone: "neutral" as const }
     : null;
   const statusMeta = order ? ORDER_STATUS[order.status] : null;
+  const balanceDue = Number(order?.balance_due_ngn ?? 0);
   const historyLtv = (contactHistory?.orders ?? []).reduce(
     (sum, o) => sum + Number(o.total_ngn || 0),
     0,
   );
+
+  // Pre-order (000086): production window label from the order's snapshot.
+  const preorderWindow = (() => {
+    if (!order?.is_preorder) return null;
+    const min = order.preorder_min_weeks ?? null;
+    const max = order.preorder_max_weeks ?? null;
+    if (min && max && min !== max) return `${min}–${max} weeks`;
+    const w = max || min;
+    return w ? `${w} week${w === 1 ? "" : "s"}` : null;
+  })();
 
   // Style-brief image references (Studio) — surface as thumbnails.
   const imageRefs = useMemo(
@@ -485,7 +555,8 @@ export function OrderDetailPage() {
   const studioStages = useMemo<StudioStage[]>(() => {
     if (!job || ["cancelled", "rejected"].includes(job.status)) return [];
     const at = STAGE_OF_STATUS[job.status] ?? 1;
-    const terminal = job.status === "handed_to_sales" || job.status === "completed";
+    const terminal =
+      job.status === "handed_to_sales" || job.status === "completed";
     const defs = [
       { key: "queued", label: "Queued", when: job.created_at ?? null },
       { key: "assigned", label: "Assigned", when: job.assigned_at },
@@ -569,12 +640,7 @@ export function OrderDetailPage() {
         channel: r.channel,
         title: `Reminder — ${label} (${r.channel})`,
         sub: status,
-        tone:
-          r.status === "failed"
-            ? "danger"
-            : r.sent_at
-              ? "success"
-              : "info",
+        tone: r.status === "failed" ? "danger" : r.sent_at ? "success" : "info",
       });
     }
     return rows.sort(
@@ -603,22 +669,41 @@ export function OrderDetailPage() {
           {order && Number(order.balance_due_ngn) > 0 && (
             <Pill tone="warn">
               Balance{" "}
-              <MoneyText
-                ngn={Number(order.balance_due_ngn)}
-                className="ml-1"
-              />
+              <MoneyText ngn={Number(order.balance_due_ngn)} className="ml-1" />
             </Pill>
           )}
           <div className="ml-auto flex items-center gap-2 flex-wrap">
+            {/* Accepting money is the primary action on an unpaid order, so it
+                leads the bar. It arms the form down in the Payments card —
+                one place money is ever entered. */}
+            {order &&
+              Number(order.balance_due_ngn) > 0 &&
+              canEditSales &&
+              manualAllowed && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={<CreditCard className="w-3.5 h-3.5" />}
+                  onClick={() => {
+                    setPayError(null);
+                    setPayAmount(String(order.balance_due_ngn));
+                    setShowPayForm(true);
+                    document
+                      .getElementById("order-payments")
+                      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+                  }}
+                >
+                  Record Payment
+                </Button>
+              )}
             {order && Number(order.balance_due_ngn) > 0 && (
               <Button
                 variant="secondary"
                 size="sm"
                 icon={<Link2 className="w-3.5 h-3.5" />}
-                onClick={handlePayLink}
-                disabled={createLink.isPending}
+                onClick={() => setPayLinkOpen(true)}
               >
-                {createLink.isPending ? "…" : "Pay Link"}
+                Pay Link
               </Button>
             )}
             {invoice && !["void", "refunded"].includes(invoice.status) && (
@@ -765,6 +850,18 @@ export function OrderDetailPage() {
             <Pill tone={paidTone}>
               {paidTone === "success" ? "Paid" : "Payment pending"}
             </Pill>
+            {order.payment_plan === "instalment" && (
+              <Pill tone="accent">
+                <CreditCard className="w-3 h-3 inline mr-1" />
+                {paymentSettings?.plan_display_name || "Flexi Pay"}
+              </Pill>
+            )}
+            {order.is_preorder && (
+              <Pill tone="accent">
+                <Clock className="w-3 h-3 inline mr-1" />
+                Pre-order
+              </Pill>
+            )}
             {(needsStudio || job) && (
               <Pill tone={jobMeta?.tone ?? (jobDone ? "success" : "neutral")}>
                 <Scissors className="w-3 h-3 inline mr-1" />
@@ -817,6 +914,26 @@ export function OrderDetailPage() {
             </Card>
           )}
 
+          {/* Pre-order deadline + production window (000086). The order
+              carries a made-to-order line; ship-by is placement + the max
+              production weeks, snapshotted at checkout. */}
+          {order.is_preorder && (
+            <div className="flex items-start gap-2 p-3 rounded-[11px] bg-accent/[0.06] border border-accent/20">
+              <Clock className="w-4 h-4 text-accent-glow shrink-0 mt-0.5" />
+              <div className="text-[12.5px]">
+                <span className="font-semibold">Pre-order</span>
+                {" — made to order."}
+                {preorderWindow ? ` Ships in about ${preorderWindow}.` : ""}
+                {order.preorder_ready_by ? (
+                  <span className="text-text-muted">
+                    {" "}
+                    Ready by {formatDate(order.preorder_ready_by)}.
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          )}
+
           {/* Invoice ribbon (kept for the header info + delivery state chip). */}
           {invoice && (
             <div className="p-3 rounded-[11px] bg-success/[0.06] border border-success/20">
@@ -825,7 +942,19 @@ export function OrderDetailPage() {
                   <FileText className="w-4 h-4 text-success shrink-0" />
                   <div className="min-w-0">
                     <div className="text-[13px] font-semibold flex items-center gap-2">
-                      Invoice {invoice.invoice_number}
+                      {/* The number itself is the link — the same shape the
+                          invoice uses to point back at this order. */}
+                      <button
+                        type="button"
+                        className="hover:text-accent hover:underline"
+                        onClick={() =>
+                          navigate(
+                            `/invoicing?tab=invoices&invoice=${invoice.invoice_id}`,
+                          )
+                        }
+                      >
+                        Invoice {invoice.invoice_number}
+                      </button>
                       {invoiceDelivery && (
                         <Pill tone={invoiceDelivery.tone}>
                           {invoiceDelivery.label}
@@ -837,13 +966,11 @@ export function OrderDetailPage() {
                       {invoice.first_viewed_at ? (
                         <span className="inline-flex items-center gap-1 ml-1 text-success normal-case">
                           <Eye className="w-3 h-3" />
-                          opened{" "}
-                          {formatDate(invoice.first_viewed_at)}
+                          opened {formatDate(invoice.first_viewed_at)}
                         </span>
                       ) : invoice.sent_at ? (
                         <span className="ml-1 normal-case">
-                          · sent{" "}
-                          {formatDate(invoice.sent_at)}
+                          · sent {formatDate(invoice.sent_at)}
                         </span>
                       ) : null}
                     </div>
@@ -922,7 +1049,8 @@ export function OrderDetailPage() {
                   <div>
                     <div className="micro">Paid in</div>
                     <div className="text-[13px] mt-1">
-                      {order.display_currency && order.display_currency !== "NGN"
+                      {order.display_currency &&
+                      order.display_currency !== "NGN"
                         ? `${order.display_currency} · ₦${Number(order.fx_rate_used).toLocaleString()}/$`
                         : "Naira (₦)"}
                     </div>
@@ -1004,15 +1132,17 @@ export function OrderDetailPage() {
                               Exchange rate
                             </span>
                             <span className="tabular-nums">
-                              ₦
-                              {Number(order.fx_rate_used).toLocaleString()} / $1
+                              ₦{Number(order.fx_rate_used).toLocaleString()} /
+                              $1
                             </span>
                           </div>
                           <div className="flex justify-between text-[14px] font-semibold">
                             <span>Charged in {order.display_currency}</span>
                             <span className="tabular-nums">
                               $
-                              {Number(order.display_total ?? 0).toLocaleString()}
+                              {Number(
+                                order.display_total ?? 0,
+                              ).toLocaleString()}
                             </span>
                           </div>
                         </div>
@@ -1021,32 +1151,243 @@ export function OrderDetailPage() {
                 </Card>
               )}
 
-              {/* Payments */}
-              {order.payments && order.payments.length > 0 && (
-                <Card className="p-4">
-                  <div className="micro mb-3">Payments</div>
-                  <div className="space-y-2">
-                    {order.payments.map((p: OrderPayment) => (
-                      <div
-                        key={p.payment_id}
-                        className="flex items-center justify-between text-[13px] p-2 rounded-lg bg-text-primary/[0.02]"
-                      >
-                        <div>
-                          <div className="font-semibold">{p.payment_number}</div>
-                          <div className="text-[11px] text-text-faint capitalize">
-                            {p.method.replace(/_/g, " ")}
-                          </div>
+              {/* Payments — the money card. Always present (unless the order
+                  was cancelled) so an unpaid order shows the balance and the
+                  way to accept money, instead of the card vanishing and
+                  leaving staff hunting. Every row is a permanent acceptance
+                  record: who took the money and the moment they did. */}
+              {order.status !== "cancelled" && (
+                <div id="order-payments">
+                  <Card className="p-4">
+                    <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+                      <div className="micro flex items-center gap-1.5">
+                        <CreditCard className="w-3.5 h-3.5" />
+                        Payments
+                      </div>
+                      {balanceDue > 0 && canEditSales && manualAllowed && (
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          icon={<CreditCard className="w-3.5 h-3.5" />}
+                          onClick={() => {
+                            setPayError(null);
+                            setPayAmount(String(order.balance_due_ngn));
+                            setShowPayForm((v) => !v);
+                          }}
+                        >
+                          Record Payment
+                        </Button>
+                      )}
+                    </div>
+
+                    {/* Balance summary — paid against total, always visible. */}
+                    <div
+                      className={`flex items-center justify-between gap-3 p-3 rounded-[11px] mb-3 ${
+                        balanceDue > 0
+                          ? "bg-warn/[0.08] border border-warn/20"
+                          : "bg-success/[0.06] border border-success/20"
+                      }`}
+                    >
+                      <div>
+                        <div
+                          className={`text-[11px] uppercase font-bold tracking-wide ${
+                            balanceDue > 0 ? "text-warn" : "text-success"
+                          }`}
+                        >
+                          {balanceDue > 0 ? "Balance Due" : "Settled in full"}
                         </div>
-                        <div className="text-right">
-                          <MoneyText ngn={Number(p.amount_ngn)} />
-                          <div className="text-[10px] text-text-faint">
-                            {formatDate(p.captured_at)}
-                          </div>
+                        <MoneyText
+                          ngn={
+                            balanceDue > 0
+                              ? balanceDue
+                              : Number(order.total_ngn)
+                          }
+                          className={`text-[22px] ${
+                            balanceDue > 0 ? "text-warn" : "text-success"
+                          }`}
+                        />
+                      </div>
+                      <div className="text-[11px] text-text-muted text-right">
+                        Paid {money(Number(order.amount_paid_ngn))} of{" "}
+                        {money(Number(order.total_ngn))}
+                      </div>
+                    </div>
+
+                    {/* Record payment — inline, so accepting money never means
+                      opening the invoice. Who recorded it and when is stamped
+                      server-side and shown permanently in the ledger below. */}
+                    {showPayForm && balanceDue > 0 && (
+                      <div className="p-3 rounded-[11px] border border-line bg-text-primary/[0.02] mb-3">
+                        <div className="micro mb-3">Record Payment</div>
+                        <FormGrid>
+                          <Field
+                            label="Amount received (NGN)"
+                            hint={`balance ${money(balanceDue)}`}
+                          >
+                            <NumberField
+                              value={payAmount}
+                              onChange={setPayAmount}
+                              placeholder="0.00"
+                              suffix="NGN"
+                            />
+                          </Field>
+                          <Field label="Bank transaction reference">
+                            <TextInput
+                              value={payBankRef}
+                              onChange={(e) => setPayBankRef(e.target.value)}
+                              placeholder="e.g. GTB/2026/00123"
+                            />
+                          </Field>
+                          <Field label="Bank name">
+                            <TextInput
+                              value={payBankName}
+                              onChange={(e) => setPayBankName(e.target.value)}
+                              placeholder="e.g. GTBank"
+                            />
+                          </Field>
+                          <Field label="Notes" hint="optional">
+                            <TextInput
+                              value={payNotes}
+                              onChange={(e) => setPayNotes(e.target.value)}
+                              placeholder="Payment note"
+                            />
+                          </Field>
+                        </FormGrid>
+                        {payError && (
+                          <p className="text-[12px] text-danger mt-3">
+                            {payError}
+                          </p>
+                        )}
+                        <div className="flex items-start gap-1.5 text-[11px] text-text-faint mt-3">
+                          <UserCheck className="w-3.5 h-3.5 mt-[1px] shrink-0" />
+                          Recorded under your name with the time you accepted
+                          it, reconciled against the bank-statement import, and
+                          applied to
+                          {invoice
+                            ? ` invoice ${invoice.invoice_number}`
+                            : " this order's invoice"}{" "}
+                          at the same moment.
+                        </div>
+                        <div className="flex gap-2 mt-4">
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={handleRecordPayment}
+                            disabled={addPayment.isPending || !payAmount}
+                          >
+                            {addPayment.isPending ? "Saving…" : "Save Payment"}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setShowPayForm(false);
+                              setPayError(null);
+                            }}
+                          >
+                            Cancel
+                          </Button>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                </Card>
+                    )}
+
+                    {/* Manual entry is a business-level switch — say so plainly
+                      rather than silently hiding the button and leaving staff
+                      hunting for it. */}
+                    {balanceDue > 0 && canEditSales && !manualAllowed && (
+                      <div className="flex items-start gap-2 p-3 rounded-[11px] bg-text-primary/[0.03] border border-line text-[12px] text-text-muted mb-3">
+                        <ShieldAlert className="w-3.5 h-3.5 mt-[1px] shrink-0 text-warn" />
+                        <span>
+                          Recording a payment by hand is switched off for this
+                          business — payments must arrive through a gateway. A
+                          manager can turn it on under{" "}
+                          <button
+                            type="button"
+                            className="text-accent hover:underline"
+                            onClick={() => navigate("/sales?tab=payments")}
+                          >
+                            Sales → Payments
+                          </button>
+                          . You can still send a pay link.
+                        </span>
+                      </div>
+                    )}
+
+                    {order.payments && order.payments.length > 0 ? (
+                      <div className="space-y-2">
+                        {order.payments.map((p: OrderPayment) => (
+                          <div
+                            key={p.payment_id}
+                            className="text-[13px] p-2.5 rounded-lg bg-text-primary/[0.02]"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="font-semibold flex items-center gap-2 flex-wrap">
+                                  {p.payment_number}
+                                  {p.payment_path === "staff_recorded" && (
+                                    <Pill tone="info">Staff recorded</Pill>
+                                  )}
+                                </div>
+                                <div className="text-[11px] text-text-faint capitalize">
+                                  {p.method.replace(/_/g, " ")}
+                                  {p.manual_bank_name
+                                    ? ` · ${p.manual_bank_name}`
+                                    : ""}
+                                </div>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <MoneyText ngn={Number(p.amount_ngn)} />
+                                <div className="text-[10px] text-text-faint">
+                                  {formatDate(p.captured_at)}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="mt-1.5 pt-1.5 border-t border-line/60 text-[11px] text-text-muted flex items-start gap-1.5">
+                              <UserCheck className="w-3 h-3 mt-[2px] shrink-0 text-text-faint" />
+                              <span>
+                                {p.recorded_by_name ? (
+                                  <>
+                                    Accepted by{" "}
+                                    <span className="font-semibold text-text-primary">
+                                      {p.recorded_by_name}
+                                    </span>
+                                  </>
+                                ) : (
+                                  "Captured automatically by the payment gateway"
+                                )}{" "}
+                                ·{" "}
+                                {formatDateTime(p.recorded_at ?? p.captured_at)}
+                                {p.manual_bank_transaction_id && (
+                                  <>
+                                    {" "}
+                                    · ref{" "}
+                                    <span className="font-mono">
+                                      {p.manual_bank_transaction_id}
+                                    </span>
+                                  </>
+                                )}
+                              </span>
+                            </div>
+                            {p.notes && (
+                              <div className="mt-1 text-[11px] text-text-faint">
+                                {p.notes}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-[13px] text-text-faint">
+                        No payments recorded yet.
+                        {balanceDue > 0
+                          ? manualAllowed && canEditSales
+                            ? " Record one above when the customer's transfer lands, or send a pay link."
+                            : " Send the customer a pay link — gateway payments post themselves the moment they clear."
+                          : ""}
+                      </div>
+                    )}
+                  </Card>
+                </div>
               )}
 
               {/* Stylist Studio — operations stage tracker. Shown whenever a
@@ -1146,7 +1487,7 @@ export function OrderDetailPage() {
                                   {s.label}
                                 </div>
                                 <div className="text-[10px] text-text-faint text-center px-1">
-                                  {s.when ? fmtDate(s.when) : s.sub ?? ""}
+                                  {s.when ? fmtDate(s.when) : (s.sub ?? "")}
                                 </div>
                               </div>
                             ))}
@@ -1198,6 +1539,20 @@ export function OrderDetailPage() {
                               ) : (
                                 "—"
                               )}
+                            </div>
+                          </div>
+                          {/* The rail shows when each stage happened; this is
+                              the date it's still promised for. */}
+                          <div>
+                            <div className="micro">Expected</div>
+                            <div className="text-[13px] mt-1">
+                              {fmtDate(job.expected_completion_at) ?? "—"}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="micro">Completed</div>
+                            <div className="text-[13px] mt-1">
+                              {fmtDateTime(job.completed_at) ?? "—"}
                             </div>
                           </div>
                         </div>
@@ -1511,6 +1866,7 @@ export function OrderDetailPage() {
       {pendingStatus &&
         (() => {
           const impact = statusMoveImpact(pendingStatus);
+          const auto = statusAutomations?.[pendingStatus as OrderStatus];
           return (
             <ConfirmDialog
               open={!!pendingStatus}
@@ -1534,11 +1890,179 @@ export function OrderDetailPage() {
                       </ul>
                     </div>
                   )}
+                  {/* Message-bearing moves show the automation's *live* on/off
+                      state so staff get a definite "will send"/"won't send"
+                      rather than a hedge. Falls back to the honest conditional
+                      wording if the live state can't be read. */}
+                  {impact.message &&
+                    (() => {
+                      const label = impact.message.label;
+                      if (automationsLoading && !statusAutomations) {
+                        return (
+                          <p className="text-sm opacity-70">
+                            Checking whether the {label} message will send…
+                          </p>
+                        );
+                      }
+                      if (!auto) {
+                        return (
+                          <p className="text-sm opacity-90">
+                            Sends the customer the {label} message — if it's
+                            switched on in Messaging settings.
+                          </p>
+                        );
+                      }
+                      const channel = messagingChannelLabel(auto.channel);
+                      return auto.is_active ? (
+                        <div className="flex items-start gap-2 rounded-[9px] px-3 py-2 text-sm bg-success/[0.08] border border-success/25">
+                          <Send className="w-4 h-4 text-success shrink-0 mt-0.5" />
+                          <span>
+                            Will send the customer the {label} message
+                            {channel ? ` via ${channel}` : ""}.
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-start gap-2 rounded-[9px] px-3 py-2 text-sm bg-warn/[0.08] border border-warn/25">
+                          <XCircle className="w-4 h-4 text-warn shrink-0 mt-0.5" />
+                          <span>
+                            Won't send the {label} message — it's switched off
+                            in Messaging settings.
+                          </span>
+                        </div>
+                      );
+                    })()}
                 </div>
               }
             />
           );
         })()}
+
+      {order && payLinkOpen && (
+        <PayLinkModal order={order} onClose={() => setPayLinkOpen(false)} />
+      )}
+    </div>
+  );
+}
+
+// ── Pay link (Flexi Pay, PR-3) ───────────────────────────────
+// Mints a customer-facing checkout link for a chosen amount (blank = the full
+// balance) and drops it on the clipboard to paste into WhatsApp or email.
+// Accepting money the customer already sent is the Record Payment form in the
+// Payments card above — this modal is only ever about the link.
+function PayLinkModal({
+  order,
+  onClose,
+}: {
+  order: SalesOrder;
+  onClose: () => void;
+}) {
+  const balance = Number(order.balance_due_ngn);
+  const currency =
+    order.display_currency && order.display_currency !== "NGN"
+      ? order.display_currency
+      : undefined;
+  const createLink = useCreatePaymentLink(order.order_id);
+  const toastStore = useToastStore();
+
+  // Pay-link amount (₦). Empty = full balance.
+  const [linkAmount, setLinkAmount] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+
+  const notify = (
+    title: string,
+    body: string,
+    priority: "normal" | "high" = "normal",
+  ) =>
+    toastStore.add({
+      notification_id: crypto.randomUUID(),
+      user_id: "",
+      business: null,
+      type: "payment",
+      priority,
+      title,
+      body,
+      reference_type: null,
+      reference_id: null,
+      action_url: null,
+      is_read: false,
+      read_at: null,
+      created_at: new Date().toISOString(),
+    });
+
+  const handleLink = async () => {
+    setErr(null);
+    const amt = linkAmount ? Number(linkAmount) : undefined;
+    if (amt !== undefined && (!Number.isFinite(amt) || amt <= 0)) {
+      setErr("Enter a valid amount, or leave blank for the full balance.");
+      return;
+    }
+    try {
+      const res = await createLink.mutateAsync({
+        ...(amt !== undefined ? { amount_ngn: amt } : {}),
+        // Settle in the currency the order was sold in. Omitting this billed a
+        // USD order in Naira, letting Nomba reconvert at its own rate (the buyer
+        // saw $708.25 instead of the quoted $764). NGN orders pass undefined.
+        ...(currency ? { currency } : {}),
+      });
+      await navigator.clipboard.writeText(res.checkout_url).catch(() => {});
+      notify("Pay link copied", "The payment link is on your clipboard.");
+      onClose();
+    } catch (e) {
+      const msg =
+        e instanceof Error ? e.message : "Couldn't generate the link.";
+      setErr(msg);
+      notify("Link failed", msg, "high");
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-[16px] glass shadow-glass p-5 space-y-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2">
+          <Link2 className="w-4 h-4 text-accent-glow" />
+          <h3 className="font-display text-lg">Send pay link</h3>
+        </div>
+        <div className="text-[12px] text-text-muted">
+          Balance {money(balance)} on {order.order_number}
+        </div>
+
+        <div className="space-y-3">
+          <Field
+            label="Amount"
+            hint={`blank = full balance (${money(balance)})`}
+          >
+            <TextInput
+              type="number"
+              min={0}
+              value={linkAmount}
+              onChange={(e) => setLinkAmount(e.target.value)}
+              placeholder={String(balance)}
+            />
+          </Field>
+          {err && <p className="text-[12px] text-danger">{err}</p>}
+          <Button
+            onClick={handleLink}
+            disabled={createLink.isPending}
+            icon={<Link2 className="w-4 h-4" />}
+          >
+            {createLink.isPending ? "Generating…" : "Generate & copy pay link"}
+          </Button>
+        </div>
+
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-full text-[12px] text-text-muted hover:text-text-primary"
+        >
+          Close
+        </button>
+      </div>
     </div>
   );
 }

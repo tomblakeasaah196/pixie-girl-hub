@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -49,7 +50,7 @@ function loadFilters(): PersistedFilters {
   }
 }
 
-const columns: Column<SalesOrder>[] = [
+const buildColumns = (navigate: (to: string) => void): Column<SalesOrder>[] => [
   {
     key: "date",
     header: "Date & Time",
@@ -292,10 +293,33 @@ const columns: Column<SalesOrder>[] = [
       );
     },
   },
+  {
+    // Deep-link to this order's invoice, so Sales and Invoicing are one hop
+    // apart in both directions.
+    key: "invoice",
+    header: "Invoice",
+    width: "130px",
+    render: (o) =>
+      o.invoice_id ? (
+        <button
+          type="button"
+          className="font-mono text-[12px] text-accent hover:underline"
+          onClick={(e) => {
+            e.stopPropagation();
+            navigate(`/invoicing?tab=invoices&invoice=${o.invoice_id}`);
+          }}
+        >
+          {o.invoice_number ?? "View invoice"}
+        </button>
+      ) : (
+        <span className="text-[12px] text-text-faint">—</span>
+      ),
+  },
 ];
 
 export function OrdersView() {
   const navigate = useNavigate();
+  const columns = useMemo(() => buildColumns(navigate), [navigate]);
   // Seed from the persisted filters so a return from an order detail restores
   // the register exactly (see FILTERS_KEY). `useState(loadFilters)` reads
   // sessionStorage once, on mount.

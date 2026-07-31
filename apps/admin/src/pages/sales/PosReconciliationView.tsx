@@ -200,7 +200,11 @@ function MatchModal({
       );
       onClose();
     } catch (err) {
-      toast("Match failed", errMessage(err, "Could not match this payment."), "high");
+      toast(
+        "Match failed",
+        errMessage(err, "Could not match this payment."),
+        "high",
+      );
     }
   }
 
@@ -257,7 +261,8 @@ function MatchModal({
             </div>
           ) : (
             <div className="text-[12px] text-text-muted">
-              No open order with a matching balance nearby — search manually below.
+              No open order with a matching balance nearby — search manually
+              below.
             </div>
           )}
         </div>
@@ -296,7 +301,9 @@ function MatchModal({
                   />
                 ))
               ) : (
-                <div className="text-[12px] text-text-muted">No orders found.</div>
+                <div className="text-[12px] text-text-muted">
+                  No orders found.
+                </div>
               )}
             </div>
           )}
@@ -328,7 +335,11 @@ function IgnoreModal({
       toast("Payment ignored", "Removed from the pending queue.");
       onClose();
     } catch (err) {
-      toast("Failed", errMessage(err, "Could not ignore this payment."), "high");
+      toast(
+        "Failed",
+        errMessage(err, "Could not ignore this payment."),
+        "high",
+      );
     }
   }
 
@@ -389,11 +400,18 @@ function reconColumns(
     {
       key: "sender",
       header: "Sender / terminal",
+      // The payer's own name is the fastest way to spot which order this is,
+      // so it leads; the account alias / terminal id is the fallback for rows
+      // where the gateway told us nothing about the sender.
       render: (r) => (
         <div>
-          <div className="text-[13px]">{r.alias_account_name || "—"}</div>
+          <div className="text-[13px]">
+            {r.sender_name || r.alias_account_name || "—"}
+          </div>
           <div className="text-[11px] text-text-muted font-mono">
-            {r.nomba_terminal_id || "unknown terminal"}
+            {r.sender_bank ||
+              r.nomba_terminal_id ||
+              (r.provider === "nomba" ? "online payment" : r.provider)}
           </div>
         </div>
       ),
@@ -435,10 +453,20 @@ function reconColumns(
     {
       key: "reference",
       header: "Reference",
+      // `note` is set when the payment is parked and says WHY it couldn't be
+      // matched — including "this is a gateway self-test, ignore it", which is
+      // the difference between a real customer payment and one of ours.
       render: (r) => (
-        <span className="text-[12px] font-mono text-text-muted">
-          {r.provider_reference || "—"}
-        </span>
+        <div>
+          <span className="text-[12px] font-mono text-text-muted">
+            {r.provider_reference || "—"}
+          </span>
+          {r.note && (
+            <span className="block text-[11px] text-text-muted opacity-80 leading-snug mt-0.5">
+              {r.note}
+            </span>
+          )}
+        </div>
       ),
     },
   ];
@@ -514,10 +542,10 @@ export function PosReconciliationView() {
       <div className="rounded-[13px] border border-warn/30 bg-warn/[0.06] px-4 py-3 mb-4 flex items-start gap-2">
         <AlertTriangle className="w-4 h-4 text-warn shrink-0 mt-0.5" />
         <p className="text-[13px] text-warn font-semibold leading-snug">
-          In-store terminal payments that arrived with no matching order sit
-          here. Match them to the right order — the order is confirmed
-          exactly as if the terminal had reported it directly — or ignore a
-          false positive/duplicate with a reason.
+          Payments that arrived with no matching order sit here — in-store
+          terminal charges and online payments alike. Match them to the right
+          order — it is confirmed exactly as if the gateway had reported it
+          directly — or ignore a false positive/duplicate/test with a reason.
         </p>
       </div>
 
@@ -525,8 +553,7 @@ export function PosReconciliationView() {
         <div className="rounded-[13px] border border-accent/30 bg-accent/[0.05] px-4 py-3 mb-4">
           <p className="text-[13px] font-semibold mb-2">
             {unresolvedTotal} payment{unresolvedTotal === 1 ? "" : "s"} with no
-            terminal on record yet — visible to you as CEO across both
-            brands.
+            terminal on record yet — visible to you as CEO across both brands.
           </p>
           <div className="space-y-2">
             {unresolvedRows.map((r) => {

@@ -284,13 +284,19 @@ chasing deliveries, matching stray in-store terminal payments, and payment setti
   converted from, and the quote shows the order it became — the link is stamped
   both ways at conversion.
 - *See orders waiting to ship?* Sales → **Delivery Pending** tab.
-- *An in-store card/terminal payment came in but no order matched it?* Sales →
-  **POS Reconciliation** tab (`/sales?tab=pos-reconciliation`). Pick the
-  suggested order (or search manually) and **Match** — this confirms the
-  order's payment exactly as if the terminal had reported it directly — or
-  **Ignore** a false positive/duplicate with a short reason. A payment whose
-  terminal isn't registered to either brand yet shows in a CEO-only
-  cross-brand section until it's resolved.
+- *A payment came in but no order matched it?* Sales → **POS Reconciliation**
+  tab (`/sales?tab=pos-reconciliation`). This holds every payment we captured
+  but couldn't attach to an order — in-store terminal charges AND online
+  payments (a customer who paid without a proper link, a foreign-currency
+  charge we couldn't place, a paid Settings → Test connection checkout). Each
+  row says who sent it and why it couldn't be matched. Pick the suggested
+  order (or search manually) and **Match** — this confirms the order's payment
+  exactly as if the gateway had reported it directly — or **Ignore** a false
+  positive/duplicate/test with a short reason. A payment whose brand we
+  couldn't determine shows in a CEO-only cross-brand section until resolved.
+- *Where do failed Nomba payments go?* Nowhere — by design there is no such
+  pile. A payment we can't place is never dropped or retried silently; it goes
+  straight to **POS Reconciliation** for a person to decide.
 - *Open one order?* Sales → **Orders**, click the order → `/sales/orders/<orderId>`.
 - *Record a payment against an order?* Open the order → **Record Payment** on
   the Balance Due ribbon. The form opens inline in the order drawer — you never

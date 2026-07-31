@@ -13,24 +13,16 @@
 "use strict";
 
 const { query, ex } = require("../../config/database");
-const { t, assertBrand } = require("../../config/brands");
-
-// ── Terminal registry (per-brand) ──────────────────────────
-
-async function findTerminalByNombaId({ client, brand, nomba_terminal_id }) {
-  assertBrand(brand);
-  if (!nomba_terminal_id) return null;
-  const { rows } = await ex(client)(
-    `SELECT terminal_id, terminal_code, display_name, location_id
-       FROM ${t(brand, "pos_terminals")}
-      WHERE nomba_terminal_id = $1 AND is_active = true
-      LIMIT 1`,
-    [nomba_terminal_id],
-  );
-  return rows[0] || null;
-}
+const { assertBrand } = require("../../config/brands");
 
 // ── Reconciliation queue ────────────────────────────────────
+//
+// There is deliberately NO per-brand terminal registry lookup in this file.
+// The POS module was retired into the Quick Sale walk-in channel and template
+// 000074 DROPs every brand `pos_*` table, so any query against
+// `<brand>.pos_terminals` / `pos_transactions` raises 42P01 in production.
+// Everything below reads `shared.pos_terminal_reconciliation`, which is a
+// SHARED table and very much alive.
 
 const ENQUEUE_COLS = [
   "webhook_id",
@@ -38,9 +30,15 @@ const ENQUEUE_COLS = [
   "resolved_brand",
   "nomba_terminal_id",
   "alias_account_name",
+  // Who paid, per the gateway. The handler always supplied these; the columns
+  // only arrived in 000374, which is why older rows show "—" for SENDER.
+  "sender_name",
+  "sender_bank",
   "amount_ngn",
   "transaction_time",
   "provider_reference",
+  // Why this payment could not be auto-matched — shown to staff on the row.
+  "note",
   "raw_payload",
 ];
 
@@ -135,7 +133,12 @@ async function listUnresolved({ page = 1, page_size = 25 }) {
   return envelope(rows, { page, page_size, total: c[0].total });
 }
 
-async function markMatched({ recon_id, matched_brand, matched_order_id, matched_by }) {
+async function markMatched({
+  recon_id,
+  matched_brand,
+  matched_order_id,
+  matched_by,
+}) {
   const { rows } = await query(
     `UPDATE shared.pos_terminal_reconciliation
         SET status = 'matched',
@@ -196,7 +199,6 @@ async function listNotifyRecipients({ brand }) {
 }
 
 module.exports = {
-  findTerminalByNombaId,
   enqueueReconciliation,
   findById,
   listPending,

@@ -47,10 +47,21 @@ jest.mock("../../../src/modules/invoicing/invoice-delivery.service", () => ({
 }));
 jest.mock("../../../src/modules/invoicing/receipt-delivery.service", () => ({}));
 jest.mock("../../../src/services/comms-log.service", () => ({}));
+// An order-backed invoice hands its payment to the order (see
+// invoicing.service.recordPayment) — the order owns the cash journal.
+jest.mock("../../../src/modules/sales/sales.service", () => ({
+  getById: jest.fn(async () => ({
+    order_id: "ord-1",
+    order_number: "FLH-SO-0001",
+    balance_due_ngn: "418500.00",
+  })),
+  addPayment: jest.fn(async () => ({ order_id: "ord-1", status: "paid" })),
+}));
 
 const repo = require("../../../src/modules/invoicing/invoicing.repo");
 const accounting = require("../../../src/modules/accounting/accounting.service");
 const service = require("../../../src/modules/invoicing/invoicing.service");
+const salesService = require("../../../src/modules/sales/sales.service");
 const { money } = require("../../../src/utils/money");
 
 function totals(lines) {
@@ -208,7 +219,7 @@ describe("recordPayment — settlement journal", () => {
     );
   });
 
-  test("order-backed payment posts nothing", async () => {
+  test("order-backed payment posts nothing here — it goes to the order", async () => {
     repo.findById.mockResolvedValue({
       ...STANDALONE,
       order_id: "ord-1",
@@ -218,9 +229,65 @@ describe("recordPayment — settlement journal", () => {
       brand: "pixiegirl",
       user: USER,
       id: "inv-1",
-      input: { amount_applied_ngn: "100000.00" },
+      input: {
+        amount_applied_ngn: "100000.00",
+        manual_bank_transaction_id: "GTB/2026/00123",
+        manual_bank_name: "GTBank",
+      },
     });
+    // No invoice-side journal, and no invoice-side payment row: the order's
+    // capture journal books the cash and mirrors the row back.
     expect(postedEntries).toHaveLength(0);
+    expect(repo.applyPayment).not.toHaveBeenCalled();
+    expect(salesService.addPayment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "ord-1",
+        input: expect.objectContaining({
+          amount_ngn: "100000.00",
+          payment_path: "staff_recorded",
+          manual_bank_transaction_id: "GTB/2026/00123",
+          manual_bank_name: "GTBank",
+        }),
+      }),
+    );
+  });
+
+  test("order-backed payment refuses to record without a bank reference", async () => {
+    repo.findById.mockResolvedValue({
+      ...STANDALONE,
+      order_id: "ord-1",
+      status: "sent",
+    });
+    await expect(
+      service.recordPayment({
+        brand: "pixiegirl",
+        user: USER,
+        id: "inv-1",
+        input: { amount_applied_ngn: "100000.00" },
+      }),
+    ).rejects.toMatchObject({ code: "MANUAL_REF_REQUIRED" });
+    expect(salesService.addPayment).not.toHaveBeenCalled();
+  });
+
+  test("order-backed payment cannot exceed the ORDER's balance", async () => {
+    repo.findById.mockResolvedValue({
+      ...STANDALONE,
+      order_id: "ord-1",
+      status: "sent",
+    });
+    await expect(
+      service.recordPayment({
+        brand: "pixiegirl",
+        user: USER,
+        id: "inv-1",
+        input: {
+          amount_applied_ngn: "500000.00",
+          manual_bank_transaction_id: "GTB/2026/00123",
+          manual_bank_name: "GTBank",
+        },
+      }),
+    ).rejects.toMatchObject({ code: "OVERPAYMENT" });
+    expect(salesService.addPayment).not.toHaveBeenCalled();
   });
 });
 

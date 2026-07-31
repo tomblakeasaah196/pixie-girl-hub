@@ -415,9 +415,19 @@ async function listOrders({
   const { rows } = await run(
     `SELECT so.*, c.display_name AS contact_name,
             lk.line_kinds,
-            li.line_items
+            li.line_items,
+            inv.invoice_id, inv.invoice_number, inv.status AS invoice_status
        FROM ${t(brand, "sales_orders")} so
        LEFT JOIN shared.contacts c ON c.contact_id = so.contact_id
+       -- The order's invoice, for the list's deep-link column. An order carries
+       -- at most one live invoice; take the newest if history left more.
+       LEFT JOIN LATERAL (
+         SELECT i2.invoice_id, i2.invoice_number, i2.status
+           FROM ${t(brand, "invoices")} i2
+          WHERE i2.order_id = so.order_id
+          ORDER BY i2.created_at DESC
+          LIMIT 1
+       ) inv ON true
        LEFT JOIN LATERAL (
          SELECT array_agg(DISTINCT sol.line_kind) AS line_kinds
            FROM ${t(brand, "sales_order_lines")} sol

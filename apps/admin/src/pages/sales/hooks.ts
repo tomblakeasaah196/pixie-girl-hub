@@ -89,6 +89,10 @@ export function useAddPayment(orderId: string) {
       });
       qc.invalidateQueries({ queryKey: ["sales-orders", biz] });
       qc.invalidateQueries({ queryKey: ["sales-kpis", biz] });
+      // The payment lands on the order's invoice in the same commit — refresh
+      // Invoicing too, so the two screens never disagree on the balance.
+      qc.invalidateQueries({ queryKey: ["invoices", biz] });
+      qc.invalidateQueries({ queryKey: ["ar-ageing", biz] });
     },
   });
 }
@@ -458,9 +462,7 @@ const POS_RECON_UNRESOLVED_KEY = "pos-reconciliation-unresolved";
  *  money sitting unclaimed, so the list should feel current without staff
  *  needing to manually refresh (decision 6B extends to the list, not just
  *  the notification). */
-export function usePosReconciliation(
-  params: salesApi.PosReconListParams = {},
-) {
+export function usePosReconciliation(params: salesApi.PosReconListParams = {}) {
   const biz = useBiz();
   return useQuery({
     queryKey: [POS_RECON_KEY, biz, params],

@@ -298,31 +298,35 @@ chasing deliveries, matching stray in-store terminal payments, and payment setti
   pile. A payment we can't place is never dropped or retried silently; it goes
   straight to **POS Reconciliation** for a person to decide.
 - *Open one order?* Sales → **Orders**, click the order → `/sales/orders/<orderId>`.
-- *Record a payment against an order?* Open the order → **Record Payment** on
-  the Balance Due ribbon. The form opens inline in the order drawer — you never
-  have to open the invoice to accept money. Enter the amount received, the
-  bank's transaction reference and the bank name (both required — Accounting
-  reconciles them against the bank-statement import), plus an optional note,
-  then **Save Payment**. The payment also lands on the order's invoice, so
-  Invoicing stops showing a balance that's already been paid.
+- *Record a payment against an order?* Open the order → **Record Payment**
+  (in the action bar at the top, or on the **Payments** card). The form opens
+  inline in the Payments card — you never have to open the invoice to accept
+  money. Enter the amount received, the bank's transaction reference and the
+  bank name (both required — Accounting reconciles them against the
+  bank-statement import), plus an optional note, then **Save Payment**. The
+  same payment lands on the order's invoice in the same instant, so the two
+  screens can never disagree on the balance.
 - *Who accepted a payment, and when?* Every payment row in the order's
-  **Payments** ledger names the staff member who recorded it and the exact time
-  they did — stamped by the system, not typed in, and it stays on the order
+  **Payments** ledger names the staff member who recorded it — or, for an
+  in-store terminal payment resolved through POS Reconciliation, who matched it
+  to this order — and the exact time they did — stamped by the system, not typed in, and it stays on the order
   permanently. Payments captured by a gateway say so instead of naming a person.
   Staff-recorded rows also show the bank name and transaction reference. The
   same trail appears on the invoice's Payments list.
 - *"Record Payment" isn't showing on an order?* Manual payment entry is a
   business-level switch. A manager turns it on at Sales → **Payments** tab
   (`/sales?tab=payments`); until then payments must arrive through a gateway,
-  and the order drawer says so where the button would be.
-- *Send a customer a pay link instead?* Open the order → **Send Pay Link** on
-  the Balance Due ribbon. Leave the amount blank for the full balance, or type a
+  and the order's Payments card says so where the button would be. You can
+  still send a pay link.
+- *Send a customer a pay link instead?* Open the order → **Pay Link** in the
+  action bar. Leave the amount blank for the full balance, or type a
   part amount, then **Generate & copy pay link** and paste it into WhatsApp or
   email.
-- *Jump between an order and its invoice?* The order drawer's invoice strip
-  links to the invoice (click the invoice number or **View Invoice**), and the
-  invoice drawer's order strip links back (click the order number or **View
-  Order**). The cross-link works in both directions.
+- *Jump between an order and its invoice?* Four ways, all one click: the order
+  page's invoice strip links to the invoice (click the invoice number or **View
+  Invoice**); the invoice's order strip links back (click the order number or
+  **View Order**); the Orders list has an **Invoice** column; and the Invoices
+  list has an **Order** column.
 - *What do the order statuses mean?* An order moves through seven stages:
   **Pending Payment** (placed, nothing paid) → **Partially Paid** (part payment
   in; the deposit sits as a liability, not yet revenue) → **Paid** (paid in
@@ -792,14 +796,19 @@ refunds, and a live view of who still owes us (accounts receivable ageing).
   → **New Credit Note** / **Issue Credit Note**.
 - *See who's overdue?* Invoicing → **Owed to Us** tab.
 - *Record a payment against an invoice?* Open the invoice → **Record Payment**.
-  For an invoice raised from a sales order, prefer recording the payment on the
-  **order** instead (see Sales → "Record a payment against an order") — that
-  path books the money against the order and the invoice in one go.
-- *Which order is this invoice for?* The invoice drawer names it at the top:
-  click the order number, or **View Order**, to open it. The order drawer links
-  back to the invoice the same way.
+  For an invoice raised from a sales order, the amount, the bank's transaction
+  reference and the bank name are all required: that payment is recorded
+  against the **order** (which owns the money) and mirrored back onto the
+  invoice in the same instant, so the order's status, the stock, the books and
+  the receipt all move together. Recording it from the order page does exactly
+  the same thing — use whichever screen you're already on. Manual entry honours
+  the same Sales → **Payments** switch in both places.
+- *Which order is this invoice for?* The invoice names it at the top: click the
+  order number, or **View Order**, to open it. The order page links back to the
+  invoice the same way, and the Invoices list carries an **Order** column.
 - *Who accepted a payment on an invoice?* Each row in the invoice's **Payments**
-  list names the staff member who applied it and when. Gateway captures say so
+  list names the staff member who applied it and when, and staff-recorded rows
+  also show the bank name and transaction reference. Gateway captures say so
   rather than naming a person.
 
 ### 4.15 Accounting
@@ -1534,11 +1543,13 @@ Use this as the fast lookup. Format: **task → module (group) → link**.
 - Convert a quotation to an order by hand → open the quote → Convert to Order
   (or Accept & Create Order on a sent/viewed quote)
 - Record a payment on an order → open the order → `/sales/orders/<id>` → Record
-  Payment (inline in the drawer; needs the amount + bank reference + bank name)
+  Payment (inline in the Payments card; needs the amount + bank reference +
+  bank name; settles the order's invoice at the same moment)
 - See who accepted a payment and when → open the order → `/sales/orders/<id>` →
   Payments ledger (also on the invoice's Payments list)
 - Jump from an invoice to its order (or back) → open either → click the
-  order/invoice number, or View Order / View Invoice
+  order/invoice number, or View Order / View Invoice; or use the Order column
+  on the Invoices list / the Invoice column on the Orders list
 - Match an unattributed in-store terminal payment to an order → Sales →
   `/sales?tab=pos-reconciliation` → Match (or Ignore with a reason)
 - Add a CRM deal → CRM (Run) → `/crm` (Pipeline → New Deal)

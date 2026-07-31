@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { formatDate } from "@/lib/format";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { FileText, Search, Plus } from "lucide-react";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Pill, MoneyText, Button } from "@/components/ui/primitives";
@@ -11,19 +11,47 @@ import { InvoiceDetail } from "./InvoiceDetail";
 import { InvoiceCreateDrawer } from "./InvoiceCreateDrawer";
 import type { Invoice, InvoiceStatus } from "./types";
 
-const columns: Column<Invoice>[] = [
+const buildColumns = (navigate: (to: string) => void): Column<Invoice>[] => [
   {
     key: "number",
     header: "Invoice #",
     width: "140px",
     render: (i) => (
-      <span className="font-mono text-[13px] font-semibold">{i.invoice_number}</span>
+      <span className="font-mono text-[13px] font-semibold">
+        {i.invoice_number}
+      </span>
     ),
   },
   {
     key: "contact",
     header: "Customer",
-    render: (i) => <span className="text-[13px]">{i.contact_name ?? i.contact_id.slice(0, 8)}</span>,
+    render: (i) => (
+      <span className="text-[13px]">
+        {i.contact_name ?? i.contact_id.slice(0, 8)}
+      </span>
+    ),
+  },
+  {
+    // Deep-link to the order this invoice bills for — the invoice list used to
+    // dead-end, forcing staff to open the invoice just to find its order.
+    key: "order",
+    header: "Order",
+    width: "130px",
+    render: (i) =>
+      i.order_id ? (
+        <button
+          type="button"
+          className="font-mono text-[12px] text-accent hover:underline"
+          onClick={(e) => {
+            e.stopPropagation();
+            navigate(`/sales/orders/${i.order_id}`);
+          }}
+        >
+          {i.order_number ?? "View order"}
+        </button>
+      ) : (
+        <span className="text-[12px] text-text-faint">—</span>
+      ),
   },
   {
     key: "status",
@@ -37,7 +65,11 @@ const columns: Column<Invoice>[] = [
     key: "due",
     header: "Due",
     width: "110px",
-    render: (i) => <span className="text-[12px] text-text-muted">{formatDate(i.due_date)}</span>,
+    render: (i) => (
+      <span className="text-[12px] text-text-muted">
+        {formatDate(i.due_date)}
+      </span>
+    ),
   },
   {
     key: "total",
@@ -51,7 +83,11 @@ const columns: Column<Invoice>[] = [
     align: "right",
     render: (i) => {
       const bal = Number(i.balance_due_ngn);
-      return bal > 0 ? <MoneyText ngn={bal} className="text-warn" /> : <span className="text-[12px] text-success">Paid</span>;
+      return bal > 0 ? (
+        <MoneyText ngn={bal} className="text-warn" />
+      ) : (
+        <span className="text-[12px] text-success">Paid</span>
+      );
     },
   },
 ];
@@ -82,6 +118,8 @@ export function InvoicesView() {
 
   const invoices = data?.data ?? [];
   const meta = data?.meta;
+  const navigate = useNavigate();
+  const columns = useMemo(() => buildColumns(navigate), [navigate]);
 
   return (
     <>
@@ -94,9 +132,15 @@ export function InvoicesView() {
         empty={{
           icon: <FileText className="w-8 h-8" />,
           title: "No invoices yet",
-          message: "Invoices you create or generate from orders will appear here.",
+          message:
+            "Invoices you create or generate from orders will appear here.",
           action: (
-            <Button variant="primary" size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => setShowCreate(true)}>
+            <Button
+              variant="primary"
+              size="sm"
+              icon={<Plus className="w-3.5 h-3.5" />}
+              onClick={() => setShowCreate(true)}
+            >
               New Invoice
             </Button>
           ),
@@ -108,17 +152,34 @@ export function InvoicesView() {
               <input
                 placeholder="Search invoices…"
                 value={search}
-                onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                className="w-full h-[38px] pl-9 pr-3 rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setPage(1);
+                }}
+                className="w-full h-[38px] pl-9 pr-3 rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
+                autoComplete="off"
+                data-lpignore="true"
+                data-1p-ignore=""
+                data-form-type="other"
               />
             </div>
             <Select
               value={status}
-              onChange={(v) => { setStatus(v); setPage(1); }}
-              options={INVOICE_STATUS_OPTIONS as { value: string; label: string }[]}
+              onChange={(v) => {
+                setStatus(v);
+                setPage(1);
+              }}
+              options={
+                INVOICE_STATUS_OPTIONS as { value: string; label: string }[]
+              }
               className="w-[180px]"
             />
-            <Button variant="primary" size="sm" icon={<Plus className="w-3.5 h-3.5" />} onClick={() => setShowCreate(true)}>
+            <Button
+              variant="primary"
+              size="sm"
+              icon={<Plus className="w-3.5 h-3.5" />}
+              onClick={() => setShowCreate(true)}
+            >
               New Invoice
             </Button>
           </>
@@ -128,7 +189,8 @@ export function InvoicesView() {
       {meta && meta.total > meta.page_size && (
         <div className="flex items-center justify-between text-[12px] text-text-muted mt-3 px-1">
           <span>
-            Showing {(meta.page - 1) * meta.page_size + 1}–{Math.min(meta.page * meta.page_size, meta.total)} of {meta.total}
+            Showing {(meta.page - 1) * meta.page_size + 1}–
+            {Math.min(meta.page * meta.page_size, meta.total)} of {meta.total}
           </span>
           <div className="flex gap-1">
             <button
@@ -153,7 +215,10 @@ export function InvoicesView() {
       <InvoiceCreateDrawer
         open={showCreate}
         onClose={() => setShowCreate(false)}
-        onCreated={(id) => { setShowCreate(false); openInvoice(id); }}
+        onCreated={(id) => {
+          setShowCreate(false);
+          openInvoice(id);
+        }}
       />
     </>
   );

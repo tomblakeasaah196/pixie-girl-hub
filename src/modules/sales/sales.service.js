@@ -1496,18 +1496,21 @@ async function addPayment({ brand, user, request_id, id, input }) {
       }
     }
 
-    // Mirror a PART payment onto the order's proforma invoice so both screens
-    // agree. Recording money on the order used to leave the invoice showing the
-    // untouched balance until the order settled in full — staff who took the
-    // payment from the order drawer then saw a stale "Balance due" in Invoicing.
+    // Mirror EVERY payment onto the order's proforma invoice, in this same
+    // transaction, so the two screens can never disagree — part payments and
+    // full settlement alike. Recording money on the order used to leave the
+    // invoice showing the untouched balance; full settlement waited on the
+    // post-commit order.paid outbox hop, so Invoicing lagged Sales by however
+    // long the worker took.
     // GL-safe: applyPayment posts no journal of its own, and the invoice-side
     // entries are skipped for order-backed invoices (invoicing.recordPayment)
     // precisely because the order's capture journal already booked the cash.
-    // Full settlement is deliberately NOT mirrored here — order.paid runs
-    // createFromOrder → finalizeDraftInvoice, which applies the whole
-    // outstanding balance AND issues the receipt; flipping the invoice to
-    // 'paid' first would short-circuit that (ALREADY_FINAL_STATUSES).
-    if (paidNow.lt(totalDue)) {
+    // The receipt still comes from order.paid → createFromOrder →
+    // finalizeDraftInvoice: with the balance already applied here that call
+    // finds nothing outstanding, skips the payment, and issues the receipt
+    // (createFromOrder's already-final short-circuit lets a receiptless paid
+    // invoice through for exactly this reason).
+    {
       const invoicingRepo = require("../invoicing/invoicing.repo");
       const openInvoice = await invoicingRepo.findByOrderId({
         client,

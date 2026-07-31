@@ -87,6 +87,10 @@ export function useRecordPayment(id: string) {
       qc.invalidateQueries({ queryKey: ["invoices", biz, "detail", id] });
       qc.invalidateQueries({ queryKey: ["invoices", biz] });
       qc.invalidateQueries({ queryKey: ["ar-ageing", biz] });
+      // An order-backed invoice records its payment on the order itself, so
+      // the order's status/balance moved in the same commit — refresh Sales.
+      qc.invalidateQueries({ queryKey: ["sales-orders", biz] });
+      qc.invalidateQueries({ queryKey: ["sales-kpis", biz] });
     },
   });
 }
@@ -148,10 +152,17 @@ export function useSendReceipt(invoiceId: string | null) {
   const qc = useQueryClient();
   const biz = useBiz();
   return useMutation({
-    mutationFn: ({ receiptId, sent_via }: { receiptId: string; sent_via?: string }) =>
-      invoicingApi.sendReceipt(receiptId, { sent_via }),
+    mutationFn: ({
+      receiptId,
+      sent_via,
+    }: {
+      receiptId: string;
+      sent_via?: string;
+    }) => invoicingApi.sendReceipt(receiptId, { sent_via }),
     onSuccess: (_data, { receiptId }) => {
-      qc.invalidateQueries({ queryKey: ["invoices", biz, "receipts", invoiceId] });
+      qc.invalidateQueries({
+        queryKey: ["invoices", biz, "receipts", invoiceId],
+      });
       qc.invalidateQueries({
         queryKey: ["invoices", biz, "receipt-delivery", receiptId],
       });
@@ -161,9 +172,7 @@ export function useSendReceipt(invoiceId: string | null) {
 
 // ── Credit notes ────────────────────────────────────────────
 
-export function useCreditNotes(
-  params: invoicingApi.CreditNoteListParams = {},
-) {
+export function useCreditNotes(params: invoicingApi.CreditNoteListParams = {}) {
   const biz = useBiz();
   return useQuery({
     queryKey: ["credit-notes", biz, params],

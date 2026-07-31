@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Truck, Search, CheckCircle } from "lucide-react";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { MoneyText, Button } from "@/components/ui/primitives";
@@ -6,7 +7,6 @@ import { formatDate, formatTime } from "@/lib/format";
 import { ErrorState } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
 import { useDeliveryPendingOrders, useSetOrderDeliveryFee } from "./hooks";
-import { OrderDetail } from "./OrderDetail";
 import type { SalesOrder } from "./types";
 import { useToastStore } from "@/components/notifications/NotificationToast";
 
@@ -27,7 +27,11 @@ function SetFeeModal({
     e.preventDefault();
     const num = parseFloat(fee);
     if (isNaN(num) || num < 0) return;
-    const mkToast = (title: string, body: string, priority: "normal" | "high" = "normal") =>
+    const mkToast = (
+      title: string,
+      body: string,
+      priority: "normal" | "high" = "normal",
+    ) =>
       toast.add({
         notification_id: crypto.randomUUID(),
         user_id: "",
@@ -45,7 +49,10 @@ function SetFeeModal({
       });
     try {
       await mutateAsync({ id: order!.order_id, fee_ngn: num });
-      mkToast("Delivery fee set", `₦${num.toLocaleString()} applied to ${order!.order_number}.`);
+      mkToast(
+        "Delivery fee set",
+        `₦${num.toLocaleString()} applied to ${order!.order_number}.`,
+      );
       onClose();
     } catch {
       mkToast("Failed", "Could not update the fee.", "high");
@@ -53,7 +60,11 @@ function SetFeeModal({
   }
 
   return (
-    <Modal open onClose={onClose} title={`Set delivery fee — ${order.order_number}`}>
+    <Modal
+      open
+      onClose={onClose}
+      title={`Set delivery fee — ${order.order_number}`}
+    >
       <form onSubmit={handleSubmit} className="space-y-5 p-1">
         <p className="text-[13px] text-text-muted leading-relaxed">
           This order's delivery fee could not be automatically priced. Enter the
@@ -71,7 +82,11 @@ function SetFeeModal({
             onChange={(e) => setFee(e.target.value)}
             placeholder="e.g. 3500"
             autoFocus
-            className="w-full h-[42px] px-3 rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[14px] outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+            className="w-full h-[42px] px-3 rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[14px] outline-none focus:border-accent/50"
+            autoComplete="off"
+            data-lpignore="true"
+            data-1p-ignore=""
+            data-form-type="other"
           />
         </div>
         <div className="flex gap-2 justify-end pt-1">
@@ -101,15 +116,15 @@ const columns: Column<SalesOrder>[] = [
     header: "Order #",
     width: "130px",
     render: (o) => (
-      <span className="font-mono text-[13px] font-semibold">{o.order_number}</span>
+      <span className="font-mono text-[13px] font-semibold">
+        {o.order_number}
+      </span>
     ),
   },
   {
     key: "contact",
     header: "Customer",
-    render: (o) => (
-      <span className="text-[13px]">{o.contact_name ?? "—"}</span>
-    ),
+    render: (o) => <span className="text-[13px]">{o.contact_name ?? "—"}</span>,
   },
   {
     key: "channel",
@@ -137,7 +152,9 @@ const columns: Column<SalesOrder>[] = [
       return s > 0 ? (
         <MoneyText ngn={s} />
       ) : (
-        <span className="text-warn text-[12px] font-semibold">₦0 — pending</span>
+        <span className="text-warn text-[12px] font-semibold">
+          ₦0 — pending
+        </span>
       );
     },
   },
@@ -165,8 +182,8 @@ const columns: Column<SalesOrder>[] = [
 export function DeliveryPendingView() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [feeOrder, setFeeOrder] = useState<SalesOrder | null>(null);
+  const navigate = useNavigate();
 
   const { data, isLoading, isError, refetch } = useDeliveryPendingOrders({
     page,
@@ -221,7 +238,7 @@ export function DeliveryPendingView() {
             columns={tableColumns}
             rows={filtered}
             rowKey={(o) => o.order_id}
-            onRowClick={(o) => setSelectedId(o.order_id)}
+            onRowClick={(o) => navigate(`/sales/orders/${o.order_id}`)}
             loading={isLoading}
             empty={{
               icon: <Truck className="w-8 h-8" />,
@@ -238,7 +255,11 @@ export function DeliveryPendingView() {
                     setSearch(e.target.value);
                     setPage(1);
                   }}
-                  className="w-full h-[38px] pl-9 pr-3 rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+                  className="w-full h-[38px] pl-9 pr-3 rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
+                  autoComplete="off"
+                  data-lpignore="true"
+                  data-1p-ignore=""
+                  data-form-type="other"
                 />
               </div>
             }
@@ -272,7 +293,6 @@ export function DeliveryPendingView() {
         </>
       )}
 
-      <OrderDetail orderId={selectedId} onClose={() => setSelectedId(null)} />
       <SetFeeModal order={feeOrder} onClose={() => setFeeOrder(null)} />
     </>
   );

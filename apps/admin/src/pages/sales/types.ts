@@ -141,6 +141,10 @@ export interface OrderDiscount {
 export interface SalesOrder {
   order_id: string;
   order_number: string;
+  /** The order's invoice, joined into list rows for the deep-link column. */
+  invoice_id?: string | null;
+  invoice_number?: string | null;
+  invoice_status?: string | null;
   contact_id: string;
   contact_name?: string;
   contact_phone?: string | null;

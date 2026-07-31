@@ -700,6 +700,12 @@ async function recordGatewayPayment({
   paid_currency = null,
   paid_amount = null,
   fx_rate_used = null,
+  // Set only when a person put this payment on the order rather than a gateway
+  // webhook delivering it — today that's the POS reconciliation match, where
+  // staff confirm which order an unattributed terminal payment belongs to.
+  // Stamped onto the payment row so the ledger names them instead of saying
+  // "captured automatically by the payment gateway".
+  recorded_by_user_id = null,
   // Everything the reconciliation queue needs if this payment turns out to be
   // unplaceable. Optional: a caller that has no raw event still parks cleanly.
   raw_event = {},
@@ -747,11 +753,11 @@ async function recordGatewayPayment({
     fx_rate: fx_rate_used,
   });
 
-  await requestContext.run({ brand, userId: null }, async () => {
+  await requestContext.run({ brand, userId: recorded_by_user_id }, async () => {
     const salesService = require("../sales/sales.service");
     await salesService.addPayment({
       brand,
-      user: { user_id: null },
+      user: { user_id: recorded_by_user_id },
       request_id: `webhook:${webhook_id}`,
       id: order_id,
       input: {

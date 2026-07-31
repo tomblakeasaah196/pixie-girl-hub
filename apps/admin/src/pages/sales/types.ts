@@ -440,6 +440,9 @@ export interface PosTerminalReconciliation {
   resolved_brand: string | null;
   nomba_terminal_id: string | null;
   alias_account_name: string | null;
+  // Who paid, per the gateway (columns added in 000374 — null on older rows).
+  sender_name: string | null;
+  sender_bank: string | null;
   amount_ngn: string;
   transaction_time: string | null;
   provider_reference: string | null;

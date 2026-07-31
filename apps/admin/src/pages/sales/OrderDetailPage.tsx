@@ -1347,7 +1347,13 @@ export function OrderDetailPage() {
                               <span>
                                 {p.recorded_by_name ? (
                                   <>
-                                    Accepted by{" "}
+                                    {/* A gateway took the money but a person
+                                        tied it to this order (POS
+                                        reconciliation) — say "matched", not
+                                        "accepted". */}
+                                    {p.payment_path === "staff_recorded"
+                                      ? "Accepted by "
+                                      : "Matched to this order by "}
                                     <span className="font-semibold text-text-primary">
                                       {p.recorded_by_name}
                                     </span>

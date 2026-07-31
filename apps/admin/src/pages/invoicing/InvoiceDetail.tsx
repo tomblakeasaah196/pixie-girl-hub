@@ -653,7 +653,13 @@ export function InvoiceDetail({
                         <span>
                           {p.applied_by_name ? (
                             <>
-                              Accepted by{" "}
+                              {/* A gateway took the money but a person tied it
+                                  to the order (POS reconciliation) — say
+                                  "matched", not "accepted". */}
+                              {p.payment_number &&
+                              p.payment_path !== "staff_recorded"
+                                ? "Matched to the order by "
+                                : "Accepted by "}
                               <span className="font-semibold text-text-primary">
                                 {p.applied_by_name}
                               </span>

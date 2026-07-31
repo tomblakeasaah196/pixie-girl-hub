@@ -123,7 +123,7 @@ async function verifyNomba(rawBody, headers) {
     // be acted on.
     logger.warn(
       "Nomba webhook: no webhook signature key configured (checked DB per-brand " +
-      "+ env); set it in Business Setup → Payment Gateways or NOMBA_WEBHOOK_SIG_KEY",
+        "+ env); set it in Business Setup → Payment Gateways or NOMBA_WEBHOOK_SIG_KEY",
     );
     return null;
   }
@@ -133,7 +133,7 @@ async function verifyNomba(rawBody, headers) {
     const r = nomba.verifyWebhookSignature(rawBody, headers || {}, {
       webhook_signature_key: key,
     });
-    if (r === true) return true;   // valid for this key → accept immediately
+    if (r === true) return true; // valid for this key → accept immediately
     if (r === false) invalid = true;
   }
   return invalid ? false : null;
@@ -218,7 +218,10 @@ async function verifyMetaHmac(source, rawBody, headers, parsedPayload) {
   if (!sig) return false;
   const expected =
     "sha256=" +
-    crypto.createHmac("sha256", resolved.app_secret).update(rawBody).digest("hex");
+    crypto
+      .createHmac("sha256", resolved.app_secret)
+      .update(rawBody)
+      .digest("hex");
   const ok = safeEqual(expected, sig);
   // Auto-heal: a valid signature via the single-row fallback proves this
   // payload belongs to that row — fix the stored id so brand routing
@@ -287,8 +290,8 @@ function extractExternalId(source, payload) {
   if (source === "opay") {
     const d = (payload && (payload.payload || payload.data)) || {};
     return (
-      String(d.reference || d.orderNo || d.transactionId || payload.id || "")
-        || null
+      String(d.reference || d.orderNo || d.transactionId || payload.id || "") ||
+      null
     );
   }
   if (source === "nomba") {
@@ -307,15 +310,15 @@ function extractExternalId(source, payload) {
     // Our outbound orderReference/merchantTxRef may appear in some flows
     // (e.g. checkout callbacks) but are NOT guaranteed in all Nomba event
     // types. Use requestId as the primary external_id for dedup.
-    const d   = (payload && payload.data) || {};
-    const tx  = d.transaction || {};
+    const d = (payload && payload.data) || {};
+    const tx = d.transaction || {};
     const ext = String(
       tx.transactionId ||
-        tx.sessionId     ||   // Nomba session ID (reliable)
-        payload.requestId ||   // unique per webhook event (always present)
+        tx.sessionId || // Nomba session ID (reliable)
+        payload.requestId || // unique per webhook event (always present)
         tx.orderReference ||
-        tx.merchantTxRef  ||
-        payload.id         ||
+        tx.merchantTxRef ||
+        payload.id ||
         "",
     );
     return ext || null;
@@ -584,6 +587,12 @@ async function recordGatewayPayment({
   paid_currency = null,
   paid_amount = null,
   fx_rate_used = null,
+  // Set only when a person put this payment on the order rather than a gateway
+  // webhook delivering it — today that's the POS reconciliation match, where
+  // staff confirm which order an unattributed terminal payment belongs to.
+  // Stamped onto the payment row so the ledger names them instead of saying
+  // "captured automatically by the payment gateway".
+  recorded_by_user_id = null,
 }) {
   // Quote pay-link: no order exists yet — convert the quotation now and record
   // against the order that produces.
@@ -614,11 +623,11 @@ async function recordGatewayPayment({
     fx_rate: fx_rate_used,
   });
 
-  await requestContext.run({ brand, userId: null }, async () => {
+  await requestContext.run({ brand, userId: recorded_by_user_id }, async () => {
     const salesService = require("../sales/sales.service");
     await salesService.addPayment({
       brand,
-      user: { user_id: null },
+      user: { user_id: recorded_by_user_id },
       request_id: `webhook:${webhook_id}`,
       id: order_id,
       input: {
@@ -685,7 +694,11 @@ async function confirmNombaCharge(log) {
 
   // For online_checkout (USD via Stripe): orderReference in order, currency/amount in order
   // For terminal (NGN): everything in transaction. Prefer order.orderReference.
-  const reference = dataOrder.orderReference || dataTx.transactionId || dataTx.sessionId || dataTx.merchantTxRef;
+  const reference =
+    dataOrder.orderReference ||
+    dataTx.transactionId ||
+    dataTx.sessionId ||
+    dataTx.merchantTxRef;
 
   // ── Determine the event type (Nomba sends this as event_type) ──────
   const evtType = String(evt.event_type || evt.type || "").toLowerCase();
@@ -701,11 +714,10 @@ async function confirmNombaCharge(log) {
   // event references PAY-… regardless of the exact Nomba event name. Reconcile
   // the payslip status and stop (it's not an order charge).
   const isPayout =
-    reference && (
-      /^pay-/i.test(String(reference)) ||
+    reference &&
+    (/^pay-/i.test(String(reference)) ||
       evtType.includes("payout") ||
-      evtType.includes("transfer")
-    );
+      evtType.includes("transfer"));
   if (isPayout) {
     const payrollSvc = require("../../shared/hr_payroll/payroll.service");
     const st = String(dataTx.status || evtType || "").toLowerCase();
@@ -714,7 +726,8 @@ async function confirmNombaCharge(log) {
       success: st.includes("success") || st.includes("complete"),
       failed:
         st.includes("fail") || st.includes("declin") || st.includes("revers"),
-      provider_ref: dataTx.transactionId || dataTx.sessionId || dataTx.id || null,
+      provider_ref:
+        dataTx.transactionId || dataTx.sessionId || dataTx.id || null,
     });
     return;
   }
@@ -765,8 +778,9 @@ async function confirmNombaCharge(log) {
 
   // If we couldn't verify via API but the event_type is payment_success,
   // trust the webhook payload (Nomba already signed it) and proceed.
-  const tx       = (res && res.data && (res.data.transaction || res.data)) || dataTx;
-  const evtIsSuccess = isPaymentSuccess || (tx.status || "").toLowerCase() === "success";
+  const tx = (res && res.data && (res.data.transaction || res.data)) || dataTx;
+  const evtIsSuccess =
+    isPaymentSuccess || (tx.status || "").toLowerCase() === "success";
 
   if (!evtIsSuccess) {
     // Not a success event — nothing to confirm (e.g. payment_failed).
@@ -867,7 +881,7 @@ async function confirmNombaCharge(log) {
     // data.transaction.transactionAmount (not the non-existent tx.amount).
     const txAmount = isOnlineCheckout
       ? dataOrder.amount
-      : (dataTx.transactionAmount || tx.amount || dataTx.amount || 0);
+      : dataTx.transactionAmount || tx.amount || dataTx.amount || 0;
     paid_amount = toCurrencyString(money(txAmount));
     if (money(paid_amount).gt(0))
       fx_rate_used = money(amount_ngn).dividedBy(money(paid_amount)).toFixed(6);

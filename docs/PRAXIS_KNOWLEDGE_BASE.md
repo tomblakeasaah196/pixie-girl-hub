@@ -301,8 +301,9 @@ chasing deliveries, matching stray in-store terminal payments, and payment setti
   same payment lands on the order's invoice in the same instant, so the two
   screens can never disagree on the balance.
 - *Who accepted a payment, and when?* Every payment row in the order's
-  **Payments** ledger names the staff member who recorded it and the exact time
-  they did — stamped by the system, not typed in, and it stays on the order
+  **Payments** ledger names the staff member who recorded it — or, for an
+  in-store terminal payment resolved through POS Reconciliation, who matched it
+  to this order — and the exact time they did — stamped by the system, not typed in, and it stays on the order
   permanently. Payments captured by a gateway say so instead of naming a person.
   Staff-recorded rows also show the bank name and transaction reference. The
   same trail appears on the invoice's Payments list.

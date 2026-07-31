@@ -29,25 +29,104 @@ function notFoundHandler(req, res) {
 // (23505/23503/23514 keep their own dedicated handlers below.)
 const PG_FRIENDLY = {
   // Transient — a retry usually succeeds.
-  "40001": { http: 409, code: "TEMPORARY_CONFLICT", retryable: true, message: "We hit a brief traffic spike. Please tap pay again." },
-  "40P01": { http: 409, code: "TEMPORARY_CONFLICT", retryable: true, message: "We hit a brief traffic spike. Please tap pay again." },
-  "55P03": { http: 409, code: "TEMPORARY_CONFLICT", retryable: true, message: "That item is being updated by another order. Please try again." },
-  "57014": { http: 503, code: "SERVICE_BUSY", retryable: true, message: "We're under heavy load right now. Please try again in a moment." },
-  "53300": { http: 503, code: "SERVICE_BUSY", retryable: true, message: "We're under heavy load right now. Please try again in a moment." },
-  "53400": { http: 503, code: "SERVICE_BUSY", retryable: true, message: "We're under heavy load right now. Please try again in a moment." },
-  "08000": { http: 503, code: "SERVICE_BUSY", retryable: true, message: "We couldn't reach our system briefly. Please try again." },
-  "08003": { http: 503, code: "SERVICE_BUSY", retryable: true, message: "We couldn't reach our system briefly. Please try again." },
-  "08006": { http: 503, code: "SERVICE_BUSY", retryable: true, message: "We couldn't reach our system briefly. Please try again." },
-  "25P02": { http: 409, code: "TEMPORARY_CONFLICT", retryable: true, message: "Something interrupted that step. Please try again." },
+  40001: {
+    http: 409,
+    code: "TEMPORARY_CONFLICT",
+    retryable: true,
+    message: "We hit a brief traffic spike. Please tap pay again.",
+  },
+  "40P01": {
+    http: 409,
+    code: "TEMPORARY_CONFLICT",
+    retryable: true,
+    message: "We hit a brief traffic spike. Please tap pay again.",
+  },
+  "55P03": {
+    http: 409,
+    code: "TEMPORARY_CONFLICT",
+    retryable: true,
+    message: "That item is being updated by another order. Please try again.",
+  },
+  57014: {
+    http: 503,
+    code: "SERVICE_BUSY",
+    retryable: true,
+    message: "We're under heavy load right now. Please try again in a moment.",
+  },
+  53300: {
+    http: 503,
+    code: "SERVICE_BUSY",
+    retryable: true,
+    message: "We're under heavy load right now. Please try again in a moment.",
+  },
+  53400: {
+    http: 503,
+    code: "SERVICE_BUSY",
+    retryable: true,
+    message: "We're under heavy load right now. Please try again in a moment.",
+  },
+  "08000": {
+    http: 503,
+    code: "SERVICE_BUSY",
+    retryable: true,
+    message: "We couldn't reach our system briefly. Please try again.",
+  },
+  "08003": {
+    http: 503,
+    code: "SERVICE_BUSY",
+    retryable: true,
+    message: "We couldn't reach our system briefly. Please try again.",
+  },
+  "08006": {
+    http: 503,
+    code: "SERVICE_BUSY",
+    retryable: true,
+    message: "We couldn't reach our system briefly. Please try again.",
+  },
+  "25P02": {
+    http: 409,
+    code: "TEMPORARY_CONFLICT",
+    retryable: true,
+    message: "Something interrupted that step. Please try again.",
+  },
   // Input-shaped — a value was missing/too long/wrong format. 400, not retryable
   // as-is, but framed so the buyer knows to check their details.
-  "23502": { http: 400, code: "MISSING_VALUE", retryable: false, message: "A required detail was missing. Please check your form and try again." },
-  "22001": { http: 400, code: "VALUE_TOO_LONG", retryable: false, message: "One of the values you entered is too long. Please shorten it and try again." },
-  "22003": { http: 400, code: "VALUE_OUT_OF_RANGE", retryable: false, message: "One of the values you entered is out of range. Please check and try again." },
-  "22P02": { http: 400, code: "INVALID_VALUE", retryable: false, message: "One of the values you entered is in the wrong format. Please check and try again." },
+  23502: {
+    http: 400,
+    code: "MISSING_VALUE",
+    retryable: false,
+    message:
+      "A required detail was missing. Please check your form and try again.",
+  },
+  22001: {
+    http: 400,
+    code: "VALUE_TOO_LONG",
+    retryable: false,
+    message:
+      "One of the values you entered is too long. Please shorten it and try again.",
+  },
+  22003: {
+    http: 400,
+    code: "VALUE_OUT_OF_RANGE",
+    retryable: false,
+    message:
+      "One of the values you entered is out of range. Please check and try again.",
+  },
+  "22P02": {
+    http: 400,
+    code: "INVALID_VALUE",
+    retryable: false,
+    message:
+      "One of the values you entered is in the wrong format. Please check and try again.",
+  },
   // A trigger / stored function raised. Could be config or a guard — keep it
   // soft and pointed at support.
-  P0001: { http: 409, code: "ACTION_BLOCKED", retryable: true, message: "We couldn't complete that just now. Please try again." },
+  P0001: {
+    http: 409,
+    code: "ACTION_BLOCKED",
+    retryable: true,
+    message: "We couldn't complete that just now. Please try again.",
+  },
 };
 
 // Attach the brand support contact (WhatsApp/email) when we can resolve the
@@ -64,6 +143,23 @@ function supportFor(req) {
   };
 }
 
+/**
+ * Kaizen-safe context for a 5xx AppError. safeContext() keeps only allowlisted
+ * keys and stringifies what it keeps, so the per-gateway `attempts` array is
+ * flattened here into one readable line ("nomba: HTTP 400 — …") rather than
+ * being dropped as "[object Object]".
+ */
+function contextFor(err) {
+  const meta = (err && err.metadata) || {};
+  const ctx = { code: err.code };
+  if (Array.isArray(meta.attempts) && meta.attempts.length) {
+    ctx.gateway_attempts = meta.attempts
+      .map((a) => `${a.provider}: ${a.error}`)
+      .join(" | ");
+  }
+  return ctx;
+}
+
 // 4-arg signature is required for Express to recognise this as error handler eslint-disable-next-line no-unused-vars
 function errorHandler(err, req, res, _next) {
   const request_id = req.request_id;
@@ -78,6 +174,21 @@ function errorHandler(err, req, res, _next) {
       },
       err.message,
     );
+    // A 5xx AppError is a genuine backend failure, not a user mistake — report
+    // it to Kaizen. Without this, every deliberately-thrown server error
+    // (ALL_GATEWAYS_FAILED, NOMBA_NOT_CONFIGURED, …) returned here and never
+    // reached the Errors console: staff saw "Failed to generate payment link"
+    // in the UI while Kaizen showed nothing at all. Fire-and-forget; the
+    // error's own metadata (e.g. the per-gateway `attempts`) rides along so the
+    // console shows WHICH gateway rejected the call and why.
+    if (err.http_status >= 500) {
+      captureError(err, req, {
+        source: "backend",
+        code: err.code,
+        httpStatus: err.http_status,
+        context: contextFor(err),
+      });
+    }
     // Surface recovery hints (order reference, retryable, support contact) from
     // the error's metadata so the buyer-facing client never dead-ends.
     const meta = err.metadata || {};
@@ -90,7 +201,9 @@ function errorHandler(err, req, res, _next) {
         ...(meta.order_id ? { order_id: meta.order_id } : {}),
         ...(meta.support ? { support: meta.support } : {}),
         // POTENTIAL_DUPLICATE: let the frontend show the existing orders.
-        ...(meta.existing_orders ? { existing_orders: meta.existing_orders } : {}),
+        ...(meta.existing_orders
+          ? { existing_orders: meta.existing_orders }
+          : {}),
         // PERIOD_UNRECONCILED: let the payroll UI list/deep-link the days.
         ...(meta.unreconciled ? { unreconciled: meta.unreconciled } : {}),
         // NO_LONGER_ASSIGNED: name of the current assignee so the Stylist

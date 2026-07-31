@@ -57,6 +57,55 @@ async function contactEmail(contact_id) {
   }
 }
 
+/**
+ * The email the gateway is given for this checkout.
+ *
+ * Walk-in / phone-only customers have NO email on their contact record — and
+ * every gateway we use rejects a null `customerEmail` outright (Nomba 400,
+ * Paystack "email required"). That made the whole chain fail and surfaced as a
+ * bare "Failed to generate payment link" (FLH-SO-0109): the Nomba credentials
+ * were fine, the customer simply had no email. A checkout is not a mailing
+ * list, so we substitute a per-document no-reply address rather than blocking
+ * the sale. It is unique per document, so a gateway that de-dupes customers by
+ * email doesn't merge unrelated buyers.
+ */
+function fallbackEmail(doc_number) {
+  const slug = String(doc_number || "checkout")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `no-reply+${slug}@pixiegirlhub.com`;
+}
+
+function isUsableEmail(email) {
+  return typeof email === "string" && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
+}
+
+/**
+ * A gateway client throws an axios error whose `.message` is only
+ * "Request failed with status code 400" — useless for diagnosing why a link
+ * failed. Pull the provider's own status + description out of the response so
+ * the recorded attempt says what actually went wrong.
+ */
+function describeGatewayError(err) {
+  const res = err && err.response;
+  if (res) {
+    const body = res.data;
+    const msg =
+      (body &&
+        (body.description ||
+          body.message ||
+          (body.data && body.data.message) ||
+          (Array.isArray(body.errors) && body.errors.join("; ")))) ||
+      (typeof body === "string" ? body : "");
+    return `HTTP ${res.status}${msg ? ` — ${String(msg).slice(0, 300)}` : ""}`;
+  }
+  if (err && err.code) return `${err.code}: ${err.message || ""}`.trim();
+  return err && err.message
+    ? String(err.message).slice(0, 300)
+    : "unknown error";
+}
+
 const toKobo = (amountStr) => Number(money(amountStr).times(100).toFixed(0));
 
 /**
@@ -123,6 +172,7 @@ async function initOnGateway({
   return_url_base,
 }) {
   const reference = makeReference(provider, subject.doc_number);
+  if (!isUsableEmail(email)) email = fallbackEmail(subject.doc_number);
   const metadata = { ...subject.metadata, amount_ngn };
   const callbackParams = Object.entries(subject.callback_params || {})
     .map(([k, v]) => `&${k}=${encodeURIComponent(v)}`)
@@ -340,9 +390,12 @@ async function createPaymentLink({
       });
       return { ...res, amount_ngn: amountStr, attempts };
     } catch (err) {
-      attempts.push({ provider: link.provider, error: err.message });
+      attempts.push({
+        provider: link.provider,
+        error: describeGatewayError(err),
+      });
       logger.warn(
-        { provider: link.provider, order_id, err: err.message },
+        { provider: link.provider, order_id, err: describeGatewayError(err) },
         "payment gateway init failed — trying fallback",
       );
     }
@@ -481,9 +534,16 @@ async function createQuotationPaymentLink({
       });
       return { ...res, amount_ngn: amountStr, attempts };
     } catch (err) {
-      attempts.push({ provider: link.provider, error: err.message });
+      attempts.push({
+        provider: link.provider,
+        error: describeGatewayError(err),
+      });
       logger.warn(
-        { provider: link.provider, quotation_id, err: err.message },
+        {
+          provider: link.provider,
+          quotation_id,
+          err: describeGatewayError(err),
+        },
         "quotation payment gateway init failed — trying fallback",
       );
     }

@@ -16,6 +16,13 @@ export RESTIC_REPOSITORY="${RESTIC_REPOSITORY:-rclone:gdrive:pixiegirl-hub/resti
 # Password from a root-only file (chmod 600), NOT the environment or the repo.
 export RESTIC_PASSWORD_FILE="${RESTIC_PASSWORD_FILE:-/root/.kaizen/restic.pass}"
 
+# CRITICAL: restic runs as ROOT but the rclone 'gdrive' remote is configured
+# under the app user's home. Point rclone at that config so root can reach the
+# remote — otherwise the first restic call fails instantly with
+# "didn't find section in config file (gdrive)". Adjust the path if your app
+# user isn't 'administrator'.
+export RCLONE_CONFIG="${RCLONE_CONFIG:-/home/administrator/.config/rclone/rclone.conf}"
+
 STATUS="${KAIZEN_RESTIC_STATUS_JSON:-/var/backups/kaizen/last-full.json}"
 LOG="/var/log/kaizen-fullbackup.log"
 mkdir -p "$(dirname "$STATUS")"

@@ -483,7 +483,11 @@ async function runMissedFollowups(call) {
       await notifications.notify({
         user_id: owner,
         business: call.business,
-        type: "message",
+        // Its own type (not "message"): a missed call and a new chat message
+        // are different urgencies, and an agent must be able to keep call
+        // alerts on while muting message noise — see calls.push.js, which uses
+        // the same key for the ring's push opt-out.
+        type: "whatsapp_call",
         priority: "high",
         title: "Missed WhatsApp call",
         body: `${call.caller_name || call.from_number} tried to call and nobody answered.`,
@@ -782,6 +786,41 @@ async function getCall({ user, brand, id }) {
   return publicCall(call);
 }
 
+/**
+ * Rings this agent should be hearing RIGHT NOW, in the socket ring's own
+ * shape. This is the client's reconciliation read, and it exists because the
+ * ring is a fire-and-forget socket event: a tab that was asleep, offline, or
+ * simply not open yet when `call:ringing` went out has no way to learn about a
+ * live call. The client calls this on connect, on reconnect, on waking, and
+ * on cold start from a push notification — so a ring is never lost to a
+ * network gap, and a ring that has since been answered is never left hanging.
+ *
+ * Owner-first is applied in SQL (see repo.findRingingForUser) so the client
+ * can't drift from the server's routing rule.
+ */
+async function listRingingForUser({ user, brand }) {
+  await smartcommService().assertPlatformAccess({
+    user,
+    brand,
+    platform: "whatsapp",
+    action: "view",
+  });
+  const rows = await repo.findRingingForUser({
+    business: brand,
+    user_id: user.user_id,
+  });
+  return rows.map((r) => ({
+    call_id: r.call_id,
+    brand: r.business,
+    caller_name: r.caller_name,
+    from_number: r.from_number,
+    contact_id: r.contact_id,
+    channel_id: r.channel_id,
+    started_at: r.started_at,
+    scope: r.escalated_at ? "brand" : "owner",
+  }));
+}
+
 module.exports = {
   // webhook ingestion
   parseMetaWhatsAppCalls,
@@ -801,6 +840,7 @@ module.exports = {
   // reads
   listCalls,
   getCall,
+  listRingingForUser,
   // exposed for tests
   finaliseCall,
   runMissedFollowups,

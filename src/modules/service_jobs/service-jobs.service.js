@@ -13,7 +13,9 @@
 
 const repo = require("./service-jobs.repo");
 const icRepo = require("../intercompany/intercompany.repo");
+const sharedTasksRepo = require("../../shared/tasks/tasks.repo");
 const events = require("./service-jobs.events");
+const ai = require("./service-jobs.ai");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { money } = require("../../utils/money");
@@ -33,6 +35,11 @@ const A = (
   audit({
     business: brand,
     user_id: user ? user.user_id : null,
+    // Without this, audit()'s own fallback is String(user_id) — a raw UUID —
+    // which is exactly what showed up in the job Activity tab and the
+    // stylist scorecard's rework history (both read shared.audit_log
+    // directly). req.user always carries display_name from authMiddleware.
+    user_name: user ? user.display_name || user.email : "system",
     action_key,
     target_type,
     target_id,
@@ -83,16 +90,68 @@ async function updateServiceType({ brand, user, request_id, id, patch }) {
 }
 
 // ── Jobs ───────────────────────────────────────────────────
+//
+// `own` scope: restrict to jobs the caller is currently assigned to OR was
+// ever assigned to (kept visible via the wig custody ledger so a stylist
+// keeps history on their scorecard after Ops reassigns a job away).
+//
+// `mine`: the "My Jobs" cockpit opts in to the SAME caller-narrowed filter
+// regardless of permission scope. Without this a team/all-scope caller (Ops
+// manager, CEO) gets the WHOLE brand's jobs back on that tab, and the frontend
+// then mislabels every job that isn't personally theirs as "reassigned away
+// from me". Own-scope callers are narrowed by the repo either way, so `mine`
+// only changes behaviour for the broader scopes.
 function listJobs(args) {
-  return repo.listServiceJobs(args);
+  const { scope, user, mine, ...rest } = args;
+  if ((mine || scope === "own") && user) {
+    return repo.listServiceJobs({ ...rest, own_user_id: user.user_id });
+  }
+  return repo.listServiceJobs(rest);
 }
-async function getJob({ brand, id }) {
+
+/**
+ * Look up one job with permission-scope enforcement. An `own`-scoped caller
+ * (e.g. a stylist) is allowed to open a job they are or ever were assigned to
+ * — otherwise we throw NO_LONGER_ASSIGNED with the current owner's name so the
+ * frontend can show "This job was reassigned to X → Back to my jobs" instead
+ * of a bare 403.
+ */
+async function getJob({ brand, id, scope, user }) {
   const job = await repo.getServiceJob({ brand, id });
   if (!job) throw new NotFoundError("Service job");
+  if (scope === "own" && user) {
+    const isOwner = await repo.userHasJobAccess({
+      brand,
+      job_id: id,
+      user_id: user.user_id,
+    });
+    if (!isOwner) {
+      const currentAssignee = await repo.getJobAssigneeName({ brand, id });
+      throw new AppError(
+        "NO_LONGER_ASSIGNED",
+        `Job ${job.job_number} is no longer assigned to this user`,
+        403,
+        {
+          user_message: currentAssignee
+            ? `You no longer have access to this job — it has been reassigned to ${currentAssignee}.`
+            : "You no longer have access to this job.",
+          metadata: {
+            reassigned: {
+              to_name: currentAssignee,
+              job_number: job.job_number,
+            },
+          },
+        },
+      );
+    }
+  }
   return job;
 }
 async function createJob({ brand, user, request_id, input }) {
   return transaction(async (client) => {
+    // brief is not a service_jobs column — it becomes locked reference rows
+    // (the customer's original request), so peel it off before the insert.
+    const { brief, ...jobInput } = input;
     const job_number = await repo.nextNumber({
       client,
       brand,
@@ -101,8 +160,9 @@ async function createJob({ brand, user, request_id, input }) {
     const job = await repo.createServiceJob({
       client,
       brand,
-      job: { ...input, job_number, created_by: user.user_id },
+      job: { ...jobInput, job_number, created_by: user.user_id },
     });
+    await addLockedBrief({ client, brand, job_id: job.job_id, brief, user });
     await A(
       brand,
       user,
@@ -115,6 +175,32 @@ async function createJob({ brand, user, request_id, input }) {
     events.emit("created", { brand, job_id: job.job_id });
     return job;
   });
+}
+
+/**
+ * Write the customer's style brief as locked reference rows at job open — a
+ * text note and/or an inspiration link. Locked (is_locked = true) so the
+ * original request can't later be overwritten or deleted; supplementary
+ * stylist/QC notes are added separately (unlocked) via addReference.
+ * Shared by manual creation (typed brief) and order auto-open (line notes).
+ */
+async function addLockedBrief({ client, brand, job_id, brief, user }) {
+  if (!brief) return;
+  const created_by = user ? user.user_id : null;
+  const note = typeof brief.body === "string" ? brief.body.trim() : "";
+  const link = typeof brief.url === "string" ? brief.url.trim() : "";
+  if (note)
+    await repo.addReference({
+      client,
+      brand,
+      r: { job_id, ref_type: "text", body: note, created_by, is_locked: true },
+    });
+  if (link)
+    await repo.addReference({
+      client,
+      brand,
+      r: { job_id, ref_type: "video_link", url: link, created_by, is_locked: true },
+    });
 }
 async function updateJob({ brand, user, request_id, id, patch }) {
   return transaction(async (client) => {
@@ -175,37 +261,16 @@ async function advanceJob({
       request_id,
     );
     events.emit("advanced", { brand, job_id: id, status });
-    // GAP-5: deduct stock for the wig consumed when service job completes —
-    // unless the Stylist Studio assign flow already pulled it (custody OUT),
-    // which would otherwise double-deduct.
-    const alreadyOut = await repo.hasCustodyEvent({
-      client,
-      brand,
-      job_id: id,
-      event: "out",
-    });
-    if (status === "completed" && job.hair_variant_id && !alreadyOut) {
-      try {
-        const stockService = require("../stock/stock.service");
-        const stockRepo = require("../stock/stock.repo");
-        const loc = await stockRepo.getDefaultLocation({ client, brand });
-        if (loc) {
-          await stockService.deductForSale({
-            client,
-            brand,
-            variant_id: job.hair_variant_id,
-            location_id: loc.location_id,
-            quantity: 1,
-            reference_id: id,
-            sales_channel: "service_job",
-            unit_cost_ngn: job.actual_cost_ngn || null,
-            user_id: user.user_id,
-          });
-        }
-      } catch (err) {
-        logger.warn({ err, job_id: id }, "service job stock deduction skipped");
-      }
-    }
+    // Completing a job deducts NOTHING. This was a third writer of the same
+    // draw (after markPaid and the old assign-time deduction), guarded by yet
+    // another pair of heuristics — "no custody OUT" and "the sale hasn't drawn
+    // yet" — both of which a deposit-triggered order could satisfy while the
+    // balance was still outstanding, taking a second unit for one wig.
+    //
+    // The sale is the single writer now: an order-linked job's wig is drawn by
+    // markPaid, and an unlinked job (sample, rework, shoot) never moves stock
+    // at all — the assign screen says so, and stock is corrected through the
+    // Adjustments queue if such a job did consume a tracked unit.
     if (status === "completed") events.emit("completed", { brand, job_id: id });
     return job;
   });
@@ -239,6 +304,17 @@ async function assignStaff({
     request_id,
   );
   events.emit("assigned", { brand, job_id: id });
+  // Advance the linked order into 'assigned' (see assignStylist). Guarded — only
+  // moves a paid / partially-paid order forward, never rewinds a later stage.
+  if (job.sales_order_id) {
+    const salesRepo = require("../sales/sales.repo");
+    await salesRepo.advanceStatus({
+      brand,
+      id: job.sales_order_id,
+      to: "assigned",
+      from: ["paid", "partially_paid", "assigned"],
+    });
+  }
   return job;
 }
 
@@ -250,6 +326,44 @@ async function assignStaff({
  */
 async function listAssignableStylists({ brand }) {
   return repo.listAssignableStylists({ brand });
+}
+
+// ── Scorecards (internal Stylist Studio only — NOT the Stylist Partner
+// Programme; that's a separate module with its own review system) ──
+//
+// Scope discipline:
+//   * `own`-scope callers (stylists) only ever see their OWN card. The
+//     "team scorecards" list is Ops-only; on `own` scope we return just
+//     the caller's row so the frontend's "My Scorecard" tile still works
+//     without accidentally leaking teammates' numbers.
+//   * `own`-scope callers requesting anyone else's user_id get a clean
+//     403 — no data leak, no confusing "not found".
+function listStylistScorecards({ brand, scope, user }) {
+  if (scope === "own" && user) {
+    return repo
+      .getStylistScorecard({ brand, user_id: user.user_id })
+      .then((sc) => (sc ? [sc] : []));
+  }
+  return repo.listStylistScorecards({ brand });
+}
+async function getStylistScorecard({ brand, user_id, scope, user }) {
+  if (scope === "own" && user && user.user_id !== user_id) {
+    throw new AppError(
+      "PERMISSION_DENIED",
+      "You can only view your own scorecard",
+      403,
+      { user_message: "You can only view your own scorecard." },
+    );
+  }
+  const scorecard = await repo.getStylistScorecard({ brand, user_id });
+  if (!scorecard) throw new NotFoundError("Stylist has no job history");
+  return scorecard;
+}
+
+async function summarizeJob({ brand, id }) {
+  const job = await repo.getServiceJob({ brand, id });
+  if (!job) throw new NotFoundError("Service job");
+  return ai.summarizeJob(job);
 }
 
 async function recordOutcome({ brand, user, request_id, id, input }) {
@@ -293,96 +407,138 @@ async function recordOutcome({ brand, user, request_id, id, input }) {
 async function createForOrder({ brand, order }) {
   if (!order) return null;
   return transaction(async (client) => {
-    if (
-      await repo.serviceJobExistsForOrder({
-        client,
-        brand,
-        order_id: order.order_id,
-      })
-    )
-      return null;
-    // Only open a job when a line needs styling work.
-    const line = await repo.firstStudioLine({
+    // One service job per HAIR. Every styling line (styled or service) becomes
+    // `quantity` jobs — a line of qty 3 opens 3 independently-assignable jobs —
+    // so a multi-hair order can be split across several stylists. Idempotent
+    // per line: we only ever open the shortfall (want − already-open), so the
+    // deposit/paid subscribers and the backfill can all re-run without dupes.
+    const lines = await repo.allStudioLines({
       client,
       brand,
       order_id: order.order_id,
     });
-    if (!line) return null; // plain product order — nothing to style
-    const st = await repo.getDefaultServiceType({ client, brand });
-    // Inherit production DNA from the styled product when present.
-    const dna = line.styled_id
-      ? await repo.getStyledDNA({ client, brand, styled_id: line.styled_id })
-      : null;
-    const service_type_id =
-      (dna && dna.default_service_type_id) || (st && st.service_type_id);
-    if (!service_type_id) return null; // brand runs no styling services (e.g. PXG)
-    // Pricing: styled = already paid (use the styled add-on as the internal
-    // figure); service line = the line's own price; else the service-type cost.
-    const agreed = dna
-      ? (dna.style_addon_price_ngn ?? (st ? st.standard_cost_ngn : 0))
-      : (line.unit_price_ngn ?? (st ? st.standard_cost_ngn : 0));
-    // Turnaround → expected completion + SLA clock.
-    const turnaround =
-      (dna && dna.standard_turnaround_days) ||
-      (st && st.standard_turnaround_days) ||
-      null;
-    const expected = turnaround
-      ? new Date(Date.now() + turnaround * 86400000).toISOString()
-      : null;
-    const job_number = await repo.nextNumber({
-      client,
-      brand,
-      type: "service_job",
-    });
-    const job = await repo.createServiceJob({
-      client,
-      brand,
-      job: {
-        job_number,
-        service_type_id,
-        hair_variant_id:
-          line.variant_id || (dna && dna.base_variant_id) || null,
-        sales_order_id: order.order_id,
-        sales_order_line_id: line.line_id,
-        customer_contact_id: order.contact_id,
-        status: "pending",
-        recipe_id: (dna && dna.default_recipe_id) || null,
-        specification:
-          dna && dna.sop_steps ? { sop_steps: dna.sop_steps } : null,
-        expected_completion_at: expected,
-        agreed_cost_ngn: agreed,
-      },
-    });
-    // Stamp the columns createServiceJob doesn't take (styled provenance, the
-    // reserved base wig, and the promised-delivery SLA).
-    const stamp = {};
-    if (line.styled_id) stamp.styled_id = line.styled_id;
-    if (line.variant_id) stamp.reserved_variant_id = line.variant_id;
-    if (expected) stamp.sla_due_at = expected;
-    if (Object.keys(stamp).length)
-      await repo.setServiceJobStatus({
+    if (!lines.length) return null; // plain product order — nothing to style
+    const created = [];
+    for (const line of lines) {
+      const want = Math.max(1, Number(line.quantity) || 1);
+      const have = await repo.countJobsForLine({
         client,
         brand,
-        id: job.job_id,
-        status: "pending",
-        fields: stamp,
+        line_id: line.line_id,
       });
-    await A(
+      for (let n = have; n < want; n++) {
+        const job = await openStudioJobForLine({ client, brand, order, line });
+        if (job) created.push(job);
+      }
+    }
+    return created.length ? created : null;
+  });
+}
+
+// Open one hair's service job from a single order line. Split out of
+// createForOrder so the first open and the per-unit fan-out share one path;
+// runs inside the caller's transaction. Returns null when the brand runs no
+// styling services (e.g. PXG), so the caller simply opens nothing for it.
+async function openStudioJobForLine({ client, brand, order, line }) {
+  const st = await repo.getDefaultServiceType({ client, brand });
+  // Inherit production DNA from the styled product when present.
+  const dna = line.styled_id
+    ? await repo.getStyledDNA({ client, brand, styled_id: line.styled_id })
+    : null;
+  // Service type. A styled-product sale IS styling work by definition, so its
+  // job opens as Styling — never the arbitrary display_order=1 default (which
+  // is Installation: getDefaultServiceType returns the first active type and
+  // 'installation' seeds at display_order=1). Genuine service lines
+  // (styled_id NULL) keep the brand default, unchanged.
+  //
+  // Per-style service types (styled_products.default_service_type_id) are
+  // intentionally NOT honoured here — every styled sale is Styling. To support
+  // per-style types later, prefer dna.default_service_type_id ahead of the
+  // styling lookup.
+  const stylingType = line.styled_id
+    ? await repo.getServiceTypeByKey({ client, brand, key: "styling" })
+    : null;
+  // The type actually used: Styling for a styled line, else the brand default.
+  const serviceType = stylingType || st;
+  const service_type_id = serviceType && serviceType.service_type_id;
+  if (!service_type_id) return null; // brand runs no styling services (e.g. PXG)
+  // Pricing is per hair: the styled add-on and the line unit price are already
+  // per-unit figures, so each hair's job takes the same amount (no division).
+  const agreed = dna
+    ? (dna.style_addon_price_ngn ??
+      (serviceType ? serviceType.standard_cost_ngn : 0))
+    : (line.unit_price_ngn ??
+      (serviceType ? serviceType.standard_cost_ngn : 0));
+  // Turnaround → expected completion + SLA clock.
+  const turnaround =
+    (dna && dna.standard_turnaround_days) ||
+    (serviceType && serviceType.standard_turnaround_days) ||
+    null;
+  const expected = turnaround
+    ? new Date(Date.now() + turnaround * 86400000).toISOString()
+    : null;
+  const job_number = await repo.nextNumber({
+    client,
+    brand,
+    type: "service_job",
+  });
+  const job = await repo.createServiceJob({
+    client,
+    brand,
+    job: {
+      job_number,
+      service_type_id,
+      hair_variant_id: line.variant_id || (dna && dna.base_variant_id) || null,
+      sales_order_id: order.order_id,
+      sales_order_line_id: line.line_id,
+      customer_contact_id: order.contact_id,
+      status: "pending",
+      recipe_id: (dna && dna.default_recipe_id) || null,
+      specification: dna && dna.sop_steps ? { sop_steps: dna.sop_steps } : null,
+      expected_completion_at: expected,
+      agreed_cost_ngn: agreed,
+    },
+  });
+  // Stamp the columns createServiceJob doesn't take (styled provenance, the
+  // reserved base wig, and the promised-delivery SLA).
+  const stamp = {};
+  if (line.styled_id) stamp.styled_id = line.styled_id;
+  if (line.variant_id) stamp.reserved_variant_id = line.variant_id;
+  if (expected) stamp.sla_due_at = expected;
+  if (Object.keys(stamp).length)
+    await repo.setServiceJobStatus({
+      client,
       brand,
-      null,
-      "service_jobs.from_order",
-      "service_job",
-      job.job_id,
-      { order_id: order.order_id, line_kind: line.line_kind },
-      null,
-    );
-    events.emit("created", {
+      id: job.job_id,
+      status: "pending",
+      fields: stamp,
+    });
+  // Carry the customer's request from the order line straight onto the job as a
+  // locked brief, so the stylist opens the job already knowing what was asked
+  // for (no user — this is a system-opened job).
+  if (line.notes && line.notes.trim())
+    await addLockedBrief({
+      client,
       brand,
       job_id: job.job_id,
-      order_id: order.order_id,
+      brief: { body: line.notes },
+      user: null,
     });
-    return job;
+  await A(
+    brand,
+    null,
+    "service_jobs.from_order",
+    "service_job",
+    job.job_id,
+    { order_id: order.order_id, line_kind: line.line_kind },
+    null,
+  );
+  events.emit("created", {
+    brand,
+    job_id: job.job_id,
+    order_id: order.order_id,
   });
+  return job;
 }
 
 // ── Chemical recipes (F-7c) ────────────────────────────────
@@ -622,31 +778,120 @@ async function notifyUser({
   }
 }
 
-// Pull the base wig out of stock (best-effort — never blocks the assignment;
-// a physical wig may exist outside tracked stock).
-async function deductBaseWig({ client, brand, job, user_id, channel }) {
+/**
+ * THE SALE OWNS THE STOCK DRAW. Assigning a stylist never deducts.
+ *
+ * There used to be two paths that wrote a 'sale' movement for one physical
+ * wig — markPaid on the order, and the Studio on assignment — with a guard on
+ * the Studio side only ("has the sale drawn yet?"). That guard asked a
+ * question whose answer changes over time, so on a deposit-triggered order
+ * (job opens at deposit, balance paid later) it answered "no", the Studio
+ * deducted, and markPaid deducted the same unit again: −2 for one wig. An
+ * unlinked job had no order to ask about at all and always deducted.
+ *
+ * The rule now: `markPaid` is the single writer of the 'sale' movement.
+ * Assignment moves the wig into stylist custody and holds it against being
+ * sold twice, which is the guarantee that actually matters while the balance
+ * is outstanding.
+ *
+ * Holding it: every order reserves its lines at placement, so an order-linked
+ * job's unit is already held and this is a no-op. It only reserves when that
+ * hold is missing (legacy orders placed before reservation-at-placement), so
+ * the unit can never be sold out from under a stylist who physically has it.
+ * Unlinked jobs have no order to reserve against and, by decision, never
+ * touch stock — the assign screen warns the assigner in so many words.
+ */
+async function holdBaseWigForStylist({ client, brand, job, user_id }) {
   const variant_id = job.reserved_variant_id || job.hair_variant_id;
-  if (!variant_id) return;
+  if (!variant_id || !job.sales_order_id) return;
   try {
     const stockService = require("../stock/stock.service");
     const stockRepo = require("../stock/stock.repo");
     const loc = await stockRepo.getDefaultLocation({ client, brand });
     if (!loc) return;
-    await stockService.deductForSale({
+    // Already drawn by the sale (order paid) → nothing left to hold.
+    if (
+      await repo.orderAlreadyDrewWig({
+        client,
+        brand,
+        sales_order_id: job.sales_order_id,
+        variant_id,
+      })
+    )
+      return;
+    // Already held by the order's own reservation → don't stack a second hold.
+    const held = await stockRepo.outstandingReservationForOrder({
+      client,
+      brand,
+      variant_id,
+      location_id: loc.location_id,
+      reference_id: job.sales_order_id,
+    });
+    if (held > 0) return;
+    await stockService.reserveForOrder({
+      client,
+      brand,
+      variant_id,
+      location_id: loc.location_id,
+      quantity: 1,
+      reference_id: job.sales_order_id,
+      user_id,
+    });
+  } catch (err) {
+    // Best-effort: a hold that can't be placed (no tracked stock, nothing on
+    // hand) must never block the assignment — the wig is physical and already
+    // in the stylist's hands.
+    logger.warn({ err, job_id: job.job_id }, "studio base-wig hold skipped");
+  }
+}
+
+// A stylist studio job assigned with no promised date still needs a clock so
+// it surfaces on the stylist's My Day and counts on the SLA scorecards. When
+// the assigner doesn't set (or override) a deadline, default it to 48h out.
+const DEFAULT_STUDIO_TURNAROUND_MS = 48 * 60 * 60 * 1000;
+
+/**
+ * Put back what THIS job took out, on unassign.
+ *
+ * Since the sale owns the draw, a job assigned today takes nothing out and
+ * this is a clean no-op. It exists for LEGACY jobs assigned before that rule,
+ * which do carry a Studio 'sale' movement — and it decides from that job's own
+ * movement ledger rather than from the state of the sale.
+ *
+ * The old version asked `orderAlreadyDrewWig` here too. On a job assigned
+ * before payment and unassigned after it, that returned true and skipped the
+ * restock — even though the Studio really had deducted — and the unit was
+ * gone for good. Asking "what does this job still have out?" can't drift.
+ */
+async function restockBaseWig({ client, brand, job, user_id }) {
+  const variant_id = job.reserved_variant_id || job.hair_variant_id;
+  if (!variant_id) return;
+  const drawn = await repo.studioDrawBalanceForJob({
+    client,
+    brand,
+    job_id: job.job_id,
+  });
+  if (drawn <= 0) return; // nothing of this job's own is out — nothing to undo
+  try {
+    const stockService = require("../stock/stock.service");
+    const stockRepo = require("../stock/stock.repo");
+    const loc = await stockRepo.getDefaultLocation({ client, brand });
+    if (!loc) return;
+    await stockService.receiveStock({
       client,
       brand,
       variant_id,
       location_id: loc.location_id,
       quantity: 1,
       reference_id: job.job_id,
-      sales_channel: channel || "service_job",
+      reference_type: "service_job",
       unit_cost_ngn: null,
       user_id,
     });
   } catch (err) {
     logger.warn(
       { err, job_id: job.job_id },
-      "studio base-wig deduction skipped",
+      "studio base-wig restock skipped",
     );
   }
 }
@@ -655,6 +900,12 @@ async function deductBaseWig({ client, brand, job, user_id, channel }) {
  * Assign an in-house stylist (staff). Reserves + deducts the base wig, writes a
  * custody OUT row (so the wig is now accounted for in the stylist's hands), and
  * notifies them. The DB trigger separately raises a task on their Workspace.
+ *
+ * The deadline is set here, at the assigning level: `expected_completion_at`
+ * (explicit assigner value) wins, else the job's existing promised date is
+ * kept, else it defaults to +48h. Stamping it in the same UPDATE that sets the
+ * assignee means the BEFORE trigger writes it onto the freshly-raised task's
+ * due date; on a reassignment (task already exists) we sync it below.
  */
 async function assignStylist({
   brand,
@@ -662,16 +913,62 @@ async function assignStylist({
   request_id,
   id,
   assigned_staff_user_id,
+  expected_completion_at,
+  acknowledge_unlinked,
 }) {
-  return transaction(async (client) => {
+  const outcome = await transaction(async (client) => {
     const before = await repo.getServiceJob({ client, brand, id });
     if (!before) throw new NotFoundError("Service job");
+    // A job with no sales order behind it is allowed out — samples, rework,
+    // shoots are real work — but it moves no stock and nothing downstream
+    // will ever reconcile it against a sale. The assigner has to say, in one
+    // deliberate click, that they know that. The UI shows the warning; this
+    // is the server-side half, so the acknowledgement can't be skipped by
+    // calling the API directly.
+    if (!before.sales_order_id && acknowledge_unlinked !== true) {
+      throw new AppError(
+        "UNLINKED_JOB_NOT_ACKNOWLEDGED",
+        "Assigning a job with no sales order requires explicit acknowledgement",
+        409,
+        {
+          user_message:
+            "This job has no sale behind it. Stock will not move — acknowledge the warning to assign it anyway.",
+          metadata: { job_id: id, requires_acknowledgement: true },
+        },
+      );
+    }
+    const deadline =
+      expected_completion_at ||
+      before.expected_completion_at ||
+      new Date(Date.now() + DEFAULT_STUDIO_TURNAROUND_MS).toISOString();
     const fields = {
       assigned_staff_user_id,
       assigned_at: new Date().toISOString(),
+      expected_completion_at: deadline,
     };
+    // Keep the promised-delivery SLA clock in step: stamp it on first set, and
+    // move it when the assigner explicitly re-sets the deadline.
+    if (!before.sla_due_at || expected_completion_at)
+      fields.sla_due_at = deadline;
     if (!before.reserved_variant_id && before.hair_variant_id)
       fields.reserved_variant_id = before.hair_variant_id;
+    // Allocate the physical hand-off tag once, on first assignment — it's
+    // written on a tag pinned to the actual hair, so it must stay stable
+    // across any later reassignment of the same job. Format: 3-digit counter
+    // + 2 letters drawn from the styled product name (falls back to the
+    // free-text hair description, then "XX" for a bare custom job).
+    const isNewTag = !before.tag_code;
+    if (isNewTag) {
+      const seq = await repo.nextTagSequence({ client, brand });
+      const initials = repo.deriveTagInitials(
+        before.styled_product_name || before.hair_description,
+      );
+      fields.tag_code = `${seq}${initials}`;
+    }
+    // The create-task trigger only fires on FIRST assignment (task_id was
+    // NULL). When the job already carries a task, a reassignment must move it
+    // to the new stylist and re-stamp its due date — done post-commit below.
+    const priorTaskId = before.task_id;
     const job = await repo.setServiceJobStatus({
       client,
       brand,
@@ -697,12 +994,11 @@ async function assignStylist({
         },
       );
     }
-    await deductBaseWig({
+    await holdBaseWigForStylist({
       client,
       brand,
       job,
       user_id: user.user_id,
-      channel: "service_job",
     });
     await repo.addCustody({
       client,
@@ -722,10 +1018,28 @@ async function assignStylist({
       "service_jobs.assign",
       "service_job",
       id,
-      { assigned_staff_user_id },
+      {
+        assigned_staff_user_id,
+        // Who waved through a no-sale assignment is worth keeping.
+        ...(before.sales_order_id ? {} : { unlinked_acknowledged: true }),
+      },
       request_id,
     );
     events.emit("assigned", { brand, job_id: id });
+    // Advance the linked order into 'assigned' — the customer-facing signal
+    // that a stylist is now working on it. Guarded so it only moves a paid /
+    // partially-paid (deposit-cleared) order forward, never rewinds one already
+    // packed/dispatched/completed, and never touches a cancelled order.
+    if (job.sales_order_id) {
+      const salesRepo = require("../sales/sales.repo");
+      await salesRepo.advanceStatus({
+        client,
+        brand,
+        id: job.sales_order_id,
+        to: "assigned",
+        from: ["paid", "partially_paid", "assigned"],
+      });
+    }
     await notifyUser({
       brand,
       user_id: assigned_staff_user_id,
@@ -735,6 +1049,96 @@ async function assignStylist({
       job_id: id,
       priority: "high",
     });
+    // is_new_tag tells the drawer whether to show the "copy this onto the
+    // tag" confirmation modal — only on the assignment that actually
+    // allocated the code, never on a later reassignment of the same job.
+    return { job, isNewTag, priorTaskId, deadline };
+  });
+
+  const { job, isNewTag, priorTaskId, deadline } = outcome;
+  // Reassignment: the create-task trigger left the existing task untouched, so
+  // move it onto the new stylist and re-stamp its due date here (best-effort,
+  // post-commit — a failed sync must never undo a committed assignment).
+  if (priorTaskId) {
+    try {
+      await sharedTasksRepo.updateTask({
+        brand,
+        id: priorTaskId,
+        patch: { assigned_to: assigned_staff_user_id, due_at: deadline },
+      });
+    } catch (err) {
+      logger.warn(
+        { err, brand, job_id: id, task_id: priorTaskId },
+        "service_jobs: failed to sync task on reassignment",
+      );
+    }
+  }
+  return { ...job, is_new_tag: isNewTag };
+}
+
+/**
+ * Revert an assignment back to Unassigned — CEO-only (gated at the route via
+ * requireCeo). Only a job still in 'assigned' (not yet started) can be reverted;
+ * once work has begun the wind-back involves custody/QC and is out of scope
+ * here. Reverses exactly what assignStylist did: clears the assignee + assigned
+ * timestamp, drops the job back to 'pending', balances the custody OUT with a
+ * matching RETURN (so the wig frees up and Wig Accountability stays correct),
+ * and puts the base wig back if the Studio had drawn it. The physical tag_code
+ * and the reserved base wig are intentionally kept — the tag is written on the
+ * hair and must survive a later re-assignment of the same job.
+ */
+async function unassignStaff({ brand, user, request_id, id }) {
+  return transaction(async (client) => {
+    const before = await repo.getServiceJob({ client, brand, id });
+    if (!before) throw new NotFoundError("Service job");
+    if (!before.assigned_staff_user_id) {
+      throw new AppError("NOT_ASSIGNED", "This job is not assigned to anyone.", 409, {
+        user_message: "This job is already unassigned.",
+      });
+    }
+    if (before.status !== "assigned") {
+      throw new AppError(
+        "INVALID_STATE",
+        "Only a job still in 'assigned' (not yet started) can be reverted to unassigned.",
+        409,
+        {
+          user_message:
+            "This job has already moved past assignment, so it can't be reverted here.",
+        },
+      );
+    }
+    const job = await repo.setServiceJobStatus({
+      client,
+      brand,
+      id,
+      status: "pending",
+      fields: { assigned_staff_user_id: null, assigned_at: null },
+    });
+    // Balance the assignment's custody OUT so the wig is no longer "with" the
+    // removed stylist — otherwise it reads as still out and can't be reassigned.
+    await repo.addCustody({
+      client,
+      brand,
+      c: {
+        job_id: id,
+        event: "return",
+        quantity: 1,
+        stylist_user_id: before.assigned_staff_user_id,
+        created_by: user.user_id,
+        reason: "assignment reverted to unassigned (CEO)",
+      },
+    });
+    await restockBaseWig({ client, brand, job: before, user_id: user.user_id });
+    await A(
+      brand,
+      user,
+      "service_jobs.unassign",
+      "service_job",
+      id,
+      { reverted_assignee: before.assigned_staff_user_id },
+      request_id,
+    );
+    events.emit("advanced", { brand, job_id: id, status: "pending" });
     return job;
   });
 }
@@ -783,6 +1187,13 @@ async function pauseWork({ brand, user, request_id, id }) {
     const open = await repo.getOpenTimeSession({ client, brand, job_id: id });
     if (open)
       await repo.closeTimeSession({ client, brand, log_id: open.log_id });
+    const job = await repo.setServiceJobStatus({
+      client,
+      brand,
+      id,
+      status: "on_hold",
+      fields: {},
+    });
     await A(
       brand,
       user,
@@ -792,7 +1203,7 @@ async function pauseWork({ brand, user, request_id, id }) {
       {},
       request_id,
     );
-    return repo.getServiceJob({ client, brand, id });
+    return job;
   });
 }
 
@@ -809,6 +1220,13 @@ async function resumeWork({ brand, user, request_id, id }) {
         job_id: id,
         stylist_user_id: before.assigned_staff_user_id,
       });
+    const job = await repo.setServiceJobStatus({
+      client,
+      brand,
+      id,
+      status: "in_progress",
+      fields: {},
+    });
     await A(
       brand,
       user,
@@ -818,7 +1236,7 @@ async function resumeWork({ brand, user, request_id, id }) {
       {},
       request_id,
     );
-    return repo.getServiceJob({ client, brand, id });
+    return job;
   });
 }
 
@@ -887,13 +1305,16 @@ function listMaterials({ brand, id }) {
   return repo.listMaterials({ brand, job_id: id });
 }
 
-/** Add a style-brief reference (image / audio / video link / text / creative freedom). */
+/** Add a supplementary style-brief note (image / audio / video link / text /
+ * creative freedom). Always unlocked — the locked customer brief is written
+ * only at job open (createJob / createForOrder), never through this endpoint,
+ * so is_locked is forced false regardless of input. */
 async function addReference({ brand, user, request_id, id, input }) {
   const job = await repo.getServiceJob({ brand, id });
   if (!job) throw new NotFoundError("Service job");
   const r = await repo.addReference({
     brand,
-    r: { ...input, job_id: id, created_by: user.user_id },
+    r: { ...input, job_id: id, created_by: user.user_id, is_locked: false },
   });
   await A(
     brand,
@@ -925,6 +1346,17 @@ async function removeReference({ brand, user, request_id, id, reference_id }) {
 }
 function listTimeLogs({ brand, id }) {
   return repo.listTimeLogs({ brand, job_id: id });
+}
+
+/**
+ * The caller's currently-open time session, or null if no clock is running.
+ * Drives the "You're working on Job X — 47m elapsed" strip at the top of
+ * the Stylist Studio page for own-scope users, so they can pause without
+ * having to hunt for the specific job card.
+ */
+function getMyCurrentSession({ brand, user }) {
+  if (!user) return Promise.resolve(null);
+  return repo.getUsersOpenSession({ brand, user_id: user.user_id });
 }
 
 /** Stylist marks done and returns the wig to Ops for QC. Custody RETURN. */
@@ -977,25 +1409,39 @@ async function returnForQc({ brand, user, request_id, id }) {
   });
 }
 
-/** Ops QC: pass → qc_passed; rework → back to a stylist (same or reassigned). */
+/**
+ * Ops QC decision.
+ *
+ * Pass → the styling job is DONE from the stylist's side: status jumps
+ * straight to `completed`, `completed_at` is stamped, the wig leaves
+ * the studio (custody `dispatched`), and a Logistics delivery is
+ * auto-created for the linked order so Sales/Logistics can ship it.
+ * This is the single moment that credits a stylist on their scorecard
+ * and against HR `styles_completed` targets — no further clicks needed.
+ *
+ * Fail → status = `rework`, wig goes back out to the (same or reassigned)
+ * stylist, rework_count increments, they get a push.
+ */
 async function recordQc({ brand, user, request_id, id, input }) {
-  return transaction(async (client) => {
+  const nowIso = new Date().toISOString();
+  const job = await transaction(async (client) => {
     const before = await repo.getServiceJob({ client, brand, id });
     if (!before) throw new NotFoundError("Service job");
-    const fields = { qc_by: user.user_id, qc_at: new Date().toISOString() };
+    const fields = { qc_by: user.user_id, qc_at: nowIso };
     if (input.quality_rating !== undefined)
       fields.quality_rating = input.quality_rating;
     if (input.quality_notes !== undefined)
       fields.quality_notes = input.quality_notes;
     let status;
     if (input.result === "pass") {
-      status = "qc_passed";
+      status = "completed";
+      fields.completed_at = nowIso;
     } else {
       status = "rework";
       fields.rework_count = (before.rework_count || 0) + 1;
       if (input.reassign_to) fields.assigned_staff_user_id = input.reassign_to;
     }
-    const job = await repo.setServiceJobStatus({
+    const updated = await repo.setServiceJobStatus({
       client,
       brand,
       id,
@@ -1004,7 +1450,6 @@ async function recordQc({ brand, user, request_id, id, input }) {
     });
     if (status === "rework") {
       const stylist = input.reassign_to || before.assigned_staff_user_id;
-      // The wig goes back out to the stylist — keep the custody balance honest.
       await repo.addCustody({
         client,
         brand,
@@ -1026,6 +1471,33 @@ async function recordQc({ brand, user, request_id, id, input }) {
         job_id: id,
         priority: "high",
       });
+    } else {
+      // Wig leaves the studio for Logistics/Sales — keep custody balanced.
+      await repo.addCustody({
+        client,
+        brand,
+        c: {
+          job_id: id,
+          event: "dispatched",
+          quantity: 1,
+          created_by: user.user_id,
+          reason: "QC passed → to logistics",
+        },
+      });
+      // Styling is done and the wig is packed → advance the linked order to
+      // 'order_ready' (packed, waiting for the courier). Deliberately NOT
+      // 'dispatched' — the parcel hasn't left, so the customer is never told it
+      // shipped at QC. Guarded so a re-QC can't rewind a later stage.
+      if (before.sales_order_id) {
+        const salesRepo = require("../sales/sales.repo");
+        await salesRepo.advanceStatus({
+          client,
+          brand,
+          id: before.sales_order_id,
+          to: "order_ready",
+          from: ["paid", "partially_paid", "assigned", "order_ready"],
+        });
+      }
     }
     await A(
       brand,
@@ -1033,108 +1505,52 @@ async function recordQc({ brand, user, request_id, id, input }) {
       "service_jobs.qc",
       "service_job",
       id,
-      { result: input.result },
+      // quality_notes rides along so the job's activity/rework history shows
+      // the actual reason at each QC pass, not just pass/fail — the job row
+      // itself only ever holds the LATEST quality_notes, overwritten on the
+      // next QC call, so this audit trail is the only place a past rework
+      // reason survives.
+      { result: input.result, quality_notes: input.quality_notes ?? null },
       request_id,
     );
     events.emit("advanced", { brand, job_id: id, status });
-    return job;
+    if (status === "completed") events.emit("completed", { brand, job_id: id });
+    return updated;
   });
-}
 
-/** Ops marks the wig ready to ship — custody DISPATCHED + readiness stamp. */
-async function dispatch({ brand, user, request_id, id }) {
-  return transaction(async (client) => {
-    const before = await repo.getServiceJob({ client, brand, id });
-    if (!before) throw new NotFoundError("Service job");
-    const job = await repo.setServiceJobStatus({
-      client,
-      brand,
-      id,
-      status: "ready_for_dispatch",
-      fields: { ready_at: new Date().toISOString() },
-    });
-    await repo.addCustody({
-      client,
-      brand,
-      c: {
-        job_id: id,
-        event: "dispatched",
-        quantity: 1,
-        created_by: user.user_id,
-        reason: "ready for dispatch",
-      },
-    });
-    await A(
-      brand,
-      user,
-      "service_jobs.dispatch",
-      "service_job",
-      id,
-      {},
-      request_id,
-    );
-    events.emit("ready_for_dispatch", { brand, job_id: id });
-    return job;
-  }).then(async (job) => {
-    // Post-commit, best-effort: hand the finished wig to Logistics. Reuses the
-    // idempotent order→delivery creator, which no-ops for non-dispatch orders
-    // (e.g. an own-wig pickup), so only real shipments are made. The returned
-    // delivery id is stamped on the job so the SLA (promised vs actual) tracks.
+  // Post-commit, best-effort: on QC pass, create the Logistics delivery.
+  // Reuses the idempotent order→delivery creator, which no-ops for orders
+  // that don't need shipping (e.g. own-wig pickup). Never blocks the QC
+  // decision itself — if this fails, Ops can still ship from the order.
+  if (job && job.status === "completed" && job.sales_order_id) {
     try {
-      if (job.sales_order_id) {
-        const salesRepo = require("../sales/sales.repo");
-        const logistics = require("../logistics/logistics.service");
-        const order = await salesRepo.findById({
+      const salesRepo = require("../sales/sales.repo");
+      const logistics = require("../logistics/logistics.service");
+      const orderComms = require("../sales/order-comms");
+      const order = await salesRepo.findById({ brand, id: job.sales_order_id });
+      // "Order Ready" customer message (gated by Messaging settings; no-op if the
+      // CEO toggled it Off). Best-effort — never blocks the logistics handoff.
+      if (order) await orderComms.orderReady({ brand, order });
+      const delivery = order
+        ? await logistics.createForOrder({ brand, order })
+        : null;
+      if (delivery && delivery.delivery_id) {
+        const stamped = await repo.setServiceJobStatus({
           brand,
-          id: job.sales_order_id,
+          id,
+          status: "completed",
+          fields: { shipment_id: delivery.delivery_id },
         });
-        const delivery = order
-          ? await logistics.createForOrder({ brand, order })
-          : null;
-        if (delivery && delivery.delivery_id) {
-          await repo.setServiceJobStatus({
-            brand,
-            id,
-            status: "ready_for_dispatch",
-            fields: { shipment_id: delivery.delivery_id },
-          });
-          job.shipment_id = delivery.delivery_id;
-        }
+        return stamped;
       }
     } catch (err) {
       logger.warn(
         { err, job_id: id },
-        "studio dispatch → logistics handoff skipped",
+        "studio QC-pass → logistics handoff skipped",
       );
     }
-    return job;
-  });
-}
-
-/** Hand the finished, packed wig to Sales for shipping. */
-async function handToSales({ brand, user, request_id, id }) {
-  return transaction(async (client) => {
-    const before = await repo.getServiceJob({ client, brand, id });
-    if (!before) throw new NotFoundError("Service job");
-    const job = await repo.setServiceJobStatus({
-      client,
-      brand,
-      id,
-      status: "handed_to_sales",
-      fields: { handed_at: new Date().toISOString() },
-    });
-    await A(
-      brand,
-      user,
-      "service_jobs.hand_to_sales",
-      "service_job",
-      id,
-      {},
-      request_id,
-    );
-    events.emit("advanced", { brand, job_id: id, status: "handed_to_sales" });
-    return job;
-  });
+  }
+  return job;
 }
 
 /**
@@ -1208,17 +1624,37 @@ async function linkIntercompany({
 }
 
 // ── Wig accountability ─────────────────────────────────────
-async function getAccountability({ brand }) {
+//
+// Studio-wide accountability (all balances, all overdue) is Ops-only —
+// stylists shouldn't see their teammates' custody balances. On `own`
+// scope we filter down to the caller's row so a stylist can still see
+// "you're holding N wigs" if we surface it, but no one else's.
+async function getAccountability({ brand, scope, user }) {
   const cfg = await repo.getStudioConfig({ brand });
   const threshold = cfg.missing_wig_threshold_days || 7;
   const [balances, overdue] = await Promise.all([
     repo.custodyBalances({ brand }),
     repo.overdueOutWigs({ brand, threshold_days: threshold }),
   ]);
+  if (scope === "own" && user) {
+    return {
+      threshold_days: threshold,
+      balances: balances.filter((b) => b.stylist_user_id === user.user_id),
+      overdue: overdue.filter((o) => o.stylist_user_id === user.user_id),
+    };
+  }
   return { threshold_days: threshold, balances, overdue };
 }
-function listCustodyLedger({ brand, job_id, stylist_user_id }) {
-  return repo.listCustody({ brand, job_id, stylist_user_id });
+function listCustodyLedger({ brand, job_id, stylist_user_id, scope, user }) {
+  // `own`-scope: force the stylist filter to the caller — a stylist
+  // querying the ledger without a stylist_user_id (or with someone else's)
+  // gets only their own custody rows.
+  const forcedUserId =
+    scope === "own" && user ? user.user_id : stylist_user_id;
+  return repo.listCustody({ brand, job_id, stylist_user_id: forcedUserId });
+}
+function listJobActivity({ brand, id }) {
+  return repo.listJobActivity({ brand, job_id: id });
 }
 async function writeOffWig({ brand, user, request_id, id, reason }) {
   return transaction(async (client) => {
@@ -1310,7 +1746,11 @@ module.exports = {
   advanceJob,
   assignStaff,
   assignStylist,
+  unassignStaff,
   listAssignableStylists,
+  listStylistScorecards,
+  getStylistScorecard,
+  summarizeJob,
   startWork,
   pauseWork,
   resumeWork,
@@ -1322,11 +1762,11 @@ module.exports = {
   listTimeLogs,
   returnForQc,
   recordQc,
-  dispatch,
-  handToSales,
+  getMyCurrentSession,
   linkIntercompany,
   getAccountability,
   listCustodyLedger,
+  listJobActivity,
   writeOffWig,
   runMissingWigCheck,
   recordOutcome,

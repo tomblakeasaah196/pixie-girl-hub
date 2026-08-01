@@ -74,6 +74,14 @@ const provisionExternalSchema = z.object({
   role_ids: roleIds,
 });
 
+const updateEmailSchema = z.object({
+  email: z.string().email(),
+});
+
+const trashUserSchema = z.object({
+  reason: z.string().max(500).optional(),
+});
+
 const totpVerifySchema = z.object({
   code: z
     .string()
@@ -212,6 +220,8 @@ const eventsQuerySchema = z.object({
 module.exports = {
   validateProvisionStaffLogin: makeBody(provisionStaffLoginSchema),
   validateProvisionExternal: makeBody(provisionExternalSchema),
+  validateUpdateEmail: makeBody(updateEmailSchema),
+  validateTrashUser: makeBody(trashUserSchema),
   validateTotpVerify: makeBody(totpVerifySchema),
   validateTotpDisable: makeBody(totpDisableSchema),
   validateCreateReview: makeBody(createReviewSchema),

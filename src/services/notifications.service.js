@@ -10,6 +10,7 @@
 const { query } = require("../config/database");
 const { getBroadcaster } = require("../realtime/emitter");
 const { ROOMS } = require("../realtime/rooms");
+const { deepLinkFor } = require("../shared/links/deep-links");
 
 const VALID_PRIORITY = new Set(["low", "normal", "high", "urgent"]);
 
@@ -63,6 +64,15 @@ async function notify({
   }
   const prio = VALID_PRIORITY.has(priority) ? priority : "normal";
   const actionsArr = Array.isArray(actions) ? actions : [];
+  // Every notification already names the record it is about
+  // (reference_type + reference_id) but almost none passed a link, so the bell
+  // dropped the reader on a dead end — nowhere more so than an approval, where
+  // the approver had to go hunting for the request. Resolve the link from the
+  // reference when the caller didn't give one, so a module gets a working
+  // deep link by naming its record, and one route change fixes every notice
+  // pointing at it. An explicit action_url always wins.
+  const link =
+    action_url || deepLinkFor(reference_type, reference_id) || null;
   const { rows } = await query(
     `INSERT INTO shared.notifications
        (user_id, business, type, priority, title, body, reference_type, reference_id, action_url, actions)
@@ -77,7 +87,7 @@ async function notify({
       body || null,
       reference_type || null,
       reference_id || null,
-      action_url || null,
+      link,
       JSON.stringify(actionsArr),
     ],
   );
@@ -87,7 +97,7 @@ async function notify({
     title,
     body,
     priority: prio,
-    action_url: action_url || null,
+    action_url: link,
     actions: actionsArr,
     created_at: rows[0].created_at,
   };
@@ -253,6 +263,33 @@ async function markReadByReference({ user_id, reference_type, reference_id }) {
   return { marked: rows.length };
 }
 
+/**
+ * Like markReadByReference, but for EVERY user at once — used when the
+ * thing the notifications point at was handled outside any one user's
+ * session (a customer thread answered from the Instagram app clears the
+ * whole team's "new message" bell, since no in-Hub read will ever fire).
+ * Emits notification:read per affected user so open tabs drop the badge.
+ */
+async function markReadByReferenceAllUsers({ reference_type, reference_id }) {
+  if (!reference_type || !reference_id) return { marked: 0 };
+  const { rows } = await query(
+    `UPDATE shared.notifications SET is_read = true, read_at = now()
+      WHERE reference_type = $1 AND reference_id = $2
+        AND is_read = false
+      RETURNING notification_id, user_id`,
+    [reference_type, reference_id],
+  );
+  const byUser = new Map();
+  for (const r of rows) {
+    if (!byUser.has(r.user_id)) byUser.set(r.user_id, []);
+    byUser.get(r.user_id).push(r.notification_id);
+  }
+  for (const [uid, ids] of byUser) {
+    emitRead(uid, { ids, reference_type, reference_id });
+  }
+  return { marked: rows.length };
+}
+
 async function deleteOne({ user_id, id }) {
   const { rowCount } = await query(
     `DELETE FROM shared.notifications WHERE notification_id = $1 AND user_id = $2`,
@@ -333,6 +370,7 @@ module.exports = {
   markRead,
   markAllRead,
   markReadByReference,
+  markReadByReferenceAllUsers,
   deleteOne,
   bulkDelete,
   getPreferences,

@@ -796,9 +796,9 @@ export function CommandCenter() {
           {canSeeDashboard && <PraxisInsightsCard summary={insights} />}
         </div>
 
-        {/* App grid — promoted to first on mobile */}
+        {/* App grid — promoted to first on mobile. Renders its own section
+            head so the Arrange/Done control lives beside the title. */}
         <div className="max-md:order-1">
-          <SectionHead title="Your apps" />
           <AppGrid badges={insightBadges} />
         </div>
 

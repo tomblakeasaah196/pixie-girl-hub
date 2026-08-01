@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Search, Check, X } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { AnchoredDropdown } from "@/components/ui/AnchoredDropdown";
 import { useBaseProducts, type BaseProduct } from "@/lib/catalogue";
 
 /**
@@ -20,20 +21,10 @@ export function BaseProductPicker({
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [label, setLabel] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLDivElement>(null);
 
   // Filters from the first character; react-query caches per term.
   const results = useBaseProducts(q.trim() ? { q: q.trim() } : {});
-
-  useEffect(() => {
-    if (!open) return;
-    const handle = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node))
-        setOpen(false);
-    };
-    document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, [open]);
 
   const pick = (b: BaseProduct) => {
     onChange(b.product_id);
@@ -55,7 +46,7 @@ export function BaseProductPicker({
     return (
       <div className="flex items-center gap-2 h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line">
         <Check className="w-4 h-4 text-success shrink-0" />
-        <span className="text-[13px] truncate flex-1">{label}</span>
+        <span className="text-[13px] truncate min-w-0 flex-1">{label}</span>
         {!disabled && (
           <button
             onClick={() => setOpen(true)}
@@ -78,8 +69,8 @@ export function BaseProductPicker({
   }
 
   return (
-    <div ref={ref} className="relative">
-      <div className="relative">
+    <div className="relative">
+      <div className="relative" ref={anchorRef}>
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-faint pointer-events-none" />
         <input
           autoFocus={open}
@@ -95,50 +86,51 @@ export function BaseProductPicker({
         />
       </div>
 
-      {open && (
-        <div className="select-dropdown-list absolute z-50 top-[calc(100%+4px)] left-0 right-0 rounded-[11px] overflow-hidden py-1 max-h-[300px] overflow-y-auto">
-          {q.trim().length === 0 ? (
-            <div className="px-[13px] py-3 text-[12.5px] text-text-faint">
-              Start typing to search…
-            </div>
-          ) : results.isLoading ? (
-            <div className="px-[13px] py-3 text-[12.5px] text-text-faint">
-              Searching…
-            </div>
-          ) : list.length === 0 ? (
-            <div className="px-[13px] py-3 text-[12.5px] text-text-faint">
-              No base products match “{q.trim()}”.
-            </div>
-          ) : (
-            list.map((b) => (
-              <button
-                key={b.product_id}
-                type="button"
-                onClick={() => pick(b)}
-                className={cn(
-                  "w-full px-[13px] py-2 text-left transition-colors hover:bg-text-primary/[0.06]",
-                  b.product_id === value && "bg-accent/[0.08]",
+      <AnchoredDropdown
+        anchorRef={anchorRef}
+        open={open}
+        onClose={() => setOpen(false)}
+        maxHeight={300}
+      >
+        {q.trim().length === 0 ? (
+          <div className="px-[13px] py-3 text-[12.5px] text-text-faint">
+            Start typing to search…
+          </div>
+        ) : results.isLoading ? (
+          <div className="px-[13px] py-3 text-[12.5px] text-text-faint">
+            Searching…
+          </div>
+        ) : list.length === 0 ? (
+          <div className="px-[13px] py-3 text-[12.5px] text-text-faint">
+            No base products match “{q.trim()}”.
+          </div>
+        ) : (
+          list.map((b) => (
+            <button
+              key={b.product_id}
+              type="button"
+              onClick={() => pick(b)}
+              className={cn(
+                "w-full px-[13px] py-2 text-left transition-colors hover:bg-text-primary/[0.06]",
+                b.product_id === value && "bg-accent/[0.08]",
+              )}
+            >
+              <div className="text-[13px] text-text-primary truncate">
+                {b.name}
+              </div>
+              <div className="text-[11px] text-text-faint flex items-center gap-2">
+                <span className="font-mono text-accent-glow">
+                  {b.product_code}
+                </span>
+                {b.lace_type && <span>· {b.lace_type.replace(/_/g, " ")}</span>}
+                {b.hair_length_inches != null && (
+                  <span>· {b.hair_length_inches}"</span>
                 )}
-              >
-                <div className="text-[13px] text-text-primary truncate">
-                  {b.name}
-                </div>
-                <div className="text-[11px] text-text-faint flex items-center gap-2">
-                  <span className="font-mono text-accent-glow">
-                    {b.product_code}
-                  </span>
-                  {b.lace_type && (
-                    <span>· {b.lace_type.replace(/_/g, " ")}</span>
-                  )}
-                  {b.hair_length_inches != null && (
-                    <span>· {b.hair_length_inches}"</span>
-                  )}
-                </div>
-              </button>
-            ))
-          )}
-        </div>
-      )}
+              </div>
+            </button>
+          ))
+        )}
+      </AnchoredDropdown>
     </div>
   );
 }

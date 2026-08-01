@@ -153,6 +153,25 @@ async function createProduct(req, res) {
     data: await service.createProduct({ ...base(req), input: req.body }),
   });
 }
+async function createBaseProducts(req, res) {
+  res.status(201).json({
+    data: await service.createBaseProducts({ ...base(req), input: req.body }),
+  });
+}
+async function cloneProduct(req, res) {
+  res.status(201).json({
+    data: await service.cloneProduct({ ...base(req), id: req.params.id }),
+  });
+}
+async function createSiblingSizes(req, res) {
+  res.status(201).json({
+    data: await service.createSiblingSizes({
+      ...base(req),
+      id: req.params.id,
+      sizes: req.body.sizes,
+    }),
+  });
+}
 async function bulkImportProducts(req, res) {
   res.status(201).json({
     data: await service.bulkImportProducts({
@@ -304,6 +323,10 @@ async function addImage(req, res) {
     }),
   });
 }
+async function imageCutout(req, res) {
+  if (!requireFile(req, res)) return;
+  res.json({ data: await service.imageCutout({ file: req.file }) });
+}
 async function uploadCoverImage(req, res) {
   if (!req.file)
     return res.status(400).json({
@@ -451,6 +474,9 @@ module.exports = {
   listProducts,
   getProduct,
   createProduct,
+  createBaseProducts,
+  cloneProduct,
+  createSiblingSizes,
   bulkImportProducts,
   updateProduct,
   deleteProduct,
@@ -472,6 +498,7 @@ module.exports = {
   listImages,
   addImage,
   uploadCoverImage,
+  imageCutout,
   updateImage,
   removeImage,
   listVideos,

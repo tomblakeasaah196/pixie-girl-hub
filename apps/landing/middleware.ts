@@ -1,27 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 
 /**
- * Host → brand resolver for the public sales subdomains.
+ * Host → brand HINT for the public sales subdomains.
  *
- * The resolved brand is forwarded to Server Components as a REQUEST header
- * (`x-brand-context`) so lib/api.ts can pass it on to the Hub backend as
- * `X-Brand-Context`. Setting the header only on the *response* (the previous
- * behaviour) is invisible to `headers()` in a Server Component — so any host
- * missing from the map fell straight through to a 404. That is exactly what
- * happened to sales.faitlynhair.com, which was never in the map.
+ * NO hardcoded domain map here — the authoritative host → brand mapping
+ * lives in the DB (`business_config.sales_subdomain`, edited in Settings →
+ * Business Setup) and is applied by the Hub's host-brand-resolver
+ * middleware: lib/api.ts forwards the original Host on every backend call,
+ * so a brand domain change is done entirely from the UI.
+ *
+ * This middleware only stamps a best-effort HINT (`x-brand-context`) from
+ * the brand key appearing in the hostname, so Server Components that want
+ * a brand before any API round-trip still have one. The resolved brand is
+ * forwarded as a REQUEST header — setting it only on the *response* is
+ * invisible to `headers()` in a Server Component.
  */
-const HOST_BRAND_MAP: Record<string, string> = {
-  "sales.pixiegirlglobal.com": "pixiegirl",
-  "sales.faitlynhair.com": "faitlynhair",
-  "sales.thefaitlynbrand.com": "faitlynhair",
-  localhost: "pixiegirl", // dev default
-};
-
 function resolveBrand(hostname: string): string | null {
   const host = hostname.split(":")[0].toLowerCase();
-  if (HOST_BRAND_MAP[host]) return HOST_BRAND_MAP[host];
-  // Substring fallback so a freshly-pointed or aliased subdomain still
-  // resolves to the right brand before it is added to the map above.
+  // Brand-key substring match — domain-agnostic, so it survives domain
+  // changes (any host containing the brand's name resolves to it).
   if (host.includes("faitlyn")) return "faitlynhair";
   if (host.includes("pixie")) return "pixiegirl";
   return process.env.DEFAULT_BRAND ?? null;

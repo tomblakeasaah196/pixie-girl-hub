@@ -45,7 +45,7 @@ Each is full CRUD (`GET` list/detail, `POST`, `PATCH`, `DELETE`) gated on
 | Area            | Routes (`/api/v1/hr/...`)                                       | Table                         |
 | --------------- | --------------------------------------------------------------- | ----------------------------- |
 | Payroll runs    | `/payroll-runs` + `/:id/{calculate,review,approve,pay,reverse}` | `{brand}.payroll_runs`        |
-| Payslips (read) | `/payslips`                                                     | `{brand}.payslips` + `_lines` |
+| Payslips        | `/payslips` + `/:id/{breakdown,recalculate,pdf}` + `/:id/attendance/:dayId/resolve` | `{brand}.payslips` + `_lines` |
 | Commissions     | `/commissions` + `/:id/{approve,reverse}`                       | `{brand}.commission_earned`   |
 | Bonuses         | `/bonuses` + `/:id/{decision,reverse}`                          | `{brand}.bonuses_awarded`     |
 
@@ -65,7 +65,34 @@ Each is full CRUD (`GET` list/detail, `POST`, `PATCH`, `DELETE`) gated on
   finance modules).
 - **Commissions:** accrue → approve → paid (or reversed). **Bonuses:** award →
   approve/reject (gated on `hr_payroll.approve`) → paid (or reversed).
-- Payslips are read-only; payment is settled by the run's `pay` action.
+- **Payslip figures are never edited by hand.** A slip changes only by being
+  recalculated from the underlying attendance / commission / bonus truth, and
+  payment is settled by the run's `pay` action.
+- **Per-employee review + waive/uphold** (`payslip.breakdown.js`, pure/unit-tested):
+  `GET /payslips/:id/breakdown` returns one employee's whole story for the period
+  — every flagged attendance day with the query the reconciler raised and the
+  employee's response, every commission/bonus being added, and a projection of
+  what the net becomes if the run were recalculated now. `POST
+  /payslips/:id/attendance/:dayId/resolve` waives or upholds ONE line (gated on
+  `hr_payroll.approve` — it moves pay), and `POST /payslips/:id/recalculate`
+  re-costs that single slip and re-derives the run's totals from its payslips.
+  Locked once the run is approved/paid.
+- **One decision primitive:** `hr_ops.setDayJustification()` is the only place a
+  lateness decision changes money — the query inbox (`/queries/:id/resolve`) and
+  the payroll review sheet both call it, so an employee can never see one answer
+  in My HR while payroll acts on another. Waiving flips `attendance_days.
+  justified` on and upholding flips it back off; the deduction amount is
+  **preserved either way**, which is what makes a waive reversible.
+- **One calculation path:** `computeSlipForStaff()` in `payroll.service.js` is
+  shared by the whole-run calculate and the single-employee recalculation, so a
+  slip recomputed alone can't disagree with the same slip recomputed in its run.
+- **Payslip PDF** (`payslip.pdf.js`, pure/unit-tested): a full-page, brand-skinned
+  A4 document on the same canon as the invoice/receipt renderer
+  (`services/pdf.brand-docs`) — employer identity from `business_config`, the
+  employee and period, itemised earnings beside itemised deductions, net pay in
+  figures and words, employer contributions kept out of the deductions column,
+  and the payment trail. It draws its own sheet, so it renders with
+  `brandDocs.PDF_OPTIONS` (zero engine margins).
 
 ## Pass 3 — appraisal execution + attendance (next)
 

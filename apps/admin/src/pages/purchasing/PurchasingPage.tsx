@@ -1,15 +1,20 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useUrlTab } from "@/hooks/useUrlTab";
+import { useDeepLinkedRecord } from "@/hooks/useDeepLinkedRecord";
 import {
   ShoppingCart,
   Building2,
   FileText,
   TrendingUp,
   Plus,
+  ListPlus,
   Lock,
   AlertTriangle,
   ChevronDown,
   ChevronRight,
   Package,
+  PackageCheck,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
@@ -38,7 +43,9 @@ import {
   useCreateSupplier,
   useGrns,
   useSupplierInvoices,
+  useStockLocationOptions,
 } from "./hooks";
+import { ProductPicker } from "@/components/catalogue/ProductPicker";
 import {
   PO_STATUS_META,
   PO_NEXT_STATES,
@@ -68,7 +75,12 @@ export function PurchasingPage() {
   useBreadcrumbs([{ label: "Purchasing" }]);
   const can = useAuthStore((s) => s.can);
 
-  const [tab, setTab] = useState<Tab>("overview");
+  const [tab, setTab] = useUrlTab<Tab>("overview", [
+    "overview",
+    "purchase-orders",
+    "suppliers",
+    "grn-invoices",
+  ]);
   const [selectedPo, setSelectedPo] = useState<PurchaseOrder | null>(null);
   const [showCreatePo, setShowCreatePo] = useState(false);
   const [statusFilter, setStatusFilter] = useState("");
@@ -256,6 +268,16 @@ function PoTab({
     page,
   });
   const pos = data?.data ?? [];
+
+  /* An approver or buyer arriving from a task, a notification, or the
+     approvals queue (/purchasing?tab=purchase-orders&order=<id>) lands on
+     that PO rather than on a list to search. */
+  useDeepLinkedRecord<PurchaseOrder>(
+    "order",
+    pos,
+    (p) => p.po_id,
+    onSelect,
+  );
   const total = data?.total ?? 0;
   const pageSize = data?.page_size ?? 25;
 
@@ -417,6 +439,7 @@ function PoDetailDrawer({
   canApprove: boolean;
   canEdit: boolean;
 }) {
+  const navigate = useNavigate();
   const { data: po } = usePo(initialPo.po_id);
   const current = po ?? initialPo;
   const actions = usePoActions(current.po_id);
@@ -458,6 +481,24 @@ function PoDetailDrawer({
               }
             >
               {actions.approve.isPending ? "Approving…" : "Approve PO"}
+            </Button>
+          )}
+          {/* The hand-off into the warehouse. Everything the receiver needs
+              travels in the link, so Goods Reception opens prefilled with this
+              PO's outstanding lines — no re-keying, and the receipt books
+              itself back against the order. Available from the moment the PO
+              exists (POs are not approval-gated here) until it is fully
+              received or closed. */}
+          {!["closed", "cancelled", "received"].includes(current.status) && (
+            <Button
+              size="sm"
+              variant="primary"
+              icon={<PackageCheck className="w-3.5 h-3.5" />}
+              onClick={() =>
+                navigate(`/stock?tab=receive&po=${current.po_id}`)
+              }
+            >
+              Receive goods
             </Button>
           )}
           {!["draft", "submitted", "closed", "cancelled"].includes(
@@ -693,6 +734,67 @@ function PoLineCard({ line }: { line: import("./types").PoLine }) {
 }
 
 // ── Create PO Drawer ──────────────────────────────────────
+//
+// Creating a PO used to fail every time: the form posted
+// {description, quantity, unit_price_original, currency} per line while the
+// API's strict schema wants a PO-level title + currency and lines of
+// {qty_ordered, unit_price} — so every submit 400'd on an unknown key.
+//
+// It also had no way to say WHAT was being bought. Factory orders are for base
+// products, and a typed description can't be received into stock: nothing ties
+// "Black Straight HD13x4 — Medium" the text to the SKU on the shelf. Lines now
+// pick a base product (the same picker the rest of the ERP uses), so the PO
+// knows the SKU and Goods Reception can prefill and book the delivery back
+// against the order. Free text still works for anything not in the catalogue —
+// freight, samples, a style being introduced — it just isn't stock-linked.
+
+const PO_CURRENCIES = ["CNY", "USD", "NGN", "GBP", "EUR"];
+
+interface PoLineDraft {
+  product_id?: string;
+  product_label?: string;
+  description: string;
+  qty: string;
+  unit_price: string;
+  lace_type: string;
+  hair_color: string;
+  hair_texture: string;
+  cap_size: string;
+  hair_length: string;
+  density: string;
+  manufacturing_location: string;
+  expanded: boolean;
+}
+
+const EMPTY_LINE: PoLineDraft = {
+  description: "",
+  qty: "1",
+  unit_price: "",
+  lace_type: "",
+  hair_color: "",
+  hair_texture: "",
+  cap_size: "",
+  hair_length: "",
+  density: "",
+  manufacturing_location: "China",
+  expanded: false,
+};
+
+/** Wig attributes ride along as line notes — the PO schema has no columns for
+ *  them, and losing what was specified to the factory would be worse than
+ *  putting it in text the supplier can read on the printed PO. */
+function attributeNote(l: PoLineDraft): string | undefined {
+  const bits = [
+    l.lace_type && `Lace: ${l.lace_type}`,
+    l.hair_texture && `Texture: ${l.hair_texture}`,
+    l.hair_color && `Colour: ${l.hair_color}`,
+    l.cap_size && `Cap: ${l.cap_size}`,
+    l.hair_length && `Length: ${l.hair_length}`,
+    l.density && `Density: ${l.density}`,
+    l.manufacturing_location && `Origin: ${l.manufacturing_location}`,
+  ].filter(Boolean);
+  return bits.length ? bits.join(" · ") : undefined;
+}
 
 function CreatePoDrawer({
   open,
@@ -702,97 +804,109 @@ function CreatePoDrawer({
   onClose: () => void;
 }) {
   const { data: suppliers } = useSuppliers();
+  const { data: locations } = useStockLocationOptions();
   const create = useCreatePo();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [supplierId, setSupplierId] = useState("");
-  const [lines, setLines] = useState([
-    {
-      description: "",
-      quantity: "1",
-      unit_price_original: "",
-      currency: "CNY",
-      lace_type: "",
-      hair_color: "",
-      hair_texture: "",
-      cap_size: "",
-      hair_length: "",
-      density: "",
-      manufacturing_location: "China",
-      expanded: false,
-    },
-  ]);
+  const [title, setTitle] = useState("");
+  const [currency, setCurrency] = useState("CNY");
+  const [fxRate, setFxRate] = useState("");
+  const [locationId, setLocationId] = useState("");
+  const [expected, setExpected] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [lines, setLines] = useState<PoLineDraft[]>([{ ...EMPTY_LINE }]);
 
-  const addLine = () =>
-    setLines((p) => [
-      ...p,
-      {
-        description: "",
-        quantity: "1",
-        unit_price_original: "",
-        currency: "CNY",
-        lace_type: "",
-        hair_color: "",
-        hair_texture: "",
-        cap_size: "",
-        hair_length: "",
-        density: "",
-        manufacturing_location: "China",
-        expanded: false,
-      },
-    ]);
+  const [bulkOpen, setBulkOpen] = useState(false);
 
+  const addLine = () => setLines((p) => [...p, { ...EMPTY_LINE }]);
+  /** Bulk add — one line per ticked product. Untouched placeholder lines are
+   *  swallowed rather than left dangling above the batch, so ticking 12 wigs
+   *  on a fresh PO gives exactly 12 lines. */
+  const addLinesFromHits = (hits: { id: string; label: string }[]) => {
+    if (!hits.length) return;
+    const fresh = hits.map((h) => ({
+      ...EMPTY_LINE,
+      product_id: h.id,
+      product_label: h.label,
+      description: h.label,
+    }));
+    setLines((p) => {
+      const kept = p.filter(
+        (l) =>
+          l.product_id ||
+          l.description.trim() ||
+          l.unit_price.trim() ||
+          l.qty !== "1",
+      );
+      return [...kept, ...fresh];
+    });
+    setBulkOpen(false);
+  };
   const removeLine = (i: number) =>
     setLines((p) => p.filter((_, j) => j !== i));
-
-  const setLineF = (i: number, k: string, v: string) =>
+  const setLineF = (i: number, k: keyof PoLineDraft, v: string | boolean) =>
     setLines((p) => p.map((l, j) => (j === i ? { ...l, [k]: v } : l)));
-
   const toggleLineExpand = (i: number) =>
     setLines((p) =>
       p.map((l, j) => (j === i ? { ...l, expanded: !l.expanded } : l)),
     );
 
+  const supplier = suppliers?.find((s) => s.supplier_id === supplierId);
+  const linesValid = lines.every(
+    (l) => l.description.trim() && Number(l.qty) > 0,
+  );
+  const total = lines.reduce(
+    (sum, l) => sum + (Number(l.qty) || 0) * (Number(l.unit_price) || 0),
+    0,
+  );
+
+  const reset = () => {
+    setStep(1);
+    setSupplierId("");
+    setTitle("");
+    setCurrency("CNY");
+    setFxRate("");
+    setLocationId("");
+    setExpected("");
+    setError(null);
+    setLines([{ ...EMPTY_LINE }]);
+    setBulkOpen(false);
+  };
+
   const handleCreate = () => {
-    if (!supplierId || lines.some((l) => !l.description)) return;
+    if (!supplierId || !linesValid) return;
+    setError(null);
     create.mutate(
       {
         supplier_id: supplierId,
+        // The API requires a title; default it to something the buyer will
+        // recognise rather than making them type one.
+        title:
+          title.trim() ||
+          `${supplier?.supplier_name ?? "Supplier"} order — ${new Date().toLocaleDateString("en-NG")}`,
+        po_currency: currency,
+        // FX is captured now and locked onto the PO, so a later rate move
+        // never rewrites what this order cost.
+        ...(fxRate ? { fx_rate: Number(fxRate) } : {}),
+        ...(locationId ? { delivery_location_id: locationId } : {}),
+        ...(expected ? { expected_delivery: expected } : {}),
         lines: lines.map((l) => ({
-          description: l.description,
-          quantity: parseInt(l.quantity) || 1,
-          unit_price_original: parseFloat(l.unit_price_original) || 0,
-          currency: l.currency,
-          lace_type: l.lace_type || undefined,
-          hair_color: l.hair_color || undefined,
-          hair_texture: l.hair_texture || undefined,
-          cap_size: l.cap_size || undefined,
-          hair_length: l.hair_length || undefined,
-          density: l.density || undefined,
-          manufacturing_location: l.manufacturing_location || undefined,
+          ...(l.product_id ? { product_id: l.product_id } : {}),
+          description: l.description.trim(),
+          qty_ordered: Number(l.qty) || 1,
+          unit_price: Number(l.unit_price) || 0,
+          ...(attributeNote(l) ? { notes: attributeNote(l) } : {}),
         })),
       },
       {
         onSuccess: () => {
-          setStep(1);
-          setSupplierId("");
-          setLines([
-            {
-              description: "",
-              quantity: "1",
-              unit_price_original: "",
-              currency: "CNY",
-              lace_type: "",
-              hair_color: "",
-              hair_texture: "",
-              cap_size: "",
-              hair_length: "",
-              density: "",
-              manufacturing_location: "China",
-              expanded: false,
-            },
-          ]);
+          reset();
           onClose();
         },
+        onError: (e: unknown) =>
+          setError(
+            e instanceof Error ? e.message : "Could not create the order.",
+          ),
       },
     );
   };
@@ -821,8 +935,7 @@ function CreatePoDrawer({
             <Button
               variant="primary"
               disabled={
-                (step === 1 && !supplierId) ||
-                (step === 2 && lines.some((l) => !l.description))
+                (step === 1 && !supplierId) || (step === 2 && !linesValid)
               }
               onClick={() => setStep((s) => (s + 1) as typeof step)}
             >
@@ -831,7 +944,7 @@ function CreatePoDrawer({
           ) : (
             <Button
               variant="primary"
-              disabled={create.isPending}
+              disabled={create.isPending || !supplierId || !linesValid}
               onClick={handleCreate}
             >
               {create.isPending ? "Creating…" : "Create PO"}
@@ -843,12 +956,15 @@ function CreatePoDrawer({
       {step === 1 && (
         <div className="space-y-4">
           <p className="text-[13px] text-text-muted">
-            Select a supplier for this purchase order.
+            Who are you buying from, and in what currency?
           </p>
           {suppliers?.map((s) => (
             <button
               key={s.supplier_id}
-              onClick={() => setSupplierId(s.supplier_id)}
+              onClick={() => {
+                setSupplierId(s.supplier_id);
+                if (s.currency) setCurrency(s.currency);
+              }}
               className={cn(
                 "w-full text-left p-4 glass rounded-xl border transition-all",
                 supplierId === s.supplier_id
@@ -862,6 +978,73 @@ function CreatePoDrawer({
               </div>
             </button>
           ))}
+
+          {supplierId && (
+            <div className="glass rounded-xl p-4 space-y-3">
+              <Field label="Order title">
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="e.g. July restock — HD lace bodies"
+                  className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 text-[13px]"
+                  autoComplete="off"
+                />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Currency">
+                  <Select
+                    value={currency}
+                    onChange={setCurrency}
+                    options={PO_CURRENCIES.map((c) => ({ value: c, label: c }))}
+                    ariaLabel="Currency"
+                    className="[&>button]:h-[38px]"
+                  />
+                </Field>
+                <Field label={`FX to NGN (1 ${currency} = ?)`}>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.0001"
+                    value={fxRate}
+                    onChange={(e) => setFxRate(e.target.value)}
+                    placeholder={currency === "NGN" ? "1" : "e.g. 230"}
+                    className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 font-mono text-[13px]"
+                    autoComplete="off"
+                  />
+                </Field>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Deliver to">
+                  <Select
+                    value={locationId}
+                    onChange={setLocationId}
+                    options={[
+                      { value: "", label: "— Select location —" },
+                      ...(locations ?? []).map((l) => ({
+                        value: l.location_id,
+                        label: l.display_name,
+                      })),
+                    ]}
+                    ariaLabel="Deliver to"
+                    className="[&>button]:h-[38px]"
+                  />
+                </Field>
+                <Field label="Expected delivery">
+                  <input
+                    type="date"
+                    value={expected}
+                    onChange={(e) => setExpected(e.target.value)}
+                    className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 text-[13px]"
+                  />
+                </Field>
+              </div>
+              <p className="text-[11px] text-text-faint">
+                The delivery location is prefilled when you receive this order
+                in Stock → Goods Reception.
+              </p>
+            </div>
+          )}
         </div>
       )}
 
@@ -869,17 +1052,45 @@ function CreatePoDrawer({
         <div className="space-y-4">
           <div className="flex justify-between items-center">
             <span className="text-[13px] text-text-muted">
-              {lines.length} line{lines.length !== 1 ? "s" : ""}
+              {lines.length} line{lines.length !== 1 ? "s" : ""} · prices in{" "}
+              {currency}
             </span>
-            <Button
-              size="sm"
-              variant="ghost"
-              icon={<Plus className="w-3.5 h-3.5" />}
-              onClick={addLine}
-            >
-              Add Line
-            </Button>
+            <div className="flex items-center gap-1.5">
+              <Button
+                size="sm"
+                variant={bulkOpen ? "primary" : "ghost"}
+                icon={<ListPlus className="w-3.5 h-3.5" />}
+                onClick={() => setBulkOpen((v) => !v)}
+              >
+                Bulk Add
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                icon={<Plus className="w-3.5 h-3.5" />}
+                onClick={addLine}
+              >
+                Add Line
+              </Button>
+            </div>
           </div>
+
+          {/* Tick several products in one pass instead of one line at a time —
+              a factory restock is twenty near-identical wigs. */}
+          {bulkOpen && (
+            <div className="glass rounded-xl p-4 space-y-2.5">
+              <p className="text-[12px] text-text-muted">
+                Pick a product type, search, and tick everything you're ordering
+                — each one becomes its own line with quantity 1.
+              </p>
+              <ProductPicker
+                multi
+                autoFocus
+                addLabel="Add lines ·"
+                onPickMany={addLinesFromHits}
+              />
+            </div>
+          )}
           {lines.map((line, i) => (
             <div key={i} className="glass rounded-xl p-4 space-y-3">
               <div className="flex justify-between items-start gap-2">
@@ -895,54 +1106,80 @@ function CreatePoDrawer({
                   </button>
                 )}
               </div>
-              <Field label="Description">
+
+              {/* Pick the base product being bought — this is what makes the
+                  line receivable into stock without re-keying. */}
+              <Field label="Base product">
+                {line.product_id ? (
+                  <div className="flex items-center justify-between gap-2 h-[38px] px-[11px] rounded-[10px] bg-accent/[0.07] border border-accent/30">
+                    <span className="text-[13px] text-text-primary truncate">
+                      {line.product_label}
+                    </span>
+                    <button
+                      onClick={() => {
+                        setLineF(i, "product_id", "");
+                        setLineF(i, "product_label", "");
+                      }}
+                      className="text-[11px] text-text-muted hover:text-danger shrink-0"
+                    >
+                      Change
+                    </button>
+                  </div>
+                ) : (
+                  <ProductPicker
+                    onPick={(hit) => {
+                      setLines((p) =>
+                        p.map((l, j) =>
+                          j === i
+                            ? {
+                                ...l,
+                                product_id: hit.id,
+                                product_label: hit.label,
+                                description: l.description || hit.label,
+                              }
+                            : l,
+                        ),
+                      );
+                    }}
+                  />
+                )}
+              </Field>
+
+              <Field label="Description (what the supplier sees)">
                 <input
                   type="text"
                   value={line.description}
                   onChange={(e) => setLineF(i, "description", e.target.value)}
                   placeholder="Product / item description"
-                  className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+                  className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 text-[13px]"
+                  autoComplete="off"
                 />
               </Field>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <Field label="Quantity">
                   <input
                     type="number"
                     min="1"
-                    value={line.quantity}
-                    onChange={(e) => setLineF(i, "quantity", e.target.value)}
-                    className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 font-mono text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+                    value={line.qty}
+                    onChange={(e) => setLineF(i, "qty", e.target.value)}
+                    className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 font-mono text-[13px]"
+                    autoComplete="off"
                   />
                 </Field>
-                <Field label="Unit Price">
+                <Field label={`Unit price (${currency})`}>
                   <input
                     type="number"
                     min="0"
                     step="0.01"
-                    value={line.unit_price_original}
-                    onChange={(e) =>
-                      setLineF(i, "unit_price_original", e.target.value)
-                    }
+                    value={line.unit_price}
+                    onChange={(e) => setLineF(i, "unit_price", e.target.value)}
                     placeholder="0.00"
-                    className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 font-mono text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+                    className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 font-mono text-[13px]"
+                    autoComplete="off"
                   />
-                </Field>
-                <Field label="Currency">
-                  <select
-                    value={line.currency}
-                    onChange={(e) => setLineF(i, "currency", e.target.value)}
-                    className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 text-[13px]"
-                  >
-                    {["CNY", "NGN", "USD", "GBP"].map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
                 </Field>
               </div>
 
-              {/* Wig attributes toggle */}
               <button
                 onClick={() => toggleLineExpand(i)}
                 className="flex items-center gap-1.5 text-[11px] text-accent-glow font-semibold"
@@ -959,15 +1196,12 @@ function CreatePoDrawer({
                 <div className="grid grid-cols-2 gap-3 pt-1 border-t hairline">
                   {[
                     {
-                      key: "lace_type",
+                      key: "lace_type" as const,
                       label: "Lace Type",
-                      options: [
-                        { value: "", label: "— Select —" },
-                        ...LACE_TYPES,
-                      ],
+                      options: [{ value: "", label: "— Select —" }, ...LACE_TYPES],
                     },
                     {
-                      key: "hair_texture",
+                      key: "hair_texture" as const,
                       label: "Texture",
                       options: [
                         { value: "", label: "— Select —" },
@@ -975,23 +1209,17 @@ function CreatePoDrawer({
                       ],
                     },
                     {
-                      key: "cap_size",
+                      key: "cap_size" as const,
                       label: "Cap Size",
-                      options: [
-                        { value: "", label: "— Select —" },
-                        ...CAP_SIZES,
-                      ],
+                      options: [{ value: "", label: "— Select —" }, ...CAP_SIZES],
                     },
                     {
-                      key: "density",
+                      key: "density" as const,
                       label: "Density",
-                      options: [
-                        { value: "", label: "— Select —" },
-                        ...DENSITIES,
-                      ],
+                      options: [{ value: "", label: "— Select —" }, ...DENSITIES],
                     },
                     {
-                      key: "manufacturing_location",
+                      key: "manufacturing_location" as const,
                       label: "Origin",
                       options: [
                         { value: "", label: "— Select —" },
@@ -1001,7 +1229,7 @@ function CreatePoDrawer({
                   ].map(({ key, label, options }) => (
                     <Field key={key} label={label}>
                       <select
-                        value={(line as unknown as Record<string, string>)[key]}
+                        value={line[key] as string}
                         onChange={(e) => setLineF(i, key, e.target.value)}
                         className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 text-[13px]"
                       >
@@ -1017,11 +1245,10 @@ function CreatePoDrawer({
                     <input
                       type="text"
                       value={line.hair_color}
-                      onChange={(e) =>
-                        setLineF(i, "hair_color", e.target.value)
-                      }
+                      onChange={(e) => setLineF(i, "hair_color", e.target.value)}
                       placeholder="e.g. Natural Black, #1B"
-                      className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+                      className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 text-[13px]"
+                      autoComplete="off"
                     />
                   </Field>
                   <Field label="Length (inches)">
@@ -1032,7 +1259,8 @@ function CreatePoDrawer({
                         setLineF(i, "hair_length", e.target.value)
                       }
                       placeholder='e.g. 18"'
-                      className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 text-[13px]" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+                      className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus:border-accent/50 text-[13px]"
+                      autoComplete="off"
                     />
                   </Field>
                 </div>
@@ -1049,11 +1277,13 @@ function CreatePoDrawer({
           </p>
           <div className="glass rounded-xl p-4">
             <div className="micro mb-1">Supplier</div>
-            <div className="font-semibold">
-              {
-                suppliers?.find((s) => s.supplier_id === supplierId)
-                  ?.supplier_name
-              }
+            <div className="font-semibold">{supplier?.supplier_name}</div>
+            <div className="text-[12px] text-text-faint mt-1">
+              {currency}
+              {fxRate ? ` · locked at ₦${Number(fxRate).toLocaleString()}/${currency}` : " · no FX rate set"}
+              {locationId
+                ? ` · deliver to ${(locations ?? []).find((l) => l.location_id === locationId)?.display_name}`
+                : ""}
             </div>
           </div>
           <div className="glass rounded-xl p-4">
@@ -1067,14 +1297,32 @@ function CreatePoDrawer({
               >
                 <span className="text-text-muted truncate mr-3">
                   {l.description}
+                  {!l.product_id && (
+                    <span className="text-[11px] text-warn ml-2">
+                      not stock-linked
+                    </span>
+                  )}
                 </span>
                 <span className="font-mono shrink-0">
-                  ×{l.quantity} · {l.currency}{" "}
-                  {parseFloat(l.unit_price_original || "0").toFixed(2)}
+                  ×{l.qty} · {currency}{" "}
+                  {(Number(l.unit_price) || 0).toFixed(2)}
                 </span>
               </div>
             ))}
+            <div className="flex justify-between text-[13px] pt-2 mt-1 border-t hairline font-semibold">
+              <span>Total</span>
+              <span className="font-mono">
+                {currency} {total.toFixed(2)}
+              </span>
+            </div>
           </div>
+          {lines.some((l) => !l.product_id) && (
+            <p className="text-[12px] text-text-muted">
+              Lines without a base product can&rsquo;t be received straight into
+              stock — you&rsquo;ll pick the product when the goods arrive.
+            </p>
+          )}
+          {error && <p className="text-[12px] text-danger">{error}</p>}
         </div>
       )}
     </Drawer>

@@ -15,6 +15,7 @@ const argon2 = require("argon2");
 
 const { config } = require("../../../config/env");
 const { AppError } = require("../../../utils/errors");
+const emailService = require("../../../services/email.service");
 const repo = require("./kaizen-auth.repo");
 
 const ACCESS_AUDIENCE = "kaizen";
@@ -194,11 +195,148 @@ async function changePassword({
   await repo.writeAudit({ operatorId, action: "auth.change_password", ip });
 }
 
+// ── Password reset (OTP over email) ────────────────────────────────────────
+
+const RESET_CODE_TTL_MS = 15 * 60 * 1000;
+
+function escapeHtml(s) {
+  return String(s).replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+  );
+}
+
+/**
+ * Request a reset code. Resolves the same way whether or not the email belongs
+ * to an active operator — a 404 here would turn the endpoint into an operator
+ * enumeration oracle, which the login path deliberately avoids too.
+ */
+async function requestPasswordReset(email, ip) {
+  const op = await repo.findOperatorByEmail(email);
+  if (!op || op.status !== "active") return;
+
+  // crypto.randomInt, not Math.random — this is a credential.
+  const code = String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
+  const expiresAt = new Date(Date.now() + RESET_CODE_TTL_MS);
+
+  // One live code at a time: a fresh request invalidates the previous one.
+  await repo.revokeResetTokensForOperator(op.operator_id);
+  await repo.createPasswordResetToken({
+    operatorId: op.operator_id,
+    codeHash: sha256(code),
+    expiresAt,
+  });
+
+  await emailService.send({
+    to: op.email,
+    subject: "Your Kaizen password reset code",
+    html:
+      `<p>Hi ${escapeHtml(op.display_name || "there")},</p>` +
+      `<p>Use this code to set a new Kaizen password:</p>` +
+      `<p style="font-size:28px;font-weight:700;letter-spacing:6px;">${code}</p>` +
+      `<p>It expires in 15 minutes and can be used once.</p>` +
+      `<p>If you didn't request this, you can ignore this email — your ` +
+      `password hasn't changed.</p>`,
+    text:
+      `Your Kaizen password reset code is ${code}\n\n` +
+      `It expires in 15 minutes and can be used once.\n` +
+      `If you didn't request this, ignore this email.`,
+  });
+
+  await repo.writeAudit({
+    operatorId: op.operator_id,
+    action: "auth.password_reset_requested",
+    ip,
+  });
+}
+
+const invalidCode = () =>
+  new AppError("KAIZEN_INVALID_OTP", "Invalid or expired code", 401, {
+    user_message: "That code is invalid or has expired.",
+  });
+
+const codeAttemptsExceeded = () =>
+  new AppError("KAIZEN_OTP_ATTEMPTS_EXCEEDED", "Too many attempts", 429, {
+    user_message: "Too many incorrect attempts. Request a new code.",
+  });
+
+/**
+ * Resolve the live token for `email` and check `code` against it. The lookup is
+ * keyed on the operator, never on the code alone — otherwise a guessed 6-digit
+ * code would match ANY operator's live token, and the per-token attempt cap
+ * would do nothing to slow a search of the 10^6 code space.
+ *
+ * A wrong guess burns one of the token's attempts.
+ * @returns {Promise<{operator: object, tokenId: string}>}
+ */
+async function assertResetCode(email, code) {
+  const op = await repo.findOperatorByEmail(email);
+  if (!op || op.status !== "active") throw invalidCode();
+
+  const token = await repo.findLiveResetTokenByOperator(op.operator_id);
+  if (!token) throw invalidCode();
+  if (token.attempt_count >= token.max_attempts) throw codeAttemptsExceeded();
+
+  const supplied = Buffer.from(sha256(code), "hex");
+  const expected = Buffer.from(token.code_hash, "hex");
+  const ok =
+    supplied.length === expected.length &&
+    crypto.timingSafeEqual(supplied, expected);
+
+  if (!ok) {
+    const after = await repo.incrementResetTokenAttempts(token.token_id);
+    if (after && after.attempt_count >= after.max_attempts) {
+      throw codeAttemptsExceeded();
+    }
+    throw invalidCode();
+  }
+
+  return { operator: op, tokenId: token.token_id };
+}
+
+/** Step 2 of the flow: confirm the code before asking for a new password. Does
+ *  NOT redeem the token — resetPasswordWithOtp still needs it. */
+async function verifyPasswordResetCode(email, code) {
+  await assertResetCode(email, code);
+  return { ok: true };
+}
+
+async function resetPasswordWithOtp({ email, code, newPassword, userAgent, ip }) {
+  const { operator, tokenId } = await assertResetCode(email, code);
+
+  const hash = await argon2.hash(newPassword);
+  await repo.updatePassword(operator.operator_id, hash);
+  await repo.markResetTokenUsed(tokenId);
+  // Anyone holding a session from before the reset loses it.
+  await repo.revokeAllSessions(operator.operator_id);
+  await repo.writeAudit({
+    operatorId: operator.operator_id,
+    action: "auth.password_reset_completed",
+    ip,
+  });
+
+  // Re-read so must_change_password reflects the update we just made.
+  const fresh = await repo.findOperatorById(operator.operator_id);
+  const { accessToken, refreshToken } = await issueTokens(fresh, {
+    userAgent,
+    ip,
+  });
+  return {
+    operator: publicOperator(fresh),
+    access_token: accessToken,
+    refresh_token: refreshToken,
+  };
+}
+
 module.exports = {
   login,
   refresh,
   logout,
   changePassword,
+  requestPasswordReset,
+  verifyPasswordResetCode,
+  resetPasswordWithOtp,
   verifyAccessToken,
   refreshCookieOptions,
   publicOperator,

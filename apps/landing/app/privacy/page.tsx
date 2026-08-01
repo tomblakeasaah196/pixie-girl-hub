@@ -208,16 +208,23 @@ export default async function PrivacyPage() {
           </Section>
 
           <Section title="Contact">
-            <p>
-              For privacy enquiries, email{" "}
-              <a
-                href={`mailto:${brand.fromEmail}`}
-                className="underline underline-offset-2 hover:text-text-primary transition-colors"
-              >
-                {brand.fromEmail}
-              </a>
-              .
-            </p>
+            {brand.supportEmail ? (
+              <p>
+                For privacy enquiries, email{" "}
+                <a
+                  href={`mailto:${brand.supportEmail}`}
+                  className="underline underline-offset-2 hover:text-text-primary transition-colors"
+                >
+                  {brand.supportEmail}
+                </a>
+                .
+              </p>
+            ) : (
+              <p>
+                For privacy enquiries, reach us through the contact options on
+                our storefront.
+              </p>
+            )}
           </Section>
         </div>
       </div>

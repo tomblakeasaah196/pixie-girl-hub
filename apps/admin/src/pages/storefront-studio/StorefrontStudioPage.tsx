@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useUrlTab } from "@/hooks/useUrlTab";
 import {
   DndContext,
   PointerSensor,
@@ -28,7 +29,7 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Plus, Newspaper } from "lucide-react";
+import { Plus, Newspaper, ChevronLeft, Smartphone, Tablet, Monitor } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button, Card, Pill } from "@/components/ui/primitives";
 import { Toggle, Select, ConfirmDialog } from "@/components/ui/controls";
@@ -50,6 +51,8 @@ import {
   usePublishPopup,
   useDeletePopup,
   uploadStorefrontImage,
+  buildOgBanner,
+  type OgBannerParams,
   usePreviewInfo,
   useRevisions,
   useRollbackRevision,
@@ -64,6 +67,12 @@ import { describeError } from "@/lib/error-report";
 import { formatDateTime } from "@/lib/format";
 import { ContentTab, type ContentJump } from "./ContentTab";
 import { VideoField } from "./VideoField";
+import {
+  STOREFRONT_PAGE_CATALOG,
+  CATALOG_BY_KEY,
+  deepMergeSlots,
+  type CatalogPage,
+} from "./page-catalog";
 
 /**
  * Run a Studio mutation with unmissable feedback. Success shows a toast (plus
@@ -131,33 +140,84 @@ function StatusPill({ status }: { status?: StudioStatus }) {
   );
 }
 
+/**
+ * Mobile "back to the list" affordance for the master/detail tabs (Pages,
+ * Popups, Content). On phones the list and editor are a two-screen drill-down
+ * — this returns to the list — so it's hidden from `lg` up where both panes
+ * sit side by side and the button would be meaningless.
+ */
+function BackToList({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="-ml-1 mb-1 inline-flex items-center gap-1 self-start rounded-[9px] py-1 pl-1 pr-2 text-[13px] font-medium text-text-muted hover:text-text-primary lg:hidden"
+    >
+      <ChevronLeft className="h-4 w-4" />
+      {label}
+    </button>
+  );
+}
+
 export function StorefrontStudioPage() {
-  const brand = useBusinessStore((s) => s.activeKey);
-  const [tab, setTab] = useState<Tab>("theme");
+  const [tab, setTab] = useUrlTab<Tab>(
+    "theme",
+    TABS.map((t) => t.key),
+  );
   // Pages → journal links "view/create article" straight into Content, so the
   // operator never has to re-find what they just clicked.
   const [contentJump, setContentJump] = useState<ContentJump | null>(null);
   const clearContentJump = useCallback(() => setContentJump(null), []);
-  const jumpToContent = useCallback((jump: ContentJump) => {
-    setContentJump(jump);
-    setTab("content");
-  }, []);
+  const jumpToContent = useCallback(
+    (jump: ContentJump) => {
+      setContentJump(jump);
+      setTab("content");
+    },
+    [setTab],
+  );
+
+  // The home page's share card (title / description / banner) is edited in ONE
+  // place — the Branding tab — so the Pages editor deep-links there instead of
+  // duplicating the SEO fields. This flag makes Branding scroll to the Share
+  // sections when the operator follows that link.
+  const [focusBrandingShare, setFocusBrandingShare] = useState(false);
+  const clearBrandingShareFocus = useCallback(
+    () => setFocusBrandingShare(false),
+    [],
+  );
+  const jumpToBrandingShare = useCallback(() => {
+    setFocusBrandingShare(true);
+    setTab("branding");
+  }, [setTab]);
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-center justify-between gap-4">
-        <Tabs tabs={TABS} active={tab} onChange={(k) => setTab(k as Tab)} />
-        <Pill tone="accent" dot={false}>
-          {brand}
-        </Pill>
-      </div>
+    <div className="space-y-4 md:space-y-5">
+      {/* Full-width, roomy segmented tab strip — the brand context is already
+          obvious from the app shell, so no chip competes for space here. On
+          phones it scrolls horizontally like a native top segmented control. */}
+      <Tabs
+        tabs={TABS}
+        active={tab}
+        onChange={(k) => setTab(k as Tab)}
+        size="lg"
+      />
 
       <div>
         {tab === "theme" ? <ThemeTab /> : null}
-        {tab === "branding" ? <BrandingTab /> : null}
+        {tab === "branding" ? (
+          <BrandingTab
+            focusShare={focusBrandingShare}
+            onFocusHandled={clearBrandingShareFocus}
+          />
+        ) : null}
         {tab === "toolbar" ? <ToolbarTab /> : null}
         {tab === "navigation" ? <NavigationTab /> : null}
-        {tab === "pages" ? <PagesTab onJumpToContent={jumpToContent} /> : null}
+        {tab === "pages" ? (
+          <PagesTab
+            onJumpToContent={jumpToContent}
+            onJumpToBranding={jumpToBrandingShare}
+          />
+        ) : null}
         {tab === "content" ? (
           <ContentTab jumpTo={contentJump} onJumpHandled={clearContentJump} />
         ) : null}
@@ -313,38 +373,70 @@ function SelectField({
   );
 }
 
+const HEX_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
 function ColorField({
   label,
+  hint,
   value,
+  defaultColor,
   onChange,
+  onReset,
 }: {
   label: string;
+  hint?: string;
+  /** The saved override, or "" when the site is using its default colour. */
   value: string;
+  /** The live default (any CSS colour — hex OR oklch) shown when unset, so the
+   *  swatch always reflects the colour the website is actually painting. */
+  defaultColor?: string;
   onChange: (v: string) => void;
+  /** Clears the override and falls back to the website default. */
+  onReset?: () => void;
 }) {
-  // The colour picker only understands hex; if the saved value is something
-  // else (e.g. an oklch token) the swatch shows a neutral default but the
-  // text field still carries the real value so nothing is lost.
-  const hex = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(value)
-    ? value
-    : "#690909";
+  // The swatch shows the *effective* colour (override, else default) using the
+  // raw CSS value — so an oklch default renders correctly, not as a grey
+  // placeholder. The OS colour picker only speaks hex, so it seeds from the
+  // effective colour when that's a hex and a neutral otherwise; picking always
+  // writes a hex, which the storefront applies verbatim.
+  const effective = value || defaultColor || "#690909";
+  const pickerHex = HEX_RE.test(effective) ? effective : "#690909";
   return (
-    <label className="block">
-      <span className={labelCls}>{label}</span>
+    <div className="block">
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <span className="text-[12px] font-medium text-text-muted">{label}</span>
+        {value && onReset ? (
+          <button
+            type="button"
+            onClick={onReset}
+            className="text-[11px] font-medium text-text-muted hover:text-text-primary"
+          >
+            Reset
+          </button>
+        ) : null}
+      </div>
       <div className="flex items-center gap-2">
-        <input
-          type="color"
-          value={hex}
-          onChange={(e) => onChange(e.target.value)}
-          className="h-9 w-10 shrink-0 cursor-pointer rounded-[8px] border border-line bg-transparent"
-        />
+        <label
+          className="relative h-9 w-10 shrink-0 cursor-pointer overflow-hidden rounded-[8px] border border-line"
+          style={{ background: effective }}
+        >
+          <input
+            type="color"
+            value={pickerHex}
+            aria-label={label}
+            onChange={(e) => onChange(e.target.value)}
+            className="no-min-h absolute inset-0 h-full w-full cursor-pointer opacity-0"
+          />
+        </label>
         <input
           className={cn(inputCls, "font-mono uppercase")}
           value={value}
+          placeholder={defaultColor || ""}
           onChange={(e) => onChange(e.target.value)} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
         />
       </div>
-    </label>
+      {hint ? <p className="mt-1 text-[11px] text-text-muted">{hint}</p> : null}
+    </div>
   );
 }
 
@@ -591,16 +683,30 @@ function SortableCard({
 }
 
 // ============================================================
-// Theme - colours, fonts, corners (no JSON)
+// Theme — every colour, font and corner the website paints with (no JSON)
+//
+// These controls write the *actual* CSS variables the storefront renders
+// (apps/storefront/src/styles.css → `.dark`, forwarded verbatim by
+// apps/storefront/src/routes/__root.tsx → tokensToCss). Each `def` is the
+// storefront's shipped dark-mode default so an unset control still shows the
+// real live colour; only controls the operator changes are persisted, so an
+// untouched site keeps its pristine defaults.
 // ============================================================
 
+// The curated font roster the storefront self-hosts (apps/storefront/src/
+// styles.css @imports). Only these render on the live site — no CDN fonts —
+// so we never offer a choice that would silently fall back to a system face.
 const FONT_OPTIONS: { value: string; label: string }[] = [
-  { value: '"Work Sans Variable", system-ui, sans-serif', label: "Work Sans (modern sans)" },
-  { value: '"Inter", system-ui, sans-serif', label: "Inter (clean sans)" },
-  { value: '"Montserrat", system-ui, sans-serif', label: "Montserrat (geometric sans)" },
-  { value: '"Poppins", system-ui, sans-serif', label: "Poppins (rounded sans)" },
-  { value: '"Playfair Display", Georgia, serif', label: "Playfair Display (elegant serif)" },
-  { value: '"Cormorant Garamond", Georgia, serif', label: "Cormorant (luxury serif)" },
+  { value: '"Work Sans Variable", ui-sans-serif, system-ui, sans-serif', label: "Work Sans (modern sans)" },
+  { value: '"Montserrat", ui-sans-serif, system-ui, sans-serif', label: "Montserrat (geometric sans)" },
+  { value: '"Archivo Black", ui-sans-serif, sans-serif', label: "Archivo Black (heavy sans)" },
+  { value: '"Playfair Display", ui-serif, Georgia, serif', label: "Playfair Display (editorial serif)" },
+  { value: '"Cormorant Garamond", ui-serif, Georgia, serif', label: "Cormorant (luxury serif)" },
+  { value: '"EB Garamond", ui-serif, Georgia, serif', label: "EB Garamond (classic serif)" },
+  { value: '"Prata", ui-serif, Georgia, serif', label: "Prata (fashion serif)" },
+  { value: '"Marcellus", ui-serif, Georgia, serif', label: "Marcellus (refined serif)" },
+  { value: '"Cinzel", ui-serif, Georgia, serif', label: "Cinzel (roman caps)" },
+  { value: '"Instrument Serif", ui-serif, Georgia, serif', label: "Instrument Serif (display serif)" },
   { value: "system-ui, sans-serif", label: "System default" },
 ];
 
@@ -613,8 +719,73 @@ function fontOptionsWith(current: string) {
 
 function remNumber(value: string | undefined): number {
   const n = parseFloat(String(value ?? "").replace("rem", ""));
-  return Number.isFinite(n) ? n : 0.5;
+  return Number.isFinite(n) ? n : 0.25;
 }
+
+/** A colour control: one visible swatch that may drive several CSS variables
+ *  (e.g. "Muted surfaces" tints chips, inputs and quiet fills together). */
+type ColorControl = { label: string; hint?: string; keys: string[]; def: string };
+
+const CORE_COLORS: ColorControl[] = [
+  {
+    label: "Page background",
+    keys: ["--ink"],
+    def: "oklch(0.14 0.012 60)",
+    hint: "The base colour behind the whole site.",
+  },
+  {
+    label: "Cards & panels",
+    keys: ["--card", "--popover"],
+    def: "oklch(0.18 0.012 60)",
+  },
+  {
+    label: "Muted surfaces",
+    keys: ["--secondary", "--muted", "--input"],
+    def: "oklch(0.22 0.015 60)",
+    hint: "Chips, form fields and quiet fills.",
+  },
+  { label: "Main text", keys: ["--cream"], def: "oklch(0.96 0.018 80)" },
+  {
+    label: "Subtle text",
+    keys: ["--muted-foreground"],
+    def: "oklch(0.68 0.025 70)",
+    hint: "Captions, hints and secondary copy.",
+  },
+  { label: "Lines & dividers", keys: ["--border"], def: "oklch(0.28 0.015 60)" },
+];
+
+const ACCENT_COLORS: ColorControl[] = [
+  {
+    label: "Primary — buttons & links",
+    keys: ["--taupe"],
+    def: "oklch(0.82 0.045 60)",
+  },
+  { label: "Soft accent", keys: ["--champagne"], def: "oklch(0.71 0.06 60)" },
+  { label: "Gold highlight", keys: ["--gold"], def: "oklch(0.78 0.11 75)" },
+  { label: "Rose", keys: ["--rose"], def: "oklch(0.62 0.13 18)" },
+  { label: "Deep burgundy", keys: ["--burgundy"], def: "oklch(0.32 0.11 25)" },
+];
+
+type FontControl = { label: string; hint?: string; key: string; def: string };
+
+const FONT_CONTROLS: FontControl[] = [
+  {
+    label: "Headings font",
+    key: "--font-display",
+    def: '"Work Sans Variable", ui-sans-serif, system-ui, sans-serif',
+  },
+  {
+    label: "Body text font",
+    key: "--font-sans",
+    def: '"Work Sans Variable", ui-sans-serif, system-ui, sans-serif',
+  },
+  {
+    label: "Elegant accent font",
+    key: "--font-couture",
+    def: '"Cormorant Garamond", ui-serif, Georgia, serif',
+    hint: "The serif used for italic flourishes.",
+  },
+];
 
 function ThemeTab() {
   const { data, isLoading } = useThemes();
@@ -628,103 +799,224 @@ function ThemeTab() {
     if (active) setTokens(active.tokens || {});
   }, [active]);
 
-  const set = (k: string, v: string) =>
-    setTokens((t) => ({ ...t, [k]: v }));
+  const set = (k: string, v: string) => setTokens((t) => ({ ...t, [k]: v }));
+  const setMany = (keys: string[], v: string) =>
+    setTokens((t) => {
+      const n = { ...t };
+      for (const k of keys) n[k] = v;
+      return n;
+    });
+  const clearMany = (keys: string[]) =>
+    setTokens((t) => {
+      const n = { ...t };
+      for (const k of keys) delete n[k];
+      return n;
+    });
+  // Effective value for the live preview: the override, else the site default.
+  const eff = (key: string, def: string) => tokens[key] || def;
 
   if (isLoading)
     return <p className="text-[13px] text-text-muted">Loading...</p>;
 
+  const renderColors = (list: ColorControl[]) =>
+    list.map((c) => (
+      <ColorField
+        key={c.keys[0]}
+        label={c.label}
+        hint={c.hint}
+        value={tokens[c.keys[0]] || ""}
+        defaultColor={c.def}
+        onChange={(v) => setMany(c.keys, v)}
+        onReset={() => clearMany(c.keys)}
+      />
+    ));
+
   return (
-    <Card className="max-w-2xl space-y-4 p-5">
-      <div className="flex items-center gap-2">
-        <h2 className="text-[15px] font-semibold text-text-primary">
-          Theme
-        </h2>
-        <StatusPill status={active?.status} />
-      </div>
-      <p className="text-[13px] text-text-muted">
-        Pick the colours, fonts and corner roundness for your website. Changes
-        save as a draft; press Publish to make them live.
-      </p>
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_320px]">
+      <Card className="space-y-4 p-5">
+        <div className="flex items-center gap-2">
+          <h2 className="text-[15px] font-semibold text-text-primary">Theme</h2>
+          <StatusPill status={active?.status} />
+        </div>
+        <p className="text-[13px] text-text-muted">
+          This tab controls the whole look of your website — every colour, font
+          and corner. Leave anything untouched to keep its default; the preview
+          updates live. Changes save as a draft; press Publish to go live.
+        </p>
 
-      <Section title="Colours" defaultOpen>
-        <ColorField
-          label="Primary colour"
-          value={tokens["--color-primary"] || ""}
-          onChange={(v) => set("--color-primary", v)}
-        />
-        <ColorField
-          label="Accent colour"
-          value={tokens["--color-accent"] || ""}
-          onChange={(v) => set("--color-accent", v)}
-        />
-      </Section>
+        <Section title="Core colours" defaultOpen>
+          {renderColors(CORE_COLORS)}
+        </Section>
 
-      <Section title="Fonts">
-        <SelectField
-          label="Headings font"
-          value={tokens["--font-heading"] || ""}
-          onChange={(v) => set("--font-heading", v)}
-          options={fontOptionsWith(tokens["--font-heading"] || "")}
-        />
-        <SelectField
-          label="Body text font"
-          value={tokens["--font-body"] || ""}
-          onChange={(v) => set("--font-body", v)}
-          options={fontOptionsWith(tokens["--font-body"] || "")}
-        />
-      </Section>
+        <Section title="Brand accents">{renderColors(ACCENT_COLORS)}</Section>
 
-      <Section title="Corners">
-        <RangeField
-          label="Corner roundness"
-          value={remNumber(tokens["--radius"])}
-          min={0}
-          max={1.5}
-          step={0.05}
-          suffix="rem"
-          onChange={(v) => set("--radius", `${v}rem`)}
-        />
-      </Section>
+        <Section title="Fonts">
+          {FONT_CONTROLS.map((f) => (
+            <div key={f.key}>
+              <SelectField
+                label={f.label}
+                value={tokens[f.key] || ""}
+                onChange={(v) => (v ? set(f.key, v) : clearMany([f.key]))}
+                options={[
+                  { value: "", label: "Website default" },
+                  ...fontOptionsWith(tokens[f.key] || ""),
+                ]}
+              />
+              {f.hint ? (
+                <p className="mt-1 text-[11px] text-text-muted">{f.hint}</p>
+              ) : null}
+            </div>
+          ))}
+        </Section>
 
-      <div className="flex gap-2">
-        <Button
-          variant="primary"
-          disabled={save.isPending || publish.isPending}
-          onClick={() =>
-            runStudio(() => save.mutateAsync(tokens), {
-              area: `${STUDIO_AREA} → Theme`,
-              action: "Save theme draft",
-              success: "Draft saved.",
-              onOk: () => setMsg("Draft saved."),
-            })
-          }
-        >
-          Save draft
-        </Button>
-        <Button
-          variant="secondary"
-          disabled={save.isPending || publish.isPending}
-          onClick={() =>
-            runStudio(
-              async () => {
-                await save.mutateAsync(tokens);
-                await publish.mutateAsync();
-              },
-              {
+        <Section title="Corners">
+          <RangeField
+            label="Corner roundness"
+            value={remNumber(tokens["--radius"] || "0.25rem")}
+            min={0}
+            max={1.5}
+            step={0.05}
+            suffix="rem"
+            onChange={(v) => set("--radius", `${v}rem`)}
+          />
+        </Section>
+
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="primary"
+            disabled={save.isPending || publish.isPending}
+            onClick={() =>
+              runStudio(() => save.mutateAsync(tokens), {
                 area: `${STUDIO_AREA} → Theme`,
-                action: "Publish theme",
-                success: "Theme published — it's live now.",
-                onOk: () => setMsg("Theme published."),
-              },
-            )
-          }
-        >
-          Publish
-        </Button>
+                action: "Save theme draft",
+                success: "Draft saved.",
+                onOk: () => setMsg("Draft saved."),
+              })
+            }
+          >
+            Save draft
+          </Button>
+          <Button
+            variant="secondary"
+            disabled={save.isPending || publish.isPending}
+            onClick={() =>
+              runStudio(
+                async () => {
+                  await save.mutateAsync(tokens);
+                  await publish.mutateAsync();
+                },
+                {
+                  area: `${STUDIO_AREA} → Theme`,
+                  action: "Publish theme",
+                  success: "Theme published — it's live now.",
+                  onOk: () => setMsg("Theme published."),
+                },
+              )
+            }
+          >
+            Publish
+          </Button>
+        </div>
+        <Status msg={msg} />
+      </Card>
+
+      <ThemePreview get={eff} />
+    </div>
+  );
+}
+
+/** A quick, live approximation of the dark-mode storefront using the current
+ *  (draft) theme tokens, so operators see a colour/font/corner change land
+ *  before they ever publish. Not pixel-perfect — a confidence check. */
+function ThemePreview({ get }: { get: (key: string, def: string) => string }) {
+  const bg = get("--ink", "oklch(0.14 0.012 60)");
+  const card = get("--card", "oklch(0.18 0.012 60)");
+  const text = get("--cream", "oklch(0.96 0.018 80)");
+  const muted = get("--muted-foreground", "oklch(0.68 0.025 70)");
+  const border = get("--border", "oklch(0.28 0.015 60)");
+  const primary = get("--taupe", "oklch(0.82 0.045 60)");
+  const champagne = get("--champagne", "oklch(0.71 0.06 60)");
+  const gold = get("--gold", "oklch(0.78 0.11 75)");
+  const rose = get("--rose", "oklch(0.62 0.13 18)");
+  const burgundy = get("--burgundy", "oklch(0.32 0.11 25)");
+  const heading = get(
+    "--font-display",
+    '"Work Sans Variable", ui-sans-serif, system-ui, sans-serif',
+  );
+  const body = get(
+    "--font-sans",
+    '"Work Sans Variable", ui-sans-serif, system-ui, sans-serif',
+  );
+  const couture = get(
+    "--font-couture",
+    '"Cormorant Garamond", ui-serif, Georgia, serif',
+  );
+  const radius = get("--radius", "0.25rem");
+
+  return (
+    <div className="lg:sticky lg:top-4 lg:self-start">
+      <p className="mb-2 text-[12px] font-medium text-text-muted">Live preview</p>
+      <div className="overflow-hidden rounded-[14px] border border-line shadow-glass">
+        <div style={{ background: bg, fontFamily: body, color: text }} className="p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <span
+              style={{ fontFamily: couture, color: primary }}
+              className="text-[16px] italic"
+            >
+              Maison
+            </span>
+            <div className="flex gap-1.5">
+              {[champagne, gold, rose, burgundy].map((c, i) => (
+                <span
+                  key={i}
+                  style={{ background: c }}
+                  className="h-3.5 w-3.5 rounded-full ring-1 ring-black/20"
+                />
+              ))}
+            </div>
+          </div>
+          <div
+            style={{ background: card, borderColor: border, borderRadius: radius }}
+            className="border p-4"
+          >
+            <p
+              style={{ color: muted }}
+              className="text-[9.5px] font-semibold uppercase tracking-[0.22em]"
+            >
+              New in
+            </p>
+            <h3
+              style={{ fontFamily: heading, color: text }}
+              className="mt-1.5 text-[21px] font-semibold leading-tight"
+            >
+              The Pixie Cut Wig
+            </h3>
+            <p style={{ color: muted }} className="mt-1.5 text-[12px] leading-relaxed">
+              Most realistic HD lace — hand-tied and ready to wear.
+            </p>
+            <div className="mt-3.5 flex items-center gap-2">
+              <button
+                type="button"
+                style={{ background: primary, color: bg, borderRadius: radius }}
+                className="px-3.5 py-2 text-[12px] font-semibold"
+              >
+                Add to bag
+              </button>
+              <button
+                type="button"
+                style={{ borderColor: border, color: text, borderRadius: radius }}
+                className="border px-3.5 py-2 text-[12px] font-semibold"
+              >
+                Details
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
-      <Status msg={msg} />
-    </Card>
+      <p className="mt-2 text-[11px] text-text-muted">
+        An approximation of your dark-mode storefront. Publish to see it live.
+      </p>
+    </div>
   );
 }
 
@@ -732,17 +1024,65 @@ function ThemeTab() {
 // Branding (logo / favicon / OG -> theme tokens)
 // ============================================================
 
-function BrandingTab() {
+// Layer-B brand gradient (canon §2.2) — the default fill around the OG photo.
+function brandGradientDefault(brand: string | null): { from: string; to: string } {
+  return brand === "faitlynhair"
+    ? { from: "#7F703D", to: "#D5B8A4" }
+    : { from: "#A81D1D", to: "#690909" };
+}
+
+function readOgParams(
+  tokens: Record<string, unknown>,
+  brand: string | null,
+): OgBannerParams {
+  const raw = (
+    tokens.og_params && typeof tokens.og_params === "object"
+      ? tokens.og_params
+      : {}
+  ) as Record<string, unknown>;
+  const g = brandGradientDefault(brand);
+  const n = (v: unknown, d: number) =>
+    Number.isFinite(Number(v)) ? Number(v) : d;
+  const s = (v: unknown, d: string) => (typeof v === "string" && v ? v : d);
+  return {
+    zoom: n(raw.zoom, 1),
+    focusX: n(raw.focusX, 0.5),
+    focusY: n(raw.focusY, 0.5),
+    photoWidthPct: n(raw.photoWidthPct, 0.62),
+    bgMode: raw.bgMode === "gradient" ? "gradient" : "blur",
+    bgBlur: n(raw.bgBlur, 22),
+    bgDim: n(raw.bgDim, 0.3),
+    bgZoom: n(raw.bgZoom, 1.2),
+    gradFrom: s(raw.gradFrom, g.from),
+    gradTo: s(raw.gradTo, g.to),
+    showBranding: raw.showBranding === true,
+    headline: typeof raw.headline === "string" ? raw.headline : "",
+  };
+}
+
+function BrandingTab({
+  focusShare = false,
+  onFocusHandled,
+}: {
+  /** Set when the operator followed the Pages → home "Edit in Branding" link,
+   *  so we scroll the Share text / Share banner sections into view. */
+  focusShare?: boolean;
+  onFocusHandled?: () => void;
+}) {
   const { data, isLoading } = useThemes();
+  const brand = useBusinessStore((s) => s.activeKey);
   const save = useSaveThemeDraft();
   const publish = usePublishTheme();
   const active = pickActive(data);
-  const [tokens, setTokens] = useState<Record<string, string>>({});
+  // Tokens hold objects too (og_params, toolbar), so this is unknown-valued
+  // like the Toolbar tab — cast to the string-record the save mutation expects.
+  const [tokens, setTokens] = useState<Record<string, unknown>>({});
   const [msg, setMsg] = useState<string | null>(null);
+  const shareRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!active) return;
-    const t = { ...(active.tokens || {}) };
+    const t = { ...(active.tokens || {}) } as Record<string, unknown>;
     // Migrate a previously-single logo/favicon into the dark slot so it stays
     // visible in the editor and keeps rendering on the (dark-default) site.
     if (!t["--logo-url-dark"] && t["--logo-url"])
@@ -752,10 +1092,26 @@ function BrandingTab() {
     setTokens(t);
   }, [active]);
 
+  // Deep-link target: bring the Share sections into view once the tab has
+  // painted, then clear the flag so a later manual visit doesn't re-scroll.
+  useEffect(() => {
+    if (!focusShare || isLoading) return;
+    const id = window.setTimeout(() => {
+      shareRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 60);
+    onFocusHandled?.();
+    return () => window.clearTimeout(id);
+  }, [focusShare, isLoading, onFocusHandled]);
+
+  const patch = (p: Record<string, unknown>) =>
+    setTokens((t) => ({ ...t, ...p }));
+  const str = (k: string) => (typeof tokens[k] === "string" ? (tokens[k] as string) : "");
+  const nextTokens = tokens as unknown as Record<string, string>;
+
   if (isLoading)
     return <p className="text-[13px] text-text-muted">Loading...</p>;
 
-  const rows = [
+  const logoRows = [
     {
       key: "--logo-url-dark",
       label: "Logo — dark mode (a light/cream logo, for the dark site)",
@@ -772,31 +1128,69 @@ function BrandingTab() {
       key: "--favicon-url-light",
       label: "Favicon — light browsers (square; use a dark mark)",
     },
-    { key: "--og-image", label: "Share image (shown when the link is posted)" },
   ];
+
   return (
     <Card className="max-w-xl space-y-5 p-5">
       <p className="text-[13px] text-text-muted">
-        Upload a logo for dark mode and one for light mode — each is used in both
-        the header and the footer, and swaps automatically with the site theme.
-        The favicon is the little icon in the browser tab; give a light one for
-        dark browsers and a dark one for light browsers. Leave a light-mode slot
-        empty to reuse the dark one. Save as a draft, then Publish to go live.
+        Your logos, browser icon, and how the site looks when someone shares its
+        link. Save as a draft, then Publish to go live.
       </p>
-      {rows.map((r) => (
-        <ImageField
-          key={r.key}
-          label={r.label}
-          value={tokens[r.key] || ""}
-          onChange={(v) => setTokens((t) => ({ ...t, [r.key]: v }))}
-        />
-      ))}
-      <div className="flex gap-2">
+
+      <Section title="Logos & favicon" defaultOpen>
+        <p className="text-[12px] text-text-muted">
+          Upload a logo for dark mode and one for light mode — each is used in
+          both the header and the footer, and swaps automatically with the site
+          theme. The favicon is the little icon in the browser tab. Leave a
+          light-mode slot empty to reuse the dark one.
+        </p>
+        {logoRows.map((r) => (
+          <ImageField
+            key={r.key}
+            label={r.label}
+            value={str(r.key)}
+            onChange={(v) => patch({ [r.key]: v })}
+          />
+        ))}
+      </Section>
+
+      <div ref={shareRef} className="scroll-mt-4 space-y-5">
+        <Section title="Share text (SEO)" defaultOpen>
+          <p className="text-[12px] text-text-muted">
+            The title and description shown under the picture when your site is
+            shared on WhatsApp, Instagram, Facebook or in Google results. This is
+            the single source of truth for the home page's share card; a deeper
+            page may still set its own title/description, which overrides these.
+          </p>
+          <TextField
+            label="Share title"
+            value={str("og_title")}
+            placeholder={
+              brand === "faitlynhair"
+                ? "Faitlyn Hair — Luxury Natural Hair"
+                : "Pixie Girl — Premium Wigs & Hair"
+            }
+            onChange={(v) => patch({ og_title: v })}
+          />
+          <AreaField
+            label="Share description"
+            rows={3}
+            value={str("og_description")}
+            onChange={(v) => patch({ og_description: v })}
+          />
+        </Section>
+
+        <Section title="Share banner" defaultOpen>
+          <OgBannerStudio brand={brand} tokens={tokens} patch={patch} />
+        </Section>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
         <Button
           variant="primary"
           disabled={save.isPending || publish.isPending}
           onClick={() =>
-            runStudio(() => save.mutateAsync(tokens), {
+            runStudio(() => save.mutateAsync(nextTokens), {
               area: `${STUDIO_AREA} → Branding`,
               action: "Save branding draft",
               success: "Draft saved.",
@@ -812,7 +1206,7 @@ function BrandingTab() {
           onClick={() =>
             runStudio(
               async () => {
-                await save.mutateAsync(tokens);
+                await save.mutateAsync(nextTokens);
                 await publish.mutateAsync();
               },
               {
@@ -829,6 +1223,349 @@ function BrandingTab() {
       </div>
       <Status msg={msg} />
     </Card>
+  );
+}
+
+/**
+ * The Share-banner studio: upload one photo (4:5 or square is fine) and this
+ * composes a proper 1200×630 Open Graph card — the photo centred, the brand
+ * gradient filling the sides, optionally the logo + a headline. Cropping,
+ * zoom, gradient and the branding overlay are all adjustable, with a live
+ * preview that mirrors what the server bakes with sharp. The composed banner
+ * URL is written to the --og-image token; the source photo + params are kept
+ * so a later tweak recomposes from the original.
+ */
+function OgBannerStudio({
+  brand,
+  tokens,
+  patch,
+}: {
+  brand: string | null;
+  tokens: Record<string, unknown>;
+  patch: (p: Record<string, unknown>) => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+
+  const params = readOgParams(tokens, brand);
+  const sourceUrl = typeof tokens.og_source_url === "string" ? tokens.og_source_url : "";
+  const sourceKey = typeof tokens.og_source_key === "string" ? tokens.og_source_key : "";
+  const bannerUrl = typeof tokens["--og-image"] === "string" ? (tokens["--og-image"] as string) : "";
+  const logoUrl =
+    (typeof tokens["--logo-url-dark"] === "string" && tokens["--logo-url-dark"]) ||
+    (typeof tokens["--logo-url-light"] === "string" && tokens["--logo-url-light"]) ||
+    "";
+
+  const setParam = (k: keyof OgBannerParams, v: number | string | boolean) =>
+    patch({ og_params: { ...params, [k]: v } });
+
+  async function rebuild(file?: File | null) {
+    if (!file && !sourceKey) return;
+    setBusy(true);
+    try {
+      const res = await buildOgBanner({
+        file: file ?? null,
+        source_key: sourceKey || null,
+        logo_url: (logoUrl as string) || null,
+        params,
+      });
+      patch({
+        "--og-image": res.banner_url,
+        og_source_url: res.source_url || sourceUrl,
+        og_source_key: res.source_key || sourceKey,
+        og_params: res.params,
+      });
+      toast.success("Share banner updated.");
+    } catch (e) {
+      const { message, detail } = describeError(e);
+      toast.error("Couldn't build the banner", {
+        description: message,
+        report: {
+          area: `${STUDIO_AREA} → Branding → Share banner`,
+          action: "Build OG banner",
+          message,
+          detail,
+        },
+      });
+    } finally {
+      setBusy(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  const hasSource = Boolean(sourceUrl || sourceKey);
+
+  return (
+    <div className="space-y-3">
+      <p className="text-[12px] text-text-muted">
+        Upload one photo — a normal 4:5 or square shot is perfect — and we build
+        the wide 1200×630 share banner for you: your photo centred, a blurred
+        enlargement of it filling the sides (or a flat gradient), and
+        (optionally) your logo and a headline on top. A photo that's already
+        1200×630 is used edge-to-edge.
+      </p>
+
+      {/* Live preview — mirrors the server composition. */}
+      <OgBannerPreview
+        params={params}
+        sourceUrl={sourceUrl}
+        logoUrl={logoUrl as string}
+        bannerUrl={bannerUrl}
+      />
+
+      <div className="flex flex-wrap gap-2">
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={busy}
+          onClick={() => fileRef.current?.click()}
+        >
+          {busy ? "Working…" : hasSource ? "Replace photo" : "Upload photo"}
+        </Button>
+        {hasSource ? (
+          <Button variant="primary" size="sm" disabled={busy} onClick={() => rebuild()}>
+            {busy ? "Building…" : "Update banner"}
+          </Button>
+        ) : null}
+        {bannerUrl ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={busy}
+            onClick={() =>
+              patch({
+                "--og-image": "",
+                og_source_url: "",
+                og_source_key: "",
+              })
+            }
+          >
+            Remove
+          </Button>
+        ) : null}
+      </div>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*,.heic,.heif"
+        className="hidden"
+        onChange={(e) => rebuild(e.target.files?.[0])}
+      />
+
+      {hasSource ? (
+        <div className="space-y-3 rounded-[12px] border border-line p-3.5">
+          <RangeField
+            label="Photo width"
+            value={Math.round(params.photoWidthPct * 100)}
+            min={35}
+            max={100}
+            step={1}
+            suffix="%"
+            onChange={(v) => setParam("photoWidthPct", v / 100)}
+          />
+          <RangeField
+            label="Zoom"
+            value={Number(params.zoom.toFixed(2))}
+            min={1}
+            max={2.5}
+            step={0.05}
+            suffix="×"
+            onChange={(v) => setParam("zoom", v)}
+          />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <RangeField
+              label="Position ↔"
+              value={Math.round(params.focusX * 100)}
+              min={0}
+              max={100}
+              step={1}
+              suffix="%"
+              onChange={(v) => setParam("focusX", v / 100)}
+            />
+            <RangeField
+              label="Position ↕"
+              value={Math.round(params.focusY * 100)}
+              min={0}
+              max={100}
+              step={1}
+              suffix="%"
+              onChange={(v) => setParam("focusY", v / 100)}
+            />
+          </div>
+          {/* Background: blurred, enlarged copy of the photo (default) so the
+              surround always matches the shot — or a flat brand gradient. */}
+          <div className="space-y-3 border-t border-line pt-3">
+            <ToggleField
+              label="Use a flat gradient background instead"
+              checked={params.bgMode === "gradient"}
+              onChange={(v) => setParam("bgMode", v ? "gradient" : "blur")}
+            />
+            {params.bgMode === "gradient" ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <ColorField
+                  label="Gradient — from"
+                  value={params.gradFrom}
+                  defaultColor={brandGradientDefault(brand).from}
+                  onChange={(v) => setParam("gradFrom", v)}
+                />
+                <ColorField
+                  label="Gradient — to"
+                  value={params.gradTo}
+                  defaultColor={brandGradientDefault(brand).to}
+                  onChange={(v) => setParam("gradTo", v)}
+                />
+              </div>
+            ) : (
+              <>
+                <RangeField
+                  label="Background blur"
+                  value={Math.round(params.bgBlur)}
+                  min={4}
+                  max={60}
+                  step={1}
+                  onChange={(v) => setParam("bgBlur", v)}
+                />
+                <RangeField
+                  label="Background dim"
+                  value={Math.round(params.bgDim * 100)}
+                  min={0}
+                  max={90}
+                  step={1}
+                  suffix="%"
+                  onChange={(v) => setParam("bgDim", v / 100)}
+                />
+                <RangeField
+                  label="Background zoom"
+                  value={Number(params.bgZoom.toFixed(2))}
+                  min={1}
+                  max={2}
+                  step={0.05}
+                  suffix="×"
+                  onChange={(v) => setParam("bgZoom", v)}
+                />
+              </>
+            )}
+          </div>
+          <ToggleField
+            label="Show logo & headline on the banner"
+            checked={params.showBranding}
+            onChange={(v) => setParam("showBranding", v)}
+          />
+          {params.showBranding ? (
+            <TextField
+              label="Headline (optional)"
+              value={params.headline}
+              placeholder="Luxury Natural Hair, Crafted in Lagos"
+              onChange={(v) => setParam("headline", v)}
+            />
+          ) : null}
+          <p className="text-[11px] text-text-muted">
+            Adjust freely — the preview updates live. Press{" "}
+            <span className="font-medium text-text-primary">Update banner</span>{" "}
+            to bake the final image, then Save or Publish.
+          </p>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** A live, DOM-composed 1200×630 preview using the same layout maths as the
+ *  server. Purely visual (no canvas export) so a cross-origin source never
+ *  taints anything — the hosted banner is what the server bakes. */
+function OgBannerPreview({
+  params,
+  sourceUrl,
+  logoUrl,
+  bannerUrl,
+}: {
+  params: OgBannerParams;
+  sourceUrl: string;
+  logoUrl: string;
+  bannerUrl: string;
+}) {
+  const gradient = `linear-gradient(135deg, ${params.gradFrom}, ${params.gradTo})`;
+  return (
+    <div
+      className="relative w-full overflow-hidden rounded-[12px] border border-line"
+      style={{ aspectRatio: "1200 / 630", background: gradient }}
+    >
+      {sourceUrl ? (
+        <>
+          {/* Blurred, enlarged copy of the photo as the background (mirrors the
+              server's sharp plate) — or the gradient set on the container. */}
+          {params.bgMode !== "gradient" ? (
+            <>
+              <img
+                src={sourceUrl}
+                alt=""
+                aria-hidden
+                className="absolute inset-0 h-full w-full object-cover"
+                style={{
+                  filter: `blur(${params.bgBlur}px)`,
+                  transform: `scale(${params.bgZoom})`,
+                }}
+              />
+              <div
+                className="absolute inset-0"
+                style={{ background: `rgba(0,0,0,${params.bgDim})` }}
+              />
+            </>
+          ) : null}
+          <div
+            className="absolute inset-y-0 overflow-hidden"
+            style={{
+              width: `${params.photoWidthPct * 100}%`,
+              left: `${(1 - params.photoWidthPct) * 50}%`,
+            }}
+          >
+            <img
+              src={sourceUrl}
+              alt=""
+              className="h-full w-full"
+              style={{
+                objectFit: "cover",
+                objectPosition: `${params.focusX * 100}% ${params.focusY * 100}%`,
+                transform: `scale(${params.zoom})`,
+                transformOrigin: `${params.focusX * 100}% ${params.focusY * 100}%`,
+              }}
+            />
+          </div>
+          {params.showBranding ? (
+            <>
+              <div
+                className="absolute inset-x-0 bottom-0 h-[38%]"
+                style={{
+                  background:
+                    "linear-gradient(to top, rgba(0,0,0,0.72), rgba(0,0,0,0))",
+                }}
+              />
+              {logoUrl ? (
+                <img
+                  src={logoUrl}
+                  alt=""
+                  className="absolute left-[4.5%] top-[7%] h-[10%] w-auto object-contain"
+                />
+              ) : null}
+              {params.headline ? (
+                <span
+                  className="absolute left-[4.5%] bottom-[8%] max-w-[90%] truncate font-bold text-white"
+                  style={{ fontSize: "clamp(11px, 3.6vw, 30px)" }}
+                >
+                  {params.headline}
+                </span>
+              ) : null}
+            </>
+          ) : null}
+        </>
+      ) : bannerUrl ? (
+        <img src={bannerUrl} alt="Current share banner" className="h-full w-full object-cover" />
+      ) : (
+        <div className="absolute inset-0 grid place-items-center text-[12px] text-white/70">
+          Upload a photo to build your share banner
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1067,8 +1804,42 @@ function ToolbarTab() {
 // Navigation - header links, footer columns, socials (no JSON)
 // ============================================================
 
-type NavLink = { label: string; href: string };
-type FooterCol = { title: string; links: NavLink[] };
+// A header link (or footer link) is { label, url }. A header link may also carry
+// `children` — the dropdown entries the storefront renders as a glass menu
+// (desktop) and an accordion (mobile). We standardise on `url` here so what the
+// editor writes matches the seed + the public storefront (which read `url`);
+// legacy drafts that stored `href` are migrated on load by normaliseLink().
+type NavChild = { label: string; url: string };
+type NavLink = { label: string; url: string; children?: NavChild[] };
+type FooterCol = { title: string; links: NavChild[] };
+
+/** Tolerantly read a stored link, accepting the legacy `href` key. */
+function normaliseChild(x: unknown): NavChild {
+  const o = (x || {}) as Record<string, unknown>;
+  return {
+    label: typeof o.label === "string" ? o.label : "",
+    url:
+      (typeof o.url === "string" && o.url) ||
+      (typeof o.href === "string" && o.href) ||
+      "/",
+  };
+}
+function normaliseLink(x: unknown): NavLink {
+  const o = (x || {}) as Record<string, unknown>;
+  return {
+    ...normaliseChild(o),
+    children: Array.isArray(o.children)
+      ? (o.children as unknown[]).map(normaliseChild)
+      : undefined,
+  };
+}
+function normaliseFooterCol(x: unknown): FooterCol {
+  const o = (x || {}) as Record<string, unknown>;
+  return {
+    title: typeof o.title === "string" ? o.title : "",
+    links: Array.isArray(o.links) ? (o.links as unknown[]).map(normaliseChild) : [],
+  };
+}
 
 const SOCIAL_PLATFORMS = [
   "instagram",
@@ -1076,6 +1847,7 @@ const SOCIAL_PLATFORMS = [
   "facebook",
   "twitter",
   "youtube",
+  "pinterest",
   "whatsapp",
 ];
 
@@ -1092,8 +1864,8 @@ function NavigationTab() {
 
   useEffect(() => {
     if (active) {
-      setHeader((active.header_items as NavLink[]) || []);
-      setFooter((active.footer_columns as FooterCol[]) || []);
+      setHeader(((active.header_items as unknown[]) || []).map(normaliseLink));
+      setFooter(((active.footer_columns as unknown[]) || []).map(normaliseFooterCol));
       setSocials((active.socials as Record<string, string>) || {});
     }
   }, [active]);
@@ -1137,6 +1909,11 @@ function NavigationTab() {
       </p>
 
       <Section title="Header menu" defaultOpen>
+        <p className="mb-2 text-[12px] text-text-muted">
+          These links appear in the site header on desktop and in the ☰ menu on
+          mobile. Add dropdown links under any item to turn it into a menu (e.g.
+          “Shop” → All catalogue, By shade, By bundle…).
+        </p>
         <DragList
           ids={header.map((_, i) => `hdr-${i}`)}
           onReorder={(from, to) =>
@@ -1150,7 +1927,7 @@ function NavigationTab() {
               title={`Link ${i + 1}`}
               onRemove={() => setHeader((h) => h.filter((_, j) => j !== i))}
             >
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <TextField
                   label="Label"
                   value={item.label}
@@ -1163,14 +1940,118 @@ function NavigationTab() {
                 />
                 <TextField
                   label="Link (path)"
-                  value={item.href}
+                  value={item.url}
                   placeholder="/shop"
                   onChange={(v) =>
                     setHeader((h) =>
-                      h.map((x, j) => (j === i ? { ...x, href: v } : x)),
+                      h.map((x, j) => (j === i ? { ...x, url: v } : x)),
                     )
                   }
                 />
+              </div>
+
+              {/* Dropdown links (optional) — makes this item a menu. */}
+              <div className="mt-3 border-l border-line pl-3">
+                <span className={cn(labelCls, "text-[11px]")}>
+                  Dropdown links (optional)
+                </span>
+                <DragList
+                  ids={(item.children || []).map((_, k) => `hdr-${i}-c-${k}`)}
+                  onReorder={(from, to) =>
+                    setHeader((h) =>
+                      h.map((x, j) =>
+                        j === i
+                          ? { ...x, children: arrayMove(x.children || [], from, to) }
+                          : x,
+                      ),
+                    )
+                  }
+                >
+                  {(item.children || []).map((c, ci) => (
+                    <SortableCard
+                      key={`hdr-${i}-c-${ci}`}
+                      id={`hdr-${i}-c-${ci}`}
+                      title={`Dropdown ${ci + 1}`}
+                      onRemove={() =>
+                        setHeader((h) =>
+                          h.map((x, j) =>
+                            j === i
+                              ? {
+                                  ...x,
+                                  children: (x.children || []).filter(
+                                    (_, k) => k !== ci,
+                                  ),
+                                }
+                              : x,
+                          ),
+                        )
+                      }
+                    >
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                        <TextField
+                          label="Label"
+                          value={c.label}
+                          placeholder="All catalogue"
+                          onChange={(v) =>
+                            setHeader((h) =>
+                              h.map((x, j) =>
+                                j === i
+                                  ? {
+                                      ...x,
+                                      children: (x.children || []).map((y, k) =>
+                                        k === ci ? { ...y, label: v } : y,
+                                      ),
+                                    }
+                                  : x,
+                              ),
+                            )
+                          }
+                        />
+                        <TextField
+                          label="Link (path)"
+                          value={c.url}
+                          placeholder="/shop"
+                          onChange={(v) =>
+                            setHeader((h) =>
+                              h.map((x, j) =>
+                                j === i
+                                  ? {
+                                      ...x,
+                                      children: (x.children || []).map((y, k) =>
+                                        k === ci ? { ...y, url: v } : y,
+                                      ),
+                                    }
+                                  : x,
+                              ),
+                            )
+                          }
+                        />
+                      </div>
+                    </SortableCard>
+                  ))}
+                </DragList>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="mt-2"
+                  onClick={() =>
+                    setHeader((h) =>
+                      h.map((x, j) =>
+                        j === i
+                          ? {
+                              ...x,
+                              children: [
+                                ...(x.children || []),
+                                { label: "", url: "/" },
+                              ],
+                            }
+                          : x,
+                      ),
+                    )
+                  }
+                >
+                  + Add dropdown link
+                </Button>
               </div>
             </SortableCard>
           ))}
@@ -1180,7 +2061,7 @@ function NavigationTab() {
           size="sm"
           className="mt-2"
           onClick={() =>
-            setHeader((h) => [...h, { label: "", href: "/" }])
+            setHeader((h) => [...h, { label: "", url: "/" }])
           }
         >
           + Add menu link
@@ -1242,7 +2123,7 @@ function NavigationTab() {
                         )
                       }
                     >
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                         <TextField
                           label="Label"
                           value={lk.label}
@@ -1263,7 +2144,7 @@ function NavigationTab() {
                         />
                         <TextField
                           label="Link"
-                          value={lk.href}
+                          value={lk.url}
                           onChange={(v) =>
                             setFooter((f) =>
                               f.map((x, j) =>
@@ -1271,7 +2152,7 @@ function NavigationTab() {
                                   ? {
                                       ...x,
                                       links: x.links.map((y, k) =>
-                                        k === li ? { ...y, href: v } : y,
+                                        k === li ? { ...y, url: v } : y,
                                       ),
                                     }
                                   : x,
@@ -1293,7 +2174,7 @@ function NavigationTab() {
                         j === ci
                           ? {
                               ...x,
-                              links: [...(x.links || []), { label: "", href: "/" }],
+                              links: [...(x.links || []), { label: "", url: "/" }],
                             }
                           : x,
                       ),
@@ -1365,10 +2246,21 @@ const BLANK_PAGE: PageRow = {
   slots: {},
 };
 
+/** A row in the Pages list: a known storefront page (with its `catalog`
+ *  schema), its saved `db` row if any, or an operator-created custom page. */
+interface ListedPage {
+  key: string;
+  label: string;
+  catalog?: CatalogPage;
+  db?: PageRow;
+}
+
 function PagesTab({
   onJumpToContent,
+  onJumpToBranding,
 }: {
   onJumpToContent: (jump: { postId?: string }) => void;
+  onJumpToBranding: () => void;
 }) {
   const { data, isLoading } = usePages();
   const save = useSavePageDraft();
@@ -1377,17 +2269,51 @@ function PagesTab({
   const [slots, setSlots] = useState<Record<string, unknown>>({});
   const [msg, setMsg] = useState<string | null>(null);
 
+  // Merge the canonical page catalog with whatever rows the DB actually has, so
+  // EVERY storefront page is listed — even one no seed ever inserted — and each
+  // opens with its FULL field set (catalog defaults, overlaid by saved slots).
+  // `db` is the saved row (undefined until first save); `catalog` its schema.
   const pages = useMemo(() => {
     const byKey: Record<string, PageRow> = {};
     for (const p of data || []) {
       if (!byKey[p.page_key] || p.status === "draft") byKey[p.page_key] = p;
     }
-    return Object.values(byKey);
+    const listed: ListedPage[] = STOREFRONT_PAGE_CATALOG.map((c) => ({
+      key: c.page_key,
+      label: c.label,
+      catalog: c,
+      db: byKey[c.page_key],
+    }));
+    // Any operator-created page that isn't a known storefront page: list it too.
+    for (const p of Object.values(byKey)) {
+      if (!CATALOG_BY_KEY[p.page_key]) {
+        listed.push({ key: p.page_key, label: p.page_key || "(unnamed)", db: p });
+      }
+    }
+    return listed;
   }, [data]);
 
-  function edit(p: PageRow) {
-    setSel({ ...p });
-    setSlots((p.slots as Record<string, unknown>) || {});
+  function openPage(lp: ListedPage) {
+    const defaults = lp.catalog?.defaultSlots ?? {};
+    const saved = (lp.db?.slots as Record<string, unknown>) ?? {};
+    setSel({
+      page_key: lp.db?.page_key ?? lp.catalog?.page_key ?? lp.key,
+      template_key: lp.db?.template_key ?? lp.catalog?.template_key ?? "section_v1",
+      url_path: lp.db?.url_path ?? lp.catalog?.url_path ?? "/",
+      status: lp.db?.status,
+      meta_title: lp.db?.meta_title ?? "",
+      meta_description: lp.db?.meta_description ?? "",
+      og_image_url: lp.db?.og_image_url ?? "",
+      slots: {},
+    });
+    // Full field set: catalog defaults, with saved values winning where present.
+    setSlots(deepMergeSlots(defaults, saved));
+    setMsg(null);
+  }
+
+  function newPage() {
+    setSel({ ...BLANK_PAGE });
+    setSlots({});
     setMsg(null);
   }
 
@@ -1436,70 +2362,106 @@ function PagesTab({
     return <p className="text-[13px] text-text-muted">Loading...</p>;
 
   return (
-    <div className="grid grid-cols-[220px_1fr] gap-5">
-      <Card className="p-3">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[240px_1fr] lg:gap-5">
+      <Card className={cn("p-3", sel && "hidden lg:block")}>
         <Button
           variant="secondary"
           size="sm"
           className="mb-3 w-full"
-          onClick={() => edit(BLANK_PAGE)}
+          onClick={newPage}
         >
           + New page
         </Button>
         <ul className="space-y-1">
           {pages.map((p) => (
-            <li key={p.page_key}>
+            <li key={p.key}>
               <button
-                onClick={() => edit(p)}
+                onClick={() => openPage(p)}
                 className={cn(
-                  "flex w-full items-center justify-between rounded-[10px] px-3 py-2 text-left text-[13px]",
-                  sel?.page_key === p.page_key
+                  "flex w-full items-center justify-between gap-2 rounded-[10px] px-3 py-2 text-left text-[13px]",
+                  sel?.page_key === p.key
                     ? "bg-text-primary/[0.07] text-text-primary"
                     : "text-text-muted hover:bg-text-primary/[0.04] hover:text-text-primary",
                 )}
               >
-                <span>{p.page_key || "(unnamed)"}</span>
-                <StatusPill status={p.status} />
+                <span className="min-w-0 truncate">{p.label}</span>
+                {p.db ? (
+                  <StatusPill status={p.db.status} />
+                ) : (
+                  <Pill tone="neutral" dot={false}>
+                    Default
+                  </Pill>
+                )}
               </button>
             </li>
           ))}
         </ul>
       </Card>
 
+      <div className={cn(!sel && "hidden lg:block")}>
       {sel ? (
-        <Card className="max-w-2xl space-y-4 p-5">
-          <div className="grid grid-cols-2 gap-3">
-            <TextField
-              label="Page name (key)"
-              value={sel.page_key}
-              placeholder="home"
-              onChange={(v) => setSel({ ...sel, page_key: v })}
-            />
-            <TextField
-              label="URL path"
-              value={sel.url_path}
-              placeholder="/"
-              onChange={(v) => setSel({ ...sel, url_path: v })}
-            />
-          </div>
+        <Card className="flex flex-col space-y-4 p-5 lg:max-w-2xl">
+          <BackToList label="All pages" onClick={() => setSel(null)} />
+          {sel.page_key === "site_chrome" ? (
+            <div className="rounded-[12px] border border-line p-4 text-[12px] text-text-muted">
+              This isn’t a single page — it’s the chrome shown on{" "}
+              <span className="font-medium text-text-primary">every page</span>:
+              the scrolling promo bar, the footer blurb &amp; signature, and the
+              mobile ☰ menu’s feature card and buttons. Edit below, then Publish.
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <TextField
+                  label="Page name (key)"
+                  value={sel.page_key}
+                  placeholder="home"
+                  onChange={(v) => setSel({ ...sel, page_key: v })}
+                />
+                <TextField
+                  label="URL path"
+                  value={sel.url_path}
+                  placeholder="/"
+                  onChange={(v) => setSel({ ...sel, url_path: v })}
+                />
+              </div>
 
-          <Section title="Search & sharing (SEO)">
-            <TextField
-              label="Search title"
-              value={sel.meta_title || ""}
-              onChange={(v) => setSel({ ...sel, meta_title: v })}
-            />
-            <AreaField
-              label="Search description"
-              value={sel.meta_description || ""}
-              onChange={(v) => setSel({ ...sel, meta_description: v })}
-            />
-            <ImageField
-              label="Share image"
-              value={sel.og_image_url || ""}
-              onChange={(v) => setSel({ ...sel, og_image_url: v })}
-            />
-          </Section>
+              {sel.page_key === "home" || sel.url_path === "/" ? (
+                <div className="space-y-2 rounded-[12px] border border-line p-4">
+                  <p className="text-[13px] font-semibold text-text-primary">
+                    Search & sharing (SEO)
+                  </p>
+                  <p className="text-[12px] text-text-muted">
+                    The home page uses the site-wide share card — its title,
+                    description and share banner all live in one place, the{" "}
+                    <span className="font-medium text-text-primary">Branding</span>{" "}
+                    tab, so they stay in sync everywhere the link is shared.
+                  </p>
+                  <Button variant="secondary" size="sm" onClick={onJumpToBranding}>
+                    Edit in Branding →
+                  </Button>
+                </div>
+              ) : (
+                <Section title="Search & sharing (SEO)">
+                  <TextField
+                    label="Search title"
+                    value={sel.meta_title || ""}
+                    onChange={(v) => setSel({ ...sel, meta_title: v })}
+                  />
+                  <AreaField
+                    label="Search description"
+                    value={sel.meta_description || ""}
+                    onChange={(v) => setSel({ ...sel, meta_description: v })}
+                  />
+                  <ImageField
+                    label="Share image"
+                    value={sel.og_image_url || ""}
+                    onChange={(v) => setSel({ ...sel, og_image_url: v })}
+                  />
+                </Section>
+              )}
+            </>
+          )}
 
           <div>
             <label className={cn(labelCls, "text-[13px] text-text-primary")}>
@@ -1535,10 +2497,11 @@ function PagesTab({
           <Status msg={msg} />
         </Card>
       ) : (
-        <p className="text-[13px] text-text-muted">
+        <p className="hidden text-[13px] text-text-muted lg:block">
           Select a page to edit, or create a new one.
         </p>
       )}
+      </div>
     </div>
   );
 }
@@ -1629,6 +2592,78 @@ const IMAGE_LIST_HINT = /(image|photo|gallery|slide|banner)/i;
 // it gets the trim/crop studio, never the generic object editor.
 const VIDEO_HINT = /video/i;
 
+// A heading/eyebrow/body is composed in three parts — the start, a highlighted
+// (accent) segment, and the text after it: e.g. "Hair, [sculptée] like
+// couture." These friendlier labels make that structure obvious instead of the
+// bare "Heading Accent" / "Heading After" the generic humaniser produced.
+const SLOT_LABELS: Record<string, string> = {
+  eyebrow: "Eyebrow",
+  eyebrowAccent: "Eyebrow — highlighted part",
+  eyebrowAfter: "Eyebrow — after the highlight",
+  heading: "Heading",
+  headingAccent: "Heading — highlighted part",
+  headingAfter: "Heading — after the highlight",
+  subheading: "Subheading",
+  subheadingAccent: "Subheading — highlighted part",
+  subheadingAfter: "Subheading — after the highlight",
+  body: "Body",
+  bodyAccent: "Body — highlighted part",
+  bodyAfter: "Body — after the highlight",
+  marqueeImage: "Divider image — shown between the scrolling words",
+  dividerImage: "Divider image — brand mark shown between the phrases on BOTH announcement bars",
+};
+function humanizeSlot(key: string): string {
+  return SLOT_LABELS[key] || humanize(key);
+}
+
+// Chronological ordering for a section's fields, so the editor always reads
+// top-to-bottom the way the page renders — eyebrow → heading (+ highlight +
+// after) → body → buttons → media → lists — no matter what order the stored
+// JSON happens to hold. Unknown keys keep their original relative order.
+function slotRank(key: string): number {
+  const comp =
+    /^(eyebrow|headline|title|heading|subheading|subhead|body|text|description|quote|attribution)(accent|after)?$/i.exec(
+      key,
+    );
+  if (comp) {
+    const base = comp[1].toLowerCase();
+    const baseRank: Record<string, number> = {
+      eyebrow: 10,
+      headline: 15,
+      title: 20,
+      heading: 20,
+      subheading: 30,
+      subhead: 30,
+      body: 40,
+      text: 40,
+      description: 40,
+      quote: 50,
+      attribution: 55,
+    };
+    const suf = (comp[2] || "").toLowerCase();
+    return (baseRank[base] ?? 45) + (suf === "accent" ? 1 : suf === "after" ? 2 : 0);
+  }
+  const n = Number((key.match(/\d+/) || [0])[0]) || 0;
+  if (/(cta|button|link)/i.test(key) && /label|text|title/i.test(key))
+    return 60 + n * 0.1;
+  if (/(cta|button|link)/i.test(key) && /href|url|link/i.test(key))
+    return 60 + n * 0.1 + 0.05;
+  if (VIDEO_HINT.test(key)) return 72;
+  if (IMAGE_HINT.test(key) || IMAGE_LIST_HINT.test(key)) return 70;
+  return 100;
+}
+function orderedSlotEntries(
+  obj: Record<string, unknown>,
+): [string, unknown][] {
+  return Object.entries(obj)
+    .map((entry, i) => [entry, i] as const)
+    .sort((a, b) => {
+      const r = slotRank(a[0][0]) - slotRank(b[0][0]);
+      return r !== 0 ? r : a[1] - b[1];
+    })
+    .map(([entry]) => entry);
+}
+
 // The Instagram identity shown under the home "Gallery" rotating showcase. It's
 // injected into the Gallery group (like the hero video/image below) so it's
 // editable even on pages published before the field existed. Keep in sync with
@@ -1649,7 +2684,7 @@ function SlotValue({
   value: unknown;
   onChange: (v: unknown) => void;
 }) {
-  const label = humanize(fieldKey);
+  const label = humanizeSlot(fieldKey);
 
   if (!Array.isArray(value) && VIDEO_HINT.test(fieldKey)) {
     return <VideoField label={label} value={value} onChange={onChange} />;
@@ -1711,7 +2746,7 @@ function SlotValue({
   const offerGalleryProfile = /gallery/i.test(fieldKey) && !("profile" in obj);
   return (
     <Section title={label}>
-      {Object.entries(obj).map(([k, v]) => (
+      {orderedSlotEntries(obj).map(([k, v]) => (
         <SlotValue
           key={k}
           fieldKey={k}
@@ -1862,7 +2897,7 @@ function ObjectListField({
               Remove
             </button>
           </div>
-          {Object.entries(item).map(([k, v]) => (
+          {orderedSlotEntries(item).map(([k, v]) => (
             <SlotValue
               key={k}
               fieldKey={k}
@@ -1894,7 +2929,7 @@ function SlotsEditor({
   onChange: (v: Record<string, unknown>) => void;
 }) {
   const [newKey, setNewKey] = useState("");
-  const entries = Object.entries(value);
+  const entries = orderedSlotEntries(value);
   return (
     <div className="space-y-3">
       {entries.length === 0 ? (
@@ -2020,8 +3055,8 @@ function PopupsTab() {
     return <p className="text-[13px] text-text-muted">Loading...</p>;
 
   return (
-    <div className="grid grid-cols-[220px_1fr] gap-5">
-      <Card className="p-3">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[240px_1fr] lg:gap-5">
+      <Card className={cn("p-3", sel && "hidden lg:block")}>
         <Button
           variant="secondary"
           size="sm"
@@ -2050,8 +3085,10 @@ function PopupsTab() {
         </ul>
       </Card>
 
+      <div className={cn(!sel && "hidden lg:block")}>
       {sel ? (
-        <Card className="max-w-2xl space-y-4 p-5">
+        <Card className="flex flex-col space-y-4 p-5 lg:max-w-2xl">
+          <BackToList label="All popups" onClick={() => setSel(null)} />
           <TextField
             label="Popup name (key)"
             value={sel.popup_key}
@@ -2075,7 +3112,7 @@ function PopupsTab() {
               value={content.image_url || ""}
               onChange={(v) => setContent("image_url", v)}
             />
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <TextField
                 label="Button label"
                 value={content.button_label || ""}
@@ -2095,7 +3132,7 @@ function PopupsTab() {
           </Section>
 
           <Section title="When it shows" defaultOpen>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <SelectField
                 label="Trigger"
                 value={sel.trigger_type}
@@ -2158,7 +3195,7 @@ function PopupsTab() {
             />
           </Section>
 
-          <div className="flex gap-2 pt-1">
+          <div className="flex flex-wrap gap-2 pt-1">
             <Button
               variant="primary"
               disabled={save.isPending || publish.isPending}
@@ -2177,6 +3214,7 @@ function PopupsTab() {
               variant="danger"
               disabled={!sel.popup_key || del.isPending}
               onClick={() => setConfirmDelete(true)}
+              className="sm:ml-auto"
             >
               Delete
             </Button>
@@ -2205,10 +3243,11 @@ function PopupsTab() {
           />
         </Card>
       ) : (
-        <p className="text-[13px] text-text-muted">
+        <p className="hidden text-[13px] text-text-muted lg:block">
           Select a popup to edit, or create a new one.
         </p>
       )}
+      </div>
     </div>
   );
 }
@@ -2237,43 +3276,43 @@ function RevisionsTab() {
       {revs.length === 0 ? (
         <p className="text-[13px] text-text-muted">No publishes yet.</p>
       ) : (
-        <table className="w-full text-[13px]">
-          <thead>
-            <tr className="border-b border-line text-left text-text-muted">
-              <th className="py-2 font-medium">When</th>
-              <th className="font-medium">Type</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {revs.map((r) => (
-              <tr key={r.revision_id} className="border-b border-line">
-                <td className="py-2 text-text-primary">
+        // A responsive list, not a <table>: each publish stacks into a tidy
+        // row on phones (details on top, a full-width Restore below) and lines
+        // up in columns on wider screens — no horizontal scroll on mobile.
+        <ul className="divide-y divide-line">
+          {revs.map((r) => (
+            <li
+              key={r.revision_id}
+              className="flex flex-col gap-2.5 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+            >
+              <div className="min-w-0">
+                <div className="text-[13px] text-text-primary">
                   {formatDateTime(r.published_at)}
-                </td>
-                <td className="capitalize text-text-primary">{r.entity_type}</td>
-                <td className="text-right">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={rollback.isPending}
-                    onClick={() =>
-                      runStudio(() => rollback.mutateAsync(r.revision_id), {
-                        area: `${STUDIO_AREA} → Revisions`,
-                        action: "Restore revision",
-                        success: "Restored to draft — review and publish.",
-                        onOk: () =>
-                          setMsg("Restored to draft - review and publish."),
-                      })
-                    }
-                  >
-                    Restore to draft
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </div>
+                <div className="mt-0.5 text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                  {r.entity_type}
+                </div>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="w-full sm:w-auto"
+                disabled={rollback.isPending}
+                onClick={() =>
+                  runStudio(() => rollback.mutateAsync(r.revision_id), {
+                    area: `${STUDIO_AREA} → Revisions`,
+                    action: "Restore revision",
+                    success: "Restored to draft — review and publish.",
+                    onOk: () =>
+                      setMsg("Restored to draft - review and publish."),
+                  })
+                }
+              >
+                Restore to draft
+              </Button>
+            </li>
+          ))}
+        </ul>
       )}
       <Status msg={msg} />
     </Card>
@@ -2284,8 +3323,21 @@ function RevisionsTab() {
 // Preview (embedded iframe + open-live)
 // ============================================================
 
+type PreviewDevice = "phone" | "tablet" | "desktop";
+const PREVIEW_DEVICES: {
+  key: PreviewDevice;
+  label: string;
+  icon: React.ReactNode;
+  width: number | null;
+}[] = [
+  { key: "phone", label: "Phone", icon: <Smartphone className="h-4 w-4" />, width: 390 },
+  { key: "tablet", label: "Tablet", icon: <Tablet className="h-4 w-4" />, width: 768 },
+  { key: "desktop", label: "Desktop", icon: <Monitor className="h-4 w-4" />, width: null },
+];
+
 function PreviewTab() {
   const { data, isLoading, refetch } = usePreviewInfo();
+  const [device, setDevice] = useState<PreviewDevice>("phone");
 
   if (isLoading)
     return <p className="text-[13px] text-text-muted">Loading preview...</p>;
@@ -2302,14 +3354,41 @@ function PreviewTab() {
   const url = `${data.base_url.replace(/\/$/, "")}/?preview=${encodeURIComponent(
     data.token,
   )}`;
+  const activeDevice = PREVIEW_DEVICES.find((d) => d.key === device)!;
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-[13px] text-text-muted">
           Live draft preview - shows unpublished changes. The preview link
           expires in ~30 minutes.
         </p>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Frame the site at real device widths so operators can sanity-check
+              their own mobile responsiveness from inside the Studio. */}
+          <div
+            role="tablist"
+            aria-label="Preview device size"
+            className="inline-flex items-center gap-0.5 rounded-[11px] border border-line bg-text-primary/[0.03] p-0.5"
+          >
+            {PREVIEW_DEVICES.map((d) => (
+              <button
+                key={d.key}
+                role="tab"
+                aria-selected={d.key === device}
+                aria-label={d.label}
+                title={d.label}
+                onClick={() => setDevice(d.key)}
+                className={cn(
+                  "grid h-8 w-9 place-items-center rounded-[9px] transition-colors",
+                  d.key === device
+                    ? "bg-accent-deep text-[#F4E9D9]"
+                    : "text-text-muted hover:text-text-primary",
+                )}
+              >
+                {d.icon}
+              </button>
+            ))}
+          </div>
           <Button variant="ghost" size="sm" onClick={() => refetch()}>
             Refresh
           </Button>
@@ -2318,16 +3397,29 @@ function PreviewTab() {
             size="sm"
             onClick={() => window.open(url, "_blank", "noopener")}
           >
-            Open live preview
+            Open
           </Button>
         </div>
       </div>
       <Card className="overflow-hidden p-0">
-        <iframe
-          title="Storefront preview"
-          src={url}
-          className="h-[70vh] w-full border-0 bg-white"
-        />
+        <div
+          className={cn(
+            "mx-auto w-full transition-[max-width] duration-300",
+            activeDevice.width ? "p-3 sm:p-5" : "",
+          )}
+          style={activeDevice.width ? { maxWidth: activeDevice.width } : undefined}
+        >
+          <iframe
+            title="Storefront preview"
+            src={url}
+            className={cn(
+              "h-[70vh] w-full border-0 bg-white",
+              activeDevice.width
+                ? "rounded-[24px] border border-line shadow-glass"
+                : "",
+            )}
+          />
+        </div>
       </Card>
     </div>
   );

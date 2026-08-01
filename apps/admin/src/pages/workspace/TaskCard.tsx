@@ -1,4 +1,3 @@
-import { useDraggable } from "@dnd-kit/core";
 import { Calendar, User } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Pill } from "@/components/ui/primitives";
@@ -12,15 +11,12 @@ interface TaskCardProps {
   onClick?: () => void;
 }
 
+/**
+ * Presentational kanban card. Drag behaviour lives in the wrapper
+ * (DraggableTaskCard) — registering useDraggable here as well would double-
+ * register the same drag id and break dragging entirely.
+ */
 export function TaskCard({ task, isDragging, onClick }: TaskCardProps) {
-  const { attributes, listeners, setNodeRef, transform } = useDraggable({
-    id: task.task_id,
-  });
-
-  const style = transform
-    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
-    : undefined;
-
   const priorityMeta = TASK_PRIORITY_META[task.priority];
 
   const overdue =
@@ -32,10 +28,6 @@ export function TaskCard({ task, isDragging, onClick }: TaskCardProps) {
 
   return (
     <div
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
       onClick={onClick}
       className={cn(
         "glass rounded-[13px] p-3 cursor-grab active:cursor-grabbing transition-shadow hover:shadow-lg",

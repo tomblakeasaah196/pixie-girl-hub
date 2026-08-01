@@ -12,13 +12,19 @@
 const repo = require("./email-campaigns.repo");
 const events = require("./email-campaigns.events");
 const email = require("../../services/email.service");
+const crypto = require("crypto");
 const render = require("./email-render");
+const personalise = require("../../services/email-personalise");
+const theme = require("../../services/email-theme");
+const storage = require("../../services/storage.service");
+const { compressUpload } = require("../../services/media-compression.service");
 const { audit } = require("../../middleware/audit");
 const { transaction, query } = require("../../config/database");
 const { logger } = require("../../config/logger");
 const { NotFoundError, AppError } = require("../../utils/errors");
 
 const SEND_CAP = 1000; // synchronous send cap per call
+const TEST_SEND_CAP = 5; // max addresses a single test send may target
 
 // ── Templates ──────────────────────────────────────────────
 function listTemplates({ brand }) {
@@ -159,9 +165,16 @@ async function sendCampaign({ brand, user, request_id, id }) {
 
   // Resolve the per-brand identity (logo, accent, name, links from Settings)
   // and the campaign-level merge data (sale discount/link/deadline) once, then
-  // personalise + send per recipient.
+  // personalise + send per recipient. Loyalty facts (points, tier, spend,
+  // recency) load in ONE batched query so {{points_balance}}-style tokens
+  // work in campaign mail without a per-recipient round-trip.
   const brandTokens = await render.resolveBrandTokens(brand);
+  const frame = await render.resolveBrandFrame(brand);
   const campaignTokens = render.resolveCampaignTokens(campaign);
+  const loyaltyFacts = await repo.loyaltyFactsForContacts({
+    brand,
+    contact_ids: recipients.map((r) => r.contact_id),
+  });
 
   let sent = 0;
   for (const r of recipients) {
@@ -169,9 +182,13 @@ async function sendCampaign({ brand, user, request_id, id }) {
       const { subject, html, text, headers } = render.buildEmail({
         template,
         brandTokens,
-        campaignTokens,
+        campaignTokens: {
+          ...campaignTokens,
+          ...personalise.displayTokensFromFacts(loyaltyFacts.get(r.contact_id)),
+        },
         recipient: r,
         brand,
+        frame,
       });
       await email.send({
         to: r.email,
@@ -179,12 +196,14 @@ async function sendCampaign({ brand, user, request_id, id }) {
         html,
         text,
         headers,
+        // The From NAME stays campaign-editable (e.g. "Faith from Faitlyn").
+        // The From ADDRESS and Reply-To are NOT typed per campaign — they are
+        // resolved centrally by email.service from the brand's Outbound Email
+        // connection (Messaging Settings → Connections → Outbound Email), the
+        // single source of truth. That keeps the From on a mailbox the relay
+        // is authorised to send as, and threads customer replies into the
+        // monitored inbox the messaging module also polls. (EMAIL_TWO_WAY_SETUP)
         from_name: campaign.from_name || template.from_name,
-        from_email: campaign.from_email || template.from_email,
-        // EMAIL_TWO_WAY_SETUP: pass the brand so the sender resolves the right
-        // FROM identity, and a conversational Reply-To (sales@<brand>) so a
-        // customer's reply threads back into the conversation.
-        reply_to: campaign.reply_to_email || template.reply_to_email,
         brand,
       });
       await repo.setRecipientStatus({
@@ -204,10 +223,15 @@ async function sendCampaign({ brand, user, request_id, id }) {
       await repo.incCampaignCounter({ brand, id, column: "total_sent" });
       sent += 1;
     } catch (err) {
+      // Persist WHY it failed on the recipient row, not just in the log, so the
+      // reason is visible in the UI and a "did it send?" query without shelling
+      // into the app logs. (failure_reason is TEXT; keep it bounded.)
+      const reason = String(err && err.message ? err.message : err).slice(0, 500);
       await repo.setRecipientStatus({
         brand,
         recipient_id: r.recipient_id,
         status: "failed",
+        fields: { failure_reason: reason },
       });
       logger.error(
         { err: err.message, brand, recipient_id: r.recipient_id },
@@ -533,6 +557,275 @@ async function deleteSegment({ brand, user, request_id, id }) {
     request_id,
   });
 }
+/** A stand-in recipient for previews when a campaign has no audience yet. */
+const SAMPLE_RECIPIENT = {
+  recipient_id: "00000000-0000-0000-0000-000000000000",
+  contact_name_snapshot: "Adaeze Okafor",
+  email: "adaeze@example.com",
+};
+
+/**
+ * Render the exact mail a campaign sends — same pipeline as the live send
+ * (brand frame + tokens, sale merge data, personalisation) but with no
+ * tracking pixel. Uses the first real recipient when one exists so a sent
+ * campaign previews precisely what that customer received.
+ */
+async function previewCampaign({ brand, id }) {
+  const campaign = await repo.getCampaign({ brand, id });
+  if (!campaign) throw new NotFoundError("Campaign");
+  if (!campaign.default_template_id)
+    throw new AppError(
+      "NO_TEMPLATE",
+      "Pick a template for this campaign to preview the mail",
+      422,
+    );
+  const template = await repo.getTemplate({
+    brand,
+    id: campaign.default_template_id,
+  });
+  if (!template) throw new NotFoundError("Template");
+
+  const brandTokens = await render.resolveBrandTokens(brand);
+  const frame = await render.resolveBrandFrame(brand);
+  const campaignTokens = render.resolveCampaignTokens(campaign);
+  const [first] = await repo.listRecipients({
+    brand,
+    campaign_id: id,
+    page: 1,
+    page_size: 1,
+  });
+  const recipient = first || SAMPLE_RECIPIENT;
+  // Loyalty tokens: real values for a real recipient, friendly samples
+  // otherwise — the preview must render every token the send would.
+  const loyaltyTokens = first && first.contact_id
+    ? personalise.displayTokensFromFacts(
+        (
+          await repo.loyaltyFactsForContacts({
+            brand,
+            contact_ids: [first.contact_id],
+          })
+        ).get(first.contact_id),
+      )
+    : personalise.sampleDisplayTokens();
+
+  const { subject, html } = render.buildEmail({
+    template,
+    brandTokens,
+    campaignTokens: { ...campaignTokens, ...loyaltyTokens },
+    recipient,
+    brand,
+    frame,
+    tracking: false,
+  });
+  return {
+    campaign_id: id,
+    subject,
+    html,
+    sample_recipient: {
+      name: recipient.contact_name_snapshot || "",
+      email: recipient.email || "",
+      is_real: Boolean(first),
+    },
+  };
+}
+
+/**
+ * Send a one-off TEST copy of the campaign mail — the exact mail the live send
+ * produces (same render pipeline, real brand frame + tokens, sender identity
+ * resolved from Messaging Settings) but with tracking off, no recipient rows,
+ * no counters and no status change. Always goes to the requesting user; extra
+ * addresses (e.g. the CEO's) can be added so a reviewer can sign off in their
+ * inbox before the real send. Subject is prefixed [TEST] so it can't be
+ * mistaken for the live mail.
+ */
+async function sendTest({ brand, user, request_id, id, emails }) {
+  const campaign = await repo.getCampaign({ brand, id });
+  if (!campaign) throw new NotFoundError("Campaign");
+  if (!campaign.default_template_id)
+    throw new AppError(
+      "NO_TEMPLATE",
+      "Pick a template for this campaign before sending a test",
+      422,
+    );
+  const template = await repo.getTemplate({
+    brand,
+    id: campaign.default_template_id,
+  });
+  if (!template) throw new NotFoundError("Template");
+
+  // Recipients: the requester first, then any sign-off addresses. De-dup
+  // case-insensitively and cap the count so this can't become a blaster.
+  const extra = Array.isArray(emails) ? emails : [];
+  const seen = new Set();
+  const recipients = [];
+  for (const addr of [user.email, ...extra]) {
+    const clean = String(addr || "").trim();
+    if (!clean) continue;
+    const key = clean.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    recipients.push(clean);
+  }
+  if (recipients.length === 0)
+    throw new AppError(
+      "NO_TEST_RECIPIENT",
+      "No address to send the test to",
+      422,
+    );
+  if (recipients.length > TEST_SEND_CAP)
+    throw new AppError(
+      "TOO_MANY_TEST_RECIPIENTS",
+      `A test can go to at most ${TEST_SEND_CAP} addresses`,
+      422,
+    );
+
+  // Render once with a sample recipient so every token resolves; tracking off
+  // (there is no recipient row to attribute a pixel/click to).
+  const brandTokens = await render.resolveBrandTokens(brand);
+  const frame = await render.resolveBrandFrame(brand);
+  const campaignTokens = render.resolveCampaignTokens(campaign);
+  const { subject, html, text, headers } = render.buildEmail({
+    template,
+    brandTokens,
+    campaignTokens: { ...campaignTokens, ...personalise.sampleDisplayTokens() },
+    recipient: SAMPLE_RECIPIENT,
+    brand,
+    frame,
+    tracking: false,
+  });
+
+  const sent = [];
+  const failed = [];
+  for (const to of recipients) {
+    try {
+      await email.send({
+        to,
+        subject: `[TEST] ${subject}`,
+        html,
+        text,
+        headers,
+        // From name stays campaign-editable; address + Reply-To resolve from
+        // Messaging Settings — identical to the live send.
+        from_name: campaign.from_name || template.from_name,
+        brand,
+      });
+      sent.push(to);
+    } catch (err) {
+      logger.error(
+        { err: err.message, brand, campaign_id: id, to },
+        "email campaign test send failed",
+      );
+      failed.push({ email: to, error: err.message });
+    }
+  }
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "email_campaigns.test_send",
+    target_type: "email_campaign",
+    target_id: id,
+    after: { sent, failed: failed.map((f) => f.email) },
+    request_id,
+  });
+  // Surface a hard failure (e.g. SMTP not configured) rather than reporting a
+  // silent success when nothing actually went out.
+  if (sent.length === 0)
+    throw new AppError(
+      "TEST_SEND_FAILED",
+      failed[0]
+        ? `Test send failed: ${failed[0].error}`
+        : "Test send failed",
+      502,
+    );
+  return { sent, failed };
+}
+
+// ── Sender identity (read-only — the SSOT is the messaging module) ──
+/**
+ * The From address + Reply-To this brand's campaigns will send with, resolved
+ * from the Outbound Email connection in Messaging Settings. The campaign
+ * builder shows this read-only so the sender is never typed by hand; only the
+ * From display name stays campaign-editable.
+ */
+async function getSenderIdentity({ brand }) {
+  return email.resolveSenderIdentity(brand);
+}
+
+// ── Brand frame (header/footer around every campaign mail) ─
+/** The brand's email frame config with defaults applied. */
+async function getFrame({ brand }) {
+  const frame = await render.resolveBrandFrame(brand);
+  return { frame, defaults: theme.DEFAULT_FRAME };
+}
+
+async function updateFrame({ brand, user, request_id, patch }) {
+  const current = await render.resolveBrandFrame(brand);
+  const frame = theme.resolveFrame({ ...current, ...patch });
+  await repo.saveEmailFrame({ brand, frame });
+  render.invalidateBrand(brand);
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "email_campaigns.frame.update",
+    target_type: "business_config",
+    target_id: brand,
+    after: frame,
+    request_id,
+  });
+  return { frame, defaults: theme.DEFAULT_FRAME };
+}
+
+/**
+ * The framed document shell for the mail editor's live preview: the real
+ * header/footer with brand tokens resolved and a `<!--PGH_BODY-->` marker
+ * where the editor injects what's being written. Zero drift — it is the same
+ * wrap the send pipeline applies.
+ */
+async function frameShell({ brand }) {
+  const brandTokens = await render.resolveBrandTokens(brand);
+  const frame = await render.resolveBrandFrame(brand);
+  const shell = render.applyFrame({ body: "<!--PGH_BODY-->", frame });
+  const tokens = {
+    ...brandTokens,
+    ...personalise.sampleDisplayTokens(),
+    customer_name: SAMPLE_RECIPIENT.contact_name_snapshot,
+    first_name: SAMPLE_RECIPIENT.contact_name_snapshot.split(" ")[0],
+    email: SAMPLE_RECIPIENT.email,
+    unsubscribe_url: "#",
+  };
+  return { shell_html: render.renderStr(shell, tokens), tokens };
+}
+
+/** Store an image dropped into the mail editor; returns its public URL. */
+async function uploadImage({ brand, file }) {
+  if (!file || !file.buffer || !file.buffer.length) {
+    throw new AppError("NO_FILE", "No image was uploaded", 400);
+  }
+  const shrunk = await compressUpload(file);
+  if (!/^image\//.test(shrunk.mime_type || "")) {
+    throw new AppError("BAD_FILE_TYPE", "Only image files are allowed", 400);
+  }
+  const ext =
+    String(shrunk.filename || "")
+      .split(".")
+      .pop()
+      ?.toLowerCase()
+      .replace(/[^a-z0-9]/g, "")
+      .slice(0, 5) || "jpg";
+  const key = `email/${brand}/${crypto.randomBytes(12).toString("hex")}.${ext}`;
+  const stored = await storage.put(shrunk.buffer, {
+    key,
+    contentType: shrunk.mime_type,
+  });
+  return { url: stored.public_url };
+}
+
+/** Count + sample an ad-hoc audience filter (segment modal live preview). */
+async function previewAudience({ brand, filter }) {
+  const contacts = await repo.emailableContacts({ brand, filter: filter || {} });
+  return { count: contacts.length, sample: contacts.slice(0, 20) };
+}
+
 /** Preview the audience a segment resolves to (emailable contacts). */
 async function previewSegment({ brand, id }) {
   const seg = await repo.getSegment({ brand, id });
@@ -667,9 +960,54 @@ async function handleUnsubscribe({ brand, recipient_id }) {
         id: r.campaign_id,
         column: "total_unsubscribed",
       });
+      // Persist beyond this campaign: tag the contact so future audience
+      // builds (and retention strategies) skip them. Without this, the next
+      // campaign would quietly re-add someone who already opted out.
+      if (r.contact_id) {
+        await repo.tagContactUnsubscribed({
+          client,
+          brand,
+          contact_id: r.contact_id,
+        });
+      }
     }
     return { ok: true, unsubscribed: true };
   });
+}
+
+/** Contact-level unsubscribe — the link retention strategy mails carry. The
+ *  token is HMAC-signed (email-render), so a bad token is simply ignored. */
+async function handleContactUnsubscribe({ brand, token }) {
+  const contact_id = render.verifyContactUnsubscribeToken(token, brand);
+  if (!contact_id) return { ok: true }; // never leak validity on a public URL
+  await repo.tagContactUnsubscribed({ brand, contact_id });
+  return { ok: true, unsubscribed: true };
+}
+
+// ── Custom personalise tokens (the "add your own" in the editor) ──
+async function listPersonaliseTokens({ brand }) {
+  return { custom: await repo.getCustomTokens({ brand }) };
+}
+
+async function savePersonaliseTokens({ brand, user, request_id, tokens }) {
+  let clean;
+  try {
+    clean = personalise.normaliseCustomTokens(tokens);
+  } catch (err) {
+    throw new AppError("BAD_TOKENS", err.message, 422);
+  }
+  await repo.saveCustomTokens({ brand, tokens: clean });
+  render.invalidateBrand(brand); // token values merge into the brand cache
+  await audit({
+    business: brand,
+    user_id: user.user_id,
+    action_key: "email_campaigns.personalise_tokens.update",
+    target_type: "business_config",
+    target_id: brand,
+    after: { count: clean.length },
+    request_id,
+  });
+  return { custom: clean };
 }
 
 module.exports = {
@@ -682,6 +1020,7 @@ module.exports = {
   updateCampaign,
   buildRecipients,
   sendCampaign,
+  sendTest,
   setStatus,
   recordEvent,
   subscribeNewsletter,
@@ -696,8 +1035,18 @@ module.exports = {
   saveSegment,
   deleteSegment,
   previewSegment,
+  previewAudience,
+  previewCampaign,
+  uploadImage,
+  getSenderIdentity,
+  getFrame,
+  updateFrame,
+  frameShell,
   buildAudienceFromSegment,
   handlePixelOpen,
   handleClick,
   handleUnsubscribe,
+  handleContactUnsubscribe,
+  listPersonaliseTokens,
+  savePersonaliseTokens,
 };

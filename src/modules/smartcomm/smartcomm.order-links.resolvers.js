@@ -16,6 +16,7 @@
 "use strict";
 
 const { query } = require("../../config/database");
+const rewigService = require("../catalogue/rewig.service");
 
 /** Default sellable variant for a base product: prefer the flagged
  *  default, else the oldest active row — mirrors the convention used
@@ -122,6 +123,21 @@ async function resolveStyledItem(business, it) {
     const v = await defaultVariant(schema, styled.base_product_id);
     variant_id = v ? v.variant_id : null;
   }
+  // Rewig adjacency (000088): the resolution above is deterministic, not
+  // stock-aware — if the base it landed on is short, draw from a
+  // size-adjacent sibling base instead, same as storefront checkout.
+  if (variant_id && styled.base_product_id) {
+    const donorProductId = await rewigService.pickRewigDonorProductId({
+      brand: business,
+      styled,
+      originProductId: styled.base_product_id,
+      quantity: it.qty,
+    });
+    if (donorProductId) {
+      const dv = await defaultVariant(schema, donorProductId);
+      if (dv) variant_id = dv.variant_id;
+    }
+  }
   // Staff may have picked a specific head size × lace × colour (styled_variant).
   // The physical stock line is still the base variant above; the styled variant
   // sets the PRICE (it.price_ngn, snapshotted at pick time) and the spec label
@@ -220,6 +236,19 @@ async function resolveBundleItem(business, it) {
       } else if (styled && styled.base_product_id) {
         const v = await defaultVariant(schema, styled.base_product_id);
         variant_id = v ? v.variant_id : null;
+      }
+      // Rewig adjacency (000088) — same fallback as a direct styled item.
+      if (variant_id && styled && styled.base_product_id) {
+        const donorProductId = await rewigService.pickRewigDonorProductId({
+          brand: business,
+          styled,
+          originProductId: styled.base_product_id,
+          quantity: (comp.quantity || 1) * it.qty,
+        });
+        if (donorProductId) {
+          const dv = await defaultVariant(schema, donorProductId);
+          if (dv) variant_id = dv.variant_id;
+        }
       }
     } else if (comp.product_id) {
       const v = await defaultVariant(schema, comp.product_id);

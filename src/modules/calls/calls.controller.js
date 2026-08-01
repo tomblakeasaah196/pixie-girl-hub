@@ -26,6 +26,14 @@ async function list(req, res) {
   res.json({ data });
 }
 
+async function ringing(req, res) {
+  const data = await service.listRingingForUser({
+    user: req.user,
+    brand: req.brand,
+  });
+  res.json({ data });
+}
+
 async function get(req, res) {
   const data = await service.getCall({
     user: req.user,
@@ -69,4 +77,4 @@ async function outcome(req, res) {
   res.json(data);
 }
 
-module.exports = { list, get, claim, accept, reject, hangup, outcome };
+module.exports = { list, ringing, get, claim, accept, reject, hangup, outcome };

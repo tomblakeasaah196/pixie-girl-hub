@@ -308,7 +308,7 @@ function CampaignHeader({
           filter: "blur(34px)",
         }}
       />
-      <div className="relative flex items-center gap-3 flex-wrap">
+      <div className="relative flex items-center gap-2 flex-wrap">
         <Link
           to="/sales-campaigns"
           className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-text-muted hover:text-text-primary"
@@ -324,10 +324,11 @@ function CampaignHeader({
             {Math.round(campaign.ai_assist_pct * 100)}%
           </Pill>
         )}
-        <div className="ml-auto flex gap-2">
+        <div className="w-full md:w-auto md:ml-auto flex gap-2">
           <Button
             variant="ghost"
             icon={<Eye className="w-4 h-4" />}
+            className="flex-1 md:flex-none"
             onClick={() =>
               window.open(
                 publicSaleUrl(campaign.slug, {
@@ -345,6 +346,7 @@ function CampaignHeader({
           <Button
             variant="primary"
             icon={<Sparkles className="w-4 h-4" />}
+            className="flex-1 md:flex-none"
             onClick={onPraxis}
           >
             Build with Praxis

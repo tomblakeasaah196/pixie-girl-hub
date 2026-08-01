@@ -23,9 +23,9 @@ export function AnalyticsTab() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <h2 className="font-display text-lg">Retention analytics</h2>
-        <div className="w-44">
+        <div className="w-full sm:w-44">
           <Select
             value={String(windowDays)}
             onChange={(v) => setWindowDays(Number(v))}
@@ -71,7 +71,7 @@ export function AnalyticsTab() {
         <h3 className="font-display text-[15px]">
           Estimates <span className="text-[11px] text-text-faint font-normal">(directional, not a predictive model)</span>
         </h3>
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 min-[420px]:grid-cols-2 md:grid-cols-3 gap-3">
           <KpiTile label="Estimated CLV" value={fmt(a.estimates.clv_ngn)} />
           <KpiTile label="Avg orders / customer" value={String(a.estimates.avg_orders_per_customer)} />
           <KpiTile label="Churn estimate" value={`${a.estimates.churn_rate_pct}%`} tone="warn" />

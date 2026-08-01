@@ -36,9 +36,46 @@ const createSchema = z
     is_active: z.boolean().optional(),
     metadata: z.record(z.any()).optional(),
   })
-  .strict();
+  .strict()
+  // P1-1: percentage discounts store as a FRACTION (0.10 = 10%). Before this
+  // guard an admin who entered `10` on the coupons tab (thinking "10%")
+  // produced a coupon that computed 10× the subtotal — only the §6.25 margin
+  // floor stood between it and a ₦0 order. Enforce 0 < value <= 1 up front
+  // for percentage; the other types (fixed_amount / free_shipping /
+  // buy_x_get_y) keep their existing constraints.
+  .superRefine((v, ctx) => {
+    if (v.discount_type === "percentage") {
+      if (!(v.discount_value > 0 && v.discount_value <= 1)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["discount_value"],
+          message:
+            "Percentage discount must be a fraction between 0 and 1 (e.g. 0.10 for 10%).",
+        });
+      }
+    }
+  });
 
-const updateSchema = createSchema.partial().omit({ coupon_code: true });
+// createSchema is a ZodEffects (superRefine); reach into the inner shape for
+// the partial update variant, then re-attach the same percentage guard on
+// whichever of discount_type/discount_value the caller supplied.
+const updateSchema = createSchema._def.schema
+  .partial()
+  .omit({ coupon_code: true })
+  .superRefine((v, ctx) => {
+    if (
+      v.discount_type === "percentage" &&
+      v.discount_value !== undefined &&
+      !(v.discount_value > 0 && v.discount_value <= 1)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["discount_value"],
+        message:
+          "Percentage discount must be a fraction between 0 and 1 (e.g. 0.10 for 10%).",
+      });
+    }
+  });
 
 const validateSchema = z
   .object({

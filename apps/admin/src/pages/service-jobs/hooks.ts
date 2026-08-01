@@ -96,6 +96,26 @@ export function useJob(id: string | null) {
   });
 }
 
+/**
+ * The stylist's currently-open time session (or null). Polls every 30s so
+ * the "Working on Job X" strip reflects a start/pause done elsewhere (e.g.
+ * from another tab, or from the per-job card lifecycle mutations).
+ * `enabled` gates the poll so we don't burn a request on users who aren't
+ * own-scope (Ops don't have a personal work clock).
+ */
+export function useMyCurrentSession(enabled: boolean) {
+  const brand = useBrand();
+  return useQuery({
+    queryKey: ["service-jobs-my-current", brand],
+    queryFn: api.getMyCurrentSession,
+    enabled,
+    refetchInterval: enabled ? 30_000 : false,
+    // A background tab shouldn't keep pinging — the strip will refresh when
+    // the user comes back to focus this window.
+    refetchIntervalInBackground: false,
+  });
+}
+
 export function useCreateJob() {
   const qc = useQueryClient();
   const brand = useBrand();
@@ -116,6 +136,31 @@ export function useAssignableStylists(enabled = true) {
     queryFn: api.listAssignableStylists,
     enabled,
     staleTime: 30_000,
+  });
+}
+
+// ── Scorecards (internal Stylist Studio only) ────────────────
+
+export function useStylistScorecards() {
+  const brand = useBrand();
+  return useQuery({
+    queryKey: ["stylist-scorecards", brand],
+    queryFn: api.listStylistScorecards,
+  });
+}
+
+export function useStylistScorecard(userId: string | null) {
+  const brand = useBrand();
+  return useQuery({
+    queryKey: ["stylist-scorecard", userId, brand],
+    queryFn: () => api.getStylistScorecard(userId!),
+    enabled: !!userId,
+  });
+}
+
+export function useSummarizeJob(jobId: string) {
+  return useMutation({
+    mutationFn: () => api.summarizeJob(jobId),
   });
 }
 
@@ -143,7 +188,25 @@ export function useJobActions(jobId: string) {
       onSuccess: invalidate,
     }),
     assign: useMutation({
-      mutationFn: (userId: string) => api.assignStaff(jobId, userId),
+      mutationFn: ({
+        userId,
+        expected_completion_at,
+        acknowledge_unlinked,
+      }: {
+        userId: string;
+        expected_completion_at?: string;
+        acknowledge_unlinked?: boolean;
+      }) =>
+        api.assignStaff(
+          jobId,
+          userId,
+          expected_completion_at,
+          acknowledge_unlinked,
+        ),
+      onSuccess: invalidate,
+    }),
+    unassign: useMutation({
+      mutationFn: () => api.unassignStaff(jobId),
       onSuccess: invalidate,
     }),
     outcome: useMutation({
@@ -230,17 +293,12 @@ export function useStudioLifecycle(jobId: string) {
       mutationFn: () => api.returnJob(jobId),
       onSuccess: invalidate,
     }),
+    // QC pass auto-completes the job + creates the Logistics delivery in one
+    // call — no separate dispatch / hand-to-sales mutations any more (those
+    // flows now live on the Logistics + Sales Order side).
     qc: useMutation({
       mutationFn: (input: Parameters<typeof api.qcJob>[1]) =>
         api.qcJob(jobId, input),
-      onSuccess: invalidate,
-    }),
-    dispatch: useMutation({
-      mutationFn: () => api.dispatchJob(jobId),
-      onSuccess: invalidate,
-    }),
-    handToSales: useMutation({
-      mutationFn: () => api.handToSales(jobId),
       onSuccess: invalidate,
     }),
     writeOff: useMutation({
@@ -309,6 +367,15 @@ export function useJobTimeLogs(jobId: string | null) {
   });
 }
 
+export function useJobActivity(jobId: string | null) {
+  const brand = useBrand();
+  return useQuery({
+    queryKey: ["job-activity", jobId, brand],
+    queryFn: () => api.listJobActivity(jobId!),
+    enabled: !!jobId,
+  });
+}
+
 // ── Wig accountability ─────────────────────────────────────
 
 export function useAccountability() {
@@ -316,5 +383,14 @@ export function useAccountability() {
   return useQuery({
     queryKey: ["studio-accountability", brand],
     queryFn: () => api.getAccountability(),
+  });
+}
+
+export function useJobCustody(jobId: string | null) {
+  const brand = useBrand();
+  return useQuery({
+    queryKey: ["job-custody", jobId, brand],
+    queryFn: () => api.listCustodyLedger({ job_id: jobId! }),
+    enabled: !!jobId,
   });
 }

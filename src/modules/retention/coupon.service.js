@@ -126,6 +126,13 @@ function computeDiscount(coupon, subtotalNgn) {
       const cap = money(coupon.max_discount_value);
       if (d.gt(cap)) d = cap;
     }
+    // P1-1: never let a percentage discount exceed the subtotal, even when
+    // legacy data stored an out-of-range value (>1) that predates the new
+    // validator. The Zod refine blocks this at the admin edge, and the
+    // §6.25 allocator further clamps to real margin headroom, but this is
+    // the last-mile guarantee that `computeDiscount` alone can't return
+    // more than what's being discounted.
+    if (d.gt(sub)) d = sub;
     return d;
   }
   if (coupon.discount_type === "fixed_amount") {
@@ -140,7 +147,7 @@ async function firstTimeOk({ brand, contact_id }) {
   if (!contact_id) return true;
   const { rows } = await query(
     `SELECT count(*)::int AS c FROM ${brand}.sales_orders
-      WHERE contact_id = $1 AND status IN ('paid','awaiting_dispatch','completed')`,
+      WHERE contact_id = $1 AND status IN ('paid','assigned','order_ready','dispatched','completed')`,
     [contact_id],
   );
   return rows[0].c === 0;
@@ -183,6 +190,20 @@ async function validateCoupon({
     coupon.total_redeemed >= coupon.total_usage_limit
   )
     return { valid: false, reason: "USAGE_LIMIT_REACHED" };
+
+  // P1-6: contact-bound voucher (coupons.assigned_contact_id). When set,
+  // only the redeeming contact may use the code — the "reward I minted
+  // for Amina isn't usable by anyone else" invariant.
+  if (coupon.assigned_contact_id) {
+    if (!contact_id || contact_id !== coupon.assigned_contact_id)
+      return { valid: false, reason: "NOT_ASSIGNED_TO_CONTACT" };
+  }
+
+  // P1-6: is_single_use was written by every voucher mint but never READ
+  // here. Treat it as an absolute one-use cap: total_redeemed = 0 or the
+  // coupon is done. Kicks in even when there is no contact_id (guests).
+  if (coupon.is_single_use && (coupon.total_redeemed || 0) >= 1)
+    return { valid: false, reason: "SINGLE_USE_CONSUMED" };
 
   if (contact_id) {
     const used = await repo.countCustomerRedemptions({
@@ -269,6 +290,18 @@ async function redeemCoupon({
   });
 }
 
+/**
+ * P1-6: mint a voucher INSIDE an existing transaction. rewards.service
+ * calls this atomically with the point deduction so a mint failure aborts
+ * the redemption entirely — nothing like the old "points spent, no
+ * voucher" gap. Returns the created coupon row. No admin CRUD side
+ * effects (audit / etc) because the reward redemption itself is the
+ * audited event.
+ */
+async function mintVoucherInTx({ client, brand, input, user_id = null }) {
+  return repo.create({ client, brand, input, user_id });
+}
+
 module.exports = {
   createCoupon,
   listCoupons,
@@ -278,4 +311,5 @@ module.exports = {
   deleteCoupon,
   validateCoupon,
   redeemCoupon,
+  mintVoucherInTx,
 };

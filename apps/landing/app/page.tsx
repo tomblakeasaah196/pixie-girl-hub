@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { fetchSalesIndex, fetchPublishedLanding } from "@/lib/api";
-import { getBrand } from "@/lib/brand";
+import { getBrand, getBrandConfig } from "@/lib/brand";
 import { withDefaults } from "@landing-kit";
 import { PublicLanding } from "@/components/PublicLanding";
 import type { LandingConfig } from "@/lib/types";
@@ -82,7 +82,7 @@ export default async function Page() {
   }
 
   if (!config) {
-    return <OpeningSoon brand={brand} />;
+    return <OpeningSoon />;
   }
 
   // Hydrate with brand defaults (same merge the studio uses) so the live page
@@ -93,12 +93,11 @@ export default async function Page() {
 /**
  * Neutral holding screen shown only if a brand has never published a landing
  * page yet. Deliberately minimal and on-brand — never the old design.
+ * The storefront link comes from the Hub (business_config.storefront_domain,
+ * editable in Settings → Business Setup) — no hardcoded domains.
  */
-function OpeningSoon({ brand }: { brand: string }) {
-  const storefront =
-    brand === "faitlynhair"
-      ? "https://thefaitlynbrand.com"
-      : "https://pixiegirlglobal.com";
+async function OpeningSoon() {
+  const { storefrontUrl } = await getBrandConfig();
   return (
     <main className="min-h-screen grid place-items-center px-6 py-16">
       <div className="text-center space-y-5 max-w-md">
@@ -112,12 +111,14 @@ function OpeningSoon({ brand }: { brand: string }) {
           The next chapter is on its way. In the meantime, explore the full
           collection on our storefront.
         </p>
-        <a
-          href={storefront}
-          className="inline-flex items-center justify-center h-11 px-6 rounded-xl bg-[rgb(var(--accent-deep))] text-[rgb(var(--text))] font-semibold"
-        >
-          Visit the storefront →
-        </a>
+        {storefrontUrl ? (
+          <a
+            href={storefrontUrl}
+            className="inline-flex items-center justify-center h-11 px-6 rounded-xl bg-[rgb(var(--accent-deep))] text-[rgb(var(--text))] font-semibold"
+          >
+            Visit the storefront →
+          </a>
+        ) : null}
       </div>
     </main>
   );

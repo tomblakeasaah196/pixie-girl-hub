@@ -102,6 +102,25 @@ const proofSubmit = z
   .object({ external_url: z.string().url().max(500) })
   .strict();
 
+// Quick-log (simplified Social Studio): paste a link for a day + platform and
+// it lands as a proven "posted" row, oEmbed enriched, no content/screenshot.
+// platform is optional — the service infers it from the URL host when omitted.
+// Like accountConnect above, platform is any key from the (admin-extensible)
+// shared.social_platforms registry, not just the original four — the service
+// requires it to resolve to a registered account either way.
+const quickLog = z
+  .object({
+    external_url: z.string().url().max(500),
+    platform: z
+      .string()
+      .regex(/^[a-z][a-z0-9_]{0,40}$/, "Unknown platform")
+      .optional(),
+    account_id: z.string().uuid().optional(),
+    // The calendar day the post belongs to (ISO). Absent -> now.
+    published_at: z.string().datetime().optional(),
+  })
+  .strict();
+
 const rateCreative = z
   .object({ rating: z.coerce.number().int().min(1).max(5) })
   .strict();
@@ -141,6 +160,7 @@ module.exports = {
   validateReschedule: mk(reschedule),
   validateMetrics: mk(metrics),
   validateProofSubmit: mk(proofSubmit),
+  validateQuickLog: mk(quickLog),
   validateRateCreative: mk(rateCreative),
   validateTargetSet: mk(targetSet),
   validateDmIngest: mk(dmIngest),

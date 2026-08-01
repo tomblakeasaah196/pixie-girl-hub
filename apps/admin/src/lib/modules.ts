@@ -65,8 +65,9 @@ export interface AppModule {
    * catalog, src/shared/access/access.catalog.js). A user who lacks
    * `<permission>:view` never sees this module in any nav surface, and the
    * route guard blocks direct URL access. Omit for personal/always-on modules
-   * (Dashboard anchor, Workspace, Notifications). The API enforces access
-   * regardless; this is the UI half of "never show what they can't access".
+   * (Workspace, Notifications) that have no RBAC key at all. The API enforces
+   * access regardless; this is the UI half of "never show what they can't
+   * access".
    */
   permission?: string;
 }
@@ -93,6 +94,12 @@ export const GROUP_ORDER: ModuleGroup[] = [
 export const MODULES: AppModule[] = [
   {
     key: "dashboard",
+    // Reserved for the management circle (dashboards.access.js): RBAC
+    // matrix `dashboards.view` OR an org-chart management/dotted-line
+    // right. `/auth/me/permissions` folds both paths into one grants list,
+    // so gating on the matrix key here is enough to keep nav in sync with
+    // whatever an admin sets in Org & Workflow → Permissions.
+    permission: "dashboards",
     label: "Dashboard",
     description: "KPIs & today",
     group: "run",
@@ -223,7 +230,7 @@ export const MODULES: AppModule[] = [
     key: "invoicing",
     permission: "invoicing",
     label: "Invoicing",
-    description: "Billing & live AR",
+    description: "Invoices, refunds & who owes us",
     group: "finance",
     route: "/invoicing",
     icon: FileText,
@@ -258,7 +265,7 @@ export const MODULES: AppModule[] = [
   },
   {
     key: "cash",
-    permission: "expenses",
+    permission: "cash_request",
     label: "Cash Requests",
     description: "Disbursements",
     group: "finance",
@@ -363,7 +370,7 @@ export const MODULES: AppModule[] = [
     key: "marketing",
     permission: "email_campaigns",
     label: "Marketing",
-    description: "Email & ads",
+    description: "Email campaigns, templates & audiences",
     group: "grow",
     route: "/marketing",
     icon: Mail,

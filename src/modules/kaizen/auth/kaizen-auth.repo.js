@@ -152,6 +152,64 @@ async function writeAudit({ operatorId, action, targetType, targetId, metadata, 
   );
 }
 
+// ── Password reset OTP ─────────────────────────────────────────────────────
+
+async function createPasswordResetToken({ operatorId, codeHash, expiresAt }) {
+  const { rows } = await query(
+    `INSERT INTO shared.kaizen_password_reset_tokens
+       (operator_id, code_hash, expires_at)
+     VALUES ($1, $2, $3)
+     RETURNING token_id, expires_at`,
+    [operatorId, codeHash, expiresAt],
+  );
+  return rows[0];
+}
+
+// The newest live code for an operator. Expiry is filtered here rather than in
+// the index predicate (now() is STABLE, not IMMUTABLE — see migration 000373).
+async function findLiveResetTokenByOperator(operatorId) {
+  const { rows } = await query(
+    `SELECT token_id, operator_id, code_hash, attempt_count, max_attempts
+       FROM shared.kaizen_password_reset_tokens
+      WHERE operator_id = $1
+        AND used_at IS NULL
+        AND expires_at > now()
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [operatorId],
+  );
+  return rows[0] || null;
+}
+
+async function incrementResetTokenAttempts(tokenId) {
+  const { rows } = await query(
+    `UPDATE shared.kaizen_password_reset_tokens
+        SET attempt_count = attempt_count + 1
+      WHERE token_id = $1
+     RETURNING attempt_count, max_attempts`,
+    [tokenId],
+  );
+  return rows[0] || null;
+}
+
+async function markResetTokenUsed(tokenId) {
+  await query(
+    `UPDATE shared.kaizen_password_reset_tokens
+        SET used_at = now()
+      WHERE token_id = $1 AND used_at IS NULL`,
+    [tokenId],
+  );
+}
+
+async function revokeResetTokensForOperator(operatorId) {
+  await query(
+    `UPDATE shared.kaizen_password_reset_tokens
+        SET used_at = now()
+      WHERE operator_id = $1 AND used_at IS NULL`,
+    [operatorId],
+  );
+}
+
 module.exports = {
   findOperatorByEmail,
   findOperatorById,
@@ -165,4 +223,9 @@ module.exports = {
   revokeAllSessions,
   revokeAllSessionsExcept,
   writeAudit,
+  createPasswordResetToken,
+  findLiveResetTokenByOperator,
+  incrementResetTokenAttempts,
+  markResetTokenUsed,
+  revokeResetTokensForOperator,
 };

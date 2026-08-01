@@ -20,6 +20,18 @@ async function runIgTokenRefreshSweep() {
   const svc = require("../../modules/messaging_accounts/messaging-accounts.service");
   const summary = await svc.refreshInstagramTokens();
   logger.info(summary, "ig token refresh sweep done");
+  // A rotation can coincide with Meta dropping the account-level webhook
+  // subscriptions (messages/reactions/seen) — re-assert them right after
+  // the sweep instead of waiting for the next hourly watchdog tick.
+  try {
+    const echo = await svc.ensureInstagramEchoSubscriptions();
+    logger.info(echo, "ig echo-subscription check after token sweep");
+  } catch (err) {
+    logger.warn(
+      { err: err.message },
+      "ig echo-subscription check after token sweep failed",
+    );
+  }
   return summary;
 }
 

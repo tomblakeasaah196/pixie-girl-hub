@@ -80,7 +80,9 @@ const ENTITIES = [
           amount_ngn: r.total_ngn,
           order_type: r.order_type,
         },
-        route: `/sales/${r.id}`,
+        // Order detail lives at /sales/orders/:orderId (see router.tsx). A bare
+        // /sales/:id falls through to the not-found placeholder.
+        route: `/sales/orders/${r.id}`,
       }));
     },
   },
@@ -146,7 +148,9 @@ const ENTITIES = [
         title: r.display_name || r.external_thread_ref || "Conversation",
         subtitle: r.channel_type,
         meta: { last_message_at: r.last_message_at },
-        route: `/smartcomm/${r.id}`,
+        // The Messaging workstation selects a channel via ?channel=, not a
+        // path segment (/smartcomm/:id doesn't exist).
+        route: `/smartcomm?channel=${r.id}`,
       }));
     },
   },
@@ -190,7 +194,9 @@ const ENTITIES = [
           ? `SKU ${r.matched_sku}`
           : r.product_code || "—",
         meta: { visible: r.is_visible_storefront },
-        route: `/catalogue/${r.id}`,
+        // Products are base (stock-bearing) records — their detail page is
+        // /catalogue/base/:id. There is no /catalogue/:id route.
+        route: `/catalogue/base/${r.id}`,
       }));
     },
   },
@@ -224,7 +230,9 @@ const ENTITIES = [
         title: r.sku || r.variant_label || r.product_name,
         subtitle: r.product_name,
         meta: { variant_label: r.variant_label },
-        route: `/stock?sku=${encodeURIComponent(r.sku || "")}`,
+        // A SKU belongs to a base product; its detail page shows the variant
+        // and its live stock. (The Stock module has no per-SKU deep-link.)
+        route: `/catalogue/base/${r.product_id}`,
       }));
     },
   },
@@ -262,7 +270,9 @@ const ENTITIES = [
         title: r.delivery_number || r.courier_tracking_ref || "Delivery",
         subtitle: [r.order_number, r.contact_name].filter(Boolean).join(" · "),
         meta: { status: r.status, tracking: r.courier_tracking_ref },
-        route: `/logistics/${r.id}`,
+        // Logistics opens delivery detail from an in-page drawer (no URL id);
+        // land on the "All" tab where the delivery is listed.
+        route: `/logistics?tab=all`,
       }));
     },
   },
@@ -303,7 +313,9 @@ const ENTITIES = [
           amount_ngn: r.total_ngn,
           paid_ngn: r.amount_paid_ngn,
         },
-        route: `/invoicing/${r.id}`,
+        // Invoicing has no /invoicing/:id route — the Invoices tab opens a
+        // detail drawer keyed off ?invoice=. Deep-link straight to it.
+        route: `/invoicing?tab=invoices&invoice=${r.id}`,
       }));
     },
   },
@@ -343,7 +355,8 @@ const ENTITIES = [
         title: r.payment_number || r.provider_reference || "Payment",
         subtitle: [r.order_number, r.contact_name].filter(Boolean).join(" · "),
         meta: { amount_ngn: r.amount_ngn, method: r.method },
-        route: `/sales/${r.order_id}`,
+        // Payments open on their parent order's detail page.
+        route: `/sales/orders/${r.order_id}`,
       }));
     },
   },
@@ -385,7 +398,8 @@ const ENTITIES = [
           .filter(Boolean)
           .join(" · "),
         meta: { status: r.status, amount_ngn: r.total_amount_ngn },
-        route: `/expenses/${r.id}`,
+        // Expenses open in an in-page drawer (no URL id) — land on the list.
+        route: `/expenses`,
       }));
     },
   },
@@ -394,7 +408,7 @@ const ENTITIES = [
     label: "Cash requests",
     group: "finance",
     icon: "Wallet",
-    module: "expenses",
+    module: "cash_request",
     action: "view",
     scoped: "shared",
     async resolve({ ex, brand, q, limit }) {
@@ -427,7 +441,8 @@ const ENTITIES = [
           .filter(Boolean)
           .join(" · "),
         meta: { status: r.status, amount_ngn: r.amount_requested_ngn },
-        route: `/cash-requests/${r.id}`,
+        // Cash requests open in an in-page drawer (no URL id) — land on the list.
+        route: `/cash-requests`,
       }));
     },
   },
@@ -480,7 +495,10 @@ const ENTITIES = [
     label: "Employees",
     group: "people",
     icon: "UserCog",
-    module: "hr",
+    // RBAC key must match the access catalog (src/shared/access/access.catalog.js):
+    // it is "hr_payroll", not "hr" — the old value failed closed and hid
+    // employees from every non-CEO user.
+    module: "hr_payroll",
     action: "view",
     scoped: "shared",
     async resolve({ ex, brand, q, limit }) {
@@ -508,7 +526,8 @@ const ENTITIES = [
         title: r.display_name || r.employee_number,
         subtitle: [r.job_title, r.employee_number].filter(Boolean).join(" · "),
         meta: { phone: r.primary_phone },
-        route: `/hr/staff/${r.id}`,
+        // Employee 360 lives at /hr/employees/:profileId (see router.tsx).
+        route: `/hr/employees/${r.id}`,
       }));
     },
   },
@@ -617,7 +636,8 @@ const ENTITIES = [
         title: r.title || r.document_number,
         subtitle: r.document_type,
         meta: { file_size_bytes: r.file_size_bytes },
-        route: `/documents/${r.id}`,
+        // Documents open in an in-page preview (no URL id) — land on the Vault.
+        route: `/documents`,
       }));
     },
   },

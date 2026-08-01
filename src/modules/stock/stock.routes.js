@@ -30,12 +30,18 @@ router.patch(
 // Valuation (read-only; on_hand × variant standard cost)
 router.get("/valuation", can("view"), c.valuation);
 
+// Full stock-on-hand snapshot as .xlsx (All Locations + per-location sheets)
+router.get("/export", can("view"), c.exportOnHand);
+
 // Levels (read-only; on_hand changes only via movements)
 router.get("/levels", can("view"), c.listLevels);
 router.get("/levels/variant/:variantId", can("view"), c.variantStock);
 
 // Movements (the only write path to stock quantity)
+router.get("/movements/export", can("view"), c.exportMovements);
 router.get("/movements", can("view"), c.listMovements);
+// Single movement + its source document (order / adjustment / transfer / shipment)
+router.get("/movements/:movId", can("view"), c.getMovement);
 router.post(
   "/movements",
   can("edit"),

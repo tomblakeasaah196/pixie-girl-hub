@@ -67,12 +67,14 @@ function EditableField({
   onSave,
   placeholder,
   type = "text",
+  note,
 }: {
   label: string;
   value: string | null | undefined;
   onSave: (v: string) => Promise<void>;
   placeholder?: string;
   type?: string;
+  note?: string;
 }) {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(value ?? "");
@@ -133,6 +135,7 @@ function EditableField({
             className="w-full h-9 bg-text-primary/[0.05] border border-accent/40 rounded-lg px-3 text-[13px] placeholder:text-text-faint focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/40 transition-all"
           />
           {err && <p className="text-[11px] text-danger">{err}</p>}
+          {note && <p className="text-[11px] text-text-faint">{note}</p>}
           <div className="flex gap-2">
             <button
               onClick={save}
@@ -159,11 +162,16 @@ function EditableField({
           </div>
         </div>
       ) : (
-        <div
-          className={cn("text-[13.5px]", !value && "text-text-faint italic")}
-        >
-          {value || "Not set"}
-        </div>
+        <>
+          <div
+            className={cn("text-[13.5px]", !value && "text-text-faint italic")}
+          >
+            {value || "Not set"}
+          </div>
+          {note && (
+            <div className="text-[11px] text-text-faint mt-0.5">{note}</div>
+          )}
+        </>
       )}
     </div>
   );
@@ -414,11 +422,13 @@ export function ProfileDrawer({
     }
   };
 
-  const handleSaveName = async (display_name: string) => {
-    const updated = await updateMe({ display_name });
+  const handleSaveName = async (preferred_name: string) => {
+    const updated = await updateMe({ preferred_name });
     setProfile(updated);
-    patchUser({ name: updated.display_name });
-    showToast("ok", "Name updated.");
+    // Only the user's own header reflects the alias; if they clear it we fall
+    // back to their official name. The official name of record is untouched.
+    patchUser({ name: updated.preferred_name || updated.full_name });
+    showToast("ok", "Display name updated.");
   };
 
   const handleSavePhone = async (phone: string) => {
@@ -434,8 +444,11 @@ export function ProfileDrawer({
   };
 
   const avatarUrl = profile?.avatar_url;
-  const displayName = profile?.display_name ?? user?.name ?? "";
-  const av = initials(displayName || "?");
+  // The prominent identity is always the official name of record — never the
+  // self-editable alias — so a user's chosen display name can't masquerade as
+  // their real name even on their own profile.
+  const officialName = profile?.full_name ?? user?.name ?? "";
+  const av = initials(officialName || "?");
 
   // A fresh URL (new upload) should get another chance to load.
   useEffect(() => setAvatarFailed(false), [avatarUrl]);
@@ -457,7 +470,7 @@ export function ProfileDrawer({
         aria-modal="true"
         aria-label="My profile"
         className={cn(
-          "fixed top-0 right-0 h-full z-[95] flex flex-col dropglass border-l shadow-[-30px_0_80px_rgb(0_0_0/0.5)]",
+          "fixed top-0 right-0 h-full z-[95] flex flex-col dropglass border-l shadow-[-30px_0_80px_rgb(0_0_0/0.5)] pt-safe",
           "w-[min(400px,95vw)] transition-transform duration-300 ease-brand",
           open ? "translate-x-0" : "translate-x-full",
         )}
@@ -507,7 +520,7 @@ export function ProfileDrawer({
                   {avatarUrl && !avatarFailed ? (
                     <img
                       src={avatarUrl}
-                      alt={displayName}
+                      alt={officialName}
                       onError={() => setAvatarFailed(true)}
                       className="w-24 h-24 rounded-full object-cover ring-2 ring-accent/30"
                     />
@@ -549,7 +562,7 @@ export function ProfileDrawer({
 
                 <div className="text-center">
                   <div className="font-display text-lg font-medium">
-                    {displayName}
+                    {officialName}
                   </div>
                   <div className="flex items-center justify-center gap-1.5 mt-1">
                     <Shield className="w-3 h-3 text-accent-glow" />
@@ -566,11 +579,18 @@ export function ProfileDrawer({
                   Personal info
                 </div>
 
+                <Field
+                  label="Full name"
+                  value={profile?.full_name}
+                  note="Your official name on record. Managed by HR — it doesn't change when you edit your display name."
+                />
+
                 <EditableField
                   label="Display name"
-                  value={profile?.display_name}
+                  value={profile?.preferred_name}
                   onSave={handleSaveName}
-                  placeholder="Your name"
+                  placeholder={profile?.full_name || "Your name"}
+                  note="A personal label shown only to you (in your account menu and here). It never changes your official name anywhere in the system."
                 />
 
                 <EditableField

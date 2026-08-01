@@ -10,9 +10,11 @@ const {
   MODULES,
   ACTIONS,
   RECORD_SCOPES,
+  CONTACT_TYPE_KEYS,
   isValidModule,
   isValidAction,
   isValidScope,
+  isValidContactType,
   catalog,
 } = require("../../../src/shared/access/access.catalog");
 
@@ -75,5 +77,26 @@ describe("permission catalog", () => {
     expect(c.modules).toHaveLength(MODULES.length);
     expect(c.modules[0]).toHaveProperty("module");
     expect(c.modules[0]).toHaveProperty("actions");
+  });
+
+  // Contact-type visibility vocabulary (contacts §6.12). Must stay in step with
+  // shared.contacts.contact_type[] and the role_contact_type_access CHECK.
+  test("contact-type vocabulary matches the schema's contact_type set", () => {
+    expect(CONTACT_TYPE_KEYS).toEqual([
+      "customer",
+      "supplier",
+      "staff",
+      "retail_partner",
+      "stylist_partner",
+    ]);
+    expect(isValidContactType("supplier")).toBe(true);
+    expect(isValidContactType("vendor")).toBe(false);
+  });
+
+  test("catalog() exposes contact_types for the role editor", () => {
+    const c = catalog();
+    expect(c.contact_types).toHaveLength(CONTACT_TYPE_KEYS.length);
+    expect(c.contact_types[0]).toHaveProperty("key");
+    expect(c.contact_types[0]).toHaveProperty("label");
   });
 });

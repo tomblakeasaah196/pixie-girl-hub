@@ -45,6 +45,11 @@ async function listJobs(req, res) {
   const { page, page_size } = parsePagination(req.query);
   const r = await service.listJobs({
     brand: req.brand,
+    scope: req.permission_scope,
+    user: req.user,
+    // "My Jobs" cockpit: narrow to the caller's own jobs (current OR
+    // historical-custody) even when their permission scope is team/all.
+    mine: req.query.mine === "true",
     status: req.query.status,
     assigned_staff_user_id: req.query.assigned_staff_user_id,
     assigned_stylist_id: req.query.assigned_stylist_id,
@@ -69,7 +74,12 @@ async function listJobs(req, res) {
 }
 async function getJob(req, res) {
   res.json({
-    data: await service.getJob({ brand: req.brand, id: req.params.id }),
+    data: await service.getJob({
+      brand: req.brand,
+      id: req.params.id,
+      scope: req.permission_scope,
+      user: req.user,
+    }),
   });
 }
 async function createJob(req, res) {
@@ -102,6 +112,18 @@ async function assignStaff(req, res) {
       ...base(req),
       id: req.params.id,
       assigned_staff_user_id: req.body.assigned_staff_user_id,
+      expected_completion_at: req.body.expected_completion_at,
+      acknowledge_unlinked: req.body.acknowledge_unlinked,
+    }),
+  });
+}
+// Revert an assignment back to Unassigned — CEO-only (gated by requireCeo on the
+// route). No body: the job id in the path is all it needs.
+async function unassignStaff(req, res) {
+  res.json({
+    data: await service.unassignStaff({
+      ...base(req),
+      id: req.params.id,
     }),
   });
 }
@@ -111,6 +133,31 @@ async function assignStaff(req, res) {
 async function listAssignableStylists(req, res) {
   res.json({
     data: await service.listAssignableStylists({ brand: req.brand }),
+  });
+}
+
+async function listStylistScorecards(req, res) {
+  res.json({
+    data: await service.listStylistScorecards({
+      brand: req.brand,
+      scope: req.permission_scope,
+      user: req.user,
+    }),
+  });
+}
+async function getStylistScorecard(req, res) {
+  res.json({
+    data: await service.getStylistScorecard({
+      brand: req.brand,
+      user_id: req.params.userId,
+      scope: req.permission_scope,
+      user: req.user,
+    }),
+  });
+}
+async function summarizeJob(req, res) {
+  res.json({
+    data: await service.summarizeJob({ brand: req.brand, id: req.params.id }),
   });
 }
 
@@ -144,14 +191,13 @@ async function recordQc(req, res) {
     }),
   });
 }
-async function dispatch(req, res) {
+
+async function getMyCurrentSession(req, res) {
   res.json({
-    data: await service.dispatch({ ...base(req), id: req.params.id }),
-  });
-}
-async function handToSales(req, res) {
-  res.json({
-    data: await service.handToSales({ ...base(req), id: req.params.id }),
+    data: await service.getMyCurrentSession({
+      brand: req.brand,
+      user: req.user,
+    }),
   });
 }
 async function linkIntercompany(req, res) {
@@ -207,10 +253,24 @@ async function listTimeLogs(req, res) {
     data: await service.listTimeLogs({ brand: req.brand, id: req.params.id }),
   });
 }
+async function listJobActivity(req, res) {
+  res.json({
+    data: await service.listJobActivity({
+      brand: req.brand,
+      id: req.params.id,
+    }),
+  });
+}
 
 // ── Wig accountability ─────────────────────────────────────
 async function getAccountability(req, res) {
-  res.json({ data: await service.getAccountability({ brand: req.brand }) });
+  res.json({
+    data: await service.getAccountability({
+      brand: req.brand,
+      scope: req.permission_scope,
+      user: req.user,
+    }),
+  });
 }
 async function listCustodyLedger(req, res) {
   res.json({
@@ -218,6 +278,8 @@ async function listCustodyLedger(req, res) {
       brand: req.brand,
       job_id: req.query.job_id,
       stylist_user_id: req.query.stylist_user_id,
+      scope: req.permission_scope,
+      user: req.user,
     }),
   });
 }
@@ -320,14 +382,17 @@ module.exports = {
   updateJob,
   advanceJob,
   assignStaff,
+  unassignStaff,
   listAssignableStylists,
+  listStylistScorecards,
+  getStylistScorecard,
+  summarizeJob,
   startWork,
   pauseWork,
   resumeWork,
   returnForQc,
   recordQc,
-  dispatch,
-  handToSales,
+  getMyCurrentSession,
   linkIntercompany,
   logMaterial,
   listMaterials,
@@ -335,6 +400,7 @@ module.exports = {
   listReferences,
   removeReference,
   listTimeLogs,
+  listJobActivity,
   getAccountability,
   listCustodyLedger,
   writeOffWig,

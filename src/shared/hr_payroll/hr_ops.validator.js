@@ -83,6 +83,7 @@ const settingsUpdateSchema = z
     default_grace_minutes: z.number().int().min(0).max(240).optional(),
     default_expected_start_time: timeStr.nullable().optional(),
     default_expected_end_time: timeStr.nullable().optional(),
+    clockout_reminder_enabled: z.boolean().optional(),
     working_days: z.array(z.enum(["mon", "tue", "wed", "thu", "fri", "sat", "sun"])).max(7).optional(),
     leave_escalation_days: z.number().int().min(0).max(60).optional(),
     earnings_tracker_enabled: z.boolean().optional(),

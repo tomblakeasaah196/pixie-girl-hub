@@ -1,10 +1,25 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useBusinessStore } from "@/stores/business";
+import { toast } from "@/stores/toast";
 import { stockApi } from "./api";
 
 function useBrand() {
   return useBusinessStore((s) => s.activeKey);
 }
+
+/** Server error message (ApiError.message) or a safe fallback. */
+function errText(e: unknown): string {
+  return e instanceof Error && e.message
+    ? e.message
+    : "Something went wrong. Please try again.";
+}
+
+/** Toast a failed write so it never looks like "nothing happened". */
+const onWriteError = (action: string) => (e: unknown) =>
+  toast.error(`Couldn't ${action}`, {
+    description: errText(e),
+    report: { area: "Stock", action, message: errText(e) },
+  });
 
 export function useStockLocations() {
   const brand = useBrand();
@@ -46,6 +61,16 @@ export function useStockMovements(params: {
   return useQuery({
     queryKey: [brand, "stock", "movements", params],
     queryFn: () => stockApi.listMovements(params),
+  });
+}
+
+/** Detail for a single movement — the source document behind it. */
+export function useStockMovement(id: string | null) {
+  const brand = useBrand();
+  return useQuery({
+    queryKey: [brand, "stock", "movement", id],
+    queryFn: () => stockApi.getMovement(id!),
+    enabled: !!id,
   });
 }
 
@@ -136,7 +161,11 @@ export function useStockMutations() {
   return {
     createLocation: useMutation({
       mutationFn: stockApi.createLocation,
-      onSuccess: () => invalidate("locations"),
+      onSuccess: () => {
+        invalidate("locations");
+        toast.success("Location created");
+      },
+      onError: onWriteError("create the location"),
     }),
     updateLocation: useMutation({
       mutationFn: ({
@@ -146,7 +175,11 @@ export function useStockMutations() {
         id: string;
         patch: Partial<Record<string, unknown>>;
       }) => stockApi.updateLocation(id, patch as never),
-      onSuccess: () => invalidate("locations"),
+      onSuccess: () => {
+        invalidate("locations");
+        toast.success("Location updated");
+      },
+      onError: onWriteError("update the location"),
     }),
     recordMovement: useMutation({
       mutationFn: stockApi.recordMovement,
@@ -154,15 +187,19 @@ export function useStockMutations() {
         invalidate("movements");
         invalidate("levels");
         invalidate("valuation");
+        toast.success("Movement logged");
       },
+      onError: onWriteError("log the movement"),
     }),
     createAdjustment: useMutation({
       mutationFn: stockApi.createAdjustment,
       onSuccess: () => invalidate("adjustments"),
+      onError: onWriteError("create the adjustment"),
     }),
     submitAdjustment: useMutation({
       mutationFn: stockApi.submitAdjustment,
       onSuccess: () => invalidate("adjustments"),
+      onError: onWriteError("submit the adjustment for approval"),
     }),
     approveAdjustment: useMutation({
       mutationFn: stockApi.approveAdjustment,
@@ -171,10 +208,15 @@ export function useStockMutations() {
         invalidate("levels");
         invalidate("valuation");
       },
+      onError: onWriteError("approve the adjustment"),
     }),
     rejectAdjustment: useMutation({
       mutationFn: stockApi.rejectAdjustment,
-      onSuccess: () => invalidate("adjustments"),
+      onSuccess: () => {
+        invalidate("adjustments");
+        toast.success("Adjustment rejected");
+      },
+      onError: onWriteError("reject the adjustment"),
     }),
     postAdjustment: useMutation({
       mutationFn: stockApi.postAdjustment,
@@ -184,10 +226,17 @@ export function useStockMutations() {
         invalidate("valuation");
         invalidate("movements");
       },
+      onError: onWriteError("post the adjustment"),
     }),
     createTransfer: useMutation({
       mutationFn: stockApi.createTransfer,
-      onSuccess: () => invalidate("transfers"),
+      onSuccess: () => {
+        invalidate("transfers");
+        invalidate("levels");
+        invalidate("movements");
+        toast.success("Transfer sent");
+      },
+      onError: onWriteError("create the transfer"),
     }),
     dispatchTransfer: useMutation({
       mutationFn: stockApi.dispatchTransfer,
@@ -195,7 +244,9 @@ export function useStockMutations() {
         invalidate("transfers");
         invalidate("levels");
         invalidate("movements");
+        toast.success("Transfer dispatched");
       },
+      onError: onWriteError("dispatch the transfer"),
     }),
     receiveTransfer: useMutation({
       mutationFn: ({
@@ -209,23 +260,35 @@ export function useStockMutations() {
         invalidate("transfers");
         invalidate("levels");
         invalidate("movements");
+        toast.success("Transfer received");
       },
+      onError: onWriteError("receive the transfer"),
     }),
     acknowledgeAlert: useMutation({
       mutationFn: stockApi.acknowledgeAlert,
       onSuccess: () => invalidate("alerts"),
+      onError: onWriteError("acknowledge the alert"),
     }),
     dismissAlert: useMutation({
       mutationFn: stockApi.dismissAlert,
       onSuccess: () => invalidate("alerts"),
+      onError: onWriteError("dismiss the alert"),
     }),
     resolveAlert: useMutation({
       mutationFn: stockApi.resolveAlert,
-      onSuccess: () => invalidate("alerts"),
+      onSuccess: () => {
+        invalidate("alerts");
+        toast.success("Alert resolved");
+      },
+      onError: onWriteError("resolve the alert"),
     }),
     createShipment: useMutation({
       mutationFn: stockApi.createShipment,
-      onSuccess: () => invalidate("shipments"),
+      onSuccess: () => {
+        invalidate("shipments");
+        toast.success("Shipment created");
+      },
+      onError: onWriteError("create the shipment"),
     }),
     createGoodsReceipt: useMutation({
       mutationFn: stockApi.createGoodsReceipt,
@@ -234,12 +297,15 @@ export function useStockMutations() {
         invalidate("levels");
         invalidate("movements");
         invalidate("valuation");
+        toast.success("Goods receipt logged");
       },
+      onError: onWriteError("log the goods receipt"),
     }),
     updateShipmentStatus: useMutation({
       mutationFn: ({ id, status }: { id: string; status: string }) =>
         stockApi.updateShipmentStatus(id, status),
       onSuccess: () => invalidate("shipments"),
+      onError: onWriteError("update the shipment status"),
     }),
     receiveShipment: useMutation({
       mutationFn: ({
@@ -253,7 +319,9 @@ export function useStockMutations() {
         invalidate("shipments");
         invalidate("levels");
         invalidate("movements");
+        toast.success("Shipment received");
       },
+      onError: onWriteError("receive the shipment"),
     }),
   };
 }

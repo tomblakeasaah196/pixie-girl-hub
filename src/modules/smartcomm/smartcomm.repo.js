@@ -130,8 +130,14 @@ async function listChannelsForUser({
         SELECT count(*)::int FROM shared.messages m
          WHERE m.channel_id = c.channel_id
            AND m.is_deleted = false
-           AND (cm.last_read_at IS NULL OR m.created_at > cm.last_read_at)
+           -- external_read_at: the thread was answered on the platform
+           -- itself (e.g. from the Instagram app) — everything up to that
+           -- instant counts as read for every staff viewer, not just those
+           -- with an in-Hub read cursor. GREATEST ignores NULLs.
+           AND (GREATEST(cm.last_read_at, c.external_read_at) IS NULL
+                OR m.created_at > GREATEST(cm.last_read_at, c.external_read_at))
            AND (m.sender_user_id IS DISTINCT FROM $1::uuid)
+           AND (m.metadata->>'via' IS NULL)
       ) AS unread_count,
       peer.display_name  AS peer_display_name,
       peer.avatar_url    AS peer_avatar_url,
@@ -217,13 +223,21 @@ async function getChannelEnriched({ id, user_id }) {
   return { ...channel, members, messages, my_member: me, my_role: me?.role ?? null };
 }
 
-async function findCustomerThread({ client, brand, contact_id }) {
+// Platform-scoped on purpose: a contact has ONE thread PER channel
+// (whatsapp / instagram / email). Matching on contact alone made every
+// send land on whichever thread existed first — a staff member picking
+// "Email" in the composer had the message ride the contact's old
+// WhatsApp thread, because the outbound job builder derives the wire
+// protocol from the thread's external_platform.
+async function findCustomerThread({ client, brand, contact_id, platform }) {
   const { rows } = await ex(client)(
     `SELECT * FROM shared.message_channels
       WHERE channel_type = 'customer_thread' AND business = $1
         AND metadata->>'contact_id' = $2
+        AND external_platform = $3
+      ORDER BY created_at DESC
       LIMIT 1`,
-    [brand, contact_id],
+    [brand, contact_id, platform],
   );
   return rows[0] || null;
 }
@@ -395,12 +409,17 @@ async function touchMemberPresence({ user_id, when }) {
 // ── Messages ──────────────────────────────────────────────
 
 async function insertMessage({ client, message }) {
+  // `created_at` override: the Instagram history backfill records
+  // messages at their ORIGINAL platform timestamp so the thread reads in
+  // order; the last-message trigger's `NEW.created_at >= last_message_at`
+  // guard keeps an old backfilled row from clobbering the inbox preview.
   const { rows } = await ex(client)(
     `INSERT INTO shared.messages
        (channel_id, sender_user_id, sender_contact_id, message_type, content,
-        reply_to_id, external_ref, delivery_status, is_forwarded, forwarded_from_id, metadata)
+        reply_to_id, external_ref, delivery_status, is_forwarded, forwarded_from_id, metadata,
+        created_at)
      VALUES ($1,$2,$3,COALESCE($4,'text'),$5,$6,$7,COALESCE($8,'sent'),COALESCE($9,false),$10,
-             COALESCE($11::jsonb, '{}'::jsonb))
+             COALESCE($11::jsonb, '{}'::jsonb), COALESCE($12::timestamptz, now()))
      RETURNING *`,
     [
       message.channel_id,
@@ -414,9 +433,63 @@ async function insertMessage({ client, message }) {
       message.is_forwarded || false,
       message.forwarded_from_id || null,
       message.metadata ? JSON.stringify(message.metadata) : null,
+      message.created_at || null,
     ],
   );
   return rows[0];
+}
+
+/**
+ * Find a message by the provider's message id — matching either the row's
+ * own external_ref OR one of the sequence_mids stamped on a multi-bubble
+ * send (each bubble of a catalogue share gets its own Meta mid, but they
+ * all belong to ONE smartcomm row). This is the echo-dedup lookup: an
+ * is_echo webhook for a message the Hub itself sent must never record a
+ * second bubble.
+ */
+async function findMessageByProviderRef({ external_ref }) {
+  const { rows } = await query(
+    `SELECT message_id, channel_id FROM shared.messages
+      WHERE external_ref = $1
+         OR (metadata ? 'sequence_mids' AND metadata->'sequence_mids' @> to_jsonb($1::text))
+      LIMIT 1`,
+    [external_ref],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * True when the channel has a staff-sent message still sitting on
+ * 'queued' from the last few minutes — i.e. a Hub send is in flight and
+ * its provider mid hasn't been stamped back yet. The echo ingest defers
+ * (outbox retry) rather than risk recording the echo of our OWN send as
+ * a duplicate bubble.
+ */
+async function hasRecentQueuedOutbound({ channel_id }) {
+  const { rows } = await query(
+    `SELECT 1 FROM shared.messages
+      WHERE channel_id = $1
+        AND sender_user_id IS NOT NULL
+        AND delivery_status = 'queued'
+        AND created_at > now() - interval '3 minutes'
+      LIMIT 1`,
+    [channel_id],
+  );
+  return rows.length > 0;
+}
+
+/**
+ * Advance the channel's "answered on the platform itself" watermark.
+ * Monotonic — GREATEST means an out-of-order webhook redelivery or an
+ * old backfilled reply can never pull it backwards.
+ */
+async function markChannelExternallyRead({ client, channel_id, at }) {
+  await ex(client)(
+    `UPDATE shared.message_channels
+        SET external_read_at = GREATEST(COALESCE(external_read_at, '-infinity'::timestamptz), $2::timestamptz)
+      WHERE channel_id = $1`,
+    [channel_id, at],
+  );
 }
 
 async function setMessageExternalRef({ client, message_id, external_ref }) {
@@ -432,17 +505,26 @@ async function setMessageDelivery({
   delivery_status,
   delivery_error,
   external_ref,
+  sequence_mids,
 }) {
   // Accepts the in-flight transaction's client: a failure marked while
   // the posting transaction is still open (e.g. "no IG handle on file")
   // must update the row THAT transaction inserted — a pool connection
   // can't see it yet, so the old pool-only version was a silent no-op
   // and the message sat on "queued" forever.
+  //
+  // `sequence_mids` — every provider mid a multi-bubble send produced
+  // (external_ref only carries the LAST one). Stamped into metadata so
+  // the echo-dedup lookup (findMessageByProviderRef) recognises echoes
+  // of the intermediate bubbles too.
   const { rows } = await ex(client)(
     `UPDATE shared.messages
         SET delivery_status = COALESCE($2, delivery_status),
             delivery_error  = $3,
-            external_ref    = COALESCE($4, external_ref)
+            external_ref    = COALESCE($4, external_ref),
+            metadata        = CASE WHEN $5::jsonb IS NULL THEN metadata
+                              ELSE COALESCE(metadata, '{}'::jsonb)
+                                   || jsonb_build_object('sequence_mids', $5::jsonb) END
       WHERE message_id = $1
       RETURNING channel_id`,
     [
@@ -450,6 +532,9 @@ async function setMessageDelivery({
       delivery_status || null,
       delivery_error || null,
       external_ref || null,
+      Array.isArray(sequence_mids) && sequence_mids.length
+        ? JSON.stringify(sequence_mids.map(String))
+        : null,
     ],
   );
   return rows[0] || null;
@@ -542,10 +627,16 @@ async function listMessages({ channel_id, before, limit = 50 }) {
            rp.message_type AS reply_message_type,
            rp.sender_user_id AS reply_sender_user_id,
            rp_sender.display_name AS reply_sender_name,
+           -- 'via' metadata marks a reply a staffer sent from the platform's
+           -- own app (Instagram) — no Hub user to attribute it to, but it IS
+           -- the business speaking, so it must read as staff (bubble side,
+           -- Praxis transcripts), never as "System".
            CASE WHEN m.sender_user_id IS NOT NULL THEN u.display_name
                 WHEN m.sender_contact_id IS NOT NULL THEN con.display_name
+                WHEN m.metadata->>'via' = 'instagram_app' THEN 'Instagram app'
                 ELSE 'System' END AS sender_name,
-           CASE WHEN m.sender_user_id IS NOT NULL THEN 'staff'
+           CASE WHEN m.sender_user_id IS NOT NULL
+                     OR m.metadata->>'via' = 'instagram_app' THEN 'staff'
                 WHEN m.sender_contact_id IS NOT NULL THEN 'customer'
                 ELSE 'system' END AS sender_kind,
            COALESCE(att.attachments, '[]'::jsonb) AS attachments
@@ -822,8 +913,13 @@ async function unreadCountForUser({ user_id, brand }) {
        JOIN shared.messages m
          ON m.channel_id = cm.channel_id
         AND m.is_deleted = false
-        AND (cm.last_read_at IS NULL OR m.created_at > cm.last_read_at)
+        -- Same read boundary as listChannelsForUser: the per-viewer cursor
+        -- OR the channel-wide "answered on the platform itself" watermark
+        -- (external_read_at), whichever is later. GREATEST ignores NULLs.
+        AND (GREATEST(cm.last_read_at, c.external_read_at) IS NULL
+             OR m.created_at > GREATEST(cm.last_read_at, c.external_read_at))
         AND (m.sender_user_id IS DISTINCT FROM cm.user_id)
+        AND (m.metadata->>'via' IS NULL)
       WHERE cm.user_id = $1${extra}
         AND c.is_archived = false
       GROUP BY c.channel_id, c.business, c.external_platform`,
@@ -1234,9 +1330,20 @@ async function customer360({ contact_id, brand }) {
 
 // ── Composer settings (per-brand editable templates) ──────
 
+/** The columns the composer-settings read/write pair round-trips. */
+const COMPOSER_SETTING_COLS = [
+  "onboarding_template",
+  "whatsapp_handoff_template",
+  "whatsapp_share_number",
+  "address_template",
+  "address_share_text",
+  "hours_template",
+  "hours_share_text",
+];
+
 async function getComposerSettings({ brand }) {
   const { rows } = await query(
-    `SELECT onboarding_template, whatsapp_handoff_template, whatsapp_share_number
+    `SELECT ${COMPOSER_SETTING_COLS.join(", ")}
        FROM shared.smartcomm_composer_settings WHERE business = $1`,
     [brand],
   );
@@ -1249,16 +1356,9 @@ async function getComposerSettings({ brand }) {
  * code default / business_config.phone at read time).
  */
 async function upsertComposerSettings({ brand, patch, user_id }) {
-  const cols = [
-    "onboarding_template",
-    "whatsapp_handoff_template",
-    "whatsapp_share_number",
-  ];
-  const present = cols.filter((c) => c in patch);
+  const present = COMPOSER_SETTING_COLS.filter((c) => c in patch);
   if (present.length === 0) return getComposerSettings({ brand });
-  const setList = present
-    .map((c, i) => `${c} = $${i + 3}`)
-    .join(", ");
+  const setList = present.map((c, i) => `${c} = $${i + 3}`).join(", ");
   const insertCols = present.join(", ");
   const insertVals = present.map((_, i) => `$${i + 3}`).join(", ");
   const params = [brand, user_id, ...present.map((c) => patch[c])];
@@ -1268,19 +1368,24 @@ async function upsertComposerSettings({ brand, patch, user_id }) {
      VALUES ($1, $2, ${insertVals})
      ON CONFLICT (business) DO UPDATE
         SET ${setList}, updated_by = $2, updated_at = now()
-     RETURNING onboarding_template, whatsapp_handoff_template, whatsapp_share_number`,
+     RETURNING ${COMPOSER_SETTING_COLS.join(", ")}`,
     params,
   );
   return rows[0] || null;
 }
 
-/** The brand's Business-Setup phone — the WhatsApp number fallback. */
-async function getBrandPhone({ brand }) {
+/**
+ * The brand's Business-Setup contact details — the composer's fallbacks:
+ * `phone` seeds the WhatsApp share number, `address` seeds the
+ * "send our address" quick insert.
+ */
+async function getBrandContact({ brand }) {
   const { rows } = await query(
-    `SELECT phone FROM shared.business_config WHERE business_key = $1`,
+    `SELECT phone, address FROM shared.business_config WHERE business_key = $1`,
     [brand],
   );
-  return (rows[0] && rows[0].phone) || null;
+  const row = rows[0] || {};
+  return { phone: row.phone || null, address: row.address || null };
 }
 
 // ── Colleague directory ───────────────────────────────────
@@ -1447,10 +1552,14 @@ module.exports = {
   setMessageDeliveryByExternalRef,
   setCustomerReactionByExternalRef,
   editMessageContent,
+  // Platform-app echo ingest (Instagram in-app replies)
+  findMessageByProviderRef,
+  hasRecentQueuedOutbound,
+  markChannelExternallyRead,
   // Composer settings (editable per-brand templates + WA share number)
   getComposerSettings,
   upsertComposerSettings,
-  getBrandPhone,
+  getBrandContact,
   listMessages,
   getMessage,
   softDeleteMessage,

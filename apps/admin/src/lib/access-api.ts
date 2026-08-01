@@ -14,6 +14,10 @@ export interface Role {
   updated_at: string;
   permissions?: Permission[];
   members?: RoleMember[];
+  /** Contacts §6.12 visibility: null = unrestricted (sees every contact type);
+   *  an array restricts the role to those types ([] = sees no contacts). Only
+   *  present on GET /access/roles/:id. */
+  contact_type_access?: string[] | null;
 }
 
 export interface Permission {
@@ -29,6 +33,34 @@ export interface RoleMember {
   business: string;
   granted_at: string;
   expires_at: string | null;
+  /** Resolved by the API (join) for display; may be absent on older backends. */
+  email?: string;
+  is_active?: boolean;
+}
+
+/** A login user who can be granted a role in the active brand — the candidate
+ *  set for the bulk-assign picker. `role_ids` are the roles they already hold,
+ *  so the picker can flag people who are already members. */
+export interface GrantableUser {
+  user_id: string;
+  email: string;
+  display_name: string | null;
+  profile_type: "staff" | "external";
+  status: string;
+  external_label: string | null;
+  profile_id: string | null;
+  job_title: string | null;
+  role_ids: string[];
+}
+
+/** Result of a bulk role-members grant. */
+export interface GrantMembersResult {
+  role_id: string;
+  business: string;
+  granted: string[];
+  skipped: { user_id: string; reason: string }[];
+  granted_count: number;
+  skipped_count: number;
 }
 
 /** A role a user holds, for a given business (from GET .../users/:id/roles). */
@@ -59,12 +91,21 @@ export interface CatalogGroup {
   label: string;
 }
 
+/** A contact-type option for the role editor's contacts-visibility control. */
+export interface ContactTypeOption {
+  key: string;
+  label: string;
+}
+
 export interface Catalog {
   modules: CatalogEntry[];
   /** Ordered section headers so the UI can band the columns like the sidebar. */
   groups?: CatalogGroup[];
   actions: string[];
   record_scopes: string[];
+  /** Contacts §6.12 vocabulary for the per-role contact-type visibility control.
+   *  May be absent on older backends — the UI falls back to a local list. */
+  contact_types?: ContactTypeOption[];
 }
 
 // Action display metadata
@@ -111,6 +152,30 @@ export const accessApi = {
       hidden_fields?: string[];
     }>,
   ) => api.put<Permission[]>(`/access/roles/${id}/permissions`, { grants }),
+
+  // ── contact-type visibility (contacts §6.12) ───────────────
+  // null clears the restriction (role sees every type); an array restricts to
+  // those types ([] = the role sees no contacts).
+  getRoleContactTypes: (id: string) =>
+    api.get<string[] | null>(`/access/roles/${id}/contact-types`),
+  setRoleContactTypes: (id: string, contact_types: string[] | null) =>
+    api.put<string[] | null>(`/access/roles/${id}/contact-types`, {
+      contact_types,
+    }),
+
+  // ── bulk role membership ───────────────────────────────────
+  // Grantable-user picker for the active brand (optionally filtered by name/email).
+  listGrantableUsers: (params?: { search?: string }) => {
+    const qs = params?.search
+      ? `?search=${encodeURIComponent(params.search)}`
+      : "";
+    return api.get<GrantableUser[]>(`/access/users${qs}`);
+  },
+  // Grant one role to many users at once.
+  grantRoleMembers: (
+    roleId: string,
+    body: { user_ids: string[]; business: string; expires_at?: string | null },
+  ) => api.post<GrantMembersResult>(`/access/roles/${roleId}/members`, body),
 
   // ── user ⇄ role grants (per business) ──────────────────────
   listUserRoles: (userId: string) =>

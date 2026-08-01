@@ -121,6 +121,103 @@ function sanitiseMessageMetadata(messageType, metadata) {
   return Object.keys(out).length ? out : null;
 }
 
+// ── Email envelope helpers ────────────────────────────────
+// The three pieces the "make our email replies look like brand mail"
+// work needs: a clean Cc list, plain text → branded HTML body, and the
+// branded-shell wrapper. Kept here (not in email.service) because the
+// house style is resolved per-brand from Settings, the same source the
+// campaign / transactional mail uses.
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Normalise an operator-supplied Cc into a clean, de-duplicated list of
+ * valid addresses. Accepts an array (the composer sends one) or a raw
+ * comma/semicolon string (a subscriber or API caller might). Invalid or
+ * duplicate entries are dropped, capped at 25 so one call can't fan a
+ * copy out to a whole list.
+ */
+function normaliseCcList(cc) {
+  if (!cc) return [];
+  const arr = Array.isArray(cc) ? cc : String(cc).split(/[,;]/);
+  const seen = new Set();
+  const out = [];
+  for (const raw of arr) {
+    const e = String(raw || "").trim().toLowerCase();
+    if (e && EMAIL_RE.test(e) && !seen.has(e)) {
+      seen.add(e);
+      out.push(e);
+    }
+  }
+  return out.slice(0, 25);
+}
+
+/**
+ * Turn the operator's plain-text message into escaped HTML paragraphs for
+ * the branded email body. Blank lines separate paragraphs; single
+ * newlines become <br>. Everything is HTML-escaped first — this is
+ * operator free text, never trusted markup.
+ */
+function textToEmailHtml(text) {
+  const { esc } = require("../../services/email-theme");
+  const blocks = String(text || "")
+    .split(/\n{2,}/)
+    .map((b) => b.trim())
+    .filter(Boolean);
+  return blocks
+    .map(
+      (b) =>
+        `<p style="margin:0 0 14px;line-height:1.62">${esc(b).replace(/\n/g, "<br>")}</p>`,
+    )
+    .join("");
+}
+
+/**
+ * Wrap a conversational email body in the brand's house shell (logo,
+ * accent, footer) so a reply typed in Messaging arrives looking like the
+ * brand's marketing/transactional mail — resolved per-brand from Settings,
+ * nothing hard-coded. Falls back to a bare escaped paragraph if the brand
+ * lookup or render ever fails, so branding can never block a customer
+ * reply from going out.
+ */
+async function buildBrandedConversationalEmail({ brand, text, bodyHtml }) {
+  const raw = String(text || "");
+  // A Gmail-style composer supplies ready HTML (bold/colours/lists/links/
+  // images the operator laid out); a plain reply supplies just text, which we
+  // paragraph-wrap. Either way it goes inside the brand shell so the mail
+  // looks like the brand's other letters, not a bare paragraph.
+  const inner =
+    bodyHtml && String(bodyHtml).trim()
+      ? String(bodyHtml)
+      : textToEmailHtml(raw);
+  try {
+    const emailRender = require("../email_campaigns/email-render");
+    const { buildTransactionalEmail } = require("../../services/transactional-email");
+    const brandTokens = await emailRender.resolveBrandTokens(brand);
+    const preheader = raw.replace(/\s+/g, " ").trim().slice(0, 140);
+    const { html, text: plain } = buildTransactionalEmail({
+      brandTokens,
+      bodyHtml: inner,
+      preheader,
+    });
+    return { html, text: raw || plain };
+  } catch (err) {
+    const { logger } = require("../../config/logger");
+    logger.warn(
+      { err: err.message, brand },
+      "smartcomm: branded email render failed — sending plain body",
+    );
+    // Fallback still honours a rich body (it's already HTML); only the plain
+    // path needs escaping so stray angle brackets don't become tags.
+    const { esc } = require("../../services/email-theme");
+    const fallback =
+      bodyHtml && String(bodyHtml).trim()
+        ? String(bodyHtml)
+        : `<p>${esc(raw).replace(/\n/g, "<br>")}</p>`;
+    return { html: fallback, text: raw };
+  }
+}
+
 /**
  * Resolve whether the user is allowed to act on a platform for a brand.
  * The rule lives in platformAllows() so the inbox list filter agrees with
@@ -522,6 +619,24 @@ async function postMessage({ brand, user, request_id, id, input }) {
         );
       }
     }
+    // Card metadata (product_share/invoice/template) is whitelisted; on an
+    // email thread the operator's envelope (subject + Cc) rides alongside it
+    // so the outbound builder — and the thread record — can see it.
+    let metadata = sanitiseMessageMetadata(input.message_type, input.metadata);
+    if (
+      channel.external_platform === "email" &&
+      (input.subject || input.cc || input.body_html)
+    ) {
+      const cc = normaliseCcList(input.cc);
+      metadata = {
+        ...(metadata || {}),
+        ...(input.subject ? { subject: String(input.subject).slice(0, 300) } : {}),
+        ...(cc.length ? { cc } : {}),
+        ...(input.body_html && String(input.body_html).trim()
+          ? { body_html: String(input.body_html) }
+          : {}),
+      };
+    }
     const msg = await repo.insertMessage({
       client,
       message: {
@@ -532,7 +647,7 @@ async function postMessage({ brand, user, request_id, id, input }) {
         reply_to_id: input.reply_to_id,
         delivery_status:
           channel.channel_type === "customer_thread" ? "queued" : "sent",
-        metadata: sanitiseMessageMetadata(input.message_type, input.metadata),
+        metadata,
       },
     });
     // Attach documents if supplied.
@@ -590,6 +705,16 @@ async function postMessage({ brand, user, request_id, id, input }) {
     sender_user_id: user.user_id,
     external_platform: posted.channel.external_platform,
   });
+  // Keep the email thread's stored subject in step with the latest one the
+  // operator sent, so the thread header + the next reply's default follow it.
+  if (posted.channel.external_platform === "email" && input.subject) {
+    await query(
+      `UPDATE shared.message_channels
+          SET metadata = shared.message_channels.metadata || jsonb_build_object('subject', $2::text)
+        WHERE channel_id = $1`,
+      [id, String(input.subject).slice(0, 300)],
+    );
+  }
   await flushOutboundJobs(posted.jobs);
   return posted.msg;
 }
@@ -941,27 +1066,39 @@ async function getCustomer360({ brand, contact_id }) {
 }
 
 // ── Composer settings ─────────────────────────────────────
-// The two "insert stock copy" composer buttons (Online welcome form +
-// WhatsApp handoff) read editable per-brand templates. {link}/{number}
-// are substituted by the frontend at insert time. These are the
-// defaults shown before the CEO saves their own wording — kept here so
-// an empty settings row degrades to sensible copy, not a blank insert.
+// The composer's "insert stock copy" actions (Online welcome form,
+// WhatsApp handoff, our address, our working hours) read editable
+// per-brand templates. {link}/{number}/{address}/{hours} are substituted
+// by the frontend at insert time. These are the defaults shown before
+// the CEO saves their own wording — kept here so an empty settings row
+// degrades to sensible copy, not a blank insert.
 const DEFAULT_ONBOARDING_TEMPLATE =
   "Welcome 🌹 We'd love to make sure your order reaches you exactly the " +
   "way you want. Could you fill in this quick form (60 sec) — it covers " +
   "your delivery address & preferences:\n\n{link}";
 const DEFAULT_WHATSAPP_HANDOFF_TEMPLATE =
   "Lovely! You can follow up with us on WhatsApp here:\n{number}";
+const DEFAULT_ADDRESS_TEMPLATE =
+  "Here's our address 📍\n\n{address}\n\nDo let us know when you're on " +
+  "your way so we can be ready for you 💕";
+const DEFAULT_HOURS_TEMPLATE =
+  "We're open {hours} 🕘\n\nCome through any time within those hours — " +
+  "we'd love to have you.";
+// business_config carries no opening-hours column, so unlike the address
+// the hours have no Settings fallback: this is the seeded first answer,
+// and the CEO's "save as default" replaces it.
+const DEFAULT_WORKING_HOURS = "Monday to Saturday, 9:00 AM – 8:00 PM";
 
 /**
  * Resolve the brand's composer settings, filling every field with its
- * default so the frontend always has usable copy + a number. The
- * WhatsApp number falls back to the brand's Business-Setup phone.
+ * default so the frontend always has usable copy plus a number, an
+ * address and opening hours. The WhatsApp number and the address fall
+ * back to the brand's Business-Setup values (Settings → Business Setup).
  */
 async function getComposerSettings({ brand }) {
-  const [row, phone] = await Promise.all([
+  const [row, contact] = await Promise.all([
     repo.getComposerSettings({ brand }),
-    repo.getBrandPhone({ brand }),
+    repo.getBrandContact({ brand }),
   ]);
   return {
     onboarding_template:
@@ -969,14 +1106,26 @@ async function getComposerSettings({ brand }) {
     whatsapp_handoff_template:
       (row && row.whatsapp_handoff_template) ||
       DEFAULT_WHATSAPP_HANDOFF_TEMPLATE,
+    address_template: (row && row.address_template) || DEFAULT_ADDRESS_TEMPLATE,
+    hours_template: (row && row.hours_template) || DEFAULT_HOURS_TEMPLATE,
     // Explicit override wins; else the Business-Setup phone.
     whatsapp_share_number:
-      (row && row.whatsapp_share_number) || phone || null,
+      (row && row.whatsapp_share_number) || contact.phone || null,
+    // Explicit override wins; else the Business-Setup address. NULL means
+    // nobody has filled the address in yet — the composer says so rather
+    // than inserting a message with a hole in it.
+    address_share_text:
+      (row && row.address_share_text) || contact.address || null,
+    hours_share_text: (row && row.hours_share_text) || DEFAULT_WORKING_HOURS,
     // Surface whether each field is CEO-set vs a code/settings default,
     // so the UI can hint "using your saved wording" etc. if it wants.
     onboarding_is_custom: !!(row && row.onboarding_template),
     whatsapp_is_custom: !!(row && row.whatsapp_handoff_template),
     whatsapp_number_is_custom: !!(row && row.whatsapp_share_number),
+    address_is_custom: !!(row && row.address_template),
+    address_text_is_custom: !!(row && row.address_share_text),
+    hours_is_custom: !!(row && row.hours_template),
+    hours_text_is_custom: !!(row && row.hours_share_text),
   };
 }
 
@@ -991,12 +1140,17 @@ async function updateComposerSettings({ brand, user, request_id, input }) {
     const t = String(v).trim();
     return t === "" ? null : t;
   };
-  if ("onboarding_template" in input)
-    patch.onboarding_template = norm(input.onboarding_template);
-  if ("whatsapp_handoff_template" in input)
-    patch.whatsapp_handoff_template = norm(input.whatsapp_handoff_template);
-  if ("whatsapp_share_number" in input)
-    patch.whatsapp_share_number = norm(input.whatsapp_share_number);
+  for (const field of [
+    "onboarding_template",
+    "whatsapp_handoff_template",
+    "whatsapp_share_number",
+    "address_template",
+    "address_share_text",
+    "hours_template",
+    "hours_share_text",
+  ]) {
+    if (field in input) patch[field] = norm(input[field]);
+  }
   await repo.upsertComposerSettings({
     brand,
     patch,
@@ -1513,15 +1667,57 @@ async function buildOutboundJobsForChannel({
 
   if (platform === "email") {
     const to = c.email;
-    if (!to) return [];
+    if (!to) return fail("NO_EMAIL_ON_FILE");
+    const mmeta = message.metadata || {};
+    // Subject: an explicit per-message subject wins, then the thread's
+    // stored subject, then a neutral default.
+    const subject = mmeta.subject || meta.subject || "A message from us";
+    // Cc copy recipients the operator added on this message.
+    const cc = normaliseCcList(mmeta.cc);
+    // Resolve the message's stored files into mail attachments. Only the
+    // storage KEY rides the queue — the email processor loads the bytes at
+    // send time (see email.service resolveAttachments), so a large PDF
+    // never bloats the Redis job payload.
+    const attachmentRows = await repo.getAttachmentsForSend({
+      client,
+      message_id: message.message_id,
+    });
+    const attachments = attachmentRows
+      .filter((a) => a.file_path)
+      .map((a) => ({
+        filename: a.display_name || "attachment",
+        storage_key: a.file_path,
+        content_type: a.mime_type || undefined,
+      }));
+    // A send with neither a body (plain or rich HTML) nor a file has nothing
+    // to deliver.
+    const hasHtmlBody = !!(mmeta.body_html && String(mmeta.body_html).trim());
+    if (
+      !String(content || "").trim() &&
+      !hasHtmlBody &&
+      attachments.length === 0
+    ) {
+      return fail("NOTHING_TO_SEND");
+    }
+    // Brand the body into the house email shell so the reply looks like the
+    // brand's other mail. A rich (Gmail-style) send rides HTML in the message
+    // metadata; a plain reply just has text.
+    const branded = await buildBrandedConversationalEmail({
+      brand: channel.business,
+      text: content,
+      bodyHtml: mmeta.body_html,
+    });
     return [
       {
         queue: "email-send",
         name: "customer-email",
         data: {
           to,
-          subject: meta.subject || "A message from us",
-          html: content,
+          cc: cc.length ? cc : undefined,
+          subject,
+          html: branded.html,
+          text: branded.text,
+          attachments: attachments.length ? attachments : undefined,
           in_reply_to: meta.in_reply_to,
           smartcomm_message_id: message.message_id,
           channel_id: channel.channel_id,
@@ -1571,6 +1767,7 @@ async function findOrCreateCustomerThread({
     client,
     brand,
     contact_id,
+    platform,
   });
   if (existing) {
     if (external_thread_ref && !existing.external_thread_ref) {
@@ -1716,6 +1913,11 @@ async function recordInboundFromCustomer({
   external_thread_ref,
   media,
   metadata,
+  // Backfill support (scripts/backfill-instagram-history.js): record the
+  // message at its ORIGINAL platform timestamp, and don't wake the whole
+  // team with realtime pings + bell notifications for months-old history.
+  occurred_at,
+  quiet,
 }) {
   // Cheap idempotency pre-check BEFORE downloading media: a redelivery of
   // an already-recorded message must not re-fetch (and re-store) the file.
@@ -1795,6 +1997,7 @@ async function recordInboundFromCustomer({
         external_ref,
         delivery_status: "delivered",
         metadata: messageMetadata,
+        created_at: occurred_at,
       },
     });
     // Link the downloaded media (if any) so the inbox renders the real
@@ -1815,8 +2018,168 @@ async function recordInboundFromCustomer({
   // message row, so the event must never fire while the insert is still
   // invisible to other connections (it used to fire mid-transaction,
   // which made the sender lookup race and misfire notifications).
-  if (!result.duplicate) {
+  if (!result.duplicate && !quiet) {
     events.emit("customer.message_received", {
+      brand,
+      contact_id,
+      channel_id: result.channel_id,
+      message_id: result.message.message_id,
+      platform,
+    });
+  }
+  return result;
+}
+
+/**
+ * Record a reply OUR side sent from the platform's own app — today that's
+ * a staffer answering an Instagram DM inside the Instagram app instead of
+ * the Hub. Meta reports those as message echoes (is_echo) on the same
+ * webhook; before this existed they were dropped, so app-side replies
+ * were invisible here and three people could answer the same customer.
+ *
+ * Semantics (deliberate, and the only ones Meta's events allow):
+ *   - The reply lands on the customer thread as a business-side bubble
+ *     attributed "Instagram app" (no Hub user to credit it to).
+ *   - Replying clears the thread's unread badge for the whole team via
+ *     the channel's external_read_at watermark — the conversation was
+ *     handled, just not here. Merely READING in the Instagram app sends
+ *     no webhook at all, so an opened-but-unanswered thread keeps its
+ *     badge. That asymmetry is the desired behaviour.
+ *
+ * Dedup: echoes fire for Hub-sent messages too. findMessageByProviderRef
+ * matches the row's external_ref OR a multi-bubble send's sequence_mids,
+ * and a still-'queued' Hub send on the same thread defers the ingest
+ * (outbox retry) until the provider mid has been stamped back.
+ *
+ * `occurred_at` + `quiet` serve the history backfill, same as
+ * recordInboundFromCustomer.
+ */
+async function recordAgentReplyFromPlatform({
+  brand,
+  contact_id,
+  platform,
+  body,
+  message_type = "text",
+  external_ref,
+  external_thread_ref,
+  media,
+  metadata,
+  occurred_at,
+  quiet,
+}) {
+  // Echo of a message the Hub itself sent — already recorded at send time.
+  if (external_ref) {
+    const known = await repo.findMessageByProviderRef({ external_ref });
+    if (known) {
+      return { channel_id: known.channel_id, message: known, duplicate: true };
+    }
+  }
+  // A Hub send still on 'queued' hasn't had its mid stamped back yet, so
+  // its echo would look brand-new. Defer — the thrown error rides back to
+  // the outbox, which retries with backoff; by then applyDeliveryResult
+  // has stamped the mid and the dedup above catches it. Live ingest only:
+  // the backfill reads settled history.
+  if (!quiet && external_thread_ref) {
+    const thread = await repo.findCustomerThreadByExternalRef({
+      brand,
+      platform,
+      external_thread_ref,
+    });
+    if (
+      thread &&
+      (await repo.hasRecentQueuedOutbound({ channel_id: thread.channel_id }))
+    ) {
+      throw new AppError(
+        "IG_ECHO_DEFERRED",
+        "Echo arrived while a Hub send is in flight — retrying after the mid is stamped",
+        503,
+      );
+    }
+  }
+  const storedDoc = await downloadInboundMediaToDocument({ brand, media });
+
+  const result = await transaction(async (client) => {
+    // Authoritative re-check: a concurrent delivery may have inserted
+    // between the pre-check and here.
+    if (external_ref) {
+      const dup = await client.query(
+        `SELECT message_id, channel_id FROM shared.messages
+          WHERE external_ref = $1
+             OR (metadata ? 'sequence_mids' AND metadata->'sequence_mids' @> to_jsonb($1::text))
+          LIMIT 1`,
+        [external_ref],
+      );
+      if (dup.rows.length) {
+        const row = dup.rows[0];
+        return { channel_id: row.channel_id, message: row, duplicate: true };
+      }
+    }
+    const thread = await findOrCreateCustomerThread({
+      client,
+      brand,
+      contact_id,
+      platform: platform || "instagram",
+      external_thread_ref,
+    });
+    // The whitelist covers story/share card keys; `via` is stamped
+    // unconditionally server-side (no HTTP path reaches here, and the
+    // composer's whitelist can't forge it).
+    const messageMetadata = sanitiseMessageMetadata(message_type, metadata) || {};
+    messageMetadata.via = "instagram_app";
+    const msg = await repo.insertMessage({
+      client,
+      message: {
+        channel_id: thread.channel_id,
+        message_type,
+        content: body,
+        external_ref,
+        delivery_status: "sent",
+        metadata: messageMetadata,
+        created_at: occurred_at,
+      },
+    });
+    if (storedDoc) {
+      await repo.addAttachment({
+        client,
+        a: {
+          message_id: msg.message_id,
+          document_id: storedDoc.document_id,
+          display_name: storedDoc.display_name,
+        },
+      });
+    }
+    // The team answered — everything up to this reply reads as handled
+    // for every staff viewer. Monotonic, so a backfilled old reply can
+    // never un-read newer customer messages.
+    await repo.markChannelExternallyRead({
+      client,
+      channel_id: thread.channel_id,
+      at: msg.created_at,
+    });
+    // Only a reply that is (still) the newest thing on the thread consumes
+    // its bell notifications — a backfilled reply from before the
+    // customer's latest message must leave the bell alone.
+    const isLatest =
+      !thread.last_message_at ||
+      new Date(msg.created_at) >= new Date(thread.last_message_at);
+    return { channel_id: thread.channel_id, message: msg, duplicate: false, isLatest };
+  });
+
+  if (!result.duplicate && result.isLatest) {
+    // Consume the "new message" bell for EVERY user — the thread was
+    // answered on the platform. Best-effort, never blocks the ingest.
+    try {
+      const notifications = require("../../services/notifications.service");
+      await notifications.markReadByReferenceAllUsers({
+        reference_type: "smartcomm_channel",
+        reference_id: result.channel_id,
+      });
+    } catch {
+      /* non-fatal */
+    }
+  }
+  if (!result.duplicate && !quiet) {
+    events.emit("customer.replied_externally", {
       brand,
       contact_id,
       channel_id: result.channel_id,
@@ -1912,7 +2275,10 @@ async function sendToCustomer({
   contact_id,
   channel,
   subject,
+  cc,
   body,
+  body_html,
+  attachments,
   user,
   soft,
   event_key,
@@ -1973,16 +2339,48 @@ async function sendToCustomer({
       contact_id,
       platform: channel === "email" ? "email" : channel,
     });
+    // Stamp the email envelope on the message so buildOutboundJobsForChannel
+    // uses THIS send's subject/Cc (a brand-new thread has none on the channel
+    // yet — the channel-subject UPDATE below only runs post-commit).
+    const ccList = channel === "email" ? normaliseCcList(cc) : [];
+    // Attachments and rich HTML are email-only — they ride the one outbound
+    // letter. Other channels ignore them.
+    const emailFiles = channel === "email" ? attachments || [] : [];
+    const richHtml =
+      channel === "email" && body_html && String(body_html).trim()
+        ? String(body_html)
+        : undefined;
+    const emailMeta =
+      channel === "email" && (subject || ccList.length || richHtml)
+        ? {
+            ...(subject ? { subject: String(subject).slice(0, 300) } : {}),
+            ...(ccList.length ? { cc: ccList } : {}),
+            ...(richHtml ? { body_html: richHtml } : {}),
+          }
+        : undefined;
     const m = await repo.insertMessage({
       client,
       message: {
         channel_id: th.channel_id,
         sender_user_id: user ? user.user_id : null,
-        message_type: user ? "text" : "system",
+        message_type: user ? (emailFiles.length ? "document" : "text") : "system",
         content: body,
         delivery_status: "queued",
+        metadata: emailMeta,
       },
     });
+    // Stage the files on the message before the outbound job is built —
+    // buildOutboundJobsForChannel reads them back (same client) to attach.
+    for (const a of emailFiles) {
+      await repo.addAttachment({
+        client,
+        a: {
+          message_id: m.message_id,
+          document_id: a.document_id,
+          display_name: a.display_name,
+        },
+      });
+    }
     const outboundJobs = await buildOutboundJobsForChannel({
       channel: th,
       message: m,
@@ -2114,12 +2512,14 @@ async function applyDeliveryResult({
   delivery_status,
   delivery_error,
   external_ref,
+  sequence_mids,
 }) {
   const updated = await repo.setMessageDelivery({
     message_id,
     delivery_status,
     delivery_error,
     external_ref,
+    sequence_mids,
   });
   if (updated) {
     events.emit("message.edited", {
@@ -2347,6 +2747,30 @@ async function getChannelAccessMatrix({ brand }) {
   return { platforms: ACCESS_PLATFORMS, users };
 }
 
+/**
+ * The requesting user's OWN effective channel visibility — the map the admin
+ * UI reads to hide inbox tabs a user can't reach (someone without WhatsApp
+ * access never sees the WhatsApp tab). Unlike the CEO matrix endpoints this is
+ * self-only, so it rides the plain `smartcomm.view` gate rather than requireCeo.
+ *
+ * Returns `{ ceo, managed, platforms: { <platform>: <can_view bool> } }`,
+ * derived from the same loadPlatformAccess / platformAllows rules the inbox
+ * list filter uses, so the visible tabs always match the channels the list
+ * would actually return. CEO sees every channel.
+ */
+async function getMyChannelAccess({ user, brand }) {
+  const platforms = {};
+  if (isCeo(user)) {
+    for (const p of ACCESS_PLATFORMS) platforms[p] = true;
+    return { ceo: true, managed: false, platforms };
+  }
+  const access = await loadPlatformAccess({ user, brand });
+  for (const p of ACCESS_PLATFORMS) {
+    platforms[p] = platformAllows(access, p, "view");
+  }
+  return { ceo: false, managed: access.managed, platforms };
+}
+
 /** One user's effective per-channel grants (for the editor). */
 async function getUserChannelAccess({ brand, user_id }) {
   const rows = await repo.listPlatformPermissionsForUser({
@@ -2448,6 +2872,38 @@ async function setUserChannelAccess({
   return getUserChannelAccess({ brand, user_id });
 }
 
+/**
+ * Upload an inline image for the Gmail-style email composer (drag/drop or
+ * pick) and return a public URL to embed in the mail HTML. Mirrors the
+ * marketing mail editor's upload, but keyed under the messaging namespace so
+ * a rep who can reply — not necessarily a marketing officer — can use it.
+ */
+async function uploadImage({ brand, file }) {
+  if (!file || !file.buffer || !file.buffer.length) {
+    throw new AppError("NO_FILE", "No image was uploaded", 400);
+  }
+  const { compressUpload } = require("../../services/media-compression.service");
+  const storage = require("../../services/storage.service");
+  const crypto = require("crypto");
+  const shrunk = await compressUpload(file);
+  if (!/^image\//.test(shrunk.mime_type || "")) {
+    throw new AppError("BAD_FILE_TYPE", "Only image files are allowed", 400);
+  }
+  const ext =
+    String(shrunk.filename || "")
+      .split(".")
+      .pop()
+      ?.toLowerCase()
+      .replace(/[^a-z0-9]/g, "")
+      .slice(0, 5) || "jpg";
+  const key = `messaging/${brand}/${crypto.randomBytes(12).toString("hex")}.${ext}`;
+  const stored = await storage.put(shrunk.buffer, {
+    key,
+    contentType: shrunk.mime_type,
+  });
+  return { url: stored.public_url };
+}
+
 module.exports = {
   listChannels,
   getChannel,
@@ -2486,6 +2942,7 @@ module.exports = {
   sendTransactionalEmail,
   sendInvoiceIntoThread,
   recordInboundFromCustomer,
+  recordAgentReplyFromPlatform,
   findOrCreateCustomerThread,
   addAttachment,
   // exposed for the calls module (voice-call timeline cards):
@@ -2502,6 +2959,7 @@ module.exports = {
   // colleague directory + CEO channel-access matrix
   listColleagues,
   getChannelAccessMatrix,
+  getMyChannelAccess,
   getUserChannelAccess,
   setUserChannelAccess,
 };

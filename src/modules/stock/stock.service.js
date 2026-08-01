@@ -16,6 +16,7 @@ const costing = require("./stock.costing");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { NotFoundError, AppError } = require("../../utils/errors");
+const { buildWorkbook } = require("../../services/spreadsheet.service");
 
 // GL treatment per movement type (policies Q5/Q6). 'sale' is EXCLUDED —
 // the order.paid sale journal owns COGS/inventory relief for sales.
@@ -153,6 +154,170 @@ function valuation({ brand, location_id, variant_id, product_id }) {
   });
 }
 
+// Excel sheet names: ≤31 chars, none of : \ / ? * [ ]; non-blank; unique.
+function sheetName(raw, used) {
+  let name = String(raw || "Location")
+    .replace(/[:\\/?*[\]]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 31);
+  if (!name) name = "Location";
+  let candidate = name;
+  let n = 2;
+  while (used.has(candidate.toLowerCase())) {
+    const suffix = ` (${n++})`;
+    candidate = `${name.slice(0, 31 - suffix.length)}${suffix}`;
+  }
+  used.add(candidate.toLowerCase());
+  return candidate;
+}
+
+const SNAPSHOT_COLUMNS = [
+  { header: "Product", key: "product_name", width: 40 },
+  { header: "Variant", key: "variant_name", width: 26 },
+  { header: "SKU", key: "sku", width: 16 },
+  { header: "On hand", key: "on_hand", width: 10 },
+  { header: "Reserved", key: "reserved", width: 10 },
+  { header: "Available", key: "available", width: 10 },
+  { header: "Unit cost (NGN)", key: "unit_cost_ngn", width: 16 },
+  { header: "Value (NGN)", key: "value_ngn", width: 16 },
+];
+
+function toSheetRow(r) {
+  return {
+    product_name: r.product_name,
+    variant_name: r.variant_name || "",
+    sku: r.sku || "",
+    on_hand: Number(r.on_hand) || 0,
+    reserved: Number(r.reserved) || 0,
+    available: Number(r.available) || 0,
+    unit_cost_ngn: Number(r.unit_cost_ngn) || 0,
+    value_ngn: Number(r.value_ngn) || 0,
+  };
+}
+
+/**
+ * Build the stock-on-hand .xlsx: one "All Locations" summary sheet (each SKU
+ * once, quantities + value summed across locations) followed by one sheet per
+ * stock location. Un-paginated — the whole tracked catalogue in a single file.
+ * Returns an .xlsx Buffer.
+ */
+async function exportOnHand({ brand }) {
+  const rows = await repo.onHandSnapshot({ brand });
+
+  // Summary: collapse to one row per variant, summing across locations. Unit
+  // cost is per-variant (constant across locations), so it is carried, not
+  // summed; value re-sums so it reflects the summed on-hand.
+  const byVariant = new Map();
+  for (const r of rows) {
+    const key = r.variant_id;
+    const cur = byVariant.get(key) || {
+      product_name: r.product_name,
+      variant_name: r.variant_name,
+      sku: r.sku,
+      on_hand: 0,
+      reserved: 0,
+      available: 0,
+      unit_cost_ngn: Number(r.unit_cost_ngn) || 0,
+      value_ngn: 0,
+    };
+    cur.on_hand += Number(r.on_hand) || 0;
+    cur.reserved += Number(r.reserved) || 0;
+    cur.available += Number(r.available) || 0;
+    cur.value_ngn += Number(r.value_ngn) || 0;
+    byVariant.set(key, cur);
+  }
+  const summaryRows = [...byVariant.values()]
+    .sort(
+      (a, b) =>
+        String(a.product_name).localeCompare(String(b.product_name)) ||
+        String(a.sku).localeCompare(String(b.sku)),
+    )
+    .map(toSheetRow);
+
+  const sheets = [
+    { name: "All Locations", columns: SNAPSHOT_COLUMNS, rows: summaryRows },
+  ];
+
+  // One sheet per location, in the order locations first appear (rows are
+  // already ordered by location name).
+  const used = new Set(["all locations"]);
+  const byLocation = new Map();
+  for (const r of rows) {
+    if (!byLocation.has(r.location_id)) {
+      byLocation.set(r.location_id, { name: r.location_name, rows: [] });
+    }
+    byLocation.get(r.location_id).rows.push(toSheetRow(r));
+  }
+  for (const loc of byLocation.values()) {
+    sheets.push({
+      name: sheetName(loc.name, used),
+      columns: SNAPSHOT_COLUMNS,
+      rows: loc.rows,
+    });
+  }
+
+  return buildWorkbook({ sheets });
+}
+
+const MOVEMENT_COLUMNS = [
+  { header: "Date", key: "date", width: 20 },
+  { header: "Movement #", key: "movement_number", width: 18 },
+  { header: "Type", key: "movement_type", width: 16 },
+  { header: "Product", key: "product_name", width: 40 },
+  { header: "Variant", key: "variant_name", width: 22 },
+  { header: "SKU", key: "sku", width: 16 },
+  { header: "Location", key: "location_name", width: 24 },
+  { header: "Qty", key: "quantity", width: 8 },
+  { header: "Unit cost (NGN)", key: "unit_cost_ngn", width: 16 },
+  { header: "Channel", key: "sales_channel", width: 14 },
+  { header: "Reference", key: "reference", width: 22 },
+  { header: "Notes", key: "notes", width: 30 },
+  { header: "Performed by", key: "performed_by_email", width: 26 },
+];
+
+// dd/mm/yyyy HH:MM — matches the on-screen movement timestamps.
+function fmtTs(v) {
+  if (!v) return "";
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return String(v);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/**
+ * ALL stock movements as a single-sheet .xlsx — the complete log, never a
+ * page. Respects the Movements tab's type + location filters so a filtered
+ * view exports exactly what it shows (minus the client-only text search).
+ * Returns an .xlsx Buffer.
+ */
+async function exportMovements({ brand, filters = {} }) {
+  const rows = await repo.movementsForExport({ brand, filters });
+  const sheetRows = rows.map((r) => ({
+    date: fmtTs(r.performed_at),
+    movement_number: r.movement_number || "",
+    movement_type: r.movement_type || "",
+    product_name: r.product_name || "",
+    variant_name: r.variant_name || "",
+    sku: r.sku || "",
+    location_name: r.location_name || "",
+    quantity: Number(r.quantity) || 0,
+    unit_cost_ngn:
+      r.unit_cost_ngn === null || r.unit_cost_ngn === undefined
+        ? ""
+        : Number(r.unit_cost_ngn),
+    sales_channel: r.sales_channel || "",
+    reference: r.reference_id
+      ? `${r.reference_type || "ref"}:${r.reference_id}`
+      : "",
+    notes: r.notes || "",
+    performed_by_email: r.performed_by_email || "",
+  }));
+  return buildWorkbook({
+    sheets: [{ name: "Movements", columns: MOVEMENT_COLUMNS, rows: sheetRows }],
+  });
+}
+
 // Levels
 function listLevels({ brand, variant_id, location_id, page, page_size }) {
   const offset = (page - 1) * page_size;
@@ -173,6 +338,18 @@ function listMovements({ brand, filters, page, page_size }) {
   const offset = (page - 1) * page_size;
   return repo.listMovements({ brand, filters, page, page_size, offset });
 }
+/**
+ * One movement with its source document and the other lines of the same
+ * operation. Backs the Movement Detail modal: what moved, from which document,
+ * through which channel, and who processed it.
+ */
+async function getMovement({ brand, movement_id }) {
+  const movement = await repo.getMovementById({ brand, movement_id });
+  if (!movement) throw new NotFoundError("Stock movement not found");
+  const siblings = await repo.siblingMovements({ brand, movement });
+  return { ...movement, related_movements: siblings };
+}
+
 async function recordMovement({ brand, user, request_id, input }) {
   return transaction(async (client) => {
     const m = await applyMovement({
@@ -590,7 +767,13 @@ async function approveAdjustment({ brand, user, request_id, id }) {
     { status: "approved" },
     request_id,
   );
-  events.emit("adjustment.approved", { brand, id });
+  events.emit("adjustment.approved", {
+    brand,
+    id,
+    actor: user.display_name || user.email,
+    requested_by: adj.created_by,
+    adjustment_number: adj.adjustment_number,
+  });
   return updated;
 }
 
@@ -618,7 +801,13 @@ async function rejectAdjustment({ brand, user, request_id, id }) {
     { status: "rejected" },
     request_id,
   );
-  events.emit("adjustment.rejected", { brand, id });
+  events.emit("adjustment.rejected", {
+    brand,
+    id,
+    actor: user.display_name || user.email,
+    requested_by: adj.created_by,
+    adjustment_number: adj.adjustment_number,
+  });
   return updated;
 }
 
@@ -706,6 +895,53 @@ async function getTransfer({ brand, id }) {
   if (!tr) throw new NotFoundError("Transfer");
   return tr;
 }
+// Posts the transfer_out movements at the source + stamps the transfer
+// 'dispatched' — the shared core of both createTransfer (which now dispatches
+// immediately on creation) and the standalone dispatch endpoint (kept so any
+// pre-existing 'draft' transfer from before this change can still be sent).
+// Runs on the caller's client/transaction — never opens its own, so it's safe
+// to call from inside createTransfer's transaction as well as its own.
+async function dispatchTransferLines({ client, brand, user_id, request_id, transfer }) {
+  for (const line of transfer.lines) {
+    await applyMovement({
+      client,
+      brand,
+      user_id,
+      input: {
+        variant_id: line.variant_id,
+        location_id: transfer.from_location_id,
+        quantity: -Math.abs(line.qty_dispatched),
+        movement_type: "transfer_out",
+        reference_type: "transfer",
+        reference_id: transfer.transfer_id,
+      },
+    });
+  }
+  const out = await repo.setTransferStatus({
+    client,
+    brand,
+    id: transfer.transfer_id,
+    status: "dispatched",
+    field: "dispatched",
+    user_id,
+  });
+  await A(
+    brand,
+    user_id,
+    "stock.transfer.dispatch",
+    "stock_transfer",
+    transfer.transfer_id,
+    { status: "dispatched" },
+    request_id,
+  );
+  events.emit("transfer.dispatched", { brand, id: transfer.transfer_id });
+  return out;
+}
+// A transfer between two of our own locations has no meaningful "in transit"
+// checkpoint worth an extra confirmation click — creating it immediately
+// deducts the source (dispatchTransferLines, above), so Ops only has to act
+// once. Receiving at the destination stays a separate, deliberate step (the
+// physical-arrival checkpoint), unchanged below.
 async function createTransfer({ brand, user, request_id, input }) {
   return transaction(async (client) => {
     const tr = await repo.createTransfer({
@@ -730,9 +966,20 @@ async function createTransfer({ brand, user, request_id, input }) {
       tr,
       request_id,
     );
+    const full = await repo.getTransfer({ client, brand, id: tr.transfer_id });
+    await dispatchTransferLines({
+      client,
+      brand,
+      user_id: user.user_id,
+      request_id,
+      transfer: full,
+    });
     return repo.getTransfer({ client, brand, id: tr.transfer_id });
   });
 }
+// Kept for any transfer still sitting in 'draft' from before transfers began
+// dispatching on creation — createTransfer no longer produces a 'draft' row,
+// so this endpoint is legacy-only going forward.
 async function dispatchTransfer({ brand, user, request_id, id }) {
   return transaction(async (client) => {
     const tr = await repo.getTransfer({ client, brand, id });
@@ -743,40 +990,13 @@ async function dispatchTransfer({ brand, user, request_id, id }) {
         `Cannot dispatch a '${tr.status}' transfer`,
         409,
       );
-    for (const line of tr.lines) {
-      await applyMovement({
-        client,
-        brand,
-        user_id: user.user_id,
-        input: {
-          variant_id: line.variant_id,
-          location_id: tr.from_location_id,
-          quantity: -Math.abs(line.qty_dispatched),
-          movement_type: "transfer_out",
-          reference_type: "transfer",
-          reference_id: id,
-        },
-      });
-    }
-    const out = await repo.setTransferStatus({
+    return dispatchTransferLines({
       client,
       brand,
-      id,
-      status: "dispatched",
-      field: "dispatched",
       user_id: user.user_id,
-    });
-    await A(
-      brand,
-      user.user_id,
-      "stock.transfer.dispatch",
-      "stock_transfer",
-      id,
-      { status: "dispatched" },
       request_id,
-    );
-    events.emit("transfer.dispatched", { brand, id });
-    return out;
+      transfer: tr,
+    });
   });
 }
 async function receiveTransfer({ brand, user, request_id, id, input = {} }) {
@@ -932,7 +1152,11 @@ async function createGoodsReceipt({ brand, user, request_id, input }) {
             metadata: { product_id: ln.product_id },
           },
         );
-      resolved.push({ variant_id: variant.variant_id, quantity: ln.quantity });
+      resolved.push({
+        variant_id: variant.variant_id,
+        quantity: ln.quantity,
+        po_line_id: ln.po_line_id || null,
+      });
     }
 
     const sh = await repo.createShipment({
@@ -953,7 +1177,12 @@ async function createGoodsReceipt({ brand, user, request_id, input }) {
         client,
         brand,
         shipment_id: sh.shipment_id,
-        line: { variant_id: r.variant_id, qty_expected: r.quantity },
+        line: {
+          variant_id: r.variant_id,
+          qty_expected: r.quantity,
+          // Keeps the receipt traceable back to the order it satisfies.
+          po_line_id: r.po_line_id,
+        },
       });
       await repo.setShipmentLineReceived({
         client,
@@ -989,6 +1218,24 @@ async function createGoodsReceipt({ brand, user, request_id, input }) {
       },
       request_id,
     );
+    // Book the delivery against the purchase order IN THIS TRANSACTION.
+    // Stock that went up while the PO still shows the goods outstanding is
+    // exactly the drift that makes people stop trusting either number, so if
+    // the PO update fails the stock movement rolls back with it.
+    if (input.purchase_order_id) {
+      const purchasing = require("../purchasing/purchasing.service");
+      await purchasing.applyReceiptToPo({
+        client,
+        brand,
+        user,
+        request_id,
+        po_id: input.purchase_order_id,
+        lines: resolved
+          .filter((r) => r.po_line_id)
+          .map((r) => ({ po_line_id: r.po_line_id, quantity: r.quantity })),
+      });
+    }
+
     events.emit("shipment.received", { brand, id: sh.shipment_id });
     return repo.getShipment({ client, brand, id: sh.shipment_id });
   });
@@ -1080,9 +1327,12 @@ module.exports = {
   createLocation,
   updateLocation,
   valuation,
+  exportOnHand,
+  exportMovements,
   listLevels,
   variantStock,
   listMovements,
+  getMovement,
   recordMovement,
   deductForSale,
   receiveStock,

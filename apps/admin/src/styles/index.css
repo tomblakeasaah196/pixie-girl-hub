@@ -688,3 +688,113 @@ body.session-locked #root {
     font-size: max(16px, 1em) !important;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   MAIL EDITOR (Marketing → Templates) — the TipTap writing surface
+   and the "First name"-style personalisation pills.
+   ═══════════════════════════════════════════════════════════════ */
+.pgh-mail-editor .ProseMirror {
+  min-height: 220px;
+  padding: 14px 16px;
+  outline: none;
+  font-size: 14.5px;
+  line-height: 1.65;
+  color: rgb(var(--text));
+  word-break: break-word;
+  /* iOS Safari "text autosizing" (font boosting) recomputes text sizes by a
+     width heuristic and OVERRIDES explicit font-size — so Small/Normal/Large/
+     Huge all collapsed to one size on iPhone while colour/bold (untouched by
+     boosting) worked fine. Pin it to 100% so the Text-size menu renders the
+     exact size we set. Harmless on desktop, where boosting doesn't run. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+/* Slimmer surface for the Messaging composers (in-thread reply + new chat). */
+.pgh-mail-editor--compact .ProseMirror {
+  min-height: 110px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 10px 13px;
+  font-size: 13.5px;
+}
+.pgh-mail-editor .ProseMirror p {
+  margin: 0 0 10px;
+}
+/* Word-style line spacing on selected paragraphs (Text-spacing toolbar). The
+   mail renderer + preview mirror these values so the sent email matches. */
+.pgh-mail-editor .ProseMirror p[data-space="tight"] {
+  margin-bottom: 3px;
+  line-height: 1.4;
+}
+.pgh-mail-editor .ProseMirror p[data-space="relaxed"] {
+  margin-bottom: 24px;
+  line-height: 1.95;
+}
+.pgh-mail-editor .ProseMirror h1 {
+  font-family: "Playfair Display", serif;
+  font-size: 24px;
+  line-height: 1.25;
+  margin: 14px 0 8px;
+}
+.pgh-mail-editor .ProseMirror h2 {
+  font-family: "Playfair Display", serif;
+  font-size: 19px;
+  line-height: 1.3;
+  margin: 12px 0 6px;
+}
+.pgh-mail-editor .ProseMirror ul,
+.pgh-mail-editor .ProseMirror ol {
+  padding-left: 22px;
+  margin: 0 0 10px;
+}
+.pgh-mail-editor .ProseMirror ul {
+  list-style: disc;
+}
+.pgh-mail-editor .ProseMirror ol {
+  list-style: decimal;
+}
+.pgh-mail-editor .ProseMirror a {
+  color: rgb(var(--accent-glow));
+  text-decoration: underline;
+}
+.pgh-mail-editor .ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 4px 0;
+}
+.pgh-mail-editor .ProseMirror img.ProseMirror-selectednode {
+  outline: 2px solid rgb(var(--accent-glow));
+}
+.pgh-mail-editor .ProseMirror blockquote {
+  border-left: 3px solid rgb(var(--accent-glow));
+  padding-left: 12px;
+  margin: 0 0 10px;
+  color: rgb(var(--text-muted));
+}
+/* Placeholder (empty editor hint) */
+.pgh-mail-editor .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: rgb(var(--text-faint));
+}
+/* Personalisation pill — reads as a chip, never as code */
+.pgh-token-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  margin: 0 1px;
+  border-radius: 999px;
+  font-size: 0.86em;
+  font-weight: 600;
+  white-space: nowrap;
+  color: rgb(var(--accent-glow));
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+  user-select: none;
+}
+.pgh-mail-editor .pgh-token-pill.ProseMirror-selectednode {
+  outline: 2px solid rgb(var(--accent-glow));
+}

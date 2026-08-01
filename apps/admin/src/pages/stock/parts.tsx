@@ -13,14 +13,21 @@ export function Tabs({
   tabs,
   active,
   onChange,
+  size = "md",
 }: {
   tabs: TabDef[];
   active: string;
   onChange: (key: string) => void;
+  /** "lg" gives a taller, roomier strip for a module's primary tab bar. */
+  size?: "md" | "lg";
 }) {
+  const lg = size === "lg";
   return (
     <div
-      className="flex gap-1 p-1 rounded-[13px] glass shadow-glass overflow-x-auto"
+      className={cn(
+        "flex gap-1 p-1 glass shadow-glass overflow-x-auto",
+        lg ? "rounded-[15px] p-1.5" : "rounded-[13px]",
+      )}
       role="tablist"
     >
       {tabs.map((t) => {
@@ -32,7 +39,8 @@ export function Tabs({
             aria-selected={on}
             onClick={() => onChange(t.key)}
             className={cn(
-              "inline-flex items-center gap-2 px-3.5 h-9 rounded-[10px] text-[13px] font-semibold whitespace-nowrap transition-all",
+              "inline-flex items-center gap-2 rounded-[10px] font-semibold whitespace-nowrap transition-all",
+              lg ? "px-4 h-11 text-[14px]" : "px-3.5 h-9 text-[13px]",
               on
                 ? "bg-accent-deep text-[#F4E9D9] shadow-[0_6px_18px_rgb(var(--accent-deep)/0.4)]"
                 : "text-text-muted hover:text-text-primary hover:bg-text-primary/[0.05]",
@@ -74,7 +82,11 @@ export function SearchBox({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full h-10 pl-9 pr-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+        className="w-full h-10 pl-9 pr-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary text-[13px] outline-none focus:border-accent/50"
+        autoComplete="off"
+        data-lpignore="true"
+        data-1p-ignore=""
+        data-form-type="other"
       />
     </div>
   );
@@ -215,7 +227,8 @@ export function ProductsSummary({
     return <span className="text-[12px] text-text-faint">{emptyLabel}</span>;
   }
   const names = lines.map(
-    (l) => l.product_name?.trim() || l.variant_name?.trim() || "Unnamed product",
+    (l) =>
+      l.product_name?.trim() || l.variant_name?.trim() || "Unnamed product",
   );
   const unique = Array.from(new Set(names));
   const shown = unique.slice(0, 2).join(", ");
@@ -223,9 +236,7 @@ export function ProductsSummary({
   return (
     <span className="text-[13px] text-text-primary truncate block max-w-[260px]">
       {shown}
-      {extra > 0 && (
-        <span className="text-text-faint"> +{extra} more</span>
-      )}
+      {extra > 0 && <span className="text-text-faint"> +{extra} more</span>}
     </span>
   );
 }
@@ -339,5 +350,69 @@ export function TableSkeleton({
         </tr>
       ))}
     </>
+  );
+}
+
+/* ── SourceCell ────────────────────────────────────────────────────────
+   A movement's source document in one cell: the document number on top
+   (order / adjustment / transfer / shipment number, never a raw UUID), and
+   the human context underneath — customer + channel for a sale, reason for
+   an adjustment. "SALE −1" with no answer to "from which order?" is what
+   made the ledger unreadable. */
+const SOURCE_CHANNEL_LABEL: Record<string, string> = {
+  pos: "POS",
+  storefront: "Storefront",
+  woocommerce: "WooCommerce",
+  instagram: "Instagram",
+  whatsapp: "WhatsApp",
+  wholesale: "Wholesale",
+  partner: "Partner",
+  stylist_routed: "Stylist",
+  public_form: "Order form",
+  walk_in: "Walk-in",
+};
+
+interface MovementSource {
+  reference_type?: string | null;
+  reference_number?: string | null;
+  customer_name?: string | null;
+  sales_channel?: string | null;
+  order_sales_channel?: string | null;
+  adjustment_reason?: string | null;
+  notes?: string | null;
+}
+
+export function SourceCell({ movement }: { movement: MovementSource }) {
+  const rawChannel = movement.sales_channel || movement.order_sales_channel;
+  const channel = rawChannel
+    ? (SOURCE_CHANNEL_LABEL[rawChannel] ?? rawChannel.replace(/_/g, " "))
+    : null;
+
+  const primary = movement.reference_number;
+  const secondary =
+    [movement.customer_name, channel].filter(Boolean).join(" · ") ||
+    movement.adjustment_reason ||
+    movement.notes ||
+    null;
+
+  if (!primary) {
+    return (
+      <span className="text-[13px] text-text-muted truncate max-w-[180px] block">
+        {secondary ?? "Logged manually"}
+      </span>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-0.5 min-w-0 max-w-[180px]">
+      <span className="text-[12.5px] font-mono text-text-primary truncate">
+        {primary}
+      </span>
+      {secondary && (
+        <span className="text-[11px] text-text-faint truncate">
+          {secondary}
+        </span>
+      )}
+    </div>
   );
 }

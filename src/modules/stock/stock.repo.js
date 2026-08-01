@@ -9,6 +9,10 @@
 
 const { ex } = require("../../config/database");
 const { t } = require("../../config/brands");
+const {
+  nextDocumentNumber,
+} = require("../../shared/numbering/document-number");
+const { logger } = require("../../config/logger");
 const LOC = [
   "location_code",
   "display_name",
@@ -75,9 +79,35 @@ async function listLocations({ client, brand }) {
   );
   return rows;
 }
+/**
+ * The single location every sale reserves and deducts against.
+ *
+ * `is_default` is NOT globally unique — 000017 indexes it UNIQUE per
+ * `location_type`, so a brand can legitimately carry a default warehouse AND a
+ * default production/in_transit/reserved_holding row at the same time. The
+ * original `ORDER BY is_default DESC, created_at` therefore tiebroke on
+ * whichever default happened to be created first, which could hand every
+ * reservation to a location that holds no sellable stock (and, when two rows
+ * shared a created_at, was not even deterministic).
+ *
+ * Ordering — never filtering, so a brand whose only location is an odd type
+ * still resolves rather than pre-ordering everything:
+ *   1. is_default
+ *   2. a genuinely sellable type (warehouse/showroom) over transit/production
+ *   3. storefront-sellable, then POS-sellable
+ *   4. created_at, then location_id — a total order, so the result is stable.
+ */
 async function getDefaultLocation({ client, brand }) {
   const { rows } = await ex(client)(
-    `SELECT * FROM ${t(brand, "stock_locations")} WHERE is_active = true ORDER BY is_default DESC, created_at LIMIT 1`,
+    `SELECT * FROM ${t(brand, "stock_locations")}
+      WHERE is_active = true
+      ORDER BY is_default DESC,
+               (location_type IN ('warehouse','showroom')) DESC,
+               available_for_storefront DESC,
+               available_for_pos DESC,
+               created_at ASC,
+               location_id ASC
+      LIMIT 1`,
   );
   return rows[0] || null;
 }
@@ -195,12 +225,116 @@ async function outstandingReservationForOrder({
 }
 
 // Movements (the only way to change on_hand)
+/**
+ * Movement numbers go through the guarded helper, never the raw SQL function.
+ *
+ * `fn_next_document_number` RAISEs when shared.document_numbering has no row for
+ * (brand, 'stock_movement') — and nothing in this codebase ever seeded that
+ * type. Because a RAISE aborts the enclosing transaction, the unguarded call
+ * here made EVERY stock movement insert fail, so every checkout reservation
+ * failed and every order line was written as a pre-order no matter how much
+ * stock was on hand. The helper provisions the row on first use.
+ */
 async function nextMovementNumber({ client, brand }) {
-  const { rows } = await ex(client)(
-    `SELECT ${t(brand, "fn_next_document_number")}('stock_movement') AS n`,
-  );
-  return rows[0].n;
+  return nextDocumentNumber({ client, brand, type: "stock_movement" });
 }
+/**
+ * Every movement carries a soft FK (reference_type + reference_id) to the
+ * document that caused it. Reading "SALE −1" without that document is what
+ * made the ledger unreadable: you couldn't tell WHICH order, WHICH channel or
+ * WHO processed it. These joins resolve the source document inline so both the
+ * table and the detail view can name it — one query, no N+1.
+ *
+ * Each join is guarded on reference_type so a UUID that happens to exist in
+ * two tables can never cross-match.
+ *
+ * NO POS JOIN: the POS terminal module was retired and template 000074 DROPs
+ * every per-brand pos_* table, so `pos_transactions` does not exist in any
+ * live brand schema. Joining it made Postgres fail at PARSE time, which took
+ * the whole Movements tab (and the Overview strip) down with a 500 — a
+ * historic 'pos_transaction' movement now reads from its reference_type alone.
+ * Only join tables the migrations still create.
+ */
+function movementJoins(brand) {
+  return `LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sm.variant_id
+       LEFT JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
+       LEFT JOIN ${t(brand, "stock_locations")} loc ON loc.location_id = sm.location_id
+       LEFT JOIN shared.users u ON u.user_id = sm.performed_by
+       LEFT JOIN ${t(brand, "sales_orders")} so
+              ON sm.reference_type = 'sales_order' AND so.order_id = sm.reference_id
+       LEFT JOIN shared.contacts ct ON ct.contact_id = so.contact_id
+       LEFT JOIN ${t(brand, "stock_adjustments")} adj
+              ON sm.reference_type = 'adjustment' AND adj.adjustment_id = sm.reference_id
+       LEFT JOIN ${t(brand, "stock_transfers")} trf
+              ON sm.reference_type = 'transfer' AND trf.transfer_id = sm.reference_id
+       LEFT JOIN ${t(brand, "inbound_shipments")} shp
+              ON sm.reference_type IN ('inbound_shipment','goods_received_note')
+             AND shp.shipment_id = sm.reference_id`;
+}
+
+/** Columns shared by the movements list and the single-movement detail. */
+const MOVEMENT_SELECT = `sm.*, pv.sku, pv.variant_name, p.name AS product_name,
+            loc.display_name AS location_name,
+            COALESCE(u.display_name, u.email) AS performed_by_name,
+            so.order_id, so.order_number, so.status AS order_status,
+            so.order_type, so.placed_at AS order_placed_at,
+            so.sales_channel AS order_sales_channel,
+            ct.display_name AS customer_name,
+            adj.adjustment_id, adj.adjustment_number, adj.status AS adjustment_status,
+            adj.adjustment_type, adj.reason AS adjustment_reason,
+            trf.transfer_id, trf.transfer_number, trf.status AS transfer_status,
+            shp.shipment_id, shp.shipment_number, shp.status AS shipment_status,
+            COALESCE(so.order_number, adj.adjustment_number,
+                     trf.transfer_number, shp.shipment_number) AS reference_number`;
+
+/**
+ * One movement, fully resolved — the detail modal's payload. Adds the parties
+ * the list doesn't need (adjustment raiser/approver, transfer endpoints) so an
+ * operator can answer "where did this come from and who did it?" in one look.
+ */
+async function getMovementById({ client, brand, movement_id }) {
+  const { rows } = await ex(client)(
+    `SELECT ${MOVEMENT_SELECT},
+            adj.created_at AS adjustment_created_at,
+            adj.approved_at AS adjustment_approved_at,
+            COALESCE(adju.display_name, adju.email) AS adjustment_created_by_name,
+            COALESCE(adja.display_name, adja.email) AS adjustment_approved_by_name,
+            trf_from.display_name AS transfer_from_location_name,
+            trf_to.display_name AS transfer_to_location_name
+       FROM ${t(brand, "stock_movements")} sm
+       ${movementJoins(brand)}
+       LEFT JOIN shared.users adju ON adju.user_id = adj.created_by
+       LEFT JOIN shared.users adja ON adja.user_id = adj.approved_by
+       LEFT JOIN ${t(brand, "stock_locations")} trf_from ON trf_from.location_id = trf.from_location_id
+       LEFT JOIN ${t(brand, "stock_locations")} trf_to ON trf_to.location_id = trf.to_location_id
+      WHERE sm.movement_id = $1`,
+    [movement_id],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Sibling movements from the same source document (the other lines of the
+ * order, the other lines of the adjustment). Lets the detail view show the
+ * whole operation, not just the one line that was clicked.
+ */
+async function siblingMovements({ client, brand, movement }) {
+  if (!movement.reference_type || !movement.reference_id) return [];
+  const { rows } = await ex(client)(
+    `SELECT sm.movement_id, sm.movement_number, sm.movement_type, sm.quantity,
+            sm.unit_cost_ngn, sm.performed_at, pv.sku, pv.variant_name,
+            p.name AS product_name
+       FROM ${t(brand, "stock_movements")} sm
+       LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sm.variant_id
+       LEFT JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
+      WHERE sm.reference_type = $1 AND sm.reference_id = $2
+        AND sm.movement_id <> $3
+      ORDER BY sm.performed_at ASC LIMIT 50`,
+    [movement.reference_type, movement.reference_id, movement.movement_id],
+  );
+  return rows;
+}
+
 async function listMovements({
   client,
   brand,
@@ -230,14 +364,47 @@ async function listMovements({
     `SELECT COUNT(*)::int AS total FROM ${t(brand, "stock_movements")} sm ${w}`,
     params,
   );
-  const { rows } = await run(
-    `SELECT sm.*, pv.sku, pv.variant_name, p.name AS product_name
+  const paged = [...params, page_size, offset];
+  const limitPh = `$${i++}`;
+  const offsetPh = `$${i++}`;
+  let rows;
+  try {
+    rows = (
+      await run(
+        `SELECT ${MOVEMENT_SELECT}
+       FROM ${t(brand, "stock_movements")} sm
+       ${movementJoins(brand)}
+       ${w} ORDER BY sm.performed_at DESC LIMIT ${limitPh} OFFSET ${offsetPh}`,
+        paged,
+      )
+    ).rows;
+  } catch (err) {
+    // The movement ledger is the one screen that must always render. Resolving
+    // the source documents reaches into five other modules' tables, and a
+    // module can be RETIRED between releases — POS was, and its dropped table
+    // turned every request here into a 500 that blanked the Movements tab and
+    // the Overview strip. Enrichment is a nicety; the ledger is not. Fall back
+    // to the bare movements so the page still works, and log loudly enough
+    // that the broken join gets fixed rather than silently tolerated.
+    logger.error(
+      { err: err.message, brand },
+      "stock: movement source enrichment failed — serving un-enriched rows",
+    );
+    rows = (
+      await run(
+        `SELECT sm.*, pv.sku, pv.variant_name, p.name AS product_name,
+            loc.display_name AS location_name,
+            COALESCE(u.display_name, u.email) AS performed_by_name
        FROM ${t(brand, "stock_movements")} sm
        LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sm.variant_id
        LEFT JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
-       ${w} ORDER BY sm.performed_at DESC LIMIT $${i++} OFFSET $${i++}`,
-    [...params, page_size, offset],
-  );
+       LEFT JOIN ${t(brand, "stock_locations")} loc ON loc.location_id = sm.location_id
+       LEFT JOIN shared.users u ON u.user_id = sm.performed_by
+       ${w} ORDER BY sm.performed_at DESC LIMIT ${limitPh} OFFSET ${offsetPh}`,
+        paged,
+      )
+    ).rows;
+  }
   return {
     data: rows,
     meta: {
@@ -248,6 +415,48 @@ async function listMovements({
     },
   };
 }
+
+/**
+ * Every movement matching the filters — UN-PAGINATED — for the .xlsx export.
+ * Mirrors listMovements' joins (SKU, variant, product) and adds the location
+ * name + the performer, so the exported log is self-contained. Supports the
+ * same filters the Movements tab exposes (type + location), newest first.
+ */
+async function movementsForExport({ client, brand, filters = {} }) {
+  const where = [];
+  const params = [];
+  let i = 1;
+  if (filters.movement_type) {
+    where.push(`sm.movement_type = $${i++}`);
+    params.push(filters.movement_type);
+  }
+  if (filters.location_id) {
+    where.push(`sm.location_id = $${i++}`);
+    params.push(filters.location_id);
+  }
+  if (filters.variant_id) {
+    where.push(`sm.variant_id = $${i++}`);
+    params.push(filters.variant_id);
+  }
+  const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const { rows } = await ex(client)(
+    `SELECT sm.movement_number, sm.performed_at, sm.movement_type,
+            sm.quantity, sm.unit_cost_ngn, sm.sales_channel,
+            sm.reference_type, sm.reference_id, sm.notes,
+            pv.sku, pv.variant_name, p.name AS product_name,
+            loc.display_name AS location_name,
+            u.email AS performed_by_email
+       FROM ${t(brand, "stock_movements")} sm
+       LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sm.variant_id
+       LEFT JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
+       LEFT JOIN ${t(brand, "stock_locations")} loc ON loc.location_id = sm.location_id
+       LEFT JOIN shared.users u ON u.user_id = sm.performed_by
+       ${w} ORDER BY sm.performed_at DESC`,
+    params,
+  );
+  return rows;
+}
+
 async function recordMovement({ client, brand, input, user_id }) {
   const movement_number = await nextMovementNumber({ client, brand });
   const { f, ph, p } = ins(MOV, input, {
@@ -317,12 +526,9 @@ async function getCostBasisForVariants({ client, brand, variant_ids }) {
   return map;
 }
 
+/** Transfers / adjustments / counts — same guard, same reason as above. */
 async function nextDocNumber({ client, brand, type }) {
-  const { rows } = await ex(client)(
-    `SELECT ${t(brand, "fn_next_document_number")}($1) AS n`,
-    [type],
-  );
-  return rows[0].n;
+  return nextDocumentNumber({ client, brand, type });
 }
 
 // ── Adjustments (+ lines) ────────────────────────────────
@@ -466,6 +672,33 @@ async function setAdjustmentStatus({ client, brand, id, status, approved_by }) {
     params,
   );
   return rows[0] || null;
+}
+
+// Who to notify when an adjustment is submitted for approval: the CEO
+// (bypasses the permission matrix entirely) plus anyone holding a `stock`
+// module `approve` grant under this brand (or an all-brands '*' grant).
+// Mirrors the exact tables requirePermission()/identityCache check — see
+// src/middleware/rbac.js — so this list never drifts from what the approve
+// endpoints themselves actually accept.
+async function listAdjustmentApprovers({ client, brand }) {
+  const { rows } = await ex(client)(
+    `SELECT DISTINCT u.user_id, u.email, u.display_name
+       FROM shared.users u
+      WHERE u.is_active = true
+        AND (
+          u.is_ceo = true
+          OR u.user_id IN (
+            SELECT ur.user_id
+              FROM shared.user_roles ur
+              JOIN shared.permissions p ON p.role_id = ur.role_id
+             WHERE p.module = 'stock' AND p.action = 'approve'
+               AND (ur.business = '*' OR ur.business = $1)
+               AND (ur.expires_at IS NULL OR ur.expires_at > now())
+          )
+        )`,
+    [brand],
+  );
+  return rows;
 }
 
 // ── Transfers (+ lines) ──────────────────────────────────
@@ -690,6 +923,43 @@ async function defaultVariantForProduct({ client, brand, product_id }) {
   return rows[0] || null;
 }
 
+/**
+ * The best variant of `product_id` to draw `quantity` units from AT
+ * `location_id` — i.e. one whose reservation is guaranteed to succeed against
+ * the `reserved <= on_hand` invariant.
+ *
+ * Deliberately different from `defaultVariantForProduct`, which is ordering-
+ * based and stock-blind: it can hand back an inactive variant, or an active one
+ * with nothing on the shelf, which then fails to reserve and silently becomes a
+ * pre-order. Availability reads sum stock across every location while the sale
+ * only ever reserves at ONE, so a donor must be chosen against that same
+ * location or the two disagree.
+ *
+ * Returns null when no single variant of this product can cover `quantity`
+ * there — callers fall back to their existing pre-order handling.
+ */
+async function variantWithStockForProduct({
+  client,
+  brand,
+  product_id,
+  location_id,
+  quantity,
+}) {
+  const { rows } = await ex(client)(
+    `SELECT pv.variant_id, pv.sku, pv.variant_name, sl.available
+       FROM ${t(brand, "product_variants")} pv
+       JOIN ${t(brand, "stock_levels")} sl
+         ON sl.variant_id = pv.variant_id AND sl.location_id = $2
+      WHERE pv.product_id = $1
+        AND pv.is_active = true
+        AND sl.available >= $3
+      ORDER BY sl.available DESC, pv.display_order ASC, pv.created_at ASC
+      LIMIT 1`,
+    [product_id, location_id, quantity],
+  );
+  return rows[0] || null;
+}
+
 // ── Inbound shipments (+ lines) ──────────────────────────
 // destination_location_id / received_at / received_by_name / notes / status /
 // created_by are all optional on insert — the detailed shipment flow omits the
@@ -894,12 +1164,38 @@ async function valuation({ client, brand, filters = {} }) {
   return { lines, summary: summary[0] };
 }
 
+/**
+ * Full stock-on-hand snapshot — ONE un-paginated row per variant × location,
+ * with the product/variant/location names, on-hand/reserved/available and the
+ * variant's unit cost + line value. This is the source for the .xlsx export
+ * (the "export my total stock" file); unlike listLevels it is never paginated,
+ * so every tracked SKU is present. Ordered for a readable stocktake.
+ */
+async function onHandSnapshot({ client, brand }) {
+  const { rows } = await ex(client)(
+    `SELECT sl.variant_id, sl.location_id,
+            loc.display_name AS location_name,
+            p.product_id, p.name AS product_name, p.product_code,
+            pv.sku, pv.variant_name,
+            sl.on_hand, sl.reserved, sl.available,
+            COALESCE(pv.cost_price_ngn, 0) AS unit_cost_ngn,
+            (sl.on_hand * COALESCE(pv.cost_price_ngn, 0))::numeric(14,2) AS value_ngn
+       FROM ${t(brand, "stock_levels")} sl
+       JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sl.variant_id
+       JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
+       JOIN ${t(brand, "stock_locations")} loc ON loc.location_id = sl.location_id
+      ORDER BY loc.display_name ASC, p.name ASC, pv.sku ASC`,
+  );
+  return rows;
+}
+
 module.exports = {
   listLocations,
   getDefaultLocation,
   createLocation,
   updateLocation,
   valuation,
+  onHandSnapshot,
   listLevels,
   levelsForVariant,
   seedLevel,
@@ -908,7 +1204,11 @@ module.exports = {
   nextMovementNumber,
   nextDocNumber,
   defaultVariantForProduct,
+  variantWithStockForProduct,
   listMovements,
+  getMovementById,
+  siblingMovements,
+  movementsForExport,
   recordMovement,
   lockVariantCosting,
   updateVariantCosting,
@@ -919,6 +1219,7 @@ module.exports = {
   getAdjustment,
   listAdjustments,
   setAdjustmentStatus,
+  listAdjustmentApprovers,
   createTransfer,
   addTransferLine,
   listTransferLines,

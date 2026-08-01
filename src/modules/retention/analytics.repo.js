@@ -9,8 +9,9 @@
 
 const { query } = require("../../config/database");
 const { t: tbl } = require("../../config/brands");
-const COUNTED = `('pending_payment','paid','awaiting_dispatch','in_production','with_stylist',
-  'ready_for_dispatch','dispatched','in_transit','out_for_delivery','delivered','completed')`;
+// Orders that count toward spend/recency: placed and not voided. Mirrors the
+// order lifecycle SSOT (src/modules/sales/order-status.js).
+const COUNTED = `('pending_payment','partially_paid','paid','assigned','order_ready','dispatched','completed')`;
 
 async function pointsEconomy({ brand }) {
   const { rows } = await query(

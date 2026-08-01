@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from "react";
+import { lazy, Suspense, useCallback, useEffect } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/cn";
@@ -13,23 +13,46 @@ import { TopBar } from "./TopBar";
 import { BreadcrumbStrip } from "./BreadcrumbStrip";
 import { PageTransition } from "./PageTransition";
 import { RouteErrorBoundary } from "@/components/common/ErrorBoundary";
+import { RouteFallback } from "@/components/common/RouteFallback";
 import { PullToRefresh } from "./PullToRefresh";
 import { AppMenuFab } from "./AppMenuFab";
 import { FloatingLauncher } from "./FloatingLauncher";
 import { MobileBottomNav } from "./MobileBottomNav";
-import { CommandPalette } from "@/components/search/CommandPalette";
 import { BusinessSwitchOverlay } from "./BusinessSwitchOverlay";
 import { NotificationManager } from "@/components/notifications/NotificationManager";
 import { NotificationToastContainer } from "@/components/notifications/NotificationToast";
 import { Toaster } from "@/components/feedback/Toaster";
-import { ChatDock } from "@/components/messaging/ChatDock";
-import { CallLayer } from "@/components/calls/CallLayer";
-import { PraxisDrawer } from "@/components/praxis/PraxisDrawer";
 import { IosInstallHint } from "./IosInstallHint";
 import { PwaInstallBanner } from "./PwaInstallBanner";
 import { PwaUpdateBanner } from "./PwaUpdateBanner";
 import { OfflineIndicator } from "./OfflineIndicator";
 import { EmailActivationBanner } from "./EmailActivationBanner";
+
+// Global overlays that are mounted on every screen but closed at startup.
+// Lazy so their (heavy) dependency trees — the tiptap editor behind the chat
+// dock, WebRTC call UI, the Praxis drawer, ⌘K palette — download after first
+// paint instead of inside the startup bundle. They render nothing while
+// closed, so a null Suspense fallback is invisible.
+const ChatDock = lazy(() =>
+  import("@/components/messaging/ChatDock").then((m) => ({
+    default: m.ChatDock,
+  })),
+);
+const CallLayer = lazy(() =>
+  import("@/components/calls/CallLayer").then((m) => ({
+    default: m.CallLayer,
+  })),
+);
+const PraxisDrawer = lazy(() =>
+  import("@/components/praxis/PraxisDrawer").then((m) => ({
+    default: m.PraxisDrawer,
+  })),
+);
+const CommandPalette = lazy(() =>
+  import("@/components/search/CommandPalette").then((m) => ({
+    default: m.CommandPalette,
+  })),
+);
 
 /**
  * Route-level RBAC guard: resolves the module owning the current path and
@@ -74,8 +97,20 @@ export function AppShell() {
   // signals (joins the active brand's rooms; invalidates on change).
   useRealtimeInvalidation();
 
-  const handleRefresh = useCallback(async () => {
+  // Pull-to-refresh does a *soft* refresh: re-fetch the data currently on
+  // screen (active queries) instead of reloading the whole document. An
+  // accidental pull now costs a quick refetch, not a full reboot + 2s splash
+  // + cache wipe. The deliberate hard refresh (cache clear + reload) still
+  // lives on the top-bar button (desktop) and account menu (mobile).
+  const softRefresh = useCallback(async () => {
+    const started = Date.now();
     await queryClient.invalidateQueries();
+    // Keep the sparkle visible for a beat even if the refetch resolves
+    // instantly, so the gesture always feels acknowledged.
+    const elapsed = Date.now() - started;
+    if (elapsed < 450) {
+      await new Promise((resolve) => setTimeout(resolve, 450 - elapsed));
+    }
   }, [queryClient]);
 
   useEffect(() => {
@@ -93,9 +128,9 @@ export function AppShell() {
     <div className="h-screen overflow-hidden">
       <Sidebar />
       <PullToRefresh
-        onRefresh={handleRefresh}
+        onRefresh={softRefresh}
         className={cn(
-          "h-screen overflow-y-auto transition-[margin] duration-300 ease-brand",
+          "h-screen overflow-y-auto overflow-x-hidden transition-[margin] duration-300 ease-brand",
           isDesktop
             ? sidebarCollapsed
               ? "ml-[var(--side-c)]"
@@ -133,7 +168,12 @@ export function AppShell() {
             {/* One screen crashing must not take down the shell — the sidebar
                 and top bar stay usable and the boundary resets on nav. */}
             <RouteErrorBoundary>
-              <GuardedOutlet />
+              {/* Single Suspense boundary for every lazy in-shell page: the
+                  chunk downloads while the skeleton shows, keeping the shell
+                  (sidebar/topbar) interactive throughout. */}
+              <Suspense fallback={<RouteFallback />}>
+                <GuardedOutlet />
+              </Suspense>
             </RouteErrorBoundary>
           </PageTransition>
         </div>
@@ -146,12 +186,14 @@ export function AppShell() {
           <MobileBottomNav />
         </>
       )}
-      <ChatDock />
-      {/* WhatsApp calls ring globally — an agent shouldn't miss a customer
-          because they were on the Sales board instead of Messaging. */}
-      <CallLayer />
-      <PraxisDrawer />
-      {paletteOpen && <CommandPalette />}
+      <Suspense fallback={null}>
+        <ChatDock />
+        {/* WhatsApp calls ring globally — an agent shouldn't miss a customer
+            because they were on the Sales board instead of Messaging. */}
+        <CallLayer />
+        <PraxisDrawer />
+        {paletteOpen && <CommandPalette />}
+      </Suspense>
       <BusinessSwitchOverlay />
 
       {/* Global notification layer */}

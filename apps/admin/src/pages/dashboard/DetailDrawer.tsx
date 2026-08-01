@@ -19,7 +19,7 @@ import {
   type TableColumn,
 } from "@/lib/dashboards-api";
 import { fmtValue } from "@/components/charts/chart-kit";
-import { MODULE_ROUTES } from "./bits";
+import { MODULE_ROUTES, MobileRowCard } from "./bits";
 
 const FILTERABLE: Record<string, ("status" | "sales_channel")[]> = {
   "sales.orders": ["status", "sales_channel"],
@@ -29,8 +29,11 @@ const FILTERABLE: Record<string, ("status" | "sales_channel")[]> = {
 const STATUS_OPTIONS: Record<string, string[]> = {
   "sales.orders": [
     "pending_payment",
+    "partially_paid",
     "paid",
-    "awaiting_dispatch",
+    "assigned",
+    "order_ready",
+    "dispatched",
     "completed",
     "cancelled",
     "refunded",
@@ -152,7 +155,7 @@ export function DetailDrawer({
                   setStatus(e.target.value);
                   setPage(1);
                 }}
-                className="glass hairline rounded-lg h-9 px-2 text-[12px] bg-transparent"
+                className="glass hairline rounded-lg h-9 px-2 text-[12px] bg-transparent max-sm:flex-1 max-sm:min-w-0"
                 aria-label="Filter by status"
               >
                 <option value="">All statuses</option>
@@ -170,7 +173,7 @@ export function DetailDrawer({
                   setChannel(e.target.value);
                   setPage(1);
                 }}
-                className="glass hairline rounded-lg h-9 px-2 text-[12px] bg-transparent"
+                className="glass hairline rounded-lg h-9 px-2 text-[12px] bg-transparent max-sm:flex-1 max-sm:min-w-0"
                 aria-label="Filter by channel"
               >
                 <option value="">All channels</option>
@@ -189,6 +192,11 @@ export function DetailDrawer({
           rows={(detail.data?.data ?? []).map((r, i) => ({ ...r, __i: i }))}
           rowKey={(r) => String(r.__i)}
           loading={detail.isLoading}
+          mobileCard={
+            detail.data
+              ? (row) => <MobileRowCard row={row} columns={detail.data!.columns} />
+              : undefined
+          }
           empty={{
             icon: <Table2 className="w-6 h-6" />,
             title: "Nothing in this period",

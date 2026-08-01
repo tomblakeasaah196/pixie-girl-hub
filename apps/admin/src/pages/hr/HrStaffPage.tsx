@@ -9,6 +9,7 @@
  */
 
 import { useState } from "react";
+import { useUrlTab } from "@/hooks/useUrlTab";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
@@ -458,6 +459,11 @@ function SettingsTab() {
             onChange={(e) => save.mutate({ earnings_tracker_enabled: e.target.checked })} />
           Real-time earnings tracker enabled
         </label>
+        <label className="mt-2 flex items-center gap-2 text-sm text-text-primary">
+          <input type="checkbox" checked={data.clockout_reminder_enabled}
+            onChange={(e) => save.mutate({ clockout_reminder_enabled: e.target.checked })} />
+          Clock-out reminders (nudge 5 min before / at / 5 min after closing time)
+        </label>
       </Card>
 
       <Card className="p-5">
@@ -521,10 +527,20 @@ function SettingsTab() {
           <Button variant="primary" disabled={pin.length < 4 || savePin.isPending}
             onClick={() => savePin.mutate()}>{data.payout_pin_set ? "Replace PIN" : "Set PIN"}</Button>
         </div>
+      </Card>
+
+      <Card className="p-5">
+        <SectionTitle icon={<MapPin className="h-4 w-4 text-accent-glow" />}>
+          Geoapify Integration
+        </SectionTitle>
+        <p className="mb-3 text-xs text-text-muted">
+          Powers clock-in address labels and the office-location picker&rsquo;s
+          search + map. Configured here instead of an environment variable.
+        </p>
         <button
           type="button"
           onClick={() => setGeoapifyOpen(true)}
-          className="mt-4 inline-flex"
+          className="inline-flex"
           title="Configure the Geoapify key that powers clock-in address labels and the office-location picker"
         >
           <Pill tone={geoapifyStatus.tone} dot={false}>
@@ -970,7 +986,22 @@ export default function HrStaffPage() {
   const qc = useQueryClient();
   const notify = useNotify("HR → Staff: analytics");
   const can = useAuthStore((s) => s.can);
-  const [tab, setTab] = useState("overview");
+  // Recruitment is only a valid tab for users who can see it — a hand-typed
+  // ?tab=recruitment from anyone else falls back to Overview.
+  const [tab, setTab] = useUrlTab<string>("overview", [
+    "overview",
+    "directory",
+    "leave",
+    "attendance",
+    "devices",
+    "queries",
+    "targets",
+    "rewards",
+    ...(can("recruitment", "view") ? ["recruitment"] : []),
+    "analytics",
+    "settings",
+    "onboarding",
+  ]);
   const [raiseOpen, setRaiseOpen] = useState(false);
   const [targetOpen, setTargetOpen] = useState(false);
   const [contractOpen, setContractOpen] = useState(false);

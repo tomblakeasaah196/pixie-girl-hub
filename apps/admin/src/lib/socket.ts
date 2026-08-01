@@ -21,6 +21,16 @@ const SOCKET_URL = import.meta.env.VITE_SOCKET_URL as string | undefined;
 
 let socket: Socket | null = null;
 
+// Rooms currently wanted by the app, independent of connection state. The
+// server forgets room membership on every disconnect (Socket.IO does not
+// persist it across reconnects), so on each "connect" — first connection AND
+// every automatic reconnect after a network blip, tab sleep, or backend
+// restart — we replay joins for everything in this set. Without this, a
+// dropped/restored connection leaves the client silently off its rooms:
+// real-time events stop arriving, query caches go stale, and nothing short
+// of a full page reload (which rebuilds this set from scratch) recovers.
+const joinedRooms = new Set<string>();
+
 export function getSocket(): Socket {
   if (socket) return socket;
   socket = io(SOCKET_URL ?? "/", {
@@ -29,6 +39,13 @@ export function getSocket(): Socket {
     withCredentials: true,
     auth: (cb: (data: Record<string, string>) => void) =>
       cb({ token: getAccessToken() ?? "" }),
+  });
+
+  // Re-join every wanted room on each (re)connection — see joinedRooms above.
+  socket.on("connect", () => {
+    for (const room of joinedRooms) {
+      socket!.emit("join", { room });
+    }
   });
 
   // Forward socket events as window CustomEvents so components can subscribe
@@ -66,6 +83,17 @@ export function getSocket(): Socket {
       window.dispatchEvent(new CustomEvent("pgh:cos:changed", { detail }));
     });
   }
+  // Chief of Staff — live turn progress (user:{id}:goals, PR2-D). Kept separate
+  // from the invalidation family: it drives the chat's "thinking" status line.
+  socket.on("cos_turn:progress", (detail) => {
+    window.dispatchEvent(new CustomEvent("pgh:cos_turn:progress", { detail }));
+  });
+  // Chief of Staff — batch-plan finished on the worker (PR3). Dedicated event
+  // so the conversation (plan card) refetch doesn't piggyback on every
+  // follow-up signal.
+  socket.on("cos_plan:executed", (detail) => {
+    window.dispatchEvent(new CustomEvent("pgh:cos_plan:executed", { detail }));
+  });
   // Live attendance punch (brand:{brand}:attendance — device binding 000304).
   socket.on("attendance:punch", (detail) => {
     window.dispatchEvent(new CustomEvent("pgh:attendance:punch", { detail }));
@@ -73,6 +101,14 @@ export function getSocket(): Socket {
   // Device enrol/remove/flag (brand:{brand}:hr_devices).
   socket.on("device:changed", (detail) => {
     window.dispatchEvent(new CustomEvent("pgh:device:changed", { detail }));
+  });
+  // Customer onboarding form submitted (brand:{brand}:customer_onboarding) —
+  // Quick Sale's QR panel matches submission_id against the link it minted
+  // to auto-select the resulting contact.
+  socket.on("onboarding:submission.completed", (detail) => {
+    window.dispatchEvent(
+      new CustomEvent("pgh:onboarding:submission.completed", { detail }),
+    );
   });
   // WhatsApp voice calls (brand:{brand}:calls + user:{id}:calls) — the
   // CallLayer subscribes to these to ring, stop ringing, and settle.
@@ -126,19 +162,22 @@ export const rooms = {
   insights: (brand: string) => `brand:${brand}:insights`,
   attendance: (brand: string) => `brand:${brand}:attendance`,
   hrDevices: (brand: string) => `brand:${brand}:hr_devices`,
+  customerOnboarding: (brand: string) => `brand:${brand}:customer_onboarding`,
 };
 
-/** Join a Socket.io room (idempotent on the server). */
+/**
+ * Join a Socket.io room (idempotent on the server). Remembered in
+ * `joinedRooms` so it survives reconnects — see the "connect" handler in
+ * getSocket().
+ */
 export function joinRoom(room: string) {
+  joinedRooms.add(room);
   const s = getSocket();
-  if (!s.connected) {
-    s.once("connect", () => s.emit("join", { room }));
-  } else {
-    s.emit("join", { room });
-  }
+  if (s.connected) s.emit("join", { room });
 }
 
 export function leaveRoom(room: string) {
+  joinedRooms.delete(room);
   const s = getSocket();
   if (s.connected) s.emit("leave", { room });
 }

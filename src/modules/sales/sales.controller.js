@@ -22,12 +22,16 @@ async function listOrders(req, res) {
       brand: req.brand,
       filters: {
         status: req.query.status,
+        // Orders is a working list — the Archive drawer asks for cancelled
+        // rows explicitly via `status=cancelled`, everything else hides them.
+        exclude_status: req.query.exclude_status,
         contact_id: req.query.contact_id,
         sales_channel: req.query.sales_channel,
         sales_campaign_id: req.query.sales_campaign_id,
         q: req.query.q,
         fee_pending: req.query.fee_pending === "true" ? true : undefined,
         part_paid: req.query.part_paid === "true" ? true : undefined,
+        is_preorder: req.query.preorder === "true" ? true : undefined,
       },
       page,
       page_size,
@@ -38,6 +42,17 @@ const getById = async (req, res) =>
   res.json({
     data: await service.getById({ brand: req.brand, id: req.params.id }),
   });
+// The order's Stylist Studio job — served THROUGH the order (sales.view), so a
+// salesperson who can see the order sees its studio progress even though they
+// are never the assigned stylist. `meta` sibling keeps the admin api client
+// from unwrapping the {data:[...]} envelope past the array.
+const getOrderServiceJob = async (req, res) => {
+  const jobs = await service.getOrderServiceJob({
+    brand: req.brand,
+    id: req.params.id,
+  });
+  res.json({ data: jobs, meta: { count: jobs.length } });
+};
 const receiptPdf = async (req, res) =>
   res.status(201).json({
     data: await service.receiptPdf({
@@ -63,10 +78,26 @@ async function exportReport(req, res) {
   );
   res.send(buffer);
 }
-const createOrder = async (req, res) =>
-  res.status(201).json({
-    data: await service.createOrder({ ...base(req), input: req.body }),
+const createOrder = async (req, res) => {
+  const order = await service.createOrder({
+    ...base(req),
+    // Staff attribution (Performance → Insights): whoever raises the order
+    // here (Quick Sale) is the closer by default. A supervisor logging a
+    // sale for a colleague can override via `closed_by_user_id` in the body.
+    input: {
+      ...req.body,
+      closed_by_user_id: req.body.closed_by_user_id || req.user?.user_id || null,
+    },
   });
+  // Surface the pre-order result (000086) so Quick Sale can confirm to staff
+  // that a line went in as made-to-order. `_preorder` is non-enumerable on the
+  // order, so attach it explicitly (spread drops it otherwise).
+  const pre =
+    order && order._preorder && order._preorder.is_preorder
+      ? order._preorder
+      : null;
+  res.status(201).json({ data: pre ? { ...order, preorder: pre } : order });
+};
 const updateOrder = async (req, res) =>
   res.json({
     data: await service.updateOrder({
@@ -86,6 +117,34 @@ const addPayment = async (req, res) =>
 const cancelOrder = async (req, res) =>
   res.json({
     data: await service.cancelOrder({ ...base(req), id: req.params.id }),
+  });
+// Two-phase: without `confirm` the service dry-runs and may answer
+// { requires_confirmation: true, short_lines } so the UI can warn that restoring
+// brings those lines back as pre-orders. That answer is a legitimate result, not
+// a failure, so it returns 200 — the client reads the flag rather than having to
+// unpack a thrown ApiError body. Genuine refusals (not cancelled, deposit
+// forfeited) still throw from the service and surface as 409.
+const restoreOrder = async (req, res) =>
+  res.json({
+    data: await service.restoreOrder({
+      ...base(req),
+      id: req.params.id,
+      confirm: req.body.confirm === true,
+    }),
+  });
+const setOrderStatus = async (req, res) =>
+  res.json({
+    data: await service.setOrderStatus({
+      ...base(req),
+      id: req.params.id,
+      status: req.body.status,
+    }),
+  });
+// Live on/off state of the customer messages each manual status move fires —
+// powers the order drawer's impact modal (definite "will send"/"won't send").
+const getStatusAutomations = async (req, res) =>
+  res.json({
+    data: await service.getStatusAutomationStates({ brand: req.brand }),
   });
 const createPaymentLink = async (req, res) =>
   res.status(201).json({
@@ -142,6 +201,17 @@ const acceptQuotation = async (req, res) =>
       ...base(req),
       id: req.params.quoId,
       decision: "accept",
+      // Order-first fallback: accept AND mint the order in one step, for sales
+      // taken offline rather than through the quote's own pay link.
+      convert: req.body.convert === true,
+      sales_channel: req.body.sales_channel,
+    }),
+  });
+const getQuotationPayLink = async (req, res) =>
+  res.json({
+    data: await paymentLink.quotationPayLink({
+      brand: req.brand,
+      quotation_id: req.params.quoId,
     }),
   });
 const rejectQuotation = async (req, res) =>
@@ -231,12 +301,16 @@ const updatePaymentSettings = async (req, res) =>
 module.exports = {
   listOrders,
   getById,
+  getOrderServiceJob,
   receiptPdf,
   exportReport,
   createOrder,
   updateOrder,
+  setOrderStatus,
+  getStatusAutomations,
   addPayment,
   cancelOrder,
+  restoreOrder,
   createPaymentLink,
   setDeliveryFee,
   getPaymentSettings,
@@ -247,6 +321,7 @@ module.exports = {
   createQuotation,
   sendQuotation,
   acceptQuotation,
+  getQuotationPayLink,
   rejectQuotation,
   convertQuotation,
   requestCancellation,

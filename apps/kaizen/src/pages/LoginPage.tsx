@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { ShieldCheck } from "lucide-react";
 import { login } from "@/lib/api";
 import { useAuth } from "@/stores/auth";
@@ -85,6 +85,15 @@ export function LoginPage() {
             {busy ? <Spinner className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
             Sign in
           </button>
+
+          <div className="text-center">
+            <Link
+              to="/forgot-password"
+              className="text-sm text-fog-400 hover:text-fog-200"
+            >
+              Forgot your password?
+            </Link>
+          </div>
         </form>
 
         <p className="mt-6 text-center text-xs text-fog-400">

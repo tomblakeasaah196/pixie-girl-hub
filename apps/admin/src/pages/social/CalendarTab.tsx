@@ -1,43 +1,52 @@
-import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
-import { Button, Card } from "@/components/ui/primitives";
-import { useAuthStore } from "@/stores/auth";
+import { useMemo, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Card, Skeleton } from "@/components/ui/primitives";
 import {
   usePosts,
-  PLATFORM_META,
+  useSocialAccounts,
+  buildPlatformLooks,
+  registeredPlatforms,
+  lookFor,
+  monthGrid,
+  monthWindow,
+  dayKey,
+  sameDay,
+  isSunday,
+  expectedPostsInMonth,
   MONTH_NAMES,
   DAY_NAMES,
-  monthGrid,
-  sameDay,
   type SocialPost,
 } from "@/lib/social-api";
-import { Composer } from "./Composer";
-import { PostDetail } from "./PostDetail";
-
-const CHIP_TONE: Record<SocialPost["status"], string> = {
-  draft: "bg-text-primary/[0.07] text-text-muted hover:bg-text-primary/[0.12]",
-  assigned: "bg-info/[0.12] text-info hover:bg-info/20",
-  scheduled: "bg-accent/[0.1] text-accent-glow hover:bg-accent/20",
-  posted: "bg-success/[0.12] text-success hover:bg-success/20",
-  flagged: "bg-danger/[0.12] text-danger hover:bg-danger/20",
-  archived: "bg-text-primary/[0.05] text-text-faint hover:bg-text-primary/[0.1]",
-};
+import { DaySheet } from "./DaySheet";
 
 export function CalendarTab() {
-  const { can } = useAuthStore();
-  const canCreate = can("social", "create");
-  const postsQ = usePosts();
   const [cursor, setCursor] = useState(() => new Date());
-  const [composerDate, setComposerDate] = useState<Date | null>(null);
-  const [detail, setDetail] = useState<SocialPost | null>(null);
+  const [openDay, setOpenDay] = useState<Date | null>(null);
 
-  const weeks = useMemo(() => monthGrid(cursor.getFullYear(), cursor.getMonth()), [cursor]);
+  const year = cursor.getFullYear();
+  const month = cursor.getMonth();
+  const { from, to } = useMemo(() => monthWindow(year, month), [year, month]);
+  const postsQ = usePosts({ status: "posted", from, to, page_size: 500 });
+  const accountsQ = useSocialAccounts();
+  const looks = useMemo(
+    () => buildPlatformLooks(accountsQ.data ?? []),
+    [accountsQ.data],
+  );
+  // Expected count scales with how many handles are registered — the cadence
+  // is per platform (6/week each), so 3 registered platforms in a 27-workday
+  // month expect 81, not a hardcoded 4-platform number.
+  const platformCount = Math.max(
+    1,
+    registeredPlatforms(accountsQ.data ?? []).length,
+  );
+
+  const weeks = useMemo(() => monthGrid(year, month), [year, month]);
   const byDay = useMemo(() => {
     const m = new Map<string, SocialPost[]>();
     for (const p of postsQ.data ?? []) {
-      const when = p.scheduled_for || p.published_at;
+      const when = p.published_at || p.scheduled_for;
       if (!when) continue;
-      const k = new Date(when).toDateString();
+      const k = dayKey(new Date(when));
       const arr = m.get(k) ?? [];
       arr.push(p);
       m.set(k, arr);
@@ -45,85 +54,162 @@ export function CalendarTab() {
     return m;
   }, [postsQ.data]);
 
-  const shift = (n: number) => setCursor((c) => new Date(c.getFullYear(), c.getMonth() + n, 1));
-  const startToday = new Date();
-  startToday.setHours(0, 0, 0, 0);
+  const loggedThisMonth = useMemo(() => {
+    let n = 0;
+    for (const [k, arr] of byDay) if (k.startsWith(`${year}-${String(month + 1).padStart(2, "0")}`)) n += arr.length;
+    return n;
+  }, [byDay, year, month]);
+  const expected = expectedPostsInMonth(year, month) * platformCount;
+  const pct = Math.min(100, Math.round((loggedThisMonth / Math.max(1, expected)) * 100));
+
+  const shift = (n: number) => setCursor(new Date(year, month + n, 1));
+
+  // Horizontal swipe → change month (ignore mostly-vertical drags so the page
+  // can still scroll).
+  const touch = useRef<{ x: number; y: number } | null>(null);
+  const onTouchStart = (e: React.TouchEvent) => {
+    touch.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (!touch.current) return;
+    const dx = e.changedTouches[0].clientX - touch.current.x;
+    const dy = e.changedTouches[0].clientY - touch.current.y;
+    if (Math.abs(dx) > 55 && Math.abs(dx) > Math.abs(dy) * 1.6) shift(dx < 0 ? 1 : -1);
+    touch.current = null;
+  };
 
   return (
     <>
-      <Card className="p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="font-display text-[16px]">
-            {MONTH_NAMES[cursor.getMonth()]} {cursor.getFullYear()}
+      <Card className="p-3.5 sm:p-4">
+        {/* Month header */}
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="font-display text-[17px]">
+            {MONTH_NAMES[month]} <span className="text-text-muted">{year}</span>
           </h3>
           <div className="flex items-center gap-1">
-            <Button size="sm" variant="ghost" onClick={() => shift(-1)} icon={<ChevronLeft className="w-4 h-4" />}>
-              {""}
-            </Button>
-            <Button size="sm" variant="secondary" onClick={() => setCursor(new Date())}>
+            <button
+              onClick={() => shift(-1)}
+              className="grid h-9 w-9 place-items-center rounded-[10px] text-text-muted hover:bg-text-primary/[0.06] hover:text-text-primary"
+              aria-label="Previous month"
+            >
+              <ChevronLeft className="h-[18px] w-[18px]" />
+            </button>
+            <button
+              onClick={() => setCursor(new Date())}
+              className="rounded-[10px] px-3 py-2 text-[12.5px] font-semibold text-text-muted hover:bg-text-primary/[0.06] hover:text-text-primary"
+            >
               Today
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => shift(1)} icon={<ChevronRight className="w-4 h-4" />}>
-              {""}
-            </Button>
+            </button>
+            <button
+              onClick={() => shift(1)}
+              className="grid h-9 w-9 place-items-center rounded-[10px] text-text-muted hover:bg-text-primary/[0.06] hover:text-text-primary"
+              aria-label="Next month"
+            >
+              <ChevronRight className="h-[18px] w-[18px]" />
+            </button>
           </div>
         </div>
-        <div className="grid grid-cols-7 gap-px mb-1">
-          {DAY_NAMES.map((d) => (
-            <div key={d} className="text-center text-[10.5px] uppercase tracking-widest text-text-faint py-1">
+
+        {/* Month progress vs the fixed 6/week cadence */}
+        <div className="mb-3.5">
+          <div className="mb-1 flex items-center justify-between text-[11.5px]">
+            <span className="text-text-muted">
+              <span className="font-display text-[14px] text-text-primary tabular-nums">{loggedThisMonth}</span>
+              <span className="text-text-faint"> / {expected} expected</span>
+            </span>
+            <span className={pct >= 100 ? "text-success" : pct >= 66 ? "text-warn" : "text-text-faint"}>
+              {pct}%
+            </span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-text-primary/[0.07]">
+            <div
+              className="h-full rounded-full bg-accent transition-[width] duration-500"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Weekday header */}
+        <div className="mb-1 grid grid-cols-7">
+          {DAY_NAMES.map((d, i) => (
+            <div
+              key={d}
+              className={`py-1 text-center text-[10px] font-semibold uppercase tracking-wider ${
+                i === 0 ? "text-text-faint/60" : "text-text-faint"
+              }`}
+            >
               {d}
             </div>
           ))}
         </div>
-        <div className="grid grid-cols-7 gap-1.5">
-          {weeks.flat().map((d, idx) => {
-            const inMonth = d.getMonth() === cursor.getMonth();
-            const dayPosts = byDay.get(d.toDateString()) ?? [];
-            const clickable = inMonth && canCreate && d >= startToday;
-            return (
-              <div
-                key={idx}
-                onClick={clickable ? () => setComposerDate(d) : undefined}
-                role={clickable ? "button" : undefined}
-                title={clickable ? "Add a post on this day" : undefined}
-                className={`group min-h-[84px] rounded-lg border p-1.5 transition-colors ${
-                  inMonth ? "border-line bg-text-primary/[0.02]" : "border-transparent opacity-40"
-                } ${clickable ? "cursor-pointer hover:border-accent/40 hover:bg-accent/[0.04]" : ""} ${
-                  sameDay(d, new Date()) ? "ring-1 ring-accent/40" : ""
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] text-text-faint">{d.getDate()}</span>
-                  {clickable && (
-                    <Plus className="w-3 h-3 text-text-faint opacity-0 group-hover:opacity-100 transition-opacity" />
-                  )}
-                </div>
-                <div className="space-y-1">
-                  {dayPosts.slice(0, 3).map((p) => (
-                    <button
-                      key={p.post_id}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDetail(p);
-                      }}
-                      className={`w-full text-left text-[10.5px] px-1.5 py-1 rounded-md truncate ${CHIP_TONE[p.status]}`}
-                      title={p.caption ?? ""}
+
+        {/* Grid */}
+        <div className="grid grid-cols-7 gap-1" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+          {postsQ.isLoading
+            ? Array.from({ length: 42 }).map((_, i) => (
+                <Skeleton key={i} className="rounded-[10px]" style={{ aspectRatio: "1 / 1" }} />
+              ))
+            : weeks.flat().map((d, idx) => {
+                const inMonth = d.getMonth() === month;
+                const dayPosts = byDay.get(dayKey(d)) ?? [];
+                const today = sameDay(d, new Date());
+                const platforms = [...new Set(dayPosts.map((x) => x.platform))];
+                return (
+                  <button
+                    key={idx}
+                    onClick={() => setOpenDay(d)}
+                    className={`relative flex aspect-square flex-col items-center justify-start rounded-[10px] border p-1 transition-colors ${
+                      inMonth
+                        ? "border-line bg-text-primary/[0.02] hover:border-accent/40 hover:bg-accent/[0.05]"
+                        : "border-transparent opacity-35 hover:opacity-60"
+                    } ${today ? "ring-1 ring-accent/60" : ""}`}
+                  >
+                    <span
+                      className={`mt-0.5 text-[12px] tabular-nums ${
+                        today
+                          ? "font-semibold text-accent-glow"
+                          : isSunday(d)
+                            ? "text-text-faint/70"
+                            : "text-text-muted"
+                      }`}
                     >
-                      {PLATFORM_META[p.platform]?.label?.slice(0, 2)} · {p.caption?.slice(0, 16) || p.post_type}
-                    </button>
-                  ))}
-                  {dayPosts.length > 3 && (
-                    <div className="text-[10px] text-text-faint pl-1">+{dayPosts.length - 3} more</div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+                      {d.getDate()}
+                    </span>
+
+                    {/* platform dots + count */}
+                    {dayPosts.length > 0 && (
+                      <div className="mt-auto flex flex-col items-center gap-0.5 pb-0.5">
+                        <div className="flex items-center gap-[3px]">
+                          {platforms.slice(0, 4).map((p) => (
+                            <span
+                              key={p}
+                              className="h-[5px] w-[5px] rounded-full"
+                              style={{ background: lookFor(looks, p).color }}
+                            />
+                          ))}
+                        </div>
+                        <span className="text-[9.5px] font-semibold leading-none text-text-faint tabular-nums">
+                          {dayPosts.length}
+                        </span>
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
         </div>
       </Card>
 
-      {composerDate && <Composer initialDate={composerDate} onClose={() => setComposerDate(null)} />}
-      {detail && <PostDetail post={detail} onClose={() => setDetail(null)} />}
+      <p className="mt-2.5 px-1 text-center text-[11px] text-text-faint sm:hidden">
+        Swipe left or right to change month · tap a day to log links
+      </p>
+
+      {openDay && (
+        <DaySheet
+          date={openDay}
+          posts={byDay.get(dayKey(openDay)) ?? []}
+          onClose={() => setOpenDay(null)}
+        />
+      )}
     </>
   );
 }

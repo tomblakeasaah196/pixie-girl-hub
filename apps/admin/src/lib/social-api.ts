@@ -15,6 +15,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useBusinessStore } from "@/stores/business";
 import type { Tone } from "@/components/ui/primitives";
+import type { MetricSpec } from "@/lib/social-platforms-api";
 
 export function useBrand() {
   return useBusinessStore((s) => s.activeKey);
@@ -65,7 +66,9 @@ export interface SocialAccount {
   follower_count: number | null;
   bio: string | null;
   avatar_url: string | null;
-  metrics: Record<string, number>;
+  // Values are typed per the platform's metric spec: count/decimal -> number,
+  // text -> string, bool -> boolean (see migration 000356).
+  metrics: Record<string, number | string | boolean>;
   scrape_enabled: boolean;
   last_scraped_at: string | null;
   last_scrape_status: "ok" | "error" | null;
@@ -75,14 +78,16 @@ export interface SocialAccount {
   platform_brand_color: string;
   platform_icon_glyph: string;
   platform_supports_bio: boolean;
-  platform_metrics_schema: { key: string; label: string; aliases: string[] }[];
+  platform_metrics_schema: MetricSpec[];
 }
 
 export interface SocialPost {
   post_id: string;
   business: string;
   account_id: string;
-  platform: SocialPlatform;
+  // Any key from the platform registry — quick-logged posts may belong to a
+  // platform an admin added from the UI, not just the canonical four.
+  platform: string;
   post_type: PostType;
   caption: string | null;
   hashtags: string[];
@@ -146,7 +151,7 @@ export interface SocialTarget {
 }
 
 export interface PerformanceRow {
-  platform: SocialPlatform;
+  platform: string;
   posted_count: number;
   pending_count: number;
   flagged_count: number;
@@ -426,6 +431,49 @@ export function useCreatePost() {
   });
 }
 
+// ── Quick-log (the simplified calendar's one write) ──────────
+export interface QuickLogInput {
+  external_url: string;
+  /** Registry platform key (not just the canonical four). */
+  platform?: string;
+  account_id?: string;
+  /** ISO datetime of the calendar day the post belongs to. */
+  published_at?: string;
+}
+
+/** Paste a link that was already posted natively -> it lands as a proven
+ *  "posted" row on that day, oEmbed-enriched. No content, no screenshot. */
+export function useQuickLog() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (body: QuickLogInput) =>
+      api.post<SocialPost>("/social/posts/quick-log", body),
+    onSuccess: () => invalidatePost(qc, brand),
+  });
+}
+
+/** Remove a logged link (undo a wrong paste). */
+export function useDeletePost() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (id: string) => api.delete<void>(`/social/posts/${id}`),
+    onSuccess: (_d, id) => invalidatePost(qc, brand, id),
+  });
+}
+
+/** Best-effort on-demand refresh of a post's embed card + reactions. */
+export function useRefreshReactions() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post<SocialPost>(`/social/posts/${id}/refresh-reactions`, {}),
+    onSuccess: (_d, id) => invalidatePost(qc, brand, id),
+  });
+}
+
 export function useUpdatePost() {
   const qc = useQueryClient();
   const brand = useBrand();
@@ -594,6 +642,138 @@ export const ALL_PLATFORMS: SocialPlatform[] = [
   "youtube",
 ];
 
+/** Instagram is the brand's non-negotiable channel; the rest follow. This is
+ *  the display order for the canonical four — registry extras sort after. */
+export const PLATFORM_ORDER: SocialPlatform[] = [
+  "instagram",
+  "facebook",
+  "tiktok",
+  "youtube",
+];
+
+/** Canonical-four look fallback, used only when the platform registry hasn't
+ *  supplied a display name / brand colour / glyph for a platform (the
+ *  registry — joined onto every account row — is the source of truth). */
+export const PLATFORM_UI: Record<
+  SocialPlatform,
+  { label: string; glyph: string; color: string }
+> = {
+  instagram: { label: "Instagram", glyph: "IG", color: "#E1306C" },
+  facebook: { label: "Facebook", glyph: "f", color: "#1877F2" },
+  tiktok: { label: "TikTok", glyph: "TT", color: "#25F4EE" },
+  youtube: { label: "YouTube", glyph: "YT", color: "#FF0000" },
+};
+
+const HOST_PLATFORM: [RegExp, SocialPlatform][] = [
+  [/(^|\.)instagram\.com$/i, "instagram"],
+  [/(^|\.)(facebook\.com|fb\.watch)$/i, "facebook"],
+  [/(^|\.)tiktok\.com$/i, "tiktok"],
+  [/(^|\.)(youtube\.com|youtu\.be)$/i, "youtube"],
+];
+
+/** Which canonical platform a pasted URL belongs to, or null. Mirrors
+ *  social-proof.service.js#detectPlatform. Registry-added platforms are
+ *  matched by accountForUrl below instead. */
+export function detectPlatformFromUrl(url: string): SocialPlatform | null {
+  let host: string;
+  try {
+    host = new URL(url.trim()).hostname;
+  } catch {
+    return null;
+  }
+  for (const [re, platform] of HOST_PLATFORM) if (re.test(host)) return platform;
+  return null;
+}
+
+// ── Registry-driven presentation (accounts are the source of truth) ────
+
+export interface PlatformLook {
+  label: string;
+  glyph: string;
+  color: string;
+}
+
+const NEUTRAL_LOOK_COLOR = "#80706b";
+
+/** Per-platform look map built from the registered accounts (each row carries
+ *  its registry platform's display name / brand colour / glyph), with the
+ *  canonical-four constants as fallback for platforms with no account yet. */
+export function buildPlatformLooks(
+  accounts: SocialAccount[],
+): Map<string, PlatformLook> {
+  const m = new Map<string, PlatformLook>(Object.entries(PLATFORM_UI));
+  for (const a of accounts) {
+    if (a.platform_brand_color || !m.has(a.platform)) {
+      m.set(a.platform, {
+        label: a.platform_display_name || a.platform,
+        color: a.platform_brand_color || NEUTRAL_LOOK_COLOR,
+        glyph:
+          a.platform_icon_glyph ||
+          (a.platform_display_name || a.platform).slice(0, 2).toUpperCase(),
+      });
+    }
+  }
+  return m;
+}
+
+export function lookFor(
+  looks: Map<string, PlatformLook>,
+  platform: string,
+): PlatformLook {
+  return (
+    looks.get(platform) ?? {
+      label: platform,
+      color: NEUTRAL_LOOK_COLOR,
+      glyph: platform.slice(0, 2).toUpperCase(),
+    }
+  );
+}
+
+/** Distinct platforms with an active registered handle, canonical four first
+ *  (Instagram leading), registry extras after alphabetically. This — not a
+ *  hardcoded list — is what the Calendar/Performance surfaces render. */
+export function registeredPlatforms(accounts: SocialAccount[]): string[] {
+  const active = new Set(
+    accounts.filter((a) => a.is_active !== false).map((a) => a.platform),
+  );
+  const canonical = PLATFORM_ORDER.filter((p) => active.has(p));
+  const extras = [...active]
+    .filter((p) => !(PLATFORM_ORDER as string[]).includes(p))
+    .sort();
+  return [...canonical, ...extras];
+}
+
+/** Resolve a pasted URL to the registered account it belongs to: canonical
+ *  host detection first, then a host match against each account's profile_url
+ *  (which is how a registry-added platform like Pinterest resolves). Mirrors
+ *  the backend's quickLog resolution so the composer can preview the outcome. */
+export function accountForUrl(
+  url: string,
+  accounts: SocialAccount[],
+): SocialAccount | null {
+  const active = accounts.filter((a) => a.is_active !== false);
+  const canonical = detectPlatformFromUrl(url);
+  if (canonical) return active.find((a) => a.platform === canonical) ?? null;
+  let host: string;
+  try {
+    host = new URL(url.trim()).hostname.replace(/^www\./i, "").toLowerCase();
+  } catch {
+    return null;
+  }
+  for (const a of active) {
+    if (!a.profile_url) continue;
+    try {
+      const accountHost = new URL(a.profile_url).hostname
+        .replace(/^www\./i, "")
+        .toLowerCase();
+      if (host === accountHost || host.endsWith(`.${accountHost}`)) return a;
+    } catch {
+      /* malformed stored profile_url — skip */
+    }
+  }
+  return null;
+}
+
 export const POST_TYPES: PostType[] = [
   "image",
   "carousel",
@@ -665,4 +845,37 @@ export function sameDay(a: Date, b: Date): boolean {
     a.getMonth() === b.getMonth() &&
     a.getDate() === b.getDate()
   );
+}
+
+/** Local `YYYY-MM-DD` key for grouping posts onto calendar days (avoids the
+ *  UTC drift a toISOString().slice(0,10) would introduce near midnight). */
+export function dayKey(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** ISO half-open window [from, to) covering one calendar month — the fetch
+ *  bounds for that month's posts. */
+export function monthWindow(year: number, month: number): { from: string; to: string } {
+  return {
+    from: new Date(year, month, 1).toISOString(),
+    to: new Date(year, month + 1, 1).toISOString(),
+  };
+}
+
+/** The fixed cadence: 6 posts a week, Sunday off. The month's expected number
+ *  is simply its count of non-Sunday days (so Feb, 30- and 31-day months each
+ *  get their own honest target with no manual setup). */
+export function expectedPostsInMonth(year: number, month: number): number {
+  let count = 0;
+  const d = new Date(year, month, 1);
+  while (d.getMonth() === month) {
+    if (d.getDay() !== 0) count += 1; // 0 = Sunday
+    d.setDate(d.getDate() + 1);
+  }
+  return count;
+}
+
+export function isSunday(d: Date): boolean {
+  return d.getDay() === 0;
 }

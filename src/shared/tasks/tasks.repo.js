@@ -54,6 +54,7 @@ async function listTasks({
   brand,
   status,
   assigned_to,
+  visible_to,
   priority,
   reference_type,
   reference_id,
@@ -71,6 +72,13 @@ async function listTasks({
   if (assigned_to) {
     where.push(`t.assigned_to = $${i++}`);
     params.push(assigned_to);
+  }
+  // Record scope 'own' (RBAC layer 4): a task is yours if you're the
+  // assignee OR you raised it (you still track work you handed to others).
+  if (visible_to) {
+    where.push(`(t.assigned_to = $${i} OR t.created_by = $${i})`);
+    params.push(visible_to);
+    i++;
   }
   if (priority) {
     where.push(`t.priority = $${i++}`);
@@ -112,7 +120,13 @@ async function listTasks({
 }
 async function findTask({ client, brand, id }) {
   const { rows } = await ex(client)(
-    `SELECT * FROM shared.tasks WHERE task_id = $1 AND business = $2 AND is_deleted = false`,
+    `SELECT t.*,
+            ua.display_name AS assigned_to_name,
+            uc.display_name AS created_by_name
+       FROM shared.tasks t
+       LEFT JOIN shared.users ua ON ua.user_id = t.assigned_to
+       LEFT JOIN shared.users uc ON uc.user_id = t.created_by
+      WHERE t.task_id = $1 AND t.business = $2 AND t.is_deleted = false`,
     [id, brand],
   );
   return rows[0] || null;
@@ -162,6 +176,54 @@ async function setStatus({ brand, id, status, completed }) {
   );
   return rows[0] || null;
 }
+/**
+ * Every still-open task raised for one record — used to close an approval's
+ * tasks the moment the decision lands, and to keep `requestApproval`
+ * idempotent (never two open tasks for the same approver and record).
+ */
+async function openTasksForReference({
+  client,
+  brand,
+  reference_type,
+  reference_id,
+}) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM shared.tasks
+      WHERE business = $1 AND reference_type = $2 AND reference_id = $3
+        AND is_deleted = false AND status NOT IN ('done','cancelled')`,
+    [brand, reference_type, reference_id],
+  );
+  return rows;
+}
+
+/**
+ * Close every open task raised for a record, in one statement.
+ *
+ * An approver's task IS the request: once the request is approved, rejected
+ * or withdrawn, the task has no work left in it. Leaving it open made every
+ * approver tidy up by hand, and a stale "Approve FLH-ADJ-0007" is worse than
+ * no task at all — it says something is pending when nothing is.
+ */
+async function closeTasksForReference({
+  client,
+  brand,
+  reference_type,
+  reference_id,
+  status = "done",
+}) {
+  const { rows } = await ex(client)(
+    `UPDATE shared.tasks
+        SET status = $4,
+            completed_at = CASE WHEN $4 = 'done' THEN now() ELSE completed_at END,
+            updated_at = now()
+      WHERE business = $1 AND reference_type = $2 AND reference_id = $3
+        AND is_deleted = false AND status NOT IN ('done','cancelled')
+      RETURNING task_id, assigned_to`,
+    [brand, reference_type, reference_id, status],
+  );
+  return rows;
+}
+
 async function softDeleteTask({ brand, id }) {
   const { rows } = await query(
     `UPDATE shared.tasks SET is_deleted = true, updated_at = now()
@@ -209,7 +271,7 @@ async function deleteSubtask({ subtask_id }) {
 }
 
 /** All non-cancelled tasks for the board view (optionally scoped to an assignee). */
-async function boardTasks({ brand, assigned_to }) {
+async function boardTasks({ brand, assigned_to, visible_to }) {
   const where = [
     "t.business = $1",
     "t.is_deleted = false",
@@ -220,6 +282,11 @@ async function boardTasks({ brand, assigned_to }) {
   if (assigned_to) {
     where.push(`t.assigned_to = $${i++}`);
     params.push(assigned_to);
+  }
+  if (visible_to) {
+    where.push(`(t.assigned_to = $${i} OR t.created_by = $${i})`);
+    params.push(visible_to);
+    i++;
   }
   const { rows } = await query(
     `SELECT t.*,
@@ -239,6 +306,74 @@ async function boardTasks({ brand, assigned_to }) {
   return rows;
 }
 
+/** Escape ILIKE wildcards so a search term always matches literally. */
+const escapeLike = (s) => String(s).replace(/[\\%_]/g, (m) => `\\${m}`);
+
+/**
+ * Assignable teammates for this business — the identity source the CoS needs
+ * to resolve "assign to my BDM" into a real user_id (shared.tasks.assigned_to
+ * is an FK to shared.users, and a contact_id is NOT a user). Active users who
+ * can access the brand (or the CEO, who spans all), CEO first.
+ *
+ * Search is tokenised: every word of the query must appear somewhere in the
+ * person's name, email, job title (staff_profiles — how the CEO actually
+ * refers to people: "the operations manager") or role names — so
+ * "operations manager", "manager operations" and "Samuel ops" all resolve,
+ * and job-title vs RBAC-role drift can't hide anyone. Returns a compact
+ * shape: user_id, display_name, email, job_title, role_name, is_ceo — enough
+ * for a caller (or the CoS) to tell two Samuels apart.
+ */
+async function listAssignableUsers({ brand, search, limit = 50 }) {
+  const where = [
+    "u.status = 'active'",
+    "u.is_active = true",
+    "($1 = ANY(u.permitted_businesses) OR u.is_ceo = true)",
+  ];
+  const params = [brand];
+  let i = 2;
+  const tokens = String(search || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 8);
+  if (tokens.length) {
+    // One haystack per user: name + email + job title + every role they hold.
+    const haystack = `(
+      COALESCE(u.display_name, '') || ' ' || COALESCE(u.email, '') || ' ' ||
+      COALESCE(sp.job_title, '') || ' ' ||
+      COALESCE((SELECT string_agg(r2.role_name, ' ')
+                  FROM shared.user_roles ur2
+                  JOIN shared.roles r2 ON r2.role_id = ur2.role_id
+                 WHERE ur2.user_id = u.user_id), ''))`;
+    for (const t of tokens) {
+      where.push(`${haystack} ILIKE $${i}`);
+      params.push(`%${escapeLike(t)}%`);
+      i++;
+    }
+  }
+  const { rows } = await query(
+    `SELECT u.user_id,
+            COALESCE(u.display_name, u.email) AS display_name,
+            u.email,
+            u.is_ceo,
+            sp.job_title,
+            (SELECT r.role_name
+               FROM shared.user_roles ur
+               JOIN shared.roles r ON r.role_id = ur.role_id
+              WHERE ur.user_id = u.user_id
+              ORDER BY r.role_name
+              LIMIT 1) AS role_name
+       FROM shared.users u
+       LEFT JOIN shared.staff_profiles sp
+         ON sp.profile_id = u.staff_profile_id AND sp.is_deleted = false
+      WHERE ${where.join(" AND ")}
+      ORDER BY u.is_ceo DESC, display_name ASC
+      LIMIT $${i}`,
+    [...params, Math.min(Number(limit) || 50, 100)],
+  );
+  return rows;
+}
+
 module.exports = {
   createTask,
   listTasks,
@@ -246,9 +381,12 @@ module.exports = {
   updateTask,
   setStatus,
   softDeleteTask,
+  openTasksForReference,
+  closeTasksForReference,
   listSubtasks,
   addSubtask,
   setSubtaskDone,
   deleteSubtask,
   boardTasks,
+  listAssignableUsers,
 };

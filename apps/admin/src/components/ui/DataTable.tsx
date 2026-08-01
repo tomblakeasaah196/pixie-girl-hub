@@ -5,8 +5,16 @@ import { Card, Skeleton, EmptyState } from "./primitives";
 /**
  * The workhorse list surface (canon §5). Server-driven in real use
  * (pagination/sort/filter/search sent to the API); here it renders a column
- * config + rows and the four states. The table scrolls horizontally on narrow
- * screens; on the desktop tier (≥1024px) rows tighten up for more density.
+ * config + rows and the four states.
+ *
+ * Responsive behaviour (canon: "responsive→cards"):
+ *  • ≥ `sm` (640px) the column table renders as usual — rows tighten up on the
+ *    desktop tier (≥1024px) for more density.
+ *  • On phones a horizontally-scrolling table is a poor experience (the "list
+ *    slides off the side of the screen" problem). When a `mobileCard` renderer
+ *    is supplied, phones get a stacked list of tap-friendly cards instead and
+ *    the table is hidden. Without `mobileCard` the table still scrolls
+ *    horizontally on phones (unchanged), so existing callers are unaffected.
  */
 export interface Column<T> {
   key: string;
@@ -25,6 +33,7 @@ export function DataTable<T>({
   empty,
   toolbar,
   activeKey,
+  mobileCard,
 }: {
   columns: Column<T>[];
   rows: T[];
@@ -40,6 +49,12 @@ export function DataTable<T>({
   toolbar?: ReactNode;
   /** Row to visually highlight — for keyboard focus + return-from-detail. */
   activeKey?: string | null;
+  /**
+   * Optional phone renderer. When provided, phones (< `sm`) show a stacked list
+   * of these cards instead of the horizontally-scrolling table — one card per
+   * row. The card sits inside a tap target that fires `onRowClick`.
+   */
+  mobileCard?: (row: T) => ReactNode;
 }) {
   return (
     <Card className="overflow-hidden">
@@ -48,7 +63,10 @@ export function DataTable<T>({
           {toolbar}
         </div>
       )}
-      <div className="overflow-x-auto">
+
+      {/* Desktop / tablet — the column table. Hidden on phones when a card
+          renderer is available so the layout never scrolls sideways. */}
+      <div className={cn("overflow-x-auto", mobileCard && "hidden sm:block")}>
         <table className="w-full border-collapse">
           <thead>
             <tr>
@@ -108,6 +126,47 @@ export function DataTable<T>({
           </tbody>
         </table>
       </div>
+
+      {/* Phone — a stacked list of tap-friendly cards. */}
+      {mobileCard && (
+        <div className="sm:hidden">
+          {loading &&
+            Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="p-4 border-b hairline last:border-0">
+                <Skeleton className="w-2/3 mb-2" />
+                <Skeleton className="w-1/3" />
+              </div>
+            ))}
+          {!loading &&
+            rows.map((row) => {
+              const k = rowKey(row);
+              const isActive = activeKey === k;
+              return (
+                <div
+                  key={k}
+                  data-row-key={k}
+                  role={onRowClick ? "button" : undefined}
+                  tabIndex={onRowClick ? 0 : undefined}
+                  onClick={() => onRowClick?.(row)}
+                  onKeyDown={(e) => {
+                    if (onRowClick && (e.key === "Enter" || e.key === " ")) {
+                      e.preventDefault();
+                      onRowClick(row);
+                    }
+                  }}
+                  className={cn(
+                    "p-4 border-b hairline last:border-0 transition-colors",
+                    onRowClick && "cursor-pointer active:bg-text-primary/[0.05]",
+                    isActive && "bg-accent/[0.10]",
+                  )}
+                >
+                  {mobileCard(row)}
+                </div>
+              );
+            })}
+        </div>
+      )}
+
       {!loading && rows.length === 0 && empty && (
         <EmptyState
           icon={empty.icon}

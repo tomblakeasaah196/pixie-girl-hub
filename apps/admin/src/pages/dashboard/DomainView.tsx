@@ -25,7 +25,7 @@ import {
   TrendChart,
   hasSeriesData,
 } from "@/components/charts/charts";
-import { KpiCard } from "./bits";
+import { KpiCard, MobileRowCard } from "./bits";
 
 const MONEY_CHARTS = new Set([
   "revenue_trend",
@@ -35,7 +35,6 @@ const MONEY_CHARTS = new Set([
   "income_vs_expenses",
   "ar_ageing",
   "expenses_by_category",
-  "ad_spend_trend",
   "campaign_performance",
   "top_moving_value",
   "commissions_by_staff",
@@ -112,7 +111,7 @@ export function DomainSkeleton() {
           <Skeleton key={i} className="h-[92px] rounded-[var(--radius)]" />
         ))}
       </div>
-      <div className="grid lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Skeleton className="h-[320px] rounded-[var(--radius)]" />
         <Skeleton className="h-[320px] rounded-[var(--radius)]" />
       </div>
@@ -158,11 +157,14 @@ export function DomainView({
       )}
 
       {charts.length > 0 && (
-        <div className="grid lg:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {charts.map((chart) => (
             <div
               key={chart.key}
-              className={cn(customizing && isHidden("chart", chart.key) && "opacity-35")}
+              className={cn(
+                "min-w-0",
+                customizing && isHidden("chart", chart.key) && "opacity-35",
+              )}
             >
               <ChartCard
                 title={chart.label}
@@ -217,6 +219,7 @@ export function DomainView({
                 </span>
               </div>
             }
+            mobileCard={(row) => <MobileRowCard row={row} columns={table.columns} />}
             empty={{
               icon: <Table2 className="w-6 h-6" />,
               title: "Nothing here yet",

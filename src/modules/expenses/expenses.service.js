@@ -61,14 +61,20 @@ function listExpenses({ brand, scope, user, filters, page, page_size }) {
   if (scope === "own") f.submitted_by = user.user_id;
   return repo.listExpenses({ brand, filters: f, page, page_size, offset });
 }
-async function getById({ brand, id }) {
+async function getById({ brand, id, scope, user }) {
   const e = await repo.findById({ brand, id });
   if (!e) throw new NotFoundError("Expense");
+  // Approve-gated visibility (§6.7): a view-only ('own' scope) caller may only
+  // open an expense they submitted — 404, not 403, so the id can't be used to
+  // probe for records. Approvers / CEO arrive here as scope 'all'.
+  if (scope === "own" && user && e.submitted_by !== user.user_id) {
+    throw new NotFoundError("Expense");
+  }
   return e;
 }
 
-function kpis({ brand }) {
-  return repo.kpis({ brand });
+function kpis({ brand, scope, user }) {
+  return repo.kpis({ brand, scope, user_id: user?.user_id });
 }
 
 async function createExpense({ brand, user, request_id, input }) {
@@ -378,6 +384,7 @@ async function markPaid({ brand, user, request_id, id, input }) {
         paid_by: user.user_id,
         payment_method: input.payment_method,
         payment_reference: input.payment_reference,
+        amount_paid_ngn: toCurrencyString(owed),
       },
     });
   });
@@ -400,9 +407,14 @@ function listAdvances({ brand, scope, user, filters, page, page_size }) {
   if (scope === "own") f.requested_by = user.user_id;
   return repo.listAdvances({ brand, filters: f, page, page_size, offset });
 }
-async function getAdvance({ brand, id }) {
+async function getAdvance({ brand, id, scope, user }) {
   const a = await repo.getAdvance({ brand, id });
   if (!a) throw new NotFoundError("Cash advance");
+  // Approve-gated visibility: view-only ('own' scope) callers see only the
+  // advances they requested. Approvers / CEO arrive as scope 'all'.
+  if (scope === "own" && user && a.requested_by !== user.user_id) {
+    throw new NotFoundError("Cash advance");
+  }
   return a;
 }
 async function requestAdvance({ brand, user, request_id, input }) {
@@ -652,8 +664,9 @@ async function settleAdvance({ brand, user, request_id, id, input }) {
 }
 
 // ── Expense receipts (file → Documents gateway, §6.13) ───
-async function listReceipts({ brand, id }) {
-  await getById({ brand, id });
+async function listReceipts({ brand, id, scope, user }) {
+  // getById enforces the same approve-gated visibility as the parent expense.
+  await getById({ brand, id, scope, user });
   return repo.listReceipts({ brand, expense_id: id });
 }
 async function addReceipt({ brand, user, request_id, id, file, meta }) {

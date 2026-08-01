@@ -20,6 +20,21 @@ import type { ContentBlock } from "./content-blocks";
 // currency feed (see getCurrencies / lib/money).
 export type Currency = string;
 
+/** In-stock / pre-order / sold-out state, computed server-side (000086).
+ *  Universal pre-orders: an out-of-stock item is offered as a pre-order with a
+ *  production window (`message`, e.g. "Made to order · ships in ~4–8 weeks"). */
+export type AvailabilityState = "in_stock" | "preorder" | "out_of_stock";
+export interface Availability {
+  state: AvailabilityState;
+  available: number;
+  message?: string;
+  window_label?: string | null;
+  min_weeks?: number | null;
+  max_weeks?: number | null;
+  expected_ready_date?: string | null;
+  production_lead_days?: number | null;
+}
+
 export interface ProductCard {
   styled_id: string;
   name: string;
@@ -28,6 +43,7 @@ export interface ProductCard {
   cover_image_url?: string | null;
   effective_price_ngn?: string | number | null;
   effective_price_usd?: string | number | null;
+  availability?: Availability | null;
 }
 
 export interface VariantOption {
@@ -50,6 +66,7 @@ export interface ProductDetail {
   slug: string;
   short_description?: string | null;
   long_description?: string | null;
+  availability?: Availability | null;
   retail_price_ngn?: string | number | null;
   retail_price_usd?: string | number | null;
   cover_image_url?: string | null;
@@ -90,6 +107,24 @@ export interface ProductDetail {
     thumbnail_url: string | null;
     author_handle: string | null;
   } | null;
+  /** Merchandised video clips (YouTube/Reels/TikTok/direct upload) — shown
+   *  alongside the photo gallery on the product detail page. */
+  videos: {
+    video_id: string;
+    /** null → base-product video (shown for every colour); otherwise scoped to
+     *  the matching colour swatch, like that colour's pictures. */
+    styled_colour_id?: string | null;
+    source: "youtube" | "instagram_reel" | "tiktok" | "direct_upload";
+    external_ref: string;
+    embed_url: string;
+    thumbnail_url?: string | null;
+    title?: string | null;
+    caption?: string | null;
+    duration_seconds?: number | null;
+    is_primary?: boolean;
+  }[];
+  /** "You May Also Love" — curated + auto-filled related products. */
+  related_products: ProductCard[];
 }
 
 export interface CartItem {
@@ -105,11 +140,16 @@ export interface CartItem {
   unit_price_ngn: string | number;
   unit_display_price?: string | number | null;
   display_currency?: string;
+  /** In-stock / pre-order / sold-out state for this line, resolved to the base
+   *  product behind it server-side (000086). */
+  availability?: Availability | null;
 }
 
 export interface Cart {
   cart_id?: string;
   items: CartItem[];
+  applied_coupon_id?: string | null;
+  applied_coupon_code?: string | null;
 }
 
 export interface Quote {
@@ -131,6 +171,7 @@ export interface Quote {
   delivery_display?: string | null;
   total_display?: string | null;
   fx_rate_used?: number | null;
+  applied_coupon_code?: string | null;
 }
 
 const SF = "/api/public/storefront";
@@ -190,6 +231,8 @@ export const getBundles = (ctx?: ApiContext) =>
         role?: string;
         price_ngn?: string;
       }[];
+      /** Bundle-level in-stock / pre-order / sold-out state (000086). */
+      availability?: Availability | null;
     }[]
   >(`${SF}/bundles`, ctx);
 export const getBundleDetail = (slug: string, ctx?: ApiContext) =>
@@ -208,6 +251,8 @@ export const getBundleDetail = (slug: string, ctx?: ApiContext) =>
       role?: string;
       price_ngn?: string;
     }[];
+    /** Bundle-level in-stock / pre-order / sold-out state (000086). */
+    availability?: Availability | null;
   }>(`${SF}/bundles/${slug}`, ctx);
 
 // --- Services (bookable offerings) ---
@@ -266,10 +311,14 @@ export interface Review {
   author: string;
 }
 export const getReviews = (slug: string, ctx?: ApiContext) =>
-  api.get<{ summary: { count: number; average: number }; reviews: Review[] }>(
-    `${SF}/products/${slug}/reviews`,
-    ctx,
-  );
+  api.get<{
+    summary: {
+      count: number;
+      average: number;
+      breakdown: Record<number, number>;
+    };
+    reviews: Review[];
+  }>(`${SF}/products/${slug}/reviews`, ctx);
 export const submitReview = (body: {
   product_slug: string;
   rating: number;
@@ -280,6 +329,14 @@ export const submitReview = (body: {
   `${SF}/reviews`,
   body,
 );
+
+/** Upload review photos (signed-in customer). Returns the stored public URLs
+ *  to submit with submitReview({ photo_urls }). */
+export const uploadReviewPhotos = (files: File[]) => {
+  const form = new FormData();
+  for (const f of files) form.append("photos", f);
+  return api.postForm<{ photos: { url: string }[] }>(`${SF}/reviews/photos`, form);
+};
 
 export const getContentPost = (type: string, slug: string, ctx?: ApiContext) =>
   api.get<{
@@ -364,15 +421,30 @@ export interface CheckoutInput {
   display_currency?: Currency;
   payment_gateway?: string;
   coupon_code?: string;
+  customer_referral_code?: string;
   redeem_points?: number;
   client_idempotency_key: string;
 }
+/** Pre-order notice threaded off the created order (000086). Present only when
+ *  a line went in as made-to-order. */
+export interface PreorderNoticeData {
+  is_preorder: boolean;
+  line_count: number;
+  names?: string[];
+  window_label?: string | null;
+  min_weeks?: number | null;
+  max_weeks?: number | null;
+  ready_by?: string | null;
+  message?: string;
+}
+
 export const checkout = (body: CheckoutInput) =>
   api.post<{
     order_id: string;
     order_number: string;
     payment_url: string;
     public_tracking_token: string;
+    preorder?: PreorderNoticeData | null;
   }>(`${SF}/checkout`, body);
 
 export const getDeliveryQuote = (params: string) =>
@@ -419,6 +491,46 @@ export const confirmDriverDelivery = (
   form: FormData,
   ctx?: ApiContext,
 ) => api.postForm<unknown>(`/api/public/tracking/driver/${token}/confirm`, form, ctx);
+
+// --- Public "pay any amount, anytime" link (no auth, token-scoped) ---
+// Backs the permanent /pay/:token page — the link sent by the order-placement
+// email, layaway reminders, abandoned-checkout nudges, invoicing and the
+// sales-campaign checkout all point here (see brand-urls.js payLinkUrl).
+export interface PayLinkPayment {
+  payment_number: string;
+  amount_ngn: string;
+  method: string;
+  paid_at: string;
+}
+export interface PayLinkPreview {
+  brand: string;
+  order_number: string;
+  status: string;
+  payment_plan: "full" | "instalment";
+  plan_display_name?: string | null;
+  plan_terms?: string[] | null;
+  display_currency: string;
+  display_fx_rate: number | null;
+  total_ngn: string;
+  amount_paid_ngn: string;
+  outstanding_ngn: string;
+  min_next_payment_ngn: string;
+  payments: PayLinkPayment[];
+}
+export const previewPayLink = (token: string, ctx?: ApiContext) =>
+  api.get<PayLinkPreview>(`/api/public/pay/${token}`, ctx);
+
+export interface PayLinkCheckout {
+  provider: string;
+  reference: string;
+  checkout_url: string;
+  amount_ngn: string;
+}
+export const createPayLinkCheckout = (
+  token: string,
+  body: { amount_ngn?: number; currency?: string },
+  ctx?: ApiContext,
+) => api.post<PayLinkCheckout>(`/api/public/pay/${token}`, body, ctx);
 
 // --- Helpers ---
 export function unwrap<T>(r: T | { data: T }): T {

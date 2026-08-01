@@ -10,11 +10,15 @@ const multer = require("multer");
 const c = require("./contacts.controller");
 const v = require("./contacts.validator");
 const { config } = require("../../config/env");
-const { requirePermission } = require("../../middleware/rbac");
+const { requirePermission, contactTypeScope } = require("../../middleware/rbac");
 const { NotFoundError, PermissionDeniedError } = require("../../utils/errors");
 
 const router = express.Router();
 const can = (a) => requirePermission("contacts", a);
+
+// Resolve the caller's contact-type visibility (contacts §6.12) once per
+// request → req.contact_type_scope, so every read/write below can enforce it.
+router.use(contactTypeScope);
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: config.MEDIA_MAX_FILE_SIZE_MB * 1024 * 1024 },
@@ -69,13 +73,18 @@ router.post("/tags/merge", can("edit"), c.mergeTags);
 router.patch("/tags/:tagName", can("edit"), c.updateTag);
 router.delete("/tags/:tagName", can("delete"), c.deleteTagGlobal);
 
-// Bulk import / export (clients & suppliers via CSV/Excel). Literal segments,
-// declared before /:id so they're never captured as a contact id.
-//   GET  /import-template?kind=clients|suppliers → CSV template + sample row
-//   POST /import        (multipart 'file', field 'kind') → bulk create
-//   GET  /export?kind=&from=&to=                 → CSV export (OWNER/CEO only)
+// Bulk import / export (clients · suppliers · retail partners · stylists ·
+// subscribers via CSV/Excel). Literal segments, declared before /:id so they're
+// never captured as a contact id.
+//   GET  /import-template?kind=… → CSV template + one sample row
+//   GET  /import-spec?kind=…     → column spec for the browser preview
+//   POST /import      (multipart 'file', field 'kind') → parse + bulk create
+//   POST /import-rows (JSON { kind, rows })            → bulk create from preview
+//   GET  /export?kind=&from=&to=                       → CSV export (OWNER/CEO)
 router.get("/import-template", can("create"), c.importTemplate);
+router.get("/import-spec", can("create"), c.importSpec);
 router.post("/import", can("create"), upload.single("file"), c.importContacts);
+router.post("/import-rows", can("create"), v.validateImportRows, c.importRows);
 router.get("/export", ceoOnly, c.exportContacts);
 
 router.get("/:id", can("view"), c.getById);

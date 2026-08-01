@@ -34,6 +34,29 @@ async function getAutomation({ brand, event_key }) {
   return { ...row, diagnostics: diagnoseAutomation(row) };
 }
 
+/**
+ * On/off state for a set of automations, keyed by event_key — a lean read for
+ * callers that only need "is this switched on, and on which channel?". An
+ * event_key with no configured policy row is reported `configured:false`
+ * (nothing will send) rather than omitted, so the caller can render a definite
+ * state for every message it asked about. Mirrors the dispatcher's gate: a row
+ * with `is_active === false` is Off.
+ */
+async function getAutomationStates({ brand, event_keys = [] }) {
+  const rows = await repo.getAutomationStates({ brand, event_keys });
+  const byKey = new Map(rows.map((r) => [r.event_key, r]));
+  return event_keys.map((event_key) => {
+    const row = byKey.get(event_key);
+    return {
+      event_key,
+      configured: !!row,
+      // Absent row → off; an explicit is_active:false → off; anything else on.
+      is_active: !!row && row.is_active !== false,
+      channel: row ? row.channel_preference || null : null,
+    };
+  });
+}
+
 async function updateAutomation({ brand, user, request_id, input }) {
   const before = await repo.getAutomation({ brand, event_key: input.event_key });
   if (!before) {
@@ -252,6 +275,7 @@ function variablesFromExamples(schema) {
 
 module.exports = {
   listAutomations,
+  getAutomationStates,
   getAutomation,
   updateAutomation,
   previewAutomation,

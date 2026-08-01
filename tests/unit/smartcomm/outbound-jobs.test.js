@@ -152,3 +152,177 @@ describe("instagram recipient resolution", () => {
     );
   });
 });
+
+// ── Email: branding, subject, Cc, attachments ─────────────
+function emailChannel(overrides = {}) {
+  return {
+    channel_id: "ch-email",
+    channel_type: "customer_thread",
+    business: "faitlynhair",
+    external_platform: "email",
+    metadata: {},
+    ...overrides,
+  };
+}
+
+describe("email outbound", () => {
+  test("brands the body, defaults the subject, no cc/attachments", async () => {
+    stubMember({ contact_id: "c-1", email: "buyer@example.com" });
+    const jobs = await service.buildOutboundJobsForChannel({
+      channel: emailChannel(),
+      message: textMessage(),
+      content: "Hi there,\n\nYour order ships tomorrow.",
+      client: {},
+    });
+    expect(jobs).toHaveLength(1);
+    const { data } = jobs[0];
+    expect(jobs[0].queue).toBe("email-send");
+    expect(data.to).toBe("buyer@example.com");
+    expect(data.subject).toBe("A message from us");
+    expect(data.cc).toBeUndefined();
+    expect(data.attachments).toBeUndefined();
+    // Branded: wrapped in the house HTML shell, not a bare string.
+    expect(data.html).toMatch(/<!DOCTYPE html>/i);
+    expect(data.html).toContain("Your order ships tomorrow.");
+    // Plain-text alternative keeps the readable body.
+    expect(data.text).toContain("Your order ships tomorrow.");
+  });
+
+  test("uses the per-message subject and cleans the Cc list", async () => {
+    stubMember({ contact_id: "c-1", email: "buyer@example.com" });
+    const jobs = await service.buildOutboundJobsForChannel({
+      channel: emailChannel({ metadata: { subject: "Old thread subject" } }),
+      message: textMessage({
+        metadata: {
+          subject: "Your July invoice",
+          cc: ["Accounts@Example.com", "bad", "accounts@example.com"],
+        },
+      }),
+      content: "Please find your invoice.",
+      client: {},
+    });
+    expect(jobs).toHaveLength(1);
+    const { data } = jobs[0];
+    expect(data.subject).toBe("Your July invoice");
+    // Lower-cased + de-duplicated + invalid dropped.
+    expect(data.cc).toEqual(["accounts@example.com"]);
+  });
+
+  test("falls back to the thread subject when the message has none", async () => {
+    stubMember({ contact_id: "c-1", email: "buyer@example.com" });
+    const jobs = await service.buildOutboundJobsForChannel({
+      channel: emailChannel({ metadata: { subject: "Re: Your enquiry" } }),
+      message: textMessage(),
+      content: "Thanks for reaching out.",
+      client: {},
+    });
+    expect(jobs[0].data.subject).toBe("Re: Your enquiry");
+  });
+
+  test("attaches stored files as storage keys (not bytes)", async () => {
+    stubMember({ contact_id: "c-1", email: "buyer@example.com" });
+    repo.getAttachmentsForSend.mockResolvedValueOnce([
+      { file_path: "docs/invoice.pdf", mime_type: "application/pdf", display_name: "invoice.pdf" },
+      { file_path: "docs/look.jpg", mime_type: "image/jpeg", display_name: "look.jpg" },
+    ]);
+    const jobs = await service.buildOutboundJobsForChannel({
+      channel: emailChannel(),
+      message: textMessage({ message_type: "document" }),
+      content: "Documents attached.",
+      client: {},
+    });
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0].data.attachments).toEqual([
+      { filename: "invoice.pdf", storage_key: "docs/invoice.pdf", content_type: "application/pdf" },
+      { filename: "look.jpg", storage_key: "docs/look.jpg", content_type: "image/jpeg" },
+    ]);
+  });
+
+  test("still sends an attachment-only email (empty body)", async () => {
+    stubMember({ contact_id: "c-1", email: "buyer@example.com" });
+    repo.getAttachmentsForSend.mockResolvedValueOnce([
+      { file_path: "docs/receipt.pdf", mime_type: "application/pdf", display_name: "receipt.pdf" },
+    ]);
+    const jobs = await service.buildOutboundJobsForChannel({
+      channel: emailChannel(),
+      message: textMessage({ message_type: "document" }),
+      content: null,
+      client: {},
+    });
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0].data.attachments).toHaveLength(1);
+  });
+
+  test("fails the message when body and attachments are both empty", async () => {
+    stubMember({ contact_id: "c-1", email: "buyer@example.com" });
+    const jobs = await service.buildOutboundJobsForChannel({
+      channel: emailChannel(),
+      message: textMessage(),
+      content: "   ",
+      client: {},
+    });
+    expect(jobs).toEqual([]);
+    expect(repo.setMessageDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message_id: "m-1",
+        delivery_status: "failed",
+        delivery_error: "NOTHING_TO_SEND",
+      }),
+    );
+  });
+
+  test("passes a rich HTML body through the brand shell (not escaped)", async () => {
+    stubMember({ contact_id: "c-1", email: "buyer@example.com" });
+    const jobs = await service.buildOutboundJobsForChannel({
+      channel: emailChannel(),
+      message: textMessage({
+        metadata: {
+          subject: "Your look",
+          body_html:
+            '<p>Hi <strong>Ada</strong>, see our <a href="https://x.co/sale">sale</a>.</p>',
+        },
+      }),
+      content: "Hi Ada, see our sale.",
+      client: {},
+    });
+    expect(jobs).toHaveLength(1);
+    const { data } = jobs[0];
+    // The operator's HTML rides through verbatim (bold + link preserved),
+    // wrapped in the house shell — never escaped into visible tags.
+    expect(data.html).toContain("<strong>Ada</strong>");
+    expect(data.html).toContain('href="https://x.co/sale"');
+    expect(data.html).not.toContain("&lt;strong&gt;");
+    // Plain-text alternative still carries the readable shadow.
+    expect(data.text).toContain("Hi Ada, see our sale.");
+  });
+
+  test("sends a rich HTML-only email even with no plain-text body", async () => {
+    stubMember({ contact_id: "c-1", email: "buyer@example.com" });
+    const jobs = await service.buildOutboundJobsForChannel({
+      channel: emailChannel(),
+      message: textMessage({
+        metadata: { body_html: '<p><img src="https://x.co/look.jpg"></p>' },
+      }),
+      content: null,
+      client: {},
+    });
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0].data.html).toContain('src="https://x.co/look.jpg"');
+  });
+
+  test("fails the message when the contact has no email on file", async () => {
+    stubMember({ contact_id: "c-1", email: null });
+    const jobs = await service.buildOutboundJobsForChannel({
+      channel: emailChannel(),
+      message: textMessage(),
+      content: "hello",
+      client: {},
+    });
+    expect(jobs).toEqual([]);
+    expect(repo.setMessageDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        delivery_error: "NO_EMAIL_ON_FILE",
+      }),
+    );
+  });
+});

@@ -93,6 +93,13 @@ async function listMessages({ conversation_id }) {
   );
   return rows;
 }
+async function findMessage({ client, id }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM shared.ai_messages WHERE message_id = $1`,
+    [id],
+  );
+  return rows[0] || null;
+}
 
 // ── Pending actions (the confirm gate) ─────────────────────
 async function createPendingAction({ client, p }) {
@@ -265,6 +272,7 @@ module.exports = {
   archiveConversation,
   insertMessage,
   listMessages,
+  findMessage,
   createPendingAction,
   findPendingAction,
   listPendingActions,

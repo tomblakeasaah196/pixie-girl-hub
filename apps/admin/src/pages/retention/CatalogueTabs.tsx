@@ -34,11 +34,18 @@ export function CouponsTab() {
   const coupons = q.data ?? [];
 
   const submit = async () => {
+    // P1-1: the value field takes WHOLE PERCENT (10 = 10%) for a percentage
+    // discount and NGN for a fixed_amount. Storage is always the canonical
+    // fraction so the coupon engine's `subtotal.times(discount_value)` works
+    // as designed. Free-shipping ignores value entirely.
+    const raw = Number(form.discount_value || 0);
+    const storedValue =
+      form.discount_type === "percentage" ? raw / 100 : raw;
     const body: Record<string, unknown> = {
       coupon_code: form.coupon_code,
       display_name: form.display_name,
       discount_type: form.discount_type,
-      discount_value: Number(form.discount_value || 0),
+      discount_value: storedValue,
       is_active: true,
     };
     await save.mutateAsync({ body });
@@ -48,7 +55,7 @@ export function CouponsTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <h2 className="font-display text-lg">Coupons</h2>
         {canEdit && (
           <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => setOpen(true)}>
@@ -108,15 +115,25 @@ export function CouponsTab() {
               value={form.discount_type}
               onChange={(v) => setForm((f) => ({ ...f, discount_type: v }))}
               options={[
-                { value: "percentage", label: "% off (enter a fraction, e.g. 0.10)" },
+                { value: "percentage", label: "% off" },
                 { value: "fixed_amount", label: "₦ off" },
                 { value: "free_shipping", label: "Free shipping" },
               ]}
             />
           </L>
           {form.discount_type !== "free_shipping" && (
-            <L label="Value">
-              <NumberField value={form.discount_value ?? ""} onChange={(v) => setForm((f) => ({ ...f, discount_value: v }))} />
+            <L
+              label={
+                form.discount_type === "percentage"
+                  ? "% off (e.g. 10 for 10%)"
+                  : "Value (₦)"
+              }
+            >
+              <NumberField
+                value={form.discount_value ?? ""}
+                onChange={(v) => setForm((f) => ({ ...f, discount_value: v }))}
+                suffix={form.discount_type === "percentage" ? "%" : undefined}
+              />
             </L>
           )}
         </div>
@@ -139,10 +156,10 @@ export function SubscriptionsTab() {
       ) : plans.length === 0 ? (
         <EmptyState icon={<Repeat className="w-7 h-7" />} title="No subscription plans" />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {plans.map((p) => (
             <Card key={p.plan_id} className="p-4">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-medium text-[14px]">{p.display_name}</span>
                 {!p.is_active && <Pill tone="warn">inactive</Pill>}
               </div>
@@ -176,8 +193,10 @@ export function BundlesTab() {
           {bundles.map((b, i) => (
             <div key={b.bundle_id} className={`p-4 flex items-center gap-3 ${i < bundles.length - 1 ? "border-b border-line" : ""}`}>
               <div className="flex-1 min-w-0">
-                <span className="font-medium text-[14px]">{b.display_name}</span>
-                <span className="text-[11px] text-text-faint ml-2 font-mono">{b.bundle_code}</span>
+                <div className="flex items-center gap-x-2 gap-y-0.5 flex-wrap">
+                  <span className="font-medium text-[14px]">{b.display_name}</span>
+                  <span className="text-[11px] text-text-faint font-mono">{b.bundle_code}</span>
+                </div>
                 <p className="text-[11.5px] text-text-faint mt-0.5 capitalize">{b.pricing_model.replace(/_/g, " ")}</p>
               </div>
               {b.is_active ? <Pill tone="success">active</Pill> : <Pill tone="warn">inactive</Pill>}
@@ -210,8 +229,8 @@ export function MaintenanceTab() {
   return (
     <div className="space-y-6">
       <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="min-w-0">
             <h2 className="font-display text-lg">Maintenance plans</h2>
             <p className="text-[12.5px] text-text-muted">Salon maintenance subscriptions (wash, recondition, restyle).</p>
           </div>
@@ -233,12 +252,12 @@ export function MaintenanceTab() {
         ) : plans.length === 0 ? (
           <EmptyState icon={<Wrench className="w-7 h-7" />} title="No maintenance plans" message="Create a plan customers can subscribe to." />
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {plans.map((p) => (
               <Card key={p.plan_id} className="p-4">
                 <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="flex items-center gap-2">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium text-[14px]">{p.display_name}</span>
                       {!p.is_active && <Pill tone="warn">inactive</Pill>}
                     </div>
@@ -246,7 +265,11 @@ export function MaintenanceTab() {
                     <div className="text-[11.5px] text-text-faint mt-1">{CYCLE_LABELS[p.billing_cycle]}</div>
                   </div>
                   {canEdit && (
-                    <button onClick={() => setEditing(p)} className="grid place-items-center w-8 h-8 rounded-[9px] text-text-faint hover:text-text-primary">
+                    <button
+                      onClick={() => setEditing(p)}
+                      aria-label={`Edit ${p.display_name}`}
+                      className="grid place-items-center w-10 h-10 sm:w-8 sm:h-8 rounded-[9px] text-text-faint hover:text-text-primary shrink-0"
+                    >
                       <Pencil className="w-4 h-4" />
                     </button>
                   )}
@@ -267,10 +290,10 @@ export function MaintenanceTab() {
           <Card className="p-0 overflow-hidden">
             {subs.map((s, i) => (
               <div key={s.subscription_id} className={`p-3.5 flex items-center gap-3 ${i < subs.length - 1 ? "border-b border-line" : ""}`}>
-                <div className="flex-1 min-w-0">
+                <div className="flex-1 min-w-0 flex items-center gap-x-2 gap-y-0.5 flex-wrap">
                   <span className="font-mono text-[11px] text-text-faint">{s.subscription_number}</span>
-                  <span className="text-[13px] ml-2">{s.first_name || s.contact_name || "Customer"}</span>
-                  <span className="text-[11.5px] text-text-faint ml-2">{s.plan_name}</span>
+                  <span className="text-[13px]">{s.first_name || s.contact_name || "Customer"}</span>
+                  <span className="text-[11.5px] text-text-faint">{s.plan_name}</span>
                 </div>
                 <Pill tone={s.status === "active" ? "success" : "warn"}>{s.status}</Pill>
               </div>

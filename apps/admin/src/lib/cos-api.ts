@@ -43,6 +43,13 @@ export interface CosConversation {
   message_count?: number;
 }
 
+export type FeedbackRating = "up" | "down";
+
+export interface MessageFeedback {
+  rating: FeedbackRating;
+  comment: string | null;
+}
+
 export interface CosMessage {
   message_id: string;
   conversation_id: string;
@@ -51,6 +58,8 @@ export interface CosMessage {
   input_mode?: "text" | "voice" | null;
   transcribed_text?: string | null;
   created_at: string;
+  /** The CEO's rating of this reply, if any (training loop) — hydrated on load. */
+  feedback?: MessageFeedback | null;
 }
 
 export interface PlanStep {
@@ -65,6 +74,8 @@ export interface PlanStep {
   status: StepStatus;
   execution_error?: string | null;
   execution_result?: unknown;
+  /** Review-time validation warning from pre-flight (shown before approval). */
+  preflight_note?: string | null;
 }
 
 export interface Plan {
@@ -183,7 +194,40 @@ export function usePostCosMessage() {
         `/cos/conversations/${conversationId}/messages`,
         input,
       ),
-    onSuccess: (turn, vars) => {
+    // Optimistic echo: the CEO's bubble appears the instant she hits send —
+    // the turn itself (LLM rounds + reads) can take many seconds, and a chat
+    // where your own message doesn't show until the reply lands reads as
+    // "did that even send?". The temp message is swapped for the server's
+    // real one on success and removed on error (the composer restores the
+    // draft, so nothing is lost).
+    onMutate: async ({ conversationId, content }: PostCosMessageVars) => {
+      const key = cosKeys.conversation(conversationId);
+      // Cancel a racing refetch only when we hold data to protect — cancelling
+      // a brand-new conversation's FIRST fetch would leave its pane stuck on
+      // the loading skeleton for the whole turn (there the echo is skipped;
+      // the fetch lands the empty thread and the Thinking bubble covers it).
+      if (qc.getQueryData(key)) await qc.cancelQueries({ queryKey: key });
+      const tempId = `pending-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      qc.setQueryData<CosConversationDetail | undefined>(key, (prev) =>
+        prev
+          ? {
+              ...prev,
+              messages: [
+                ...prev.messages,
+                {
+                  message_id: tempId,
+                  conversation_id: conversationId,
+                  role: "user",
+                  content,
+                  created_at: new Date().toISOString(),
+                } as CosMessage,
+              ],
+            }
+          : prev,
+      );
+      return { tempId };
+    },
+    onSuccess: (turn, vars, ctx) => {
       qc.setQueryData<CosConversationDetail | undefined>(
         cosKeys.conversation(vars.conversationId),
         (prev) =>
@@ -191,7 +235,7 @@ export function usePostCosMessage() {
             ? {
                 ...prev,
                 messages: [
-                  ...prev.messages,
+                  ...prev.messages.filter((m) => m.message_id !== ctx?.tempId),
                   turn.user_message,
                   turn.assistant_message,
                 ],
@@ -199,9 +243,30 @@ export function usePostCosMessage() {
               }
             : prev,
       );
+      // No cached detail to patch (first message raced the initial fetch) —
+      // refetch so the turn's messages appear.
+      if (!qc.getQueryData(cosKeys.conversation(vars.conversationId))) {
+        qc.invalidateQueries({
+          queryKey: cosKeys.conversation(vars.conversationId),
+        });
+      }
       qc.invalidateQueries({ queryKey: cosKeys.conversations });
     },
-    onError: (err) => toastReport("Chief of Staff", "Send message", err),
+    onError: (err, vars, ctx) => {
+      qc.setQueryData<CosConversationDetail | undefined>(
+        cosKeys.conversation(vars.conversationId),
+        (prev) =>
+          prev
+            ? {
+                ...prev,
+                messages: prev.messages.filter(
+                  (m) => m.message_id !== ctx?.tempId,
+                ),
+              }
+            : prev,
+      );
+      toastReport("Chief of Staff", "Send message", err);
+    },
   });
 }
 
@@ -240,6 +305,52 @@ export function useSaveConversationToNotes() {
   });
 }
 
+export interface SendCosFeedbackVars {
+  conversationId: string;
+  messageId: string;
+  rating: FeedbackRating;
+  comment?: string;
+}
+
+/**
+ * Rate a Chief of Staff reply 👍/👎 (Phase 1 training loop). A 👎 with a comment
+ * is stored as a durable correction the next turn respects. Optimistically folds
+ * the rating into the cached conversation so the thumbs reflect it immediately.
+ */
+export function useSendCosFeedback() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ messageId, rating, comment }: SendCosFeedbackVars) =>
+      api.post<{ ok: boolean; rating: FeedbackRating; learned: boolean }>(
+        `/cos/messages/${messageId}/feedback`,
+        { rating, comment },
+      ),
+    onMutate: ({ conversationId, messageId, rating, comment }) => {
+      qc.setQueryData<CosConversationDetail | undefined>(
+        cosKeys.conversation(conversationId),
+        (prev) =>
+          prev
+            ? {
+                ...prev,
+                messages: prev.messages.map((m) =>
+                  m.message_id === messageId
+                    ? {
+                        ...m,
+                        feedback: {
+                          rating,
+                          comment: comment ?? m.feedback?.comment ?? null,
+                        },
+                      }
+                    : m,
+                ),
+              }
+            : prev,
+      );
+    },
+    onError: (err) => toastReport("Chief of Staff", "Send feedback", err),
+  });
+}
+
 /** Fold an updated plan (post confirm/reject) back into the cached detail. */
 function patchPlan(
   qc: ReturnType<typeof useQueryClient>,
@@ -266,9 +377,10 @@ export function useConfirmCosPlan(conversationId: string) {
     mutationFn: (planId: string) =>
       api.post<Plan>(`/cos/plans/${planId}/confirm`),
     onSuccess: (updated) => {
+      // 202: the steps run on a background worker — `updated` arrives as
+      // status 'executing' and the card settles to executed/partially_failed
+      // via the cos_plan:executed push (useRealtimeInvalidation).
       patchPlan(qc, conversationId, updated);
-      // A batch write touched goals/tasks/calendar — refresh those surfaces.
-      qc.invalidateQueries({ queryKey: ["workspace"] });
     },
     onError: (err) => toastReport("Chief of Staff → Plan", "Approve plan", err),
   });
@@ -450,7 +562,9 @@ export function useSnoozeFollowup() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, until }: { id: string; until?: string }) =>
-      api.post<{ followup: CosFollowup }>(`/cos/followups/${id}/snooze`, { until }),
+      api.post<{ followup: CosFollowup }>(`/cos/followups/${id}/snooze`, {
+        until,
+      }),
     onSuccess: () => invalidateFollowups(qc),
     onError: (err) => toastReport("Chief of Staff → Follow-up", "Snooze", err),
   });
@@ -491,8 +605,18 @@ export interface MeetingPrep {
     progress_pct: number;
     target_date: string | null;
   } | null;
-  open_milestones: { milestone_id: string; title: string; status: string; target_date: string | null }[];
-  recent_notes: { note_id: string; title: string | null; excerpt: string; created_at: string }[];
+  open_milestones: {
+    milestone_id: string;
+    title: string;
+    status: string;
+    target_date: string | null;
+  }[];
+  recent_notes: {
+    note_id: string;
+    title: string | null;
+    excerpt: string;
+    created_at: string;
+  }[];
   participants: {
     participant_id: string;
     name: string;
@@ -537,7 +661,12 @@ export interface CrossBrandBrand {
 }
 export interface CrossBrandOverview {
   brands: CrossBrandBrand[];
-  totals: { active_goals: number; at_risk: number; behind: number; overdue_total: number };
+  totals: {
+    active_goals: number;
+    at_risk: number;
+    behind: number;
+    overdue_total: number;
+  };
   generated_at: string;
 }
 
@@ -548,7 +677,11 @@ export interface GoalTemplate {
   description: string | null;
   structure: {
     goal?: { priority?: string };
-    milestones?: { title: string; offset_days: number; tasks?: { title: string; offset_days: number }[] }[];
+    milestones?: {
+      title: string;
+      offset_days: number;
+      tasks?: { title: string; offset_days: number }[];
+    }[];
     tasks?: { title: string; offset_days: number }[];
   };
   source_goal_id: string | null;
@@ -601,7 +734,8 @@ export function useFindFocus() {
   return useMutation({
     mutationFn: (input: { duration?: number; within?: number }) =>
       api.post<FocusResult>("/cos/schedule/focus", input),
-    onError: (err) => toastReport("Chief of Staff → Scheduling", "Find focus time", err),
+    onError: (err) =>
+      toastReport("Chief of Staff → Scheduling", "Find focus time", err),
   });
 }
 
@@ -609,27 +743,39 @@ export function useBatchReschedule() {
   return useMutation({
     mutationFn: (input: { match: string; days?: number }) =>
       api.post<Plan>("/cos/schedule/reschedule", input),
-    onError: (err) => toastReport("Chief of Staff → Scheduling", "Reschedule tasks", err),
+    onError: (err) =>
+      toastReport("Chief of Staff → Scheduling", "Reschedule tasks", err),
   });
 }
 
 export function useSaveTemplate() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { goal_id: string; name?: string; description?: string }) =>
-      api.post<GoalTemplate>("/cos/templates", input),
+    mutationFn: (input: {
+      goal_id: string;
+      name?: string;
+      description?: string;
+    }) => api.post<GoalTemplate>("/cos/templates", input),
     onSuccess: () => qc.invalidateQueries({ queryKey: intelKeys.templates }),
-    onError: (err) => toastReport("Chief of Staff → Playbooks", "Save as playbook", err),
+    onError: (err) =>
+      toastReport("Chief of Staff → Playbooks", "Save as playbook", err),
   });
 }
 
 export function useInstantiateTemplate() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ templateId, ...input }: { templateId: string; start_date?: string; name?: string }) =>
-      api.post<Plan>(`/cos/templates/${templateId}/instantiate`, input),
+    mutationFn: ({
+      templateId,
+      ...input
+    }: {
+      templateId: string;
+      start_date?: string;
+      name?: string;
+    }) => api.post<Plan>(`/cos/templates/${templateId}/instantiate`, input),
     onSuccess: () => qc.invalidateQueries({ queryKey: intelKeys.templates }),
-    onError: (err) => toastReport("Chief of Staff → Playbooks", "Use playbook", err),
+    onError: (err) =>
+      toastReport("Chief of Staff → Playbooks", "Use playbook", err),
   });
 }
 
@@ -669,15 +815,33 @@ export function useCosSettings(enabled = true) {
   });
 }
 
+/**
+ * Upload an image file to use as the assistant's avatar (alternative to pasting
+ * a URL). The server compresses + stores it and persists the URL on the CoS
+ * settings row; the returned URL is cache-busted so a re-upload takes effect.
+ */
+export async function uploadCosAvatar(
+  blob: Blob,
+  onProgress?: (percent: number) => void,
+): Promise<{ avatar_url: string }> {
+  const form = new FormData();
+  form.append("avatar", blob, "cos-avatar.jpg");
+  return api.postForm<{ avatar_url: string }>("/cos/settings/avatar", form, {
+    onProgress,
+  });
+}
+
 export function useUpdateCosSettings() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (patch: CosSettingsPatch) => api.put<CosSettings>("/cos/settings", patch),
+    mutationFn: (patch: CosSettingsPatch) =>
+      api.put<CosSettings>("/cos/settings", patch),
     onSuccess: (updated) => {
       qc.setQueryData(cosSettingsKey, updated);
       // The assistant name drives the Workspace tab label + chat header.
       qc.invalidateQueries({ queryKey: cosSettingsKey });
     },
-    onError: (err) => toastReport("Chief of Staff → Settings", "Save settings", err),
+    onError: (err) =>
+      toastReport("Chief of Staff → Settings", "Save settings", err),
   });
 }

@@ -239,7 +239,16 @@ const deletePipelineStage = async (req, res) =>
     }),
   });
 
+// Public (no auth) — display-safe brand identity from business_config.
+const getPublicBrandIdentity = async (req, res) =>
+  res.json({
+    data: await service.getPublicBrandIdentity({
+      brand: String(req.params.brandKey || "").toLowerCase().trim(),
+    }),
+  });
+
 module.exports = {
+  getPublicBrandIdentity,
   listBusinesses,
   provisionBusiness,
   getSignatureTemplate,

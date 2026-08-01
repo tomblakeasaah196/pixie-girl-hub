@@ -26,7 +26,7 @@ import type { ProductCard, Channel } from "@/lib/smartcomm-types";
 import {
   StyledVariantPicker,
   type StyledPick,
-} from "./StyledVariantPicker";
+} from "@/components/catalogue/StyledVariantPicker";
 
 // The in-chat picker offers services too (the ERP-wide PRODUCT_KINDS does not).
 const CHAT_KINDS: { key: ProductKind; label: string }[] = [

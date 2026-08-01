@@ -1,19 +1,29 @@
 /**
- * Contacts import/export engine — bulk onboarding for clients (customers) and
- * suppliers via CSV / Excel.
+ * Contacts import/export engine — bulk onboarding for every stakeholder kind
+ * (clients, suppliers, retail partners, stylists, subscribers) via CSV / Excel.
  *
- * Flow the owner asked for:
- *   1. Download a TEMPLATE (CSV) — pick "Clients" or "Suppliers". Each carries
- *      the column headers + one sample row so the layout is unambiguous.
- *   2. Fill it in Excel (or any spreadsheet app) and IMPORT it back — the file
- *      may be .csv OR .xlsx (auto-detected). Rows become real contacts.
- *   3. EXPORT (owner/CEO only) — pick a period and download every client /
- *      supplier created in that window.
+ * Flow the owner asked for (mirrors Catalogue → Base Products "Import"):
+ *   1. Pick a KIND (Clients / Suppliers / Retail partners / Stylists /
+ *      Subscribers) and download that kind's TEMPLATE — a CSV carrying the
+ *      column headers + one sample row so the layout is unambiguous.
+ *   2. Fill it in Excel (or any spreadsheet app). The admin app then PREVIEWS
+ *      it in the browser (SheetJS) so every row can be reviewed before anything
+ *      is written, and on CONFIRM posts the parsed rows to /contacts/import-rows.
+ *   3. EXPORT (owner/CEO only) — pick a period and download the records created
+ *      in that window.
  *
- * Composition over duplication: imports delegate to the existing contacts
- * service (create + addAddress), so an imported row fires the SAME audit and
- * domain events as a row typed into the UI. The spreadsheet plumbing (CSV
- * build/parse, .xlsx parse) lives in services/spreadsheet.service.js.
+ * Two ingest paths share ONE processor (`importParsedRows`):
+ *   • POST /contacts/import       — multipart file, parsed server-side.
+ *   • POST /contacts/import-rows  — already-parsed JSON rows from the preview.
+ * Both delegate to the existing contacts service (create + addAddress), so an
+ * imported row fires the SAME audit and domain events as a row typed into the
+ * UI. The spreadsheet plumbing (CSV build/parse, .xlsx parse) lives in
+ * services/spreadsheet.service.js.
+ *
+ * The FIELDS column model below is the ONE source of truth: it drives the
+ * template, the server-side validation, AND the browser preview (served to the
+ * admin app via GET /contacts/import-spec). Add a kind by tagging fields with
+ * its token in `kinds` — no other file needs to change.
  */
 
 "use strict";
@@ -22,6 +32,7 @@ const repo = require("./contacts.repo");
 const service = require("./contacts.service");
 const { contactCreateChecked, addressCreate } = require("./contacts.validator");
 const { buildCsv, parseUpload } = require("../../services/spreadsheet.service");
+const { PermissionDeniedError } = require("../../utils/errors");
 
 // ── small coercion helpers ───────────────────────────────
 const isBlank = (v) => v === undefined || v === null || String(v).trim() === "";
@@ -53,20 +64,52 @@ const source = (v) => {
 };
 
 // ════════════════════════════════════════════════════════════
-// Column model — ONE source of truth. Each field knows which template(s) it
-// belongs to, its sample value, and whether it targets the contact or its
-// (optional) default delivery address.
+// Kind registry — each import kind maps to a contact_type. "all" is an export
+// pseudo-kind only. Add a kind here + tag fields in FIELDS and the whole engine
+// (template · spec · preview · import) picks it up.
+// ════════════════════════════════════════════════════════════
+const KINDS = {
+  clients: { type: "customer", label: "Clients" },
+  suppliers: { type: "supplier", label: "Suppliers" },
+  retail_partners: { type: "retail_partner", label: "Retail partners" },
+  stylists: { type: "stylist_partner", label: "Stylists" },
+  subscribers: { type: "subscriber", label: "Subscribers" },
+};
+const KIND_TOKENS = Object.keys(KINDS);
+
+const KIND_TYPE = Object.fromEntries(
+  Object.entries(KINDS).map(([k, v]) => [k, v.type]),
+);
+const KIND_LABEL = {
+  ...Object.fromEntries(Object.entries(KINDS).map(([k, v]) => [k, v.label])),
+  all: "Contacts",
+};
+
+// Convenience groupings for tagging fields.
+const ALL = KIND_TOKENS;
+const PERSONS = ["clients", "stylists"]; // personal + social identity
+const BUSINESSES = ["suppliers", "retail_partners"]; // TIN / CAC / company
+const WITH_ADDRESS = ["clients", "suppliers", "retail_partners", "stylists"];
+
+// ════════════════════════════════════════════════════════════
+// Column model — ONE source of truth. Each field knows which kind(s) it belongs
+// to, its per-kind sample value, whether it targets the contact or its
+// (optional) default delivery address, and a `type` the browser preview uses to
+// validate before the row is ever sent to the server.
 // ════════════════════════════════════════════════════════════
 /**
  * @typedef {Object} FieldSpec
- * @property {string}  header     Column header (the "*" suffix flags required).
- * @property {string}  field      Target key on the contact / address input.
+ * @property {string}  header   Column header (a trailing "*" flags required).
+ * @property {string}  field    Target key on the contact / address input.
  * @property {"contact"|"address"} group
- * @property {boolean} client     Appears on the Clients template.
- * @property {boolean} supplier   Appears on the Suppliers template.
- * @property {string}  [clientSample]
- * @property {string}  [supplierSample]
- * @property {string}  [note]     Header comment / guidance.
+ * @property {"text"|"phone"|"email"|"date"|"gender"|"enum"|"handle"} type
+ *           Hint the browser preview uses to validate the cell.
+ * @property {string[]} kinds   Import kinds this column appears on.
+ * @property {boolean} [required] Row is invalid in the preview if this is blank.
+ * @property {boolean} [channel]  Counts toward the "phone OR email" rule.
+ * @property {string[]} [options] Allowed values for gender/enum types.
+ * @property {Object.<string,string>} [samples] Per-kind sample cell value.
+ * @property {string}  [note]   Header guidance shown in the preview.
  * @property {(v:any)=>any} [clean] Pre-Zod normaliser (enums, dates…).
  */
 
@@ -76,47 +119,67 @@ const FIELDS = [
     header: "Display Name*",
     field: "display_name",
     group: "contact",
-    client: true,
-    supplier: true,
-    clientSample: "Adaeze Okafor",
-    supplierSample: "Golden Hair Imports Ltd",
+    type: "text",
+    required: true,
+    kinds: ALL,
+    samples: {
+      clients: "Adaeze Okafor",
+      suppliers: "Golden Hair Imports Ltd",
+      retail_partners: "Bloom Beauty Store",
+      stylists: "Ngozi Adeleke",
+      subscribers: "Chidinma Umeh",
+    },
     note: "Required. Person or business name as it should appear in the directory.",
   },
   {
     header: "Company Name",
     field: "company_name",
     group: "contact",
-    client: true,
-    supplier: true,
-    clientSample: "",
-    supplierSample: "Golden Hair Imports Ltd",
+    type: "text",
+    kinds: ["clients", "suppliers", "retail_partners", "stylists"],
+    samples: {
+      suppliers: "Golden Hair Imports Ltd",
+      retail_partners: "Bloom Beauty Store",
+      stylists: "Ngozi Hair Studio",
+    },
   },
   {
     header: "First Name",
     field: "first_name",
     group: "contact",
-    client: true,
-    supplier: true,
-    clientSample: "Adaeze",
-    supplierSample: "Chidi",
-    note: "For a supplier this is the contact person's first name.",
+    type: "text",
+    kinds: ALL,
+    samples: {
+      clients: "Adaeze",
+      suppliers: "Chidi",
+      retail_partners: "Amaka",
+      stylists: "Ngozi",
+      subscribers: "Chidinma",
+    },
+    note: "For a business this is the contact person's first name.",
   },
   {
     header: "Last Name",
     field: "last_name",
     group: "contact",
-    client: true,
-    supplier: true,
-    clientSample: "Okafor",
-    supplierSample: "Eze",
+    type: "text",
+    kinds: ALL,
+    samples: {
+      clients: "Okafor",
+      suppliers: "Eze",
+      retail_partners: "Bello",
+      stylists: "Adeleke",
+      subscribers: "Umeh",
+    },
   },
   {
     header: "Gender",
     field: "gender",
     group: "contact",
-    client: true,
-    supplier: false,
-    clientSample: "F",
+    type: "gender",
+    options: ["M", "F", "other", "prefer_not"],
+    kinds: PERSONS,
+    samples: { clients: "F", stylists: "F" },
     note: "One of: M, F, other, prefer_not.",
     clean: gender,
   },
@@ -124,9 +187,9 @@ const FIELDS = [
     header: "Date of Birth",
     field: "date_of_birth",
     group: "contact",
-    client: true,
-    supplier: false,
-    clientSample: "1996-04-12",
+    type: "date",
+    kinds: PERSONS,
+    samples: { clients: "1996-04-12", stylists: "1992-08-03" },
     note: "Format YYYY-MM-DD.",
     clean: isoDate,
   },
@@ -134,55 +197,77 @@ const FIELDS = [
     header: "Primary Phone*",
     field: "primary_phone",
     group: "contact",
-    client: true,
-    supplier: true,
-    clientSample: "+2348012345678",
-    supplierSample: "+2348098765432",
-    note: "Required. Include the country code (e.g. +234…).",
+    type: "phone",
+    channel: true,
+    kinds: ALL,
+    samples: {
+      clients: "+2348012345678",
+      suppliers: "+2348098765432",
+      retail_partners: "+2348023456789",
+      stylists: "+2348034567890",
+      subscribers: "+2348045678901",
+    },
+    note: "Include the country code (e.g. +234…). A phone OR an email is required.",
   },
   {
     header: "WhatsApp Number",
     field: "whatsapp_number",
     group: "contact",
-    client: true,
-    supplier: true,
-    clientSample: "+2348012345678",
-    supplierSample: "+2348098765432",
+    type: "phone",
+    kinds: ALL,
+    samples: {
+      clients: "+2348012345678",
+      suppliers: "+2348098765432",
+      retail_partners: "+2348023456789",
+      stylists: "+2348034567890",
+    },
   },
   {
     header: "Email",
     field: "email",
     group: "contact",
-    client: true,
-    supplier: true,
-    clientSample: "adaeze@example.com",
-    supplierSample: "sales@goldenhair.example",
+    type: "email",
+    channel: true,
+    kinds: ALL,
+    samples: {
+      clients: "adaeze@example.com",
+      suppliers: "sales@goldenhair.example",
+      retail_partners: "hello@bloombeauty.example",
+      stylists: "ngozi@example.com",
+      subscribers: "chidinma@example.com",
+    },
+    note: "A phone OR an email is required.",
   },
   {
     header: "TIN",
     field: "tin",
     group: "contact",
-    client: false,
-    supplier: true,
-    supplierSample: "12345678-0001",
+    type: "text",
+    kinds: BUSINESSES,
+    samples: { suppliers: "12345678-0001", retail_partners: "87654321-0001" },
     note: "Nigerian Tax ID. Must be unique across the directory.",
   },
   {
     header: "CAC Number",
     field: "cac_number",
     group: "contact",
-    client: false,
-    supplier: true,
-    supplierSample: "RC123456",
+    type: "text",
+    kinds: BUSINESSES,
+    samples: { suppliers: "RC123456", retail_partners: "RC654321" },
   },
   {
     header: "Country Code",
     field: "country_code",
     group: "contact",
-    client: true,
-    supplier: true,
-    clientSample: "NG",
-    supplierSample: "NG",
+    type: "text",
+    kinds: ALL,
+    samples: {
+      clients: "NG",
+      suppliers: "NG",
+      retail_partners: "NG",
+      stylists: "NG",
+      subscribers: "NG",
+    },
     note: "ISO 2-letter country code.",
     clean: (v) => (str(v) ? String(v).trim().toUpperCase() : undefined),
   },
@@ -190,34 +275,43 @@ const FIELDS = [
     header: "Instagram Handle",
     field: "instagram_handle",
     group: "contact",
-    client: true,
-    supplier: false,
-    clientSample: "adaeze.styles",
+    type: "handle",
+    kinds: ["clients", "stylists", "retail_partners"],
+    samples: {
+      clients: "adaeze.styles",
+      stylists: "ngozi.hair",
+      retail_partners: "bloombeauty",
+    },
   },
   {
     header: "TikTok Handle",
     field: "tiktok_handle",
     group: "contact",
-    client: true,
-    supplier: false,
-    clientSample: "",
+    type: "handle",
+    kinds: PERSONS,
+    samples: {},
   },
   {
     header: "Facebook Handle",
     field: "facebook_handle",
     group: "contact",
-    client: true,
-    supplier: false,
-    clientSample: "",
+    type: "handle",
+    kinds: ["clients", "stylists", "retail_partners"],
+    samples: {},
   },
   {
     header: "Priority",
     field: "priority_level",
     group: "contact",
-    client: true,
-    supplier: true,
-    clientSample: "regular",
-    supplierSample: "regular",
+    type: "enum",
+    options: ["vip", "regular", "new"],
+    kinds: ["clients", "suppliers", "retail_partners", "stylists"],
+    samples: {
+      clients: "regular",
+      suppliers: "regular",
+      retail_partners: "regular",
+      stylists: "regular",
+    },
     note: "One of: vip, regular, new.",
     clean: lc,
   },
@@ -225,9 +319,13 @@ const FIELDS = [
     header: "Source",
     field: "source",
     group: "contact",
-    client: true,
-    supplier: false,
-    clientSample: "walk_in",
+    type: "text",
+    kinds: ["clients", "stylists", "subscribers"],
+    samples: {
+      clients: "walk_in",
+      stylists: "referral",
+      subscribers: "website",
+    },
     note: "e.g. walk_in, social_media, referral, website, event, storefront.",
     clean: source,
   },
@@ -235,80 +333,138 @@ const FIELDS = [
     header: "Address Line 1",
     field: "line1",
     group: "address",
-    client: true,
-    supplier: true,
-    clientSample: "12 Admiralty Way",
-    supplierSample: "5 Balogun Market Road",
+    type: "text",
+    kinds: WITH_ADDRESS,
+    samples: {
+      clients: "12 Admiralty Way",
+      suppliers: "5 Balogun Market Road",
+      retail_partners: "20 Allen Avenue",
+      stylists: "8 Freedom Way",
+    },
     note: "Optional. Fill to also save a default delivery address.",
   },
   {
     header: "Area",
     field: "area",
     group: "address",
-    client: true,
-    supplier: true,
-    clientSample: "Lekki Phase 1",
-    supplierSample: "Lagos Island",
+    type: "text",
+    kinds: WITH_ADDRESS,
+    samples: {
+      clients: "Lekki Phase 1",
+      suppliers: "Lagos Island",
+      retail_partners: "Ikeja",
+      stylists: "Lekki",
+    },
   },
   {
     header: "City",
     field: "city",
     group: "address",
-    client: true,
-    supplier: true,
-    clientSample: "Lagos",
-    supplierSample: "Lagos",
+    type: "text",
+    kinds: WITH_ADDRESS,
+    samples: {
+      clients: "Lagos",
+      suppliers: "Lagos",
+      retail_partners: "Lagos",
+      stylists: "Lagos",
+    },
   },
   {
     header: "State",
     field: "state",
     group: "address",
-    client: true,
-    supplier: true,
-    clientSample: "Lagos",
-    supplierSample: "Lagos",
+    type: "text",
+    kinds: WITH_ADDRESS,
+    samples: {
+      clients: "Lagos",
+      suppliers: "Lagos",
+      retail_partners: "Lagos",
+      stylists: "Lagos",
+    },
   },
   {
     header: "Country",
     field: "country",
     group: "address",
-    client: true,
-    supplier: true,
-    clientSample: "Nigeria",
-    supplierSample: "Nigeria",
+    type: "text",
+    kinds: WITH_ADDRESS,
+    samples: {
+      clients: "Nigeria",
+      suppliers: "Nigeria",
+      retail_partners: "Nigeria",
+      stylists: "Nigeria",
+    },
   },
   {
     header: "Notes",
     field: "notes",
     group: "contact",
-    client: true,
-    supplier: true,
-    clientSample: "Prefers bob units.",
-    supplierSample: "Bulk raw-hair supplier.",
+    type: "text",
+    kinds: ALL,
+    samples: {
+      clients: "Prefers bob units.",
+      suppliers: "Bulk raw-hair supplier.",
+      retail_partners: "Stocks our closures.",
+      stylists: "Specialises in frontals.",
+      subscribers: "Signed up at the pop-up.",
+    },
   },
 ];
 
 const BY_HEADER = new Map(FIELDS.map((f) => [f.header, f]));
 
-/** Normalise the requested kind to a stable token. Defaults to clients. */
+/** The sample cell value for a field in a given kind (empty string if none). */
+function sampleFor(field, kind) {
+  return (field.samples && field.samples[kind]) ?? "";
+}
+
+/**
+ * Normalise a requested kind to a stable token. Accepts singular/plural and a
+ * few aliases (contact_type values, "retail", "stylist"). Unknown → clients.
+ * Returns the export pseudo-kind "all" verbatim.
+ */
 function normaliseKind(kind) {
   const k = lc(kind);
-  if (k === "supplier" || k === "suppliers") return "suppliers";
+  if (!k) return "clients";
   if (k === "all") return "all";
+  if (["supplier", "suppliers"].includes(k)) return "suppliers";
+  if (
+    [
+      "retail_partner",
+      "retail_partners",
+      "retail partner",
+      "retail partners",
+      "retail",
+    ].includes(k)
+  )
+    return "retail_partners";
+  if (
+    [
+      "stylist",
+      "stylists",
+      "stylist_partner",
+      "stylist_partners",
+      "stylist partner",
+      "stylist partners",
+    ].includes(k)
+  )
+    return "stylists";
+  if (["subscriber", "subscribers"].includes(k)) return "subscribers";
+  if (["client", "clients", "customer", "customers"].includes(k))
+    return "clients";
   return "clients";
 }
 
-const KIND_TYPE = { clients: "customer", suppliers: "supplier" };
-const KIND_LABEL = {
-  clients: "Clients",
-  suppliers: "Suppliers",
-  all: "Contacts",
-};
+/** Resolve to a concrete IMPORT kind (never "all") — the default is clients. */
+function importKind(kind) {
+  const k = normaliseKind(kind);
+  return k === "all" ? "clients" : k;
+}
 
-/** Column list for a template ("clients" | "suppliers"). */
+/** Column list for a template / import ("clients" | "suppliers" | …). */
 function templateColumns(kind) {
-  const flag = kind === "suppliers" ? "supplier" : "client";
-  return FIELDS.filter((f) => f[flag]).map((f) => ({
+  const k = importKind(kind);
+  return FIELDS.filter((f) => f.kinds.includes(k)).map((f) => ({
     header: f.header,
     key: f.header,
     note: f.note,
@@ -317,20 +473,41 @@ function templateColumns(kind) {
 
 /** Sample row (header→value) for a template. */
 function sampleRow(kind) {
-  const sampleKey = kind === "suppliers" ? "supplierSample" : "clientSample";
+  const k = importKind(kind);
   const row = {};
   for (const f of FIELDS) {
-    if (!f[kind === "suppliers" ? "supplier" : "client"]) continue;
-    row[f.header] = f[sampleKey] ?? "";
+    if (!f.kinds.includes(k)) continue;
+    row[f.header] = sampleFor(f, k);
   }
   return row;
+}
+
+/**
+ * Column spec served to the admin app (GET /contacts/import-spec). Drives the
+ * browser preview: expected-columns chips, per-row required/channel validation,
+ * and enum hints — so the preview matches the server without hard-coding a copy.
+ */
+function importSpec(kind) {
+  const k = importKind(kind);
+  const columns = FIELDS.filter((f) => f.kinds.includes(k)).map((f) => ({
+    header: f.header,
+    field: f.field,
+    group: f.group,
+    type: f.type,
+    required: !!f.required,
+    channel: !!f.channel,
+    options: f.options,
+    note: f.note,
+    sample: sampleFor(f, k),
+  }));
+  return { kind: k, label: KINDS[k].label, columns };
 }
 
 // ════════════════════════════════════════════════════════════
 // Template
 // ════════════════════════════════════════════════════════════
 function template({ kind }) {
-  const k = normaliseKind(kind) === "suppliers" ? "suppliers" : "clients";
+  const k = importKind(kind);
   return buildCsv({ columns: templateColumns(k), rows: [sampleRow(k)] });
 }
 
@@ -339,6 +516,7 @@ function template({ kind }) {
 // ════════════════════════════════════════════════════════════
 /** Turn one header-keyed sheet row into validated { contact, address }. */
 function rowToInputs(raw, kind) {
+  const k = importKind(kind);
   const contact = {};
   const address = {};
   for (const [header, value] of Object.entries(raw)) {
@@ -349,7 +527,7 @@ function rowToInputs(raw, kind) {
     if (spec.group === "address") address[spec.field] = cleaned;
     else contact[spec.field] = cleaned;
   }
-  contact.contact_type = [KIND_TYPE[kind] ?? "customer"];
+  contact.contact_type = [KIND_TYPE[k] ?? "customer"];
 
   const parsedContact = contactCreateChecked.parse(contact); // throws → reported per row
   let parsedAddress = null;
@@ -365,48 +543,55 @@ function rowToInputs(raw, kind) {
 
 const MAX_IMPORT_ROWS = 5000;
 
-async function importContacts({
+/**
+ * Shared processor for both ingest paths. `rows` is an array of header-keyed
+ * objects (exactly what parseUpload yields and what the browser preview posts).
+ */
+async function importParsedRows({
   brand,
   user,
   request_id,
   kind,
-  buffer,
-  filename,
+  rows,
+  allowedTypes = null,
 }) {
-  const k = normaliseKind(kind) === "suppliers" ? "suppliers" : "clients";
-  const rows = await parseUpload({ buffer, filename });
+  const k = importKind(kind);
+  // Contact-type visibility (contacts §6.12): a role that can't see a kind may
+  // not bulk-create it either (it would import contacts it then can't view).
+  if (Array.isArray(allowedTypes) && !allowedTypes.includes(KIND_TYPE[k])) {
+    throw new PermissionDeniedError(
+      `You don't have access to import ${KIND_LABEL[k].toLowerCase()}`,
+    );
+  }
 
+  const list = Array.isArray(rows) ? rows : [];
   const results = [];
   let created = 0;
   let duplicates = 0;
 
-  if (rows.length > MAX_IMPORT_ROWS) {
+  if (list.length > MAX_IMPORT_ROWS) {
     return {
       kind: k,
       created,
       duplicates,
-      total: rows.length,
+      total: list.length,
       results: [
         {
           row: 0,
           status: "error",
-          reason: `File has ${rows.length} rows; the import limit is ${MAX_IMPORT_ROWS}. Split it into smaller files.`,
+          reason: `File has ${list.length} rows; the import limit is ${MAX_IMPORT_ROWS}. Split it into smaller files.`,
         },
       ],
     };
   }
 
-  for (let i = 0; i < rows.length; i++) {
+  for (let i = 0; i < list.length; i++) {
     const line = i + 2; // +1 header row, +1 to be 1-based like the spreadsheet
     let input;
     try {
-      input = rowToInputs(rows[i], k);
+      input = rowToInputs(list[i], k);
     } catch (err) {
-      results.push({
-        row: line,
-        status: "error",
-        reason: zodMessage(err),
-      });
+      results.push({ row: line, status: "error", reason: zodMessage(err) });
       continue;
     }
 
@@ -471,7 +656,28 @@ async function importContacts({
     }
   }
 
-  return { kind: k, created, duplicates, total: rows.length, results };
+  return { kind: k, created, duplicates, total: list.length, results };
+}
+
+/** File ingest path (multipart) — parse the upload, then run the processor. */
+async function importContacts({
+  brand,
+  user,
+  request_id,
+  kind,
+  buffer,
+  filename,
+  allowedTypes = null,
+}) {
+  const rows = await parseUpload({ buffer, filename });
+  return importParsedRows({
+    brand,
+    user,
+    request_id,
+    kind,
+    rows,
+    allowedTypes,
+  });
 }
 
 /** Flatten a Zod error into a short, row-friendly message. */
@@ -527,9 +733,14 @@ function exportFilename({ kind, from, to }) {
 module.exports = {
   template,
   importContacts,
+  importParsedRows,
+  importSpec,
   exportContacts,
   exportFilename,
   normaliseKind,
+  importKind,
+  KINDS,
+  KIND_LABEL,
   // Exported for unit tests (column fidelity + row mapping).
   FIELDS,
   BY_HEADER,

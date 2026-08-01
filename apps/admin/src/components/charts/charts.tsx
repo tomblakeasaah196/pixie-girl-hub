@@ -29,6 +29,7 @@ import {
   YAxis,
 } from "recharts";
 import type { ChartSeries, ChartSlice, TileFormat } from "@/lib/dashboards-api";
+import { useIsPhone } from "@/hooks/useMediaQuery";
 import {
   AXIS_PROPS,
   GlassTooltip,
@@ -212,6 +213,7 @@ export function BarsChart({
 }) {
   const palette = useChartPalette();
   const reduced = useReducedMotion();
+  const isPhone = useIsPhone();
 
   if (series?.length) {
     const rows = pivotSeries(series);
@@ -273,9 +275,17 @@ export function BarsChart({
           {...AXIS_PROPS}
           type="category"
           dataKey="label"
-          width={118}
+          width={isPhone ? 84 : 118}
           tick={{ fill: palette.tick }}
-          tickFormatter={(v: string) => (v.length > 16 ? `${v.slice(0, 15)}…` : v)}
+          tickFormatter={(v: string) =>
+            isPhone
+              ? v.length > 11
+                ? `${v.slice(0, 10)}…`
+                : v
+              : v.length > 16
+                ? `${v.slice(0, 15)}…`
+                : v
+          }
         />
         <Tooltip cursor={{ fill: palette.grid }} content={<GlassTooltip format={format} />} />
         <Bar

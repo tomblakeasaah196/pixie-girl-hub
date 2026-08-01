@@ -2,7 +2,7 @@
   "name": "@pixie-girl-hub/landing",
   "version": "0.1.0",
   "private": true,
-  "description": "Pixie Girl Hub — public sales landing page (Next.js 14 App Router). Deployed to the per-brand sales subdomain (sales.pixiegirlglobal.com / sales.thefaitlynbrand.com). Reads its brand from the Host header and calls /api/public/sale/:slug on the Hub backend.",
+  "description": "Pixie Girl Hub — public sales landing page (Next.js 14 App Router). Deployed to the per-brand sales subdomain (sales.pixiegirlglobal.com / sales.faitlynhair.com). Reads its brand from the Host header and calls /api/public/sale/:slug on the Hub backend.",
   "scripts": {
     "dev": "next dev -p 3001",
     "build": "next build",

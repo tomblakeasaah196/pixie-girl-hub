@@ -100,9 +100,17 @@ async function findById({ client, brand, id }) {
     `SELECT i.*, c.display_name AS contact_name, c.email AS contact_email,
             c.primary_phone AS contact_phone,
             addr.line1 AS cust_line1, addr.line2 AS cust_line2,
-            addr.area AS cust_area, addr.city AS cust_city, addr.state AS cust_state
+            addr.area AS cust_area, addr.city AS cust_city, addr.state AS cust_state,
+            so.is_preorder, so.preorder_ready_by,
+            so.preorder_min_weeks, so.preorder_max_weeks,
+            so.public_tracking_token,
+            -- The order this invoice bills for, so the drawer can name it and
+            -- link straight through instead of stranding staff on an invoice
+            -- number with no way back to the order.
+            so.order_number, so.status AS order_status
        FROM ${t(brand, "invoices")} i
        LEFT JOIN shared.contacts c ON c.contact_id = i.contact_id
+       LEFT JOIN ${t(brand, "sales_orders")} so ON so.order_id = i.order_id
        LEFT JOIN LATERAL (
          SELECT line1, line2, area, city, state
            FROM shared.contact_addresses a
@@ -118,8 +126,22 @@ async function findById({ client, brand, id }) {
     `SELECT * FROM ${t(brand, "invoice_lines")} WHERE invoice_id = $1 ORDER BY display_order`,
     [id],
   );
+  // Name whoever applied each payment (same resolution as the sales ledger:
+  // staff display name via their profile's contact, email as the fallback).
+  // A NULL applied_by means it landed through the gateway, not a person.
   const { rows: payments } = await ex(client)(
-    `SELECT * FROM ${t(brand, "invoice_payments")} WHERE invoice_id = $1 ORDER BY applied_at`,
+    `SELECT ip.*, COALESCE(ac.display_name, au.email) AS applied_by_name,
+            sop.payment_number, sop.method AS payment_method,
+            sop.payment_path, sop.manual_bank_name,
+            sop.manual_bank_transaction_id
+       FROM ${t(brand, "invoice_payments")} ip
+       LEFT JOIN shared.users au ON au.user_id = ip.applied_by
+       LEFT JOIN shared.staff_profiles asp ON asp.profile_id = au.staff_profile_id
+       LEFT JOIN shared.contacts ac ON ac.contact_id = asp.contact_id
+       LEFT JOIN ${t(brand, "sales_order_payments")} sop
+              ON sop.payment_id = ip.sales_order_payment_id
+      WHERE ip.invoice_id = $1
+      ORDER BY ip.applied_at`,
     [id],
   );
   return { ...rows[0], lines, payments };
@@ -166,9 +188,11 @@ async function listInvoices({
     params,
   );
   const { rows } = await run(
-    `SELECT i.*, c.display_name AS contact_name
+    `SELECT i.*, c.display_name AS contact_name,
+            o.order_number, o.status AS order_status
        FROM ${t(brand, "invoices")} i
        LEFT JOIN shared.contacts c ON c.contact_id = i.contact_id
+       LEFT JOIN ${t(brand, "sales_orders")} o ON o.order_id = i.order_id
        ${w}
       ORDER BY i.issue_date DESC, i.created_at DESC LIMIT $${i++} OFFSET $${i++}`,
     [...params, page_size, offset],

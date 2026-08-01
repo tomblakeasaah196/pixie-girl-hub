@@ -145,6 +145,30 @@ export function GlobalView({ payload }: { payload: GlobalPayload }) {
         rows={payload.businesses}
         rowKey={(b) => b.brand}
         toolbar={<span className="micro">Side by Side</span>}
+        mobileCard={(b) => (
+          <div className="space-y-1.5">
+            <div className="font-medium text-[13px]">{b.display_name}</div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11.5px]">
+              <span className="text-text-faint">Revenue</span>
+              <span className="font-mono tabular-nums text-right">
+                {fmtTileValue(b.revenue, "money")}
+                {b.revenue_delta_pct !== null && (
+                  <span className={`ml-1 ${b.revenue_delta_pct >= 0 ? "text-success" : "text-danger"}`}>
+                    {b.revenue_delta_pct >= 0 ? "+" : ""}{b.revenue_delta_pct.toFixed(1)}%
+                  </span>
+                )}
+              </span>
+              <span className="text-text-faint">Orders</span>
+              <span className="tabular-nums text-right">{b.orders.toLocaleString()}</span>
+              <span className="text-text-faint">AOV</span>
+              <span className="font-mono tabular-nums text-right">{fmtTileValue(b.aov, "money")}</span>
+              <span className="text-text-faint">Cash Collected</span>
+              <span className="font-mono tabular-nums text-right">{fmtTileValue(b.cash_collected, "money")}</span>
+              <span className="text-text-faint">New Customers</span>
+              <span className="tabular-nums text-right">{b.new_customers.toLocaleString()}</span>
+            </div>
+          </div>
+        )}
         empty={{
           icon: <Building2 className="w-6 h-6" />,
           title: "No businesses",

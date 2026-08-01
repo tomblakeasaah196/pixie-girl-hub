@@ -1,0 +1,121 @@
+-- ============================================================
+-- TEMPLATE 000088 — Catalogue: one-hop size-adjacency "rewig" fallback.
+-- Pixie Girl Hub · JBS Praxis · V2.2
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to NEW brands by bootstrap (after 000087) and to EXISTING brands by
+-- repair-business-schema.js. NO CREATE TABLE here on purpose: the runner uses
+-- the first CREATE TABLE as a skip-sentinel, so this file is re-run every
+-- repair — safe because every statement is idempotent / guarded.
+--
+-- WHY (owner directive, July 2026):
+--   A base wig unit can be "rewigged" (cut down or built up) to serve ONE
+--   size adjacent to its own — a Medium base can fill a Small or a Large
+--   order, never further. Today every styled variant is hard-pinned to
+--   exactly one base (000045/000049), so a Medium variant reads "preorder"
+--   the instant its OWN base hits zero even when an adjacent-size sibling
+--   base sits in stock. This migration gives bases a queryable "family"
+--   (same texture/lace/colour, only size differs) + a canonical size, so
+--   availability.js can sum in eligible sibling stock exactly one tier away
+--   — folded into the SAME styling job, no separate service or SKU.
+--
+-- Altered:
+--   products          — size_code (canonical tier), base_family_id (sibling
+--                        group), rewig_eligible (per-base opt-out)
+--   styled_products   — rewig_override (per-listing override of the brand mode)
+--   catalogue_config  — rewig_enabled / rewig_mode / rewig_direction
+-- ============================================================
+
+-- ── 1. Base product: canonical size + family grouping + eligibility ──
+-- size_code is the base's OWN tier on the same S/M/L/XL ladder styled variants
+-- use, so "one size up/down" is `styled_size_tiers.display_order ± 1` — no new
+-- vocabulary. base_family_id is a shared, otherwise-meaningless group key: every
+-- size-sibling of one texture/lace/colour base carries the same value. Nullable
+-- — most base rows (accessories, non-sized products) never get either.
+ALTER TABLE {{BUSINESS}}.products
+  ADD COLUMN IF NOT EXISTS size_code TEXT
+    REFERENCES {{BUSINESS}}.styled_size_tiers (size_code) ON DELETE SET NULL;
+ALTER TABLE {{BUSINESS}}.products
+  ADD COLUMN IF NOT EXISTS base_family_id UUID;
+-- Per-base opt-out: a specific base can be excluded from ever donating or
+-- receiving a rewig substitution (e.g. a construction that doesn't resize
+-- well), independent of the brand-wide mode. Default true = every base is
+-- eligible out of the box, matching the "automatic" default mode below.
+ALTER TABLE {{BUSINESS}}.products
+  ADD COLUMN IF NOT EXISTS rewig_eligible BOOLEAN NOT NULL DEFAULT true;
+
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_products_rewig_family
+  ON {{BUSINESS}}.products (base_family_id, size_code)
+  WHERE base_family_id IS NOT NULL;
+
+-- ── 2. Styled product: per-listing override of the brand-wide mode ──
+-- NULL = follow the brand's catalogue_config.rewig_mode. 'enabled'/'disabled'
+-- always win regardless of mode — lets one listing opt out (or in) without
+-- flipping the global switch. Mirrors the existing preorder_excluded pattern.
+ALTER TABLE {{BUSINESS}}.styled_products
+  ADD COLUMN IF NOT EXISTS rewig_override TEXT
+    CHECK (rewig_override IS NULL OR rewig_override IN ('enabled', 'disabled'));
+
+-- ── 3. Brand-wide rewig settings (Catalogue → Config modal) ──
+-- rewig_enabled: master switch. rewig_mode: 'automatic' = every styled
+-- listing gets the fallback unless explicitly excluded; 'opt_in' = no listing
+-- gets it unless explicitly included (styled_products.rewig_override). Both
+-- read/write from the same modal as pre-orders/lace/size, no code change to
+-- adjust later. rewig_direction only orders WHICH sibling is drawn from first
+-- when more than one qualifies — it never changes the total reported count.
+ALTER TABLE {{BUSINESS}}.catalogue_config
+  ADD COLUMN IF NOT EXISTS rewig_enabled BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE {{BUSINESS}}.catalogue_config
+  ADD COLUMN IF NOT EXISTS rewig_mode TEXT NOT NULL DEFAULT 'automatic'
+    CHECK (rewig_mode IN ('automatic', 'opt_in'));
+ALTER TABLE {{BUSINESS}}.catalogue_config
+  ADD COLUMN IF NOT EXISTS rewig_direction TEXT NOT NULL DEFAULT 'down_first'
+    CHECK (rewig_direction IN ('down_first', 'up_first', 'no_preference'));
+
+-- ── 4. Backfill from the existing "{family} - {size label}" naming rule ──
+-- The auto-map-bases feature (styled_variants.service.js bulkCreateVariants)
+-- already relies on sibling bases being named "{family} - Small/Medium/…" —
+-- this backfill formalises that same convention into size_code + a shared
+-- base_family_id, without requiring any renaming.
+--
+-- 4a. size_code: match a trailing " - {label}" against an active tier's label.
+UPDATE {{BUSINESS}}.products p
+   SET size_code = t.size_code
+  FROM {{BUSINESS}}.styled_size_tiers t
+ WHERE p.size_code IS NULL
+   AND t.is_active = true
+   AND p.name ILIKE '%' || ' - ' || t.label
+   AND length(p.name) > length(t.label) + 3;
+
+-- 4b. base_family_id: group by the name with that suffix stripped, so every
+-- sibling size of the same base shares one id. Only touches rows 4a just
+-- matched (size_code newly set, family not yet assigned).
+WITH fam AS (
+  SELECT p.product_id,
+         trim(regexp_replace(p.name, '\s*-\s*' || t.label || '\s*$', '', 'i')) AS family_key
+    FROM {{BUSINESS}}.products p
+    JOIN {{BUSINESS}}.styled_size_tiers t ON t.size_code = p.size_code
+   WHERE p.base_family_id IS NULL
+     AND p.size_code IS NOT NULL
+),
+grp AS (
+  SELECT family_key, gen_random_uuid() AS family_id
+    FROM fam
+   GROUP BY family_key
+)
+UPDATE {{BUSINESS}}.products p
+   SET base_family_id = g.family_id
+  FROM fam f
+  JOIN grp g ON g.family_key = f.family_key
+ WHERE p.product_id = f.product_id;
+
+-- ============================================================
+-- Verify (after substitution):
+--   SELECT column_name FROM information_schema.columns
+--     WHERE table_schema = '{{BUSINESS}}' AND table_name = 'products'
+--       AND column_name IN ('size_code','base_family_id','rewig_eligible');  -- 3 rows
+--   SELECT rewig_enabled, rewig_mode, rewig_direction
+--     FROM {{BUSINESS}}.catalogue_config;                       -- true, automatic, down_first
+--   SELECT base_family_id, count(*) FROM {{BUSINESS}}.products
+--    WHERE base_family_id IS NOT NULL GROUP BY 1 HAVING count(*) > 1;  -- sibling groups
+-- ============================================================

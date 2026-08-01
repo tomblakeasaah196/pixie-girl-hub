@@ -97,6 +97,7 @@ export interface AttendanceDay {
   clock_in_lng: number | null;
   last_clock_out_at: string | null;
   early_leave_minutes: number;
+  overtime_minutes: number;
   clock_out_address: string | null;
   clock_out_lat: number | null;
   clock_out_lng: number | null;
@@ -123,6 +124,9 @@ export interface AttendanceInsights {
   at_risk_days: number;
   punctuality_pct: number;
   avg_late_minutes: number;
+  overtime_minutes: number;
+  overtime_days: number;
+  avg_overtime_minutes: number;
   earliest_arrival: ArrivalPoint | null;
   latest_arrival: ArrivalPoint | null;
   earliest_departure: ArrivalPoint | null;
@@ -167,6 +171,7 @@ export interface MyHr {
   schedule: {
     work_schedule: WorkSchedule;
     expected_start_time: string | null;
+    expected_end_time: string | null;
     grace_minutes: number;
   };
   earnings: MyHrEarnings;
@@ -288,6 +293,7 @@ export interface HrSettings {
   default_grace_minutes: number;
   default_expected_start_time: string | null;
   default_expected_end_time: string | null;
+  clockout_reminder_enabled: boolean;
   working_days: string[];
   leave_escalation_days: number;
   earnings_tracker_enabled: boolean;
@@ -782,6 +788,123 @@ export const listPayslips = (runId: string) =>
 export const payslipPdf = (payslipId: string) =>
   api.post<import("./documents-api").DocumentRow>(`/hr/payslips/${payslipId}/pdf`);
 
+// ── Payslip breakdown (per-employee review + waive/uphold) ──
+/** The query the reconciler raised for a flagged day, and how it went. */
+export interface BreakdownQuery {
+  query_id: string;
+  query_type: string;
+  severity: "low" | "normal" | "high";
+  subject: string;
+  details: string | null;
+  source: "auto" | "manual";
+  status: "open" | "responded" | "waived" | "upheld" | "closed";
+  employee_response: string | null;
+  responded_at: string | null;
+  resolution: "waived" | "upheld" | null;
+  resolution_note: string | null;
+  resolved_at: string | null;
+  resolved_by_name: string | null;
+}
+
+/** One reviewable attendance line — the unit HR waives or upholds. */
+export interface BreakdownAttendanceLine {
+  day_id: string;
+  work_date: string;
+  status: string;
+  reason: string;
+  minutes_late: number;
+  expected_start_time: string | null;
+  first_clock_in_at: string | null;
+  is_offsite: boolean;
+  clock_in_address: string | null;
+  daily_rate_ngn: number;
+  deduction_pct: number;
+  /** What the day is worth if upheld. */
+  at_stake_ngn: number;
+  /** What it costs the employee as things stand (0 once waived). */
+  applied_ngn: number;
+  justified: boolean;
+  decision: "waived" | "upheld" | "pending";
+  query: BreakdownQuery | null;
+}
+
+/** A commission or bonus riding this payslip. */
+export interface BreakdownAddition {
+  kind: "commission" | "bonus";
+  id: string;
+  reference: string;
+  label: string;
+  detail: string | null;
+  amount_ngn: number;
+  status: string;
+  dated: string;
+  order_id?: string | null;
+  settled: boolean;
+}
+
+export interface BreakdownTotals {
+  gross_pay_ngn: number;
+  attendance_on_slip_ngn: number;
+  attendance_live_ngn: number;
+  attendance_waived_ngn: number;
+  total_deductions_ngn: number;
+  projected_total_deductions_ngn: number;
+  net_pay_ngn: number;
+  projected_net_pay_ngn: number;
+  /** Non-zero → decisions were made after the slip was calculated. */
+  drift_ngn: number;
+  stale: boolean;
+}
+
+export interface PayslipBreakdown {
+  payslip: Payslip & {
+    employee_number?: string | null;
+    department_snapshot?: string | null;
+    period_start?: string | null;
+    period_end?: string | null;
+    run_number?: string | null;
+    days_worked?: number | null;
+    working_days_in_period?: number | null;
+    base_salary_ngn?: number;
+    commission_ngn?: number;
+    bonus_ngn?: number;
+    allowances_ngn?: number;
+    paye_ngn?: number;
+    pension_employee_ngn?: number;
+    nhf_ngn?: number;
+    loan_repayment_ngn?: number;
+    advance_recovery_ngn?: number;
+    other_deductions_ngn?: number;
+    lines?: {
+      line_id: string;
+      line_type: string;
+      description: string;
+      amount_ngn: number;
+    }[];
+  };
+  attendance: BreakdownAttendanceLine[];
+  additions: BreakdownAddition[];
+  additions_total_ngn: number;
+  totals: BreakdownTotals;
+  /** False once the run is approved/paid — decisions are locked. */
+  editable: boolean;
+  run_status: string | null;
+}
+
+export const payslipBreakdown = (payslipId: string) =>
+  api.get<PayslipBreakdown>(`/hr/payslips/${payslipId}/breakdown`);
+export const resolvePayslipAttendance = (
+  payslipId: string,
+  dayId: string,
+  body: { resolution: "waived" | "upheld"; note?: string },
+) =>
+  api.post<PayslipBreakdown>(
+    `/hr/payslips/${payslipId}/attendance/${dayId}/resolve`,
+    body,
+  );
+export const recalculatePayslip = (payslipId: string) =>
+  api.post<PayslipBreakdown>(`/hr/payslips/${payslipId}/recalculate`);
+
 // ── Performance appraisal (cycles, KPIs, reviews) ──────────
 export interface PerfCycle {
   cycle_id: string;
@@ -994,3 +1117,86 @@ function qs(params: Record<string, string>): string {
   if (!entries.length) return "";
   return "?" + entries.map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
 }
+
+// ── Performance → Insights (Sales exec of the month + Attendance) ──
+export interface Period {
+  from: string;
+  to: string;
+}
+export interface SalesExecRep {
+  rank: number;
+  user_id: string;
+  staff_name: string;
+  closed_count: number;
+  total_ngn: string;
+  share_pct: number;
+}
+export interface ChannelMixRow {
+  channel: string;
+  label: string;
+  self_service: boolean;
+  closed_count: number;
+  attributed_count: number;
+  total_ngn: string;
+  share_pct: number;
+}
+export interface SalesExecReport {
+  period: Period;
+  winner: SalesExecRep | null;
+  leaderboard: SalesExecRep[];
+  unattributed: { closed_count: number; total_ngn: string; share_pct: number; label: string };
+  channel_mix: ChannelMixRow[];
+  totals: {
+    total_closed: number;
+    attributed_closed: number;
+    unattributed_closed: number;
+    total_ngn: string;
+    attributed_ngn: string;
+    rep_count: number;
+  };
+  compare:
+    | { period: Period; total_closed: number; total_ngn: string; closed_delta: number; ngn_delta: string }
+    | null;
+}
+export interface AttendanceStaffRow {
+  profile_id: string;
+  staff_name: string;
+  present_days: number;
+  late_days: number;
+  absent_days: number;
+  leave_days: number;
+  offsite_days: number;
+  total_minutes_late: number;
+  hours_worked: number;
+  on_time_pct: number | null;
+}
+export interface AttendanceInsightReport {
+  period: Period;
+  staff: AttendanceStaffRow[];
+  totals: {
+    present_days: number;
+    late_days: number;
+    absent_days: number;
+    leave_days: number;
+    offsite_days: number;
+    hours_worked: number;
+    on_time_pct: number | null;
+    staff_count: number;
+  };
+}
+
+export const insightsSalesReport = (params: Record<string, string> = {}) =>
+  api.get<SalesExecReport>(`/hr/insights/sales-reps${qs(params)}`);
+export const insightsAttendance = (params: Record<string, string> = {}) =>
+  api.get<AttendanceInsightReport>(`/hr/insights/attendance${qs(params)}`);
+export const downloadInsightsExcel = (params: Record<string, string> = {}) =>
+  api.download(`/hr/insights/export${qs(params)}`, "performance-insights.xlsx");
+export const insightsWinnerPdf = (params: Record<string, string> = {}) =>
+  api.post<{ document_id: string; title: string; winner: SalesExecRep | null }>(
+    `/hr/insights/winner-pdf${qs(params)}`,
+  );
+export const announceWinner = (body: { from?: string; to?: string }) =>
+  api.post<{ winner: SalesExecRep | null; notified: number; period: Period }>(
+    `/hr/insights/announce-winner`,
+    body,
+  );

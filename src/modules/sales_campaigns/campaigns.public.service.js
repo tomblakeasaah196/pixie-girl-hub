@@ -27,6 +27,7 @@ const brandUrls = require("../../utils/brand-urls");
 const contactsRepo = require("../../shared/contacts/contacts.repo");
 const styledRepo = require("../catalogue/styled.repo");
 const styledVariantsRepo = require("../catalogue/styled_variants.repo");
+const rewigService = require("../catalogue/rewig.service");
 const { transaction, query } = require("../../config/database");
 const { money, toCurrencyString } = require("../../utils/money");
 const { NotFoundError, AppError } = require("../../utils/errors");
@@ -621,6 +622,23 @@ async function resolveBundleForCheckout({
           product_id: bi.styled_base_product_id,
         });
       }
+      // Rewig adjacency (000088): draw from a size-adjacent sibling base when
+      // this one's short — same fallback the storefront cart applies.
+      if (baseVariantId && bi.styled_base_product_id) {
+        const donorProductId = await rewigService.pickRewigDonorProductId({
+          brand,
+          styled: { rewig_override: bi.styled_rewig_override },
+          originProductId: bi.styled_base_product_id,
+          quantity: compQty * copies,
+        });
+        if (donorProductId) {
+          const donorVariantId = await defaultVariantId({
+            brand,
+            product_id: donorProductId,
+          });
+          if (donorVariantId) baseVariantId = donorVariantId;
+        }
+      }
       if (!baseVariantId) {
         throw new AppError(
           "BUNDLE_COMPONENT_UNAVAILABLE",
@@ -966,6 +984,7 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
                 sv.base_product_id AS sv_base_product_id,
                 sp.styled_id, sp.name AS styled_name, sp.retail_price_ngn,
                 sp.base_variant_id, sp.base_product_id AS sp_base_product_id,
+                sp.rewig_override,
                 c.name AS colour_name, c.premium_ngn AS colour_premium,
                 st.label AS size_label, st.premium_ngn AS size_premium,
                 ls.premium_ngn AS lace_premium
@@ -1001,20 +1020,37 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
         );
       }
 
-      // Resolve a base variant for stock/fulfilment.
-      let baseVariantId = sv.base_variant_id;
-      if (!baseVariantId) {
-        const baseProductId = sv.sv_base_product_id || sv.sp_base_product_id;
-        if (baseProductId) {
-          const { rows: bv } = await query(
-            `SELECT variant_id FROM ${resolvedBrand}.product_variants
-               WHERE product_id = $1 AND is_active = true
-               ORDER BY is_default DESC, display_order ASC, created_at ASC
-               LIMIT 1`,
-            [baseProductId],
-          );
-          baseVariantId = bv[0] ? bv[0].variant_id : null;
-        }
+      // Resolve a base variant for stock/fulfilment. The picked colour×size
+      // variant's OWN base wins when it has one (a size repointed to its
+      // per-size base SKU deducts from that SKU); else the styled-level
+      // base_variant_id pin, else the seed base's default variant — the same
+      // order the availability reads use (styledStockSql).
+      let baseVariantId = null;
+      const ownBase =
+        sv.sv_base_product_id &&
+        sv.sv_base_product_id !== sv.sp_base_product_id
+          ? sv.sv_base_product_id
+          : null;
+      if (ownBase) {
+        const { rows: bv } = await query(
+          `SELECT variant_id FROM ${resolvedBrand}.product_variants
+             WHERE product_id = $1 AND is_active = true
+             ORDER BY is_default DESC, display_order ASC, created_at ASC
+             LIMIT 1`,
+          [ownBase],
+        );
+        baseVariantId = bv[0] ? bv[0].variant_id : null;
+      }
+      if (!baseVariantId) baseVariantId = sv.base_variant_id;
+      if (!baseVariantId && sv.sp_base_product_id) {
+        const { rows: bv } = await query(
+          `SELECT variant_id FROM ${resolvedBrand}.product_variants
+             WHERE product_id = $1 AND is_active = true
+             ORDER BY is_default DESC, display_order ASC, created_at ASC
+             LIMIT 1`,
+          [sv.sp_base_product_id],
+        );
+        baseVariantId = bv[0] ? bv[0].variant_id : null;
       }
       if (!baseVariantId) {
         throw new AppError(
@@ -1022,6 +1058,25 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
           "This item isn’t available for purchase right now.",
           409,
         );
+      }
+      // Rewig adjacency (000088): the resolution above is deterministic, not
+      // stock-aware — if it's short, draw from a size-adjacent sibling base
+      // instead so the reservation in salesService actually succeeds against
+      // real inventory rather than falling through to pre-order.
+      {
+        const donorProductId = await rewigService.pickRewigDonorProductId({
+          brand: resolvedBrand,
+          styled: { rewig_override: sv.rewig_override },
+          originProductId: ownBase || sv.sp_base_product_id,
+          quantity: cartItem.quantity,
+        });
+        if (donorProductId) {
+          const donorVariantId = await defaultVariantId({
+            brand: resolvedBrand,
+            product_id: donorProductId,
+          });
+          if (donorVariantId) baseVariantId = donorVariantId;
+        }
       }
 
       const label = stages.styledLineLabel(sv, cartItem.unstyled);
@@ -1288,6 +1343,10 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
       // allow_instalments) and snapshots the deposit policy on the order.
       payment_plan: input.payment_plan === "instalment" ? "instalment" : "full",
       coupon_code: input.coupon_code || null,
+      // P0-3: customer referral rail — forwarded to createOrder which
+      // resolves + applies the friend discount and stamps referral_code_used
+      // so the retention subscriber credits the referrer on order.paid.
+      customer_referral_code: input.customer_referral_code || null,
       client_idempotency_key: input.client_idempotency_key,
       utm_source: input.utm?.utm_source || null,
       utm_medium: input.utm?.utm_medium || null,

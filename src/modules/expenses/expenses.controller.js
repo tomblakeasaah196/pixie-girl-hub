@@ -5,6 +5,7 @@
 "use strict";
 
 const service = require("./expenses.service");
+const aiService = require("./expenses.ai.service");
 const { parsePagination } = require("../../utils/pagination");
 
 const base = (req) => ({
@@ -48,10 +49,21 @@ async function listExpenses(req, res) {
   );
 }
 const kpis = async (req, res) =>
-  res.json({ data: await service.kpis({ brand: req.brand }) });
+  res.json({
+    data: await service.kpis({
+      brand: req.brand,
+      scope: req.permission_scope,
+      user: req.user,
+    }),
+  });
 const getById = async (req, res) =>
   res.json({
-    data: await service.getById({ brand: req.brand, id: req.params.id }),
+    data: await service.getById({
+      brand: req.brand,
+      id: req.params.id,
+      scope: req.permission_scope,
+      user: req.user,
+    }),
   });
 const createExpense = async (req, res) =>
   res.status(201).json({
@@ -84,6 +96,31 @@ const markPaid = async (req, res) =>
     }),
   });
 
+// Receipt AI (multipart: receipt `file` + optional voice `audio` + `note`).
+// Returns a SUGGESTED draft only — writes nothing. The client reviews it, then
+// the normal create → submit path does the actual write.
+async function extractReceipt(req, res) {
+  const file = req.files && req.files.file && req.files.file[0];
+  const audio = req.files && req.files.audio && req.files.audio[0];
+  if (!file)
+    return res.status(400).json({
+      error: {
+        code: "NO_FILE",
+        message: "Multipart field 'file' (the receipt) is required",
+      },
+      request_id: req.request_id,
+    });
+  res.json({
+    data: await aiService.extractFromReceipt({
+      brand: req.brand,
+      user: req.user,
+      file,
+      audio,
+      note: req.body.note,
+    }),
+  });
+}
+
 // Cash advances
 async function listAdvances(req, res) {
   const { page, page_size } = parsePagination(req.query);
@@ -103,7 +140,12 @@ async function listAdvances(req, res) {
 }
 const getAdvance = async (req, res) =>
   res.json({
-    data: await service.getAdvance({ brand: req.brand, id: req.params.advId }),
+    data: await service.getAdvance({
+      brand: req.brand,
+      id: req.params.advId,
+      scope: req.permission_scope,
+      user: req.user,
+    }),
   });
 const requestAdvance = async (req, res) =>
   res.status(201).json({
@@ -146,7 +188,12 @@ const settleAdvance = async (req, res) =>
 // Receipts (multipart → Documents gateway)
 const listReceipts = async (req, res) =>
   res.json({
-    data: await service.listReceipts({ brand: req.brand, id: req.params.id }),
+    data: await service.listReceipts({
+      brand: req.brand,
+      id: req.params.id,
+      scope: req.permission_scope,
+      user: req.user,
+    }),
   });
 async function addReceipt(req, res) {
   if (!req.file)
@@ -179,6 +226,7 @@ module.exports = {
   approve,
   reject,
   markPaid,
+  extractReceipt,
   listAdvances,
   getAdvance,
   requestAdvance,

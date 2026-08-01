@@ -480,6 +480,37 @@ function register() {
     });
   });
 
+  // A staffer answered this thread from the platform's own app (Instagram)
+  // — the echo ingest recorded the bubble and cleared the unread state.
+  // Same fanout as an inbound customer message (open threads render the
+  // reply, inbox rows re-sort, badges recount) but with NO notification:
+  // the team must not be pinged about a conversation that was just
+  // handled. The bell entries it consumed were cleared via
+  // notifications.markReadByReferenceAllUsers, which emits its own
+  // notification:read.
+  events.on("customer.replied_externally", async (p) => {
+    const members = await membersOf(p.channel_id);
+    emit(`channel:${p.channel_id}`, "message.posted", {
+      channel_id: p.channel_id,
+      message_id: p.message_id,
+    });
+    if (p.brand)
+      emit(`brand:${p.brand}:smartcomm`, "customer.replied_externally", {
+        channel_id: p.channel_id,
+        platform: p.platform,
+      });
+    for (const uid of members) {
+      emit(`user:${uid}:messages`, "message.posted", {
+        channel_id: p.channel_id,
+        message_id: p.message_id,
+      });
+      // Their unread for this thread just dropped — nudge the badge query.
+      emit(`user:${uid}:messages`, "channel.read", {
+        channel_id: p.channel_id,
+      });
+    }
+  });
+
   logger.info("smartcomm realtime subscribers registered");
 }
 

@@ -26,8 +26,25 @@ const { logger } = require("../../config/logger");
 const webhooks = require("../../modules/business_setup/webhooks.service");
 const repo = require("../../modules/business_setup/webhooks.repo");
 
+// Messaging sources are processed by the smartcomm inbox consumer, not the
+// payment dispatch — a replay must re-drive that one too. Idempotent: the
+// ingest dedups on the provider message id, statuses are monotonic.
+const MESSAGING_SOURCES = new Set([
+  "meta_whatsapp",
+  "meta_instagram",
+  "cloudflare_email",
+]);
+
 async function replayOne(webhook_id) {
   await webhooks.onWebhookReceived({ webhook_id });
+  const log = await repo.findById(webhook_id);
+  if (log && !log.processed && MESSAGING_SOURCES.has(log.source)) {
+    const smartcomm = require("../../modules/smartcomm/smartcomm.subscribers");
+    await smartcomm.onWebhookReceived({
+      webhook_id,
+      source: log.source,
+    });
+  }
 }
 
 module.exports = async function process(job) {

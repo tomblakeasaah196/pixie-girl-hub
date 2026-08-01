@@ -48,6 +48,7 @@ const UPDATE_COLS = [
   "dismissal_triggers_log",
   "work_schedule",
   "work_expected_start_time",
+  "work_expected_end_time",
   "work_grace_minutes",
 ];
 const CREATE_COLS = ["contact_id", "employee_number", ...UPDATE_COLS];

@@ -121,80 +121,158 @@ export function SizeGuideModal({
         <div className="h-40 animate-pulse rounded-[12px] bg-text-primary/[0.04]" />
       ) : (
         <div className="space-y-5">
-          {/* Tier ladder */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-[12.5px]">
-              <thead>
-                <tr className="text-text-faint text-left border-b hairline">
-                  <th className="py-2 font-semibold">Size</th>
-                  <th className="py-2 font-semibold">Premium (₦)</th>
-                  <th className="py-2 font-semibold">Premium ($)</th>
-                  <th className="py-2 font-semibold">
-                    Head circumference (inches)
-                  </th>
-                  <th className="py-2 font-semibold">Tip</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr
-                    key={r.size_code}
-                    className="border-b hairline last:border-0 align-top"
-                  >
-                    <td className="py-2 pr-2">
-                      <div className="font-semibold">{r.size_code}</div>
-                      <div className="text-[11px] text-text-faint">
-                        {r.label}
-                      </div>
-                    </td>
-                    <td className="py-2 pr-2 w-[120px]">
+          {/* Tier ladder — stacked cards on phones, table from md+ (a fixed-
+              width table inside overflow-x-auto just gets clipped on narrow
+              screens instead of usably scrolling). */}
+          <div>
+            {/* Mobile: one card per size */}
+            <div className="md:hidden space-y-3">
+              {rows.map((r) => (
+                <div
+                  key={r.size_code}
+                  className="rounded-[14px] border border-line bg-text-primary/[0.03] p-3.5"
+                >
+                  <div className="flex items-baseline gap-2 mb-3">
+                    <span className="font-semibold text-[13px]">
+                      {r.size_code}
+                    </span>
+                    <span className="text-[11px] text-text-faint">
+                      {r.label}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div>
+                      <label className="micro block mb-1">Premium (₦)</label>
                       <NumberField
                         value={r._premium}
                         onChange={(v) => patch(r.size_code, "_premium", v)}
                         suffix="₦+"
-                        className="[&_input]:h-[36px]"
+                        className="[&_input]:h-[38px]"
                       />
-                    </td>
-                    <td className="py-2 pr-2 w-[120px]">
+                    </div>
+                    <div>
+                      <label className="micro block mb-1">Premium ($)</label>
                       <NumberField
                         value={r._premiumUsd}
                         onChange={(v) => patch(r.size_code, "_premiumUsd", v)}
                         suffix="$+"
                         placeholder="—"
-                        className="[&_input]:h-[36px]"
+                        className="[&_input]:h-[38px]"
                       />
-                    </td>
-                    <td className="py-2 pr-2">
-                      <div className="flex items-center gap-1.5 w-[180px]">
-                        <NumberField
-                          value={r._inMin}
-                          onChange={(v) => patch(r.size_code, "_inMin", v)}
-                          placeholder="min"
-                          className="[&_input]:h-[36px]"
-                        />
-                        <span className="text-text-faint">–</span>
-                        <NumberField
-                          value={r._inMax}
-                          onChange={(v) => patch(r.size_code, "_inMax", v)}
-                          placeholder="max"
-                          className="[&_input]:h-[36px]"
-                        />
-                      </div>
-                    </td>
-                    <td className="py-2">
-                      <input
-                        value={r._tip}
-                        onChange={(e) =>
-                          patch(r.size_code, "_tip", e.target.value)
-                        }
-                        placeholder="e.g. Average — fits most heads."
-                        className="w-full h-[36px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[12.5px] outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+                    </div>
+                  </div>
+                  <div className="mt-2.5">
+                    <label className="micro block mb-1">
+                      Head circumference (inches)
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <NumberField
+                        value={r._inMin}
+                        onChange={(v) => patch(r.size_code, "_inMin", v)}
+                        placeholder="min"
+                        className="[&_input]:h-[38px] flex-1"
                       />
-                    </td>
+                      <span className="text-text-faint shrink-0">–</span>
+                      <NumberField
+                        value={r._inMax}
+                        onChange={(v) => patch(r.size_code, "_inMax", v)}
+                        placeholder="max"
+                        className="[&_input]:h-[38px] flex-1"
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-2.5">
+                    <label className="micro block mb-1">Tip</label>
+                    <input
+                      value={r._tip}
+                      onChange={(e) =>
+                        patch(r.size_code, "_tip", e.target.value)
+                      }
+                      placeholder="e.g. Average — fits most heads."
+                      className="w-full h-[38px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[12.5px] outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* md+: table */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-[12.5px]">
+                <thead>
+                  <tr className="text-text-faint text-left border-b hairline">
+                    <th className="py-2 font-semibold">Size</th>
+                    <th className="py-2 font-semibold">Premium (₦)</th>
+                    <th className="py-2 font-semibold">Premium ($)</th>
+                    <th className="py-2 font-semibold">
+                      Head circumference (inches)
+                    </th>
+                    <th className="py-2 font-semibold">Tip</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr
+                      key={r.size_code}
+                      className="border-b hairline last:border-0 align-top"
+                    >
+                      <td className="py-2 pr-2">
+                        <div className="font-semibold">{r.size_code}</div>
+                        <div className="text-[11px] text-text-faint">
+                          {r.label}
+                        </div>
+                      </td>
+                      <td className="py-2 pr-2 w-[120px]">
+                        <NumberField
+                          value={r._premium}
+                          onChange={(v) => patch(r.size_code, "_premium", v)}
+                          suffix="₦+"
+                          className="[&_input]:h-[36px]"
+                        />
+                      </td>
+                      <td className="py-2 pr-2 w-[120px]">
+                        <NumberField
+                          value={r._premiumUsd}
+                          onChange={(v) =>
+                            patch(r.size_code, "_premiumUsd", v)
+                          }
+                          suffix="$+"
+                          placeholder="—"
+                          className="[&_input]:h-[36px]"
+                        />
+                      </td>
+                      <td className="py-2 pr-2">
+                        <div className="flex items-center gap-1.5 w-[180px]">
+                          <NumberField
+                            value={r._inMin}
+                            onChange={(v) => patch(r.size_code, "_inMin", v)}
+                            placeholder="min"
+                            className="[&_input]:h-[36px]"
+                          />
+                          <span className="text-text-faint">–</span>
+                          <NumberField
+                            value={r._inMax}
+                            onChange={(v) => patch(r.size_code, "_inMax", v)}
+                            placeholder="max"
+                            className="[&_input]:h-[36px]"
+                          />
+                        </div>
+                      </td>
+                      <td className="py-2">
+                        <input
+                          value={r._tip}
+                          onChange={(e) =>
+                            patch(r.size_code, "_tip", e.target.value)
+                          }
+                          placeholder="e.g. Average — fits most heads."
+                          className="w-full h-[36px] px-[11px] rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary text-[12.5px] outline-none focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             <p className="text-[11px] text-text-faint mt-1.5">
               Premiums are absolute amounts added to the styled anchor for that
               size. The USD premium is independent — set it for USD-priced

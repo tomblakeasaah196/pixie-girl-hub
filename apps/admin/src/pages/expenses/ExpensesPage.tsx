@@ -1,5 +1,5 @@
 import { useState, lazy, Suspense } from "react";
-import { Receipt, Plus, Lock } from "lucide-react";
+import { Receipt, Plus, Lock, Sparkles } from "lucide-react";
 import { useAuthStore } from "@/stores/auth";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { ModuleInsights } from "@/components/insights/ModuleInsights";
@@ -14,15 +14,21 @@ import {
 } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { cn } from "@/lib/cn";
-import { moneyCompact, formatDate as fmtDateCanon } from "@/lib/format";
+import { money, moneyCompact, formatDate as fmtDateCanon } from "@/lib/format";
 import { useExpenses, useExpenseKpis } from "./hooks";
+import { useDeepLinkedRecord } from "@/hooks/useDeepLinkedRecord";
 import { EXPENSE_STATUS_META, EXPENSE_STATUS_TABS } from "./constants";
-import type { Expense, ExpenseStatus } from "./types";
+import type { Expense } from "./types";
 
 const ExpenseDetailDrawer = lazy(() => import("./ExpenseDetailDrawer"));
 const CreateExpenseDrawer = lazy(() =>
   import("./CreateExpenseDrawer").then((m) => ({
     default: m.CreateExpenseDrawer,
+  })),
+);
+const PraxisReceiptDrawer = lazy(() =>
+  import("./PraxisReceiptDrawer").then((m) => ({
+    default: m.PraxisReceiptDrawer,
   })),
 );
 
@@ -34,6 +40,7 @@ export default function ExpensesPage() {
   const [page, setPage] = useState(1);
   const [selectedEx, setSelectedEx] = useState<Expense | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [showScan, setShowScan] = useState(false);
 
   if (!can("expenses", "view")) {
     return (
@@ -58,13 +65,22 @@ export default function ExpensesPage() {
           </p>
         </div>
         {can("expenses", "create") && (
-          <Button
-            variant="primary"
-            icon={<Plus className="w-4 h-4" />}
-            onClick={() => setShowCreate(true)}
-          >
-            New Expense
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              icon={<Sparkles className="w-4 h-4" />}
+              onClick={() => setShowScan(true)}
+            >
+              Scan Receipt
+            </Button>
+            <Button
+              variant="primary"
+              icon={<Plus className="w-4 h-4" />}
+              onClick={() => setShowCreate(true)}
+            >
+              New Expense
+            </Button>
+          </div>
         )}
       </div>
 
@@ -87,6 +103,9 @@ export default function ExpensesPage() {
         )}
         {showCreate && (
           <CreateExpenseDrawer onClose={() => setShowCreate(false)} />
+        )}
+        {showScan && (
+          <PraxisReceiptDrawer onClose={() => setShowScan(false)} />
         )}
       </Suspense>
     </div>
@@ -196,9 +215,24 @@ function Pagination({
   );
 }
 
-function exStatusPill(status: ExpenseStatus) {
-  const meta = EXPENSE_STATUS_META[status];
-  return <Pill tone={meta.tone}>{meta.label}</Pill>;
+function exStatusPill(row: Expense) {
+  const meta = EXPENSE_STATUS_META[row.status];
+  const paid =
+    (row.status === "paid" || row.status === "partially_paid") &&
+    row.amount_paid_ngn
+      ? Number(row.amount_paid_ngn)
+      : null;
+  return (
+    <Pill tone={meta.tone}>
+      {meta.label}
+      {paid != null && (
+        <span className="font-mono normal-case font-normal">
+          {" "}
+          · {money(paid)}
+        </span>
+      )}
+    </Pill>
+  );
 }
 
 function formatDate(d: string | null) {
@@ -222,6 +256,15 @@ function ExpensesTable({
     status: statusFilter || undefined,
     page,
   });
+
+  /* An approver (or the submitter, on the outcome notice) arriving from a
+     task or notification: /expenses?expense=<id> opens that expense. */
+  useDeepLinkedRecord<Expense>(
+    "expense",
+    data?.data,
+    (e) => e.expense_id,
+    onSelect,
+  );
 
   const cols: Column<Expense>[] = [
     {
@@ -260,7 +303,7 @@ function ExpensesTable({
       key: "status",
       header: "Status",
       width: "130px",
-      render: (r) => exStatusPill(r.status),
+      render: (r) => exStatusPill(r),
     },
     {
       key: "date",

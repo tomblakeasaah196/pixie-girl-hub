@@ -11,6 +11,257 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-07-29 — Display-name alias split from the name of record
+
+**Source:** Owner directive — "this edit can be the display name only, it
+can't be changing the user's full name on the system."
+
+**Files:** `000371_shared_user_preferred_name.sql` (new, shared).
+
+`shared.users.display_name` was doing two incompatible jobs: it was the
+name ~30 modules join for "created by / assigned / actor" labels (plus IAM
+Users & Access, org-chart holder resolution and audit snapshots), *and* it
+was the field the self-service **My Profile → Display name** edit wrote. So
+a user renaming themselves silently changed how their name appeared to
+everyone, system-wide, and overrode their official HR name in the admin
+user list.
+
+Adds `preferred_name` and splits the two roles cleanly:
+
+- `display_name` — the **canonical name of record**. Read everywhere a
+  person is shown to others. No longer writable by the profile edit.
+- `preferred_name` — the **personal alias**, self-editable, surfaced only
+  in the user's own account menu and their own profile. Nothing else joins
+  it, so editing it cannot change the user's name anywhere.
+
+Backfill: each account's current label is preserved as its alias (so no
+one's header changes on deploy), then `display_name` is reset to the linked
+contact's name for staff — purging any alias a prior self-edit had baked
+into the canonical column. External users (no linked contact) keep their
+admin-set `display_name`. Idempotent: the alias copy is guarded on NULL and
+the canonical reset is a no-op on re-run.
+
+---
+
+## 2026-07-22 — Lace ladder Trash (delete + 15-day purge)
+
+**Source:** Owner directive (catalogue UX pass) — clean up duplicate lace
+constructions that earlier imports minted (13X4 + 134FRONTAL, etc.).
+
+**Files:** `migrations/template/000087_business_lace_ladder_soft_delete.sql.template`.
+
+Adds `is_deleted` / `deleted_at` (+ a partial trash index) to
+`{{BUSINESS}}.styled_lace_sizes` so a lace construction can be deleted to
+Trash (restorable 15 days) rather than only deactivated. Deleting a lace
+still used by variants is gated in the app: a replacement must be picked and
+every affected variant repointed before the row is trashed, so a trashed lace
+never violates the `styled_product_variants.lace_code` `ON DELETE RESTRICT`
+FK. The daily `catalogue-trash-purge` sweep hard-deletes lace rows past the
+15-day window alongside styled products/colours/variants.
+
+---
+
+## 2026-07-17 — HR clock-out overtime + close-time reminders
+
+**Source:** owner directive — "edit an employee's work days/times after
+onboarding (e.g. 5 days → 3), add a closing time, get the supplementary hours
+worked past close, and push 3 clock-out reminders (5 min before / at / 5 min
+after) so people never miss clocking out."
+
+**Files:** `000350_shared_hr_clockout_overtime.sql` (new, shared).
+
+**What / why:**
+- `attendance_days`: `overtime_minutes` — supplementary time worked past the
+  expected closing time (last clock-out − expected end, floored at 0). The
+  mirror of `early_leave_minutes` on the "stayed late" side. Reconcile fills
+  it every day. **Tracking only** — payroll's manual `overtime` line is
+  untouched (no auto-pay).
+- `hr_settings`: `clockout_reminder_enabled` (default **true**) — per-brand
+  master switch for the "remember to clock out" nudges.
+- `clockout_reminders` (new table) — a thin idempotency ledger so the
+  every-minute sweep sends each of the three nudges AT MOST ONCE per employee
+  per day, even across worker restarts / a second worker. `UNIQUE
+  (profile_id, work_date, offset_tag)` is the claim: the sweep INSERTs before
+  it notifies, and only the winning INSERT fires the notification.
+- (Closing time itself, `staff_profiles.work_expected_end_time`, already
+  existed from 000257; this release makes it settable end-to-end — validator,
+  repo, onboarding wizard and the new HR edit-schedule form.)
+
+## 2026-07-16 — Stylist Studio: lifecycle collapse + own-scope RBAC
+
+**Source:** owner directive — "the stylist studio gives every stylist access
+to the whole studio; and completed jobs shows 0 even after stylists have
+shipped work. Fix both." The job lifecycle used to require four separate
+Ops clicks after the wig came back (`qc pass → ready_for_dispatch →
+handed_to_sales → completed`); nobody clicked all four, so scorecards +
+HR `styles_completed` targets showed zero for real work. Separately, the
+`tech_stylist` role had `full` on `service_jobs` (view/create/edit/delete/
+approve/export at scope `all`), so every stylist could see every job and
+even approve write-offs; the Ops Manager was capped at `partial_team`,
+narrower than the stylists — the opposite of what the org runs on.
+
+- `000348_shared_stylist_studio_rbac_own_scope` (shared) — reseats the two
+  roles for the `service_jobs` module: `tech_stylist` = view/create/edit
+  at scope `own` (no delete/approve/export); `ops_mgr` = view/create/edit/
+  delete/approve/export at scope `all`. Idempotent delete-then-insert on
+  those two roles so repeated runs converge. CEO/owner bypass anyway.
+- `000084_business_service_jobs_lifecycle_backfill` (brand template) —
+  data-only backfill for rows stuck in the retired `qc_passed`,
+  `ready_for_dispatch`, `handed_to_sales` statuses: sets them to
+  `completed` and derives `completed_at` from the best available
+  timestamp (`handed_at` → `ready_at` → `qc_at` → `updated_at`). The
+  CHECK constraint is left tolerant of the retired values so historical
+  rebuilds don't fail; application code no longer writes them.
+- `src/modules/service_jobs/service-jobs.service.js` — `recordQc` on
+  `pass` now sets status directly to `completed`, stamps `completed_at`,
+  adds the `dispatched` custody row (wig leaves the studio for
+  Logistics/Sales), and creates the shipment via `logistics.createForOrder`
+  (best-effort, moved from the old `dispatch()` fn). The old `dispatch()`
+  and `handToSales()` service fns + `/service-jobs/:id/dispatch` +
+  `/service-jobs/:id/hand-to-sales` routes are removed — those flows now
+  live on the Logistics/Order side, single source of truth.
+- Service + repo scope-thread: `listJobs`, `getJob`, `listStylistScorecards`,
+  `getStylistScorecard`, `getAccountability`, `listCustodyLedger` all
+  accept `scope` + `user`. Own-scope callers see only jobs they are
+  currently assigned to OR were ever a stylist on (kept visible via the
+  wig_custody_ledger); `getJob` throws `NO_LONGER_ASSIGNED` with the
+  current assignee's name so the Stylist Studio can render
+  "reassigned to X → back to my jobs" instead of a bare 403.
+- Admin: `JOB_STATUS_META`, `JOB_NEXT_STATES`, `BOARD_COLUMNS` collapsed
+  to the six flowing states (`pending, assigned, in_progress, on_hold,
+  returned_for_qc, rework, completed`); dispatch/hand-to-sales buttons
+  removed from the drawer. Stylist Studio hides the Job Board / Team
+  Scorecards / Wig Accountability / Types / Recipes / Reconciliation
+  tabs for own-scope users and defaults them to "My Jobs".
+
+Apply to existing brands with `npm run db:repair`. RBAC change takes
+effect on the next `identityCache` refresh (30s TTL).
+
+---
+
+## 2026-07-16 — Stylist Studio: lockable style brief
+
+**Source:** "the style brief came under QC instead of at job creation" — the
+brief (what the customer asked for) had no capture point at job open, so it
+only got filled in ad hoc whenever someone opened the stylist/QC work panel.
+Now captured once, at open, and locked.
+
+- `000083_business_stylist_brief_lock` (brand template) — adds
+  `service_job_references.is_locked BOOLEAN NOT NULL DEFAULT false`. `true`
+  marks the customer's original brief (captured at job open); `false` marks a
+  supplementary stylist/QC note. `deleteReference` refuses to remove locked
+  rows (guarded in SQL), so the original request can't be overwritten.
+  Existing references default to `false` (stay editable). Column add only;
+  per-brand table count unchanged.
+- `src/modules/service_jobs/service-jobs.service.js` — `createJob` accepts an
+  optional `brief` ({body, url}) written as locked reference rows;
+  `createForOrder` auto-pulls the source order line's `notes` into a locked
+  brief so order-opened jobs arrive with the customer request already on
+  them; `addReference` forces `is_locked = false` (the public endpoint can
+  only add supplementary notes, never a locked brief).
+- Admin: the "+ New Job" form gains a Style brief field (note + inspiration
+  link); the job drawer separates the locked brief from stylist/QC notes; the
+  work panel shows locked entries with a 🔒 and no delete control.
+
+Apply to existing brands with `npm run db:repair`.
+
+---
+
+## 2026-07-15 — Stylist Studio: job drawer enrichment (PR1 of 2)
+
+**Source:** "make the job drawer rich" — customer/order/product identity,
+inline ratings open the whole time a job is live (not just after QC),
+workload badges, cost breakdown, wig custody mini-timeline, activity
+timeline, and a non-sequential hand-off tag format.
+
+- `000082_business_stylist_tag_code_format` (brand template) — `CREATE OR
+  REPLACE` of `fn_next_stylist_tag`. Changed from a bare 5-digit counter to a
+  3-digit counter (this migration) + 2 letters drawn from the styled product
+  name, computed in `deriveTagInitials` (`service-jobs.repo.js`) — e.g.
+  "342NS" instead of "00342". Same cycle-then-wrap counter, just half the
+  digits since letters now carry the other half of the code. No `CREATE
+  TABLE` (idempotent function replace); per-brand table count unchanged.
+- `src/modules/service_jobs/service-jobs.repo.js` (`getServiceJob`) — joins
+  customer name (name only, never contact details), order placed-at, base +
+  styled product names, styled product photo, wig-out timestamp, and a
+  materials/chemicals cost rollup. New `listJobActivity` reads the existing
+  audit log for a job's full lifecycle — no new event table needed.
+- `assignStylist` now returns `is_new_tag` so the drawer shows a "copy this
+  onto the tag" confirmation only on the assignment that actually allocated
+  the code, never on a later reassignment of the same job.
+
+Apply to existing brands with `npm run db:repair`.
+
+Companion data fix (not a migration — run by hand): styled products'
+`default_service_type_id` was unset for some/all styled products, so
+`createForOrder` fell back to whichever service type sorted first
+("Installation") instead of "Styling". SQL handed to the operator directly
+rather than baked into a migration, since it depends on row data (which
+service type is actually named "Styling" in this deployment) rather than
+schema shape.
+
+---
+
+## 2026-07-15 — Expenses: amount_paid_ngn column + approver/payer name joins
+
+**Source:** live repro on the expense detail drawer — the "Paid" summary
+tile and status pill always rendered "—"/no amount after marking an expense
+paid, and "Approved By" showed a raw user UUID instead of a name.
+
+- `000346_business_expenses_amount_paid` (root migration, both brand
+  schemas) — adds `expenses.amount_paid_ngn NUMERIC(14,2)` (declared in the
+  frontend type and read by the UI, but never created — template 000023
+  omitted it) and backfills existing paid/partially_paid/reimbursed rows
+  with `total_amount_ngn + vat_amount_ngn`. `src/modules/expenses/expenses.service.js`
+  (`markPaid`) now writes it on every payment.
+- `migrations/template/000023_business_expenses.sql.template` — added the
+  same column so fresh bootstraps match.
+- `src/modules/expenses/expenses.repo.js` (`findById`, `listReceipts`) —
+  joins `shared.users` to resolve `submitted_by_name`, `approved_by_name`,
+  `paid_by_name`, and `shared.documents` to resolve receipt filenames. No
+  new tables; per-brand table count unchanged.
+
+---
+
+## 2026-07-15 — Stylist Studio: assignment picker narrowing, task-trigger created_by fix, hand-off tag code
+
+**Source:** live repro assigning FLH-JOB-0027 to a Head Stylist. A prior same-day
+fix already corrected `listAssignableStylists`' `sp.end_date IS NULL` (excluded
+staff with a scheduled *future* contract end date even though still employed
+today) to `(sp.end_date IS NULL OR sp.end_date >= CURRENT_DATE)`. This entry
+covers what came after that: the picker still listed the whole Operations
+department, not just stylists, and assigning any order-generated job (no
+recorded creator) failed outright with "A required detail was missing."
+
+- `src/modules/service_jobs/service-jobs.repo.js` (`listAssignableStylists`)
+  — narrowed the candidate pool from every Operations employee to stylist
+  seats only (`job_title ILIKE '%stylist%'`) — Operations Manager, Head of
+  Security, and Sanitation Officer are Operations staff but not assignable
+  to styling jobs.
+- `000080_business_service_job_task_created_by_fix` (brand template) —
+  `CREATE OR REPLACE` of `fn_service_job_create_task` (see 000073, the same
+  trigger's first fix). The trigger inserted the auto-raised staff task with
+  `created_by = NEW.created_by`, but `service_jobs.created_by` is nullable
+  (jobs raised by a background/order process may never set it) while
+  `shared.tasks.created_by` is `NOT NULL` — so assigning a stylist to any
+  job with no recorded creator violated that constraint and **the
+  assignment failed outright**. Now falls back to
+  `COALESCE(NEW.created_by, NEW.assigned_staff_user_id)`. No `CREATE TABLE`
+  (idempotent function replace, re-applied every `db:repair`); per-brand
+  table count unchanged.
+- `000081_business_stylist_studio_tag_code` (brand template) — new
+  `service_jobs.tag_code` column + `fn_next_stylist_tag()`, a 5-digit counter
+  (backed by the same `shared.document_numbering` table every other document
+  sequence in this codebase uses) that cycles 1..99999 and wraps back to 1
+  automatically. `assignStylist` allocates one on first assignment so ops can
+  write it on the physical tag pinned to the customer's hair; the Job Board
+  can now search by tag code, and the job drawer shows it. Per-brand table
+  count unchanged (column add only).
+
+Apply to existing brands with `npm run db:repair`.
+
+---
+
 ## 2026-07-13 — Reconcile shared.service_booking_requests
 
 **Source:** production 500 on `GET /api/v1/smartcomm/channels/:id/order-links`

@@ -53,6 +53,11 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   // Local line-sum — an instant optimistic figure used only while the
   // server quote is in flight.
   const subtotal = useCart((s) => s.subtotalNgn());
+  // P0-3: customer referral code captured on the landing (?ref=<code>) and
+  // persisted in the cart store; forwarded on checkout and cleared on
+  // success. The buyer can also type / edit it below.
+  const capturedReferral = useCart((s) => s.customer_referral_code);
+  const setStoredReferralCode = useCart((s) => s.setReferralCode);
 
   const brandKey = payload.brand?.business_key;
 
@@ -144,6 +149,11 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const [promoOpen, setPromoOpen] = useState(false);
   const [promoCode, setPromoCode] = useState("");
   const [promoApplied, setPromoApplied] = useState(false);
+  const [referralCode, setReferralCode] = useState("");
+  // Sync from the persisted capture so a fresh page load pre-fills the field.
+  useEffect(() => {
+    if (capturedReferral && !referralCode) setReferralCode(capturedReferral);
+  }, [capturedReferral, referralCode]);
   // A retention / VIP coupon's flat ₦ value, fetched from the Hub when the buyer
   // applies a code that ISN'T the campaign's exit-intent code. Stored raw and
   // clamped on render (like exit-intent) so it survives cart changes; shown +
@@ -602,6 +612,10 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
             : "full",
         client_idempotency_key: idemKey,
         coupon_code: promoApplied && promoCode ? promoCode : undefined,
+        // P0-3: forward the customer referral code. The Hub validates it
+        // brand-scoped, applies the friend discount, and stamps
+        // referral_code_used so the referrer's reward posts on order.paid.
+        customer_referral_code: referralCode.trim() || undefined,
       };
 
       const res = await postCheckout(checkoutPayload);
@@ -615,6 +629,10 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
       if (orderId) {
         sessionStorage.setItem("pgh-last-order-id", orderId);
       }
+      // Consume the captured referral: single-use per order (createOrder
+      // stamped it in the same transaction). Prevents accidental re-apply
+      // if the buyer comes back for another order in the same browser.
+      setStoredReferralCode(null);
       if (payUrl) {
         window.location.href = payUrl;
       } else {
@@ -1249,6 +1267,30 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                       </p>
                     </div>
                   )}
+              </div>
+              {/* Referral code (P0-3) — pre-filled from ?ref= captured on
+                  the landing, editable, single-use per order. */}
+              <div className="border-t hairline pt-3">
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-[rgb(var(--text-muted))] mb-1.5">
+                  Referred by a friend?
+                </label>
+                <input
+                  type="text"
+                  value={referralCode}
+                  onChange={(e) =>
+                    setReferralCode(
+                      e.target.value.toUpperCase().slice(0, 80),
+                    )
+                  }
+                  placeholder="Friend's code (optional)"
+                  className="w-full h-9 px-3 rounded-lg bg-[rgb(var(--text)/0.04)] border border-[rgb(var(--border-c)/0.1)] outline-none focus:border-[rgb(var(--accent)/0.5)] text-[13px] font-mono uppercase"
+                />
+                {referralCode && capturedReferral === referralCode ? (
+                  <p className="mt-1 text-[11px] text-[rgb(var(--text-muted))]">
+                    Applied from your friend&apos;s link · discount is on the
+                    order total.
+                  </p>
+                ) : null}
               </div>
               {/* Promo code */}
               <div className="border-t hairline pt-3">

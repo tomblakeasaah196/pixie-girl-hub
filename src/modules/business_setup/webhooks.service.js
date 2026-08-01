@@ -12,6 +12,32 @@
  * Processing happens post-commit in the outbox dispatcher (worker): re-verify
  * with the gateway API, resolve brand+order from the transaction metadata, and
  * confirm the payment idempotently. Nothing here trusts the payload alone.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * ⚠️  READ BEFORE EDITING THE PAYMENT-CONFIRM PATH — two rules, both learned
+ *     the hard way from real Kaizen incidents. Breaking either is silent.
+ *
+ * 1. NEVER query a per-brand `pos_*` table from this file.
+ *    The POS module was retired into the Quick Sale walk-in channel; template
+ *    000074 DROPs `<brand>.pos_terminals`, `pos_transactions` and the rest.
+ *    They do not exist in production. A lookup against one raises 42P01,
+ *    which aborts the parking below and hands the webhook to the replay
+ *    sweep — 335 identical Kaizen errors before anyone noticed. The physical
+ *    Nomba terminal is NOT retired and still sends webhooks; they are handled
+ *    entirely through `shared.pos_terminal_reconciliation`, which is a SHARED
+ *    table and is alive.
+ *
+ * 2. NEVER `throw` because a captured payment can't be attached to an order.
+ *    Use parkUnmatchedPayment(). A throw leaves the webhook unprocessed, so
+ *    the replay sweep re-drives it ~25 times, each pass logging a fresh
+ *    Kaizen error — while the payment stays invisible to staff. Parking puts
+ *    it on Sales → POS Reconciliation, where a human can match or ignore it,
+ *    and marks the webhook done. Money is never lost either way; only one of
+ *    the two is visible to the people who can act on it.
+ *
+ * A throw is still correct for things that are genuinely OUR bug (bad config,
+ * a failing DB write) — retrying those can succeed. Unmatchable money can't.
+ * ─────────────────────────────────────────────────────────────────────────────
  */
 
 "use strict";
@@ -65,31 +91,65 @@ function verifyOpay(rawBody, headers) {
  * Verify a Nomba webhook signature.
  *
  * Nomba's signature key is a SEPARATE secret from the API client_secret.
- * It is set in the Nomba dashboard (Developer → Webhook Setup) and must be
- * stored in env as NOMBA_WEBHOOK_SIG_KEY (plus per-brand overrides).
+ * It is set in the Nomba dashboard (Developer → Webhook Setup). It can be
+ * rotated two ways: (a) via Business Setup → Payment Gateways (stored
+ * encrypted per-brand in shared.payment_gateways), or (b) via env vars
+ * (NOMBA_WEBHOOK_SIG_KEY / PIXIE_NOMBA_WEBHOOK_SIG_KEY /
+ * FAITLYN_NOMBA_WEBHOOK_SIG_KEY).
  *
- * This function tries each configured webhook signature key (per-brand + legacy
- * fallback). If any key produces a valid signature → accept.
- * If all keys are present-but-invalid → reject (401).
- * If no keys are configured → return null (log only, do not process).
+ * BUG THIS FIXES (2026-07): this function used to check ONLY the env vars.
+ * A key rotated through the Settings UI updated the DB bag but never touched
+ * env, so every subsequent real webhook — signed with the new key — failed
+ * verification silently (logged with signature_valid=false, never processed,
+ * no visible error). This is almost certainly why webhooks "used to work,
+ * then stopped" with no code change: someone rotated the key in Settings.
+ *
+ * Fix: try the DB-stored per-brand key for EVERY brand first (a webhook
+ * carries no brand at receive time), then fall back to the env vars for
+ * legacy/single-tenant setups. If any key produces a valid signature →
+ * accept. If all keys present are invalid → reject (401). If none are
+ * configured anywhere → return null (log only, do not process).
  */
-function verifyNomba(rawBody, headers) {
-  // Collect all configured webhook signature keys:
-  // 1. Per-brand env vars (same naming convention as API keys)
-  // 2. Generic env var
-  // NOTE: these are WEBHOOK SIG KEYS, not API client_secrets.
-  const sigKeys = [
+async function verifyNomba(rawBody, headers) {
+  const gateways = require("./payment-gateways.service");
+  const sigKeys = [];
+
+  for (const brand of VALID_BRANDS) {
+    try {
+      const creds = await gateways.resolveCredentials({
+        brand,
+        provider: "nomba",
+      });
+      if (creds && creds.webhook_signature_key) {
+        sigKeys.push(creds.webhook_signature_key);
+      }
+    } catch (err) {
+      logger.warn(
+        { brand, err: err.message },
+        "Nomba webhook: failed to resolve DB-stored signature key for brand",
+      );
+    }
+  }
+
+  // Legacy/env fallback — de-duped against what resolveCredentials already
+  // returned (resolveCredentials itself falls back to env when no DB row
+  // exists, but a DB row with OTHER fields set and no webhook_signature_key
+  // would still miss the env value, so keep this explicit).
+  for (const k of [
     config.PIXIE_NOMBA_WEBHOOK_SIG_KEY,
     config.FAITLYN_NOMBA_WEBHOOK_SIG_KEY,
     config.NOMBA_WEBHOOK_SIG_KEY,
-  ].filter(Boolean);
+  ]) {
+    if (k && !sigKeys.includes(k)) sigKeys.push(k);
+  }
 
   if (!sigKeys.length) {
-    // No webhook signature key configured — log only, do NOT process.
-    // This is the safe default: an unverified payload must never be acted on.
+    // No webhook signature key configured anywhere — log only, do NOT
+    // process. This is the safe default: an unverified payload must never
+    // be acted on.
     logger.warn(
-      "Nomba webhook: no webhook signature key configured; " +
-      "set NOMBA_WEBHOOK_SIG_KEY (or brand-specific override) to enable verification",
+      "Nomba webhook: no webhook signature key configured (checked DB per-brand " +
+        "+ env); set it in Business Setup → Payment Gateways or NOMBA_WEBHOOK_SIG_KEY",
     );
     return null;
   }
@@ -99,7 +159,7 @@ function verifyNomba(rawBody, headers) {
     const r = nomba.verifyWebhookSignature(rawBody, headers || {}, {
       webhook_signature_key: key,
     });
-    if (r === true) return true;   // valid for this key → accept immediately
+    if (r === true) return true; // valid for this key → accept immediately
     if (r === false) invalid = true;
   }
   return invalid ? false : null;
@@ -184,7 +244,10 @@ async function verifyMetaHmac(source, rawBody, headers, parsedPayload) {
   if (!sig) return false;
   const expected =
     "sha256=" +
-    crypto.createHmac("sha256", resolved.app_secret).update(rawBody).digest("hex");
+    crypto
+      .createHmac("sha256", resolved.app_secret)
+      .update(rawBody)
+      .digest("hex");
   const ok = safeEqual(expected, sig);
   // Auto-heal: a valid signature via the single-row fallback proves this
   // payload belongs to that row — fix the stored id so brand routing
@@ -232,17 +295,17 @@ function verifyCloudflareEmail(rawBody, headers) {
   return safeEqual(expected, sig);
 }
 
-// Sync verifiers only. Meta verifiers are async (require a DB lookup
-// to resolve per-brand secrets) and are dispatched separately below.
+// Sync verifiers only. Meta and Nomba verifiers are async (require a DB
+// lookup to resolve per-brand secrets) and are dispatched separately below.
 const VERIFIERS = {
   paystack: verifyPaystack,
   opay: verifyOpay,
-  nomba: verifyNomba,
   stripe: verifyStripe,
   cloudflare_email: verifyCloudflareEmail,
 };
 
 const META_SOURCES = new Set(["meta_whatsapp", "meta_instagram"]);
+const ASYNC_VERIFIERS = { nomba: verifyNomba };
 
 function extractExternalId(source, payload) {
   if (source === "paystack") {
@@ -253,8 +316,8 @@ function extractExternalId(source, payload) {
   if (source === "opay") {
     const d = (payload && (payload.payload || payload.data)) || {};
     return (
-      String(d.reference || d.orderNo || d.transactionId || payload.id || "")
-        || null
+      String(d.reference || d.orderNo || d.transactionId || payload.id || "") ||
+      null
     );
   }
   if (source === "nomba") {
@@ -273,15 +336,15 @@ function extractExternalId(source, payload) {
     // Our outbound orderReference/merchantTxRef may appear in some flows
     // (e.g. checkout callbacks) but are NOT guaranteed in all Nomba event
     // types. Use requestId as the primary external_id for dedup.
-    const d   = (payload && payload.data) || {};
-    const tx  = d.transaction || {};
+    const d = (payload && payload.data) || {};
+    const tx = d.transaction || {};
     const ext = String(
       tx.transactionId ||
-        tx.sessionId     ||   // Nomba session ID (reliable)
-        payload.requestId ||   // unique per webhook event (always present)
+        tx.sessionId || // Nomba session ID (reliable)
+        payload.requestId || // unique per webhook event (always present)
         tx.orderReference ||
-        tx.merchantTxRef  ||
-        payload.id         ||
+        tx.merchantTxRef ||
+        payload.id ||
         "",
     );
     return ext || null;
@@ -349,6 +412,9 @@ async function receive(source, { rawBody, headers, ip }) {
   if (META_SOURCES.has(source)) {
     verifierPresent = true;
     verdict = await verifyMetaHmac(source, rawBody, headers || {}, payload);
+  } else if (ASYNC_VERIFIERS[source]) {
+    verifierPresent = true;
+    verdict = await ASYNC_VERIFIERS[source](rawBody, headers || {});
   } else {
     const verifier = VERIFIERS[source];
     if (verifier) {
@@ -458,6 +524,7 @@ async function confirmPaystackCharge(log) {
   await recordGatewayPayment({
     brand,
     order_id,
+    quotation_id: (data.metadata && data.metadata.quotation_id) || null,
     reference,
     amount_ngn,
     method: mapPaystackChannel(data.channel),
@@ -494,15 +561,137 @@ async function gatewayFeeNgn({ brand, provider, amount_ngn, fx_rate }) {
 }
 
 /**
+ * Resolve the order a confirmed payment belongs to, materialising it from a
+ * quotation when the checkout was raised against a quote (000090).
+ *
+ * A quote pay-link carries metadata.quotation_id and no order_id — the order
+ * does not exist until the money lands. This converts the quote at that moment
+ * and returns the resulting order. Idempotent end to end: a re-delivered
+ * webhook resolves to the order the first delivery created (see
+ * sales.service.ensureQuotationOrder), so a gateway retry can never mint a
+ * second order or a second payment.
+ *
+ * Returns the order row, or null when there is nothing to resolve.
+ */
+async function orderForQuotation({ brand, quotation_id, webhook_id }) {
+  if (!brand || !VALID_BRANDS.has(brand) || !quotation_id) return null;
+  return requestContext.run({ brand, userId: null }, async () => {
+    const salesService = require("../sales/sales.service");
+    const order = await salesService.ensureQuotationOrder({
+      brand,
+      user: { user_id: null },
+      request_id: `webhook:${webhook_id}`,
+      quotation_id,
+    });
+    logger.info(
+      { brand, quotation_id, order_id: order.order_id },
+      "quotation converted to order on gateway payment confirmation",
+    );
+    return order;
+  });
+}
+
+/**
+ * Park a captured payment that we could NOT attach to an order, so it lands in
+ * Sales → POS Reconciliation for a human to match or ignore.
+ *
+ * This is the single answer to "the money arrived but we can't place it". It
+ * replaces what used to be a bare `throw`, which did three bad things: the
+ * webhook stayed unprocessed, the replay sweep re-drove it ~25 times, and each
+ * pass logged a fresh Kaizen error — all while the payment itself remained
+ * invisible to staff. Parking is strictly better: the row is idempotent on
+ * (provider, provider_reference), it is visible on the screen built for exactly
+ * this, and the webhook is marked processed so nothing retries.
+ *
+ * `note` must say WHY in staff language — it is rendered on the row.
+ * Returns the created row, or null when this transaction was already parked.
+ */
+async function parkUnmatchedPayment({
+  webhook_id,
+  provider = "nomba",
+  brand = null,
+  amount_ngn,
+  reference,
+  note,
+  raw_event = {},
+  terminal_id = null,
+  alias_account_name = null,
+  sender_name = null,
+  sender_bank = null,
+  transaction_time = null,
+}) {
+  const posRepo = require("../pos/pos.repo");
+  const row = await posRepo.enqueueReconciliation({
+    row: {
+      webhook_id,
+      provider,
+      resolved_brand: brand || null,
+      nomba_terminal_id: terminal_id,
+      alias_account_name,
+      sender_name,
+      sender_bank,
+      // The queue's amount is NOT NULL and is the figure staff eyeball against
+      // an open order. "0" is honest when we genuinely have no NGN figure —
+      // the true amount and currency are in note + raw_payload.
+      amount_ngn: amount_ngn || "0",
+      transaction_time,
+      provider_reference: reference || null,
+      note,
+      raw_payload: raw_event,
+    },
+  });
+  if (row) {
+    const posEvents = require("../pos/pos.events");
+    posEvents.emit("pending", {
+      recon_id: row.recon_id,
+      business: brand || null,
+      amount_ngn: amount_ngn || "0",
+    });
+  }
+  logger.warn(
+    { webhook_id, provider, reference, brand: brand || null, note },
+    "gateway payment parked for manual reconciliation",
+  );
+  return row;
+}
+
+/**
+ * A reference minted by Settings → Payment gateways → Test connection
+ * ("TEST-FAITLYNHAIR-1753…"). It is a REAL ₦100 checkout on a live account, so
+ * if anyone pays it a real webhook arrives — with no order behind it, forever.
+ * Recognising it lets us park it with an honest label instead of retrying a
+ * payment that was never meant to belong to an order.
+ */
+function isSelfTestReference(reference) {
+  return /^TEST-(PIXIEGIRL|FAITLYNHAIR|PXG|FLH)-/i.test(
+    String(reference || ""),
+  );
+}
+
+/** Brand implied by a self-test reference, or null. */
+function selfTestBrand(reference) {
+  const m = String(reference || "").match(
+    /^TEST-(PIXIEGIRL|FAITLYNHAIR|PXG|FLH)-/i,
+  );
+  if (!m) return null;
+  const key = m[1].toUpperCase();
+  return key === "PIXIEGIRL" || key === "PXG" ? "pixiegirl" : "faitlynhair";
+}
+
+/**
  * Shared tail: idempotently record a confirmed gateway payment against the
  * order under the brand's context, capturing the per-gateway processing fee
  * (§6.21/§6.6 — books to the gateway's 551x account via net_received) and, for
  * foreign-currency settlements (Stripe), the paid currency/amount/rate so the
  * realised-FX posting in addPayment fires. `amount_ngn` is a decimal string.
+ *
+ * `quotation_id` (000090) is the quote-pay-link case: no order exists yet, so
+ * one is minted from the quote before the payment is recorded.
  */
 async function recordGatewayPayment({
   brand,
   order_id,
+  quotation_id = null,
   reference,
   amount_ngn,
   method,
@@ -511,11 +700,44 @@ async function recordGatewayPayment({
   paid_currency = null,
   paid_amount = null,
   fx_rate_used = null,
+  // Set only when a person put this payment on the order rather than a gateway
+  // webhook delivering it — today that's the POS reconciliation match, where
+  // staff confirm which order an unattributed terminal payment belongs to.
+  // Stamped onto the payment row so the ledger names them instead of saying
+  // "captured automatically by the payment gateway".
+  recorded_by_user_id = null,
+  // Everything the reconciliation queue needs if this payment turns out to be
+  // unplaceable. Optional: a caller that has no raw event still parks cleanly.
+  raw_event = {},
+  park_context = {},
 }) {
+  // Quote pay-link: no order exists yet — convert the quotation now and record
+  // against the order that produces.
+  if (!order_id && quotation_id) {
+    const converted = await orderForQuotation({
+      brand,
+      quotation_id,
+      webhook_id,
+    });
+    if (converted) order_id = converted.order_id;
+  }
   if (!brand || !VALID_BRANDS.has(brand) || !order_id) {
-    throw new Error(
-      `${provider} ${reference}: missing/invalid metadata.brand/order_id — manual review`,
-    );
+    // Money we cannot place. Park it for staff instead of throwing — see
+    // parkUnmatchedPayment for why the throw was actively harmful.
+    const selfTest = isSelfTestReference(reference);
+    await parkUnmatchedPayment({
+      webhook_id,
+      provider,
+      brand: (VALID_BRANDS.has(brand) && brand) || selfTestBrand(reference),
+      amount_ngn,
+      reference,
+      note: selfTest
+        ? "Gateway self-test checkout (Settings → Payment gateways → Test connection). Not a customer order — ignore this row."
+        : "Payment arrived with no order reference — match it to the right order.",
+      raw_event,
+      ...park_context,
+    });
+    return;
   }
   const already = await salesRepo.paymentExistsByProviderRef({
     brand,
@@ -531,11 +753,11 @@ async function recordGatewayPayment({
     fx_rate: fx_rate_used,
   });
 
-  await requestContext.run({ brand, userId: null }, async () => {
+  await requestContext.run({ brand, userId: recorded_by_user_id }, async () => {
     const salesService = require("../sales/sales.service");
     await salesService.addPayment({
       brand,
-      user: { user_id: null },
+      user: { user_id: recorded_by_user_id },
       request_id: `webhook:${webhook_id}`,
       id: order_id,
       input: {
@@ -584,6 +806,7 @@ async function confirmOpayCharge(log) {
   await recordGatewayPayment({
     brand: meta.brand,
     order_id: meta.order_id,
+    quotation_id: meta.quotation_id || null,
     reference,
     amount_ngn,
     method: "opay",
@@ -601,7 +824,11 @@ async function confirmNombaCharge(log) {
 
   // For online_checkout (USD via Stripe): orderReference in order, currency/amount in order
   // For terminal (NGN): everything in transaction. Prefer order.orderReference.
-  const reference = dataOrder.orderReference || dataTx.transactionId || dataTx.sessionId || dataTx.merchantTxRef;
+  const reference =
+    dataOrder.orderReference ||
+    dataTx.transactionId ||
+    dataTx.sessionId ||
+    dataTx.merchantTxRef;
 
   // ── Determine the event type (Nomba sends this as event_type) ──────
   const evtType = String(evt.event_type || evt.type || "").toLowerCase();
@@ -617,11 +844,10 @@ async function confirmNombaCharge(log) {
   // event references PAY-… regardless of the exact Nomba event name. Reconcile
   // the payslip status and stop (it's not an order charge).
   const isPayout =
-    reference && (
-      /^pay-/i.test(String(reference)) ||
+    reference &&
+    (/^pay-/i.test(String(reference)) ||
       evtType.includes("payout") ||
-      evtType.includes("transfer")
-    );
+      evtType.includes("transfer"));
   if (isPayout) {
     const payrollSvc = require("../../shared/hr_payroll/payroll.service");
     const st = String(dataTx.status || evtType || "").toLowerCase();
@@ -630,7 +856,8 @@ async function confirmNombaCharge(log) {
       success: st.includes("success") || st.includes("complete"),
       failed:
         st.includes("fail") || st.includes("declin") || st.includes("revers"),
-      provider_ref: dataTx.transactionId || dataTx.sessionId || dataTx.id || null,
+      provider_ref:
+        dataTx.transactionId || dataTx.sessionId || dataTx.id || null,
     });
     return;
   }
@@ -681,8 +908,9 @@ async function confirmNombaCharge(log) {
 
   // If we couldn't verify via API but the event_type is payment_success,
   // trust the webhook payload (Nomba already signed it) and proceed.
-  const tx       = (res && res.data && (res.data.transaction || res.data)) || dataTx;
-  const evtIsSuccess = isPaymentSuccess || (tx.status || "").toLowerCase() === "success";
+  const tx = (res && res.data && (res.data.transaction || res.data)) || dataTx;
+  const evtIsSuccess =
+    isPaymentSuccess || (tx.status || "").toLowerCase() === "success";
 
   if (!evtIsSuccess) {
     // Not a success event — nothing to confirm (e.g. payment_failed).
@@ -710,17 +938,47 @@ async function confirmNombaCharge(log) {
     if (order_id) {
       order = await salesRepo.findById({ brand: resolvedBrand, id: order_id });
     } else {
-      // Recover the order from the reference (`nomba-<order_number>-<ts>`).
+      // Recover the document from the reference (`nomba-<doc_number>-<ts>`).
+      // Nomba's checkout API takes no metadata — only orderReference — so for
+      // Nomba this string is the ONLY identifier we get back.
       const noPrefix = String(reference || "").replace(/^nomba-/, "");
       const cut = noPrefix.lastIndexOf("-");
-      const orderNumber = cut > 0 ? noPrefix.slice(0, cut) : noPrefix;
-      if (orderNumber) {
+      const docNumber = cut > 0 ? noPrefix.slice(0, cut) : noPrefix;
+      if (docNumber) {
         order = await salesRepo.findByOrderNumber({
           brand: resolvedBrand,
-          order_number: orderNumber,
+          order_number: docNumber,
         });
         if (order) order_id = order.order_id;
+        else {
+          // Not an order number — a quotation pay-link reference
+          // ('PXG-QUO-0001'). Convert the quote and take the order it makes.
+          const quote = await salesRepo.findQuotationByNumber({
+            brand: resolvedBrand,
+            quotation_number: docNumber,
+          });
+          if (quote) {
+            order = await orderForQuotation({
+              brand: resolvedBrand,
+              quotation_id: quote.quotation_id,
+              webhook_id: log.webhook_id,
+            });
+            if (order) order_id = order.order_id;
+          }
+        }
       }
+    }
+    // Quote pay-link (000090): no order exists yet. Convert the quotation NOW —
+    // before the settlement block below, which needs a real order row to derive
+    // the NGN figure for a foreign-currency capture. recordGatewayPayment would
+    // otherwise do this conversion, but too late for that calculation.
+    if (!order_id && meta.quotation_id) {
+      order = await orderForQuotation({
+        brand: resolvedBrand,
+        quotation_id: meta.quotation_id,
+        webhook_id: log.webhook_id,
+      });
+      if (order) order_id = order.order_id;
     }
   }
 
@@ -738,10 +996,34 @@ async function confirmNombaCharge(log) {
   let fx_rate_used = null;
 
   if (settledCurrency && settledCurrency !== "NGN") {
-    if (!order)
-      throw new Error(
-        `nomba ${reference}: cannot resolve order for ${settledCurrency} settlement — manual review`,
-      );
+    if (!order) {
+      // A foreign-currency capture with no order behind it. We cannot derive
+      // the NGN figure without the order, so park it with the FOREIGN amount
+      // stated in the note and let staff match it — rather than throwing and
+      // re-driving this webhook until the retry cap.
+      const foreignAmount = isOnlineCheckout
+        ? dataOrder.amount
+        : dataTx.transactionAmount || tx.amount || dataTx.amount || 0;
+      await parkUnmatchedPayment({
+        webhook_id: log.webhook_id,
+        provider: "nomba",
+        brand: resolvedBrand || selfTestBrand(reference),
+        // No order → no NGN figure. The note carries the truth.
+        amount_ngn: "0",
+        reference,
+        note: isSelfTestReference(reference)
+          ? `Gateway self-test checkout — ${settledCurrency} ${foreignAmount}. Not a customer order; ignore this row.`
+          : `${settledCurrency} ${foreignAmount} paid with no matching order — match it to the right order to convert at that order's locked rate.`,
+        raw_event: evt,
+        terminal_id: dataTerminal.terminalId || null,
+        alias_account_name:
+          tx.aliasAccountName || dataTx.aliasAccountName || null,
+        sender_name: dataCustomer.senderName || null,
+        sender_bank: dataCustomer.bankName || null,
+        transaction_time: tx.time || dataTx.time || null,
+      });
+      return;
+    }
     const outstanding = money(order.total_ngn).minus(
       money(order.amount_paid_ngn || 0),
     );
@@ -753,7 +1035,7 @@ async function confirmNombaCharge(log) {
     // data.transaction.transactionAmount (not the non-existent tx.amount).
     const txAmount = isOnlineCheckout
       ? dataOrder.amount
-      : (dataTx.transactionAmount || tx.amount || dataTx.amount || 0);
+      : dataTx.transactionAmount || tx.amount || dataTx.amount || 0;
     paid_amount = toCurrencyString(money(txAmount));
     if (money(paid_amount).gt(0))
       fx_rate_used = money(amount_ngn).dividedBy(money(paid_amount)).toFixed(6);
@@ -773,75 +1055,53 @@ async function confirmNombaCharge(log) {
         : toCurrencyString(money(nombaNgnAmount || 0)); // Nomba NGN major units
   }
 
+  // Everything the reconciliation queue wants to show about THIS payment,
+  // whichever way it turns out to be unplaceable.
+  const parkContext = {
+    terminal_id: dataTerminal.terminalId || null,
+    alias_account_name: tx.aliasAccountName || dataTx.aliasAccountName || null,
+    sender_name: dataCustomer.senderName || null,
+    sender_bank: dataCustomer.bankName || null,
+    transaction_time: tx.time || dataTx.time || null,
+  };
+
   // ── Fallback 1: unmatched in-store terminal payment ──────────
   // A POS/terminal payment that arrived with no usable order reference
   // (no merchantTxRef, or one that didn't resolve to an order) cannot be
-  // auto-confirmed. Park it in the reconciliation queue for staff to match
-  // by amount + terminal + time, instead of throwing it into an endless
-  // retry loop. Online-checkout payments are NOT parked — a missing order
-  // there is a real error and should surface. Returning normally marks the
-  // webhook processed so the replay sweep leaves it alone.
+  // auto-confirmed. Park it for staff to match by amount + sender + time.
+  //
+  // There used to be a second brand-recovery step here that looked the terminal
+  // up in each brand's `pos_terminals` registry. That registry no longer
+  // exists — the POS module was retired into the Quick Sale walk-in channel and
+  // template 000074 DROPs every brand `pos_*` table — so the lookup could only
+  // ever raise 42P01, which killed the parking below and pushed the webhook
+  // into the replay loop (335 Kaizen occurrences). The physical Nomba terminal
+  // is unaffected: its payments still arrive and still park here. Do NOT
+  // reintroduce a per-brand pos_* query in this path. A NULL brand simply lands
+  // the row in the CEO cross-brand queue.
   if (method === "nomba_terminal" && !order_id) {
-    const posRepo = require("../pos/pos.repo");
-    const nombaTerminalId = dataTerminal.terminalId || null;
-    // Recover the owning brand from the terminal registry when the reference
-    // didn't give us one (POS payloads carry no brand otherwise).
-    let reconBrand = resolvedBrand;
-    if (!reconBrand && nombaTerminalId) {
-      for (const b of VALID_BRANDS) {
-        const term = await posRepo.findTerminalByNombaId({
-          brand: b,
-          nomba_terminal_id: nombaTerminalId,
-        });
-        if (term) {
-          reconBrand = b;
-          break;
-        }
-      }
-    }
-    const reconRow = await posRepo.enqueueReconciliation({
-      row: {
-        webhook_id: log.webhook_id,
-        provider: "nomba",
-        resolved_brand: reconBrand || null,
-        nomba_terminal_id: nombaTerminalId,
-        alias_account_name:
-          tx.aliasAccountName || dataTx.aliasAccountName || null,
-        sender_name: dataCustomer.senderName || null,
-        sender_bank: dataCustomer.bankName || null,
-        amount_ngn,
-        transaction_time: tx.time || dataTx.time || null,
-        provider_reference:
-          reference || tx.transactionId || dataTx.transactionId || null,
-        raw_payload: evt,
-      },
+    await parkUnmatchedPayment({
+      webhook_id: log.webhook_id,
+      provider: "nomba",
+      brand: resolvedBrand,
+      amount_ngn,
+      reference: reference || tx.transactionId || dataTx.transactionId,
+      note: isSelfTestReference(reference)
+        ? "Gateway self-test checkout. Not a customer order; ignore this row."
+        : "In-store terminal payment with no order reference — match it to the right order.",
+      raw_event: evt,
+      ...parkContext,
     });
-    // Active notification (decision 6B) — only for a genuinely new row; a
-    // replayed/duplicate webhook that the unique index already absorbed
-    // returns null and shouldn't re-notify anyone.
-    if (reconRow) {
-      const posEvents = require("../pos/pos.events");
-      posEvents.emit("pending", {
-        recon_id: reconRow.recon_id,
-        business: reconBrand || null,
-        amount_ngn,
-      });
-    }
-    logger.warn(
-      {
-        webhook_id: log.webhook_id,
-        nomba_terminal_id: nombaTerminalId,
-        amount_ngn,
-        resolved_brand: reconBrand || null,
-      },
-      "nomba terminal payment parked for manual reconciliation (no order reference)",
-    );
     return;
   }
 
   await recordGatewayPayment({
     brand: meta.brand || resolvedBrand,
     order_id,
+    // Normally already consumed above; passed through so that if the brand
+    // could only be recovered from metadata (not from the reference), the
+    // conversion still happens there rather than failing to manual review.
+    quotation_id: meta.quotation_id || null,
     reference: reference || tx.transactionId || tx.sessionId,
     amount_ngn,
     method,
@@ -850,6 +1110,8 @@ async function confirmNombaCharge(log) {
     paid_currency,
     paid_amount,
     fx_rate_used,
+    raw_event: evt,
+    park_context: parkContext,
   });
 }
 
@@ -905,6 +1167,7 @@ async function confirmStripeCharge(log) {
   await recordGatewayPayment({
     brand: meta.brand,
     order_id: meta.order_id,
+    quotation_id: meta.quotation_id || null,
     reference,
     amount_ngn,
     method: "stripe_card",
@@ -923,9 +1186,24 @@ const DISPATCH = {
   stripe: confirmStripeCharge,
 };
 
+// Sources whose real consumer is the smartcomm inbox ingest (registered on
+// the same outbox event), not the payment dispatch below.
+const MESSAGING_SOURCES = new Set([
+  "meta_whatsapp",
+  "meta_instagram",
+  "cloudflare_email",
+]);
+
 async function onWebhookReceived({ webhook_id }) {
   const log = await repo.findById(webhook_id);
   if (!log || log.processed) return; // already handled
+  // Messaging webhooks have no payment handler here — their processed flag
+  // is owned by the smartcomm ingest consumer, which marks success/failure
+  // itself. Marking them processed here (the old behaviour) made a failed
+  // ingest unrescuable: once the outbox retries were exhausted, the replay
+  // sweep (which only re-drives processed = false rows) could never see it,
+  // and the message — e.g. an Instagram app-reply echo — was lost for good.
+  if (!DISPATCH[log.source] && MESSAGING_SOURCES.has(log.source)) return;
   try {
     const handler = DISPATCH[log.source];
     if (handler) await handler(log);

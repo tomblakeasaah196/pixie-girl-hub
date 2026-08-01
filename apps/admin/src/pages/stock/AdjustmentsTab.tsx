@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
+import { useDeepLinkedRecord } from "@/hooks/useDeepLinkedRecord";
 import { formatDate } from "@/lib/format";
 import {
   ClipboardCheck,
@@ -12,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { Button, Card, Pill } from "@/components/ui/primitives";
+import { toast } from "@/stores/toast";
 import {
   ErrorState,
   Select,
@@ -63,6 +65,18 @@ const WRITEOFF_REASONS = [
   { value: "theft", label: "Theft" },
 ] as const;
 
+// The backend's adjustment_type enum (stock.validator.js) doesn't carry these
+// exact labels — map each write-off reason to the closest real enum value so
+// submission doesn't 400 on an unrecognised type. User-facing labels above
+// are unaffected; this only changes what's sent over the wire.
+const WRITEOFF_REASON_TO_ADJUSTMENT_TYPE: Record<string, string> = {
+  damaged: "damage",
+  lost: "other",
+  tester_display: "sample",
+  quality_reject: "quality_reject",
+  theft: "theft",
+};
+
 const STATUS_OPTIONS = [
   { value: "", label: "All statuses" },
   { value: "draft", label: "Draft" },
@@ -94,6 +108,11 @@ export default function AdjustmentsTab() {
   const { can, user } = useAuthStore();
   const canCreate = can("stock", "create");
   const isCeo = user?.isCeo ?? false;
+  // Anyone actually granted stock:approve can act on the queue — not just the
+  // literal CEO account. Previously this whole section (and its two buttons)
+  // was gated on isCeo alone, so a role granted approve via the permission
+  // matrix passed the server-side check but never saw the button.
+  const canApprove = can("stock", "approve") || isCeo;
 
   /* filters & pagination */
   const [statusFilter, setStatusFilter] = useState("");
@@ -104,6 +123,9 @@ export default function AdjustmentsTab() {
   const [stocktakeOpen, setStocktakeOpen] = useState(false);
   const [writeoffOpen, setWriteoffOpen] = useState(false);
   const [rejectTarget, setRejectTarget] = useState<string | null>(null);
+  // The record a notification / approval task deep-links to, and what a row
+  // click opens.
+  const [selected, setSelected] = useState<StockAdjustment | null>(null);
 
   /* data */
   const locationsQ = useStockLocations();
@@ -128,13 +150,35 @@ export default function AdjustmentsTab() {
   const adjustments = adjustmentsQ.data?.data ?? [];
   const meta = adjustmentsQ.data?.meta;
 
-  /* approval queue (CEO only) */
+
+  /* approval queue */
   const approvalQ = useStockAdjustments({
     status: "submitted",
     page: 1,
     page_size: 50,
   });
   const pendingApprovals = approvalQ.data?.data ?? [];
+  /* An approver arriving from a task or notification
+     (/stock?tab=adjustments&adjustment=<id>) lands on the request itself.
+     The approval queue is searched too, so a submitted request opens even
+     when the current filter/page doesn't contain it. */
+  const deepLinkPool = useMemo(
+    () => [
+      ...adjustments,
+      ...pendingApprovals.filter(
+        (p) =>
+          !adjustments.some((a) => a.adjustment_id === p.adjustment_id),
+      ),
+    ],
+    [adjustments, pendingApprovals],
+  );
+  useDeepLinkedRecord<StockAdjustment>(
+    "adjustment",
+    deepLinkPool,
+    (a) => a.adjustment_id,
+    (a) => setSelected(a),
+  );
+
 
   /* mutations */
   const mutations = useStockMutations();
@@ -143,16 +187,25 @@ export default function AdjustmentsTab() {
 
   const handleApprove = useCallback(
     async (id: string) => {
-      await mutations.approveAdjustment.mutateAsync(id);
-      await mutations.postAdjustment.mutateAsync(id);
+      try {
+        await mutations.approveAdjustment.mutateAsync(id);
+        await mutations.postAdjustment.mutateAsync(id);
+        toast.success("Adjustment approved and posted");
+      } catch {
+        /* the failing mutation's own onError (hooks.ts) already toasted */
+      }
     },
     [mutations],
   );
 
   const handleReject = useCallback(async () => {
     if (!rejectTarget) return;
-    await mutations.rejectAdjustment.mutateAsync(rejectTarget);
-    setRejectTarget(null);
+    try {
+      await mutations.rejectAdjustment.mutateAsync(rejectTarget);
+      setRejectTarget(null);
+    } catch {
+      /* onError already toasted; leave the dialog open so they can retry */
+    }
   }, [rejectTarget, mutations]);
 
   /* ─── Columns ─── */
@@ -252,8 +305,8 @@ export default function AdjustmentsTab() {
 
   return (
     <div className="space-y-6">
-      {/* ── CEO Approval Queue ── */}
-      {isCeo && pendingApprovals.length > 0 && (
+      {/* ── Approval Queue ── */}
+      {canApprove && pendingApprovals.length > 0 && (
         <Card className="p-5 space-y-4">
           <h3 className="text-[14px] font-semibold text-text-primary flex items-center gap-2">
             <ShieldCheck className="w-4 h-4 text-accent" />
@@ -277,7 +330,7 @@ export default function AdjustmentsTab() {
                     {adj.adjustment_type.replace(/_/g, " ")}
                   </Pill>
                   <ProductsSummary lines={adj.lines ?? []} />
-                  <span className="text-[12px] text-text-muted truncate">
+                  <span className="min-w-0 text-[12px] text-text-muted truncate">
                     {locationMap[adj.location_id] ?? adj.location_id}
                   </span>
                   <span
@@ -358,6 +411,8 @@ export default function AdjustmentsTab() {
         rows={adjustments}
         rowKey={(r) => r.adjustment_id}
         loading={adjustmentsQ.isLoading}
+        onRowClick={(r) => setSelected(r)}
+        activeKey={selected?.adjustment_id ?? null}
         empty={{
           icon: <ClipboardCheck className="w-10 h-10" />,
           title: "No adjustments found",
@@ -391,6 +446,32 @@ export default function AdjustmentsTab() {
         onClose={() => setStocktakeOpen(false)}
         locations={locations}
         mutations={mutations}
+      />
+
+      {/* ── Adjustment detail — what a deep link opens ── */}
+      <AdjustmentDetailDrawer
+        adjustment={
+          selected
+            ? (adjustments.find(
+                (a) => a.adjustment_id === selected.adjustment_id,
+              ) ??
+              pendingApprovals.find(
+                (a) => a.adjustment_id === selected.adjustment_id,
+              ) ??
+              selected)
+            : null
+        }
+        locationName={
+          selected ? (locationMap[selected.location_id] ?? "") : ""
+        }
+        canApprove={canApprove}
+        onClose={() => setSelected(null)}
+        onApprove={handleApprove}
+        onReject={(id) => setRejectTarget(id)}
+        busy={
+          mutations.approveAdjustment.isPending ||
+          mutations.postAdjustment.isPending
+        }
       />
 
       {/* ── Write-off Drawer ── */}
@@ -515,11 +596,15 @@ function StocktakeDrawer({
 
       if (summary.hasWriteDown) {
         await mutations.submitAdjustment.mutateAsync(adj.adjustment_id);
+        toast.success("Stocktake submitted for approval");
       } else {
         await mutations.postAdjustment.mutateAsync(adj.adjustment_id);
+        toast.success("Stocktake posted");
       }
 
       handleClose();
+    } catch {
+      /* the failing mutation's own onError (hooks.ts) already toasted */
     } finally {
       setSubmitting(false);
     }
@@ -828,23 +913,35 @@ function WriteoffDrawer({
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      const adjLines = lines.map((l) => ({
-        variant_id: l.variant_id,
-        system_count: 0,
-        physical_count: 0,
-        delta: -Math.abs(Number(l.qty)),
-        notes: l.notes || undefined,
-      }));
+      // The backend derives delta as a GENERATED column (physical_count -
+      // system_count) — it doesn't accept a delta field at all, and sending
+      // system_count=physical_count=0 makes that difference exactly zero,
+      // which the post step then silently skips (no stock movement at all).
+      // Use each variant's real on-hand as system_count so physical_count
+      // (on-hand minus the qty being written off) produces the actual delta.
+      const adjLines = lines.map((l) => {
+        const lv = levels.find((x) => x.variant_id === l.variant_id);
+        const systemCount = lv?.on_hand ?? 0;
+        return {
+          variant_id: l.variant_id,
+          system_count: systemCount,
+          physical_count: systemCount - Math.abs(Number(l.qty)),
+          notes: l.notes || undefined,
+        };
+      });
 
       const adj = await mutations.createAdjustment.mutateAsync({
         location_id: locationId,
-        adjustment_type: reason,
+        adjustment_type: WRITEOFF_REASON_TO_ADJUSTMENT_TYPE[reason] ?? "other",
         reason: `Write-off: ${reason.replace(/_/g, " ")}`,
         lines: adjLines,
       });
 
       await mutations.submitAdjustment.mutateAsync(adj.adjustment_id);
+      toast.success("Write-off submitted for approval");
       handleClose();
+    } catch {
+      /* the failing mutation's own onError (hooks.ts) already toasted */
     } finally {
       setSubmitting(false);
     }
@@ -938,6 +1035,182 @@ function WriteoffDrawer({
             Add Line
           </Button>
         </div>
+      </div>
+    </Drawer>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   Adjustment Detail Drawer
+   ═══════════════════════════════════════════
+
+   Where an approval notification or task lands. Everything needed to decide
+   is on this one panel — what changed, by how much, who raised it and why —
+   with Approve / Reject in place, so the approver never has to go and find
+   the request in a list. Approving here settles the request, which closes the
+   approver tasks server-side (shared/approvals): the decision IS the
+   completion, nobody ticks anything off by hand. */
+function AdjustmentDetailDrawer({
+  adjustment,
+  locationName,
+  canApprove,
+  onClose,
+  onApprove,
+  onReject,
+  busy,
+}: {
+  adjustment: StockAdjustment | null;
+  locationName: string;
+  canApprove: boolean;
+  onClose: () => void;
+  onApprove: (id: string) => void;
+  onReject: (id: string) => void;
+  busy: boolean;
+}) {
+  if (!adjustment) return null;
+  const delta = sumDelta(adjustment);
+  const decidable = canApprove && adjustment.status === "submitted";
+
+  const rows: Array<[string, React.ReactNode]> = [
+    ["Status", <StatusPill key="s" status={adjustment.status} />],
+    [
+      "Type",
+      <Pill
+        key="t"
+        tone={ADJUSTMENT_TYPE_TONE[adjustment.adjustment_type] ?? "neutral"}
+      >
+        {adjustment.adjustment_type.replace(/_/g, " ")}
+      </Pill>,
+    ],
+    ["Reason", adjustment.reason || "—"],
+    ["Location", locationName || adjustment.location_id.slice(0, 8)],
+    ["Raised", formatDate(adjustment.created_at)],
+    [
+      "Net variance",
+      <span
+        key="v"
+        className={`font-mono font-semibold ${
+          delta > 0 ? "text-success" : delta < 0 ? "text-danger" : "text-text-muted"
+        }`}
+      >
+        {delta > 0 ? `+${delta}` : delta}
+      </span>,
+    ],
+  ];
+
+  return (
+    <Drawer
+      open={!!adjustment}
+      onClose={onClose}
+      title={adjustment.adjustment_number}
+      subtitle="Stock adjustment"
+      wide
+      footer={
+        decidable ? (
+          <div className="flex items-center justify-between w-full gap-3">
+            <span className="text-[11px] text-text-muted">
+              Deciding here closes this request for every approver.
+            </span>
+            <div className="flex gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={<ShieldX className="w-4 h-4" />}
+                onClick={() => onReject(adjustment.adjustment_id)}
+                disabled={busy}
+              >
+                Reject
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                icon={<ShieldCheck className="w-4 h-4" />}
+                onClick={() => {
+                  onApprove(adjustment.adjustment_id);
+                  onClose();
+                }}
+                disabled={busy}
+              >
+                {busy ? "Approving…" : "Approve & post"}
+              </Button>
+            </div>
+          </div>
+        ) : undefined
+      }
+    >
+      <div className="space-y-5 p-1">
+        <div className="rounded-[13px] border border-line bg-text-primary/[0.02] p-3.5">
+          {rows.map(([label, value]) => (
+            <div
+              key={label}
+              className="flex items-start justify-between gap-4 py-2 border-b hairline last:border-0"
+            >
+              <span className="text-[11px] text-text-faint uppercase tracking-wide">
+                {label}
+              </span>
+              <span className="text-[13px] text-text-primary text-right">
+                {value}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div>
+          <FieldLabel>Lines ({(adjustment.lines ?? []).length})</FieldLabel>
+          <div className="overflow-x-auto rounded-[11px] border border-line">
+            <table className="w-full text-[13px]">
+              <thead>
+                <tr className="border-b border-line text-left text-text-muted text-[11px] uppercase tracking-wider">
+                  <th className="px-4 py-2.5">Product</th>
+                  <th className="px-4 py-2.5 text-right">System</th>
+                  <th className="px-4 py-2.5 text-right">Physical</th>
+                  <th className="px-4 py-2.5 text-right">Delta</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(adjustment.lines ?? []).map((l) => (
+                  <tr key={l.line_id} className="border-b border-line last:border-0">
+                    <td className="px-4 py-2.5 text-text-primary">
+                      {l.product_name ??
+                        l.variant_name ??
+                        l.sku ??
+                        l.variant_id.slice(0, 8)}
+                      {l.notes && (
+                        <span className="block text-[11px] text-text-faint">
+                          {l.notes}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-text-muted">
+                      {l.system_count}
+                    </td>
+                    <td className="px-4 py-2.5 text-right tabular-nums text-text-primary">
+                      {l.physical_count}
+                    </td>
+                    <td
+                      className={`px-4 py-2.5 text-right tabular-nums font-semibold ${
+                        l.delta > 0
+                          ? "text-success"
+                          : l.delta < 0
+                            ? "text-danger"
+                            : "text-text-muted"
+                      }`}
+                    >
+                      {l.delta > 0 ? `+${l.delta}` : l.delta}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {adjustment.status === "submitted" && !canApprove && (
+          <InfoBanner>
+            This adjustment is waiting for an approver. You don&rsquo;t have
+            stock approval rights, so you can only view it.
+          </InfoBanner>
+        )}
       </div>
     </Drawer>
   );

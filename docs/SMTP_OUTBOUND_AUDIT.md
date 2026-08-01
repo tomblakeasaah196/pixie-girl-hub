@@ -1,5 +1,14 @@
 # SMTP / Outbound Email Audit
 
+> **⚠ Domain migration (2026-07-16):** Faitlyn's domain moved from
+> `thefaitlynbrand.com` to **`faitlynhair.com`** and the old domain's DNS
+> was retired. References to `thefaitlynbrand.com` in the *evidence*
+> sections below are historical (they describe the DNS state on
+> 2026-07-07). The *action* sections (§5) have been updated to the new
+> domain. Sender identity is now configured per brand in **Messaging →
+> Settings → Outbound Email** (DB-backed), which takes precedence over
+> the `SMTP_*` env vars shown here.
+
 **Date:** 2026-07-07
 **Scope:** Every outbound email path in the ERP — transactional, campaigns, e-signature, auth.
 **Trigger:** "Send for signature" from the Documents module produced no email, raising the question of whether customers have been receiving mail at all.
@@ -91,11 +100,11 @@ SMTP_PASSWORD=<mailbox password>
 SMTP_FROM_EMAIL=noreply@pixiegirlglobal.com
 SMTP_FROM_NAME=Pixie Girl Hub
 
-# Faitlyn (its own mailbox → passes SPF/DKIM as thefaitlynbrand.com)
+# Faitlyn (its own mailbox → passes SPF/DKIM as faitlynhair.com)
 SMTP_FAITLYNHAIR_HOST=smtp.hostinger.com
 SMTP_FAITLYNHAIR_PORT=465
 SMTP_FAITLYNHAIR_SECURE=true
-SMTP_FAITLYNHAIR_USER=noreply@thefaitlynbrand.com
+SMTP_FAITLYNHAIR_USER=noreply@faitlynhair.com
 SMTP_FAITLYNHAIR_PASSWORD=<mailbox password>
 ```
 
@@ -105,8 +114,8 @@ Then restart the app + worker (`pm2 reload pixie-girl-hub`).
 
 - **`pixiegirlglobal.com` SPF** — add Hostinger:
   `v=spf1 ip4:173.208.151.105 include:_spf.mx.cloudflare.net include:_spf.mail.hostinger.com ~all`
-- **Enable DKIM** for both `pixiegirlglobal.com` and `thefaitlynbrand.com` in Hostinger (hPanel → Emails → DKIM) and add the published records.
-- **`faitlynhair.com`** — it has no MX, so `hello@faitlynhair.com` bounces. Either add a Hostinger mailbox + MX for it, or stop advertising that address on the storefront (the app's reply-to already uses `sales@thefaitlynbrand.com`).
+- **Enable DKIM** for both `pixiegirlglobal.com` and `faitlynhair.com` in Hostinger (hPanel → Emails → DKIM) and add the published records.
+- **`faitlynhair.com` MX** — it is now the brand's only mail domain, so it MUST have Hostinger MX records and mailboxes for every advertised address (support@, sales@, noreply@). Without MX, every reply bounces.
 - **DMARC** — leave at `p=none` until SPF+DKIM are confirmed, then tighten to `p=quarantine`. Point the pixie `rua` at a *monitored* mailbox (not `noreply@`).
 
 ### 5.3 Verify end-to-end (on the VPS, after 5.1)

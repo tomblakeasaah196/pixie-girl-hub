@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useLocation, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
@@ -30,10 +30,45 @@ export function SmartCommPage() {
   const user = useAuthStore((s) => s.user);
   const qc = useQueryClient();
   const [params, setParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const channelId = params.get("channel");
   const dmUser = params.get("dm_user");
   const [mobileShowThread, setMobileShowThread] = useState(false);
   const [newChat, setNewChat] = useState<null | "chat" | "group">(null);
+  // Deep-link from the Contacts "Message" button: open the customer compose
+  // pre-selected to a contact + channel. Delivered via router state so no
+  // contact PII rides in the URL.
+  const [msgCustomer, setMsgCustomer] = useState<{
+    contact: {
+      contact_id: string;
+      display_name: string;
+      primary_phone?: string | null;
+      email?: string | null;
+    };
+    channel?: "whatsapp" | "email" | "instagram";
+  } | null>(null);
+  const msgHandled = useRef(false);
+  useEffect(() => {
+    const st = location.state as {
+      messageCustomer?: {
+        contact_id: string;
+        display_name: string;
+        primary_phone?: string | null;
+        email?: string | null;
+      };
+      channel?: "whatsapp" | "email" | "instagram";
+    } | null;
+    if (st?.messageCustomer && !msgHandled.current) {
+      msgHandled.current = true;
+      setMsgCustomer({ contact: st.messageCustomer, channel: st.channel });
+      // Clear the state so a refresh / back-nav doesn't reopen the composer.
+      navigate(location.pathname + location.search, {
+        replace: true,
+        state: null,
+      });
+    }
+  }, [location, navigate]);
   const [sidebarOpen, setSidebarOpen] = useState(
     () => localStorage.getItem(SIDEBAR_PREF_KEY) !== "0",
   );
@@ -49,7 +84,14 @@ export function SmartCommPage() {
   // instead of us fighting their fixed heights with a magic-number calc.
   const isPhone = useIsPhone();
   const setImmersive = useUiStore((s) => s.setImmersive);
-  const immersive = isPhone && mobileShowThread && !!channelId;
+  // A thread only takes over the phone's single column when there IS a
+  // thread. Every pane visibility below reads this derived value rather than
+  // the raw flag, which makes the broken combination unrepresentable: the
+  // thread pane showing with no conversation, so the inbox list is
+  // `display: none` (`hidden md:block`) and there is nothing left to tap —
+  // "Pick a conversation to start." with no conversations to pick from.
+  const mobileThreadOpen = mobileShowThread && !!channelId;
+  const immersive = isPhone && mobileThreadOpen;
   useEffect(() => {
     setImmersive(immersive);
   }, [immersive, setImmersive]);
@@ -66,9 +108,15 @@ export function SmartCommPage() {
 
   const { data: channel } = useChannel(channelId);
 
-  // Keep mobile view in sync with selection
+  // Keep the mobile pane flag in sync with the selection. Selecting a
+  // conversation opens the thread; LOSING one falls back to the inbox list.
+  // The in-app back chevron used to be the only thing that cleared this, so
+  // any route that drops `?channel=` without passing through it — the
+  // Android back gesture or browser Back, which pops the entry `select()`
+  // pushed — left the flag stuck on and stranded the operator on the empty
+  // pane until a hard refresh remounted the page.
   useEffect(() => {
-    if (channelId) setMobileShowThread(true);
+    setMobileShowThread(!!channelId);
   }, [channelId]);
 
   function select(id: string) {
@@ -112,7 +160,7 @@ export function SmartCommPage() {
         // this is the only chrome left on screen. See PageTransition.tsx's
         // note on why `position: fixed` here is safe to rely on.
         immersive &&
-          "max-md:fixed max-md:inset-0 max-md:z-[100] max-md:m-0 max-md:h-[100dvh] max-md:min-h-0 max-md:border-0 max-md:rounded-none",
+          "max-md:fixed max-md:inset-0 max-md:z-[100] max-md:m-0 max-md:h-[100dvh] max-md:min-h-0 max-md:border-0 max-md:rounded-none max-md:pt-safe",
       )}
     >
       <div
@@ -126,7 +174,7 @@ export function SmartCommPage() {
         {/* List */}
         <div
           className={
-            mobileShowThread
+            mobileThreadOpen
               ? "hidden md:block h-full overflow-hidden"
               : "h-full overflow-hidden"
           }
@@ -145,7 +193,7 @@ export function SmartCommPage() {
         <div
           className={cn(
             "h-full min-w-0 overflow-hidden",
-            !mobileShowThread && "hidden md:block",
+            !mobileThreadOpen && "hidden md:block",
           )}
         >
           {channelId ? (
@@ -180,7 +228,9 @@ export function SmartCommPage() {
             });
             setDrawAttention(false);
           }}
-          title={sidebarOpen ? "Collapse customer panel" : "Show customer panel"}
+          title={
+            sidebarOpen ? "Collapse customer panel" : "Show customer panel"
+          }
           className={cn(
             "hidden xl:grid absolute top-1/2 -translate-y-1/2 z-10 place-items-center",
             "w-6 h-12 rounded-l-lg border hairline bg-panel shadow-md",
@@ -203,7 +253,7 @@ export function SmartCommPage() {
           and phone. Same idea as the desktop collapse toggle — a tab
           hanging off the right edge — just an overlay drawer instead of a
           persistent column since there's no spare width to push into. */}
-      {channelId && channel && (mobileShowThread || !isPhone) && (
+      {channelId && channel && (mobileThreadOpen || !isPhone) && (
         <button
           onClick={() => setMobileCustomerOpen(true)}
           aria-label="Show customer details"
@@ -228,11 +278,17 @@ export function SmartCommPage() {
       />
 
       <NewChatModal
-        open={newChat !== null}
-        initialMode={newChat ?? "chat"}
-        onClose={() => setNewChat(null)}
+        open={newChat !== null || msgCustomer !== null}
+        initialMode={msgCustomer ? "customer" : (newChat ?? "chat")}
+        initialCustomer={msgCustomer?.contact}
+        initialChannel={msgCustomer?.channel}
+        onClose={() => {
+          setNewChat(null);
+          setMsgCustomer(null);
+        }}
         onStarted={(id) => {
           setNewChat(null);
+          setMsgCustomer(null);
           select(id);
           setMobileShowThread(true);
         }}

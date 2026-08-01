@@ -74,6 +74,11 @@ const orderCreate = z
     // Stylist Programme referral capture (§6.26 Q17) — validated upstream
     // against shared.stylist_referral_links before it reaches the order.
     stylist_referral_code: z.string().max(80).optional(),
+    // Staff attribution (Performance → Insights): the staff member credited
+    // with closing this sale. Defaults to the acting user in the controller;
+    // a supervisor entering an order for a colleague can override it here.
+    // Left null for customer self-service (storefront / public form).
+    closed_by_user_id: z.string().uuid().optional().nullable(),
   })
   .strict();
 
@@ -155,6 +160,10 @@ const quoteLine = z
     unit_price_ngn: money.optional(),
     line_discount_ngn: money.optional(),
     notes: z.string().max(500).optional(),
+    // Snapshot overrides (e.g. a styled-product quote line) — see lineInput.
+    product_name_snapshot: z.string().max(300).optional(),
+    variant_label_snapshot: z.string().max(300).optional(),
+    sku_snapshot: z.string().max(120).optional(),
   })
   .strict();
 const quotationCreate = z
@@ -208,6 +217,12 @@ const quotationConvert = z
       .optional(),
   })
   .strict();
+// Accept: optionally convert to an order in the same step (order-first
+// fallback, for sales paid offline rather than through the quote's pay link).
+// Reuses the convert schema's channel enum so the two stay in lockstep.
+const quotationAccept = quotationConvert
+  .extend({ convert: z.boolean().optional() })
+  .strict();
 
 const cancellationRequest = z
   .object({
@@ -233,6 +248,14 @@ const setDeliveryFee = z
   .object({ fee_ngn: z.coerce.number().nonnegative() })
   .strict();
 
+// Manual status move from the drawer — only the fulfilment stages are settable
+// here (payment + cancel states are automatic; the service rejects anything else).
+const orderStatusSet = z
+  .object({
+    status: z.enum(["assigned", "order_ready", "dispatched", "completed"]),
+  })
+  .strict();
+
 // Sales Report export — query params. from/to are inclusive 'YYYY-MM-DD' (both
 // optional; omitting both exports all orders). Unknown query keys are stripped.
 const reportExport = z.object({
@@ -240,6 +263,12 @@ const reportExport = z.object({
   to: z.string().date().optional(),
   status: z.string().max(40).optional(),
   sales_channel: z.string().max(40).optional(),
+});
+
+// Archive restore. `confirm` is the operator's explicit "yes, bring it back as
+// a pre-order" after the dry run reported lines that can no longer be re-held.
+const orderRestore = z.object({
+  confirm: z.boolean().optional(),
 });
 
 const mw = (s) => (req, _res, next) => {
@@ -260,11 +289,14 @@ module.exports = {
   validatePaymentLink: mw(paymentLink),
   validateQuotationCreate: mw(quotationCreate),
   validateQuotationSend: mw(quotationSend),
+  validateQuotationAccept: mw(quotationAccept),
   validateQuotationReject: mw(quotationReject),
   validateQuotationConvert: mw(quotationConvert),
   validateCancellationRequest: mw(cancellationRequest),
   validateCancellationReview: mw(cancellationReview),
   validateSetDeliveryFee: mw(setDeliveryFee),
+  validateOrderStatusSet: mw(orderStatusSet),
+  validateOrderRestore: mw(orderRestore),
   validateReportExport: mwQuery(reportExport),
   orderCreate,
   orderUpdate,

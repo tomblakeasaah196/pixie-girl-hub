@@ -37,6 +37,7 @@ import { useAuthStore } from "@/stores/auth";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import {
   Button,
+  IconButton,
   Card,
   KpiTile,
   Skeleton,
@@ -49,11 +50,13 @@ import { useCosSettings, useCosFollowups, type CosFollowup } from "@/lib/cos-api
 import { GoalsTab } from "./GoalsTab";
 import { NotesTab } from "./NotesTab";
 import { ChiefOfStaffTab } from "./ChiefOfStaffTab";
+import { CrownActivityCard } from "./CrownActivityCard";
 import { useGoals } from "./goals-hooks";
 import { GOAL_HEALTH_META } from "./goals-constants";
 import type { Goal } from "./goals-types";
 
 import { useTaskBoard, useCalendarEvents, useMoveTask } from "./hooks";
+import { TaskAgenda } from "./TaskAgenda";
 import { TaskCard } from "./TaskCard";
 import { TaskFormModal } from "./TaskFormModal";
 import { EventFormModal } from "./EventFormModal";
@@ -108,6 +111,11 @@ const CAL_VIEWS: { key: CalendarViewMode; label: string }[] = [
   { key: "day", label: "Day" },
   { key: "agenda", label: "Agenda" },
 ];
+
+// My Day's "Upcoming" sections show at most this many items before offering a
+// "View more" jump to the full Calendar / Tasks tab. Keeps the day view a
+// glanceable summary, not a second task list.
+const MY_DAY_UPCOMING_LIMIT = 10;
 
 // Goals still in play — mirrors GoalsTab's filter so the "At Risk / Behind"
 // KPI counts the same population the Goals tab shows.
@@ -198,22 +206,14 @@ function DraggableTaskCard({
   task: Task;
   onClick: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({
-      id: task.task_id,
-    });
-  const style = transform
-    ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
-    : undefined;
+  // The DragOverlay renders the moving copy, so the source card stays put
+  // and only dims (translating it as well would double the motion).
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: task.task_id,
+  });
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...listeners}
-      {...attributes}
-      className={isDragging ? "opacity-40" : ""}
-    >
+    <div ref={setNodeRef} {...listeners} {...attributes}>
       <TaskCard task={task} onClick={onClick} isDragging={isDragging} />
     </div>
   );
@@ -229,6 +229,20 @@ export function WorkspacePage() {
   const isDesktop = useMediaQuery("(min-width: 1024px)");
   // Keep the active tab pill in view as the strip scrolls on phones.
   const activeTabRef = useRef<HTMLButtonElement | null>(null);
+
+  // Mobile "New" menu — the tab strip has no room for two labelled buttons,
+  // so phones get one compact icon button that fans to Task / Event instead
+  // of losing the create action entirely.
+  const [mobileCreateOpen, setMobileCreateOpen] = useState(false);
+  const mobileCreateRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!mobileCreateOpen) return;
+    const onDown = (e: MouseEvent) =>
+      !mobileCreateRef.current?.contains(e.target as Node) &&
+      setMobileCreateOpen(false);
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [mobileCreateOpen]);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const isCeo = !!user?.isCeo;
@@ -256,6 +270,23 @@ export function WorkspacePage() {
 
   // Selection state
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  /* A task notification links to /workspace?tab=tasks&task=<id>; open that
+     task's panel on arrival so the link isn't a dead end. Takes the id
+     straight from the URL — no need to wait for the list, the panel fetches
+     the task itself. */
+  const linkedTaskId = searchParams.get("task");
+  useEffect(() => {
+    if (!linkedTaskId) return;
+    setSelectedTaskId(linkedTaskId);
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete("task");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [linkedTaskId, setSearchParams]);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(
     null,
   );
@@ -270,6 +301,18 @@ export function WorkspacePage() {
   // Task search
   const [taskSearch, setTaskSearch] = useState("");
 
+  // Tasks tab audience. Everyone defaults to their own tasks; only users whose
+  // tasks.view record scope reaches beyond 'own' can widen to the whole team
+  // (the API enforces regardless — 'own' scope is filtered server-side).
+  const scopeFor = useAuthStore((s) => s.scopeFor);
+  const taskScope = scopeFor("tasks", "view");
+  const canSeeAllTasks = taskScope === "all" || taskScope === "team";
+  const [taskView, setTaskView] = useState<"mine" | "everyone">("mine");
+
+  // Desktop layout for the Tasks tab: kanban board (default) or the
+  // deadline-first agenda list. Phones always get the agenda.
+  const [taskLayout, setTaskLayout] = useState<"board" | "list">("board");
+
   // Kanban drag
   const [activeDragId, setActiveDragId] = useState<string | null>(null);
   const moveTask = useMoveTask();
@@ -277,13 +320,23 @@ export function WorkspacePage() {
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
   );
 
-  // Data
+  // Data. The Tasks tab board can widen to everyone (scope permitting);
+  // My Day always shows the signed-in user's own tasks. When both queries
+  // ask for "me" they share a query key, so only one request is made.
   const {
     data: board,
     isLoading: boardLoading,
     isError: boardError,
     refetch: refetchBoard,
-  } = useTaskBoard();
+  } = useTaskBoard(
+    taskView === "everyone" && canSeeAllTasks ? {} : { assigned_to: "me" },
+  );
+  const {
+    data: myBoard,
+    isLoading: myBoardLoading,
+    isError: myBoardError,
+    refetch: refetchMyBoard,
+  } = useTaskBoard({ assigned_to: "me" });
 
   // Calendar events for the visible range
   const calRange = useMemo(() => {
@@ -327,21 +380,32 @@ export function WorkspacePage() {
     ];
   }, [board]);
 
+  // My Day KPIs count the user's OWN tasks, never the widened team board.
+  const myTasks = useMemo(() => {
+    if (!myBoard) return [];
+    return [
+      ...myBoard.to_do,
+      ...myBoard.in_progress,
+      ...myBoard.in_review,
+      ...myBoard.done,
+    ];
+  }, [myBoard]);
+
   const dueTodayTasks = useMemo(
     () =>
-      allTasks.filter(
+      myTasks.filter(
         (t) =>
           t.due_at &&
           isSameDay(new Date(t.due_at), today) &&
           t.status !== "done" &&
           t.status !== "cancelled",
       ),
-    [allTasks, todayStr],
+    [myTasks, todayStr],
   );
 
   const overdueTasks = useMemo(
     () =>
-      allTasks.filter(
+      myTasks.filter(
         (t) =>
           t.due_at &&
           isPast(t.due_at) &&
@@ -349,15 +413,49 @@ export function WorkspacePage() {
           t.status !== "done" &&
           t.status !== "cancelled",
       ),
-    [allTasks, todayStr],
+    [myTasks, todayStr],
   );
 
   const completedToday = useMemo(
     () =>
-      allTasks.filter(
+      myTasks.filter(
         (t) => t.completed_at && isSameDay(new Date(t.completed_at), today),
       ),
-    [allTasks, todayStr],
+    [myTasks, todayStr],
+  );
+
+  // Upcoming (tomorrow onwards) — so an empty day still surfaces what's coming
+  // and the stylist studio jobs raised with a 48h deadline show up before
+  // they're due. Sorted soonest-first, capped by the view.
+  const upcomingEvents = useMemo(
+    () =>
+      events
+        .filter((e) => {
+          const start = new Date(e.start_at);
+          return start > today && !isSameDay(start, today);
+        })
+        .sort(
+          (a, b) =>
+            new Date(a.start_at).getTime() - new Date(b.start_at).getTime(),
+        ),
+    [events, todayStr],
+  );
+
+  const upcomingTasks = useMemo(
+    () =>
+      myTasks
+        .filter((t) => {
+          if (!t.due_at || t.status === "done" || t.status === "cancelled")
+            return false;
+          const due = new Date(t.due_at);
+          return due > today && !isSameDay(due, today);
+        })
+        .sort(
+          (a, b) =>
+            new Date(a.due_at as string).getTime() -
+            new Date(b.due_at as string).getTime(),
+        ),
+    [myTasks, todayStr],
   );
 
   // CoS-access (CEO) users trade the backward-looking "Overdue / Completed"
@@ -496,7 +594,44 @@ export function WorkspacePage() {
           </div>
         </div>
 
-        {!isMobile && (
+        {isMobile ? (
+          <div className="relative shrink-0" ref={mobileCreateRef}>
+            <IconButton
+              aria-label="New task or event"
+              title="New task or event"
+              onClick={() => setMobileCreateOpen((o) => !o)}
+            >
+              <Plus className="w-[18px] h-[18px]" />
+            </IconButton>
+            {mobileCreateOpen && (
+              <div
+                role="menu"
+                className="absolute z-[65] top-full right-0 mt-2 w-[168px] p-1.5 rounded-[13px] dropglass animate-fade-in"
+              >
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setMobileCreateOpen(false);
+                    openCreateTaskForDate();
+                  }}
+                  className="w-full flex items-center gap-2.5 p-[9px_10px] rounded-[9px] text-[13px] font-medium text-text-muted hover:bg-text-primary/[0.06] hover:text-text-primary transition-all"
+                >
+                  <ListTodo className="w-4 h-4" /> New task
+                </button>
+                <button
+                  role="menuitem"
+                  onClick={() => {
+                    setMobileCreateOpen(false);
+                    setShowCreateEvent(true);
+                  }}
+                  className="w-full flex items-center gap-2.5 p-[9px_10px] rounded-[9px] text-[13px] font-medium text-text-muted hover:bg-text-primary/[0.06] hover:text-text-primary transition-all"
+                >
+                  <CalendarDays className="w-4 h-4" /> New event
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
           <div className="ml-auto flex items-center gap-2 shrink-0">
             <Button
               variant="primary"
@@ -530,18 +665,20 @@ export function WorkspacePage() {
               userName={user?.name ?? "there"}
               isCeo={isCeo}
               todayEvents={todayEvents}
+              upcomingEvents={upcomingEvents}
               dueTodayTasks={dueTodayTasks}
               overdueTasks={overdueTasks}
+              upcomingTasks={upcomingTasks}
               completedToday={completedToday}
               atRiskGoals={atRiskGoals}
               goalsLoading={goalsLoading}
               followups={followups}
               followupsLoading={followupsLoading}
               eventsLoading={eventsLoading}
-              boardLoading={boardLoading}
-              boardError={boardError}
+              boardLoading={myBoardLoading}
+              boardError={myBoardError}
               eventsError={eventsError}
-              onRetryBoard={refetchBoard}
+              onRetryBoard={refetchMyBoard}
               onRetryEvents={refetchEvents}
               onSelectTask={(t) => setSelectedTaskId(t.task_id)}
               onSelectEvent={setSelectedEvent}
@@ -571,10 +708,54 @@ export function WorkspacePage() {
             />
           )}
 
+          {/* Tasks tab controls: audience switch (scopes beyond 'own') +
+              desktop Board/List layout switch. Phones always get the agenda. */}
+          {activeTab === "tasks" && (canSeeAllTasks || !isMobile) && (
+            <div className="mb-4 flex items-center gap-2 flex-wrap">
+              {canSeeAllTasks && (
+                <div className="inline-flex gap-0.5 p-0.5 rounded-[12px] bg-text-primary/[0.04] border hairline">
+                  {(["mine", "everyone"] as const).map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setTaskView(v)}
+                      className={cn(
+                        "px-3.5 h-[30px] rounded-[10px] text-[12px] font-semibold transition-all whitespace-nowrap",
+                        taskView === v
+                          ? "bg-accent-deep text-[#F4E9D9] shadow-sm"
+                          : "text-text-muted hover:text-text-primary hover:bg-text-primary/[0.06]",
+                      )}
+                    >
+                      {v === "mine" ? "My tasks" : "Everyone"}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {!isMobile && (
+                <div className="inline-flex gap-0.5 p-0.5 rounded-[12px] bg-text-primary/[0.04] border hairline">
+                  {(["board", "list"] as const).map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setTaskLayout(v)}
+                      className={cn(
+                        "px-3.5 h-[30px] rounded-[10px] text-[12px] font-semibold transition-all whitespace-nowrap",
+                        taskLayout === v
+                          ? "bg-accent-deep text-[#F4E9D9] shadow-sm"
+                          : "text-text-muted hover:text-text-primary hover:bg-text-primary/[0.06]",
+                      )}
+                    >
+                      {v === "board" ? "Board" : "List"}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           {activeTab === "tasks" &&
-            (isMobile ? (
-              <TaskListMobile
-                board={filteredBoard}
+            (isMobile || taskLayout === "list" ? (
+              <TaskAgenda
+                tasks={allTasks}
                 loading={boardLoading}
                 error={boardError}
                 search={taskSearch}
@@ -582,6 +763,7 @@ export function WorkspacePage() {
                 onRetry={refetchBoard}
                 onSelectTask={(t) => setSelectedTaskId(t.task_id)}
                 onCreateTask={() => openCreateTaskForDate()}
+                showAssignee={canSeeAllTasks && taskView === "everyone"}
               />
             ) : (
               <TasksKanban
@@ -614,16 +796,19 @@ export function WorkspacePage() {
           {activeTab === "my-hr" && <MyHrPage />}
         </div>
 
-        {/* Detail panel (desktop only) */}
+        {/* Detail panel (desktop only) — sticky below the top bar with its
+            own internal scroll, so scrolling the board never hides it. */}
         {isDesktop && selectedTaskId && (
-          <TaskDetailPanel
-            taskId={selectedTaskId}
-            onClose={() => setSelectedTaskId(null)}
-            onEdit={() => {
-              const t = allTasks.find((x) => x.task_id === selectedTaskId);
-              if (t) setEditTask(t);
-            }}
-          />
+          <div className="sticky top-[76px] self-start h-[calc(100dvh-100px)] min-h-[320px]">
+            <TaskDetailPanel
+              taskId={selectedTaskId}
+              onClose={() => setSelectedTaskId(null)}
+              onEdit={() => {
+                const t = allTasks.find((x) => x.task_id === selectedTaskId);
+                if (t) setEditTask(t);
+              }}
+            />
+          </div>
         )}
       </div>
 
@@ -974,8 +1159,10 @@ function MyDayView({
   userName,
   isCeo,
   todayEvents,
+  upcomingEvents,
   dueTodayTasks,
   overdueTasks,
+  upcomingTasks,
   completedToday,
   atRiskGoals,
   goalsLoading,
@@ -996,8 +1183,10 @@ function MyDayView({
   userName: string;
   isCeo: boolean;
   todayEvents: CalendarEvent[];
+  upcomingEvents: CalendarEvent[];
   dueTodayTasks: Task[];
   overdueTasks: Task[];
+  upcomingTasks: Task[];
   completedToday: Task[];
   atRiskGoals: Goal[];
   goalsLoading: boolean;
@@ -1110,6 +1299,9 @@ function MyDayView({
         />
       )}
 
+      {/* Crown activity — pending approvals + at-risk streaks, for sales. */}
+      <CrownActivityCard />
+
       {/* Two-column layout */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Today's Schedule */}
@@ -1142,44 +1334,58 @@ function MyDayView({
                 ))}
               </div>
             )}
-            {!eventsLoading && !eventsError && todayEvents.length === 0 && (
-              <EmptyState
-                icon={<CalendarDays className="w-6 h-6" />}
-                title="No events today"
-                message="Your day is clear."
-                action={
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    icon={<Plus className="w-3 h-3" />}
-                    onClick={onCreateEvent}
-                  >
-                    New Event
-                  </Button>
-                }
-              />
-            )}
             {!eventsLoading &&
               !eventsError &&
-              todayEvents.map((ev) => (
-                <button
-                  key={ev.event_id}
-                  onClick={() => onSelectEvent(ev)}
-                  className="w-full text-left flex items-center gap-3 p-2.5 rounded-xl hover:bg-text-primary/[0.04] transition-colors"
-                >
-                  <div className="w-1 h-10 rounded-full bg-accent/40 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[13px] font-semibold text-text-primary truncate">
-                      {ev.title}
-                    </div>
-                    <div className="text-[11px] text-text-faint">
-                      {ev.all_day
-                        ? "All day"
-                        : `${formatTime(ev.start_at)} - ${formatTime(ev.end_at)}`}
-                    </div>
-                  </div>
-                </button>
-              ))}
+              todayEvents.length === 0 &&
+              upcomingEvents.length === 0 && (
+                <EmptyState
+                  icon={<CalendarDays className="w-6 h-6" />}
+                  title="No events today"
+                  message="Your day is clear — and nothing coming up either."
+                  action={
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      icon={<Plus className="w-3 h-3" />}
+                      onClick={onCreateEvent}
+                    >
+                      New Event
+                    </Button>
+                  }
+                />
+              )}
+            {!eventsLoading && !eventsError && todayEvents.length > 0 && (
+              <div>
+                {todayEvents.map((ev) => (
+                  <EventScheduleRow
+                    key={ev.event_id}
+                    event={ev}
+                    onClick={() => onSelectEvent(ev)}
+                  />
+                ))}
+              </div>
+            )}
+            {!eventsLoading && !eventsError && upcomingEvents.length > 0 && (
+              <div className={todayEvents.length > 0 ? "mt-3" : ""}>
+                <div className="text-[10px] font-bold uppercase tracking-wide text-text-faint mb-2 px-1">
+                  Upcoming
+                </div>
+                {upcomingEvents.slice(0, MY_DAY_UPCOMING_LIMIT).map((ev) => (
+                  <EventScheduleRow
+                    key={ev.event_id}
+                    event={ev}
+                    showDate
+                    onClick={() => onSelectEvent(ev)}
+                  />
+                ))}
+                {upcomingEvents.length > MY_DAY_UPCOMING_LIMIT && (
+                  <ViewMoreRow
+                    count={upcomingEvents.length - MY_DAY_UPCOMING_LIMIT}
+                    onClick={() => onOpenTab("calendar")}
+                  />
+                )}
+              </div>
+            )}
           </div>
         </Card>
 
@@ -1214,11 +1420,12 @@ function MyDayView({
             {!boardLoading &&
               !boardError &&
               overdueTasks.length === 0 &&
-              dueTodayTasks.length === 0 && (
+              dueTodayTasks.length === 0 &&
+              upcomingTasks.length === 0 && (
                 <EmptyState
                   icon={<CheckCircle2 className="w-6 h-6" />}
                   title="All caught up"
-                  message="No tasks due today."
+                  message="Nothing due today, and nothing coming up."
                   action={
                     <Button
                       variant="primary"
@@ -1249,7 +1456,7 @@ function MyDayView({
                   </div>
                 )}
                 {dueTodayTasks.length > 0 && (
-                  <div>
+                  <div className="mb-3">
                     <div className="text-[10px] font-bold uppercase tracking-wide text-text-faint mb-2">
                       Due Today
                     </div>
@@ -1260,6 +1467,26 @@ function MyDayView({
                         onClick={() => onSelectTask(t)}
                       />
                     ))}
+                  </div>
+                )}
+                {upcomingTasks.length > 0 && (
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-wide text-text-faint mb-2">
+                      Upcoming
+                    </div>
+                    {upcomingTasks.slice(0, MY_DAY_UPCOMING_LIMIT).map((t) => (
+                      <TaskRow
+                        key={t.task_id}
+                        task={t}
+                        onClick={() => onSelectTask(t)}
+                      />
+                    ))}
+                    {upcomingTasks.length > MY_DAY_UPCOMING_LIMIT && (
+                      <ViewMoreRow
+                        count={upcomingTasks.length - MY_DAY_UPCOMING_LIMIT}
+                        onClick={() => onOpenTab("tasks")}
+                      />
+                    )}
                   </div>
                 )}
               </>
@@ -1302,6 +1529,52 @@ function TaskRow({
           {formatDate(task.due_at)}
         </span>
       )}
+    </button>
+  );
+}
+
+/** Event row for My Day's schedule + upcoming lists. `showDate` prefixes the
+ *  calendar date (upcoming events span future days; today's don't need it). */
+function EventScheduleRow({
+  event,
+  showDate,
+  onClick,
+}: {
+  event: CalendarEvent;
+  showDate?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full text-left flex items-center gap-3 p-2.5 rounded-xl hover:bg-text-primary/[0.04] transition-colors"
+    >
+      <div className="w-1 h-10 rounded-full bg-accent/40 shrink-0" />
+      <div className="flex-1 min-w-0">
+        <div className="text-[13px] font-semibold text-text-primary truncate">
+          {event.title}
+        </div>
+        <div className="text-[11px] text-text-faint">
+          {showDate && `${formatDate(event.start_at)} · `}
+          {event.all_day
+            ? "All day"
+            : `${formatTime(event.start_at)} - ${formatTime(event.end_at)}`}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+/** "View more" affordance closing an Upcoming list that was capped for space —
+ *  jumps to the full Calendar / Tasks tab where the rest lives. */
+function ViewMoreRow({ count, onClick }: { count: number; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full flex items-center justify-center gap-1.5 mt-1 p-2 rounded-xl text-[12px] font-semibold text-accent-glow hover:bg-text-primary/[0.04] transition-colors"
+    >
+      View {count} more
+      <ChevronRight className="w-3.5 h-3.5" />
     </button>
   );
 }
@@ -1526,135 +1799,6 @@ function TasksKanban({
             ) : null}
           </DragOverlay>
         </DndContext>
-      )}
-    </div>
-  );
-}
-
-// ── Tasks List (mobile) ──────────────────────────────────────────────────
-
-function TaskListMobile({
-  board,
-  loading,
-  error,
-  search,
-  onSearchChange,
-  onRetry,
-  onSelectTask,
-  onCreateTask,
-}: {
-  board: ReturnType<typeof useTaskBoard>["data"] | null;
-  loading: boolean;
-  error: boolean;
-  search: string;
-  onSearchChange: (s: string) => void;
-  onRetry: () => void;
-  onSelectTask: (t: Task) => void;
-  onCreateTask: () => void;
-}) {
-  if (error)
-    return <ErrorState message="Could not load tasks." onRetry={onRetry} />;
-
-  const allTasks = board
-    ? [...board.to_do, ...board.in_progress, ...board.in_review, ...board.done]
-    : [];
-
-  const filtered = search.trim()
-    ? allTasks.filter(
-        (t) =>
-          t.title.toLowerCase().includes(search.toLowerCase()) ||
-          t.assigned_to_name?.toLowerCase().includes(search.toLowerCase()),
-      )
-    : allTasks;
-
-  return (
-    <div>
-      <div className="mb-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-faint" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search tasks..."
-            className="w-full h-[36px] pl-9 pr-3 rounded-[10px] bg-text-primary/[0.04] border border-line text-[12px] text-text-primary outline-none focus:border-accent/50 transition-colors" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
-          />
-        </div>
-      </div>
-
-      {loading && (
-        <div className="space-y-2">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-16 rounded-xl" />
-          ))}
-        </div>
-      )}
-
-      {!loading && filtered.length === 0 && (
-        <EmptyState
-          icon={<ListTodo className="w-6 h-6" />}
-          title="No tasks"
-          message={
-            search
-              ? "No tasks match your search."
-              : "Create your first task to get started."
-          }
-          action={
-            !search ? (
-              <Button
-                variant="primary"
-                size="sm"
-                icon={<Plus className="w-3 h-3" />}
-                onClick={onCreateTask}
-              >
-                New Task
-              </Button>
-            ) : undefined
-          }
-        />
-      )}
-
-      {!loading && (
-        <div className="space-y-1.5">
-          {filtered.map((task) => (
-            <button
-              key={task.task_id}
-              onClick={() => onSelectTask(task)}
-              className="w-full text-left glass rounded-xl p-3 hover:bg-text-primary/[0.04] transition-colors"
-            >
-              <div className="flex items-start gap-2">
-                <div className="flex-1 min-w-0">
-                  <div className="text-[13px] font-semibold text-text-primary truncate">
-                    {task.title}
-                  </div>
-                  <div className="flex items-center gap-2 mt-1">
-                    <Pill tone={TASK_STATUS_META[task.status].tone} dot={false}>
-                      {TASK_STATUS_META[task.status].label}
-                    </Pill>
-                    <Pill
-                      tone={TASK_PRIORITY_META[task.priority].tone}
-                      dot={false}
-                    >
-                      {TASK_PRIORITY_META[task.priority].label}
-                    </Pill>
-                  </div>
-                </div>
-                {task.due_at && (
-                  <span
-                    className={cn(
-                      "text-[10px] font-mono shrink-0",
-                      isPast(task.due_at) && task.status !== "done"
-                        ? "text-danger"
-                        : "text-text-faint",
-                    )}
-                  >
-                    {formatDate(task.due_at)}
-                  </span>
-                )}
-              </div>
-            </button>
-          ))}
-        </div>
       )}
     </div>
   );

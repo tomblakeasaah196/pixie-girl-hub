@@ -1,13 +1,11 @@
 /**
- * Social Studio — small shared UI bits used across Board/Calendar/Performance/
- * Team tabs and the post/plan detail drawers.
+ * Social Studio — small shared UI bits used across the Calendar / Performance /
+ * Account tabs and the day drawer.
  */
 
-import { useState } from "react";
-import { Star, Search, X, ChevronLeft, ChevronRight } from "lucide-react";
-import { useStyledProducts } from "@/lib/catalogue";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
-// ── Month picker (Performance / Team tabs) ────────────────────
+// ── Month picker (Performance tab) ────────────────────────────
 export function MonthPicker({
   value,
   onChange,
@@ -47,7 +45,7 @@ export function MonthPicker({
   );
 }
 
-// ── Form bits (ported from the old composer) ─────────────────
+// ── Form bits (used by the Account tab's add-handle drawer) ────
 export function Labelled({
   label,
   children,
@@ -92,146 +90,6 @@ export function TextInput({
         data-1p-ignore=""
         data-form-type="other"
       />
-    </div>
-  );
-}
-
-/** Format a date as a `datetime-local` value (YYYY-MM-DDTHH:mm). When `hour`
- *  is given the time is pinned to that hour; otherwise the date's own time is
- *  kept. */
-export function toLocalInput(date: Date, hour?: number): string {
-  const d = new Date(date);
-  if (hour !== undefined) d.setHours(hour, 0, 0, 0);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-// ── Star rating (creative_rating: manager's subjective grade) ───
-export function StarRating({
-  value,
-  onChange,
-  readOnly,
-  size = "md",
-}: {
-  value: number | null;
-  onChange?: (v: number) => void;
-  readOnly?: boolean;
-  size?: "sm" | "md";
-}) {
-  const dim = size === "sm" ? "w-3.5 h-3.5" : "w-5 h-5";
-  return (
-    <div className="flex items-center gap-0.5">
-      {[1, 2, 3, 4, 5].map((n) => (
-        <button
-          key={n}
-          type="button"
-          disabled={readOnly}
-          onClick={() => onChange?.(n)}
-          className={readOnly ? "cursor-default" : "cursor-pointer"}
-          aria-label={`${n} star${n === 1 ? "" : "s"}`}
-        >
-          <Star
-            className={`${dim} ${
-              value !== null && n <= value
-                ? "fill-warn text-warn"
-                : "fill-transparent text-text-faint"
-            }`}
-          />
-        </button>
-      ))}
-    </div>
-  );
-}
-
-/** Post Grade: performance_score (objective) + creative_rating (subjective),
- *  always shown side by side — never blended into one number. */
-export function PostGrade({
-  performanceScore,
-  creativeRating,
-}: {
-  performanceScore: string | null;
-  creativeRating: number | null;
-}) {
-  return (
-    <div className="flex items-center gap-3">
-      <div>
-        <div className="text-[9.5px] uppercase tracking-widest text-text-faint">Performance</div>
-        <div className="font-display text-[15px] tabular-nums">
-          {performanceScore !== null ? `${Math.round(Number(performanceScore))}/100` : "—"}
-        </div>
-      </div>
-      <div className="w-px h-7 bg-line" />
-      <div>
-        <div className="text-[9.5px] uppercase tracking-widest text-text-faint">Creative</div>
-        <StarRating value={creativeRating} readOnly size="sm" />
-      </div>
-    </div>
-  );
-}
-
-// ── Product tag picker (tagged_product_ids -> storefront "as seen on" badge) ──
-export function ProductTagPicker({
-  value,
-  onChange,
-}: {
-  value: string[];
-  onChange: (ids: string[]) => void;
-}) {
-  const [q, setQ] = useState("");
-  // Tags reference the *styled* (published, purchasable) product — the same
-  // id the storefront's product page resolves — not the underlying base product.
-  const searchQ = useStyledProducts({ q: q.trim(), status: "live" });
-  const results = q.trim().length > 1 ? (searchQ.data ?? []).slice(0, 8) : [];
-
-  return (
-    <div className="space-y-2">
-      {value.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {value.map((id) => (
-            <span
-              key={id}
-              className="inline-flex items-center gap-1 text-[11px] bg-accent/[0.1] text-accent-glow rounded-full pl-2.5 pr-1.5 py-1"
-            >
-              {id.slice(0, 8)}…
-              <button
-                type="button"
-                onClick={() => onChange(value.filter((v) => v !== id))}
-                aria-label="Remove product tag"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint" />
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search products to tag…"
-          className="w-full h-[38px] pl-8 pr-3 rounded-[10px] bg-text-primary/[0.04] border border-line text-[12.5px] outline-none focus:border-accent/50"
-        />
-      </div>
-      {q.trim().length > 1 && results.length > 0 && (
-        <div className="rounded-[10px] border border-line divide-y divide-line overflow-hidden">
-          {results
-            .filter((p) => !value.includes(p.styled_id))
-            .map((p) => (
-              <button
-                key={p.styled_id}
-                type="button"
-                onClick={() => {
-                  onChange([...value, p.styled_id]);
-                  setQ("");
-                }}
-                className="w-full text-left px-3 py-2 text-[12.5px] hover:bg-text-primary/[0.04]"
-              >
-                {p.name}
-              </button>
-            ))}
-        </div>
-      )}
     </div>
   );
 }

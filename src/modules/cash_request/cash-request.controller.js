@@ -20,7 +20,12 @@ async function list(req, res) {
 }
 
 async function getById(req, res) {
-  const item = await service.getById({ brand: req.brand, id: req.params.id });
+  const item = await service.getById({
+    brand: req.brand,
+    id: req.params.id,
+    scope: req.permission_scope,
+    user: req.user,
+  });
   res.json({ data: item });
 }
 
@@ -118,6 +123,8 @@ async function listDocuments(req, res) {
   const docs = await service.listDocuments({
     brand: req.brand,
     id: req.params.id,
+    scope: req.permission_scope,
+    user: req.user,
   });
   res.json({ data: docs });
 }
@@ -126,6 +133,8 @@ async function getHistory(req, res) {
   const history = await service.getHistory({
     brand: req.brand,
     id: req.params.id,
+    scope: req.permission_scope,
+    user: req.user,
   });
   res.json({ data: history });
 }

@@ -7,6 +7,7 @@
  */
 
 import { api } from "@/lib/api";
+import { stashCallIntent } from "@/lib/call-intent";
 
 // When a new service worker takes control of the page (its `activate` runs
 // `clients.claim()`), reload once so the tab drops the old JS bundles and
@@ -175,4 +176,94 @@ export function markPushPrompted() {
   try {
     localStorage.setItem(PUSH_PROMPT_KEY, "1");
   } catch {}
+}
+
+// ── Call-specific push readiness ──────────────────────────
+// Push is a nice-to-have for approvals and a HARD REQUIREMENT for calls: with
+// no subscription on the device, a ringing call simply cannot reach an agent
+// whose app is closed. So calls get their own prompt (own dismissal key) with
+// its own copy, rather than sharing the generic notifications banner that many
+// users dismiss on day one without reading.
+
+const CALL_PUSH_PROMPT_KEY = "pgh_call_push_prompted";
+
+export function hasCallPushBeenPrompted(): boolean {
+  try {
+    return !!localStorage.getItem(CALL_PUSH_PROMPT_KEY);
+  } catch {
+    return false;
+  }
+}
+
+export function markCallPushPrompted() {
+  try {
+    localStorage.setItem(CALL_PUSH_PROMPT_KEY, "1");
+  } catch {}
+}
+
+export function pushSupported(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof Notification !== "undefined" &&
+    "serviceWorker" in navigator &&
+    "PushManager" in window
+  );
+}
+
+/** True on an iOS/iPadOS browser tab — web push there needs the PWA installed. */
+export function isIosSafariTab(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  const iOS =
+    /iPad|iPhone|iPod/.test(ua) ||
+    // iPadOS 13+ reports as Mac; the touch-point count gives it away.
+    (/Macintosh/.test(ua) && (navigator.maxTouchPoints ?? 0) > 1);
+  if (!iOS) return false;
+  const standalone =
+    window.matchMedia?.("(display-mode: standalone)").matches ||
+    (navigator as unknown as { standalone?: boolean }).standalone === true;
+  return !standalone;
+}
+
+// ── Service-worker → page bridge for calls ────────────────
+// The service worker forwards every call push to open tabs (and relays taps on
+// the notification's Answer / Decline buttons, which it cannot perform itself —
+// it has no access token). Those arrive as postMessages; re-dispatch them as
+// window events so the CallLayer consumes them exactly like socket events.
+//
+// This is also the ring's fallback path: if the socket is dead but push is
+// alive, the ring still reaches a focused tab through here.
+
+const SW_TO_WINDOW: Record<string, string> = {
+  PGH_CALL_RING: "pgh:call:ringing",
+  PGH_CALL_CANCEL: "pgh:call:push-cancel",
+  PGH_CALL_ANSWER: "pgh:call:answer-intent",
+  PGH_CALL_DECLINE: "pgh:call:decline-intent",
+};
+
+if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+  navigator.serviceWorker.addEventListener("message", (event) => {
+    const msg = (event as MessageEvent).data as
+      | { type?: string; data?: { call_id?: string } }
+      | undefined;
+    if (!msg?.type) return;
+    const windowEvent = SW_TO_WINDOW[msg.type];
+    if (!windowEvent) return;
+
+    // Answer / Decline taps also get parked in the intent stash. The service
+    // worker prefers postMessage over a navigation (a navigation would remount
+    // the SPA and kill a live call), but the tab it focused might be sitting on
+    // the login screen with no CallLayer to hear this event. Stashing means the
+    // tap survives the sign-in and is honoured on the other side. CallLayer
+    // clears the stash the instant it handles an intent, so a single tap can
+    // never be acted on twice.
+    const callId = msg.data?.call_id;
+    if (callId && msg.type === "PGH_CALL_ANSWER") {
+      stashCallIntent(callId, "answer");
+    } else if (callId && msg.type === "PGH_CALL_DECLINE") {
+      stashCallIntent(callId, "decline");
+    }
+
+    window.dispatchEvent(new CustomEvent(windowEvent, { detail: msg.data }));
+  });
 }

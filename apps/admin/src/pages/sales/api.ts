@@ -10,12 +10,15 @@ import type {
   QuotationCreateInput,
   QuotationSendInput,
   QuotationConvertInput,
+  QuotationAcceptInput,
+  QuotationPayLink,
   CancellationRequestInput,
   PaginatedResponse,
   FlexiPaySettings,
   FlexiPaySettingsPatch,
   PosTerminalReconciliation,
   PosReconOrderCandidate,
+  OrderStatus,
 } from "./types";
 
 const S = "/sales";
@@ -33,12 +36,18 @@ function qs(params: Record<string, unknown>) {
 
 export interface OrderListParams {
   status?: string;
+  /** Hide one status from the working list — the Orders table passes
+   *  'cancelled' so archived rows only appear in the Archive drawer.
+   *  Ignored by the API when an explicit `status` is also set. */
+  exclude_status?: string;
   contact_id?: string;
   sales_channel?: string;
   sales_campaign_id?: string;
   search?: string;
   /** Flexi Pay (PR-3): committed instalment orders with a balance still due. */
   part_paid?: boolean;
+  /** Pre-orders tab (000086): orders carrying a made-to-order line. */
+  preorder?: boolean;
   page?: number;
   page_size?: number;
 }
@@ -46,10 +55,16 @@ export interface OrderListParams {
 export const listOrders = ({
   search,
   part_paid,
+  preorder,
   ...rest
 }: OrderListParams = {}) =>
   api.get<PaginatedResponse<SalesOrder>>(
-    `${S}/orders${qs({ ...rest, q: search, part_paid: part_paid || undefined })}`,
+    `${S}/orders${qs({
+      ...rest,
+      q: search,
+      part_paid: part_paid || undefined,
+      preorder: preorder || undefined,
+    })}`,
   );
 
 export const getOrder = (id: string) =>
@@ -76,8 +91,66 @@ export const createPaymentLink = (
 export const cancelOrder = (id: string) =>
   api.post<SalesOrder>(`${S}/orders/${id}/cancel`);
 
+/** A line the archive restore can no longer re-hold from stock. */
+export interface RestoreShortLine {
+  line_id: string;
+  variant_id: string;
+  name: string | null;
+  wanted: number;
+  available: number;
+}
+
+/**
+ * Result of restoring a cancelled order. The dry run returns 200 with
+ * `requires_confirmation: true` when some lines can no longer be re-held — the
+ * caller shows the warning, then calls again with `confirm: true` to bring those
+ * lines back as pre-orders. Genuine refusals (not cancelled, deposit forfeited)
+ * throw an ApiError instead.
+ */
+export interface RestoreOrderResult {
+  requires_confirmation: boolean;
+  order_number?: string;
+  short_lines?: RestoreShortLine[];
+  message?: string;
+  restored_to?: string;
+  preorder_line_count?: number;
+}
+
+export const restoreOrder = (id: string, confirm = false) =>
+  api.post<RestoreOrderResult>(`${S}/orders/${id}/restore`, { confirm });
+
+// Manual fulfilment-stage move (assigned / order_ready / dispatched / completed).
+// Payment + cancellation states are managed automatically by the backend.
+export const setOrderStatus = (id: string, status: string) =>
+  api.post<SalesOrder>(`${S}/orders/${id}/status`, { status });
+
 export const generateReceipt = (id: string) =>
   api.post<{ url: string }>(`${S}/orders/${id}/receipt`);
+
+/** Live on/off state of the customer message a manual fulfilment move fires. */
+export interface StatusAutomationState {
+  /** Comms Studio automation this move triggers (e.g. "order_ready"). */
+  event_key: string;
+  /** An automation row exists for this event on the active brand. */
+  configured: boolean;
+  /** Switched On in Messaging settings — i.e. this message will actually send. */
+  is_active: boolean;
+  /** Configured channel_preference ("whatsapp" | "email" | …), when known. */
+  channel: string | null;
+}
+
+/**
+ * On/off state of the message each manual status move fires, keyed by target
+ * status. Only message-bearing moves appear (order_ready, dispatched);
+ * assigned/completed send nothing and are absent. Powers the drawer's impact
+ * modal so it shows a definite "will send"/"won't send — it's off".
+ */
+export type StatusAutomationMap = Partial<
+  Record<OrderStatus, StatusAutomationState>
+>;
+
+export const getStatusAutomations = () =>
+  api.get<StatusAutomationMap>(`${S}/orders/status-automations`);
 
 export const getOrderTimeline = (id: string) =>
   api.get<TimelineEvent[]>(`${S}/orders/${id}/timeline`);
@@ -146,9 +219,13 @@ export interface OrderServiceJob {
   created_at: string;
 }
 
+// Read the order's Stylist Studio job THROUGH the order (sales.view), not the
+// service_jobs list endpoint (which is stylist own-scoped). A salesperson is
+// never the assigned stylist, so the old path returned an empty list for them
+// and the Order drawer misreported "Studio: not opened yet".
 export const getOrderServiceJob = (orderId: string) =>
   api.get<PaginatedResponse<OrderServiceJob>>(
-    `/service-jobs${qs({ sales_order_id: orderId, page_size: 1 })}`,
+    `${S}/orders/${orderId}/service-job`,
   );
 
 /** The delivery attached to this order. */
@@ -201,8 +278,18 @@ export const createQuotation = (input: QuotationCreateInput) =>
 export const sendQuotation = (id: string, input: QuotationSendInput = {}) =>
   api.post<Quotation>(`${S}/quotations/${id}/send`, input);
 
-export const acceptQuotation = (id: string) =>
-  api.post<Quotation>(`${S}/quotations/${id}/accept`);
+export const acceptQuotation = (
+  id: string,
+  input: QuotationAcceptInput = {},
+) => api.post<Quotation>(`${S}/quotations/${id}/accept`, input);
+
+/**
+ * Mint (idempotently) the quote's customer-facing pay link. Sending it is what
+ * lets the customer pay the quote directly; the order is created from the quote
+ * when that payment confirms.
+ */
+export const getQuotationPayLink = (id: string) =>
+  api.get<QuotationPayLink>(`${S}/quotations/${id}/pay-link`);
 
 export const rejectQuotation = (id: string, reason?: string) =>
   api.post<Quotation>(`${S}/quotations/${id}/reject`, { reason });

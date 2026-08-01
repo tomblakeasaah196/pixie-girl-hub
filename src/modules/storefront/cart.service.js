@@ -21,6 +21,11 @@ const { VALID } = require("../../config/brands");
 const styledRepo = require("../catalogue/styled.repo");
 const styledVariantsRepo = require("../catalogue/styled_variants.repo");
 const bundleService = require("../retention/bundle.service");
+const {
+  computeAvailability,
+  reduceBundleAvailability,
+} = require("../catalogue/availability");
+const { logger } = require("../../config/logger");
 
 function assertBrand(business) {
   if (!VALID.has(business))
@@ -39,7 +44,88 @@ async function getCart({ business, contact_id, session_token }) {
   }
   if (!cart) return null;
   const items = await repo.listCartItems({ cart_id: cart.cart_id });
+  await attachCartAvailability({ brand: business, items });
   return { ...cart, items };
+}
+
+/**
+ * Tag each cart line with its in-stock / pre-order / sold-out state (000086),
+ * resolved to the base product behind the line (styled variant → its base,
+ * base variant → its product, bundle → reduce over components). Best-effort and
+ * mutates the items in place: a resolution failure just leaves `availability`
+ * off so the bag still renders. Batches one read per line-kind + the brand
+ * policy, reusing the shared computeAvailability / reduceBundleAvailability so a
+ * bag line's badge matches the shop grid and bundle pages.
+ */
+async function attachCartAvailability({ brand, items }) {
+  if (!items || !items.length) return items;
+  try {
+    const cfg = await styledVariantsRepo.getConfig({ brand }).catch(() => null);
+    const policy = {
+      enabled: cfg ? cfg.preorder_enabled : true,
+      min_weeks: cfg ? cfg.preorder_min_weeks : 4,
+      max_weeks: cfg ? cfg.preorder_max_weeks : 8,
+    };
+    const uniq = (xs) => [...new Set(xs)];
+    const svIds = uniq(
+      items.filter((i) => i.styled_variant_id).map((i) => i.styled_variant_id),
+    );
+    const bvIds = uniq(
+      items
+        .filter((i) => !i.styled_variant_id && !i.bundle_id && i.variant_id)
+        .map((i) => i.variant_id),
+    );
+    const bIds = uniq(items.filter((i) => i.bundle_id).map((i) => i.bundle_id));
+
+    const [svRows, bvRows, bcRows] = await Promise.all([
+      repo.styledVariantBaseAvailability({ brand, styled_variant_ids: svIds }),
+      repo.baseVariantAvailability({ brand, variant_ids: bvIds }),
+      repo.bundleComponentAvailability({ brand, bundle_ids: bIds }),
+    ]);
+    const svMap = new Map(svRows.map((r) => [r.styled_variant_id, r]));
+    const bvMap = new Map(bvRows.map((r) => [r.variant_id, r]));
+    const bcMap = new Map();
+    for (const r of bcRows) {
+      const arr = bcMap.get(r.bundle_id) || [];
+      arr.push(r);
+      bcMap.set(r.bundle_id, arr);
+    }
+    // A resolvable base row → computeAvailability; an unresolvable line (deleted
+    // variant, etc.) gets no badge rather than a spurious pre-order.
+    const availFrom = (row) =>
+      row
+        ? computeAvailability(row.base_available, {
+            base: {
+              preorder_enabled: row.preorder_enabled,
+              preorder_excluded: row.preorder_excluded,
+              expected_ready_date: row.expected_ready_date,
+              production_lead_days: row.production_lead_days,
+            },
+            policy,
+          })
+        : null;
+
+    for (const it of items) {
+      if (it.styled_variant_id) {
+        it.availability = availFrom(svMap.get(it.styled_variant_id));
+      } else if (it.bundle_id) {
+        const parts = (bcMap.get(it.bundle_id) || [])
+          .map((row) => availFrom(row))
+          .filter(Boolean);
+        it.availability = parts.length ? reduceBundleAvailability(parts) : null;
+      } else if (it.variant_id) {
+        it.availability = availFrom(bvMap.get(it.variant_id));
+      } else {
+        it.availability = null;
+      }
+    }
+  } catch (err) {
+    logger.warn(
+      { err: err.message },
+      "cart availability enrich failed (cart stands)",
+    );
+  }
+  return items;
 }
 
 async function getOrCreateCart({
@@ -336,24 +422,45 @@ async function mergeGuestCart({ business, guest_cart_id, contact_id }) {
   });
 }
 
-async function applyCoupon({ business, cart_id, coupon_code }) {
+async function applyCoupon({ business, cart_id, coupon_code, contact_id }) {
   assertBrand(business);
   const cart = await repo.findCartById({ id: cart_id });
   if (!cart || cart.business !== business || cart.status !== "active")
     throw new NotFoundError("Cart");
 
-  // Validate via the retention coupons service (read-only validation, no redemption yet).
-  const couponsService = require("../retention/retention.service");
-  const coupon = await couponsService.validateCoupon({
+  // Read-only validation (redemption happens at checkout via createOrder).
+  // P0-4: this used to require validateCoupon from retention.service, which
+  // never exported it — every attach threw a 500. Coupon validation lives
+  // in coupon.service; validateCoupon returns { valid, reason?, coupon? }
+  // and NEVER throws for a bad code, so we surface the reason cleanly.
+  const couponService = require("../retention/coupon.service");
+  const result = await couponService.validateCoupon({
     brand: business,
     code: coupon_code,
+    contact_id: contact_id || null,
   });
+  if (!result.valid) {
+    throw new AppError(
+      "COUPON_INVALID",
+      `Coupon not applicable: ${result.reason || "unknown"}`,
+      409,
+      {
+        user_message:
+          "That code isn't valid on this cart. Please double-check it and try again.",
+      },
+    );
+  }
   await repo.updateCart({
     cart_id,
-    patch: { applied_coupon_id: coupon.coupon_id },
+    patch: { applied_coupon_id: result.coupon.coupon_id },
   });
   const items = await repo.listCartItems({ cart_id });
-  return { ...cart, applied_coupon_id: coupon.coupon_id, items };
+  return {
+    ...cart,
+    applied_coupon_id: result.coupon.coupon_id,
+    applied_coupon_code: result.coupon.coupon_code,
+    items,
+  };
 }
 
 // ── Wishlist ───────────────────────────────────────────────

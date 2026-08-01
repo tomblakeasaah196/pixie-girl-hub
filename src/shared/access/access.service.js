@@ -39,11 +39,19 @@ async function listRoles({ brand }) {
 async function getRole({ role_id }) {
   const role = await rolesRepo.findRole({ role_id });
   if (!role) throw new NotFoundError("Role");
-  const [permissions, members] = await Promise.all([
+  const [permissions, members, ctAccess] = await Promise.all([
     rolesRepo.listPermissions({ role_id }),
     grantsRepo.listRoleMembers({ role_id }),
+    rolesRepo.getContactTypeAccess({ role_id }),
   ]);
-  return { ...role, permissions, members };
+  return {
+    ...role,
+    permissions,
+    members,
+    // Contacts §6.12: null = unrestricted (sees every type); a row restricts to
+    // its contact_types (empty array = sees no contacts).
+    contact_type_access: ctAccess ? ctAccess.contact_types : null,
+  };
 }
 
 async function createRole({ brand, user, request_id, input }) {
@@ -202,10 +210,88 @@ async function setRolePermissions({
   });
 }
 
+// ── contact-type visibility (contacts §6.12) ───────────────
+
+/** A role's contact-type allow-list, or null when the role is unrestricted. */
+async function getRoleContactTypes({ role_id }) {
+  const role = await rolesRepo.findRole({ role_id });
+  if (!role) throw new NotFoundError("Role");
+  const row = await rolesRepo.getContactTypeAccess({ role_id });
+  return { data: row ? row.contact_types : null };
+}
+
+/**
+ * Set (or clear) which contact types a role may see.
+ *   contact_types = null  → clear the restriction (role sees every type again)
+ *   contact_types = [...]  → restrict to that set (empty array = sees none)
+ */
+async function setRoleContactTypes({
+  brand,
+  user,
+  request_id,
+  role_id,
+  contact_types,
+}) {
+  const role = await rolesRepo.findRole({ role_id });
+  if (!role) throw new NotFoundError("Role");
+  // Reuse the permission-matrix guard: editing contact visibility is the same
+  // class of change as editing the role's grants.
+  guards.assertCanEditPermissions(user, role);
+
+  if (contact_types !== null && contact_types !== undefined) {
+    if (!Array.isArray(contact_types)) {
+      throw new ValidationError("contact_types must be an array or null");
+    }
+    const bad = contact_types.filter((t) => !catalog.isValidContactType(t));
+    if (bad.length) {
+      throw new ValidationError(`Unknown contact type(s): ${bad.join(", ")}`);
+    }
+  }
+
+  return transaction(async (client) => {
+    const before = await rolesRepo.getContactTypeAccess({ client, role_id });
+    let after = null;
+    if (contact_types === null || contact_types === undefined) {
+      await rolesRepo.clearContactTypeAccess({ client, role_id });
+    } else {
+      const row = await rolesRepo.setContactTypeAccess({
+        client,
+        role_id,
+        contact_types: [...new Set(contact_types)],
+        updated_by: user.user_id,
+      });
+      after = row.contact_types;
+    }
+    await sensitiveAudit({
+      business: brand,
+      user_id: user.user_id,
+      action_key: "access.set_contact_types",
+      target_type: "role_contact_type_access",
+      target_id: role_id,
+      before: { contact_types: before ? before.contact_types : null },
+      after: { contact_types: after },
+      request_id,
+    });
+    events.emit("contact_type_access_changed", { brand, role_id });
+    return { data: after };
+  });
+}
+
 // ── user-role grants ───────────────────────────────────────
 
 async function listUserRoles({ user_id }) {
   return { data: await grantsRepo.listUserRoles({ user_id }) };
+}
+
+/** Grantable login users for the active brand, for the bulk-assign picker. */
+async function listGrantableUsers({ brand, search }) {
+  const term = typeof search === "string" ? search.trim().slice(0, 100) : "";
+  return {
+    data: await grantsRepo.listGrantableUsers({
+      business: brand,
+      search: term || undefined,
+    }),
+  };
 }
 
 async function assertBusinessValue(client, business) {
@@ -214,6 +300,60 @@ async function assertBusinessValue(client, business) {
   if (!brands.includes(business)) {
     throw new ValidationError(`Unknown business '${business}'`);
   }
+}
+
+/**
+ * Grant `role_id`/`business` to one user inside an open transaction, extending
+ * the user's brand access when the grant targets a concrete business they can't
+ * yet enter (otherwise the role is a silent no-op — brand-context 403s before
+ * RBAC ever sees it). Audits + emits per user. Shared by the single- and
+ * bulk-grant paths so both behave identically. `target` is the userExists row.
+ */
+async function applyRoleGrant({
+  client,
+  brand,
+  actor,
+  request_id,
+  user_id,
+  role_id,
+  business,
+  expires_at,
+  target,
+}) {
+  const grant = await grantsRepo.grantRole({
+    client,
+    user_id,
+    role_id,
+    business,
+    granted_by: actor.user_id,
+    expires_at,
+  });
+  let accessExtended = false;
+  if (
+    business !== "*" &&
+    !(target.permitted_businesses || []).includes(business)
+  ) {
+    await grantsRepo.setUserAccess({
+      client,
+      user_id,
+      permitted_businesses: [...(target.permitted_businesses || []), business],
+      default_business: target.default_business || business,
+    });
+    accessExtended = true;
+  }
+  await sensitiveAudit({
+    business: brand,
+    user_id: actor.user_id,
+    action_key: "access.grant_role",
+    target_type: "user_roles",
+    target_id: user_id,
+    after: accessExtended
+      ? { ...grant, permitted_business_added: business }
+      : grant,
+    request_id,
+  });
+  events.emit("role_granted", { brand, user_id, role_id });
+  return grant;
 }
 
 async function grantUserRole({ brand, user, request_id, user_id, input }) {
@@ -226,50 +366,67 @@ async function grantUserRole({ brand, user, request_id, user_id, input }) {
 
   return transaction(async (client) => {
     await assertBusinessValue(client, input.business);
-    const grant = await grantsRepo.grantRole({
+    return applyRoleGrant({
       client,
+      brand,
+      actor: user,
+      request_id,
       user_id,
       role_id: input.role_id,
       business: input.business,
-      granted_by: user.user_id,
       expires_at: input.expires_at,
+      target,
     });
-    // A role scoped to a business the user cannot enter is a silent no-op:
-    // brand-context 403s before RBAC ever sees the role. Granting for a
-    // concrete business therefore implies entity access to it.
-    let accessExtended = false;
-    if (
-      input.business !== "*" &&
-      !(target.permitted_businesses || []).includes(input.business)
-    ) {
-      await grantsRepo.setUserAccess({
+  });
+}
+
+/**
+ * Bulk-grant one role to many users at once (the "assign this role to these N
+ * staff" flow). Validates the role + actor authority once, then grants each
+ * user in a single transaction. Users that don't exist are skipped and
+ * reported rather than failing the whole batch; re-granting is idempotent.
+ */
+async function grantRoleMembers({ brand, user, request_id, role_id, input }) {
+  const role = await rolesRepo.findRole({ role_id });
+  if (!role) throw new NotFoundError("Role");
+  guards.assertCanGrantRole(user, role);
+
+  const business = input.business;
+  const userIds = [...new Set(input.user_ids)];
+
+  return transaction(async (client) => {
+    await assertBusinessValue(client, business);
+    const granted = [];
+    const skipped = [];
+    for (const targetId of userIds) {
+      const target = await grantsRepo.userExists({ client, user_id: targetId });
+      if (!target) {
+        skipped.push({ user_id: targetId, reason: "not_found" });
+        continue;
+      }
+      await applyRoleGrant({
         client,
-        user_id,
-        permitted_businesses: [
-          ...(target.permitted_businesses || []),
-          input.business,
-        ],
-        default_business: target.default_business || input.business,
+        brand,
+        actor: user,
+        request_id,
+        user_id: targetId,
+        role_id,
+        business,
+        expires_at: input.expires_at,
+        target,
       });
-      accessExtended = true;
+      granted.push(targetId);
     }
-    await sensitiveAudit({
-      business: brand,
-      user_id: user.user_id,
-      action_key: "access.grant_role",
-      target_type: "user_roles",
-      target_id: user_id,
-      after: accessExtended
-        ? { ...grant, permitted_business_added: input.business }
-        : grant,
-      request_id,
-    });
-    events.emit("role_granted", {
-      brand,
-      user_id,
-      role_id: input.role_id,
-    });
-    return grant;
+    return {
+      data: {
+        role_id,
+        business,
+        granted,
+        skipped,
+        granted_count: granted.length,
+        skipped_count: skipped.length,
+      },
+    };
   });
 }
 
@@ -376,8 +533,12 @@ module.exports = {
   getCatalog,
   getRolePermissions,
   setRolePermissions,
+  getRoleContactTypes,
+  setRoleContactTypes,
   listUserRoles,
+  listGrantableUsers,
   grantUserRole,
+  grantRoleMembers,
   revokeUserRole,
   getUserAccess,
   setUserAccess,

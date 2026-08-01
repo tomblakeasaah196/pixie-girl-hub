@@ -216,8 +216,7 @@ function verifyWebhookSignature(rawBody, headers = {}, creds) {
     config.FAITLYN_NOMBA_WEBHOOK_SIG_KEY ||
     null;
 
-  const secret =
-    (creds && creds.webhook_signature_key) || envSigKey;
+  const secret = (creds && creds.webhook_signature_key) || envSigKey;
 
   if (!secret) return null; // no secret configured → skip (log only)
 
@@ -225,14 +224,9 @@ function verifyWebhookSignature(rawBody, headers = {}, creds) {
   // Nomba sends: nomba-signature, nomba-sig-value (both same value),
   //               nomba-timestamp (RFC-3339 string).
   // Header names are case-insensitive; express normalises to lowercase.
-  const sig =
-    headers["nomba-signature"] ||
-    headers["nomba-sig-value"] ||
-    null;
+  const sig = headers["nomba-signature"] || headers["nomba-sig-value"] || null;
 
-  const timestamp =
-    headers["nomba-timestamp"] ||
-    null;
+  const timestamp = headers["nomba-timestamp"] || null;
 
   if (!sig || !timestamp) return false; // required headers missing → reject
 
@@ -247,9 +241,9 @@ function verifyWebhookSignature(rawBody, headers = {}, creds) {
     return false; // malformed body → reject
   }
 
-  const data        = payload.data        || {};
-  const merchant    = data.merchant      || {};
-  const transaction = data.transaction    || {};
+  const data = payload.data || {};
+  const merchant = data.merchant || {};
+  const transaction = data.transaction || {};
 
   // ── 4. Build the canonical hashing payload (EXACTLY as Nomba's docs) ──
   // Nomba's docs: "event_type:requestId:userId:walletId:transactionId:transactionType:transactionTime:responseCode:timestamp"
@@ -261,13 +255,13 @@ function verifyWebhookSignature(rawBody, headers = {}, creds) {
   if (responseCode === "null") responseCode = "";
 
   const hashingPayload = [
-    payload.event_type   || "",
-    payload.requestId    || "",
-    merchant.userId      || "",
-    merchant.walletId    || "",
+    payload.event_type || "",
+    payload.requestId || "",
+    merchant.userId || "",
+    merchant.walletId || "",
     transaction.transactionId || "",
-    transaction.type     || "",
-    transaction.time     || "",
+    transaction.type || "",
+    transaction.time || "",
     responseCode,
     timestamp,
   ].join(":");
@@ -283,10 +277,10 @@ function verifyWebhookSignature(rawBody, headers = {}, creds) {
   // Base64 can have '+'/'-' and '/'/'_' differences between standard and
   // URL-safe encodings, and the header value may have trailing whitespace.
   try {
-    const sigNormalised  = (sig || "").toString().trim();
+    const sigNormalised = (sig || "").toString().trim();
     const compNormalised = (computed || "").toString().trim();
     return crypto.timingSafeEqual(
-      Buffer.from(sigNormalised,  "utf8"),
+      Buffer.from(sigNormalised, "utf8"),
       Buffer.from(compNormalised, "utf8"),
     );
   } catch {
@@ -349,6 +343,303 @@ async function disburseSalary(
   };
 }
 
+// ── Connection self-test (Settings → Payment gateways → Test) ──────────
+/**
+ * Turn any error into a short, SECRET-FREE one-liner for the UI. Surfaces the
+ * HTTP status + Nomba's own message (or a network error code) and never leaks
+ * the request (which carries the client_secret) or a stack trace.
+ */
+function describeError(e) {
+  if (e && e.response) {
+    const status = e.response.status;
+    const body = e.response.data;
+    const msg =
+      (body &&
+        (body.description ||
+          body.message ||
+          (body.data && body.data.message))) ||
+      (typeof body === "string" ? body : "");
+    return `HTTP ${status}${msg ? ` — ${String(msg).slice(0, 200)}` : ""}`;
+  }
+  if (e && e.code) return String(e.code); // ECONNABORTED, ENOTFOUND, …
+  return e && e.message ? String(e.message).slice(0, 200) : "unknown error";
+}
+
+/**
+ * Self-signed webhook roundtrip: sign a sample payload with the configured
+ * signature key using Nomba's EXACT canonical algorithm, then feed it back
+ * through verifyWebhookSignature. A `true` proves the stored key will validate
+ * a genuine Nomba webhook (same HMAC scheme) — it does not prove Nomba's
+ * dashboard is pointed at our URL (that only a real inbound event can show).
+ */
+function webhookSelfTest(secret, creds) {
+  const timestamp = new Date().toISOString();
+  const payload = {
+    event_type: "payment_success",
+    requestId: "selftest-request",
+    data: {
+      merchant: { userId: "selftest-user", walletId: "selftest-wallet" },
+      transaction: {
+        transactionId: "selftest-txn",
+        type: "checkout",
+        time: timestamp,
+        responseCode: "00",
+      },
+    },
+  };
+  const rawBody = Buffer.from(JSON.stringify(payload), "utf8");
+  const hashingPayload = [
+    payload.event_type,
+    payload.requestId,
+    payload.data.merchant.userId,
+    payload.data.merchant.walletId,
+    payload.data.transaction.transactionId,
+    payload.data.transaction.type,
+    payload.data.transaction.time,
+    payload.data.transaction.responseCode,
+    timestamp,
+  ].join(":");
+  const signature = crypto
+    .createHmac("sha256", secret)
+    .update(hashingPayload, "utf8")
+    .digest("base64");
+  const headers = {
+    "nomba-signature": signature,
+    "nomba-timestamp": timestamp,
+  };
+  return verifyWebhookSignature(rawBody, headers, creds) === true;
+}
+
+/**
+ * Run a live connection test for a brand's Nomba credentials and return a
+ * structured checklist the UI renders as green/red rows. Checks, in order:
+ *   1. credentials   – client_id, client_secret, account_id all present
+ *   2. auth          – a FRESH OAuth token can be issued (proves the API key)
+ *   3. webhook       – signature key set + self-signed roundtrip verifies
+ *   4. payment_init  – Nomba creates a live checkout link (proves a payment can
+ *                      be started end-to-end; NO money moves until it's paid)
+ * Every check is isolated so one failure still reports the rest.
+ */
+async function testConnection(creds, opts = {}) {
+  const k = keys(creds);
+  const checks = [];
+
+  // 1 ── credentials present
+  const missing = [];
+  if (!k.client_id) missing.push("Client ID");
+  if (!k.client_secret) missing.push("API key");
+  if (!k.account_id) missing.push("Account ID");
+  const credsOk = missing.length === 0;
+  checks.push({
+    key: "credentials",
+    label: "Credentials present",
+    ok: credsOk,
+    detail: credsOk
+      ? "Client ID, API key and Account ID are all set."
+      : `Missing: ${missing.join(", ")}.`,
+  });
+
+  // 2 ── API authentication (fresh OAuth token)
+  let authOk = false;
+  if (credsOk) {
+    try {
+      tokenCache.delete(k.client_id); // bypass cache so we truly exercise the creds
+      await getToken(k);
+      authOk = true;
+      checks.push({
+        key: "auth",
+        label: "API authentication",
+        ok: true,
+        detail: "Obtained an OAuth access token from Nomba.",
+      });
+    } catch (e) {
+      checks.push({
+        key: "auth",
+        label: "API authentication",
+        ok: false,
+        detail: `Token request failed: ${describeError(e)}`,
+      });
+    }
+  } else {
+    checks.push({
+      key: "auth",
+      label: "API authentication",
+      ok: false,
+      detail: "Skipped — credentials incomplete.",
+    });
+  }
+
+  // 3 ── webhook signature key
+  if (!k.webhook_signature_key) {
+    checks.push({
+      key: "webhook",
+      label: "Webhook signature key",
+      ok: false,
+      detail:
+        "Not set — inbound webhooks cannot be verified. Add it from Nomba → Developer → Webhook Setup.",
+    });
+  } else {
+    let roundtrip = false;
+    try {
+      roundtrip = webhookSelfTest(k.webhook_signature_key, creds);
+    } catch {
+      roundtrip = false;
+    }
+    checks.push({
+      key: "webhook",
+      label: "Webhook signature key",
+      ok: roundtrip,
+      detail: roundtrip
+        ? "Key is set and a signed sample verified correctly."
+        : "Key is set but the signature self-test did not verify — re-check the value.",
+    });
+  }
+
+  // 4 ── create a live test checkout (proves a payment can be initialised)
+  if (authOk) {
+    const reference = `TEST-${String(opts.brand || "pxg").toUpperCase()}-${Date.now()}`;
+    const amount =
+      opts.amount !== null && opts.amount !== undefined
+        ? Number(opts.amount)
+        : 100;
+    const currency = String(opts.currency || "NGN").toUpperCase();
+    try {
+      const data = await initializePayment({
+        reference,
+        amount,
+        currency,
+        email: opts.email || "payments-test@pixiegirlhub.local",
+        callback_url: opts.callback_url,
+        creds,
+      });
+      const url =
+        data && data.data && (data.data.checkoutLink || data.data.checkout_url);
+      checks.push({
+        key: "payment_init",
+        label: "Create test checkout",
+        ok: Boolean(url),
+        detail: url
+          ? `Nomba created a live ${currency} ${amount} checkout — no charge until it is paid. Open the link to run a full end-to-end payment.`
+          : "Nomba accepted the request but returned no checkout link.",
+        checkout_url: url || undefined,
+        reference,
+      });
+    } catch (e) {
+      checks.push({
+        key: "payment_init",
+        label: "Create test checkout",
+        ok: false,
+        detail: `Checkout creation failed: ${describeError(e)}`,
+      });
+    }
+  } else {
+    checks.push({
+      key: "payment_init",
+      label: "Create test checkout",
+      ok: false,
+      detail: "Skipped — authentication failed.",
+    });
+  }
+
+  return { ok: checks.every((c) => c.ok), checks };
+}
+
+/**
+ * Real end-to-end webhook test (Settings → Payment Gateways → "Send test
+ * webhook" — separate from testConnection's in-process signature roundtrip).
+ * Signs a sample payload with the SAME key resolveCredentials() gives the
+ * live webhook receiver, then does an actual HTTP POST to `url` (our own
+ * public /api/webhooks/nomba endpoint) over the real network path — proxy,
+ * TLS, raw-body capture, everything testConnection's in-process check
+ * cannot see. A 200 here means the deployed server, right now, with the
+ * currently-stored key, accepts a genuine Nomba-shaped signed request.
+ */
+async function sendTestWebhook({ url, webhook_signature_key }) {
+  if (!url) return { ok: false, error: "No public webhook URL configured (ADMIN_BASE_URL unset)" };
+  if (!webhook_signature_key) return { ok: false, error: "No webhook signature key configured" };
+
+  const timestamp = new Date().toISOString();
+  const requestId = `selftest-${crypto.randomUUID()}`;
+  const payload = {
+    event_type: "payment_success",
+    requestId,
+    data: {
+      merchant: { userId: "selftest-user", walletId: "selftest-wallet" },
+      transaction: {
+        transactionId: `selftest-txn-${Date.now()}`,
+        sessionId: `selftest-sess-${Date.now()}`,
+        type: "checkout",
+        time: timestamp,
+        responseCode: "00",
+        amount: 100,
+        currency: "NGN",
+      },
+    },
+  };
+  const hashingPayload = [
+    payload.event_type,
+    payload.requestId,
+    payload.data.merchant.userId,
+    payload.data.merchant.walletId,
+    payload.data.transaction.transactionId,
+    payload.data.transaction.type,
+    payload.data.transaction.time,
+    payload.data.transaction.responseCode,
+    timestamp,
+  ].join(":");
+  const signature = crypto
+    .createHmac("sha256", webhook_signature_key)
+    .update(hashingPayload, "utf8")
+    .digest("base64");
+
+  try {
+    const res = await axios.post(url, payload, {
+      headers: {
+        "content-type": "application/json",
+        "nomba-signature": signature,
+        "nomba-timestamp": timestamp,
+      },
+      validateStatus: () => true,
+      timeout: 20000,
+    });
+    return {
+      ok: res.status === 200,
+      status: res.status,
+      body: res.data,
+      request_id: requestId,
+      url,
+    };
+  } catch (e) {
+    return { ok: false, error: describeError(e), url };
+  }
+}
+
+/**
+ * Ledger pull — the safety net independent of webhooks (V2.2 reconciliation
+ * gap fix). Nomba IS the merchant's bank account, so every POS tap and every
+ * incoming transfer is a row here whether or not any webhook ever fired.
+ * `GET /v1/transactions/bank` is the credit/debit account statement
+ * (transactionType CREDIT|DEBIT + walletBalance) — the definitive view of
+ * money movement, as opposed to /v1/transactions/accounts which lists
+ * transaction OBJECTS (checkout/terminal/transfer attempts, not ledger
+ * entries). Returns Nomba's raw `results` array; callers filter/paginate.
+ */
+async function fetchLedgerTransactions({ dateFrom, dateTo, cursor, limit = 100, creds }) {
+  const params = new URLSearchParams();
+  if (dateFrom) params.set("dateFrom", dateFrom);
+  if (dateTo) params.set("dateTo", dateTo);
+  if (cursor) params.set("cursor", cursor);
+  if (limit) params.set("limit", String(limit));
+  const data = await authed(
+    "get",
+    `/v1/transactions/bank?${params.toString()}`,
+    undefined,
+    creds,
+  );
+  const body = (data && data.data) || {};
+  return { results: body.results || [], cursor: body.cursor || null };
+}
+
 module.exports = {
   isConfigured,
   initializePayment,
@@ -356,4 +647,7 @@ module.exports = {
   verifyTransaction,
   verifyWebhookSignature,
   disburseSalary,
+  testConnection,
+  sendTestWebhook,
+  fetchLedgerTransactions,
 };

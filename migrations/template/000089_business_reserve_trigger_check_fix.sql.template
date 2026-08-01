@@ -1,0 +1,118 @@
+-- ============================================================
+-- TEMPLATE 000089 — Fix fn_apply_stock_movement's 'reserve' branch.
+-- Pixie Girl Hub · JBS Praxis · V2.2
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to NEW brands by bootstrap (after 000088) and to EXISTING brands by
+-- repair-business-schema.js. NO CREATE TABLE here on purpose: the runner uses
+-- the first CREATE TABLE as a skip-sentinel, so this file is re-run every
+-- repair — safe because CREATE OR REPLACE FUNCTION is idempotent.
+--
+-- ROOT CAUSE OF "EVERY ORDER IS A PRE-ORDER, EVEN WITH STOCK ON HAND".
+--
+-- The 'reserve' branch applied a reservation with:
+--
+--   INSERT INTO stock_levels (variant_id, location_id, on_hand, reserved, ...)
+--   VALUES (NEW.variant_id, NEW.location_id, 0, ABS(NEW.quantity), ...)
+--   ON CONFLICT (variant_id, location_id) DO UPDATE
+--     SET reserved = stock_levels.reserved + ABS(EXCLUDED.reserved), ...
+--
+-- PostgreSQL evaluates CHECK constraints against the PROPOSED insert tuple
+-- BEFORE it consults the unique index and switches to the DO UPDATE path. The
+-- proposed tuple here is always (on_hand = 0, reserved = N), which always
+-- violates
+--
+--   CONSTRAINT stock_reserved_le_on_hand CHECK (reserved <= on_hand)
+--
+-- for any N >= 1. So the statement raised BEFORE the conflict could ever be
+-- arbitrated — even when the row already existed with ample stock. Reserving
+-- 1 unit of a variant sitting at on_hand = 2, reserved = 0 failed with:
+--
+--   new row for relation "stock_levels" violates check constraint
+--   "stock_reserved_le_on_hand"
+--   DETAIL: Failing row contains (..., 0, 1, -1, ...)   <- the INSERT tuple
+--
+-- Note on_hand = 0 in that DETAIL: proof the DO UPDATE branch never ran.
+--
+-- Consequence: EVERY reservation failed, for every variant, at every location,
+-- on every channel, since the system was built. sales.service.createOrder
+-- reserves each line inside its own SAVEPOINT and books the line as a
+-- PRE-ORDER when the reserve throws, so the fault was silently reported as a
+-- routine stock-out. A census of stock_movements confirmed it: 51 'receive',
+-- 6 'sale', 2 adjustments — and ZERO 'reserve' / 'release_reserve' rows ever.
+-- stock_levels.reserved has never left 0 in the lifetime of the database.
+--
+-- THE FIX: UPDATE-first, exactly as the net-change branch below already does,
+-- and for exactly the same reason — its comment already reads "UPDATE-first to
+-- avoid proposing negative on_hand to CHECK constraint". The hazard was known
+-- and fixed for on_hand; the reserve branch was simply never brought in line.
+--
+-- Semantics are unchanged: reserving against a variant with no level row, or
+-- beyond available stock, still raises — which is a genuine stock-out and
+-- correctly becomes a pre-order.
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION {{BUSINESS}}.fn_apply_stock_movement()
+RETURNS TRIGGER
+LANGUAGE plpgsql AS $$
+BEGIN
+  -- 'reserve' moves on_hand → reserved (no net change); 'release_reserve' reverses
+  IF NEW.movement_type = 'reserve' THEN
+    -- UPDATE-first: never propose (on_hand 0, reserved N) to the CHECK. The
+    -- existing row already carries the real on_hand, so the constraint is
+    -- evaluated against true stock and only rejects a genuine over-reserve.
+    UPDATE {{BUSINESS}}.stock_levels
+       SET reserved = reserved + ABS(NEW.quantity),
+           last_movement_at = NEW.performed_at,
+           updated_at = now()
+     WHERE variant_id = NEW.variant_id AND location_id = NEW.location_id;
+
+    -- No level row at this location means there is genuinely nothing to hold.
+    -- Insert so the CHECK rejects it for the RIGHT reason (a real stock-out),
+    -- keeping the ledger and levels consistent.
+    IF NOT FOUND THEN
+      INSERT INTO {{BUSINESS}}.stock_levels
+        (variant_id, location_id, on_hand, reserved, last_movement_at)
+      VALUES
+        (NEW.variant_id, NEW.location_id, 0, ABS(NEW.quantity), NEW.performed_at);
+    END IF;
+
+  ELSIF NEW.movement_type = 'release_reserve' THEN
+    UPDATE {{BUSINESS}}.stock_levels
+       SET reserved = GREATEST(0, reserved - ABS(NEW.quantity)),
+           last_movement_at = NEW.performed_at,
+           updated_at = now()
+     WHERE variant_id = NEW.variant_id AND location_id = NEW.location_id;
+
+  ELSE
+    -- Net stock change at this location
+    -- UPDATE-first to avoid proposing negative on_hand to CHECK constraint
+    UPDATE {{BUSINESS}}.stock_levels
+       SET on_hand = on_hand + NEW.quantity,
+           last_movement_at = NEW.performed_at,
+           updated_at = now()
+     WHERE variant_id = NEW.variant_id AND location_id = NEW.location_id;
+
+    -- If no row existed, insert it (should only occur for positive movements)
+    IF NOT FOUND THEN
+      INSERT INTO {{BUSINESS}}.stock_levels (variant_id, location_id, on_hand, last_movement_at)
+      VALUES (NEW.variant_id, NEW.location_id, NEW.quantity, NEW.performed_at);
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+-- ============================================================
+-- Verify (after substitution) — reserve 1 unit of something in stock:
+--
+--   BEGIN;
+--   INSERT INTO {{BUSINESS}}.stock_movements
+--     (movement_number, variant_id, location_id, quantity,
+--      movement_type, reference_type, reference_id)
+--   SELECT 'VERIFY-MOV-1', sl.variant_id, sl.location_id, 1,
+--          'reserve', 'sales_order', gen_random_uuid()
+--     FROM {{BUSINESS}}.stock_levels sl WHERE sl.on_hand > 0 LIMIT 1;
+--   -- expect: INSERT 0 1, and the level's reserved incremented by 1
+--   ROLLBACK;
+-- ============================================================

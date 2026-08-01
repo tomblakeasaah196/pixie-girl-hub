@@ -179,6 +179,71 @@ const funnelSchema = z
   })
   .strict();
 
+// Persistent-cart storefront checkout (POST /api/public/storefront/checkout).
+// Guarding the surface with a strict schema is a P0 fix — the route used to
+// spread req.body straight through, so a caller could inject arbitrary keys
+// that the sales engine happily consumed (redeem_points on someone else's
+// contact, coupon_code they didn't own, address overwrites via the resolved
+// contact). Anything not in this schema is now rejected.
+const checkoutContactSchema = z
+  .object({
+    first_name: z.string().max(120).optional(),
+    last_name: z.string().max(120).optional(),
+    email: z.string().email().max(240).optional(),
+    phone: z.string().min(4).max(40).optional(),
+    address: z
+      .object({
+        line1: z.string().max(240),
+        line2: z.string().max(240).optional(),
+        city: z.string().max(120),
+        state: z.string().max(120).optional(),
+        country: z.string().max(120).optional(),
+        country_code: z.string().max(3).optional(),
+        zone_code: z.string().max(40).optional(),
+        landmark: z.string().max(240).optional(),
+      })
+      .strict()
+      .optional(),
+    notes: z.string().max(1000).optional(),
+  })
+  .strict()
+  .refine((c) => Boolean(c.email || c.phone), {
+    message: "Contact must include at least an email or a phone",
+  });
+
+const checkoutSchema = z
+  .object({
+    contact: checkoutContactSchema,
+    fulfilment_type: z.enum(["delivery", "pickup"]).optional().default("delivery"),
+    display_currency: z.string().length(3).optional().default("NGN"),
+    payment_gateway: z.enum(["nomba", "paystack"]).optional(),
+    payment_plan: z.enum(["full", "instalment"]).optional().default("full"),
+    first_payment_ngn: z.coerce.number().nonnegative().optional(),
+    coupon_code: z.string().max(60).optional(),
+    // Customer referral rail (P0-3). Distinct from stylist_referral_code,
+    // which is captured server-side from referral_code below when it
+    // resolves to an active stylist partner.
+    customer_referral_code: z.string().max(80).optional(),
+    // Stylist Programme referral (§6.26 Q17) — same field name the order
+    // form uses. Server resolves it to a partner before the order stamps.
+    referral_code: z.string().max(80).optional(),
+    redeem_points: z.coerce.number().int().positive().optional(),
+    utm: z
+      .object({
+        utm_source: z.string().max(80).optional(),
+        utm_medium: z.string().max(80).optional(),
+        utm_campaign: z.string().max(120).optional(),
+      })
+      .strict()
+      .optional(),
+    client_idempotency_key: z.string().max(80).optional(),
+    // The gateway return URL base — sent by the storefront so the buyer
+    // lands back on OUR thank-you page. Route also derives this from the
+    // inbound host header when the client omits it.
+    return_url_base: z.string().url().max(500).optional(),
+  })
+  .strict();
+
 // Shop AI Search ("ask Praxis") — free-text query + the last few turns the
 // client already displayed, so a follow-up can refine without a session.
 const aiSearchSchema = z
@@ -203,11 +268,13 @@ const mk = (schema) => (req, _res, next) => {
 
 module.exports = {
   validateOrderForm: mk(orderFormSchema),
+  validateStorefrontCheckout: mk(checkoutSchema),
   validateSession: mk(sessionSchema),
   validatePageView: mk(pageViewSchema),
   validateFunnel: mk(funnelSchema),
   validateAiSearch: mk(aiSearchSchema),
   orderFormSchema,
+  checkoutSchema,
   sessionSchema,
   pageViewSchema,
   funnelSchema,

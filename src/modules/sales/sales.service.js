@@ -19,6 +19,7 @@ const discount = require("../sales_campaigns/campaigns.discount.service");
 const couponService = require("../retention/coupon.service");
 const couponRepo = require("../retention/coupon.repo");
 const retentionRepo = require("../retention/retention.repo");
+const referralConfigRepo = require("../retention/referral-config.repo");
 const bundleRepo = require("../retention/bundle.repo");
 const bundleService = require("../retention/bundle.service");
 const campaignsRepo = require("../sales_campaigns/campaigns.repo");
@@ -30,6 +31,8 @@ const docCopy = require("../../services/document-copy");
 const emailRender = require("../email_campaigns/email-render");
 const stockService = require("../stock/stock.service");
 const stockRepo = require("../stock/stock.repo");
+const serviceJobsRepo = require("../service_jobs/service-jobs.repo");
+const rewigService = require("../catalogue/rewig.service");
 const businessConfig = require("../business_setup/business-config.repo");
 const paymentSettings = require("./payment-settings.service");
 const salesReportExport = require("./sales-report.export");
@@ -50,8 +53,12 @@ const { computePointsRedemption } = require("./pricing/points");
 const { assertBundleComplete, computeBundleDiscount } = require("./pricing/bundle");
 const { exitIntentMatches } = require("./pricing/exit-intent");
 const { computeTotalsAndLines, computeDepositPolicy } = require("./pricing/totals");
+const { REVENUE_STATES } = require("./order-status");
 
-const PAID_STATES = new Set(["paid", "awaiting_dispatch", "completed"]);
+// Fully-settled states: an order can only reach any of these once it was paid
+// in full, so they gate "don't re-run markPaid / don't cancel here / don't send
+// a part-payment receipt". SSOT lives in order-status.js.
+const PAID_STATES = new Set(REVENUE_STATES);
 
 // GL account codes resolved through the accounting posting map — the SSOT
 // for all journal account codes (V2.2 §6.6, ratified policy Q4/Q7/Q8).
@@ -84,6 +91,77 @@ async function createOrder({ brand, user, request_id, input }) {
       if (existingId) return repo.findById({ brand, id: existingId });
     }
     throw err;
+  }
+}
+
+/**
+ * Rewig adjacency (000088) donor lookup for a stock-short order line.
+ *
+ * Resolves the line's own base product to a size-adjacent sibling that can
+ * cover `line.quantity` AT `location_id` — the same single location the reserve
+ * targets — and then to a concrete variant of that sibling which actually holds
+ * the units. Both steps are location-scoped on purpose: availability reads sum
+ * every location, so an unscoped answer names a donor the reserve cannot reach
+ * and the line pre-orders anyway.
+ *
+ * Runs on the caller's `client` so it sees reservations already taken by
+ * earlier lines of this same order — two units of the same short size cannot
+ * both be promised the last sibling on the shelf.
+ *
+ * Returns null (caller falls through to pre-order) whenever rewig is switched
+ * off, the listing opted out, the line isn't styled, or no sibling qualifies.
+ */
+async function resolveRewigDonor({ client, brand, line, location_id }) {
+  if (!line.product_id || !location_id) return null;
+  try {
+    // rewig_override is a per-listing opt in/out that beats the brand mode.
+    // A non-styled line has no listing row and simply follows the brand mode.
+    let styled = null;
+    if (line.styled_id) {
+      const { rows } = await client.query(
+        `SELECT rewig_override FROM ${brand}.styled_products WHERE styled_id = $1`,
+        [line.styled_id],
+      );
+      styled = rows[0] || null;
+    }
+    const donorProductId = await rewigService.pickRewigDonorProductId({
+      client,
+      brand,
+      styled,
+      originProductId: line.product_id,
+      quantity: line.quantity,
+      location_id,
+    });
+    if (!donorProductId) return null;
+
+    const variant = await stockRepo.variantWithStockForProduct({
+      client,
+      brand,
+      product_id: donorProductId,
+      location_id,
+      quantity: line.quantity,
+    });
+    if (!variant) return null;
+
+    const { rows: prod } = await client.query(
+      `SELECT name FROM ${brand}.products WHERE product_id = $1`,
+      [donorProductId],
+    );
+    return {
+      product_id: donorProductId,
+      product_name: prod[0] ? prod[0].name : "sibling size",
+      variant_id: variant.variant_id,
+      sku: variant.sku,
+      origin_variant_id: line.variant_id,
+    };
+  } catch (err) {
+    // A donor lookup must never cost the order. Reads only, so there is no
+    // partial state to unwind — log and let the line pre-order as before.
+    logger.warn(
+      { err: err.message, line_id: line.line_id },
+      "rewig donor lookup failed — falling through to pre-order",
+    );
+    return null;
   }
 }
 
@@ -332,7 +410,12 @@ async function createOrderTx({ brand, user, request_id, input }) {
     if (input.redeem_points && input.contact_id) {
       const pts = Math.floor(Number(input.redeem_points));
       if (pts > 0) {
-        const state = await retentionRepo.getLoyaltyState({
+        // P1-5: lock the state row for the duration of the tx so two
+        // concurrent orders can't both pass the balance check. The actual
+        // ledger debit is deferred to order.paid (P1-3), but the CHECK
+        // constraint (000353) plus this lock make the "insufficient
+        // points" gate race-free.
+        const state = await retentionRepo.getLoyaltyStateForUpdate({
           client,
           brand,
           contact_id: input.contact_id,
@@ -400,6 +483,60 @@ async function createOrderTx({ brand, user, request_id, input }) {
     // against each line's full remaining value, down to ₦0 (never negative), so
     // a campaign may sell below the variant min_price. Runs last; nothing after
     // it consumes line headroom.
+    // 3.9 Customer referral (P0-3): a friend's order gets the discount
+    // configured in referral_program_settings (percentage or fixed). Floor-
+    // respecting — same allocator as coupons/points/bundles — so we never
+    // sell below the variant min_price. Runs before the campaign_deal step
+    // (floor-free) so the referral saving is bounded by real margin.
+    //
+    // Guarding: only apply when the code resolves in THIS brand, the
+    // programme is active, the buyer isn't self-referring, and the config
+    // has a non-zero discount. The redemption ledger + counter bumps still
+    // happen in retention.subscribers on order.paid (see redeemReferral) —
+    // this stage only applies the discount and stamps referral_code_used.
+    let referralMeta = null;
+    let referralLineTotal = money(0);
+    if (input.customer_referral_code && input.contact_id) {
+      const codeNorm = String(input.customer_referral_code).trim();
+      if (codeNorm) {
+        const ref = await retentionRepo.findReferralByCode({
+          client,
+          code: codeNorm,
+          brand,
+        });
+        const settings = await referralConfigRepo
+          .getSettings({ client, brand })
+          .catch(() => null);
+        const programmeOn = !settings || settings.is_active !== false;
+        const notSelf = ref && ref.contact_id !== input.contact_id;
+        const hasDiscount =
+          settings &&
+          settings.friend_discount_type &&
+          settings.friend_discount_value != null &&
+          Number(settings.friend_discount_value) > 0;
+        if (ref && programmeOn && notSelf && hasDiscount) {
+          const preTotalNow = preNet.reduce(
+            (s, n) => s.plus(n),
+            money(0),
+          );
+          const raw =
+            settings.friend_discount_type === "percentage"
+              ? preTotalNow.times(money(settings.friend_discount_value))
+              : money(settings.friend_discount_value);
+          if (raw.gt(money(0))) {
+            referralLineTotal = applyOrderDiscount(raw);
+            if (referralLineTotal.gt(money(0))) {
+              referralMeta = {
+                code: codeNorm,
+                referrer_contact_id: ref.contact_id,
+                discount_ngn: toCurrencyString(referralLineTotal),
+              };
+            }
+          }
+        }
+      }
+    }
+
     let dealLineTotal = money(0);
     if (input.campaign_deal_discount_ngn) {
       const want = money(input.campaign_deal_discount_ngn);
@@ -496,8 +633,23 @@ async function createOrderTx({ brand, user, request_id, input }) {
         shipping_fee_ngn: toCurrencyString(shipping),
         total_ngn: toCurrencyString(total),
         coupon_code: input.coupon_code || null,
+        // Back-pointer to the quote this order came from (convertQuotation
+        // passes it). Lets an order answer "which quote produced me?" without
+        // scanning quotations.converted_sales_order_id.
+        quotation_id: input.quotation_id || null,
         client_idempotency_key: input.client_idempotency_key || null,
         stylist_referral_code: input.stylist_referral_code || null,
+        // Staff attribution (Performance → Insights). The caller decides:
+        // Quick Sale defaults it to the acting staff (set in the controller),
+        // a catalogue-share checkout passes the link's sharer, and customer
+        // self-service (storefront cart) leaves it null → counts toward the
+        // company total but credited to no individual on the leaderboard.
+        closed_by_user_id: input.closed_by_user_id || null,
+        // P0-3: stamp the CUSTOMER referral code that actually applied so
+        // the order.paid outbox handler can credit the referrer's points
+        // and post the store-credit reward (see retention.subscribers).
+        // Distinct from stylist_referral_code (§6.26 stylist rail).
+        referral_code_used: referralMeta ? referralMeta.code : null,
         payment_plan: paymentPlan,
         payment_model: paymentModel,
         required_deposit_pct:
@@ -511,6 +663,7 @@ async function createOrderTx({ brand, user, request_id, input }) {
       },
     });
 
+    const insertedLines = [];
     for (const lr of lineRows) {
       // Strip the internal helper field before persisting — it is not a DB column.
       const { _campaign_resolve_discount_ngn, ...lineForDb } = lr;
@@ -519,6 +672,7 @@ async function createOrderTx({ brand, user, request_id, input }) {
         brand,
         line: { ...lineForDb, order_id: order.order_id },
       });
+      insertedLines.push(line);
       // Per-line campaign discount row: record only the resolveDiscount share
       // (percentage / fixed / price-override). Order-level discounts (coupon,
       // points, bundle, deal-ladder) each have their own breakdown rows below,
@@ -549,10 +703,14 @@ async function createOrderTx({ brand, user, request_id, input }) {
       }
     }
 
-    // 5a. Record the coupon discount IN Sales + log the redemption against this
-    // order (so the coupon resolves end-to-end: order totals, GL, and the
-    // redemption all reference the same order). Usage is bumped under the lock
-    // taken in step 3.5.
+    // 5a. Record the coupon discount IN Sales (audit trail on the order —
+    // must be immediate so invoices/totals reconcile). P1-3: the
+    // coupon_redemptions row + coupons.total_redeemed bump used to happen
+    // here too, which meant an abandoned checkout burned the buyer's
+    // per_customer_limit for good. Both effects now defer to the
+    // order.paid outbox handler (retention.subscribers.settleAfterPaid),
+    // and the cancellation handler reverses them for a paid-then-cancelled
+    // order.
     if (couponMeta) {
       const couponAmt = couponLineTotal.plus(couponShipping);
       if (couponAmt.gt(0)) {
@@ -571,22 +729,6 @@ async function createOrderTx({ brand, user, request_id, input }) {
                   ? "free_shipping"
                   : "fixed",
           },
-        });
-        await couponRepo.recordRedemption({
-          client,
-          redemption: {
-            coupon_id: couponMeta.coupon_id,
-            contact_id: input.contact_id,
-            business: brand,
-            reference_type: "sales_order",
-            reference_id: order.order_id,
-            discount_applied: toCurrencyString(couponAmt),
-          },
-        });
-        await couponRepo.bumpUsage({
-          client,
-          coupon_id: couponMeta.coupon_id,
-          discount_ngn: toCurrencyString(couponAmt),
         });
       }
     }
@@ -609,10 +751,13 @@ async function createOrderTx({ brand, user, request_id, input }) {
       });
     }
 
-    // 5a-ii. Record loyalty points redemption IN Sales (§6.23.3): a
-    // sales_order_discounts row + the negative loyalty-ledger entry, both
-    // referencing this order, so the points discount resolves end-to-end and
-    // the customer's balance is debited atomically with the order.
+    // 5a-ii. Record loyalty points redemption IN Sales (§6.23.3): the
+    // sales_order_discounts row stays here so the order's discount
+    // breakdown is complete + reconciled with total_ngn. P1-3: the actual
+    // ledger debit (which burns the customer's balance) defers to the
+    // order.paid handler so an abandoned checkout doesn't lose them their
+    // points; the cancellation handler reverses it for a paid-then-
+    // cancelled order.
     if (pointsUsed > 0 && pointsLineTotal.gt(0)) {
       await repo.insertDiscount({
         client,
@@ -623,19 +768,6 @@ async function createOrderTx({ brand, user, request_id, input }) {
           source_reference: `${pointsUsed} pts`,
           amount_ngn: toCurrencyString(pointsLineTotal),
           discount_type: "points_redemption",
-        },
-      });
-      await retentionRepo.insertLoyaltyLedger({
-        client,
-        brand,
-        entry: {
-          contact_id: input.contact_id,
-          transaction_type: "redeemed",
-          points: -Math.abs(pointsUsed),
-          reference_type: "sales_order",
-          reference_id: order.order_id,
-          notes: `Redeemed ${pointsUsed} pts on ${order_number}`,
-          created_by: user.user_id,
         },
       });
     }
@@ -658,6 +790,31 @@ async function createOrderTx({ brand, user, request_id, input }) {
         client,
         brand,
         bundle_id: bundleMeta.bundle_id,
+      });
+    }
+
+    // 5a-iii-b. Record the customer referral (friend) discount IN Sales
+    // (P0-3). This is the discount that just applied above — the redemption
+    // ledger row + referrer counter bump land later on order.paid via
+    // retention.subscribers.redeemReferral (already stamped as
+    // referral_code_used on the order row above).
+    if (referralMeta && referralLineTotal.gt(money(0))) {
+      const settings = await referralConfigRepo
+        .getSettings({ client, brand })
+        .catch(() => null);
+      await repo.insertDiscount({
+        client,
+        brand,
+        disc: {
+          order_id: order.order_id,
+          source: "referral",
+          source_reference: referralMeta.code,
+          amount_ngn: toCurrencyString(referralLineTotal),
+          discount_type:
+            settings && settings.friend_discount_type === "percentage"
+              ? "percentage"
+              : "fixed",
+        },
       });
     }
 
@@ -696,47 +853,214 @@ async function createOrderTx({ brand, user, request_id, input }) {
     // back just that savepoint (the transaction stays healthy) and record the
     // line as a PRE-ORDER. We accept pre-orders, so checkout never fails on
     // stock — the buyer is told the item ships on the pre-order timeline.
+    //
+    // Universal pre-orders (000086): a stock-short line is recorded as a
+    // PRE-ORDER and the buyer is told it ships on the production window
+    // (Catalogue → Config, default 4–8 weeks). The only time a stock-short line
+    // BLOCKS the sale is when pre-orders are switched off for the brand, or that
+    // specific product is opted out (preorder_excluded) — a genuine "sold out".
+    const preorderPolicy = await repo.getPreorderPolicy({ client, brand });
+    const excludedPreorder = await repo.excludedPreorderProductIds({
+      client,
+      brand,
+      product_ids: insertedLines.map((l) => l.product_id),
+    });
+    // Cross-channel decision (000086, gap-8): this guard is the ONE authority on
+    // whether an out-of-stock line may pre-order, and it applies to EVERY channel
+    // — storefront, order-links, quick-sale AND sales-campaigns — with no
+    // exceptions. `preorder_excluded` is a deliberate per-product merchant opt-out
+    // meaning "genuinely sold out when it hits zero — never back-order this", and
+    // the brand master switch off means "this brand doesn't take pre-orders at
+    // all". A campaign is just another sales channel; special-casing it to force a
+    // pre-order would silently override the merchant's explicit intent and raise
+    // an order they said should never exist. So we intentionally let createOrder
+    // throw OUT_OF_STOCK for an excluded/switched-off product even inside a
+    // campaign whose landing page shows "SOLD OUT — PRE-ORDER OPEN" (a display
+    // built from the campaign's own preorder_enabled flag). With the default
+    // switch ON and products NOT excluded — the overwhelmingly common case —
+    // campaigns pre-order exactly like every other channel; the only divergence is
+    // the deliberately-excluded edge, where OUT_OF_STOCK is the CORRECT outcome and
+    // the campaign's badge is what should be corrected, not this backstop.
+    const preorderAllowed = (line) =>
+      preorderPolicy.enabled && !excludedPreorder.has(line.product_id);
+    const blockSoldOut = (line) => {
+      throw new AppError(
+        "OUT_OF_STOCK",
+        `stock short and pre-order unavailable (variant ${line.variant_id})`,
+        409,
+        {
+          user_message: `${line.product_name_snapshot || "This item"} is out of stock.`,
+        },
+      );
+    };
     const preorderLines = [];
+    const rewigSubstitutions = [];
     {
       const loc = await stockRepo.getDefaultLocation({ client, brand });
-      for (const lr of lineRows) {
-        if (!lr.variant_id) continue;
-        if (!loc) {
-          preorderLines.push(lr);
-          continue;
-        }
+      // One reserve attempt, isolated in its own savepoint so a failure leaves
+      // the transaction healthy. Resolves to null on success, else the error.
+      const tryReserve = async (variant_id, quantity) => {
         await client.query("SAVEPOINT pgh_reserve");
         try {
           await stockService.reserveForOrder({
             client,
             brand,
-            variant_id: lr.variant_id,
+            variant_id,
             location_id: loc.location_id,
-            quantity: lr.quantity,
+            quantity,
             reference_id: order.order_id,
             user_id: user.user_id,
           });
           await client.query("RELEASE SAVEPOINT pgh_reserve");
+          return null;
         } catch (err) {
           await client.query("ROLLBACK TO SAVEPOINT pgh_reserve");
           await client.query("RELEASE SAVEPOINT pgh_reserve").catch(() => {});
-          preorderLines.push(lr);
-          logger.info(
-            {
-              err: err.message,
-              order_id: order.order_id,
-              variant_id: lr.variant_id,
-            },
-            "stock short — line recorded as pre-order",
-          );
+          return err;
         }
+      };
+
+      for (const line of insertedLines) {
+        if (!line.variant_id) continue;
+        if (!loc) {
+          if (!preorderAllowed(line)) blockSoldOut(line);
+          preorderLines.push(line);
+          logger.warn(
+            { order_id: order.order_id, line_id: line.line_id },
+            "no active stock location — line recorded as pre-order",
+          );
+          continue;
+        }
+        let err = await tryReserve(line.variant_id, line.quantity);
+        if (!err) continue;
+
+        // Rewig adjacency (000088) — the line's own base is short, so before
+        // falling through to pre-order, try a size-adjacent sibling base that
+        // can actually cover it at THIS location.
+        //
+        // This lives here, below every channel, on purpose. It used to sit only
+        // in the three checkout callers (storefront, sales-campaigns, order
+        // links), so Quick Sale and Quotations — which resolve a styled variant
+        // to its base in the browser (apps/admin/src/lib/product-search.ts) and
+        // post a bare variant_id — never consulted it at all, and pre-ordered
+        // straight past a sibling sitting in stock. createOrder is the one point
+        // every channel converges on, so putting the fallback here fixes those
+        // paths and any channel added later. It is idempotent for the callers
+        // that already resolved a donor: their reserve succeeds first try and
+        // this block never runs.
+        const donor = await resolveRewigDonor({
+          client,
+          brand,
+          line,
+          location_id: loc.location_id,
+        });
+        if (donor) {
+          const donorErr = await tryReserve(donor.variant_id, line.quantity);
+          if (!donorErr) {
+            const note = `Rewig substitution: fulfil from ${donor.product_name} (${donor.sku}) — resize to ${line.variant_label_snapshot || "the ordered size"}.`;
+            await repo.repointLineVariant({
+              client,
+              brand,
+              line_id: line.line_id,
+              product_id: donor.product_id,
+              variant_id: donor.variant_id,
+              note,
+            });
+            // Keep the in-memory row in step: payment-time deductForSale reads
+            // these same objects when the order is paid in the same request.
+            line.product_id = donor.product_id;
+            line.variant_id = donor.variant_id;
+            rewigSubstitutions.push({
+              line_id: line.line_id,
+              from_variant_id: donor.origin_variant_id,
+              to_variant_id: donor.variant_id,
+              donor_sku: donor.sku,
+              donor_product_name: donor.product_name,
+            });
+            logger.info(
+              {
+                order_id: order.order_id,
+                line_id: line.line_id,
+                donor_sku: donor.sku,
+              },
+              "rewig substitution — reserved from size-adjacent sibling base",
+            );
+            continue;
+          }
+          err = donorErr;
+        }
+
+        if (!preorderAllowed(line)) blockSoldOut(line);
+        preorderLines.push(line);
+        logger.info(
+          {
+            err: err.message,
+            order_id: order.order_id,
+            line_id: line.line_id,
+            variant_id: line.variant_id,
+            location_id: loc.location_id,
+            quantity: line.quantity,
+            rewig_donor_found: !!donor,
+          },
+          "stock short — line recorded as pre-order",
+        );
       }
     }
+
+    // Persist pre-order state (order + lines) so the Sales → Pre-orders tab,
+    // the invoice and the confirmation email read it back. Deadline = placement
+    // + the max production weeks. `preorderInfo` is also threaded to the caller.
+    let preorderInfo = null;
     if (preorderLines.length) {
+      const weeks = preorderPolicy.max_weeks || preorderPolicy.min_weeks || 0;
+      const readyBy = weeks
+        ? new Date(Date.now() + weeks * 7 * 86_400_000)
+            .toISOString()
+            .slice(0, 10)
+        : null;
+      const windowLabel =
+        preorderPolicy.min_weeks &&
+        preorderPolicy.max_weeks &&
+        preorderPolicy.min_weeks !== preorderPolicy.max_weeks
+          ? `${preorderPolicy.min_weeks}–${preorderPolicy.max_weeks} weeks`
+          : `${weeks} week${weeks === 1 ? "" : "s"}`;
+      await repo.markOrderPreorder({
+        client,
+        brand,
+        order_id: order.order_id,
+        ready_by: readyBy,
+        min_weeks: preorderPolicy.min_weeks,
+        max_weeks: preorderPolicy.max_weeks,
+      });
+      await repo.markLinesPreorder({
+        client,
+        brand,
+        line_ids: preorderLines.map((l) => l.line_id),
+      });
+      preorderInfo = {
+        is_preorder: true,
+        line_count: preorderLines.length,
+        variant_ids: preorderLines.map((l) => l.variant_id),
+        names: preorderLines
+          .map((l) => l.product_name_snapshot)
+          .filter(Boolean),
+        min_weeks: preorderPolicy.min_weeks,
+        max_weeks: preorderPolicy.max_weeks,
+        ready_by: readyBy,
+        window_label: windowLabel,
+        message: `Some items are made to order — your pre-order ships in about ${windowLabel}.`,
+      };
+      notices.push({ code: "PREORDER_ITEMS", message: preorderInfo.message });
+    }
+
+    // Rewig substitutions (000088): the customer's size is being cut from a
+    // sibling unit, so the picklist and the stylist brief must say so — the
+    // order line already carries the note, this surfaces it to the caller.
+    if (rewigSubstitutions.length) {
       notices.push({
-        code: "PREORDER_ITEMS",
-        message:
-          "Some items in your order are pre-order and will ship on the pre-order timeline.",
+        code: "REWIG_SUBSTITUTION",
+        message: `${rewigSubstitutions.length === 1 ? "One item" : `${rewigSubstitutions.length} items`} will be resized from an adjacent size in stock.`,
+        details: rewigSubstitutions,
       });
     }
 
@@ -754,6 +1078,21 @@ async function createOrderTx({ brand, user, request_id, input }) {
       order_id: order.order_id,
       contact_id: order.contact_id,
     });
+    // Durable placement event (H-2): the customer's order-confirmation message
+    // fires HERE, at placement — so a Pending/Partially-Paid order is
+    // acknowledged immediately, not only once it's fully paid. Post-commit,
+    // idempotent (dedup on the order id). The paid-time receipt is a separate
+    // message driven by order.paid → invoicing (receipt.sent).
+    await outbox.enqueue(client, {
+      business: brand,
+      event_type: "order.created",
+      payload: {
+        brand,
+        order_id: order.order_id,
+        contact_id: order.contact_id,
+      },
+      dedup_key: `order.created:${order.order_id}`,
+    });
     // Prepaid-only (owner directive): the business never ships pay-on-delivery,
     // so an unpaid order must NOT enter the logistics queue. The delivery is
     // created only once payment clears — logistics subscribes to `order.paid`
@@ -767,19 +1106,17 @@ async function createOrderTx({ brand, user, request_id, input }) {
     // Thread soft notices + pre-order detail back to the caller (public
     // checkout) without persisting them on the row. Non-enumerable so they
     // never leak into JSON serialisation of the order itself.
-    if (finalOrder && (notices.length || preorderLines.length)) {
+    if (finalOrder && (notices.length || preorderInfo)) {
       Object.defineProperty(finalOrder, "_notices", {
         value: notices,
         enumerable: false,
       });
       Object.defineProperty(finalOrder, "_preorder", {
-        value: {
-          is_preorder: preorderLines.length > 0,
-          line_count: preorderLines.length,
-          variant_ids: preorderLines.map((l) => l.variant_id),
-          names: preorderLines
-            .map((l) => l.product_name_snapshot)
-            .filter(Boolean),
+        value: preorderInfo || {
+          is_preorder: false,
+          line_count: 0,
+          variant_ids: [],
+          names: [],
         },
         enumerable: false,
       });
@@ -798,6 +1135,28 @@ async function getById({ brand, id }) {
   o.payments = await repo.listPayments({ brand, order_id: id });
   o.discounts = await repo.listDiscounts({ brand, order_id: id });
   return o;
+}
+
+/**
+ * The Stylist Studio job opened for one order — read THROUGH the order and
+ * scoped to the order itself, never to the caller's stylist own-scope. Anyone
+ * who can view the order (sales.view) sees its studio progress. A salesperson
+ * is never the assigned stylist, so the service_jobs module's own-scope would
+ * otherwise (correctly) hide the job and the Order drawer would misreport
+ * "Studio: not opened yet" for a wig that is in fact well into styling. Returns
+ * 0-or-1 job as an array; the controller wraps it in a { data, meta } envelope
+ * so the admin client preserves the shape (a bare { data } gets unwrapped past
+ * the array).
+ */
+async function getOrderServiceJob({ brand, id }) {
+  const order = await repo.findById({ brand, id });
+  if (!order) throw new NotFoundError("Order");
+  const r = await serviceJobsRepo.listServiceJobs({
+    brand,
+    sales_order_id: id,
+    page_size: 1,
+  });
+  return r.data;
 }
 
 // Edit an order while it is still editable (draft / pending_payment): header
@@ -1068,10 +1427,16 @@ async function addPayment({ brand, user, request_id, id, input }) {
     // Trigger recomputed amount_paid_ngn; re-read.
     const updated = await repo.findById({ client, brand, id });
     let result = updated;
-    if (
-      !PAID_STATES.has(updated.status) &&
-      money(updated.amount_paid_ngn).gte(money(updated.total_ngn))
-    ) {
+    const paidNow = money(updated.amount_paid_ngn);
+    const totalDue = money(updated.total_ngn);
+    const paidBefore = money(order.amount_paid_ngn || 0);
+
+    if (paidBefore.lt(totalDue) && paidNow.gte(totalDue)) {
+      // This payment just completed the order → run the settle side-effects
+      // (stock deduction + order.paid fan-out) exactly once. Detected from the
+      // payment crossing full, NOT the status — a deposit order paying its
+      // balance may already be 'assigned'/'order_ready', and markPaid keeps that
+      // fulfilment status rather than rewinding it to 'paid'.
       result = await markPaid({
         client,
         brand,
@@ -1079,24 +1444,40 @@ async function addPayment({ brand, user, request_id, id, input }) {
         request_id,
         order: updated,
       });
-    } else if (
-      updated.payment_model === "deposit_triggered" &&
-      !updated.deposit_met_at &&
-      updated.required_deposit_ngn !== null &&
-      updated.required_deposit_ngn !== undefined &&
-      money(updated.amount_paid_ngn).gte(money(updated.required_deposit_ngn))
-    ) {
-      // Deposit cleared (V2.2 §6.2): unlock production now; the balance is
-      // collected before dispatch via the normal full-payment path.
-      const flipped = await repo.markDepositMet({ client, brand, id });
-      if (flipped) {
-        result = flipped;
+    } else if (paidNow.gt(money(0)) && paidNow.lt(totalDue)) {
+      // Part payment recorded → reflect 'partially_paid' so the drawer and
+      // reports stop showing a stale 'pending_payment'. Only advances a still-
+      // open order; never rewinds one already further along the lifecycle
+      // (e.g. an assigned order taking its balance instalment).
+      if (["pending_payment", "partially_paid"].includes(updated.status)) {
+        const flipped = await repo.setStatus({
+          client,
+          brand,
+          id,
+          status: "partially_paid",
+        });
+        if (flipped) result = flipped;
+      }
+      // Deposit-triggered orders open their styling job the moment the required
+      // deposit clears — the status stays 'partially_paid' (the balance is still
+      // outstanding); production is unlocked via order.deposit_met. Detect the
+      // crossing from the payment delta: the payment DB trigger stamps
+      // deposit_met_at itself, so we can't gate on it here. The outbox dedup key
+      // guarantees the job opens exactly once.
+      const reqDep = updated.required_deposit_ngn;
+      if (
+        updated.payment_model === "deposit_triggered" &&
+        reqDep !== null &&
+        reqDep !== undefined &&
+        paidBefore.lt(money(reqDep)) &&
+        paidNow.gte(money(reqDep))
+      ) {
         events.emit("order.deposit_met", {
           brand,
           order_id: id,
-          contact_id: flipped.contact_id,
-          required_deposit_ngn: flipped.required_deposit_ngn,
-          amount_paid_ngn: flipped.amount_paid_ngn,
+          contact_id: updated.contact_id,
+          required_deposit_ngn: reqDep,
+          amount_paid_ngn: updated.amount_paid_ngn,
         });
         // Durable + post-commit (H-2): Service Jobs opens a styling job for the
         // committed order. Keeps the in-process emit for realtime.
@@ -1106,12 +1487,63 @@ async function addPayment({ brand, user, request_id, id, input }) {
           payload: {
             brand,
             order_id: id,
-            contact_id: flipped.contact_id,
-            required_deposit_ngn: flipped.required_deposit_ngn,
-            amount_paid_ngn: flipped.amount_paid_ngn,
+            contact_id: updated.contact_id,
+            required_deposit_ngn: reqDep,
+            amount_paid_ngn: updated.amount_paid_ngn,
           },
           dedup_key: `order.deposit_met:${id}`,
         });
+      }
+    }
+
+    // Mirror EVERY payment onto the order's proforma invoice, in this same
+    // transaction, so the two screens can never disagree — part payments and
+    // full settlement alike. Recording money on the order used to leave the
+    // invoice showing the untouched balance; full settlement waited on the
+    // post-commit order.paid outbox hop, so Invoicing lagged Sales by however
+    // long the worker took.
+    // GL-safe: applyPayment posts no journal of its own, and the invoice-side
+    // entries are skipped for order-backed invoices (invoicing.recordPayment)
+    // precisely because the order's capture journal already booked the cash.
+    // The receipt still comes from order.paid → createFromOrder →
+    // finalizeDraftInvoice: with the balance already applied here that call
+    // finds nothing outstanding, skips the payment, and issues the receipt
+    // (createFromOrder's already-final short-circuit lets a receiptless paid
+    // invoice through for exactly this reason).
+    {
+      const invoicingRepo = require("../invoicing/invoicing.repo");
+      const openInvoice = await invoicingRepo.findByOrderId({
+        client,
+        brand,
+        order_id: id,
+      });
+      if (
+        openInvoice &&
+        !["paid", "void", "refunded"].includes(openInvoice.status)
+      ) {
+        // Cap at whatever the invoice still shows outstanding: an order can
+        // carry charges the proforma doesn't (or vice versa), and the
+        // balance_due_ngn generated column must never be driven negative.
+        const invOutstanding = money(openInvoice.balance_due_ngn || 0);
+        const thisPayment = money(input.amount_ngn);
+        const toApply = thisPayment.gt(invOutstanding)
+          ? invOutstanding
+          : thisPayment;
+        if (toApply.gt(0)) {
+          await invoicingRepo.applyPayment({
+            client,
+            brand,
+            payment: {
+              invoice_id: openInvoice.invoice_id,
+              sales_order_payment_id: paymentRow.payment_id,
+              amount_applied_ngn: toCurrencyString(toApply),
+              applied_by: user.user_id || null,
+              notes:
+                input.notes ||
+                `Recorded on ${order.order_number} (${paymentRow.payment_number})`,
+            },
+          });
+        }
       }
     }
 
@@ -1120,7 +1552,7 @@ async function addPayment({ brand, user, request_id, id, input }) {
     // payment-comms subscriber renders through the Comms Studio automations
     // (payment_received / payment_milestone), so the copy stays CEO-editable.
     // Fully-paid orders skip this: order.paid drives the final receipt flow.
-    if (!PAID_STATES.has(result.status)) {
+    if (paidNow.lt(totalDue)) {
       await outbox.enqueue(client, {
         business: brand,
         event_type: "order.payment_recorded",
@@ -1304,12 +1736,18 @@ async function markPaid({ client, brand, user, _request_id, order }) {
       discount_ngn: campaignDiscountNgn,
     });
   }
-  const paid = await repo.setStatus({
-    client,
-    brand,
-    id: order.order_id,
-    status: "paid",
-  });
+  // Move to 'paid' ONLY from a pre-fulfilment state. A deposit order paying its
+  // balance may already be 'assigned'/'order_ready'/'dispatched' (styling under
+  // way) — settling the money must not rewind that fulfilment progress. When the
+  // guard doesn't match, keep the current status (re-read to return the row).
+  const paid =
+    (await repo.advanceStatus({
+      client,
+      brand,
+      id: order.order_id,
+      to: "paid",
+      from: ["draft", "pending_payment", "partially_paid"],
+    })) || (await repo.findById({ client, brand, id: order.order_id }));
   // Cross-module fan-out (H-2): enqueue `order.paid` to the transactional
   // outbox atomically with this transaction. After COMMIT the worker's
   // dispatcher invokes every registered consumer (accounting GL, invoicing,
@@ -1340,6 +1778,16 @@ async function markPaid({ client, brand, user, _request_id, order }) {
  * charge as a paid Sales order so subscription revenue resolves in Sales and
  * posts to the GL. A flat charge (no product lines); the wig fulfilment/
  * selection is handled separately. Idempotent on client_idempotency_key.
+ *
+ * Universal pre-orders (000086) — DELIBERATELY NOT APPLIED HERE. This path calls
+ * repo.createOrder directly (a flat `digital` revenue order with ZERO
+ * stock-bearing lines), so the reserve-per-line-in-a-SAVEPOINT / mark-as-
+ * pre-order logic in createOrder has nothing to act on: there is no variant to
+ * be short on. The physical wig that a subscription entitles the member to is
+ * selected and raised through a SEPARATE order that DOES flow through
+ * createOrder and therefore gets full pre-order treatment. Giving this charge
+ * "reserve/persist parity" would be meaningless (no lines) and wrong (it would
+ * imply the membership fee itself can be back-ordered), so it stays excluded.
  */
 async function recordSubscriptionCharge({
   brand,
@@ -1404,6 +1852,179 @@ async function recordSubscriptionCharge({
     const full = await repo.findById({ client, brand, id: order.order_id });
     await markPaid({ client, brand, user: { user_id: null }, order: full });
     return repo.findById({ client, brand, id: order.order_id });
+  });
+}
+
+/**
+ * Restore a cancelled order from the archive.
+ *
+ * Cancelling is not a status flip — it releases the order's stock hold and, when
+ * a deposit had been paid, forfeits it to Other Income with a journal entry. So
+ * a restore has to put the stock back, and must refuse outright where money has
+ * already moved on the books.
+ *
+ * Two-phase by design. The first call is a DRY RUN: it reports whether every
+ * line can be re-reserved and returns `{ requires_confirmation: true }` with the
+ * short lines when it can't. The caller shows that warning; only a second call
+ * with `confirm: true` commits, restoring the short lines as PRE-ORDERS exactly
+ * as a new order would. This keeps "the units you had are gone" an explicit
+ * human decision instead of a silent downgrade.
+ *
+ * Refused when a deposit was forfeited: reversing that journal entry is a
+ * finance judgement, not an Orders-screen button.
+ */
+async function restoreOrder({ brand, user, request_id, id, confirm = false }) {
+  return transaction(async (client) => {
+    const order = await repo.findById({ client, brand, id });
+    if (!order) throw new NotFoundError("Order");
+    if (order.status !== "cancelled")
+      throw new AppError(
+        "INVALID_STATE",
+        `Only a cancelled order can be restored (this one is ${order.status})`,
+        409,
+        { user_message: "This order isn't cancelled, so there's nothing to restore." },
+      );
+    if (money(order.amount_paid_ngn || 0).gt(0))
+      throw new AppError(
+        "DEPOSIT_FORFEITED",
+        "Order carried a deposit that was forfeited on cancellation",
+        409,
+        {
+          user_message:
+            "This order had a deposit that was forfeited to income when it was cancelled. Restoring it would need a finance correction — raise a new order instead.",
+        },
+      );
+
+    const loc = await stockRepo.getDefaultLocation({ client, brand });
+    const lines = (order.lines || []).filter((l) => l.variant_id);
+
+    // Dry run: what can actually be re-held right now?
+    const short = [];
+    if (loc) {
+      for (const line of lines) {
+        const level = await stockRepo.variantWithStockForProduct({
+          client,
+          brand,
+          product_id: line.product_id,
+          location_id: loc.location_id,
+          quantity: line.quantity,
+        });
+        if (!level || level.variant_id !== line.variant_id) {
+          const { rows } = await client.query(
+            `SELECT COALESCE(available, 0) AS available
+               FROM ${brand}.stock_levels
+              WHERE variant_id = $1 AND location_id = $2`,
+            [line.variant_id, loc.location_id],
+          );
+          const available = rows[0] ? Number(rows[0].available) : 0;
+          if (available < line.quantity) {
+            short.push({
+              line_id: line.line_id,
+              variant_id: line.variant_id,
+              name: line.product_name_snapshot || null,
+              wanted: line.quantity,
+              available,
+            });
+          }
+        }
+      }
+    }
+
+    if (short.length && !confirm) {
+      // Nothing has been written — the transaction simply ends here.
+      return {
+        requires_confirmation: true,
+        order_number: order.order_number,
+        short_lines: short,
+        message:
+          short.length === 1
+            ? "1 item is no longer in stock. Restoring will bring it back as a pre-order."
+            : `${short.length} items are no longer in stock. Restoring will bring them back as pre-orders.`,
+      };
+    }
+
+    // Commit: re-hold everything that can be held. A short line simply stays
+    // unheld and the order is flagged as a pre-order below.
+    const restoredPreorderLines = [];
+    if (loc) {
+      for (const line of lines) {
+        await client.query("SAVEPOINT pgh_restore");
+        try {
+          await stockService.reserveForOrder({
+            client,
+            brand,
+            variant_id: line.variant_id,
+            location_id: loc.location_id,
+            quantity: line.quantity,
+            reference_id: order.order_id,
+            user_id: user.user_id,
+          });
+          await client.query("RELEASE SAVEPOINT pgh_restore");
+        } catch (err) {
+          await client.query("ROLLBACK TO SAVEPOINT pgh_restore");
+          await client.query("RELEASE SAVEPOINT pgh_restore").catch(() => {});
+          restoredPreorderLines.push(line);
+          logger.info(
+            { err: err.message, order_id: id, line_id: line.line_id },
+            "restore: line could not be re-held — kept as pre-order",
+          );
+        }
+      }
+    } else {
+      restoredPreorderLines.push(...lines);
+    }
+
+    // Back to wherever it was before the cancel; pending_payment is the safe
+    // default for legacy rows with no recorded transition.
+    const previous =
+      (await repo.statusBeforeCancellation({ client, brand, id })) ||
+      "pending_payment";
+    const o = await repo.setStatus({ client, brand, id, status: previous });
+    await repo.clearCancellation({ client, brand, id });
+
+    if (restoredPreorderLines.length) {
+      const policy = await repo.getPreorderPolicy({ client, brand });
+      const weeks = policy.max_weeks || policy.min_weeks || 0;
+      await repo.markOrderPreorder({
+        client,
+        brand,
+        order_id: id,
+        ready_by: weeks
+          ? new Date(Date.now() + weeks * 7 * 86_400_000).toISOString().slice(0, 10)
+          : null,
+        min_weeks: policy.min_weeks,
+        max_weeks: policy.max_weeks,
+      });
+      await repo.markLinesPreorder({
+        client,
+        brand,
+        line_ids: restoredPreorderLines.map((l) => l.line_id),
+      });
+    }
+
+    await audit({
+      business: brand,
+      user_id: user.user_id,
+      action_key: "sales.order.restore",
+      target_type: "sales_order",
+      target_id: id,
+      request_id,
+      metadata: {
+        restored_to: previous,
+        preorder_lines: restoredPreorderLines.length,
+      },
+    });
+    events.emit("order.restored", {
+      brand,
+      order_id: id,
+      restored_to: previous,
+    });
+    return {
+      requires_confirmation: false,
+      order: o,
+      restored_to: previous,
+      preorder_line_count: restoredPreorderLines.length,
+    };
   });
 }
 
@@ -1499,6 +2120,115 @@ async function cancelOrder({ brand, user, request_id, id, reason }) {
   });
 }
 
+// Manual status move from the order drawer (V2.2 §6.2). Staff can nudge an
+// order along the FULFILMENT stages themselves — e.g. mark a walk-in Completed
+// the moment the customer's happy, or Dispatched when the rider takes it. The
+// PAYMENT states (pending_payment / partially_paid / paid) and the CANCEL states
+// are deliberately NOT settable here: those carry money + stock side-effects and
+// stay automatic (payments → paid via markPaid; cancel → cancelOrder). Moving to
+// a customer-facing stage fires the matching Comms Studio message (gated by
+// Messaging settings), so a manual "Dispatched" still truthfully tells the buyer
+// it's on its way.
+const MANUAL_STATUSES = new Set([
+  "assigned",
+  "order_ready",
+  "dispatched",
+  "completed",
+]);
+const MANUAL_ALLOWED_FROM = new Set([
+  "partially_paid",
+  "paid",
+  "assigned",
+  "order_ready",
+  "dispatched",
+  "completed",
+]);
+
+async function setOrderStatus({ brand, user, request_id, id, status }) {
+  if (!MANUAL_STATUSES.has(status)) {
+    throw new AppError(
+      "INVALID_STATUS",
+      `'${status}' cannot be set manually`,
+      422,
+      {
+        user_message:
+          "Payment and cancellation states are managed automatically — record a payment or use Cancel instead.",
+      },
+    );
+  }
+  const updated = await transaction(async (client) => {
+    const before = await repo.findById({ client, brand, id });
+    if (!before) throw new NotFoundError("Order");
+    if (!MANUAL_ALLOWED_FROM.has(before.status)) {
+      throw new AppError(
+        "INVALID_STATE",
+        `A '${before.status}' order cannot be moved to '${status}'`,
+        409,
+        {
+          user_message:
+            "This order isn't paid yet — record the payment before moving it forward.",
+        },
+      );
+    }
+    const row = await repo.setStatus({ client, brand, id, status });
+    await audit({
+      business: brand,
+      user_id: user.user_id,
+      action_key: "sales.order.status_set",
+      target_type: "sales_order",
+      target_id: id,
+      before: { status: before.status },
+      after: { status },
+      request_id,
+    });
+    events.emit("order.updated", { brand, order_id: id });
+    return row;
+  });
+  // Fire the matching customer message (best-effort; no-op if toggled Off).
+  // Routed through the shared MANUAL_STATUS_EVENT map so the impact modal's
+  // live-state read (getStatusAutomationStates) can never promise a send this
+  // path wouldn't make.
+  const orderComms = require("./order-comms");
+  await orderComms.forStatus({ brand, order: updated, status });
+  return updated;
+}
+
+/**
+ * Live on/off state of the customer messages a manual fulfilment move fires,
+ * keyed by the target status — so the order drawer's impact modal can show a
+ * definite "will send" / "won't send — it's off" instead of static copy.
+ *
+ * Only statuses that actually fire a message appear (order_ready, dispatched);
+ * assigned/completed send nothing and are simply absent. Reads from the same
+ * MANUAL_STATUS_EVENT map setOrderStatus dispatches from, so the promise and
+ * the send stay in lockstep.
+ */
+async function getStatusAutomationStates({ brand }) {
+  const orderComms = require("./order-comms");
+  const commsStudio = require("../comms_studio/comms-studio.service");
+  const statusToEvent = orderComms.MANUAL_STATUS_EVENT;
+  const statuses = Object.keys(statusToEvent);
+  const event_keys = statuses.map((s) => statusToEvent[s]);
+  const states = await commsStudio.getAutomationStates({ brand, event_keys });
+  const byEvent = new Map(states.map((s) => [s.event_key, s]));
+  const out = {};
+  for (const status of statuses) {
+    const event_key = statusToEvent[status];
+    const st = byEvent.get(event_key) || {
+      configured: false,
+      is_active: false,
+      channel: null,
+    };
+    out[status] = {
+      event_key,
+      configured: !!st.configured,
+      is_active: !!st.is_active,
+      channel: st.channel || null,
+    };
+  }
+  return out;
+}
+
 // ── Quotations ───────────────────────────────────────────
 async function buildQuotationLines({
   client,
@@ -1547,9 +2277,12 @@ async function buildQuotationLines({
     out.push({
       product_id: ctx.product_id,
       variant_id: li.variant_id,
-      product_name_snapshot: ctx.product_name,
-      variant_label_snapshot: ctx.variant_name,
-      sku_snapshot: ctx.sku,
+      // Snapshot overrides let a caller (e.g. a styled-product quote line)
+      // record the styled name/label/SKU instead of the base variant's —
+      // mirrors computeTotalsAndLines (pricing/totals.js) for real orders.
+      product_name_snapshot: li.product_name_snapshot ?? ctx.product_name,
+      variant_label_snapshot: li.variant_label_snapshot ?? ctx.variant_name,
+      sku_snapshot: li.sku_snapshot ?? ctx.sku,
       quantity: li.quantity,
       unit_price_ngn: toCurrencyString(unit),
       line_discount_ngn: toCurrencyString(lineDiscount),
@@ -1799,6 +2532,8 @@ async function decideQuotation({
   id,
   decision,
   reason,
+  convert = false,
+  sales_channel,
 }) {
   const status = decision === "accept" ? "accepted" : "rejected";
   const extra =
@@ -1819,6 +2554,26 @@ async function decideQuotation({
     after: { status },
     request_id,
   });
+  // Order-first fallback: when the customer isn't paying through the quote's
+  // own pay link (offline transfer, cash, staff taking payment by phone),
+  // accepting can mint the order straight away so there is something to take
+  // money against. Opt-in — a plain accept still just flips the status, so
+  // quotes accepted "in principle" don't litter the pipeline with unpaid
+  // orders. Converting is idempotent, so this is safe on a re-submitted accept.
+  if (decision === "accept" && convert) {
+    const order = await ensureQuotationOrder({
+      brand,
+      user,
+      request_id,
+      quotation_id: id,
+      sales_channel,
+    });
+    // Re-read: the conversion moved the status on from 'accepted' to
+    // 'converted' and stamped converted_sales_order_id, so `updated` (captured
+    // before the convert) would hand the caller a stale row.
+    const fresh = await repo.findQuotationById({ brand, id });
+    return { ...(fresh || updated), converted_order: order };
+  }
   return updated;
 }
 async function convertQuotation({ brand, user, request_id, id, input = {} }) {
@@ -1835,12 +2590,25 @@ async function convertQuotation({ brand, user, request_id, id, input = {} }) {
       contact_id: q.contact_id,
       sales_channel: input.sales_channel || "phone",
       order_type: q.delivery_type || "dispatch",
+      quotation_id: id,
+      // Race backstop for the pay-link rail: two concurrent gateway webhooks
+      // for the same quote both reach createOrder, and the partial unique index
+      // on client_idempotency_key collapses them onto ONE order (the second
+      // caller gets the first's row back rather than a twin). The status guard
+      // above catches the sequential case; this catches the simultaneous one.
+      client_idempotency_key: `quotation:${id}`,
       lines: q.lines
         .filter((l) => l.variant_id)
         .map((l) => ({
           variant_id: l.variant_id,
           quantity: l.quantity,
           unit_price_ngn: l.unit_price_ngn,
+          // Carry the quote's own name/label/SKU snapshot forward — without
+          // this a converted styled-product quote reverts to the raw
+          // base-product name on the resulting order.
+          product_name_snapshot: l.product_name_snapshot,
+          variant_label_snapshot: l.variant_label_snapshot,
+          sku_snapshot: l.sku_snapshot,
         })),
       shipping_fee_ngn: q.shipping_fee_ngn,
     },
@@ -1866,6 +2634,65 @@ async function convertQuotation({ brand, user, request_id, id, input = {} }) {
     order_id: order.order_id,
   });
   return order;
+}
+
+/**
+ * Idempotently resolve the order for a quotation, converting it if it hasn't
+ * been converted yet. This is what the gateway webhook calls the moment a quote
+ * payment confirms (000090): the quote never holds money, it materialises its
+ * order just in time and the payment is then recorded against that order by the
+ * ordinary `addPayment` path.
+ *
+ * Idempotent on three levels, because a gateway will re-deliver a webhook:
+ *   1. Already converted → return the existing order, no second conversion.
+ *   2. Concurrent delivery → convertQuotation's client_idempotency_key
+ *      ('quotation:<id>') collapses both onto one order via the unique index.
+ *   3. The payment itself is deduped downstream on provider+provider_reference.
+ *
+ * `user` is `{ user_id: null }` on the webhook path — the same system-actor
+ * shape recordGatewayPayment already uses for addPayment, so the audit row
+ * attributes the conversion to the webhook rather than to a staff member.
+ */
+async function ensureQuotationOrder({
+  brand,
+  user = { user_id: null },
+  request_id,
+  quotation_id,
+  sales_channel,
+}) {
+  const q = await repo.findQuotationById({ brand, id: quotation_id });
+  if (!q) throw new NotFoundError("Quotation");
+  if (q.converted_sales_order_id) {
+    const existing = await repo.findById({
+      brand,
+      id: q.converted_sales_order_id,
+    });
+    if (existing) return existing;
+    // Status says converted but the order is gone (deleted, or a half-written
+    // legacy row). Rather than strand the payment, clear the stale pointer and
+    // convert again — a quote with no reachable order is worse than a fresh
+    // one. The status must be reset too, or convertQuotation's own guard
+    // rejects it as already converted.
+    logger.warn(
+      { brand, quotation_id, order_id: q.converted_sales_order_id },
+      "quotation marked converted but its order is missing — reconverting",
+    );
+    await repo.setQuotationStatus({
+      brand,
+      id: quotation_id,
+      status: "accepted",
+      extra: { converted_sales_order_id: null },
+    });
+  }
+  return convertQuotation({
+    brand,
+    user,
+    request_id,
+    id: quotation_id,
+    // A quote paid through its public link is a self-service sale; 'storefront'
+    // is the closest channel in the enum (there is no 'online').
+    input: { sales_channel: sales_channel || "storefront" },
+  });
 }
 
 // ── Cancellation requests (§6.4 cancellation timer) ──────
@@ -2266,6 +3093,7 @@ async function archiveReceiptPdf({ brand, order_id }) {
 module.exports = {
   listOrders,
   getById,
+  getOrderServiceJob,
   receiptPdf,
   archiveReceiptPdf,
   exportSalesReport,
@@ -2274,6 +3102,9 @@ module.exports = {
   addPayment,
   recordSubscriptionCharge,
   cancelOrder, // orders are cancelled (the 'archive' equivalent), never hard-deleted
+  restoreOrder, // un-cancel from the archive: re-holds stock, refuses forfeited deposits
+  setOrderStatus,
+  getStatusAutomationStates,
   listQuotations,
   getQuotation,
   quotationPdf,
@@ -2281,6 +3112,7 @@ module.exports = {
   sendQuotation,
   decideQuotation,
   convertQuotation,
+  ensureQuotationOrder,
   listCancellations,
   getCancellation,
   requestCancellation,

@@ -43,5 +43,41 @@ async function remove(req, res) {
   await service.removeGateway({ ...base(req), provider: req.params.provider });
   res.status(204).end();
 }
+async function test(req, res) {
+  res.json({
+    data: await service.testGateway({
+      ...base(req),
+      provider: req.params.provider,
+      options: req.body || {},
+    }),
+  });
+}
 
-module.exports = { list, configure, setActive, setRole, remove };
+async function testWebhook(req, res) {
+  res.json({
+    data: await service.sendTestWebhook({
+      ...base(req),
+      provider: req.params.provider,
+    }),
+  });
+}
+
+async function webhookLog(req, res) {
+  res.json({
+    data: await service.recentWebhookActivity({
+      provider: req.params.provider,
+      limit: Math.min(parseInt(req.query.limit || "20", 10), 100),
+    }),
+  });
+}
+
+module.exports = {
+  list,
+  configure,
+  setActive,
+  setRole,
+  remove,
+  test,
+  testWebhook,
+  webhookLog,
+};

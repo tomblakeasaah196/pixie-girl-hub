@@ -34,11 +34,40 @@ export interface IamUser {
   totp_enabled: boolean;
   last_login_at: string | null;
   failed_login_count: number;
+  is_ceo?: boolean;
   /** All role grants for this user (the list has one row per user, never per grant). */
   roles: IamUserRole[];
   role_name: string | null;
   businesses: string[];
   profile_id: string | null;
+}
+
+export interface TrashedUser {
+  user_id: string;
+  email: string;
+  display_name: string;
+  profile_type: "staff" | "external";
+  external_label: string | null;
+  status: string;
+  staff_profile_id: string | null;
+  contact_id: string | null;
+  deleted_at: string;
+  deletion_reason: string | null;
+  deleted_by: string | null;
+  deleted_by_name: string | null;
+}
+
+export interface UserReference {
+  ref_table: string;
+  ref_column: string;
+}
+
+export interface UserReferenceReport {
+  user_id: string;
+  display_name: string;
+  references: UserReference[];
+  reference_count: number;
+  can_purge: boolean;
 }
 
 export interface UserSession {
@@ -186,7 +215,10 @@ export function useSecurityStats() {
 // ════════════════════════════════════════════════════════════
 // Users
 // ════════════════════════════════════════════════════════════
-export function useIamUsers(filters: UserFilters = {}) {
+export function useIamUsers(
+  filters: UserFilters = {},
+  options: { enabled?: boolean } = {},
+) {
   const brand = useBrand();
   const qs = new URLSearchParams();
   if (filters.search) qs.set("search", filters.search);
@@ -201,6 +233,7 @@ export function useIamUsers(filters: UserFilters = {}) {
       api.get<{ rows: IamUser[]; total: number }>(
         `/iam/users${q ? `?${q}` : ""}`,
       ),
+    enabled: options.enabled ?? true,
   });
 }
 
@@ -294,6 +327,80 @@ export function useSendResetLink() {
   return useMutation({
     mutationFn: (userId: string) =>
       api.post(`/iam/users/${userId}/send-reset-link`),
+  });
+}
+
+export function useUpdateUserEmail() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: ({ userId, email }: { userId: string; email: string }) =>
+      api.patch<IamUser>(`/iam/users/${userId}/email`, { email }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["iam-users", brand] }),
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+// Trash (soft delete) / restore / purge
+// ════════════════════════════════════════════════════════════
+export function useTrashedUsers(
+  filters: { page?: number; per_page?: number } = {},
+) {
+  const brand = useBrand();
+  const qs = new URLSearchParams();
+  if (filters.page) qs.set("page", String(filters.page));
+  if (filters.per_page) qs.set("per_page", String(filters.per_page));
+  const q = qs.toString();
+  return useQuery<{ rows: TrashedUser[]; total: number }>({
+    queryKey: ["iam-users-trash", brand, q],
+    queryFn: () =>
+      api.get<{ rows: TrashedUser[]; total: number }>(
+        `/iam/users/trash${q ? `?${q}` : ""}`,
+      ),
+  });
+}
+
+function invalidateUserLists(qc: ReturnType<typeof useQueryClient>, brand: string) {
+  qc.invalidateQueries({ queryKey: ["iam-users", brand] });
+  qc.invalidateQueries({ queryKey: ["iam-users-trash", brand] });
+  qc.invalidateQueries({ queryKey: ["iam-stats", brand] });
+}
+
+export function useTrashUser() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: ({ userId, reason }: { userId: string; reason?: string }) =>
+      api.post(`/iam/users/${userId}/trash`, { reason }),
+    onSuccess: () => invalidateUserLists(qc, brand),
+  });
+}
+
+export function useRestoreUser() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (userId: string) => api.post(`/iam/users/${userId}/restore`),
+    onSuccess: () => invalidateUserLists(qc, brand),
+  });
+}
+
+export function useUserReferences(userId: string | null | undefined) {
+  const brand = useBrand();
+  return useQuery<UserReferenceReport>({
+    queryKey: ["iam-user-references", brand, userId],
+    queryFn: () =>
+      api.get<UserReferenceReport>(`/iam/users/${userId}/references`),
+    enabled: !!userId,
+  });
+}
+
+export function usePurgeUser() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (userId: string) => api.delete(`/iam/users/${userId}/purge`),
+    onSuccess: () => invalidateUserLists(qc, brand),
   });
 }
 

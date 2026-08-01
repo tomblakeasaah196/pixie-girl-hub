@@ -249,8 +249,13 @@ const IG_MEDIA_TYPE = {
 /**
  * Parse a Meta Instagram Messenger payload. Each entry is a page; each
  * `messaging` row is a single DM either from a user or an echo of one
- * we sent. We ignore echoes (is_echo) because we record those at send
- * time.
+ * OUR side sent (is_echo). Echoes matter: they're the ONLY signal Meta
+ * sends when a staffer answers from the Instagram app itself, so
+ * dropping them (the old behaviour) made app-side replies invisible in
+ * the Hub — three people could answer the same customer without seeing
+ * each other. Echo events are emitted with `is_echo: true` and the
+ * CUSTOMER (recipient) as the thread ref; the ingest records them as
+ * business-side bubbles and dedups echoes of Hub-sent messages by mid.
  */
 function parseMetaInstagram(payload) {
   const events = [];
@@ -266,10 +271,15 @@ function parseMetaInstagram(payload) {
       // handled by parseMetaInstagramStatuses / -Reactions instead.
       const msg = m.message;
       if (!msg) continue;
-      if (msg.is_echo) continue;
       // A deletion notice carries no content — nothing to record.
       if (msg.is_deleted) continue;
-      const senderId = m.sender && m.sender.id;
+      const isEcho = !!msg.is_echo;
+      // On an echo the sender is US — the customer (and thus the thread)
+      // is the recipient. A malformed echo without one is unusable.
+      const senderId = isEcho
+        ? m.recipient && m.recipient.id
+        : m.sender && m.sender.id;
+      if (isEcho && !senderId) continue;
 
       // Meta signals story mentions + story replies through the
       // `attachments[]` array on a normal messaging event:
@@ -337,7 +347,10 @@ function parseMetaInstagram(payload) {
         platform: META_IG_PLATFORM,
         external_account_id: externalAccountId,
         external_ref: msg.mid,
-        external_thread_ref: senderId, // IGSID = thread
+        // IGSID = thread. For an echo, senderId already holds the
+        // CUSTOMER (the recipient) — the thread and the contact the
+        // reply belongs to.
+        external_thread_ref: senderId,
         sender: {
           external_user_id: senderId,
           display_name: null,
@@ -346,6 +359,7 @@ function parseMetaInstagram(payload) {
         message_type: isShare ? "text" : messageType,
         media: isShare ? null : media,
         metadata: Object.keys(metadata).length ? metadata : undefined,
+        is_echo: isEcho,
       });
     }
   }
@@ -671,6 +685,27 @@ async function ingestInbound(evt, brandOverride) {
     metadata.subject = evt.subject;
     metadata.in_reply_to = evt.in_reply_to;
   }
+  // An echo is OUR side speaking (a staffer replied from the Instagram
+  // app) — record it as a business bubble and clear the thread's unread
+  // badge, instead of as a message FROM the customer. The contact
+  // resolved above is the customer either way (for echoes the parser
+  // already put the recipient in evt.sender).
+  if (evt.is_echo) {
+    await service.recordAgentReplyFromPlatform({
+      brand,
+      contact_id: contact.contact_id,
+      platform: evt.platform,
+      body: evt.body,
+      message_type: evt.message_type,
+      external_ref: evt.external_ref,
+      external_thread_ref: evt.external_thread_ref,
+      media: evt.media,
+      metadata,
+      occurred_at: evt.occurred_at,
+      quiet: evt.quiet,
+    });
+    return;
+  }
   await service.recordInboundFromCustomer({
     brand,
     contact_id: contact.contact_id,
@@ -681,6 +716,8 @@ async function ingestInbound(evt, brandOverride) {
     external_thread_ref: evt.external_thread_ref,
     media: evt.media,
     metadata,
+    occurred_at: evt.occurred_at,
+    quiet: evt.quiet,
   });
 }
 
@@ -733,47 +770,81 @@ async function onWebhookReceived({ webhook_id, source }) {
       { err: err.message, source, webhook_id },
       "smartcomm: webhook parse failed",
     );
+    // Deterministic — retrying can't fix a parse bug. But the row must not
+    // read as successfully processed either: record the error so the replay
+    // sweep + diagnostics can see it (processed stays false).
+    await webhookRepo
+      .markProcessed(webhook_id, {
+        error_message: `parse failed: ${err.message}`,
+      })
+      .catch(() => {});
     return;
   }
-  for (const st of statuses) {
-    try {
-      await service.applyProviderStatus(st);
-    } catch (err) {
-      logger.error(
-        { err: err.message, source, webhook_id, external_ref: st.external_ref },
-        "smartcomm: delivery-status webhook apply failed",
-      );
-      throw err; // let outbox retry the whole batch
+  // This consumer owns webhook_log.processed for the inbox sources: marked
+  // true only when EVERYTHING below ingested, marked false + error_message
+  // on any failure. That bookkeeping is what lets the 30-min replay sweep
+  // re-drive a row whose outbox retries were exhausted — before this, a
+  // failed messaging ingest (e.g. an Instagram app-reply echo) was lost
+  // forever, invisibly.
+  try {
+    for (const st of statuses) {
+      try {
+        await service.applyProviderStatus(st);
+      } catch (err) {
+        logger.error(
+          {
+            err: err.message,
+            source,
+            webhook_id,
+            external_ref: st.external_ref,
+          },
+          "smartcomm: delivery-status webhook apply failed",
+        );
+        throw err; // let outbox retry the whole batch
+      }
     }
-  }
-  for (const r of reactions) {
-    try {
-      await service.applyCustomerReaction(r);
-    } catch (err) {
-      logger.error(
-        { err: err.message, source, webhook_id, external_ref: r.external_ref },
-        "smartcomm: customer-reaction webhook apply failed",
-      );
-      throw err; // let outbox retry the whole batch
+    for (const r of reactions) {
+      try {
+        await service.applyCustomerReaction(r);
+      } catch (err) {
+        logger.error(
+          {
+            err: err.message,
+            source,
+            webhook_id,
+            external_ref: r.external_ref,
+          },
+          "smartcomm: customer-reaction webhook apply failed",
+        );
+        throw err; // let outbox retry the whole batch
+      }
     }
-  }
-  for (const evt of events) {
-    try {
-      await ingestInbound(evt);
-    } catch (err) {
-      logger.error(
-        {
-          err: err.message,
-          source,
-          webhook_id,
-          platform: evt.platform,
-          external_ref: evt.external_ref,
-        },
-        "smartcomm: webhook ingest failed",
-      );
-      throw err; // let outbox retry the whole batch
+    for (const evt of events) {
+      try {
+        await ingestInbound(evt);
+      } catch (err) {
+        logger.error(
+          {
+            err: err.message,
+            source,
+            webhook_id,
+            platform: evt.platform,
+            external_ref: evt.external_ref,
+          },
+          "smartcomm: webhook ingest failed",
+        );
+        throw err; // let outbox retry the whole batch
+      }
     }
+  } catch (err) {
+    await webhookRepo
+      .markProcessed(webhook_id, {
+        error_message: String((err && err.message) || err),
+      })
+      .catch(() => {});
+    throw err;
   }
+  await webhookRepo.markProcessed(webhook_id, { error_message: null });
 }
 
 function register() {
@@ -789,6 +860,9 @@ module.exports = {
   register,
   // used by the inbound IMAP poller (jobs/schedulers/email-imap-poll)
   ingestInboundEmail,
+  // used by scripts/backfill-instagram-history.js — same resolve-contact +
+  // record pipeline as live webhooks, fed from the Graph conversations API
+  ingestInbound,
   // exported for tests
   parseMetaWhatsApp,
   parseMetaWhatsAppStatuses,

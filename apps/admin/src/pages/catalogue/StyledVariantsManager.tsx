@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import {
   Plus,
   Trash2,
@@ -18,6 +18,7 @@ import {
   Toggle,
   MultiSelect,
   ConfirmDialog,
+  Select,
 } from "@/components/ui/controls";
 import {
   useStyledProduct,
@@ -42,6 +43,9 @@ import {
 } from "@/lib/catalogue";
 import { UploadProgress } from "@/components/ui/UploadProgress";
 import { useUploadProgress } from "@/lib/use-upload";
+import { BrandedImageUpload } from "@/components/catalogue/BrandedImageUpload";
+import { Modal } from "@/components/ui/Modal";
+import { BaseProductPicker } from "./BaseProductPicker";
 
 /**
  * Colour + size management for a styled product (catalogue PR).
@@ -246,7 +250,7 @@ function ColourRow({
   const removeImage = useRemoveColourImage(styledId, colour.colour_id);
   const update = useUpdateColour(styledId);
   const del = useDeleteColour(styledId);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [addOpen, setAddOpen] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [igUrl, setIgUrl] = useState(colour.external_video_url ?? "");
@@ -264,21 +268,11 @@ function ColourRow({
 
   const imgs = images.data ?? [];
 
-  const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files ?? []);
-    if (files.length) {
-      // Upload sequentially, reporting one combined 0–100 across the batch.
-      run(async (onProgress) => {
-        for (let i = 0; i < files.length; i += 1) {
-          await addImage.mutateAsync({
-            file: files[i],
-            onProgress: (p) =>
-              onProgress(Math.round(((i + p / 100) / files.length) * 100)),
-          });
-        }
-      }).catch(() => {});
-    }
-    if (fileRef.current) fileRef.current.value = "";
+  // The branded-upload modal hands back one finished image (natural, or the
+  // subject dropped onto a brand colour); push it through the normal
+  // colour-image endpoint, reusing the shared progress bar.
+  const onBrandedComplete = async (f: File) => {
+    await run((onProgress) => addImage.mutateAsync({ file: f, onProgress }));
   };
 
   return (
@@ -381,7 +375,7 @@ function ColourRow({
         })}
         {canEdit && imgs.length < MAX_COLOUR_IMAGES && (
           <button
-            onClick={() => fileRef.current?.click()}
+            onClick={() => setAddOpen(true)}
             disabled={addImage.isPending}
             className="w-16 h-16 rounded-[10px] border border-dashed border-line grid place-items-center text-text-faint hover:text-accent-glow hover:border-accent/40 transition-colors"
             aria-label="Add picture"
@@ -393,15 +387,15 @@ function ColourRow({
             )}
           </button>
         )}
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*,.heic,.heif"
-          multiple
-          hidden
-          onChange={onPick}
-        />
       </div>
+      {canEdit && (
+        <BrandedImageUpload
+          open={addOpen}
+          onClose={() => setAddOpen(false)}
+          onComplete={onBrandedComplete}
+          title={`Add a picture — ${colour.name}`}
+        />
+      )}
       <UploadProgress value={progress} className="mt-2" />
       {canEdit && (
         <p className="text-[11px] text-text-faint mt-1.5">
@@ -580,6 +574,10 @@ function VariantsCard({
 }) {
   const sizeCfg = useSizeConfig();
   const bulk = useBulkCreateVariants(styledId);
+  const styled = useStyledProduct(styledId);
+  const setStyled = useUpdateStyled(styledId);
+  const rewigOverride = styled.data?.rewig_override ?? "";
+  const rewigMode = sizeCfg.data?.config?.rewig_mode ?? "automatic";
   const tiers = (sizeCfg.data?.tiers ?? []).filter((t) => t.is_active);
   const laceLadder = sizeCfg.data?.lace_sizes ?? [];
   // Label each supported lace code from the brand ladder (falls back to code).
@@ -593,6 +591,8 @@ function VariantsCard({
   const [pickedSizes, setPickedSizes] = useState<string[]>([]);
   const [withLace, setWithLace] = useState(false);
   const [pickedLace, setPickedLace] = useState<string[]>([]);
+  // Default ON: point each size at its own per-size base where one exists.
+  const [autoMapBases, setAutoMapBases] = useState(true);
 
   const prices = variants
     .filter((v) => v.is_active && v.effective_price_ngn != null)
@@ -606,6 +606,7 @@ function VariantsCard({
     bulk.mutate({
       all_sizes: allSizes,
       size_codes: allSizes ? undefined : pickedSizes,
+      auto_map_bases: autoMapBases,
       // Lace axis is opt-in; when on, pick a subset or use all supported lace.
       ...(hasLace && withLace
         ? pickedLace.length
@@ -696,8 +697,52 @@ function VariantsCard({
                     : "all supported lace"}
                 </span>
               )}
+              <span className="w-full text-[11px] text-text-faint">
+                Lace = the base's construction — this list is what the base(s)
+                behind this style are built in. To offer another construction,
+                add a variant on a base made that way.
+              </span>
             </div>
           )}
+
+          <div className="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t hairline">
+            <Toggle
+              checked={autoMapBases}
+              onChange={setAutoMapBases}
+              label="Auto-map each size to its own base"
+            />
+            <span className="text-[11px] text-text-faint">
+              matches “{"{name}"} - Small/Medium/…” bases; falls back to the seed
+              base when none exists
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t hairline">
+            <span className="text-[12.5px] shrink-0">Rewig for this listing</span>
+            <Select
+              value={rewigOverride}
+              disabled={!canEdit || setStyled.isPending}
+              onChange={(v) =>
+                setStyled.mutate({
+                  rewig_override: (v || null) as "enabled" | "disabled" | null,
+                })
+              }
+              options={[
+                {
+                  value: "",
+                  label: `Follow brand setting (currently ${rewigMode === "automatic" ? "on for every listing" : "opt-in"})`,
+                },
+                { value: "enabled", label: "Always on for this listing" },
+                { value: "disabled", label: "Always off for this listing" },
+              ]}
+            />
+            <span className="text-[11px] text-text-faint">
+              &ldquo;Always off&rdquo; wins over the brand setting — this listing
+              will never resize from an adjacent size, even while Catalogue →
+              Config → Rewig adjacency is on for everything else. Leave it on
+              &ldquo;Follow brand setting&rdquo; unless you mean to override.
+            </span>
+          </div>
 
           <p className="text-[11px] text-text-faint mt-2">
             Creates a SKU for every colour × size{hasLace ? " × lace" : ""}.
@@ -725,6 +770,7 @@ function VariantsCard({
                 <th className="py-2 font-semibold">Lace</th>
                 <th className="py-2 font-semibold">SKU</th>
                 <th className="py-2 font-semibold">Base</th>
+                <th className="py-2 font-semibold text-right">Stock</th>
                 <th className="py-2 font-semibold text-right">Retail</th>
                 <th className="py-2 font-semibold text-right">Override ₦</th>
                 <th className="py-2 font-semibold text-right">Override $</th>
@@ -766,6 +812,17 @@ function VariantRow({
   const [overrideUsd, setOverrideUsd] = useState(
     v.price_override_usd != null ? String(v.price_override_usd) : "",
   );
+  // Per-variant base picker: each colour×size variant draws stock from its own
+  // base, so the Base cell is a link → modal to repoint just this variant.
+  const [baseOpen, setBaseOpen] = useState(false);
+  const [pickedBase, setPickedBase] = useState(v.base_product_id ?? "");
+
+  const saveBase = () => {
+    update.mutate(
+      { variantId: v.styled_variant_id, patch: { base_product_id: pickedBase } },
+      { onSuccess: () => setBaseOpen(false) },
+    );
+  };
 
   const ngnStr = v.price_override_ngn != null ? String(v.price_override_ngn) : "";
   const usdStr = v.price_override_usd != null ? String(v.price_override_usd) : "";
@@ -798,8 +855,67 @@ function VariantRow({
         {v.lace_label ?? v.lace_code ?? "—"}
       </td>
       <td className="py-2 font-mono text-[10.5px] text-text-faint">{v.sku}</td>
-      <td className="py-2 text-[11px] text-text-muted max-w-[120px] truncate">
-        {v.base_product_name ?? "—"}
+      <td className="py-2 text-[11px] max-w-[140px]">
+        {canEdit ? (
+          <button
+            type="button"
+            onClick={() => {
+              setPickedBase(v.base_product_id ?? "");
+              setBaseOpen(true);
+            }}
+            title={v.base_product_name ?? "Set base"}
+            className="text-left text-accent-glow hover:underline truncate max-w-[140px] block"
+          >
+            {v.base_product_name ?? "Set base"}
+          </button>
+        ) : (
+          <span className="text-text-muted truncate max-w-[140px] block">
+            {v.base_product_name ?? "—"}
+          </span>
+        )}
+        <Modal
+          open={baseOpen}
+          onClose={() => setBaseOpen(false)}
+          title="Change base for this variant"
+          size="sm"
+          footer={
+            <>
+              <Button variant="ghost" size="sm" onClick={() => setBaseOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={!pickedBase || update.isPending}
+                onClick={saveBase}
+              >
+                {update.isPending ? "Saving…" : "Save base"}
+              </Button>
+            </>
+          }
+        >
+          <p className="text-[12.5px] text-text-muted mb-3">
+            {v.colour_name} · {v.size_code}
+            {v.lace_code ? ` · ${v.lace_code}` : ""} draws its stock from this
+            base SKU. Repointing changes only this variant.
+          </p>
+          <BaseProductPicker value={pickedBase} onChange={setPickedBase} />
+        </Modal>
+      </td>
+      <td className="py-2 text-right">
+        {v.base_available != null ? (
+          <span
+            className={
+              Number(v.base_available) > 0
+                ? "text-[12px] font-mono text-success"
+                : "text-[12px] font-mono text-danger"
+            }
+          >
+            {Number(v.base_available)}
+          </span>
+        ) : (
+          <span className="text-text-faint">—</span>
+        )}
       </td>
       <td className="py-2 text-right">
         {v.effective_price_ngn != null ? (

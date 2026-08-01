@@ -76,32 +76,34 @@ export function AccountabilityPanel() {
             message="Nothing has been out with a stylist past the threshold. Every wig can be found."
           />
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-text-muted">
-                <th className="px-4 py-2 font-medium">Job</th>
-                <th className="px-4 py-2 font-medium">Stylist</th>
-                <th className="px-4 py-2 font-medium">Out since</th>
-                <th className="px-4 py-2 font-medium text-right">Days out</th>
-              </tr>
-            </thead>
-            <tbody>
-              {overdue.map((w) => (
-                <tr key={w.job_id} className="border-t border-border-subtle">
-                  <td className="px-4 py-2 font-mono">
-                    {w.job_number ?? w.job_id.slice(0, 8)}
-                  </td>
-                  <td className="px-4 py-2">{w.stylist_name ?? "—"}</td>
-                  <td className="px-4 py-2 text-text-muted">
-                    {formatDate(w.out_at)}
-                  </td>
-                  <td className="px-4 py-2 text-right">
-                    <Pill tone="danger">{w.days_out}d — check</Pill>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[480px] text-sm">
+              <thead>
+                <tr className="text-left text-text-muted">
+                  <th className="px-4 py-2 font-medium">Job</th>
+                  <th className="px-4 py-2 font-medium">Stylist</th>
+                  <th className="px-4 py-2 font-medium">Out since</th>
+                  <th className="px-4 py-2 font-medium text-right">Days out</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {overdue.map((w) => (
+                  <tr key={w.job_id} className="border-t border-border-subtle">
+                    <td className="px-4 py-2 font-mono">
+                      {w.job_number ?? w.job_id.slice(0, 8)}
+                    </td>
+                    <td className="px-4 py-2">{w.stylist_name ?? "—"}</td>
+                    <td className="px-4 py-2 text-text-muted">
+                      {formatDate(w.out_at)}
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      <Pill tone="danger">{w.days_out}d — check</Pill>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </Card>
 

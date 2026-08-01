@@ -55,6 +55,14 @@ router.post(
   v.validateProductCreate,
   c.createProduct,
 );
+// Base-product wizard: create a whole size run at once (each base + its
+// stock-bearing default variant). Literal segment before :id.
+router.post(
+  "/products/batch",
+  can("create"),
+  v.validateProductBatch,
+  c.createBaseProducts,
+);
 // Bulk import (Excel/CSV → catalogue). Literal segment declared before :id so
 // it is never shadowed by the param route. Codes are auto-generated server-side.
 router.post(
@@ -76,6 +84,15 @@ router.patch(
 router.delete("/products/:id", can("delete"), c.deleteProduct);
 // Restore a soft-deleted product (frees-name model — see 000041).
 router.post("/products/:id/restore", can("edit"), c.restoreProduct);
+// Clone a base (+ its default variant) into a new base; "create other sizes"
+// clones it into sibling bases for the requested sizes.
+router.post("/products/:id/clone", can("create"), c.cloneProduct);
+router.post(
+  "/products/:id/create-sizes",
+  can("create"),
+  v.validateSiblingSizes,
+  c.createSiblingSizes,
+);
 
 // Variants (under a product)
 router.get("/products/:id/variants", can("view"), c.listVariants);
@@ -144,6 +161,21 @@ router.put(
   can("edit"),
   styledVarV.validateSizeConfig,
   styledVar.saveSizeConfig,
+);
+
+// Lace ladder delete → Trash. Literal "trash" before the :laceCode param.
+router.get("/lace-sizes/trash", can("view"), styledVar.listLaceTrash);
+router.get("/lace-sizes/:laceCode/usage", can("view"), styledVar.laceUsage);
+router.delete(
+  "/lace-sizes/:laceCode",
+  can("edit"),
+  styledVarV.validateLaceDelete,
+  styledVar.deleteLaceType,
+);
+router.post(
+  "/lace-sizes/:laceCode/restore",
+  can("edit"),
+  styledVar.restoreLaceType,
 );
 
 // ── USD pricing: bulk "Apply exchange rate" tool (Catalogue → Config) ──
@@ -219,12 +251,17 @@ router.post(
 router.delete("/styled-products/:id/bom/:bomId", can("edit"), styled.removeBom);
 // Restore a soft-deleted styled product.
 router.post("/styled-products/:id/restore", can("edit"), styled.restore);
-// Promote draft → live, and the reverse — both gated by catalogue.publish
+// Promote draft → live, and the reverse — both gated by catalogue.approve
 // (the "Ops can publish" rule; Sales/Marketing edit drafts but can't publish).
-router.post("/styled-products/:id/publish", can("publish"), styled.publish);
+// Reuses the standard `approve` action — the same "commit" gate every other
+// publish-style endpoint uses (storefront_studio, social, email_campaigns,
+// retail_partners) — rather than a bespoke `publish` action, which isn't part
+// of the RBAC vocabulary (src/shared/access/access.catalog.js ACTIONS) and so
+// could never be granted to a role through the Roles UI.
+router.post("/styled-products/:id/publish", can("approve"), styled.publish);
 router.post(
   "/styled-products/:id/unpublish",
-  can("publish"),
+  can("approve"),
   styledV.validateUnpublish,
   styled.unpublish,
 );
@@ -444,6 +481,11 @@ router.post(
   upload.single("file"),
   c.uploadCoverImage,
 );
+
+// Branded background — isolate an uploaded image's subject onto transparency so
+// the upload modal can composite it over a brand colour for a consistent
+// catalogue look. Returns the cut-out inline (data URL) + which engine ran.
+router.post("/image-cutout", can("edit"), upload.single("file"), c.imageCutout);
 
 // Self-hosted media upload → stored + queued for FFmpeg processing (W-13).
 router.post("/media", can("edit"), upload.single("file"), c.uploadMedia);

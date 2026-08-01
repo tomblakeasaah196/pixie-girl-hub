@@ -17,6 +17,7 @@
 const express = require("express");
 const cartService = require("./cart.service");
 const storefrontService = require("./storefront.service");
+const validator = require("./storefront.validator");
 const { VALID_BRANDS } = require("../../config/brands");
 const { AppError } = require("../../utils/errors");
 
@@ -27,14 +28,14 @@ function brandHint(req) {
   return VALID_BRANDS.has(h) ? h : "pixiegirl";
 }
 
-router.post("/", async (req, res, next) => {
+router.post("/", validator.validateStorefrontCheckout, async (req, res, next) => {
   try {
     const business = brandHint(req);
-    const contact_id = req.customer?.contact_id || null;
-    const session_token = contact_id ? null : req.cookies?.sf_cart || null;
+    const sessionCustomerId = req.customer?.contact_id || null;
+    const session_token = sessionCustomerId ? null : req.cookies?.sf_cart || null;
     const cart = await cartService.getCart({
       business,
-      contact_id,
+      contact_id: sessionCustomerId,
       session_token,
     });
     if (!cart || !cart.items || !cart.items.length)
@@ -51,7 +52,11 @@ router.post("/", async (req, res, next) => {
     const result = await storefrontService.checkout({
       brand: business,
       cart_id: cart.cart_id,
-      input: { ...req.body, return_url_base: returnUrlBase },
+      // Session identity is passed as a separate arg so the service can
+      // gate points redemption + address overwrite against the caller,
+      // rather than trusting whatever email/phone the body sent.
+      sessionCustomerId,
+      input: { ...req.body, return_url_base: req.body.return_url_base || returnUrlBase },
     });
     res.status(201).json({ data: result });
   } catch (e) {

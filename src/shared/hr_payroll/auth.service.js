@@ -140,6 +140,9 @@ async function issueTokens(user) {
       user_id: user.user_id,
       email: user.email,
       display_name: user.display_name,
+      // The personal alias shown only in this user's own header/profile.
+      // Null until they set one; the client falls back to display_name.
+      preferred_name: user.preferred_name || null,
       // Carried on the login/refresh user so the header avatar survives a fresh
       // sign-in and a reload — previously it was only ever loaded when the
       // Profile drawer was opened, so it "disappeared" after re-login.
@@ -603,7 +606,13 @@ async function getMe({ user_id }) {
   return {
     user_id: user.user_id,
     email: user.email,
+    // The official name of record (contact for staff, account name for
+    // external users). Read-only on the profile — changed only by HR.
+    full_name: user.full_name || user.display_name,
+    // The canonical account name (kept for completeness/back-compat).
     display_name: user.display_name,
+    // The self-editable personal display alias. Empty until the user sets one.
+    preferred_name: user.preferred_name || null,
     avatar_url: user.avatar_url || null,
     phone: user.phone || null,
     job_title: user.job_title || null,
@@ -675,11 +684,16 @@ async function confirmActivation({ user_id, otp }) {
   return { verified: true };
 }
 
-async function updateMe({ user_id, display_name, phone }) {
+// Self-service profile update. Only the personal alias (preferred_name) and
+// phone are editable here — never the canonical name of record (display_name),
+// so a user can never rename how they appear to anyone else on the system.
+async function updateMe({ user_id, preferred_name, phone }) {
   const updates = {};
-  if (display_name !== undefined)
-    updates.display_name =
-      String(display_name).trim().slice(0, 120) || undefined;
+  // Clearing the field (empty string) sets it back to NULL, which reverts the
+  // user's own header to their official name — the alias is genuinely optional.
+  if (preferred_name !== undefined)
+    updates.preferred_name =
+      String(preferred_name).trim().slice(0, 120) || null;
   if (phone !== undefined)
     updates.phone = String(phone).trim().slice(0, 40) || undefined;
   await staffRepo.updateUserProfile(user_id, updates);

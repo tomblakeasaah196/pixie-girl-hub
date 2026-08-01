@@ -1,8 +1,9 @@
-import { Menu, Search, Sun, Moon, LogOut } from "lucide-react";
+import { Menu, Search, Sun, Moon, LogOut, RefreshCw } from "lucide-react";
 import { useLocation } from "react-router-dom";
 import { useUiStore } from "@/stores/ui";
 import { useIsDesktop } from "@/hooks/useMediaQuery";
 import { MODULES } from "@/lib/modules";
+import { hardRefresh } from "@/lib/hardRefresh";
 import { ClockWidget } from "./ClockWidget";
 import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { useEffect, useRef, useState } from "react";
@@ -12,7 +13,7 @@ import { ACCOUNT_MENU_ITEMS, useAccountMenu } from "./useAccountMenu";
 import { AccountMenuModals } from "./AccountMenuModals";
 import { usePageActionsSlotRef } from "./PageActions";
 
-/** Sticky top bar (canon §3.2): module title+desc · page actions · clock-in · ⌘K search · bell · theme. */
+/** Sticky top bar (canon §3.2): module title+desc · page actions · clock-in · ⌘K search · bell · refresh · theme. */
 export function TopBar() {
   const { pathname } = useLocation();
   const { setMobileSidebarOpen, setPaletteOpen, theme, toggleTheme } =
@@ -21,6 +22,7 @@ export function TopBar() {
   const menu = useAccountMenu();
   const { user, onItem, onSignOut } = menu;
   const [accountOpen, setAccountOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const accountRef = useRef<HTMLDivElement>(null);
   const slotRef = usePageActionsSlotRef();
 
@@ -33,6 +35,11 @@ export function TopBar() {
     return () => document.removeEventListener("mousedown", onDown);
   }, [accountOpen]);
 
+  const handleHardRefresh = () => {
+    setRefreshing(true);
+    void hardRefresh();
+  };
+
   const mod = MODULES.find((m) => pathname.startsWith(m.route));
   const title = pathname === "/" ? "Hub" : (mod?.label ?? "Hub");
   const desc =
@@ -42,7 +49,10 @@ export function TopBar() {
     <>
       {/* Bar background spans the viewport; its content aligns to the same
           centered container as the page body so nothing is misaligned. */}
-      <header className="sticky top-0 z-30 glass border-b">
+      {/* pt-safe: on iOS standalone (black-translucent status bar +
+          viewport-fit=cover) the webview extends under the notch/status bar —
+          without the inset padding the status bar covers the top of this bar. */}
+      <header className="sticky top-0 z-30 glass border-b pt-safe">
         <div className="mx-auto w-full max-w-[var(--content-max)] flex items-center gap-3.5 p-[12px_34px] max-md:p-[10px_16px]">
           {!isDesktop && (
             <button
@@ -82,6 +92,19 @@ export function TopBar() {
             </button>
             {isDesktop && <ClockWidget compact={!isDesktop} />}
             <NotificationBell />
+            {isDesktop && (
+              <button
+                onClick={handleHardRefresh}
+                disabled={refreshing}
+                aria-label="Hard refresh"
+                title="Hard refresh"
+                className="grid place-items-center w-[38px] h-[38px] rounded-[11px] bg-text-primary/[0.05] text-text-muted hover:bg-text-primary/10 hover:text-text-primary transition-all disabled:opacity-60"
+              >
+                <RefreshCw
+                  className={cn("w-[18px]", refreshing && "animate-spin")}
+                />
+              </button>
+            )}
             {isDesktop && (
               <button
                 onClick={toggleTheme}
@@ -157,6 +180,23 @@ export function TopBar() {
                       </button>
                     ))}
                     <div className="h-px bg-line/30 my-1.5 mx-1" />
+                    {/* Deliberate hard refresh (cache wipe + reload) for
+                        mobile -- the pull gesture now only soft-refreshes, and
+                        the top-bar refresh button is desktop-only. */}
+                    <button
+                      role="menuitem"
+                      onClick={() => {
+                        setAccountOpen(false);
+                        handleHardRefresh();
+                      }}
+                      disabled={refreshing}
+                      className="w-full flex items-center gap-[11px] p-[9px_10px] rounded-[10px] text-[13px] font-medium text-text-muted hover:bg-text-primary/[0.06] hover:text-text-primary transition-all disabled:opacity-60"
+                    >
+                      <RefreshCw
+                        className={cn("w-4 h-4", refreshing && "animate-spin")}
+                      />
+                      Hard refresh
+                    </button>
                     <button
                       role="menuitem"
                       onClick={() => {

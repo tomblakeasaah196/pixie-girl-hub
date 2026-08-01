@@ -61,6 +61,7 @@ import {
   AttendanceStatusPill,
   clockTime,
   minutesLabel,
+  durationLabel,
   workDateLabel,
   useNotify,
   errMsg,
@@ -223,7 +224,7 @@ function TasksSection() {
           <div className="space-y-2">
             {data.data.map((t) => (
               <Card key={t.task_id} className="flex items-center justify-between gap-3 p-3">
-                <span className="truncate text-sm text-text-primary">{t.title}</span>
+                <span className="min-w-0 flex-1 truncate text-sm text-text-primary">{t.title}</span>
                 <Pill tone={t.status === "done" ? "success" : "neutral"}>{t.status}</Pill>
               </Card>
             ))}
@@ -631,13 +632,23 @@ export default function MyHrPage() {
               <div className="mt-3 flex items-center gap-2 text-xs text-text-muted">
                 <Clock className="h-3.5 w-3.5" />
                 {data.schedule.expected_start_time
-                  ? `Expected start ${data.schedule.expected_start_time} · ${data.schedule.grace_minutes}m grace`
+                  ? `${data.schedule.expected_start_time}${data.schedule.expected_end_time ? `–${data.schedule.expected_end_time}` : ""} · ${data.schedule.grace_minutes}m grace`
                   : "No fixed start time"}
                 <span className="ml-auto inline-flex items-center gap-1">
                   <Wallet className="h-3.5 w-3.5" />
                   Daily rate {money(data.earnings.daily_rate_ngn)}
                 </span>
               </div>
+              {data.insights.overtime_minutes > 0 && (
+                <div className="mt-2 text-xs text-text-muted">
+                  Supplementary hours this month:{" "}
+                  <span className="font-semibold text-text-primary">
+                    {durationLabel(data.insights.overtime_minutes)}
+                  </span>{" "}
+                  over {data.insights.overtime_days}{" "}
+                  {data.insights.overtime_days === 1 ? "day" : "days"}
+                </div>
+              )}
             </Card>
 
             {/* Leave balance */}

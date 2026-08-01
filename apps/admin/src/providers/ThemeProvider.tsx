@@ -8,6 +8,7 @@ import {
   type ThemeMode,
   type ThemeTokens,
 } from "@/lib/branding";
+import { findPreset } from "@/lib/theme-presets";
 import { loadFontStylesheet } from "@/lib/font-loader";
 
 /**
@@ -28,6 +29,7 @@ import { loadFontStylesheet } from "@/lib/font-loader";
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const theme = useUiStore((s) => s.theme);
   const density = useUiStore((s) => s.density);
+  const themePreset = useUiStore((s) => s.themePreset);
   const biz = useActiveBusiness();
   const branding = useBranding();
 
@@ -45,23 +47,31 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
   }, [theme, density, branding.data]);
 
-  // Layer-A tokens: paint the active mode's token bag onto :root.
-  // We rewrite the CSS variables in place; index.css supplies the
-  // baseline so a missing token simply keeps its file-defined default.
+  // Layer-A tokens: paint the active mode's token bag onto :root, then
+  // overlay the user's personal preset (if any) on top. We rewrite the CSS
+  // variables in place; a token with no value is *removed* so it falls back
+  // to the index.css baseline — this is also what reverts a preset override
+  // the moment the user clears it (this effect is the sole writer of these
+  // variables, so a plain set/remove per token is authoritative).
+  //
+  // The personal preset only applies while its mode matches the active
+  // dark/light theme, so a light-tuned palette never bleeds into dark.
   useEffect(() => {
-    const tokens: ThemeTokens | undefined =
-      branding.data?.platform?.theme?.[theme as ThemeMode];
-    if (!tokens) return;
+    const base: ThemeTokens =
+      branding.data?.platform?.theme?.[theme as ThemeMode] ?? {};
+    const preset = findPreset(themePreset);
+    const overlay: ThemeTokens =
+      preset && preset.mode === theme ? preset.patch : {};
+    const merged: ThemeTokens = { ...base, ...overlay };
     const root = document.documentElement;
-    for (const t of COLOUR_TOKENS) {
-      const v = tokens[t];
+    const apply = (t: string) => {
+      const v = merged[t as keyof ThemeTokens];
       if (v) root.style.setProperty(`--${t}`, v);
-    }
-    for (const t of SCALAR_TOKENS) {
-      const v = tokens[t];
-      if (v) root.style.setProperty(`--${t}`, v);
-    }
-  }, [theme, branding.data]);
+      else root.style.removeProperty(`--${t}`);
+    };
+    COLOUR_TOKENS.forEach(apply);
+    SCALAR_TOKENS.forEach(apply);
+  }, [theme, themePreset, branding.data]);
 
   // Layer-A fonts + external font CSS.
   useEffect(() => {

@@ -32,6 +32,9 @@ adminRouter.get(
 
 const publicRouter = express.Router();
 publicRouter.get("/:token", c.getPublic);
+// Delivery-address search — proxies Geoapify (server-side key) so the public
+// form gets live suggestions without ever shipping an API key to the browser.
+publicRouter.get("/:token/geo/search", c.geoSearch);
 publicRouter.post("/:token", v.validateSubmission, c.submitPublic);
 
 module.exports = { adminRouter, publicRouter };

@@ -7,6 +7,9 @@ import { ErrorState, Select, NumberField } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
 import { VariantPicker } from "@/components/catalogue/VariantPicker";
 import { useAuthStore } from "@/stores/auth";
+import { toastReport } from "@/lib/error-report";
+import { stockApi } from "./api";
+import { MovementDetailModal } from "./MovementDetailModal";
 import {
   useStockMovements,
   useStockLocations,
@@ -21,6 +24,7 @@ import {
   InfoBanner,
   Pagination,
   ProductCell,
+  SourceCell,
 } from "./parts";
 
 /* ── movement type options for filter + form ───────────────────────── */
@@ -67,44 +71,6 @@ function relativeTime(iso: string): string {
   const days = Math.floor(hrs / 24);
   if (days < 30) return `${days}d ago`;
   return fmtDate(iso);
-}
-
-/* ── CSV export ────────────────────────────────────────────────────── */
-function exportCsv(rows: StockMovement[], locationMap: Map<string, string>) {
-  const header = [
-    "Date",
-    "Type",
-    "Product",
-    "SKU",
-    "Variant",
-    "Location",
-    "Qty",
-    "Reference",
-    "Performed By",
-  ];
-  const lines = rows.map((r) => [
-    fmtDate(r.performed_at),
-    r.movement_type,
-    r.product_name ?? "",
-    r.sku ?? "",
-    r.variant_name ?? "",
-    locationMap.get(r.location_id) ?? r.location_id,
-    String(r.quantity),
-    r.notes ?? r.reference_id ?? "",
-    r.performed_by ?? "",
-  ]);
-  const csv = [header, ...lines]
-    .map((row) =>
-      row.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","),
-    )
-    .join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `stock-movements-${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 /* ── Log Movement Modal ────────────────────────────────────────────── */
@@ -248,6 +214,8 @@ export default function MovementsTab() {
   const [locationFilter, setLocationFilter] = useState("");
   const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [detailId, setDetailId] = useState<string | null>(null);
 
   // Single movement-type filter ("" = all); passed straight to the API.
   const apiMovementType = typeFilter || undefined;
@@ -296,7 +264,9 @@ export default function MovementsTab() {
         const sku = r.sku ?? "";
         const variantName = r.variant_name ?? "";
         const productName = r.product_name ?? "";
-        const ref = r.notes ?? r.reference_id ?? "";
+        const ref = [r.notes, r.reference_number, r.customer_name]
+          .filter(Boolean)
+          .join(" ");
         return (
           sku.toLowerCase().includes(q) ||
           variantName.toLowerCase().includes(q) ||
@@ -309,9 +279,22 @@ export default function MovementsTab() {
     return rows;
   }, [movementsData?.data, locationFilter, search]);
 
-  const handleExport = useCallback(() => {
-    exportCsv(filteredRows, locationMap);
-  }, [filteredRows, locationMap]);
+  // Export the WHOLE movement log server-side (all rows, not the current page),
+  // respecting the type + location filters shown. The client-only text search
+  // isn't sent — an export is the full filtered set, not the on-screen subset.
+  const handleExport = useCallback(async () => {
+    setExporting(true);
+    try {
+      await stockApi.exportMovements({
+        movement_type: typeFilter || undefined,
+        location_id: locationFilter || undefined,
+      });
+    } catch (err) {
+      toastReport("Stock → Movements", "Export movements", err);
+    } finally {
+      setExporting(false);
+    }
+  }, [typeFilter, locationFilter]);
 
   /* ── Columns ──────────────────────────────────────────────────────── */
   const columns: Column<StockMovement>[] = useMemo(
@@ -339,7 +322,11 @@ export default function MovementsTab() {
         key: "product",
         header: "Product",
         render: (r) => (
-          <ProductCell line={r} variantId={r.variant_id} className="max-w-[240px]" />
+          <ProductCell
+            line={r}
+            variantId={r.variant_id}
+            className="max-w-[240px]"
+          />
         ),
       },
       {
@@ -372,14 +359,12 @@ export default function MovementsTab() {
         ),
       },
       {
+        // The source document, not a raw UUID: "which order was this sale?"
+        // is the question this column exists to answer.
         key: "reference",
-        header: "Reference",
-        width: "160px",
-        render: (r) => (
-          <span className="text-[13px] text-text-muted truncate max-w-[150px] block">
-            {r.notes ?? r.reference_id ?? "—"}
-          </span>
-        ),
+        header: "Source",
+        width: "190px",
+        render: (r) => <SourceCell movement={r} />,
       },
       {
         key: "who",
@@ -387,7 +372,7 @@ export default function MovementsTab() {
         width: "120px",
         render: (r) => (
           <span className="text-[13px] text-text-muted truncate max-w-[110px] block">
-            {r.performed_by ?? "—"}
+            {r.performed_by_name ?? (r.performed_by ? "—" : "System")}
           </span>
         ),
       },
@@ -459,8 +444,9 @@ export default function MovementsTab() {
               size="sm"
               icon={<Download className="w-4 h-4" />}
               onClick={handleExport}
+              disabled={exporting}
             >
-              Export CSV
+              {exporting ? "Preparing…" : "Export (.xlsx)"}
             </Button>
           )}
           {isCeo && (
@@ -482,6 +468,8 @@ export default function MovementsTab() {
         rows={filteredRows}
         rowKey={(r) => r.movement_id}
         loading={isLoading}
+        onRowClick={(r) => setDetailId(r.movement_id)}
+        activeKey={detailId}
         empty={{
           icon: <ArrowUpDown className="w-6 h-6" />,
           title: "No stock movements",
@@ -505,6 +493,12 @@ export default function MovementsTab() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         locations={locations}
+      />
+
+      {/* Movement detail — same modal the Overview strip opens */}
+      <MovementDetailModal
+        movementId={detailId}
+        onClose={() => setDetailId(null)}
       />
     </div>
   );

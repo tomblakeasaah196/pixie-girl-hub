@@ -1,6 +1,7 @@
 /**
  * Cash Request & Disbursement (V2.2 §6.32). Mounted at /api/v1/cash-requests.
- * Permission key: expenses (Cash Request is the §6.7 companion flow).
+ * Permission key: cash_request (split out of `expenses` so access to the
+ * disbursement queue can be granted independently of the expense ledger).
  *
  * Workflow: create(draft) → submit → finance-decision → [ceo-decision] →
  * disburse (mandatory bank_transaction_id) → settle (advances). Cancel is
@@ -14,17 +15,23 @@
 const express = require("express");
 const controller = require("./cash-request.controller");
 const validator = require("./cash-request.validator");
-const { requirePermission } = require("../../middleware/rbac");
+const {
+  requirePermission,
+  approveGatedScope,
+} = require("../../middleware/rbac");
 
 require("./cash-request.subscribers");
 
 const router = express.Router();
-const can = (action) => requirePermission("expenses", action);
+const can = (action) => requirePermission("cash_request", action);
+// Read visibility is approve-gated: view-only staff see only their own
+// requests; approvers (and the CEO) see the whole queue. See rbac.js.
+const canRead = () => [can("view"), approveGatedScope("cash_request")];
 
-router.get("/", can("view"), controller.list);
-router.get("/kpis/summary", can("view"), controller.kpis);
+router.get("/", canRead(), controller.list);
+router.get("/kpis/summary", canRead(), controller.kpis);
 router.post("/", can("create"), validator.validateCreate, controller.create);
-router.get("/:id", can("view"), controller.getById);
+router.get("/:id", canRead(), controller.getById);
 
 router.post("/:id/submit", can("edit"), controller.submit);
 router.post(
@@ -65,9 +72,9 @@ router.post(
   validator.validateDocument,
   controller.addDocument,
 );
-router.get("/:id/documents", can("view"), controller.listDocuments);
+router.get("/:id/documents", canRead(), controller.listDocuments);
 
 // State history timeline
-router.get("/:id/history", can("view"), controller.getHistory);
+router.get("/:id/history", canRead(), controller.getHistory);
 
 module.exports = router;

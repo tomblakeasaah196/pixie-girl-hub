@@ -79,7 +79,11 @@ describe("smartcomm webhook parsers", () => {
     });
   });
 
-  test("parseMetaInstagram ignores message echoes", () => {
+  test("parseMetaInstagram emits echoes as business-side events keyed to the RECIPIENT", () => {
+    // An echo is Meta telling us OUR side sent a message — including a
+    // staffer replying from the Instagram app itself. It must be parsed
+    // (not dropped, the old behaviour) and threaded on the CUSTOMER
+    // (recipient), since the sender is our own account.
     const payload = {
       entry: [
         {
@@ -90,8 +94,68 @@ describe("smartcomm webhook parsers", () => {
               message: { mid: "m.1", text: "Hello!" },
             },
             {
-              sender: { id: "IGSID_2" },
-              message: { mid: "m.2", text: "echo", is_echo: true },
+              sender: { id: "IG_BIZ_999" },
+              recipient: { id: "IGSID_2" },
+              message: { mid: "m.2", text: "Thanks love, sending details now", is_echo: true },
+            },
+          ],
+        },
+      ],
+    };
+    const events = parseMetaInstagram(payload);
+    expect(events).toHaveLength(2);
+    expect(events[0]).toMatchObject({
+      external_thread_ref: "IGSID_1",
+      body: "Hello!",
+      is_echo: false,
+    });
+    expect(events[1]).toMatchObject({
+      external_account_id: "IG_BIZ_999",
+      external_ref: "m.2",
+      // Thread + contact belong to the customer being replied to.
+      external_thread_ref: "IGSID_2",
+      body: "Thanks love, sending details now",
+      is_echo: true,
+    });
+    expect(events[1].sender.external_user_id).toBe("IGSID_2");
+  });
+
+  test("an echo without a recipient id is unusable and skipped", () => {
+    const payload = {
+      entry: [
+        {
+          id: "IG_BIZ_999",
+          messaging: [
+            {
+              sender: { id: "IG_BIZ_999" },
+              message: { mid: "m.broken", text: "echo", is_echo: true },
+            },
+          ],
+        },
+      ],
+    };
+    expect(parseMetaInstagram(payload)).toHaveLength(0);
+  });
+
+  test("an echoed media reply from the Instagram app carries its media descriptor", () => {
+    const payload = {
+      entry: [
+        {
+          id: "IG_BIZ_999",
+          messaging: [
+            {
+              sender: { id: "IG_BIZ_999" },
+              recipient: { id: "IGSID_5" },
+              message: {
+                mid: "m.echo-photo",
+                is_echo: true,
+                attachments: [
+                  {
+                    type: "image",
+                    payload: { url: "https://lookaside.fbsbx.com/ig/style.jpg" },
+                  },
+                ],
+              },
             },
           ],
         },
@@ -99,9 +163,12 @@ describe("smartcomm webhook parsers", () => {
     };
     const events = parseMetaInstagram(payload);
     expect(events).toHaveLength(1);
-    expect(events[0].external_account_id).toBe("IG_BIZ_999");
-    expect(events[0].external_thread_ref).toBe("IGSID_1");
-    expect(events[0].body).toBe("Hello!");
+    expect(events[0].is_echo).toBe(true);
+    expect(events[0].message_type).toBe("image");
+    expect(events[0].media).toEqual({
+      kind: "image",
+      url: "https://lookaside.fbsbx.com/ig/style.jpg",
+    });
   });
 
   test("parseMetaInstagram routes a story mention as ig_story_mention", () => {

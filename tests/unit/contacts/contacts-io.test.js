@@ -90,6 +90,69 @@ describe("templates", () => {
     const rows = parseCsv(io.template({ kind: "whatever" }));
     expect(rows[0]["Display Name*"]).toBe("Adaeze Okafor");
   });
+
+  test("retail-partners template carries TIN/CAC + socials, no DOB", () => {
+    const r = parseCsv(io.template({ kind: "retail_partners" }))[0];
+    expect(r["Display Name*"]).toBe("Bloom Beauty Store");
+    expect(r).toHaveProperty("TIN");
+    expect(r).toHaveProperty("Instagram Handle");
+    expect(r).not.toHaveProperty("Date of Birth");
+  });
+
+  test("stylists template is personal (DOB + socials, no TIN)", () => {
+    const r = parseCsv(io.template({ kind: "stylists" }))[0];
+    expect(r["Display Name*"]).toBe("Ngozi Adeleke");
+    expect(r).toHaveProperty("Date of Birth");
+    expect(r).toHaveProperty("Instagram Handle");
+    expect(r).not.toHaveProperty("TIN");
+  });
+
+  test("subscribers template is light — no address, no priority", () => {
+    const r = parseCsv(io.template({ kind: "subscribers" }))[0];
+    expect(r["Display Name*"]).toBe("Chidinma Umeh");
+    expect(r).toHaveProperty("Email");
+    expect(r).not.toHaveProperty("Address Line 1");
+    expect(r).not.toHaveProperty("Priority");
+    expect(r).not.toHaveProperty("TIN");
+  });
+});
+
+describe("importKind + importSpec", () => {
+  test("importKind resolves every kind and defaults unknown/all to clients", () => {
+    expect(io.importKind("client")).toBe("clients");
+    expect(io.importKind("suppliers")).toBe("suppliers");
+    expect(io.importKind("retail")).toBe("retail_partners");
+    expect(io.importKind("stylist")).toBe("stylists");
+    expect(io.importKind("subscriber")).toBe("subscribers");
+    expect(io.importKind("all")).toBe("clients"); // "all" isn't importable
+    expect(io.importKind("nonsense")).toBe("clients");
+  });
+
+  test("importSpec returns the kind's columns with validation hints", () => {
+    const spec = io.importSpec("clients");
+    expect(spec.kind).toBe("clients");
+    expect(spec.label).toBe("Clients");
+    const name = spec.columns.find((c) => c.header === "Display Name*");
+    expect(name.required).toBe(true);
+    expect(name.type).toBe("text");
+    const phone = spec.columns.find((c) => c.header === "Primary Phone*");
+    const email = spec.columns.find((c) => c.header === "Email");
+    expect(phone.channel).toBe(true);
+    expect(email.channel).toBe(true);
+    // Supplier-only columns don't leak into the clients spec.
+    expect(spec.columns.some((c) => c.header === "TIN")).toBe(false);
+    // Enum hint is carried so the preview can validate it.
+    const priority = spec.columns.find((c) => c.header === "Priority");
+    expect(priority.options).toEqual(["vip", "regular", "new"]);
+  });
+
+  test("subscribers map to the subscriber contact_type", () => {
+    const { contact } = io.rowToInputs(
+      { "Display Name*": "News Fan", Email: "fan@x.com" },
+      "subscribers",
+    );
+    expect(contact.contact_type).toEqual(["subscriber"]);
+  });
 });
 
 describe("rowToInputs (header → validated input)", () => {
@@ -262,6 +325,45 @@ describe("importContacts", () => {
     const statuses = res.results.map((r) => r.status);
     expect(statuses).toContain("error");
     expect(statuses).toContain("created");
+  });
+});
+
+describe("importParsedRows (JSON preview → confirm path)", () => {
+  const base = { brand: "pixiegirl", user: { user_id: "u1" }, request_id: "r1" };
+
+  test("creates contacts from already-parsed header-keyed rows", async () => {
+    repo.findByPhoneOrEmail.mockResolvedValue(null);
+    service.create.mockResolvedValue({ contact_id: "c1", display_name: "Ada" });
+
+    const res = await io.importParsedRows({
+      ...base,
+      kind: "retail_partners",
+      rows: [
+        { "Display Name*": "Bloom Beauty", "Primary Phone*": "+2348023456789" },
+      ],
+    });
+
+    expect(res.kind).toBe("retail_partners");
+    expect(res.created).toBe(1);
+    expect(res.total).toBe(1);
+    expect(res.results[0].status).toBe("created");
+    expect(service.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.objectContaining({ contact_type: ["retail_partner"] }),
+      }),
+    );
+  });
+
+  test("blocks a kind the caller's contact-type scope excludes", async () => {
+    await expect(
+      io.importParsedRows({
+        ...base,
+        kind: "suppliers",
+        rows: [{ "Display Name*": "X", Email: "x@y.com" }],
+        allowedTypes: ["customer"], // supplier not allowed
+      }),
+    ).rejects.toThrow(/access to import suppliers/i);
+    expect(service.create).not.toHaveBeenCalled();
   });
 });
 

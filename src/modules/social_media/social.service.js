@@ -34,6 +34,22 @@ const PLAN_REFERENCE_TABLE = "social_content_plans";
 const EDITABLE_POST_STATUSES = new Set(["draft", "assigned", "scheduled"]);
 const PROOFABLE_STATUSES = new Set(["scheduled", "assigned", "flagged"]);
 
+// Best-effort per-post engagement extraction from an Apify post-scrape item.
+// Each actor names its fields differently, so we probe a list of aliases per
+// metric (mirrors social-scraper's profile approach). Missing keys stay unset.
+const POST_METRIC_ALIASES = {
+  likes: [
+    "likes", "likesCount", "likeCount", "diggCount", "favoriteCount",
+    "reactionsCount", "reactions", "likes_count",
+  ],
+  comments: ["comments", "commentsCount", "commentCount", "replyCount", "comments_count"],
+  shares: ["shares", "sharesCount", "shareCount", "reshareCount", "repostCount"],
+  saves: ["saves", "savesCount", "saveCount", "collectCount", "bookmarks", "bookmarkCount"],
+  video_views: ["videoViews", "viewsCount", "viewCount", "playCount", "views", "video_view_count"],
+  reach: ["reach", "reachCount"],
+  impressions: ["impressions", "impressionsCount"],
+};
+
 const A = (
   brand,
   user,
@@ -605,6 +621,227 @@ async function submitProof({
   return updated;
 }
 
+/** Fallback platform detection for non-canonical registered platforms: does
+ *  the pasted link's host belong to any registered account's profile_url?
+ *  This is what lets a platform added from the UI (Pinterest, X, …) work in
+ *  the quick-log without a code change. Never throws — null on no match. */
+async function matchPlatformByAccountHost({ brand, url }) {
+  let host;
+  try {
+    host = new URL(url).hostname.replace(/^www\./i, "").toLowerCase();
+  } catch {
+    return null;
+  }
+  const accounts = await repo.listAccounts({ brand });
+  for (const a of accounts) {
+    if (a.is_active === false || !a.profile_url) continue;
+    try {
+      const accountHost = new URL(a.profile_url).hostname
+        .replace(/^www\./i, "")
+        .toLowerCase();
+      if (host === accountHost || host.endsWith(`.${accountHost}`)) {
+        return a.platform;
+      }
+    } catch {
+      /* malformed stored profile_url — skip */
+    }
+  }
+  return null;
+}
+
+/**
+ * Quick-log (simplified Social Studio): the calendar's one and only write.
+ * Paste the link to something already posted natively; we detect the platform
+ * from the URL (canonical hosts first, then any registered account's host),
+ * resolve the brand's account for it, and store it as a proven `posted` row —
+ * oEmbed enriched (best-effort), no content, no screenshot, no plan/approval.
+ * The whole friction stack the old Board carried is gone.
+ */
+async function quickLog({ brand, user, request_id, input }) {
+  const platform =
+    input.platform ||
+    proof.detectPlatform(input.external_url) ||
+    (await matchPlatformByAccountHost({ brand, url: input.external_url }));
+  if (!platform) {
+    throw new AppError(
+      "UNSUPPORTED_LINK",
+      "That link doesn't match any registered platform — add the account's handle under Social Studio → Account first.",
+      422,
+    );
+  }
+  const account_id = await resolveAccountId({
+    brand,
+    platform,
+    account_id: input.account_id,
+  });
+  const published_at = input.published_at
+    ? new Date(input.published_at).toISOString()
+    : new Date().toISOString();
+
+  // Create the row first (post_type is a NOT NULL legacy column; content is
+  // wiped from the product, so it carries a harmless placeholder), then finalise
+  // it as posted with the oEmbed enrichment.
+  const created = await repo.createPost({
+    brand,
+    created_by: user.user_id,
+    post: { account_id, platform, post_type: "image", status: "posted" },
+  });
+
+  const embed = await proof.fetchOEmbed(input.external_url);
+  let handle_mismatch = false;
+  if (embed.ok && embed.author_handle) {
+    const accounts = await repo.listActiveAccounts({ brand, platform });
+    handle_mismatch = !proof.matchesRegisteredHandle(embed.author_handle, accounts);
+  }
+  const performance_score = scoring.computePerformanceScore({
+    status: "posted",
+    scheduledFor: null,
+    postedAt: published_at,
+    metrics: null,
+  });
+
+  const updated = await repo.setPostStatus({
+    brand,
+    id: created.post_id,
+    status: "posted",
+    fields: {
+      published_at,
+      external_url: input.external_url,
+      oembed_html: embed.embed_html,
+      oembed_thumbnail_url: embed.thumbnail_url,
+      oembed_author_handle: embed.author_handle,
+      oembed_verified_at: embed.ok ? new Date().toISOString() : null,
+      handle_mismatch,
+      performance_score,
+      performance_computed_at: performance_score === null ? null : published_at,
+      flag_reason: null,
+    },
+  });
+  await A(
+    brand,
+    user,
+    "social.post.quick_log",
+    "social_post",
+    created.post_id,
+    { platform, handle_mismatch },
+    request_id,
+  );
+  events.emit("post.posted", { brand, post_id: created.post_id, handle_mismatch });
+  return updated;
+}
+
+/** Remove a logged link — the undo for a wrong paste. */
+async function deletePost({ brand, user, request_id, id }) {
+  const p = await repo.getPost({ brand, id });
+  if (!p) throw new NotFoundError("Post");
+  await repo.deletePost({ brand, id });
+  await A(brand, user, "social.post.delete", "social_post", id, null, request_id);
+  events.emit("post.updated", { brand, post_id: id });
+  return { deleted: true };
+}
+
+/**
+ * Best-effort per-post reactions scrape — reuses the existing Apify infra on
+ * demand (the "refresh reactions" button). Never throws: if there's no API key,
+ * no actor for the platform, or the actor returns nothing useful, it's a soft
+ * no-op and the caller just keeps whatever numbers it already had.
+ */
+async function scrapePostReactions({ post }) {
+  if (!post.external_url) return null;
+  const apifySettings = require("../apify_settings/apify-settings.service");
+  const scraper = require("../../services/social-scraper.service");
+  const apify = require("../../services/apify.service");
+  const apiKey = await apifySettings.resolveActiveApiKey();
+  if (!apiKey) return null;
+  const platform = await platformsRepo.get({ key: post.platform });
+  if (!platform || !platform.apify_actor_id) return null;
+  const input = apify.buildActorInput(platform.apify_input_template, {
+    handle: post.external_url,
+    profile_url: post.external_url,
+  });
+  const items = await apify.runActorSync({
+    apiKey,
+    actorId: platform.apify_actor_id,
+    input,
+  });
+  const item = items[0];
+  if (!item) return null;
+  const m = {};
+  for (const [key, aliases] of Object.entries(POST_METRIC_ALIASES)) {
+    const raw = scraper.pluck(item, aliases);
+    const n = Number(raw);
+    if (Number.isFinite(n)) m[key] = Math.round(n);
+  }
+  return Object.keys(m).length ? m : null;
+}
+
+/**
+ * Refresh a logged post's embed card and (best-effort) its reactions. Freshens
+ * the oEmbed thumbnail/author, attempts an on-demand reactions scrape, and
+ * recomputes the performance score from whatever engagement it finds. Returns
+ * the post with its metrics attached (like getPost).
+ */
+async function refreshReactions({ brand, user, request_id, id }) {
+  const p = await repo.getPost({ brand, id });
+  if (!p) throw new NotFoundError("Post");
+
+  const fields = {};
+  if (p.external_url) {
+    try {
+      const embed = await proof.fetchOEmbed(p.external_url);
+      if (embed.ok) {
+        fields.oembed_html = embed.embed_html;
+        fields.oembed_thumbnail_url = embed.thumbnail_url;
+        fields.oembed_author_handle = embed.author_handle || p.oembed_author_handle;
+        fields.oembed_verified_at = new Date().toISOString();
+      }
+    } catch {
+      /* embed refresh is best-effort */
+    }
+  }
+  if (Object.keys(fields).length) await repo.updatePost({ brand, id, fields });
+
+  let scraped = null;
+  try {
+    scraped = await scrapePostReactions({ post: p });
+  } catch {
+    /* reactions scrape is best-effort */
+  }
+  if (scraped) {
+    await repo.upsertMetrics({
+      post_id: id,
+      metric_date: new Date().toISOString().slice(0, 10),
+      m: scraped,
+    });
+    const latest = await repo.latestMetrics({ post_id: id });
+    const performance_score = scoring.computePerformanceScore({
+      status: "posted",
+      scheduledFor: p.scheduled_for,
+      postedAt: p.published_at,
+      metrics: latest,
+    });
+    await repo.setPostStatus({
+      brand,
+      id,
+      status: "posted",
+      fields: {
+        performance_score,
+        performance_computed_at: new Date().toISOString(),
+      },
+    });
+  }
+  await A(
+    brand,
+    user,
+    "social.post.refresh_reactions",
+    "social_post",
+    id,
+    { scraped: Boolean(scraped) },
+    request_id,
+  );
+  return getPost({ brand, id });
+}
+
 /** Manager's subjective creative-quality star rating — kept separate from
  *  performance_score, never blended into one number (Post Grade shows both). */
 async function rateCreative({ brand, user, request_id, id, rating }) {
@@ -817,7 +1054,7 @@ async function runDeadlineSweep({ brand }) {
           priority: "urgent",
           reference_type: "social_post",
           reference_id: post.post_id,
-          action_url: `/social?tab=board&post=${post.post_id}`,
+          action_url: `/social?tab=calendar&post=${post.post_id}`,
           email: true,
         });
       }
@@ -898,6 +1135,9 @@ module.exports = {
   listPosts,
   getPost,
   createPost,
+  quickLog,
+  deletePost,
+  refreshReactions,
   updatePost,
   reschedule,
   submitProof,

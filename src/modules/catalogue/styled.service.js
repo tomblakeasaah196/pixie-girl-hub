@@ -7,9 +7,11 @@
  * out-of-stock — or into a PRODUCTION-framed pre-order if the base has
  * pre-order enabled (P0-7). Final price = base selling price + add-on.
  *
- * Lifecycle: draft → live → archived. Only a user with catalogue.publish
- * may promote a draft to live (enforced at the route). AI may create a
- * draft but never publishes (P0-8).
+ * Lifecycle: draft → live → archived. Only a user with catalogue.approve
+ * may promote a draft to live (enforced at the route — the same "commit"
+ * gate every other publish-style endpoint uses: storefront_studio, social,
+ * email_campaigns, retail_partners). AI may create a draft but never
+ * publishes (P0-8).
  */
 
 "use strict";
@@ -18,9 +20,9 @@ const repo = require("./styled.repo");
 const variantsRepo = require("./styled_variants.repo");
 const events = require("./catalogue.events");
 const { audit } = require("../../middleware/audit");
-const { formatDate } = require("../../utils/dates");
 const { transaction } = require("../../config/database");
 const { NotFoundError, AppError } = require("../../utils/errors");
+const { computeAvailability } = require("./availability");
 
 const A = (brand, user_id, action_key, target_id, after, request_id, before) =>
   audit({
@@ -36,31 +38,12 @@ const A = (brand, user_id, action_key, target_id, after, request_id, before) =>
 
 const money = (v) => (v === null || v === undefined ? 0 : Number(v));
 
-/** Translate base stock into a customer-facing availability state. */
-function availabilityState(available, base) {
-  if (available > 0) return { state: "in_stock", available };
-  if (base && base.preorder_enabled) {
-    let message;
-    if (base.expected_ready_date) {
-      const when = formatDate(
-        base.expected_ready_date,
-        String(base.expected_ready_date),
-      );
-      message = `In production · ready ~${when}`;
-    } else if (base.production_lead_days) {
-      message = `Made to order · ~${base.production_lead_days} days in production`;
-    } else {
-      message = "Made to order · in production";
-    }
-    return {
-      state: "preorder",
-      available: 0,
-      expected_ready_date: base.expected_ready_date || null,
-      production_lead_days: base.production_lead_days || null,
-      message,
-    };
-  }
-  return { state: "out_of_stock", available: 0 };
+/** Translate base stock into a customer-facing availability state. Delegates to
+ *  the shared helper; an optional brand `policy` switches on universal
+ *  pre-orders (storefront), while the catalogue keeps the legacy per-product
+ *  opt-in when no policy is passed. */
+function availabilityState(available, base, policy = null) {
+  return computeAvailability(available, { base, policy });
 }
 
 /** Pure: attach computed price + availability given the base's stock + price.
@@ -97,12 +80,13 @@ function enrichRow(styled, available, base_price) {
   };
 }
 
-/** Attach computed price + availability to a single styled row (2 reads). */
+/** Attach computed price + availability to a single styled row (2 reads).
+ *  Availability is variant-aware: it sums stock across the bases behind the
+ *  styled product's active variants, not just the seed base. */
 async function enrich({ brand, styled }) {
-  const available = await repo.baseAvailability({
+  const available = await repo.styledAvailability({
     brand,
-    base_product_id: styled.base_product_id,
-    base_variant_id: styled.base_variant_id,
+    styled_id: styled.styled_id,
   });
   const base_price = await repo.basePrice({
     brand,
@@ -129,9 +113,10 @@ async function getById({ brand, id }) {
   const enriched = await enrich({ brand, styled });
   // Attach the colour options + the colour×size variant matrix with their
   // computed retail prices, plus the headline price range across live variants.
-  const [colours, variants] = await Promise.all([
+  const [colours, variants, memberships] = await Promise.all([
     variantsRepo.listColours({ brand, styled_id: id }),
     variantsRepo.listVariants({ brand, styled_id: id }),
+    repo.listMemberships({ brand, id }),
   ]);
   const prices = variants
     .filter((v) => v.is_active && v.effective_price_ngn !== null)
@@ -141,6 +126,10 @@ async function getById({ brand, id }) {
     .map((v) => Number(v.effective_price_usd));
   enriched.colours = colours;
   enriched.variants = variants;
+  // Where this listing currently lives — its collections + bundles — so the
+  // detail page can show (and undo) memberships in place.
+  enriched.collections = memberships.collections;
+  enriched.bundles = memberships.bundles;
   enriched.price_range = prices.length
     ? { min: Math.min(...prices), max: Math.max(...prices) }
     : null;

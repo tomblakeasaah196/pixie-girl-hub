@@ -19,6 +19,7 @@
 
 const crypto = require("crypto");
 const repo = require("./customer-onboarding.repo");
+const events = require("./customer-onboarding.events");
 const smartcommRepo = require("../smartcomm/smartcomm.repo");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
@@ -26,6 +27,7 @@ const { AppError, NotFoundError } = require("../../utils/errors");
 const { logger } = require("../../config/logger");
 const brandUrls = require("../../utils/brand-urls");
 const { sendWelcomeEmail } = require("../../services/welcome-email");
+const geoapify = require("../../services/geoapify.service");
 
 // ── Helpers ───────────────────────────────────────────────
 
@@ -114,6 +116,30 @@ async function getPublic({ token }) {
     business: link.business,
     seed: link.seed_payload || {},
   };
+}
+
+// ── Customer: delivery-address search (public) ────────────
+//
+// Proxies the same server-side Geoapify integration HR's office-location
+// picker uses (src/services/geoapify.service.js) — the API key never reaches
+// the browser. Gated on a live (unexpired, unsubmitted) token, same checks as
+// getPublic, so this can't be hit without a real link; it then rides the
+// publicWriteLimiter already wrapping the whole /onboarding router.
+async function searchAddress({ token, text }) {
+  const link = await repo.findByToken({ token });
+  if (!link) throw new NotFoundError("Form");
+  if (link.completed_at)
+    throw new AppError(
+      "ONBOARDING_ALREADY_SUBMITTED",
+      "This form has already been filled in.",
+      410,
+    );
+  if (link.expires_at && new Date(link.expires_at) < new Date())
+    throw new AppError("ONBOARDING_EXPIRED", "This form has expired.", 410);
+
+  // Lagos bias — both brands ship from Lagos, so nearby matches rank first
+  // for the common case; worldwide addresses still come back unfiltered.
+  return geoapify.autocomplete(text, { lat: 6.5244, lng: 3.3792 });
 }
 
 // ── Customer: submit (public) ─────────────────────────────
@@ -322,6 +348,15 @@ async function submitPublic({ token, ip, payload }) {
     };
   });
 
+  // Realtime push FIRST — a staff screen watching this submission_id (Quick
+  // Sale's QR code) should auto-select the contact the instant the form
+  // clears, not after the (network-bound) welcome email below.
+  events.emit("submission.completed", {
+    brand: link.business,
+    submission_id: result.submission_id,
+    contact_id: result.contact_id,
+  });
+
   // Best-effort welcome (never throws; registration already committed).
   if (welcome) {
     await sendWelcomeEmail({
@@ -340,4 +375,10 @@ function listAdmin({ brand, limit, offset }) {
   return repo.listAdmin({ brand, limit, offset });
 }
 
-module.exports = { createLink, getPublic, submitPublic, listAdmin };
+module.exports = {
+  createLink,
+  getPublic,
+  searchAddress,
+  submitPublic,
+  listAdmin,
+};

@@ -208,6 +208,11 @@ async function dispatch({
         event_key,
         reference_type,
         reference_id,
+        // Email-only: a caller (e.g. the order-placement automation) can pass
+        // a stored file — {filename, storage_key, content_type} — to attach,
+        // most commonly the order's proforma invoice PDF. WhatsApp/Instagram
+        // ignore this; those channels carry a link in the body instead.
+        attachments: variables.attachments || undefined,
       });
       await repo.markSendStatus({ send_id: claim.send_id, status: "sent" });
       return {

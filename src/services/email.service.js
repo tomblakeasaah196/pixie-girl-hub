@@ -19,6 +19,7 @@ const nodemailer = require("nodemailer");
 const { config } = require("../config/env");
 const { query } = require("../config/database");
 const { logger } = require("../config/logger");
+const { AppError } = require("../utils/errors");
 
 // One cached transporter per resolved config ("global" or a brand key).
 // Cache is cleared whenever Messaging Settings saves a new/changed
@@ -169,12 +170,16 @@ async function getSender(brand) {
   //   2. the authenticated SMTP user itself (always accepted by its own relay),
   //   3. only then the business_config address (often a noreply@ the relay
   //      does NOT own — the exact cause of the bounced invoices/receipts).
+  // Deliberately NO hardcoded final fallback: sender identity lives in the
+  // DB (Messaging → Settings → Outbound Email, Business Setup) or the
+  // SMTP_FROM_EMAIL env var. A baked-in domain would silently outlive a
+  // brand domain change and bounce every send from a retired domain.
   const fromEmail =
     (bs && bs.from_email) ||
     smtpUser ||
     cfg.email_from_address ||
     config.SMTP_FROM_EMAIL ||
-    "noreply@pixiegirlglobal.com";
+    null;
   const fromName =
     (bs && bs.from_name) ||
     cfg.display_name ||
@@ -200,8 +205,73 @@ function replyToFor(fromEmail) {
   return domain ? `sales@${domain}` : null;
 }
 
+/**
+ * The read-only sender identity email marketing (and any caller) will actually
+ * send with — the From address and Reply-To resolved from the brand's Outbound
+ * Email connection (Messaging Settings → Connections → Outbound Email) → then
+ * Business Setup. This is the SINGLE SOURCE OF TRUTH: campaigns never store or
+ * type these; they resolve them here at send time. Surfaced to the campaign
+ * builder so an operator can see (not edit) the From/Reply-To, and where a
+ * customer's reply threads back to.
+ */
+async function resolveSenderIdentity(brand) {
+  const s = await getSender(brand);
+  const fromEmail = s.fromEmail || null;
+  return {
+    from_name: s.fromName || null,
+    from_email: fromEmail,
+    // Same precedence the live send applies: configured Reply-To → the From
+    // address → the conversational sales@<domain> fallback.
+    reply_to: s.replyTo || replyToFor(fromEmail) || null,
+  };
+}
+
+/**
+ * Turn caller-supplied attachment specs into the shape Nodemailer's
+ * `attachments` array expects. Two forms are accepted:
+ *   • `{ filename, storage_key, content_type }` — a file already in local
+ *     storage (a message attachment / generated PDF). Only the KEY rides
+ *     the queue (never the bytes — that would bloat Redis); the bytes are
+ *     loaded here, at send time, straight from storage.
+ *   • a ready Nodemailer object (`{ filename, content }`, `{ path }`,
+ *     `{ href }`) — passed through untouched.
+ *
+ * A missing stored file throws rather than sending a mail that silently
+ * omits the PDF/photo the customer was promised — the operator then sees
+ * the send fail and can re-attach, instead of the file vanishing quietly.
+ */
+async function resolveAttachments(list) {
+  if (!Array.isArray(list) || list.length === 0) return undefined;
+  const storage = require("./storage.service");
+  const out = [];
+  for (const a of list) {
+    if (!a) continue;
+    if (a.storage_key) {
+      let content;
+      try {
+        content = await storage.get(a.storage_key);
+      } catch {
+        throw new AppError(
+          "EMAIL_ATTACHMENT_MISSING",
+          `Attachment "${a.filename || a.storage_key}" could not be read from storage — the file may have been removed. Re-attach it and try again.`,
+          422,
+        );
+      }
+      out.push({
+        filename: a.filename || "attachment",
+        content,
+        contentType: a.content_type || a.contentType || undefined,
+      });
+    } else if (a.content || a.path || a.href) {
+      out.push(a);
+    }
+  }
+  return out.length ? out : undefined;
+}
+
 async function send({
   to,
+  cc,
   subject,
   html,
   text,
@@ -209,21 +279,36 @@ async function send({
   from_name,
   reply_to,
   headers,
+  attachments,
   brand,
 }) {
   const t = await getTransporter(brand);
   const sender = await getSender(brand);
   const fromEmail = from_email || sender.fromEmail;
+  if (!fromEmail) {
+    throw new AppError(
+      "EMAIL_FROM_UNCONFIGURED",
+      `No outbound sender address is configured${brand ? ` for ${brand}` : ""}. ` +
+        "Set the From address in Messaging → Settings → Outbound Email " +
+        "(or the brand's email address in Business Setup).",
+      412,
+    );
+  }
   const replyTo = reply_to || sender.replyTo || replyToFor(fromEmail);
+  const resolvedAttachments = await resolveAttachments(attachments);
 
   return t.sendMail({
     to,
+    // Nodemailer accepts a string, comma-list, or array for cc — pass an
+    // array of addresses straight through; omit entirely when there's none.
+    cc: cc && cc.length ? cc : undefined,
     from: `${from_name || sender.fromName} <${fromEmail}>`,
     replyTo: replyTo || undefined,
     subject,
     html,
     text,
     headers,
+    attachments: resolvedAttachments,
   });
 }
 
@@ -298,4 +383,10 @@ async function verifyConnection(brand) {
   }
 }
 
-module.exports = { send, checkConfigAtBoot, verifyConnection, invalidateTransporter };
+module.exports = {
+  send,
+  checkConfigAtBoot,
+  verifyConnection,
+  invalidateTransporter,
+  resolveSenderIdentity,
+};

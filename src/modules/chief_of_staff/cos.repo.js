@@ -49,7 +49,7 @@ async function setPlanBuildState({ client, id, is_complete }) {
   const { rows } = await ex(client)(
     `UPDATE shared.ai_pending_plans
         SET is_complete = $2,
-            expires_at  = GREATEST(expires_at, now() + INTERVAL '60 minutes')
+            expires_at  = GREATEST(expires_at, now() + INTERVAL '24 hours')
       WHERE plan_id = $1
       RETURNING *`,
     [id, is_complete],
@@ -122,8 +122,8 @@ async function createPlanStep({ client, s }) {
     `INSERT INTO shared.ai_pending_actions
        (conversation_id, message_id, proposed_by_user_id, action_id, action_key,
         business, method, route, payload, human_summary, confidence,
-        plan_id, plan_step)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9,'{}'::jsonb),$10,$11,$12,$13)
+        plan_id, plan_step, preflight_note)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,COALESCE($9,'{}'::jsonb),$10,$11,$12,$13,$14)
      RETURNING *`,
     [
       s.conversation_id,
@@ -139,6 +139,7 @@ async function createPlanStep({ client, s }) {
       s.confidence === undefined || s.confidence === null ? 0.8 : s.confidence,
       s.plan_id,
       s.plan_step,
+      s.preflight_note || null,
     ],
   );
   return rows[0];
@@ -180,12 +181,13 @@ async function setStepStatus({ client, id, status, fields = {} }) {
   const sets = ["status = $2"];
   const params = [id, status];
   let i = 3;
+  // jsonb columns must be sent as JSON text; `payload` is written when a
+  // self-repair round rewrites a step so the card reflects what actually ran.
+  const JSONB_FIELDS = new Set(["execution_result", "payload"]);
   for (const [k, v] of Object.entries(fields)) {
     sets.push(`${k} = $${i++}`);
     params.push(
-      k === "execution_result" && v !== null && v !== undefined
-        ? JSON.stringify(v)
-        : v,
+      JSONB_FIELDS.has(k) && v !== null && v !== undefined ? JSON.stringify(v) : v,
     );
   }
   const { rows } = await ex(client)(

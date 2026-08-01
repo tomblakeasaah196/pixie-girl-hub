@@ -3,6 +3,7 @@ import type {
   Expense,
   ExpenseCategory,
   ExpenseKpis,
+  ExpenseReceipt,
   PaginatedResponse,
 } from "./types";
 
@@ -63,7 +64,11 @@ export function createExpenseCategory(input: CreateCategoryInput) {
 export function uploadExpenseReceipt(id: string, file: File) {
   const fd = new FormData();
   fd.append("file", file);
-  return api.postForm<unknown>(`${EX}/${id}/receipts`, fd);
+  return api.postForm<ExpenseReceipt>(`${EX}/${id}/receipts`, fd);
+}
+
+export function listExpenseReceipts(id: string) {
+  return api.get<ExpenseReceipt[]>(`${EX}/${id}/receipts`);
 }
 
 export interface ExpenseLineInput {
@@ -90,10 +95,72 @@ export function submitExpense(id: string) {
   return api.post<Expense>(`${EX}/${id}/submit`);
 }
 
+// ── Receipt AI (inline Praxis capture) ──────────────────────
+
+export interface ExtractedExpenseLine {
+  description: string;
+  amount_ngn: string;
+  vat_amount_ngn: string;
+  vendor_name: string | null;
+  /** null when the model couldn't map it to a real category — user must pick. */
+  category_id: string | null;
+  category_key: string | null;
+  category_display: string | null;
+}
+
+export interface ExpenseExtraction {
+  is_receipt: boolean;
+  title: string;
+  vendor_name: string | null;
+  expense_date: string;
+  currency: string;
+  currency_is_ngn: boolean;
+  total_amount_ngn: string;
+  vat_amount_ngn: string;
+  confidence: "low" | "medium" | "high";
+  notes: string | null;
+  /** What Whisper heard from the voice note, if one was attached. */
+  transcript: string | null;
+  lines: ExtractedExpenseLine[];
+}
+
+/**
+ * Send a receipt image/PDF (+ optional voice clip + typed note) to Praxis and
+ * get back a SUGGESTED draft. Nothing is written until the user creates it.
+ */
+export function extractExpenseFromReceipt(input: {
+  file: File;
+  note?: string;
+  audio?: Blob;
+  audioName?: string;
+}) {
+  const fd = new FormData();
+  fd.append("file", input.file);
+  if (input.note) fd.append("note", input.note);
+  if (input.audio) fd.append("audio", input.audio, input.audioName || "voice-note.webm");
+  return api.postForm<ExpenseExtraction>(`${EX}/ai/extract`, fd);
+}
+
 export function approveExpense(id: string) {
   return api.post<Expense>(`${EX}/${id}/approve`);
 }
 
 export function rejectExpense(id: string, reason: string) {
   return api.post<Expense>(`${EX}/${id}/reject`, { reason });
+}
+
+export type PaymentMethod =
+  | "cash"
+  | "bank_transfer"
+  | "pos_card"
+  | "payslip_addition"
+  | "wallet";
+
+export interface PayExpenseInput {
+  payment_method: PaymentMethod;
+  payment_reference?: string;
+}
+
+export function payExpense(id: string, input: PayExpenseInput) {
+  return api.post<Expense>(`${EX}/${id}/pay`, input);
 }

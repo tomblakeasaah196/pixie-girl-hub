@@ -77,6 +77,12 @@ const buildRecipients = z
   .object({ contact_ids: z.array(z.string().uuid()).optional() })
   .strict();
 
+// Test send: extra sign-off addresses (the requester is always included by the
+// service). Bounded so it can't be turned into an ad-hoc blaster.
+const testSend = z
+  .object({ emails: z.array(z.string().email()).max(5).optional() })
+  .strict();
+
 const eventIngest = z
   .object({
     email: z.string().email(),
@@ -129,6 +135,43 @@ const audienceFromSegment = z
   .object({ segment_id: z.string().uuid() })
   .strict();
 
+// Ad-hoc audience preview (the segment modal's live count).
+const audiencePreview = z
+  .object({ filter: z.record(z.any()).optional() })
+  .strict();
+
+// Brand email frame (Marketing → Design). Partial — unset fields keep their
+// current value; text fields may carry {{tokens}}.
+const framePatch = z
+  .object({
+    show_logo: z.boolean().optional(),
+    tagline: z.string().max(120).optional(),
+    footer_note: z.string().max(400).optional(),
+    show_address: z.boolean().optional(),
+    show_contact: z.boolean().optional(),
+    instagram_url: z.union([z.string().url(), z.literal("")]).optional(),
+    tiktok_url: z.union([z.string().url(), z.literal("")]).optional(),
+  })
+  .strict();
+
+// Custom personalise tokens — the full list is PUT back each save (small,
+// bounded). Name rules are enforced again in the service (shared with render).
+const personaliseTokensPut = z
+  .object({
+    tokens: z
+      .array(
+        z
+          .object({
+            token: z.string().min(2).max(40),
+            label: z.string().max(60).optional(),
+            value: z.string().max(500).optional(),
+          })
+          .strip(),
+      )
+      .max(50),
+  })
+  .strict();
+
 const mk = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body || {});
   next();
@@ -140,6 +183,7 @@ module.exports = {
   validateCampaignCreate: mk(campaignCreate),
   validateCampaignUpdate: mk(campaignUpdate),
   validateBuildRecipients: mk(buildRecipients),
+  validateTestSend: mk(testSend),
   validateEventIngest: mk(eventIngest),
   validateNewsletter: mk(newsletter),
   validateVariantCreate: mk(variantCreate),
@@ -147,4 +191,7 @@ module.exports = {
   validateSchedule: mk(scheduleBody),
   validateSegmentSave: mk(segmentSave),
   validateAudienceFromSegment: mk(audienceFromSegment),
+  validateAudiencePreview: mk(audiencePreview),
+  validateFramePatch: mk(framePatch),
+  validatePersonaliseTokensPut: mk(personaliseTokensPut),
 };

@@ -10,6 +10,7 @@ import {
 } from "@/lib/storefront";
 import { formatFromNgn } from "@/lib/money";
 import { useCurrency } from "@/lib/useStore";
+import { usePageSlots, withSlots } from "@/lib/site-config";
 import { Section, LoadingGrid, ErrorState } from "@/components/parts";
 
 export const Route = createFileRoute("/services/$slug")({
@@ -22,6 +23,36 @@ const field =
 function ServicePage() {
   const { slug } = Route.useParams();
   const [currency] = useCurrency();
+  // Shared copy for every service booking page (usePageSlots("service_detail")).
+  const copy = withSlots(
+    {
+      backLabel: "← Services",
+      fromPrefix: "From ",
+      includedHeading: "What's included",
+      faqsHeading: "FAQs",
+      cancellationLabel: "Cancellation: ",
+      successHeading: "Request received",
+      // {name} → the service name.
+      successBody:
+        "Thank you — our team will reach out within 24 hours to confirm your {name} booking.",
+      requestAnother: "Request another",
+      bookingHeading: "Request a booking",
+      // {pct} → " (X%)" when a deposit percentage is set, else empty.
+      depositNote: "A deposit{pct} may be required to confirm.",
+      fullNamePlaceholder: "Full name",
+      phonePlaceholder: "Phone",
+      emailPlaceholder: "Email",
+      timePlaceholder: "Preferred time",
+      notesPlaceholder: "Anything we should know?",
+      sendingLabel: "Sending...",
+      submitCta: "Request booking",
+      sentToast: "Booking request sent. We'll be in touch.",
+      errorToast: "Couldn't send your request. Please try again.",
+      nameError: "Please enter your name.",
+      contactError: "Add a phone or email so we can reach you.",
+    },
+    usePageSlots("service_detail"),
+  );
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["service", slug],
     queryFn: () => getService(slug),
@@ -43,24 +74,23 @@ function ServicePage() {
       return requestBooking(slug, payload);
     },
     onSuccess: (r) => {
-      toast.success(r?.message || "Booking request sent. We'll be in touch.");
+      toast.success(r?.message || copy.sentToast);
       setForm({ full_name: "" });
     },
     onError: (err) =>
       toast.error(
-        (err as { userMessage?: string })?.userMessage ||
-          "Couldn't send your request. Please try again.",
+        (err as { userMessage?: string })?.userMessage || copy.errorToast,
       ),
   });
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.full_name.trim()) {
-      toast.error("Please enter your name.");
+      toast.error(copy.nameError);
       return;
     }
     if (!form.phone && !form.email) {
-      toast.error("Add a phone or email so we can reach you.");
+      toast.error(copy.contactError);
       return;
     }
     booking.mutate();
@@ -85,13 +115,13 @@ function ServicePage() {
         to="/services"
         className="inline-flex items-center gap-2 text-[0.62rem] tracking-[0.4em] uppercase text-taupe hover:text-cream transition-colors"
       >
-        ← Services
+        {copy.backLabel}
       </Link>
       <div className="mt-6 grid grid-cols-1 gap-10 lg:grid-cols-2">
         <div>
           <h1 className="text-h2 font-display">{data.name}</h1>
           <p className="mt-2 text-body-sm font-mono">
-            {data.price_is_from ? "From " : ""}
+            {data.price_is_from ? copy.fromPrefix : ""}
             {data.base_price_ngn != null
               ? formatFromNgn(Number(data.base_price_ngn), currency)
               : "-"}
@@ -109,7 +139,7 @@ function ServicePage() {
 
           {data.whats_included && data.whats_included.length > 0 ? (
             <div className="mt-6">
-              <h2 className="text-h6 font-display">What's included</h2>
+              <h2 className="text-h6 font-display">{copy.includedHeading}</h2>
               <ul className="mt-2 list-disc pl-5 text-body-sm text-muted-foreground">
                 {data.whats_included.map((w, i) => (
                   <li key={i}>{w}</li>
@@ -120,7 +150,7 @@ function ServicePage() {
 
           {data.faqs && data.faqs.length > 0 ? (
             <div className="mt-6 space-y-3">
-              <h2 className="text-h6 font-display">FAQs</h2>
+              <h2 className="text-h6 font-display">{copy.faqsHeading}</h2>
               {data.faqs.map((f, i) => (
                 <div key={i}>
                   <p className="text-body-sm font-medium">{f.q}</p>
@@ -132,7 +162,7 @@ function ServicePage() {
 
           {data.cancellation_policy ? (
             <p className="mt-6 text-body-sm text-muted-foreground">
-              <span className="font-medium">Cancellation: </span>
+              <span className="font-medium">{copy.cancellationLabel}</span>
               {data.cancellation_policy}
             </p>
           ) : null}
@@ -144,45 +174,46 @@ function ServicePage() {
               <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-primary/50 text-primary">
                 <Check size={22} />
               </div>
-              <h2 className="text-h5 font-display">Request received</h2>
+              <h2 className="text-h5 font-display">{copy.successHeading}</h2>
               <p className="mt-2 text-body-sm text-muted-foreground">
-                Thank you — our team will reach out within 24 hours to confirm your{" "}
-                {data.name} booking.
+                {copy.successBody.replace("{name}", data.name)}
               </p>
               <button
                 onClick={() => booking.reset()}
                 className="mt-6 text-body-sm text-primary underline-offset-4 hover:underline"
               >
-                Request another
+                {copy.requestAnother}
               </button>
             </div>
           ) : (
           <>
-          <h2 className="text-h5 font-display">Request a booking</h2>
+          <h2 className="text-h5 font-display">{copy.bookingHeading}</h2>
           {data.deposit_required ? (
             <p className="mt-1 text-body-sm text-muted-foreground">
-              A deposit{data.deposit_pct ? ` (${data.deposit_pct}%)` : ""} may be
-              required to confirm.
+              {copy.depositNote.replace(
+                "{pct}",
+                data.deposit_pct ? ` (${data.deposit_pct}%)` : "",
+              )}
             </p>
           ) : null}
           <form onSubmit={submit} className="mt-4 space-y-3">
             <input
               className={field}
-              placeholder="Full name"
+              placeholder={copy.fullNamePlaceholder}
               value={form.full_name}
               onChange={(e) => set("full_name", e.target.value)}
             />
             <div className="grid grid-cols-2 gap-3">
               <input
                 className={field}
-                placeholder="Phone"
+                placeholder={copy.phonePlaceholder}
                 value={form.phone || ""}
                 onChange={(e) => set("phone", e.target.value)}
               />
               <input
                 className={field}
                 type="email"
-                placeholder="Email"
+                placeholder={copy.emailPlaceholder}
                 value={form.email || ""}
                 onChange={(e) => set("email", e.target.value)}
               />
@@ -196,7 +227,7 @@ function ServicePage() {
               />
               <input
                 className={field}
-                placeholder="Preferred time"
+                placeholder={copy.timePlaceholder}
                 value={form.preferred_time || ""}
                 onChange={(e) => set("preferred_time", e.target.value)}
               />
@@ -204,7 +235,7 @@ function ServicePage() {
             <textarea
               className={field}
               rows={3}
-              placeholder="Anything we should know?"
+              placeholder={copy.notesPlaceholder}
               value={form.notes || ""}
               onChange={(e) => set("notes", e.target.value)}
             />
@@ -213,7 +244,7 @@ function ServicePage() {
               disabled={booking.isPending}
               className="w-full rounded-md bg-primary px-4 py-2.5 text-body-sm font-medium text-primary-foreground disabled:opacity-60"
             >
-              {booking.isPending ? "Sending..." : "Request booking"}
+              {booking.isPending ? copy.sendingLabel : copy.submitCta}
             </button>
           </form>
           </>

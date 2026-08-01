@@ -106,6 +106,10 @@ export const NOTIF_META: Record<
   delivery_update: { label: "Delivery update", category: "ops" },
   task_due: { label: "Task due", category: "ops" },
   message: { label: "Message", category: "ops" },
+  // Turning push OFF here stops the device ringing for customer calls while
+  // the app is closed — the only channel that can reach it at all in that
+  // state. Worth knowing before switching it off.
+  whatsapp_call: { label: "Incoming call", category: "ops" },
   stylist_offer: { label: "Stylist offer", category: "ops" },
   stylist_assignment_accepted: { label: "Stylist accepted", category: "ops" },
   cos_followup: { label: "Chief of Staff", category: "ops" },

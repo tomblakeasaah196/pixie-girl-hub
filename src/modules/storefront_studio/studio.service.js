@@ -19,6 +19,7 @@ const {
   compressUploadChecked,
 } = require("../../services/media-compression.service");
 const videoClip = require("../../services/video-clip.service");
+const ogBanner = require("../../services/og-banner.service");
 const fs = require("fs/promises");
 const {
   uniqueSlug,
@@ -366,6 +367,21 @@ async function uploadVideo({ brand, file, options = {} }) {
   }
 }
 
+// ── OG share-banner compose (Branding tab) ─────────────────
+// Builds a 1200×630 Open Graph card from an uploaded photo + composition
+// params (crop/zoom/gradient/logo/headline). Returns the hosted banner URL
+// (written into the --og-image theme token by the Branding tab) plus the
+// stored source key/params so a later tweak recomposes from the original.
+async function composeOgBanner({ brand, file, body = {} }) {
+  return ogBanner.composeOgBanner({
+    brand,
+    file,
+    source_key: body.source_key || undefined,
+    logo_url: body.logo_url || undefined,
+    params: body,
+  });
+}
+
 // ── Preview (draft preview token + storefront URL) ─────────
 // Mints a short-lived signed token the storefront accepts on ?preview= to
 // render the DRAFT site for this brand. Also returns the brand's storefront
@@ -697,6 +713,7 @@ module.exports = {
   listSectionTemplates,
   uploadImage,
   uploadVideo,
+  composeOgBanner,
   fetchOEmbed,
   previewInfo,
   listRevisions,

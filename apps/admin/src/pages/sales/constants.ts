@@ -13,17 +13,127 @@ interface StatusMeta {
 }
 
 export const ORDER_STATUS: Record<OrderStatus, StatusMeta> = {
-  draft: { label: "Draft", tone: "neutral" },
   pending_payment: { label: "Pending Payment", tone: "warn" },
+  partially_paid: { label: "Partially Paid", tone: "warn" },
   paid: { label: "Paid", tone: "success" },
-  in_production: { label: "In Production", tone: "info" },
-  awaiting_dispatch: { label: "Awaiting Dispatch", tone: "info" },
-  partially_fulfilled: { label: "Partially Fulfilled", tone: "warn" },
-  fulfilled: { label: "Fulfilled", tone: "success" },
+  assigned: { label: "Assigned", tone: "info" },
+  order_ready: { label: "Order Ready", tone: "info" },
+  dispatched: { label: "Dispatched", tone: "info" },
   completed: { label: "Completed", tone: "success" },
-  cancelled: { label: "Cancelled", tone: "danger" },
   cancellation_requested: { label: "Cancel Requested", tone: "danger" },
+  cancelled: { label: "Cancelled", tone: "danger" },
+  // Rare/legacy side-states.
+  draft: { label: "Draft", tone: "neutral" },
+  refunded: { label: "Refunded", tone: "danger" },
+  failed: { label: "Failed", tone: "danger" },
 };
+
+// The linear happy-path order, for the drawer's manual status stepper. Excludes
+// the side-states (draft/cancel/refunded/failed), which are reached via their
+// own actions, not by stepping forward.
+export const ORDER_STATUS_FLOW: OrderStatus[] = [
+  "pending_payment",
+  "partially_paid",
+  "paid",
+  "assigned",
+  "order_ready",
+  "dispatched",
+  "completed",
+];
+
+// The fulfilment stages staff can set manually from the drawer.
+export const MANUAL_MOVE_STATUSES: OrderStatus[] = [
+  "assigned",
+  "order_ready",
+  "dispatched",
+  "completed",
+];
+
+export interface StatusMoveImpact {
+  title: string;
+  confirmLabel: string;
+  note: string;
+  effects: string[];
+  /**
+   * Present when this move fires a customer message. The drawer resolves the
+   * automation's live on/off state (useStatusAutomations) and renders a
+   * definite "will send" / "won't send — it's off" line in its place; `label`
+   * is the message's friendly name (already curly-quoted for the sentence).
+   */
+  message?: { label: string };
+}
+
+// What a manual status move does — shown in the drawer's confirmation modal so
+// staff see the impact (and which customer message fires) before committing.
+// Message-bearing moves carry a `message` descriptor rather than a baked-in
+// effect line, so the modal can show whether that message is *actually*
+// switched on right now (see OrderDetail's impact modal).
+export function statusMoveImpact(status: string): StatusMoveImpact {
+  switch (status) {
+    case "assigned":
+      return {
+        title: "Move to Assigned?",
+        confirmLabel: "Mark Assigned",
+        note: "Marks this order as being worked on by a stylist.",
+        effects: [
+          "Order status becomes Assigned",
+          "No message is sent to the customer",
+          "No change to payment or stock",
+        ],
+      };
+    case "order_ready":
+      return {
+        title: "Move to Order Ready?",
+        confirmLabel: "Mark Order Ready",
+        note: "Marks the order packed and ready for the courier.",
+        effects: ["Order status becomes Order Ready"],
+        message: { label: "“Order Ready”" },
+      };
+    case "dispatched":
+      return {
+        title: "Move to Dispatched?",
+        confirmLabel: "Mark Dispatched",
+        note: "This tells the customer the order is on its way — only do it once the courier actually has the parcel.",
+        effects: ["Order status becomes Dispatched"],
+        message: { label: "“On its way”" },
+      };
+    case "completed":
+      return {
+        title: "Move to Completed?",
+        confirmLabel: "Mark Completed",
+        note: "Closes the order as delivered or collected. This is a final state.",
+        effects: [
+          "Order status becomes Completed",
+          "Counts as completed revenue in reports",
+          "No further automatic status changes",
+        ],
+      };
+    default:
+      return {
+        title: "Move status?",
+        confirmLabel: "Confirm",
+        note: `Move this order to ${ORDER_STATUS[status as OrderStatus]?.label ?? status}.`,
+        effects: [],
+      };
+  }
+}
+
+// Friendly channel name for the impact modal's "will send … via WhatsApp" line.
+export function messagingChannelLabel(channel: string | null): string | null {
+  switch (channel) {
+    case "whatsapp":
+      return "WhatsApp";
+    case "email":
+      return "email";
+    case "instagram":
+      return "Instagram";
+    case "sms":
+      return "SMS";
+    default:
+      // respect_contact_pref / in_app_only / unknown → don't name a channel.
+      return null;
+  }
+}
 
 export const QUOTE_STATUS: Record<QuoteStatus, StatusMeta> = {
   draft: { label: "Draft", tone: "neutral" },
@@ -98,12 +208,13 @@ export function salesChannelLabel(value: SalesChannel | string): string {
 }
 
 export const FULFILMENT_OPTIONS = [
-  { value: "walk_in", label: "Walk-in (Pickup)" },
+  { value: "walk_in", label: "Pick-up" },
   { value: "dispatch", label: "Delivery" },
 ] as const;
 
 // How each order_type reads to staff. `collection` = customer picks up later,
-// `walk_in` = took it in person at POS, `dispatch` = courier delivery, `digital`
+// `walk_in` = took it in person at POS (same in-store handover as `collection`,
+// so both read as "Pick-up" to staff), `dispatch` = courier delivery, `digital`
 // = nothing to ship. Used by the orders list column + order detail so "did they
 // pick Pick-up?" is answerable at a glance (no logistics fee + Pick-up = correct;
 // no fee + Delivery = fee still pending).
@@ -113,7 +224,7 @@ export const FULFILMENT_LABELS: Record<
 > = {
   dispatch: { label: "Delivery", tone: "info" },
   collection: { label: "Pick-up", tone: "accent" },
-  walk_in: { label: "Walk-in", tone: "neutral" },
+  walk_in: { label: "Pick-up", tone: "accent" },
   digital: { label: "Digital", tone: "neutral" },
 };
 

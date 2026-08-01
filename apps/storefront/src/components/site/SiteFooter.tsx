@@ -1,7 +1,8 @@
-import { Instagram, Facebook, Twitter, MessageCircle, Sparkles, HelpCircle } from "lucide-react";
-import { useNavigation, useBranding, type FooterColumn } from "@/lib/site-config";
+import { Sparkles, HelpCircle } from "lucide-react";
+import { useNavigation, useBranding, useSiteChrome, type FooterColumn } from "@/lib/site-config";
 import { BrandLogo } from "@/components/site/BrandLogo";
 import { SmartLink } from "@/components/site/SmartLink";
+import { socialIcon } from "@/components/site/social-icons";
 import { openHelp } from "@/lib/useStore";
 
 // Fallback columns (used when Studio navigation isn't published yet).
@@ -35,16 +36,10 @@ const FALLBACK_COLUMNS: FooterColumn[] = [
   },
 ];
 
-const SOCIAL_ICON: Record<string, typeof Instagram> = {
-  instagram: Instagram,
-  facebook: Facebook,
-  twitter: Twitter,
-  whatsapp: MessageCircle,
-};
-
 export function SiteFooter() {
   const nav = useNavigation();
   const { name } = useBranding();
+  const chrome = useSiteChrome();
   const columns =
     nav?.footer_columns && nav.footer_columns.length
       ? nav.footer_columns
@@ -65,12 +60,12 @@ export function SiteFooter() {
             }
           />
           <p className="mt-6 text-sm text-muted-foreground max-w-xs leading-relaxed">
-            A Lagos-born atelier of luxury natural hair. Curated, ethically sourced, finished by hand.
+            {chrome.footer.blurb}
           </p>
           {socialEntries.length ? (
             <div className="mt-6 flex gap-3">
               {socialEntries.map(([key, href]) => {
-                const Icon = SOCIAL_ICON[key] ?? Instagram;
+                const Icon = socialIcon(key);
                 return (
                   <a
                     key={key}
@@ -119,7 +114,10 @@ export function SiteFooter() {
         </div>
       </div>
       <div className="border-t border-taupe/15 py-6 text-center text-[0.65rem] tracking-[0.35em] uppercase text-muted-foreground">
-        © {new Date().getFullYear()} Faitlyn Hair · <span className="font-couture italic normal-case tracking-normal text-taupe text-sm">Maison Faitlyn — fait à la main à Lagos</span>
+        © {new Date().getFullYear()} {chrome.footer.copyrightName || name || "Faitlyn Hair"} ·{" "}
+        <span className="font-couture italic normal-case tracking-normal text-taupe text-sm">
+          {chrome.footer.signature}
+        </span>
       </div>
     </footer>
   );

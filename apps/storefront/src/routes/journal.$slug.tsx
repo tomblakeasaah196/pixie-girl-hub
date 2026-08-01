@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { getContentPost } from "@/lib/storefront";
+import { usePageSlots, withSlots } from "@/lib/site-config";
 import { Section, ErrorState } from "@/components/parts";
 import { BlockRenderer } from "@/components/journal/BlockRenderer";
 
@@ -10,6 +11,7 @@ export const Route = createFileRoute("/journal/$slug")({
 
 function JournalPost() {
   const { slug } = Route.useParams();
+  const s = withSlots({ loading: "Loading..." }, usePageSlots("journal_article"));
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["journal", slug],
     queryFn: () => getContentPost("journal", slug),
@@ -18,7 +20,7 @@ function JournalPost() {
   if (isLoading)
     return (
       <Section>
-        <p className="text-body text-muted-foreground">Loading...</p>
+        <p className="text-body text-muted-foreground">{s.loading}</p>
       </Section>
     );
   if (isError || !data)

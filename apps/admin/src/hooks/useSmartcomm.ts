@@ -19,6 +19,19 @@ export function useChannels(params: ChannelListParams = {}) {
   });
 }
 
+/** The current user's own channel visibility (active brand) — drives which
+ *  inbox tabs render, so a user without a channel never sees its tab. Brand
+ *  is carried by the request's X-Brand-Context header, so it doesn't need to
+ *  be in the key beyond the shared "smartcomm" prefix that brand switches
+ *  already invalidate. */
+export function useMyChannelAccess() {
+  return useQuery({
+    queryKey: ["smartcomm", "my-channel-access"],
+    queryFn: () => smartcommApi.getMyChannelAccess(),
+    staleTime: 5 * 60_000,
+  });
+}
+
 /** Editable per-brand composer stock messages (onboarding + WhatsApp
  *  handoff templates) and the WhatsApp share number. Brand-scoped key. */
 export function useComposerSettings() {
@@ -75,6 +88,25 @@ export function useQuickReplies() {
     queryKey: ["smartcomm", "quick-replies"],
     queryFn: () => smartcommApi.listQuickReplies(),
     staleTime: 5 * 60_000,
+  });
+}
+
+/**
+ * Unfurl a URL shared in a thread into an OG/Twitter preview card. The result
+ * is cached server-side (Redis) and here (long staleTime, no refetch) since a
+ * link's metadata is effectively static — a thread of many bubbles must never
+ * turn into a storm of refetches. Returns `{ ok:false }` for a link that has
+ * no preview, which the card renders as nothing.
+ */
+export function useLinkPreview(url: string | null | undefined) {
+  return useQuery({
+    queryKey: ["smartcomm", "link-preview", url],
+    queryFn: () => smartcommApi.getLinkPreview(url!),
+    enabled: !!url,
+    staleTime: 60 * 60_000, // 1h
+    gcTime: 24 * 60 * 60_000, // 24h
+    refetchOnWindowFocus: false,
+    retry: false,
   });
 }
 

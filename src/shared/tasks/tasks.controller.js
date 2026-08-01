@@ -9,6 +9,7 @@ const { parsePagination } = require("../../utils/pagination");
 
 const base = (req) => ({
   brand: req.brand,
+  scope: req.permission_scope,
   user: req.user,
   request_id: req.request_id,
 });
@@ -18,6 +19,8 @@ async function listTasks(req, res) {
   res.json(
     await service.listTasks({
       brand: req.brand,
+      scope: req.permission_scope,
+      user: req.user,
       status: req.query.status,
       assigned_to:
         req.query.assigned_to === "me"
@@ -31,10 +34,22 @@ async function listTasks(req, res) {
     }),
   );
 }
+async function listAssignees(req, res) {
+  const { page_size } = parsePagination(req.query);
+  res.json({
+    data: await service.listAssignees({
+      brand: req.brand,
+      search: req.query.q,
+      limit: page_size,
+    }),
+  });
+}
 async function getBoard(req, res) {
   res.json({
     data: await service.getBoard({
       brand: req.brand,
+      scope: req.permission_scope,
+      user: req.user,
       assigned_to:
         req.query.assigned_to === "me"
           ? req.user.user_id
@@ -44,7 +59,12 @@ async function getBoard(req, res) {
 }
 async function getTask(req, res) {
   res.json({
-    data: await service.getTask({ brand: req.brand, id: req.params.id }),
+    data: await service.getTask({
+      brand: req.brand,
+      scope: req.permission_scope,
+      user: req.user,
+      id: req.params.id,
+    }),
   });
 }
 async function createTask(req, res) {
@@ -104,6 +124,7 @@ async function deleteSubtask(req, res) {
 
 module.exports = {
   listTasks,
+  listAssignees,
   getBoard,
   getTask,
   createTask,

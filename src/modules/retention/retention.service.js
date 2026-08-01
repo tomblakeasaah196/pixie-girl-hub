@@ -275,6 +275,7 @@ async function earnForAction({
       const existing = await repo.ledgerEntryForReference({
         client: c,
         brand,
+        contact_id,
         reference_type,
         reference_id,
         transaction_type: action_type,
@@ -335,7 +336,14 @@ async function redeemPoints({
   notes,
 }) {
   return transaction(async (client) => {
-    const state = await repo.getLoyaltyState({ client, brand, contact_id });
+    // P1-5: lock the state row so two concurrent redemptions can't both
+    // pass the balance check. The CHECK constraint added in migration
+    // 000353 is the DB-level backstop if any caller ever forgets to lock.
+    const state = await repo.getLoyaltyStateForUpdate({
+      client,
+      brand,
+      contact_id,
+    });
     if (!state || state.current_balance < points)
       throw new AppError(
         "INSUFFICIENT_POINTS",
@@ -442,8 +450,11 @@ async function getOrCreateReferral({ brand, contact_id, contact }) {
   });
 }
 
-async function validateReferralCode({ code }) {
-  const ref = await repo.findReferralByCode({ code });
+async function validateReferralCode({ code, brand = null }) {
+  // P1-4: when a brand is provided (public /referral/:code resolved via the
+  // host-brand-resolver), the lookup is brand-scoped so a Pixie Girl code
+  // never surfaces as valid on a Faitlyn host and vice versa.
+  const ref = await repo.findReferralByCode({ code, brand });
   if (!ref) return { valid: false };
   return {
     valid: true,
@@ -465,7 +476,10 @@ async function redeemReferral({
   order_value,
 }) {
   return transaction(async (client) => {
-    const ref = await repo.findReferralByCode({ client, code });
+    // P1-4: brand-scoped lookup so a code minted on brand A cannot pay out
+    // a reward against brand B's economy (loyalty ledger + credit + analytics
+    // all live per-brand). Falls back to "code not found" cleanly.
+    const ref = await repo.findReferralByCode({ client, code, brand });
     if (!ref) throw new NotFoundError("Referral code");
 
     const settings = await referralConfig.getSettings({ client, brand });
@@ -530,21 +544,28 @@ async function redeemReferral({
       referral_id: ref.referral_id,
       reward_value: rewardCredit,
     });
-    // Credit the referrer's loyalty balance.
-    const referralEntry = await repo.insertLoyaltyLedger({
-      client,
-      brand,
-      entry: {
-        contact_id: ref.contact_id,
-        transaction_type: "earned_referral",
-        points: rewardPoints,
-        reference_type: "referral_redemption",
-        reference_id: redemption.redemption_id,
-        notes: `Referral reward (${code})`,
-      },
-    });
-    await postLoyaltyGl({ client, brand, entry: referralEntry });
-    await recomputeTier({ client, brand, contact_id: ref.contact_id });
+    // P1-7: the referrer's ₦ credit posts to the customer_store_credit_ledger
+    // as a real balance the CEO / storefront can spend at checkout. Before
+    // this, rewardCredit was written into referrals.total_rewards_value only
+    // — a display counter with no financial primitive behind it. Skipped
+    // when the ladder/settings return 0.
+    if (rewardCredit && Number(rewardCredit) > 0) {
+      await repo.insertStoreCreditEntry({
+        client,
+        brand,
+        entry: {
+          contact_id: ref.contact_id,
+          amount_ngn: rewardCredit,
+          transaction_type: "earned_referral",
+          reference_type: "referral_redemption",
+          reference_id: redemption.redemption_id,
+          notes: `Referral reward credit (${code})`,
+        },
+      });
+    }
+    // Cutover: the referrer's reward is now Crowns 👑, awarded by the retention
+    // subscriber on this event — not legacy loyalty points. The ₦ store credit
+    // above (a real financial primitive) is unaffected.
     events.emit("referral.redeemed", {
       brand,
       referral_id: ref.referral_id,
@@ -590,6 +611,7 @@ async function awardStars({
       const existing = await repo.streakLedgerForReference({
         client: c,
         brand,
+        contact_id,
         reference_type,
         reference_id,
         action_type,
@@ -661,7 +683,12 @@ async function getQuiz({ brand, slug }) {
   };
 }
 
-async function submitQuiz({ brand, input, ip, user_agent }) {
+async function submitQuiz({ brand, contact_id = null, input, ip, user_agent }) {
+  // P0-7: contact_id is a controller-supplied argument (from req.customer),
+  // NOT read from the request body. The public route passes null; the
+  // customer-authed route passes req.customer.contact_id. This makes it
+  // impossible for an anonymous caller to farm streak stars onto an
+  // arbitrary UUID as they could when this trusted input.contact_id.
   return transaction(async (client) => {
     const quiz = await repo.getActiveQuiz({ brand, slug: input.slug });
     if (!quiz) throw new NotFoundError("Quiz");
@@ -672,15 +699,15 @@ async function submitQuiz({ brand, input, ip, user_agent }) {
       hints: input.answers || {},
     });
 
-    // Award completion stars if the quiz is wired to a rule and we have a
-    // contact to credit (logged-in or matched). Anonymous responses still save.
+    // Award completion stars only when the caller proved identity. Anonymous
+    // responses still save (recommendations + lead capture) but earn nothing.
     let starsAwarded = null;
     let starsEntryId = null;
-    if (input.contact_id) {
+    if (contact_id) {
       const entry = await awardStars({
         client,
         brand,
-        contact_id: input.contact_id,
+        contact_id,
         action_type: "hair_quiz_complete",
         reference_type: "hair_quiz",
         reference_id: quiz.quiz_id,
@@ -699,7 +726,7 @@ async function submitQuiz({ brand, input, ip, user_agent }) {
       response: {
         quiz_id: quiz.quiz_id,
         storefront_session_id: input.storefront_session_id,
-        contact_id: input.contact_id,
+        contact_id,
         visitor_email: input.visitor_email,
         visitor_first_name: input.visitor_first_name,
         visitor_phone: input.visitor_phone,

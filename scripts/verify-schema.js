@@ -57,7 +57,22 @@ const pool = new Pool({
 //   - Chief of Staff intelligence (000326): +1 (goal_templates) → 196.
 //     (goals.template_id FK + ai_knowledge_chunks CHECK widen are ALTERs.)
 //   - Chief of Staff settings (000327): +1 (cos_settings) → 197.
-const EXPECTED_SHARED = 197;
+//   - (000328–000349 shared additions are not itemised in this ledger; the
+//     absolute below trails those and should be reconciled in a batch pass.)
+//   - HR clock-out reminders (000350): +1 (clockout_reminders) → 198.
+//   - Retention audit — P1-7 (000352_shared_customer_store_credit_ledger):
+//     +1 (customer_store_credit_ledger) → 199. Backs referrer_credit_ngn
+//     so retention.service.redeemReferral posts a real, auditable balance
+//     instead of a phantom counter on referrals.total_rewards_value.
+//     (000351/000353/000354 in the same audit are ALTER / trigger drops /
+//     column adds, not new tables — count unchanged by them.)
+//   - Crowns unified economy (000362_shared_crowns_unified_loyalty): +8 shared
+//     tables (crown_tiers, crown_earn_rules, crown_ledger, customer_crown_state,
+//     crown_streak_config, crown_streaks, crown_reward_grants,
+//     crown_action_submissions) → 199 + 8 = 207. Merges shared.loyalty_* +
+//     {brand}.streak_star_* into one status-only Crown 👑 currency (legacy
+//     tables left in place, backfilled + frozen, removed in a later cutover).
+const EXPECTED_SHARED = 207;
 const EXPECTED_PER_BRAND = 203;
 
 async function countTables(schema) {

@@ -5,12 +5,14 @@
 "use strict";
 
 const service = require("./cos.service");
+const feedback = require("./cos.feedback.service");
 const followups = require("./cos.followups.service");
 const meeting = require("./cos.meeting");
 const scheduler = require("./cos.scheduler");
 const templates = require("./cos.templates");
 const overview = require("./cos.overview");
 const settings = require("./cos.settings.service");
+const { AppError } = require("../../utils/errors");
 
 const base = (req) => ({
   user: req.user,
@@ -56,16 +58,33 @@ async function postMessage(req, res) {
   });
 }
 
+// Feedback on a reply (training loop). message_id is on the path; the
+// conversation is derived + ownership-checked server-side.
+async function recordFeedback(req, res) {
+  res.json({
+    data: await feedback.recordFeedback({
+      ...base(req),
+      message_id: req.params.messageId,
+      rating: req.body.rating,
+      comment: req.body.comment,
+    }),
+  });
+}
+
 // Plans (batch-plan confirm gate)
 async function getPlan(req, res) {
-  res.json({ data: await service.getPlan({ user: req.user, id: req.params.planId }) });
+  res.json({
+    data: await service.getPlan({ user: req.user, id: req.params.planId }),
+  });
 }
 async function confirmPlan(req, res) {
-  res.json({
+  // 202: execution happens on the worker (cos-plan-exec queue); the response
+  // carries the plan in 'executing' state and completion arrives over the
+  // cos_plan:executed realtime push.
+  res.status(202).json({
     data: await service.confirmPlan({
       ...base(req),
       id: req.params.planId,
-      auth_header: req.headers.authorization,
     }),
   });
 }
@@ -157,7 +176,11 @@ async function dismissFollowup(req, res) {
 // Meeting prep brief for a calendar event.
 async function getPrep(req, res) {
   res.json({
-    data: await meeting.prep({ user: req.user, brand: req.brand, event_id: req.params.eventId }),
+    data: await meeting.prep({
+      user: req.user,
+      brand: req.brand,
+      event_id: req.params.eventId,
+    }),
   });
 }
 
@@ -174,7 +197,11 @@ async function findFocus(req, res) {
 }
 async function scheduleLoad(req, res) {
   res.json({
-    data: await scheduler.load({ user: req.user, brand: req.brand, date: req.query.date }),
+    data: await scheduler.load({
+      user: req.user,
+      brand: req.brand,
+      date: req.query.date,
+    }),
   });
 }
 async function batchReschedule(req, res) {
@@ -227,6 +254,20 @@ async function updateSettings(req, res) {
     data: await settings.update({ ...base(req), patch: req.body }),
   });
 }
+async function uploadSettingsAvatar(req, res) {
+  if (!req.file || !req.file.buffer) {
+    throw new AppError("NO_FILE", "No image file was uploaded.", 400, {
+      user_message: "Choose an image to upload.",
+    });
+  }
+  res.json({
+    data: await settings.uploadAvatar({
+      ...base(req),
+      buffer: req.file.buffer,
+      mimetype: req.file.mimetype,
+    }),
+  });
+}
 
 module.exports = {
   listConversations,
@@ -235,6 +276,7 @@ module.exports = {
   archiveConversation,
   postMessage,
   saveConversationToNote,
+  recordFeedback,
   getPlan,
   confirmPlan,
   rejectPlan,
@@ -258,4 +300,5 @@ module.exports = {
   // settings (PR6)
   getSettings,
   updateSettings,
+  uploadSettingsAvatar,
 };

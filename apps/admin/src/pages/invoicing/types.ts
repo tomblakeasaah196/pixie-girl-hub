@@ -84,14 +84,26 @@ export interface InvoicePayment {
   sales_order_payment_id: string | null;
   amount_applied_ngn: string;
   applied_by: string | null;
+  /** Staff member who applied it — null when a gateway captured it. */
+  applied_by_name: string | null;
   applied_at: string;
   notes: string | null;
+  /** Set when the row mirrors a payment recorded against the sales order. */
+  payment_number: string | null;
+  payment_method: string | null;
+  /** Manual-entry trail, mirrored from the order payment (staff_recorded). */
+  payment_path: "gateway" | "staff_recorded" | "pay_on_delivery" | null;
+  manual_bank_name: string | null;
+  manual_bank_transaction_id: string | null;
 }
 
 export interface Invoice {
   invoice_id: string;
   invoice_number: string;
   order_id: string | null;
+  /** Number + status of the order this bills for (detail fetch only). */
+  order_number?: string | null;
+  order_status?: string | null;
   intercompany_transaction_id: string | null;
   contact_id: string;
   contact_name: string | null;
@@ -301,6 +313,10 @@ export interface PaymentApplyInput {
   amount_applied_ngn: number;
   sales_order_payment_id?: string;
   notes?: string;
+  /** Required when the invoice bills a sales order — the payment is recorded
+   *  against that order (and mirrored back here) rather than applied here. */
+  manual_bank_transaction_id?: string;
+  manual_bank_name?: string;
 }
 
 export interface CreditNoteLineInput {

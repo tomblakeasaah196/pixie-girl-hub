@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useUrlTab } from "@/hooks/useUrlTab";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
 import { DeniedState } from "@/components/ui/controls";
@@ -35,7 +36,10 @@ export function RetailPartnersPage() {
   useBreadcrumbs([{ label: "Retail Partners" }]);
   const { can } = useAuthStore();
 
-  const [tab, setTab] = useState("partners");
+  const [tab, setTab] = useUrlTab(
+    "partners",
+    TABS.map((t) => t.key),
+  );
   const [settlementsPartnerFilter, setSettlementsPartnerFilter] = useState("");
 
   if (!can("retail_partners", "view")) {

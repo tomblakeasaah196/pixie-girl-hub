@@ -13,6 +13,7 @@ import type {
   QuotationCreateInput,
   QuotationSendInput,
   QuotationConvertInput,
+  QuotationAcceptInput,
   CancellationRequestInput,
   FlexiPaySettingsPatch,
 } from "./types";
@@ -88,6 +89,10 @@ export function useAddPayment(orderId: string) {
       });
       qc.invalidateQueries({ queryKey: ["sales-orders", biz] });
       qc.invalidateQueries({ queryKey: ["sales-kpis", biz] });
+      // The payment lands on the order's invoice in the same commit — refresh
+      // Invoicing too, so the two screens never disagree on the balance.
+      qc.invalidateQueries({ queryKey: ["invoices", biz] });
+      qc.invalidateQueries({ queryKey: ["ar-ageing", biz] });
     },
   });
 }
@@ -109,6 +114,59 @@ export function useCancelOrder() {
       qc.invalidateQueries({ queryKey: ["sales-orders", biz, "detail", id] });
       qc.invalidateQueries({ queryKey: ["sales-kpis", biz] });
     },
+  });
+}
+
+/**
+ * Un-cancel an archived order. Call with `confirm: false` first — if the result
+ * has `requires_confirmation`, show its `short_lines` warning and call again
+ * with `confirm: true` to restore those lines as pre-orders.
+ */
+export function useRestoreOrder() {
+  const qc = useQueryClient();
+  const biz = useBiz();
+  return useMutation({
+    mutationFn: ({ id, confirm }: { id: string; confirm: boolean }) =>
+      salesApi.restoreOrder(id, confirm),
+    onSuccess: (data, { id }) => {
+      // A dry run changed nothing — don't churn the caches for it.
+      if (data.requires_confirmation) return;
+      qc.invalidateQueries({ queryKey: ["sales-orders", biz] });
+      qc.invalidateQueries({ queryKey: ["sales-orders", biz, "detail", id] });
+      qc.invalidateQueries({ queryKey: ["sales-kpis", biz] });
+    },
+  });
+}
+
+export function useSetOrderStatus() {
+  const qc = useQueryClient();
+  const biz = useBiz();
+  return useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      salesApi.setOrderStatus(id, status),
+    onSuccess: (_data, { id }) => {
+      qc.invalidateQueries({ queryKey: ["sales-orders", biz] });
+      qc.invalidateQueries({ queryKey: ["sales-orders", biz, "detail", id] });
+      qc.invalidateQueries({ queryKey: ["sales-kpis", biz] });
+    },
+  });
+}
+
+/**
+ * Live on/off state of the customer messages a manual status move fires, so
+ * the drawer's impact modal can show a definite "will send"/"won't send".
+ * Brand-scoped and cached (5-min staleTime) — the CEO's Messaging toggles
+ * change rarely, so opening the modal repeatedly reuses one fetch rather than
+ * hitting the API per open. Gate on `enabled` so it only loads while a drawer
+ * is actually open.
+ */
+export function useStatusAutomations(enabled = true) {
+  const biz = useBiz();
+  return useQuery({
+    queryKey: ["sales-status-automations", biz],
+    queryFn: salesApi.getStatusAutomations,
+    staleTime: 5 * 60_000,
+    enabled,
   });
 }
 
@@ -270,13 +328,32 @@ export function useAcceptQuotation() {
   const qc = useQueryClient();
   const biz = useBiz();
   return useMutation({
-    mutationFn: (id: string) => salesApi.acceptQuotation(id),
-    onSuccess: (_data, id) => {
+    mutationFn: ({ id, input }: { id: string; input?: QuotationAcceptInput }) =>
+      salesApi.acceptQuotation(id, input),
+    onSuccess: (_data, { id }) => {
       qc.invalidateQueries({ queryKey: ["sales-quotations", biz] });
       qc.invalidateQueries({
         queryKey: ["sales-quotations", biz, "detail", id],
       });
+      // Accept-and-convert mints an order, so the orders list is stale too.
+      qc.invalidateQueries({ queryKey: ["sales-orders", biz] });
     },
+  });
+}
+
+/**
+ * The quote's customer-facing pay link. Fetched on demand (when staff open the
+ * share control) rather than with the quote, because the GET mints the token as
+ * a side effect — we don't want every quote that's merely viewed to acquire a
+ * public link.
+ */
+export function useQuotationPayLink(id: string | null, enabled: boolean) {
+  const biz = useBiz();
+  return useQuery({
+    queryKey: ["sales-quotations", biz, "pay-link", id],
+    queryFn: () => salesApi.getQuotationPayLink(id!),
+    enabled: !!id && enabled,
+    staleTime: Infinity,
   });
 }
 
@@ -385,9 +462,7 @@ const POS_RECON_UNRESOLVED_KEY = "pos-reconciliation-unresolved";
  *  money sitting unclaimed, so the list should feel current without staff
  *  needing to manually refresh (decision 6B extends to the list, not just
  *  the notification). */
-export function usePosReconciliation(
-  params: salesApi.PosReconListParams = {},
-) {
+export function usePosReconciliation(params: salesApi.PosReconListParams = {}) {
   const biz = useBiz();
   return useQuery({
     queryKey: [POS_RECON_KEY, biz, params],

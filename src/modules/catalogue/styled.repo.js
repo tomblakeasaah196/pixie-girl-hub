@@ -11,6 +11,7 @@
 
 const { query, ex } = require("../../config/database");
 const { t } = require("../../config/brands");
+const { styledStockSql } = require("./availability");
 // Resolve a styled product's module-card hero, in priority order: the explicit
 // primary_image_id → the default colour's first picture → any picture on the
 // styled product. Used by list + detail so the module shows imagery, not just
@@ -53,6 +54,9 @@ const STYLED_COLS = [
   "primary_image_id",
   // "Shop by shade" section membership (NULL = unshaded). One shade per listing.
   "shade_id",
+  // Rewig adjacency (000088): override the brand-wide rewig_mode for THIS
+  // listing only. NULL = follow the brand mode; 'enabled'/'disabled' always win.
+  "rewig_override",
 ];
 
 function insert(cols, src, extra = {}) {
@@ -137,24 +141,19 @@ async function list({
   // the old enrich loop). The base's pre-order fields are also selected here
   // so list cards can show the production-framed state (the old query omitted
   // them, so styled cards always read "out of stock" when a base hit zero).
+  // Stock is VARIANT-AWARE (styledStockSql): each colour×size variant reads
+  // its own base, so M/L/XL stock counts even when the seed base is empty.
+  const stock = styledStockSql(brand, "s");
   const { rows } = await run(
     `SELECT s.*, b.name AS base_name, b.product_code AS base_product_code,
             b.preorder_enabled, b.expected_ready_date, b.production_lead_days,
             b.lace_size_codes AS base_lace_size_codes,
-            COALESCE(av.available, 0) AS base_available,
+            ${stock.expr} AS base_available,
             pr.price_storefront_ngn AS base_price_storefront_ngn,
             ${primaryImageSql(brand, "s")} AS primary_image_url
        FROM ${t(brand, "styled_products")} s
        JOIN ${t(brand, "products")} b ON b.product_id = s.base_product_id
-       LEFT JOIN LATERAL (
-         SELECT COALESCE(SUM(sl.available), 0)::int AS available
-           FROM ${t(brand, "stock_levels")} sl
-           JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sl.variant_id
-          WHERE CASE WHEN s.base_variant_id IS NOT NULL
-                     THEN sl.variant_id = s.base_variant_id
-                     ELSE pv.product_id = s.base_product_id AND pv.is_active = true
-                END
-       ) av ON true
+       ${stock.joins}
        LEFT JOIN LATERAL (
          SELECT pv2.price_storefront_ngn
            FROM ${t(brand, "product_variants")} pv2
@@ -184,6 +183,7 @@ async function getById({ client, brand, id }) {
   const { rows } = await ex(client)(
     `SELECT s.*, b.name AS base_name, b.product_code AS base_product_code,
             b.preorder_enabled, b.expected_ready_date, b.production_lead_days,
+            b.preorder_excluded,
             b.lace_size_codes AS base_lace_size_codes,
             ${primaryImageSql(brand, "s")} AS primary_image_url
        FROM ${t(brand, "styled_products")} s
@@ -192,6 +192,35 @@ async function getById({ client, brand, id }) {
     [id],
   );
   return rows[0] || null;
+}
+
+/** Where a styled product currently lives: the collections it's curated into
+ *  and the bundles it's a component of. Powers the detail page's "already in"
+ *  chips so an operator can see (and undo) memberships without hunting through
+ *  every collection/bundle. Only live (is_active) parents are returned; the
+ *  bundle rows carry `bundle_product_id` so the component can be removed by id. */
+async function listMemberships({ client, brand, id }) {
+  const [collections, bundles] = await Promise.all([
+    ex(client)(
+      `SELECT c.collection_id, c.name, c.slug, c.is_visible_storefront
+         FROM ${t(brand, "product_collection_members")} m
+         JOIN ${t(brand, "product_collections")} c
+           ON c.collection_id = m.collection_id
+        WHERE m.styled_id = $1 AND c.is_active = true
+        ORDER BY c.name`,
+      [id],
+    ),
+    ex(client)(
+      `SELECT b.bundle_id, bop.bundle_product_id, b.display_name,
+              b.is_visible_storefront
+         FROM ${t(brand, "bundle_offer_products")} bop
+         JOIN ${t(brand, "bundle_offers")} b ON b.bundle_id = bop.bundle_id
+        WHERE bop.styled_id = $1 AND b.is_active = true
+        ORDER BY b.display_name`,
+      [id],
+    ),
+  ]);
+  return { collections: collections.rows, bundles: bundles.rows };
 }
 
 async function baseProduct({ client, brand, base_product_id }) {
@@ -321,33 +350,22 @@ async function restore({ client, brand, id, slug, styled_code }) {
 }
 
 /**
- * Total available units for the base behind a styled product. When the
- * styled row pins a base_variant_id we sum just that variant; otherwise we
- * sum every active variant of the base. This is the number that drives the
- * out-of-stock / pre-order cascade.
+ * Total available units behind a styled product — VARIANT-AWARE. Sums stock
+ * across the distinct bases of the styled product's active variants (each
+ * variant's own base, else the seed base; the base_variant_id pin applies
+ * only to the seed). A styled product with no active variants reads its seed
+ * base. This is the number that drives the out-of-stock / pre-order cascade.
  */
-async function baseAvailability({
-  client,
-  brand,
-  base_product_id,
-  base_variant_id,
-}) {
-  if (base_variant_id) {
-    const { rows } = await ex(client)(
-      `SELECT COALESCE(SUM(available), 0)::int AS available
-         FROM ${t(brand, "stock_levels")} WHERE variant_id = $1`,
-      [base_variant_id],
-    );
-    return rows[0].available;
-  }
+async function styledAvailability({ client, brand, styled_id }) {
+  const stock = styledStockSql(brand, "s");
   const { rows } = await ex(client)(
-    `SELECT COALESCE(SUM(sl.available), 0)::int AS available
-       FROM ${t(brand, "stock_levels")} sl
-       JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sl.variant_id
-      WHERE pv.product_id = $1 AND pv.is_active = true`,
-    [base_product_id],
+    `SELECT ${stock.expr} AS available
+       FROM ${t(brand, "styled_products")} s
+       ${stock.joins}
+      WHERE s.styled_id = $1`,
+    [styled_id],
   );
-  return rows[0].available;
+  return rows[0] ? rows[0].available : 0;
 }
 
 /**
@@ -440,6 +458,7 @@ module.exports = {
   nextCode,
   list,
   getById,
+  listMemberships,
   baseProduct,
   basePrice,
   create,
@@ -451,7 +470,7 @@ module.exports = {
   styledSlugTaken,
   styledCodeTaken,
   restore,
-  baseAvailability,
+  styledAvailability,
   setProduction,
   listBom,
   addBom,

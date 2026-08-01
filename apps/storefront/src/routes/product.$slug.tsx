@@ -10,8 +10,13 @@ import {
 import { formatFromNgn } from "@/lib/money";
 import { ssrProduct } from "@/lib/server";
 import { useCurrency, notifyCartChanged } from "@/lib/useStore";
+import { usePageSlots, withSlots } from "@/lib/site-config";
 import { Section, ErrorState } from "@/components/parts";
+import { PreorderNotice } from "@/components/availability";
 import { YouTubeFacade, youtubeId } from "@/components/site/VideoEmbed";
+import { ProductGallery } from "@/components/site/ProductGallery";
+import { ProductReviews } from "@/components/site/ProductReviews";
+import { YouMayAlsoLove } from "@/components/site/YouMayAlsoLove";
 
 export const Route = createFileRoute("/product/$slug")({
   loader: async ({ params }) => ssrProduct({ data: { slug: params.slug } }),
@@ -27,7 +32,13 @@ const PLATFORM_LABEL: Record<string, string> = {
 
 /** Social proof loop: this product was actually posted and proven in Social
  *  Studio — link back to the live post. */
-function SocialProofBadge({ proof }: { proof: NonNullable<ProductDetail["social_proof"]> }) {
+function SocialProofBadge({
+  proof,
+  prefix,
+}: {
+  proof: NonNullable<ProductDetail["social_proof"]>;
+  prefix: string;
+}) {
   return (
     <a
       href={proof.url}
@@ -36,7 +47,7 @@ function SocialProofBadge({ proof }: { proof: NonNullable<ProductDetail["social_
       className="mt-3 inline-flex items-center gap-2 rounded-full border border-border px-3 py-1.5 text-body-sm text-muted-foreground transition hover:border-primary hover:text-primary"
     >
       <Sparkles className="h-3.5 w-3.5" />
-      As seen on {PLATFORM_LABEL[proof.platform] ?? proof.platform}
+      {prefix} {PLATFORM_LABEL[proof.platform] ?? proof.platform}
       <ExternalLink className="h-3 w-3" />
     </a>
   );
@@ -66,6 +77,38 @@ function ProductPage() {
   const [currency] = useCurrency();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
+  // Pre-order (000086): an out-of-stock item is offered as a pre-order; tapping
+  // "Add to bag" first opens a confirm dialog so the buyer knows it's made to
+  // order before it lands in the bag. A truly sold-out (opted-out) item can't
+  // be added at all.
+  const availability = product?.availability ?? null;
+  const isPreorder = availability?.state === "preorder";
+  const soldOut = availability?.state === "out_of_stock";
+  const [confirmPreorder, setConfirmPreorder] = useState(false);
+  // Named `copy` (not `s`) — `s` is used as a size map param further down.
+  const copy = withSlots(
+    {
+      colourLabel: "Colour",
+      sizeLabel: "Cap size",
+      laceLabel: "Lace",
+      unstyledLabel: "Buy unstyled (raw)",
+      addCta: "Add to bag",
+      addBusyLabel: "Adding...",
+      viewBagCta: "View bag",
+      chooseVariantError: "Please choose colour, size and lace.",
+      addedToast: "Added to bag",
+      addErrorToast: "Couldn't add to bag. Please try again.",
+      preorderCta: "Pre-order",
+      preorderTitle: "This is a pre-order",
+      preorderConfirm: "Add pre-order",
+      preorderCancel: "Not now",
+      preorderAddedToast: "Pre-order added — we'll craft it just for you.",
+      soldOutCta: "Sold out",
+      socialProofPrefix: "As seen on",
+      sizeGuideFallbackTitle: "Head size guide",
+    },
+    usePageSlots("product_detail"),
+  );
 
   const colours = product?.colours ?? [];
   const sizes = product?.size_tiers ?? [];
@@ -108,7 +151,21 @@ function ProductPage() {
           (g) => !g.styled_colour_id || g.styled_colour_id === colourId,
         )
       : product.gallery;
-  const hero = gallery[0]?.url || product.cover_image_url || null;
+  // Fall back to the cover image when the product has no gallery rows yet, so
+  // the media rail is never blank.
+  const galleryImages =
+    gallery.length > 0
+      ? gallery
+      : product.cover_image_url
+        ? [{ url: product.cover_image_url, alt_text: product.name }]
+        : [];
+
+  // Videos follow the same swatch scoping as pictures: base-product videos
+  // (styled_colour_id null) always show; a colour's own video shows only while
+  // that colour is selected.
+  const galleryVideos = product.videos.filter(
+    (v) => !v.styled_colour_id || v.styled_colour_id === colourId,
+  );
 
   const price = priceOfVariant(
     product,
@@ -125,7 +182,7 @@ function ProductPage() {
 
   async function add() {
     if (!unstyled && !selectedVariant) {
-      toast.error("Please choose colour, size and lace.");
+      toast.error(copy.chooseVariantError);
       return;
     }
     setBusy(true);
@@ -137,12 +194,27 @@ function ProductPage() {
         display_currency: currency,
       });
       notifyCartChanged();
-      toast.success("Added to bag");
+      setConfirmPreorder(false);
+      toast.success(isPreorder ? copy.preorderAddedToast : copy.addedToast);
     } catch {
-      toast.error("Couldn't add to bag. Please try again.");
+      toast.error(copy.addErrorToast);
     } finally {
       setBusy(false);
     }
+  }
+
+  // Tap "Add" → validate the variant choice first, then either open the
+  // pre-order confirm dialog (out of stock) or add straight to the bag.
+  function onAddClick() {
+    if (!unstyled && !selectedVariant) {
+      toast.error(copy.chooseVariantError);
+      return;
+    }
+    if (isPreorder) {
+      setConfirmPreorder(true);
+      return;
+    }
+    void add();
   }
 
   const Box = ({
@@ -169,22 +241,11 @@ function ProductPage() {
   return (
     <Section className="grid gap-10 md:grid-cols-2">
       {/* Gallery */}
-      <div>
-        <div className="aspect-[3/4] overflow-hidden rounded-md bg-secondary">
-          {hero ? (
-            <img src={hero} alt={product.name} className="h-full w-full object-cover" />
-          ) : null}
-        </div>
-        {gallery.length > 1 ? (
-          <div className="mt-3 grid grid-cols-5 gap-2">
-            {gallery.slice(0, 5).map((g, i) => (
-              <div key={i} className="aspect-square overflow-hidden rounded bg-secondary">
-                <img src={g.url} alt="" className="h-full w-full object-cover" />
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </div>
+      <ProductGallery
+        images={galleryImages}
+        videos={galleryVideos}
+        productName={product.name}
+      />
 
       {/* Detail */}
       <div>
@@ -192,7 +253,9 @@ function ProductPage() {
         <p className="mt-3 font-mono text-h5">
           {price == null ? "-" : formatFromNgn(price, currency)}
         </p>
-        {product.social_proof ? <SocialProofBadge proof={product.social_proof} /> : null}
+        {product.social_proof ? (
+          <SocialProofBadge proof={product.social_proof} prefix={copy.socialProofPrefix} />
+        ) : null}
         {product.short_description ? (
           <p className="mt-4 text-body text-muted-foreground">
             {product.short_description}
@@ -202,7 +265,7 @@ function ProductPage() {
         {/* Colour */}
         {colours.length > 0 ? (
           <div className="mt-8">
-            <p className="text-caption">Colour</p>
+            <p className="text-caption">{copy.colourLabel}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {colours.map((c) => (
                 <button
@@ -220,7 +283,7 @@ function ProductPage() {
         {/* Size */}
         {sizes.length > 0 ? (
           <div className="mt-6">
-            <p className="text-caption">Cap size</p>
+            <p className="text-caption">{copy.sizeLabel}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {sizes.map((s) => (
                 <Box
@@ -241,7 +304,7 @@ function ProductPage() {
         {/* Lace */}
         {laces.length > 0 ? (
           <div className="mt-6">
-            <p className="text-caption">Lace</p>
+            <p className="text-caption">{copy.laceLabel}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               {laces.map((l) => (
                 <Box
@@ -262,24 +325,72 @@ function ProductPage() {
             checked={unstyled}
             onChange={(e) => setUnstyled(e.target.checked)}
           />
-          Buy unstyled (raw)
+          {copy.unstyledLabel}
         </label>
+
+        <PreorderNotice availability={availability} className="mt-6" />
 
         <div className="mt-8 flex gap-3">
           <button
-            onClick={add}
-            disabled={busy}
+            onClick={onAddClick}
+            disabled={busy || soldOut}
             className="rounded-full bg-primary px-8 py-3 text-body text-primary-foreground disabled:opacity-60"
           >
-            {busy ? "Adding..." : "Add to bag"}
+            {soldOut
+              ? copy.soldOutCta
+              : busy
+                ? copy.addBusyLabel
+                : isPreorder
+                  ? copy.preorderCta
+                  : copy.addCta}
           </button>
           <button
             onClick={() => navigate({ to: "/cart" })}
             className="rounded-full border border-border px-6 py-3 text-body hover:bg-secondary"
           >
-            View bag
+            {copy.viewBagCta}
           </button>
         </div>
+
+        {confirmPreorder ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-ink/70 p-6 backdrop-blur-sm"
+            onClick={() => setConfirmPreorder(false)}
+          >
+            <div
+              className="w-full max-w-sm rounded-2xl border border-taupe/25 bg-card p-6 text-center shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p className="text-[0.62rem] font-medium uppercase tracking-[0.24em] text-taupe">
+                Pre-order
+              </p>
+              <h3 className="mt-2 font-display text-2xl">
+                {copy.preorderTitle}
+              </h3>
+              <p className="mt-3 text-body-sm text-foreground/75">
+                {availability?.message ||
+                  (availability?.window_label
+                    ? `This piece is made to order and ships in about ${availability.window_label}.`
+                    : "This piece is made to order and crafted just for you.")}
+              </p>
+              <div className="mt-6 flex flex-col gap-2">
+                <button
+                  onClick={add}
+                  disabled={busy}
+                  className="rounded-full bg-primary px-8 py-3 text-body text-primary-foreground disabled:opacity-60"
+                >
+                  {busy ? copy.addBusyLabel : copy.preorderConfirm}
+                </button>
+                <button
+                  onClick={() => setConfirmPreorder(false)}
+                  className="rounded-full px-6 py-2.5 text-body-sm text-muted-foreground hover:text-foreground"
+                >
+                  {copy.preorderCancel}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {product.size_guide &&
         (product.size_guide.guide_md || videoUrl) ? (
@@ -291,7 +402,7 @@ function ProductPage() {
               <div className="mt-3">
                 <YouTubeFacade
                   videoId={videoId}
-                  title={product.size_guide.title || "Head size guide"}
+                  title={product.size_guide.title || copy.sizeGuideFallbackTitle}
                 />
               </div>
             ) : videoUrl ? (
@@ -308,6 +419,18 @@ function ProductPage() {
             ) : null}
           </details>
         ) : null}
+      </div>
+
+      {/* You May Also Love */}
+      {product.related_products.length > 0 ? (
+        <div className="md:col-span-2 mt-8 border-t border-border pt-12">
+          <YouMayAlsoLove products={product.related_products} currency={currency} />
+        </div>
+      ) : null}
+
+      {/* Reviews */}
+      <div className="md:col-span-2 border-t border-border pt-12">
+        <ProductReviews slug={product.slug} />
       </div>
     </Section>
   );

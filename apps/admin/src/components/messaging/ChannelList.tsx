@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Search, Pin, BellOff, Plus, Settings2 } from "lucide-react";
 import {
   fmtRelativeTime,
@@ -8,9 +8,10 @@ import {
   getInitials,
   previewFromKind,
 } from "@/lib/messaging-utils";
-import { useChannels } from "@/hooks/useSmartcomm";
+import { useChannels, useMyChannelAccess } from "@/hooks/useSmartcomm";
 import { useAuthStore } from "@/stores/auth";
 import { cn } from "@/lib/cn";
+import type { AccessPlatform } from "@/lib/smartcomm-api";
 import type { Channel, ExternalPlatform } from "@/lib/smartcomm-types";
 import { PlatformPill } from "./PlatformPill";
 import { MessagingSettingsModal } from "./MessagingSettingsModal";
@@ -27,14 +28,18 @@ interface Props {
 
 type Tab = "all" | "unread" | "inhouse" | "groups" | "wa" | "ig" | "email";
 
-const TABS: { key: Tab; label: string }[] = [
+// `access` names the channel-access platform a tab requires. Tabs whose
+// platform the user can't view are hidden entirely (someone without WhatsApp
+// access never sees the WhatsApp tab). `all`/`unread` span every granted
+// channel, so they carry no requirement and always show.
+const TABS: { key: Tab; label: string; access?: AccessPlatform }[] = [
   { key: "all", label: "All" },
   { key: "unread", label: "Unread" },
-  { key: "inhouse", label: "In-house" },
-  { key: "groups", label: "Groups" },
-  { key: "wa", label: "WhatsApp" },
-  { key: "ig", label: "Instagram" },
-  { key: "email", label: "Email" },
+  { key: "inhouse", label: "In-house", access: "internal" },
+  { key: "groups", label: "Groups", access: "internal" },
+  { key: "wa", label: "WhatsApp", access: "whatsapp" },
+  { key: "ig", label: "Instagram", access: "instagram" },
+  { key: "email", label: "Email", access: "email" },
 ];
 
 function paramsForTab(tab: Tab): {
@@ -73,6 +78,23 @@ export function ChannelList({
   // of not mounting hidden password fields — holds even if a future modal
   // reintroduces one.
   const [searchArmed, setSearchArmed] = useState(false);
+
+  // Hide tabs for channels this user can't reach. Until access loads we show
+  // every tab — the common case is unmanaged staff (all channels granted), so
+  // this avoids the granted tabs flashing in; a restricted staffer briefly
+  // sees the extra tabs on their first load, then they drop away (the query is
+  // cached for the rest of the session). External channels the user lacks are
+  // filtered out server-side too, so no restricted data leaks in the meantime.
+  const { data: access } = useMyChannelAccess();
+  const visibleTabs = TABS.filter(
+    (t) => !t.access || access?.platforms?.[t.access] !== false,
+  );
+  // If the active tab gets hidden (e.g. brand switch drops a channel), fall
+  // back to All so the list never reflects an unreachable filter.
+  useEffect(() => {
+    if (!visibleTabs.some((t) => t.key === tab)) setTab("all");
+  }, [visibleTabs, tab]);
+
   const params = paramsForTab(tab);
   const { data, isLoading } = useChannels({ ...params, q: q || undefined });
 
@@ -164,7 +186,7 @@ export function ChannelList({
 
       {/* Tabs */}
       <div className="flex gap-1 overflow-x-auto px-3 pb-2 no-scrollbar">
-        {TABS.map((t) => (
+        {visibleTabs.map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}

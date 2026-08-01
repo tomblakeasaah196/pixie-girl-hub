@@ -1,6 +1,14 @@
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useEffect, useState } from "react";
-import { CheckCircle2, KeyRound, Loader2, Plug } from "lucide-react";
+import {
+  Activity,
+  CheckCircle2,
+  ExternalLink,
+  KeyRound,
+  Loader2,
+  Plug,
+  XCircle,
+} from "lucide-react";
 import { Button, Card, Pill } from "@/components/ui/primitives";
 import { Drawer } from "@/components/ui/Drawer";
 import {
@@ -18,6 +26,7 @@ import {
   useSaveBusinessConfig,
   useSetGatewayActive,
   useSetGatewayRole,
+  useTestGateway,
   type PaymentGateway,
 } from "@/lib/settings";
 
@@ -44,6 +53,69 @@ const ROLE_OPTIONS = [
   { value: "fallback", label: "Fallback" },
   { value: "standalone", label: "Standalone" },
 ];
+
+/**
+ * Per-provider credential fields. Each provider authenticates differently, so
+ * the Configure drawer renders exactly the fields that provider's backend client
+ * consumes (payment-gateways.service `envCreds` + each `*.service.js` `keys()`):
+ *   • paystack → secret_key
+ *   • opay     → public_key, private_key, merchant_id
+ *   • nomba    → client_id, client_secret (API key), account_id,
+ *                webhook_signature_key  (OAuth client-credentials, NOT pk/sk)
+ *   • stripe   → secret_key, webhook_secret
+ * The `key` MUST match the credential-bag key the backend reads — do not rename.
+ */
+interface CredentialField {
+  key: string;
+  label: string;
+  placeholder?: string;
+  hint?: string;
+}
+const CREDENTIAL_FIELDS: Record<PaymentGateway["provider"], CredentialField[]> =
+  {
+    paystack: [
+      { key: "secret_key", label: "Secret key", placeholder: "sk_live_…" },
+    ],
+    opay: [
+      { key: "public_key", label: "Public key", placeholder: "OPAYPUB…" },
+      { key: "private_key", label: "Private key", placeholder: "OPAYPRV…" },
+      { key: "merchant_id", label: "Merchant ID", placeholder: "256…" },
+    ],
+    nomba: [
+      {
+        key: "client_id",
+        label: "Client ID",
+        placeholder: "0b8edfb1-2eaa-…",
+        hint: "Nomba dashboard → Developers → API keys",
+      },
+      {
+        key: "client_secret",
+        label: "API key (client secret)",
+        placeholder: "sfS7pRxRX…",
+        hint: "The private API key — used to obtain the OAuth access token.",
+      },
+      {
+        key: "account_id",
+        label: "Account ID",
+        placeholder: "0017487…",
+        hint: "Sent as the accountId header on every Nomba request.",
+      },
+      {
+        key: "webhook_signature_key",
+        label: "Webhook signature key",
+        placeholder: "9abf45d…",
+        hint: "SEPARATE from the API key — from Nomba → Webhooks. Verifies inbound events.",
+      },
+    ],
+    stripe: [
+      { key: "secret_key", label: "Secret key", placeholder: "sk_live_…" },
+      {
+        key: "webhook_secret",
+        label: "Webhook signing secret",
+        placeholder: "whsec_…",
+      },
+    ],
+  };
 
 interface GatewayFee {
   pct?: number | string;
@@ -221,26 +293,32 @@ function ConfigureDrawer({
   onClose: () => void;
 }) {
   const configure = useConfigureGateway();
-  const [publicKey, setPublicKey] = useState("");
-  const [secretKey, setSecretKey] = useState("");
-  const [webhookSecret, setWebhookSecret] = useState("");
+  const test = useTestGateway();
+  const resetTest = test.reset;
+  const fields = provider ? CREDENTIAL_FIELDS[provider] : [];
+  const [values, setValues] = useState<Record<string, string>>({});
   const [currencies, setCurrencies] = useState("");
 
-  // Reset write-only fields each time the drawer opens for a provider.
+  // Reset write-only fields + any prior test result each time the drawer opens.
   useEffect(() => {
     if (!provider) return;
-    setPublicKey("");
-    setSecretKey("");
-    setWebhookSecret("");
+    setValues({});
     setCurrencies((row?.supported_currencies ?? []).join(", "));
-  }, [provider, row]);
+    resetTest();
+  }, [provider, row, resetTest]);
+
+  const setValue = (key: string, v: string) =>
+    setValues((s) => ({ ...s, [key]: v }));
 
   const submit = () => {
     if (!provider) return;
+    // Send only the fields the user actually filled — the backend merges them
+    // into the stored bag, so blank fields keep their current value.
     const credentials: Record<string, string> = {};
-    if (publicKey.trim()) credentials.public_key = publicKey.trim();
-    if (secretKey.trim()) credentials.secret_key = secretKey.trim();
-    if (webhookSecret.trim()) credentials.webhook_secret = webhookSecret.trim();
+    for (const f of fields) {
+      const v = (values[f.key] ?? "").trim();
+      if (v) credentials[f.key] = v;
+    }
     const supported = currencies
       .split(",")
       .map((c) => c.trim().toUpperCase())
@@ -288,30 +366,25 @@ function ConfigureDrawer({
           Existing secrets are never shown. Leave a field blank to keep the
           current value; fill it to rotate.
         </p>
-        <Field label="Public key">
-          <PasswordInput
-            value={publicKey}
-            onChange={setPublicKey}
-            placeholder="pk_live_…"
-            autoComplete="off"
-          />
-        </Field>
-        <Field label="Secret key">
-          <PasswordInput
-            value={secretKey}
-            onChange={setSecretKey}
-            placeholder="sk_live_…"
-            autoComplete="new-password"
-          />
-        </Field>
-        <Field label="Webhook secret">
-          <PasswordInput
-            value={webhookSecret}
-            onChange={setWebhookSecret}
-            placeholder="whsec_…"
-            autoComplete="new-password"
-          />
-        </Field>
+        {fields.map((f) => {
+          const isSet = row?.credential_fields?.includes(f.key) ?? false;
+          const hint = [
+            f.hint,
+            isSet ? "Currently set — leave blank to keep" : null,
+          ]
+            .filter(Boolean)
+            .join(" · ");
+          return (
+            <Field key={f.key} label={f.label} hint={hint || undefined}>
+              <PasswordInput
+                value={values[f.key] ?? ""}
+                onChange={(v) => setValue(f.key, v)}
+                placeholder={isSet ? "•••••••••• (stored)" : f.placeholder}
+                autoComplete="new-password"
+              />
+            </Field>
+          );
+        })}
         <Field
           label="Supported currencies"
           hint="comma-separated, e.g. NGN, USD"
@@ -320,7 +393,11 @@ function ConfigureDrawer({
             value={currencies}
             onChange={(e) => setCurrencies(e.target.value)}
             placeholder="NGN, USD"
-            className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none transition-colors focus:border-accent/50" autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+            className="w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none transition-colors focus:border-accent/50"
+            autoComplete="off"
+            data-lpignore="true"
+            data-1p-ignore=""
+            data-form-type="other"
           />
         </Field>
         {configure.isError && (
@@ -330,6 +407,91 @@ function ConfigureDrawer({
               : "Could not save credentials."}
           </p>
         )}
+
+        <div className="pt-4 mt-1 border-t border-line/60 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[13px] font-semibold">Test connection</div>
+              <div className="text-[11px] text-text-faint">
+                Runs against the <strong>saved</strong> credentials
+                {provider === "nomba"
+                  ? " — authentication, webhook signature key, and a live checkout link."
+                  : "."}{" "}
+                Save first, then test.
+              </div>
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={test.isPending || !provider}
+              onClick={() => provider && test.mutate({ provider })}
+              icon={
+                test.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Activity className="w-4 h-4" />
+                )
+              }
+            >
+              {test.isPending ? "Testing…" : "Test connection"}
+            </Button>
+          </div>
+
+          {test.isError && (
+            <p className="text-[12px] text-danger">
+              {test.error instanceof Error
+                ? test.error.message
+                : "The test could not be run."}
+            </p>
+          )}
+
+          {test.data && (
+            <div className="space-y-2.5">
+              <div
+                className={`inline-flex items-center gap-1.5 text-[12px] font-semibold ${
+                  test.data.ok ? "text-success" : "text-danger"
+                }`}
+              >
+                {test.data.ok ? (
+                  <CheckCircle2 className="w-4 h-4" />
+                ) : (
+                  <XCircle className="w-4 h-4" />
+                )}
+                {test.data.ok ? "All checks passed" : "Some checks failed"}
+              </div>
+              <ul className="space-y-2">
+                {test.data.checks.map((c) => (
+                  <li key={c.key} className="flex items-start gap-2">
+                    {c.ok ? (
+                      <CheckCircle2 className="w-4 h-4 text-success mt-0.5 shrink-0" />
+                    ) : (
+                      <XCircle className="w-4 h-4 text-danger mt-0.5 shrink-0" />
+                    )}
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-medium">{c.label}</div>
+                      {c.detail && (
+                        <div className="text-[11px] text-text-muted break-words">
+                          {c.detail}
+                        </div>
+                      )}
+                      {c.checkout_url && (
+                        <a
+                          href={c.checkout_url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-[11px] text-accent mt-1 hover:underline"
+                        >
+                          <ExternalLink className="w-3 h-3" /> Open test
+                          checkout
+                        </a>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
       </div>
     </Drawer>
   );

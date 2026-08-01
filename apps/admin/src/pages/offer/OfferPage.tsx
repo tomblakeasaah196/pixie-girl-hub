@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   PenLine,
   Building2,
+  Download,
 } from "lucide-react";
 import { SignaturePad } from "@/components/sign/SignaturePad";
 import { publicOfferApi, type PublicOffer } from "@/lib/recruitment-api";
@@ -102,8 +103,11 @@ export function OfferPage() {
         <Centered
           icon={<CheckCircle2 className="h-8 w-8 text-text-faint" />}
           title="This offer is already complete"
-          body="No further action is needed. If you think this is a mistake, contact the sender."
+          body="No further action is needed. You can still download your offer document below. If you think this is a mistake, contact the sender."
         />
+        <div className="flex justify-center pb-4">
+          <DownloadOfferButton token={token} label="Download offer (PDF)" />
+        </div>
       </Shell>
     );
   }
@@ -129,6 +133,12 @@ export function OfferPage() {
         {offer?.packet_html && (
           <PacketFrame label="Signed offer packet" html={offer.packet_html} />
         )}
+
+        {/* Download the signed packet (with the stamped signature) — available
+            every time this link is opened, not just once. */}
+        <div className="mb-4 flex justify-center">
+          <DownloadOfferButton token={token} label="Download signed offer (PDF)" />
+        </div>
 
         {/* The actual captured signature — not just "signed". */}
         {signatureImg && (
@@ -192,6 +202,12 @@ export function OfferPage() {
           they'll download after signing. */}
       <PacketFrame label="Offer packet — Job Description & Offer Letter" html={offer!.packet_html} />
 
+      {/* Read it offline / keep a copy — download the same branded PDF any time,
+          before or after signing. */}
+      <div className="mb-5 flex justify-center">
+        <DownloadOfferButton token={token} label="Download a PDF copy" variant="ghost" />
+      </div>
+
       {/* Company countersignature note */}
       <div className="mb-5 rounded-xl border hairline bg-surface-2 p-3 text-[12px] text-text-muted">
         Executed on behalf of {brandName} by{" "}
@@ -244,6 +260,65 @@ export function OfferPage() {
         </p>
       </div>
     </Shell>
+  );
+}
+
+// ── Download the offer as a PDF ────────────────────────────
+/**
+ * Self-serve PDF download from the tokenised link — available before and after
+ * signing. Hits the public exporter (no login; the token is the credential) and
+ * saves the SAME branded packet the admin studio produces. `variant` picks the
+ * prominent accent button (signed screen) or a quiet outline (while reviewing).
+ */
+function DownloadOfferButton({
+  token,
+  label = "Download offer (PDF)",
+  variant = "solid",
+}: {
+  token: string;
+  label?: string;
+  variant?: "solid" | "ghost";
+}) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function run() {
+    if (busy) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await publicOfferApi.downloadPdf(token);
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "We couldn't prepare your PDF. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const base =
+    "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-medium transition-all disabled:opacity-50";
+  const skin =
+    variant === "solid"
+      ? "bg-accent text-bg hover:bg-accent-glow"
+      : "border hairline bg-surface-2 text-text-primary hover:border-accent/50";
+
+  return (
+    <div>
+      <button type="button" onClick={run} disabled={busy} className={`${base} ${skin}`}>
+        {busy ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <Download className="h-4 w-4" />
+        )}
+        {busy ? "Preparing…" : label}
+      </button>
+      {err && (
+        <p className="mt-2 inline-flex items-center gap-1.5 text-[12px] text-danger">
+          <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+          {err}
+        </p>
+      )}
+    </div>
   );
 }
 

@@ -71,6 +71,46 @@ async function sendResetLink(req, res) {
   res.json({ data });
 }
 
+async function updateUserEmail(req, res) {
+  const data = await service.updateUserEmail(
+    ctx(req),
+    req.params.userId,
+    req.body.email,
+  );
+  res.json({ data });
+}
+
+// ── Trash (soft delete) / restore / purge ───────────────────
+
+async function listTrashedUsers(req, res) {
+  const result = await service.listTrashedUsers(ctx(req), req.query);
+  res.json(result);
+}
+
+async function trashUser(req, res) {
+  const data = await service.trashUser(
+    ctx(req),
+    req.params.userId,
+    req.body && req.body.reason,
+  );
+  res.json({ data });
+}
+
+async function restoreUser(req, res) {
+  const data = await service.restoreUser(ctx(req), req.params.userId);
+  res.json({ data });
+}
+
+async function getUserReferences(req, res) {
+  const data = await service.getUserReferences(ctx(req), req.params.userId);
+  res.json({ data });
+}
+
+async function purgeUser(req, res) {
+  const data = await service.purgeUser(ctx(req), req.params.userId);
+  res.json({ data });
+}
+
 // ── Sessions (admin) ────────────────────────────────────────
 
 async function listAllSessions(req, res) {
@@ -246,6 +286,13 @@ module.exports = {
   reactivateUser,
   adminResetPassword,
   sendResetLink,
+  updateUserEmail,
+  // Trash / restore / purge
+  listTrashedUsers,
+  trashUser,
+  restoreUser,
+  getUserReferences,
+  purgeUser,
   // Sessions (admin)
   listAllSessions,
   listUserSessions,

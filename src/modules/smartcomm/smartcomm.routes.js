@@ -13,9 +13,11 @@
 "use strict";
 
 const express = require("express");
+const multer = require("multer");
 const c = require("./smartcomm.controller");
 const v = require("./smartcomm.validator");
 const { requirePermission, requireCeo } = require("../../middleware/rbac");
+const { config } = require("../../config/env");
 
 // Side-effects:
 //   - sales.order.payment_reminder → customer dispatch (G-4)
@@ -28,16 +30,39 @@ const router = express.Router();
 const can = (action) => requirePermission("smartcomm", action);
 const canPraxis = (action) => requirePermission("praxis_ai", action);
 
+const imageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: (config.MEDIA_MAX_FILE_SIZE_MB || 10) * 1024 * 1024 },
+});
+
 // ── Reads + dispatch (literal segments before /channels/:id) ─
 router.get("/unread-count", can("view"), c.getUnreadCount);
 router.get("/starred", can("view"), c.listStarred);
 router.get("/search", can("view"), c.searchMessages);
+// Link preview (unfurl): fetch OG/Twitter metadata for a URL shared in a
+// thread so the chat can render a WhatsApp-style preview card. Read-gated —
+// any messaging user can preview a link they can already see.
+router.get("/link-preview", can("view"), c.getLinkPreview);
 router.post("/send", can("edit"), v.validateSendToCustomer, c.sendToCustomer);
+// Rich email composer: inline image upload (drag/drop or pick → public URL).
+// Same gate as sending — any rep who can reply can embed an image.
+router.post(
+  "/upload-image",
+  can("edit"),
+  imageUpload.single("file"),
+  c.uploadImage,
+);
 
 // ── Colleague directory (internal people-picker) ───────────
 // smartcomm.view so any messaging user can start a group / add teammates,
 // rather than needing iam.view (the old /iam/users source most staff lacked).
 router.get("/colleagues", can("view"), c.listColleagues);
+
+// The requesting user's own channel visibility — read by the inbox to hide
+// tabs for channels they can't reach. Self-only, so plain smartcomm.view (NOT
+// requireCeo). Distinct literal path, so it never collides with the CEO
+// `/channel-access/:user_id` matrix route below.
+router.get("/my-channel-access", can("view"), c.getMyChannelAccess);
 
 // ── CEO channel-access matrix (SSOT) ───────────────────────
 // Owner-only: who may reach which channels (in-house/groups, WhatsApp,

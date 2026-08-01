@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Scissors,
   LayoutGrid,
@@ -10,6 +10,8 @@ import {
   Sparkles,
   UserRound,
   Plus,
+  Trophy,
+  ArrowLeft,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import {
@@ -31,6 +33,8 @@ import { RecipesPanel } from "./RecipesPanel";
 import { AccountabilityPanel } from "./AccountabilityPanel";
 import { MyStudioJobs } from "./MyStudioJobs";
 import { QcQueue } from "./QcQueue";
+import { ScorecardsPanel } from "./ScorecardsPanel";
+import { WorkingNowStrip } from "./WorkingNowStrip";
 import {
   useJobs,
   useServiceTypes,
@@ -525,6 +529,7 @@ type Tab =
   | "board"
   | "qc"
   | "accountability"
+  | "scorecards"
   | "types"
   | "recipes"
   | "reconciliation";
@@ -534,6 +539,7 @@ const TAB_IDS: Tab[] = [
   "board",
   "qc",
   "accountability",
+  "scorecards",
   "types",
   "recipes",
   "reconciliation",
@@ -541,23 +547,57 @@ const TAB_IDS: Tab[] = [
 
 export function ServiceJobsPage() {
   useBreadcrumbs([{ label: "Stylist Studio" }]);
+  const navigate = useNavigate();
   const can = useAuthStore((s) => s.can);
+  // The full studio — Job Board, QC Queue, Wig Accountability, Team Scorecards,
+  // Service Types, Chemical Reconciliation — is for the people who MANAGE the
+  // studio: the operations manager / CEO, i.e. anyone holding the `approve`
+  // right on this module. Everyone else (individual stylists, and the front
+  // desk) gets the personal cockpit: just "My Jobs" plus the Recipe library
+  // they need to actually do the work.
+  //
+  // We key on the approve right rather than on view record-scope on purpose: a
+  // stylist who also holds a broader-scoped role (e.g. the front-desk
+  // `service_jobs view:all` grant) would slip past a scope check and see the
+  // entire board — assignments, everyone else's jobs, the accountability
+  // ledger — which is the exact leak this gate closes. The API still enforces
+  // every call regardless.
+  const isStudioManager = can("service_jobs", "approve");
+  const personalCockpit = !isStudioManager;
   // Tab lives in the URL so deep links from Orders / notifications land on the
   // right pane (?tab=board&job=<id> opens the board with the job drawer up).
   const [sp, setSp] = useSearchParams();
+  // When Studio was opened from an order (deep-link carries fromOrder), offer a
+  // clear way back to that exact order-detail page — the global floating Back
+  // pill only returns to the Command Center.
+  const fromOrder = sp.get("fromOrder");
+  const fromOrderNo = sp.get("fromOrderNo");
+  const backToOrder = fromOrder ? (
+    <button
+      type="button"
+      onClick={() => navigate(`/sales/orders/${fromOrder}`)}
+      className="inline-flex items-center gap-1.5 h-9 px-3 rounded-[10px] border border-line text-[13px] font-semibold text-text-muted hover:text-text-primary hover:bg-text-primary/[0.05] transition-colors"
+    >
+      <ArrowLeft className="w-4 h-4" />
+      Back to order{fromOrderNo ? ` ${fromOrderNo}` : ""}
+    </button>
+  ) : null;
   const urlTab = sp.get("tab") as Tab | null;
-  const tab: Tab = urlTab && TAB_IDS.includes(urlTab) ? urlTab : "board";
+  const defaultTab: Tab = personalCockpit ? "my" : "board";
+  const tab: Tab = urlTab && TAB_IDS.includes(urlTab) ? urlTab : defaultTab;
   const setTab = (t: Tab) =>
     setSp((p) => {
       const next = new URLSearchParams(p);
       next.set("tab", t);
       next.delete("job"); // switching panes drops the job focus
+      next.delete("stylist"); // ...and any scorecard drill-down
       return next;
     });
 
   if (!can("service_jobs", "view")) {
     return (
-      <div className="p-6">
+      <div className="p-6 space-y-4">
+        {backToOrder}
         <div className="glass rounded-[16px] shadow-glass p-8 text-center space-y-3 max-w-md mx-auto">
           <span className="grid place-items-center w-12 h-12 mx-auto rounded-[14px] bg-text-primary/[0.05] border border-line text-text-faint">
             <Scissors className="w-6 h-6" />
@@ -574,26 +614,46 @@ export function ServiceJobsPage() {
   const canCreate = can("service_jobs", "create");
   const canEdit = can("service_jobs", "edit");
 
-  const tabs: { id: Tab; label: string; icon: typeof LayoutGrid }[] = [
+  const allTabs: { id: Tab; label: string; icon: typeof LayoutGrid }[] = [
     { id: "my", label: "My Jobs", icon: UserRound },
     { id: "board", label: "Job Board", icon: LayoutGrid },
     { id: "qc", label: "QC Queue", icon: ClipboardCheck },
     { id: "accountability", label: "Wig Accountability", icon: PackageSearch },
+    { id: "scorecards", label: "Team Scorecards", icon: Trophy },
     { id: "types", label: "Service Types", icon: Wrench },
     { id: "recipes", label: "Recipes", icon: Sparkles },
     { id: "reconciliation", label: "Chemical Reconciliation", icon: FlaskConical },
   ];
+  // Personal-cockpit users (stylists / front desk without the approve right)
+  // see only their own queue + the recipe library (they need it to actually do
+  // the work). Every ops-only surface — the board, QC queue, wig accountability
+  // ledger, team scorecards, service types, reconciliation — is hidden. The API
+  // enforces the same rules regardless.
+  const tabs = personalCockpit
+    ? allTabs.filter((t) => t.id === "my" || t.id === "recipes")
+    : allTabs;
+  // If someone lands on a hidden tab via a stale URL, silently redirect to
+  // the visible default rather than showing a blank pane.
+  const currentTabVisible = tabs.some((t) => t.id === tab);
+  const effectiveTab: Tab = currentTabVisible ? tab : defaultTab;
 
   return (
     <div className="p-4 md:p-6 space-y-5">
+      {backToOrder}
       <ModuleInsights module="service_jobs" />
-      {/* KPI strip (the page title/subtitle already render in the app header) */}
-      <KpiStrip />
+      {/* Personal-cockpit stylists get a persistent "You're working on Job X —
+          47m elapsed [Pause]" strip when a time session is running, so the
+          Pause control is always one tap away no matter which tab they're
+          on. Renders nothing when no clock is running (or for Ops). */}
+      <WorkingNowStrip enabled={personalCockpit} />
+      {/* KPI strip is an ops-wide summary — a stylist doesn't need "no-sale
+          risk" or team happiness on their personal cockpit. */}
+      {!personalCockpit && <KpiStrip />}
 
       {/* Tabs — glassy pills */}
       <div className="flex gap-1 p-1 rounded-[13px] glass shadow-glass overflow-x-auto">
         {tabs.map((t) => {
-          const on = tab === t.id;
+          const on = effectiveTab === t.id;
           const Icon = t.icon;
           return (
             <button
@@ -615,13 +675,14 @@ export function ServiceJobsPage() {
       </div>
 
       {/* Tab content */}
-      {tab === "my" && <MyStudioJobs />}
-      {tab === "board" && <JobBoard canCreate={canCreate} />}
-      {tab === "qc" && <QcQueue />}
-      {tab === "accountability" && <AccountabilityPanel />}
-      {tab === "types" && <ServiceTypesTab canCreate={canCreate} />}
-      {tab === "recipes" && <RecipesPanel canCreate={canEdit} />}
-      {tab === "reconciliation" && <ReconciliationTab />}
+      {effectiveTab === "my" && <MyStudioJobs />}
+      {effectiveTab === "board" && <JobBoard canCreate={canCreate} />}
+      {effectiveTab === "qc" && <QcQueue />}
+      {effectiveTab === "accountability" && <AccountabilityPanel />}
+      {effectiveTab === "scorecards" && <ScorecardsPanel />}
+      {effectiveTab === "types" && <ServiceTypesTab canCreate={canCreate} />}
+      {effectiveTab === "recipes" && <RecipesPanel canCreate={canEdit} />}
+      {effectiveTab === "reconciliation" && <ReconciliationTab />}
     </div>
   );
 }

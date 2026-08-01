@@ -135,16 +135,6 @@ const DETAIL_COLUMNS = {
       col("click_rate_pct", "Click %", "pct"),
       col("conversion_revenue_ngn", "Revenue ₦", "money"),
     ],
-    ad_campaigns: [
-      col("name", "Campaign"),
-      col("platform", "Platform"),
-      col("objective", "Objective"),
-      col("status", "Status"),
-      col("spend_ngn", "Spend ₦", "money"),
-      col("clicks", "Clicks", "int"),
-      col("conversions", "Conversions", "int"),
-      col("conversion_value_ngn", "Return ₦", "money"),
-    ],
   },
   ecommerce: {
     storefront_orders: [

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -176,7 +176,7 @@ function StyledDetail({ id }: { id: string }) {
   return (
     <StyledEditor
       s={styled.data}
-      canPublish={can("catalogue", "publish")}
+      canPublish={can("catalogue", "approve")}
       canEdit={can("catalogue", "edit")}
       onBack={() => nav("/catalogue?tab=styled")}
     />
@@ -200,6 +200,41 @@ function StyledEditor({
   const unpublish = useUnpublishStyled();
   const remove = useRemoveStyled();
   const addToCampaign = useAddStyledToCampaign();
+
+  // The bases this style actually sells from — the distinct per-size bases of
+  // its ACTIVE variants (not just the size-S seed the card used to headline).
+  // Grouped by base family (name minus its size suffix) with the sizes it
+  // covers, so a multi-size style reads "…HD13x4 — S · M · L" instead of a lone
+  // "…- Small". Falls back to the seed base for a variant with no base of its
+  // own. `count` is the number of distinct base SKUs behind the style.
+  const stockBases = useMemo(() => {
+    const ABBR: Record<string, string> = {
+      small: "S",
+      medium: "M",
+      large: "L",
+      xl: "XL",
+    };
+    const ORDER = ["S", "M", "L", "XL"];
+    const families = new Map<string, Set<string>>();
+    const baseIds = new Set<string>();
+    for (const v of s.variants ?? []) {
+      if (!v.is_active) continue;
+      const name = v.base_product_name ?? s.base_name;
+      if (v.base_product_id) baseIds.add(v.base_product_id);
+      const m = name.match(/^(.*?)\s*-\s*(small|medium|large|xl)\s*$/i);
+      const family = (m ? m[1] : name).trim();
+      const size = m ? (ABBR[m[2].toLowerCase()] ?? m[2]) : null;
+      if (!families.has(family)) families.set(family, new Set());
+      if (size) families.get(family)!.add(size);
+    }
+    const list = [...families.entries()].map(([family, sizes]) => ({
+      family,
+      sizes: [...sizes].sort(
+        (a, b) => ORDER.indexOf(a) - ORDER.indexOf(b),
+      ),
+    }));
+    return { list, count: baseIds.size };
+  }, [s.variants, s.base_name]);
 
   const [name, setName] = useState(s.name);
   const [campaignFeedback, setCampaignFeedback] = useState<string | null>(null);
@@ -535,14 +570,14 @@ function StyledEditor({
           </Card>
           <Card className="p-4">
             <div className="flex items-center justify-between mb-1.5">
-              <div className="micro">Base product</div>
+              <div className="micro">Stock bases</div>
               {canEdit && s.status === "draft" && !editingBase && (
                 <button
                   type="button"
                   onClick={() => setEditingBase(true)}
                   className="text-[12px] font-semibold text-accent-glow hover:underline"
                 >
-                  change
+                  change seed
                 </button>
               )}
             </div>
@@ -572,28 +607,62 @@ function StyledEditor({
                   cancel
                 </button>
               </div>
+            ) : stockBases.list.length > 0 ? (
+              <>
+                <div className="text-[11px] text-text-faint mb-1.5">
+                  Sells from {stockBases.count} base SKU
+                  {stockBases.count === 1 ? "" : "s"} across sizes:
+                </div>
+                <ul className="flex flex-col gap-1">
+                  {stockBases.list.map((b) => (
+                    <li key={b.family} className="text-[12.5px] leading-snug">
+                      {b.family}
+                      {b.sizes.length > 0 && (
+                        <span className="text-text-faint">
+                          {" "}
+                          — {b.sizes.join(" · ")}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-[11px] text-text-faint mt-2">
+                  price anchor ·{" "}
+                  <span className="font-mono text-accent-glow">
+                    {s.base_product_code}
+                  </span>{" "}
+                  (size S)
+                  {s.status === "draft"
+                    ? ""
+                    : " — unpublish to a draft to change"}
+                </p>
+              </>
             ) : (
+              // No active variants yet (a fresh draft) — show the seed base
+              // itself, since there are no per-size bases to list.
               <>
                 <div className="text-[13px]">{s.base_name}</div>
                 <div className="font-mono text-[10.5px] text-accent-glow">
                   {s.base_product_code}
                 </div>
                 <p className="text-[11px] text-text-faint mt-1.5">
-                  {s.status === "draft"
-                    ? "wholesale base · stock source"
-                    : "wholesale base · stock source — unpublish to a draft to change"}
+                  wholesale seed base · add colours &amp; sizes, then each draws
+                  stock from its own base
                 </p>
               </>
             )}
           </Card>
           {canEdit && (
             <Card className="p-4">
-              <AddToCollection styledId={s.styled_id} />
+              <AddToCollection
+                styledId={s.styled_id}
+                current={s.collections ?? []}
+              />
             </Card>
           )}
           {canEdit && (
             <Card className="p-4">
-              <AddToBundle styledId={s.styled_id} />
+              <AddToBundle styledId={s.styled_id} current={s.bundles ?? []} />
             </Card>
           )}
           {canEdit && (

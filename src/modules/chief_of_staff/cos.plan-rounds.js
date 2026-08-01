@@ -41,10 +41,14 @@ const MAX_PLAN_STEPS = 60;
 const MAX_READS = 12;
 
 // First-person commitment with nothing attached — "Let me fire it all in
-// now", "I'll set this up", "Let me start building". Deliberately requires a
-// commitment verb so plain chat ("let me know", "let me think") never trips.
+// now", "I'll set this up", "Let me check the team database". Deliberately
+// requires a commitment verb so plain chat ("let me know", "let me think")
+// never trips. READ verbs (check/search/look up/find/verify/confirm/pull up)
+// are covered too: "Let me check our team database for X" with no tool call
+// was shipping as a dead promise — the lookup never ran and the CEO could ask
+// again forever (the Samuel-Farounbi bug).
 const PROMISE_RE =
-  /\b(let me|i(?:'|’)ll|i will|i am going to|i(?:'|’)m going to)\s+(now\s+)?(go ahead and\s+)?(fire|fir(?:e|ing)|set(?:ting)? (?:this|that|it|everything) up|set up|build|start building|creat|draft|add|queue|schedul|put (?:this|that|it) (?:in|together)|lay (?:it|this|that) (?:all )?(?:in|out))/i;
+  /\b(let me|i(?:'|’)ll|i will|i am going to|i(?:'|’)m going to)\s+(now\s+)?(go ahead and\s+)?(fire|fir(?:e|ing)|set(?:ting)? (?:this|that|it|everything) up|set up|build|start building|creat|draft|add|queue|schedul|put (?:this|that|it) (?:in|together)|lay (?:it|this|that) (?:all )?(?:in|out)|(?:double[- ])?check|search|look\s+(?:(?:\w+)\s+)?(?:up|into|for)|find|verify|confirm (?:whether|if|his|her|their|that)|pull\s+(?:\w+\s+)?up|retriev|quer(?:y|ies)|run a (?:search|lookup|check))/i;
 
 // Narrated step kinds vs the tool calls actually emitted. Tool names are the
 // safeName'd catalogue keys (workspace_add_milestone, workspace_create_task,
@@ -117,22 +121,23 @@ function continuationMessages({ completion, calls, results, missing, hadReads })
     role: "user",
     content:
       (hadReads
-        ? "The read results are above. Now continue: emit the plan's remaining WRITE steps as tool calls"
+        ? "The read results are above. Use them now: if the CEO's request needs work queued, emit the remaining WRITE steps as tool calls; if she asked a question, ANSWER it in plain text from these results — never reply with a bare acknowledgement"
         : "Continue building the SAME plan: emit the remaining steps as tool calls now") +
       (missing && missing.length
         ? ` — you described ${missing.join(", ")} that are not queued yet`
         : "") +
       ". Never repeat a step that is already queued; keep using the step numbering above for cross-step tokens. " +
-      "If every step is queued, reply with exactly DONE and no tool calls.",
+      "If every step is queued and nothing needs answering, reply with exactly DONE and no tool calls.",
   };
 
   return [assistant, ...toolMsgs, nudge];
 }
 
 const RETRY_NUDGE =
-  "You said you would set that up, but your reply contained no tool calls, so NOTHING was queued. " +
-  "Emit the tool calls for the WHOLE plan now. If you are genuinely still missing information, " +
-  "ask for it plainly instead — without promising action.";
+  "You said you would do that, but your reply contained no tool calls, so NOTHING was checked or queued. " +
+  "If you promised to check, search or look something up, call the matching READ tool now and answer from its results. " +
+  "If you promised to set work up, emit the tool calls for the WHOLE plan now. " +
+  "If you are genuinely still missing information, ask for it plainly instead — without promising action.";
 
 /**
  * Run the bounded plan-building loop.
@@ -168,7 +173,17 @@ async function runPlanRounds({
   detectFromContent = true,
   isRead = () => false,
   executeRead = null,
+  onProgress = null,
 }) {
+  const progress = (info) => {
+    if (typeof onProgress === "function") {
+      try {
+        onProgress(info);
+      } catch {
+        /* progress is best-effort — never break a turn */
+      }
+    }
+  };
   const completions = [];
   const allCalls = []; // accumulated WRITE calls only
   let msgs = [...messages];
@@ -176,6 +191,16 @@ async function runPlanRounds({
   let complete = true;
   let seenCalls = 0; // uniqueness seed for fallback tool_call ids
   let readsDone = 0;
+  // The most recent substantive text across ALL rounds. Round 0's narration
+  // is a promise ("Let me check the team database…") when the turn starts
+  // with reads — the real answer only arrives in the round AFTER the read
+  // results. Dropping it shipped the promise instead of the answer (the
+  // Samuel-Farounbi bug); this keeps it so the reply can prefer it.
+  let lastText = "";
+  const noteText = (c) => {
+    const t = String((c && c.content) || "").trim();
+    if (t && !/^done[.!]?$/i.test(t)) lastText = t;
+  };
 
   for (let round = 0; round < MAX_PLAN_ROUNDS; round++) {
     let completion;
@@ -190,6 +215,7 @@ async function runPlanRounds({
       break;
     }
     completions.push(completion);
+    noteText(completion);
 
     if (round === 0) {
       content = String(completion.content || "").trim();
@@ -203,6 +229,7 @@ async function runPlanRounds({
         ];
         const retry = await chat(msgs);
         completions.push(retry);
+        noteText(retry);
         if ((retry.tool_calls || []).length) {
           completion = retry;
           const t = String(retry.content || "").trim();
@@ -215,6 +242,7 @@ async function runPlanRounds({
             tool_calls: [],
             complete: true,
             completions,
+            reads: readsDone,
             broken_promise: promisesAction(content),
           };
         }
@@ -260,6 +288,15 @@ async function runPlanRounds({
       return JSON.stringify({ dropped: true, note: "Step budget exhausted — not queued." });
     });
 
+    // Live progress for the chat UI (replaces the dead spinner): what this
+    // round did — looked things up, or queued more steps.
+    progress({
+      round,
+      queued: allCalls.length + writes.length,
+      reads: readsDone,
+      had_reads: reads.length > 0,
+    });
+
     const owed =
       droppedByCap ||
       completion.finish_reason === "length" ||
@@ -289,7 +326,19 @@ async function runPlanRounds({
     allCalls.push(...writes);
   }
 
-  return { content, tool_calls: allCalls, complete, completions, broken_promise: false };
+  // Reply selection: a plan turn keeps round 0's narration (it describes what
+  // the CEO is approving; later rounds are ack noise). A turn that queued
+  // nothing — pure Q&A, usually read-grounded — prefers the LAST substantive
+  // text, which is the answer written after the read results came back.
+  const finalContent = allCalls.length ? content || lastText : lastText || content;
+  return {
+    content: finalContent,
+    tool_calls: allCalls,
+    complete,
+    completions,
+    reads: readsDone,
+    broken_promise: false,
+  };
 }
 
 module.exports = {

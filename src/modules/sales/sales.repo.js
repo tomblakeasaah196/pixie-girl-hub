@@ -9,6 +9,9 @@
 
 const { query, ex } = require("../../config/database");
 const { t } = require("../../config/brands");
+const {
+  nextDocumentNumber,
+} = require("../../shared/numbering/document-number");
 const ORDER = [
   "order_number",
   "contact_id",
@@ -26,6 +29,12 @@ const ORDER = [
   "shipping_fee_ngn",
   "total_ngn",
   "coupon_code",
+  // The quote this order was converted from (000090 pay-link rail, and the
+  // manual Convert button). quotations.converted_sales_order_id points forward;
+  // this is the back-pointer, which had never been written despite the column
+  // existing since 000019 — so "which quote produced this order?" was
+  // unanswerable from the order side.
+  "quotation_id",
   "client_idempotency_key",
   // Flexi Pay (D1): the buyer's explicit plan choice — distinct from
   // payment_model, which is the policy snapshot derived from it.
@@ -37,6 +46,15 @@ const ORDER = [
   // checkout; the stylist_programme outbox consumer accrues the commission on
   // order.paid. Distinct from the customer rail's referral_code_used.
   "stylist_referral_code",
+  // Staff attribution (Performance → Insights): who closed this sale. Set from
+  // the acting staff (Quick Sale) or the catalogue-share link's sharer; NULL
+  // for customer self-service checkouts (storefront / public form).
+  "closed_by_user_id",
+  // Customer referral rail (P0-3). Stamped by sales.service when a friend's
+  // ?ref= resolves to an active customer referral code; the retention
+  // subscriber then bumps the referrer's counters + credits their reward on
+  // order.paid. Distinct from stylist_referral_code above.
+  "referral_code_used",
 ];
 const LINE = [
   "order_id",
@@ -112,94 +130,11 @@ function ins(cols, src, extra = {}) {
   return { f, ph, p };
 }
 
-// Document-type → number suffix, mirroring the bootstrap seed (template 000035)
-// so an auto-provisioned sequence matches the house style (e.g. PXG-SO-0001).
-const DOC_SUFFIX = {
-  sales_order: "SO",
-  sales_order_payment: "PAY",
-  quotation: "QUO",
-  credit_note: "CN",
-  receipt: "RCT",
-  invoice: "INV",
-  stock_movement: "MOV",
-  stock_transfer: "TRF",
-  stock_adjustment: "ADJ",
-  cancellation_request: "CR",
-};
-
-function isMissingSequence(err) {
-  return Boolean(
-    err &&
-    (err.code === "P0001" || !err.code) &&
-    /document_numbering/i.test(err.message || ""),
-  );
-}
-
-// Seed a missing document_numbering row so checkout self-heals instead of
-// 500-ing when a brand wasn't fully provisioned. Prefix root is borrowed from
-// any existing sequence for the brand (house style), else derived from the key.
-async function provisionSequence(run, brand, type) {
-  const { rows } = await run(
-    `SELECT split_part(prefix,'-',1) AS root
-       FROM shared.document_numbering
-      WHERE business = $1 AND prefix LIKE '%-%'
-      ORDER BY seq_id LIMIT 1`,
-    [brand],
-  );
-  const root =
-    (rows[0] && rows[0].root) ||
-    brand
-      .replace(/[^a-zA-Z0-9]/g, "")
-      .slice(0, 4)
-      .toUpperCase() ||
-    "DOC";
-  const suffix =
-    DOC_SUFFIX[type] ||
-    String(type)
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, "")
-      .slice(0, 6) ||
-    "DOC";
-  await run(
-    `INSERT INTO shared.document_numbering (business, document_type, prefix, padding, next_number)
-     VALUES ($1, $2, $3, 4, 1)
-     ON CONFLICT DO NOTHING`,
-    [brand, type, `${root}-${suffix}`],
-  );
-}
-
+// Document numbering lives in one guarded helper — see
+// shared/numbering/document-number.js for why the raw SQL function must never
+// be called directly from inside a transaction.
 async function nextNumber({ client, brand, type }) {
-  const call = `SELECT ${t(brand, "fn_next_document_number")}($1) AS n`;
-  // Inside a transaction we must guard the call with a SAVEPOINT: if the
-  // sequence row is missing the function RAISEs, which aborts the whole
-  // transaction. The savepoint lets us recover, provision the row, and retry.
-  if (client) {
-    await client.query("SAVEPOINT pgh_docnum");
-    try {
-      const { rows } = await client.query(call, [type]);
-      await client.query("RELEASE SAVEPOINT pgh_docnum");
-      return rows[0].n;
-    } catch (err) {
-      await client.query("ROLLBACK TO SAVEPOINT pgh_docnum");
-      if (!isMissingSequence(err)) {
-        await client.query("RELEASE SAVEPOINT pgh_docnum").catch(() => {});
-        throw err;
-      }
-      await provisionSequence(client.query.bind(client), brand, type);
-      const { rows } = await client.query(call, [type]);
-      await client.query("RELEASE SAVEPOINT pgh_docnum").catch(() => {});
-      return rows[0].n;
-    }
-  }
-  try {
-    const { rows } = await query(call, [type]);
-    return rows[0].n;
-  } catch (err) {
-    if (!isMissingSequence(err)) throw err;
-    await provisionSequence(query, brand, type);
-    const { rows } = await query(call, [type]);
-    return rows[0].n;
-  }
+  return nextDocumentNumber({ client, brand, type });
 }
 
 // Batch variant pricing/snapshot contexts for an order's lines — one query
@@ -286,6 +221,38 @@ async function insertLine({ client, brand, line }) {
   );
   return rows[0];
 }
+/**
+ * Repoint a line at the base variant a rewig substitution actually reserved
+ * (000088). The line keeps its styled snapshot — the customer still bought
+ * "Nala Sleek Bangs Black — Medium" — but product_id/variant_id must follow the
+ * physical unit so payment-time deductForSale, reservation release on cancel,
+ * and COGS all hit the SKU that was really taken off the shelf. `note` is
+ * appended to the line's existing notes so the picklist tells the stylist the
+ * unit needs resizing.
+ */
+async function repointLineVariant({
+  client,
+  brand,
+  line_id,
+  product_id,
+  variant_id,
+  note,
+}) {
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "sales_order_lines")}
+        SET product_id = $2,
+            variant_id = $3,
+            notes = CASE
+                      WHEN notes IS NULL OR notes = '' THEN $4::text
+                      ELSE notes || E'\n' || $4::text
+                    END
+      WHERE line_id = $1
+      RETURNING *`,
+    [line_id, product_id, variant_id, note],
+  );
+  return rows[0] || null;
+}
+
 async function insertDiscount({ client, brand, disc }) {
   const { f, ph, p } = ins(DISC, disc);
   await ex(client)(
@@ -377,6 +344,14 @@ async function listOrders({
     where.push(`so.status = $${i++}`);
     params.push(filters.status);
   }
+  // Cancelled orders are archive material, not working list rows — the Orders
+  // table hides them by default and the Archive drawer asks for them
+  // explicitly. An explicit `status` filter always wins, so choosing
+  // "Cancelled" in the status dropdown still works.
+  if (filters.exclude_status && !filters.status) {
+    where.push(`so.status <> $${i++}`);
+    params.push(filters.exclude_status);
+  }
   if (filters.contact_id) {
     where.push(`so.contact_id = $${i++}`);
     params.push(filters.contact_id);
@@ -391,10 +366,17 @@ async function listOrders({
   }
   if (filters.q) {
     // Match the order number OR the customer's name / phone / email so staff
-    // can find an order by who placed it, not just by document number.
+    // can find an order by who placed it, not just by document number — plus
+    // the product / style / service names on the order's lines, so a search
+    // like "frontal" or a styled-product name surfaces every order carrying it.
     const ph = `$${i++}`;
     where.push(
-      `(so.order_number ILIKE ${ph} OR c.display_name ILIKE ${ph} OR c.primary_phone ILIKE ${ph} OR c.email ILIKE ${ph})`,
+      `(so.order_number ILIKE ${ph} OR c.display_name ILIKE ${ph} OR c.primary_phone ILIKE ${ph} OR c.email ILIKE ${ph}
+        OR EXISTS (
+          SELECT 1 FROM ${t(brand, "sales_order_lines")} sol_q
+           WHERE sol_q.order_id = so.order_id
+             AND sol_q.product_name_snapshot ILIKE ${ph}
+        ))`,
     );
     params.push(`%${filters.q}%`);
   }
@@ -404,6 +386,10 @@ async function listOrders({
     where.push(
       `so.payment_plan = 'instalment' AND so.amount_paid_ngn > 0 AND so.balance_due_ngn > 0 AND so.status NOT IN ('cancelled','refunded')`,
     );
+  }
+  if (filters.is_preorder) {
+    // Sales → Pre-orders tab (000086): orders carrying a made-to-order line.
+    where.push(`so.is_preorder = true`);
   }
   if (filters.fee_pending) {
     // internal_notes is a TEXT column that stores a JSON-stringified object
@@ -428,15 +414,38 @@ async function listOrders({
   );
   const { rows } = await run(
     `SELECT so.*, c.display_name AS contact_name,
-            lk.line_kinds
+            lk.line_kinds,
+            li.line_items,
+            inv.invoice_id, inv.invoice_number, inv.status AS invoice_status
        FROM ${t(brand, "sales_orders")} so
        LEFT JOIN shared.contacts c ON c.contact_id = so.contact_id
+       -- The order's invoice, for the list's deep-link column. An order carries
+       -- at most one live invoice; take the newest if history left more.
+       LEFT JOIN LATERAL (
+         SELECT i2.invoice_id, i2.invoice_number, i2.status
+           FROM ${t(brand, "invoices")} i2
+          WHERE i2.order_id = so.order_id
+          ORDER BY i2.created_at DESC
+          LIMIT 1
+       ) inv ON true
        LEFT JOIN LATERAL (
          SELECT array_agg(DISTINCT sol.line_kind) AS line_kinds
            FROM ${t(brand, "sales_order_lines")} sol
           WHERE sol.order_id = so.order_id
        ) lk ON true
-       ${w} ORDER BY so.created_at DESC LIMIT $${i++} OFFSET $${i++}`,
+       LEFT JOIN LATERAL (
+         SELECT json_agg(
+                  json_build_object(
+                    'name', sol.product_name_snapshot,
+                    'variant', sol.variant_label_snapshot,
+                    'quantity', sol.quantity,
+                    'kind', sol.line_kind
+                  ) ORDER BY sol.display_order
+                ) AS line_items
+           FROM ${t(brand, "sales_order_lines")} sol
+          WHERE sol.order_id = so.order_id
+       ) li ON true
+       ${w} ORDER BY ${filters.is_preorder ? "so.preorder_ready_by ASC NULLS LAST, " : ""}so.created_at DESC LIMIT $${i++} OFFSET $${i++}`,
     [...params, page_size, offset],
   );
   return {
@@ -458,13 +467,36 @@ async function setStatus({ client, brand, id, status }) {
 }
 
 /**
+ * Guarded lifecycle advance: set the order to `to` ONLY when it is currently in
+ * one of `from`. Used by the fulfilment triggers (stylist assign → assigned, QC
+ * pass → order_ready, delivery dispatch → dispatched, delivered → completed) so
+ * an out-of-order or duplicate event can never rewind an order that a human (or
+ * a later stage) has already moved on. Returns the updated row, or null when the
+ * guard didn't match (already past that state / cancelled) — callers treat null
+ * as "nothing to do".
+ */
+async function advanceStatus({ client, brand, id, to, from }) {
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "sales_orders")}
+        SET status = $2
+      WHERE order_id = $1 AND status = ANY($3::text[])
+      RETURNING *`,
+    [id, to, from],
+  );
+  return rows[0] || null;
+}
+
+/**
  * Deposit-triggered (V2.2 §6.2): stamp the moment accumulated payments first
- * crossed the required deposit and move the order into production.
+ * crossed the required deposit. The status stays 'partially_paid' (the balance
+ * is still outstanding) — production is unlocked via the order.deposit_met
+ * event, not a status change. (The payment DB trigger also stamps
+ * deposit_met_at; this is the idempotent app-side backstop.)
  */
 async function markDepositMet({ client, brand, id }) {
   const { rows } = await ex(client)(
     `UPDATE ${t(brand, "sales_orders")}
-        SET status = 'in_production', deposit_met_at = now()
+        SET deposit_met_at = now()
       WHERE order_id = $1 AND deposit_met_at IS NULL
       RETURNING *`,
     [id],
@@ -739,9 +771,22 @@ async function findExistingPayment({ client, brand, payment }) {
   }
   return null;
 }
+/**
+ * Payments ledger for one order, each row naming the staff member who took the
+ * money. `recorded_by` is only a UUID on the row; a staff member's display name
+ * lives on the contact behind their staff profile, so resolve it here (email is
+ * the fallback for users without a profile, NULL for gateway-captured payments
+ * that no human recorded).
+ */
 async function listPayments({ client, brand, order_id }) {
   const { rows } = await ex(client)(
-    `SELECT * FROM ${t(brand, "sales_order_payments")} WHERE order_id = $1 ORDER BY recorded_at`,
+    `SELECT p.*, COALESCE(rc.display_name, ru.email) AS recorded_by_name
+       FROM ${t(brand, "sales_order_payments")} p
+       LEFT JOIN shared.users ru ON ru.user_id = p.recorded_by
+       LEFT JOIN shared.staff_profiles rsp ON rsp.profile_id = ru.staff_profile_id
+       LEFT JOIN shared.contacts rc ON rc.contact_id = rsp.contact_id
+      WHERE p.order_id = $1
+      ORDER BY p.recorded_at`,
     [order_id],
   );
   return rows;
@@ -796,6 +841,25 @@ async function paymentExistsByProviderRef({
     `SELECT 1 FROM ${t(brand, "sales_order_payments")}
       WHERE order_id = $1 AND provider_reference = $2 LIMIT 1`,
     [order_id, provider_reference],
+  );
+  return rows.length > 0;
+}
+
+/**
+ * Same dedup check as paymentExistsByProviderRef but WITHOUT an order_id —
+ * used by the Nomba ledger reconciliation sweep, which sees a raw account
+ * credit and doesn't know which order (if any) it already settled.
+ */
+async function paymentExistsByProviderRefAnyOrder({
+  client,
+  brand,
+  provider_reference,
+}) {
+  if (!provider_reference) return false;
+  const { rows } = await ex(client)(
+    `SELECT 1 FROM ${t(brand, "sales_order_payments")}
+      WHERE provider_reference = $1 LIMIT 1`,
+    [provider_reference],
   );
   return rows.length > 0;
 }
@@ -860,6 +924,63 @@ async function findQuotationById({ client, brand, id }) {
     [id],
   );
   return { ...rows[0], lines };
+}
+/**
+ * Mint (or return) the quotation's public pay token — the `/quote/:token` link
+ * a customer opens to pay a quote without logging in. Mirrors
+ * ensurePublicTrackingToken on the order side: the column has no default, so
+ * the token is created on first need and then fixed forever. Idempotent —
+ * COALESCE only fills a NULL, and the row lock serialises concurrent callers,
+ * so re-sending a quote never invalidates the link already in the customer's
+ * inbox.
+ */
+async function ensureQuotationPayToken({ client, brand, id }) {
+  if (!id) return null;
+  const token = require("crypto").randomBytes(18).toString("base64url");
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "quotations")}
+        SET public_pay_token = COALESCE(public_pay_token, $2)
+      WHERE quotation_id = $1
+      RETURNING public_pay_token`,
+    [id, token],
+  );
+  return rows[0] ? rows[0].public_pay_token : null;
+}
+/**
+ * Resolve a quotation by its public pay token. Header only — the pay page's
+ * preview needs totals and status, not the full line set.
+ */
+async function findQuotationByPayToken({ client, brand, token }) {
+  if (!token) return null;
+  const { rows } = await ex(client)(
+    `SELECT quotation_id, quotation_number, status, contact_id, total_ngn,
+            valid_until, display_currency, fx_rate_used, payment_terms,
+            converted_sales_order_id
+       FROM ${t(brand, "quotations")}
+      WHERE public_pay_token = $1 LIMIT 1`,
+    [token],
+  );
+  return rows[0] || null;
+}
+/**
+ * Resolve a quotation by its human number ('PXG-QUO-0001').
+ *
+ * Nomba's checkout API accepts no metadata — only an `orderReference` — so a
+ * quote paid through Nomba comes back as `nomba-PXG-QUO-0001-<ts>` and the
+ * webhook has nothing but that string to identify the document. This is the
+ * quote-side twin of findByOrderNumber, which serves the same purpose for
+ * orders.
+ */
+async function findQuotationByNumber({ client, brand, quotation_number }) {
+  if (!quotation_number) return null;
+  const { rows } = await ex(client)(
+    `SELECT quotation_id, quotation_number, status, total_ngn,
+            converted_sales_order_id
+       FROM ${t(brand, "quotations")}
+      WHERE quotation_number = $1 LIMIT 1`,
+    [quotation_number],
+  );
+  return rows[0] || null;
 }
 async function listQuotations({
   client,
@@ -1108,6 +1229,34 @@ async function findPendingTwins({
  * (rather than silently vanishing). abandonment_reason is the existing TEXT
  * column for auto-cancellation rationale.
  */
+/**
+ * The status an order sat in immediately before it was cancelled, read from the
+ * state-history trail so a restore returns it exactly where it was rather than
+ * guessing. NULL when the order has no recorded cancellation transition (legacy
+ * rows) — callers fall back to their own default.
+ */
+async function statusBeforeCancellation({ client, brand, id }) {
+  const { rows } = await ex(client)(
+    `SELECT from_status
+       FROM ${t(brand, "sales_order_state_history")}
+      WHERE order_id = $1 AND to_status = 'cancelled' AND from_status IS NOT NULL
+      ORDER BY changed_at DESC
+      LIMIT 1`,
+    [id],
+  );
+  return rows[0] ? rows[0].from_status : null;
+}
+
+/** Undo the cancellation stamp when an order is restored from the archive. */
+async function clearCancellation({ client, brand, id }) {
+  await ex(client)(
+    `UPDATE ${t(brand, "sales_orders")}
+        SET cancelled_at = NULL, cancellation_reason = NULL, abandonment_reason = NULL
+      WHERE order_id = $1`,
+    [id],
+  );
+}
+
 async function setCancellationReason({ client, brand, id, reason }) {
   await ex(client)(
     `UPDATE ${t(brand, "sales_orders")}
@@ -1231,7 +1380,67 @@ async function setDeliveryFee({ client, brand, id, fee_ngn }) {
   return rows[0] || null;
 }
 
+// ── Pre-orders (migration 000086) ────────────────────────
+/** Brand pre-order policy from catalogue_config, with safe defaults when the
+ *  singleton row predates the feature (master switch on, 4–8 week window). */
+async function getPreorderPolicy({ client, brand }) {
+  const { rows } = await ex(client)(
+    `SELECT preorder_enabled, preorder_min_weeks, preorder_max_weeks
+       FROM ${t(brand, "catalogue_config")} WHERE singleton = true`,
+  );
+  const r = rows[0] || {};
+  return {
+    enabled: r.preorder_enabled ?? true,
+    min_weeks: r.preorder_min_weeks ?? 4,
+    max_weeks: r.preorder_max_weeks ?? 8,
+  };
+}
+
+/** Which of these product_ids are explicitly opted OUT of pre-orders (so going
+ *  out of stock is a true "sold out" rather than a pre-order). */
+async function excludedPreorderProductIds({ client, brand, product_ids }) {
+  const ids = (product_ids || []).filter(Boolean);
+  if (!ids.length) return new Set();
+  const { rows } = await ex(client)(
+    `SELECT product_id FROM ${t(brand, "products")}
+      WHERE product_id = ANY($1::uuid[]) AND preorder_excluded = true`,
+    [ids],
+  );
+  return new Set(rows.map((r) => r.product_id));
+}
+
+async function markOrderPreorder({
+  client,
+  brand,
+  order_id,
+  ready_by,
+  min_weeks,
+  max_weeks,
+}) {
+  await ex(client)(
+    `UPDATE ${t(brand, "sales_orders")}
+        SET is_preorder = true, preorder_ready_by = $2,
+            preorder_min_weeks = $3, preorder_max_weeks = $4
+      WHERE order_id = $1`,
+    [order_id, ready_by, min_weeks, max_weeks],
+  );
+}
+
+async function markLinesPreorder({ client, brand, line_ids }) {
+  const ids = (line_ids || []).filter(Boolean);
+  if (!ids.length) return;
+  await ex(client)(
+    `UPDATE ${t(brand, "sales_order_lines")}
+        SET is_preorder = true WHERE line_id = ANY($1::uuid[])`,
+    [ids],
+  );
+}
+
 module.exports = {
+  getPreorderPolicy,
+  excludedPreorderProductIds,
+  markOrderPreorder,
+  markLinesPreorder,
   updateOrderHeader,
   listDiscounts,
   nextNumber,
@@ -1243,10 +1452,12 @@ module.exports = {
   findByPublicToken,
   findByOrderNumber,
   insertLine,
+  repointLineVariant,
   insertDiscount,
   findById,
   listOrders,
   setStatus,
+  advanceStatus,
   markDepositMet,
   listAbandonableLayaway,
   listLayawayDueForReminder,
@@ -1260,10 +1471,14 @@ module.exports = {
   listPayments,
   findReconcilablePosOrders,
   paymentExistsByProviderRef,
+  paymentExistsByProviderRefAnyOrder,
   claimReminderSend,
   createQuotation,
   insertQuotationLine,
   findQuotationById,
+  ensureQuotationPayToken,
+  findQuotationByPayToken,
+  findQuotationByNumber,
   listQuotations,
   setQuotationStatus,
   createCancellation,
@@ -1275,6 +1490,8 @@ module.exports = {
   findNearDuplicates,
   findPendingTwins,
   setCancellationReason,
+  statusBeforeCancellation,
+  clearCancellation,
   setDeliveryFee,
   reportOrders,
   reportLines,

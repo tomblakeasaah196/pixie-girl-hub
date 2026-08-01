@@ -30,4 +30,30 @@ const acceptInviteSchema = z.object({
   password,
 });
 
-module.exports = { loginSchema, changePasswordSchema, acceptInviteSchema };
+// The reset code is always checked against a specific operator's live token,
+// so every step of the flow carries the email it started with.
+const resetCode = z.string().regex(/^\d{6}$/, "Code must be 6 digits");
+
+const requestPasswordResetSchema = z.object({
+  email: z.string().email(),
+});
+
+const verifyResetCodeSchema = z.object({
+  email: z.string().email(),
+  code: resetCode,
+});
+
+const resetPasswordSchema = z.object({
+  email: z.string().email(),
+  code: resetCode,
+  new_password: password,
+});
+
+module.exports = {
+  loginSchema,
+  changePasswordSchema,
+  acceptInviteSchema,
+  requestPasswordResetSchema,
+  verifyResetCodeSchema,
+  resetPasswordSchema,
+};

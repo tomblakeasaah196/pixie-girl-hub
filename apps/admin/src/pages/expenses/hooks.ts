@@ -42,6 +42,15 @@ export function useExpenseCategories() {
   });
 }
 
+export function useExpenseReceipts(id: string | null) {
+  const brand = useBrand();
+  return useQuery({
+    queryKey: ["expense-receipts", brand, id],
+    queryFn: () => expApi.listExpenseReceipts(id!),
+    enabled: !!id,
+  });
+}
+
 export function useExpenseMutations() {
   const qc = useQueryClient();
   const invalidate = () => {
@@ -71,11 +80,38 @@ export function useExpenseMutations() {
     onSuccess: invalidate,
   });
 
+  const pay = useMutation({
+    mutationFn: (v: { id: string; input: expApi.PayExpenseInput }) =>
+      expApi.payExpense(v.id, v.input),
+    onSuccess: invalidate,
+  });
+
+  const addReceipt = useMutation({
+    mutationFn: (v: { id: string; file: File }) =>
+      expApi.uploadExpenseReceipt(v.id, v.file),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["expense-receipts"] }),
+  });
+
   const createCategory = useMutation({
     mutationFn: expApi.createExpenseCategory,
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: ["expense-categories"] }),
   });
 
-  return { create, submitExpense, approve, reject, createCategory };
+  return {
+    create,
+    submitExpense,
+    approve,
+    reject,
+    pay,
+    addReceipt,
+    createCategory,
+  };
+}
+
+/** Read a receipt (+ optional voice/note) into a suggested draft. Read-only. */
+export function useExtractExpense() {
+  return useMutation({
+    mutationFn: expApi.extractExpenseFromReceipt,
+  });
 }

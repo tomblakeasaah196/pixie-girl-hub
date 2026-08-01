@@ -73,8 +73,27 @@ const sizeConfig = z
     // One-click: allow base (stock-room) products in collections + bundles.
     // Default off — only styled products may be added.
     allow_base_in_collections_bundles: z.boolean().optional(),
+    // Universal pre-orders (migration 000086). Master switch + the production
+    // delivery window shown to buyers ("ships in ~min–max weeks").
+    preorder_enabled: z.boolean().optional(),
+    preorder_min_weeks: z.coerce.number().int().min(0).max(52).optional(),
+    preorder_max_weeks: z.coerce.number().int().min(0).max(52).optional(),
+    // Rewig adjacency (000088): a base one size up/down may fill an order
+    // when its own size is short — same styling job, no separate service.
+    rewig_enabled: z.boolean().optional(),
+    rewig_mode: z.enum(["automatic", "opt_in"]).optional(),
+    rewig_direction: z
+      .enum(["down_first", "up_first", "no_preference"])
+      .optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (v) =>
+      v.preorder_min_weeks === undefined ||
+      v.preorder_max_weeks === undefined ||
+      v.preorder_max_weeks >= v.preorder_min_weeks,
+    { message: "Max weeks must be ≥ min weeks", path: ["preorder_max_weeks"] },
+  );
 
 const colourCreate = z
   .object({
@@ -105,6 +124,9 @@ const variantBulkCreate = z
     // Lace axis (optional): generate colour × size × lace. Omit for no lace.
     all_lace: z.boolean().optional(),
     lace_codes: z.array(laceCode).optional(),
+    // Auto-map each generated size to its own matching per-size base product
+    // (by name family), instead of seeding every variant on the styled base.
+    auto_map_bases: z.boolean().optional(),
   })
   .strict()
   .refine((v) => v.all_sizes || (v.size_codes && v.size_codes.length), {
@@ -126,6 +148,13 @@ const variantUpdate = z
   })
   .strict();
 
+// Deleting a lace construction: an optional replacement code (required by the
+// service only when the lace is in use — the empty-body case is the "not in
+// use, just trash it" path).
+const laceDelete = z
+  .object({ replacement_code: z.string().max(40).optional() })
+  .strict();
+
 const mw = (s) => (req, _res, next) => {
   req.body = s.parse(req.body ?? {});
   next();
@@ -137,4 +166,5 @@ module.exports = {
   validateColourUpdate: mw(colourUpdate),
   validateVariantBulkCreate: mw(variantBulkCreate),
   validateVariantUpdate: mw(variantUpdate),
+  validateLaceDelete: mw(laceDelete),
 };

@@ -233,29 +233,6 @@ async function emailCampaigns({ brand, from, to, limit, offset }) {
   );
 }
 
-async function adCampaigns({ brand, from, to, limit, offset }) {
-  const w = `WHERE c.business = $1`;
-  return paged(
-    `SELECT c.name, c.platform, c.objective, c.status,
-            COALESCE(SUM(s.spend_ngn) FILTER (
-              WHERE s.metric_date BETWEEN $2::timestamptz::date AND $3::timestamptz::date),0)::text AS spend_ngn,
-            COALESCE(SUM(s.clicks) FILTER (
-              WHERE s.metric_date BETWEEN $2::timestamptz::date AND $3::timestamptz::date),0)::int AS clicks,
-            COALESCE(SUM(s.conversions) FILTER (
-              WHERE s.metric_date BETWEEN $2::timestamptz::date AND $3::timestamptz::date),0)::int AS conversions,
-            COALESCE(SUM(s.conversion_value_ngn) FILTER (
-              WHERE s.metric_date BETWEEN $2::timestamptz::date AND $3::timestamptz::date),0)::text AS conversion_value_ngn
-       FROM shared.ad_campaigns c
-       LEFT JOIN shared.ad_spend_daily s ON s.ad_campaign_id = c.ad_campaign_id
-      ${w} GROUP BY c.ad_campaign_id, c.name, c.platform, c.objective, c.status
-      ORDER BY COALESCE(SUM(s.spend_ngn) FILTER (
-        WHERE s.metric_date BETWEEN $2::timestamptz::date AND $3::timestamptz::date),0) DESC`,
-    `SELECT count(*)::int AS total FROM shared.ad_campaigns c ${w}`,
-    [brand, from, to],
-    { limit, offset, countParams: [brand] },
-  );
-}
-
 // ── E-Commerce ─────────────────────────────────────────────
 
 async function storefrontOrders({ brand, from, to, limit, offset }) {
@@ -401,7 +378,7 @@ const DETAILS = {
   finance: { receivables, expenses: expensesDetail },
   stock: { low_stock: lowStock, movements },
   logistics: { deliveries },
-  marketing: { email_campaigns: emailCampaigns, ad_campaigns: adCampaigns },
+  marketing: { email_campaigns: emailCampaigns },
   ecommerce: { storefront_orders: storefrontOrders, sessions },
   retention: {
     referral_redemptions: referralRedemptions,

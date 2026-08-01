@@ -3764,6 +3764,14 @@ paths:
             in: query,
             schema: { type: string, format: uuid },
           }
+        - name: mine
+          in: query
+          description: >-
+            "My Jobs" cockpit filter. When true, narrows results to jobs the
+            caller currently holds OR once held (historical custody), even for
+            team/all-scope callers — otherwise a privileged caller (Ops, CEO)
+            receives the whole brand's jobs.
+          schema: { type: boolean }
       x-required-permission: "service_jobs.view"
       x-entity-scope: brand
       x-is-write: false
@@ -3831,10 +3839,28 @@ paths:
             required: true,
             schema: { type: string, format: uuid },
           }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [assigned_staff_user_id]
+              properties:
+                assigned_staff_user_id: { type: string, format: uuid }
+                expected_completion_at: { type: string, format: date-time }
+                acknowledge_unlinked:
+                  type: boolean
+                  description: >-
+                    Required (true) when the job has no sales order behind it.
+                    Such a job moves no stock, so the assigner must acknowledge
+                    the warning; without it the API returns 409
+                    UNLINKED_JOB_NOT_ACKNOWLEDGED.
       x-required-permission: "service_jobs.edit"
       x-entity-scope: brand
       x-is-write: true
-      responses: { "200": { description: Assigned } }
+      responses:
+        { "200": { description: Assigned },
+          "409": { description: Unacknowledged unlinked job, or wig already out } }
   /service-jobs/{id}/outcome:
     post:
       summary: Record quality / customer outcome on a job
@@ -5190,124 +5216,6 @@ paths:
       x-is-write: true
       responses: { "201": { description: Bridged } }
 
-  # ── Marketing / Ad Analytics (Module 6.15) ───────────────────────
-  /marketing/attribution:
-    get:
-      summary: Ad-spend → sales attribution report (ROAS by campaign ↔ utm_campaign)
-      tags: [marketing]
-      parameters:
-        - $ref: "#/components/parameters/BrandContext"
-        - { name: from, in: query, schema: { type: string, format: date } }
-        - { name: to, in: query, schema: { type: string, format: date } }
-      x-required-permission: "ad_analytics.view"
-      x-entity-scope: brand
-      x-is-write: false
-      responses: { "200": { description: Attribution + ROAS } }
-  /marketing/ad-accounts:
-    get:
-      summary: List ad accounts
-      tags: [marketing]
-      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
-      x-required-permission: "ad_analytics.view"
-      x-entity-scope: brand
-      x-is-write: false
-      responses: { "200": { description: Ad accounts } }
-    post:
-      summary: Connect an ad account
-      tags: [marketing]
-      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
-      x-required-permission: "ad_analytics.create"
-      x-entity-scope: brand
-      x-is-write: true
-      responses: { "201": { description: Connected } }
-  /marketing/ad-accounts/{id}:
-    delete:
-      summary: Deactivate an ad account
-      tags: [marketing]
-      parameters:
-        - $ref: "#/components/parameters/BrandContext"
-        - {
-            name: id,
-            in: path,
-            required: true,
-            schema: { type: string, format: uuid },
-          }
-      x-required-permission: "ad_analytics.delete"
-      x-entity-scope: brand
-      x-is-write: true
-      responses: { "204": { description: Deactivated } }
-  /marketing/ad-campaigns:
-    get:
-      summary: List ad campaigns
-      tags: [marketing]
-      parameters:
-        - $ref: "#/components/parameters/BrandContext"
-        - { name: status, in: query, schema: { type: string } }
-      x-required-permission: "ad_analytics.view"
-      x-entity-scope: brand
-      x-is-write: false
-      responses: { "200": { description: Ad campaigns } }
-    post:
-      summary: Create an ad campaign
-      tags: [marketing]
-      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
-      x-required-permission: "ad_analytics.create"
-      x-entity-scope: brand
-      x-is-write: true
-      responses: { "201": { description: Created } }
-  /marketing/ad-campaigns/{id}:
-    get:
-      summary: Get an ad campaign
-      tags: [marketing]
-      parameters:
-        - $ref: "#/components/parameters/BrandContext"
-        - {
-            name: id,
-            in: path,
-            required: true,
-            schema: { type: string, format: uuid },
-          }
-      x-required-permission: "ad_analytics.view"
-      x-entity-scope: brand
-      x-is-write: false
-      responses:
-        {
-          "200": { description: Campaign },
-          "404": { $ref: "#/components/responses/NotFound" },
-        }
-  /marketing/ad-campaigns/{id}/status:
-    post:
-      summary: Set ad campaign status
-      tags: [marketing]
-      parameters:
-        - $ref: "#/components/parameters/BrandContext"
-        - {
-            name: id,
-            in: path,
-            required: true,
-            schema: { type: string, format: uuid },
-          }
-      x-required-permission: "ad_analytics.edit"
-      x-entity-scope: brand
-      x-is-write: true
-      responses: { "200": { description: Updated } }
-  /marketing/ad-campaigns/{id}/spend:
-    post:
-      summary: Record daily ad spend/metrics
-      tags: [marketing]
-      parameters:
-        - $ref: "#/components/parameters/BrandContext"
-        - {
-            name: id,
-            in: path,
-            required: true,
-            schema: { type: string, format: uuid },
-          }
-      x-required-permission: "ad_analytics.edit"
-      x-entity-scope: brand
-      x-is-write: true
-      responses: { "201": { description: Recorded } }
-
   # ── Email Campaigns (Module 6.16) ────────────────────────────────
   /email-campaigns/templates:
     get:
@@ -5406,6 +5314,52 @@ paths:
       x-entity-scope: brand
       x-is-write: false
       responses: { "200": { description: Audience preview } }
+  /email-campaigns/segments/preview:
+    post:
+      summary: Live count + sample for an ad-hoc audience filter (pre-save)
+      tags: [email_campaigns]
+      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
+      x-required-permission: "email_campaigns.view"
+      x-entity-scope: brand
+      x-is-write: false
+      responses: { "200": { description: "{ count, sample[] }" } }
+  /email-campaigns/frame:
+    get:
+      summary: The brand email frame (header/footer config, defaults applied)
+      tags: [email_campaigns]
+      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
+      x-required-permission: "email_campaigns.view"
+      x-entity-scope: brand
+      x-is-write: false
+      responses: { "200": { description: "{ frame, defaults }" } }
+    put:
+      summary: Update the brand email frame (partial patch)
+      tags: [email_campaigns]
+      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
+      x-required-permission: "email_campaigns.edit"
+      x-entity-scope: brand
+      x-is-write: true
+      responses: { "200": { description: Updated frame } }
+  /email-campaigns/frame/shell:
+    get:
+      summary: Framed document shell for the mail editor's live preview
+      description: Real header/footer with brand tokens resolved and a
+        `<!--PGH_BODY-->` marker where the editor injects the body.
+      tags: [email_campaigns]
+      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
+      x-required-permission: "email_campaigns.view"
+      x-entity-scope: brand
+      x-is-write: false
+      responses: { "200": { description: "{ shell_html, tokens }" } }
+  /email-campaigns/upload-image:
+    post:
+      summary: Upload an image from the mail editor (multipart), returns { url }
+      tags: [email_campaigns]
+      parameters: [{ $ref: "#/components/parameters/BrandContext" }]
+      x-required-permission: "email_campaigns.create"
+      x-entity-scope: brand
+      x-is-write: true
+      responses: { "201": { description: "{ url }" } }
   /email-campaigns:
     get:
       summary: List email campaigns
@@ -5461,6 +5415,24 @@ paths:
       x-entity-scope: brand
       x-is-write: false
       responses: { "200": { description: Stats } }
+  /email-campaigns/{id}/preview:
+    get:
+      summary: The exact mail this campaign sends (send-pipeline render, no pixel)
+      description: Rendered with the brand frame, sale merge data and the first
+        real recipient when one exists (sample data otherwise).
+      tags: [email_campaigns]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - {
+            name: id,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
+      x-required-permission: "email_campaigns.view"
+      x-entity-scope: brand
+      x-is-write: false
+      responses: { "200": { description: "{ subject, html, sample_recipient }" } }
   /email-campaigns/{id}/ab-results:
     get:
       summary: A/B variant results + leading variant
@@ -7388,7 +7360,83 @@ paths:
         x-required-permission: "sales.edit",
         x-entity-scope: brand,
         x-is-write: true,
+        requestBody:
+          {
+            required: false,
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      {
+                        type: object,
+                        properties:
+                          {
+                            convert:
+                              {
+                                type: boolean,
+                                description: Also create the sales order now (order-first fallback, for sales settled offline),
+                              },
+                            sales_channel: { type: string },
+                          },
+                      },
+                  },
+              },
+          },
         responses: { "200": { description: Accepted } },
+      }
+  /sales/quotations/{quoId}/pay-link:
+    get:
+      {
+        summary: Customer pay link for a quotation,
+        description: "Mints (idempotently) the quote's public pay token and returns the /quote/<token> URL. When the customer pays that link the quotation is converted into a sales order automatically at gateway confirmation.",
+        tags: [sales],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: quoId,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "sales.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses:
+          {
+            "200":
+              {
+                description: Pay link,
+                content:
+                  {
+                    application/json:
+                      {
+                        schema:
+                          {
+                            type: object,
+                            properties:
+                              {
+                                data:
+                                  {
+                                    type: object,
+                                    properties:
+                                      {
+                                        quotation_id: { type: string, format: uuid },
+                                        quotation_number: { type: string },
+                                        status: { type: string },
+                                        total_ngn: { type: string },
+                                        public_pay_token: { type: string, nullable: true },
+                                        pay_url: { type: string },
+                                      },
+                                  },
+                              },
+                          },
+                      },
+                  },
+              },
+          },
       }
   /sales/quotations/{quoId}/reject:
     post:
@@ -8583,6 +8631,46 @@ paths:
         x-entity-scope: brand,
         x-is-write: true,
         responses: { "201": { description: Recorded } },
+      }
+  /stock/movements/{movId}:
+    get:
+      {
+        summary: Get one movement with its source document (order / adjustment / transfer / shipment),
+        tags: [stock],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: movId,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "stock.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Movement detail } },
+      }
+  /purchasing/purchase-orders/{poId}/receiving-plan:
+    get:
+      {
+        summary: Outstanding PO lines resolved to base products (prefills Goods Reception),
+        tags: [purchasing],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: poId,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "purchasing.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Receiving plan } },
       }
   /stock/adjustments:
     get:
@@ -11842,6 +11930,53 @@ paths:
         "201": { description: Checkout link }
         "404": { $ref: "#/components/responses/NotFound" }
         "422": { description: Below the plan minimum / exceeds balance }
+
+  # ── Public tokenised quotation pay-link (served at /api/public/quote) ──
+  # Paying a quotation converts it into a sales order at webhook confirmation:
+  # the checkout carries metadata.quotation_id (no order exists yet), and the
+  # gateway webhook mints the order, then records the payment against it.
+  /quote/{token}:
+    get:
+      summary: "PUBLIC: preview a quotation for payment — total, validity, terms, whether it is still payable, and the order it became if already paid (backs the /quote/{token} page; served at /api/public/quote/{token})"
+      tags: [sales, public]
+      security: []
+      parameters:
+        [{ name: token, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200":
+          description: Quote total + payable flag + display_fx_rate
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      brand: { type: string }
+                      quotation_number: { type: string }
+                      status: { type: string }
+                      converted_sales_order_id:
+                        { type: string, format: uuid, nullable: true }
+                      display_currency: { type: string }
+                      display_fx_rate: { type: number, nullable: true }
+                      total_ngn: { type: string }
+                      valid_until: { type: string, nullable: true }
+                      payment_terms: { type: string, nullable: true }
+                      payable: { type: boolean }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      summary: "PUBLIC: generate a checkout link for a quotation by token. Always the FULL quote total — a quote has no balance to part-pay. Paying it converts the quote into a sales order."
+      tags: [sales, public]
+      security: []
+      parameters:
+        [{ name: token, in: path, required: true, schema: { type: string } }]
+      responses:
+        "201": { description: Checkout link }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Quote is a draft, already converted, or expired
+        "422": { description: No FX rate configured for the settlement currency }
 
   # ── Payment gateways (B / §6.21 — CEO-managed, secrets write-only) ─
   /business-setup/payment-gateways:

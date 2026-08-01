@@ -86,6 +86,14 @@ export interface OrderFormResult {
   public_tracking_token: string | null;
   contact_id: string;
   booking_count: number;
+  // Pre-order notice (000086) — present only when a line went in as made to
+  // order, so the page can tell the buyer before/after paying.
+  preorder?: {
+    is_preorder: boolean;
+    line_count: number;
+    window_label?: string | null;
+    message?: string;
+  } | null;
 }
 
 export interface PayLinkResult {

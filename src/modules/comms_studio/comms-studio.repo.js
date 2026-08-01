@@ -33,6 +33,24 @@ async function listAutomations({ brand }) {
   return rows;
 }
 
+/**
+ * Lean on/off + channel state for a set of automations, keyed by event_key.
+ * For surfaces that only need "will this message actually send?" (e.g. the
+ * Sales order-status impact modal) without pulling the full template payload.
+ * event_keys with no configured policy row simply don't come back — the caller
+ * decides how to represent "not configured".
+ */
+async function getAutomationStates({ brand, event_keys }) {
+  if (!Array.isArray(event_keys) || event_keys.length === 0) return [];
+  const { rows } = await query(
+    `SELECT event_key, is_active, channel_preference
+       FROM shared.outbound_channel_policy
+      WHERE business = $1 AND event_key = ANY($2)`,
+    [brand, event_keys],
+  );
+  return rows;
+}
+
 /** One automation by event_key. */
 async function getAutomation({ brand, event_key }) {
   const { rows } = await query(
@@ -149,6 +167,7 @@ async function listSendLog({ brand, event_key, limit = 25 }) {
 
 module.exports = {
   listAutomations,
+  getAutomationStates,
   getAutomation,
   updateAutomation,
   claimSend,

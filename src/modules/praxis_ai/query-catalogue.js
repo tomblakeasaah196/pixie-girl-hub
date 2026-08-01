@@ -28,6 +28,7 @@ const contactsRepo = require("../../shared/contacts/contacts.repo");
 const crmRepo = require("../crm/crm.repo");
 const insightsRepo = require("../ai_insights/insights.repo");
 const campaignsRepo = require("../sales_campaigns/campaigns.repo");
+const perfInsights = require("../../shared/hr_payroll/insights.service");
 
 const str = (v) => (typeof v === "string" && v ? v : null);
 
@@ -209,7 +210,7 @@ const QUERIES = [
     title: "Pending cash requests",
     description:
       "Cash requests awaiting approval (pending_finance or pending_ceo) for the current brand, ordered by submission date.",
-    module: "expenses",
+    module: "cash_request",
     parameters: {
       type: "object",
       properties: {
@@ -235,7 +236,7 @@ const QUERIES = [
     title: "Cash request KPIs",
     description:
       "Summary KPIs for cash requests: pending count, unsettled advances, disbursed this month.",
-    module: "expenses",
+    module: "cash_request",
     parameters: { type: "object", properties: {} },
     run: ({ brand }) =>
       cashRequestRepo.kpis({ brand, scope: "all", user_id: null }),
@@ -443,6 +444,47 @@ const QUERIES = [
         created_at: c.created_at,
       }));
     },
+  },
+  {
+    key: "performance_sales_exec",
+    title: "Sales exec of the month (who closed the most sales)",
+    description:
+      "The sales-rep leaderboard for a period: who CLOSED how many sales, each rep's share of ALL sales, and the value they closed — plus the month's winner (Sales Exec of the Month) and the channel mix. Website / storefront self-service checkouts are counted in the total but bucketed as 'Online / self-service (unattributed)' — credited to no individual. Use this for 'who closed the most sales?', 'who is sales exec of the month?', 'how many sales did <rep> close out of the total?', 'which channel drives our sales?'. Defaults to the current calendar month.",
+    module: "performance",
+    parameters: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "Optional start date (YYYY-MM-DD). Defaults to the 1st of the current month." },
+        to: { type: "string", description: "Optional end date (YYYY-MM-DD), inclusive. Defaults to month-end." },
+      },
+    },
+    run: ({ brand, args }) =>
+      perfInsights.salesReport({
+        brand,
+        from: str(args.from) || undefined,
+        to: str(args.to) || undefined,
+        withCompare: true,
+      }),
+  },
+  {
+    key: "performance_attendance",
+    title: "Attendance report (present / late / absent + on-time %)",
+    description:
+      "Per-staff attendance summary for a period from the reconciled attendance days: present, late, absent, on-leave and off-site day counts, total minutes late, hours worked, and each person's on-time % (punctual days ÷ present days). Use this for 'how was attendance this month?', 'who was late the most?', 'what is <person>'s on-time percentage?', 'who has the best attendance?'. Defaults to the current calendar month.",
+    module: "performance",
+    parameters: {
+      type: "object",
+      properties: {
+        from: { type: "string", description: "Optional start date (YYYY-MM-DD). Defaults to the 1st of the current month." },
+        to: { type: "string", description: "Optional end date (YYYY-MM-DD), inclusive. Defaults to month-end." },
+      },
+    },
+    run: ({ brand, args }) =>
+      perfInsights.attendanceReport({
+        brand,
+        from: str(args.from) || undefined,
+        to: str(args.to) || undefined,
+      }),
   },
 ];
 

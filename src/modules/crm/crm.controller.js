@@ -288,7 +288,7 @@ async function listClients(req, res) {
   res.json(
     await service.listClients({
       brand: req.brand,
-      filters: { q: req.query.q, chip: req.query.chip },
+      filters: { q: req.query.q, chip: req.query.chip, country: req.query.country },
       sort: req.query.sort,
       page,
       page_size,

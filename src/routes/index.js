@@ -19,6 +19,7 @@ const path = require("path");
 const { config } = require("../config/env");
 const { authMiddleware } = require("../middleware/auth");
 const { brandContextMiddleware } = require("../middleware/brand-context");
+const { idempotencyMiddleware } = require("../middleware/idempotency");
 const {
   hostBrandResolverMiddleware,
 } = require("../middleware/host-brand-resolver");
@@ -50,7 +51,6 @@ const attendanceRouter = require("../shared/attendance/attendance.routes");
 const contactsRouter = require("../shared/contacts/contacts.routes");
 const documentsRouter = require("../shared/documents/documents.routes");
 const socialMediaRouter = require("../modules/social_media/social.routes");
-const marketingRouter = require("../modules/marketing/marketing.routes");
 const emailCampaignsRouter = require("../modules/email_campaigns/email-campaigns.routes");
 const smartcommRouter = require("../modules/smartcomm/smartcomm.routes");
 const calendarRouter = require("../shared/calendar/calendar.routes");
@@ -65,6 +65,7 @@ const businessSetupRouter = require("../modules/business_setup/business-setup.ro
 const platformSettingsRouter = require("../modules/platform_settings/platform-settings.routes");
 const settingsRouter = require("../modules/settings/settings.routes");
 const brandingPublicRouter = require("../modules/platform_settings/branding.public.routes");
+const brandPublicRouter = require("../modules/business_setup/brand.public.routes");
 const {
   welcomeRouter: geoPublicRouter,
   geoRouter,
@@ -165,6 +166,7 @@ const publicTrackingRouter = require("../modules/logistics/tracking.routes");
 const publicInvoiceRouter = require("../modules/invoicing/invoice-public.routes");
 const publicOrderTimelineRouter = require("../modules/sales/order-timeline.routes");
 const publicPayLinkRouter = require("../modules/sales/payment-link.public.routes");
+const publicQuotationPayRouter = require("../modules/sales/quotation-pay.public.routes");
 const publicOrderFormRouter = require("../modules/storefront/order-form.routes");
 const publicInstallHubRouter = require("../modules/storefront/install-hub.routes");
 const publicStorefrontGeoRouter = require("../modules/storefront/geo.routes");
@@ -297,8 +299,8 @@ function mountRoutes(app) {
   // photo quota, an IP-ceiling backstop, and a chat-turn daily cap in Redis.
   publicRouter.use("/shade-finder", publicShadeFinderRouter);
   // Public sales landing — host → brand resolver runs first so the
-  // /sale/:slug controller knows which brand to load when served from
-  // sales.pixiegirlglobal.com / sales.thefaitlynbrand.com.
+  // /sale/:slug controller knows which brand to load when served from a
+  // brand's sales subdomain (business_config.sales_subdomain).
   publicRouter.use("/sale", hostBrandResolverMiddleware, publicCampaignRouter);
   // Brand-level "no active sale" landing config (Landing Studio output).
   publicRouter.use("/landing", hostBrandResolverMiddleware, publicLandingRouter);
@@ -320,10 +322,17 @@ function mountRoutes(app) {
   // POSTs live cart activity. Write-limited (the activity POST).
   publicRouter.use("/order-link", publicWriteLimiter, orderLinkPublicRouter);
   publicRouter.use("/pay", publicWriteLimiter, publicPayLinkRouter);
+  // Quotation pay-link — the `/quote/<token>` page. Paying it converts the
+  // quote into an order at webhook confirmation (000090).
+  publicRouter.use("/quote", publicWriteLimiter, publicQuotationPayRouter);
   publicRouter.use("/email", publicEmailTrackingRouter);
   // Unauthenticated branding feed — the login page calls this before
   // a token exists so the shell can theme itself.
   publicRouter.use("/branding", brandingPublicRouter);
+  // Per-brand public identity (name, domains, support mailbox) straight
+  // from business_config — the public apps read this instead of
+  // hardcoding brand domains anywhere.
+  publicRouter.use("/brand", brandPublicRouter);
   // Runtime client config (Google Maps key for the public address forms).
   // Lets the key be set on the server without rebuilding the admin bundle.
   publicRouter.use("/config", configPublicRouter);
@@ -367,6 +376,10 @@ function mountRoutes(app) {
   const api = express.Router();
   api.use(authMiddleware);
   api.use(brandContextMiddleware);
+  // Header-gated: a no-op unless a request carries `Idempotency-Key` (only the
+  // CoS plan executor does), so a retried/duplicated write replays instead of
+  // creating a twin. Keyed after auth+brand so it scopes by user.
+  api.use(idempotencyMiddleware);
 
   const PROTECTED_MOUNTS = [
     ["/crm", crmRouter],
@@ -388,7 +401,6 @@ function mountRoutes(app) {
     ["/contacts", contactsRouter],
     ["/documents", documentsRouter],
     ["/social", socialMediaRouter],
-    ["/marketing", marketingRouter],
     ["/email-campaigns", emailCampaignsRouter],
     ["/smartcomm", smartcommRouter],
     ["/customer-onboarding", onboardingAdminRouter],

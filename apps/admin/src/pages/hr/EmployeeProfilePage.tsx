@@ -40,6 +40,7 @@ import {
   listStaff,
   type StaffProfile,
   type StaffRow,
+  type WorkSchedule,
 } from "@/lib/hr-api";
 import { orgApi } from "@/lib/org-api";
 import { Modal } from "@/components/ui/Modal";
@@ -77,6 +78,7 @@ export default function EmployeeProfilePage() {
   const [termsOpen, setTermsOpen] = useState(false);
   const [employmentOpen, setEmploymentOpen] = useState(false);
   const [compOpen, setCompOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
   useBreadcrumbs([{ label: "HR & Staff", href: "/hr" }, { label: "Employee" }]);
 
   const canEdit = can("hr_payroll", "edit");
@@ -305,7 +307,13 @@ export default function EmployeeProfilePage() {
             <InfoRow label="Non-solicit" value={p.non_solicit_until ? `until ${p.non_solicit_until}` : p.non_solicit_months ? `${p.non_solicit_months} months` : "—"} />
           </Card>
           <Card className="p-5 lg:col-span-2">
-            <SectionTitle icon={<Clock className="h-4 w-4 text-accent-glow" />}>Schedule</SectionTitle>
+            <div className="flex items-center justify-between">
+              <SectionTitle icon={<Clock className="h-4 w-4 text-accent-glow" />}>Schedule</SectionTitle>
+              {canEdit && (
+                <Button size="sm" variant="secondary" icon={<Pencil className="h-3.5 w-3.5" />}
+                  onClick={() => setScheduleOpen(true)}>Edit</Button>
+              )}
+            </div>
             <WeekScheduleView schedule={data.schedule.work_schedule} />
             <div className="mt-3 text-xs text-text-muted">
               Expected {data.schedule.expected_start_time || "—"} → {data.schedule.expected_end_time || "—"}
@@ -334,6 +342,7 @@ export default function EmployeeProfilePage() {
                 <div className="flex shrink-0 items-center gap-2">
                   {d.is_late && <span className="text-xs text-warn">{d.minutes_late}m late</span>}
                   {d.early_leave_minutes > 0 && <span className="text-xs text-warn">{d.early_leave_minutes}m early</span>}
+                  {d.overtime_minutes > 0 && <span className="text-xs text-info">+{d.overtime_minutes}m over</span>}
                   {d.deduction_ngn > 0 && !d.justified && (
                     <span className="text-xs text-warn">−{money(Number(d.deduction_ngn))}</span>
                   )}
@@ -502,6 +511,9 @@ export default function EmployeeProfilePage() {
       )}
       {compOpen && (
         <CompensationEditModal profileId={profileId} profile={p} onClose={() => setCompOpen(false)} />
+      )}
+      {scheduleOpen && (
+        <ScheduleEditModal profileId={profileId} profile={p} onClose={() => setScheduleOpen(false)} />
       )}
     </div>
   );
@@ -855,6 +867,134 @@ function CompensationEditModal({
               onChange={(e) => setForm({ ...form, bvn: e.target.value })} />
           </label>
         </div>
+      </div>
+    </Modal>
+  );
+}
+
+const SCHEDULE_DAYS: { key: string; label: string }[] = [
+  { key: "mon", label: "Mon" },
+  { key: "tue", label: "Tue" },
+  { key: "wed", label: "Wed" },
+  { key: "thu", label: "Thu" },
+  { key: "fri", label: "Fri" },
+  { key: "sat", label: "Sat" },
+  { key: "sun", label: "Sun" },
+];
+const SCHEDULE_MODES: { value: "on_site" | "remote" | "off"; label: string }[] = [
+  { value: "on_site", label: "Office" },
+  { value: "remote", label: "Remote" },
+  { value: "off", label: "Off" },
+];
+
+/**
+ * Edit an already-onboarded employee's work schedule: the on-site/remote/off
+ * mode per weekday (so e.g. a 5-day week becomes a 3-day week), plus the daily
+ * start, closing time and lateness grace. Saves through PATCH /hr/employees/:id.
+ */
+function ScheduleEditModal({
+  profileId,
+  profile,
+  onClose,
+}: {
+  profileId: string;
+  profile: StaffProfile;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const notify = useNotify("HR → Employee: schedule");
+  const [schedule, setSchedule] = useState<WorkSchedule>(() => {
+    const s: WorkSchedule = {};
+    for (const d of SCHEDULE_DAYS) s[d.key] = profile.work_schedule?.[d.key] || "off";
+    return s;
+  });
+  const [start, setStart] = useState((profile.work_expected_start_time || "").slice(0, 5));
+  const [end, setEnd] = useState((profile.work_expected_end_time || "").slice(0, 5));
+  const [grace, setGrace] = useState(
+    profile.work_grace_minutes != null ? String(profile.work_grace_minutes) : "",
+  );
+
+  const workingCount = SCHEDULE_DAYS.filter((d) => schedule[d.key] !== "off").length;
+
+  const save = useMutation({
+    mutationFn: () => {
+      const patch: Record<string, unknown> = {
+        work_schedule: schedule,
+        work_expected_start_time: start || null,
+        work_expected_end_time: end || null,
+      };
+      if (grace !== "") patch.work_grace_minutes = Number(grace);
+      return updateStaff(profileId, patch);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["hr", "employee-360", profileId] });
+      notify("Schedule updated");
+      onClose();
+    },
+    onError: (e) => notify("Failed", errMsg(e), "high"),
+  });
+
+  const cls = "w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary";
+  return (
+    <Modal open onClose={onClose} title="Edit work schedule"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" disabled={save.isPending} onClick={() => save.mutate()}>
+            {save.isPending ? "Saving…" : "Save"}
+          </Button>
+        </>
+      }>
+      <div className="space-y-4">
+        <p className="text-xs text-text-muted">
+          Set on-site / remote / off per weekday, plus the daily start and closing
+          time. Currently {workingCount} working {workingCount === 1 ? "day" : "days"}/week.
+        </p>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
+          {SCHEDULE_DAYS.map((d) => (
+            <div key={d.key} className="rounded-[10px] border border-line p-2">
+              <div className="mb-1 text-center text-[11px] font-semibold text-text-primary">{d.label}</div>
+              <div className="flex flex-col gap-1">
+                {SCHEDULE_MODES.map((m) => {
+                  const selected = schedule[d.key] === m.value;
+                  return (
+                    <button
+                      key={m.value}
+                      type="button"
+                      onClick={() => setSchedule((s) => ({ ...s, [d.key]: m.value }))}
+                      className={[
+                        "rounded-md px-1.5 py-1 text-[10.5px] transition-colors",
+                        selected
+                          ? "bg-accent-deep text-[#F4E9D9] font-semibold"
+                          : "bg-text-primary/[0.05] text-text-muted hover:bg-text-primary/[0.1]",
+                      ].join(" ")}
+                    >
+                      {m.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <label className="block text-xs text-text-muted">Expected start
+            <input type="time" value={start} className={cls}
+              onChange={(e) => setStart(e.target.value)} />
+          </label>
+          <label className="block text-xs text-text-muted">Closing time
+            <input type="time" value={end} className={cls}
+              onChange={(e) => setEnd(e.target.value)} />
+          </label>
+          <label className="block text-xs text-text-muted">Grace (min)
+            <input type="number" min={0} max={240} value={grace} className={cls}
+              onChange={(e) => setGrace(e.target.value)} />
+          </label>
+        </div>
+        <p className="text-[11px] text-text-faint">
+          Closing time drives early-departure tracking, supplementary-hours
+          (overtime) capture and the clock-out reminders.
+        </p>
       </div>
     </Modal>
   );

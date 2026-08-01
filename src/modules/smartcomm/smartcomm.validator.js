@@ -78,6 +78,16 @@ const postMessage = z
           .strict(),
       )
       .optional(),
+    // Email envelope (ignored on WhatsApp/IG/internal threads): the
+    // operator's subject line and any Cc copy recipients. Persisted on the
+    // message metadata and used to build the outbound email.
+    subject: z.string().max(300).optional(),
+    cc: z.array(z.string().email()).max(25).optional(),
+    // Rich (Gmail-style) email body as HTML — email threads only. When set,
+    // `content` carries the plain-text shadow (thread display / search /
+    // preheader) and this HTML is what actually goes out, wrapped in the
+    // brand shell. Ignored on WhatsApp/IG/internal threads.
+    body_html: z.string().max(200000).optional(),
     is_template: z.boolean().optional(),
     // Instagram-outside-window escape hatch: operator explicitly opts
     // into a HUMAN_AGENT-tagged Meta send (requires Meta app approval).
@@ -91,6 +101,7 @@ const postMessage = z
   .refine(
     (v) =>
       (v.content && v.content.length > 0) ||
+      (v.body_html && v.body_html.length > 0) ||
       (v.attachments && v.attachments.length > 0) ||
       v.message_type === "product_share" ||
       v.message_type === "send_invoice",
@@ -113,10 +124,46 @@ const sendToCustomer = z
   .object({
     contact_id: z.string().uuid(),
     channel: z.enum(["whatsapp", "email", "instagram"]).optional(),
-    subject: z.string().max(200).optional(),
-    body: z.string().min(1).max(8000),
+    subject: z.string().max(300).optional(),
+    // Email-only Cc copy recipients (ignored on other channels).
+    cc: z.array(z.string().email()).max(25).optional(),
+    // Plain-text body / shadow. Required on channels that can only carry text
+    // (WhatsApp/Instagram); on email it may be omitted when a rich HTML body
+    // or an attachment leads instead (see refine below).
+    body: z.string().max(8000).optional(),
+    // Rich (Gmail-style) email body as HTML — email channel only. When set,
+    // `body` carries the plain-text shadow and this HTML is delivered inside
+    // the brand shell. Ignored on WhatsApp/Instagram.
+    body_html: z.string().max(200000).optional(),
+    // Files to send with this first message (email channel — they ride the
+    // one outbound letter; ignored where the channel can't attach).
+    attachments: z
+      .array(
+        z
+          .object({
+            document_id: z.string().uuid(),
+            display_name: z.string().max(200).optional(),
+          })
+          .strict(),
+      )
+      .max(20)
+      .optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (v) => {
+      const hasBody = !!(v.body && v.body.trim());
+      // Non-email channels can only carry text, so a body is mandatory.
+      if (v.channel && v.channel !== "email") return hasBody;
+      // Email may lead with a rich HTML body or an attachment instead.
+      return (
+        hasBody ||
+        !!(v.body_html && v.body_html.trim()) ||
+        !!(v.attachments && v.attachments.length)
+      );
+    },
+    { message: "A message body, HTML, or an attachment is required" },
+  );
 
 const attachmentAdd = z
   .object({
@@ -264,6 +311,10 @@ const composerSettingsUpdate = z
     onboarding_template: z.string().max(4000).optional(),
     whatsapp_handoff_template: z.string().max(4000).optional(),
     whatsapp_share_number: z.string().max(40).optional(),
+    address_template: z.string().max(4000).optional(),
+    address_share_text: z.string().max(1000).optional(),
+    hours_template: z.string().max(4000).optional(),
+    hours_share_text: z.string().max(300).optional(),
   })
   .strict();
 

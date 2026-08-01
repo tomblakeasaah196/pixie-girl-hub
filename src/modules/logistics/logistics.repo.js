@@ -55,6 +55,7 @@ const COURIER_COLS = [
   "preferred_pickup_location",
   "internal_rating",
   "internal_notes",
+  "settlement_mode",
 ];
 const COURIER_JSONB = new Set(["rate_card"]);
 async function createCourier({ client, brand, row }) {
@@ -63,10 +64,11 @@ async function createCourier({ client, brand, row }) {
        (courier_key, display_name, description, integration_type, api_endpoint, webhook_secret,
         serves_local, serves_nationwide, serves_international, service_countries, rate_card,
         supports_pod, pod_fee_pct, default_packaging, display_order,
-        contact_person, contact_phone, payment_terms_notes, preferred_pickup_location, internal_rating, internal_notes)
+        contact_person, contact_phone, payment_terms_notes, preferred_pickup_location, internal_rating, internal_notes,
+        settlement_mode)
      VALUES ($1,$2,$3,COALESCE($4,'manual'),$5,$6,COALESCE($7,true),COALESCE($8,false),COALESCE($9,false),
              COALESCE($10,'{NG}')::text[],COALESCE($11,'{}')::jsonb,COALESCE($12,false),$13,$14,COALESCE($15,0),
-             $16,$17,$18,$19,$20,$21) RETURNING *`,
+             $16,$17,$18,$19,$20,$21,COALESCE($22,'invoice')) RETURNING *`,
     [
       row.courier_key,
       row.display_name,
@@ -89,6 +91,7 @@ async function createCourier({ client, brand, row }) {
       row.preferred_pickup_location || null,
       row.internal_rating ?? null,
       row.internal_notes || null,
+      row.settlement_mode || null,
     ],
   );
   return rows[0];
@@ -157,6 +160,29 @@ async function updateCourier({ client, brand, id, patch }) {
   return rows[0] || null;
 }
 
+// ── readiness ────────────────────────────────────────────
+// Whether a delivery can actually be dispatched right now. Both gates must
+// clear: the sales order must be packed/queued for courier, AND any styling
+// job on it must be out of the studio. Deliveries are auto-created the moment
+// an order is PAID (see logistics.subscribers), so without this the queue is
+// full of rows nobody can act on — a wig still on a stylist's table looks
+// identical to one sitting in a box by the door.
+//
+// Expects `d` (deliveries), `so` (sales_orders) and `sj` (latest service job)
+// in scope. Non-order deliveries (stock transfers, supplier returns) have no
+// fulfilment spine to wait on, so they are ready by definition.
+const READINESS_SQL = `
+  CASE
+    WHEN d.order_id IS NULL THEN 'ready'
+    WHEN so.status IN ('cancelled','refunded','failed','cancellation_requested')
+      THEN 'order_blocked'
+    WHEN sj.job_id IS NOT NULL
+     AND sj.status NOT IN ('ready_for_dispatch','handed_to_sales','completed')
+      THEN 'awaiting_studio'
+    WHEN so.status IN ('order_ready','dispatched','completed') THEN 'ready'
+    ELSE 'awaiting_fulfilment'
+  END`;
+
 // ── deliveries ───────────────────────────────────────────
 async function createDelivery({ client, brand, row }) {
   const { rows } = await ex(client)(
@@ -165,9 +191,9 @@ async function createDelivery({ client, brand, row }) {
         from_location_id, recipient_contact_id, recipient_name_snapshot, recipient_phone_snapshot, recipient_whatsapp_snapshot,
         delivery_address_snapshot, delivery_instructions, courier_fee_ngn, is_pay_on_delivery, pod_amount_expected_ngn,
         weight_g, package_count, declared_value_ngn, public_tracking_token, created_by,
-        driver_name, driver_phone, scheduled_pickup_at, driver_confirmation_token)
+        driver_name, driver_phone, scheduled_pickup_at)
      VALUES ($1,$2,COALESCE($3,'sales_order'),$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,COALESCE($16,0),COALESCE($17,false),$18,$19,COALESCE($20,1),$21,$22,$23,
-             $24,$25,$26,$27)
+             $24,$25,$26)
      RETURNING *`,
     [
       row.delivery_number,
@@ -196,7 +222,6 @@ async function createDelivery({ client, brand, row }) {
       row.driver_name || null,
       row.driver_phone || null,
       row.scheduled_pickup_at || null,
-      row.driver_confirmation_token || null,
     ],
   );
   return rows[0];
@@ -225,11 +250,19 @@ async function getDelivery({ client, brand, id }) {
     `SELECT d.*,
             so.order_number,
             so.status     AS order_status,
+            so.shipping_fee_ngn AS order_shipping_fee_ngn,
             sj.job_id     AS service_job_id,
             sj.job_number AS service_job_number,
-            sj.status     AS service_job_status
+            sj.status     AS service_job_status,
+            ${READINESS_SQL} AS readiness,
+            cc.display_name  AS completed_by_name,
+            csp.job_title    AS completed_by_job_title,
+            COALESCE(so.shipping_fee_ngn, 0) - d.courier_fee_ngn AS delivery_margin_ngn
        FROM ${t(brand, "deliveries")} d
        LEFT JOIN ${t(brand, "sales_orders")} so ON so.order_id = d.order_id
+       LEFT JOIN shared.users cu           ON cu.user_id    = d.completed_by
+       LEFT JOIN shared.staff_profiles csp ON csp.profile_id = cu.staff_profile_id
+       LEFT JOIN shared.contacts cc        ON cc.contact_id  = csp.contact_id
        LEFT JOIN LATERAL (
          SELECT job_id, job_number, status
            FROM ${t(brand, "service_jobs")} sjx
@@ -249,15 +282,27 @@ async function getDelivery({ client, brand, id }) {
     `SELECT * FROM ${t(brand, "delivery_attempts")} WHERE delivery_id = $1 ORDER BY attempt_number`,
     [id],
   );
+  // Resolve `changed_by` into a human name — the timeline is the audit record
+  // staff actually read, and a bare UUID (or nothing) makes it useless for
+  // answering "who followed this up".
   const { rows: history } = await ex(client)(
-    `SELECT * FROM ${t(brand, "delivery_state_history")} WHERE delivery_id = $1 ORDER BY changed_at`,
+    `SELECT h.*,
+            c.display_name AS actor_name,
+            sp.job_title   AS actor_job_title
+       FROM ${t(brand, "delivery_state_history")} h
+       LEFT JOIN shared.users u           ON u.user_id     = h.changed_by
+       LEFT JOIN shared.staff_profiles sp ON sp.profile_id = u.staff_profile_id
+       LEFT JOIN shared.contacts c        ON c.contact_id  = sp.contact_id
+      WHERE h.delivery_id = $1
+      ORDER BY h.changed_at`,
     [id],
   );
   const { rows: proofs } = await ex(client)(
     `SELECT * FROM ${t(brand, "delivery_proofs")} WHERE delivery_id = $1 ORDER BY confirmed_at`,
     [id],
   );
-  return { ...rows[0], items, attempts, history, proofs };
+  const costs = await listDeliveryCosts({ client, brand, delivery_id: id });
+  return { ...rows[0], items, attempts, history, proofs, costs };
 }
 /** Minimal order + customer-contact read for the delivered-confirmation email. */
 async function getOrderForEmail({ client, brand, order_id }) {
@@ -267,19 +312,6 @@ async function getOrderForEmail({ client, brand, order_id }) {
        LEFT JOIN shared.contacts c ON c.contact_id = so.contact_id
       WHERE so.order_id = $1`,
     [order_id],
-  );
-  return rows[0] || null;
-}
-async function getDeliveryByDriverToken({ client, brand, token }) {
-  const { rows } = await ex(client)(
-    `SELECT d.delivery_id, d.delivery_number, d.status, d.driver_name, d.driver_phone,
-            d.recipient_name_snapshot, d.recipient_phone_snapshot, d.delivery_address_snapshot,
-            d.delivery_instructions, d.scheduled_pickup_at, d.expected_delivery_at, d.delivered_at,
-            c.display_name AS courier_name
-       FROM ${t(brand, "deliveries")} d
-       LEFT JOIN ${t(brand, "couriers")} c ON c.courier_id = d.courier_id
-      WHERE d.driver_confirmation_token = $1`,
-    [token],
   );
   return rows[0] || null;
 }
@@ -324,10 +356,51 @@ async function listDeliveries({
     where.push(`d.is_pay_on_delivery = $${i++}`);
     params.push(filters.is_pay_on_delivery);
   }
+  if (filters.status_in && filters.status_in.length) {
+    where.push(`d.status = ANY($${i++})`);
+    params.push(filters.status_in);
+  }
+  // Readiness banding for the Queue tab. 'ready' is the actionable set; the
+  // rest are visible but not dispatchable yet.
+  if (filters.readiness) {
+    where.push(`${READINESS_SQL} = $${i++}`);
+    params.push(filters.readiness);
+  }
+  if (filters.has_delivery_loss !== undefined) {
+    where.push(`d.has_delivery_loss = $${i++}`);
+    params.push(filters.has_delivery_loss);
+  }
+  // Completed deliveries nobody has costed yet — the silent-profit trap.
+  if (filters.cost_missing) {
+    where.push(`d.status = 'delivered' AND d.cost_recorded_at IS NULL`);
+  }
+  if (filters.completed_by) {
+    where.push(`d.completed_by = $${i++}`);
+    params.push(filters.completed_by);
+  }
+  if (filters.delivered_from) {
+    where.push(`d.delivered_at >= $${i++}`);
+    params.push(filters.delivered_from);
+  }
+  if (filters.delivered_to) {
+    where.push(`d.delivered_at <= $${i++}`);
+    params.push(filters.delivered_to);
+  }
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  // The order + latest-service-job joins are needed by the COUNT too, because
+  // readiness is derived from them.
+  const JOINS = `
+       LEFT JOIN ${t(brand, "sales_orders")} so ON so.order_id = d.order_id
+       LEFT JOIN LATERAL (
+         SELECT job_id, job_number, status
+           FROM ${t(brand, "service_jobs")} sjx
+          WHERE sjx.sales_order_id = d.order_id
+          ORDER BY sjx.created_at DESC
+          LIMIT 1
+       ) sj ON true`;
   const run = ex(client);
   const { rows: c } = await run(
-    `SELECT COUNT(*)::int AS total FROM ${t(brand, "deliveries")} d ${w}`,
+    `SELECT COUNT(*)::int AS total FROM ${t(brand, "deliveries")} d ${JOINS} ${w}`,
     params,
   );
   // Join the originating order + customer so the delivery queue can show the
@@ -343,19 +416,23 @@ async function listDeliveries({
             ct.display_name     AS customer_name,
             sj.job_id           AS service_job_id,
             sj.job_number       AS service_job_number,
-            sj.status           AS service_job_status
+            sj.status           AS service_job_status,
+            ${READINESS_SQL}    AS readiness,
+            -- Completion attribution: who marked it delivered, and when.
+            cc.display_name     AS completed_by_name,
+            csp.job_title       AS completed_by_job_title,
+            -- Per-delivery P&L. Revenue is what the customer was billed for
+            -- shipping; cost is what we actually paid out.
+            COALESCE(so.shipping_fee_ngn, 0) - d.courier_fee_ngn AS delivery_margin_ngn
+       -- sj carries the styling status for the order (if any) so dispatchers
+       -- can see whether the wig is still in the studio and pre-arrange the
+       -- courier.
        FROM ${t(brand, "deliveries")} d
-       LEFT JOIN ${t(brand, "sales_orders")} so ON so.order_id = d.order_id
+       ${JOINS}
        LEFT JOIN shared.contacts ct ON ct.contact_id = so.contact_id
-       -- Styling status for the order (if any) so dispatchers can see whether
-       -- the wig is still in the studio and pre-arrange the courier. Latest job.
-       LEFT JOIN LATERAL (
-         SELECT job_id, job_number, status
-           FROM ${t(brand, "service_jobs")} sjx
-          WHERE sjx.sales_order_id = d.order_id
-          ORDER BY sjx.created_at DESC
-          LIMIT 1
-       ) sj ON true
+       LEFT JOIN shared.users cu           ON cu.user_id    = d.completed_by
+       LEFT JOIN shared.staff_profiles csp ON csp.profile_id = cu.staff_profile_id
+       LEFT JOIN shared.contacts cc        ON cc.contact_id  = csp.contact_id
        ${w}
       ORDER BY d.created_at DESC LIMIT $${i++} OFFSET $${i++}`,
     [...params, page_size, offset],
@@ -370,6 +447,216 @@ async function listDeliveries({
     },
   };
 }
+// ── delivery costs ───────────────────────────────────────
+// What we actually paid out on a delivery. Several rows per delivery is the
+// normal case once an attempt fails — a redelivery leg is real money and must
+// not overwrite the outbound figure.
+async function listDeliveryCosts({ client, brand, delivery_id }) {
+  const { rows } = await ex(client)(
+    `SELECT dc.*,
+            co.display_name AS courier_name,
+            c.display_name  AS recorded_by_name
+       FROM ${t(brand, "delivery_costs")} dc
+       LEFT JOIN ${t(brand, "couriers")} co ON co.courier_id = dc.courier_id
+       LEFT JOIN shared.users u           ON u.user_id     = dc.recorded_by
+       LEFT JOIN shared.staff_profiles sp ON sp.profile_id = u.staff_profile_id
+       LEFT JOIN shared.contacts c        ON c.contact_id  = sp.contact_id
+      WHERE dc.delivery_id = $1
+      ORDER BY dc.incurred_at`,
+    [delivery_id],
+  );
+  return rows;
+}
+async function addDeliveryCost({ client, brand, cost }) {
+  const { rows } = await ex(client)(
+    `INSERT INTO ${t(brand, "delivery_costs")}
+       (delivery_id, cost_type, amount_ngn, courier_id, incurred_at, settlement_mode,
+        receipt_document_id, notes, recorded_by)
+     VALUES ($1,COALESCE($2,'outbound'),$3,$4,COALESCE($5,now()),COALESCE($6,'invoice'),$7,$8,$9)
+     RETURNING *`,
+    [
+      cost.delivery_id,
+      cost.cost_type || null,
+      cost.amount_ngn,
+      cost.courier_id || null,
+      cost.incurred_at || null,
+      cost.settlement_mode || null,
+      cost.receipt_document_id || null,
+      cost.notes || null,
+      cost.recorded_by || null,
+    ],
+  );
+  return rows[0];
+}
+async function getDeliveryCost({ client, brand, id }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM ${t(brand, "delivery_costs")} WHERE cost_id = $1`,
+    [id],
+  );
+  return rows[0] || null;
+}
+async function deleteDeliveryCost({ client, brand, id }) {
+  await ex(client)(
+    `DELETE FROM ${t(brand, "delivery_costs")} WHERE cost_id = $1`,
+    [id],
+  );
+}
+/**
+ * Recompute `courier_fee_ngn` (the maintained total), the loss figures and the
+ * cost-recorded stamp from the delivery's cost rows. Single source of truth
+ * for the money on a delivery — every write path funnels through here rather
+ * than doing its own arithmetic.
+ *
+ * Loss = actual cost − what the customer was billed for shipping, floored at
+ * zero. A waived fee is still a loss in cash terms, but `fee_waiver_reason`
+ * lets reporting separate "we chose this" from "this overran".
+ */
+async function recomputeDeliveryCostTotals({ client, brand, id, user_id }) {
+  const { rows } = await ex(client)(
+    `WITH totals AS (
+       SELECT COALESCE(SUM(amount_ngn), 0) AS total,
+              COUNT(*)                     AS n,
+              MAX(created_at)              AS last_recorded
+         FROM ${t(brand, "delivery_costs")}
+        WHERE delivery_id = $1
+     )
+     UPDATE ${t(brand, "deliveries")} d
+        SET courier_fee_ngn   = totals.total,
+            delivery_loss_ngn = GREATEST(
+              totals.total - COALESCE(so.shipping_fee_ngn, 0), 0),
+            has_delivery_loss =
+              (totals.total - COALESCE(so.shipping_fee_ngn, 0)) > 0,
+            cost_recorded_at  = CASE WHEN totals.n > 0
+                                     THEN COALESCE(d.cost_recorded_at, now())
+                                     ELSE NULL END,
+            cost_recorded_by  = CASE WHEN totals.n > 0
+                                     THEN COALESCE(d.cost_recorded_by, $2)
+                                     ELSE NULL END
+       FROM totals
+       LEFT JOIN ${t(brand, "sales_orders")} so
+              ON so.order_id = (SELECT order_id FROM ${t(brand, "deliveries")}
+                                 WHERE delivery_id = $1)
+      WHERE d.delivery_id = $1
+      RETURNING d.*`,
+    [id, user_id || null],
+  );
+  return rows[0] || null;
+}
+/**
+ * Delivery P&L roll-up for a period. Returns headline totals plus a per-courier
+ * breakdown — the number that actually matters is not any single delivery's
+ * loss but which courier and which destination lose money consistently, which
+ * is a rate-card question rather than a data-entry one.
+ */
+async function deliveryReconciliation({ client, brand, from, to }) {
+  const run = ex(client);
+  const params = [from, to];
+  const period = `d.status = 'delivered' AND d.delivered_at >= $1 AND d.delivered_at <= $2`;
+  const { rows: totals } = await run(
+    `SELECT COUNT(*)::int                                        AS deliveries,
+            COALESCE(SUM(so.shipping_fee_ngn), 0)                AS revenue_ngn,
+            COALESCE(SUM(d.courier_fee_ngn), 0)                  AS cost_ngn,
+            COALESCE(SUM(so.shipping_fee_ngn), 0)
+              - COALESCE(SUM(d.courier_fee_ngn), 0)              AS margin_ngn,
+            COALESCE(SUM(d.delivery_loss_ngn), 0)                AS loss_ngn,
+            COUNT(*) FILTER (WHERE d.has_delivery_loss)::int     AS loss_count,
+            COUNT(*) FILTER (WHERE d.fee_waiver_reason IS NOT NULL)::int
+                                                                 AS waived_count,
+            COUNT(*) FILTER (WHERE d.cost_recorded_at IS NULL)::int
+                                                                 AS cost_missing_count
+       FROM ${t(brand, "deliveries")} d
+       LEFT JOIN ${t(brand, "sales_orders")} so ON so.order_id = d.order_id
+      WHERE ${period}`,
+    params,
+  );
+  const { rows: by_courier } = await run(
+    `SELECT d.courier_id,
+            co.display_name                                      AS courier_name,
+            co.settlement_mode,
+            COUNT(*)::int                                        AS deliveries,
+            COALESCE(SUM(so.shipping_fee_ngn), 0)                AS revenue_ngn,
+            COALESCE(SUM(d.courier_fee_ngn), 0)                  AS cost_ngn,
+            COALESCE(SUM(so.shipping_fee_ngn), 0)
+              - COALESCE(SUM(d.courier_fee_ngn), 0)              AS margin_ngn,
+            COALESCE(SUM(d.delivery_loss_ngn), 0)                AS loss_ngn,
+            COUNT(*) FILTER (WHERE d.has_delivery_loss)::int     AS loss_count
+       FROM ${t(brand, "deliveries")} d
+       LEFT JOIN ${t(brand, "sales_orders")} so ON so.order_id = d.order_id
+       LEFT JOIN ${t(brand, "couriers")} co ON co.courier_id = d.courier_id
+      WHERE ${period}
+      GROUP BY d.courier_id, co.display_name, co.settlement_mode
+      ORDER BY loss_ngn DESC, deliveries DESC`,
+    params,
+  );
+  // Destination state, read out of the address snapshot. This is where a wrong
+  // rate card shows up — a zone charged flat but costing by distance.
+  const { rows: by_destination } = await run(
+    `SELECT COALESCE(NULLIF(d.delivery_address_snapshot->>'state', ''), 'Unknown')
+                                                                 AS destination,
+            COUNT(*)::int                                        AS deliveries,
+            COALESCE(SUM(so.shipping_fee_ngn), 0)                AS revenue_ngn,
+            COALESCE(SUM(d.courier_fee_ngn), 0)                  AS cost_ngn,
+            COALESCE(SUM(so.shipping_fee_ngn), 0)
+              - COALESCE(SUM(d.courier_fee_ngn), 0)              AS margin_ngn,
+            COALESCE(SUM(d.delivery_loss_ngn), 0)                AS loss_ngn
+       FROM ${t(brand, "deliveries")} d
+       LEFT JOIN ${t(brand, "sales_orders")} so ON so.order_id = d.order_id
+      WHERE ${period}
+      GROUP BY 1
+      ORDER BY loss_ngn DESC, deliveries DESC`,
+    params,
+  );
+  return { totals: totals[0], by_courier, by_destination };
+}
+
+/** Unsettled costs for a courier — the input to a settlement run. */
+async function listUnsettledCosts({ client, brand, courier_id, to }) {
+  const where = ["dc.settled_at IS NULL"];
+  const params = [];
+  let i = 1;
+  if (courier_id) {
+    where.push(`dc.courier_id = $${i++}`);
+    params.push(courier_id);
+  }
+  if (to) {
+    where.push(`dc.incurred_at <= $${i++}`);
+    params.push(to);
+  }
+  const { rows } = await ex(client)(
+    `SELECT dc.*,
+            co.display_name AS courier_name,
+            co.settlement_mode,
+            d.delivery_number
+       FROM ${t(brand, "delivery_costs")} dc
+       LEFT JOIN ${t(brand, "couriers")} co ON co.courier_id = dc.courier_id
+       LEFT JOIN ${t(brand, "deliveries")} d ON d.delivery_id = dc.delivery_id
+      WHERE ${where.join(" AND ")}
+      ORDER BY dc.courier_id, dc.incurred_at`,
+    params,
+  );
+  return rows;
+}
+
+/** Mark a batch of costs settled against an expense or a cash request. */
+async function markCostsSettled({ client, brand, cost_ids, link }) {
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "delivery_costs")}
+        SET expense_id      = COALESCE($2, expense_id),
+            expense_line_id = COALESCE($3, expense_line_id),
+            cash_request_id = COALESCE($4, cash_request_id),
+            settled_at      = now()
+      WHERE cost_id = ANY($1) AND settled_at IS NULL
+      RETURNING *`,
+    [
+      cost_ids,
+      link.expense_id || null,
+      link.expense_line_id || null,
+      link.cash_request_id || null,
+    ],
+  );
+  return rows;
+}
+
 async function setDeliveryStatus({ client, brand, id, status, extra = {} }) {
   const sets = ["status = $2"];
   const params = [id, status];
@@ -589,9 +876,16 @@ module.exports = {
   addDeliveryItem,
   getDelivery,
   getDeliveryByToken,
-  getDeliveryByDriverToken,
   getOrderForEmail,
   listDeliveries,
+  listDeliveryCosts,
+  addDeliveryCost,
+  getDeliveryCost,
+  deleteDeliveryCost,
+  recomputeDeliveryCostTotals,
+  deliveryReconciliation,
+  listUnsettledCosts,
+  markCostsSettled,
   setDeliveryStatus,
   updateDelivery,
   incrementAttemptCount,

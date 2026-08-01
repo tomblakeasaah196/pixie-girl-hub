@@ -82,9 +82,16 @@ export const getContactTimeline = (id: string, params: TimelineParams = {}) =>
     meta: { total: number; has_more: boolean };
   }>(`${C}/${id}/timeline${qs(params)}`);
 
-// ── Bulk import / export (clients & suppliers via CSV/Excel) ──────────────
+// ── Bulk import / export (CSV/Excel, per stakeholder kind) ────────────────
 
-export type ContactImportKind = "clients" | "suppliers";
+/** The stakeholder kinds the bulk-import engine supports. Each has its own
+ *  template, preview and confirm. (Employees onboard through HR, not here.) */
+export type ContactImportKind =
+  | "clients"
+  | "suppliers"
+  | "retail_partners"
+  | "stylists"
+  | "subscribers";
 
 export interface ContactImportRow {
   row?: number;
@@ -101,9 +108,32 @@ export interface ContactImportResult {
   results: ContactImportRow[];
 }
 
-/** Path for an authenticated CSV template download (clients | suppliers). */
+/** One column of an import template, as served for the browser preview. */
+export interface ImportSpecColumn {
+  header: string;
+  field: string;
+  group: "contact" | "address";
+  type: "text" | "phone" | "email" | "date" | "gender" | "enum" | "handle";
+  required: boolean;
+  channel: boolean;
+  options?: string[];
+  note?: string;
+  sample: string;
+}
+
+export interface ImportSpec {
+  kind: ContactImportKind;
+  label: string;
+  columns: ImportSpecColumn[];
+}
+
+/** Path for an authenticated CSV template download (per kind). */
 export const contactsTemplatePath = (kind: ContactImportKind) =>
   `${C}/import-template${qs({ kind })}`;
+
+/** Column spec for a kind — drives the preview's expected columns + validation. */
+export const getImportSpec = (kind: ContactImportKind) =>
+  api.get<ImportSpec>(`${C}/import-spec${qs({ kind })}`);
 
 /** Path for an authenticated CSV export — period + kind. Owner/CEO only. */
 export const contactsExportPath = (params: {
@@ -112,7 +142,7 @@ export const contactsExportPath = (params: {
   to?: string;
 }) => `${C}/export${qs(params)}`;
 
-/** Upload a filled CSV/Excel for bulk import. Returns a per-row summary. */
+/** Upload a filled CSV/Excel for bulk import (server-side parse). Per-row summary. */
 export const importContacts = (
   kind: ContactImportKind,
   file: File,
@@ -123,6 +153,13 @@ export const importContacts = (
   form.append("file", file);
   return api.postForm<ContactImportResult>(`${C}/import`, form, { onProgress });
 };
+
+/** Confirm a previewed import — posts the parsed, header-keyed rows as JSON. */
+export const importContactRows = (
+  kind: ContactImportKind,
+  rows: Record<string, string>[],
+) =>
+  api.post<ContactImportResult>(`${C}/import-rows`, { kind, rows });
 
 // ── Addresses ────────────────────────────────────────────────────────────
 

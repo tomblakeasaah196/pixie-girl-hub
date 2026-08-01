@@ -55,7 +55,7 @@ export function CustomerPanelDrawer({
         aria-modal="true"
         aria-label="Customer details"
         className={cn(
-          "fixed top-0 right-0 h-full z-[110] w-[min(400px,88vw)]",
+          "fixed top-0 right-0 h-full z-[110] w-[min(400px,88vw)] pt-safe",
           "dropglass border-l shadow-[-30px_0_80px_rgb(0_0_0/0.5)]",
           "transition-[transform,visibility] duration-300 ease-brand",
           open

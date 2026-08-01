@@ -8,6 +8,7 @@
 const service = require("./smartcomm.service");
 const praxisDraft = require("./smartcomm.praxis-draft");
 const orderLinks = require("./smartcomm.order-links.service");
+const linkPreview = require("../../services/link-preview.service");
 
 const ctx = (req) => ({
   user: req.user,
@@ -246,10 +247,18 @@ async function sendToCustomer(req, res) {
     contact_id: req.body.contact_id,
     channel: req.body.channel,
     subject: req.body.subject,
+    cc: req.body.cc,
     body: req.body.body,
+    body_html: req.body.body_html,
+    attachments: req.body.attachments,
     user: req.user,
   });
   res.status(201).json(data);
+}
+
+async function uploadImage(req, res) {
+  const data = await service.uploadImage({ brand: req.brand, file: req.file });
+  res.json({ data });
 }
 
 // ── Drafts ────────────────────────────────────────────────
@@ -365,6 +374,16 @@ async function getChannelAccessMatrix(req, res) {
   res.json(data);
 }
 
+// The requesting user's own channel visibility — drives inbox tab hiding.
+// Self-only, so it rides smartcomm.view rather than the CEO gate.
+async function getMyChannelAccess(req, res) {
+  const data = await service.getMyChannelAccess({
+    user: req.user,
+    brand: req.brand,
+  });
+  res.json(data);
+}
+
 async function getUserChannelAccess(req, res) {
   const data = await service.getUserChannelAccess({
     brand: req.brand,
@@ -400,6 +419,14 @@ async function getComposerSettings(req, res) {
   res.json({ data });
 }
 
+// Unfurl a link shared in a thread into an OG/Twitter preview card. The
+// service is SSRF-guarded and always resolves (a failed unfurl comes back as
+// { ok:false } so the UI just keeps the plain clickable link).
+async function getLinkPreview(req, res) {
+  const data = await linkPreview.getLinkPreview(req.query.url);
+  res.json({ data });
+}
+
 async function updateComposerSettings(req, res) {
   const data = await service.updateComposerSettings({
     ...ctx(req),
@@ -412,6 +439,7 @@ module.exports = {
   startDirect,
   getComposerSettings,
   updateComposerSettings,
+  getLinkPreview,
   listChannels,
   getChannel,
   createChannel,
@@ -437,6 +465,7 @@ module.exports = {
   getUnreadCount,
   addAttachment,
   sendToCustomer,
+  uploadImage,
   getDraft,
   saveDraft,
   discardDraft,
@@ -451,6 +480,7 @@ module.exports = {
   getCustomer360,
   listColleagues,
   getChannelAccessMatrix,
+  getMyChannelAccess,
   getUserChannelAccess,
   setUserChannelAccess,
 };

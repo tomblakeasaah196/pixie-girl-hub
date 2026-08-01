@@ -12,6 +12,7 @@
  *   webhooks-replay    — failed inbound webhook retries
  *   ai-embed           — RAG ingest jobs
  *   report-generate    — weekly Sales + Customer reports (V2.2 §6.30)
+ *   cos-plan-exec      — Chief-of-Staff batch-plan execution (PR3)
  *
  * Cron jobs (timezone Africa/Lagos):
  *   daily 07:00      — AI Briefing
@@ -23,7 +24,9 @@
  *   every 30m        — Layaway gentle payment reminder
  *   every 30m        — Invoice reminder sweep (F-10)
  *   every 2m         — Workspace task/event reminder sweep (remind_at)
+ *   every 1m         — HR clock-out reminders (−5 / at / +5 min of close time)
  *   every 30m        — Webhook replay sweep (H-4 — re-drive stuck webhooks)
+ *   every 10m        — Nomba ledger reconciliation (pull-based webhook safety net)
  *   daily 03:00      — Soft-FK reconciliation sweep (F-13)
  *   daily 03:30      — Catalogue Trash purge (15-day grace window)
  *   Sun 02:00        — GeoLite2-Country database auto-update (MaxMind)
@@ -52,6 +55,7 @@ const queueNames = [
   "cart-ttl",
   "kaizen-backup",
   "calls-lifecycle",
+  "cos-plan-exec",
 ];
 
 const queues = new Map();
@@ -92,6 +96,7 @@ async function startWorkers() {
     "cart-ttl": require("./processors/cart-ttl-processor").processCartTtl,
     "kaizen-backup": require("./processors/kaizen-backup-processor"),
     "calls-lifecycle": require("./processors/calls-processor"),
+    "cos-plan-exec": require("./processors/cos-plan-exec-processor"),
   };
 
   for (const [name, processor] of Object.entries(handlers)) {
@@ -169,13 +174,13 @@ async function startWorkers() {
     runInboundEmailPoll,
   } = require("./schedulers/email-imap-poll");
   const { runAiInsightsSweep } = require("./schedulers/ai-insights-sweep");
-  const { runRetentionWorkflows } = require("./schedulers/retention-workflows");
   const {
     runRetentionStrategyTick,
   } = require("./schedulers/retention-strategy-tick");
   const {
     runRetentionStrategyScan,
   } = require("./schedulers/retention-strategy-scan");
+  const { runCrownStreakScan } = require("./schedulers/crown-streak-scan");
   const {
     runSubscriptionBilling,
   } = require("./schedulers/subscription-billing");
@@ -188,13 +193,21 @@ async function startWorkers() {
   } = require("./schedulers/chemical-reconciliation");
   const { runMissingWigCheck } = require("./schedulers/missing-wig-check");
   const { runWebhookReplaySweep } = require("./schedulers/webhook-replay");
+  const {
+    runNombaLedgerSyncSweep,
+  } = require("./schedulers/nomba-ledger-sync");
   const { runIgTokenRefreshSweep } = require("./schedulers/ig-token-refresh");
-  const { runAdSpendSync } = require("./schedulers/ad-spend-sync");
+  const {
+    runIgEchoSubscriptionWatchdog,
+  } = require("./schedulers/ig-echo-watchdog");
   const { runGeoIpDatabaseUpdate } = require("./schedulers/geoip-updater");
   const {
     runCatalogueTrashPurge,
   } = require("./schedulers/catalogue-trash-purge");
   const { runHrAttendanceSweep } = require("./schedulers/hr-attendance");
+  const {
+    runClockoutReminderSweep,
+  } = require("./schedulers/hr-clockout-reminders");
   const {
     runAppraisalAutoScore,
   } = require("./schedulers/hr-appraisal-autoscore");
@@ -322,6 +335,10 @@ async function startWorkers() {
   // every punch to the Attendance tab), so this only settles the books at
   // day's end rather than being the thing anyone waits on.
   scheduleCron("hr-attendance-sweep", "0 21 * * *", runHrAttendanceSweep);
+  // Clock-out reminders: every minute, nudge staff still clocked in as their
+  // closing time approaches (−5 / at / +5 min). Cheap indexed no-op when
+  // nobody is due; each nudge is claimed once via shared.clockout_reminders.
+  scheduleCron("hr-clockout-reminders", "* * * * *", runClockoutReminderSweep);
   scheduleCron("hr-appraisal-autoscore", "30 2 * * *", runAppraisalAutoScore);
   scheduleCron("esign-reminder-sweep", "0 9 * * *", runEsignReminderSweep);
   // Task/event reminders (remind_at) — every 2 min so a "15 minutes before"
@@ -351,9 +368,10 @@ async function startWorkers() {
       );
     },
   );
-  scheduleCron("retention-workflows", "* * * * *", runRetentionWorkflows);
   // Retention strategy engine: advance due enrolments every minute; scan for
-  // time-based triggers + expire stale points nightly (02:30 Lagos).
+  // time-based triggers + expire stale points nightly (02:30 Lagos). The
+  // legacy retention-workflows cron was retired — see migrations/template/000085
+  // for the rules-to-strategies migrator.
   scheduleCron(
     "retention-strategy-tick",
     "* * * * *",
@@ -364,12 +382,12 @@ async function startWorkers() {
     "30 2 * * *",
     runRetentionStrategyScan,
   );
+  // Crown streaks: daily nudge/freeze/break sweep (08:15 UTC = 09:15 Lagos).
+  scheduleCron("crown-streak-scan", "15 8 * * *", runCrownStreakScan);
   // CRM: nightly churn-risk recency scoring (02:45) feeds the Win-back
   // buckets + contact-360 churn pill; segment presets + counts at 04:00.
   scheduleCron("churn-risk-scoring", "45 2 * * *", runChurnRiskScoring);
   scheduleCron("segment-presets", "0 4 * * *", runSegmentPresetRefresh);
-  // nightly ad-spend sync (pull metrics from ad networks)
-  scheduleCron("ad-spend-sync", "0 2 * * *", runAdSpendSync);
   scheduleCron("subscription-billing", "0 3 * * *", runSubscriptionBilling);
   scheduleCron("workflow-timeout", "*/10 * * * *", runWorkflowTimeoutSweep);
   scheduleCron(
@@ -384,9 +402,21 @@ async function startWorkers() {
   );
   scheduleCron("invoice-reminders", "*/30 * * * *", runInvoiceReminderSweep);
   scheduleCron("webhook-replay", "*/30 * * * *", runWebhookReplaySweep);
+  // Nomba ledger reconciliation (owner decision 2026-07): pull-based safety
+  // net independent of webhooks — asks the account's own credit/debit ledger
+  // every 10 min and parks any unmatched CREDIT into POS Reconciliation.
+  scheduleCron(
+    "nomba-ledger-sync",
+    "*/10 * * * *",
+    runNombaLedgerSyncSweep,
+  );
   // IG long-lived tokens die after ~60 days; rotate weekly so the two
   // brands' Instagram inboxes never silently disconnect.
   scheduleCron("ig-token-refresh", "20 3 * * *", runIgTokenRefreshSweep);
+  // Hourly: re-assert each IG account's webhook-field subscription
+  // (messages/reactions/seen) — it lives on Meta's side and drifts; when
+  // it does, DMs, app-reply echoes, ticks or badges silently stop syncing.
+  scheduleCron("ig-echo-watchdog", "40 * * * *", runIgEchoSubscriptionWatchdog);
   scheduleCron("soft-fk-reconciliation", "0 3 * * *", runSoftFkReconciliation);
   // Daily 03:30 — purge catalogue Trash past its 15-day grace window.
   scheduleCron("catalogue-trash-purge", "30 3 * * *", runCatalogueTrashPurge);
@@ -430,8 +460,8 @@ async function startWorkers() {
   require("../modules/sales/timeline.subscribers"); // order.paid → timeline event
   require("../modules/sales/receipt.subscribers"); // order.paid → archive receipt PDF
   require("../modules/sales/payment-comms.subscribers"); // part-payment receipt + milestone → Comms Studio
+  require("../modules/sales/order-lifecycle-comms.subscribers"); // order.created → proforma invoice + placement email; order.paid → payment-confirmed email
   require("../modules/sales/duplicate-resolve.subscribers"); // order.paid → cancel pending duplicate twins
-  require("../modules/retention/workflow.subscribers"); // order.paid → workflow trigger
   require("../modules/stock/stock.subscribers"); // variant.created → seed stock level
   require("../modules/service_jobs/service-jobs.subscribers"); // order.deposit_met + order.paid → service job
   require("../modules/stylist_programme/stylist.subscribers"); // order.paid → stylist referral accrual
@@ -444,6 +474,10 @@ async function startWorkers() {
   // webhook.received → WhatsApp voice-call ingest (durable leg of the calls
   // fast path — same "must register in THIS process" reasoning as above).
   require("../modules/calls/calls.subscribers");
+  // Approval inbox wiring — needed here too, because the workflow TIMEOUT
+  // sweep runs in this process and escalates stages (which must move the task
+  // to the new approver).
+  require("../shared/approvals/approvals.subscribers");
 
   // ── Realtime relays (DEFECT-3) ──────────────────────────
   // The outbox consumers and cron sweeps above emit domain events IN THIS
@@ -454,6 +488,7 @@ async function startWorkers() {
   // the API) already registered them during socket init.
   require("../realtime/stock-realtime").registerStockRealtime();
   require("../realtime/sales-realtime").registerSalesRealtime();
+  require("../realtime/onboarding-realtime").registerOnboardingRealtime();
   require("../realtime/service-jobs-realtime").registerServiceJobsRealtime();
   require("../realtime/workflow-realtime").registerWorkflowRealtime();
   require("../realtime/campaign-realtime").registerCampaignRealtime();

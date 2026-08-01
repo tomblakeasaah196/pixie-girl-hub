@@ -13,17 +13,19 @@ const validator = require("./retention.validator");
 const couponRouter = require("./coupon.routes");
 const bundleRouter = require("./bundle.routes");
 const subscriptionRouter = require("./subscription.routes");
-const workflowRouter = require("./workflow.routes");
 const strategyRouter = require("./strategy.routes");
 const rewardsRouter = require("./rewards.routes");
 const earnRouter = require("./earn.routes");
 const referralAdminRouter = require("./referral-admin.routes");
 const analyticsRouter = require("./analytics.routes");
 const maintenanceRouter = require("./maintenance.routes");
+const crownRouter = require("./crown.routes");
 const { requirePermission } = require("../../middleware/rbac");
 
-// Side-effect: register order.paid → loyalty + streak earners + strategy spine.
+// Side-effect: register order.paid → Crowns earner + referral + strategy spine.
 require("./retention.subscribers");
+// Side-effect: register Crown events → staff in-app notifications.
+require("./crown.notifications");
 
 const router = express.Router();
 const can = (action) => requirePermission("retention", action);
@@ -34,9 +36,9 @@ router.use("/coupons", couponRouter);
 router.use("/bundles", bundleRouter);
 // Wig subscriptions (F-1 / §6.23.5)
 router.use("/subscriptions", subscriptionRouter);
-// Automated retention workflows (F-4 / §6.23) — legacy single-action engine
-router.use("/workflows", workflowRouter);
-// Retention strategy engine (multi-step journeys; the no-code evolution)
+// Retention strategy engine (multi-step journeys; the no-code retention brain).
+// The legacy single-action workflow engine (000031 retention_workflow_rules)
+// was retired — see migrations/template/000085 for the one-shot data migrator.
 router.use("/strategies", strategyRouter);
 // Loyalty rewards catalogue + redemption (§6.23 economy)
 router.use("/rewards", rewardsRouter);
@@ -48,6 +50,9 @@ router.use("/referral-program", referralAdminRouter);
 router.use("/analytics", analyticsRouter);
 // Maintenance plans (Faitlyn salon subscriptions, §6.23)
 router.use("/maintenance", maintenanceRouter);
+// Crowns 👑 — unified loyalty + streak economy (§6.23). Merges the loyalty
+// points + Streak Stars economies into one status-only Crown currency.
+router.use("/crowns", crownRouter);
 
 // Loyalty
 router.get("/loyalty/tiers", can("view"), controller.listTiers);

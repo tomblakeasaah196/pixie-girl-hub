@@ -10,7 +10,27 @@ const timelineRepo = require("./contacts.timeline.repo");
 const events = require("./contacts.events");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
-const { NotFoundError } = require("../../utils/errors");
+const { NotFoundError, PermissionDeniedError } = require("../../utils/errors");
+
+/**
+ * Contact-type visibility guard (contacts §6.12). `allowedTypes` is
+ * req.contact_type_scope: null = unrestricted. When restricted, block a write
+ * that would give a contact a type the caller can't see (so they can't create
+ * or convert a contact into one that then vanishes from their own view, nor
+ * reach across the type boundary the CEO drew). An empty/absent type list on a
+ * write is left to the caller — an untyped contact touches no boundary.
+ */
+function assertCanUseTypes(allowedTypes, types) {
+  if (!Array.isArray(allowedTypes)) return; // unrestricted
+  if (!Array.isArray(types) || types.length === 0) return; // nothing to check
+  const allowed = new Set(allowedTypes);
+  const blocked = types.filter((t) => !allowed.has(t));
+  if (blocked.length) {
+    throw new PermissionDeniedError(
+      `You don't have access to these contact types: ${blocked.join(", ")}`,
+    );
+  }
+}
 
 const A = (
   brand,
@@ -34,19 +54,27 @@ const A = (
   });
 
 // ── Contacts ─────────────────────────────────────────────
-function list({ filters, page, page_size }) {
+function list({ filters, page, page_size, allowedTypes = null }) {
   const offset = (page - 1) * page_size;
-  return repo.findAll({ filters, page, page_size, offset });
+  return repo.findAll({ filters, allowedTypes, page, page_size, offset });
 }
-async function getById({ id }) {
-  const c = await repo.findById({ id });
+async function getById({ id, allowedTypes = null }) {
+  const c = await repo.findById({ id, allowedTypes });
   if (!c) throw new NotFoundError("Contact");
   return c;
 }
 
 /** Contacts 360: time-sorted activity feed across all modules. */
-async function getTimeline({ brand, id, kinds, category, page, page_size }) {
-  const c = await repo.findById({ id });
+async function getTimeline({
+  brand,
+  id,
+  kinds,
+  category,
+  page,
+  page_size,
+  allowedTypes = null,
+}) {
+  const c = await repo.findById({ id, allowedTypes });
   if (!c) throw new NotFoundError("Contact");
   return timelineRepo.timeline({
     brand,
@@ -60,8 +88,8 @@ async function getTimeline({ brand, id, kinds, category, page, page_size }) {
 
 /** Contacts 360: header roll-up (orders, spend, AR, deals, loyalty).
  *  Shaped to match the frontend `ContactSummary` contract. */
-async function getSummary({ brand, id }) {
-  const c = await repo.findById({ id });
+async function getSummary({ brand, id, allowedTypes = null }) {
+  const c = await repo.findById({ id, allowedTypes });
   if (!c) throw new NotFoundError("Contact");
   const raw = await timelineRepo.summary({ brand, contact_id: id });
   return {
@@ -74,7 +102,8 @@ async function getSummary({ brand, id }) {
     loyalty_points: Number(raw.loyalty_balance ?? 0),
   };
 }
-async function create({ brand, user, request_id, input }) {
+async function create({ brand, user, request_id, input, allowedTypes = null }) {
+  assertCanUseTypes(allowedTypes, input.contact_type);
   return transaction(async (client) => {
     const c = await repo.create({ client, input, user_id: user.user_id });
     await A(
@@ -90,9 +119,19 @@ async function create({ brand, user, request_id, input }) {
     return c;
   });
 }
-async function update({ brand, user, request_id, id, patch }) {
-  const before = await repo.findById({ id });
+async function update({
+  brand,
+  user,
+  request_id,
+  id,
+  patch,
+  allowedTypes = null,
+}) {
+  const before = await repo.findById({ id, allowedTypes });
   if (!before) throw new NotFoundError("Contact");
+  // Can't re-type a contact into a bucket you can't see (would lose your own
+  // access, or reach across the type boundary).
+  assertCanUseTypes(allowedTypes, patch.contact_type);
   const c = await repo.update({ id, patch });
   await A(
     brand,
@@ -107,7 +146,11 @@ async function update({ brand, user, request_id, id, patch }) {
   events.emit("updated", { brand, id });
   return c;
 }
-async function remove({ brand, user, request_id, id }) {
+async function remove({ brand, user, request_id, id, allowedTypes = null }) {
+  // Gate on visibility first so a restricted role can't delete a contact it
+  // can't even see (404, not 403 — never reveal the contact exists).
+  const existing = await repo.findById({ id, allowedTypes });
+  if (!existing) throw new NotFoundError("Contact");
   const ok = await repo.softDelete({ id });
   if (!ok) throw new NotFoundError("Contact");
   await A(
@@ -173,17 +216,20 @@ async function deleteSegment({ brand, user, request_id, id }) {
 }
 
 // ── Addresses (under a contact) ──────────────────────────
-async function ensureContact({ id }) {
-  const c = await repo.findById({ id });
+// ensureContact doubles as the visibility gate for every sub-resource (tags,
+// addresses): if the caller's type scope can't see the parent contact, it
+// reads as "not found" and the whole sub-operation 404s.
+async function ensureContact({ id, allowedTypes = null }) {
+  const c = await repo.findById({ id, allowedTypes });
   if (!c) throw new NotFoundError("Contact");
   return c;
 }
-async function listAddresses({ id }) {
-  await ensureContact({ id });
+async function listAddresses({ id, allowedTypes = null }) {
+  await ensureContact({ id, allowedTypes });
   return repo.listAddresses({ contact_id: id });
 }
-async function addAddress({ brand, user, request_id, id, input }) {
-  await ensureContact({ id });
+async function addAddress({ brand, user, request_id, id, input, allowedTypes = null }) {
+  await ensureContact({ id, allowedTypes });
   return transaction(async (client) => {
     if (input.is_default) {
       await repo.clearDefaultAddresses({
@@ -222,7 +268,9 @@ async function updateAddress({
   id,
   address_id,
   patch,
+  allowedTypes = null,
 }) {
+  await ensureContact({ id, allowedTypes });
   return transaction(async (client) => {
     const before = await repo.getAddress({
       client,
@@ -256,7 +304,15 @@ async function updateAddress({
     return addr;
   });
 }
-async function deleteAddress({ brand, user, request_id, id, address_id }) {
+async function deleteAddress({
+  brand,
+  user,
+  request_id,
+  id,
+  address_id,
+  allowedTypes = null,
+}) {
+  await ensureContact({ id, allowedTypes });
   const ok = await repo.deleteAddress({ contact_id: id, address_id });
   if (!ok) throw new NotFoundError("Address");
   await A(
@@ -271,16 +327,18 @@ async function deleteAddress({ brand, user, request_id, id, address_id }) {
 }
 
 /** Upcoming contact birthdays within `days` days (default 7, clamped 1..366). */
-function milestones({ days }) {
+function milestones({ days, allowedTypes = null }) {
   const d = Math.min(Math.max(Number(days) || 7, 1), 366);
-  return repo.upcomingMilestones({ days: d });
+  return repo.upcomingMilestones({ days: d, allowedTypes });
 }
 
 // ── Contact tags ─────────────────────────────────────────
-function listTags({ brand, id }) {
+async function listTags({ brand, id, allowedTypes = null }) {
+  await ensureContact({ id, allowedTypes });
   return repo.listTags({ brand, contact_id: id });
 }
-async function addTag({ brand, user, request_id, id, input }) {
+async function addTag({ brand, user, request_id, id, input, allowedTypes = null }) {
+  await ensureContact({ id, allowedTypes });
   const tag = await repo.addTag({
     brand,
     contact_id: id,
@@ -299,7 +357,8 @@ async function addTag({ brand, user, request_id, id, input }) {
   );
   return tag;
 }
-async function removeTag({ brand, user, request_id, id, tag_id }) {
+async function removeTag({ brand, user, request_id, id, tag_id, allowedTypes = null }) {
+  await ensureContact({ id, allowedTypes });
   const ok = await repo.removeTag({ brand, contact_id: id, tag_id });
   if (!ok) throw new NotFoundError("Tag");
   await A(
@@ -365,8 +424,8 @@ async function mergeTags({ brand, user, request_id, source_tag_id, target_tag_id
   return tag;
 }
 
-function stats({ brand }) {
-  return repo.stats({ brand });
+function stats({ brand, allowedTypes = null }) {
+  return repo.stats({ brand, allowedTypes });
 }
 
 module.exports = {

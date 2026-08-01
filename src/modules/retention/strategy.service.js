@@ -12,8 +12,8 @@ const catalogue = require("./strategy.catalogue");
 const templates = require("./strategy.templates");
 const conditions = require("./strategy.conditions");
 const facts = require("./strategy.facts");
-const actions = require("./strategy.actions");
 const engine = require("./strategy.engine");
+const { renderStepEmail } = require("./strategy.email");
 const email = require("../../services/email.service");
 const { transaction } = require("../../config/database");
 const { audit } = require("../../middleware/audit");
@@ -196,7 +196,8 @@ async function preview({ brand, id, contact_id }) {
   const sample = await buildSampleFacts({ brand, contact_id });
 
   const wouldEnrol = conditions.evaluate(strategy.trigger_conditions || {}, sample);
-  const stepPreviews = steps.map((step) => {
+  const stepPreviews = [];
+  for (const step of steps) {
     const passes = conditions.evaluate(step.step_conditions || {}, sample);
     const out = {
       step_order: step.step_order,
@@ -206,13 +207,14 @@ async function preview({ brand, id, contact_id }) {
       description: step.description || null,
     };
     if (step.action_type === "send_email") {
-      out.rendered = {
-        subject: actions.renderTokens(step.action_config.subject || "", sample),
-        html: actions.renderTokens(step.action_config.html || step.action_config.body || "", sample),
-      };
+      // Same renderer as the live send — brand frame, loyalty + custom
+      // tokens, saved template if the step points at one. The html is a full
+      // framed document; the builder shows it in a sandboxed iframe.
+      const mail = await renderStepEmail({ brand, step, facts: sample });
+      out.rendered = { subject: mail.subject, html: mail.html };
     }
-    return out;
-  });
+    stepPreviews.push(out);
+  }
 
   return {
     summary: strategy.summary || summarize(strategy, steps),
@@ -235,9 +237,9 @@ async function testSend({ brand, id, step_order, user }) {
     throw new AppError("NOT_EMAIL", "That step does not send an email.", 409);
 
   const sample = await buildSampleFacts({ brand });
-  const subject = `[TEST] ${actions.renderTokens(step.action_config.subject || "", sample)}`;
-  const html = actions.renderTokens(step.action_config.html || step.action_config.body || "", sample);
-  await email.send({ to: user.email, subject, html, brand });
+  const mail = await renderStepEmail({ brand, step, facts: sample });
+  const subject = `[TEST] ${mail.subject}`;
+  await email.send({ to: user.email, subject, html: mail.html, text: mail.text, brand });
   return { sent_to: user.email, subject };
 }
 

@@ -129,6 +129,11 @@ async function match({ id, brand, order_id, user, request_id }) {
     method: "nomba_terminal",
     provider: "nomba",
     webhook_id: row.webhook_id,
+    // A person decided this payment belongs to this order — name them on the
+    // payment row, not just on the reconciliation record. Without this the
+    // order's Payments ledger claimed the gateway captured it automatically,
+    // hiding who actually made the call.
+    recorded_by_user_id: user.user_id,
   });
 
   const updated = await repo.markMatched({
@@ -206,7 +211,9 @@ async function ignore({ id, note, user, request_id }) {
  * (repo.listNotifyRecipients narrows to is_ceo when brand is null).
  */
 async function notifyNewPending({ recon_id, business, amount_ngn }) {
-  const recipients = await repo.listNotifyRecipients({ brand: business || null });
+  const recipients = await repo.listNotifyRecipients({
+    brand: business || null,
+  });
   const amountDisplay = `₦${Number(amount_ngn).toLocaleString("en-NG", {
     minimumFractionDigits: 2,
   })}`;

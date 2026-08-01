@@ -5,25 +5,34 @@ export type BrandKey = string;
 export interface BrandConfig {
   key: BrandKey;
   name: string;
-  fromEmail: string;
+  website: string | null;
+  storefrontUrl: string | null;
+  supportEmail: string | null;
   primaryColor: string;
   secondaryColor: string;
   logoUrl?: string | null;
 }
 
-// Fallback for when the API is unreachable
+// Visual-only fallback for when the Hub API is unreachable. Deliberately
+// carries NO domains or mailboxes — those live in the DB (Settings →
+// Business Setup → Public Identity) and are served by
+// /api/public/brand/:key, so a brand domain change never touches code.
 const FALLBACK: Record<string, BrandConfig> = {
   pixiegirl: {
     key: "pixiegirl",
     name: "Pixie Girl",
-    fromEmail: "noreply@pixiegirlglobal.com",
+    website: null,
+    storefrontUrl: null,
+    supportEmail: null,
     primaryColor: "#a81d1d",
     secondaryColor: "#690909",
   },
   faitlynhair: {
     key: "faitlynhair",
     name: "Faitlyn Hair",
-    fromEmail: "noreply@thefaitlynbrand.com",
+    website: null,
+    storefrontUrl: null,
+    supportEmail: null,
     primaryColor: "#7f703d",
     secondaryColor: "#d5b8a4",
   },
@@ -42,6 +51,7 @@ export function getBrand(): BrandKey {
 
 export async function getBrandConfig(): Promise<BrandConfig> {
   const brand = getBrand();
+  const fallback = FALLBACK[brand] ?? FALLBACK.pixiegirl;
   try {
     const base = process.env.HUB_API_URL || "http://localhost:7000";
     const res = await fetch(`${base}/api/public/brand/${brand}`, {
@@ -49,10 +59,22 @@ export async function getBrandConfig(): Promise<BrandConfig> {
     });
     if (res.ok) {
       const json = await res.json();
-      return json?.data ?? FALLBACK[brand] ?? FALLBACK.pixiegirl;
+      const d = json?.data;
+      if (d) {
+        return {
+          key: d.key ?? brand,
+          name: d.name ?? fallback.name,
+          website: d.website ?? null,
+          storefrontUrl: d.storefront_url ?? null,
+          supportEmail: d.support_email ?? null,
+          primaryColor: d.accent_colour || fallback.primaryColor,
+          secondaryColor: fallback.secondaryColor,
+          logoUrl: d.logo_url ?? null,
+        };
+      }
     }
   } catch {
     // fall through to fallback
   }
-  return FALLBACK[brand] ?? FALLBACK.pixiegirl;
+  return fallback;
 }

@@ -30,6 +30,13 @@ export interface User {
   role: string;
   /** Resolved permission keys "module:action" — drives permission-aware UI. */
   permissions: string[];
+  /**
+   * `${module}:${action}` → 'all' | 'team' | 'own'. The MOST PERMISSIVE scope
+   * the user holds across their roles (mirrors the middleware's rule so the
+   * UI and API agree). Absent key ⇒ no grant ⇒ treat as no access.
+   * CEOs get an empty map because they short-circuit on the `*` permission.
+   */
+  permissionScopes: Record<string, "all" | "team" | "own">;
   permittedBusinesses: string[]; // "*" = all
   // Raw backend fields (kept for entity-selection + brand scoping).
   isCeo: boolean;
@@ -60,6 +67,13 @@ interface AuthState {
   /** Fetch resolved permission grants from /auth/me/permissions and store them. */
   loadPermissions: () => Promise<void>;
   can: (module: string, action: string) => boolean;
+  /**
+   * Most permissive record scope the user holds for module × action, or
+   * `null` if they hold no grant at all. CEO returns 'all'. Use this to
+   * gate ops-only surfaces ("everyone else's data") — a scope of 'own'
+   * means the user only sees their own rows and Ops tabs should hide.
+   */
+  scopeFor: (module: string, action: string) => "all" | "team" | "own" | null;
   patchUser: (
     partial: Partial<Pick<User, "name" | "email" | "avatarUrl">>,
   ) => void;
@@ -80,7 +94,10 @@ export function toUser(u: AuthUser): User {
   const roleNames = u.role_names ?? [];
   return {
     id: u.user_id,
-    name: u.display_name || u.email.split("@")[0],
+    // The header chip is the user's OWN view, so it prefers their personal
+    // alias. Everywhere the user is shown to others reads the canonical name
+    // of record (display_name), which self-service editing never changes.
+    name: u.preferred_name || u.display_name || u.email.split("@")[0],
     email: u.email,
     // Prefer the most specific identity we have: CEO / Factory Manager keep
     // their well-known labels; otherwise show a named RBAC role, then fall
@@ -98,6 +115,7 @@ export function toUser(u: AuthUser): User {
     // Until the permissions module lands, a CEO/super-admin gets "*"
     // (full access); everyone else relies on server-side enforcement.
     permissions: u.is_ceo ? ["*"] : [],
+    permissionScopes: {},
     permittedBusinesses: u.is_ceo ? ["*"] : u.available_businesses,
     isCeo: u.is_ceo,
     availableBusinesses: u.available_businesses,
@@ -163,7 +181,28 @@ export const useAuthStore = create<AuthState>()(
           const permissions = isSuperGrant
             ? ["*"]
             : grants.map((g) => `${g.module}:${g.action}`);
-          set({ user: { ...user, permissions }, permissionsLoaded: true });
+          // Fold same-key grants down to the MOST permissive scope the user
+          // holds (mirrors the backend rbac middleware's rule); the UI reads
+          // scope via `scopeFor(module, action)`.
+          const scoreScope = (s: string) =>
+            s === "all" ? 3 : s === "team" ? 2 : s === "own" ? 1 : 0;
+          const permissionScopes: Record<string, "all" | "team" | "own"> = {};
+          if (!isSuperGrant) {
+            for (const g of grants) {
+              const key = `${g.module}:${g.action}`;
+              const nextScope = (g.record_scope || "own") as
+                | "all"
+                | "team"
+                | "own";
+              const cur = permissionScopes[key];
+              if (!cur || scoreScope(nextScope) > scoreScope(cur))
+                permissionScopes[key] = nextScope;
+            }
+          }
+          set({
+            user: { ...user, permissions, permissionScopes },
+            permissionsLoaded: true,
+          });
         } catch {
           // Non-fatal: keep whatever permissions the user already has, but
           // mark resolved so the UI stops waiting (nav/guard fall back to the
@@ -212,6 +251,12 @@ export const useAuthStore = create<AuthState>()(
           p.includes(`${module}:*`) ||
           p.includes(`${module}:${action}`)
         );
+      },
+      scopeFor: (module, action) => {
+        const u = get().user;
+        if (!u) return null;
+        if (u.isCeo || u.permissions.includes("*")) return "all";
+        return u.permissionScopes[`${module}:${action}`] ?? null;
       },
       patchUser: (partial) => {
         const u = get().user;

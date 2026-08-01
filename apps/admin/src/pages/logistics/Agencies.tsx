@@ -15,7 +15,7 @@ import {
   Skeleton,
   EmptyState,
 } from "@/components/ui/primitives";
-import { ErrorState, Toggle } from "@/components/ui/controls";
+import { ErrorState, Toggle, Select } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
 import { toastReport } from "@/lib/error-report";
 import {
@@ -173,6 +173,9 @@ function AgencyFormModal({
   const [contactPhone, setContactPhone] = useState(courier?.contact_phone ?? "");
   const [pickupLocation, setPickupLocation] = useState(courier?.preferred_pickup_location ?? "");
   const [paymentTerms, setPaymentTerms] = useState(courier?.payment_terms_notes ?? "");
+  const [settlementMode, setSettlementMode] = useState<"invoice" | "per_drop">(
+    courier?.settlement_mode ?? "invoice",
+  );
   const [flat, setFlat] = useState(courier?.rate_card?.flat != null ? String(courier.rate_card.flat) : "");
   const [perKg, setPerKg] = useState(courier?.rate_card?.per_kg != null ? String(courier.rate_card.per_kg) : "");
   const [rating, setRating] = useState(courier?.internal_rating ?? 0);
@@ -200,6 +203,7 @@ function AgencyFormModal({
       contact_phone: contactPhone.trim() || undefined,
       preferred_pickup_location: pickupLocation.trim() || undefined,
       payment_terms_notes: paymentTerms.trim() || undefined,
+      settlement_mode: settlementMode,
       internal_rating: rating || undefined,
       internal_notes: notes.trim() || undefined,
     };
@@ -306,6 +310,23 @@ function AgencyFormModal({
         <Field label="Preferred pickup location">
           <Input value={pickupLocation} onChange={setPickupLocation} placeholder="Where this agency collects from" />
         </Field>
+        <Field label="How we pay them">
+          <Select
+            value={settlementMode}
+            onChange={(v) => setSettlementMode(v as "invoice" | "per_drop")}
+            ariaLabel="Settlement mode"
+            options={[
+              { value: "invoice", label: "They invoice us periodically" },
+              { value: "per_drop", label: "Paid per drop, at pickup" },
+            ]}
+          />
+          <p className="text-[11px] text-text-faint mt-1">
+            Decides where this courier&rsquo;s delivery costs settle — a
+            periodic invoice batches into one expense, per-drop cash settles
+            through a cash request.
+          </p>
+        </Field>
+
         <Field label="Payment terms">
           <Input value={paymentTerms} onChange={setPaymentTerms} placeholder="e.g. Pay before pickup, transfer only" />
         </Field>

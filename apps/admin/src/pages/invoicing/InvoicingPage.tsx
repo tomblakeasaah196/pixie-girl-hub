@@ -10,9 +10,9 @@ import { DocumentSettingsTab } from "./DocumentSettingsTab";
 
 type InvoicingTab = "ar-ageing" | "invoices" | "credit-notes" | "settings";
 const TABS: { key: InvoicingTab; label: string; icon: typeof FileText }[] = [
-  { key: "ar-ageing", label: "AR Ageing", icon: FileBarChart },
   { key: "invoices", label: "Invoices", icon: FileText },
-  { key: "credit-notes", label: "Credit Notes", icon: Undo2 },
+  { key: "ar-ageing", label: "Owed to Us", icon: FileBarChart },
+  { key: "credit-notes", label: "Refunds", icon: Undo2 },
   { key: "settings", label: "Settings", icon: Settings2 },
 ];
 
@@ -20,13 +20,13 @@ export function InvoicingPage() {
   const [sp, setSp] = useSearchParams();
   const can = useAuthStore((s) => s.can);
   const canEdit = can("invoicing", "edit");
-  const tab = (sp.get("tab") as InvoicingTab) ?? "ar-ageing";
+  const tab = (sp.get("tab") as InvoicingTab) ?? "invoices";
   const setTab = (t: InvoicingTab) => setSp({ tab: t });
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-4 flex-wrap">
-        <h1 className="font-display text-2xl font-medium">Invoicing & Billing</h1>
+        <h1 className="font-display text-2xl font-medium">Payments</h1>
       </div>
 
       {/* Praxis proactive insights for this module (self-hides when clear/off). */}

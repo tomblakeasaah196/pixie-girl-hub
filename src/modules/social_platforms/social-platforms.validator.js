@@ -7,6 +7,9 @@ const metricSpec = z
     key: z.string().min(1).max(40),
     label: z.string().min(1).max(60),
     aliases: z.array(z.string().min(1).max(80)).min(1),
+    // How the scraped value is coerced + rendered. Omitted = "count"
+    // (integer tile), keeping older schemas valid.
+    type: z.enum(["count", "decimal", "text", "bool"]).optional(),
   })
   .strict();
 

@@ -26,6 +26,7 @@ import { CustomCursor } from "@/components/site/CustomCursor";
 import { SiteConfigProvider, type StudioPage } from "@/lib/site-config";
 import { resolveToolbar } from "@/lib/toolbar";
 import { useCurrencyFeed } from "@/lib/useCurrencyFeed";
+import { useReferralCapture } from "@/lib/useStore";
 
 /*
  * SSR shell for the Storefront Website (dark-first maison).
@@ -43,6 +44,13 @@ interface SiteConfig {
   pages?: StudioPage[];
   popups?: unknown[];
   preview?: boolean;
+  seo?: {
+    origin: string;
+    path: string;
+    pageTitle: string;
+    pageDescription: string;
+    pageImage: string;
+  };
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
@@ -129,10 +137,49 @@ function brandingFrom(tokens: Record<string, string> | undefined, brand: BrandKe
 // Applied before paint so a stored light-mode choice doesn't flash dark.
 const THEME_BOOT = `try{var t=localStorage.getItem('sf_theme');var d=document.documentElement;if(t==='light'){d.classList.remove('dark');d.classList.add('light');}else{d.classList.add('dark');}}catch(e){document.documentElement.classList.add('dark');}`;
 
+// Social scrapers (WhatsApp/Facebook/Twitter) need an ABSOLUTE og:image — a
+// relative `/media/...` (what the Studio stores) is meaningless to them. The
+// storefront proxies `/media` to the Hub, so absolutising against the request
+// origin resolves correctly. Already-absolute URLs pass through untouched.
+function absoluteImage(origin: string | undefined, ref: string | undefined): string {
+  const s = String(ref || "").trim();
+  if (!s) return "";
+  if (/^https?:\/\//i.test(s)) return s;
+  if (!origin) return "";
+  return `${origin}${s.startsWith("/") ? "" : "/"}${s}`;
+}
+
 function RootShell({ children }: { children: ReactNode }) {
-  const { brand, theme } = Route.useLoaderData();
+  const { brand, theme, seo } = Route.useLoaderData();
   const themeCss = tokensToCss(theme?.tokens);
   const { faviconDark, faviconLight } = brandingFrom(theme?.tokens, brand);
+  // Share/SEO meta, emitted here in the shell so every route gets a rich,
+  // brand-correct preview without touching each route file.
+  //
+  // The home page ("/") shares the SITE-WIDE card, whose single source of truth
+  // is the Branding tab (theme tokens og_title / og_description / --og-image).
+  // So on the home page the brand tokens WIN and any legacy per-page value is
+  // only a fallback — this is what lets the composed Share banner replace the
+  // old per-page hero image. Deeper pages keep their own per-page override
+  // first, then fall back to the brand default, then the brand name.
+  const tokens = (theme?.tokens || {}) as Record<string, string>;
+  const brandName = BRAND_NAMES[brand] ?? "";
+  const isHome = (seo?.path || "/") === "/";
+  const ogTitle =
+    (isHome
+      ? tokens.og_title || seo?.pageTitle
+      : seo?.pageTitle || tokens.og_title) || brandName;
+  const ogDesc =
+    (isHome
+      ? tokens.og_description || seo?.pageDescription
+      : seo?.pageDescription || tokens.og_description) || "";
+  const ogImage = absoluteImage(
+    seo?.origin,
+    isHome
+      ? tokens["--og-image"] || seo?.pageImage
+      : seo?.pageImage || tokens["--og-image"],
+  );
+  const ogUrl = seo?.origin ? `${seo.origin}${seo.path || ""}` : "";
   // Dark-default site → the plain link (fallback for browsers that ignore
   // `media` on icons) uses the dark favicon; the media links pick the right
   // one by the browser/OS colour scheme, which is what renders the tab.
@@ -141,6 +188,23 @@ function RootShell({ children }: { children: ReactNode }) {
     <html lang="en" data-brand={brand} className="dark">
       <head>
         <HeadContent />
+        {/* Open Graph / Twitter / SEO — rich, brand-correct link previews. */}
+        {ogTitle ? <meta property="og:title" content={ogTitle} /> : null}
+        {ogDesc ? <meta name="description" content={ogDesc} /> : null}
+        {ogDesc ? <meta property="og:description" content={ogDesc} /> : null}
+        <meta property="og:type" content="website" />
+        {brandName ? <meta property="og:site_name" content={brandName} /> : null}
+        {ogUrl ? <meta property="og:url" content={ogUrl} /> : null}
+        {ogImage ? <meta property="og:image" content={ogImage} /> : null}
+        {ogImage ? <meta property="og:image:width" content="1200" /> : null}
+        {ogImage ? <meta property="og:image:height" content="630" /> : null}
+        <meta
+          name="twitter:card"
+          content={ogImage ? "summary_large_image" : "summary"}
+        />
+        {ogTitle ? <meta name="twitter:title" content={ogTitle} /> : null}
+        {ogDesc ? <meta name="twitter:description" content={ogDesc} /> : null}
+        {ogImage ? <meta name="twitter:image" content={ogImage} /> : null}
         {faviconDefault ? (
           <>
             <link rel="icon" href={faviconDefault} />
@@ -167,6 +231,10 @@ function RootShell({ children }: { children: ReactNode }) {
  *  nothing; lives inside the QueryClientProvider so useQuery has its context. */
 function CurrencyFeedBoot() {
   useCurrencyFeed();
+  // P0-3: also capture any ?ref=<code> in the URL into localStorage so the
+  // checkout page can forward it as customer_referral_code. Effect-only,
+  // runs once at mount, does nothing on pages without the param.
+  useReferralCapture();
   return null;
 }
 

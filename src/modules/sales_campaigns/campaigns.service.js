@@ -390,32 +390,19 @@ async function duplicate({ brand, user, request_id, id, overrides = {} }) {
     const clash = await repo.findBySlug({ client, brand, slug: newSlug });
     if (clash) throw new ConflictError(`Slug '${newSlug}' is already in use`);
 
-    const input = {
-      slug: newSlug,
-      name: overrides.name || `${src.name} (copy)`,
-      description: src.description,
-      starts_at: src.starts_at,
-      ends_at: src.ends_at,
-      discount_type: src.discount_type,
-      discount_value: src.discount_value,
-      min_order_value_ngn: src.min_order_value_ngn,
-      customer_segment_id: src.customer_segment_id,
-      first_time_buyers_only: src.first_time_buyers_only,
-      product_scope: src.product_scope,
-      landing_hero_title: src.landing_hero_title,
-      landing_hero_subtitle: src.landing_hero_subtitle,
-      landing_hero_image_url: src.landing_hero_image_url,
-      landing_cta_text: src.landing_cta_text,
-      landing_blocks: src.landing_blocks,
-      countdown_message: src.countdown_message,
-      signup_for_notifications: src.signup_for_notifications,
-      ended_message: src.ended_message,
-      ended_redirect_to: src.ended_redirect_to,
-      meta_title: src.meta_title,
-      meta_description: src.meta_description,
-      og_image_url: src.og_image_url,
-      total_usage_limit: src.total_usage_limit,
-    };
+    // Clone the FULL configurable surface (deals ladder, stacking/bulk tiers,
+    // gateways, static FX, landing extras, VIP, exit-intent, …) by copying
+    // every cloneable column from the source — not a hand-kept subset that
+    // silently dropped most v2/v3 fields. The new campaign always starts as a
+    // fresh `draft` (create sets no status) with no approval carried over, so
+    // "clone a past campaign and edit" reproduces the whole sale to tweak.
+    const input = {};
+    for (const col of repo.CLONEABLE_COLS) {
+      if (src[col] !== undefined) input[col] = src[col];
+    }
+    input.slug = newSlug;
+    input.name = overrides.name || `${src.name} (copy)`;
+
     const created = await repo.create({
       client,
       brand,
@@ -429,6 +416,9 @@ async function duplicate({ brand, user, request_id, id, overrides = {} }) {
       campaign_id: id,
     });
     for (const p of products) {
+      // Copy the full product snapshot (styled link, both-currency campaign +
+      // regular prices, image, copy) so the clone's landing cards render
+      // identically instead of losing styling/pricing.
       await repo.addProduct({
         client,
         brand,
@@ -436,8 +426,15 @@ async function duplicate({ brand, user, request_id, id, overrides = {} }) {
         input: {
           product_id: p.product_id,
           category_id: p.category_id,
+          styled_id: p.styled_id,
           include_exclude: p.include_exclude,
           campaign_price_ngn: p.campaign_price_ngn,
+          campaign_price_usd: p.campaign_price_usd,
+          image_url: p.image_url,
+          regular_price_ngn: p.regular_price_ngn,
+          regular_price_usd: p.regular_price_usd,
+          short_description: p.short_description,
+          long_description: p.long_description,
           display_order: p.display_order,
           is_featured: p.is_featured,
         },
@@ -766,11 +763,31 @@ function buildLandingPayload(c, products, state) {
  * prepends https:// when no scheme is present.
  */
 function publicSaleBaseUrl(brand_config) {
-  const raw =
-    (brand_config &&
-      (brand_config.sales_subdomain || brand_config.storefront_domain)) ||
-    null;
-  const trimmed = raw ? String(raw).trim().replace(/\/+$/, "") : "";
+  const sub =
+    brand_config && brand_config.sales_subdomain
+      ? String(brand_config.sales_subdomain).trim()
+      : "";
+  const store =
+    brand_config && brand_config.storefront_domain
+      ? String(brand_config.storefront_domain).trim()
+      : "";
+
+  // Prefer the explicit sales subdomain. When only the storefront domain is
+  // set, DERIVE `sales.<apex>` rather than returning the bare apex: the apex
+  // host serves the storefront app, which has no `/sale/:slug` route, so an
+  // apex sale link 404s. The sales subdomain (the Next.js landing app) owns
+  // those routes. Deriving keeps share links, go-live blasts and gateway
+  // return URLs pointing at a host that actually renders the sale.
+  let host = sub;
+  if (!host && store) {
+    const apex = store
+      .replace(/^https?:\/\//i, "")
+      .replace(/\/+$/, "")
+      .replace(/^www\./i, "");
+    if (apex) host = /^sales\./i.test(apex) ? apex : `sales.${apex}`;
+  }
+
+  const trimmed = host.replace(/\/+$/, "");
   if (!trimmed) return config.APP_URL || "";
   return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
 }

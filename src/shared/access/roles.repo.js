@@ -111,6 +111,71 @@ async function replacePermissions({ client, role_id, grants }) {
   return listPermissions({ client, role_id });
 }
 
+// ── contact-type visibility (contacts §6.12) ───────────────
+// A role's allow-list of contact_type values it may see, in
+// shared.role_contact_type_access. NO row = unrestricted (sees every type);
+// a row restricts the role to its listed types (empty = sees none).
+
+/** A role's contact-type access row, or null when the role is unrestricted. */
+async function getContactTypeAccess({ client, role_id }) {
+  const { rows } = await exec(client)(
+    `SELECT contact_types, updated_by, updated_at
+       FROM shared.role_contact_type_access
+      WHERE role_id = $1
+      LIMIT 1`,
+    [role_id],
+  );
+  return rows[0] || null;
+}
+
+/** Restrict a role to `contact_types` (upsert). Empty array = sees no contacts. */
+async function setContactTypeAccess({ client, role_id, contact_types, updated_by }) {
+  const { rows } = await exec(client)(
+    `INSERT INTO shared.role_contact_type_access (role_id, contact_types, updated_by)
+     VALUES ($1, $2::text[], $3)
+     ON CONFLICT (role_id) DO UPDATE
+       SET contact_types = EXCLUDED.contact_types,
+           updated_by    = EXCLUDED.updated_by,
+           updated_at    = now()
+     RETURNING contact_types, updated_by, updated_at`,
+    [role_id, contact_types, updated_by ?? null],
+  );
+  return rows[0];
+}
+
+/** Remove a role's restriction row → the role becomes unrestricted again. */
+async function clearContactTypeAccess({ client, role_id }) {
+  const { rowCount } = await exec(client)(
+    `DELETE FROM shared.role_contact_type_access WHERE role_id = $1`,
+    [role_id],
+  );
+  return rowCount > 0;
+}
+
+/**
+ * Effective contact-type visibility for a set of roles (the union model).
+ *   → null      when ANY role is unrestricted (no row) — sees every type.
+ *   → string[]  the deduped union of the restricted roles' allowed types
+ *               ([] means every role is restricted to nothing → sees none).
+ * An empty role set returns [] (no roles ⇒ no contact access), though the
+ * RBAC permission check 403s such a caller before this is consulted.
+ */
+async function contactTypesForRoles({ client, role_ids }) {
+  if (!Array.isArray(role_ids) || role_ids.length === 0) return [];
+  const { rows } = await exec(client)(
+    `SELECT role_id, contact_types
+       FROM shared.role_contact_type_access
+      WHERE role_id = ANY($1::uuid[])`,
+    [role_ids],
+  );
+  const managed = new Map(rows.map((r) => [r.role_id, r.contact_types || []]));
+  // Any role without a row is unrestricted → the whole set is unrestricted.
+  if (role_ids.some((id) => !managed.has(id))) return null;
+  const union = new Set();
+  for (const types of managed.values()) for (const t of types) union.add(t);
+  return [...union];
+}
+
 module.exports = {
   listRoles,
   findRole,
@@ -120,4 +185,8 @@ module.exports = {
   deleteRole,
   listPermissions,
   replacePermissions,
+  getContactTypeAccess,
+  setContactTypeAccess,
+  clearContactTypeAccess,
+  contactTypesForRoles,
 };

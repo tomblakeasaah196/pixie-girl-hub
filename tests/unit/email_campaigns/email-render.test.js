@@ -166,3 +166,40 @@ describe("buildEmail", () => {
     expect(out.text).not.toMatch(/<[^>]+>/);
   });
 });
+
+describe("inlineRichStyles — paragraph line spacing", () => {
+  test("normal paragraph gets default margin + font", () => {
+    const out = render.inlineRichStyles("<p>Warm regards,</p>");
+    expect(out).toMatch(/margin:0 0 14px 0/);
+    expect(out).toMatch(/line-height:1\.62/);
+    expect(out).toMatch(/font-size:15px/);
+    expect(out).not.toMatch(/data-space/);
+  });
+
+  test("data-space=tight → tight margin (signature block)", () => {
+    const out = render.inlineRichStyles('<p data-space="tight">Faith Alex</p>');
+    expect(out).toMatch(/margin:0 0 3px 0/);
+    expect(out).toMatch(/line-height:1\.4/);
+    expect(out).not.toMatch(/data-space/); // attribute stripped, becomes real style
+  });
+
+  test("data-space=relaxed → roomy margin", () => {
+    const out = render.inlineRichStyles('<p data-space="relaxed">Body copy.</p>');
+    expect(out).toMatch(/margin:0 0 24px 0/);
+    expect(out).toMatch(/line-height:1\.95/);
+  });
+
+  test("keeps an editor-set text-align alongside spacing", () => {
+    const out = render.inlineRichStyles(
+      '<p data-space="tight" style="text-align:center">Faith Alex</p>',
+    );
+    expect(out).toMatch(/margin:0 0 3px 0/);
+    expect(out).toMatch(/text-align:center/);
+  });
+
+  test("leaves merge tokens in the paragraph untouched", () => {
+    const out = render.inlineRichStyles('<p data-space="tight">Hello {{first_name}},</p>');
+    expect(out).toContain("{{first_name}}");
+    expect(out).toMatch(/margin:0 0 3px 0/);
+  });
+});

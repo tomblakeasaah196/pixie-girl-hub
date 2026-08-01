@@ -73,7 +73,7 @@ export function ReportsView({ canApprove, canExport }: { canApprove: boolean; ca
     header: "",
     align: "right",
     render: (run) => (
-      <span className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+      <span className="flex items-center justify-end gap-1.5 flex-wrap" onClick={(e) => e.stopPropagation()}>
         {run.status === "needs_confirmation" && (canApprove || can("dashboards", "approve")) && (
           <Button
             variant="secondary"
@@ -108,6 +108,50 @@ export function ReportsView({ canApprove, canExport }: { canApprove: boolean; ca
       </span>
     ),
   };
+
+  const reportRunMobileCard = (run: ReportRun) => (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-mono text-[12px]">{run.run_number}</span>
+        <Pill tone={STATUS_TONE[run.status]}>{run.status.replace(/_/g, " ")}</Pill>
+      </div>
+      <div className="text-[13px] font-medium truncate">{run.template_name ?? "—"}</div>
+      <div className="text-[11px] text-text-faint">{fmtPeriod(run)}</div>
+      <div className="text-[11px] text-text-faint">{formatDateTime(run.created_at)}</div>
+      <div className="flex items-center gap-1.5 pt-1" onClick={(e) => e.stopPropagation()}>
+        {run.status === "needs_confirmation" && (canApprove || can("dashboards", "approve")) && (
+          <Button
+            variant="secondary"
+            disabled={confirm.isPending}
+            onClick={() => confirm.mutate({ id: run.run_id })}
+            icon={<CheckCircle2 className="w-3.5 h-3.5" />}
+          >
+            Confirm
+          </Button>
+        )}
+        {canExport && (
+          <Button
+            variant="ghost"
+            disabled={busyId === run.run_id}
+            onClick={() => download(run, "excel")}
+            icon={<FileSpreadsheet className="w-3.5 h-3.5" />}
+          >
+            Excel
+          </Button>
+        )}
+        {canExport && (
+          <Button
+            variant="ghost"
+            disabled={busyId === run.run_id}
+            onClick={() => download(run, "pdf")}
+            icon={<FileDown className="w-3.5 h-3.5" />}
+          >
+            PDF
+          </Button>
+        )}
+      </div>
+    </div>
+  );
 
   const runColumns: Column<ReportRun>[] = [
     {
@@ -144,9 +188,10 @@ export function ReportsView({ canApprove, canExport }: { canApprove: boolean; ca
           rows={queue.data?.data ?? []}
           rowKey={(r) => r.run_id}
           loading={queue.isLoading}
+          mobileCard={reportRunMobileCard}
           toolbar={
             <span className="micro flex items-center gap-2">
-              <Inbox className="w-3.5 h-3.5" /> Awaiting review — confirm before the CEO copy goes out
+              <Inbox className="w-3.5 h-3.5" /> <span className="max-sm:hidden">Awaiting review — confirm before the CEO copy goes out</span><span className="sm:hidden">Awaiting review</span>
             </span>
           }
           empty={{ icon: <Inbox className="w-6 h-6" />, title: "Queue is clear" }}
@@ -158,6 +203,7 @@ export function ReportsView({ canApprove, canExport }: { canApprove: boolean; ca
         rows={history.data?.data ?? []}
         rowKey={(r) => r.run_id}
         loading={history.isLoading}
+        mobileCard={reportRunMobileCard}
         toolbar={
           <div className="flex items-center justify-between w-full">
             <span className="micro">Run History</span>
@@ -236,6 +282,30 @@ export function ReportsView({ canApprove, canExport }: { canApprove: boolean; ca
         rows={templates.data ?? []}
         rowKey={(t) => t.template_id}
         loading={templates.isLoading}
+        mobileCard={(t) => (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-medium text-[13px] truncate">{t.display_name}</span>
+              <Pill tone={t.is_active ? "success" : "neutral"}>
+                {t.is_active ? "active" : "paused"}
+              </Pill>
+            </div>
+            {t.description && (
+              <div className="text-[11px] text-text-faint">{t.description}</div>
+            )}
+            <div className="text-[11.5px] text-text-muted">
+              {t.cadence === "weekly" && t.scheduled_day_of_week !== null
+                ? `Weekly · ${WEEKDAYS[t.scheduled_day_of_week]}${
+                    t.scheduled_hour !== null ? ` ${t.scheduled_hour}:00` : ""
+                  }`
+                : t.cadence}
+            </div>
+            <div className="flex flex-wrap gap-x-4 text-[11px] text-text-faint">
+              <span>Last: {t.last_run_at ? t.last_run_at.slice(0, 10) : "—"}</span>
+              <span>Next: {t.next_run_at ? t.next_run_at.slice(0, 10) : "—"}</span>
+            </div>
+          </div>
+        )}
         toolbar={
           <span className="micro flex items-center gap-2">
             <CalendarClock className="w-3.5 h-3.5" /> Scheduled Templates

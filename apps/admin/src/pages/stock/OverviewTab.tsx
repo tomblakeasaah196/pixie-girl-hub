@@ -1,9 +1,18 @@
-import { useMemo } from "react";
-import { ArrowDownUp, Package, TrendingDown } from "lucide-react";
-import { Card, KpiTile, MoneyText, Skeleton } from "@/components/ui/primitives";
+import { useMemo, useState } from "react";
+import { ArrowDownUp, Download, Package, TrendingDown } from "lucide-react";
+import {
+  Button,
+  Card,
+  KpiTile,
+  MoneyText,
+  Skeleton,
+} from "@/components/ui/primitives";
 import { ErrorState } from "@/components/ui/controls";
 import { DataTable, type Column } from "@/components/ui/DataTable";
 import { moneyCompact, formatDate } from "@/lib/format";
+import { useAuthStore } from "@/stores/auth";
+import { toastReport } from "@/lib/error-report";
+import { stockApi } from "./api";
 import {
   useStockValuation,
   useStockLocations,
@@ -11,7 +20,13 @@ import {
   useStockAlerts,
   useStockMovements,
 } from "./hooks";
-import { MovementTypePill, SeverityPill, LocationTypePill } from "./parts";
+import {
+  MovementTypePill,
+  SeverityPill,
+  LocationTypePill,
+  SourceCell,
+} from "./parts";
+import { MovementDetailModal } from "./MovementDetailModal";
 import type {
   StockLocation,
   StockLevel,
@@ -48,6 +63,25 @@ export default function OverviewTab() {
   const levels = useStockLevels({ page: 1, page_size: 100 });
   const alerts = useStockAlerts({ status: "open", page: 1, page_size: 5 });
   const movements = useStockMovements({ page: 1, page_size: 10 });
+
+  const can = useAuthStore((s) => s.can);
+  const [exporting, setExporting] = useState(false);
+  // Clicking a movement opens the same detail modal the Movements tab uses.
+  const [detailId, setDetailId] = useState<string | null>(null);
+
+  // Full stock-on-hand snapshot .xlsx — every tracked SKU, server-side and
+  // un-paginated (All Locations summary + one sheet per location), not the
+  // current on-screen page.
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      await stockApi.exportOnHand();
+    } catch (err) {
+      toastReport("Stock → Overview", "Export stock", err);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   /* Aggregate levels per location */
   const locationRows = useMemo<LocationRow[]>(() => {
@@ -192,6 +226,20 @@ export default function OverviewTab() {
       render: (r) => <MovementTypePill type={r.movement_type} />,
     },
     {
+      key: "source",
+      header: "Source",
+      render: (r) => <SourceCell movement={r} />,
+    },
+    {
+      key: "who",
+      header: "Processed by",
+      render: (r) => (
+        <span className="text-[12px] text-text-muted truncate block max-w-[140px]">
+          {r.performed_by_name ?? (r.performed_by ? "—" : "System")}
+        </span>
+      ),
+    },
+    {
       key: "qty",
       header: "Qty",
       align: "right",
@@ -226,6 +274,21 @@ export default function OverviewTab() {
 
   return (
     <div className="flex flex-col gap-5">
+      {/* ── Toolbar: export the full on-hand snapshot ── */}
+      {can("stock", "view") && (
+        <div className="flex items-center justify-end">
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={<Download className="w-4 h-4" />}
+            onClick={handleExport}
+            disabled={exporting}
+          >
+            {exporting ? "Preparing…" : "Export stock (.xlsx)"}
+          </Button>
+        </div>
+      )}
+
       {/* ── Row 1: KPI tiles ── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {isLoading ? (
@@ -353,12 +416,23 @@ export default function OverviewTab() {
         rows={(movements.data?.data as StockMovement[]) ?? []}
         rowKey={(r) => r.movement_id}
         loading={movements.isLoading}
+        onRowClick={(r) => setDetailId(r.movement_id)}
+        activeKey={detailId}
         toolbar={
           <div className="flex items-center gap-2">
             <ArrowDownUp className="w-4 h-4 text-text-muted" />
             <span className="text-[13px] font-semibold">Recent Movements</span>
+            <span className="text-[11px] text-text-faint ml-auto">
+              Click a row for full detail
+            </span>
           </div>
         }
+      />
+
+      {/* Movement detail — order / adjustment behind the movement */}
+      <MovementDetailModal
+        movementId={detailId}
+        onClose={() => setDetailId(null)}
       />
     </div>
   );

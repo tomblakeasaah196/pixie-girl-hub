@@ -69,10 +69,6 @@ export function useClockPunch(): ClockPunch {
     body = "",
     priority: "low" | "normal" | "high" = "normal",
   ) => {
-    if (priority === "high") {
-      toastReport("HR → Clock in/out", title, body || "Something went wrong.");
-      return;
-    }
     toast.add({
       notification_id: crypto.randomUUID(),
       user_id: "",
@@ -115,6 +111,13 @@ export function useClockPunch(): ClockPunch {
     },
     onSuccess: (rec) => {
       qc.invalidateQueries({ queryKey: ["hr", "me"] });
+      // The "My HR" workspace tab keeps its own attendance history query
+      // (["my-hr", "attendance", ...] — see MyHrPage.tsx's AttendanceSection),
+      // a different cache namespace than this widget's ["hr", "me"] status
+      // query. Without this, a punch here updates the top-bar pill but the
+      // My HR list a user checks right after clocking in keeps showing
+      // yesterday's data until it goes stale on its own.
+      qc.invalidateQueries({ queryKey: ["my-hr", "attendance"] });
       if (rec.device_recognized === false) {
         notify(
           "Clocked in — unrecognised device",
@@ -140,11 +143,14 @@ export function useClockPunch(): ClockPunch {
       // Location prompts and "already clocked" conflicts are expected user
       // states — surface them as a normal toast, not the report-to-admin path.
       const benign = /location|already clocked/i.test(msg);
-      notify(
-        benign ? "Confirm your location" : "Clock in/out failed",
-        msg,
-        benign ? "normal" : "high",
-      );
+      if (benign) {
+        notify("Confirm your location", msg, "normal");
+      } else {
+        // A genuine unexpected failure (API/network) — this is the one case
+        // that should reach JBS Praxis, unlike the device/offsite/late
+        // confirmations above which are expected clock-in outcomes, not bugs.
+        toastReport("HR → Clock in/out", "Clock in/out failed", msg || "Something went wrong.");
+      }
     },
   });
 

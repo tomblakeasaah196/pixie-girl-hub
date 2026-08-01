@@ -314,9 +314,12 @@ async function listProducts({ client, brand, campaign_id }) {
   // per-row current_stock_snapshot. Multiple styled products sharing the same
   // base product must read from the same pool — independent snapshots would
   // allow each styled variant to show the full base stock independently,
-  // enabling overselling. The lateral join sums available qty across all
-  // storefront-available locations for the base product's variants, respecting
-  // any base_variant_id pin on the styled product.
+  // enabling overselling. Styled rows are VARIANT-AWARE (vstk, mirroring
+  // catalogue/availability.js styledStockSql restricted to storefront
+  // locations): stock is summed across the bases of the styled product's
+  // active colour×size variants, so M/L/XL stock counts even when the seed
+  // base is empty. bstk (the old seed-base read) remains the fallback for
+  // raw product rows and variant-less styled drafts.
   const { rows } = await exec(client)(
     `SELECT scp.*,
             p.name  AS product_name,
@@ -328,7 +331,7 @@ async function listProducts({ client, brand, campaign_id }) {
             sp.retail_price_ngn  AS styled_retail_price_ngn,
             sp.retail_price_usd  AS styled_retail_price_usd,
             COALESCE(spi.image_url, scp.image_url) AS resolved_image_url,
-            bstk.live_base_stock
+            COALESCE(vstk.live_base_stock, bstk.live_base_stock) AS live_base_stock
        FROM ${t(brand, "sales_campaign_products")} scp
        LEFT JOIN ${t(brand, "products")} p          ON p.product_id   = scp.product_id
        LEFT JOIN ${t(brand, "product_categories")} pc ON pc.category_id = scp.category_id
@@ -362,6 +365,25 @@ async function listProducts({ client, brand, campaign_id }) {
              LIMIT 1)
          ) AS image_url
        ) spi ON true
+       LEFT JOIN LATERAL (
+         SELECT SUM(src.live_base_stock)::INTEGER AS live_base_stock
+           FROM (SELECT DISTINCT COALESCE(v.base_product_id, sp.base_product_id) AS src_product_id
+                   FROM ${t(brand, "styled_product_variants")} v
+                  WHERE v.styled_id = sp.styled_id
+                    AND v.is_active = true AND v.is_deleted = false) bases
+          CROSS JOIN LATERAL (
+            SELECT COALESCE(SUM(sl.available), 0)::INTEGER AS live_base_stock
+              FROM ${t(brand, "product_variants")} pv
+              JOIN ${t(brand, "stock_levels")} sl      ON sl.variant_id   = pv.variant_id
+              JOIN ${t(brand, "stock_locations")} loc  ON loc.location_id = sl.location_id
+             WHERE pv.product_id = bases.src_product_id
+               AND (sp.base_variant_id IS NULL
+                    OR bases.src_product_id <> sp.base_product_id
+                    OR pv.variant_id = sp.base_variant_id)
+               AND loc.available_for_storefront = true
+               AND pv.is_active = true
+          ) src
+       ) vstk ON true
        LEFT JOIN LATERAL (
          SELECT COALESCE(SUM(sl.available), 0)::INTEGER AS live_base_stock
            FROM ${t(brand, "product_variants")} pv
@@ -614,6 +636,11 @@ async function listDailyMetrics({ client, brand, campaign_id, from, to }) {
 }
 
 module.exports = {
+  // Columns a clone should carry over from the source campaign (everything a
+  // client may set on create). Exported so campaigns.service.duplicate copies
+  // the FULL config — deals engine, gateways, FX, landing extras, VIP, exit
+  // intent — instead of a hand-maintained subset that silently drops fields.
+  CLONEABLE_COLS: CREATE_COLS,
   // campaigns
   findAll,
   findById,

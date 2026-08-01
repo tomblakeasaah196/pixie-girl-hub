@@ -188,6 +188,28 @@ router.patch(
   gatewayValidator.validateSetRole,
   gateways.setRole,
 );
+router.post(
+  "/payment-gateways/:provider/test",
+  can("edit"),
+  gatewayValidator.validateTest,
+  gateways.test,
+);
+// Real signed HTTP round-trip against our own live /api/webhooks/nomba —
+// separate from /test above (which never leaves the process). Proves the
+// deployed server, right now, accepts a genuinely-signed Nomba webhook.
+router.post(
+  "/payment-gateways/:provider/test-webhook",
+  can("edit"),
+  gateways.testWebhook,
+);
+// Recent real inbound deliveries (source, signature_valid, error_message) —
+// so staff can see actual Nomba traffic instead of guessing from an empty
+// reconciliation screen.
+router.get(
+  "/payment-gateways/:provider/webhook-log",
+  can("view"),
+  gateways.webhookLog,
+);
 router.delete("/payment-gateways/:provider", can("delete"), gateways.remove);
 
 module.exports = router;

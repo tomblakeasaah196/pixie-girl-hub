@@ -22,7 +22,7 @@ import {
   bundleSavingsPct,
   type Pillar,
 } from "./site-data";
-import type { ProductCard } from "./storefront";
+import type { Availability, ProductCard } from "./storefront";
 
 /* ── resolved item shapes the components consume ─────────────── */
 
@@ -33,6 +33,8 @@ export interface SignatureItem {
   priceUsd?: number | null;
   priceNgn?: number | null;
   image?: string | null;
+  /** In-stock / pre-order / sold-out state from the catalogue (000086). */
+  availability?: Availability | null;
 }
 export interface BundleItem {
   slug: string;
@@ -156,6 +158,12 @@ export interface GalleryProfile {
 export interface HomeContent {
   hero: HeroContent;
   marquee: string[];
+  /**
+   * Optional Studio-uploaded mark shown BETWEEN each scrolling phrase in the
+   * value-prop ribbon (Home → "Divider image"). Empty string → a subtle dot is
+   * used instead, so the ribbon looks right whether or not a logo is uploaded.
+   */
+  marqueeImage: string;
   bundlesHead: HeadContent;
   shadesHead: HeadContent;
   signatureHead: HeadContent;
@@ -198,6 +206,7 @@ export const DEFAULT_HOME: HomeContent = {
     "1-year atelier guarantee",
     "Reusable for 18 months+",
   ],
+  marqueeImage: "",
   bundlesHead: {
     eyebrow: "Shop the edit · ensembles",
     heading: "Curated ",
@@ -285,6 +294,7 @@ export function mapProducts(cards: ProductCard[]): SignatureItem[] {
     priceUsd: num(p.effective_price_usd),
     priceNgn: num(p.effective_price_ngn),
     image: p.cover_image_url ?? null,
+    availability: p.availability ?? null,
   }));
 }
 
@@ -472,7 +482,15 @@ export function resolveHomeContent(slots: Slots): HomeContent {
     s[key] && typeof s[key] === "object" ? { ...def, ...(s[key] as object) } : def;
   return {
     hero: merge(DEFAULT_HOME.hero, "hero"),
-    marquee: Array.isArray(s.marquee) ? (s.marquee as string[]) : DEFAULT_HOME.marquee,
+    // An EMPTY published array must fall back to the defaults — otherwise a
+    // Studio publish that cleared the phrases renders the ribbon as a blank dark
+    // strip. Only a non-empty array overrides the maison defaults.
+    marquee:
+      Array.isArray(s.marquee) && s.marquee.length
+        ? (s.marquee as string[])
+        : DEFAULT_HOME.marquee,
+    marqueeImage:
+      typeof s.marqueeImage === "string" ? s.marqueeImage : DEFAULT_HOME.marqueeImage,
     bundlesHead: merge(DEFAULT_HOME.bundlesHead, "bundles"),
     shadesHead: merge(DEFAULT_HOME.shadesHead, "shades"),
     signatureHead: merge(DEFAULT_HOME.signatureHead, "signature"),

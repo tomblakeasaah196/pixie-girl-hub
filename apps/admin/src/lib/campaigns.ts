@@ -1220,9 +1220,23 @@ export function publicSaleUrl(
     brand?: string;
   },
 ): string {
-  const host = (opts?.salesSubdomain || opts?.storefrontDomain || "")
-    .trim()
-    .replace(/\/+$/, "");
+  const sub = (opts?.salesSubdomain || "").trim();
+  const store = (opts?.storefrontDomain || "").trim();
+
+  // Prefer the sales subdomain. When only the storefront (apex) domain is
+  // configured, DERIVE `sales.<apex>` — the apex serves the storefront app,
+  // which has no `/sale/:slug` route, so an apex sale link 404s. The sales
+  // subdomain (the Next.js landing app) is what actually renders the sale.
+  let host = sub;
+  if (!host && store) {
+    const apex = store
+      .replace(/^https?:\/\//i, "")
+      .replace(/\/+$/, "")
+      .replace(/^www\./i, "");
+    if (apex) host = /^sales\./i.test(apex) ? apex : `sales.${apex}`;
+  }
+  host = host.replace(/\/+$/, "");
+
   if (host) {
     const base = /^https?:\/\//i.test(host) ? host : `https://${host}`;
     return `${base}/sale/${slug}`;

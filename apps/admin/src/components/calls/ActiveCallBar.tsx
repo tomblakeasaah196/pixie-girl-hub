@@ -14,14 +14,24 @@ function fmtTimer(ms: number): string {
  * Floating glass bar while a call is live — caller, ticking timer
  * (tabular mono per canon typography), mute, open-chat, hang up.
  * Sits above the App-Menu pill so neither obstructs the other.
+ *
+ * `waitingCount` surfaces calls that came in while this agent was already
+ * talking. They deliberately don't ring (nobody wants a ringtone over live
+ * audio) but they must be visible — otherwise the agent finishes the call with
+ * no idea another customer was on the line, and only finds out from the missed
+ * -call task.
  */
 export function ActiveCallBar({
   call,
+  brandLabel,
+  waitingCount = 0,
   onToggleMute,
   onOpenChat,
   onHangup,
 }: {
   call: ActiveCall;
+  brandLabel?: string | null;
+  waitingCount?: number;
   onToggleMute: () => void;
   onOpenChat: () => void;
   onHangup: () => void;
@@ -36,7 +46,17 @@ export function ActiveCallBar({
   const connecting = call.phase === "connecting";
 
   return (
-    <div className="fixed left-1/2 -translate-x-1/2 bottom-[86px] md:bottom-[74px] z-[80] pointer-events-none">
+    <div className="fixed left-1/2 -translate-x-1/2 bottom-[86px] md:bottom-[74px] z-[80] pointer-events-none flex flex-col items-center gap-1.5">
+      {waitingCount > 0 && (
+        <div
+          role="status"
+          className="dropglass rounded-full border border-warn/40 shadow-xl px-3 py-1 text-[11px] font-semibold text-warn pointer-events-auto"
+        >
+          {waitingCount === 1
+            ? "1 more call waiting"
+            : `${waitingCount} more calls waiting`}
+        </div>
+      )}
       <div className="dropglass rounded-full border hairline shadow-2xl px-4 py-2 flex items-center gap-3 pointer-events-auto">
         <span
           className={cn(
@@ -48,8 +68,9 @@ export function ActiveCallBar({
           <div className="text-[12.5px] font-semibold text-text-primary truncate">
             {name}
           </div>
-          <div className="text-[10px] uppercase tracking-[0.14em] text-text-faint">
+          <div className="text-[10px] uppercase tracking-[0.14em] text-text-faint truncate">
             {connecting ? "Connecting…" : "WhatsApp call"}
+            {brandLabel ? ` · ${brandLabel}` : ""}
           </div>
         </div>
         <span className="font-mono text-[13px] tabular-nums text-text-primary min-w-[46px] text-center">

@@ -1,204 +1,171 @@
-import { useState } from "react";
-import { Target, Loader2 } from "lucide-react";
-import { useAuthStore } from "@/stores/auth";
-import { Button, Card, Skeleton, EmptyState, Pill } from "@/components/ui/primitives";
-import { Select } from "@/components/ui/controls";
-import { Drawer } from "@/components/ui/Drawer";
+import { useMemo, useState } from "react";
+import { TrendingUp, Star, AtSign } from "lucide-react";
+import { Card, Skeleton, Pill, EmptyState, type Tone } from "@/components/ui/primitives";
 import {
   usePerformance,
-  useSetTarget,
-  usePosts,
+  useSocialAccounts,
+  buildPlatformLooks,
+  registeredPlatforms,
+  lookFor,
   currentMonth,
-  PLATFORM_META,
-  ALL_PLATFORMS,
-  STATUS_TONE,
-  STATUS_LABEL,
-  type SocialPlatform,
-  type PerformanceRow,
+  expectedPostsInMonth,
 } from "@/lib/social-api";
-import { formatDate } from "@/lib/format";
 import { MonthPicker } from "./parts";
 
-function Pct({ value }: { value: number | null }) {
-  if (value === null) return <span className="text-text-faint">—</span>;
-  const tone = value >= 100 ? "text-success" : value >= 60 ? "text-warn" : "text-danger";
-  return <span className={tone}>{value}%</span>;
+/** The permanent cadence, encoded once: Instagram must hit 6/week; every
+ *  other platform aims for 6 with 4/week as the acceptable floor. Sunday is
+ *  always off, so the monthly goal is the month's non-Sunday count. */
+function targets(year: number, monthIdx: number, platform: string) {
+  const goal = expectedPostsInMonth(year, monthIdx); // 6/week
+  const floor = platform === "instagram" ? goal : Math.round((goal * 4) / 6); // 4/week
+  return { goal, floor };
+}
+
+function statusFor(received: number, goal: number, floor: number): { tone: Tone; label: string } {
+  if (received >= goal) return { tone: "success", label: "On track" };
+  if (received >= floor) return { tone: "warn", label: "Acceptable" };
+  return { tone: "danger", label: "Behind" };
 }
 
 export function PerformanceTab() {
-  const { can } = useAuthStore();
   const [month, setMonth] = useState(currentMonth());
+  const [y, m] = month.split("-").map(Number);
+  const year = y;
+  const monthIdx = m - 1;
+
   const perfQ = usePerformance(month);
-  const rows = perfQ.data ?? [];
-  const [focused, setFocused] = useState<SocialPlatform | null>(null);
-  const [targeting, setTargeting] = useState(false);
+  const accountsQ = useSocialAccounts();
+  const accounts = useMemo(
+    () => (accountsQ.data ?? []).filter((a) => a.is_active !== false),
+    [accountsQ.data],
+  );
+  const looks = useMemo(() => buildPlatformLooks(accounts), [accounts]);
+
+  const posted = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of perfQ.data ?? []) m.set(r.platform, r.posted_count);
+    return m;
+  }, [perfQ.data]);
+
+  // The scoreboard rows are the REGISTERED handles' platforms — not a
+  // hardcoded list — plus any platform that actually has posts this month
+  // (so history survives a handle being removed later).
+  const platforms = useMemo(() => {
+    const regs = registeredPlatforms(accounts);
+    const extras = [...posted.keys()].filter(
+      (p) => !regs.includes(p) && (posted.get(p) ?? 0) > 0,
+    );
+    return [...regs, ...extras];
+  }, [accounts, posted]);
+
+  const loading = perfQ.isLoading || accountsQ.isLoading;
+  const totalReceived = platforms.reduce((s, p) => s + (posted.get(p) ?? 0), 0);
+  const totalGoal = platforms.reduce(
+    (s, p) => s + targets(year, monthIdx, p).goal,
+    0,
+  );
+  const totalPct = Math.min(100, Math.round((totalReceived / Math.max(1, totalGoal)) * 100));
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <MonthPicker value={month} onChange={setMonth} />
-        {can("social", "approve") && (
-          <Button size="sm" variant="secondary" icon={<Target className="w-4 h-4" />} onClick={() => setTargeting(true)}>
-            Set targets
-          </Button>
-        )}
+        <span className="text-[11.5px] text-text-faint">6 posts / week · Sunday off</span>
       </div>
 
-      {perfQ.isLoading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {[0, 1].map((i) => (
-            <Card key={i} className="p-4">
-              <Skeleton style={{ height: 90 }} />
-            </Card>
-          ))}
-        </div>
-      ) : rows.length === 0 ? (
+      {!loading && platforms.length === 0 ? (
         <EmptyState
-          icon={<Target className="w-7 h-7" />}
-          title="Nothing to show yet"
-          message="Once posts are planned for this month, their KPIs land here."
+          icon={<AtSign className="w-7 h-7" />}
+          title="No handles registered yet"
+          message="Add your accounts in the Account tab — each registered platform gets its own scoreboard here automatically."
         />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {rows.map((r) => (
-            <button key={r.platform} onClick={() => setFocused(r.platform)} className="text-left">
-              <Card className="p-4 hover:border-accent/30 border border-transparent transition-colors">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="font-display text-[15px]">{PLATFORM_META[r.platform]?.label}</span>
-                  {r.flagged_count > 0 && <Pill tone="danger">{r.flagged_count} flagged</Pill>}
+        <>
+          {/* Month headline */}
+          <Card className="p-4 sm:p-5">
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <div className="micro">Links received this month</div>
+                <div className="mt-1 font-display text-[34px] font-medium leading-none tabular-nums">
+                  {loading ? "—" : totalReceived}
+                  <span className="ml-1 text-[16px] text-text-faint">/ {loading ? "—" : totalGoal}</span>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <Kpi label="Posted / Target">
-                    {r.posted_count}
-                    {r.target_count !== null ? ` / ${r.target_count}` : ""}
-                  </Kpi>
-                  <Kpi label="Attainment"><Pct value={r.attainment_pct} /></Kpi>
-                  <Kpi label="On-time"><Pct value={r.on_time_pct} /></Kpi>
-                  <Kpi label="Avg. score">
-                    {r.avg_performance_score !== null ? Math.round(Number(r.avg_performance_score)) : "—"}
-                  </Kpi>
-                </div>
-              </Card>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {focused && (
-        <PlatformDrilldown
-          platform={focused}
-          month={month}
-          row={rows.find((r) => r.platform === focused)}
-          onClose={() => setFocused(null)}
-        />
-      )}
-      {targeting && <TargetDrawer month={month} onClose={() => setTargeting(false)} />}
-    </div>
-  );
-}
-
-function Kpi({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div className="text-[9.5px] uppercase tracking-widest text-text-faint">{label}</div>
-      <div className="font-display text-[16px] tabular-nums mt-0.5">{children}</div>
-    </div>
-  );
-}
-
-function PlatformDrilldown({
-  platform,
-  month,
-  row,
-  onClose,
-}: {
-  platform: SocialPlatform;
-  month: string;
-  row?: PerformanceRow;
-  onClose: () => void;
-}) {
-  const from = `${month}-01T00:00:00.000Z`;
-  const [y, m] = month.split("-").map(Number);
-  const to = new Date(y, m, 1).toISOString();
-  const postsQ = usePosts({ platform, from, to });
-  const posts = postsQ.data ?? [];
-
-  return (
-    <Drawer
-      open
-      onClose={onClose}
-      title={PLATFORM_META[platform]?.label ?? platform}
-      subtitle={`${row?.posted_count ?? 0} posted this month`}
-    >
-      <div className="space-y-3 p-1">
-        {postsQ.isLoading ? (
-          <Skeleton style={{ height: 120 }} />
-        ) : posts.length === 0 ? (
-          <p className="text-[12.5px] text-text-faint italic">Nothing scheduled this month yet.</p>
-        ) : (
-          <div className="rounded-[11px] border border-line divide-y divide-line overflow-hidden">
-            {posts.map((p) => (
-              <div key={p.post_id} className="px-3 py-2.5 flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="text-[12.5px] truncate">{p.caption?.slice(0, 40) || p.post_type}</div>
-                  {p.scheduled_for && (
-                    <div className="text-[11px] text-text-faint">{formatDate(p.scheduled_for)}</div>
-                  )}
-                </div>
-                <Pill tone={STATUS_TONE[p.status]}>{STATUS_LABEL[p.status]}</Pill>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </Drawer>
-  );
-}
+              <div className={`text-right ${totalPct >= 100 ? "text-success" : totalPct >= 66 ? "text-warn" : "text-danger"}`}>
+                <TrendingUp className="ml-auto h-5 w-5" />
+                <div className="mt-1 font-display text-[20px] tabular-nums">{loading ? "—" : `${totalPct}%`}</div>
+              </div>
+            </div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-text-primary/[0.07]">
+              <div
+                className="h-full rounded-full bg-accent transition-[width] duration-500"
+                style={{ width: `${loading ? 0 : totalPct}%` }}
+              />
+            </div>
+          </Card>
 
-function TargetDrawer({ month, onClose }: { month: string; onClose: () => void }) {
-  const setTarget = useSetTarget();
-  const [platform, setPlatform] = useState<SocialPlatform>("instagram");
-  const [count, setCount] = useState("8");
+          {/* Per-platform */}
+          {loading ? (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {[0, 1, 2, 3].map((i) => (
+                <Card key={i} className="p-4">
+                  <Skeleton style={{ height: 76 }} />
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {platforms.map((p) => {
+                const received = posted.get(p) ?? 0;
+                const { goal, floor } = targets(year, monthIdx, p);
+                const status = statusFor(received, goal, floor);
+                const pct = Math.min(100, Math.round((received / Math.max(1, goal)) * 100));
+                const look = lookFor(looks, p);
+                const isMain = p === "instagram";
+                return (
+                  <Card key={p} className="p-4">
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="grid h-7 w-7 place-items-center rounded-lg font-display text-[11px] font-semibold text-white"
+                          style={{ background: look.color }}
+                        >
+                          {look.glyph}
+                        </span>
+                        <span className="font-display text-[15px]">{look.label}</span>
+                        {isMain && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-accent/[0.12] px-2 py-0.5 text-[9.5px] font-bold uppercase tracking-wide text-accent-glow">
+                            <Star className="h-2.5 w-2.5 fill-current" /> Main
+                          </span>
+                        )}
+                      </div>
+                      <Pill tone={status.tone}>{status.label}</Pill>
+                    </div>
 
-  return (
-    <Drawer open onClose={onClose} title="Set a monthly target" subtitle={month}>
-      <div className="space-y-4 p-1">
-        <div>
-          <span className="block text-[11.5px] text-text-muted mb-1.5">Platform</span>
-          <Select
-            value={platform}
-            onChange={setPlatform}
-            options={ALL_PLATFORMS.map((p) => ({ value: p, label: PLATFORM_META[p].label }))}
-          />
-        </div>
-        <div>
-          <span className="block text-[11.5px] text-text-muted mb-1.5">Posts this month (team-wide)</span>
-          <input
-            type="number"
-            min={1}
-            value={count}
-            onChange={(e) => setCount(e.target.value)}
-            className="w-full h-[42px] px-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-[13px] outline-none focus:border-accent/50"
-          />
-        </div>
-        {setTarget.isError && <p className="text-[12px] text-danger">Couldn&rsquo;t save that target.</p>}
-        <div className="flex justify-end gap-2 pt-2">
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button
-            variant="primary"
-            disabled={!count || Number(count) < 1 || setTarget.isPending}
-            icon={setTarget.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Target className="w-4 h-4" />}
-            onClick={() =>
-              setTarget.mutate(
-                { platform, period_month: month, target_count: Number(count) },
-                { onSuccess: onClose },
-              )
-            }
-          >
-            Save target
-          </Button>
-        </div>
-      </div>
-    </Drawer>
+                    <div className="flex items-baseline gap-1.5">
+                      <span className="font-display text-[26px] font-medium tabular-nums">{received}</span>
+                      <span className="text-[12.5px] text-text-faint">of {goal} expected</span>
+                    </div>
+
+                    <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-text-primary/[0.07]">
+                      <div
+                        className="h-full rounded-full transition-[width] duration-500"
+                        style={{ width: `${pct}%`, background: status.tone === "danger" ? "rgb(var(--danger))" : status.tone === "warn" ? "rgb(var(--warn))" : "rgb(var(--success))" }}
+                      />
+                    </div>
+
+                    <div className="mt-2 text-[11px] text-text-faint">
+                      {isMain
+                        ? "Must hit 6 posts / week"
+                        : `Floor ${floor} (4 / week) · goal ${goal} (6 / week)`}
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </>
+      )}
+    </div>
   );
 }

@@ -213,6 +213,72 @@ export async function uploadStorefrontImage(file: File): Promise<string> {
   return res.url;
 }
 
+// -- OG share-banner composer -------------------------------
+// Server-side (sharp) composition of a 1200×630 Open Graph card from a single
+// uploaded photo + layout params. Same maths runs in the Branding preview so
+// what the operator sees matches the hosted result.
+export interface OgBannerParams {
+  /** Crop-zoom of the photo within its centred panel (1 = no crop). */
+  zoom: number;
+  /** Focus point of the crop, 0..1 on each axis (0.5 = centre). */
+  focusX: number;
+  focusY: number;
+  /** How wide the centred photo panel is, as a fraction of the 1200px width. */
+  photoWidthPct: number;
+  /** What fills the space around the photo: a blurred, enlarged copy of the
+   *  photo itself ("blur", default) or the flat brand gradient ("gradient"). */
+  bgMode: "blur" | "gradient";
+  /** Blur strength of the photo background (sigma; only used in "blur" mode). */
+  bgBlur: number;
+  /** How much the blurred background is darkened, 0..1 (only in "blur" mode). */
+  bgDim: number;
+  /** Enlargement of the blurred background copy (only in "blur" mode). */
+  bgZoom: number;
+  /** Gradient that fills the space around the photo (only in "gradient" mode). */
+  gradFrom: string;
+  gradTo: string;
+  /** Overlay the brand logo + a headline over a bottom scrim. */
+  showBranding: boolean;
+  headline: string;
+}
+
+export interface OgBannerResult {
+  banner_url: string;
+  source_url: string | null;
+  source_key: string | null;
+  params: OgBannerParams;
+}
+
+/**
+ * Build (or rebuild) the OG banner. Pass `file` for a fresh upload, or
+ * `source_key` to recompose a previously-stored source with new params.
+ */
+export async function buildOgBanner(input: {
+  file?: File | null;
+  source_key?: string | null;
+  logo_url?: string | null;
+  params: OgBannerParams;
+}): Promise<OgBannerResult> {
+  const { params: p } = input;
+  const form = new FormData();
+  form.append("zoom", String(p.zoom));
+  form.append("focusX", String(p.focusX));
+  form.append("focusY", String(p.focusY));
+  form.append("photoWidthPct", String(p.photoWidthPct));
+  form.append("bgMode", p.bgMode);
+  form.append("bgBlur", String(p.bgBlur));
+  form.append("bgDim", String(p.bgDim));
+  form.append("bgZoom", String(p.bgZoom));
+  form.append("gradFrom", p.gradFrom);
+  form.append("gradTo", p.gradTo);
+  form.append("showBranding", String(p.showBranding));
+  form.append("headline", p.headline || "");
+  if (input.source_key) form.append("source_key", input.source_key);
+  if (input.logo_url) form.append("logo_url", input.logo_url);
+  if (input.file) form.append("file", input.file);
+  return api.postForm<OgBannerResult>("/storefront-studio/og-banner", form);
+}
+
 // -- Looping-video upload (hero "living image") -------------
 /** What the backend clip pipeline returns and the page slot stores. */
 export interface StorefrontVideo {

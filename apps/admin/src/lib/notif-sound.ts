@@ -41,6 +41,52 @@ function ctx(): AudioContext | null {
   return audioCtx;
 }
 
+// ── Autoplay unlock ───────────────────────────────────────
+// Browsers create an AudioContext in the `suspended` state until the page has
+// seen a real user gesture, and resume() outside a gesture never completes.
+// That is silent for a chime and *unacceptable* for a ringing phone: an agent
+// who loaded the Hub and then didn't click anything would get a visual ring
+// with no sound at all.
+//
+// So: latch onto the first gesture of the session (whatever it is — the
+// listeners are passive and self-removing) and resume the context then, long
+// before any call arrives. `isAudioBlocked()` reports the state honestly so
+// the UI can show a one-tap "enable call sounds" prompt if the ring somehow
+// beats the first click.
+
+let unlockBound = false;
+const UNLOCK_EVENTS = ["pointerdown", "keydown", "touchstart"] as const;
+
+/** Resume the shared AudioContext. Safe to call repeatedly. */
+export function unlockAudio(): void {
+  const ac = ctx();
+  if (!ac) return;
+  if (ac.state === "suspended") void ac.resume().catch(() => {});
+}
+
+/** True when a ring would currently be silent (context blocked by autoplay). */
+export function isAudioBlocked(): boolean {
+  const ac = audioCtx;
+  if (!ac) return typeof AudioContext !== "undefined" ? false : true;
+  return ac.state === "suspended";
+}
+
+function bindUnlock() {
+  if (unlockBound || typeof window === "undefined") return;
+  unlockBound = true;
+  const handler = () => {
+    unlockAudio();
+    for (const evt of UNLOCK_EVENTS) {
+      window.removeEventListener(evt, handler, true);
+    }
+  };
+  for (const evt of UNLOCK_EVENTS) {
+    window.addEventListener(evt, handler, { capture: true, passive: true });
+  }
+}
+
+bindUnlock();
+
 function tone(
   ac: AudioContext,
   freq: number,
@@ -98,30 +144,52 @@ export function playOnce(
 }
 
 // ── Ringtone (WhatsApp calls) ─────────────────────────────
-// A gentle two-note ring repeated every ~2.4s while a call is ringing.
-// Same synthesised-tone approach as the notification chimes (no assets),
-// honouring the same on/off preference.
+// A ring is not a chime: it has to survive being ignored for 30 seconds and it
+// has to be recognisable as a *phone* from across a room. Cadence is a
+// double-burst (like a landline) repeated every 2.4 s, with the gain stepping
+// up over the first few bursts so a quiet first ring doesn't cost the call.
+//
+// Still synthesised — no asset files, no extra fetch on a slow connection at
+// exactly the moment latency matters most. Honours the same on/off preference
+// as the notification chimes.
+
+const RING_PERIOD_MS = 2400;
+const RING_GAIN_START = 0.09;
+const RING_GAIN_MAX = 0.2;
+const RING_GAIN_STEP = 0.025;
 
 let ringTimer: ReturnType<typeof setInterval> | null = null;
+let ringBurstIndex = 0;
 
-function ringBurst(ac: AudioContext) {
-  tone(ac, 880, 0, 0.28, 0.1);
-  tone(ac, 1174.7, 0.32, 0.34, 0.09);
+function ringBurst(ac: AudioContext, gain: number) {
+  // Two rising pairs per burst — the "brrring… brrring" shape.
+  tone(ac, 880, 0, 0.22, gain);
+  tone(ac, 1174.7, 0.24, 0.26, gain * 0.9);
+  tone(ac, 880, 0.62, 0.22, gain);
+  tone(ac, 1174.7, 0.86, 0.26, gain * 0.9);
 }
 
 export function startRingtone() {
   if (ringTimer || !isNotifSoundEnabled()) return;
   const ac = ctx();
   if (!ac) return;
-  if (ac.state === "suspended") void ac.resume();
-  try {
-    ringBurst(ac);
-  } catch {}
-  ringTimer = setInterval(() => {
+  // A ring is the one sound worth fighting the autoplay policy for: try to
+  // resume even if no gesture has landed yet. If it stays suspended the UI
+  // surfaces a tap-to-enable prompt (see isAudioBlocked).
+  unlockAudio();
+  ringBurstIndex = 0;
+  const burst = () => {
+    const gain = Math.min(
+      RING_GAIN_MAX,
+      RING_GAIN_START + ringBurstIndex * RING_GAIN_STEP,
+    );
+    ringBurstIndex += 1;
     try {
-      ringBurst(ac);
+      ringBurst(ac, gain);
     } catch {}
-  }, 2400);
+  };
+  burst();
+  ringTimer = setInterval(burst, RING_PERIOD_MS);
 }
 
 export function stopRingtone() {
@@ -129,4 +197,53 @@ export function stopRingtone() {
     clearInterval(ringTimer);
     ringTimer = null;
   }
+  ringBurstIndex = 0;
+}
+
+// ── Vibration (WhatsApp calls) ────────────────────────────
+// Android/Chrome only — iOS Safari has no Vibration API, which is exactly why
+// the out-of-app path leans on a push notification (the OS vibrates for that
+// one). Re-armed on an interval because `navigator.vibrate` takes a finite
+// pattern, and a ring must keep going until it's answered.
+
+const VIBRATE_PATTERN = [500, 220, 500, 220, 500];
+const VIBRATE_PERIOD_MS = 2400;
+
+let vibrateTimer: ReturnType<typeof setInterval> | null = null;
+
+function canVibrate(): boolean {
+  return (
+    typeof navigator !== "undefined" && typeof navigator.vibrate === "function"
+  );
+}
+
+export function startVibration() {
+  if (vibrateTimer || !canVibrate()) return;
+  const pulse = () => {
+    try {
+      navigator.vibrate(VIBRATE_PATTERN);
+    } catch {}
+  };
+  pulse();
+  vibrateTimer = setInterval(pulse, VIBRATE_PERIOD_MS);
+}
+
+export function stopVibration() {
+  if (vibrateTimer) {
+    clearInterval(vibrateTimer);
+    vibrateTimer = null;
+  }
+  if (canVibrate()) {
+    try {
+      navigator.vibrate(0); // cancel any pulse still running
+    } catch {}
+  }
+}
+
+/** One short buzz — confirms an answer/decline on a touch device. */
+export function tapFeedback() {
+  if (!canVibrate()) return;
+  try {
+    navigator.vibrate(30);
+  } catch {}
 }

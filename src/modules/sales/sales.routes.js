@@ -36,7 +36,14 @@ router.get(
 
 router.get("/orders", can("view"), c.listOrders);
 router.post("/orders", can("create"), v.validateOrderCreate, c.createOrder);
+// Impact-modal live state: on/off of the messages a manual move fires.
+// Declared before "/orders/:id" so the literal path isn't shadowed by :id.
+router.get("/orders/status-automations", can("view"), c.getStatusAutomations);
 router.get("/orders/:id", can("view"), c.getById);
+// The order's Stylist Studio job — order-scoped, gated by sales.view (NOT the
+// service_jobs module's stylist own-scope), so seeing the order is enough to
+// see its studio progress.
+router.get("/orders/:id/service-job", can("view"), c.getOrderServiceJob);
 router.post("/orders/:id/receipt", can("view"), c.receiptPdf);
 router.patch("/orders/:id", can("edit"), v.validateOrderUpdate, c.updateOrder);
 
@@ -56,6 +63,20 @@ router.post(
   c.createPaymentLink,
 );
 router.post("/orders/:id/cancel", can("edit"), c.cancelOrder);
+// Un-cancel from the Orders archive. Body { confirm: true } commits when the
+// dry run reported lines that can no longer be re-held.
+router.post(
+  "/orders/:id/restore",
+  can("edit"),
+  v.validateOrderRestore,
+  c.restoreOrder,
+);
+router.post(
+  "/orders/:id/status",
+  can("edit"),
+  v.validateOrderStatusSet,
+  c.setOrderStatus,
+);
 router.patch(
   "/orders/:id/delivery-fee",
   can("edit"),
@@ -79,7 +100,16 @@ router.post(
   v.validateQuotationSend,
   c.sendQuotation,
 );
-router.post("/quotations/:quoId/accept", can("edit"), c.acceptQuotation);
+router.post(
+  "/quotations/:quoId/accept",
+  can("edit"),
+  v.validateQuotationAccept,
+  c.acceptQuotation,
+);
+// Customer-facing pay link for a quote (000090): mints the public token and
+// returns the /quote/:token URL to paste into WhatsApp/email. Paying it
+// converts the quote to an order at confirmation.
+router.get("/quotations/:quoId/pay-link", can("view"), c.getQuotationPayLink);
 router.post(
   "/quotations/:quoId/reject",
   can("edit"),

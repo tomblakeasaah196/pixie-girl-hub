@@ -35,9 +35,9 @@ describe("brand-urls.publicBaseUrl", () => {
   });
 
   test("preserves https:// when included", async () => {
-    mockBrand({ storefront_domain: "https://thefaitlynbrand.com" });
+    mockBrand({ storefront_domain: "https://faitlynhair.com" });
     const url = await brandUrls.publicBaseUrl("faitlynhair");
-    expect(url).toBe("https://thefaitlynbrand.com");
+    expect(url).toBe("https://faitlynhair.com");
   });
 
   test("strips trailing slashes", async () => {

@@ -68,6 +68,11 @@ async function getNavDraft({ client, brand }) {
   return rows[0] || null;
 }
 
+// header_items / footer_columns / socials are JSONB. node-pg encodes a raw JS
+// ARRAY as a Postgres array literal ({...}), which a JSONB column rejects — so
+// these MUST be JSON.stringify'd (an object like socials would auto-stringify,
+// but we stringify all three for one clear, correct rule). Passing arrays raw
+// is exactly why Navigation could never save or publish.
 async function insertNavDraft({ client, brand, nav, created_by }) {
   const { rows } = await ex(client)(
     `INSERT INTO shared.storefront_navigation
@@ -75,9 +80,9 @@ async function insertNavDraft({ client, brand, nav, created_by }) {
      VALUES ($1, 'draft', $2, $3, $4, $5) RETURNING *`,
     [
       brand,
-      nav.header_items || [],
-      nav.footer_columns || [],
-      nav.socials || {},
+      JSON.stringify(nav.header_items || []),
+      JSON.stringify(nav.footer_columns || []),
+      JSON.stringify(nav.socials || {}),
       created_by || null,
     ],
   );
@@ -91,9 +96,9 @@ async function updateNavDraft({ client, brand, nav }) {
       WHERE business = $1 AND status = 'draft' RETURNING *`,
     [
       brand,
-      nav.header_items || [],
-      nav.footer_columns || [],
-      nav.socials || {},
+      JSON.stringify(nav.header_items || []),
+      JSON.stringify(nav.footer_columns || []),
+      JSON.stringify(nav.socials || {}),
     ],
   );
   return rows[0] || null;

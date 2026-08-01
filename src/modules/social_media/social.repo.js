@@ -125,7 +125,9 @@ async function recordScrapeResult({ account_id, result }) {
           SET follower_count = COALESCE($2, follower_count),
               bio = COALESCE($3, bio),
               avatar_url = COALESCE($4, avatar_url),
-              metrics = COALESCE($5::jsonb, metrics),
+              -- Merge, don't replace: a scrape that found followers but not
+              -- (say) rating must not wipe the rating a previous run stored.
+              metrics = metrics || COALESCE($5::jsonb, '{}'::jsonb),
               last_scraped_at = now(),
               last_scrape_status = 'ok',
               last_scrape_error = NULL
@@ -311,12 +313,14 @@ async function listPosts({
     where.push(`platform = $${i++}`);
     params.push(platform);
   }
+  // Effective date = when the post actually belongs on the calendar:
+  // published_at for a proven post, else its planned/created date.
   if (from) {
-    where.push(`COALESCE(scheduled_for, created_at) >= $${i++}`);
+    where.push(`COALESCE(published_at, scheduled_for, created_at) >= $${i++}`);
     params.push(from);
   }
   if (to) {
-    where.push(`COALESCE(scheduled_for, created_at) < $${i++}`);
+    where.push(`COALESCE(published_at, scheduled_for, created_at) < $${i++}`);
     params.push(to);
   }
   const w = `WHERE ${where.join(" AND ")}`;
@@ -327,10 +331,21 @@ async function listPosts({
   const offset = (page - 1) * page_size;
   const { rows } = await query(
     `SELECT * FROM shared.social_posts ${w}
-      ORDER BY COALESCE(scheduled_for, created_at) ASC LIMIT $${i++} OFFSET $${i}`,
+      ORDER BY COALESCE(published_at, scheduled_for, created_at) ASC LIMIT $${i++} OFFSET $${i}`,
     [...params, page_size, offset],
   );
   return { data: rows, page, page_size, total: c[0].total };
+}
+
+/** Hard-delete a post (an undo for a link pasted onto the wrong day/account).
+ *  Cascades to social_post_metrics via the metrics table's FK. */
+async function deletePost({ brand, id }) {
+  const { rows } = await query(
+    `DELETE FROM shared.social_posts WHERE post_id = $1 AND business = $2
+      RETURNING post_id`,
+    [id, brand],
+  );
+  return rows[0] || null;
 }
 async function updatePost({ brand, id, fields }) {
   const { set, params } = buildSet(fields, 3);
@@ -490,7 +505,7 @@ async function performanceSummary({ brand, period_month }) {
             avg(performance_score) FILTER (WHERE performance_score IS NOT NULL)::numeric(5,2) AS avg_performance_score,
             avg(creative_rating) FILTER (WHERE creative_rating IS NOT NULL)::numeric(3,2) AS avg_creative_rating
        FROM shared.social_posts
-      WHERE business = $1 AND date_trunc('month', COALESCE(scheduled_for, created_at)) = $2
+      WHERE business = $1 AND date_trunc('month', COALESCE(published_at, scheduled_for, created_at)) = $2
       GROUP BY platform
       ORDER BY platform`,
     [brand, period_month],
@@ -558,6 +573,7 @@ module.exports = {
   bulkCreatePosts,
   getPost,
   listPosts,
+  deletePost,
   updatePost,
   setPostStatus,
   findDuePosts,

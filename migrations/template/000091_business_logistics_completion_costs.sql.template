@@ -1,0 +1,213 @@
+-- ============================================================
+-- TEMPLATE 000091 — Logistics: completion attribution + delivery costs
+-- Pixie Girl Hub · JBS Praxis
+--
+-- Three things:
+--
+--  1. COMPLETION ATTRIBUTION. `delivery_state_history` already records
+--     who moved a delivery (`changed_by`), but nothing denormalises the
+--     completing staffer onto the delivery itself, so "who delivered
+--     this, when" needed a subquery per row. `completed_by`/`completed_at`
+--     fix that and give the Delivered tab a sortable column.
+--
+--  2. DRIVER LINK REMOVAL. The public driver self-confirmation link is
+--     retired (owner directive): deliveries are marked complete by staff
+--     only. The token column and its unique index go with it. Historical
+--     driver-confirmed rows keep their state history, attempts and proofs
+--     — only the live write path disappears.
+--
+--  3. DELIVERY COST + LOSS. A delivery is a micro-P&L: revenue is the
+--     customer-billed `sales_orders.shipping_fee_ngn`, cost is what we
+--     actually pay the courier. Costs go in a child table (a delivery can
+--     incur several — outbound, a redelivery after a failed attempt, a
+--     return leg) with `deliveries.courier_fee_ngn` maintained as the
+--     total. When cost exceeds revenue we do NOT block: we record the
+--     shortfall in `delivery_loss_ngn` and flag it, because the money was
+--     genuinely spent and blocking only teaches staff to enter fiction.
+--
+-- ALTER-heavy file. Every statement is IF NOT EXISTS / idempotent so
+-- `db:repair` re-runs are harmless no-ops.
+-- ============================================================
+
+-- ── deliveries: completion attribution ──────────────────────
+ALTER TABLE {{BUSINESS}}.deliveries
+  ADD COLUMN IF NOT EXISTS completed_by  UUID REFERENCES shared.users (user_id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS completed_at  TIMESTAMPTZ;
+
+COMMENT ON COLUMN {{BUSINESS}}.deliveries.completed_by IS
+  'Staff member who marked this delivery delivered. Denormalised from delivery_state_history for reporting.';
+
+-- ── deliveries: cost, loss + fee waiver ─────────────────────
+-- `courier_fee_ngn` already exists (000028) and becomes the maintained
+-- SUM of delivery_costs.amount_ngn.
+ALTER TABLE {{BUSINESS}}.deliveries
+  -- Shortfall when total cost exceeds the customer-billed shipping fee.
+  -- Always >= 0; zero means the delivery at least broke even.
+  ADD COLUMN IF NOT EXISTS delivery_loss_ngn  NUMERIC(12,2) NOT NULL DEFAULT 0
+                          CHECK (delivery_loss_ngn >= 0),
+  ADD COLUMN IF NOT EXISTS has_delivery_loss  BOOLEAN NOT NULL DEFAULT false,
+  -- Set when the customer was deliberately charged nothing (promo, remake,
+  -- apology reship). Without this every free delivery reads as a 100% loss
+  -- and buries the genuine overspends.
+  ADD COLUMN IF NOT EXISTS fee_waiver_reason  TEXT,
+  -- Null = nobody has recorded what this delivery actually cost yet. Drives
+  -- the "cost not recorded" Issues reason on completed deliveries.
+  ADD COLUMN IF NOT EXISTS cost_recorded_at   TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS cost_recorded_by   UUID REFERENCES shared.users (user_id) ON DELETE SET NULL;
+
+COMMENT ON COLUMN {{BUSINESS}}.deliveries.courier_fee_ngn IS
+  'Total actual cost of this delivery. Maintained as SUM(delivery_costs.amount_ngn) — do not write directly.';
+
+-- ── couriers: how we settle with them ───────────────────────
+-- 'invoice'  — agency bills periodically (DHL, GIGL): costs batch into a
+--              weekly expense document per courier.
+-- 'per_drop' — paid at pickup, per drop (Uber and similar): costs settle
+--              individually through cash requests.
+ALTER TABLE {{BUSINESS}}.couriers
+  ADD COLUMN IF NOT EXISTS settlement_mode TEXT NOT NULL DEFAULT 'invoice';
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'chk_{{BUSINESS}}_couriers_settlement_mode'
+  ) THEN
+    EXECUTE format(
+      'ALTER TABLE %I.couriers ADD CONSTRAINT chk_%I_couriers_settlement_mode
+         CHECK (settlement_mode IN (''invoice'',''per_drop''))',
+      '{{BUSINESS}}', '{{BUSINESS}}'
+    );
+  END IF;
+END $$;
+
+-- ── delivery_costs ──────────────────────────────────────────
+-- One row per actual amount paid out against a delivery. Multiple rows are
+-- the norm once an attempt fails: the redelivery leg costs real money and
+-- must not silently overwrite the outbound figure.
+CREATE TABLE IF NOT EXISTS {{BUSINESS}}.delivery_costs (
+  cost_id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  delivery_id           UUID        NOT NULL REFERENCES {{BUSINESS}}.deliveries (delivery_id) ON DELETE CASCADE,
+  cost_type             TEXT        NOT NULL DEFAULT 'outbound'
+                        CHECK (cost_type IN ('outbound','redelivery','return_leg','waiting_time','packaging','other')),
+  amount_ngn            NUMERIC(12,2) NOT NULL CHECK (amount_ngn > 0),
+  -- Which courier was actually paid. Usually the delivery's courier, but a
+  -- failed drop is often re-run through a different one.
+  courier_id            UUID        REFERENCES {{BUSINESS}}.couriers (courier_id) ON DELETE SET NULL,
+  incurred_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- Settlement linkage. Soft references (no FK): an invoice-settled cost is
+  -- batched into a weekly courier expense, a per-drop cost settles through a
+  -- shared cash request. Both are nullable — cost is recorded in logistics
+  -- first, settled in finance later.
+  settlement_mode       TEXT        NOT NULL DEFAULT 'invoice'
+                        CHECK (settlement_mode IN ('invoice','per_drop')),
+  expense_id            UUID,
+  expense_line_id       UUID,
+  cash_request_id       UUID,
+  settled_at            TIMESTAMPTZ,
+  -- Optional receipt / transfer screenshot (shared.documents)
+  receipt_document_id   UUID        REFERENCES shared.documents (document_id) ON DELETE SET NULL,
+  notes                 TEXT,
+  recorded_by           UUID        REFERENCES shared.users (user_id) ON DELETE SET NULL,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger
+     WHERE tgname = 'trg_{{BUSINESS}}_delivery_costs_updated_at'
+  ) THEN
+    EXECUTE format(
+      'CREATE TRIGGER trg_%I_delivery_costs_updated_at
+         BEFORE UPDATE ON %I.delivery_costs
+         FOR EACH ROW EXECUTE FUNCTION shared.fn_set_updated_at()',
+      '{{BUSINESS}}', '{{BUSINESS}}'
+    );
+  END IF;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_delivery_costs_delivery
+  ON {{BUSINESS}}.delivery_costs (delivery_id);
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_delivery_costs_courier
+  ON {{BUSINESS}}.delivery_costs (courier_id, incurred_at DESC);
+-- Unsettled costs, for the courier settlement run.
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_delivery_costs_unsettled
+  ON {{BUSINESS}}.delivery_costs (courier_id, incurred_at)
+  WHERE settled_at IS NULL;
+
+-- Reporting: find loss-making deliveries fast.
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_deliveries_loss
+  ON {{BUSINESS}}.deliveries (delivered_at DESC)
+  WHERE has_delivery_loss;
+-- Reporting: completed deliveries whose cost nobody recorded.
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_deliveries_cost_missing
+  ON {{BUSINESS}}.deliveries (delivered_at DESC)
+  WHERE status = 'delivered' AND cost_recorded_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_deliveries_completed_by
+  ON {{BUSINESS}}.deliveries (completed_by, delivered_at DESC)
+  WHERE completed_by IS NOT NULL;
+
+-- ── Backfill completion attribution from state history ──────
+-- Latest 'delivered' transition wins. Driver-confirmed rows have no
+-- changed_by (the public link had no user), so they backfill time-only —
+-- completed_by stays NULL and the UI reads that as "driver-confirmed
+-- (legacy link)".
+UPDATE {{BUSINESS}}.deliveries d
+   SET completed_by = h.changed_by,
+       completed_at = h.changed_at
+  FROM (
+    SELECT DISTINCT ON (delivery_id) delivery_id, changed_by, changed_at
+      FROM {{BUSINESS}}.delivery_state_history
+     WHERE to_status = 'delivered'
+     ORDER BY delivery_id, changed_at DESC
+  ) h
+ WHERE h.delivery_id = d.delivery_id
+   AND d.completed_at IS NULL;
+
+-- Deliveries marked delivered before state history existed: fall back to
+-- the delivery's own timestamp so the column is never mysteriously blank.
+UPDATE {{BUSINESS}}.deliveries
+   SET completed_at = delivered_at
+ WHERE status = 'delivered'
+   AND completed_at IS NULL
+   AND delivered_at IS NOT NULL;
+
+-- ── Backfill delivery_costs from any courier_fee_ngn already keyed in ──
+-- Preserves figures entered before this table existed, so the totals the
+-- new code maintains start from truth rather than zero.
+INSERT INTO {{BUSINESS}}.delivery_costs
+  (delivery_id, cost_type, amount_ngn, courier_id, incurred_at, settlement_mode, notes)
+SELECT d.delivery_id,
+       'outbound',
+       d.courier_fee_ngn,
+       d.courier_id,
+       COALESCE(d.delivered_at, d.booked_at, d.created_at),
+       COALESCE(c.settlement_mode, 'invoice'),
+       'Backfilled from deliveries.courier_fee_ngn (migration 000091)'
+  FROM {{BUSINESS}}.deliveries d
+  LEFT JOIN {{BUSINESS}}.couriers c ON c.courier_id = d.courier_id
+ WHERE d.courier_fee_ngn > 0
+   AND NOT EXISTS (
+     SELECT 1 FROM {{BUSINESS}}.delivery_costs dc WHERE dc.delivery_id = d.delivery_id
+   );
+
+UPDATE {{BUSINESS}}.deliveries d
+   SET cost_recorded_at = COALESCE(d.delivered_at, d.booked_at, d.created_at)
+ WHERE d.courier_fee_ngn > 0
+   AND d.cost_recorded_at IS NULL;
+
+-- Seed the loss figures for the backfilled costs.
+UPDATE {{BUSINESS}}.deliveries d
+   SET delivery_loss_ngn = GREATEST(d.courier_fee_ngn - COALESCE(so.shipping_fee_ngn, 0), 0),
+       has_delivery_loss = (d.courier_fee_ngn - COALESCE(so.shipping_fee_ngn, 0)) > 0
+  FROM {{BUSINESS}}.sales_orders so
+ WHERE so.order_id = d.order_id
+   AND d.courier_fee_ngn > 0;
+
+-- ── Retire the driver self-confirmation link ────────────────
+-- Done last so the backfills above still see historical rows intact.
+DROP INDEX IF EXISTS {{BUSINESS}}.idx_{{BUSINESS}}_deliveries_driver_token;
+
+ALTER TABLE {{BUSINESS}}.deliveries
+  DROP COLUMN IF EXISTS driver_confirmation_token;

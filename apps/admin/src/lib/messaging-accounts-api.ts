@@ -99,6 +99,18 @@ export interface TestResult {
   mx_records?: { exchange: string; priority: number }[];
   /** IG only: the stored account id didn't match Meta's and was corrected. */
   healed?: boolean;
+  /** IG only: state of the account's webhook-field subscriptions
+   *  (messages — which carries app-reply echoes via is_echo —, reactions,
+   *  seen). `healed` means something had been dropped on Meta's side and
+   *  the Test re-subscribed it. */
+  echo_sync?: {
+    ok: boolean;
+    healed?: boolean;
+    fields?: string[];
+    missing_before?: string[];
+    missing_after?: string[];
+    error?: string;
+  } | null;
   /** email_outbound with inbound polling on: result of the IMAP login check. */
   imap?: { ok: boolean; host?: string; error?: string } | null;
 }

@@ -9,7 +9,7 @@
  */
 
 import { useState } from "react";
-import { ArrowLeft, CheckCircle2, Loader2, Truck } from "lucide-react";
+import { ArrowLeft, CheckCircle2, CircleAlert, Loader2, Truck } from "lucide-react";
 import { Button } from "@/components/ui/primitives";
 import { Select } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
@@ -22,6 +22,13 @@ import {
 } from "@/lib/logistics-api";
 
 type Step = "form" | "review";
+
+// Why a delivery isn't dispatchable, in the dispatcher's language.
+const NOT_READY_TEXT: Record<string, string> = {
+  awaiting_studio: "The wig is still in the studio.",
+  awaiting_fulfilment: "The order hasn't been packed yet.",
+  order_blocked: "The order is cancelled or refunded.",
+};
 
 function toIso(local: string): string | undefined {
   if (!local) return undefined;
@@ -61,10 +68,19 @@ export function BookDeliveryModal({
   const selectedCourier = couriers.find((c) => c.courier_id === courierId);
   const canContinue = Boolean(courierId) && fee.trim().length > 0;
 
+  // Booking something the studio hasn't finished is allowed — scheduling a
+  // courier for tomorrow while the wig finishes tonight is real — but it has
+  // to be deliberate. The API refuses without the acknowledgement, and the
+  // reason is written to the delivery's timeline.
+  const notReady = Boolean(delivery.readiness && delivery.readiness !== "ready");
+  const [notReadyReason, setNotReadyReason] = useState("");
+
   function confirm() {
     book.mutate(
       {
         id: delivery.delivery_id,
+        acknowledge_not_ready: notReady || undefined,
+        not_ready_reason: notReady ? notReadyReason.trim() || undefined : undefined,
         courier_id: courierId || undefined,
         courier_fee_ngn: fee ? Number(fee) : undefined,
         courier_tracking_ref: trackingRef.trim() || undefined,
@@ -217,6 +233,31 @@ export function BookDeliveryModal({
           <p className="text-[12.5px] text-text-muted">
             Check every detail below. This locks in the booking — edit now if anything is wrong.
           </p>
+          {notReady && (
+            <div className="rounded-xl border border-warn/40 bg-warn/[0.07] p-3 space-y-2">
+              <div className="flex items-start gap-2">
+                <CircleAlert className="w-4 h-4 text-warn shrink-0 mt-px" />
+                <div className="text-[12px]">
+                  <div className="font-medium text-warn">
+                    This delivery isn&rsquo;t ready to dispatch
+                  </div>
+                  <div className="text-text-muted">
+                    {NOT_READY_TEXT[delivery.readiness ?? ""] ??
+                      "The order isn't packed yet."}{" "}
+                    You can still book the courier now — the early booking is
+                    recorded on the delivery timeline.
+                  </div>
+                </div>
+              </div>
+              <input
+                value={notReadyReason}
+                onChange={(e) => setNotReadyReason(e.target.value)}
+                placeholder="Why book now? (optional)"
+                className="w-full bg-transparent border border-line rounded-lg px-2.5 h-[36px] text-[12.5px] outline-none focus:border-accent/50"
+                autoComplete="off"
+              />
+            </div>
+          )}
           <div className="rounded-xl border border-line divide-y divide-line">
             <Review label="Courier" value={selectedCourier?.display_name ?? "—"} />
             <Review label="Agreed fee" value={fee ? money(Number(fee)) : "—"} />

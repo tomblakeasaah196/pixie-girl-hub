@@ -80,6 +80,7 @@ const productCreate = z
     // Pre-order / production timeline (P0-7). When the base is out of stock
     // and pre-order is enabled, styled listings show production-framed copy.
     preorder_enabled: z.boolean().optional(),
+    preorder_excluded: z.boolean().optional(),
     expected_ready_date: z.string().date().nullable().optional(),
     production_lead_days: z.coerce
       .number()
@@ -88,6 +89,12 @@ const productCreate = z
       .max(365)
       .nullable()
       .optional(),
+    // Rewig adjacency (000088). size_code/base_family_id are normally set by
+    // the backfill or the auto-map-bases flow; rewig_eligible is the everyday
+    // per-base toggle (default true — every base is eligible out of the box).
+    size_code: z.string().max(8).nullable().optional(),
+    base_family_id: z.string().uuid().nullable().optional(),
+    rewig_eligible: z.boolean().optional(),
   })
   .strict();
 
@@ -294,6 +301,54 @@ const relatedCreate = z
   })
   .strict();
 
+// ── Base-product wizard: batch create + "create other sizes" ──
+// A wizard base = the product's descriptive fields + an optional `variant`
+// sub-object for the default variant's prices/weight. The repo whitelists
+// columns on write, so this focuses on shape + bounds.
+const wizardVariant = z
+  .object({
+    price_storefront_ngn: money.optional(),
+    price_storefront_usd: money.optional(),
+    price_wholesale_ngn: money.optional(),
+    price_wholesale_usd: money.optional(),
+    weight_g: z.coerce.number().int().min(0).max(1000000).optional(),
+    variant_cap_size: z.string().max(40).optional(),
+  })
+  .strict();
+const wizardBaseItem = z
+  .object({
+    name: z.string().min(1).max(200),
+    category_id: z.string().uuid().nullable().optional(),
+    texture_type: z.string().max(40).nullable().optional(),
+    lace_type: z.string().max(40).nullable().optional(),
+    hair_length_inches: z.coerce.number().int().min(0).max(60).nullable().optional(),
+    cap_size: z.string().max(40).nullable().optional(),
+    lace_size_codes: z.array(z.string().max(8)).nullable().optional(),
+    preorder_excluded: z.boolean().optional(),
+    short_description: z.string().max(500).nullable().optional(),
+    long_description: z.string().max(8000).nullable().optional(),
+    variant: wizardVariant.optional(),
+  })
+  .strict();
+const productBatch = z
+  .object({ products: z.array(wizardBaseItem).min(1).max(24) })
+  .strict();
+const siblingSizes = z
+  .object({
+    sizes: z
+      .array(
+        z
+          .object({
+            name: z.string().min(1).max(200),
+            cap_size: z.string().max(40).nullable().optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(12),
+  })
+  .strict();
+
 const mw = (s) => (req, _res, next) => {
   req.body = s.parse(req.body ?? {});
   next();
@@ -304,6 +359,8 @@ module.exports = {
   validateCategoryUpdate: mw(categoryCreate.partial()),
   validateProductCreate: mw(productCreate),
   validateProductUpdate: mw(productCreate.partial()),
+  validateProductBatch: mw(productBatch),
+  validateSiblingSizes: mw(siblingSizes),
   validateBulkImport: mw(bulkImport),
   validateVariantCreate: mw(variantCreate),
   validateVariantUpdate: mw(variantCreate.partial()),

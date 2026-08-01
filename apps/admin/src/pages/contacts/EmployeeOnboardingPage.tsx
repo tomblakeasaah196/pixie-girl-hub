@@ -203,6 +203,7 @@ export function EmployeeOnboardingPage() {
     sun: "off",
   });
   const [expectedStart, setExpectedStart] = useState("09:00");
+  const [expectedEnd, setExpectedEnd] = useState("18:00");
   const [grace, setGrace] = useState("15");
 
   // ── Financial ───────────────────────────────────────────
@@ -379,6 +380,7 @@ export function EmployeeOnboardingPage() {
           ...(taxId.trim() ? { tax_id: taxId.trim() } : {}),
           work_schedule: schedule,
           ...(expectedStart ? { work_expected_start_time: expectedStart } : {}),
+          ...(expectedEnd ? { work_expected_end_time: expectedEnd } : {}),
           work_grace_minutes: Number(grace) || 0,
         });
         createdProfileRef.current = profile;
@@ -484,8 +486,9 @@ export function EmployeeOnboardingPage() {
       )}
 
       <div className="grid lg:grid-cols-[260px_1fr] gap-5 items-start">
-        {/* Step rail */}
-        <div className="rounded-[16px] glass border hairline p-3 space-y-1">
+        {/* Step rail — a compact horizontal strip on phones/tablet (scrolls if
+            it must), the vertical rail on desktop. */}
+        <div className="rounded-[16px] glass border hairline p-2 lg:p-3 flex gap-1.5 overflow-x-auto no-scrollbar lg:block lg:space-y-1">
           {STEPS.map((s, i) => {
             const state =
               i < step ? "done" : i === step ? "current" : "upcoming";
@@ -496,7 +499,7 @@ export function EmployeeOnboardingPage() {
                 onClick={() => i <= step && setStep(i)}
                 disabled={i > step}
                 className={[
-                  "w-full flex items-start gap-3 p-2.5 rounded-[11px] text-left transition-colors",
+                  "flex-shrink-0 lg:w-full flex items-center lg:items-start gap-2.5 lg:gap-3 p-2.5 rounded-[11px] text-left transition-colors",
                   state === "current"
                     ? "bg-accent-deep/[0.14] border border-accent-deep/40"
                     : "border border-transparent hover:bg-text-primary/[0.04] disabled:opacity-50 disabled:hover:bg-transparent",
@@ -515,10 +518,10 @@ export function EmployeeOnboardingPage() {
                   {state === "done" ? <Check className="w-3.5 h-3.5" /> : i + 1}
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-[13px] font-semibold text-text-primary">
+                  <span className="block text-[13px] font-semibold text-text-primary whitespace-nowrap lg:whitespace-normal">
                     {s.label}
                   </span>
-                  <span className="block text-[11px] text-text-faint">
+                  <span className="hidden lg:block text-[11px] text-text-faint">
                     {s.description}
                   </span>
                 </span>
@@ -642,6 +645,8 @@ export function EmployeeOnboardingPage() {
                 setSchedule={setSchedule}
                 expectedStart={expectedStart}
                 setExpectedStart={setExpectedStart}
+                expectedEnd={expectedEnd}
+                setExpectedEnd={setExpectedEnd}
                 grace={grace}
                 setGrace={setGrace}
               />
@@ -1308,6 +1313,8 @@ function WorkScheduleEditor({
   setSchedule,
   expectedStart,
   setExpectedStart,
+  expectedEnd,
+  setExpectedEnd,
   grace,
   setGrace,
 }: {
@@ -1315,6 +1322,8 @@ function WorkScheduleEditor({
   setSchedule: (fn: (s: WorkSchedule) => WorkSchedule) => void;
   expectedStart: string;
   setExpectedStart: (v: string) => void;
+  expectedEnd: string;
+  setExpectedEnd: (v: string) => void;
   grace: string;
   setGrace: (v: string) => void;
 }) {
@@ -1358,12 +1367,19 @@ function WorkScheduleEditor({
           </div>
         ))}
       </div>
-      <div className="mt-3 grid grid-cols-2 gap-3 sm:max-w-xs">
+      <div className="mt-3 grid grid-cols-3 gap-3 sm:max-w-md">
         <Field label="Expected start">
           <TextInput
             type="time"
             value={expectedStart}
             onChange={(e) => setExpectedStart(e.target.value)}
+          />
+        </Field>
+        <Field label="Closing time">
+          <TextInput
+            type="time"
+            value={expectedEnd}
+            onChange={(e) => setExpectedEnd(e.target.value)}
           />
         </Field>
         <Field label="Grace (min)">
@@ -1374,6 +1390,10 @@ function WorkScheduleEditor({
           />
         </Field>
       </div>
+      <p className="mt-2 text-[11px] text-text-faint">
+        Closing time powers early-departure tracking, supplementary-hours
+        (overtime) capture, and the clock-out reminders.
+      </p>
     </div>
   );
 }

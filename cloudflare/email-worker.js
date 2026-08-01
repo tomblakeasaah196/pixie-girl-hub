@@ -16,8 +16,8 @@
  * 2.  Set the secret (must equal CF_EMAIL_INBOUND_SECRET in the Hub's .env):
  *        wrangler secret put INBOUND_SECRET
  * 3.  Deploy, then in Cloudflare → your domain → Email → Email Routing, route
- *     contact@thefaitlynbrand.com (and ideally a catch-all) to "Send to a Worker"
- *     → this Worker.
+ *     the brand's inbound mailbox, e.g. contact@faitlynhair.com (and ideally a
+ *     catch-all), to "Send to a Worker" → this Worker.
  *
  * The signed body is byte-for-byte what we POST, so the Hub's HMAC over its raw
  * request body matches ours. Do NOT re-stringify or mutate `body` after signing.
@@ -64,7 +64,7 @@ export default {
 
     const payload = {
       // `to` routes the message to a brand — send the ORIGINAL envelope
-      // recipient (e.g. contact@thefaitlynbrand.com), lower-cased by the Hub.
+      // recipient (e.g. contact@faitlynhair.com), lower-cased by the Hub.
       to: message.to,
       from: {
         email: message.from,

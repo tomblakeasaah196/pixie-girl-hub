@@ -4,7 +4,7 @@
  * Replaces the single `STOREFRONT_BASE_URL` env var pattern with a
  * lookup on `business_config.storefront_domain` so each brand can
  * have its own customer-facing domain (e.g. pixiegirlglobal.com and
- * thefaitlynbrand.com).
+ * faitlynhair.com).
  *
  * Resolution order:
  *   1. business_config.storefront_domain  (preferred — CEO-editable)
@@ -143,6 +143,18 @@ async function payLinkUrl(brand, token) {
 }
 
 /**
+ * `${publicBaseUrl}/quote/{token}` — the customer-facing page for paying a
+ * QUOTATION (000090). Deliberately a different path from /pay/{token}: that one
+ * resolves an order's public_tracking_token, this one a quotation's
+ * public_pay_token, and the two token spaces are unrelated.
+ */
+async function quotePayUrl(brand, token) {
+  if (!token) return "";
+  const base = await publicBaseUrl(brand);
+  return base ? `${base}/quote/${token}` : `/quote/${token}`;
+}
+
+/**
  * Returns the support email + display name for a brand, with the
  * brand's display_name as the fallback display label. Used by email
  * dispatch + receipt rendering.
@@ -168,6 +180,7 @@ module.exports = {
   welcomeUrl,
   orderLinkUrl,
   payLinkUrl,
+  quotePayUrl,
   supportContact,
   invalidate,
 };

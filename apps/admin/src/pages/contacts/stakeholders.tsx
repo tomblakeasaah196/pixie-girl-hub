@@ -246,7 +246,7 @@ export const PROFILE_TAB_LABELS: Record<ProfileTabKey, string> = {
   invoices: "Invoices",
   concierge: "Concierge",
   preferences: "Preferences",
-  loyalty: "Loyalty",
+  loyalty: "Crowns",
   employment: "Employment",
   purchasing: "Purchasing",
   subscription: "Subscription",

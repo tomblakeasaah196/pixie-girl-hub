@@ -1,14 +1,18 @@
 export type OrderStatus =
-  | "draft"
   | "pending_payment"
+  | "partially_paid"
   | "paid"
-  | "in_production"
-  | "awaiting_dispatch"
-  | "partially_fulfilled"
-  | "fulfilled"
+  | "assigned"
+  | "order_ready"
+  | "dispatched"
   | "completed"
+  | "cancellation_requested"
   | "cancelled"
-  | "cancellation_requested";
+  // Rare/legacy side-states — never produced by the current flow, kept so old
+  // rows and refunds still render.
+  | "draft"
+  | "refunded"
+  | "failed";
 
 export type QuoteStatus =
   | "draft"
@@ -110,6 +114,16 @@ export interface OrderPayment {
   status: string;
   captured_at: string;
   created_at: string;
+  // Acceptance trail — who took the money and when. Stamped server-side on
+  // every payment; `recorded_by_name` is resolved from the staff profile and
+  // is null for gateway captures that no human recorded.
+  recorded_by: string | null;
+  recorded_by_name: string | null;
+  recorded_at: string;
+  manual_bank_transaction_id: string | null;
+  manual_bank_name: string | null;
+  manual_recorded_by: string | null;
+  notes: string | null;
 }
 
 export interface OrderDiscount {
@@ -127,6 +141,10 @@ export interface OrderDiscount {
 export interface SalesOrder {
   order_id: string;
   order_number: string;
+  /** The order's invoice, joined into list rows for the deep-link column. */
+  invoice_id?: string | null;
+  invoice_number?: string | null;
+  invoice_status?: string | null;
   contact_id: string;
   contact_name?: string;
   contact_phone?: string | null;
@@ -161,9 +179,38 @@ export interface SalesOrder {
   created_by: string;
   created_at: string;
   updated_at: string;
+  /** Set when the order was cancelled — surfaced in the Orders archive so an
+   *  operator can see when and why before restoring. `SELECT so.*` already
+   *  returns both; they were simply absent from this type. */
+  cancelled_at?: string | null;
+  cancellation_reason?: string | null;
+  /** Pre-orders (000086): order carries a made-to-order line; ready_by is the
+   *  deadline shown in the Pre-orders tab (placement + max production weeks). */
+  is_preorder?: boolean;
+  preorder_ready_by?: string | null;
+  preorder_min_weeks?: number | null;
+  preorder_max_weeks?: number | null;
+  /** Pre-order confirmation returned by createOrder (000086) — present only when
+   *  a line actually went in as made-to-order, so Quick Sale can toast it. */
+  preorder?: {
+    is_preorder: boolean;
+    line_count: number;
+    names?: string[];
+    window_label?: string | null;
+    message?: string;
+  } | null;
   /** Distinct line kinds on the order (list endpoint only) — drives the
    *  register's Kind column: base product vs styled vs service vs bundle. */
   line_kinds?: Array<"product" | "styled" | "bundle" | "service"> | null;
+  /** Per-line name + quantity summary (list endpoint only) — drives the
+   *  register's Products column so staff can read the actual item names
+   *  (styled / base product / service / bundle) without opening the order. */
+  line_items?: Array<{
+    name: string;
+    variant: string | null;
+    quantity: number;
+    kind: "product" | "styled" | "bundle" | "service" | null;
+  }> | null;
   lines?: OrderLine[];
   payments?: OrderPayment[];
   discounts?: OrderDiscount[];
@@ -255,6 +302,11 @@ export interface OrderCreateInput {
     quantity: number;
     unit_price_ngn?: number;
     notes?: string;
+    // Snapshot overrides — record the shop-facing name/SKU (a styled product
+    // or bundle) instead of whatever the underlying stock variant is called.
+    product_name_snapshot?: string;
+    variant_label_snapshot?: string;
+    sku_snapshot?: string;
   }>;
   sales_campaign_id?: string;
   campaign_slug?: string;
@@ -327,6 +379,11 @@ export interface QuotationCreateInput {
     unit_price_ngn?: number;
     line_discount_ngn?: number;
     notes?: string;
+    // Snapshot overrides — record the shop-facing name/SKU (a styled
+    // product) instead of the underlying stock variant's own name.
+    product_name_snapshot?: string;
+    variant_label_snapshot?: string;
+    sku_snapshot?: string;
   }>;
   valid_until?: string;
   payment_terms?: string;
@@ -343,6 +400,28 @@ export interface QuotationSendInput {
 
 export interface QuotationConvertInput {
   sales_channel?: SalesChannel;
+}
+
+/**
+ * Accept, optionally minting the order in the same step (order-first fallback,
+ * for sales settled offline rather than through the quote's own pay link).
+ */
+export interface QuotationAcceptInput {
+  convert?: boolean;
+  sales_channel?: SalesChannel;
+}
+
+/**
+ * The customer-facing pay link for a quote. Paying it converts the quote to a
+ * sales order at gateway confirmation — the order does not exist until then.
+ */
+export interface QuotationPayLink {
+  quotation_id: string;
+  quotation_number: string;
+  status: QuoteStatus;
+  total_ngn: string;
+  public_pay_token: string | null;
+  pay_url: string;
 }
 
 export interface CancellationRequestInput {
@@ -365,6 +444,9 @@ export interface PosTerminalReconciliation {
   resolved_brand: string | null;
   nomba_terminal_id: string | null;
   alias_account_name: string | null;
+  // Who paid, per the gateway (columns added in 000374 — null on older rows).
+  sender_name: string | null;
+  sender_bank: string | null;
   amount_ngn: string;
   transaction_time: string | null;
   provider_reference: string | null;

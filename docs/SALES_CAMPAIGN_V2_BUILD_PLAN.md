@@ -54,7 +54,7 @@ Status: **PR 1 shipped (admin builder + backend deltas).** PR 2 (Next.js public 
 
 ## What ships in PR 2 (next session — public landing page)
 
-- Next.js 14 (App Router) app at `apps/landing/`, deployed to `sales.pixiegirlglobal.com` + `sales.thefaitlynbrand.com`.
+- Next.js 14 (App Router) app at `apps/landing/`, deployed to `sales.pixiegirlglobal.com` + `sales.faitlynhair.com`.
 - 3 base states (Before / Live / Ended) + 4 extras (VIP early access, Last-call surge, Sold-out hold, Waitlist-for-next-drop).
 - Block renderers for every block in the library (hero, countdown, bundle showcase, tier ladder, lookbook, story, founder quote, why-buy, testimonials, UGC carousel, FAQ, wig care, stylist spotlight, shipping/returns, newsletter capture, VIP signup).
 - Inline guest checkout with Paystack/Opay/Nomba/Stripe.

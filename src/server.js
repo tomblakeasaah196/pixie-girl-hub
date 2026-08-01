@@ -90,6 +90,18 @@ async function bootstrap() {
   app.use(perfMiddleware);
   startPerfFlush();
   mountRoutes(app);
+  // Approval inbox wiring. MUST be registered in the WEB process: approvals
+  // are decided over HTTP, so the workflow engine's in-process events fire
+  // here. Without it an approver is never told a decision is waiting and no
+  // task is ever closed when one is made.
+  try {
+    require("./shared/approvals/approvals.subscribers");
+  } catch (err) {
+    logger.warn(
+      { err: err.message },
+      "approval subscribers init failed (non-fatal)",
+    );
+  }
   // Kaizen alert subscribers (this process emits error events). Guarded: Kaizen
   // must never break the main app boot.
   try {

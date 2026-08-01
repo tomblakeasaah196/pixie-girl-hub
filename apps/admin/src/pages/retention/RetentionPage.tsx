@@ -7,7 +7,8 @@
  * when the user lacks the grant (canon §4 #3).
  */
 
-import { useState } from "react";
+import { useEffect, useRef } from "react";
+import { useUrlTab } from "@/hooks/useUrlTab";
 import {
   Sparkles,
   Gift,
@@ -18,13 +19,15 @@ import {
   Boxes,
   Wrench,
   BarChart3,
+  ClipboardCheck,
 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
 import { DeniedState } from "@/components/ui/controls";
 import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { StrategiesTab } from "./StrategiesTab";
-import { LoyaltyTab } from "./LoyaltyTab";
+import { CrownsTab } from "./CrownsTab";
+import { CrownApprovalsTab } from "./CrownApprovalsTab";
 import { RewardsTab } from "./RewardsTab";
 import { ReferralsTab } from "./ReferralsTab";
 import { AnalyticsTab } from "./AnalyticsTab";
@@ -32,7 +35,8 @@ import { CouponsTab, SubscriptionsTab, BundlesTab, MaintenanceTab } from "./Cata
 
 type Tab =
   | "strategies"
-  | "loyalty"
+  | "crowns"
+  | "approvals"
   | "rewards"
   | "referrals"
   | "coupons"
@@ -43,7 +47,8 @@ type Tab =
 
 const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
   { key: "strategies", label: "Strategies", icon: <Sparkles className="w-4 h-4" /> },
-  { key: "loyalty", label: "Loyalty", icon: <Crown className="w-4 h-4" /> },
+  { key: "crowns", label: "Crowns", icon: <Crown className="w-4 h-4" /> },
+  { key: "approvals", label: "Approvals", icon: <ClipboardCheck className="w-4 h-4" /> },
   { key: "rewards", label: "Rewards", icon: <Gift className="w-4 h-4" /> },
   { key: "referrals", label: "Referrals", icon: <Users className="w-4 h-4" /> },
   { key: "coupons", label: "Coupons", icon: <Ticket className="w-4 h-4" /> },
@@ -56,7 +61,19 @@ const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
 export function RetentionPage() {
   useBreadcrumbs([{ label: "Retention" }]);
   const { can } = useAuthStore();
-  const [tab, setTab] = useState<Tab>("strategies");
+  const [tab, setTab] = useUrlTab<Tab>(
+    "strategies",
+    TABS.map((t) => t.key),
+  );
+
+  // Keep the active tab visible in the swipeable strip (e.g. landing on
+  // ?tab=analytics from a deep link should not hide the selection off-screen).
+  const navRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    navRef.current
+      ?.querySelector<HTMLButtonElement>('[data-active="true"]')
+      ?.scrollIntoView({ inline: "center", block: "nearest" });
+  }, [tab]);
 
   if (!can("retention", "view")) {
     return <DeniedState message="You don't have access to Retention." />;
@@ -65,12 +82,19 @@ export function RetentionPage() {
   return (
     <div className="max-w-[1180px] space-y-5">
       <ModuleInsights module="retention" />
-      <nav className="flex items-center gap-1 border-b border-line overflow-x-auto">
+      {/* 9 tabs — a swipeable strip on phones: real touch targets, scroll
+          snapping, faded edges hinting there's more, no visible scrollbar. */}
+      <nav
+        ref={navRef}
+        className="flex items-center gap-1 border-b border-line overflow-x-auto hide-scrollbar -mx-1 px-1 snap-x snap-proximity [mask-image:linear-gradient(to_right,transparent,black_14px,black_calc(100%-14px),transparent)]"
+        aria-label="Retention sections"
+      >
         {TABS.map((t) => (
           <button
             key={t.key}
+            data-active={tab === t.key ? "true" : undefined}
             onClick={() => setTab(t.key)}
-            className={`inline-flex items-center gap-2 px-3.5 py-2.5 text-[13px] font-semibold border-b-2 -mb-px transition-colors whitespace-nowrap ${
+            className={`inline-flex items-center gap-2 px-3.5 py-3 sm:py-2.5 text-[13px] font-semibold border-b-2 -mb-px transition-colors whitespace-nowrap shrink-0 snap-start ${
               tab === t.key
                 ? "border-accent text-accent-glow"
                 : "border-transparent text-text-muted hover:text-text-primary"
@@ -83,7 +107,8 @@ export function RetentionPage() {
       </nav>
 
       {tab === "strategies" && <StrategiesTab />}
-      {tab === "loyalty" && <LoyaltyTab />}
+      {tab === "crowns" && <CrownsTab />}
+      {tab === "approvals" && <CrownApprovalsTab />}
       {tab === "rewards" && <RewardsTab />}
       {tab === "referrals" && <ReferralsTab />}
       {tab === "coupons" && <CouponsTab />}

@@ -10,10 +10,15 @@ import {
   List,
   LayoutGrid,
   Globe,
+  Star,
+  Zap,
+  Store,
+  ChevronRight,
 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { DataTable, type Column } from "@/components/ui/DataTable";
-import { Button, Pill, KpiTile, type Tone } from "@/components/ui/primitives";
+import { Modal } from "@/components/ui/Modal";
+import { Button, Pill, type Tone } from "@/components/ui/primitives";
 import { formatDate } from "@/lib/format";
 import { Select } from "@/components/ui/controls";
 import { useContacts, useContactStats } from "./hooks";
@@ -94,6 +99,31 @@ function ContactAvatar({ name, idx }: { name: string; idx: number }) {
   );
 }
 
+/**
+ * Line-2 contact metadata for a directory row. Scans the three endpoints and
+ * shows up to two, in the fixed priority order Phone → Instagram → Email
+ * (so a contact with all three reads "phone • @instagram").
+ */
+function contactMeta(c: Contact): { value: string; mono: boolean }[] {
+  const out: { value: string; mono: boolean }[] = [];
+  const phone = c.primary_phone ?? c.whatsapp_number;
+  if (phone) out.push({ value: phone, mono: true });
+  if (c.instagram_handle) out.push({ value: `@${c.instagram_handle}`, mono: false });
+  if (c.email) out.push({ value: c.email, mono: true });
+  return out.slice(0, 2);
+}
+
+/** A VIP is flagged with a star to the right of the name (no separate pill). */
+function VipStar({ level }: { level: PriorityLevel }) {
+  if (level !== "vip") return null;
+  return (
+    <Star
+      className="w-3.5 h-3.5 text-accent-glow fill-accent-glow flex-shrink-0"
+      aria-label="VIP"
+    />
+  );
+}
+
 // "all" + the per-stakeholder tabs shipped this phase. Tab identity is the
 // stakeholder KEY (ambassador has no contact_type — it's an overlay).
 type TabKey = "all" | ContactType | "ambassador";
@@ -119,6 +149,8 @@ export function ContactsPage() {
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [showOnlineQR, setShowOnlineQR] = useState(false);
+  const [showAddSheet, setShowAddSheet] = useState(false);
+  const [showQrSheet, setShowQrSheet] = useState(false);
   const [view, setView] = useState<"list" | "cards">(
     () =>
       (localStorage.getItem("pgh_contacts_view") as "list" | "cards") || "list",
@@ -209,23 +241,33 @@ export function ContactsPage() {
             ? `New ${activeDef.label}`
             : "New Contact";
 
+  // The Power Plus opens the Add sheet when there's more than one way in
+  // (Quick Add and/or Data tools); on programme tabs where the only action is
+  // the context primary, it fires that directly instead of a one-item sheet.
+  const showQuickAddTile = !isProgrammeTab && activeTab !== "staff";
+  const showDataTools = !isProgrammeTab;
+  const openAdd = () => {
+    if (showQuickAddTile || showDataTools) setShowAddSheet(true);
+    else onPrimaryAdd();
+  };
+
   const columns: Column<Contact>[] = [
     {
       key: "name",
       header: "Name",
-      render: (c, idx = contacts.indexOf(c)) => (
-        <span className="flex items-center gap-2.5">
-          <ContactAvatar name={c.display_name} idx={idx} />
-          <span className="flex flex-col min-w-0">
+      render: (c) => (
+        <span className="flex flex-col min-w-0">
+          <span className="flex items-center gap-1.5 min-w-0">
             <span className="font-medium text-[13px] text-text-primary truncate">
               {c.display_name}
             </span>
-            {c.email && (
-              <span className="text-[11px] text-text-faint truncate">
-                {c.email}
-              </span>
-            )}
+            <VipStar level={c.priority_level} />
           </span>
+          {c.email && (
+            <span className="text-[11px] text-text-faint truncate">
+              {c.email}
+            </span>
+          )}
         </span>
       ),
     },
@@ -393,6 +435,117 @@ export function ContactsPage() {
     },
   ];
 
+  // ── Phone card renderers ──────────────────────────────────────────────
+  // On phones the column tables become tap-friendly stacked cards (no more
+  // sideways scrolling). Each mirrors its table's columns in a compact form.
+  // Avatar-free, flush-left directory row (redesign): name + VIP star on line 1
+  // with the primary segment + a NEW flag; line 2 is the dynamic contact
+  // metadata (Phone → Instagram → Email priority, up to two shown).
+  const contactMobileCard = (c: Contact) => {
+    const primaryType = c.contact_type[0];
+    const def = primaryType ? stakeholderForType(primaryType) : undefined;
+    const meta = contactMeta(c);
+    return (
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="flex items-center gap-1.5 min-w-0 flex-1">
+            <span className="font-semibold text-[15px] text-text-primary truncate">
+              {c.display_name}
+            </span>
+            <VipStar level={c.priority_level} />
+          </span>
+          {primaryType && (
+            <Pill tone={def?.tone ?? "neutral"} dot={false}>
+              {TYPE_LABELS[primaryType] ?? primaryType}
+            </Pill>
+          )}
+          {c.priority_level === "new" && (
+            <Pill tone="info" dot={false}>
+              New
+            </Pill>
+          )}
+        </div>
+        {meta.length > 0 && (
+          <div className="mt-1 text-[13px] text-text-muted truncate">
+            {meta.map((e, i) => (
+              <span key={i}>
+                {i > 0 && <span className="text-text-faint mx-1.5">•</span>}
+                <span className={e.mono ? "font-mono" : ""}>{e.value}</span>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const ambMobileCard = (a: Ambassador) => {
+    const idx = ambassadors.indexOf(a);
+    const name =
+      a.display_name ||
+      [a.first_name, a.last_name].filter(Boolean).join(" ") ||
+      "Unnamed";
+    return (
+      <div className="flex items-start gap-3">
+        <ContactAvatar name={name} idx={idx} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-medium text-[14px] text-text-primary truncate">
+              {name}
+            </span>
+            <Pill tone="accent" dot={false}>
+              Ambassador
+            </Pill>
+          </div>
+          {a.instagram_handle && (
+            <div className="text-[12px] text-text-faint truncate mt-0.5">
+              @{a.instagram_handle}
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-2 text-[12px] text-text-muted font-mono">
+            {a.ambassador_profile?.commission_pct != null && (
+              <span>
+                {Math.round(a.ambassador_profile.commission_pct * 100)}%
+                commission
+              </span>
+            )}
+            {a.primary_phone && <span>{a.primary_phone}</span>}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const stylistMobileCard = (s: StylistPartner) => {
+    const idx = stylists.indexOf(s);
+    return (
+      <div className="flex items-start gap-3">
+        <ContactAvatar name={s.display_name} idx={idx} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-medium text-[14px] text-text-primary truncate">
+              {s.display_name}
+            </span>
+            <Pill tone={STYLIST_STATUS_TONE[s.status] ?? "neutral"} dot={false}>
+              {s.status}
+            </Pill>
+          </div>
+          <div className="text-[12px] text-text-faint truncate mt-0.5 font-mono">
+            {s.partner_code}
+          </div>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-2 text-[12px] text-text-muted">
+            {s.current_tier_key && (
+              <span className="capitalize">{s.current_tier_key}</span>
+            )}
+            <span>
+              {[s.city, s.country_code].filter(Boolean).join(", ") || "—"}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const toolbar = (
     <div className="flex flex-col sm:flex-row gap-3 p-[14px_18px] border-b hairline">
       <div className="relative flex-1 max-w-xs">
@@ -418,34 +571,6 @@ export function ContactsPage() {
         options={PRIORITY_FILTER_OPTS}
         className="sm:w-[160px]"
       />
-
-      <div className="flex-1" />
-
-      {!isProgrammeTab && (
-        <ContactsImportExport
-          onImported={() => {
-            queryClient.invalidateQueries({ queryKey: ["contacts"] });
-            queryClient.invalidateQueries({ queryKey: ["contact-stats"] });
-          }}
-        />
-      )}
-
-      <Button
-        variant="ghost"
-        size="sm"
-        icon={<QrCode className="w-3.5 h-3.5" />}
-        onClick={() => setShowQR(true)}
-      >
-        Walk-in QR
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        icon={<Globe className="w-3.5 h-3.5" />}
-        onClick={() => setShowOnlineQR(true)}
-      >
-        Online QR
-      </Button>
     </div>
   );
 
@@ -488,8 +613,8 @@ export function ContactsPage() {
           flex-wrap: on phones the CTA cluster is wider than what's left
           beside the title, so it drops to its own row instead of painting
           over the heading. */}
-      <div className="flex flex-wrap items-center mb-4 gap-3">
-        <div className="min-w-0 mr-auto">
+      <div className="mb-4">
+        <div className="min-w-0 mb-3">
           <h1 className="font-display text-2xl text-text-primary">Contacts</h1>
           {totalCount != null && (
             <p className="text-[12px] text-text-faint mt-0.5">
@@ -497,9 +622,11 @@ export function ContactsPage() {
             </p>
           )}
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
+        {/* View switch sits on the left directly under the title; the QR pill
+            and Power Plus stay together on the right. */}
+        <div className="flex items-center gap-2">
           {!isProgrammeTab && (
-            <div className="flex items-center rounded-[10px] border border-line overflow-hidden mr-1">
+            <div className="flex items-center rounded-[10px] border border-line overflow-hidden">
               <button
                 onClick={() => setViewPersist("list")}
                 className={`grid place-items-center w-[34px] h-[34px] transition-colors ${
@@ -526,30 +653,26 @@ export function ContactsPage() {
               </button>
             </div>
           )}
-          {!isProgrammeTab && activeTab !== "staff" && (
-            <Button
-              variant="ghost"
-              size="sm"
-              icon={<Plus className="w-3.5 h-3.5" />}
-              onClick={() => setShowQuickAdd(true)}
+          <div className="flex items-center gap-2 ml-auto">
+            {/* QR pill — reveals Walk-in / Online QR (was two toolbar buttons) */}
+            <button
+              onClick={() => setShowQrSheet(true)}
+              aria-label="Share a QR code"
+              title="QR codes"
+              className="inline-flex items-center justify-center h-[38px] px-3.5 rounded-[12px] bg-text-primary/[0.04] border border-line text-text-muted hover:text-text-primary hover:bg-text-primary/[0.08] transition-colors"
             >
-              Quick Add
-            </Button>
-          )}
-          <Button
-            variant="primary"
-            size="sm"
-            icon={
-              activeTab === "staff" ? (
-                <UserPlus className="w-3.5 h-3.5" />
-              ) : (
-                <Plus className="w-3.5 h-3.5" />
-              )
-            }
-            onClick={onPrimaryAdd}
-          >
-            {primaryLabel}
-          </Button>
+              <QrCode className="w-[18px] h-[18px]" />
+            </button>
+            {/* Power Plus — one button, every way to add a contact */}
+            <button
+              onClick={openAdd}
+              aria-label={primaryLabel}
+              title={primaryLabel}
+              className="inline-flex items-center justify-center h-[38px] min-w-[46px] px-3.5 rounded-[12px] text-[#F4E9D9] bg-accent-deep hover:bg-accent transition-colors shadow-[0_8px_22px_rgb(var(--accent-deep)/0.45)]"
+            >
+              <Plus className="w-[19px] h-[19px]" strokeWidth={2.4} />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -574,29 +697,23 @@ export function ContactsPage() {
         })}
       </div>
 
-      {/* KPI strip */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
-        <KpiTile
-          label={`Total ${emptyLabel}`}
-          value={totalCount != null ? totalCount.toLocaleString() : "—"}
-        />
-        <KpiTile
-          label="VIP"
-          value={contactStats ? contactStats.vip.toLocaleString() : "—"}
-          tone="accent"
-        />
-        <KpiTile
-          label="New this month"
-          value={
-            contactStats ? contactStats.new_this_month.toLocaleString() : "—"
-          }
-          tone="info"
-        />
-        <KpiTile
-          label="At-risk"
-          value={contactStats ? contactStats.at_risk.toLocaleString() : "—"}
-          tone="warn"
-        />
+      {/* KPI strip — two low-profile landscape metrics (redesign): overview +
+          growth, hairline-bordered, no heavy fill. */}
+      <div className="grid grid-cols-2 gap-3 mb-5">
+        <div className="relative rounded-[14px] border border-line px-4 py-3 overflow-hidden">
+          <span className="absolute left-0 top-3 bottom-3 w-[2px] rounded bg-accent/60" />
+          <div className="micro pl-2.5">Total {emptyLabel}</div>
+          <div className="font-display text-[26px] max-md:text-[22px] leading-none mt-1.5 pl-2.5 tabular-nums text-text-primary">
+            {totalCount != null ? totalCount.toLocaleString() : "—"}
+          </div>
+        </div>
+        <div className="relative rounded-[14px] border border-line px-4 py-3 overflow-hidden">
+          <span className="absolute left-0 top-3 bottom-3 w-[2px] rounded bg-success/60" />
+          <div className="micro pl-2.5">New this month</div>
+          <div className="font-display text-[26px] max-md:text-[22px] leading-none mt-1.5 pl-2.5 tabular-nums text-text-primary">
+            {contactStats ? contactStats.new_this_month.toLocaleString() : "—"}
+          </div>
+        </div>
       </div>
 
       {isAmbassadorTab ? (
@@ -607,6 +724,7 @@ export function ContactsPage() {
           onRowClick={(a) => navigate(`/contacts/${a.contact_id}`)}
           loading={ambLoading}
           toolbar={toolbar}
+          mobileCard={ambMobileCard}
           empty={{
             icon: <Users className="w-8 h-8" />,
             title: "No ambassadors yet",
@@ -622,6 +740,7 @@ export function ContactsPage() {
           onRowClick={(s) => navigate(`/contacts/${s.contact_id}`)}
           loading={stylistLoading}
           toolbar={toolbar}
+          mobileCard={stylistMobileCard}
           empty={{
             icon: <Users className="w-8 h-8" />,
             title: "No stylist partners yet",
@@ -683,6 +802,7 @@ export function ContactsPage() {
             onRowClick={openContact}
             loading={isLoading}
             toolbar={toolbar}
+            mobileCard={contactMobileCard}
             empty={{
               icon: <Users className="w-8 h-8" />,
               title: `No ${emptyLabel} yet`,
@@ -736,7 +856,164 @@ export function ContactsPage() {
 
       {showQR && <WalkInQR onClose={() => setShowQR(false)} />}
       {showOnlineQR && <OnlineQR onClose={() => setShowOnlineQR(false)} />}
+
+      {/* Power Plus — one button, every way to add a contact */}
+      <AddSheet
+        open={showAddSheet}
+        onClose={() => setShowAddSheet(false)}
+        fullFormLabel={primaryLabel}
+        showQuickAdd={showQuickAddTile}
+        showDataTools={showDataTools}
+        onQuickAdd={() => setShowQuickAdd(true)}
+        onFullForm={onPrimaryAdd}
+        onImported={() => {
+          queryClient.invalidateQueries({ queryKey: ["contacts"] });
+          queryClient.invalidateQueries({ queryKey: ["contact-stats"] });
+        }}
+      />
+
+      {/* QR pill — reveals the two QR flows */}
+      <QrSheet
+        open={showQrSheet}
+        onClose={() => setShowQrSheet(false)}
+        onWalkIn={() => setShowQR(true)}
+        onOnline={() => setShowOnlineQR(true)}
+      />
     </div>
+  );
+}
+
+/** A large tap target used in the Add and QR sheets. */
+function SheetOption({
+  icon,
+  title,
+  desc,
+  primary,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  desc: string;
+  primary?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "w-full flex items-center gap-3.5 p-4 rounded-[16px] border text-left transition-colors",
+        primary
+          ? "bg-accent-deep/[0.14] border-accent-deep/40 hover:bg-accent-deep/[0.2]"
+          : "bg-text-primary/[0.035] border-line hover:bg-text-primary/[0.06]",
+      ].join(" ")}
+    >
+      <span className="grid place-items-center w-11 h-11 rounded-[13px] flex-shrink-0 text-accent-glow bg-accent/[0.12] border border-accent/25">
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[15px] font-semibold text-text-primary">
+          {title}
+        </span>
+        <span className="block text-[12px] text-text-muted">{desc}</span>
+      </span>
+      <ChevronRight className="w-4 h-4 text-text-faint flex-shrink-0" />
+    </button>
+  );
+}
+
+/** The Power-Plus add sheet: Quick Add + full form, plus data tools. */
+function AddSheet({
+  open,
+  onClose,
+  fullFormLabel,
+  showQuickAdd,
+  showDataTools,
+  onQuickAdd,
+  onFullForm,
+  onImported,
+}: {
+  open: boolean;
+  onClose: () => void;
+  fullFormLabel: string;
+  showQuickAdd: boolean;
+  showDataTools: boolean;
+  onQuickAdd: () => void;
+  onFullForm: () => void;
+  onImported: () => void;
+}) {
+  return (
+    <Modal open={open} onClose={onClose} title="Add a contact">
+      <div className="space-y-2.5">
+        {showQuickAdd && (
+          <SheetOption
+            icon={<Zap className="w-5 h-5" />}
+            title="Quick Add"
+            desc="Name, phone & source — fast capture"
+            primary
+            onClick={() => {
+              onClose();
+              onQuickAdd();
+            }}
+          />
+        )}
+        <SheetOption
+          icon={<UserPlus className="w-5 h-5" />}
+          title={fullFormLabel}
+          desc="The full guided form — every field"
+          primary={!showQuickAdd}
+          onClick={() => {
+            onClose();
+            onFullForm();
+          }}
+        />
+
+        {showDataTools && (
+          <div className="pt-3">
+            <div className="micro mb-2.5">Data tools</div>
+            <ContactsImportExport variant="sheet" onImported={onImported} />
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+/** The QR pill's chooser: Walk-in vs Online onboarding QR. */
+function QrSheet({
+  open,
+  onClose,
+  onWalkIn,
+  onOnline,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onWalkIn: () => void;
+  onOnline: () => void;
+}) {
+  return (
+    <Modal open={open} onClose={onClose} title="Share a QR code">
+      <div className="space-y-2.5">
+        <SheetOption
+          icon={<Store className="w-5 h-5" />}
+          title="Walk-in QR"
+          desc="A standing counter code — scan to self-register"
+          onClick={() => {
+            onClose();
+            onWalkIn();
+          }}
+        />
+        <SheetOption
+          icon={<Globe className="w-5 h-5" />}
+          title="Online QR"
+          desc="A one-time link to DM or share online"
+          onClick={() => {
+            onClose();
+            onOnline();
+          }}
+        />
+      </div>
+    </Modal>
   );
 }
 
@@ -757,8 +1034,11 @@ function ContactCard({
       <div className="flex items-center gap-3">
         <ContactAvatar name={contact.display_name} idx={idx} />
         <div className="min-w-0 flex-1">
-          <div className="text-[14px] font-medium text-text-primary truncate">
-            {contact.display_name}
+          <div className="flex items-center gap-1.5 min-w-0">
+            <div className="text-[14px] font-medium text-text-primary truncate">
+              {contact.display_name}
+            </div>
+            <VipStar level={contact.priority_level} />
           </div>
           {contact.company_name && (
             <div className="text-[11px] text-text-faint truncate">
@@ -766,9 +1046,11 @@ function ContactCard({
             </div>
           )}
         </div>
-        <Pill tone={PRIORITY_TONE[contact.priority_level]} dot={false}>
-          {contact.priority_level}
-        </Pill>
+        {contact.priority_level === "new" && (
+          <Pill tone="info" dot={false}>
+            New
+          </Pill>
+        )}
       </div>
       <div className="flex flex-wrap gap-1 mt-3">
         {contact.contact_type.slice(0, 3).map((t) => {

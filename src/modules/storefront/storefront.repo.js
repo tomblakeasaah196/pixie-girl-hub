@@ -10,6 +10,7 @@
 
 const { query, ex } = require("../../config/database");
 const { VALID_BRANDS, t } = require("../../config/brands");
+const { styledStockSql } = require("../catalogue/availability");
 // SINGLE SOURCE for the storefront "from" price (lowest variant price) in BOTH
 // currencies. The expression MIRRORS catalogue/styled_variants.repo.listVariants
 // (effective_price_ngn/usd) so list cards and the detail page never diverge — we
@@ -53,13 +54,19 @@ async function getLiveStyledIdBySlug({ brand, slug }) {
 // product page can swap images on swatch select. Mirrors the rule the campaign
 // detail enforces. Display data only — no pricing.
 async function listStyledGallery({ brand, styled_id }) {
+  // Order so the owner's explicit "module primary" (styled_products
+  // .primary_image_id — the ⭐ star in the Catalogue) leads its colour, matching
+  // the module card / listing cover. Falls back to the per-image is_primary flag
+  // then display order, so nothing changes when no star is set.
   const { rows } = await query(
-    `SELECT image_id, styled_colour_id,
-            COALESCE(cdn_url, file_path) AS url,
-            alt_text, is_primary, display_order
-       FROM ${t(brand, "product_images")}
-      WHERE styled_id = $1
-      ORDER BY is_primary DESC, display_order ASC NULLS LAST`,
+    `SELECT pi.image_id, pi.styled_colour_id,
+            COALESCE(pi.cdn_url, pi.file_path) AS url,
+            pi.alt_text, pi.is_primary, pi.display_order
+       FROM ${t(brand, "product_images")} pi
+       JOIN ${t(brand, "styled_products")} s ON s.styled_id = pi.styled_id
+      WHERE pi.styled_id = $1
+      ORDER BY (pi.image_id = s.primary_image_id) DESC NULLS LAST,
+               pi.is_primary DESC, pi.display_order ASC NULLS LAST`,
     [styled_id],
   );
   return rows;
@@ -133,18 +140,26 @@ async function listProducts({ brand, filters = {}, page = 1, page_size = 24 }) {
     params,
   );
   const offset = (page - 1) * page_size;
+  // Stock is variant-aware (styledStockSql): each colour×size variant reads
+  // its own base, so a card stays purchasable while ANY size has stock.
+  const stock = styledStockSql(brand, "s");
   const { rows } = await query(
     `SELECT s.styled_id, s.styled_code, s.name, s.slug, s.short_description,
             s.retail_price_ngn, s.retail_price_usd, s.compare_at_price_ngn,
             s.published_at,
             COALESCE(fp.from_price_ngn, s.retail_price_ngn) AS effective_price_ngn,
             COALESCE(fp.from_price_usd, s.retail_price_usd) AS effective_price_usd,
+            b.preorder_enabled, b.preorder_excluded,
+            b.expected_ready_date, b.production_lead_days,
+            ${stock.expr} AS base_available,
             (SELECT img.cdn_url FROM ${t(brand, "product_images")} img
               WHERE img.styled_id = s.styled_id
               ORDER BY img.is_primary DESC, img.display_order LIMIT 1)
               AS cover_image_url
        FROM ${t(brand, "styled_products")} s
        LEFT JOIN ${t(brand, "product_categories")} cat ON cat.category_id = s.category_id
+       LEFT JOIN ${t(brand, "products")} b ON b.product_id = s.base_product_id
+       ${stock.joins}
        ${fromPriceLateral(brand)}
       ${whereSql}
       ORDER BY s.published_at DESC NULLS LAST, s.name
@@ -200,6 +215,30 @@ async function getProductCardsBySlugs({ brand, slugs }) {
       WHERE s.slug = ANY($1) AND s.status = 'live'
         AND s.is_visible_storefront = true AND s.is_deleted = false`,
     [slugs],
+  );
+  return rows;
+}
+
+// Batch base-availability inputs for a set of styled products (000086 universal
+// pre-orders). Returns one row per styled_id with its base product's pre-order
+// flags + total available units, resolved through the SAME stock lateral as
+// listProducts (pinned base_variant_id → that variant, else every active variant
+// of the base). The service pairs each row with the brand policy + computeAvailability
+// to set card.availability, so home/collections/shades/related cards never diverge
+// from the shop grid. Order is not guaranteed; callers key by styled_id.
+async function availabilityForStyled({ brand, styled_ids }) {
+  if (!styled_ids || styled_ids.length === 0) return [];
+  const stock = styledStockSql(brand, "s");
+  const { rows } = await query(
+    `SELECT s.styled_id,
+            b.preorder_enabled, b.preorder_excluded,
+            b.expected_ready_date, b.production_lead_days,
+            ${stock.expr}::int AS base_available
+       FROM ${t(brand, "styled_products")} s
+       LEFT JOIN ${t(brand, "products")} b ON b.product_id = s.base_product_id
+       ${stock.joins}
+      WHERE s.styled_id = ANY($1::uuid[])`,
+    [styled_ids],
   );
   return rows;
 }
@@ -680,6 +719,83 @@ async function getSocialProof({ brand, styled_id }) {
   return rows[0] || null;
 }
 
+// Product videos (YouTube/Reels/TikTok/direct upload) for the media gallery —
+// keyed on the BASE product (product_videos is base-level merchandising,
+// shared across every styled skin built on that base).
+async function listProductVideos({ brand, product_id }) {
+  const { rows } = await query(
+    `SELECT video_id, source, external_ref, embed_url, thumbnail_url,
+            title, caption, duration_seconds, is_primary, display_order
+       FROM ${t(brand, "product_videos")}
+      WHERE product_id = $1
+      ORDER BY is_primary DESC, display_order ASC`,
+    [product_id],
+  );
+  return rows;
+}
+
+// "You May Also Love" — curated product_related pairs (admin-managed, keyed on
+// the BASE product) resolved to a LIVE styled product per related base, topped
+// up from the same category when curation doesn't fill the rail so the section
+// is never empty. DISTINCT ON collapses multiple styled skins of the same
+// related base down to its most recently published one.
+async function listRelatedProducts({
+  brand,
+  base_product_id,
+  category_id,
+  exclude_styled_id,
+  limit = 8,
+}) {
+  const { rows: curated } = await query(
+    `SELECT DISTINCT ON (r.related_product_id)
+            s.styled_id, s.name, s.slug, s.short_description,
+            s.retail_price_ngn, s.retail_price_usd,
+            COALESCE(fp.from_price_ngn, s.retail_price_ngn) AS effective_price_ngn,
+            COALESCE(fp.from_price_usd, s.retail_price_usd) AS effective_price_usd,
+            (SELECT img.cdn_url FROM ${t(brand, "product_images")} img
+              WHERE img.styled_id = s.styled_id
+              ORDER BY img.is_primary DESC, img.display_order LIMIT 1) AS cover_image_url,
+            r.display_order, r.score
+       FROM ${t(brand, "product_related")} r
+       JOIN ${t(brand, "styled_products")} s ON s.base_product_id = r.related_product_id
+       ${fromPriceLateral(brand)}
+      WHERE r.product_id = $1
+        AND s.status = 'live' AND s.is_visible_storefront = true AND s.is_deleted = false
+        AND s.styled_id <> $2
+      ORDER BY r.related_product_id, s.published_at DESC NULLS LAST`,
+    [base_product_id, exclude_styled_id],
+  );
+  curated.sort(
+    (a, b) =>
+      (a.display_order || 0) - (b.display_order || 0) ||
+      Number(b.score || 0) - Number(a.score || 0),
+  );
+  const picked = curated.slice(0, limit);
+
+  if (picked.length < limit && category_id) {
+    const have = [exclude_styled_id, ...picked.map((r) => r.styled_id)];
+    const { rows: fallback } = await query(
+      `SELECT s.styled_id, s.name, s.slug, s.short_description,
+              s.retail_price_ngn, s.retail_price_usd,
+              COALESCE(fp.from_price_ngn, s.retail_price_ngn) AS effective_price_ngn,
+              COALESCE(fp.from_price_usd, s.retail_price_usd) AS effective_price_usd,
+              (SELECT img.cdn_url FROM ${t(brand, "product_images")} img
+                WHERE img.styled_id = s.styled_id
+                ORDER BY img.is_primary DESC, img.display_order LIMIT 1) AS cover_image_url
+         FROM ${t(brand, "styled_products")} s
+         ${fromPriceLateral(brand)}
+        WHERE s.category_id = $1
+          AND s.status = 'live' AND s.is_visible_storefront = true AND s.is_deleted = false
+          AND s.styled_id <> ALL($2::uuid[])
+        ORDER BY s.published_at DESC NULLS LAST
+        LIMIT $3`,
+      [category_id, have, limit - picked.length],
+    );
+    picked.push(...fallback);
+  }
+  return picked.map(({ display_order: _display_order, score: _score, ...card }) => card);
+}
+
 async function nearbyStylists({ city, limit = 3 }) {
   const params = [];
   let where = "status = 'certified'";
@@ -703,6 +819,7 @@ module.exports = {
   listProducts,
   listCatalogueDigestForAI,
   getProductCardsBySlugs,
+  availabilityForStyled,
   getLiveStyledIdBySlug,
   listStyledGallery,
   listColourGalleries,
@@ -726,4 +843,6 @@ module.exports = {
   listCareGuides,
   nearbyStylists,
   getSocialProof,
+  listProductVideos,
+  listRelatedProducts,
 };

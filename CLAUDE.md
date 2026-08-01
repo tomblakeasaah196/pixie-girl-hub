@@ -163,6 +163,7 @@ Field/endpoint truth: migration SQL → `docs/openapi.yaml` → `docs/Frontend_E
 - `docs/PDF_RENDERING_SETUP.md` — how PDF generation works + how to set up headless Chrome on any deploy target (the "works locally, fails live" gotcha)
 - `docs/UPLOAD_SIZE_LIMITS.md` — fixing HTTP 413 on uploads: the Cloudflare → nginx `client_max_body_size` → multer cap chain (the upload "works locally, fails live" gotcha)
 - `docs/WHATSAPP_CALLING.md` — inbound WhatsApp voice calls (Cloud API Calling): Meta setup, ring choreography, WebRTC answer flow, missed-call follow-ups
+- `docs/INSTAGRAM_APP_REPLY_SYNC.md` — staff replies sent from the Instagram app sync into the Hub via message echoes: echoes ride the `messages` webhook field (`is_echo` flag — Instagram has NO separate `message_echoes` field, that's Messenger-only), subscriptions self-healed hourly by the `ig-echo-watchdog`, the senderless-bubble constraint fix (000361), unread semantics, `npm run diag:instagram-echoes` (is it Meta or us?), `npm run backfill:instagram-history`
 - `docs/PRAXIS_KNOWLEDGE_BASE.md` — the whole-system navigation guide Praxis is trained on (module → route → permission → tabs → "how do I…" tasks). **Keep it seeded — see below.**
 
 ## Praxis knowledge base must stay seeded

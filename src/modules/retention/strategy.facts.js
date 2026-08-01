@@ -14,20 +14,10 @@
 
 const { ex } = require("../../config/database");
 const { t } = require("../../config/brands");
-// Orders that count toward spend / recency: placed and not voided.
-const COUNTED_ORDER_STATUSES = [
-  "pending_payment",
-  "paid",
-  "awaiting_dispatch",
-  "in_production",
-  "with_stylist",
-  "ready_for_dispatch",
-  "dispatched",
-  "in_transit",
-  "out_for_delivery",
-  "delivered",
-  "completed",
-];
+// Orders that count toward spend / recency: placed and not voided. Defined in
+// the shared personalise service so the campaign loyalty-token loader and this
+// builder can never disagree on what an "order" is.
+const { COUNTED_ORDER_STATUSES } = require("../../services/email-personalise");
 
 function daysBetween(from, to = new Date()) {
   if (!from) return null;
@@ -52,11 +42,16 @@ async function build({ brand, contact_id, event = {}, client }) {
 
   const run = ex(client);
 
-  // Contact identity.
+  // Contact identity. shared.contacts has no `business` column — visibility is
+  // via `visible_to TEXT[]` (empty = all brands). Filter contact_id alone and
+  // drop the row if this brand isn't in visible_to when it's been narrowed.
   const { rows: cRows } = await run(
     `SELECT contact_id, first_name, display_name, email, primary_phone,
-            date_of_birth, created_at
-       FROM shared.contacts WHERE contact_id = $1 AND business = $2`,
+            date_of_birth, created_at, visible_to, preferred_channel
+       FROM shared.contacts
+      WHERE contact_id = $1
+        AND is_deleted = false
+        AND (cardinality(visible_to) = 0 OR $2 = ANY(visible_to))`,
     [contact_id, brand],
   );
   const c = cRows[0];
@@ -65,6 +60,7 @@ async function build({ brand, contact_id, event = {}, client }) {
     facts.display_name = c.display_name || c.first_name || "";
     facts.email = c.email || null;
     facts.phone = c.primary_phone || null;
+    facts.preferred_channel = c.preferred_channel || null;
     facts.date_of_birth = c.date_of_birth || null;
     facts.days_since_signup = daysBetween(c.created_at);
     const bday = birthdayFlags(c.date_of_birth);

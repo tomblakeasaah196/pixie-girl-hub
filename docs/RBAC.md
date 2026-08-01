@@ -63,9 +63,66 @@ async function findById({ brand, id, scope, user_id }) {
 }
 ```
 
+### Worked example — Stylist Studio (`service_jobs`)
+
+The `service_jobs` module runs a strict own/all split:
+
+| Role          | Actions kept                                       | Scope |
+| ------------- | -------------------------------------------------- | ----- |
+| `tech_stylist`| view, create, edit                                 | `own` |
+| `ops_mgr`     | view, create, edit, delete, approve, export        | `all` |
+| CEO / owner   | everything                                         | (bypass) |
+
+An `own`-scope stylist can only see + act on jobs they are **currently
+assigned to** OR were **ever a stylist on** (kept visible via the
+`wig_custody_ledger` — so their scorecard history survives reassignment).
+`getJob` throws `NO_LONGER_ASSIGNED` with the current assignee's display
+name when a stylist opens a stale link to a reassigned job, so the UI can
+render "reassigned to X → back to my jobs" instead of a bare 403.
+
+Seeded by migration `000348_shared_stylist_studio_rbac_own_scope.sql`.
+
+### Worked example — Expenses (`expenses`) & Cash Requests
+
+Both the **Expenses** (§6.7) and **Cash Request** (§6.32) modules share the one
+`expenses` permission key, and their read visibility is **approve-gated** rather
+than driven by the record scope on the `view` grant:
+
+| Can `approve` the module? | Sees on lists / detail |
+| ------------------------- | ---------------------- |
+| Yes (or CEO)              | the whole brand's queue (`all`) |
+| No — `view` only          | only records they submitted (`own`) |
+
+Why not the plain record scope? Because `expenses` was seeded to several roles
+at `partial_team` (view at scope `team`), and `team` was never implemented in
+these modules' queries — it fell through to "no filter", so team/junior staff
+could see cash requests and expenses raised by colleagues. Binding visibility to
+the **approve capability** makes "who can see the queue" match "who acts on it",
+and is robust to mis-seeded scopes.
+
+- **Enforced by `middleware/rbac.js` `approveGatedScope('expenses')`**, mounted
+  **after** `requirePermission('expenses','view')` on every read route (list,
+  detail, KPIs, advances, receipts, documents, history). It overrides
+  `req.permission_scope` to `all` (holder of an `approve` grant, or CEO) or
+  `own` (everyone else). List queries then filter `submitted_by` /
+  `requested_by`; single-record reads 404 a record the caller doesn't own — so a
+  stray id can't confirm a record exists. Creating/editing your **own** request
+  is unaffected (those routes gate on `create`/`edit`, not `view`).
+
 ## Field-level privacy
 
 Currently **app-layer only** (see CONFORMANCE_GAPS.md — H-1 / M-5). Sensitive fields (cost prices, factory origin, salaries) are filtered out in the service layer before response serialisation, based on the user's role. A pending amendment will back this with restricted views + column GRANTs at the DB level.
+
+## Contact-type visibility (Contacts §6.12)
+
+The `contacts` module carries an extra, contacts-specific scoping dimension on top of record scope: a per-role allow-list of **contact types** a role may see (`customer`, `supplier`, `staff`, `retail_partner`, `stylist_partner` — the values in `shared.contacts.contact_type[]`). This lets the owner separate the directory — e.g. supplier-facing / operations staff who deal with the China manufacturers see only suppliers, never the client book.
+
+- **Storage:** `shared.role_contact_type_access(role_id, contact_types[])`. **No row = unrestricted** (the role sees every type — the default, so nothing changes until a role is opted in). A row restricts the role to its listed types (empty array = sees no contacts).
+- **Effective per user = the union across their brand-active roles** (mirrors record scope's "most permissive wins"): any unrestricted role widens access to everything, so to lock a person down, restrict every role they hold — or give restricted staff only the restricted role. **CEO bypasses** (sees all).
+- **Enforced in the repo**, like `own`/`team`: `middleware/rbac.js` `contactTypeScope` resolves the caller's allowed set into `req.contact_type_scope` (cached via identity-cache), and `contacts.repo` adds a `contact_type && $allowed` guard to list / get / stats / milestones. A contact outside the set reads as **404**, never revealing it exists. Writes (create / update / import) can't give a contact a type the caller can't see. Bulk export stays owner/CEO-only (unrestricted).
+- **Praxis** inherits it automatically — it acts with the requesting user's permissions, and the enforcement lives below the service boundary the agent calls.
+
+Administered from **IAM → Org & Workflow → the role editor** (a "Contact visibility" control) via `GET/PUT /access/roles/:role_id/contact-types`.
 
 ## CEO bypass
 
@@ -95,6 +152,7 @@ user's brand access — the middleware otherwise only _reads_ permissions.
 | Catalog           | `GET /access/catalog`                                                        |
 | Roles             | `GET/POST /access/roles`, `…/roles/:role_id`                                 |
 | Permission matrix | `GET/PUT /access/roles/:role_id/permissions`                                 |
+| Contact visibility | `GET/PUT /access/roles/:role_id/contact-types` (Contacts §6.12)             |
 | Grants            | `GET/POST /access/users/:user_id/roles`, `DELETE …/roles/:role_id?business=` |
 | Brand access      | `GET/PUT /access/users/:user_id/access`                                      |
 

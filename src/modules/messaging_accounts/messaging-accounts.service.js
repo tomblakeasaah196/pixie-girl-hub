@@ -129,6 +129,17 @@ async function upsertAccount({ brand, user, request_id, input }) {
       );
     }
   }
+  // A freshly saved Instagram connection must carry the echo subscription
+  // immediately — not after the next hourly watchdog tick. Fire-and-forget:
+  // a slow Meta must never block the save.
+  if (saved.platform === "instagram" && saved.is_active !== false) {
+    ensureInstagramEchoSubscriptions().catch((err) =>
+      logger.warn(
+        { err: err.message, brand },
+        "post-save instagram echo-subscription check failed",
+      ),
+    );
+  }
   await audit({
     business: brand,
     user_id: user.user_id,
@@ -357,12 +368,31 @@ async function testAccount({ id }) {
               : "messaging_accounts.test: IG provider id mismatch NOT healed (id taken)",
           );
         }
+        // Surface — and repair — the webhook-field subscription right in
+        // the Test result: a dropped messages/reactions/seen subscription
+        // becomes visible here instead of silently broken.
+        let echo_sync = null;
+        try {
+          const res = await ensureEchoSubscriptionForToken({
+            access_token: token,
+          });
+          echo_sync = {
+            ok: res.ok,
+            healed: res.healed,
+            fields: res.fields,
+            missing_before: res.missing_before,
+            missing_after: res.missing_after,
+          };
+        } catch (subErr) {
+          echo_sync = { ok: false, error: metaErrMessage(subErr) };
+        }
         return {
           ok: true,
           platform: "instagram",
           provider_id: providerId,
           provider_name: (data && data.username) || null,
           healed,
+          echo_sync,
         };
       }
       // WhatsApp + Facebook stay on graph.facebook.com. Field sets differ per
@@ -592,6 +622,240 @@ async function refreshInstagramTokens() {
         },
         "instagram token auto-refresh FAILED — token may expire; re-paste a fresh token in Messaging → Settings if this persists",
       );
+    }
+  }
+  return summary;
+}
+
+// ── Instagram webhook-field self-healing ───────────────────────
+//
+// Per Meta's Messenger-Platform webhook reference, `message_echoes` is a
+// MESSENGER-ONLY field: "For Instagram Messaging conversations, the
+// message echo notifications are included with the `messages` webhook
+// field subscription." On Instagram, an app-sent reply arrives as a
+// normal `messages` event flagged `is_echo: true` — so `messages` is the
+// one field the entire inbox (customer DMs AND app-reply echoes) hangs
+// on. Never POST `message_echoes` here: it doesn't exist on Instagram,
+// and an invalid field can make Meta reject the whole subscription
+// update (subscribed_apps REPLACES the list, so a rejected update also
+// means the valid fields you meant to add never land).
+//
+// The subscription lives on the professional account itself (POST
+// /me/subscribed_apps) — outside our database, outside our deploys — and
+// it drifts: an account reconnect or partial re-subscribe replaces the
+// list. This watchdog re-reads the account's subscribed_fields and, when
+// anything required is missing, re-subscribes with the union (never
+// dropping fields someone added), verifies, audits, and tells the CEO it
+// drifted. Runs hourly (ig-echo-watchdog), after the daily token sweep,
+// on account save, and inside the Test button.
+
+const REQUIRED_IG_WEBHOOK_FIELDS = Object.freeze([
+  "messages", // customer DMs + app-reply echoes (is_echo rides this field)
+  "message_reactions", // ❤️ badges on bubbles
+  "messaging_seen", // customer read ticks
+]);
+
+// Meta's structured error message ("Invalid OAuth access token", …) beats
+// axios's opaque "Request failed with status code 400" in every log line.
+function metaErrMessage(err) {
+  const metaErr = err.response && err.response.data && err.response.data.error;
+  if (metaErr && metaErr.message) {
+    const parts = [metaErr.message];
+    if (metaErr.code) parts.push(`code ${metaErr.code}`);
+    if (metaErr.error_subcode) parts.push(`subcode ${metaErr.error_subcode}`);
+    return parts.join(" — ");
+  }
+  return err.message;
+}
+
+async function getInstagramSubscribedFields({ access_token }) {
+  const v = config.META_GRAPH_VERSION || "v21.0";
+  const { data } = await axios.get(
+    `https://graph.instagram.com/${v}/me/subscribed_apps`,
+    { headers: { Authorization: `Bearer ${access_token}` }, timeout: 15000 },
+  );
+  const apps = (data && data.data) || [];
+  const fields = new Set();
+  for (const app of apps) {
+    for (const f of app.subscribed_fields || []) fields.add(String(f));
+  }
+  return { fields, app_count: apps.length };
+}
+
+async function subscribeInstagramFields({ access_token, fields }) {
+  const v = config.META_GRAPH_VERSION || "v21.0";
+  await axios.post(`https://graph.instagram.com/${v}/me/subscribed_apps`, null, {
+    params: { subscribed_fields: fields.join(",") },
+    headers: { Authorization: `Bearer ${access_token}` },
+    timeout: 15000,
+  });
+}
+
+/**
+ * Check one token's webhook-field subscription and repair it if any
+ * required field is missing. POSTing subscribed_apps REPLACES the list,
+ * so the repair always sends the union of current + required.
+ * Returns { ok, healed, fields, missing_before, missing_after }.
+ */
+async function ensureEchoSubscriptionForToken({ access_token }) {
+  const before = await getInstagramSubscribedFields({ access_token });
+  const missing = REQUIRED_IG_WEBHOOK_FIELDS.filter(
+    (f) => !before.fields.has(f),
+  );
+  if (!missing.length) {
+    return {
+      ok: true,
+      healed: false,
+      fields: [...before.fields],
+      missing_before: [],
+      missing_after: [],
+    };
+  }
+  const union = [
+    ...new Set([...before.fields, ...REQUIRED_IG_WEBHOOK_FIELDS]),
+  ];
+  await subscribeInstagramFields({ access_token, fields: union });
+  // Trust nothing — re-read and confirm the field actually stuck.
+  const after = await getInstagramSubscribedFields({ access_token });
+  const still = REQUIRED_IG_WEBHOOK_FIELDS.filter((f) => !after.fields.has(f));
+  return {
+    ok: still.length === 0,
+    healed: still.length === 0,
+    fields: [...after.fields],
+    missing_before: missing,
+    missing_after: still,
+  };
+}
+
+// One CEO notification per (type, business) per day — the hourly watchdog
+// must never turn a persistent Meta outage into an hourly notification storm.
+async function notifyCeoOnce({ business, type, title, body, priority }) {
+  const { query } = require("../../config/database");
+  const { rows } = await query(
+    `SELECT user_id FROM shared.users WHERE is_ceo = true ORDER BY created_at LIMIT 1`,
+  );
+  const ceo = rows[0];
+  if (!ceo) return;
+  const { rows: recent } = await query(
+    `SELECT 1 FROM shared.notifications
+      WHERE user_id = $1 AND type = $2 AND business = $3
+        AND created_at > now() - interval '24 hours'
+      LIMIT 1`,
+    [ceo.user_id, type, business],
+  );
+  if (recent.length) return;
+  const notifications = require("../../services/notifications.service");
+  await notifications.notify({
+    user_id: ceo.user_id,
+    business,
+    type,
+    title,
+    body,
+    priority,
+    // The messaging inbox lives at /smartcomm ("/messaging" is a stub page).
+    action_url: "/smartcomm",
+  });
+}
+
+/**
+ * Verify + repair the webhook-field subscription of EVERY active
+ * Instagram account. Never throws for a single account — one brand's
+ * broken token must not stop the other brand's check. Returns a summary
+ * for the scheduler log.
+ */
+async function ensureInstagramEchoSubscriptions() {
+  const rows = await repo.listActiveByPlatform({ platform: "instagram" });
+  const summary = { checked: 0, ok: 0, healed: 0, failed: 0 };
+  for (const row of rows) {
+    if (!row.access_token_enc) continue; // token sweep already screams about this
+    summary.checked += 1;
+    try {
+      const token = crypto.decrypt(row.access_token_enc);
+      const res = await ensureEchoSubscriptionForToken({ access_token: token });
+      if (res.healed) {
+        summary.healed += 1;
+        logger.warn(
+          {
+            account_id: row.account_id,
+            business: row.business,
+            missing_before: res.missing_before,
+            fields: res.fields,
+          },
+          "instagram webhook subscription had drifted — re-subscribed",
+        );
+        await audit({
+          business: row.business,
+          user_id: null,
+          action_key: "messaging_accounts.echo_subscription_healed",
+          target_type: "messaging_account",
+          target_id: row.account_id,
+          after: { missing_before: res.missing_before, fields: res.fields },
+          request_id: null,
+        });
+        // `messages` carries the whole inbox — customer DMs AND app-reply
+        // echoes (is_echo). reactions/seen only affect badges and ticks;
+        // don't tell the CEO the inbox was down when it wasn't.
+        const inboxWasDown = res.missing_before.includes("messages");
+        await notifyCeoOnce({
+          business: row.business,
+          type: "ig_echo_sync_healed",
+          priority: "high",
+          title: inboxWasDown
+            ? "Instagram message sync was off — fixed automatically"
+            : "Instagram webhook subscriptions restored",
+          body: inboxWasDown
+            ? `${row.business}: Meta had dropped the 'messages' webhook subscription, so customer ` +
+              "DMs and app-sent replies were not syncing into Messaging. It has been re-subscribed " +
+              "automatically. Anything sent while it was off can be recovered with the Instagram " +
+              "history backfill."
+            : `${row.business}: Meta had dropped the '${res.missing_before.join("', '")}' webhook ` +
+              "subscription(s), so read receipts and customer reactions were not updating in " +
+              "Messaging. Re-subscribed automatically. (Messages and app-sent replies were " +
+              "unaffected — they ride the 'messages' field, which was intact.)",
+        });
+      } else if (res.ok) {
+        summary.ok += 1;
+      } else {
+        // POST accepted but the field didn't stick — Meta-side problem
+        // (permission not granted / app not Live). Louder than a heal.
+        summary.failed += 1;
+        logger.error(
+          {
+            account_id: row.account_id,
+            business: row.business,
+            missing_after: res.missing_after,
+          },
+          "instagram webhook re-subscribe did NOT stick — check the Meta app's Instagram webhook product + instagram_business_manage_messages permission",
+        );
+        await notifyCeoOnce({
+          business: row.business,
+          type: "ig_echo_sync_broken",
+          priority: "urgent",
+          title: "Instagram webhook sync is broken (needs Meta attention)",
+          body:
+            `${row.business}: the '${res.missing_after.join("', '")}' webhook subscription could not be restored — ` +
+            "Meta accepted the request but the field did not stick. Parts of Instagram " +
+            "messaging sync will stay broken until this is fixed in the Meta App Dashboard " +
+            "(Webhooks → Instagram; check instagram_business_manage_messages access).",
+        });
+      }
+    } catch (err) {
+      summary.failed += 1;
+      const msg = metaErrMessage(err);
+      logger.error(
+        { account_id: row.account_id, business: row.business, err: msg },
+        "instagram echo-subscription check failed",
+      );
+      await notifyCeoOnce({
+        business: row.business,
+        type: "ig_echo_sync_broken",
+        priority: "urgent",
+        title: "Instagram webhook subscription check failed",
+        body:
+          `${row.business}: could not verify/restore the Instagram webhook subscriptions ` +
+          `(${msg}). DM sync, app-reply echoes, read receipts or reactions may be affected. ` +
+          "Open Messaging → Settings and Test the Instagram connection.",
+      }).catch(() => {});
     }
   }
   return summary;
@@ -987,6 +1251,11 @@ module.exports = {
   revealSecret,
   listReveals,
   refreshInstagramTokens,
+  // Instagram webhook-subscription watchdog (messages/reactions/seen self-heal):
+  ensureInstagramEchoSubscriptions,
+  ensureEchoSubscriptionForToken,
+  getInstagramSubscribedFields,
+  REQUIRED_IG_WEBHOOK_FIELDS,
   // WhatsApp business profile:
   getWhatsAppProfile,
   updateWhatsAppProfile,

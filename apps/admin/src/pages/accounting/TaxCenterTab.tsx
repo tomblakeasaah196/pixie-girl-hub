@@ -144,8 +144,8 @@ function DrillDown({ lines }: { lines: TaxComputationLine[] }) {
         {open ? "Hide" : "Show"} {lines.length} contributing journal line{lines.length === 1 ? "" : "s"}
       </button>
       {open && (
-        <div className="mt-3 max-h-80 overflow-y-auto rounded-xl border border-line">
-          <table className="w-full text-xs">
+        <div className="mt-3 max-h-80 overflow-auto rounded-xl border border-line">
+          <table className="w-full min-w-[520px] text-xs">
             <tbody>
               {lines.map((l, i) => (
                 <tr key={i} className="border-b hairline last:border-0">

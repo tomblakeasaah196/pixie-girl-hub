@@ -59,6 +59,9 @@ export interface ServiceJob {
   service_key?: string;
   assigned_stylist_id: string | null;
   assigned_staff_user_id: string | null;
+  // Joined display name of the assigned staff member (from the list / getJob
+  // query) so job cards read "who has it", not a UUID or a generic label.
+  assigned_staff_name?: string | null;
   hair_variant_id: string | null;
   hair_unit_id: string | null;
   hair_description: string | null;
@@ -103,6 +106,26 @@ export interface ServiceJob {
   styled_id: string | null;
   shipment_id: string | null;
   customer_asset_id: string | null;
+  // Hand-off tag written on the physical wig/hair, e.g. "342NS" (3-digit
+  // counter + 2 initials from the styled product name). Allocated once, at
+  // first assignment (see fn_next_stylist_tag + deriveTagInitials).
+  tag_code: string | null;
+  // ── Rich identity/context — from getJob join (PR: drawer enrichment) ──
+  // Customer NAME ONLY — never phone/email; stylists don't get contact
+  // details.
+  customer_name?: string | null;
+  order_placed_at?: string | null;
+  base_product_name?: string | null;
+  styled_product_name?: string | null;
+  styled_product_image_url?: string | null;
+  // Currently-out wig custody timestamp (null once returned/dispatched/
+  // written off, or if this job never had a wig taken out).
+  wig_out_at?: string | null;
+  materials_cost_ngn?: string | null;
+  chemicals_cost_ngn?: string | null;
+  // Present only on the response from POST /:id/assign — true when this call
+  // allocated a brand-new tag_code (first assignment), false on reassignment.
+  is_new_tag?: boolean;
   // ── Intercompany Flow-1 (FLH styles PXG's hair) — from getJob join ──
   intercompany_number?: string | null;
   intercompany_seller_doc?: string | null;
@@ -166,6 +189,9 @@ export interface CreateJobInput {
   agreed_cost_ngn?: number;
   is_intercompany?: boolean;
   intercompany_transaction_id?: string;
+  // Customer's style brief — a note and/or an inspiration link. Captured at
+  // creation and locked (read-only thereafter; stylists add notes on top).
+  brief?: { body?: string; url?: string };
 }
 
 export interface CreateRecipeInput {
@@ -212,6 +238,9 @@ export interface JobReference {
   body: string | null;
   created_by: string | null;
   created_at: string;
+  // true = the customer's original brief, captured at job open and not
+  // editable/deletable. false = a supplementary stylist/QC note.
+  is_locked: boolean;
 }
 
 export interface JobTimeLog {
@@ -265,4 +294,81 @@ export interface QcInput {
   quality_rating?: number;
   quality_notes?: string;
   reassign_to?: string;
+}
+
+// ── Job activity timeline (read from the audit log) ─────────
+
+export interface JobActivityEntry {
+  log_id: string;
+  occurred_at: string;
+  user_name: string;
+  action: string;
+  after_state: Record<string, unknown> | null;
+}
+
+// ── Stylist scorecards (internal Stylist Studio only — separate from
+// the Stylist Partner Programme's own review system under Grow > Stylists) ──
+
+export interface StylistScorecardSummary {
+  user_id: string;
+  full_name: string;
+  avatar_url: string | null;
+  job_title: string | null;
+  jobs_total: number;
+  jobs_completed: number;
+  avg_quality_rating: string | null;
+  avg_customer_rating: string | null;
+  rework_count: number;
+  on_time_pct: string | null;
+}
+
+export interface ScorecardJob {
+  job_id: string;
+  job_number: string;
+  tag_code: string | null;
+  status: JobStatus;
+  quality_rating: number | null;
+  customer_rating: number | null;
+  customer_feedback: string | null;
+  quality_notes: string | null;
+  rework_count: number;
+  scheduled_for: string | null;
+  expected_completion_at: string | null;
+  sla_due_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+export interface ReworkEvent {
+  log_id: string;
+  occurred_at: string;
+  user_name: string;
+  after_state: { result?: string; quality_notes?: string | null } | null;
+  job_id: string;
+  job_number: string;
+}
+
+export interface StylistScorecard extends StylistScorecardSummary {
+  jobs: ScorecardJob[];
+  rework: ReworkEvent[];
+}
+
+// ── AI job summary ───────────────────────────────────────────
+
+export interface JobSummary {
+  summary: string;
+  provider: string;
+}
+
+// ── "You're working on Job X" strip (own-scope stylists) ────
+// The caller's single currently-open time session, joined with the parent
+// job's number + service type label so the strip renders without a second
+// call. `null` means no clock is running (strip stays hidden).
+export interface MyCurrentSession {
+  log_id: string;
+  job_id: string;
+  started_at: string;
+  job_number: string;
+  job_status: JobStatus;
+  service_type_name: string | null;
 }

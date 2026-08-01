@@ -6,11 +6,39 @@ import {
   confirmDriverDelivery,
   type DriverDelivery,
 } from "@/lib/storefront";
+import { usePageSlots, withSlots } from "@/lib/site-config";
 import { Section, ErrorState } from "@/components/parts";
 
 export const Route = createFileRoute("/deliver/$token")({ component: DeliverPage });
 
 const TERMINAL = new Set(["delivered", "returned_to_sender", "cancelled", "lost", "damaged"]);
+
+// Shared, Studio-editable copy for the delivery-agent confirmation page,
+// resolved the same way in each sub-component (usePageSlots("deliver_confirm")).
+const DELIVER_DEFAULTS = {
+  loading: "Loading delivery…",
+  eyebrow: "Delivery confirmation",
+  alreadyDonePrefix: "This delivery is already marked ",
+  alreadyDoneSuffix: ".",
+  alreadyDoneNote: "Nothing further is needed here.",
+  confirmedHeading: "Delivery confirmed. Thank you!",
+  confirmedNote: "The customer has been notified. You're all set.",
+  recipientFallback: "Recipient",
+  photoLabel: "Photo of the delivered package (required)",
+  photoCta: "Tap to take or choose a photo",
+  locating: "Getting location…",
+  locationCaptured: "Location captured ✓",
+  shareLocation: "Share my location (optional)",
+  locateError: "Couldn't get your location — you can still confirm without it.",
+  notesLabel: "Notes (optional)",
+  notesPlaceholder: "Anything the team should know…",
+  confirmError: "Couldn't confirm this delivery — check the photo and try again.",
+  confirming: "Confirming…",
+  confirmCta: "Confirm delivery",
+};
+function useDeliverCopy() {
+  return withSlots(DELIVER_DEFAULTS, usePageSlots("deliver_confirm"));
+}
 
 function addressLine(a?: Record<string, unknown> | null): string {
   if (!a) return "";
@@ -21,6 +49,7 @@ function addressLine(a?: Record<string, unknown> | null): string {
 
 function DeliverPage() {
   const { token } = Route.useParams();
+  const s = useDeliverCopy();
   const q = useQuery({
     queryKey: ["driver-delivery", token],
     queryFn: () => getDriverDelivery(token),
@@ -29,7 +58,7 @@ function DeliverPage() {
   if (q.isLoading)
     return (
       <Section>
-        <p className="text-body text-muted-foreground">Loading delivery…</p>
+        <p className="text-body text-muted-foreground">{s.loading}</p>
       </Section>
     );
   if (q.isError || !q.data)
@@ -41,7 +70,7 @@ function DeliverPage() {
 
   return (
     <Section className="max-w-xl">
-      <p className="text-caption">Delivery confirmation</p>
+      <p className="text-caption">{s.eyebrow}</p>
       <h1 className="mt-2 text-h3 font-display">{q.data.delivery_number}</h1>
       {TERMINAL.has(q.data.status) ? (
         <AlreadyDone delivery={q.data} />
@@ -53,15 +82,15 @@ function DeliverPage() {
 }
 
 function AlreadyDone({ delivery }: { delivery: DriverDelivery }) {
+  const s = useDeliverCopy();
   return (
     <div className="mt-6 rounded-md border border-border bg-secondary/40 p-5">
       <p className="text-body">
-        This delivery is already marked{" "}
-        <strong className="capitalize">{delivery.status.replace(/_/g, " ")}</strong>.
+        {s.alreadyDonePrefix}
+        <strong className="capitalize">{delivery.status.replace(/_/g, " ")}</strong>
+        {s.alreadyDoneSuffix}
       </p>
-      <p className="mt-2 text-body-sm text-muted-foreground">
-        Nothing further is needed here.
-      </p>
+      <p className="mt-2 text-body-sm text-muted-foreground">{s.alreadyDoneNote}</p>
     </div>
   );
 }
@@ -83,6 +112,7 @@ function ConfirmForm({
   const [locating, setLocating] = useState(false);
   const [locateError, setLocateError] = useState(false);
   const [done, setDone] = useState(false);
+  const s = useDeliverCopy();
 
   const confirm = useMutation({
     mutationFn: async () => {
@@ -133,10 +163,8 @@ function ConfirmForm({
   if (done) {
     return (
       <div className="mt-6 rounded-md border border-border bg-secondary/40 p-5">
-        <p className="text-body font-display text-lg">Delivery confirmed. Thank you!</p>
-        <p className="mt-2 text-body-sm text-muted-foreground">
-          The customer has been notified. You're all set.
-        </p>
+        <p className="text-body font-display text-lg">{s.confirmedHeading}</p>
+        <p className="mt-2 text-body-sm text-muted-foreground">{s.confirmedNote}</p>
       </div>
     );
   }
@@ -145,7 +173,7 @@ function ConfirmForm({
     <div className="mt-6 space-y-6">
       <div className="rounded-md border border-border p-4">
         <p className="text-body">
-          {delivery.recipient_name_snapshot || "Recipient"}
+          {delivery.recipient_name_snapshot || s.recipientFallback}
         </p>
         {delivery.recipient_phone_snapshot && (
           <p className="text-body-sm text-muted-foreground">{delivery.recipient_phone_snapshot}</p>
@@ -163,7 +191,7 @@ function ConfirmForm({
       </div>
 
       <div>
-        <p className="text-caption mb-2">Photo of the delivered package (required)</p>
+        <p className="text-caption mb-2">{s.photoLabel}</p>
         <input
           ref={fileRef}
           type="file"
@@ -183,7 +211,7 @@ function ConfirmForm({
             onClick={() => fileRef.current?.click()}
             className="w-full rounded-md border border-dashed border-border py-10 text-body-sm text-muted-foreground hover:bg-secondary/40"
           >
-            Tap to take or choose a photo
+            {s.photoCta}
           </button>
         )}
       </div>
@@ -195,30 +223,26 @@ function ConfirmForm({
           disabled={locating}
           className="rounded-full border border-border px-5 py-2 text-body-sm hover:bg-secondary disabled:opacity-60"
         >
-          {locating ? "Getting location…" : coords ? "Location captured ✓" : "Share my location (optional)"}
+          {locating ? s.locating : coords ? s.locationCaptured : s.shareLocation}
         </button>
         {locateError && (
-          <p className="mt-1 text-body-sm text-muted-foreground">
-            Couldn't get your location — you can still confirm without it.
-          </p>
+          <p className="mt-1 text-body-sm text-muted-foreground">{s.locateError}</p>
         )}
       </div>
 
       <div>
-        <p className="text-caption mb-2">Notes (optional)</p>
+        <p className="text-caption mb-2">{s.notesLabel}</p>
         <textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           rows={3}
-          placeholder="Anything the team should know…"
+          placeholder={s.notesPlaceholder}
           className="w-full rounded-md border border-border bg-background p-3 text-body-sm outline-none focus:border-foreground/40"
         />
       </div>
 
       {confirm.isError && (
-        <p className="text-body-sm text-destructive">
-          Couldn't confirm this delivery — check the photo and try again.
-        </p>
+        <p className="text-body-sm text-destructive">{s.confirmError}</p>
       )}
 
       <button
@@ -227,7 +251,7 @@ function ConfirmForm({
         onClick={() => confirm.mutate()}
         className="w-full bg-foreground text-background py-4 text-body-sm font-medium disabled:opacity-50"
       >
-        {confirm.isPending ? "Confirming…" : "Confirm delivery"}
+        {confirm.isPending ? s.confirming : s.confirmCta}
       </button>
     </div>
   );

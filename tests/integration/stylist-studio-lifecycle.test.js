@@ -7,12 +7,15 @@
  * schema, exactly as the service layer runs it in production:
  *
  *   create → assign stylist → start → log material → add reference →
- *   return for QC → QC rework → return again → QC pass → dispatch →
- *   hand to sales → record customer outcome
+ *   return for QC → QC rework → return again → QC pass (auto-completes +
+ *   auto-dispatches to logistics) → record customer outcome
  *
  * and proves the two invariants the module exists to guarantee:
  *
- *   1. The status machine advances through every studio state in order.
+ *   1. The status machine advances through every studio state in order,
+ *      landing on `completed` on QC pass — no more `qc_passed` /
+ *      `ready_for_dispatch` / `handed_to_sales` intermediate stops (the
+ *      shipping + hand-off flow now lives on Logistics + the Sales Order).
  *   2. The wig-custody ledger stays honest — every OUT is matched by a
  *      RETURN/DISPATCHED so the stylist's net holding returns to zero
  *      ("never lose a wig"). A rework sends the wig OUT a second time, and
@@ -121,7 +124,9 @@ suite("Stylist Studio lifecycle (DB)", () => {
         acc.balances.find((b) => b.stylist_user_id === actor.user_id)
           ?.holding ?? 0,
       );
-    const baseHolding = holdingOf(await svc.getAccountability({ brand: BRAND }));
+    const baseHolding = holdingOf(
+      await svc.getAccountability({ brand: BRAND, scope: "all" }),
+    );
 
     // ── Assign stylist (wig goes OUT: custody +1) ───────────
     const assigned = await svc.assignStylist({
@@ -136,7 +141,7 @@ suite("Stylist Studio lifecycle (DB)", () => {
 
     // The stylist is now holding one more wig than before.
     const midHolding = holdingOf(
-      await svc.getAccountability({ brand: BRAND }),
+      await svc.getAccountability({ brand: BRAND, scope: "all" }),
     );
     expect(midHolding).toBe(baseHolding + 1);
 
@@ -203,6 +208,10 @@ suite("Stylist Studio lifecycle (DB)", () => {
       request_id: REQ,
       id: jobId,
     });
+    // QC pass now flips status STRAIGHT to 'completed', stamps
+    // completed_at, and adds a `dispatched` custody row — no separate
+    // dispatch/hand-to-sales calls needed. This is the fix that stopped
+    // stylist scorecards showing "0 completed" for shipped work.
     const passed = await svc.recordQc({
       brand: BRAND,
       user: actor,
@@ -210,28 +219,16 @@ suite("Stylist Studio lifecycle (DB)", () => {
       id: jobId,
       input: { result: "pass", quality_rating: 5, quality_notes: "clean" },
     });
-    expect(passed.status).toBe("qc_passed");
+    expect(passed.status).toBe("completed");
+    expect(passed.completed_at).toBeTruthy();
     expect(passed.quality_rating).toBe(5);
 
-    // ── Dispatch (custody DISPATCHED) → hand to sales ───────
-    const dispatched = await svc.dispatch({
-      brand: BRAND,
-      user: actor,
-      request_id: REQ,
-      id: jobId,
-    });
-    expect(dispatched.status).toBe("ready_for_dispatch");
-
-    const handed = await svc.handToSales({
-      brand: BRAND,
-      user: actor,
-      request_id: REQ,
-      id: jobId,
-    });
-    expect(handed.status).toBe("handed_to_sales");
-
     // ── Ledger is balanced: 2 OUT, 2 RETURN, 1 DISPATCHED ───
-    const ledger = await svc.listCustodyLedger({ brand: BRAND, job_id: jobId });
+    const ledger = await svc.listCustodyLedger({
+      brand: BRAND,
+      job_id: jobId,
+      scope: "all",
+    });
     const count = (event) => ledger.filter((l) => l.event === event).length;
     expect(count("out")).toBe(2);
     expect(count("return")).toBe(2);
@@ -239,7 +236,7 @@ suite("Stylist Studio lifecycle (DB)", () => {
 
     // Net holding is back to the baseline — this wig caused no net change:
     // nothing lost, nothing still out.
-    const endAcc = await svc.getAccountability({ brand: BRAND });
+    const endAcc = await svc.getAccountability({ brand: BRAND, scope: "all" });
     expect(holdingOf(endAcc)).toBe(baseHolding);
     // A wig that has come back is never flagged overdue.
     expect(endAcc.overdue.some((o) => o.job_id === jobId)).toBe(false);
@@ -259,10 +256,11 @@ suite("Stylist Studio lifecycle (DB)", () => {
       input: { customer_rating: 5, customer_feedback: "Loved the finish!" },
     });
 
-    const job = await svc.getJob({ brand: BRAND, id: jobId });
+    const job = await svc.getJob({ brand: BRAND, id: jobId, scope: "all" });
     expect(job.customer_rating).toBe(5);
     expect(job.customer_feedback).toBe("Loved the finish!");
-    // Recording the outcome must not disturb the terminal status.
-    expect(job.status).toBe("handed_to_sales");
+    // Recording the outcome must not disturb the terminal status — after the
+    // lifecycle collapse, that's `completed`, not `handed_to_sales`.
+    expect(job.status).toBe("completed");
   });
 });

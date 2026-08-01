@@ -1,39 +1,35 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
+import { useUrlTab } from "@/hooks/useUrlTab";
 import {
   Mail,
-  BarChart3,
   Plus,
   Send,
   CalendarClock,
   Pause,
   Ban,
   Loader2,
-  Plug,
-  Trash2,
   MousePointerClick,
   Eye,
   TrendingUp,
   MessageSquare,
+  FileCode2,
+  Users,
+  Paintbrush,
+  Lock,
 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { useActiveBusiness } from "@/stores/business";
 import { useAuthStore } from "@/stores/auth";
-import { money, moneyCompact, formatDateTime } from "@/lib/format";
+import { money, formatDateTime } from "@/lib/format";
 import {
   Button,
   Card,
   Pill,
   Skeleton,
   EmptyState,
-  KpiTile,
 } from "@/components/ui/primitives";
-import {
-  ErrorState,
-  DeniedState,
-  Select,
-  Toggle,
-} from "@/components/ui/controls";
+import { ErrorState, DeniedState, Select, Toggle } from "@/components/ui/controls";
 import { Drawer } from "@/components/ui/Drawer";
 import {
   useEmailCampaigns,
@@ -41,77 +37,80 @@ import {
   useEmailSegments,
   useEmailTemplates,
   useEmailStats,
+  useEmailSenderIdentity,
+  useCampaignPreview,
   useSendEmailCampaign,
+  useSendTestCampaign,
   usePauseEmailCampaign,
   useCancelEmailCampaign,
   useScheduleEmailCampaign,
-  useAdAccounts,
-  useConnectAdAccount,
-  useRevokeAdAccount,
-  useAdCampaigns,
-  useCreateAdCampaign,
-  useSetAdCampaignStatus,
-  useAttribution,
   EMAIL_STATUS_TONE,
-  AD_STATUS_TONE,
-  AD_PLATFORM_LABEL,
   type EmailCampaign,
   type EmailCampaignType,
-  type AdPlatform,
-  type AdStatus,
-  type AttributionRow,
 } from "@/lib/marketing-api";
+import { TemplatesTab, SegmentsTab, DesignTab } from "./EmailExtras";
 import {
-  TemplatesTab,
-  SegmentsTab,
   CampaignAudienceSection,
   CampaignSaleSection,
   CampaignVariantsSection,
 } from "./EmailExtras";
 
 /**
- * Marketing & Email Campaigns (`/marketing`, canon §6.15/§6.16).
+ * Marketing (`/marketing`, canon §6.16) — email campaigns only.
  *
- * Two surfaces under one module:
- *   • Email — campaign builder (always email; optional WhatsApp companion),
- *     list, templates, segments.
- *   • Ads — accounts, campaigns and the spend-vs-revenue attribution report.
+ * Four surfaces, one per tab:
+ *   • Campaigns — build, schedule, send; open one to see the exact mail that
+ *     went out plus its performance.
+ *   • Templates — the Gmail-style mail editor (rich text + personalise pills).
+ *   • Segments — saved audiences with a live "who's in" preview.
+ *   • Design — the brand header/footer wrapped around every mail.
  *
- * Email tab is gated on `email_campaigns:*`; Ads tab on `ad_analytics:*`.
+ * Everything is gated on `email_campaigns:*`. Mobile-first throughout.
  */
 
-type Tab = "email" | "ads";
+type Tab = "campaigns" | "templates" | "segments" | "design";
+
+const TABS: { key: Tab; label: string; icon: React.ReactNode }[] = [
+  { key: "campaigns", label: "Campaigns", icon: <Mail className="w-4 h-4" /> },
+  { key: "templates", label: "Templates", icon: <FileCode2 className="w-4 h-4" /> },
+  { key: "segments", label: "Segments", icon: <Users className="w-4 h-4" /> },
+  { key: "design", label: "Design", icon: <Paintbrush className="w-4 h-4" /> },
+];
 
 export function MarketingPage() {
   useBreadcrumbs([{ label: "Marketing" }]);
   const { can } = useAuthStore();
+  const [tab, setTab] = useUrlTab<Tab>("campaigns", [
+    "campaigns",
+    "templates",
+    "segments",
+    "design",
+  ]);
 
-  const canEmail = can("email_campaigns", "view");
-  const canAds = can("ad_analytics", "view");
-  const [tab, setTab] = useState<Tab>(canEmail ? "email" : "ads");
-
-  if (!canEmail && !canAds) {
+  if (!can("email_campaigns", "view")) {
     return <DeniedState message="You don't have access to Marketing." />;
   }
 
   return (
     <div className="max-w-[1180px] space-y-5">
       <ModuleInsights module="marketing" />
-      <nav className="flex items-center gap-1 border-b border-line">
-        {canEmail && (
-          <TabButton active={tab === "email"} onClick={() => setTab("email")} icon={<Mail className="w-4 h-4" />}>
-            Email Campaigns
+      <nav className="flex items-center gap-1 border-b border-line overflow-x-auto hide-scrollbar -mx-1 px-1">
+        {TABS.map((t) => (
+          <TabButton
+            key={t.key}
+            active={tab === t.key}
+            onClick={() => setTab(t.key)}
+            icon={t.icon}
+          >
+            {t.label}
           </TabButton>
-        )}
-        {canAds && (
-          <TabButton active={tab === "ads"} onClick={() => setTab("ads")} icon={<BarChart3 className="w-4 h-4" />}>
-            Ad Analytics
-          </TabButton>
-        )}
+        ))}
       </nav>
 
-      {tab === "email" && canEmail ? <EmailTab /> : null}
-      {tab === "ads" && canAds ? <AdsTab /> : null}
+      {tab === "campaigns" && <CampaignsTab />}
+      {tab === "templates" && <TemplatesTab />}
+      {tab === "segments" && <SegmentsTab />}
+      {tab === "design" && <DesignTab />}
     </div>
   );
 }
@@ -130,8 +129,10 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className={`inline-flex items-center gap-2 px-3.5 py-2.5 text-[13px] font-semibold border-b-2 -mb-px transition-colors ${
-        active ? "border-accent text-accent-glow" : "border-transparent text-text-muted hover:text-text-primary"
+      className={`inline-flex items-center gap-2 px-3.5 py-2.5 text-[13px] font-semibold border-b-2 -mb-px whitespace-nowrap shrink-0 transition-colors ${
+        active
+          ? "border-accent text-accent-glow"
+          : "border-transparent text-text-muted hover:text-text-primary"
       }`}
     >
       {icon}
@@ -141,41 +142,21 @@ function TabButton({
 }
 
 // ════════════════════════════════════════════════════════════
-// EMAIL
+// CAMPAIGNS
 // ════════════════════════════════════════════════════════════
 
-function EmailTab() {
+function CampaignsTab() {
   const { can } = useAuthStore();
   const [status, setStatus] = useState<string>("");
   const campaignsQ = useEmailCampaigns(status || undefined);
   const [building, setBuilding] = useState(false);
   const [detail, setDetail] = useState<EmailCampaign | null>(null);
-  const [sub, setSub] = useState<"campaigns" | "templates" | "segments">("campaigns");
   const campaigns = campaignsQ.data ?? [];
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-1">
-        {(["campaigns", "templates", "segments"] as const).map((k) => (
-          <button
-            key={k}
-            onClick={() => setSub(k)}
-            className={`px-3 py-1.5 rounded-full text-[12.5px] font-semibold capitalize transition-colors ${
-              sub === k ? "bg-accent/[0.12] text-accent-glow" : "text-text-muted hover:text-text-primary"
-            }`}
-          >
-            {k}
-          </button>
-        ))}
-      </div>
-
-      {sub === "templates" && <TemplatesTab />}
-      {sub === "segments" && <SegmentsTab />}
-
-      {sub === "campaigns" && (
-      <>
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="w-44">
+        <div className="w-44 max-sm:w-full">
           <Select
             value={status}
             onChange={setStatus}
@@ -190,7 +171,11 @@ function EmailTab() {
           />
         </div>
         {can("email_campaigns", "create") && (
-          <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => setBuilding(true)}>
+          <Button
+            variant="primary"
+            icon={<Plus className="w-4 h-4" />}
+            onClick={() => setBuilding(true)}
+          >
             New campaign
           </Button>
         )}
@@ -207,7 +192,11 @@ function EmailTab() {
           message="Build your first campaign — pick an audience and a template, then schedule the send."
           action={
             can("email_campaigns", "create") ? (
-              <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={() => setBuilding(true)}>
+              <Button
+                variant="primary"
+                icon={<Plus className="w-4 h-4" />}
+                onClick={() => setBuilding(true)}
+              >
                 New campaign
               </Button>
             ) : undefined
@@ -225,12 +214,17 @@ function EmailTab() {
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-medium text-[14px] truncate">{c.campaign_name}</span>
-                  <Pill tone={EMAIL_STATUS_TONE[c.status] ?? "neutral"}>{c.status}</Pill>
+                  <span className="font-medium text-[14px] truncate">
+                    {c.campaign_name}
+                  </span>
+                  <Pill tone={EMAIL_STATUS_TONE[c.status] ?? "neutral"}>
+                    {c.status}
+                  </Pill>
                 </div>
                 <p className="text-[11.5px] text-text-faint mt-0.5">
                   {c.campaign_type ?? "one_off"}
-                  {c.scheduled_for && ` · scheduled ${formatDateTime(c.scheduled_for)}`}
+                  {c.scheduled_for &&
+                    ` · scheduled ${formatDateTime(c.scheduled_for)}`}
                 </p>
               </div>
               <Mail className="w-4 h-4 text-text-faint shrink-0" />
@@ -238,11 +232,11 @@ function EmailTab() {
           ))}
         </Card>
       )}
-      </>
-      )}
 
       {building && <CampaignBuilder onClose={() => setBuilding(false)} />}
-      {detail && <CampaignDetail campaign={detail} onClose={() => setDetail(null)} />}
+      {detail && (
+        <CampaignDetail campaign={detail} onClose={() => setDetail(null)} />
+      )}
     </div>
   );
 }
@@ -255,17 +249,16 @@ function CampaignBuilder({ onClose }: { onClose: () => void }) {
   const segments = segmentsQ.data ?? [];
   const templates = templatesQ.data ?? [];
 
-  const domain = brandDomain(business.key);
+  // The From ADDRESS and Reply-To are resolved from Messaging Settings (the
+  // Outbound Email connection) — the single source of truth — and shown
+  // read-only. Only the From display NAME is campaign-editable.
+  const identityQ = useEmailSenderIdentity();
+  const identity = identityQ.data;
   const [name, setName] = useState("");
   const [type, setType] = useState<EmailCampaignType>("one_off");
   const [segmentId, setSegmentId] = useState("");
   const [templateId, setTemplateId] = useState("");
-  // Prefill the sender identity from the active brand. From is the brand's
-  // noreply@ mailbox; Reply-To is the monitored sales@ inbox so replies thread
-  // back into the conversation (EMAIL_TWO_WAY_SETUP).
   const [fromName, setFromName] = useState(business.name);
-  const [fromEmail, setFromEmail] = useState(`noreply@${domain}`);
-  const [replyTo, setReplyTo] = useState(`sales@${domain}`);
   const [scheduledFor, setScheduledFor] = useState("");
   const [whatsapp, setWhatsapp] = useState(false);
 
@@ -276,17 +269,23 @@ function CampaignBuilder({ onClose }: { onClose: () => void }) {
         campaign_type: type,
         segment_id: segmentId || undefined,
         default_template_id: templateId || undefined,
+        // From name only — the address + Reply-To come from Messaging Settings.
         from_name: fromName || undefined,
-        from_email: fromEmail || undefined,
-        reply_to_email: replyTo || undefined,
-        scheduled_for: scheduledFor ? new Date(scheduledFor).toISOString() : undefined,
+        scheduled_for: scheduledFor
+          ? new Date(scheduledFor).toISOString()
+          : undefined,
       },
       { onSuccess: onClose },
     );
   }
 
   return (
-    <Drawer open onClose={onClose} title="New campaign" subtitle="Audience · template · channels · schedule">
+    <Drawer
+      open
+      onClose={onClose}
+      title="New campaign"
+      subtitle="Audience · template · channels · schedule"
+    >
       <div className="space-y-4 p-1">
         <Labelled label="Campaign name">
           <TextInput value={name} onChange={setName} placeholder="June drop announcement" />
@@ -317,7 +316,7 @@ function CampaignBuilder({ onClose }: { onClose: () => void }) {
           />
         </Labelled>
 
-        <Labelled label="Template">
+        <Labelled label="Template (the mail that goes out)">
           <Select
             value={templateId}
             onChange={setTemplateId}
@@ -354,17 +353,52 @@ function CampaignBuilder({ onClose }: { onClose: () => void }) {
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <Labelled label="From name">
-            <TextInput value={fromName} onChange={setFromName} placeholder="Pixie Girl" />
-          </Labelled>
-          <Labelled label="From email">
-            <TextInput value={fromEmail} onChange={setFromEmail} placeholder="noreply@brand.com" mono />
-          </Labelled>
-        </div>
-        <Labelled label="Reply-To (customer replies thread back here)">
-          <TextInput value={replyTo} onChange={setReplyTo} placeholder="sales@brand.com" mono />
+        <Labelled label="From name">
+          <TextInput value={fromName} onChange={setFromName} placeholder="Pixie Girl" />
         </Labelled>
+
+        {/* From address + Reply-To are read-only: they come from the Outbound
+            Email connection in Messaging Settings so marketing mail always
+            sends from the authenticated mailbox and replies thread into the
+            monitored inbox. Nothing here is typed by hand. */}
+        <div className="rounded-xl border border-line bg-text-primary/[0.02] p-3.5 space-y-2.5">
+          <div className="flex items-center gap-1.5 micro">
+            <Lock className="w-3 h-3" />
+            Sender · managed in Messaging Settings
+          </div>
+          {identityQ.isLoading ? (
+            <Skeleton style={{ height: 44 }} />
+          ) : identityQ.isError ? (
+            <p className="text-[12px] text-danger">
+              Couldn&rsquo;t load the sender identity.
+            </p>
+          ) : !identity?.from_email ? (
+            <p className="text-[12px] text-warn">
+              No outbound sender is configured yet. Set it in Messaging →
+              Settings → Outbound Email before sending, or the campaign will
+              fail to send.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div>
+                <div className="text-[10px] uppercase tracking-widest text-text-faint">
+                  From
+                </div>
+                <div className="text-[12.5px] font-mono text-text-muted break-all">
+                  {identity.from_email}
+                </div>
+              </div>
+              <div>
+                <div className="text-[10px] uppercase tracking-widest text-text-faint">
+                  Reply-To
+                </div>
+                <div className="text-[12.5px] font-mono text-text-muted break-all">
+                  {identity.reply_to ?? "—"}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
 
         <Labelled label="Schedule for (optional)">
           <input
@@ -375,7 +409,9 @@ function CampaignBuilder({ onClose }: { onClose: () => void }) {
           />
         </Labelled>
 
-        {create.isError && <p className="text-[12px] text-danger">Couldn&rsquo;t create the campaign.</p>}
+        {create.isError && (
+          <p className="text-[12px] text-danger">Couldn&rsquo;t create the campaign.</p>
+        )}
 
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
@@ -393,7 +429,145 @@ function CampaignBuilder({ onClose }: { onClose: () => void }) {
   );
 }
 
-function CampaignDetail({ campaign, onClose }: { campaign: EmailCampaign; onClose: () => void }) {
+/** The exact mail this campaign sends (or sent) — rendered by the same
+ *  pipeline as the live send, shown before anything else. */
+function CampaignMailSection({ campaign }: { campaign: EmailCampaign }) {
+  const previewQ = useCampaignPreview(campaign.campaign_id);
+  const wasSent =
+    campaign.status === "sent" ||
+    campaign.status === "sending" ||
+    campaign.status === "completed";
+
+  return (
+    <div>
+      <div className="micro mb-2">{wasSent ? "The mail that went out" : "The mail"}</div>
+      {previewQ.isLoading ? (
+        <Skeleton style={{ height: 260 }} />
+      ) : previewQ.isError || !previewQ.data ? (
+        <div className="rounded-[13px] border border-line p-4 text-[12.5px] text-text-muted">
+          No mail to show yet — pick a template for this campaign first.
+        </div>
+      ) : (
+        <div className="rounded-[13px] border border-line overflow-hidden">
+          <div className="px-3.5 py-2.5 border-b border-line bg-text-primary/[0.02]">
+            <div className="text-[13px] font-medium truncate">
+              {previewQ.data.subject}
+            </div>
+            <div className="text-[11px] text-text-faint mt-0.5">
+              {previewQ.data.sample_recipient.is_real
+                ? `as received by ${previewQ.data.sample_recipient.name || previewQ.data.sample_recipient.email}`
+                : "shown with sample customer details"}
+            </div>
+          </div>
+          <iframe
+            title="Campaign mail"
+            sandbox=""
+            srcDoc={previewQ.data.html}
+            className="w-full h-[420px] md:h-[520px] bg-white"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Send a [TEST] copy of the mail to yourself, and optionally route it to a
+ *  reviewer (e.g. the CEO) for sign-off before the real send. No recipients,
+ *  counters or status change — just the exact mail in an inbox. */
+function CampaignTestSend({ campaign }: { campaign: EmailCampaign }) {
+  const test = useSendTestCampaign(campaign.campaign_id);
+  const [approver, setApprover] = useState("");
+  const [note, setNote] = useState<string | null>(null);
+
+  function run(emails?: string[]) {
+    setNote(null);
+    test.mutate(emails, {
+      onSuccess: (r) => {
+        setNote(
+          r.sent.length
+            ? `Test sent to ${r.sent.join(", ")}.`
+            : "No test was sent.",
+        );
+        if (emails) setApprover("");
+      },
+    });
+  }
+
+  return (
+    <div className="rounded-xl border border-line p-3 space-y-2.5">
+      <div className="micro">Send a test</div>
+      <p className="text-[12px] text-text-muted">
+        Sends the exact mail (marked{" "}
+        <span className="font-mono text-text-faint">[TEST]</span>) to your inbox
+        — no tracking, no recipients. Add an address to route it to someone for
+        approval first.
+      </p>
+      <div className="flex flex-col sm:flex-row gap-2">
+        <div className="flex-1">
+          <TextInput
+            value={approver}
+            onChange={setApprover}
+            placeholder="approver@brand.com (e.g. CEO — optional)"
+            mono
+          />
+        </div>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={!approver.trim() || test.isPending}
+          onClick={() => run([approver.trim()])}
+        >
+          Send for approval
+        </Button>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          size="sm"
+          disabled={test.isPending}
+          onClick={() => run(undefined)}
+          icon={
+            test.isPending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Send className="w-4 h-4" />
+            )
+          }
+        >
+          Send test to me
+        </Button>
+        {note && <span className="text-[12px] text-success">{note}</span>}
+        {test.isError && (
+          <span className="text-[12px] text-danger">
+            Couldn&rsquo;t send the test — check the outbound email config.
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Where customer replies thread back to — the live Reply-To resolved from
+ *  Messaging Settings (falling back to a campaign's stored value for legacy
+ *  campaigns sent before the sync). */
+function CampaignReplyToNote({ campaign }: { campaign: EmailCampaign }) {
+  const identityQ = useEmailSenderIdentity();
+  const replyTo = identityQ.data?.reply_to ?? campaign.reply_to_email;
+  if (!replyTo) return null;
+  return (
+    <p className="text-[12px] text-text-faint">
+      Replies thread to{" "}
+      <span className="font-mono text-text-muted">{replyTo}</span>.
+    </p>
+  );
+}
+
+function CampaignDetail({
+  campaign,
+  onClose,
+}: {
+  campaign: EmailCampaign;
+  onClose: () => void;
+}) {
   const { can } = useAuthStore();
   const statsQ = useEmailStats(campaign.campaign_id);
   const send = useSendEmailCampaign();
@@ -405,54 +579,70 @@ function CampaignDetail({ campaign, onClose }: { campaign: EmailCampaign; onClos
 
   const canEdit = can("email_campaigns", "edit");
   const canApprove = can("email_campaigns", "approve");
+  const wasSent =
+    campaign.status === "sent" ||
+    campaign.status === "sending" ||
+    campaign.status === "completed";
 
   return (
-    <Drawer open onClose={onClose} title={campaign.campaign_name} subtitle={campaign.campaign_type}>
+    <Drawer
+      open
+      wide
+      onClose={onClose}
+      title={campaign.campaign_name}
+      subtitle={campaign.campaign_type}
+    >
       <div className="space-y-4 p-1">
-        <Pill tone={EMAIL_STATUS_TONE[campaign.status] ?? "neutral"}>{campaign.status}</Pill>
+        <Pill tone={EMAIL_STATUS_TONE[campaign.status] ?? "neutral"}>
+          {campaign.status}
+        </Pill>
 
-        <div>
-          <div className="micro mb-2">Performance</div>
-          {statsQ.isLoading ? (
-            <Skeleton style={{ height: 60 }} />
-          ) : (
-            <>
-              <div className="grid grid-cols-3 gap-2">
-                <Stat icon={<Send className="w-3.5 h-3.5" />} label="Sent" value={stats?.totals?.sent ?? 0} />
-                <Stat icon={<Eye className="w-3.5 h-3.5" />} label="Delivered" value={stats?.totals?.delivered ?? 0} />
-                <Stat icon={<Eye className="w-3.5 h-3.5" />} label="Opened" value={stats?.totals?.opened ?? 0} />
-                <Stat icon={<MousePointerClick className="w-3.5 h-3.5" />} label="Clicked" value={stats?.totals?.clicked ?? 0} />
-                <Stat icon={<Ban className="w-3.5 h-3.5" />} label="Bounced" value={stats?.totals?.bounced ?? 0} />
-                <Stat icon={<Ban className="w-3.5 h-3.5" />} label="Unsub" value={stats?.totals?.unsubscribed ?? 0} />
-              </div>
-              <div className="grid grid-cols-3 gap-2 mt-2">
-                <Stat icon={<TrendingUp className="w-3.5 h-3.5" />} label="Open %" value={stats?.rates?.open_rate_pct ?? 0} suffix="%" />
-                <Stat icon={<TrendingUp className="w-3.5 h-3.5" />} label="Click %" value={stats?.rates?.click_rate_pct ?? 0} suffix="%" />
-                <Stat icon={<TrendingUp className="w-3.5 h-3.5" />} label="Bounce %" value={stats?.rates?.bounce_rate_pct ?? 0} suffix="%" />
-              </div>
-              {stats?.conversions && (stats.conversions.count ?? 0) > 0 && (
-                <p className="text-[12px] text-text-muted mt-2">
-                  {stats.conversions.count} conversions · {money(stats.conversions.revenue_ngn ?? 0)} revenue
-                </p>
-              )}
-            </>
-          )}
-        </div>
+        {/* The mail itself — front and centre */}
+        <CampaignMailSection campaign={campaign} />
+
+        {/* Send yourself (and optionally a reviewer) a test before the real send */}
+        {canEdit && <CampaignTestSend campaign={campaign} />}
+
+        {wasSent && (
+          <div>
+            <div className="micro mb-2">Performance</div>
+            {statsQ.isLoading ? (
+              <Skeleton style={{ height: 60 }} />
+            ) : (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <Stat icon={<Send className="w-3.5 h-3.5" />} label="Sent" value={stats?.totals?.sent ?? 0} />
+                  <Stat icon={<Eye className="w-3.5 h-3.5" />} label="Delivered" value={stats?.totals?.delivered ?? 0} />
+                  <Stat icon={<Eye className="w-3.5 h-3.5" />} label="Opened" value={stats?.totals?.opened ?? 0} />
+                  <Stat icon={<MousePointerClick className="w-3.5 h-3.5" />} label="Clicked" value={stats?.totals?.clicked ?? 0} />
+                  <Stat icon={<Ban className="w-3.5 h-3.5" />} label="Bounced" value={stats?.totals?.bounced ?? 0} />
+                  <Stat icon={<Ban className="w-3.5 h-3.5" />} label="Unsub" value={stats?.totals?.unsubscribed ?? 0} />
+                </div>
+                <div className="grid grid-cols-3 gap-2 mt-2">
+                  <Stat icon={<TrendingUp className="w-3.5 h-3.5" />} label="Open %" value={stats?.rates?.open_rate_pct ?? 0} suffix="%" />
+                  <Stat icon={<TrendingUp className="w-3.5 h-3.5" />} label="Click %" value={stats?.rates?.click_rate_pct ?? 0} suffix="%" />
+                  <Stat icon={<TrendingUp className="w-3.5 h-3.5" />} label="Bounce %" value={stats?.rates?.bounce_rate_pct ?? 0} suffix="%" />
+                </div>
+                {stats?.conversions && (stats.conversions.count ?? 0) > 0 && (
+                  <p className="text-[12px] text-text-muted mt-2">
+                    {stats.conversions.count} conversions · {money(stats.conversions.revenue_ngn ?? 0)} revenue
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        )}
 
         <CampaignAudienceSection campaign={campaign} />
         <CampaignSaleSection campaign={campaign} />
         <CampaignVariantsSection campaign={campaign} />
 
-        {campaign.reply_to_email && (
-          <p className="text-[12px] text-text-faint">
-            Replies thread to <span className="font-mono text-text-muted">{campaign.reply_to_email}</span>.
-          </p>
-        )}
+        <CampaignReplyToNote campaign={campaign} />
 
         {canEdit && (campaign.status === "draft" || campaign.status === "scheduled") && (
           <div className="rounded-xl border border-line p-3 space-y-2">
             <div className="micro">Schedule</div>
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2">
               <input
                 type="datetime-local"
                 value={when}
@@ -464,7 +654,10 @@ function CampaignDetail({ campaign, onClose }: { campaign: EmailCampaign; onClos
                 variant="secondary"
                 disabled={!when || schedule.isPending}
                 onClick={() =>
-                  schedule.mutate({ id: campaign.campaign_id, scheduled_for: new Date(when).toISOString() })
+                  schedule.mutate({
+                    id: campaign.campaign_id,
+                    scheduled_for: new Date(when).toISOString(),
+                  })
                 }
                 icon={<CalendarClock className="w-4 h-4" />}
               >
@@ -495,311 +688,6 @@ function CampaignDetail({ campaign, onClose }: { campaign: EmailCampaign; onClos
               Send now
             </Button>
           )}
-        </div>
-      </div>
-    </Drawer>
-  );
-}
-
-// ════════════════════════════════════════════════════════════
-// ADS
-// ════════════════════════════════════════════════════════════
-
-function AdsTab() {
-  const { can } = useAuthStore();
-  const accountsQ = useAdAccounts();
-  const campaignsQ = useAdCampaigns();
-  const attributionQ = useAttribution();
-  const [connecting, setConnecting] = useState(false);
-  const [creating, setCreating] = useState(false);
-
-  const accounts = accountsQ.data ?? [];
-  const campaigns = campaignsQ.data ?? [];
-  const report = attributionQ.data;
-  const rows: AttributionRow[] = report?.ads ?? report?.rows ?? [];
-
-  const totals = useMemo(() => {
-    return rows.reduce(
-      (a, r) => ({
-        spend: a.spend + (r.spend_ngn ?? 0),
-        clicks: a.clicks + (r.clicks ?? 0),
-        conversions: a.conversions + (r.conversions ?? 0),
-        revenue: a.revenue + (r.revenue_ngn ?? 0),
-      }),
-      { spend: 0, clicks: 0, conversions: 0, revenue: 0 },
-    );
-  }, [rows]);
-  const roas = totals.spend > 0 ? totals.revenue / totals.spend : 0;
-
-  const setStatus = useSetAdCampaignStatus();
-
-  return (
-    <div className="space-y-5">
-      {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <KpiTile label="Ad spend" value={moneyCompact(totals.spend)} />
-        <KpiTile label="Attributed revenue" value={moneyCompact(totals.revenue)} />
-        <KpiTile label="ROAS" value={`${roas.toFixed(2)}×`} tone={roas >= 1 ? "accent" : "warn"} />
-        <KpiTile label="Conversions" value={totals.conversions.toLocaleString()} />
-      </div>
-
-      {/* Accounts */}
-      <section>
-        <div className="flex items-center justify-between mb-2.5">
-          <h3 className="font-display text-[15px]">Ad accounts</h3>
-          {can("ad_analytics", "create") && (
-            <Button size="sm" variant="secondary" icon={<Plus className="w-4 h-4" />} onClick={() => setConnecting(true)}>
-              Connect
-            </Button>
-          )}
-        </div>
-        <Card className="p-0 overflow-hidden">
-          {accountsQ.isLoading ? (
-            <div className="p-5"><Skeleton style={{ height: 18, width: "40%" }} /></div>
-          ) : accounts.length === 0 ? (
-            <p className="p-5 text-center text-[12.5px] text-text-faint italic">
-              No ad accounts connected.
-            </p>
-          ) : (
-            accounts.map((a, i) => (
-              <div key={a.ad_account_id} className={`p-4 flex items-center gap-3 ${i < accounts.length - 1 ? "border-b border-line" : ""}`}>
-                <span className="text-[11px] font-bold uppercase tracking-wide text-accent-glow bg-accent/[0.1] rounded-md px-2 py-1">
-                  {AD_PLATFORM_LABEL[a.platform]}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-[13.5px] truncate">{a.display_name}</div>
-                  <div className="text-[11.5px] text-text-faint font-mono truncate">{a.external_account_id}</div>
-                </div>
-                <span className="text-[11.5px] text-text-faint">{a.currency}</span>
-                {can("ad_analytics", "delete") && (
-                  <AdAccountDelete id={a.ad_account_id} name={a.display_name} />
-                )}
-              </div>
-            ))
-          )}
-        </Card>
-      </section>
-
-      {/* Campaigns */}
-      <section>
-        <div className="flex items-center justify-between mb-2.5">
-          <h3 className="font-display text-[15px]">Campaigns</h3>
-          {can("ad_analytics", "create") && accounts.length > 0 && (
-            <Button size="sm" variant="secondary" icon={<Plus className="w-4 h-4" />} onClick={() => setCreating(true)}>
-              New campaign
-            </Button>
-          )}
-        </div>
-        <Card className="p-0 overflow-hidden">
-          {campaignsQ.isLoading ? (
-            <div className="p-5"><Skeleton style={{ height: 18, width: "40%" }} /></div>
-          ) : campaigns.length === 0 ? (
-            <p className="p-5 text-center text-[12.5px] text-text-faint italic">No campaigns recorded.</p>
-          ) : (
-            campaigns.map((c, i) => (
-              <div key={c.ad_campaign_id} className={`p-4 flex items-center gap-3 ${i < campaigns.length - 1 ? "border-b border-line" : ""}`}>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-[13.5px] truncate">{c.name}</span>
-                    <Pill tone={AD_STATUS_TONE[c.status] ?? "neutral"} dot={false}>{c.status}</Pill>
-                  </div>
-                  <div className="text-[11.5px] text-text-faint">
-                    {AD_PLATFORM_LABEL[c.platform]}
-                    {c.budget_amount != null && ` · budget ${money(c.budget_amount, c.budget_currency ?? "NGN")}`}
-                  </div>
-                </div>
-                {can("ad_analytics", "edit") && (
-                  <div className="w-32">
-                    <Select
-                      value={c.status}
-                      onChange={(v) => setStatus.mutate({ id: c.ad_campaign_id, status: v as AdStatus })}
-                      options={(["draft", "active", "paused", "ended", "removed"] as AdStatus[]).map((s) => ({ value: s, label: s }))}
-                    />
-                  </div>
-                )}
-              </div>
-            ))
-          )}
-        </Card>
-      </section>
-
-      {/* Attribution table */}
-      <section>
-        <h3 className="font-display text-[15px] mb-2.5">Attribution — spend vs revenue</h3>
-        {attributionQ.isLoading ? (
-          <ListSkeleton />
-        ) : rows.length === 0 ? (
-          <Card className="p-6 text-center text-[12.5px] text-text-faint italic">
-            No attribution data for this period yet.
-          </Card>
-        ) : (
-          <Card className="p-0 overflow-x-auto">
-            <table className="w-full text-[12.5px]">
-              <thead>
-                <tr className="text-text-faint text-[10.5px] uppercase tracking-widest border-b border-line">
-                  <th className="text-left font-semibold p-3">Campaign</th>
-                  <th className="text-right font-semibold p-3">Spend</th>
-                  <th className="text-right font-semibold p-3">Clicks</th>
-                  <th className="text-right font-semibold p-3">Conv.</th>
-                  <th className="text-right font-semibold p-3">Revenue</th>
-                  <th className="text-right font-semibold p-3">ROAS</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => {
-                  const rr = r.spend_ngn > 0 ? (r.revenue_ngn ?? 0) / r.spend_ngn : 0;
-                  return (
-                    <tr key={r.ad_campaign_id} className="border-b border-line last:border-0">
-                      <td className="p-3">
-                        <div className="font-medium">{r.name}</div>
-                        <div className="text-[10.5px] text-text-faint">{AD_PLATFORM_LABEL[r.platform]}</div>
-                      </td>
-                      <td className="p-3 text-right font-mono tabular-nums">{money(r.spend_ngn ?? 0)}</td>
-                      <td className="p-3 text-right tabular-nums">{(r.clicks ?? 0).toLocaleString()}</td>
-                      <td className="p-3 text-right tabular-nums">{(r.conversions ?? 0).toLocaleString()}</td>
-                      <td className="p-3 text-right font-mono tabular-nums">{money(r.revenue_ngn ?? 0)}</td>
-                      <td className={`p-3 text-right tabular-nums font-semibold ${rr >= 1 ? "text-success" : "text-warn"}`}>
-                        {rr.toFixed(2)}×
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </Card>
-        )}
-      </section>
-
-      {connecting && <ConnectAdAccountDrawer onClose={() => setConnecting(false)} />}
-      {creating && <AdCampaignDrawer onClose={() => setCreating(false)} />}
-    </div>
-  );
-}
-
-function AdAccountDelete({ id, name }: { id: string; name: string }) {
-  const revoke = useRevokeAdAccount();
-  return (
-    <button
-      onClick={() => window.confirm(`Disconnect ${name}?`) && revoke.mutate(id)}
-      className="rounded-lg bg-panel-2 border border-line p-1.5 hover:border-danger/40"
-      title="Disconnect"
-    >
-      <Trash2 className="w-3.5 h-3.5 text-text-muted hover:text-danger" />
-    </button>
-  );
-}
-
-function ConnectAdAccountDrawer({ onClose }: { onClose: () => void }) {
-  const connect = useConnectAdAccount();
-  const [platform, setPlatform] = useState<AdPlatform>("meta_ads");
-  const [externalId, setExternalId] = useState("");
-  const [name, setName] = useState("");
-  const [currency, setCurrency] = useState("NGN");
-
-  return (
-    <Drawer open onClose={onClose} title="Connect ad account" subtitle="Google Ads / Meta Ads">
-      <div className="space-y-4 p-1">
-        <Labelled label="Platform">
-          <Select
-            value={platform}
-            onChange={(v) => setPlatform(v as AdPlatform)}
-            options={[
-              { value: "meta_ads", label: "Meta Ads" },
-              { value: "google_ads", label: "Google Ads" },
-            ]}
-          />
-        </Labelled>
-        <Labelled label="External account ID">
-          <TextInput value={externalId} onChange={setExternalId} placeholder="act_123456789" mono />
-        </Labelled>
-        <Labelled label="Display name">
-          <TextInput value={name} onChange={setName} placeholder="Pixie Girl — Meta" />
-        </Labelled>
-        <Labelled label="Currency">
-          <TextInput value={currency} onChange={setCurrency} placeholder="NGN" mono />
-        </Labelled>
-        {connect.isError && <p className="text-[12px] text-danger">Couldn&rsquo;t connect.</p>}
-        <div className="flex justify-end gap-2 pt-2">
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button
-            variant="primary"
-            disabled={!externalId || !name || connect.isPending}
-            onClick={() =>
-              connect.mutate(
-                { platform, external_account_id: externalId, display_name: name, currency },
-                { onSuccess: onClose },
-              )
-            }
-            icon={connect.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plug className="w-4 h-4" />}
-          >
-            Connect
-          </Button>
-        </div>
-      </div>
-    </Drawer>
-  );
-}
-
-function AdCampaignDrawer({ onClose }: { onClose: () => void }) {
-  const create = useCreateAdCampaign();
-  const accountsQ = useAdAccounts();
-  const accounts = accountsQ.data ?? [];
-  const [accountId, setAccountId] = useState(accounts[0]?.ad_account_id ?? "");
-  const [name, setName] = useState("");
-  const [objective, setObjective] = useState("");
-  const [budget, setBudget] = useState("");
-  const [externalId, setExternalId] = useState("");
-
-  const account = accounts.find((a) => a.ad_account_id === accountId) ?? accounts[0];
-
-  return (
-    <Drawer open onClose={onClose} title="New ad campaign" subtitle="Record or push a campaign">
-      <div className="space-y-4 p-1">
-        <Labelled label="Ad account">
-          <Select
-            value={accountId || account?.ad_account_id || ""}
-            onChange={setAccountId}
-            options={accounts.map((a) => ({ value: a.ad_account_id, label: `${a.display_name} · ${AD_PLATFORM_LABEL[a.platform]}` }))}
-          />
-        </Labelled>
-        <Labelled label="Campaign name">
-          <TextInput value={name} onChange={setName} placeholder="Retarget — June" />
-        </Labelled>
-        <Labelled label="Objective">
-          <TextInput value={objective} onChange={setObjective} placeholder="conversions" />
-        </Labelled>
-        <Labelled label="External campaign ID (required unless pushing)">
-          <TextInput value={externalId} onChange={setExternalId} placeholder="1203948…" mono />
-        </Labelled>
-        <Labelled label="Daily budget">
-          <TextInput value={budget} onChange={(v) => setBudget(v.replace(/[^0-9.]/g, ""))} placeholder="50000" mono />
-        </Labelled>
-        {create.isError && (
-          <p className="text-[12px] text-danger">Couldn&rsquo;t create. An external campaign ID is required.</p>
-        )}
-        <div className="flex justify-end gap-2 pt-2">
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button
-            variant="primary"
-            disabled={!account || !name || !externalId || create.isPending}
-            onClick={() =>
-              create.mutate(
-                {
-                  ad_account_id: account!.ad_account_id,
-                  platform: account!.platform,
-                  name,
-                  objective: objective || undefined,
-                  external_campaign_id: externalId || undefined,
-                  budget_amount: budget ? Number(budget) : undefined,
-                  budget_currency: account!.currency,
-                },
-                { onSuccess: onClose },
-              )
-            }
-            icon={create.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-          >
-            Create
-          </Button>
         </div>
       </div>
     </Drawer>
@@ -863,12 +751,3 @@ function ListSkeleton() {
   );
 }
 
-/** The public email domain for a brand. Used to prefill the sender (noreply@)
- *  and the conversational Reply-To (sales@) in the campaign builder. */
-function brandDomain(brandKey: string): string {
-  const map: Record<string, string> = {
-    pixiegirl: "pixiegirlglobal.com",
-    faitlynhair: "faitlynhair.com",
-  };
-  return map[brandKey] ?? `${brandKey}.com`;
-}

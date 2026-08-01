@@ -30,7 +30,7 @@ async function hasGrant({ client, user_id, business }) {
 async function listGrants({ client, business }) {
   const { rows } = await ex(client)(
     `SELECT g.grant_id, g.user_id, g.business, g.granted_by, g.granted_at,
-            u.email AS user_email
+            u.email AS user_email, u.display_name AS user_name
        FROM shared.cost_vault_grants g
        LEFT JOIN shared.users u ON u.user_id = g.user_id
       WHERE g.business IN ($1, '*') AND g.revoked_at IS NULL

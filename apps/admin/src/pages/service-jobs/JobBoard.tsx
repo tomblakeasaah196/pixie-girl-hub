@@ -1,6 +1,20 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Package, UserCheck, UserPlus, User } from "lucide-react";
+import {
+  Package,
+  UserCheck,
+  UserPlus,
+  User,
+  Copy,
+  Check,
+  Clock,
+  AlertTriangle,
+  ShieldAlert,
+  Trophy,
+  Sparkles,
+  Maximize2,
+  RotateCcw,
+} from "lucide-react";
 import {
   Button,
   Pill,
@@ -10,9 +24,38 @@ import {
 } from "@/components/ui/primitives";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { Drawer } from "@/components/ui/Drawer";
+import { Modal } from "@/components/ui/Modal";
+import { Lightbox } from "@/components/ui/Lightbox";
 import { Select } from "@/components/ui/controls";
 import { ErrorState } from "@/components/ui/controls";
-import type { ServiceJob, ServiceType, JobStatus } from "./types";
+import { TextInput } from "@/components/ui/Form";
+import { useAuthStore } from "@/stores/auth";
+import { ApiError } from "@/lib/api";
+import type { ServiceJob, ServiceType, JobStatus, JobReference } from "./types";
+
+/**
+ * A stylist may open a deep link (from an old push, an email, or a bookmark)
+ * to a job that Ops has since reassigned to someone else. The backend now
+ * responds with a 403 whose `error.reassigned` payload names the current
+ * assignee, so we can show a friendly hand-off card instead of a bare
+ * "permission denied" wall. This pulls the payload out of the ApiError.
+ */
+function extractReassigned(err: unknown): {
+  to_name: string | null;
+  job_number: string | null;
+} | null {
+  if (!(err instanceof ApiError)) return null;
+  if (err.status !== 403) return null;
+  const body = err.body as {
+    error?: {
+      code?: string;
+      reassigned?: { to_name?: string | null; job_number?: string | null };
+    };
+  } | null;
+  const r = body?.error?.reassigned;
+  if (body?.error?.code !== "NO_LONGER_ASSIGNED" || !r) return null;
+  return { to_name: r.to_name ?? null, job_number: r.job_number ?? null };
+}
 import {
   useJobs,
   useJob,
@@ -24,6 +67,14 @@ import {
   useRecipe,
   useCreateJob,
   useAssignableStylists,
+  useJobActivity,
+  useJobMaterials,
+  useJobReferences,
+  useJobCustody,
+  useAccountability,
+  useSummarizeJob,
+  useStylistScorecard,
+  useStudioLifecycle,
 } from "./hooks";
 import {
   JOB_STATUS_META,
@@ -35,6 +86,52 @@ import {
   CUSTOMER_HAPPINESS_FACES,
   HAPPINESS_EMOJI,
 } from "./constants";
+
+// ── Deadline helpers (assign-time due date) ────────────────
+// `datetime-local` inputs speak local wall-clock, not ISO/UTC, so we convert
+// on the way in and out. Empty string ⇢ no value (input renders blank).
+
+/** ISO/UTC string → `YYYY-MM-DDTHH:mm` in the viewer's local time. */
+function toDatetimeLocalInput(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** The default deadline: 48 hours from now, as a `datetime-local` value. */
+function plus48hLocalInput(): string {
+  return toDatetimeLocalInput(
+    new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+  );
+}
+
+/** `datetime-local` value → ISO string (or undefined when blank). */
+function localInputToIso(local: string): string | undefined {
+  if (!local) return undefined;
+  const d = new Date(local);
+  return isNaN(d.getTime()) ? undefined : d.toISOString();
+}
+
+// Human-readable label for each audit action_key the job lifecycle writes.
+const ACTIVITY_LABELS: Record<string, string> = {
+  "service_jobs.create": "Job created",
+  "service_jobs.from_order": "Job opened from order",
+  "service_jobs.assign": "Assigned to stylist",
+  "service_jobs.assign_staff": "Assigned to stylist",
+  "service_jobs.start": "Started work",
+  "service_jobs.pause": "Paused",
+  "service_jobs.resume": "Resumed",
+  "service_jobs.return": "Returned for QC",
+  "service_jobs.qc": "QC reviewed",
+  "service_jobs.dispatch": "Dispatched",
+  "service_jobs.hand_to_sales": "Handed to sales",
+  "service_jobs.outcome": "Outcome recorded",
+  "service_jobs.update": "Details updated",
+  "service_jobs.advance": "Status advanced",
+  "service_jobs.write_off": "Wig written off",
+};
 
 // ── Star rating display ────────────────────────────────────
 
@@ -120,6 +217,71 @@ function FacePicker({
   );
 }
 
+// Read-only face for the "at a glance" rating card — same face set as
+// FacePicker, no interaction.
+function FaceDisplay({ value }: { value: number | null }) {
+  if (!value)
+    return <span className="text-text-muted text-sm">Not rated yet</span>;
+  const f = CUSTOMER_HAPPINESS_FACES.find((x) => x.value === value);
+  if (!f) return null;
+  return (
+    <span className="text-sm">
+      <span className="text-xl align-middle mr-1">{f.emoji}</span>
+      {f.label}
+    </span>
+  );
+}
+
+// ── "Copy it onto the tag" confirmation ────────────────────
+//
+// Shown once, right after the assignment that actually allocates a fresh
+// tag_code (never on a later reassignment of the same job — the code stays
+// stable once it's written on the physical tag). Forces a deliberate
+// acknowledgement rather than a toast that's easy to miss, since the whole
+// point of the code is that it makes it onto the tag before anyone walks
+// away from the desk.
+function TagConfirmModal({
+  code,
+  onClose,
+}: {
+  code: string;
+  onClose: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    navigator.clipboard?.writeText(code).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Write this on the tag"
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={copy} icon={<Copy className="w-3.5 h-3.5" />}>
+            {copied ? "Copied" : "Copy code"}
+          </Button>
+          <Button onClick={onClose} icon={<Check className="w-3.5 h-3.5" />}>
+            I've written it on the tag
+          </Button>
+        </>
+      }
+    >
+      <div className="text-center py-4 space-y-2">
+        <p className="text-sm text-text-muted">
+          Pin this code to the customer's hair now, before it leaves the desk.
+        </p>
+        <p className="font-mono text-4xl tracking-[0.2em] text-accent-glow">
+          {code}
+        </p>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Job card (Kanban cell) ─────────────────────────────────
 
 function JobCard({
@@ -180,6 +342,22 @@ function JobCard({
           {job.sales_order_number ?? "Order"}
         </span>
       )}
+      {/* Who it's for + what's being styled — so the floor reads the card
+          without opening the drawer. */}
+      {(job.customer_name || job.styled_product_name) && (
+        <div className="space-y-0.5">
+          {job.customer_name && (
+            <p className="text-xs text-text-primary/90 truncate">
+              {job.customer_name}
+            </p>
+          )}
+          {job.styled_product_name && (
+            <p className="text-[11px] text-text-muted truncate">
+              {job.styled_product_name}
+            </p>
+          )}
+        </div>
+      )}
       <div className="flex items-center gap-1.5">
         <span>{icon}</span>
         <span className="text-sm font-medium truncate">
@@ -190,15 +368,22 @@ function JobCard({
         <p className="text-xs text-text-muted truncate">{job.hair_description}</p>
       )}
       <div className="flex items-center justify-between gap-2 pt-0.5">
-        <span className="text-xs text-text-muted">
+        <span
+          className="text-xs text-text-muted truncate min-w-0"
+          title={
+            job.assigned_staff_user_id
+              ? (job.assigned_staff_name ?? "Staff assigned")
+              : undefined
+          }
+        >
           {job.assigned_staff_user_id
-            ? "Staff assigned"
+            ? (job.assigned_staff_name ?? "Staff assigned")
             : job.assigned_stylist_id
               ? "Stylist assigned"
               : "Unassigned"}
         </span>
         {job.scheduled_for && (
-          <span className="text-xs font-mono text-text-muted">
+          <span className="text-xs font-mono text-text-muted shrink-0">
             {formatDate(job.scheduled_for)}
           </span>
         )}
@@ -564,6 +749,209 @@ function IntercompanyPanel({ job }: { job: ServiceJob }) {
 // Nothing here is decorative — the entire HR + tasks + performance chain
 // waits on the assignment happening through the /assign route rather than
 // through a bare status advance.
+// ── Burnout guardrail ──────────────────────────────────────
+// A stylist holding more than this share of the whole bench's open workload is
+// flagged light-red in the assignment picker so work gets spread out; at or
+// under it they read green (safe to load). Share = the stylist's open jobs ÷ the
+// team's total open jobs, so an idle stylist is 0% (green) and an obvious pick.
+const BURNOUT_THRESHOLD_PCT = 30;
+
+function workloadPct(openJobs: number, teamOpenJobs: number): number {
+  if (teamOpenJobs <= 0) return 0;
+  return Math.round((openJobs / teamOpenJobs) * 100);
+}
+
+function WorkloadPill({
+  openJobs,
+  teamOpenJobs,
+}: {
+  openJobs: number;
+  teamOpenJobs: number;
+}) {
+  const pct = workloadPct(openJobs, teamOpenJobs);
+  const burnout = pct > BURNOUT_THRESHOLD_PCT;
+  return (
+    <span
+      className="shrink-0"
+      title={
+        burnout
+          ? `${pct}% of the team's open workload — over ${BURNOUT_THRESHOLD_PCT}%, risk of burnout`
+          : `${pct}% of the team's open workload — healthy`
+      }
+    >
+      <Pill tone={burnout ? "danger" : "success"}>{pct}%</Pill>
+    </span>
+  );
+}
+
+// Confirmation gate before an assignment lands — "never make a mistake". Shows
+// the job + stylist to review, and warns that reversing needs CEO approval.
+//
+// A job with NO sales order behind it gets a second, sterner gate. The sale is
+// the only thing that draws stock, so an unlinked job moves no stock at all and
+// nothing downstream ever reconciles it against a sale — the assigner has to
+// tick the acknowledgement before Confirm unlocks, and the API rejects the
+// assignment without it.
+function AssignConfirmModal({
+  job,
+  stylistName,
+  dueLabel,
+  onConfirm,
+  onCancel,
+  pending,
+  error,
+}: {
+  job: ServiceJob;
+  stylistName: string;
+  // The deadline about to be stamped (formatted), so it's reviewed before it
+  // commits — this is what lands on the stylist's My Day.
+  dueLabel?: string | null;
+  onConfirm: (acknowledgeUnlinked: boolean) => void;
+  onCancel: () => void;
+  pending: boolean;
+  error?: string | null;
+}) {
+  const label = job.styled_product_name || job.service_type_name || "this job";
+  const unlinked = !job.sales_order_id;
+  const [acknowledged, setAcknowledged] = useState(false);
+  return (
+    <Modal
+      open
+      onClose={onCancel}
+      title="Confirm assignment"
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel} disabled={pending}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => onConfirm(unlinked && acknowledged)}
+            disabled={pending || (unlinked && !acknowledged)}
+            icon={<UserCheck className="w-3.5 h-3.5" />}
+          >
+            {pending ? "Assigning…" : "Confirm"}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3 py-1">
+        <p className="text-sm leading-relaxed">
+          Assign <span className="font-semibold">{job.job_number}</span> —{" "}
+          <span className="font-semibold">{label}</span> to{" "}
+          <span className="font-semibold text-accent-glow">{stylistName}</span>?
+        </p>
+        {dueLabel && (
+          <p className="text-[12px] text-text-muted">
+            Due <span className="font-semibold text-text-primary">{dueLabel}</span>
+            {" "}· shows on their My Day.
+          </p>
+        )}
+        <div className="glass rounded-lg p-3 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 text-warn shrink-0 mt-0.5" />
+          <p className="text-[11px] text-text-muted leading-snug">
+            Review this before confirming. To reverse it you&rsquo;ll need
+            approval from hierarchy — only a CEO can revert an assignment.
+          </p>
+        </div>
+
+        {unlinked && (
+          <div className="rounded-lg p-3.5 border border-danger/40 bg-danger/[0.07] space-y-2.5">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-danger shrink-0" />
+              <span className="text-[12px] font-bold uppercase tracking-wide text-danger">
+                No sale behind this job
+              </span>
+            </div>
+            <p className="text-[12px] text-text-secondary leading-relaxed">
+              This job has <span className="font-semibold">no sales order</span>,
+              so <span className="font-semibold">no stock will be deducted</span>{" "}
+              — the hair leaves the shelf physically but the count stays where it
+              is, and nothing will ever reconcile it against a sale.
+            </p>
+            <p className="text-[12px] text-text-secondary leading-relaxed">
+              If this hair was sold, cancel and raise the order first. If it is a
+              sample, rework or shoot, correct the count afterwards through{" "}
+              <span className="font-semibold">Stock → Adjustments</span>.
+            </p>
+            <label className="flex items-start gap-2.5 cursor-pointer pt-0.5">
+              <input
+                type="checkbox"
+                checked={acknowledged}
+                onChange={(e) => setAcknowledged(e.target.checked)}
+                className="mt-0.5 w-4 h-4 accent-[rgb(var(--danger))] cursor-pointer"
+              />
+              <span className="text-[12px] text-text-primary font-medium leading-snug">
+                I understand no stock will move, and I am accountable for this
+                hair leaving without a sale.
+              </span>
+            </label>
+          </div>
+        )}
+        {error && <p className="text-xs text-danger">{error}</p>}
+      </div>
+    </Modal>
+  );
+}
+
+// CEO-only override to pull a just-assigned job back to Unassigned.
+function RevertConfirmModal({
+  job,
+  stylistName,
+  onConfirm,
+  onCancel,
+  pending,
+  error,
+}: {
+  job: ServiceJob;
+  stylistName: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+  pending: boolean;
+  error?: string | null;
+}) {
+  return (
+    <Modal
+      open
+      onClose={onCancel}
+      title="Revert to unassigned"
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel} disabled={pending}>
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            onClick={onConfirm}
+            disabled={pending}
+            icon={<RotateCcw className="w-3.5 h-3.5" />}
+          >
+            {pending ? "Reverting…" : "Revert to unassigned"}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3 py-1">
+        <p className="text-sm leading-relaxed">
+          Take <span className="font-semibold">{job.job_number}</span> back from{" "}
+          <span className="font-semibold">{stylistName}</span> and return it to
+          the Unassigned queue?
+        </p>
+        <div className="glass rounded-lg p-3 flex items-start gap-2">
+          <AlertTriangle className="w-4 h-4 text-warn shrink-0 mt-0.5" />
+          <p className="text-[11px] text-text-muted leading-snug">
+            CEO-only override. The reserved wig is returned to custody and the
+            job drops back to Pending. Only possible before the stylist has
+            started work.
+          </p>
+        </div>
+        {error && <p className="text-xs text-danger">{error}</p>}
+      </div>
+    </Modal>
+  );
+}
+
 function AssignmentPanel({
   job,
   jobId,
@@ -572,6 +960,7 @@ function AssignmentPanel({
   jobId: string;
 }) {
   const [picking, setPicking] = useState(false);
+  const [confirmTag, setConfirmTag] = useState<string | null>(null);
   const assigned = !!job.assigned_staff_user_id;
   const showPicker = !assigned || picking;
 
@@ -585,10 +974,19 @@ function AssignmentPanel({
       )}
       {showPicker && (
         <StylistPicker
+          job={job}
           jobId={jobId}
           currentUserId={job.assigned_staff_user_id}
+          defaultDue={job.expected_completion_at}
           onDone={() => setPicking(false)}
+          onAssigned={(assignedJob) => {
+            if (assignedJob.is_new_tag && assignedJob.tag_code)
+              setConfirmTag(assignedJob.tag_code);
+          }}
         />
+      )}
+      {confirmTag && (
+        <TagConfirmModal code={confirmTag} onClose={() => setConfirmTag(null)} />
       )}
     </div>
   );
@@ -601,50 +999,138 @@ function AssignedRow({
   job: ServiceJob;
   onChange: () => void;
 }) {
+  const navigate = useNavigate();
+  const isCeo = useAuthStore((s) => s.user?.isCeo ?? false);
+  const { unassign } = useJobActions(job.job_id);
+  const [reverting, setReverting] = useState(false);
   const { data: stylists = [] } = useAssignableStylists(true);
   const current = stylists.find(
     (s) => s.user_id === job.assigned_staff_user_id,
   );
+  const teamOpenJobs = stylists.reduce((sum, s) => sum + s.open_jobs_count, 0);
+  // The CEO can revert only while the job is still just 'assigned' (not started).
+  const canRevert = isCeo && job.status === "assigned";
   return (
-    <div className="glass p-3 rounded-lg flex items-center gap-3">
-      <div className="w-9 h-9 rounded-full bg-accent/[0.12] grid place-items-center overflow-hidden shrink-0">
-        {current?.avatar_url ? (
-          // eslint-disable-next-line jsx-a11y/img-redundant-alt
-          <img
-            src={current.avatar_url}
-            alt={current.full_name}
-            className="w-full h-full object-cover"
+    <>
+      <div className="glass p-3 rounded-lg flex items-center gap-3">
+        <div className="w-9 h-9 rounded-full bg-accent/[0.12] grid place-items-center overflow-hidden shrink-0">
+          {current?.avatar_url ? (
+            // eslint-disable-next-line jsx-a11y/img-redundant-alt
+            <img
+              src={current.avatar_url}
+              alt={current.full_name}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <UserCheck className="w-4 h-4 text-accent-glow" />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-semibold truncate">
+            {current?.full_name ?? "Assigned stylist"}
+          </div>
+          <div className="text-[11px] text-text-muted truncate flex items-center gap-1.5">
+            <span>{current?.job_title ?? "Stylist"}</span>
+            {current && (
+              <span>
+                · {current.open_jobs_count} open job
+                {current.open_jobs_count === 1 ? "" : "s"} right now
+              </span>
+            )}
+            {current?.on_leave_today && <Pill tone="warn">On leave today</Pill>}
+          </div>
+        </div>
+        {current && (
+          <WorkloadPill
+            openJobs={current.open_jobs_count}
+            teamOpenJobs={teamOpenJobs}
           />
-        ) : (
-          <UserCheck className="w-4 h-4 text-accent-glow" />
         )}
+        {job.assigned_staff_user_id && (
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<Trophy className="w-3.5 h-3.5" />}
+            onClick={() =>
+              navigate(
+                `/service-jobs?tab=scorecards&stylist=${job.assigned_staff_user_id}`,
+              )
+            }
+          >
+            Scorecard
+          </Button>
+        )}
+        {canRevert && (
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<RotateCcw className="w-3.5 h-3.5" />}
+            onClick={() => setReverting(true)}
+          >
+            Revert
+          </Button>
+        )}
+        <Button variant="ghost" size="sm" onClick={onChange}>
+          Change
+        </Button>
       </div>
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-semibold truncate">
-          {current?.full_name ?? "Assigned stylist"}
-        </div>
-        <div className="text-[11px] text-text-muted truncate">
-          {current?.job_title ?? "Stylist"}
-        </div>
-      </div>
-      <Button variant="ghost" size="sm" onClick={onChange}>
-        Change
-      </Button>
-    </div>
+      {reverting && (
+        <RevertConfirmModal
+          job={job}
+          stylistName={current?.full_name ?? "this stylist"}
+          pending={unassign.isPending}
+          error={
+            unassign.isError
+              ? ((unassign.error as Error)?.message ??
+                "Could not revert — try again.")
+              : null
+          }
+          onCancel={() => {
+            unassign.reset();
+            setReverting(false);
+          }}
+          onConfirm={() =>
+            unassign.mutate(undefined, {
+              onSuccess: () => setReverting(false),
+            })
+          }
+        />
+      )}
+    </>
   );
 }
 
 function StylistPicker({
+  job,
   jobId,
   currentUserId,
+  defaultDue,
   onDone,
+  onAssigned,
 }: {
+  job: ServiceJob;
   jobId: string;
   currentUserId: string | null;
+  // The job's existing promised date, if any. Pre-fills the deadline field;
+  // when absent the field defaults to 48 hours from now.
+  defaultDue?: string | null;
   onDone: () => void;
+  onAssigned?: (job: ServiceJob) => void;
 }) {
   const { assign } = useJobActions(jobId);
   const { data: stylists = [], isLoading } = useAssignableStylists(true);
+  const teamOpenJobs = stylists.reduce((sum, s) => sum + s.open_jobs_count, 0);
+  // Deadline captured at the assigning level. Defaults to the job's promised
+  // date if it already has one, otherwise +48h — so every assigned job lands on
+  // the stylist's My Day with a clock, and the SLA scorecards have a target.
+  const [due, setDue] = useState<string>(() =>
+    toDatetimeLocalInput(defaultDue) || plus48hLocalInput(),
+  );
+  // Stylist awaiting confirmation — clicking a row opens the confirm modal
+  // rather than assigning straight away, so a misclick can never commit.
+  const [pending, setPending] = useState<(typeof stylists)[number] | null>(
+    null,
+  );
 
   if (isLoading) {
     return (
@@ -656,15 +1142,40 @@ function StylistPicker({
   if (stylists.length === 0) {
     return (
       <div className="glass p-3 rounded-lg text-sm text-text-muted">
-        No one in the Operations department yet. Everyone whose HR department is
-        &ldquo;Operations&rdquo; in the business you&rsquo;re currently viewing —
-        with an active login account — shows here, whatever their job title.
+        No stylists available. Junior/Senior/Head Stylists in the Operations
+        department of the business you&rsquo;re currently viewing — with an
+        active login account and not on a fixed-term contract that&rsquo;s
+        already ended — show here.
       </div>
     );
   }
 
   return (
     <div className="glass p-2 rounded-lg space-y-1">
+      {/* Deadline set at the assigning level — defaults to 48h, editable. It
+          becomes the job's due date and lands on the stylist's My Day. */}
+      <div className="px-1.5 pt-1 pb-2 border-b border-line/60 mb-1">
+        <label className="block text-[10.5px] text-text-muted uppercase tracking-wide font-semibold mb-1">
+          Due date
+        </label>
+        <TextInput
+          type="datetime-local"
+          value={due}
+          onChange={(e) => setDue(e.target.value)}
+          className="h-9 text-[13px]"
+        />
+        <p className="text-[10.5px] text-text-muted mt-1 leading-snug">
+          Defaults to 48 hours from now. This is the deadline the stylist sees
+          on their My&nbsp;Day.
+        </p>
+      </div>
+      <p className="text-[10.5px] text-text-muted px-1.5 pt-0.5 pb-1 leading-snug">
+        Load = each stylist&rsquo;s share of the{" "}
+        {teamOpenJobs > 0 ? `${teamOpenJobs} ` : ""}open job
+        {teamOpenJobs === 1 ? "" : "s"} across the bench. Green is safe to
+        assign; light red is over {BURNOUT_THRESHOLD_PCT}% — spread the work to
+        avoid burnout.
+      </p>
       {stylists.map((s) => {
         const isCurrent = s.user_id === currentUserId;
         const disabled = s.on_leave_today || assign.isPending;
@@ -673,11 +1184,7 @@ function StylistPicker({
             key={s.user_id}
             type="button"
             disabled={disabled}
-            onClick={() => {
-              assign.mutate(s.user_id, {
-                onSuccess: () => onDone(),
-              });
-            }}
+            onClick={() => setPending(s)}
             className={
               "w-full flex items-center gap-3 px-2.5 py-2 rounded-md text-left transition-colors " +
               (disabled
@@ -707,16 +1214,49 @@ function StylistPicker({
                 {s.on_leave_today ? " · on leave today" : ""}
               </div>
             </div>
+            <WorkloadPill
+              openJobs={s.open_jobs_count}
+              teamOpenJobs={teamOpenJobs}
+            />
             {!isCurrent && !disabled && (
               <UserPlus className="w-4 h-4 text-text-muted shrink-0" />
             )}
           </button>
         );
       })}
-      {assign.isError && (
-        <p className="text-xs text-danger px-2 pt-1">
-          {(assign.error as Error)?.message ?? "Could not assign — try again."}
-        </p>
+      {pending && (
+        <AssignConfirmModal
+          job={job}
+          stylistName={pending.full_name}
+          dueLabel={due ? formatDateTime(localInputToIso(due) ?? due) : null}
+          pending={assign.isPending}
+          error={
+            assign.isError
+              ? ((assign.error as Error)?.message ??
+                "Could not assign — try again.")
+              : null
+          }
+          onCancel={() => {
+            assign.reset();
+            setPending(null);
+          }}
+          onConfirm={(acknowledgeUnlinked) =>
+            assign.mutate(
+              {
+                userId: pending.user_id,
+                expected_completion_at: localInputToIso(due),
+                acknowledge_unlinked: acknowledgeUnlinked,
+              },
+              {
+                onSuccess: (assignedJob) => {
+                  onAssigned?.(assignedJob);
+                  setPending(null);
+                  onDone();
+                },
+              },
+            )
+          }
+        />
       )}
       {currentUserId && (
         <div className="pt-1 flex justify-end">
@@ -729,7 +1269,281 @@ function StylistPicker({
   );
 }
 
+// ── Style brief (customer's references) — condensed read view ──
+//
+// Mirrors JobWorkPanel's brief rendering exactly (image/audio show as a
+// labelled chip, not a thumbnail — there's no doc-id→URL resolution wired
+// up anywhere in this module yet, so a real gallery is future work, not
+// this one). Renders nothing at all when there's no brief on file.
+function ReferenceLine({ r }: { r: JobReference }) {
+  return (
+    <div className="flex items-start gap-2 text-sm">
+      {r.ref_type === "creative_freedom" && (
+        <Pill tone="accent">🎨 Creative freedom</Pill>
+      )}
+      {r.ref_type === "video_link" && r.url && (
+        <a
+          href={r.url}
+          target="_blank"
+          rel="noreferrer"
+          className="text-info hover:underline break-all"
+        >
+          {r.url}
+        </a>
+      )}
+      {(r.ref_type === "text" || r.body) && r.body && (
+        <span className="text-text-primary">&ldquo;{r.body}&rdquo;</span>
+      )}
+      {(r.ref_type === "image" || r.ref_type === "audio") && (
+        <span className="text-text-muted">
+          {r.ref_type === "image" ? "📷 photo" : "🎙 voice note"}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function JobReferencesBrief({ jobId }: { jobId: string }) {
+  const { data: refs = [] } = useJobReferences(jobId);
+  const brief = refs.filter((r) => r.is_locked);
+  const notes = refs.filter((r) => !r.is_locked);
+  if (refs.length === 0) return null;
+  return (
+    <div className="space-y-3">
+      {brief.length > 0 && (
+        <div className="rounded-lg border border-accent/20 bg-accent/5 p-3 space-y-2">
+          <div className="text-xs text-accent-glow font-semibold">
+            Style brief — what the customer asked for
+          </div>
+          {brief.map((r) => (
+            <ReferenceLine key={r.reference_id} r={r} />
+          ))}
+        </div>
+      )}
+      {notes.length > 0 && (
+        <div className="rounded-lg border border-line p-3 space-y-2">
+          <div className="text-xs text-text-muted font-semibold uppercase tracking-wide">
+            Stylist / QC notes
+          </div>
+          {notes.map((r) => (
+            <ReferenceLine key={r.reference_id} r={r} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Cost breakdown — materials + chemicals + labour ─────────
+function CostBreakdown({ job, jobId }: { job: ServiceJob; jobId: string }) {
+  const { data: materialsUsed = [] } = useJobMaterials(jobId);
+  const materials = parseFloat(job.materials_cost_ngn || "0");
+  const chemicals = parseFloat(job.chemicals_cost_ngn || "0");
+  const labour = parseFloat(job.actual_cost_ngn || job.agreed_cost_ngn || "0");
+  const total = materials + chemicals + labour;
+  if (total <= 0 && materialsUsed.length === 0) return null;
+  return (
+    <div className="glass rounded-lg p-3 space-y-2">
+      <p className="text-[11px] text-text-muted uppercase tracking-wide font-semibold">
+        Materials &amp; cost
+      </p>
+      {materialsUsed.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {materialsUsed.map((m) => (
+            <Pill key={m.material_id} tone={m.kind === "chemical" ? "info" : "accent"}>
+              {m.chemical_name ?? "item"}
+              {m.quantity ? ` ×${m.quantity}` : ""}
+            </Pill>
+          ))}
+        </div>
+      )}
+      {total > 0 && (
+        <>
+          <div className="grid grid-cols-2 gap-y-1 text-sm">
+            {materials > 0 && (
+              <>
+                <span className="text-text-muted">Materials</span>
+                <MoneyText ngn={materials} />
+              </>
+            )}
+            {chemicals > 0 && (
+              <>
+                <span className="text-text-muted">Chemicals</span>
+                <MoneyText ngn={chemicals} />
+              </>
+            )}
+            {labour > 0 && (
+              <>
+                <span className="text-text-muted">Labour</span>
+                <MoneyText ngn={labour} />
+              </>
+            )}
+            <span className="font-semibold border-t border-line pt-1 mt-1">
+              Total
+            </span>
+            <span className="font-semibold border-t border-line pt-1 mt-1">
+              <MoneyText ngn={total} />
+            </span>
+          </div>
+          {materials > 0 && (
+            <p className="text-[10px] text-text-muted">
+              Materials cost is best-effort — priced from stock at the time
+              it was deducted, where deducted from tracked stock.
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ── Wig custody mini-timeline ────────────────────────────────
+function WigCustodyMini({ jobId }: { jobId: string }) {
+  const { data: entries = [] } = useJobCustody(jobId);
+  const { data: accountability } = useAccountability();
+  if (entries.length === 0) return null;
+  const outEntry = entries.find((e) => e.event === "out");
+  const hasReturn = entries.some((e) =>
+    ["return", "dispatched", "write_off"].includes(e.event),
+  );
+  const daysOut = outEntry
+    ? Math.floor(
+        (Date.now() - new Date(outEntry.created_at).getTime()) / 86400000,
+      )
+    : 0;
+  const overdue =
+    !hasReturn &&
+    outEntry &&
+    accountability &&
+    daysOut > accountability.threshold_days;
+  const EVENT_LABEL: Record<string, string> = {
+    out: "Out with stylist",
+    return: "Returned",
+    dispatched: "Dispatched",
+    write_off: "Written off",
+  };
+  return (
+    <div className="glass rounded-lg p-3 space-y-1.5">
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] text-text-muted uppercase tracking-wide font-semibold">
+          Wig custody
+        </p>
+        {overdue && (
+          <Pill tone="danger">
+            <AlertTriangle className="w-3 h-3 inline mr-1" />
+            {daysOut}d overdue
+          </Pill>
+        )}
+      </div>
+      <div className="space-y-1 text-sm">
+        {entries.map((e) => (
+          <div key={e.entry_id} className="flex items-center gap-2">
+            <Clock className="w-3 h-3 text-text-muted shrink-0" />
+            <span>{EVENT_LABEL[e.event] ?? e.event}</span>
+            <span className="text-text-muted text-[11px] ml-auto">
+              {formatDateTime(e.created_at)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Activity timeline tab ────────────────────────────────────
+function ActivityTab({ jobId }: { jobId: string }) {
+  const { data: entries = [], isLoading } = useJobActivity(jobId);
+  if (isLoading)
+    return <Skeleton className="h-24" />;
+  if (entries.length === 0)
+    return (
+      <p className="text-sm text-text-muted py-4">
+        No activity recorded for this job yet.
+      </p>
+    );
+  return (
+    <div className="space-y-3">
+      {entries.map((e) => (
+        <div key={e.log_id} className="flex items-start gap-3 text-sm">
+          <div className="w-2 h-2 rounded-full bg-accent mt-1.5 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="font-medium">
+              {ACTIVITY_LABELS[e.action] ?? e.action}
+            </div>
+            <div className="text-[11px] text-text-muted">
+              {e.user_name} · {formatDateTime(e.occurred_at)}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── AI job summary — one click, never blocks on an AI vendor being
+// configured (server falls back to a deterministic template). ───
+function AiSummaryBox({ jobId }: { jobId: string }) {
+  const { mutate, data, isPending, isError } = useSummarizeJob(jobId);
+  return (
+    <div className="rounded-lg border border-accent/20 bg-accent/5 p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-xs text-accent-glow font-semibold flex items-center gap-1.5">
+          <Sparkles className="w-3.5 h-3.5" /> AI summary
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={isPending}
+          onClick={() => mutate()}
+        >
+          {isPending ? "Thinking…" : data ? "Refresh" : "Summarize"}
+        </Button>
+      </div>
+      {data && <p className="text-sm text-text-primary">{data.summary}</p>}
+      {isError && (
+        <p className="text-xs text-danger">Couldn't generate a summary — try again.</p>
+      )}
+    </div>
+  );
+}
+
+// Compares a single job's quality rating to the assigned stylist's own
+// average — "is this better or worse than their usual work?"
+function RatingComparisonBadge({
+  stylistId,
+  jobRating,
+}: {
+  stylistId: string | null;
+  jobRating: number | null;
+}) {
+  const { data } = useStylistScorecard(stylistId);
+  if (!jobRating || !data?.avg_quality_rating) return null;
+  const avg = parseFloat(data.avg_quality_rating);
+  const diff = jobRating - avg;
+  if (Math.abs(diff) < 0.5) {
+    return <p className="text-[11px] text-text-muted">In line with their average ({avg})</p>;
+  }
+  return (
+    <p className={`text-[11px] ${diff > 0 ? "text-success" : "text-warn"}`}>
+      {diff > 0 ? "Above" : "Below"} their average of {avg}
+    </p>
+  );
+}
+
 // ── Job detail drawer ──────────────────────────────────────
+
+// Suggested filename when a stylist downloads the style photo from the
+// lightbox — keeps the real extension from the URL so the file opens
+// correctly once saved.
+function photoDownloadName(job: ServiceJob): string {
+  const base =
+    [job.job_number, job.styled_product_name].filter(Boolean).join(" - ") ||
+    "style-photo";
+  const ext = job.styled_product_image_url?.match(
+    /\.(jpe?g|png|webp|gif|avif)(?=$|\?)/i,
+  )?.[1];
+  return ext ? `${base}.${ext.toLowerCase()}` : base;
+}
 
 function JobDetailDrawer({
   jobId,
@@ -741,12 +1555,14 @@ function JobDetailDrawer({
   onClose: () => void;
 }) {
   const navigate = useNavigate();
-  const { data: job, isLoading } = useJob(jobId);
+  const { data: job, isLoading, error } = useJob(jobId);
   const actions = useJobActions(jobId);
-  const [tab, setTab] = useState<"details" | "chemicals" | "outcome">(
-    "details",
-  );
+  const lifecycle = useStudioLifecycle(jobId);
+  const [tab, setTab] = useState<
+    "details" | "chemicals" | "outcome" | "activity"
+  >("details");
   const [costInput, setCostInput] = useState("");
+  const [photoOpen, setPhotoOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -755,6 +1571,47 @@ function JobDetailDrawer({
           {[...Array(5)].map((_, i) => (
             <Skeleton key={i} className="h-8" />
           ))}
+        </div>
+      </Drawer>
+    );
+  }
+
+  // Reassignment banner — a stylist who is no longer this job's owner opens
+  // an old notification link and lands here. Backend returns a rich 403 with
+  // the current assignee's name (see service.getJob NO_LONGER_ASSIGNED); we
+  // render it as an explanation + a link back to their own queue rather than
+  // a bare error state.
+  const reassigned = extractReassigned(error);
+  if (reassigned) {
+    return (
+      <Drawer open onClose={onClose} title="Job reassigned">
+        <div className="space-y-4 p-1">
+          <div className="rounded-[14px] border border-warn/40 bg-warn/5 p-4 space-y-2">
+            <p className="text-sm">
+              You no longer have access to this job — it has been reassigned
+              {reassigned.to_name ? (
+                <>
+                  {" "}
+                  to <strong>{reassigned.to_name}</strong>
+                </>
+              ) : null}
+              .
+            </p>
+            {reassigned.job_number && (
+              <p className="text-xs text-text-muted font-mono">
+                Job #{reassigned.job_number}
+              </p>
+            )}
+          </div>
+          <Button
+            variant="primary"
+            onClick={() => {
+              onClose();
+              navigate("/service-jobs?tab=my");
+            }}
+          >
+            Back to my jobs
+          </Button>
         </div>
       </Drawer>
     );
@@ -773,7 +1630,15 @@ function JobDetailDrawer({
     !job.intercompany_transaction_id;
 
   return (
-    <Drawer open onClose={onClose} title={job.job_number}>
+    <Drawer
+      open
+      // Both the Drawer and the photo Lightbox listen for Esc on document —
+      // while the lightbox is on top, Esc should close only the lightbox.
+      onClose={() => {
+        if (!photoOpen) onClose();
+      }}
+      title={job.job_number}
+    >
       <div className="space-y-4">
         {/* Header */}
         <div className="flex items-center gap-3 flex-wrap">
@@ -802,31 +1667,120 @@ function JobDetailDrawer({
           )}
         </div>
 
+        {/* Identity strip — always visible regardless of tab. The photo is
+            what the stylist actually works from, so it gets real estate:
+            224px (4× the old thumbnail), click for the full-screen lightbox
+            with download. Stacks above the text until the drawer widens at
+            lg; the no-photo placeholder keeps the old compact row. */}
+        {(job.styled_product_name ||
+          job.base_product_name ||
+          job.customer_name) && (
+          <div
+            className={
+              job.styled_product_image_url
+                ? "glass rounded-lg p-3 flex flex-col lg:flex-row lg:items-center gap-3"
+                : "glass rounded-lg p-3 flex items-center gap-3"
+            }
+          >
+            {job.styled_product_image_url ? (
+              <button
+                type="button"
+                onClick={() => setPhotoOpen(true)}
+                aria-label="View style photo full screen"
+                title="View full screen"
+                className="group relative w-56 h-56 max-w-full rounded-lg bg-accent/[0.08] overflow-hidden shrink-0 cursor-zoom-in"
+              >
+                <img
+                  src={job.styled_product_image_url}
+                  alt={job.styled_product_name ?? "Styled product"}
+                  className="w-full h-full object-cover"
+                />
+                <span className="absolute inset-0 grid place-items-center bg-black/0 group-hover:bg-black/30 group-focus-visible:bg-black/30 transition-colors">
+                  <Maximize2 className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity" />
+                </span>
+              </button>
+            ) : (
+              <div className="w-14 h-14 rounded-lg bg-accent/[0.08] grid place-items-center overflow-hidden shrink-0">
+                <Package className="w-5 h-5 text-text-muted" />
+              </div>
+            )}
+            <div className="flex-1 min-w-0 text-sm">
+              <div className="font-semibold truncate">
+                {job.styled_product_name ??
+                  job.base_product_name ??
+                  "Custom job"}
+              </div>
+              {job.styled_product_name && job.base_product_name && (
+                <div className="text-[11px] text-text-muted truncate">
+                  Base: {job.base_product_name}
+                </div>
+              )}
+              <div className="text-[11px] text-text-muted truncate">
+                {job.customer_name ?? "Walk-in / no customer on file"}
+                {job.order_placed_at &&
+                  ` · ordered ${formatDateTime(job.order_placed_at)}`}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Tab bar */}
         <div className="flex border-b border-line gap-4">
-          {(["details", "chemicals", "outcome"] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
-                tab === t
-                  ? "border-accent text-text-primary"
-                  : "border-transparent text-text-muted hover:text-text-primary"
-              }`}
-              onClick={() => setTab(t)}
-            >
-              {t === "details"
-                ? "Details"
-                : t === "chemicals"
-                  ? "Chemicals"
-                  : "Outcome"}
-            </button>
-          ))}
+          {(["details", "chemicals", "outcome", "activity"] as const).map(
+            (t) => (
+              <button
+                key={t}
+                type="button"
+                className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
+                  tab === t
+                    ? "border-accent text-text-primary"
+                    : "border-transparent text-text-muted hover:text-text-primary"
+                }`}
+                onClick={() => setTab(t)}
+              >
+                {t === "details"
+                  ? "Details"
+                  : t === "chemicals"
+                    ? "Chemicals"
+                    : t === "outcome"
+                      ? "Outcome"
+                      : "Activity"}
+              </button>
+            ),
+          )}
         </div>
 
         {/* Details tab */}
         {tab === "details" && (
           <div className="space-y-4">
+            <AiSummaryBox jobId={jobId} />
+
+            {/* Ratings at a glance — open the whole time the job is live, not
+                just once QC returns it, so a delay is visible immediately
+                (a low/sad rating here is a live signal, not a retrospective
+                one). Editing still happens on the Outcome tab; this is the
+                read view. */}
+            {(job.quality_rating || job.customer_rating) && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="glass rounded-lg p-3 space-y-1">
+                  <p className="text-[11px] text-text-muted uppercase tracking-wide font-semibold">
+                    Quality
+                  </p>
+                  <StarRating value={job.quality_rating} />
+                  <RatingComparisonBadge
+                    stylistId={job.assigned_staff_user_id}
+                    jobRating={job.quality_rating}
+                  />
+                </div>
+                <div className="glass rounded-lg p-3 space-y-1">
+                  <p className="text-[11px] text-text-muted uppercase tracking-wide font-semibold">
+                    Customer happiness
+                  </p>
+                  <FaceDisplay value={job.customer_rating} />
+                </div>
+              </div>
+            )}
+            <JobReferencesBrief jobId={jobId} />
             <div className="grid grid-cols-2 gap-3 text-sm">
               {job.hair_description && (
                 <>
@@ -847,6 +1801,14 @@ function JobDetailDrawer({
                   <span className="text-text-muted">Due</span>
                   <span className="font-mono">
                     {formatDateTime(job.expected_completion_at)}
+                  </span>
+                </>
+              )}
+              {job.tag_code && (
+                <>
+                  <span className="text-text-muted">Tag code</span>
+                  <span className="font-mono tracking-widest">
+                    {job.tag_code}
                   </span>
                 </>
               )}
@@ -890,6 +1852,9 @@ function JobDetailDrawer({
                 countdown all wait on assigned_staff_user_id being set. */}
             <AssignmentPanel job={job} jobId={jobId} />
 
+            <CostBreakdown job={job} jobId={jobId} />
+            <WigCustodyMini jobId={jobId} />
+
             {job.recipe_id && (
               <div>
                 <p className="text-xs text-text-muted mb-1.5 uppercase tracking-wide font-semibold">
@@ -906,8 +1871,42 @@ function JobDetailDrawer({
             {(() => {
               // 'assigned' has its own picker (AssignmentPanel) — hide the raw
               // advance button so the operator can't skip picking a stylist.
+              // 'qc_passed'/'rework' need a quality rating + notes, which a
+              // bare button can't capture — that's the QC Queue tab's job,
+              // and it already does it correctly (life.qc.mutate with a
+              // result + form). Every OTHER Stylist Studio lifecycle status
+              // needs its own dedicated endpoint (custody/time-session side
+              // effects the generic /advance route knows nothing about);
+              // only 'cancelled'/'completed' are safe to send there directly.
+              // Once the wig is returned for QC, the job advances through
+              // the QC Queue tab (pass → auto-completed, fail → rework).
+              const needsQcForm = job.status === "returned_for_qc";
               const buttons = nextStates.filter((s) => s !== "assigned");
-              if (buttons.length === 0) return null;
+              const anyPending =
+                actions.advance.isPending ||
+                lifecycle.start.isPending ||
+                lifecycle.pause.isPending ||
+                lifecycle.resume.isPending ||
+                lifecycle.returnForQc.isPending;
+              const runAdvance = (s: JobStatus) => {
+                if (s === "in_progress") {
+                  if (job.status === "on_hold") lifecycle.resume.mutate();
+                  else lifecycle.start.mutate();
+                } else if (s === "on_hold") {
+                  lifecycle.pause.mutate();
+                } else if (s === "returned_for_qc") {
+                  lifecycle.returnForQc.mutate();
+                } else {
+                  actions.advance.mutate({
+                    status: s,
+                    actual_cost_ngn:
+                      s === "completed" && costInput
+                        ? parseFloat(costInput)
+                        : undefined,
+                  });
+                }
+              };
+              if (buttons.length === 0 && !needsQcForm) return null;
               return (
                 <div className="border-t border-line pt-4 space-y-2">
                   <p className="text-xs text-text-muted uppercase tracking-wide font-semibold">
@@ -930,22 +1929,20 @@ function JobDetailDrawer({
                         <Button
                           key={s}
                           variant="secondary"
-                          disabled={actions.advance.isPending}
-                          onClick={() =>
-                            actions.advance.mutate({
-                              status: s,
-                              actual_cost_ngn:
-                                s === "completed" && costInput
-                                  ? parseFloat(costInput)
-                                  : undefined,
-                            })
-                          }
+                          disabled={anyPending}
+                          onClick={() => runAdvance(s)}
                         >
                           → {m.label}
                         </Button>
                       );
                     })}
                   </div>
+                  {needsQcForm && (
+                    <p className="text-xs text-text-muted">
+                      Pass or send to rework from the QC Queue tab. A pass
+                      completes the job and hands the wig to Logistics.
+                    </p>
+                  )}
                 </div>
               );
             })()}
@@ -954,6 +1951,15 @@ function JobDetailDrawer({
 
         {tab === "chemicals" && <ChemicalsTab jobId={jobId} />}
         {tab === "outcome" && <OutcomeTab job={job} jobId={jobId} />}
+        {tab === "activity" && <ActivityTab jobId={jobId} />}
+
+        {photoOpen && job.styled_product_image_url && (
+          <Lightbox
+            url={job.styled_product_image_url}
+            name={photoDownloadName(job)}
+            onClose={() => setPhotoOpen(false)}
+          />
+        )}
       </div>
     </Drawer>
   );
@@ -977,10 +1983,19 @@ function CreateJobDrawer({
     scheduled_for: "",
     expected_completion_at: "",
     agreed_cost_ngn: "",
+    brief_note: "",
+    brief_link: "",
   });
 
   const handleCreate = () => {
     if (!form.service_type_id) return;
+    const brief =
+      form.brief_note.trim() || form.brief_link.trim()
+        ? {
+            body: form.brief_note.trim() || undefined,
+            url: form.brief_link.trim() || undefined,
+          }
+        : undefined;
     create.mutate(
       {
         service_type_id: form.service_type_id,
@@ -991,6 +2006,7 @@ function CreateJobDrawer({
         agreed_cost_ngn: form.agreed_cost_ngn
           ? parseFloat(form.agreed_cost_ngn)
           : undefined,
+        brief,
       },
       { onSuccess: onClose },
     );
@@ -1021,6 +2037,35 @@ function CreateJobDrawer({
               setForm((f) => ({ ...f, hair_description: e.target.value }))
             } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
           />
+        </div>
+
+        {/* Customer's style brief — captured once here and locked. The
+            stylist opens the job already knowing what was asked for; they
+            add their own working notes on top, but can't overwrite this. */}
+        <div className="rounded-lg border border-accent/20 bg-accent/5 p-3 space-y-2">
+          <label className="label text-accent-glow">
+            Style brief — what the customer asked for
+          </label>
+          <textarea
+            className="input w-full h-20 text-sm"
+            placeholder="Describe the look they want…"
+            value={form.brief_note}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, brief_note: e.target.value }))
+            }
+          />
+          <input
+            className="input w-full text-sm"
+            placeholder="Inspiration link (YouTube / Instagram) — optional"
+            value={form.brief_link}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, brief_link: e.target.value }))
+            } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+          />
+          <p className="text-[11px] text-text-muted">
+            Locked once created — stylists and QC add notes on top, they
+            can&rsquo;t change this.
+          </p>
         </div>
 
         {recipes.length > 0 && (
@@ -1103,6 +2148,7 @@ function CreateJobDrawer({
 export function JobBoard({ canCreate }: { canCreate: boolean }) {
   const { data: serviceTypes = [] } = useServiceTypes(true);
   const [statusFilter, setStatusFilter] = useState<string>("");
+  const [tagQuery, setTagQuery] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   // The open job drawer is URL-driven (?job=<id>) so deep links from the
   // Order page + notifications land directly on the job, and closing it
@@ -1122,7 +2168,18 @@ export function JobBoard({ canCreate }: { canCreate: boolean }) {
       ? { status: statusFilter, page_size: 200 }
       : { page_size: 200 },
   );
-  const jobs = data?.data ?? [];
+  const allJobs = data?.data ?? [];
+  const tagQueryTrimmed = tagQuery.trim();
+  const tagQueryLower = tagQueryTrimmed.toLowerCase();
+  const jobs = tagQueryTrimmed
+    ? allJobs.filter(
+        (j) =>
+          j.tag_code?.includes(tagQueryTrimmed) ||
+          j.customer_name?.toLowerCase().includes(tagQueryLower) ||
+          j.sales_order_number?.toLowerCase().includes(tagQueryLower) ||
+          j.styled_product_name?.toLowerCase().includes(tagQueryLower),
+      )
+    : allJobs;
 
   const pocketingCount = jobs.filter(
     (j) =>
@@ -1174,9 +2231,19 @@ export function JobBoard({ canCreate }: { canCreate: boolean }) {
             </span>
           )}
         </div>
-        {canCreate && (
-          <Button onClick={() => setShowCreate(true)}>+ New Job</Button>
-        )}
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={tagQuery}
+            onChange={(e) => setTagQuery(e.target.value)}
+            placeholder="Tag, customer, order, product…"
+            className="input w-44 text-sm"
+            aria-label="Search by tag code, customer, or order number"
+          />
+          {canCreate && (
+            <Button onClick={() => setShowCreate(true)}>+ New Job</Button>
+          )}
+        </div>
       </div>
 
       {/* Board */}
@@ -1185,9 +2252,11 @@ export function JobBoard({ canCreate }: { canCreate: boolean }) {
           icon={<span className="text-3xl">📋</span>}
           title="No service jobs"
           message={
-            statusFilter
-              ? `No jobs with status "${statusFilter}"`
-              : "Create your first job above"
+            tagQueryTrimmed
+              ? `No job matches "${tagQueryTrimmed}"`
+              : statusFilter
+                ? `No jobs with status "${statusFilter}"`
+                : "Create your first job above"
           }
           action={
             canCreate ? (

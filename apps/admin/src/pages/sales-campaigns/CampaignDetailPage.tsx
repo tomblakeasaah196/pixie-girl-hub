@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   Copy,
+  CopyPlus,
   Gift,
   Layout,
   Pencil,
@@ -41,6 +42,7 @@ import {
   useGrantVip,
   usePraxisAnalyticsQna,
   useShareKit,
+  useDuplicateCampaign,
   useUpdateGiftStatus,
   useVipGrants,
 } from "@/lib/campaigns";
@@ -81,12 +83,25 @@ const TONE_FOR: Record<CampaignStatus, Tone> = {
 
 export function CampaignDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const campaignQ = useCampaign(id);
   const metricsQ = useCampaignMetrics(id);
+  const duplicate = useDuplicateCampaign();
   const { can } = useAuthStore();
   const [tab, setTab] = useState<
     "live" | "signups" | "share" | "vip" | "praxis"
   >("live");
+
+  async function clone() {
+    if (!id) return;
+    try {
+      const copy = await duplicate.mutateAsync({ id });
+      // Land the operator straight in the builder of the fresh draft copy.
+      navigate(`/sales-campaigns/${copy.campaign_id}/edit`);
+    } catch (e) {
+      toastReport("Sales Campaigns → Detail", "Clone campaign", e);
+    }
+  }
   useBreadcrumbs([
     { label: "Sales Campaigns", href: "/sales-campaigns" },
     { label: campaignQ.data?.name || "Loading…" },
@@ -119,7 +134,7 @@ export function CampaignDetailPage() {
             filter: "blur(36px)",
           }}
         />
-        <div className="relative flex items-center gap-3 flex-wrap">
+        <div className="relative flex flex-wrap items-center gap-2">
           <Link
             to="/sales-campaigns"
             className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-text-muted hover:text-text-primary"
@@ -135,19 +150,45 @@ export function CampaignDetailPage() {
               {Math.round(campaign.ai_assist_pct * 100)}% AI
             </Pill>
           )}
-          <Link
-            to={`/sales-campaigns/${campaign.campaign_id}/edit`}
-            className="ml-auto"
-          >
-            <Button variant="ghost" icon={<Pencil className="w-4 h-4" />}>
-              Open builder
-            </Button>
-          </Link>
-          <Link to={`/landing-studio?campaign=${campaign.campaign_id}`}>
-            <Button variant="ghost" icon={<Layout className="w-4 h-4" />}>
-              Landing Studio
-            </Button>
-          </Link>
+          {/* Actions wrap to their own full-width row on mobile, right-aligned
+              on desktop — so nothing spills off a phone screen. */}
+          <div className="w-full md:w-auto md:ml-auto flex flex-wrap gap-2">
+            {can("sales_campaigns", "create") && (
+              <Button
+                variant="ghost"
+                icon={<CopyPlus className="w-4 h-4" />}
+                onClick={clone}
+                disabled={duplicate.isPending}
+                className="flex-1 md:flex-none"
+              >
+                {duplicate.isPending ? "Cloning…" : "Clone"}
+              </Button>
+            )}
+            <Link
+              to={`/sales-campaigns/${campaign.campaign_id}/edit`}
+              className="flex-1 md:flex-none"
+            >
+              <Button
+                variant="ghost"
+                icon={<Pencil className="w-4 h-4" />}
+                className="w-full md:w-auto"
+              >
+                Open builder
+              </Button>
+            </Link>
+            <Link
+              to={`/landing-studio?campaign=${campaign.campaign_id}`}
+              className="flex-1 md:flex-none"
+            >
+              <Button
+                variant="ghost"
+                icon={<Layout className="w-4 h-4" />}
+                className="w-full md:w-auto"
+              >
+                Landing Studio
+              </Button>
+            </Link>
+          </div>
         </div>
         <div className="relative mt-3">
           <h1 className="font-display text-[28px] md:text-[34px] leading-tight">
@@ -186,9 +227,9 @@ export function CampaignDetailPage() {
       </div>
 
       <Card className="p-2">
-        <div className="flex flex-wrap gap-1">
+        <div className="flex gap-1 overflow-x-auto">
           {[
-            { k: "live", l: "Live" },
+            { k: "live", l: "Overview" },
             { k: "signups", l: "Signups" },
             { k: "share", l: "Share kit" },
             { k: "vip", l: "VIP & gifts" },
@@ -198,7 +239,7 @@ export function CampaignDetailPage() {
               key={k}
               onClick={() => setTab(k as typeof tab)}
               className={cn(
-                "px-3 py-2 rounded-[11px] text-[12.5px] font-semibold",
+                "shrink-0 whitespace-nowrap px-3 py-2 rounded-[11px] text-[12.5px] font-semibold",
                 tab === k
                   ? "bg-accent-deep text-[#F4E9D9]"
                   : "text-text-muted hover:bg-text-primary/[0.06] hover:text-text-primary",
@@ -223,17 +264,21 @@ function LivePanel({ campaign, aov }: { campaign: Campaign; aov: number }) {
   const start = new Date(campaign.starts_at);
   const end = new Date(campaign.ends_at);
   const now = Date.now();
+  const isOver =
+    campaign.status === "ended" ||
+    campaign.status === "archived" ||
+    end.getTime() <= now;
   const remaining = Math.max(0, end.getTime() - now);
   const days = Math.floor(remaining / (24 * 3600 * 1000));
   const hours = Math.floor((remaining % (24 * 3600 * 1000)) / (3600 * 1000));
   const mins = Math.floor((remaining % (3600 * 1000)) / 60000);
 
   return (
-    <Card className="p-5 space-y-5">
+    <Card className="p-4 md:p-5 space-y-5">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <div>
-          <div className="micro">AOV</div>
-          <div className="font-display text-[34px] tabular-nums mt-1">
+          <div className="micro">Average order value</div>
+          <div className="font-display text-[28px] md:text-[34px] tabular-nums mt-1">
             <MoneyText ngn={aov} />
           </div>
           <div className="text-[12px] text-text-faint mt-1">
@@ -244,13 +289,19 @@ function LivePanel({ campaign, aov }: { campaign: Campaign; aov: number }) {
           </div>
         </div>
         <div>
-          <div className="micro">Time remaining</div>
-          <div className="font-display text-[34px] tabular-nums font-mono mt-1">
-            {String(days).padStart(2, "0")} : {String(hours).padStart(2, "0")} :{" "}
-            {String(mins).padStart(2, "0")}
-          </div>
+          <div className="micro">{isOver ? "Sale window" : "Time remaining"}</div>
+          {isOver ? (
+            <div className="font-display text-[28px] md:text-[34px] mt-1">
+              Ended
+            </div>
+          ) : (
+            <div className="font-display text-[28px] md:text-[34px] tabular-nums font-mono mt-1">
+              {String(days).padStart(2, "0")} :{" "}
+              {String(hours).padStart(2, "0")} : {String(mins).padStart(2, "0")}
+            </div>
+          )}
           <div className="text-[12px] text-text-faint mt-1">
-            Starts {formatDateTime(start)} → Ends {formatDateTime(end)}
+            {formatDateTime(start)} → {formatDateTime(end)}
           </div>
         </div>
       </div>
@@ -274,27 +325,29 @@ function SignupsPanel({ campaignId }: { campaignId: string }) {
       </Card>
     );
   return (
-    <Card className="p-4">
+    <Card className="p-3 md:p-4">
       <div className="space-y-1.5">
         {data.map((s: Record<string, unknown>, i) => (
           <div
             key={String(s.signup_id || i)}
-            className="grid grid-cols-12 gap-3 items-center p-2.5 rounded-[10px] bg-text-primary/[0.04]"
+            className="flex flex-col gap-1 sm:grid sm:grid-cols-12 sm:gap-3 sm:items-center p-3 rounded-[10px] bg-text-primary/[0.04]"
           >
-            <span className="col-span-4 text-[13px] truncate">
+            <span className="sm:col-span-4 text-[13px] font-medium truncate">
               {String(s.email || "—")}
             </span>
-            <span className="col-span-3 text-[12px] text-text-muted">
+            <span className="sm:col-span-3 text-[12px] text-text-muted">
               {String(s.phone || "—")}
             </span>
-            <span className="col-span-2 text-[11px] font-semibold uppercase tracking-wide text-accent-glow">
-              {String(s.notify_via || "email")}
-            </span>
-            <span className="col-span-3 text-[11px] text-text-faint font-mono">
-              {s.signed_up_at
-                ? formatDateTime(String(s.signed_up_at))
-                : ""}
-            </span>
+            <div className="flex items-center justify-between gap-2 sm:contents">
+              <span className="sm:col-span-2 text-[11px] font-semibold uppercase tracking-wide text-accent-glow">
+                {String(s.notify_via || "email")}
+              </span>
+              <span className="sm:col-span-3 text-[11px] text-text-faint font-mono sm:text-left text-right">
+                {s.signed_up_at
+                  ? formatDateTime(String(s.signed_up_at))
+                  : ""}
+              </span>
+            </div>
           </div>
         ))}
       </div>
@@ -437,46 +490,51 @@ function VipPanel({ campaign }: { campaign: Campaign }) {
         {grants.map((g) => (
           <div
             key={g.grant_id}
-            className="grid grid-cols-12 gap-3 items-center p-3 rounded-[12px] bg-text-primary/[0.04] border border-line"
+            className="flex flex-col gap-2 sm:grid sm:grid-cols-12 sm:gap-3 sm:items-center p-3 rounded-[12px] bg-text-primary/[0.04] border border-line"
           >
-            <span className="col-span-1 font-display text-[16px] tabular-nums text-center">
-              #{g.rank}
-            </span>
-            <div className="col-span-3 min-w-0">
-              <div className="font-medium text-[13px] truncate">
-                {g.first_name} {g.last_name}
+            <div className="flex items-center gap-2 min-w-0 sm:col-span-4">
+              <span className="font-display text-[16px] tabular-nums shrink-0">
+                #{g.rank}
+              </span>
+              <div className="min-w-0">
+                <div className="font-medium text-[13px] truncate">
+                  {g.first_name} {g.last_name}
+                </div>
+                <div className="text-text-faint text-[11px] truncate">
+                  {g.email || g.instagram_handle}
+                </div>
               </div>
-              <div className="text-text-faint text-[11px] truncate">
-                {g.email || g.instagram_handle}
+              <div className="ml-auto text-[12.5px] tabular-nums sm:hidden">
+                <MoneyText ngn={Number(g.total_spend_ngn || 0)} />
               </div>
             </div>
-            <div className="col-span-2 text-[12.5px] tabular-nums">
+            <div className="hidden sm:block sm:col-span-2 text-[12.5px] tabular-nums">
               <MoneyText ngn={Number(g.total_spend_ngn || 0)} />
             </div>
-            <div className="col-span-3 text-[12px] text-text-muted truncate">
+            <div className="sm:col-span-3 text-[12px] text-text-muted line-clamp-2 sm:truncate">
               {g.praxis_gift_suggestion}
             </div>
-            <div className="col-span-2 flex gap-1 justify-end">
-              <Pill
-                tone={
-                  g.gift_status === "delivered"
-                    ? "success"
-                    : g.gift_status === "dispatched"
-                      ? "info"
-                      : g.gift_status === "approved"
-                        ? "warn"
-                        : "neutral"
-                }
-              >
-                {g.gift_status}
-              </Pill>
-              {g.promoted_to_platinum && (
-                <Pill tone="accent" dot={false}>
-                  Platinum
+            <div className="flex items-center justify-between gap-2 sm:col-span-3 sm:justify-end">
+              <div className="flex gap-1">
+                <Pill
+                  tone={
+                    g.gift_status === "delivered"
+                      ? "success"
+                      : g.gift_status === "dispatched"
+                        ? "info"
+                        : g.gift_status === "approved"
+                          ? "warn"
+                          : "neutral"
+                  }
+                >
+                  {g.gift_status}
                 </Pill>
-              )}
-            </div>
-            <div className="col-span-1">
+                {g.promoted_to_platinum && (
+                  <Pill tone="accent" dot={false}>
+                    Platinum
+                  </Pill>
+                )}
+              </div>
               {g.gift_status === "pending" && (
                 <button
                   onClick={() =>
@@ -485,7 +543,7 @@ function VipPanel({ campaign }: { campaign: Campaign }) {
                       gift_status: "approved",
                     })
                   }
-                  className="text-[11px] font-semibold text-accent-glow hover:underline"
+                  className="text-[11px] font-semibold text-accent-glow hover:underline shrink-0"
                 >
                   Approve
                 </button>
@@ -498,7 +556,7 @@ function VipPanel({ campaign }: { campaign: Campaign }) {
                       gift_status: "dispatched",
                     })
                   }
-                  className="text-[11px] font-semibold text-accent-glow hover:underline"
+                  className="text-[11px] font-semibold text-accent-glow hover:underline shrink-0"
                 >
                   Dispatch
                 </button>

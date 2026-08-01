@@ -204,24 +204,26 @@ export function SpendBudgetPage() {
               No budget periods yet.
             </p>
           ) : (
-            <table className="min-w-full text-[12.5px]">
-              <thead className="bg-panel-2 text-text-faint uppercase tracking-widest text-[10px]">
-                <tr>
-                  <th className="text-left px-3 py-2 font-semibold">Period</th>
-                  <th className="text-right px-3 py-2 font-semibold">
-                    Internal (spend / hard cap)
-                  </th>
-                  <th className="text-right px-3 py-2 font-semibold">
-                    Storefront (spend / hard cap)
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {(periodsQ.data ?? []).map((p) => (
-                  <PeriodRow key={p.period_id} p={p} />
-                ))}
-              </tbody>
-            </table>
+            <div className="overflow-x-auto">
+              <table className="min-w-[560px] w-full text-[12.5px]">
+                <thead className="bg-panel-2 text-text-faint uppercase tracking-widest text-[10px]">
+                  <tr>
+                    <th className="text-left px-3 py-2 font-semibold">Period</th>
+                    <th className="text-right px-3 py-2 font-semibold">
+                      Internal (spend / hard cap)
+                    </th>
+                    <th className="text-right px-3 py-2 font-semibold">
+                      Storefront (spend / hard cap)
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(periodsQ.data ?? []).map((p) => (
+                    <PeriodRow key={p.period_id} p={p} />
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </Card>
       </section>
@@ -358,43 +360,45 @@ function SpendTable({
   labelHeader: string;
 }) {
   return (
-    <table className="min-w-full text-[12.5px]">
-      <thead className="bg-panel-2 text-text-faint uppercase tracking-widest text-[10px]">
-        <tr>
-          <th className="text-left px-3 py-2 font-semibold">{labelHeader}</th>
-          <th className="text-right px-3 py-2 font-semibold">Calls</th>
-          <th className="text-right px-3 py-2 font-semibold">Failures</th>
-          <th className="text-right px-3 py-2 font-semibold">Spend</th>
-          <th className="text-right px-3 py-2 font-semibold">Share</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r) => {
-          const share = grandTotal > 0 ? (r.cost_ngn / grandTotal) * 100 : 0;
-          return (
-            <tr key={r.key} className="border-t hairline">
-              <td className="px-3 py-2 font-mono text-[11px] uppercase tracking-widest text-accent-glow">
-                {r.key}
-              </td>
-              <td className="px-3 py-2 text-right font-mono">
-                {r.calls.toLocaleString()}
-              </td>
-              <td
-                className={`px-3 py-2 text-right font-mono ${r.failed > 0 ? "text-red-300" : "text-text-faint"}`}
-              >
-                {r.failed.toLocaleString()}
-              </td>
-              <td className="px-3 py-2 text-right font-mono">
-                {money(r.cost_ngn)}
-              </td>
-              <td className="px-3 py-2 text-right font-mono text-text-muted">
-                {share.toFixed(1)}%
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+    <div className="overflow-x-auto">
+      <table className="min-w-[520px] w-full text-[12.5px]">
+        <thead className="bg-panel-2 text-text-faint uppercase tracking-widest text-[10px]">
+          <tr>
+            <th className="text-left px-3 py-2 font-semibold">{labelHeader}</th>
+            <th className="text-right px-3 py-2 font-semibold">Calls</th>
+            <th className="text-right px-3 py-2 font-semibold">Failures</th>
+            <th className="text-right px-3 py-2 font-semibold">Spend</th>
+            <th className="text-right px-3 py-2 font-semibold">Share</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => {
+            const share = grandTotal > 0 ? (r.cost_ngn / grandTotal) * 100 : 0;
+            return (
+              <tr key={r.key} className="border-t hairline">
+                <td className="px-3 py-2 font-mono text-[11px] uppercase tracking-widest text-accent-glow">
+                  {r.key}
+                </td>
+                <td className="px-3 py-2 text-right font-mono">
+                  {r.calls.toLocaleString()}
+                </td>
+                <td
+                  className={`px-3 py-2 text-right font-mono ${r.failed > 0 ? "text-red-300" : "text-text-faint"}`}
+                >
+                  {r.failed.toLocaleString()}
+                </td>
+                <td className="px-3 py-2 text-right font-mono">
+                  {money(r.cost_ngn)}
+                </td>
+                <td className="px-3 py-2 text-right font-mono text-text-muted">
+                  {share.toFixed(1)}%
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

@@ -37,8 +37,22 @@ const permissionsSchema = z.object({
   grants: z.array(grantSchema).max(500),
 });
 
+// Contact-type visibility (contacts §6.12). `null` clears the restriction
+// (role sees every type again); an array restricts to those types (the service
+// checks each value against the catalog). Empty array = the role sees none.
+const contactTypesSchema = z.object({
+  contact_types: z.array(z.string().min(1).max(40)).max(20).nullable(),
+});
+
 const grantRoleSchema = z.object({
   role_id: uuid,
+  business: z.string().min(1).max(60), // brand key or '*'
+  expires_at: z.string().datetime().nullable().optional(),
+});
+
+// Bulk-assign one role (from the route :role_id) to many users at once.
+const grantMembersSchema = z.object({
+  user_ids: z.array(uuid).min(1).max(200),
   business: z.string().min(1).max(60), // brand key or '*'
   expires_at: z.string().datetime().nullable().optional(),
 });
@@ -71,10 +85,13 @@ module.exports = {
   validateRoleCreate: makeBody(roleCreateSchema),
   validateRoleUpdate: makeBody(roleUpdateSchema),
   validatePermissions: makeBody(permissionsSchema),
+  validateContactTypes: makeBody(contactTypesSchema),
   validateGrantRole: makeBody(grantRoleSchema),
+  validateGrantMembers: makeBody(grantMembersSchema),
   validateUserAccess: makeBody(userAccessSchema),
   validateRevokeQuery: makeQuery(revokeQuerySchema),
   roleCreateSchema,
   permissionsSchema,
   grantRoleSchema,
+  grantMembersSchema,
 };

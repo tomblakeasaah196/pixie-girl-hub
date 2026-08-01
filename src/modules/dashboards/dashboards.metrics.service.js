@@ -337,11 +337,10 @@ async function buildLogistics({ brand, p }) {
 }
 
 async function buildMarketing({ brand, p }) {
-  const [cur, prev, funnel, spend, platforms, campaigns] = await Promise.all([
+  const [cur, prev, funnel, platforms, campaigns] = await Promise.all([
     metrics.marketingKpis({ brand, from: p.from, to: p.to }),
     metrics.marketingKpis({ brand, from: p.prev_from, to: p.prev_to }),
     metrics.emailFunnel({ brand, from: p.from, to: p.to }),
-    metrics.adSpendSeries({ brand, from: p.from, to: p.to, granularity: p.granularity }),
     metrics.engagementByPlatform({ brand, from: p.from, to: p.to }),
     metrics.salesCampaignPerformance({ brand, from: p.from, to: p.to }),
   ]);
@@ -350,12 +349,6 @@ async function buildMarketing({ brand, p }) {
     previous: prev,
     charts: [
       chart("email_funnel", "Email Funnel", "funnel", { steps: funnel }),
-      chart("ad_spend_trend", "Ad Spend vs Return", "bar_line", {
-        series: [
-          series("spend", "Spend", pts(spend, "x", "spend")),
-          series("return", "Return", pts(spend, "x", "ad_return")),
-        ],
-      }),
       chart("engagement_by_platform", "Engagement by Platform", "bar", {
         slices: platforms,
       }),

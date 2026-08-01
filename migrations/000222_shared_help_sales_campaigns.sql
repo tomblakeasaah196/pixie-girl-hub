@@ -219,7 +219,7 @@ $body$,
   ((SELECT category_id FROM shared.help_categories WHERE slug='sales-campaigns'),
    'sales-subdomain-setup',
    'Setting up your sales subdomain',
-   'sales.pixiegirlglobal.com and sales.thefaitlynbrand.com — and what to do for a new brand.',
+   'sales.pixiegirlglobal.com and sales.faitlynhair.com — and what to do for a new brand.',
    'ceo', 'sales_campaigns',
 $body$
 # Setting up your sales subdomain

@@ -55,10 +55,20 @@ export interface BaseProduct {
   lace_size_codes: string[] | null;
   // Pre-order / production timeline (P0-7).
   preorder_enabled: boolean;
+  // Universal pre-orders (000086) — opt this base OUT so it reads "Sold out"
+  // when it runs out instead of becoming a pre-order.
+  preorder_excluded: boolean;
   expected_ready_date: string | null;
   production_lead_days: number | null;
   primary_image_url?: string | null;
   is_deleted?: boolean;
+  // Rewig adjacency (000088): this base's own tier + sibling family group.
+  // Normally set by the backfill/auto-map flow, not hand-edited.
+  size_code?: string | null;
+  base_family_id?: string | null;
+  // Per-base opt-out from ever donating/receiving a rewig substitution.
+  // Default true — every base is eligible out of the box.
+  rewig_eligible?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -99,6 +109,23 @@ export interface Availability {
   production_lead_days?: number | null;
 }
 
+/** A collection this styled product is curated into (detail fetch). */
+export interface StyledCollectionMembership {
+  collection_id: string;
+  name: string;
+  slug: string;
+  is_visible_storefront: boolean;
+}
+
+/** A bundle this styled product is a component of (detail fetch). Carries the
+ *  `bundle_product_id` so the component can be removed by id. */
+export interface StyledBundleMembership {
+  bundle_id: string;
+  bundle_product_id: string;
+  display_name: string;
+  is_visible_storefront: boolean;
+}
+
 /** A STYLED product — a storefront skin over exactly one base product. No
  *  stock of its own; availability + price are derived from the base. */
 export interface StyledProduct {
@@ -131,6 +158,9 @@ export interface StyledProduct {
   primary_image_url?: string | null;
   // "Shop by shade" membership (NULL = unshaded). Set via the Shades tab.
   shade_id?: string | null;
+  // Rewig adjacency (000088): override the brand-wide rewig_mode for just this
+  // listing. NULL = follow the brand mode; 'enabled'/'disabled' always win.
+  rewig_override?: "enabled" | "disabled" | null;
   // AI provenance (P0-8).
   ai_drafted?: boolean;
   ai_model?: string | null;
@@ -149,6 +179,11 @@ export interface StyledProduct {
   // Attached on the detail fetch.
   colours?: StyledColour[];
   variants?: StyledVariant[];
+  // Where this listing currently lives (detail fetch only) — the collections it
+  // is curated into and the bundles it is a component of. Drives the "already
+  // in" chips + inline removal on the detail page.
+  collections?: StyledCollectionMembership[];
+  bundles?: StyledBundleMembership[];
   price_range?: { min: number; max: number } | null;
   // USD price range across variants that carry a USD price (NULL when none).
   price_range_usd?: { min: number; max: number } | null;
@@ -213,6 +248,8 @@ export interface StyledVariant {
   lace_premium_ngn: number | null;
   lace_premium_usd: number | null;
   base_product_name?: string | null;
+  // Live stock behind this variant's own base (falls back to the seed base).
+  base_available?: number | null;
   anchor_price_ngn: number | null;
   anchor_price_usd: number | null;
   effective_price_ngn: number | null;
@@ -272,6 +309,21 @@ export interface CatalogueConfig {
   // One-click: allow base (stock-room) products in collections + bundles.
   // Off by default — only styled products may be added.
   allow_base_in_collections_bundles: boolean;
+  // Universal pre-orders (000086). Master switch + the production delivery
+  // window shown to buyers when an item is out of stock ("ships in ~4–8 weeks").
+  preorder_enabled: boolean;
+  preorder_min_weeks: number;
+  preorder_max_weeks: number;
+  // Rewig adjacency (000088): a base one size up/down may fill an order when
+  // its own size is short — same styling job, no separate service.
+  rewig_enabled: boolean;
+  /** 'automatic' = every listing gets the fallback unless explicitly excluded
+   *  (styled_products.rewig_override='disabled'); 'opt_in' = no listing gets
+   *  it unless explicitly included ('enabled'). */
+  rewig_mode: "automatic" | "opt_in";
+  /** Which sibling to draw from first when more than one qualifies. Never
+   *  changes the total reported count — only reservation order. */
+  rewig_direction: "down_first" | "up_first" | "no_preference";
 }
 export interface SizeConfig {
   tiers: SizeTier[];
@@ -373,6 +425,9 @@ export interface VaultGrant {
   grant_id: string;
   user_id: string;
   user_email: string | null;
+  /** The grantee's display name (joined from shared.users). May be null for a
+   *  user with no display name set — fall back to email, then the id. */
+  user_name: string | null;
   business: string;
   granted_by: string | null;
   granted_at: string;
@@ -621,6 +676,77 @@ export function useCreateBaseProduct() {
   return useMutation({
     mutationFn: (input: Partial<BaseProduct>) =>
       api.post<BaseProduct>("/catalogue/products", input),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["catalogue", "base", brand] }),
+  });
+}
+
+// ── Base-product wizard: batch create + clone + "create other sizes" ──
+export interface WizardVariantInput {
+  price_storefront_ngn?: number;
+  price_storefront_usd?: number;
+  price_wholesale_ngn?: number;
+  price_wholesale_usd?: number;
+  weight_g?: number;
+  variant_cap_size?: string;
+}
+export interface WizardBaseItem {
+  name: string;
+  category_id?: string | null;
+  texture_type?: string | null;
+  lace_type?: string | null;
+  hair_length_inches?: number | null;
+  cap_size?: string | null;
+  lace_size_codes?: string[] | null;
+  preorder_excluded?: boolean;
+  short_description?: string | null;
+  variant?: WizardVariantInput;
+}
+export interface BaseCreated {
+  product_id: string;
+  product_code: string;
+  name: string;
+  cap_size: string | null;
+  variant_id: string;
+}
+
+/** Create a whole size run at once — one base (+ default variant) per item. */
+export function useCreateBaseProducts() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (products: WizardBaseItem[]) =>
+      api.post<{ created: BaseCreated[]; count: number }>(
+        "/catalogue/products/batch",
+        { products },
+      ),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["catalogue", "base", brand] }),
+  });
+}
+
+/** Duplicate a base (+ its default variant) into a new base. */
+export function useCloneBaseProduct() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post<BaseCreated>(`/catalogue/products/${id}/clone`),
+    onSuccess: () =>
+      qc.invalidateQueries({ queryKey: ["catalogue", "base", brand] }),
+  });
+}
+
+/** Clone a base into sibling bases for the requested sizes. */
+export function useCreateSiblingSizes(id: string) {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (sizes: { name: string; cap_size?: string | null }[]) =>
+      api.post<{ created: BaseCreated[]; count: number }>(
+        `/catalogue/products/${id}/create-sizes`,
+        { sizes },
+      ),
     onSuccess: () =>
       qc.invalidateQueries({ queryKey: ["catalogue", "base", brand] }),
   });
@@ -1433,7 +1559,11 @@ export function useRemoveBundleComponent(bundleId: string) {
       api.delete<void>(
         `/retention/bundles/${bundleId}/components/${componentId}`,
       ),
-    onSuccess: () => invalidateBundle(qc, brand, bundleId),
+    onSuccess: () => {
+      invalidateBundle(qc, brand, bundleId);
+      // Refresh any styled detail so its "already in" bundle chips update.
+      invalidateStyled(qc, brand);
+    },
   });
 }
 
@@ -1512,6 +1642,12 @@ export interface SaveSizeConfigInput {
   head_size_video_url?: string | null;
   categories_enabled?: boolean;
   allow_base_in_collections_bundles?: boolean;
+  preorder_enabled?: boolean;
+  preorder_min_weeks?: number;
+  preorder_max_weeks?: number;
+  rewig_enabled?: boolean;
+  rewig_mode?: "automatic" | "opt_in";
+  rewig_direction?: "down_first" | "up_first" | "no_preference";
 }
 
 /** Convenience: may base products be added to collections + bundles? Defaults to
@@ -1537,6 +1673,75 @@ export function useSaveSizeConfig() {
       qc.invalidateQueries({ queryKey: ["catalogue", "size-config", brand] });
       qc.invalidateQueries({ queryKey: ["catalogue", "styled", brand] });
     },
+  });
+}
+
+// ── Lace ladder: delete → Trash (with replacement repoint) ───
+export interface LaceUsage {
+  variant_count: number;
+  product_count: number;
+}
+export interface LaceTrashItem extends LaceSize {
+  purge_at: string | null;
+}
+
+/** How many live variants/products use a lace code — fetched when the delete
+ *  modal opens so it can force a replacement pick if the lace is in use. */
+export function useLaceUsage(laceCode: string | null) {
+  const brand = useBrand();
+  return useQuery<LaceUsage>({
+    queryKey: ["catalogue", "lace-usage", brand, laceCode],
+    queryFn: () =>
+      api.get<LaceUsage>(
+        `/catalogue/lace-sizes/${encodeURIComponent(laceCode!)}/usage`,
+      ),
+    enabled: !!laceCode,
+  });
+}
+
+export function useLaceTrash(enabled: boolean) {
+  const brand = useBrand();
+  return useQuery<LaceTrashItem[]>({
+    queryKey: ["catalogue", "lace-trash", brand],
+    queryFn: () => api.get<LaceTrashItem[]>("/catalogue/lace-sizes/trash"),
+    enabled,
+  });
+}
+
+function invalidateLace(qc: ReturnType<typeof useQueryClient>, brand: string) {
+  qc.invalidateQueries({ queryKey: ["catalogue", "size-config", brand] });
+  qc.invalidateQueries({ queryKey: ["catalogue", "lace-trash", brand] });
+  qc.invalidateQueries({ queryKey: ["catalogue", "styled", brand] });
+}
+
+export function useDeleteLaceType() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: ({
+      laceCode,
+      replacementCode,
+    }: {
+      laceCode: string;
+      replacementCode?: string;
+    }) =>
+      api.delete<{ trashed: boolean; repointed: number; merged: number }>(
+        `/catalogue/lace-sizes/${encodeURIComponent(laceCode)}`,
+        replacementCode ? { replacement_code: replacementCode } : {},
+      ),
+    onSuccess: () => invalidateLace(qc, brand),
+  });
+}
+
+export function useRestoreLaceType() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (laceCode: string) =>
+      api.post<LaceSize>(
+        `/catalogue/lace-sizes/${encodeURIComponent(laceCode)}/restore`,
+      ),
+    onSuccess: () => invalidateLace(qc, brand),
   });
 }
 
@@ -1788,6 +1993,8 @@ export interface BulkVariantInput {
   // Optional lace axis — generate colour × size × lace. Omit for no lace.
   all_lace?: boolean;
   lace_codes?: string[];
+  // Auto-map each generated size to its own matching per-size base product.
+  auto_map_bases?: boolean;
 }
 export function useBulkCreateVariants(styledId: string) {
   const qc = useQueryClient();
@@ -1967,6 +2174,8 @@ export function useAddCollectionMember() {
       qc.invalidateQueries({
         queryKey: ["catalogue", "collections", brand, "one", vars.collectionId],
       });
+      // Refresh the styled detail so its "already in" collection chips update.
+      invalidateStyled(qc, brand);
     },
   });
 }
@@ -1990,7 +2199,11 @@ export function useAddStyledToBundle() {
         quantity: 1,
         role: "core",
       }),
-    onSuccess: (_d, vars) => invalidateBundle(qc, brand, vars.bundleId),
+    onSuccess: (_d, vars) => {
+      invalidateBundle(qc, brand, vars.bundleId);
+      // Refresh the styled detail so its "already in" bundle chips update.
+      invalidateStyled(qc, brand);
+    },
   });
 }
 
@@ -2007,6 +2220,8 @@ export function useRemoveCollectionMember(collectionId: string) {
       qc.invalidateQueries({
         queryKey: ["catalogue", "collections", brand, "one", collectionId],
       });
+      // Refresh the styled detail so its "already in" collection chips update.
+      invalidateStyled(qc, brand);
     },
   });
 }

@@ -94,6 +94,16 @@ function qs(params: Record<string, unknown>): string {
   return s ? `?${s}` : "";
 }
 
+/**
+ * Every live-call action takes an explicit `brand`.
+ *
+ * A multi-brand agent rings for every brand they cover (a Pixie Girl call must
+ * not be lost because the tab happens to be showing Faitlyn), so the brand
+ * that is *calling* — not the tab's active brand — has to address the API.
+ * Passing it per request means answering a call never has to yank the app's
+ * brand context out from under the agent mid-answer. Omit it and the active
+ * brand applies, which is what the read-only history calls want.
+ */
 export const callsApi = {
   list: (
     p: {
@@ -104,17 +114,29 @@ export const callsApi = {
       offset?: number;
     } = {},
   ) => api.get<WhatsAppCall[]>(`/calls${qs(p)}`),
+  /** Rings this agent should currently be hearing in `brand` (owner-first aware). */
+  ringing: (brand?: string) =>
+    api.getForBrand<CallRing[]>("/calls/ringing", brand),
   get: (id: string) => api.get<WhatsAppCall>(`/calls/${id}`),
-  claim: (id: string) => api.post<ClaimResult>(`/calls/${id}/claim`),
-  accept: (id: string, sdp: string) =>
-    api.post<{ ok: boolean }>(`/calls/${id}/accept`, { sdp }),
-  reject: (id: string) => api.post<WhatsAppCall>(`/calls/${id}/reject`),
-  hangup: (id: string) => api.post<WhatsAppCall>(`/calls/${id}/hangup`),
-  recordOutcome: (id: string, outcome: CallOutcome, notes?: string) =>
-    api.post<WhatsAppCall>(`/calls/${id}/outcome`, {
-      outcome,
-      ...(notes ? { notes } : {}),
-    }),
+  claim: (id: string, brand?: string) =>
+    api.postForBrand<ClaimResult>(`/calls/${id}/claim`, undefined, brand),
+  accept: (id: string, sdp: string, brand?: string) =>
+    api.postForBrand<{ ok: boolean }>(`/calls/${id}/accept`, { sdp }, brand),
+  reject: (id: string, brand?: string) =>
+    api.postForBrand<WhatsAppCall>(`/calls/${id}/reject`, undefined, brand),
+  hangup: (id: string, brand?: string) =>
+    api.postForBrand<WhatsAppCall>(`/calls/${id}/hangup`, undefined, brand),
+  recordOutcome: (
+    id: string,
+    outcome: CallOutcome,
+    notes?: string,
+    brand?: string,
+  ) =>
+    api.postForBrand<WhatsAppCall>(
+      `/calls/${id}/outcome`,
+      { outcome, ...(notes ? { notes } : {}) },
+      brand,
+    ),
 };
 
 export function fmtCallDuration(seconds?: number | null): string {

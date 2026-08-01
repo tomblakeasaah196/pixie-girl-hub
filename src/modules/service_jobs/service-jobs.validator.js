@@ -6,10 +6,19 @@
 
 const { z } = require("zod");
 
+// The full Stylist Studio lifecycle. `completed` is normally reached
+// automatically via /:id/qc (QC pass), but kept accepted on /:id/advance for
+// edge cases (legacy imports, one-off manual closes). Retired states
+// (qc_passed, ready_for_dispatch, handed_to_sales) are DELIBERATELY absent —
+// the DB CHECK still tolerates them for historical rows, but no code path
+// should be writing them any more.
 const JOB_STATUS = [
   "pending",
+  "assigned",
   "in_progress",
   "on_hold",
+  "returned_for_qc",
+  "rework",
   "completed",
   "rejected",
   "cancelled",
@@ -57,6 +66,15 @@ const jobCreate = z
     scheduled_for: z.string().datetime().optional(),
     expected_completion_at: z.string().datetime().optional(),
     agreed_cost_ngn: z.coerce.number().nonnegative().optional(),
+    // Customer's style brief, captured at job open and locked. A note and/or
+    // an inspiration link — both optional, both become locked references.
+    brief: z
+      .object({
+        body: z.string().max(2000).optional(),
+        url: z.string().url().max(2000).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -83,7 +101,18 @@ const jobAdvance = z
   .strict();
 
 const assignStaff = z
-  .object({ assigned_staff_user_id: z.string().uuid() })
+  .object({
+    assigned_staff_user_id: z.string().uuid(),
+    // Deadline set at the assigning level. Flows onto the job's
+    // expected_completion_at (+ the SLA clock) and, via the task-creation
+    // trigger, onto the stylist's Workspace task due date. The frontend
+    // pre-fills this to +48h; omitting it lets the service apply that default.
+    expected_completion_at: z.string().datetime().optional(),
+    // Set by the assign screen's warning modal when the job has no sales order
+    // behind it. The service rejects an unlinked assignment without it, so the
+    // acknowledgement can't be bypassed by calling the API directly.
+    acknowledge_unlinked: z.boolean().optional(),
+  })
   .strict();
 
 const outcome = z

@@ -38,6 +38,10 @@ const NEUTRAL = {
 // every inline style still names a safe fallback so Outlook/Gmail never break.
 const SERIF = "'Playfair Display', Georgia, 'Times New Roman', serif";
 const SANS = "'Montserrat', 'Helvetica Neue', Arial, sans-serif";
+// Monospace for figures the reader may need to copy verbatim — a temporary
+// password, a verification code, a reference number. No web font is loaded for
+// it in mail clients, so the stack is entirely system-safe.
+const MONO = "'JetBrains Mono', 'SFMono-Regular', Consolas, 'Courier New', monospace";
 const FONT_IMPORT =
   "https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500&display=swap";
 
@@ -79,6 +83,20 @@ function paragraph(html, { muted = false, top = 16 } = {}) {
   const color = muted ? NEUTRAL.muted : NEUTRAL.ink;
   return pad(
     `<p style="margin:0;font-family:${SANS};font-size:15px;line-height:1.62;color:${color}">${html}</p>`,
+    { top, bottom: 0 },
+  );
+}
+
+/**
+ * A block of caller-authored rich HTML (its own <p>/<strong>/<ul>…), placed in
+ * a branded container that carries the body font, size and colour. Used when a
+ * message's body is supplied as ready HTML rather than as discrete paragraphs
+ * (e.g. the stylist-programme notifications). Trusted, in-repo HTML only — it
+ * is inserted verbatim, so never pass unescaped user input here.
+ */
+function richText(html, { top = 16 } = {}) {
+  return pad(
+    `<div style="font-family:${SANS};font-size:15px;line-height:1.62;color:${NEUTRAL.ink}">${html}</div>`,
     { top, bottom: 0 },
   );
 }
@@ -160,7 +178,174 @@ function hero(srcToken, alt = "{{brand_name}}") {
   )}" width="600" style="display:block;width:100%;max-width:600px;height:auto;border:0" /></td></tr>`;
 }
 
+/**
+ * A boxed key → value list for transactional facts the reader must read (and
+ * often copy): login email + temporary password, an offer's expiry date, a
+ * verification code. Values are HTML-escaped by default; pass `html:true` on a
+ * row whose value is deliberate markup (e.g. a link). `mono:true` renders the
+ * value in the monospace stack — right for passwords and codes.
+ */
+function detailBox(rows = []) {
+  const list = (rows || []).filter(Boolean);
+  const body = list
+    .map((r, idx) => {
+      const last = idx === list.length - 1;
+      const edge = last ? "" : `border-bottom:1px solid ${NEUTRAL.hairline};`;
+      const val = r.html ? r.value : esc(r.value);
+      return `<tr>
+      <td style="padding:10px 0;${edge}font-family:${SANS};font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:${NEUTRAL.muted};vertical-align:top;white-space:nowrap">${esc(
+        r.label,
+      )}</td>
+      <td style="padding:10px 0 10px 18px;${edge}font-family:${
+        r.mono ? MONO : SANS
+      };font-size:14px;color:${NEUTRAL.ink};text-align:right;word-break:break-all">${val}</td>
+    </tr>`;
+    })
+    .join("");
+  return `<tr><td style="padding:24px 40px 0 40px">
+    <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" bgcolor="${NEUTRAL.outerBg}" style="background-color:${NEUTRAL.outerBg};border:1px solid ${NEUTRAL.hairline};border-radius:8px">
+      <tr><td style="padding:4px 20px">
+        <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">${body}</table>
+      </td></tr>
+    </table>
+  </td></tr>`;
+}
+
+/**
+ * A soft, accent-tinted notice card — used for a security/expiry note that
+ * should read as important but calm (not an alarm). `html` is inserted as-is,
+ * so escape any dynamic value at the call site.
+ */
+function noticeBox(html, { accent = "{{brand_color}}" } = {}) {
+  return `<tr><td style="padding:24px 40px 0 40px">
+    <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0">
+      <tr><td style="padding:14px 18px;background:${accent}0d;border:1px solid ${accent}26;border-radius:6px;font-family:${SANS};font-size:12.5px;line-height:1.6;color:${NEUTRAL.muted}">${html}</td></tr>
+    </table>
+  </td></tr>`;
+}
+
+/**
+ * Footer for a TRANSACTIONAL letter (an offer, a welcome, login credentials) —
+ * as opposed to marketing mail. Identical luxury chrome to `footer()` but with
+ * NO "unsubscribe" / "you're receiving this because…" line: a candidate can't
+ * unsubscribe from their own offer, and a one-click unsubscribe on account
+ * mail is both wrong and a deliverability smell. Built from RESOLVED brand
+ * tokens (not {{placeholders}}) so an unconfigured address/website/support
+ * line is dropped rather than left as an empty link.
+ */
+function transactionalFooter(tokens = {}) {
+  const name = esc(tokens.brand_name || "");
+  const legal = esc(tokens.brand_legal_name || tokens.brand_name || "");
+  const year = esc(tokens.year || String(new Date().getFullYear()));
+  const contactBits = [
+    tokens.website_url &&
+      `<a href="${esc(tokens.website_url)}" target="_blank" style="color:${NEUTRAL.muted};text-decoration:none">${esc(
+        tokens.website_url,
+      )}</a>`,
+    tokens.support_email &&
+      `<a href="mailto:${esc(tokens.support_email)}" style="color:${NEUTRAL.muted};text-decoration:none">${esc(
+        tokens.support_email,
+      )}</a>`,
+  ].filter(Boolean);
+  const addressHtml = tokens.brand_address
+    ? `<div style="font-family:${SANS};font-size:12px;line-height:1.7;color:${NEUTRAL.muted};margin-top:8px">${esc(
+        tokens.brand_address,
+      )}</div>`
+    : "";
+  const contactHtml = contactBits.length
+    ? `<div style="font-family:${SANS};font-size:12px;line-height:1.7;color:${NEUTRAL.muted}">${contactBits.join(
+        " &nbsp;·&nbsp; ",
+      )}</div>`
+    : "";
+  return `<tr><td style="padding:34px 40px 40px 40px;border-top:1px solid ${NEUTRAL.hairline}" align="center">
+    <div style="font-family:${SERIF};font-size:17px;color:${NEUTRAL.ink};letter-spacing:0.5px">${name}</div>
+    ${addressHtml}
+    ${contactHtml}
+    <div style="font-family:${SANS};font-size:11px;line-height:1.7;color:${NEUTRAL.faint};margin-top:16px">
+      This is a service message from ${name}.<br/>
+      © ${year} ${legal}
+    </div>
+  </td></tr>`;
+}
+
 // ── Document shell ─────────────────────────────────────────────
+
+/**
+ * Default marketing frame — the header/footer every campaign mail is wrapped
+ * in. Editable per brand from Marketing → Design (stored in
+ * shared.business_config.brand_theme.email_frame); any field left unset falls
+ * back to these values, so an untouched brand already sends the full premium
+ * chrome. Text fields support {{tokens}} (substituted at send).
+ */
+const DEFAULT_FRAME = {
+  show_logo: true,
+  tagline: "",
+  footer_note:
+    "You're receiving this because you're part of the {{brand_name}} community.",
+  show_address: true,
+  show_contact: true,
+  instagram_url: "",
+  tiktok_url: "",
+};
+
+/** Normalise a stored frame config against the defaults. */
+function resolveFrame(frame) {
+  const f = { ...DEFAULT_FRAME };
+  for (const [k, v] of Object.entries(frame || {})) {
+    if (v === null || v === undefined) continue;
+    if (k in DEFAULT_FRAME) f[k] = v;
+  }
+  return f;
+}
+
+/** The marketing header honouring a brand's frame config. */
+function frameHeader(frame) {
+  const f = resolveFrame(frame);
+  const mark = f.show_logo
+    ? `<img src="{{logo_url}}" alt="{{brand_name}}" height="40" style="display:block;border:0;max-height:44px;width:auto" />`
+    : `<div style="font-family:${SERIF};font-size:22px;letter-spacing:1px;color:${NEUTRAL.ink}">{{brand_name}}</div>`;
+  const tagline = f.tagline
+    ? `<div style="font-family:${SANS};font-size:11px;font-weight:600;letter-spacing:2.5px;text-transform:uppercase;color:${NEUTRAL.muted};margin-top:10px">${esc(
+        f.tagline,
+      )}</div>`
+    : "";
+  return `<tr><td align="center" style="padding:34px 40px 22px 40px;border-bottom:1px solid ${NEUTRAL.hairline}">
+    ${mark}${tagline}
+    <!--[if mso]>&nbsp;<![endif]-->
+  </td></tr>`;
+}
+
+/** The marketing footer honouring a brand's frame config. */
+function frameFooter(frame) {
+  const f = resolveFrame(frame);
+  const social = [
+    f.instagram_url &&
+      `<a href="${esc(f.instagram_url)}" target="_blank" style="color:${NEUTRAL.muted};text-decoration:none">Instagram</a>`,
+    f.tiktok_url &&
+      `<a href="${esc(f.tiktok_url)}" target="_blank" style="color:${NEUTRAL.muted};text-decoration:none">TikTok</a>`,
+  ]
+    .filter(Boolean)
+    .join(" &nbsp;·&nbsp; ");
+  return `<tr><td style="padding:34px 40px 40px 40px;border-top:1px solid ${NEUTRAL.hairline}" align="center">
+    <div style="font-family:${SERIF};font-size:17px;color:${NEUTRAL.ink};letter-spacing:0.5px">{{brand_name}}</div>
+    ${f.show_address ? `<div style="font-family:${SANS};font-size:12px;line-height:1.7;color:${NEUTRAL.muted};margin-top:8px">{{brand_address}}</div>` : ""}
+    ${
+      f.show_contact
+        ? `<div style="font-family:${SANS};font-size:12px;line-height:1.7;color:${NEUTRAL.muted}">
+      <a href="{{website_url}}" target="_blank" style="color:${NEUTRAL.muted};text-decoration:none">{{website_url}}</a>
+      &nbsp;·&nbsp;
+      <a href="mailto:{{support_email}}" style="color:${NEUTRAL.muted};text-decoration:none">{{support_email}}</a>
+    </div>`
+        : ""
+    }
+    ${social ? `<div style="font-family:${SANS};font-size:12px;line-height:1.7;color:${NEUTRAL.muted};margin-top:6px">${social}</div>` : ""}
+    <div style="font-family:${SANS};font-size:11px;line-height:1.7;color:${NEUTRAL.faint};margin-top:16px">
+      ${esc(f.footer_note)}<br/>
+      <a href="{{unsubscribe_url}}" target="_blank" style="color:${NEUTRAL.faint};text-decoration:underline">Unsubscribe</a>
+      &nbsp;·&nbsp; © {{year}} {{brand_legal_name}}
+    </div>
+  </td></tr>`;
+}
 
 function header() {
   // Logo image with a text fallback (Outlook/blocked-image safe). The
@@ -196,7 +381,14 @@ function footer() {
  * @param {boolean} [a.withHeader=true]
  * @param {boolean} [a.withFooter=true]
  */
-function wrapEmail({ preheader = "", content = "", withHeader = true, withFooter = true }) {
+function wrapEmail({
+  preheader = "",
+  content = "",
+  withHeader = true,
+  withFooter = true,
+  headerHtml,
+  footerHtml,
+}) {
   return `<!DOCTYPE html>
 <html lang="en" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
@@ -226,9 +418,9 @@ function wrapEmail({ preheader = "", content = "", withHeader = true, withFooter
     <tr><td align="center" style="padding:32px 12px">
       <!--[if mso]><table role="presentation" width="600" border="0" cellspacing="0" cellpadding="0"><tr><td><![endif]-->
       <table role="presentation" class="pgh-card" width="600" border="0" cellspacing="0" cellpadding="0" bgcolor="${NEUTRAL.card}" style="width:600px;max-width:600px;background-color:${NEUTRAL.card};border-radius:10px;overflow:hidden;border:1px solid ${NEUTRAL.hairline}">
-${withHeader ? header() : ""}
+${withHeader ? headerHtml || header() : ""}
 ${content}
-${withFooter ? footer() : ""}
+${withFooter ? footerHtml || footer() : ""}
       </table>
       <!--[if mso]></td></tr></table><![endif]-->
     </td></tr>
@@ -257,6 +449,7 @@ module.exports = {
   NEUTRAL,
   SERIF,
   SANS,
+  MONO,
   FONT_IMPORT,
   esc,
   pad,
@@ -270,8 +463,16 @@ module.exports = {
   spacer,
   perk,
   hero,
+  richText,
+  detailBox,
+  noticeBox,
   header,
   footer,
+  transactionalFooter,
+  DEFAULT_FRAME,
+  resolveFrame,
+  frameHeader,
+  frameFooter,
   wrapEmail,
   toPlainText,
 };

@@ -1,4 +1,5 @@
 import { useState, lazy, Suspense } from "react";
+import { useUrlTab } from "@/hooks/useUrlTab";
 import {
   Wallet,
   Plus,
@@ -23,6 +24,7 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { cn } from "@/lib/cn";
 import { moneyCompact, formatDate as fmtDateCanon } from "@/lib/format";
 import { useCashRequests, useCashRequestKpis } from "./hooks";
+import { useDeepLinkedRecord } from "@/hooks/useDeepLinkedRecord";
 import { CR_STATUS_META, CR_STATUS_TABS, URGENCY_META } from "./constants";
 import type { CashRequest, CashRequestStatus } from "./types";
 
@@ -36,7 +38,15 @@ export default function CashRequestsPage() {
   useBreadcrumbs([{ label: "Cash Requests" }]);
   const can = useAuthStore((s) => s.can);
 
-  const [tab, setTab] = useState<Tab>("my-requests");
+  // Approval-only tabs must not be selectable (even via a hand-typed ?tab=)
+  // by a user who can't approve — the valid-list falls them back to My Requests.
+  const canApproveTabs = can("cash_request", "approve");
+  const [tab, setTab] = useUrlTab<Tab>(
+    "my-requests",
+    canApproveTabs
+      ? ["my-requests", "drafts", "approval-queue", "all-requests"]
+      : ["my-requests", "drafts"],
+  );
   const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(1);
 
@@ -44,7 +54,7 @@ export default function CashRequestsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [showSettle, setShowSettle] = useState<CashRequest | null>(null);
 
-  if (!can("expenses", "view")) {
+  if (!can("cash_request", "view")) {
     return (
       <div className="py-20">
         <EmptyState
@@ -56,7 +66,7 @@ export default function CashRequestsPage() {
     );
   }
 
-  const canApprove = can("expenses", "approve");
+  const canApprove = can("cash_request", "approve");
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode; show: boolean }[] =
     [
@@ -96,7 +106,7 @@ export default function CashRequestsPage() {
             Requests, approvals &amp; disbursements
           </p>
         </div>
-        {can("expenses", "create") && (
+        {can("cash_request", "create") && (
           <Button
             variant="primary"
             icon={<Plus className="w-4 h-4" />}
@@ -136,7 +146,7 @@ export default function CashRequestsPage() {
           onPage={setPage}
           onSelect={setSelectedCr}
           onCreate={() => setShowCreate(true)}
-          canCreate={can("expenses", "create")}
+          canCreate={can("cash_request", "create")}
         />
       )}
       {tab === "drafts" && (
@@ -147,7 +157,7 @@ export default function CashRequestsPage() {
           onPage={setPage}
           onSelect={setSelectedCr}
           onCreate={() => setShowCreate(true)}
-          canCreate={can("expenses", "create")}
+          canCreate={can("cash_request", "create")}
           lockStatus
         />
       )}
@@ -338,6 +348,15 @@ function RequestsTab({
     page,
   });
 
+  /* Same deep link, for the submitter opening their own request from the
+     outcome notification ("your cash request was approved"). */
+  useDeepLinkedRecord<CashRequest>(
+    "request",
+    data?.data,
+    (r) => r.cash_request_id,
+    onSelect,
+  );
+
   const cols: Column<CashRequest>[] = [
     {
       key: "no",
@@ -469,6 +488,15 @@ function ApprovalQueueTab({
       new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
   );
   const isLoading = pending.isLoading || pendingCeo.isLoading;
+
+  /* An approver arriving from a task or notification
+     (/cash-requests?tab=approval-queue&request=<id>) opens that request. */
+  useDeepLinkedRecord<CashRequest>(
+    "request",
+    rows,
+    (r) => r.cash_request_id,
+    onSelect,
+  );
 
   const cols: Column<CashRequest>[] = [
     {

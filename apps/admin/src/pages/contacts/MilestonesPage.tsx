@@ -309,7 +309,7 @@ export function MilestonesPage() {
                             target="_blank"
                             rel="noreferrer"
                             onClick={(e) => e.stopPropagation()}
-                            className="w-8 h-8 grid place-items-center rounded-[8px] bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366]/20 transition-colors opacity-0 group-hover:opacity-100"
+                            className="w-8 h-8 grid place-items-center rounded-[8px] bg-[#25D366]/10 text-[#25D366] hover:bg-[#25D366]/20 transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
                           >
                             <svg
                               className="w-4 h-4"
@@ -321,7 +321,7 @@ export function MilestonesPage() {
                           </a>
                         )}
 
-                        <ChevronRight className="w-4 h-4 text-text-faint opacity-0 group-hover:opacity-100 transition-opacity" />
+                        <ChevronRight className="w-4 h-4 text-text-faint opacity-40 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity" />
                       </div>
                     </div>
                   );

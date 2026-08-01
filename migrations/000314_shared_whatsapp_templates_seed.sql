@@ -26,7 +26,7 @@
 WITH brands (business, brand_name, shop_url) AS (
   VALUES
     ('pixiegirl',   'Pixie Girl',   'https://pixiegirlglobal.com'),
-    ('faitlynhair', 'Faitlyn Hair', 'https://thefaitlynbrand.com')
+    ('faitlynhair', 'Faitlyn Hair', 'https://faitlynhair.com')
 ),
 tpl (name, category, header, body, button_label, variables) AS (
   VALUES

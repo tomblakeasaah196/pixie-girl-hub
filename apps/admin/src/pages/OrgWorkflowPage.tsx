@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useUrlTab } from "@/hooks/useUrlTab";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import {
@@ -27,6 +28,8 @@ import {
   Wand2,
   Network,
   FileDown,
+  Users,
+  UserPlus,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { DataTable, type Column } from "@/components/ui/DataTable";
@@ -38,6 +41,7 @@ import {
   type Tone,
 } from "@/components/ui/primitives";
 import { Drawer } from "@/components/ui/Drawer";
+import { Modal } from "@/components/ui/Modal";
 import { Timeline } from "@/components/ui/Timeline";
 import { OrgGraph } from "@/components/hub/OrgGraph";
 import { useAuthStore } from "@/stores/auth";
@@ -60,9 +64,12 @@ import {
   type Permission,
   type CatalogEntry,
   type Catalog,
+  type ContactTypeOption,
+  type GrantableUser,
   ACTION_META,
   RECORD_SCOPE_LABELS,
 } from "@/lib/access-api";
+import { useBusinessStore } from "@/stores/business";
 import {
   moduleLabel,
   moduleDescription,
@@ -71,6 +78,16 @@ import {
 import { listStaff, type StaffRow } from "@/lib/hr-api";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+
+// Contacts §6.12 visibility vocabulary — fallback when an older backend's
+// /access/catalog omits contact_types. Kept in step with access.catalog.js.
+const FALLBACK_CONTACT_TYPES: ContactTypeOption[] = [
+  { key: "customer", label: "Customers / clients" },
+  { key: "supplier", label: "Suppliers / manufacturers" },
+  { key: "staff", label: "Staff" },
+  { key: "retail_partner", label: "Retail partners" },
+  { key: "stylist_partner", label: "Stylist partners" },
+];
 
 type Tab = "org" | "permissions" | "workflows" | "pending";
 
@@ -807,7 +824,7 @@ function OrgTab({
         </div>
 
         {/* Org graph + position detail */}
-        <div>
+        <div className="min-w-0">
           {isFullView && (
             <>
               <div className="flex items-center justify-between mb-3">
@@ -995,16 +1012,223 @@ function OrgTab({
 
 const ACTION_ORDER = ["view", "create", "edit", "delete", "approve", "export"];
 
+// The seeded CEO/superuser role (shared.roles). It underpins the whole
+// permission-bypass model, so it is never deletable — the backend rejects it
+// too (access.guards). Keep in sync with OWNER_ROLE_ID there.
+const OWNER_ROLE_ID = "11111111-1111-1111-1111-000000000001";
+
+// Bulk-assign one role to several staff at once. Roles attach to login accounts,
+// so the picker lists grantable users of the active brand; anyone who already
+// holds the role is shown as such and can't be re-selected. Grants for the
+// active brand (the API extends brand access when a target can't yet enter it).
+function AddMembersModal({
+  roleId,
+  roleName,
+  existingUserIds,
+  onClose,
+}: {
+  roleId: string;
+  roleName: string;
+  existingUserIds: Set<string>;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const brand = useBusinessStore((s) => s.activeKey);
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+
+  const { data: users = [], isLoading } = useQuery({
+    queryKey: ["grantable-users", brand],
+    queryFn: () => accessApi.listGrantableUsers(),
+  });
+
+  // A user already holds the role if they're a current member or the picker
+  // reports the role among their grants (covers grants in another business).
+  const holdsRole = (u: GrantableUser) =>
+    existingUserIds.has(u.user_id) || u.role_ids.includes(roleId);
+
+  const q = search.trim().toLowerCase();
+  const filtered = useMemo(
+    () =>
+      users.filter((u) => {
+        if (!q) return true;
+        return (
+          (u.display_name ?? "").toLowerCase().includes(q) ||
+          u.email.toLowerCase().includes(q) ||
+          (u.job_title ?? "").toLowerCase().includes(q)
+        );
+      }),
+    [users, q],
+  );
+
+  function toggle(u: GrantableUser) {
+    if (holdsRole(u)) return;
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(u.user_id)) next.delete(u.user_id);
+      else next.add(u.user_id);
+      return next;
+    });
+  }
+
+  async function handleAssign() {
+    if (selected.size === 0) return;
+    setSaving(true);
+    try {
+      const res = await accessApi.grantRoleMembers(roleId, {
+        user_ids: [...selected],
+        business: brand,
+      });
+      qc.invalidateQueries({ queryKey: ["role-detail", roleId] });
+      qc.invalidateQueries({ queryKey: ["roles"] });
+      qc.invalidateQueries({ queryKey: ["roles-permissions-all"] });
+      toast.success(
+        `${roleName} assigned to ${res.granted_count} ${
+          res.granted_count === 1 ? "person" : "people"
+        }`,
+        res.skipped_count
+          ? {
+              description: `${res.skipped_count} skipped — no matching login account.`,
+            }
+          : undefined,
+      );
+      onClose();
+    } catch (e) {
+      toastReport("Org & Workflow → Permissions", "Assign role to staff", e);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="md"
+      title={
+        <span className="flex items-center gap-2">
+          <UserPlus className="w-4 h-4 text-[rgb(var(--accent))]" />
+          Assign <span className="font-mono">{roleName}</span> to staff
+        </span>
+      }
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            disabled={selected.size === 0 || saving}
+            onClick={handleAssign}
+          >
+            {saving
+              ? "Assigning…"
+              : selected.size
+                ? `Assign ${selected.size} ${
+                    selected.size === 1 ? "person" : "people"
+                  }`
+                : "Select staff"}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <p className="text-[12.5px] text-[rgb(var(--text-muted))] leading-snug">
+          Pick everyone who should hold this role — e.g. all your junior
+          stylists. They each get its permissions on their next request. Only
+          people with a Hub login appear here.
+        </p>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[rgb(var(--text-faint))]" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search staff by name, email or title…"
+            className="w-full bg-[rgb(var(--panel-2)/0.6)] border border-[rgb(var(--border-c))] rounded-xl pl-9 pr-3 py-2.5 text-[13px] focus:outline-none focus:border-[rgb(var(--accent)/0.5)]"
+            autoComplete="off"
+            data-lpignore="true"
+            data-1p-ignore=""
+            data-form-type="other"
+          />
+        </div>
+        <div className="max-h-[46vh] overflow-y-auto -mx-1 px-1 space-y-1">
+          {isLoading ? (
+            Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-14 rounded-xl" />
+            ))
+          ) : filtered.length === 0 ? (
+            <div className="py-10 text-center text-[13px] text-[rgb(var(--text-muted))]">
+              {users.length === 0
+                ? "No staff with a Hub login in this business yet."
+                : "No staff match your search."}
+            </div>
+          ) : (
+            filtered.map((u) => {
+              const has = holdsRole(u);
+              const checked = has || selected.has(u.user_id);
+              const name = u.display_name || u.email;
+              return (
+                <button
+                  key={u.user_id}
+                  type="button"
+                  disabled={has}
+                  onClick={() => toggle(u)}
+                  className={cn(
+                    "w-full flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors",
+                    has
+                      ? "border-[rgb(var(--border-c))] opacity-60 cursor-default"
+                      : checked
+                        ? "border-[rgb(var(--accent)/0.55)] bg-[rgb(var(--accent)/0.10)]"
+                        : "border-[rgb(var(--border-c))] hover:border-[rgb(var(--accent)/0.35)]",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "w-5 h-5 shrink-0 rounded-md border grid place-items-center",
+                      checked
+                        ? "bg-[rgb(var(--accent))] border-transparent text-[rgb(var(--bg))]"
+                        : "border-[rgb(var(--border-c))]",
+                    )}
+                  >
+                    {checked && <Check className="w-3.5 h-3.5" />}
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-[13px] font-semibold truncate">
+                      {name}
+                    </span>
+                    <span className="block text-[11px] text-[rgb(var(--text-faint))] truncate">
+                      {u.job_title ? `${u.job_title} · ` : ""}
+                      {u.email}
+                    </span>
+                  </span>
+                  {has && (
+                    <span className="shrink-0 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-[rgb(var(--success)/0.15)] text-[rgb(var(--success))]">
+                      Assigned
+                    </span>
+                  )}
+                </button>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function RoleEditorDrawer({
   roleId,
   catalog,
   groups,
+  contactTypes,
   onClose,
   canEdit,
 }: {
   roleId: string;
   catalog: CatalogEntry[];
   groups?: Catalog["groups"];
+  contactTypes?: ContactTypeOption[];
   onClose: () => void;
   canEdit: boolean;
 }) {
@@ -1016,6 +1240,18 @@ function RoleEditorDrawer({
   );
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Contact-type visibility (contacts §6.12). `ctDirty` tracks unsaved edits to
+  // this control independently of the permission matrix's `dirty`.
+  const [ctDirty, setCtDirty] = useState(false);
+  const [pendingCtRestricted, setPendingCtRestricted] = useState(false);
+  const [pendingCtTypes, setPendingCtTypes] = useState<Set<string>>(new Set());
+  // Bulk-assign this role to several staff at once.
+  const [showAddMembers, setShowAddMembers] = useState(false);
+  // Delete-role confirmation (checkbox acknowledgement).
+  const [showDelete, setShowDelete] = useState(false);
+  const [deleteAck, setDeleteAck] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const { data: role, isLoading } = useQuery({
     queryKey: ["role-detail", roleId],
@@ -1034,6 +1270,42 @@ function RoleEditorDrawer({
 
   const effectiveMap = dirty ? pendingGrants : permMap;
 
+  // ── Contact-type visibility (contacts §6.12) ──────────────
+  // Saved state from the role: null = unrestricted (sees every type); an array
+  // = restricted to those types. Pending overrides win once edited.
+  const savedCt = role?.contact_type_access ?? null;
+  const savedCtRestricted = Array.isArray(savedCt);
+  const ctOptions =
+    contactTypes && contactTypes.length ? contactTypes : FALLBACK_CONTACT_TYPES;
+  const ctRestricted = ctDirty ? pendingCtRestricted : savedCtRestricted;
+  const ctSelected = ctDirty
+    ? pendingCtTypes
+    : new Set<string>(Array.isArray(savedCt) ? savedCt : []);
+
+  function initCt() {
+    if (!ctDirty) {
+      setPendingCtRestricted(savedCtRestricted);
+      setPendingCtTypes(new Set(Array.isArray(savedCt) ? savedCt : []));
+      setCtDirty(true);
+    }
+  }
+  function setCtRestricted(on: boolean) {
+    if (!canEdit) return;
+    initCt();
+    setPendingCtRestricted(on);
+    setCtDirty(true);
+  }
+  function toggleCtType(key: string) {
+    if (!canEdit) return;
+    initCt();
+    const next = new Set(ctDirty ? pendingCtTypes : ctSelected);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setPendingCtTypes(next);
+    setPendingCtRestricted(true); // choosing types implies a restriction
+    setCtDirty(true);
+  }
+
   function initPending() {
     if (!dirty) {
       setPendingGrants(new Map(permMap));
@@ -1042,7 +1314,7 @@ function RoleEditorDrawer({
   }
 
   function toggleAction(module: string, action: string) {
-    if (!canEdit || role?.is_system) return;
+    if (!canEdit) return;
     initPending();
     const key = `${module}.${action}`;
     const next = new Map(dirty ? pendingGrants : permMap);
@@ -1096,7 +1368,7 @@ function RoleEditorDrawer({
   // Bulk: ADD the given actions across a set of modules (union — never removes
   // an existing grant). Powers the per-section "View" / "Full access" buttons.
   function grantModulesActions(mods: CatalogEntry[], actions: string[]) {
-    if (!canEdit || role?.is_system) return;
+    if (!canEdit) return;
     initPending();
     const next = new Map(dirty ? pendingGrants : permMap);
     for (const cat of mods) {
@@ -1120,7 +1392,7 @@ function RoleEditorDrawer({
 
   // Bulk: remove every grant across a set of modules.
   function clearModules(mods: CatalogEntry[]) {
-    if (!canEdit || role?.is_system) return;
+    if (!canEdit) return;
     initPending();
     const next = new Map(dirty ? pendingGrants : permMap);
     for (const cat of mods) {
@@ -1131,7 +1403,7 @@ function RoleEditorDrawer({
   }
 
   async function handleSave() {
-    if (!roleId || !dirty) return;
+    if (!roleId || (!dirty && !ctDirty)) return;
     setSaving(true);
     const grants = Array.from(effectiveMap.values()).map((p) => ({
       module: p.module,
@@ -1140,16 +1412,49 @@ function RoleEditorDrawer({
       hidden_fields: p.hidden_fields,
     }));
     try {
-      await accessApi.setRolePermissions(roleId, grants);
+      if (dirty) {
+        await accessApi.setRolePermissions(roleId, grants);
+      }
+      if (ctDirty) {
+        // Restricted → the selected set (may be empty = sees none);
+        // unrestricted → null (clears the restriction).
+        const desired = ctRestricted ? Array.from(ctSelected) : null;
+        await accessApi.setRoleContactTypes(roleId, desired);
+      }
       qc.invalidateQueries({ queryKey: ["role-detail", roleId] });
       qc.invalidateQueries({ queryKey: ["roles"] });
       setDirty(false);
+      setCtDirty(false);
     } finally {
       setSaving(false);
     }
   }
 
+  async function handleDelete() {
+    if (!role) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await accessApi.deleteRole(role.role_id);
+      qc.invalidateQueries({ queryKey: ["roles"] });
+      qc.invalidateQueries({ queryKey: ["roles-permissions-all"] });
+      toast.success(`Role "${role.role_name}" deleted`);
+      setShowDelete(false);
+      onClose();
+    } catch (e) {
+      setDeleteError(
+        e instanceof Error ? e.message : "Failed to delete this role",
+      );
+      setDeleting(false);
+    }
+  }
+
   const isSystemRole = role?.is_system ?? false;
+  // Members lose this role's access the moment it's deleted — surface the count.
+  const memberCount = role?.members?.length ?? role?.member_count ?? 0;
+  // The owner role is never deletable (backend rejects it too); everything else
+  // may be deleted by a Settings admin.
+  const canDeleteRole = canEdit && !!role && role.role_id !== OWNER_ROLE_ID;
 
   return (
     <Drawer
@@ -1170,19 +1475,34 @@ function RoleEditorDrawer({
         )
       }
       footer={
-        canEdit && !isSystemRole ? (
-          <>
-            <Button variant="ghost" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button
-              variant="primary"
-              disabled={!dirty || saving}
-              onClick={handleSave}
-            >
-              {saving ? "Saving…" : "Save permissions"}
-            </Button>
-          </>
+        canEdit ? (
+          <div className="flex items-center gap-2 w-full">
+            {canDeleteRole && (
+              <Button
+                variant="danger"
+                icon={<Trash2 className="w-4 h-4" />}
+                onClick={() => {
+                  setDeleteAck(false);
+                  setDeleteError(null);
+                  setShowDelete(true);
+                }}
+              >
+                Delete role
+              </Button>
+            )}
+            <div className="ml-auto flex items-center gap-2">
+              <Button variant="ghost" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                disabled={(!dirty && !ctDirty) || saving}
+                onClick={handleSave}
+              >
+                {saving ? "Saving…" : "Save permissions"}
+              </Button>
+            </div>
+          </div>
         ) : undefined
       }
     >
@@ -1200,13 +1520,149 @@ function RoleEditorDrawer({
             </p>
           )}
           {isSystemRole && (
-            <div className="flex items-center gap-2 mb-4 p-3 rounded-xl bg-[rgb(var(--warn)/0.08)] border border-[rgb(var(--warn)/0.25)]">
-              <Lock className="w-4 h-4 text-[rgb(var(--warn))] shrink-0" />
-              <span className="text-[12.5px] text-[rgb(var(--warn))]">
-                System role — permissions are read-only
+            <div className="flex items-start gap-2 mb-4 p-3 rounded-xl bg-[rgb(var(--warn)/0.08)] border border-[rgb(var(--warn)/0.25)]">
+              <AlertTriangle className="w-4 h-4 text-[rgb(var(--warn))] shrink-0 mt-0.5" />
+              <span className="text-[12.5px] text-[rgb(var(--warn))] leading-snug">
+                Seeded system role — edits change the platform default and take
+                effect on each member's next request. Deleting it removes it for
+                everyone; it won't return until a migration re-seeds it.
               </span>
             </div>
           )}
+          {/* Members — who holds this role. Bulk-assign it to several staff at
+              once (e.g. all your junior stylists) with "Add members". */}
+          <div className="mb-4 p-3 rounded-xl border border-[rgb(var(--border-c))] bg-[rgb(var(--panel-2)/0.4)]">
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <Users className="w-4 h-4 text-[rgb(var(--accent))] shrink-0" />
+                <div className="text-[13px] font-semibold">
+                  Members{" "}
+                  <span className="text-[rgb(var(--text-faint))] font-normal">
+                    ({memberCount})
+                  </span>
+                </div>
+              </div>
+              {canEdit && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon={<UserPlus className="w-3.5 h-3.5" />}
+                  onClick={() => setShowAddMembers(true)}
+                >
+                  Add members
+                </Button>
+              )}
+            </div>
+            <p className="text-[11.5px] text-[rgb(var(--text-muted))] leading-snug mb-2">
+              Everyone who holds this role. Assign it to several staff at once —
+              more than one person can hold the same role.
+            </p>
+            {role?.members && role.members.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {role.members.slice(0, 24).map((m) => (
+                  <span
+                    key={`${m.user_id}-${m.business}`}
+                    title={m.email ?? m.user_id}
+                    className="text-[11px] px-2 py-0.5 rounded-full bg-[rgb(var(--text)/0.05)] border border-[rgb(var(--border-c))] truncate max-w-[220px]"
+                  >
+                    {m.email ?? m.user_id}
+                  </span>
+                ))}
+                {role.members.length > 24 && (
+                  <span className="text-[11px] px-2 py-0.5 text-[rgb(var(--text-faint))]">
+                    +{role.members.length - 24} more
+                  </span>
+                )}
+              </div>
+            ) : (
+              <p className="text-[11.5px] text-[rgb(var(--text-faint))]">
+                No one holds this role yet.
+              </p>
+            )}
+          </div>
+          {/* Contact visibility (contacts §6.12) — which contact TYPES this
+              role may see. Independent of the module grid below; applies to the
+              Contacts module and every 360° surface that reads contacts. */}
+          <div className="mb-4 p-3 rounded-xl border border-[rgb(var(--border-c))] bg-[rgb(var(--panel-2)/0.4)]">
+            <div className="flex items-start gap-2 mb-2">
+              <Users className="w-4 h-4 text-[rgb(var(--accent))] shrink-0 mt-0.5" />
+              <div>
+                <div className="text-[13px] font-semibold">Contact visibility</div>
+                <p className="text-[11.5px] text-[rgb(var(--text-muted))] leading-snug">
+                  Which contact types this role can see in Contacts — e.g. limit
+                  supplier-facing staff to manufacturers only, keeping the client
+                  book out of view. The API enforces it on every request.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2 mb-2">
+              <button
+                type="button"
+                disabled={!canEdit}
+                onClick={() => setCtRestricted(false)}
+                className={cn(
+                  "text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition-colors",
+                  !ctRestricted
+                    ? "border-[rgb(var(--accent)/0.6)] bg-[rgb(var(--accent)/0.12)] text-[rgb(var(--text))]"
+                    : "border-[rgb(var(--border-c))] text-[rgb(var(--text-muted))] hover:text-[rgb(var(--text))]",
+                  !canEdit && "opacity-60 cursor-not-allowed",
+                )}
+              >
+                Sees all contact types
+              </button>
+              <button
+                type="button"
+                disabled={!canEdit}
+                onClick={() => setCtRestricted(true)}
+                className={cn(
+                  "text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition-colors",
+                  ctRestricted
+                    ? "border-[rgb(var(--accent)/0.6)] bg-[rgb(var(--accent)/0.12)] text-[rgb(var(--text))]"
+                    : "border-[rgb(var(--border-c))] text-[rgb(var(--text-muted))] hover:text-[rgb(var(--text))]",
+                  !canEdit && "opacity-60 cursor-not-allowed",
+                )}
+              >
+                Limit to selected types
+              </button>
+            </div>
+            {ctRestricted && (
+              <>
+                <div className="flex flex-wrap gap-1.5">
+                  {ctOptions.map((ct) => {
+                    const on = ctSelected.has(ct.key);
+                    return (
+                      <button
+                        key={ct.key}
+                        type="button"
+                        disabled={!canEdit}
+                        onClick={() => toggleCtType(ct.key)}
+                        className={cn(
+                          "inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg border transition-colors",
+                          on
+                            ? "border-[rgb(var(--accent)/0.6)] bg-[rgb(var(--accent)/0.12)] text-[rgb(var(--text))]"
+                            : "border-[rgb(var(--border-c))] text-[rgb(var(--text-muted))] hover:text-[rgb(var(--text))]",
+                          !canEdit && "opacity-60 cursor-not-allowed",
+                        )}
+                      >
+                        {on && <Check className="w-3 h-3" />}
+                        {ct.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {ctSelected.size === 0 && (
+                  <p className="mt-2 text-[11px] text-[rgb(var(--warn))] leading-snug">
+                    Nothing selected — this role will see no contacts at all.
+                    Pick at least one type, or switch back to “Sees all”.
+                  </p>
+                )}
+                <p className="mt-2 text-[11px] text-[rgb(var(--text-faint))] leading-snug">
+                  A member sees the union of all their roles’ types; any
+                  unrestricted role grants access to every contact.
+                </p>
+              </>
+            )}
+          </div>
           {/* Search — jump to any module in under a second */}
           <div className="relative mb-3">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[rgb(var(--text-faint))]" />
@@ -1237,7 +1693,7 @@ function RoleEditorDrawer({
               <div key={grp.key}>
                 <div className="flex items-center justify-between mb-1.5 px-0.5">
                   <div className="micro">{grp.label}</div>
-                  {canEdit && !isSystemRole && (
+                  {canEdit && (
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() =>
@@ -1324,12 +1780,10 @@ function RoleEditorDrawer({
                             <button
                               key={action}
                               onClick={() => toggleAction(cat.module, action)}
-                              disabled={isSystemRole || !canEdit}
+                              disabled={!canEdit}
                               className={cn(
                                 "flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-[12px] font-medium transition-all",
-                                isSystemRole || !canEdit
-                                  ? "cursor-default"
-                                  : "cursor-pointer",
+                                !canEdit ? "cursor-default" : "cursor-pointer",
                                 granted
                                   ? "border-transparent"
                                   : "border-[rgb(var(--border-c))] text-[rgb(var(--text-muted))] hover:border-[rgb(var(--text)/0.2)]",
@@ -1355,9 +1809,7 @@ function RoleEditorDrawer({
                         })}
                       </div>
                       {/* Scope + hidden fields for view grant */}
-                      {effectiveMap.has(`${cat.module}.view`) &&
-                        canEdit &&
-                        !isSystemRole && (
+                      {effectiveMap.has(`${cat.module}.view`) && canEdit && (
                           <div className="pt-2 border-t border-[rgb(var(--border-c))] space-y-2">
                             <div className="micro">
                               Data access refinement (view)
@@ -1421,6 +1873,91 @@ function RoleEditorDrawer({
             ))}
           </div>
         </>
+      )}
+
+      {showAddMembers && role && (
+        <AddMembersModal
+          roleId={role.role_id}
+          roleName={role.role_name}
+          existingUserIds={new Set((role.members ?? []).map((m) => m.user_id))}
+          onClose={() => setShowAddMembers(false)}
+        />
+      )}
+
+      {showDelete && role && (
+        <Modal
+          open
+          onClose={() => {
+            if (!deleting) setShowDelete(false);
+          }}
+          title="Delete role"
+          footer={
+            <>
+              <Button
+                variant="ghost"
+                onClick={() => setShowDelete(false)}
+                disabled={deleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                icon={<Trash2 className="w-4 h-4" />}
+                disabled={!deleteAck || deleting}
+                onClick={handleDelete}
+              >
+                {deleting ? "Deleting…" : "Delete role"}
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-3">
+            <div className="flex items-start gap-2 p-3 rounded-xl bg-[rgb(var(--danger)/0.08)] border border-[rgb(var(--danger)/0.25)]">
+              <AlertTriangle className="w-4 h-4 text-[rgb(var(--danger))] shrink-0 mt-0.5" />
+              <div className="text-[12.5px] text-[rgb(var(--danger))] leading-snug">
+                You're about to permanently delete{" "}
+                <span className="font-semibold">{role.role_name}</span>. This
+                can't be undone.
+              </div>
+            </div>
+            <ul className="text-[13px] text-[rgb(var(--text-muted))] space-y-1.5 list-disc pl-5">
+              <li>
+                It will be removed from{" "}
+                <span className="font-semibold text-[rgb(var(--text))]">
+                  {memberCount} member{memberCount === 1 ? "" : "s"}
+                </span>
+                , who lose whatever access it granted on their next request.
+              </li>
+              {isSystemRole && (
+                <li>
+                  This is a{" "}
+                  <span className="font-semibold text-[rgb(var(--text))]">
+                    seeded system role
+                  </span>{" "}
+                  — it won't exist again until a migration re-seeds it.
+                </li>
+              )}
+              <li>Its permission grants are erased. The audit trail is kept.</li>
+            </ul>
+            {deleteError && (
+              <div className="text-[12.5px] text-[rgb(var(--danger))]">
+                {deleteError}
+              </div>
+            )}
+            <label className="flex items-start gap-2 cursor-pointer select-none pt-1">
+              <input
+                type="checkbox"
+                checked={deleteAck}
+                onChange={(e) => setDeleteAck(e.target.checked)}
+                className="mt-0.5 accent-[rgb(var(--danger))]"
+              />
+              <span className="text-[13px] text-[rgb(var(--text))]">
+                I understand this permanently deletes the role and removes it
+                from {memberCount} member{memberCount === 1 ? "" : "s"}.
+              </span>
+            </label>
+          </div>
+        </Modal>
       )}
     </Drawer>
   );
@@ -1836,6 +2373,7 @@ function PermissionsTab({ canEdit }: { canEdit: boolean }) {
           roleId={selectedRoleId}
           catalog={catalogModules}
           groups={catalog?.groups}
+          contactTypes={catalog?.contact_types}
           canEdit={canEdit}
           onClose={() => setSelectedRoleId(null)}
         />
@@ -1891,16 +2429,82 @@ const MODULE_KEYS = [
   "org_workflow",
 ];
 
+/**
+ * Approver value picker — replaces the old free-text box. You pick a real
+ * role / position / person from the org rather than typing an identifier that
+ * has to match the backend exactly. The stored value stays the same shape the
+ * workflow engine matches on: role name, position key, or user id.
+ */
+function ApproverValuePicker({
+  type,
+  value,
+  roles,
+  positions,
+  staff,
+  onChange,
+}: {
+  type: "role" | "position" | "user";
+  value: string;
+  roles: Role[];
+  positions: OrgPosition[];
+  staff: StaffRow[];
+  onChange: (v: string) => void;
+}) {
+  const options: Array<{ value: string; label: string }> =
+    type === "role"
+      ? roles.map((r) => ({ value: r.role_name, label: r.role_name }))
+      : type === "position"
+        ? positions.map((p) => ({
+            value: p.position_key,
+            label: p.display_name || p.position_key,
+          }))
+        : staff
+            .filter((s) => s.user_id)
+            .map((s) => ({ value: s.user_id as string, label: s.display_name }));
+
+  // Never silently drop a value that isn't in the list (older hand-authored
+  // workflow, or the lists still loading) — keep it selectable.
+  const hasCurrent = !value || options.some((o) => o.value === value);
+  const placeholder =
+    type === "role"
+      ? "Select a role…"
+      : type === "position"
+        ? "Select a position…"
+        : "Select a person…";
+
+  return (
+    <select
+      className="flex-1 min-w-0 bg-[rgb(var(--panel-2)/0.6)] border border-[rgb(var(--border-c))] rounded-lg px-2.5 py-1.5 text-[12px] focus:outline-none focus:border-[rgb(var(--accent)/0.5)]"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      <option value="">{placeholder}</option>
+      {!hasCurrent && <option value={value}>{value} (not in list)</option>}
+      {options.map((o) => (
+        <option key={o.value} value={o.value}>
+          {o.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 function StageEditor({
   stage,
   onChange,
   onRemove,
   index,
+  roles,
+  positions,
+  staff,
 }: {
   stage: WorkflowStage;
   onChange: (s: WorkflowStage) => void;
   onRemove: () => void;
   index: number;
+  roles: Role[];
+  positions: OrgPosition[];
+  staff: StaffRow[];
 }) {
   const [condType, setCondType] = useState<"none" | "lte" | "gt" | "range">(
     stage.threshold_ngn_lte != null && stage.threshold_ngn_gt != null
@@ -1917,6 +2521,10 @@ function StageEditor({
     approvers[i] = {
       ...approvers[i],
       [field]: val,
+      // Switching the kind of approver invalidates the previously-picked
+      // value (a role name is not a user id) — clear it so the picker
+      // returns to its placeholder rather than carrying a stale selection.
+      ...(field === "type" ? { value: "" } : {}),
     } as WorkflowStage["approvers"][number];
     onChange({ ...stage, approvers });
   }
@@ -1993,17 +2601,13 @@ function StageEditor({
                 <option value="position">Position</option>
                 <option value="user">User</option>
               </select>
-              <input
-                className="flex-1 bg-[rgb(var(--panel-2)/0.6)] border border-[rgb(var(--border-c))] rounded-lg px-2.5 py-1.5 text-[12px] focus:outline-none focus:border-[rgb(var(--accent)/0.5)]"
+              <ApproverValuePicker
+                type={app.type}
                 value={app.value}
-                onChange={(e) => updateApprover(i, "value", e.target.value)}
-                placeholder={
-                  app.type === "role"
-                    ? "e.g. manager"
-                    : app.type === "position"
-                      ? "e.g. head_of_finance"
-                      : "user_id"
-                } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+                roles={roles}
+                positions={positions}
+                staff={staff}
+                onChange={(v) => updateApprover(i, "value", v)}
               />
               <button
                 onClick={() => removeApprover(i)}
@@ -2176,6 +2780,22 @@ function WorkflowBuilderDrawer({
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Feed the approver pickers: roles, org positions, and staff (for the
+  // user picker). These are the same sources the org-chart editor uses.
+  const { data: roles = [] } = useQuery({
+    queryKey: ["access-roles"],
+    queryFn: () => accessApi.listRoles(),
+  });
+  const { data: positions = [] } = useQuery({
+    queryKey: ["org-positions"],
+    queryFn: () => orgApi.listPositions(),
+  });
+  const { data: staffResp } = useQuery({
+    queryKey: ["hr", "staff-picker"],
+    queryFn: () => listStaff({ page_size: "200" }),
+  });
+  const staff = staffResp?.data ?? [];
 
   function addStage() {
     setStages((prev) => [
@@ -2357,6 +2977,9 @@ function WorkflowBuilderDrawer({
                     index={i}
                     onChange={(s) => updateStage(i, s)}
                     onRemove={() => removeStage(i)}
+                    roles={roles}
+                    positions={positions}
+                    staff={staff}
                   />
                 </div>
               ))}
@@ -2886,7 +3509,12 @@ function PendingTab({ canAct }: { canAct: boolean }) {
 
 export function OrgWorkflowPage() {
   const { can, user } = useAuthStore();
-  const [tab, setTab] = useState<Tab>("org");
+  const [tab, setTab] = useUrlTab<Tab>("org", [
+    "org",
+    "permissions",
+    "workflows",
+    "pending",
+  ]);
 
   const tabLabels: Record<Tab, string> = {
     org: "Org Chart",

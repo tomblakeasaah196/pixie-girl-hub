@@ -465,4 +465,29 @@ export const aiGovernanceApi = {
       `/ai-governance/flags/${feature_key}/resting-message`,
       { resting_message },
     ),
+
+  /** Recent Chief-of-Staff turn traces (observability; metadata only). */
+  listCosTurns: (limit = 50) =>
+    api.get<CosTurnTrace[]>(`/ai-governance/cos-turns?limit=${limit}`),
 };
+
+export type CosTurnOutcome = "plan" | "chat" | "reprompt" | "stub" | "error";
+
+export interface CosTurnTrace {
+  trace_id: string;
+  conversation_id: string | null;
+  message_id: string | null;
+  business: string | null;
+  outcome: CosTurnOutcome;
+  rounds: number;
+  tool_calls: number;
+  reads: number;
+  vendors: string[];
+  models: string[];
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  latency_ms: number;
+  plan_id: string | null;
+  created_at: string;
+}

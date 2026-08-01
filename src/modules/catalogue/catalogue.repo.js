@@ -56,8 +56,16 @@ const PROD_COLS = [
   "lace_size_codes",
   // Pre-order / production timeline (P0-7).
   "preorder_enabled",
+  "preorder_excluded",
   "expected_ready_date",
   "production_lead_days",
+  // Rewig adjacency (000088): this base's own tier + sibling family group +
+  // per-base opt-out. size_code/base_family_id are normally set by the
+  // backfill/auto-map flow, not hand-edited; rewig_eligible is the one staff
+  // commonly flip (e.g. a construction that doesn't resize well).
+  "size_code",
+  "base_family_id",
+  "rewig_eligible",
 ];
 const VAR_COLS = [
   "sku",

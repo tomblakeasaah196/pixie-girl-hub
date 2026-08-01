@@ -27,11 +27,17 @@
 "use strict";
 
 const DEFINITIONS = {
-  // ── Expenses (§6.7) — manager up to ₦200k, CEO above ────────────────────
+  // ── Expenses (§6.7) — the CEO or the COO approves every expense ─────────
+  // Single unconditional stage: every submitted expense, of any amount, waits
+  // on the CEO OR the Chief Operating Officer to approve or reject (either one
+  // acting completes the stage). The COO is the owner's delegate for expense
+  // sign-off, so the queue is never blocked behind the CEO alone.
+  // To reintroduce a manager tier or amount thresholds later, edit this
+  // workflow in Org & Workflow → Workflows.
   "expenses:submit": {
     name: "Expense Approval",
     description:
-      "Manager approves expenses up to ₦200,000; the CEO approves anything above. Tiers are exclusive.",
+      "The CEO or the Chief Operating Officer approves (or rejects) every expense, of any amount. Edit this workflow in Org & Workflow to add a manager tier or amount thresholds.",
     trigger_module: "expenses",
     trigger_action: "submit",
     definition: {
@@ -39,20 +45,11 @@ const DEFINITIONS = {
       stages: [
         {
           order: 1,
-          name: "Manager approval (≤ ₦200k)",
-          approvers: [{ type: "role", value: "manager" }],
-          threshold_field: "total_ngn",
-          threshold_ngn_lte: 200000,
-          timeout_hours: 48,
-          on_timeout: "escalate",
-          fallback_to_deputy: true,
-        },
-        {
-          order: 2,
-          name: "CEO approval (> ₦200k)",
-          approvers: [{ type: "role", value: "ceo" }],
-          threshold_field: "total_ngn",
-          threshold_ngn_gt: 200000,
+          name: "Executive approval (CEO or COO)",
+          approvers: [
+            { type: "role", value: "ceo" },
+            { type: "role", value: "chief_operating_officer" },
+          ],
           timeout_hours: 48,
           on_timeout: "escalate",
           fallback_to_deputy: false,

@@ -10,11 +10,13 @@ export function SmartLink({
   to,
   className,
   children,
+  onClick,
   "aria-label": ariaLabel,
 }: {
   to: string;
   className?: string;
   children: ReactNode;
+  onClick?: () => void;
   "aria-label"?: string;
 }) {
   const external =
@@ -28,6 +30,7 @@ export function SmartLink({
         href={to}
         className={className}
         aria-label={ariaLabel}
+        onClick={onClick}
         target={/^https?:\/\//i.test(to) ? "_blank" : undefined}
         rel={/^https?:\/\//i.test(to) ? "noopener noreferrer" : undefined}
       >
@@ -36,7 +39,7 @@ export function SmartLink({
     );
   }
   return (
-    <Link to={to} className={className} aria-label={ariaLabel}>
+    <Link to={to} className={className} aria-label={ariaLabel} onClick={onClick}>
       {children}
     </Link>
   );

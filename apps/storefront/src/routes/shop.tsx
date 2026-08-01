@@ -13,6 +13,7 @@ import {
   priceFor,
   type ProductCard,
 } from "@/lib/storefront";
+import { AvailabilityPill } from "@/components/availability";
 import {
   askPraxisSearch,
   isQuotaError,
@@ -362,7 +363,8 @@ function Shop() {
                 transition={{ duration: 0.6, delay: (i % 4) * 0.06, ease: [0.22, 1, 0.36, 1] }}
               >
                 <Link to="/product/$slug" params={{ slug: p.slug }} className="group block">
-                  <div className="aspect-[3/4] overflow-hidden bg-card">
+                  <div className="relative aspect-[3/4] overflow-hidden bg-card">
+                    <AvailabilityPill availability={p.availability} />
                     {p.cover_image_url ? (
                       <img src={p.cover_image_url} alt={p.name} loading="lazy" className="h-full w-full object-cover transition-transform duration-[1200ms] ease-out group-hover:scale-105" />
                     ) : null}

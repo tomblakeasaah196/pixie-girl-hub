@@ -41,7 +41,7 @@ Module navigation grouped into 8 sections:
 | **Stock & Production** | Catalogue · Stock · Purchasing · Production · Service Jobs (FLH only) · Pricing Engine · Retail Partners          | Box          |
 | **Operations**         | Invoicing · Accounting · Expenses · Logistics · Inter-Company · Tax Filings · Bank Rec                            | Receipt      |
 | **People**             | HR · Staff · Performance · Payroll · Clock-In · Org Chart                                                         | User badge   |
-| **Communicate**        | Smartcomm · Email Campaigns · Social Media · Ad Analytics · Documents                                             | Chat bubble  |
+| **Communicate**        | Smartcomm · Email Campaigns · Social Media · Documents                                             | Chat bubble  |
 | **AI & Insights**      | Praxis Chat · Briefings · Insights · Reports · Dashboards                                                         | Sparkle      |
 | **Settings**           | Business Setup · Workflows · Custom Fields · Pipelines · Roles · AI Governance · Storefront Studio · Integrations | Cog          |
 
@@ -249,20 +249,18 @@ Covered under CRM (same `shared.contacts` table). Suppliers and stylists have th
 | Posts calendar        | Schedule view                                                                           |
 | Post metrics          | Per-post engagement; daily rollup chart                                                 |
 
-### 6.15 Ad Analytics
+### 6.15 Ad Analytics — retired
 
-| Screen            | Purpose                                     |
-| ----------------- | ------------------------------------------- |
-| Ad accounts admin | Connect Google Ads / Meta Ads               |
-| Campaigns list    | Spend, ROAS, conversions                    |
-| Campaign detail   | Daily metrics chart; conversion attribution |
+Ad analytics was removed from the platform (no ad accounts are connected and
+none will be). Marketing is email-only: see 6.16.
 
 ### 6.16 Email Campaigns
 
 | Screen                  | Purpose                                                           |
 | ----------------------- | ----------------------------------------------------------------- |
 | Email templates library | List + preview + version history                                  |
-| Template editor         | HTML editor with variable inserter; live preview with sample data |
+| Template editor         | Gmail-style rich text editor with Personalise pills (no HTML); framed live preview with sample data |
+| Brand frame (Design)    | Per-brand email header/footer config, seeded with premium defaults |
 | Milestone rules admin   | Birthday / anniversary / cart abandonment configurator            |
 | Campaigns list          | Status-grouped (draft / scheduled / sending / completed)          |
 | Campaign builder        | Audience picker (segment); template; A/B variants; schedule       |

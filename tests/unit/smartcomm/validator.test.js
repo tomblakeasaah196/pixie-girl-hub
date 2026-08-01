@@ -48,6 +48,39 @@ describe("smartcomm validators", () => {
     expect(calledNext).toBe(true);
   });
 
+  test("postMessage accepts a rich HTML email body (body_html only)", () => {
+    const { calledNext } = run(v.validatePostMessage, {
+      message_type: "text",
+      subject: "Hello",
+      body_html: "<p>Hi <strong>Ada</strong></p>",
+    });
+    expect(calledNext).toBe(true);
+  });
+
+  test("sendToCustomer requires a body on WhatsApp", () => {
+    const { error } = run(v.validateSendToCustomer, {
+      contact_id: "11111111-1111-1111-1111-111111111111",
+      channel: "whatsapp",
+    });
+    expect(error).toBeDefined();
+  });
+
+  test("sendToCustomer allows email to lead with HTML + attachment (no plain body)", () => {
+    const { calledNext } = run(v.validateSendToCustomer, {
+      contact_id: "11111111-1111-1111-1111-111111111111",
+      channel: "email",
+      subject: "Your look",
+      body_html: "<p>See the lookbook.</p>",
+      attachments: [
+        {
+          document_id: "22222222-2222-2222-2222-222222222222",
+          display_name: "lookbook.pdf",
+        },
+      ],
+    });
+    expect(calledNext).toBe(true);
+  });
+
   test("quickReplyCreate enforces slug format", () => {
     const { error } = run(v.validateQuickReplyCreate, {
       scope: "personal",

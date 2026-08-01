@@ -22,6 +22,11 @@ import type {
   Accountability,
   CustodyEntry,
   QcInput,
+  JobActivityEntry,
+  StylistScorecardSummary,
+  StylistScorecard,
+  JobSummary,
+  MyCurrentSession,
 } from "./types";
 
 const BASE = "/service-jobs";
@@ -92,6 +97,9 @@ export function listJobs(params?: {
   assigned_staff_user_id?: string;
   assigned_stylist_id?: string;
   customer_contact_id?: string;
+  // "My Jobs" cockpit: narrow the list to the caller's own jobs (current OR
+  // historical-custody) regardless of how broad their permission scope is.
+  mine?: boolean;
   page?: number;
   page_size?: number;
 }) {
@@ -103,6 +111,7 @@ export function listJobs(params?: {
     qs.set("assigned_stylist_id", params.assigned_stylist_id);
   if (params?.customer_contact_id)
     qs.set("customer_contact_id", params.customer_contact_id);
+  if (params?.mine) qs.set("mine", "true");
   if (params?.page) qs.set("page", String(params.page));
   if (params?.page_size) qs.set("page_size", String(params.page_size));
   const q = qs.toString();
@@ -111,6 +120,13 @@ export function listJobs(params?: {
 
 export function getJob(id: string) {
   return api.get<ServiceJob>(`${BASE}/${id}`);
+}
+
+// The caller's currently-open time session, or null when no clock is
+// running. Drives the page-level "You're working on Job X — 47m elapsed"
+// strip for own-scope stylists.
+export function getMyCurrentSession() {
+  return api.get<MyCurrentSession | null>(`${BASE}/my/current`);
 }
 
 export function createJob(input: CreateJobInput) {
@@ -146,16 +162,35 @@ export function advanceJob(
   });
 }
 
-export function assignStaff(id: string, assigned_staff_user_id: string) {
+export function assignStaff(
+  id: string,
+  assigned_staff_user_id: string,
+  // Deadline chosen at the assigning level (ISO 8601). Sets the job's
+  // expected_completion_at + SLA clock and, via the DB trigger, the stylist's
+  // Workspace task due date. Omit to let the backend default it to +48h.
+  expected_completion_at?: string,
+  // Set when the assigner has acknowledged the warning shown for a job with no
+  // sales order behind it (no stock movement, nothing to reconcile against).
+  // The API rejects an unlinked assignment without it.
+  acknowledge_unlinked?: boolean,
+) {
   return api.post<ServiceJob>(`${BASE}/${id}/assign`, {
     assigned_staff_user_id,
+    ...(expected_completion_at ? { expected_completion_at } : {}),
+    ...(acknowledge_unlinked ? { acknowledge_unlinked: true } : {}),
   });
 }
 
-// Options for the drawer's assignment picker: every Operations-department
-// employee with an active login in the current brand, with live workload +
-// leave state. Their job_title is shown as their role. Backed by
-// GET /service-jobs/stylists; small list (no pagination).
+// Revert an assignment back to Unassigned. CEO-only (the API enforces via a hard
+// gate); the UI only surfaces the control to a CEO.
+export function unassignStaff(id: string) {
+  return api.post<ServiceJob>(`${BASE}/${id}/unassign`, {});
+}
+
+// Options for the drawer's assignment picker: stylists (Junior/Senior/Head
+// Stylist) in the Operations department with an active login in the current
+// brand, with live workload + leave state. Their job_title is shown as their
+// role. Backed by GET /service-jobs/stylists; small list (no pagination).
 export interface AssignableStylist {
   user_id: string;
   full_name: string;
@@ -167,6 +202,15 @@ export interface AssignableStylist {
 }
 export function listAssignableStylists() {
   return api.get<AssignableStylist[]>(`${BASE}/stylists`);
+}
+
+// Internal Stylist Studio scorecards — NOT the Stylist Partner Programme
+// (that's a separate module/nav section with its own review system).
+export function listStylistScorecards() {
+  return api.get<StylistScorecardSummary[]>(`${BASE}/scorecards`);
+}
+export function getStylistScorecard(userId: string) {
+  return api.get<StylistScorecard>(`${BASE}/scorecards/${userId}`);
 }
 
 export function recordOutcome(
@@ -239,14 +283,11 @@ export function resumeJob(id: string) {
 export function returnJob(id: string) {
   return api.post<ServiceJob>(`${BASE}/${id}/return`, {});
 }
+// QC pass now auto-completes the job + creates the Logistics delivery in a
+// single call (see service.js recordQc). The old dispatch + hand-to-sales
+// endpoints were retired — those flows live on the Logistics/Sales side now.
 export function qcJob(id: string, input: QcInput) {
   return api.post<ServiceJob>(`${BASE}/${id}/qc`, input);
-}
-export function dispatchJob(id: string) {
-  return api.post<ServiceJob>(`${BASE}/${id}/dispatch`, {});
-}
-export function handToSales(id: string) {
-  return api.post<ServiceJob>(`${BASE}/${id}/hand-to-sales`, {});
 }
 export function linkIntercompany(id: string, ic_transaction_id: string) {
   return api.post<ServiceJob>(`${BASE}/${id}/intercompany-link`, {
@@ -257,6 +298,9 @@ export function writeOffWig(id: string, reason: string) {
   return api.post<CustodyEntry>(`${BASE}/${id}/write-off`, {
     reason,
   });
+}
+export function summarizeJob(id: string) {
+  return api.post<JobSummary>(`${BASE}/${id}/summarize`, {});
 }
 
 // ── Materials / references / time logs ─────────────────────
@@ -300,6 +344,9 @@ export function deleteReference(jobId: string, refId: string) {
 }
 export function listTimeLogs(jobId: string) {
   return api.get<JobTimeLog[]>(`${BASE}/${jobId}/time-logs`);
+}
+export function listJobActivity(jobId: string) {
+  return api.get<JobActivityEntry[]>(`${BASE}/${jobId}/activity`);
 }
 
 // ── Wig accountability ─────────────────────────────────────

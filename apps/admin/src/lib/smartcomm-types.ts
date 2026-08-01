@@ -179,6 +179,10 @@ export interface Message {
     /** Emoji the customer reacted with on WhatsApp/Instagram (stamped
      *  server-side from the reaction webhook; absent once un-reacted). */
     customer_reaction?: string;
+    /** Stamped server-side on replies OUR side sent from the platform's
+     *  own app (message echoes) — 'instagram_app' renders the bubble on
+     *  the business side with a "via Instagram app" tag. */
+    via?: string;
   } | null;
 }
 
@@ -287,15 +291,47 @@ export interface ComposerSettings {
   onboarding_template: string;
   whatsapp_handoff_template: string;
   whatsapp_share_number: string | null;
+  /** "Send our address" wording; `{address}` is filled at insert time. */
+  address_template: string;
+  /** The address itself — override, else Settings → Business Setup. */
+  address_share_text: string | null;
+  /** "Send our working hours" wording; `{hours}` is filled at insert time. */
+  hours_template: string;
+  /** The opening-hours line (seeded Monday–Saturday, 9:00 AM – 8:00 PM). */
+  hours_share_text: string;
   onboarding_is_custom: boolean;
   whatsapp_is_custom: boolean;
   whatsapp_number_is_custom: boolean;
+  address_is_custom: boolean;
+  address_text_is_custom: boolean;
+  hours_is_custom: boolean;
+  hours_text_is_custom: boolean;
 }
 
 export interface ComposerSettingsInput {
   onboarding_template: string;
   whatsapp_handoff_template: string;
   whatsapp_share_number: string;
+  address_template: string;
+  address_share_text: string;
+  hours_template: string;
+  hours_share_text: string;
+}
+
+/** OG/Twitter/bare-HTML metadata for a link shared in a thread — powers the
+ *  WhatsApp-style preview card. A failed unfurl comes back as `{ ok:false }`,
+ *  so the card renders nothing and the plain clickable link stays. */
+export interface LinkPreviewResult {
+  ok: boolean;
+  preview?: {
+    url: string;
+    title: string | null;
+    description: string | null;
+    image: string | null;
+    site_name: string | null;
+    favicon: string | null;
+    type: string | null;
+  };
 }
 
 export interface MessageDraft {

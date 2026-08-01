@@ -36,6 +36,11 @@ i18n.use(initReactI18next).init({
   fallbackLng: "en",
   ns: ["factory"],
   defaultNS: "factory",
+  // Grouped keys ("runStatus.planned", "costType.packaging") are LITERAL keys,
+  // not a path into a nested object. Every bundle — bundled JSON and the ones
+  // an admin pastes into Settings → Factory Languages — therefore stays a flat
+  // map of string → string, which is the shape the API validates.
+  keySeparator: false,
   interpolation: { escapeValue: false },
 });
 

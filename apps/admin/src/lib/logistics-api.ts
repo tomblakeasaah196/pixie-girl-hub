@@ -71,6 +71,12 @@ export interface Courier {
   preferred_pickup_location?: string | null;
   internal_rating?: number | null;
   internal_notes?: string | null;
+  /**
+   * How this courier gets paid — decides where delivery costs settle.
+   * 'invoice'  = agency bills periodically (DHL, GIGL) → batched expense.
+   * 'per_drop' = paid at pickup (Uber and similar) → cash request.
+   */
+  settlement_mode?: "invoice" | "per_drop";
 }
 
 export interface CourierInput {
@@ -89,6 +95,7 @@ export interface CourierInput {
   preferred_pickup_location?: string;
   internal_rating?: number;
   internal_notes?: string;
+  settlement_mode?: "invoice" | "per_drop";
   is_active?: boolean;
 }
 
@@ -119,8 +126,37 @@ export interface StateHistoryEntry {
   to_status: DeliveryStatus;
   notes?: string | null;
   source?: string | null;
-  occurred_at?: string;
+  /** Server field. `occurred_at` is not returned — do not read it. */
+  changed_at?: string;
+  changed_by_source?: string | null;
+  /** Resolved staff name behind `changed_by` — who actually did this. */
+  actor_name?: string | null;
+  actor_job_title?: string | null;
   created_at?: string;
+}
+
+/** Whether a delivery can actually be dispatched right now. */
+export type DeliveryReadiness =
+  | "ready"
+  | "awaiting_studio"
+  | "awaiting_fulfilment"
+  | "order_blocked";
+
+export interface DeliveryCost {
+  cost_id: string;
+  delivery_id: string;
+  cost_type: string;
+  amount_ngn: number | string;
+  courier_id?: string | null;
+  courier_name?: string | null;
+  incurred_at: string;
+  settlement_mode: "invoice" | "per_drop";
+  expense_id?: string | null;
+  cash_request_id?: string | null;
+  settled_at?: string | null;
+  notes?: string | null;
+  recorded_by_name?: string | null;
+  created_at: string;
 }
 
 export interface DeliveryAttempt {
@@ -171,9 +207,22 @@ export interface Delivery {
   cancelled_at?: string | null;
   driver_name?: string | null;
   driver_phone?: string | null;
-  driver_confirmation_token?: string | null;
   created_at: string;
   updated_at: string;
+  // ── Completion attribution
+  completed_by?: string | null;
+  completed_at?: string | null;
+  completed_by_name?: string | null;
+  completed_by_job_title?: string | null;
+  // ── Money. `courier_fee_ngn` is the actual cost (maintained total of the
+  // cost rows); `order_shipping_fee_ngn` below is what the customer paid.
+  delivery_loss_ngn?: number | string | null;
+  has_delivery_loss?: boolean;
+  delivery_margin_ngn?: number | string | null;
+  fee_waiver_reason?: string | null;
+  cost_recorded_at?: string | null;
+  /** Computed server-side from order + studio status. */
+  readiness?: DeliveryReadiness;
   // Joined from the originating sales order (list endpoint only).
   order_number?: string | null;
   order_type?: string | null; // 'dispatch' = delivery, 'collection'/'walk_in' = pickup
@@ -188,7 +237,9 @@ export interface Delivery {
   items?: DeliveryItem[];
   attempts?: DeliveryAttempt[];
   proofs?: DeliveryProof[];
-  state_history?: StateHistoryEntry[];
+  costs?: DeliveryCost[];
+  /** Detail endpoint only. Named `history` server-side. */
+  history?: StateHistoryEntry[];
 }
 
 interface Paginated<T> {
@@ -241,12 +292,28 @@ export function useUpdateCourier() {
 // ════════════════════════════════════════════════════════════
 
 export function useDeliveries(
-  filters: { status?: string; q?: string; page?: number; page_size?: number } = {},
+  filters: {
+    status?: string;
+    q?: string;
+    page?: number;
+    page_size?: number;
+    readiness?: DeliveryReadiness;
+    has_delivery_loss?: boolean;
+    cost_missing?: boolean;
+    delivered_from?: string;
+    delivered_to?: string;
+  } = {},
 ) {
   const brand = useBrand();
   const qs = new URLSearchParams();
   if (filters.status) qs.set("status", filters.status);
   if (filters.q) qs.set("q", filters.q);
+  if (filters.readiness) qs.set("readiness", filters.readiness);
+  if (filters.has_delivery_loss !== undefined)
+    qs.set("has_delivery_loss", String(filters.has_delivery_loss));
+  if (filters.cost_missing) qs.set("cost_missing", "true");
+  if (filters.delivered_from) qs.set("delivered_from", filters.delivered_from);
+  if (filters.delivered_to) qs.set("delivered_to", filters.delivered_to);
   qs.set("page_size", String(filters.page_size ?? 200));
   return useQuery({
     enabled: Boolean(brand),
@@ -317,6 +384,9 @@ export interface BookDeliveryInput {
   scheduled_pickup_at?: string;
   driver_name?: string;
   driver_phone?: string;
+  /** Required when the delivery is not ready — the API refuses without it. */
+  acknowledge_not_ready?: boolean;
+  not_ready_reason?: string;
 }
 
 export function useBookDelivery() {
@@ -328,6 +398,102 @@ export function useBookDelivery() {
       return api.post<Delivery>(`/logistics/deliveries/${id}/book`, body);
     },
     onSuccess: () => invalidateDelivery(qc, brand),
+  });
+}
+
+// ── Delivery costs + loss ───────────────────────────────────
+export interface AddDeliveryCostInput {
+  id: string;
+  amount_ngn: number;
+  cost_type?: string;
+  courier_id?: string;
+  incurred_at?: string;
+  settlement_mode?: "invoice" | "per_drop";
+  notes?: string;
+}
+
+/** Server echoes the recomputed comparison so the UI can flag an overspend inline. */
+export interface DeliveryCostResult {
+  cost: DeliveryCost;
+  delivery: Delivery;
+  loss: {
+    revenue_ngn: string;
+    cost_ngn: string;
+    loss_ngn: string;
+    has_loss: boolean;
+  };
+}
+
+export function useAddDeliveryCost() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (args: AddDeliveryCostInput) => {
+      const { id, ...body } = args;
+      return api.post<DeliveryCostResult>(
+        `/logistics/deliveries/${id}/costs`,
+        body,
+      );
+    },
+    onSuccess: () => invalidateDelivery(qc, brand),
+  });
+}
+
+export function useRemoveDeliveryCost() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (args: { id: string; cost_id: string }) =>
+      api.delete<Delivery>(
+        `/logistics/deliveries/${args.id}/costs/${args.cost_id}`,
+      ),
+    onSuccess: () => invalidateDelivery(qc, brand),
+  });
+}
+
+export function useSetFeeWaiver() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (args: { id: string; reason: string | null }) =>
+      api.post<Delivery>(`/logistics/deliveries/${args.id}/fee-waiver`, {
+        reason: args.reason,
+      }),
+    onSuccess: () => invalidateDelivery(qc, brand),
+  });
+}
+
+export interface ReconciliationRow {
+  courier_id?: string | null;
+  courier_name?: string | null;
+  destination?: string;
+  settlement_mode?: string | null;
+  deliveries: number;
+  revenue_ngn: number | string;
+  cost_ngn: number | string;
+  margin_ngn: number | string;
+  loss_ngn: number | string;
+  loss_count?: number;
+}
+
+export interface ReconciliationReport {
+  totals: ReconciliationRow & {
+    waived_count: number;
+    cost_missing_count: number;
+  };
+  by_courier: ReconciliationRow[];
+  by_destination: ReconciliationRow[];
+}
+
+export function useDeliveryReconciliation(from: string, to: string) {
+  const brand = useBrand();
+  return useQuery({
+    enabled: Boolean(brand && from && to),
+    queryKey: ["logistics", "reconciliation", brand, from, to],
+    queryFn: () =>
+      api.get<ReconciliationReport>(
+        `/logistics/reconciliation?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+      ),
   });
 }
 
@@ -560,6 +726,12 @@ export interface ZoneQuote {
   country_code: string | null;
   courier_key: string | null;
   fee_ngn: number | null;
+  // 'priced' = a real positive fee; 'free' = an explicitly free-delivery
+  // zone (charge ₦0 on purpose); 'pending' = resolved to ₦0 but not marked
+  // free (a rate-card gap — confirm before dispatch); 'unserviceable' = no
+  // zone covers this location at all (fee_ngn is null).
+  fee_status?: "priced" | "free" | "pending" | "unserviceable";
+  is_free_delivery?: boolean;
   rate_card: RateCard | null;
   currency: string;
 }

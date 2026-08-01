@@ -51,6 +51,9 @@ adminRouter.post("/offers/:id/provision", P("approve"), validate.validateProvisi
 // ── Public (no auth) ───────────────────────────────────────
 const publicRouter = express.Router();
 publicRouter.get("/:token", controller.publicGet);
+// Candidate PDF download (?doc=packet|jd|offer, ?download=1 to force save) —
+// available before and after signing; the signed packet carries their signature.
+publicRouter.get("/:token/pdf", controller.publicExportPdf);
 publicRouter.post("/:token/sign", validate.validateSign, controller.publicSign);
 
 module.exports = { adminRouter, publicRouter };

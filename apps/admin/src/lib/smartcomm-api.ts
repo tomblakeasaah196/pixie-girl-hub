@@ -17,6 +17,7 @@ import type {
   MessageType,
   ComposerSettings,
   ComposerSettingsInput,
+  LinkPreviewResult,
 } from "@/lib/smartcomm-types";
 
 // ── Channels ─────────────────────────────────────────────
@@ -119,6 +120,13 @@ export const smartcommApi = {
       message_type?: MessageType;
       reply_to_id?: string;
       attachments?: { document_id: string; display_name?: string }[];
+      /** Email only: subject line for this outbound message. */
+      subject?: string;
+      /** Email only: Cc copy recipients. */
+      cc?: string[];
+      /** Email only: Gmail-style rich HTML body. `content` carries the
+       *  plain-text shadow; this HTML is what actually goes out. */
+      body_html?: string;
       is_template?: boolean;
       /** IG only: send outside the 24h window with Meta's HUMAN_AGENT tag. */
       is_human_agent?: boolean;
@@ -185,12 +193,25 @@ export const smartcommApi = {
     contact_id: string;
     channel?: "whatsapp" | "email" | "instagram";
     subject?: string;
-    body: string;
+    /** Email only: Cc copy recipients. */
+    cc?: string[];
+    /** Plain-text body / shadow. Optional on email when a rich HTML body or
+     *  an attachment leads instead; required on WhatsApp/Instagram. */
+    body?: string;
+    /** Email only: Gmail-style rich HTML body (delivered in the brand shell). */
+    body_html?: string;
+    /** Email only: files to send with this first message. */
+    attachments?: { document_id: string; display_name?: string }[];
   }) =>
     api.post<{ channel_id: string; message: Message; queued: boolean }>(
       "/smartcomm/send",
       input,
     ),
+
+  // Link preview (unfurl) — OG/Twitter metadata for a URL shared in a thread,
+  // for the WhatsApp-style preview card. SSRF-guarded + cached server-side.
+  getLinkPreview: (url: string) =>
+    api.get<LinkPreviewResult>(`/smartcomm/link-preview${qs({ url })}`),
 
   // Quick replies
   listQuickReplies: () => api.get<QuickReply[]>("/smartcomm/quick-replies"),
@@ -264,6 +285,12 @@ export const smartcommApi = {
   listColleagues: (q?: string) =>
     api.get<Colleague[]>(`/smartcomm/colleagues${qs({ q })}`),
 
+  // The current user's own channel visibility — drives inbox tab hiding so a
+  // user without WhatsApp access never sees the WhatsApp tab. Self-only
+  // (smartcomm.view), unlike the CEO matrix endpoints below.
+  getMyChannelAccess: () =>
+    api.get<MyChannelAccess>("/smartcomm/my-channel-access"),
+
   // CEO channel-access matrix (owner-only endpoints).
   getChannelAccessMatrix: () =>
     api.get<ChannelAccessMatrix>("/smartcomm/channel-access"),
@@ -302,6 +329,16 @@ export interface ChannelGrant {
 }
 
 export type ChannelGrantMap = Record<AccessPlatform, ChannelGrant>;
+
+/** The current user's own effective channel visibility (self endpoint). */
+export interface MyChannelAccess {
+  /** CEO sees every channel regardless of grants. */
+  ceo: boolean;
+  /** True once the CEO has set any explicit grant for this user. */
+  managed: boolean;
+  /** Per-platform view visibility — the inbox hides tabs set to false. */
+  platforms: Record<AccessPlatform, boolean>;
+}
 
 export interface ChannelAccessUser {
   user_id: string;

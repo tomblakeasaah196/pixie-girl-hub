@@ -32,6 +32,7 @@ const STATUS_META: Record<CommsStatus, { label: string; tone: Tone }> = {
   opened: { label: "Opened", tone: "success" },
   failed: { label: "Failed", tone: "danger" },
   bounced: { label: "Bounced", tone: "danger" },
+  complained: { label: "Marked spam", tone: "warn" },
 };
 
 /** What each ledger row was actually about, in the operator's language. */
@@ -39,6 +40,15 @@ const EVENT_LABEL: Record<string, string> = {
   delivery_booked: "Booking notice",
   delivery_delivered: "Delivered confirmation",
   "delivery.tracking_opened": "Customer opened tracking",
+};
+
+/** Provider-reported rows say so, so staff know it isn't our own guess. */
+const PROVIDER_LABEL: Record<string, string> = {
+  sendgrid: "SendGrid",
+  mailgun: "Mailgun",
+  postmark: "Postmark",
+  ses: "Amazon SES",
+  resend: "Resend",
 };
 
 function channelLabel(c: string | null | undefined) {
@@ -57,17 +67,30 @@ function fmt(ts: string | null | undefined) {
 function deriveStages(comms: DeliveryComms | undefined) {
   const history = comms?.history ?? [];
   const has = (...s: CommsStatus[]) => history.some((h) => s.includes(h.status));
-  // A send that never succeeded and was never superseded — the retry case.
-  const latestFailed =
+
+  // A bounce is reported by the provider AFTER our own 'sent' row, so it can
+  // never be detected as "the newest row is a failure" — check for it directly,
+  // or a hard bounce reads as a healthy send that merely hasn't landed yet.
+  const bounced = has("bounced");
+  const bounceRow = history.find((h) => h.status === "bounced");
+  const complained = has("complained");
+
+  // A send that never succeeded at all — the retry case.
+  const sendFailed =
     history.length > 0 &&
-    ["failed", "bounced"].includes(history[0].status) &&
-    !has("sent", "delivered", "opened");
+    history[0].status === "failed" &&
+    !has("sent", "delivered", "opened", "queued");
 
   return {
     sent: Boolean(comms?.sent_at) || has("sent", "queued", "delivered", "opened"),
-    delivered: Boolean(comms?.delivered_at) || has("delivered", "opened"),
+    // A bounced message was NOT delivered, whatever else the ledger says.
+    delivered:
+      !bounced && (Boolean(comms?.delivered_at) || has("delivered", "opened")),
     opened: Boolean(comms?.first_viewed_at) || has("opened"),
-    latestFailed,
+    bounced,
+    bounceReason: bounceRow?.error ?? null,
+    complained,
+    sendFailed,
   };
 }
 
@@ -137,9 +160,14 @@ function HistoryRow({ entry }: { entry: DeliveryCommsEntry }) {
         )}
       </div>
       <div className="flex items-center gap-2 shrink-0">
+        {entry.provider && (
+          <span className="text-[10px] text-text-faint">
+            via {PROVIDER_LABEL[entry.provider] ?? entry.provider}
+          </span>
+        )}
         <Pill tone={meta.tone}>{meta.label}</Pill>
         <span className="text-[10px] text-text-faint font-mono">
-          {fmt(entry.created_at)}
+          {fmt(entry.event_at ?? entry.created_at)}
         </span>
       </div>
     </div>
@@ -159,7 +187,8 @@ export function DeliveryCommsPanel({
   const commsQ = useDeliveryComms(deliveryId);
   const notifyBooked = useNotifyBooked();
   const comms = commsQ.data;
-  const { sent, delivered, opened, latestFailed } = deriveStages(comms);
+  const { sent, delivered, opened, bounced, bounceReason, complained, sendFailed } =
+    deriveStages(comms);
   const history = comms?.history ?? [];
 
   return (
@@ -194,7 +223,7 @@ export function DeliveryCommsPanel({
             Retry
           </Button>
         </div>
-      ) : !sent && !latestFailed ? (
+      ) : !sent && !sendFailed ? (
         <div className="text-[12px] text-text-faint">
           Nothing sent to the customer yet. Booking a courier emails her the
           shipper, waybill and expected delivery date automatically.
@@ -204,29 +233,38 @@ export function DeliveryCommsPanel({
           <div className="flex items-center gap-1">
             <Step
               icon={
-                latestFailed ? (
+                sendFailed ? (
                   <AlertCircle className="w-3.5 h-3.5" />
                 ) : (
                   <Send className="w-3.5 h-3.5" />
                 )
               }
-              label={latestFailed ? "Send failed" : "Sent"}
+              label={sendFailed ? "Send failed" : "Sent"}
               sub={
-                latestFailed
+                sendFailed
                   ? "Retry above"
                   : comms?.sent_at
                     ? `${channelLabel(comms.sent_via)} · ${fmt(comms.sent_at)}`
                     : undefined
               }
               done={sent}
-              failed={latestFailed}
+              failed={sendFailed}
             />
-            <div className={`h-px flex-1 ${delivered ? "bg-success/40" : "bg-line"}`} />
+            <div
+              className={`h-px flex-1 ${delivered ? "bg-success/40" : bounced ? "bg-danger/40" : "bg-line"}`}
+            />
             <Step
-              icon={<MailCheck className="w-3.5 h-3.5" />}
-              label="Delivered"
+              icon={
+                bounced ? (
+                  <AlertCircle className="w-3.5 h-3.5" />
+                ) : (
+                  <MailCheck className="w-3.5 h-3.5" />
+                )
+              }
+              label={bounced ? "Bounced" : "Delivered"}
               sub={comms?.delivered_at ? fmt(comms.delivered_at) : undefined}
               done={delivered}
+              failed={bounced}
             />
             <div className={`h-px flex-1 ${opened ? "bg-success/40" : "bg-line"}`} />
             <Step
@@ -237,14 +275,38 @@ export function DeliveryCommsPanel({
             />
           </div>
 
-          {/* Say plainly what we can and can't know, rather than leaving two
-              grey circles looking like a fault. */}
-          {sent && !opened && !latestFailed && (
+          {/* A bounce is the one outcome that needs acting on — the customer
+              never got it and never will at that address. */}
+          {bounced && (
+            <div className="mt-3 flex items-start gap-1.5 text-[11px] text-danger">
+              <AlertCircle className="w-3 h-3 mt-px shrink-0" />
+              <span>
+                The address rejected it{bounceReason ? ` — ${bounceReason}` : ""}.
+                Fix the email on her contact record, then Resend.
+              </span>
+            </div>
+          )}
+
+          {complained && !bounced && (
+            <div className="mt-3 flex items-start gap-1.5 text-[11px] text-warn">
+              <AlertCircle className="w-3 h-3 mt-px shrink-0" />
+              <span>
+                She marked this as spam. It arrived — but stop emailing her
+                until she asks for it again.
+              </span>
+            </div>
+          )}
+
+          {/* Say plainly what we can and can't know, rather than leaving grey
+              circles looking like a fault. "Delivered" is only knowable when
+              the relay reports back; "Opened" needs her to actually look. */}
+          {sent && !opened && !bounced && !sendFailed && (
             <div className="mt-3 flex items-start gap-1.5 text-[11px] text-text-faint">
               <Clock className="w-3 h-3 mt-px shrink-0" />
               <span>
-                Sent — &ldquo;Opened&rdquo; lights up when she loads her tracking
-                link.
+                {delivered
+                  ? "Delivered — waiting for her to open it."
+                  : "Sent — the rest fills in as the provider reports back, or when she opens her tracking link."}
               </span>
             </div>
           )}

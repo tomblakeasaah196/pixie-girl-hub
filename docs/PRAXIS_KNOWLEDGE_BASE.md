@@ -660,10 +660,28 @@ the parcel ("Order Shipped"), and again on delivery.
 **Checking the customer actually heard.** Open the delivery → **Customer
 updates**. A Sent → Delivered → Opened stepper sits over the full send history
 (every attempt, on every channel, with the reason for any that failed).
-"Opened" lights up when the customer loads her tracking link — on email that is
-the only truthful read confirmation, so it is never inferred from a send.
 **Resend** is on the same panel, for a waybill typed wrong or a courier changed
 after booking.
+
+What each stage actually means, because the Hub never guesses:
+
+- **Sent** — the message left us and the provider accepted it.
+- **Delivered** — the receiving service confirmed it arrived. Real for WhatsApp
+  and Instagram always, and for email when the mail provider reports back. Rows
+  the provider reported are labelled *via SendGrid / Mailgun / Resend* etc.
+- **Opened** — she loaded her tracking link, or the mail provider saw the
+  message opened. The tracking-link signal is the stronger one: email open
+  tracking over-counts on iPhones (Apple pre-loads images whether or not she
+  looked) and misses anyone who blocks images.
+- **Bounced** — the address rejected it, with the mail server's reason. She
+  never got it and never will at that address: fix the email on her contact
+  record, then **Resend**. A bounce overrides Delivered.
+- **Marked spam** — it arrived and she pressed "this is junk". Stop emailing
+  her until she asks.
+
+If Delivered never lights on email for anybody, the mail relay probably can't
+report back (Zoho and Google Workspace never do). That's a setup question for
+whoever runs the server, not a fault on the delivery.
 
 **Delivery money.** Two figures, never mixed up: what the customer was charged
 for shipping (from the sales order), and what we actually paid the courier
@@ -679,6 +697,7 @@ remake, apology reship) so they don't read as losses in the report.
 - *Book a courier before the wig is finished?* Same flow — the Hub warns that it isn't ready and asks you to confirm; the early booking is recorded on the timeline.
 - *Tell the customer her delivery is booked?* It's automatic on **Book delivery** — shipper, waybill, expected date and a tracking link. Untick **Tell … it's booked** on the review step to skip it.
 - *Check whether the customer got the delivery details?* Open the delivery → **Customer updates** (Sent → Delivered → Opened, plus every attempt).
+- *Customer says she never got the email?* Open the delivery → **Customer updates**. **Bounced** means her address rejected it — fix the email on her contact record and **Resend**. **Delivered** with no **Opened** means it reached her inbox and she hasn't looked (check spam with her).
 - *Resend the delivery details to a customer?* Open the delivery → **Customer updates** → **Resend**.
 - *Change what the booking message says, or send it on WhatsApp instead?* Messaging → settings → **Automated Messages Studio** → **Delivery Booked** (`comms_studio` permission).
 - *Stop the booking message going out at all?* Same place — switch **Delivery Booked** off.

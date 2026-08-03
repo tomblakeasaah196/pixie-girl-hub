@@ -431,7 +431,9 @@ export type CommsStatus =
   | "delivered"
   | "opened"
   | "failed"
-  | "bounced";
+  | "bounced"
+  /** Customer pressed "this is junk" — the mail arrived, so it is not a bounce. */
+  | "complained";
 
 export interface DeliveryCommsEntry {
   log_id: string;
@@ -444,6 +446,10 @@ export interface DeliveryCommsEntry {
   provider_ref: string | null;
   error: string | null;
   created_at: string;
+  /** Which ESP reported this row. Null on rows we wrote ourselves at send time. */
+  provider?: string | null;
+  /** When the provider says it happened — preferred over `created_at` for display. */
+  event_at?: string | null;
 }
 
 export interface DeliveryComms {

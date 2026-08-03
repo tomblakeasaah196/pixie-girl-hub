@@ -295,6 +295,23 @@ function verifyCloudflareEmail(rawBody, headers) {
   return safeEqual(expected, sig);
 }
 
+// ESP delivery receipts (SendGrid / Mailgun / Postmark / SES / Resend).
+// Each provider's signature scheme lives in the receipts service next to the
+// parser that understands its payload; this is just the plumbing that hands it
+// the raw bytes. Source key is `email_<provider>`.
+const EMAIL_RECEIPT_PREFIX = "email_";
+const emailProviderOf = (source) =>
+  source.startsWith(EMAIL_RECEIPT_PREFIX)
+    ? source.slice(EMAIL_RECEIPT_PREFIX.length)
+    : null;
+
+function verifyEmailReceipt(source, rawBody, headers, payload) {
+  const receipts = require("../../services/email-receipts.service");
+  const provider = emailProviderOf(source);
+  if (!provider || !receipts.isProvider(provider)) return null;
+  return receipts.verify(provider, rawBody, headers, payload);
+}
+
 // Sync verifiers only. Meta and Nomba verifiers are async (require a DB
 // lookup to resolve per-brand secrets) and are dispatched separately below.
 const VERIFIERS = {
@@ -308,6 +325,16 @@ const META_SOURCES = new Set(["meta_whatsapp", "meta_instagram"]);
 const ASYNC_VERIFIERS = { nomba: verifyNomba };
 
 function extractExternalId(source, payload) {
+  // ESP receipt POSTs carry no single id we can rely on across providers
+  // (SendGrid batches many events, SES double-wraps in SNS). A content hash
+  // gives POST-level dedup that works for all of them; per-EVENT idempotency
+  // is enforced separately by the unique index on provider_event_id.
+  if (emailProviderOf(source)) {
+    return crypto
+      .createHash("sha256")
+      .update(JSON.stringify(payload || {}))
+      .digest("hex");
+  }
   if (source === "paystack") {
     const d = payload && payload.data;
     if (d && d.id !== undefined && d.id !== null) return String(d.id);
@@ -409,7 +436,10 @@ async function receive(source, { rawBody, headers, ip }) {
 
   let verdict = null;
   let verifierPresent = false;
-  if (META_SOURCES.has(source)) {
+  if (emailProviderOf(source)) {
+    verifierPresent = true;
+    verdict = verifyEmailReceipt(source, rawBody, headers || {}, payload);
+  } else if (META_SOURCES.has(source)) {
     verifierPresent = true;
     verdict = await verifyMetaHmac(source, rawBody, headers || {}, payload);
   } else if (ASYNC_VERIFIERS[source]) {
@@ -1179,11 +1209,86 @@ async function confirmStripeCharge(log) {
   });
 }
 
+/**
+ * Apply an ESP's delivery receipts to the outbound comms ledger.
+ *
+ * Each normalised event is correlated back to the send it belongs to (by our
+ * `message_ref`, falling back to the SMTP Message-ID) and appended as a
+ * delivered / opened / bounced / complained row inheriting that send's
+ * contact and document context. The delivery and invoice screens then light
+ * their steppers with no further wiring.
+ *
+ * Uncorrelated events are the interesting case. A receipt can legitimately
+ * beat our own `sent` row by a fraction of a second, so a young webhook that
+ * matched NOTHING is thrown — the outbox retries with backoff and the second
+ * pass finds the row. An OLD one is logged and dropped: it belongs to mail
+ * sent before this feature shipped (or from another system on the same relay),
+ * and retrying it 25 times only manufactures Kaizen noise for a receipt that
+ * can never land.
+ */
+const RECEIPT_RACE_WINDOW_MS = 10 * 60 * 1000;
+
+async function applyEmailReceipts(log) {
+  const receipts = require("../../services/email-receipts.service");
+  const commsLog = require("../../services/comms-log.service");
+  const provider = emailProviderOf(log.source);
+
+  // SES only: SNS withholds every notification until the HTTPS subscription is
+  // confirmed. The payload already passed TopicArn verification to get here.
+  if (provider === "ses" && (log.payload || {}).Type === "SubscriptionConfirmation") {
+    await receipts.confirmSnsSubscription(log.payload);
+    return;
+  }
+
+  const events = receipts.parse(provider, log.payload || {}, {});
+  if (!events.length) return; // in-flight noise (processed/deferred/delayed)
+
+  const receivedAt = new Date(log.received_at || Date.now()).getTime();
+  const young = Date.now() - receivedAt < RECEIPT_RACE_WINDOW_MS;
+  let applied = 0;
+  const orphans = [];
+
+  for (const event of events) {
+    const send = await commsLog.findSendForEvent({
+      message_ref: event.message_ref,
+      provider_ref: event.provider_ref,
+    });
+    if (!send) {
+      orphans.push(event.message_ref || event.provider_ref || "unknown");
+      continue;
+    }
+    const r = await commsLog.recordProviderEvent({ send, event });
+    if (r.recorded) applied += 1;
+  }
+
+  if (orphans.length && applied === 0 && young) {
+    // Nothing matched and the batch is fresh → almost certainly a race with
+    // our own send row. Throw so the outbox retries.
+    throw new Error(
+      `email receipts (${provider}): ${orphans.length} event(s) matched no send yet — retrying`,
+    );
+  }
+  if (orphans.length) {
+    logger.warn(
+      { provider, orphans: orphans.slice(0, 5), count: orphans.length, applied },
+      "email receipts: events with no matching send (dropped)",
+    );
+  }
+  if (applied) {
+    logger.info({ provider, applied }, "email delivery receipts applied");
+  }
+}
+
 const DISPATCH = {
   paystack: confirmPaystackCharge,
   opay: confirmOpayCharge,
   nomba: confirmNombaCharge,
   stripe: confirmStripeCharge,
+  email_sendgrid: applyEmailReceipts,
+  email_mailgun: applyEmailReceipts,
+  email_postmark: applyEmailReceipts,
+  email_ses: applyEmailReceipts,
+  email_resend: applyEmailReceipts,
 };
 
 // Sources whose real consumer is the smartcomm inbox ingest (registered on

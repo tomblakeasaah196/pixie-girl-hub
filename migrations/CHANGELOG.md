@@ -11,6 +11,42 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-08-03 — Real email delivery receipts from the ESP
+
+**Source:** Owner directive — "wire up the email provider webhooks for real
+delivery receipts."
+
+**Files:** `000376_shared_email_delivery_receipts.sql` (new, shared).
+
+The outbound ledger could honestly report one thing about email: the relay
+accepted it. Delivered stayed dark because plain SMTP has no callback, and
+Opened only lit when the customer happened to click a link we owned. This adds
+what is needed to accept the provider's OWN events (SendGrid / Mailgun /
+Postmark / SES / Resend).
+
+Extends `shared.outbound_comms_log`:
+
+- `message_ref` — our correlation token, injected as a provider metadata header
+  at send time and echoed back on every event. Needed because we send over
+  SMTP, not a provider API, so a webhook otherwise has no idea which row it
+  belongs to. Indexed; `provider_ref` (the SMTP Message-ID) gets an index too
+  as the fallback key.
+- `provider`, `provider_event_id`, `event_at` — who reported it, their id for
+  the event, and when they say it happened (not when we recorded it).
+
+Adds `complained` to the status vocabulary. A spam complaint is not a bounce:
+the mail arrived and the customer pressed "this is junk", which calls for
+stopping contact rather than fixing an address.
+
+Idempotency: a unique partial index on `(provider, provider_event_id)` means a
+redelivered webhook — or the 30-minute replay sweep — can never double-write a
+receipt.
+
+No new tables; the receivers reuse the existing `shared.webhook_log` → outbox →
+dispatcher pipeline. Setup per provider: `docs/EMAIL_DELIVERY_RECEIPTS.md`.
+
+---
+
 ## 2026-08-03 — "Delivery Booked" customer automation
 
 **Source:** Owner directive — "Do we fire a shipped delivery message, with

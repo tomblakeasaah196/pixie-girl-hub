@@ -78,7 +78,7 @@ the block compiler is done, so token values can even carry HTML.
 
 | `type` | Fields | Used by |
 | ------ | ------ | ------- |
-| `event`     | `event`, `offset_days?`, `after_minutes?` | order_confirmation, invoice_issued, order_shipped, welcome, campaign_launch, review_request, staff_invite, stylist_assignment |
+| `event`     | `event`, `offset_days?`, `after_minutes?` | order_confirmation, invoice_issued, delivery_booked, order_shipped, welcome, campaign_launch, review_request, staff_invite, stylist_assignment |
 | `scheduled` | `every_min?`, `every_days?`, `quiet_hours_local?`, `min_amount_paid_ngn?` | layaway_reminder, payment_reminder |
 | `annual`    | `source`, `hour_local?` | birthday_wish |
 | `recurring` | free-form           | (future) |

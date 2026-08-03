@@ -387,7 +387,26 @@ export interface BookDeliveryInput {
   /** Required when the delivery is not ready — the API refuses without it. */
   acknowledge_not_ready?: boolean;
   not_ready_reason?: string;
+  /**
+   * The customer is told her delivery is booked (shipper, waybill, ETA) by
+   * default. Send `false` to book silently.
+   */
+  notify_customer?: boolean;
 }
+
+/** What the API reports back about the notice it just tried to send. */
+export interface CustomerNotification {
+  sent: boolean;
+  channel?: CommsChannel;
+  recipient?: string;
+  reason?: string;
+  duplicate?: boolean;
+}
+
+/** Booking echoes the delivery plus the outcome of the customer notice. */
+export type BookedDelivery = Delivery & {
+  customer_notification?: CustomerNotification;
+};
 
 export function useBookDelivery() {
   const qc = useQueryClient();
@@ -395,9 +414,73 @@ export function useBookDelivery() {
   return useMutation({
     mutationFn: (args: BookDeliveryInput) => {
       const { id, ...body } = args;
-      return api.post<Delivery>(`/logistics/deliveries/${id}/book`, body);
+      return api.post<BookedDelivery>(`/logistics/deliveries/${id}/book`, body);
     },
     onSuccess: () => invalidateDelivery(qc, brand),
+  });
+}
+
+// ── Customer comms on a delivery ────────────────────────────
+// "Was it sent, did it land, did she open it?" — the same ledger the invoice
+// and receipt screens read, scoped to one delivery.
+
+export type CommsChannel = "email" | "whatsapp" | "instagram" | "sms";
+export type CommsStatus =
+  | "queued"
+  | "sent"
+  | "delivered"
+  | "opened"
+  | "failed"
+  | "bounced";
+
+export interface DeliveryCommsEntry {
+  log_id: string;
+  business: string | null;
+  channel: CommsChannel;
+  event_key: string | null;
+  recipient: string | null;
+  subject: string | null;
+  status: CommsStatus;
+  provider_ref: string | null;
+  error: string | null;
+  created_at: string;
+}
+
+export interface DeliveryComms {
+  delivery_id: string;
+  delivery_number: string;
+  status: DeliveryStatus;
+  sent_at: string | null;
+  sent_via: CommsChannel | null;
+  delivered_at: string | null;
+  first_viewed_at: string | null;
+  booked_notice_sent_at: string | null;
+  booked_notice_via: CommsChannel | null;
+  history: DeliveryCommsEntry[];
+}
+
+export function useDeliveryComms(id: string | undefined) {
+  const brand = useBrand();
+  return useQuery({
+    enabled: Boolean(brand && id),
+    queryKey: ["logistics", "delivery-comms", brand, id],
+    queryFn: () => api.get<DeliveryComms>(`/logistics/deliveries/${id}/comms`),
+  });
+}
+
+/** Staff-triggered (re)send of the booking notice — bypasses the dedup slot. */
+export function useNotifyBooked() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post<CustomerNotification>(
+        `/logistics/deliveries/${id}/notify-booked`,
+      ),
+    onSuccess: () => {
+      invalidateDelivery(qc, brand);
+      qc.invalidateQueries({ queryKey: ["logistics", "delivery-comms", brand] });
+    },
   });
 }
 
@@ -505,7 +588,10 @@ export function useNotifyDelivered() {
       api.post<{ sent: boolean; reason?: string }>(
         `/logistics/deliveries/${id}/notify-delivered`,
       ),
-    onSuccess: () => invalidateDelivery(qc, brand),
+    onSuccess: () => {
+      invalidateDelivery(qc, brand);
+      qc.invalidateQueries({ queryKey: ["logistics", "delivery-comms", brand] });
+    },
   });
 }
 

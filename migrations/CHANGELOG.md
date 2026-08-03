@@ -11,6 +11,39 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-08-03 — "Delivery Booked" customer automation
+
+**Source:** Owner directive — "Do we fire a shipped delivery message, with
+shipper info and details? … Book Delivery should generate that, and we must
+have a confirmation to mail to the client and see if it has been sent and
+delivered and probably read."
+
+**Files:** `000375_shared_comms_delivery_booked.sql` (new, shared).
+
+Booking a courier was silent. Logistics captured the shipper, the waybill,
+the agreed fee, the pickup window and the rider's phone number — and told the
+customer none of it. The only "on its way" message (`order_shipped`) fires
+later, at the physical hand-off, and carries just an order number and a link.
+
+Seeds a `delivery_booked` row into `shared.outbound_channel_policy` per active
+business: subject, block-editor email body, WhatsApp body and variables schema
+carrying the shipper, waybill/AWB, pickup + expected-delivery window, rider
+contact and the tracking link. Kept deliberately separate from `order_shipped`
+so the two stages ("a courier is assigned" vs "the courier has it") can be
+worded and toggled independently from the Studio.
+
+Email by default with an email fallback, matching the cost discipline every
+other automation follows — nothing rides WhatsApp until the CEO picks it.
+
+Idempotent in the 000309 shape: operator-owned columns (`channel_preference`,
+`fallback_channel`, `block_whatsapp`, `is_active`) are never overwritten, and
+template defaults refresh only where the row still carries the empty seed.
+
+No table changes — the send ledger reuses `shared.outbound_comms_log` with
+`reference_type = 'delivery'` (columns already added by 000247).
+
+---
+
 ## 2026-07-29 — Display-name alias split from the name of record
 
 **Source:** Owner directive — "this edit can be the display name only, it

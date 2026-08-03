@@ -304,6 +304,42 @@ async function getDelivery({ client, brand, id }) {
   const costs = await listDeliveryCosts({ client, brand, delivery_id: id });
   return { ...rows[0], items, attempts, history, proofs, costs };
 }
+/**
+ * Everything the customer-facing delivery notifications need, in one read:
+ * the booking facts (shipper, waybill, pickup/ETA window, rider), the linked
+ * order, and the resolved customer contact.
+ *
+ * Contact resolution is delivery-first (`recipient_contact_id` — a gift or a
+ * drop to a third party is addressed to whoever actually receives it), falling
+ * back to the order's buyer. The snapshot phone is carried too so a WhatsApp
+ * send still has a number when the contact record has none.
+ */
+async function getNotificationContext({ client, brand, delivery_id }) {
+  const { rows } = await ex(client)(
+    `SELECT d.delivery_id, d.delivery_number, d.status, d.order_id,
+            d.courier_id, d.courier_tracking_ref, d.courier_tracking_url,
+            d.courier_fee_ngn, d.expected_delivery_at, d.scheduled_pickup_at,
+            d.booked_at, d.delivered_at, d.public_tracking_token,
+            d.driver_name, d.driver_phone,
+            d.recipient_name_snapshot, d.recipient_phone_snapshot,
+            cr.display_name  AS courier_name,
+            cr.contact_phone AS courier_phone,
+            so.order_number,
+            so.public_tracking_token AS order_tracking_token,
+            COALESCE(d.recipient_contact_id, so.contact_id) AS contact_id,
+            ct.display_name  AS contact_name,
+            ct.first_name    AS contact_first_name,
+            ct.email         AS contact_email
+       FROM ${t(brand, "deliveries")} d
+       LEFT JOIN ${t(brand, "couriers")} cr     ON cr.courier_id = d.courier_id
+       LEFT JOIN ${t(brand, "sales_orders")} so ON so.order_id   = d.order_id
+       LEFT JOIN shared.contacts ct
+              ON ct.contact_id = COALESCE(d.recipient_contact_id, so.contact_id)
+      WHERE d.delivery_id = $1`,
+    [delivery_id],
+  );
+  return rows[0] || null;
+}
 /** Minimal order + customer-contact read for the delivered-confirmation email. */
 async function getOrderForEmail({ client, brand, order_id }) {
   const { rows } = await ex(client)(
@@ -316,9 +352,12 @@ async function getOrderForEmail({ client, brand, order_id }) {
   return rows[0] || null;
 }
 async function getDeliveryByToken({ client, brand, token }) {
+  // `recipient_contact_id` is selected for the open-tracking stamp only — the
+  // service strips it before the payload leaves for an unauthenticated caller.
   const { rows } = await ex(client)(
     `SELECT delivery_id, delivery_number, status, courier_id, courier_tracking_ref, courier_tracking_url,
-            expected_delivery_at, delivered_at, recipient_name_snapshot
+            expected_delivery_at, delivered_at, recipient_name_snapshot,
+            recipient_contact_id
        FROM ${t(brand, "deliveries")} WHERE public_tracking_token = $1`,
     [token],
   );
@@ -876,6 +915,7 @@ module.exports = {
   addDeliveryItem,
   getDelivery,
   getDeliveryByToken,
+  getNotificationContext,
   getOrderForEmail,
   listDeliveries,
   listDeliveryCosts,

@@ -62,6 +62,7 @@ import { api } from "@/lib/api";
 import { ShippingRatesTab } from "./ShippingRates";
 import { AgenciesTab } from "./Agencies";
 import { BookDeliveryModal } from "./BookDeliveryModal";
+import { DeliveryCommsPanel } from "./DeliveryCommsPanel";
 
 /**
  * Logistics (`/logistics`) — dispatch queue, tracking and proof of delivery.
@@ -665,6 +666,14 @@ function DeliveryDetailDrawer({ id, onClose }: { id: string; onClose: () => void
 
           {/* Cost + loss */}
           <DeliveryCostPanel delivery={d} canEdit={canEdit} />
+
+          {/* What the customer has been told, and whether it landed. The
+              booking notice can only be (re)sent once a courier is booked. */}
+          <DeliveryCommsPanel
+            deliveryId={id}
+            canEdit={canEdit}
+            canNotify={d.status !== "queued"}
+          />
 
           {/* Delivered-confirmation email — auto-sent, but staff can resend */}
           {d.status === "delivered" && canEdit && (

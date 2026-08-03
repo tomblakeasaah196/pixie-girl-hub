@@ -26,6 +26,7 @@ const emailService = require("../../services/email.service");
 const { logger } = require("../../config/logger");
 const repo = require("./logistics.repo");
 const events = require("./logistics.events");
+const deliveryComms = require("./delivery-comms.service");
 const salesService = require("../sales/sales.service");
 const {
   NotFoundError,
@@ -286,7 +287,49 @@ const listDeliveries = ({ brand, filters, page, page_size }) =>
     offset: (page - 1) * page_size,
   });
 
+/**
+ * Book a courier for a queued delivery.
+ *
+ * Two phases, deliberately separated:
+ *
+ *   1. The transaction — status, courier, waybill, fee, timeline. Everything
+ *      here is the booking, and it either all lands or none of it does.
+ *
+ *   2. Post-commit — the customer's "your delivery is booked" notice, with the
+ *      shipper's details. It runs AFTER the commit so it can never roll the
+ *      booking back, and it reads through a fresh connection that is guaranteed
+ *      to see the row we just wrote. `sendBookedNotice` never throws, so the
+ *      awaited result is safe to hand straight back to the operator: the
+ *      booking response carries `customer_notification`, which is what the
+ *      booking modal shows as "Emailed jane@example.com".
+ *
+ * Pass `notify_customer: false` to book silently (re-booking after a courier
+ * swap, or a delivery the customer is already being handled on by phone).
+ */
 async function bookDelivery({ brand, user, request_id, id, input }) {
+  const booked = await bookDeliveryTx({ brand, user, request_id, id, input });
+  if (input?.notify_customer === false) {
+    return { ...booked, customer_notification: { sent: false, reason: "suppressed_by_operator" } };
+  }
+  const customer_notification = await deliveryComms.sendBookedNotice({
+    brand,
+    delivery_id: id,
+  });
+  // Recorded on the audit trail too — "we told her, here's when" is a question
+  // that gets asked long after the toast has gone.
+  await A(
+    brand,
+    user?.user_id,
+    "logistics.delivery.notify_booked",
+    "delivery",
+    id,
+    { ...customer_notification, trigger: "booking" },
+    request_id,
+  );
+  return { ...booked, customer_notification };
+}
+
+async function bookDeliveryTx({ brand, user, request_id, id, input }) {
   return transaction(async (client) => {
     const delivery = await repo.getDelivery({ client, brand, id });
     if (!delivery) throw new NotFoundError("Delivery not found");
@@ -1162,10 +1205,22 @@ async function reconcilePodCollection({ brand, user, request_id, id, input }) {
 }
 
 // ── public tracking (no auth) ────────────────────────────
+/**
+ * Resolve a delivery by its public tracking token.
+ *
+ * Loading this is the honest "the customer saw our message" signal — on plain
+ * SMTP there are no provider open receipts, so a click on the tracking link we
+ * emailed is the only truthful read confirmation we get. Stamped once per
+ * delivery (the storefront page polls every 20s) and fire-and-forget, so an
+ * unauthenticated read is never slowed or broken by the bookkeeping.
+ *
+ * `recipient_contact_id` is selected purely to attribute that stamp — it is
+ * stripped here so it never reaches an unauthenticated caller.
+ */
 async function trackByToken({ brand, token }) {
   const result = await repo.getDeliveryByToken({ client: null, brand, token });
   if (!result) throw new NotFoundError("Tracking reference not found");
-  return result;
+  return publicTrackingView({ brand, result });
 }
 // Public endpoint has only the token (no brand context); search both brands.
 async function trackPublic({ token }) {
@@ -1175,9 +1230,21 @@ async function trackPublic({ token }) {
       brand,
       token,
     });
-    if (result) return result;
+    if (result) return publicTrackingView({ brand, result });
   }
   throw new NotFoundError("Tracking reference not found");
+}
+
+function publicTrackingView({ brand, result }) {
+  const { recipient_contact_id, ...customerSafe } = result;
+  deliveryComms
+    .markTrackingOpened({
+      brand,
+      delivery: customerSafe,
+      contact_id: recipient_contact_id,
+    })
+    .catch(() => {});
+  return customerSafe;
 }
 
 
@@ -1198,6 +1265,18 @@ function deliveredEmailHtml({ firstName, orderNumber, deliveredAtText }) {
  * failure must not block or reverse the delivery itself.
  */
 async function sendDeliveredEmail({ brand, delivery_id }) {
+  // Every outcome — sent, no-email, hard failure — lands on the delivery's
+  // outbound ledger, so the Delivery-comms panel shows the delivered
+  // confirmation next to the booking notice instead of only half the story.
+  const ledger = (ctx, status, extra = {}) =>
+    deliveryComms.record({
+      brand,
+      ctx,
+      channel: "email",
+      status,
+      event_key: deliveryComms.EVENT_DELIVERED,
+      ...extra,
+    });
   try {
     const delivery = await repo.getDelivery({ client: null, brand, id: delivery_id });
     if (!delivery || !delivery.order_id)
@@ -1207,14 +1286,21 @@ async function sendDeliveredEmail({ brand, delivery_id }) {
       brand,
       order_id: delivery.order_id,
     });
-    if (!order || !order.contact_email)
+    const ctx = {
+      delivery_id,
+      contact_id: delivery.recipient_contact_id || null,
+    };
+    const subject = `Delivered: order ${order ? order.order_number : ""}`;
+    if (!order || !order.contact_email) {
+      ledger(ctx, "failed", { error: "no_customer_email", subject });
       return { sent: false, reason: "no_customer_email" };
+    }
     const firstName =
       String(order.contact_name || "").trim().split(/\s+/)[0] || "there";
     const deliveredAtText = formatDateTime(delivery.delivered_at, "just now");
     await emailService.send({
       to: order.contact_email,
-      subject: `Delivered: order ${order.order_number}`,
+      subject,
       html: deliveredEmailHtml({
         firstName,
         orderNumber: order.order_number,
@@ -1222,14 +1308,51 @@ async function sendDeliveredEmail({ brand, delivery_id }) {
       }),
       brand,
     });
-    return { sent: true };
+    ledger(ctx, "sent", { recipient: order.contact_email, subject });
+    return { sent: true, recipient: order.contact_email };
   } catch (err) {
     logger.error(
       { err: err.message, brand, delivery_id },
       "logistics: delivered-confirmation email failed",
     );
+    ledger({ delivery_id, contact_id: null }, "failed", { error: err.message });
     return { sent: false, reason: "send_failed" };
   }
+}
+
+/**
+ * Manual "send now" — staff-triggered (re)send of the delivery-booked notice.
+ * Bypasses the dedup slot on purpose: the reason staff press this is that the
+ * first one carried a typo'd waybill, or the courier changed after booking.
+ */
+async function notifyBooked({ brand, user, request_id, id }) {
+  const delivery = await repo.getDelivery({ client: null, brand, id });
+  if (!delivery) throw new NotFoundError("Delivery not found");
+  if (delivery.status === "queued")
+    throw new ConflictError("Book the delivery before notifying the customer");
+  const result = await deliveryComms.sendBookedNotice({
+    brand,
+    delivery_id: id,
+    manual: true,
+  });
+  await A(
+    brand,
+    user?.user_id,
+    "logistics.delivery.notify_booked",
+    "delivery",
+    id,
+    { ...result, trigger: "manual" },
+    request_id,
+  );
+  return result;
+}
+
+/** The delivery's outbound ledger — "was it sent, did it land, did she open it?" */
+async function deliveryCommsView({ brand, id }) {
+  const delivery = await repo.getDelivery({ client: null, brand, id });
+  if (!delivery) throw new NotFoundError("Delivery not found");
+  const view = await deliveryComms.getCommsView({ delivery_id: id });
+  return { ...view, delivery_number: delivery.delivery_number, status: delivery.status };
 }
 
 /** Manual "send now" — staff-triggered resend of the delivered-confirmation email. */
@@ -1380,4 +1503,6 @@ module.exports = {
   trackPublic,
   sendDeliveredEmail,
   notifyDelivered,
+  notifyBooked,
+  deliveryCommsView,
 };

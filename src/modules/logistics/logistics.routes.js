@@ -151,6 +151,15 @@ router.post(
   can("edit"),
   controller.notifyDelivered,
 );
+// ── Customer comms on a delivery ─────────────────────────
+// "Was it sent, did it land, did she open it?" — the outbound ledger for this
+// delivery, plus a manual (re)send of the booking notice.
+router.get("/deliveries/:id/comms", can("view"), controller.deliveryComms);
+router.post(
+  "/deliveries/:id/notify-booked",
+  can("edit"),
+  controller.notifyBooked,
+);
 
 // ── Pay-on-delivery collections ──────────────────────────
 router.get("/pod-collections", can("view"), controller.listPodCollections);

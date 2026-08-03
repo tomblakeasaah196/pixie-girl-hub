@@ -243,9 +243,69 @@ components:
     DeliveryBook:
       type: object
       properties:
+        courier_id: { type: string, format: uuid }
+        courier_fee_ngn: { type: string }
         courier_tracking_ref: { type: string }
         courier_tracking_url: { type: string }
         expected_delivery_at: { type: string, format: date-time }
+        scheduled_pickup_at: { type: string, format: date-time }
+        driver_name: { type: string }
+        driver_phone: { type: string }
+        acknowledge_not_ready: { type: boolean }
+        not_ready_reason: { type: string }
+        notify_customer:
+          type: boolean
+          description: >-
+            Send the customer the booking notice (shipper, waybill, pickup/ETA
+            window, rider, tracking link). Defaults to true; set false to book
+            silently.
+    CustomerNotification:
+      type: object
+      description: Outcome of the customer-facing notice attempted for this action.
+      properties:
+        sent: { type: boolean }
+        channel: { type: string, enum: [email, whatsapp, instagram] }
+        recipient: { type: string }
+        duplicate: { type: boolean }
+        reason:
+          type: string
+          description: Why nothing was sent, when `sent` is false.
+    DeliveryCommsEntry:
+      type: object
+      properties:
+        log_id: { type: string, format: uuid }
+        business: { type: string, nullable: true }
+        channel: { type: string, enum: [email, whatsapp, instagram, sms] }
+        event_key: { type: string, nullable: true }
+        recipient: { type: string, nullable: true }
+        subject: { type: string, nullable: true }
+        status:
+          type: string
+          enum: [queued, sent, delivered, opened, failed, bounced]
+        provider_ref: { type: string, nullable: true }
+        error: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+    DeliveryComms:
+      type: object
+      description: >-
+        "Was it sent, did it land, did she open it?" for one delivery. `opened`
+        is stamped when the customer loads her public tracking link — on plain
+        SMTP that is the only truthful read signal, so a send is never inferred
+        into a read.
+      properties:
+        delivery_id: { type: string, format: uuid }
+        delivery_number: { type: string }
+        status: { type: string }
+        sent_at: { type: string, format: date-time, nullable: true }
+        sent_via: { type: string, nullable: true }
+        delivered_at: { type: string, format: date-time, nullable: true }
+        first_viewed_at: { type: string, format: date-time, nullable: true }
+        booked_notice_sent_at:
+          { type: string, format: date-time, nullable: true }
+        booked_notice_via: { type: string, nullable: true }
+        history:
+          type: array
+          items: { $ref: "#/components/schemas/DeliveryCommsEntry" }
     DeliveryAdvance:
       type: object
       required: [to_status]
@@ -3054,13 +3114,73 @@ paths:
             schema: { $ref: "#/components/schemas/DeliveryBook" }
       responses:
         "200":
-          description: Booked
+          description: >-
+            Booked. `customer_notification` reports whether the booking notice
+            reached the customer — the booking itself succeeds regardless.
           content:
             application/json:
               schema:
                 type: object
-                properties: { data: { $ref: "#/components/schemas/Delivery" } }
+                properties:
+                  data:
+                    allOf:
+                      - $ref: "#/components/schemas/Delivery"
+                      - type: object
+                        properties:
+                          customer_notification:
+                            { $ref: "#/components/schemas/CustomerNotification" }
         "409": { description: Not in queued state }
+  /logistics/deliveries/{id}/comms:
+    get:
+      summary: Customer-comms ledger for one delivery (sent / delivered / opened)
+      tags: [logistics]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - {
+            name: id,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
+      x-required-permission: "logistics.view"
+      responses:
+        "200":
+          description: Send history plus the derived stepper stamps
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/DeliveryComms" }
+        "404": { description: Delivery not found }
+  /logistics/deliveries/{id}/notify-booked:
+    post:
+      summary: (Re)send the delivery-booked notice to the customer
+      description: >-
+        Staff-triggered send of the booking notice. Bypasses the idempotency
+        slot on purpose — the reason to press it is a typo'd waybill or a
+        courier changed after booking.
+      tags: [logistics]
+      parameters:
+        - $ref: "#/components/parameters/BrandContext"
+        - {
+            name: id,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          }
+      x-required-permission: "logistics.edit"
+      x-is-write: true
+      responses:
+        "200":
+          description: Send outcome
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/CustomerNotification" }
+        "409": { description: Delivery is still queued — book it first }
   /logistics/deliveries/{id}/advance:
     post:
       summary: Advance the delivery state machine

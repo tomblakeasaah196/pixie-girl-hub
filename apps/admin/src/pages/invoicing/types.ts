@@ -220,7 +220,9 @@ export type CommsStatus =
   | "delivered"
   | "opened"
   | "failed"
-  | "bounced";
+  | "bounced"
+  /** Customer pressed "this is junk" — the mail arrived, so it is not a bounce. */
+  | "complained";
 
 export interface CommsLogEntry {
   log_id: string;

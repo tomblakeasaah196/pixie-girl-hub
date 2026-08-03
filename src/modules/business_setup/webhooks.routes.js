@@ -81,4 +81,44 @@ router.post("/email/inbound", receiver("cloudflare_email"));
 router.post("/chowdeck", receiver("chowdeck"));
 router.post("/gigl", receiver("gigl"));
 
+// ── Email delivery receipts (ESP → outbound comms ledger) ──
+//
+// One route per provider so each keeps its own source key in webhook_log
+// (and its own row in the replay sweep). Configure the matching URL in the
+// provider's dashboard — see docs/EMAIL_DELIVERY_RECEIPTS.md.
+//
+// Body parsing: Amazon SNS posts JSON under `Content-Type: text/plain`, which
+// the global express.json() skips — so a raw parser runs first for anything it
+// didn't claim. body-parser sets `req._body` when it has already parsed, so
+// this is a no-op on the JSON providers and never double-reads the stream.
+const rawAnyType = express.raw({ type: "*/*", limit: "5mb" });
+
+function emailReceiptReceiver(provider) {
+  const source = `email_${provider}`;
+  return async (req, res, next) => {
+    try {
+      // Whichever parser ran, get back to the exact bytes the signature covers.
+      const rawBody = Buffer.isBuffer(req.rawBody)
+        ? req.rawBody
+        : Buffer.isBuffer(req.body)
+          ? req.body
+          : Buffer.from(JSON.stringify(req.body || {}));
+      const r = await service.receive(source, {
+        rawBody,
+        headers: req.headers,
+        ip: req.ip,
+      });
+      res.status(r.status).json(r.body);
+    } catch (err) {
+      next(err);
+    }
+  };
+}
+
+for (const provider of ["sendgrid", "mailgun", "postmark", "ses", "resend"]) {
+  // GET probe: several dashboards validate the URL with a GET before saving.
+  router.get(`/email/${provider}`, (_req, res) => res.status(200).send("OK"));
+  router.post(`/email/${provider}`, rawAnyType, emailReceiptReceiver(provider));
+}
+
 module.exports = router;

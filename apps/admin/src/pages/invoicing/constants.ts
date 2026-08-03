@@ -52,6 +52,7 @@ export const COMMS_STATUS: Record<CommsStatus, StatusMeta> = {
   opened: { label: "Opened", tone: "success" },
   failed: { label: "Failed", tone: "danger" },
   bounced: { label: "Bounced", tone: "danger" },
+  complained: { label: "Marked spam", tone: "warn" },
 };
 
 export const CREDIT_NOTE_REASON_OPTIONS = [

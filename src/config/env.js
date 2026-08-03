@@ -219,6 +219,28 @@ const schema = z.object({
   SMTP_FROM_EMAIL: z.string().email().optional(),
   SMTP_FROM_NAME: z.string().optional(),
 
+  // ── Email delivery receipts (ESP webhooks) ──────────────
+  // Set the secret for whichever relay SMTP_* actually points at; the matching
+  // receiver at /api/webhooks/email/<provider> then starts accepting real
+  // delivered/opened/bounced events onto the outbound comms ledger. Leave every
+  // one blank and nothing changes — an unconfigured provider cannot be verified,
+  // so its payloads are logged and never processed.
+  // See docs/EMAIL_DELIVERY_RECEIPTS.md.
+  //
+  // SendGrid → Settings → Mail Settings → Event Webhook → "Verification Key"
+  // (base64 ECDSA public key; the PEM form is accepted too).
+  SENDGRID_WEBHOOK_PUBLIC_KEY: z.string().optional(),
+  // Mailgun → Webhooks → "HTTP webhook signing key".
+  MAILGUN_WEBHOOK_SIGNING_KEY: z.string().optional(),
+  // Postmark does not sign webhooks. Invent a long random string, set it here,
+  // and add it to the webhook as the header `X-Postmark-Webhook-Token`.
+  POSTMARK_WEBHOOK_SECRET: z.string().optional(),
+  // Amazon SES → the SNS topic ARN the configuration set publishes to. Events
+  // are accepted only when the payload's TopicArn matches this exactly.
+  SES_SNS_TOPIC_ARN: z.string().optional(),
+  // Resend → Webhooks → signing secret (starts `whsec_`).
+  RESEND_WEBHOOK_SECRET: z.string().optional(),
+
   // Logistics
   CHOWDECK_API_KEY: z.string().optional(),
   GIGL_API_KEY: z.string().optional(),

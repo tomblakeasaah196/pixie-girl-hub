@@ -281,6 +281,12 @@ async function send({
   headers,
   attachments,
   brand,
+  // Correlation token for ESP delivery receipts. Injected as provider metadata
+  // headers so SendGrid/Mailgun/Postmark/SES/Resend echo it back on every
+  // delivered/opened/bounced event, which is what ties a webhook to the row on
+  // the outbound comms ledger. Harmless when the relay is plain SMTP — the
+  // headers are simply ignored. See services/email-receipts.service.js.
+  message_ref,
 }) {
   const t = await getTransporter(brand);
   const sender = await getSender(brand);
@@ -296,6 +302,9 @@ async function send({
   }
   const replyTo = reply_to || sender.replyTo || replyToFor(fromEmail);
   const resolvedAttachments = await resolveAttachments(attachments);
+  // A caller-supplied header always wins — the ref headers only fill in.
+  const receipts = require("./email-receipts.service");
+  const sendHeaders = { ...receipts.refHeaders(message_ref), ...(headers || {}) };
 
   return t.sendMail({
     to,
@@ -307,7 +316,7 @@ async function send({
     subject,
     html,
     text,
-    headers,
+    headers: Object.keys(sendHeaders).length ? sendHeaders : undefined,
     attachments: resolvedAttachments,
   });
 }

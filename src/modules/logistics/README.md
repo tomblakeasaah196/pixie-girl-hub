@@ -53,12 +53,17 @@ stamps, and the delivery drawer renders them under **Customer updates**.
 The stages are honest about what is knowable:
 
 - **sent** — the provider accepted it (SMTP handoff / WhatsApp API 200).
-- **delivered** — WhatsApp/IG only, from the provider's own receipt. Plain SMTP
-  cannot confirm inbox delivery, so this stays dark on email.
-- **opened** — the customer loaded her public tracking link. Stamped once, in
-  `trackByToken` (the storefront page polls, so the guard matters). On email
-  this is the only truthful read signal, and a send is never quietly upgraded
-  into one.
+- **delivered** — from the provider's own receipt: WhatsApp/IG always, and email
+  once an ESP webhook is configured (`docs/EMAIL_DELIVERY_RECEIPTS.md`). On a
+  relay with no callbacks (Zoho, Google Workspace) this stays dark on email —
+  we never infer it from a send.
+- **opened** — the customer loaded her public tracking link, stamped once in
+  `trackByToken` (the storefront page polls, so the guard matters), or the ESP
+  reported an open. The tracking-link stamp is the stronger of the two: open
+  pixels over-count on Apple Mail and under-count wherever images are blocked.
+- **bounced / marked spam** — the ESP's hard-bounce or complaint event, with the
+  SMTP diagnostic. A bounce overrides Delivered in the stepper, because a
+  bounced message was not delivered whatever else the ledger says.
 
 ## TODOs
 

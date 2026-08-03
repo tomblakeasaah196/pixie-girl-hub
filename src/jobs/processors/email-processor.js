@@ -16,6 +16,7 @@
 
 const email = require("../../services/email.service");
 const commsLog = require("../../services/comms-log.service");
+const receipts = require("../../services/email-receipts.service");
 const { logger } = require("../../config/logger");
 const smartcommEvents = require("../../modules/smartcomm/smartcomm.events");
 
@@ -26,9 +27,18 @@ module.exports = async function process(job) {
     return { skipped: true };
   }
 
+  // Correlation token for ESP delivery receipts. Minted per ATTEMPT and stamped
+  // on the ledger row we write below, so a webhook arriving minutes later can
+  // find the send it belongs to. Derived from the job id when there is one, so
+  // a BullMQ retry of the same job reuses the ref rather than orphaning the
+  // receipts for the attempt that actually landed.
+  const message_ref = job.id
+    ? `j${String(job.id).replace(/[^A-Za-z0-9_-]/g, "")}`
+    : receipts.newMessageRef();
+
   let info;
   try {
-    info = await email.send(job.data);
+    info = await email.send({ ...job.data, message_ref });
   } catch (err) {
     // Flip the originating smartcomm message queued → failed so the thread
     // stops showing it "stuck in queue". Mirrors the whatsapp/instagram
@@ -62,6 +72,7 @@ module.exports = async function process(job) {
       error: err.message,
       reference_type: job.data.reference_type,
       reference_id: job.data.reference_id,
+      message_ref,
     });
     throw err;
   }
@@ -97,10 +108,13 @@ module.exports = async function process(job) {
     recipient: to,
     subject,
     status: "sent",
+    // The SMTP Message-ID doubles as the fallback correlation key for an ESP
+    // that echoes only that (see comms-log.findSendForEvent).
     provider_ref: messageId,
     reference_type: job.data.reference_type,
     reference_id: job.data.reference_id,
+    message_ref,
   });
   logger.info({ jobId: job.id, to, messageId }, "email sent");
-  return { messageId };
+  return { messageId, message_ref };
 };

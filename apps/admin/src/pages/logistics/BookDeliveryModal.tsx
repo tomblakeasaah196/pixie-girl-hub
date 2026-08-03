@@ -9,7 +9,15 @@
  */
 
 import { useState } from "react";
-import { ArrowLeft, CheckCircle2, CircleAlert, Loader2, Truck } from "lucide-react";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  CircleAlert,
+  Loader2,
+  Mail,
+  MailX,
+  Truck,
+} from "lucide-react";
 import { Button } from "@/components/ui/primitives";
 import { Select } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
@@ -18,10 +26,24 @@ import { toastReport } from "@/lib/error-report";
 import {
   useBookDelivery,
   useCouriers,
+  type CustomerNotification,
   type Delivery,
 } from "@/lib/logistics-api";
 
-type Step = "form" | "review";
+type Step = "form" | "review" | "done";
+
+/** Why a notice didn't go out, in the operator's language rather than the API's. */
+const NOT_SENT_TEXT: Record<string, string> = {
+  suppressed_by_operator: "You chose not to notify the customer.",
+  no_customer_on_delivery: "This delivery isn't linked to a customer.",
+  no_customer_email: "No email address on file for this customer.",
+  no_email: "No email address on file for this customer.",
+  no_phone: "No phone number on file for this customer.",
+  disabled: "The Delivery Booked automation is switched off in Messaging settings.",
+  not_configured: "The Delivery Booked automation isn't set up for this business.",
+  already_sent: "The customer was already told about this booking.",
+  send_failed: "The send failed — retry from the delivery's Customer updates panel.",
+};
 
 // Why a delivery isn't dispatchable, in the dispatcher's language.
 const NOT_READY_TEXT: Record<string, string> = {
@@ -75,6 +97,13 @@ export function BookDeliveryModal({
   const notReady = Boolean(delivery.readiness && delivery.readiness !== "ready");
   const [notReadyReason, setNotReadyReason] = useState("");
 
+  // Booking tells the customer who is carrying her order and when to expect
+  // it. On by default — the whole point is that she stops having to ask — but
+  // a courier swap on an order already being handled by phone can go silent.
+  const [notifyCustomer, setNotifyCustomer] = useState(true);
+  const [notice, setNotice] = useState<CustomerNotification | null>(null);
+  const recipientName = delivery.recipient_name_snapshot || "the customer";
+
   function confirm() {
     book.mutate(
       {
@@ -89,9 +118,15 @@ export function BookDeliveryModal({
         expected_delivery_at: toIso(etaAt),
         driver_name: driverName.trim() || undefined,
         driver_phone: driverPhone.trim() || undefined,
+        notify_customer: notifyCustomer ? undefined : false,
       },
       {
-        onSuccess: onClose,
+        // The booking has landed either way — the last step reports whether
+        // the customer heard about it, so a silent failure can't slip past.
+        onSuccess: (booked) => {
+          setNotice(booked.customer_notification ?? { sent: false });
+          setStep("done");
+        },
         onError: (e) => toastReport("Logistics → Booking", "Book delivery", e),
       },
     );
@@ -101,7 +136,13 @@ export function BookDeliveryModal({
     <Modal
       open
       onClose={onClose}
-      title={step === "form" ? "Book delivery" : "Confirm booking"}
+      title={
+        step === "form"
+          ? "Book delivery"
+          : step === "review"
+            ? "Confirm booking"
+            : "Delivery booked"
+      }
       size="lg"
       footer={
         step === "form" ? (
@@ -118,7 +159,7 @@ export function BookDeliveryModal({
               Review booking
             </Button>
           </>
-        ) : (
+        ) : step === "review" ? (
           <>
             <Button variant="ghost" icon={<ArrowLeft className="w-4 h-4" />} onClick={() => setStep("form")}>
               Edit
@@ -132,6 +173,10 @@ export function BookDeliveryModal({
               Confirm &amp; book
             </Button>
           </>
+        ) : (
+          <Button variant="primary" onClick={onClose} icon={<CheckCircle2 className="w-4 h-4" />}>
+            Done
+          </Button>
         )
       }
     >
@@ -228,6 +273,62 @@ export function BookDeliveryModal({
 
           {book.isError && <p className="text-[12px] text-danger">Couldn&rsquo;t book this delivery.</p>}
         </div>
+      ) : step === "done" ? (
+        <div className="space-y-4">
+          <div className="flex items-start gap-2.5 rounded-xl border border-success/30 bg-success/[0.06] p-3">
+            <CheckCircle2 className="w-4.5 h-4.5 text-success shrink-0 mt-px" />
+            <div className="text-[12.5px]">
+              <div className="font-medium">
+                Booked with {selectedCourier?.display_name ?? "the courier"}
+              </div>
+              <div className="text-text-muted">
+                {delivery.delivery_number}
+                {trackingRef ? ` · ${trackingRef}` : ""}
+              </div>
+            </div>
+          </div>
+
+          {/* The whole reason this step exists: the booking succeeded, but did
+              the customer actually get told? Say so either way. */}
+          <div
+            className={`flex items-start gap-2.5 rounded-xl border p-3 ${
+              notice?.sent
+                ? "border-line bg-text-primary/[0.02]"
+                : "border-warn/40 bg-warn/[0.06]"
+            }`}
+          >
+            {notice?.sent ? (
+              <Mail className="w-4.5 h-4.5 text-success shrink-0 mt-px" />
+            ) : (
+              <MailX className="w-4.5 h-4.5 text-warn shrink-0 mt-px" />
+            )}
+            <div className="text-[12.5px] min-w-0">
+              <div className="font-medium">
+                {notice?.sent
+                  ? `Delivery details sent to ${recipientName}`
+                  : "Customer not notified"}
+              </div>
+              <div className="text-text-muted break-words">
+                {notice?.sent
+                  ? `${notice.channel === "whatsapp" ? "WhatsApp" : notice.channel === "instagram" ? "Instagram" : "Email"}${
+                      notice.recipient ? ` · ${notice.recipient}` : ""
+                    } — shipper, waybill and expected delivery date included.`
+                  : (NOT_SENT_TEXT[notice?.reason ?? ""] ??
+                    "Nothing was sent to the customer.")}
+              </div>
+              {!notice?.sent && notice?.reason !== "suppressed_by_operator" && (
+                <div className="text-[11px] text-text-faint mt-1">
+                  You can retry from the delivery&rsquo;s Customer updates panel.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <p className="text-[11.5px] text-text-faint">
+            Delivery status is tracked under Customer updates on this
+            delivery — sent, delivered, and opened.
+          </p>
+        </div>
       ) : (
         <div className="space-y-4">
           <p className="text-[12.5px] text-text-muted">
@@ -267,6 +368,25 @@ export function BookDeliveryModal({
             <Review label="Expected delivery" value={etaAt ? formatDateTime(etaAt) : "—"} />
             <Review label="Driver" value={driverName ? `${driverName}${driverPhone ? ` · ${driverPhone}` : ""}` : "—"} />
           </div>
+
+          {/* Confirming sends these same details to the customer. Say so
+              before the click, not after. */}
+          <label className="flex items-start gap-2.5 rounded-xl border border-line p-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={notifyCustomer}
+              onChange={(e) => setNotifyCustomer(e.target.checked)}
+              className="mt-0.5 accent-accent w-4 h-4 shrink-0"
+            />
+            <div className="text-[12.5px] min-w-0">
+              <div className="font-medium">Tell {recipientName} it&rsquo;s booked</div>
+              <div className="text-text-muted">
+                Sends the shipper, waybill and expected delivery date, with a
+                tracking link — on whichever channel Messaging settings picked
+                for Delivery Booked.
+              </div>
+            </div>
+          </label>
         </div>
       )}
     </Modal>

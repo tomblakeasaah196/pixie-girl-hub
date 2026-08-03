@@ -144,6 +144,17 @@ const notifyDelivered = async (req, res) =>
   res.json({
     data: await service.notifyDelivered({ ...base(req), id: req.params.id }),
   });
+const notifyBooked = async (req, res) =>
+  res.json({
+    data: await service.notifyBooked({ ...base(req), id: req.params.id }),
+  });
+const deliveryComms = async (req, res) =>
+  res.json({
+    data: await service.deliveryCommsView({
+      brand: req.brand,
+      id: req.params.id,
+    }),
+  });
 
 // ── courier webhook ingest ───────────────────────────────
 const ingestCourierEvent = async (req, res) =>
@@ -271,6 +282,8 @@ module.exports = {
   listUnsettledCosts,
   listWebhookEvents,
   notifyDelivered,
+  notifyBooked,
+  deliveryComms,
   ingestCourierEvent,
   listPodCollections,
   getPodCollection,

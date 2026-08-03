@@ -114,6 +114,10 @@ const deliveryBook = z
     // this, and records the reason on the state history.
     acknowledge_not_ready: z.boolean().optional(),
     not_ready_reason: z.string().max(300).optional(),
+    // The customer is told her delivery is booked (shipper, waybill, ETA) by
+    // default. Set false to book silently — a courier swap on an order the
+    // customer is already being handled on by phone, say.
+    notify_customer: z.boolean().optional(),
   })
   .strict();
 const deliveryAdvance = z

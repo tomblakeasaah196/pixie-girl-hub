@@ -646,6 +646,25 @@ completed delivery shows **who marked it and when** on the Delivered list and
 in the detail panel. *(There is no longer a public driver confirmation link —
 it was retired; drivers report in and staff mark it.)*
 
+**What the customer is told.** Booking a courier now messages the customer
+automatically with the shipment details — the shipper/agency, the waybill or
+AWB, the pickup and expected-delivery window, the rider's name and phone where
+one was entered, and a tracking link. It sends on whichever channel the CEO
+picked for **Delivery Booked** in the Automated Messages Studio (Messaging →
+settings; email by default), and
+the booking confirmation screen states plainly whether it went out and to
+which address. Untick **Tell … it's booked** on the review step to book
+silently. A separate message fires later, when the courier physically collects
+the parcel ("Order Shipped"), and again on delivery.
+
+**Checking the customer actually heard.** Open the delivery → **Customer
+updates**. A Sent → Delivered → Opened stepper sits over the full send history
+(every attempt, on every channel, with the reason for any that failed).
+"Opened" lights up when the customer loads her tracking link — on email that is
+the only truthful read confirmation, so it is never inferred from a send.
+**Resend** is on the same panel, for a waybill typed wrong or a courier changed
+after booking.
+
 **Delivery money.** Two figures, never mixed up: what the customer was charged
 for shipping (from the sales order), and what we actually paid the courier
 (recorded on the delivery). A delivery can carry several costs — a redelivery
@@ -658,6 +677,11 @@ remake, apology reship) so they don't read as losses in the report.
 **Common tasks.**
 - *Dispatch / assign a delivery?* Logistics → **Queue** tab → **Ready to dispatch** → open it → **Book delivery**.
 - *Book a courier before the wig is finished?* Same flow — the Hub warns that it isn't ready and asks you to confirm; the early booking is recorded on the timeline.
+- *Tell the customer her delivery is booked?* It's automatic on **Book delivery** — shipper, waybill, expected date and a tracking link. Untick **Tell … it's booked** on the review step to skip it.
+- *Check whether the customer got the delivery details?* Open the delivery → **Customer updates** (Sent → Delivered → Opened, plus every attempt).
+- *Resend the delivery details to a customer?* Open the delivery → **Customer updates** → **Resend**.
+- *Change what the booking message says, or send it on WhatsApp instead?* Messaging → settings → **Automated Messages Studio** → **Delivery Booked** (`comms_studio` permission).
+- *Stop the booking message going out at all?* Same place — switch **Delivery Booked** off.
 - *Mark a delivery completed?* Logistics → open the delivery → **Mark delivered**.
 - *See who completed a delivery and when?* Logistics → **Delivered** tab (shown on each row), or open the delivery for the full timeline with names.
 - *Record what a delivery cost us?* Open the delivery → **Delivery cost** → **Add cost**.
@@ -1599,7 +1623,10 @@ Use this as the fast lookup. Format: **task → module (group) → link**.
 - Create a bundle → Catalogue → `/catalogue` (Bundles)
 
 **Delivery**
-- Dispatch a delivery → Logistics (Operate) → `/logistics` (Queue → Ready to dispatch)
+- Dispatch a delivery → Logistics (Operate) → `/logistics` (Queue → Ready to dispatch → Book delivery)
+- Send the customer her delivery details → automatic on Book delivery; resend at Logistics → `/logistics` (open the delivery → Customer updates → Resend)
+- Check if the customer got / opened the delivery details → Logistics → `/logistics` (open the delivery → Customer updates)
+- Edit the delivery-booked message or its channel → Messaging → settings → Automated Messages Studio (Delivery Booked)
 - Mark a delivery completed → Logistics → `/logistics` (open the delivery → Mark delivered)
 - See who completed a delivery → Logistics → `/logistics` (Delivered)
 - Record what a delivery cost → Logistics → `/logistics` (open the delivery → Delivery cost → Add cost)

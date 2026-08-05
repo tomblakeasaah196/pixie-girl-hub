@@ -117,6 +117,25 @@ async function assignStaff(req, res) {
     }),
   });
 }
+// Every job that owes a sale, at every stage — not only the completed ones the
+// §6.30 insight catches after the fact.
+async function listUnbilled(req, res) {
+  res.json(
+    await service.listUnbilledJobs({
+      brand: req.brand,
+      kind: req.query.kind,
+    }),
+  );
+}
+// Ask whoever can raise a sale to raise this one.
+async function requestSale(req, res) {
+  res.json({
+    data: await service.requestSaleForJob({
+      ...base(req),
+      id: req.params.id,
+    }),
+  });
+}
 // Revert an assignment back to Unassigned — CEO-only (gated by requireCeo on the
 // route). No body: the job id in the path is all it needs.
 async function unassignStaff(req, res) {
@@ -383,6 +402,8 @@ module.exports = {
   advanceJob,
   assignStaff,
   unassignStaff,
+  listUnbilled,
+  requestSale,
   listAssignableStylists,
   listStylistScorecards,
   getStylistScorecard,

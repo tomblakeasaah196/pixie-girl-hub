@@ -70,6 +70,45 @@ async function listGrantableUsers({ client, business, search }) {
   return rows;
 }
 
+/**
+ * Everyone who could actually perform (module, action) for a brand — the
+ * "who do I tell?" lookup behind permission-targeted notifications, so a
+ * prompt like "raise the sale for this styling job" reaches the people who
+ * can act on it rather than a hard-coded role name that a brand may have
+ * renamed or never created.
+ *
+ * Three ways to qualify, mirroring how requirePermission actually decides
+ * (src/middleware/rbac.js):
+ *   - is_ceo — bypasses permission checks entirely, so the CEO always
+ *     qualifies. Included for completeness; callers that don't want to ping
+ *     the owner for routine work should filter them out.
+ *   - a role granting (module, action), granted for this business or '*'.
+ *   - and in every case the account must be active AND actually permitted on
+ *     the brand, or we'd notify someone who cannot open the record.
+ *
+ * Expired grants (expires_at in the past) are excluded.
+ */
+async function listUsersWithPermission({ client, business, module, action }) {
+  const { rows } = await exec(client)(
+    `SELECT DISTINCT u.user_id, u.email, u.display_name, u.is_ceo
+       FROM shared.users u
+       LEFT JOIN shared.user_roles ur
+              ON ur.user_id = u.user_id
+             AND (ur.business = $1 OR ur.business = '*')
+             AND (ur.expires_at IS NULL OR ur.expires_at > now())
+       LEFT JOIN shared.permissions p
+              ON p.role_id = ur.role_id
+             AND p.module = $2
+             AND p.action = $3
+      WHERE u.is_active = true
+        AND ($1 = ANY(u.permitted_businesses) OR u.is_ceo = true)
+        AND (p.permission_id IS NOT NULL OR u.is_ceo = true)
+      ORDER BY u.display_name NULLS LAST`,
+    [business, module, action],
+  );
+  return rows;
+}
+
 /** Users holding a given role (for the role detail view). */
 async function listRoleMembers({ client, role_id }) {
   const { rows } = await exec(client)(
@@ -181,6 +220,7 @@ module.exports = {
   userExists,
   listUserRoles,
   listGrantableUsers,
+  listUsersWithPermission,
   listRoleMembers,
   grantRole,
   revokeRole,

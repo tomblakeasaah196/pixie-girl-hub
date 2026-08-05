@@ -42,7 +42,7 @@ function deriveTagInitials(name) {
   if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
   if (words.length === 1) {
     const letters = words[0].replace(/[^a-zA-Z]/g, "");
-    return (letters.slice(0, 2).padEnd(2, "X")).toUpperCase();
+    return letters.slice(0, 2).padEnd(2, "X").toUpperCase();
   }
   return "XX";
 }
@@ -146,9 +146,10 @@ async function createServiceJob({ client, brand, job }) {
         sales_order_id, sales_order_line_id, customer_contact_id,
         assigned_staff_user_id, assigned_stylist_id, is_intercompany,
         intercompany_transaction_id, specification, recipe_id, status,
-        scheduled_for, expected_completion_at, agreed_cost_ngn, created_by)
+        scheduled_for, expected_completion_at, agreed_cost_ngn, created_by,
+        revenue_kind, internal_reason)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,COALESCE($11,false),$12,$13,$14,
-             COALESCE($15,'pending'),$16,$17,$18,$19)
+             COALESCE($15,'pending'),$16,$17,$18,$19,$20,$21)
      RETURNING *`,
     [
       job.job_number,
@@ -170,7 +171,105 @@ async function createServiceJob({ client, brand, job }) {
       job.expected_completion_at || null,
       job.agreed_cost_ngn === undefined ? null : job.agreed_cost_ngn,
       job.created_by || null,
+      job.revenue_kind || null,
+      job.internal_reason || null,
     ],
+  );
+  return rows[0];
+}
+
+/**
+ * Jobs that owe a sale — every stage, not just completed.
+ *
+ * The §6.30 pocketing index (template 000025) asks the same question of
+ * `status = 'completed'` only, which is why the "No Sale (risk)" tile and the
+ * `no_sale_linked` insight both fire after the hair has gone back to the
+ * customer. This one is the live queue: it surfaces the job while the work is
+ * still in front of someone and the sale can still be raised naturally.
+ *
+ * `kind` filters the tab; omitting it returns everything that owes a sale.
+ * 'internal' rows are excluded from the default set (they will never have a
+ * sale, by declaration) but remain fetchable with kind='internal' — the ask was
+ * to be able to see ALL of them, so nothing is hidden, only defaulted away.
+ * Jobs with revenue_kind IS NULL are unclassified: opened before this existed,
+ * or by a path that never asked. They lead, because they are the ones nobody
+ * has made a decision about.
+ */
+async function listUnbilledJobs({ client, brand, kind = null, limit = 500 }) {
+  const params = [limit];
+  let kindFilter = `AND (j.revenue_kind IS NULL OR j.revenue_kind <> 'internal')`;
+  if (kind === "internal") {
+    kindFilter = `AND j.revenue_kind = 'internal'`;
+  } else if (kind === "unclassified") {
+    kindFilter = `AND j.revenue_kind IS NULL`;
+  } else if (kind) {
+    params.push(kind);
+    kindFilter = `AND j.revenue_kind = $${params.length}`;
+  }
+  const { rows } = await ex(client)(
+    `SELECT j.job_id, j.job_number, j.status, j.revenue_kind, j.internal_reason,
+            j.hair_description, j.hair_variant_id, j.tag_code,
+            j.agreed_cost_ngn, j.actual_cost_ngn,
+            j.created_at, j.completed_at, j.expected_completion_at,
+            j.sale_requested_at, j.sale_requested_by,
+            j.assigned_staff_user_id, j.customer_contact_id,
+            j.service_type_id, st.display_name AS service_type_name,
+            c.display_name AS customer_name,
+            u.display_name AS assigned_staff_name,
+            r.display_name AS sale_requested_by_name
+       FROM ${t(brand, "service_jobs")} j
+       LEFT JOIN ${t(brand, "service_types")} st
+              ON st.service_type_id = j.service_type_id
+       LEFT JOIN shared.contacts c ON c.contact_id = j.customer_contact_id
+       -- users.display_name is the canonical name of record (000371) — never
+       -- preferred_name, which is a personal alias nothing else joins.
+       LEFT JOIN shared.users u ON u.user_id = j.assigned_staff_user_id
+       LEFT JOIN shared.users r ON r.user_id = j.sale_requested_by
+      WHERE j.sales_order_id IS NULL
+        AND j.intercompany_transaction_id IS NULL
+        AND j.is_intercompany = false
+        AND j.status NOT IN ('cancelled', 'rejected')
+        ${kindFilter}
+      ORDER BY (j.revenue_kind IS NULL) DESC, j.created_at DESC
+      LIMIT $1`,
+    params,
+  );
+  return rows;
+}
+
+/** Counts for the Unbilled tab's filter chips, in one pass. */
+async function unbilledJobCounts({ client, brand }) {
+  const { rows } = await ex(client)(
+    `SELECT COALESCE(revenue_kind, 'unclassified') AS kind, count(*)::int AS n
+       FROM ${t(brand, "service_jobs")}
+      WHERE sales_order_id IS NULL
+        AND intercompany_transaction_id IS NULL
+        AND is_intercompany = false
+        AND status NOT IN ('cancelled', 'rejected')
+      GROUP BY 1`,
+    [],
+  );
+  const counts = {
+    unclassified: 0,
+    customer_our_hair: 0,
+    customer_own_hair: 0,
+    internal: 0,
+  };
+  for (const r of rows) if (r.kind in counts) counts[r.kind] = r.n;
+  // "Owes a sale" — what the tab badge shows. Internal is excluded because a
+  // shoot piece is not an outstanding invoice.
+  counts.owed =
+    counts.unclassified + counts.customer_our_hair + counts.customer_own_hair;
+  return counts;
+}
+
+/** Stamp that Sales has been asked to raise this job's sale. */
+async function markSaleRequested({ client, brand, id, user_id }) {
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "service_jobs")}
+        SET sale_requested_at = now(), sale_requested_by = $2, updated_at = now()
+      WHERE job_id = $1 RETURNING *`,
+    [id, user_id || null],
   );
   return rows[0];
 }
@@ -1201,7 +1300,14 @@ async function getStylistScorecard({ brand, user_id }) {
  * Count a staffer's done, quality-passing jobs in a month — the quality-gated
  * numerator for the `styles_completed` / `services_completed` target progress.
  */
-async function countCompletedQualityForUser({ client, brand, userId, year, month, minQuality }) {
+async function countCompletedQualityForUser({
+  client,
+  brand,
+  userId,
+  year,
+  month,
+  minQuality,
+}) {
   const run = client ? client.query.bind(client) : query;
   const from = `${year}-${String(month).padStart(2, "0")}-01`;
   const to =
@@ -1238,6 +1344,9 @@ module.exports = {
   createServiceJob,
   getServiceJob,
   listServiceJobs,
+  listUnbilledJobs,
+  unbilledJobCounts,
+  markSaleRequested,
   userHasJobAccess,
   getJobAssigneeName,
   serviceJobExistsForOrder,

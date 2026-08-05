@@ -14,6 +14,7 @@
 const repo = require("./service-jobs.repo");
 const icRepo = require("../intercompany/intercompany.repo");
 const sharedTasksRepo = require("../../shared/tasks/tasks.repo");
+const grantsRepo = require("../../shared/access/grants.repo");
 const events = require("./service-jobs.events");
 const ai = require("./service-jobs.ai");
 const { audit } = require("../../middleware/audit");
@@ -232,7 +233,13 @@ async function addLockedBrief({ client, brand, job_id, brief, user }) {
     await repo.addReference({
       client,
       brand,
-      r: { job_id, ref_type: "video_link", url: link, created_by, is_locked: true },
+      r: {
+        job_id,
+        ref_type: "video_link",
+        url: link,
+        created_by,
+        is_locked: true,
+      },
     });
 }
 async function updateJob({ brand, user, request_id, id, patch }) {
@@ -349,6 +356,114 @@ async function assignStaff({
     });
   }
   return job;
+}
+
+/**
+ * The Unbilled queue — every job that owes a sale, at every stage.
+ *
+ * §6.30 already flags this, but only once a job is `completed`: the
+ * `no_sale_linked` insight and the "No Sale (risk)" tile both fire after the
+ * styling is finished and the hair has gone back to the customer. That is the
+ * worst moment to learn nobody raised an invoice, and it is why FLH-JOB-0035
+ * sat completed with an unbilled styling fee.
+ *
+ * This is the live version. It also splits the count by WHY, so a wig styled
+ * for a shoot stops padding the same number as a customer job nobody billed —
+ * the reason the old tile was safe to ignore.
+ */
+async function listUnbilledJobs({ brand, kind }) {
+  const [jobs, counts] = await Promise.all([
+    repo.listUnbilledJobs({ brand, kind: kind === "all" ? null : kind }),
+    repo.unbilledJobCounts({ brand }),
+  ]);
+  return { data: jobs, counts };
+}
+
+/**
+ * Ask Sales to raise the sale this job is owed.
+ *
+ * Notifies everyone who can actually create a sale for the brand (resolved
+ * from the permission, not a hard-coded role name — brands rename roles), and
+ * deeplinks them to Quick Sale pre-filled from the job. Stamps the request on
+ * the job so the button becomes "Sales notified 2h ago" instead of letting
+ * three people ask three times.
+ */
+async function requestSaleForJob({ brand, user, request_id, id }) {
+  const job = await repo.getServiceJob({ brand, id });
+  if (!job) throw new NotFoundError("Service job");
+  if (job.sales_order_id) {
+    throw new AppError(
+      "ALREADY_LINKED",
+      "This job already has a sale behind it",
+      409,
+      { user_message: "This job already has a sale linked to it." },
+    );
+  }
+  if (job.revenue_kind === "internal") {
+    throw new AppError(
+      "INTERNAL_JOB",
+      "An internal job is not owed a sale",
+      409,
+      {
+        user_message:
+          "This job is marked internal, so no sale is owed. Change how it's classified if that's wrong.",
+      },
+    );
+  }
+  const updated = await repo.markSaleRequested({
+    brand,
+    id,
+    user_id: user.user_id,
+  });
+  // Prefill what we already know so whoever picks this up isn't retyping the
+  // job back into a form. The job id rides along so completing the sale can
+  // link back to it rather than creating a second, disconnected record.
+  const params = [["from_job", id]];
+  if (job.customer_contact_id)
+    params.push(["contact", job.customer_contact_id]);
+  if (job.hair_variant_id) params.push(["variant", job.hair_variant_id]);
+  // Own-hair work sells a styling SERVICE, not a wig — the form opens with no
+  // product line so nobody accidentally bills the customer for their own hair.
+  if (job.revenue_kind === "customer_own_hair")
+    params.push(["service_only", "1"]);
+  const action_url = `/sales/quick-sale?${params
+    .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+    .join("&")}`;
+
+  const recipients = await grantsRepo.listUsersWithPermission({
+    business: brand,
+    module: "sales",
+    action: "create",
+  });
+  const amount = job.agreed_cost_ngn || job.actual_cost_ngn || null;
+  await Promise.all(
+    recipients
+      // Don't notify the person who just pressed the button.
+      .filter((r) => r.user_id !== user.user_id)
+      .map((r) =>
+        notifyUser({
+          brand,
+          user_id: r.user_id,
+          type: "service_job_sale_needed",
+          title: "Styling job needs a sale raised",
+          body: `${job.job_number}${job.customer_name ? ` for ${job.customer_name}` : ""} has no sale${amount ? ` — agreed ${amount}` : ""}.`,
+          job_id: id,
+          priority: "high",
+          action_url,
+        }),
+      ),
+  );
+  await A(
+    brand,
+    user,
+    "service_jobs.request_sale",
+    "service_job",
+    id,
+    { notified: recipients.length, revenue_kind: job.revenue_kind || null },
+    request_id,
+  );
+  events.emit("sale_requested", { brand, job_id: id });
+  return { ...updated, notified: recipients.length, action_url };
 }
 
 /**
@@ -789,6 +904,7 @@ async function notifyUser({
   body,
   job_id,
   priority,
+  action_url,
 }) {
   if (!user_id) return;
   try {
@@ -803,8 +919,10 @@ async function notifyUser({
       reference_type: "service_job",
       reference_id: job_id,
       // Admin route is /service-jobs (the "Stylist Studio" nav item); ?job=
-      // opens the job drawer directly.
-      action_url: `/service-jobs?tab=board&job=${job_id}`,
+      // opens the job drawer directly. Callers can override when the useful
+      // destination is elsewhere — "raise the sale" wants Quick Sale, not the
+      // job the reader already knows about.
+      action_url: action_url || `/service-jobs?tab=board&job=${job_id}`,
     });
   } catch (err) {
     logger.warn({ err, job_id, user_id }, "studio notification skipped");
@@ -834,54 +952,89 @@ async function notifyUser({
  * Unlinked jobs have no order to reserve against and, by decision, never
  * touch stock — the assign screen warns the assigner in so many words.
  */
-async function holdBaseWigForStylist({ client, brand, job, user_id }) {
+/**
+ * Is the wig this job needs actually accounted for? Assignment is a CUSTODY
+ * event, not a stock event — the physical wig moves from the business to the
+ * stylist, and `wig_custody_ledger` records that. Quantity does not change.
+ *
+ * Which is why this no longer writes anything. It used to try to `reserve` the
+ * wig here, and that call could only ever execute in one situation: the sale
+ * had neither drawn the unit nor held it. For a healthy order both guards
+ * return early, so the reserve was dead code on good data — and on bad data it
+ * RAISEd `stock_reserved_le_on_hand`, aborted the transaction and surfaced as
+ * "Something interrupted that step. Please try again."
+ *
+ * The situation it fired in is real, though, and worth refusing rather than
+ * papering over: an out-of-stock line is sold as a PRE-ORDER (no reservation),
+ * and `markPaid` deliberately will not fail a payment over missing stock
+ * (savepointed, flags `stock_shortfall`, proceeds). So an order can be fully
+ * paid with zero stock ever moved — and the hair does not exist. You cannot
+ * hand a stylist a wig that isn't there, and no acknowledgement tick conjures
+ * one; the only real fix is to receive the stock. Hence a block with a
+ * Reception deeplink instead of an override.
+ *
+ * Returns null when the wig is accounted for (or no wig is involved), else a
+ * reason object the caller turns into a refusal.
+ */
+async function wigAccountabilityProblem({ client, brand, job }) {
   const variant_id = job.reserved_variant_id || job.hair_variant_id;
-  if (!variant_id || !job.sales_order_id) return;
-  // Best-effort: a hold that can't be placed (no tracked stock, nothing on
-  // hand) must never block the assignment — the wig is physical and already in
-  // the stylist's hands. `reserveForOrder` RAISEs exactly in that case
-  // (`stock_reserved_le_on_hand`), so this MUST stay savepointed: the plain
-  // try/catch it replaced left the transaction aborted, and the addCustody
-  // INSERT immediately after the call site failed with 25P02 — which is what
-  // put "Something interrupted that step" on the assign modal for every job
-  // whose base wig wasn't on hand.
-  await bestEffort(
-    { client, brand, job_id: job.job_id, step: "studio base-wig hold" },
-    async () => {
-      const stockService = require("../stock/stock.service");
-      const stockRepo = require("../stock/stock.repo");
-      const loc = await stockRepo.getDefaultLocation({ client, brand });
-      if (!loc) return;
-      // Already drawn by the sale (order paid) → nothing left to hold.
-      if (
-        await repo.orderAlreadyDrewWig({
-          client,
-          brand,
-          sales_order_id: job.sales_order_id,
-          variant_id,
-        })
-      )
-        return;
-      // Already held by the order's own reservation → don't stack a second hold.
-      const held = await stockRepo.outstandingReservationForOrder({
+  // No tracked variant at all — the customer brought their own hair, or the
+  // job names it in free text. Our stock is not involved and never was.
+  if (!variant_id) return null;
+
+  const stockRepo = require("../stock/stock.repo");
+  const loc = await stockRepo.getDefaultLocation({ client, brand });
+  // No stock location configured — this brand isn't tracking stock, so there
+  // is nothing to check against and nothing to be wrong about.
+  if (!loc) return null;
+
+  if (job.sales_order_id) {
+    // Drawn by the sale (order paid) → the unit left the shelf for THIS order.
+    // That is the wig now going out to the stylist. This is the normal path.
+    if (
+      await repo.orderAlreadyDrewWig({
         client,
         brand,
+        sales_order_id: job.sales_order_id,
         variant_id,
-        location_id: loc.location_id,
-        reference_id: job.sales_order_id,
-      });
-      if (held > 0) return;
-      await stockService.reserveForOrder({
-        client,
-        brand,
-        variant_id,
-        location_id: loc.location_id,
-        quantity: 1,
-        reference_id: job.sales_order_id,
-        user_id,
-      });
-    },
-  );
+      })
+    )
+      return null;
+    // Held by the order's own reservation at placement → the unit is on the
+    // shelf with this order's name on it. Also fine.
+    const held = await stockRepo.outstandingReservationForOrder({
+      client,
+      brand,
+      variant_id,
+      location_id: loc.location_id,
+      reference_id: job.sales_order_id,
+    });
+    if (held > 0) return null;
+    // Neither. The sale never took a unit and never held one, which means the
+    // hair was not in stock when it sold.
+    return {
+      code: "WIG_NOT_IN_STOCK",
+      variant_id,
+      user_message:
+        "This hair isn't in stock — the sale never drew it, so there's nothing to hand the stylist. If the hair has physically arrived, receive it in Stock → Reception first.",
+    };
+  }
+
+  // Unlinked job on one of OUR variants. No sale has drawn it, so the unit
+  // should still be sitting on the shelf; assignment is only safe if it is.
+  const level = await stockRepo.lockLevel({
+    client,
+    brand,
+    variant_id,
+    location_id: loc.location_id,
+  });
+  if (level && Number(level.on_hand) > 0) return null;
+  return {
+    code: "WIG_NOT_IN_STOCK",
+    variant_id,
+    user_message:
+      "This hair isn't in stock, so there's nothing to hand the stylist. If it has physically arrived, receive it in Stock → Reception first.",
+  };
 }
 
 // A stylist studio job assigned with no promised date still needs a clock so
@@ -978,6 +1131,38 @@ async function assignStylist({
         },
       );
     }
+    // You cannot hand a stylist a wig that isn't there. Checked BEFORE any of
+    // the assignment is written — including the tag code, which is meant to go
+    // on a physical wig and shouldn't be allocated for one that doesn't exist.
+    // No override: if the hair has genuinely arrived, the fix is to receive it
+    // into stock, which the deeplink takes you to. See
+    // wigAccountabilityProblem() for why this replaced a stock write.
+    const problem = await wigAccountabilityProblem({
+      client,
+      brand,
+      job: before,
+    });
+    if (problem) {
+      throw new AppError(
+        problem.code,
+        "The wig for this job is not accounted for in stock",
+        409,
+        {
+          user_message: problem.user_message,
+          metadata: {
+            job_id: id,
+            variant_id: problem.variant_id,
+            // The frontend turns this into the "Receive it in Stock →
+            // Reception" button on the refusal, so the block is a door rather
+            // than a dead end.
+            resolve_action: {
+              label: "Receive stock",
+              url: `/stock?tab=reception&variant=${problem.variant_id}`,
+            },
+          },
+        },
+      );
+    }
     const deadline =
       expected_completion_at ||
       before.expected_completion_at ||
@@ -1035,12 +1220,6 @@ async function assignStylist({
         },
       );
     }
-    await holdBaseWigForStylist({
-      client,
-      brand,
-      job,
-      user_id: user.user_id,
-    });
     await repo.addCustody({
       client,
       brand,
@@ -1133,9 +1312,14 @@ async function unassignStaff({ brand, user, request_id, id }) {
     const before = await repo.getServiceJob({ client, brand, id });
     if (!before) throw new NotFoundError("Service job");
     if (!before.assigned_staff_user_id) {
-      throw new AppError("NOT_ASSIGNED", "This job is not assigned to anyone.", 409, {
-        user_message: "This job is already unassigned.",
-      });
+      throw new AppError(
+        "NOT_ASSIGNED",
+        "This job is not assigned to anyone.",
+        409,
+        {
+          user_message: "This job is already unassigned.",
+        },
+      );
     }
     if (before.status !== "assigned") {
       throw new AppError(
@@ -1695,8 +1879,7 @@ function listCustodyLedger({ brand, job_id, stylist_user_id, scope, user }) {
   // `own`-scope: force the stylist filter to the caller — a stylist
   // querying the ledger without a stylist_user_id (or with someone else's)
   // gets only their own custody rows.
-  const forcedUserId =
-    scope === "own" && user ? user.user_id : stylist_user_id;
+  const forcedUserId = scope === "own" && user ? user.user_id : stylist_user_id;
   return repo.listCustody({ brand, job_id, stylist_user_id: forcedUserId });
 }
 function listJobActivity({ brand, id }) {
@@ -1793,6 +1976,8 @@ module.exports = {
   assignStaff,
   assignStylist,
   unassignStaff,
+  listUnbilledJobs,
+  requestSaleForJob,
   listAssignableStylists,
   listStylistScorecards,
   getStylistScorecard,

@@ -53,6 +53,7 @@ jest.mock("../../../src/modules/stock/stock.service", () => ({
 jest.mock("../../../src/modules/stock/stock.repo", () => ({
   getDefaultLocation: jest.fn(),
   outstandingReservationForOrder: jest.fn(),
+  lockLevel: jest.fn(),
 }));
 jest.mock("../../../src/modules/sales/sales.repo", () => ({
   advanceStatus: jest.fn(),
@@ -93,12 +94,18 @@ beforeEach(() => {
   repo.studioDrawBalanceForJob.mockResolvedValue(0);
   stockRepo.getDefaultLocation.mockResolvedValue(LOCATION);
   stockRepo.outstandingReservationForOrder.mockResolvedValue(0);
+  // Default: the wig is on the shelf. Individual tests starve it to exercise
+  // the accountability refusal.
+  stockRepo.lockLevel.mockResolvedValue({ on_hand: 1, reserved: 0 });
 });
 
 describe("assignStylist — the sale owns the stock draw", () => {
   it("never deducts stock, even when the sale has not drawn the wig yet", async () => {
     // The exact deposit-triggered shape that produced −2: balance unpaid, so
     // the old guard said "the sale hasn't drawn — go ahead and deduct".
+    // The order still HOLDS its unit (every order reserves at placement), which
+    // is what makes this the healthy deposit case rather than a stock-out.
+    stockRepo.outstandingReservationForOrder.mockResolvedValue(1);
     const job = depositOrderJob();
     repo.getServiceJob.mockResolvedValue(job);
     repo.setServiceJobStatus.mockResolvedValue({ ...job, status: "assigned" });
@@ -112,28 +119,13 @@ describe("assignStylist — the sale owns the stock draw", () => {
     expect(stockService.deductForSale).not.toHaveBeenCalled();
   });
 
-  it("holds the unit instead, so it cannot be sold out from under the stylist", async () => {
-    const job = depositOrderJob();
-    repo.getServiceJob.mockResolvedValue(job);
-    repo.setServiceJobStatus.mockResolvedValue({ ...job, status: "assigned" });
-
-    await svc.assignStylist({
-      ...base,
-      id: "job-1",
-      assigned_staff_user_id: "stylist-1",
-    });
-
-    expect(stockService.reserveForOrder).toHaveBeenCalledWith(
-      expect.objectContaining({
-        variant_id: "variant-1",
-        location_id: "loc-1",
-        quantity: 1,
-        reference_id: "order-1",
-      }),
-    );
-  });
-
-  it("does not stack a second hold when the order already reserves the unit", async () => {
+  it("writes NO stock movement of any kind — it is a custody event", async () => {
+    // Assignment used to try to `reserve` here. That call could only ever
+    // execute when the sale had neither drawn nor held the unit — dead code on
+    // a healthy order, and on an unhealthy one it RAISEd
+    // stock_reserved_le_on_hand, aborted the transaction, and surfaced as
+    // "Something interrupted that step. Please try again." The wig already
+    // left on_hand at payment; assignment moves POSSESSION, not quantity.
     stockRepo.outstandingReservationForOrder.mockResolvedValue(1);
     const job = depositOrderJob();
     repo.getServiceJob.mockResolvedValue(job);
@@ -146,9 +138,26 @@ describe("assignStylist — the sale owns the stock draw", () => {
     });
 
     expect(stockService.reserveForOrder).not.toHaveBeenCalled();
+    expect(stockService.deductForSale).not.toHaveBeenCalled();
+    expect(stockService.receiveStock).not.toHaveBeenCalled();
   });
 
-  it("holds nothing once the sale has already drawn the wig", async () => {
+  it("goes through when the order holds the unit at placement", async () => {
+    stockRepo.outstandingReservationForOrder.mockResolvedValue(1);
+    const job = depositOrderJob();
+    repo.getServiceJob.mockResolvedValue(job);
+    repo.setServiceJobStatus.mockResolvedValue({ ...job, status: "assigned" });
+
+    await svc.assignStylist({
+      ...base,
+      id: "job-1",
+      assigned_staff_user_id: "stylist-1",
+    });
+
+    expect(repo.addCustody).toHaveBeenCalled();
+  });
+
+  it("goes through once the sale has drawn the wig", async () => {
     repo.orderAlreadyDrewWig.mockResolvedValue(true);
     const job = depositOrderJob();
     repo.getServiceJob.mockResolvedValue(job);
@@ -160,8 +169,86 @@ describe("assignStylist — the sale owns the stock draw", () => {
       assigned_staff_user_id: "stylist-1",
     });
 
-    expect(stockService.reserveForOrder).not.toHaveBeenCalled();
+    expect(repo.addCustody).toHaveBeenCalled();
     expect(stockService.deductForSale).not.toHaveBeenCalled();
+  });
+});
+
+describe("assignStylist — you cannot hand over a wig that isn't there", () => {
+  it("refuses when the sale neither drew nor held the unit (pre-order / shortfall)", async () => {
+    // Reachable on a FULLY PAID order: an out-of-stock line sells as a
+    // pre-order (reserve rolled back), and markPaid deliberately will not fail
+    // a payment over missing stock (savepointed, flags stock_shortfall,
+    // proceeds). So the order is paid and the hair does not exist.
+    repo.orderAlreadyDrewWig.mockResolvedValue(false);
+    stockRepo.outstandingReservationForOrder.mockResolvedValue(0);
+    repo.getServiceJob.mockResolvedValue(depositOrderJob());
+
+    await expect(
+      svc.assignStylist({
+        ...base,
+        id: "job-1",
+        assigned_staff_user_id: "stylist-1",
+      }),
+    ).rejects.toMatchObject({ code: "WIG_NOT_IN_STOCK" });
+  });
+
+  it("refuses before writing anything — no tag code burned on a wig that doesn't exist", async () => {
+    repo.orderAlreadyDrewWig.mockResolvedValue(false);
+    stockRepo.outstandingReservationForOrder.mockResolvedValue(0);
+    repo.getServiceJob.mockResolvedValue(depositOrderJob({ tag_code: null }));
+
+    await expect(
+      svc.assignStylist({
+        ...base,
+        id: "job-1",
+        assigned_staff_user_id: "stylist-1",
+      }),
+    ).rejects.toMatchObject({ code: "WIG_NOT_IN_STOCK" });
+
+    expect(repo.nextTagSequence).not.toHaveBeenCalled();
+    expect(repo.setServiceJobStatus).not.toHaveBeenCalled();
+    expect(repo.addCustody).not.toHaveBeenCalled();
+  });
+
+  it("hands back the Reception deeplink so the block is a door, not a wall", async () => {
+    repo.orderAlreadyDrewWig.mockResolvedValue(false);
+    stockRepo.outstandingReservationForOrder.mockResolvedValue(0);
+    repo.getServiceJob.mockResolvedValue(depositOrderJob());
+
+    const err = await svc
+      .assignStylist({
+        ...base,
+        id: "job-1",
+        assigned_staff_user_id: "stylist-1",
+      })
+      .catch((e) => e);
+
+    expect(err.metadata.resolve_action.url).toContain("tab=reception");
+    expect(err.metadata.resolve_action.url).toContain("variant-1");
+  });
+
+  it("exempts a job on the customer's own hair — our stock is not involved", async () => {
+    // No tracked variant: the customer brought their own wig, or the job names
+    // the hair in free text. Nothing to be in stock, nothing to refuse.
+    const ownHair = depositOrderJob({
+      reserved_variant_id: null,
+      hair_variant_id: null,
+      hair_description: "Client's own 22\" body wave",
+    });
+    repo.getServiceJob.mockResolvedValue(ownHair);
+    repo.setServiceJobStatus.mockResolvedValue({
+      ...ownHair,
+      status: "assigned",
+    });
+
+    await svc.assignStylist({
+      ...base,
+      id: "job-1",
+      assigned_staff_user_id: "stylist-1",
+    });
+
+    expect(repo.addCustody).toHaveBeenCalled();
   });
 });
 
@@ -197,6 +284,22 @@ describe("assignStylist — a job with no sale behind it", () => {
     expect(repo.setServiceJobStatus).toHaveBeenCalled();
     expect(stockService.deductForSale).not.toHaveBeenCalled();
     expect(stockService.reserveForOrder).not.toHaveBeenCalled();
+  });
+
+  it("is still refused when the wig it names is not on the shelf", async () => {
+    // No sale has drawn this unit, so it should still be sitting in stock.
+    // If it isn't, there is nothing to hand over — acknowledgement or not.
+    stockRepo.lockLevel.mockResolvedValue({ on_hand: 0, reserved: 0 });
+    repo.getServiceJob.mockResolvedValue(unlinked());
+
+    await expect(
+      svc.assignStylist({
+        ...base,
+        id: "job-1",
+        assigned_staff_user_id: "stylist-1",
+        acknowledge_unlinked: true,
+      }),
+    ).rejects.toMatchObject({ code: "WIG_NOT_IN_STOCK" });
   });
 });
 

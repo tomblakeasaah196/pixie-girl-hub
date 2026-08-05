@@ -210,6 +210,10 @@ function errorHandler(err, req, res, _next) {
         // Studio can render "reassigned to X → back to my jobs" instead
         // of a bare 403 wall.
         ...(meta.reassigned ? { reassigned: meta.reassigned } : {}),
+        // A refusal that names its own fix — {label, url}. WIG_NOT_IN_STOCK
+        // uses it to offer "Receive stock" straight into Stock → Reception,
+        // so a block is a door rather than a dead end.
+        ...(meta.resolve_action ? { resolve_action: meta.resolve_action } : {}),
       },
       request_id,
     });

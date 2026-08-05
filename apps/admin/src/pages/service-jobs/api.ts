@@ -8,6 +8,8 @@
  */
 import { api } from "@/lib/api";
 import type {
+  RevenueKind,
+  UnbilledResponse,
   ServiceType,
   ChemicalRecipe,
   ServiceJob,
@@ -73,9 +75,7 @@ export function listRecipes(params?: { is_active?: boolean }) {
   if (params?.is_active !== undefined)
     qs.set("is_active", String(params.is_active));
   const q = qs.toString();
-  return api.get<ChemicalRecipe[]>(
-    `${BASE}/recipes${q ? `?${q}` : ""}`,
-  );
+  return api.get<ChemicalRecipe[]>(`${BASE}/recipes${q ? `?${q}` : ""}`);
 }
 
 export function getRecipe(id: string) {
@@ -332,15 +332,10 @@ export function addReference(
     body?: string;
   },
 ) {
-  return api.post<JobReference[]>(
-    `${BASE}/${jobId}/references`,
-    input,
-  );
+  return api.post<JobReference[]>(`${BASE}/${jobId}/references`, input);
 }
 export function deleteReference(jobId: string, refId: string) {
-  return api.delete<JobReference[]>(
-    `${BASE}/${jobId}/references/${refId}`,
-  );
+  return api.delete<JobReference[]>(`${BASE}/${jobId}/references/${refId}`);
 }
 export function listTimeLogs(jobId: string) {
   return api.get<JobTimeLog[]>(`${BASE}/${jobId}/time-logs`);
@@ -366,4 +361,49 @@ export function listCustodyLedger(params?: {
   return api.get<CustodyEntry[]>(
     `${BASE}/accountability/ledger${q ? `?${q}` : ""}`,
   );
+}
+
+// ── Unbilled jobs ──────────────────────────────────────────
+// Every job with no sale behind it, at ANY stage. The §6.30 pocketing signal
+// (the "No Sale (risk)" tile, the `no_sale_linked` insight) only ever looked at
+// COMPLETED jobs, so the first anyone heard of an unbilled styling fee was
+// after the hair had gone back to the customer.
+//
+// This response keeps its envelope — it carries `counts` alongside `data`, so
+// unlike the bare `{data: X}` payloads noted at the top of this file, the api
+// client does NOT unwrap it.
+
+export function listUnbilledJobs(params?: {
+  kind?: RevenueKind | "unclassified" | "all";
+  limit?: number;
+}) {
+  const qs = new URLSearchParams();
+  if (params?.kind) qs.set("kind", params.kind);
+  if (params?.limit) qs.set("limit", String(params.limit));
+  const q = qs.toString();
+  return api.get<UnbilledResponse>(`${BASE}/unbilled${q ? `?${q}` : ""}`);
+}
+
+/**
+ * Ask whoever holds sales.create to raise the sale this job is owed. Notifies
+ * them with Quick Sale pre-filled from the job, and stamps the request so the
+ * button becomes "Sales notified" rather than letting three people ask thrice.
+ */
+export function requestSale(jobId: string) {
+  return api.post<ServiceJob & { notified: number; action_url: string }>(
+    `${BASE}/${jobId}/request-sale`,
+    {},
+  );
+}
+
+/** Classify a job's revenue kind after the fact (the unclassified backlog). */
+export function classifyJob(
+  jobId: string,
+  revenue_kind: RevenueKind,
+  internal_reason?: string,
+) {
+  return api.patch<ServiceJob>(`${BASE}/${jobId}`, {
+    revenue_kind,
+    ...(internal_reason ? { internal_reason } : {}),
+  });
 }

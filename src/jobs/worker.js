@@ -459,6 +459,7 @@ async function startWorkers() {
   require("../shared/notifications/notifications.subscribers"); // rep notification
   require("../modules/sales/timeline.subscribers"); // order.paid → timeline event
   require("../modules/sales/receipt.subscribers"); // order.paid → archive receipt PDF
+  require("../modules/sales/stock-shortfall.subscribers"); // paid order with nothing to draw → ops + Kaizen
   require("../modules/sales/payment-comms.subscribers"); // part-payment receipt + milestone → Comms Studio
   require("../modules/sales/order-lifecycle-comms.subscribers"); // order.created → proforma invoice + placement email; order.paid → payment-confirmed email
   require("../modules/sales/duplicate-resolve.subscribers"); // order.paid → cancel pending duplicate twins

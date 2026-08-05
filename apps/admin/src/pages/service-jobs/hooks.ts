@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useBusinessStore } from "@/stores/business";
+import type { RevenueKind } from "./types";
 import * as api from "./api";
 
 function useBrand() {
@@ -393,4 +394,54 @@ export function useJobCustody(jobId: string | null) {
     queryFn: () => api.listCustodyLedger({ job_id: jobId! }),
     enabled: !!jobId,
   });
+}
+
+// ── Unbilled jobs ──────────────────────────────────────────
+
+/**
+ * The queue of jobs that owe a sale. Brand-scoped like every other Studio
+ * query; `kind` is part of the key so switching the filter chip refetches
+ * rather than showing the previous bucket's rows.
+ */
+export function useUnbilledJobs(kind?: RevenueKind | "unclassified" | "all") {
+  const brand = useBrand();
+  return useQuery({
+    queryKey: ["service-jobs-unbilled", brand, kind ?? "owed"],
+    queryFn: () => api.listUnbilledJobs(kind ? { kind } : undefined),
+  });
+}
+
+/**
+ * Actions that clear a job off the Unbilled queue: ask Sales to raise the
+ * sale, or classify it (including marking it internal, which is a legitimate
+ * way for it to leave the queue — it was never owed a sale).
+ *
+ * Both invalidate the jobs list too, since the drawer badge and the "No Sale
+ * (risk)" tile read the same rows.
+ */
+export function useUnbilledMutations() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ["service-jobs-unbilled", brand] });
+    qc.invalidateQueries({ queryKey: ["service-jobs", brand] });
+  };
+  return {
+    requestSale: useMutation({
+      mutationFn: (jobId: string) => api.requestSale(jobId),
+      onSuccess: invalidate,
+    }),
+    classify: useMutation({
+      mutationFn: ({
+        jobId,
+        revenue_kind,
+        internal_reason,
+      }: {
+        jobId: string;
+        revenue_kind: RevenueKind;
+        internal_reason?: string;
+      }) => api.classifyJob(jobId, revenue_kind, internal_reason),
+      onSuccess: invalidate,
+    }),
+  };
 }

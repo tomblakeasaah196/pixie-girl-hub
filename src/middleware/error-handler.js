@@ -270,6 +270,20 @@ function errorHandler(err, req, res, _next) {
       { request_id, pg_code: err.code, constraint: err.constraint },
       "translated pg error",
     );
+    // Report it. These are OUR failures — a deadlock, a statement timeout, a
+    // transaction we aborted ourselves (25P02) — dressed in a soft, retryable
+    // message so the user isn't dead-ended. Most map to a 4xx, which the
+    // capture gate drops by default, so until now they were invisible: staff
+    // saw "Something interrupted that step. Please try again." on the stylist
+    // assign modal while the Errors console had no matching row. `force` puts
+    // them on the board; the raw PG message ("current transaction is aborted…")
+    // is what groups them, and the pg code is carried for the detail view.
+    captureError(err, req, {
+      source: "backend",
+      httpStatus: friendly.http,
+      force: true,
+      context: { code: err.code, component: "postgres" },
+    });
     const support = supportFor(req);
     return res.status(friendly.http).json({
       error: {

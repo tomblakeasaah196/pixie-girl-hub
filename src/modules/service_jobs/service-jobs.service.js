@@ -17,7 +17,8 @@ const sharedTasksRepo = require("../../shared/tasks/tasks.repo");
 const events = require("./service-jobs.events");
 const ai = require("./service-jobs.ai");
 const { audit } = require("../../middleware/audit");
-const { transaction } = require("../../config/database");
+const { transaction, withSavepoint } = require("../../config/database");
+const { captureError } = require("../kaizen/errors/errors.capture");
 const { money } = require("../../utils/money");
 const { NotFoundError, AppError } = require("../../utils/errors");
 const { BRANDS } = require("../../config/brands");
@@ -46,6 +47,38 @@ const A = (
     after,
     request_id,
   });
+
+/**
+ * Run a best-effort side-step inside the caller's transaction: isolate it in a
+ * SAVEPOINT, and on failure log it, report it to Kaizen, and carry on.
+ *
+ * The SAVEPOINT is the whole point. Every one of these steps calls into stock
+ * (and through it, costing + the GL), which RAISEs on a real business condition
+ * — `stock_reserved_le_on_hand` when a wig isn't on hand, a missing GL account,
+ * a locked period. Without the savepoint that RAISE aborts the entire
+ * transaction, so the swallow here bought nothing: the next statement on the
+ * connection died with 25P02 ("Something interrupted that step") and the true
+ * cause never left this log line. See withSavepoint() in config/database.js.
+ *
+ * @param {{ client: any, step: string, brand?: string, job_id?: string }} where
+ * @param {() => Promise<any>} fn
+ */
+async function bestEffort({ client, step, brand, job_id }, fn) {
+  try {
+    return await withSavepoint(client, fn);
+  } catch (err) {
+    logger.warn({ err, brand, job_id }, `${step} skipped`);
+    // These used to be log-only, which is why the Errors console stayed empty
+    // while staff were being told to "try again". A skipped step is a real
+    // backend fault worth a row — it just isn't worth failing the request over.
+    captureError(err, null, {
+      source: "backend",
+      severity: "warning",
+      context: { module: "service_jobs", component: step },
+    });
+    return null;
+  }
+}
 
 const JOB_STATUS = [
   "pending",
@@ -804,45 +837,51 @@ async function notifyUser({
 async function holdBaseWigForStylist({ client, brand, job, user_id }) {
   const variant_id = job.reserved_variant_id || job.hair_variant_id;
   if (!variant_id || !job.sales_order_id) return;
-  try {
-    const stockService = require("../stock/stock.service");
-    const stockRepo = require("../stock/stock.repo");
-    const loc = await stockRepo.getDefaultLocation({ client, brand });
-    if (!loc) return;
-    // Already drawn by the sale (order paid) → nothing left to hold.
-    if (
-      await repo.orderAlreadyDrewWig({
+  // Best-effort: a hold that can't be placed (no tracked stock, nothing on
+  // hand) must never block the assignment — the wig is physical and already in
+  // the stylist's hands. `reserveForOrder` RAISEs exactly in that case
+  // (`stock_reserved_le_on_hand`), so this MUST stay savepointed: the plain
+  // try/catch it replaced left the transaction aborted, and the addCustody
+  // INSERT immediately after the call site failed with 25P02 — which is what
+  // put "Something interrupted that step" on the assign modal for every job
+  // whose base wig wasn't on hand.
+  await bestEffort(
+    { client, brand, job_id: job.job_id, step: "studio base-wig hold" },
+    async () => {
+      const stockService = require("../stock/stock.service");
+      const stockRepo = require("../stock/stock.repo");
+      const loc = await stockRepo.getDefaultLocation({ client, brand });
+      if (!loc) return;
+      // Already drawn by the sale (order paid) → nothing left to hold.
+      if (
+        await repo.orderAlreadyDrewWig({
+          client,
+          brand,
+          sales_order_id: job.sales_order_id,
+          variant_id,
+        })
+      )
+        return;
+      // Already held by the order's own reservation → don't stack a second hold.
+      const held = await stockRepo.outstandingReservationForOrder({
         client,
         brand,
-        sales_order_id: job.sales_order_id,
         variant_id,
-      })
-    )
-      return;
-    // Already held by the order's own reservation → don't stack a second hold.
-    const held = await stockRepo.outstandingReservationForOrder({
-      client,
-      brand,
-      variant_id,
-      location_id: loc.location_id,
-      reference_id: job.sales_order_id,
-    });
-    if (held > 0) return;
-    await stockService.reserveForOrder({
-      client,
-      brand,
-      variant_id,
-      location_id: loc.location_id,
-      quantity: 1,
-      reference_id: job.sales_order_id,
-      user_id,
-    });
-  } catch (err) {
-    // Best-effort: a hold that can't be placed (no tracked stock, nothing on
-    // hand) must never block the assignment — the wig is physical and already
-    // in the stylist's hands.
-    logger.warn({ err, job_id: job.job_id }, "studio base-wig hold skipped");
-  }
+        location_id: loc.location_id,
+        reference_id: job.sales_order_id,
+      });
+      if (held > 0) return;
+      await stockService.reserveForOrder({
+        client,
+        brand,
+        variant_id,
+        location_id: loc.location_id,
+        quantity: 1,
+        reference_id: job.sales_order_id,
+        user_id,
+      });
+    },
+  );
 }
 
 // A stylist studio job assigned with no promised date still needs a clock so
@@ -872,28 +911,30 @@ async function restockBaseWig({ client, brand, job, user_id }) {
     job_id: job.job_id,
   });
   if (drawn <= 0) return; // nothing of this job's own is out — nothing to undo
-  try {
-    const stockService = require("../stock/stock.service");
-    const stockRepo = require("../stock/stock.repo");
-    const loc = await stockRepo.getDefaultLocation({ client, brand });
-    if (!loc) return;
-    await stockService.receiveStock({
-      client,
-      brand,
-      variant_id,
-      location_id: loc.location_id,
-      quantity: 1,
-      reference_id: job.job_id,
-      reference_type: "service_job",
-      unit_cost_ngn: null,
-      user_id,
-    });
-  } catch (err) {
-    logger.warn(
-      { err, job_id: job.job_id },
-      "studio base-wig restock skipped",
-    );
-  }
+  // Savepointed for the same reason as the hold above. Nothing writes on this
+  // client after the call site in unassignStaff, so an abort here wouldn't even
+  // have raised 25P02 — Postgres would have quietly turned the COMMIT into a
+  // ROLLBACK and returned 200 with the unassign silently discarded.
+  await bestEffort(
+    { client, brand, job_id: job.job_id, step: "studio base-wig restock" },
+    async () => {
+      const stockService = require("../stock/stock.service");
+      const stockRepo = require("../stock/stock.repo");
+      const loc = await stockRepo.getDefaultLocation({ client, brand });
+      if (!loc) return;
+      await stockService.receiveStock({
+        client,
+        brand,
+        variant_id,
+        location_id: loc.location_id,
+        quantity: 1,
+        reference_id: job.job_id,
+        reference_type: "service_job",
+        unit_cost_ngn: null,
+        user_id,
+      });
+    },
+  );
 }
 
 /**
@@ -1262,11 +1303,18 @@ async function logMaterial({ brand, user, request_id, id, input }) {
       },
     });
     if (input.kind === "discrete" && input.variant_id) {
-      try {
-        const stockService = require("../stock/stock.service");
-        const stockRepo = require("../stock/stock.repo");
-        const loc = await stockRepo.getDefaultLocation({ client, brand });
-        if (loc) {
+      // Savepointed: deducting a material that isn't on hand RAISEs, and the
+      // plain try/catch here aborted the transaction — taking the material row
+      // inserted just above down with it at COMMIT (silently, as a ROLLBACK),
+      // so the stylist's logged material vanished and the API still said OK.
+      // Now the material is always recorded; only the stock draw is skipped.
+      await bestEffort(
+        { client, brand, job_id: id, step: "studio material deduction" },
+        async () => {
+          const stockService = require("../stock/stock.service");
+          const stockRepo = require("../stock/stock.repo");
+          const loc = await stockRepo.getDefaultLocation({ client, brand });
+          if (!loc) return;
           const mv = await stockService.deductForSale({
             client,
             brand,
@@ -1284,10 +1332,8 @@ async function logMaterial({ brand, user, request_id, id, input }) {
             material_id: m.material_id,
             movement_id: mv && mv.movement_id,
           });
-        }
-      } catch (err) {
-        logger.warn({ err, job_id: id }, "studio material deduction skipped");
-      }
+        },
+      );
     }
     await A(
       brand,

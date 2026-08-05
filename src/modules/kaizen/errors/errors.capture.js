@@ -44,7 +44,7 @@ function routePatternOf(req) {
 /**
  * @param {Error|any} err     the thrown error (or a reason)
  * @param {object|null} req   the Express request, if available
- * @param {object} [opts]     { source, code, severity, httpStatus, context }
+ * @param {object} [opts]     { source, code, severity, httpStatus, context, force }
  */
 function captureError(err, req, opts = {}) {
   // Detach from the caller entirely — never block, never throw.
@@ -58,8 +58,16 @@ function captureError(err, req, opts = {}) {
 
       // 4xx capture is opt-in (avoids validation-noise). Always capture 5xx +
       // process-level (no httpStatus) + explicit non-http captures.
+      //
+      // `force` overrides the opt-in for 4xx that are OUR fault, not the
+      // caller's — chiefly the translated Postgres failures in error-handler.js
+      // (25P02, deadlock, statement timeout), which answer with a soft 409/503
+      // so staff can retry. Those are backend faults wearing a 4xx, and leaving
+      // them behind the opt-in is exactly why a broken assign showed the user
+      // "please try again" while the Errors console showed nothing at all.
       const httpStatus = opts.httpStatus ?? null;
       if (
+        !opts.force &&
         httpStatus &&
         httpStatus >= 400 &&
         httpStatus < 500 &&

@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Package,
+  PackageSearch,
+  BellRing,
   UserCheck,
   UserPlus,
   User,
@@ -31,7 +33,13 @@ import { ErrorState } from "@/components/ui/controls";
 import { TextInput } from "@/components/ui/Form";
 import { useAuthStore } from "@/stores/auth";
 import { ApiError } from "@/lib/api";
-import type { ServiceJob, ServiceType, JobStatus, JobReference } from "./types";
+import type {
+  ServiceJob,
+  ServiceType,
+  JobStatus,
+  JobReference,
+  RevenueKind,
+} from "./types";
 
 /**
  * A stylist may open a deep link (from an old push, an email, or a bookmark)
@@ -56,6 +64,24 @@ function extractReassigned(err: unknown): {
   if (body?.error?.code !== "NO_LONGER_ASSIGNED" || !r) return null;
   return { to_name: r.to_name ?? null, job_number: r.job_number ?? null };
 }
+/**
+ * A refusal that carries its own fix — {label, url} on the error body. Used by
+ * WIG_NOT_IN_STOCK so "this hair isn't in stock" is a door into Stock →
+ * Reception rather than a dead end: receiving the hair is the only real
+ * resolution, and no acknowledgement tick can substitute for it.
+ */
+function extractResolveAction(
+  err: unknown,
+): { label: string; url: string } | null {
+  if (!(err instanceof ApiError)) return null;
+  const body = err.body as {
+    error?: { resolve_action?: { label?: string; url?: string } };
+  } | null;
+  const a = body?.error?.resolve_action;
+  if (!a?.url || !a?.label) return null;
+  return { label: a.label, url: a.url };
+}
+
 import {
   useJobs,
   useJob,
@@ -75,6 +101,7 @@ import {
   useSummarizeJob,
   useStylistScorecard,
   useStudioLifecycle,
+  useUnbilledMutations,
 } from "./hooks";
 import {
   JOB_STATUS_META,
@@ -261,7 +288,11 @@ function TagConfirmModal({
       size="sm"
       footer={
         <>
-          <Button variant="ghost" onClick={copy} icon={<Copy className="w-3.5 h-3.5" />}>
+          <Button
+            variant="ghost"
+            onClick={copy}
+            icon={<Copy className="w-3.5 h-3.5" />}
+          >
             {copied ? "Copied" : "Copy code"}
           </Button>
           <Button onClick={onClose} icon={<Check className="w-3.5 h-3.5" />}>
@@ -298,10 +329,16 @@ function JobCard({
     (t) => t.service_type_id === job.service_type_id,
   );
   const icon = st ? (SERVICE_KEY_ICON[st.service_key] ?? "🔧") : "🔧";
+  // No longer gated on `completed`: waiting until the work is finished meant
+  // the first anyone heard of an unbilled job was after the hair went back to
+  // the customer. Internal jobs (shoot/sample/staff) never owe a sale, so
+  // flagging them is what made the old warning safe to ignore.
   const isPocketing =
-    job.status === "completed" &&
     !job.sales_order_id &&
-    !job.intercompany_transaction_id;
+    !job.intercompany_transaction_id &&
+    job.revenue_kind !== "internal" &&
+    job.status !== "cancelled" &&
+    job.status !== "rejected";
 
   return (
     <button
@@ -310,13 +347,19 @@ function JobCard({
       className="glass w-full text-left p-3 rounded-lg border border-line hover:border-accent/40 transition-colors space-y-1.5"
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="font-mono text-xs text-text-muted">{job.job_number}</span>
+        <span className="font-mono text-xs text-text-muted">
+          {job.job_number}
+        </span>
         {isPocketing && (
           <span
             className="text-danger text-xs font-semibold"
-            title="Completed without linked sale"
+            title={
+              job.sale_requested_at
+                ? "No sale yet — Sales has been notified"
+                : "No sale behind this job"
+            }
           >
-            ⚠ No Sale
+            {job.sale_requested_at ? "⏳ Sale asked" : "⚠ No Sale"}
           </span>
         )}
       </div>
@@ -365,7 +408,9 @@ function JobCard({
         </span>
       </div>
       {job.hair_description && (
-        <p className="text-xs text-text-muted truncate">{job.hair_description}</p>
+        <p className="text-xs text-text-muted truncate">
+          {job.hair_description}
+        </p>
       )}
       <div className="flex items-center justify-between gap-2 pt-0.5">
         <span
@@ -390,7 +435,10 @@ function JobCard({
       </div>
       {job.quality_rating !== null && <StarRating value={job.quality_rating} />}
       {job.customer_rating !== null && (
-        <div className="text-sm" title={`Customer: ${RATING_LABELS[job.customer_rating]}`}>
+        <div
+          className="text-sm"
+          title={`Customer: ${RATING_LABELS[job.customer_rating]}`}
+        >
           <span className="mr-1">{HAPPINESS_EMOJI[job.customer_rating]}</span>
           <span className="text-text-muted text-xs">customer</span>
         </div>
@@ -500,7 +548,11 @@ function ChemicalsTab({ jobId }: { jobId: string }) {
             value={form.chemical_name}
             onChange={(e) =>
               setForm((f) => ({ ...f, chemical_name: e.target.value }))
-            } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+            }
+            autoComplete="off"
+            data-lpignore="true"
+            data-1p-ignore=""
+            data-form-type="other"
           />
           <input
             className="input"
@@ -508,13 +560,21 @@ function ChemicalsTab({ jobId }: { jobId: string }) {
             value={form.chemical_brand}
             onChange={(e) =>
               setForm((f) => ({ ...f, chemical_brand: e.target.value }))
-            } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+            }
+            autoComplete="off"
+            data-lpignore="true"
+            data-1p-ignore=""
+            data-form-type="other"
           />
           <input
             className="input"
             placeholder="Notes"
             value={form.notes}
-            onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+            onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+            autoComplete="off"
+            data-lpignore="true"
+            data-1p-ignore=""
+            data-form-type="other"
           />
           <input
             className="input"
@@ -525,7 +585,11 @@ function ChemicalsTab({ jobId }: { jobId: string }) {
             value={form.qty_used}
             onChange={(e) =>
               setForm((f) => ({ ...f, qty_used: e.target.value }))
-            } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+            }
+            autoComplete="off"
+            data-lpignore="true"
+            data-1p-ignore=""
+            data-form-type="other"
           />
           <Select
             value={form.unit}
@@ -540,7 +604,11 @@ function ChemicalsTab({ jobId }: { jobId: string }) {
             value={form.cost_ngn}
             onChange={(e) =>
               setForm((f) => ({ ...f, cost_ngn: e.target.value }))
-            } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+            }
+            autoComplete="off"
+            data-lpignore="true"
+            data-1p-ignore=""
+            data-form-type="other"
           />
         </div>
         <Button
@@ -638,13 +706,17 @@ function RecipeCard({ recipeId }: { recipeId: string }) {
           <div key={i} className="flex items-center gap-2 text-xs">
             <span className="text-text-muted w-4">{i + 1}.</span>
             <span className="font-medium">{ing.chemical_name}</span>
-            {ing.brand && <span className="text-text-muted">({ing.brand})</span>}
+            {ing.brand && (
+              <span className="text-text-muted">({ing.brand})</span>
+            )}
             {(ing.qty_ml || ing.qty_g) && (
               <span className="font-mono ml-auto">
                 {ing.qty_ml ? `${ing.qty_ml} ml` : `${ing.qty_g} g`}
               </span>
             )}
-            {ing.role && <span className="text-text-muted italic">{ing.role}</span>}
+            {ing.role && (
+              <span className="text-text-muted italic">{ing.role}</span>
+            )}
           </div>
         ))}
       </div>
@@ -712,7 +784,11 @@ function IntercompanyPanel({ job }: { job: ServiceJob }) {
               className="input flex-1 text-sm font-mono"
               placeholder="Intercompany transaction ID"
               value={icId}
-              onChange={(e) => setIcId(e.target.value)} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+              onChange={(e) => setIcId(e.target.value)}
+              autoComplete="off"
+              data-lpignore="true"
+              data-1p-ignore=""
+              data-form-type="other"
             />
             <Button
               size="sm"
@@ -800,6 +876,7 @@ function AssignConfirmModal({
   onCancel,
   pending,
   error,
+  rawError,
 }: {
   job: ServiceJob;
   stylistName: string;
@@ -810,7 +887,11 @@ function AssignConfirmModal({
   onCancel: () => void;
   pending: boolean;
   error?: string | null;
+  /** Raw error, so a refusal carrying a resolve_action can offer it. */
+  rawError?: unknown;
 }) {
+  const navigate = useNavigate();
+  const resolve = extractResolveAction(rawError);
   const label = job.styled_product_name || job.service_type_name || "this job";
   const unlinked = !job.sales_order_id;
   const [acknowledged, setAcknowledged] = useState(false);
@@ -843,8 +924,9 @@ function AssignConfirmModal({
         </p>
         {dueLabel && (
           <p className="text-[12px] text-text-muted">
-            Due <span className="font-semibold text-text-primary">{dueLabel}</span>
-            {" "}· shows on their My Day.
+            Due{" "}
+            <span className="font-semibold text-text-primary">{dueLabel}</span>{" "}
+            · shows on their My Day.
           </p>
         )}
         <div className="glass rounded-lg p-3 flex items-start gap-2">
@@ -864,14 +946,15 @@ function AssignConfirmModal({
               </span>
             </div>
             <p className="text-[12px] text-text-secondary leading-relaxed">
-              This job has <span className="font-semibold">no sales order</span>,
-              so <span className="font-semibold">no stock will be deducted</span>{" "}
-              — the hair leaves the shelf physically but the count stays where it
+              This job has <span className="font-semibold">no sales order</span>
+              , so{" "}
+              <span className="font-semibold">no stock will be deducted</span> —
+              the hair leaves the shelf physically but the count stays where it
               is, and nothing will ever reconcile it against a sale.
             </p>
             <p className="text-[12px] text-text-secondary leading-relaxed">
-              If this hair was sold, cancel and raise the order first. If it is a
-              sample, rework or shoot, correct the count afterwards through{" "}
+              If this hair was sold, cancel and raise the order first. If it is
+              a sample, rework or shoot, correct the count afterwards through{" "}
               <span className="font-semibold">Stock → Adjustments</span>.
             </p>
             <label className="flex items-start gap-2.5 cursor-pointer pt-0.5">
@@ -888,7 +971,24 @@ function AssignConfirmModal({
             </label>
           </div>
         )}
-        {error && <p className="text-xs text-danger">{error}</p>}
+        {error && (
+          <div className="space-y-2">
+            <p className="text-xs text-danger">{error}</p>
+            {/* The block is a door. Receiving the hair is the only real fix, so
+                offer exactly that rather than leaving "try again" as the only
+                thing on screen — which is what this modal used to do. */}
+            {resolve && (
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={<PackageSearch className="w-3.5 h-3.5" />}
+                onClick={() => navigate(resolve.url)}
+              >
+                {resolve.label}
+              </Button>
+            )}
+          </div>
+        )}
       </div>
     </Modal>
   );
@@ -952,13 +1052,7 @@ function RevertConfirmModal({
   );
 }
 
-function AssignmentPanel({
-  job,
-  jobId,
-}: {
-  job: ServiceJob;
-  jobId: string;
-}) {
+function AssignmentPanel({ job, jobId }: { job: ServiceJob; jobId: string }) {
   const [picking, setPicking] = useState(false);
   const [confirmTag, setConfirmTag] = useState<string | null>(null);
   const assigned = !!job.assigned_staff_user_id;
@@ -986,7 +1080,10 @@ function AssignmentPanel({
         />
       )}
       {confirmTag && (
-        <TagConfirmModal code={confirmTag} onClose={() => setConfirmTag(null)} />
+        <TagConfirmModal
+          code={confirmTag}
+          onClose={() => setConfirmTag(null)}
+        />
       )}
     </div>
   );
@@ -1123,8 +1220,8 @@ function StylistPicker({
   // Deadline captured at the assigning level. Defaults to the job's promised
   // date if it already has one, otherwise +48h — so every assigned job lands on
   // the stylist's My Day with a clock, and the SLA scorecards have a target.
-  const [due, setDue] = useState<string>(() =>
-    toDatetimeLocalInput(defaultDue) || plus48hLocalInput(),
+  const [due, setDue] = useState<string>(
+    () => toDatetimeLocalInput(defaultDue) || plus48hLocalInput(),
   );
   // Stylist awaiting confirmation — clicking a row opens the confirm modal
   // rather than assigning straight away, so a misclick can never commit.
@@ -1236,6 +1333,7 @@ function StylistPicker({
                 "Could not assign — try again.")
               : null
           }
+          rawError={assign.isError ? assign.error : null}
           onCancel={() => {
             assign.reset();
             setPending(null);
@@ -1350,7 +1448,10 @@ function CostBreakdown({ job, jobId }: { job: ServiceJob; jobId: string }) {
       {materialsUsed.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {materialsUsed.map((m) => (
-            <Pill key={m.material_id} tone={m.kind === "chemical" ? "info" : "accent"}>
+            <Pill
+              key={m.material_id}
+              tone={m.kind === "chemical" ? "info" : "accent"}
+            >
               {m.chemical_name ?? "item"}
               {m.quantity ? ` ×${m.quantity}` : ""}
             </Pill>
@@ -1387,8 +1488,8 @@ function CostBreakdown({ job, jobId }: { job: ServiceJob; jobId: string }) {
           </div>
           {materials > 0 && (
             <p className="text-[10px] text-text-muted">
-              Materials cost is best-effort — priced from stock at the time
-              it was deducted, where deducted from tracked stock.
+              Materials cost is best-effort — priced from stock at the time it
+              was deducted, where deducted from tracked stock.
             </p>
           )}
         </>
@@ -1453,8 +1554,7 @@ function WigCustodyMini({ jobId }: { jobId: string }) {
 // ── Activity timeline tab ────────────────────────────────────
 function ActivityTab({ jobId }: { jobId: string }) {
   const { data: entries = [], isLoading } = useJobActivity(jobId);
-  if (isLoading)
-    return <Skeleton className="h-24" />;
+  if (isLoading) return <Skeleton className="h-24" />;
   if (entries.length === 0)
     return (
       <p className="text-sm text-text-muted py-4">
@@ -1501,7 +1601,9 @@ function AiSummaryBox({ jobId }: { jobId: string }) {
       </div>
       {data && <p className="text-sm text-text-primary">{data.summary}</p>}
       {isError && (
-        <p className="text-xs text-danger">Couldn't generate a summary — try again.</p>
+        <p className="text-xs text-danger">
+          Couldn't generate a summary — try again.
+        </p>
       )}
     </div>
   );
@@ -1521,7 +1623,11 @@ function RatingComparisonBadge({
   const avg = parseFloat(data.avg_quality_rating);
   const diff = jobRating - avg;
   if (Math.abs(diff) < 0.5) {
-    return <p className="text-[11px] text-text-muted">In line with their average ({avg})</p>;
+    return (
+      <p className="text-[11px] text-text-muted">
+        In line with their average ({avg})
+      </p>
+    );
   }
   return (
     <p className={`text-[11px] ${diff > 0 ? "text-success" : "text-warn"}`}>
@@ -1558,6 +1664,8 @@ function JobDetailDrawer({
   const { data: job, isLoading, error } = useJob(jobId);
   const actions = useJobActions(jobId);
   const lifecycle = useStudioLifecycle(jobId);
+  const canEdit = useAuthStore((s) => s.can)("service_jobs", "edit");
+  const { requestSale } = useUnbilledMutations();
   const [tab, setTab] = useState<
     "details" | "chemicals" | "outcome" | "activity"
   >("details");
@@ -1624,10 +1732,13 @@ function JobDetailDrawer({
   const st = serviceTypes.find(
     (t) => t.service_type_id === job.service_type_id,
   );
+  // Same rule as the card: flag at every stage, and never for internal work.
   const isPocketing =
-    job.status === "completed" &&
     !job.sales_order_id &&
-    !job.intercompany_transaction_id;
+    !job.intercompany_transaction_id &&
+    job.revenue_kind !== "internal" &&
+    job.status !== "cancelled" &&
+    job.status !== "rejected";
 
   return (
     <Drawer
@@ -1648,19 +1759,41 @@ function JobDetailDrawer({
               {SERVICE_KEY_ICON[st.service_key] ?? "🔧"} {st.display_name}
             </span>
           )}
-          {isPocketing && (
-            <span className="text-xs font-semibold text-danger border border-danger/40 rounded px-2 py-0.5">
-              ⚠ No linked sale
-            </span>
-          )}
+          {/* Not a label any more — the thing you press. A passive warning is
+              how FLH-JOB-0035 reached `completed` with an unbilled styling fee:
+              it told you something was wrong and gave you nowhere to go. */}
+          {isPocketing &&
+            (job.sale_requested_at ? (
+              <span
+                className="text-xs font-semibold text-warn border border-warn/40 rounded px-2 py-0.5"
+                title={
+                  job.sale_requested_by_name
+                    ? `Requested by ${job.sale_requested_by_name}`
+                    : undefined
+                }
+              >
+                ⏳ Sales notified
+              </span>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={!canEdit || requestSale.isPending}
+                icon={<BellRing className="w-3.5 h-3.5" />}
+                onClick={() => requestSale.mutate(job.job_id)}
+                title="Ask whoever can raise a sale to raise this one"
+              >
+                {requestSale.isPending
+                  ? "Notifying…"
+                  : "No sale — notify Sales"}
+              </Button>
+            ))}
           {job.sales_order_id && (
             <Button
               variant="ghost"
               size="sm"
               icon={<Package className="w-3.5 h-3.5" />}
-              onClick={() =>
-                navigate(`/sales/orders/${job.sales_order_id}`)
-              }
+              onClick={() => navigate(`/sales/orders/${job.sales_order_id}`)}
             >
               {job.sales_order_number ?? "View order"}
             </Button>
@@ -1838,7 +1971,11 @@ function JobDetailDrawer({
               <div className="rounded-[11px] border border-line/60 bg-accent/[0.04] px-3 py-2.5 flex items-center gap-2 text-[12px]">
                 <Package className="w-3.5 h-3.5 text-accent-glow shrink-0" />
                 <span className="text-text-muted">
-                  Styling <span className="text-accent-glow font-semibold">included</span> in{" "}
+                  Styling{" "}
+                  <span className="text-accent-glow font-semibold">
+                    included
+                  </span>{" "}
+                  in{" "}
                   {job.sales_order_number
                     ? `Order ${job.sales_order_number}`
                     : "the source order"}{" "}
@@ -1919,7 +2056,11 @@ function JobDetailDrawer({
                       min="0"
                       placeholder="Actual cost NGN (optional)"
                       value={costInput}
-                      onChange={(e) => setCostInput(e.target.value)} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+                      onChange={(e) => setCostInput(e.target.value)}
+                      autoComplete="off"
+                      data-lpignore="true"
+                      data-1p-ignore=""
+                      data-form-type="other"
                     />
                   )}
                   <div className="flex flex-wrap gap-2">
@@ -1978,6 +2119,11 @@ function CreateJobDrawer({
   const create = useCreateJob();
   const [form, setForm] = useState({
     service_type_id: serviceTypes[0]?.service_type_id ?? "",
+    // No default. A job opened by hand has no sale behind it, and the whole
+    // point is that someone SAYS which kind it is — pre-selecting "customer
+    // work" would just make the commonest wrong answer the silent one.
+    revenue_kind: "" as RevenueKind | "",
+    internal_reason: "",
     hair_description: "",
     recipe_id: "",
     scheduled_for: "",
@@ -1987,8 +2133,14 @@ function CreateJobDrawer({
     brief_link: "",
   });
 
+  // The API enforces this too (jobCreate refine) — mirrored here so the button
+  // explains itself instead of round-tripping to a 400.
+  const kindMissing = !form.revenue_kind;
+  const reasonMissing =
+    form.revenue_kind === "internal" && !form.internal_reason.trim();
+
   const handleCreate = () => {
-    if (!form.service_type_id) return;
+    if (!form.service_type_id || kindMissing || reasonMissing) return;
     const brief =
       form.brief_note.trim() || form.brief_link.trim()
         ? {
@@ -1999,6 +2151,13 @@ function CreateJobDrawer({
     create.mutate(
       {
         service_type_id: form.service_type_id,
+        revenue_kind: (form.revenue_kind || undefined) as
+          | RevenueKind
+          | undefined,
+        internal_reason:
+          form.revenue_kind === "internal"
+            ? form.internal_reason.trim() || undefined
+            : undefined,
         hair_description: form.hair_description || undefined,
         recipe_id: form.recipe_id || undefined,
         scheduled_for: form.scheduled_for || undefined,
@@ -2027,6 +2186,53 @@ function CreateJobDrawer({
           />
         </div>
 
+        {/* Every revenue needs a sale. This job has no order behind it, so it
+            has to say whether one is owed — the two customer kinds go on the
+            Unbilled queue and get chased; internal work never will. Without
+            this the system cannot tell a photoshoot piece from a customer job
+            nobody invoiced, which is what made the old "No Sale" count safe to
+            ignore. */}
+        <div>
+          <label className="label">What is this job? *</label>
+          <Select
+            value={form.revenue_kind}
+            onChange={(v) =>
+              setForm((f) => ({ ...f, revenue_kind: v as RevenueKind }))
+            }
+            options={[
+              { value: "", label: "Choose…" },
+              {
+                value: "customer_our_hair",
+                label: "Customer work — our hair (a sale is owed)",
+              },
+              {
+                value: "customer_own_hair",
+                label: "Customer's own hair — styling fee (a sale is owed)",
+              },
+              {
+                value: "internal",
+                label: "Internal — content / sample / staff (no sale)",
+              },
+            ]}
+          />
+          {form.revenue_kind === "internal" && (
+            <input
+              className="input w-full mt-2"
+              placeholder="What's it for? e.g. July campaign shoot"
+              value={form.internal_reason}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, internal_reason: e.target.value }))
+              }
+              autoComplete="off"
+            />
+          )}
+          {form.revenue_kind && form.revenue_kind !== "internal" && (
+            <p className="text-xs text-text-muted mt-1.5">
+              This job will show on Unbilled Jobs until a sale is raised for it.
+            </p>
+          )}
+        </div>
+
         <div>
           <label className="label">Hair description</label>
           <input
@@ -2035,7 +2241,11 @@ function CreateJobDrawer({
             value={form.hair_description}
             onChange={(e) =>
               setForm((f) => ({ ...f, hair_description: e.target.value }))
-            } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+            }
+            autoComplete="off"
+            data-lpignore="true"
+            data-1p-ignore=""
+            data-form-type="other"
           />
         </div>
 
@@ -2060,7 +2270,11 @@ function CreateJobDrawer({
             value={form.brief_link}
             onChange={(e) =>
               setForm((f) => ({ ...f, brief_link: e.target.value }))
-            } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+            }
+            autoComplete="off"
+            data-lpignore="true"
+            data-1p-ignore=""
+            data-form-type="other"
           />
           <p className="text-[11px] text-text-muted">
             Locked once created — stylists and QC add notes on top, they
@@ -2123,7 +2337,11 @@ function CreateJobDrawer({
             value={form.agreed_cost_ngn}
             onChange={(e) =>
               setForm((f) => ({ ...f, agreed_cost_ngn: e.target.value }))
-            } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+            }
+            autoComplete="off"
+            data-lpignore="true"
+            data-1p-ignore=""
+            data-form-type="other"
           />
         </div>
 
@@ -2133,7 +2351,12 @@ function CreateJobDrawer({
           </Button>
           <Button
             onClick={handleCreate}
-            disabled={!form.service_type_id || create.isPending}
+            disabled={
+              !form.service_type_id ||
+              kindMissing ||
+              reasonMissing ||
+              create.isPending
+            }
           >
             {create.isPending ? "Creating…" : "Create Job"}
           </Button>
@@ -2276,7 +2499,9 @@ export function JobBoard({ canCreate }: { canCreate: boolean }) {
                 <div key={col} className="space-y-2">
                   <div className="flex items-center gap-2 mb-2">
                     <Pill tone={m.tone}>{m.label}</Pill>
-                    <span className="text-xs text-text-muted">{colJobs.length}</span>
+                    <span className="text-xs text-text-muted">
+                      {colJobs.length}
+                    </span>
                   </div>
                   {colJobs.length === 0 ? (
                     <div className="text-xs text-text-muted text-center py-6 border border-dashed border-line rounded-lg">

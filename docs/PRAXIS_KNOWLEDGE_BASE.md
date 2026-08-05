@@ -375,8 +375,8 @@ the layout:**
   their own queue** — the **My Jobs** and **Recipes** tabs. Every ops surface
   is hidden, and the API only ever returns their own jobs.
 - **With `approve`** (Ops Manager / CEO) see every tab: My Jobs · Job Board ·
-  QC Queue · Wig Accountability · Team Scorecards · Service Types · Recipes ·
-  Chemical Reconciliation.
+  QC Queue · Wig Accountability · **Unbilled Jobs** · Team Scorecards ·
+  Service Types · Recipes · Chemical Reconciliation.
 
 **Lifecycle (6 states).** `pending → assigned → in_progress → returned_for_qc
 → completed` (or `rework` back to the stylist). Retired: `qc_passed`,
@@ -390,17 +390,25 @@ the layout:**
   **defaults to 48 hours** from now (editable). That deadline becomes the job's
   due date **and** the due date of the task raised on the stylist's Workspace,
   so the job shows up on their **My Day**.
-- *Does assigning a stylist take the hair out of stock?* **No.** The **sale**
-  is the only thing that deducts stock (when the order is paid). Assigning a
-  stylist moves the hair into that stylist's **custody** and holds the unit so
-  it can't be sold to someone else while they have it — it never deducts, so
-  one hair is never counted out twice.
+- *Does assigning a stylist take the hair out of stock?* **No — assigning moves
+  nothing.** The **sale** is the only thing that deducts stock (when the order
+  is paid). Assigning is a **custody** event: the hair passes from the business
+  to the stylist and the wig custody ledger records who holds it. The quantity
+  does not change, so one hair is never counted out twice.
+- *"This hair isn't in stock" when I try to assign?* The assignment is
+  **blocked**, and it is telling the truth: the sale never drew this unit and
+  no reservation is holding it, so there is physically nothing to hand the
+  stylist. This happens when the hair sold as a **pre-order**, or when the
+  order was **paid but the stock was never there** (payment is deliberately
+  never blocked by missing stock). **Fix it, don't work around it:** if the
+  hair has physically arrived, press **Receive stock** on the message — it
+  deep-links to Stock → **Goods Reception** — then assign. There is no override,
+  because no acknowledgement conjures a wig. Jobs on the **customer's own
+  hair** never hit this: our stock isn't involved.
 - *Assigning a job that has no sales order?* Allowed, but the confirm dialog
   shows a red **"No sale behind this job"** warning and you must tick the
-  acknowledgement before **Confirm** unlocks. Such a job moves **no stock at
-  all** — if the hair was really sold, cancel and raise the order first; if it
-  is a sample, rework or shoot, correct the count afterwards in Stock →
-  **Adjustments**.
+  acknowledgement before **Confirm** unlocks. It still won't go through if the
+  hair it names isn't on the shelf (above).
 - *Work on my own job?* Stylist → **My Jobs** (`/service-jobs?tab=my`). Each
   wig is a **picture-first card** (photo, customer, tag, order, deadline);
   **tap the card** to open its drawer, then **Start** → hand back for QC.
@@ -414,6 +422,28 @@ the layout:**
 - *Where are the notes from my manager?* They're in the job drawer under **The
   style & notes for you** — the customer's locked brief plus any notes the
   operations manager / assigner added.
+- *Creating a job by hand — "What is this job?"* Required, because **every
+  revenue needs a sale**. Pick one: **Customer work — our hair** or
+  **Customer's own hair — styling fee** (both mean a sale is **owed**, and the
+  job goes on the Unbilled Jobs queue until one is raised), or **Internal —
+  content / sample / staff** (no sale will ever be owed; you must say what it
+  is for, e.g. "July campaign shoot").
+- *Find every job with no sale?* Ops → **Unbilled Jobs** tab
+  (`/service-jobs?tab=unbilled`), or click the **No Sale (owed)** tile. It
+  lists jobs with no sale **at every stage** — not just completed ones — with
+  filter chips: Owes a sale · Unclassified · Customer — our hair · Customer —
+  own hair · Internal · **Show all**. Nothing is hidden; internal jobs are just
+  filtered out of the default view.
+- *Get the missing sale raised?* Open the job (or its row on Unbilled Jobs) →
+  **Notify Sales**. Everyone who can create a sale is notified, with Quick
+  Sale **pre-filled** from the job. The badge then reads **"Sales notified"**
+  with who asked and when, so the same job isn't chased three times.
+- *A job on the Unbilled list was never meant to have a sale?* Use **Mark
+  internal** and say what it was for. It leaves the "owes a sale" count but
+  stays visible under the Internal / Show all filters.
+- *What does "Unclassified" mean on Unbilled Jobs?* The job was opened before
+  the Studio asked why it had no sale, so nobody has said whether one is owed.
+  Notify Sales for the ones that are; mark the rest internal.
 - *QC pass or fail a returned job?* Ops → **QC Queue** tab. Pass = job
   completed + wig auto-dispatched to Logistics; fail = back to stylist for
   rework.

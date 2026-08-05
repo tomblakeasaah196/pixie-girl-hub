@@ -20,6 +20,9 @@
 
 jest.mock("../../../src/config/database", () => ({
   transaction: (fn) => fn({}),
+  // Real withSavepoint is a no-op wrapper when there is no client; the mock
+  // transaction passes {}, so run the body straight through.
+  withSavepoint: (_client, fn) => fn(),
   query: jest.fn(),
   ex: () => jest.fn(),
 }));
@@ -109,7 +112,14 @@ describe("createForOrder — styled products open as Styling, not Installation",
 
   it("leaves a genuine (non-styled) service line on the brand default", async () => {
     repo.allStudioLines.mockResolvedValue([
-      { line_id: "line-2", line_kind: "service", styled_id: null, quantity: 1, unit_price_ngn: 69000, notes: null },
+      {
+        line_id: "line-2",
+        line_kind: "service",
+        styled_id: null,
+        quantity: 1,
+        unit_price_ngn: 69000,
+        notes: null,
+      },
     ]);
 
     await svc.createForOrder({ brand: "faitlynhair", order: ORDER });
@@ -150,7 +160,10 @@ describe("createForOrder — one job per hair (multi-hair fan-out)", () => {
   it("opens one job per unit of a quantity>1 styled line", async () => {
     repo.allStudioLines.mockResolvedValue([styledLine({ quantity: 3 })]);
 
-    const res = await svc.createForOrder({ brand: "faitlynhair", order: ORDER });
+    const res = await svc.createForOrder({
+      brand: "faitlynhair",
+      order: ORDER,
+    });
 
     expect(repo.createServiceJob).toHaveBeenCalledTimes(3);
     expect(res).toHaveLength(3);
@@ -170,10 +183,11 @@ describe("createForOrder — one job per hair (multi-hair fan-out)", () => {
     await svc.createForOrder({ brand: "faitlynhair", order: ORDER });
 
     expect(repo.createServiceJob).toHaveBeenCalledTimes(2);
-    expect(jobArgs().map((j) => j.sales_order_line_id).sort()).toEqual([
-      "line-1",
-      "line-2",
-    ]);
+    expect(
+      jobArgs()
+        .map((j) => j.sales_order_line_id)
+        .sort(),
+    ).toEqual(["line-1", "line-2"]);
   });
 
   it("is idempotent per line — only opens the missing hairs", async () => {
@@ -190,7 +204,10 @@ describe("createForOrder — one job per hair (multi-hair fan-out)", () => {
     repo.allStudioLines.mockResolvedValue([styledLine({ quantity: 2 })]);
     repo.countJobsForLine.mockResolvedValue(2);
 
-    const res = await svc.createForOrder({ brand: "faitlynhair", order: ORDER });
+    const res = await svc.createForOrder({
+      brand: "faitlynhair",
+      order: ORDER,
+    });
 
     expect(repo.createServiceJob).not.toHaveBeenCalled();
     expect(res).toBeNull();
@@ -199,7 +216,10 @@ describe("createForOrder — one job per hair (multi-hair fan-out)", () => {
   it("returns null and opens nothing for a plain product order (no studio lines)", async () => {
     repo.allStudioLines.mockResolvedValue([]);
 
-    const res = await svc.createForOrder({ brand: "faitlynhair", order: ORDER });
+    const res = await svc.createForOrder({
+      brand: "faitlynhair",
+      order: ORDER,
+    });
 
     expect(res).toBeNull();
     expect(repo.createServiceJob).not.toHaveBeenCalled();

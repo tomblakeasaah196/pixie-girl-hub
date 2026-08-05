@@ -15,6 +15,9 @@
 
 jest.mock("../../../src/config/database", () => ({
   transaction: (fn) => fn({}),
+  // Real withSavepoint is a no-op wrapper when there is no client; the mock
+  // transaction passes {}, so run the body straight through.
+  withSavepoint: (_client, fn) => fn(),
   query: jest.fn(),
   ex: () => jest.fn(),
 }));

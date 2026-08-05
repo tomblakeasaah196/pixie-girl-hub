@@ -48,9 +48,15 @@ const serviceTypeUpdate = z
   })
   .strict();
 
+// Why a job has no sale behind it. Required when the job is opened by hand
+// with no sales_order_id — see the refine on jobCreate below.
+const REVENUE_KIND = ["customer_our_hair", "customer_own_hair", "internal"];
+
 const jobCreate = z
   .object({
     service_type_id: z.string().uuid(),
+    revenue_kind: z.enum(REVENUE_KIND).optional(),
+    internal_reason: z.string().max(300).optional(),
     hair_variant_id: z.string().uuid().optional(),
     hair_unit_id: z.string().uuid().optional(),
     hair_description: z.string().max(500).optional(),
@@ -76,10 +82,35 @@ const jobCreate = z
       .strict()
       .optional(),
   })
-  .strict();
+  .strict()
+  // Every revenue needs a sale. A job opened BY HAND with no order behind it
+  // has to say which it is, because the three cases need opposite handling and
+  // the system previously could not tell them apart:
+  //   customer_our_hair / customer_own_hair → a sale is OWED, chase it
+  //   internal (shoot, sample, staff)       → no sale will ever exist
+  // Jobs opened FROM an order skip this — they already have their sale.
+  .refine((v) => Boolean(v.sales_order_id) || Boolean(v.revenue_kind), {
+    message:
+      "Say what this job is: customer work on our hair, customer's own hair, or internal",
+    path: ["revenue_kind"],
+  })
+  // An internal job with no stated reason is how "no sale" quietly becomes the
+  // default answer for everything. One line is enough — "July campaign shoot".
+  .refine(
+    (v) => v.revenue_kind !== "internal" || Boolean(v.internal_reason?.trim()),
+    {
+      message: "Say what the internal job is for",
+      path: ["internal_reason"],
+    },
+  );
 
 const jobUpdate = z
   .object({
+    // Classifiable after the fact — every job that predates this field, and
+    // every backfilled NULL, gets answered from the Unbilled tab rather than
+    // being stuck unclassified forever.
+    revenue_kind: z.enum(REVENUE_KIND).optional(),
+    internal_reason: z.string().max(300).optional(),
     hair_variant_id: z.string().uuid().optional(),
     hair_unit_id: z.string().uuid().optional(),
     hair_description: z.string().max(500).optional(),
@@ -235,7 +266,26 @@ const mk = (schema) => (req, _res, next) => {
   next();
 };
 
+// Query-string variant (Express 4 lets us reassign req.query; same pattern as
+// sales.validator.js and dashboards.validator.js).
+const mkQuery = (schema) => (req, _res, next) => {
+  req.query = schema.parse(req.query ?? {});
+  next();
+};
+
+// Unbilled tab filter. 'unclassified' is not a stored revenue_kind — it is
+// the NULL bucket, which is where legacy and never-asked jobs live and where
+// the work of clearing this queue actually starts.
+const unbilledQuery = z
+  .object({
+    kind: z.enum([...REVENUE_KIND, "unclassified", "all"]).optional(),
+    limit: z.coerce.number().int().positive().max(500).optional(),
+  })
+  .strict();
+
 module.exports = {
+  REVENUE_KIND,
+  validateUnbilledQuery: mkQuery(unbilledQuery),
   validateServiceTypeCreate: mk(serviceTypeCreate),
   validateServiceTypeUpdate: mk(serviceTypeUpdate),
   validateJobCreate: mk(jobCreate),

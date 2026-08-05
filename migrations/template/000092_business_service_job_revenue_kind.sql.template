@@ -1,0 +1,116 @@
+-- ============================================================
+-- TEMPLATE 000092 — Stylist Studio: why a job has no sale
+-- Pixie Girl Hub · JBS Praxis · V2.2 · §6.24 (Stylist Studio) / §6.30 (anti-pocketing)
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to NEW brands by bootstrap (after 000091) and to EXISTING brands by
+-- repair-business-schema.js. Every statement is IF NOT EXISTS / OR REPLACE, so
+-- the repair runner re-applies it every pass harmlessly.
+--
+-- WHY: §6.30 already flags "completed job with no linked sale" as a pocketing
+-- risk — there is an index for it, an AI insight (`no_sale_linked`) and a "No
+-- Sale (risk)" KPI tile. All three ask the same question, and all three ask it
+-- ONLY of `status = 'completed'`. Two consequences:
+--
+--   1. You find out AFTER the styling is done and the hair has gone back to the
+--      customer, which is the worst possible moment to discover nobody raised
+--      an invoice.
+--   2. The count is unactionable, because a wig styled for an Instagram shoot
+--      and a customer job nobody billed are indistinguishable — both are
+--      "completed, no sale". A number you have to ignore most of the time is a
+--      number you ignore all of the time.
+--
+-- So: make the job say WHY it has no sale, at the moment it is opened.
+--
+--   customer_our_hair  — customer work on hair we supplied. A sale is OWED.
+--   customer_own_hair  — customer brought their own hair; styling fee only.
+--                        A sale is OWED (service line), but no stock moves.
+--   internal           — content shoot, showroom sample, staff/ambassador hair.
+--                        No sale will ever exist, and that is correct.
+--
+-- Only the first two are revenue. The Studio can now chase those and leave the
+-- internal ones alone, instead of showing one undifferentiated count.
+--
+-- NULL is the fourth, unspoken value: every job opened FROM a sales order, and
+-- every job that predates this migration. Backfilled below where we can prove
+-- the answer, left NULL where we cannot — a NULL on an unlinked job means "we
+-- never asked", which is exactly what was true before today.
+-- ============================================================
+
+ALTER TABLE {{BUSINESS}}.service_jobs
+  ADD COLUMN IF NOT EXISTS revenue_kind TEXT;
+
+-- Idempotent constraint add — ADD CONSTRAINT has no IF NOT EXISTS.
+ALTER TABLE {{BUSINESS}}.service_jobs
+  DROP CONSTRAINT IF EXISTS service_jobs_revenue_kind_check;
+ALTER TABLE {{BUSINESS}}.service_jobs
+  ADD CONSTRAINT service_jobs_revenue_kind_check
+  CHECK (revenue_kind IS NULL OR revenue_kind IN
+    ('customer_our_hair', 'customer_own_hair', 'internal'));
+
+-- Free text, only meaningful for revenue_kind = 'internal' ("July campaign
+-- shoot", "showroom piece", "Ada's own wig"). Deliberately not an enum: the
+-- reasons a brand styles hair for itself are not knowable up front, and a
+-- wrong enum would push people into whichever value is least wrong.
+ALTER TABLE {{BUSINESS}}.service_jobs
+  ADD COLUMN IF NOT EXISTS internal_reason TEXT;
+
+-- Set when someone asks Sales to raise the missing sale, so the Studio shows
+-- "Sales notified 2h ago" instead of offering the same button forever and
+-- letting three people ask three times.
+ALTER TABLE {{BUSINESS}}.service_jobs
+  ADD COLUMN IF NOT EXISTS sale_requested_at TIMESTAMPTZ;
+ALTER TABLE {{BUSINESS}}.service_jobs
+  ADD COLUMN IF NOT EXISTS sale_requested_by UUID
+    REFERENCES shared.users (user_id) ON DELETE SET NULL;
+
+-- ── The unbilled index ──────────────────────────────────────
+-- The §6.30 index only covers completed jobs (see template 000025,
+-- idx_..._service_jobs_pocketing_risk — kept, it still serves the insight).
+-- This one covers a job with no sale at ANY stage, which is what lets the
+-- Studio surface it while the work is still in front of someone.
+--
+-- 'internal' is excluded from the index, not just filtered in the query: those
+-- rows are the correct, permanent, growing majority of unlinked jobs, and
+-- indexing them would mean the index grows forever while the thing we actually
+-- search for — jobs that OWE a sale — stays small.
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_service_jobs_unbilled
+  ON {{BUSINESS}}.service_jobs (created_at DESC)
+  WHERE sales_order_id IS NULL
+    AND intercompany_transaction_id IS NULL
+    AND status NOT IN ('cancelled', 'rejected')
+    AND (revenue_kind IS NULL OR revenue_kind <> 'internal');
+
+-- Supports the Unbilled tab's kind filter.
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_service_jobs_revenue_kind
+  ON {{BUSINESS}}.service_jobs (revenue_kind)
+  WHERE revenue_kind IS NOT NULL;
+
+-- ── Backfill ────────────────────────────────────────────────
+-- Only where the answer is provable from data we already hold. Everything else
+-- stays NULL and gets asked about the next time someone opens the job.
+--
+-- An intercompany job is settled through the IC ledger, never a sales order —
+-- it is not unbilled and must never appear in the Unbilled tab.
+UPDATE {{BUSINESS}}.service_jobs
+   SET revenue_kind = 'internal',
+       internal_reason = COALESCE(internal_reason, 'Inter-company (backfilled)')
+ WHERE revenue_kind IS NULL
+   AND is_intercompany = true;
+
+-- A job opened from a sale already has its sale. Marking these keeps the
+-- column meaningful for reporting ("what share of styling is own-hair?")
+-- rather than only ever populated on the unlinked minority.
+UPDATE {{BUSINESS}}.service_jobs
+   SET revenue_kind = 'customer_our_hair'
+ WHERE revenue_kind IS NULL
+   AND sales_order_id IS NOT NULL;
+
+-- ============================================================
+-- Verify (after substitution):
+--   SELECT revenue_kind, count(*) FROM {{BUSINESS}}.service_jobs
+--    GROUP BY revenue_kind ORDER BY 2 DESC;
+-- Expect: 'customer_our_hair' for order-linked jobs, 'internal' for
+-- inter-company ones, and NULL for hand-opened jobs nobody has classified yet
+-- — those are the rows the Unbilled tab asks about.
+-- ============================================================

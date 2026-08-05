@@ -228,6 +228,61 @@ async function transaction(fn) {
   }
 }
 
+// Savepoint names cannot be bound as parameters, so they are generated here
+// from a counter rather than ever built from caller input — no injection
+// surface. Nesting is safe: each call gets its own name.
+let savepointSeq = 0;
+
+/**
+ * Run `fn` inside a SAVEPOINT so a failure rolls back ONLY its own work and
+ * leaves the surrounding transaction usable.
+ *
+ * This is the ONLY correct way to write a "best-effort, log and carry on" step
+ * inside `transaction()`. A bare try/catch does NOT work: once any statement
+ * errors, Postgres aborts the whole transaction, and every later statement on
+ * that connection fails with 25P02 (`current transaction is aborted`). The
+ * caller's catch then hides the real cause, and the failure surfaces much later
+ * as a mystery — either a 25P02 on the next write, or, when nothing else writes
+ * before COMMIT, a COMMIT that Postgres silently downgrades to ROLLBACK, so the
+ * request returns 200 while nothing was saved.
+ *
+ * `fn` still throws on failure, so an existing `try { … } catch { logger.warn }`
+ * keeps working unchanged — the difference is the transaction is healthy when
+ * the catch runs.
+ *
+ *   try {
+ *     await withSavepoint(client, () => stockService.reserveForOrder({ … }));
+ *   } catch (err) {
+ *     logger.warn({ err }, "hold skipped");   // transaction still usable
+ *   }
+ *
+ * No client (caller isn't in a transaction) → runs `fn` directly; there is no
+ * transaction to protect.
+ *
+ * @template T
+ * @param {import('pg').PoolClient|null|undefined} client
+ * @param {() => Promise<T>} fn
+ * @returns {Promise<T>}
+ */
+async function withSavepoint(client, fn) {
+  if (!client) return fn();
+  savepointSeq = (savepointSeq + 1) % 1_000_000;
+  const name = `pgh_sp_${savepointSeq}`;
+  await client.query(`SAVEPOINT ${name}`);
+  try {
+    const result = await fn();
+    await client.query(`RELEASE SAVEPOINT ${name}`);
+    return result;
+  } catch (err) {
+    // Best-effort unwind. If the rollback itself fails the connection is gone,
+    // and the outer transaction will fail on its next statement — which is the
+    // correct outcome. Either way the original error is what the caller sees.
+    await client.query(`ROLLBACK TO SAVEPOINT ${name}`).catch(() => {});
+    await client.query(`RELEASE SAVEPOINT ${name}`).catch(() => {});
+    throw err;
+  }
+}
+
 /**
  * Explicit brand-scoped transaction choke point (R-1) for code paths WITHOUT
  * an ambient request context — e.g. worker/cron handlers that fan out per
@@ -269,6 +324,7 @@ module.exports = {
   query,
   ex,
   transaction,
+  withSavepoint,
   brandTransaction,
   setSessionContext,
   applySessionContext,

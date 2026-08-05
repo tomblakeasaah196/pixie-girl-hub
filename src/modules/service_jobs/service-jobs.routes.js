@@ -61,6 +61,12 @@ router.get("/accountability/ledger", can("view"), c.listCustodyLedger);
 // button for a real staff selection that fires the DB task trigger + push.
 router.get("/stylists", can("view"), c.listAssignableStylists);
 
+// ── Unbilled jobs (literal segment — must stay ahead of GET /:id) ──────
+// Every job with no sale behind it, at every stage. The §6.30 pocketing
+// signal only ever looked at completed jobs, so the first anyone heard of an
+// unbilled styling fee was after the hair went back to the customer.
+router.get("/unbilled", can("view"), v.validateUnbilledQuery, c.listUnbilled);
+
 // ── Scorecards (internal Stylist Studio only — separate from the Stylist
 // Partner Programme's own review system) — must stay ahead of GET /:id. ──
 router.get("/scorecards", can("view"), c.listStylistScorecards);
@@ -83,6 +89,9 @@ router.post("/:id/assign", can("edit"), v.validateAssignStaff, c.assignStaff);
 // assignee. Path-param only, so it can sit with the other /:id routes.
 router.post("/:id/unassign", requireCeo, c.unassignStaff);
 router.post("/:id/outcome", can("edit"), v.validateOutcome, c.recordOutcome);
+// Ask whoever holds sales.create to raise the sale this job is owed. Gated on
+// service_jobs edit — the Studio raises the ask; Sales still owns the sale.
+router.post("/:id/request-sale", can("edit"), c.requestSale);
 
 // ── Stylist Studio (PR2) lifecycle ─────────────────────────
 router.post("/:id/start", can("edit"), c.startWork);

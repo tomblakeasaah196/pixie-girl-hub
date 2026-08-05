@@ -12,6 +12,7 @@ import {
   Plus,
   Trophy,
   ArrowLeft,
+  ReceiptText,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import {
@@ -31,6 +32,7 @@ import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { JobBoard } from "./JobBoard";
 import { RecipesPanel } from "./RecipesPanel";
 import { AccountabilityPanel } from "./AccountabilityPanel";
+import { UnbilledPanel } from "./UnbilledPanel";
 import { MyStudioJobs } from "./MyStudioJobs";
 import { QcQueue } from "./QcQueue";
 import { ScorecardsPanel } from "./ScorecardsPanel";
@@ -100,7 +102,11 @@ function ServiceTypeDrawer({
               onChange={(e) =>
                 setForm((f) => ({ ...f, service_key: e.target.value }))
               }
-              disabled={!!initial} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+              disabled={!!initial}
+              autoComplete="off"
+              data-lpignore="true"
+              data-1p-ignore=""
+              data-form-type="other"
             />
           </div>
           <div>
@@ -111,7 +117,11 @@ function ServiceTypeDrawer({
               value={form.display_name}
               onChange={(e) =>
                 setForm((f) => ({ ...f, display_name: e.target.value }))
-              } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+              }
+              autoComplete="off"
+              data-lpignore="true"
+              data-1p-ignore=""
+              data-form-type="other"
             />
           </div>
         </div>
@@ -137,7 +147,11 @@ function ServiceTypeDrawer({
               value={form.standard_cost_ngn}
               onChange={(e) =>
                 setForm((f) => ({ ...f, standard_cost_ngn: e.target.value }))
-              } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+              }
+              autoComplete="off"
+              data-lpignore="true"
+              data-1p-ignore=""
+              data-form-type="other"
             />
           </div>
           <div>
@@ -152,7 +166,11 @@ function ServiceTypeDrawer({
                   ...f,
                   standard_turnaround_days: e.target.value,
                 }))
-              } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+              }
+              autoComplete="off"
+              data-lpignore="true"
+              data-1p-ignore=""
+              data-form-type="other"
             />
           </div>
         </div>
@@ -165,7 +183,11 @@ function ServiceTypeDrawer({
             value={form.display_order}
             onChange={(e) =>
               setForm((f) => ({ ...f, display_order: e.target.value }))
-            } autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+            }
+            autoComplete="off"
+            data-lpignore="true"
+            data-1p-ignore=""
+            data-form-type="other"
           />
         </div>
 
@@ -241,7 +263,10 @@ function ServiceTypesTab({ canCreate }: { canCreate: boolean }) {
           Creation…)
         </p>
         {canCreate && (
-          <Button onClick={() => setShowCreate(true)} icon={<Plus className="w-4 h-4" />}>
+          <Button
+            onClick={() => setShowCreate(true)}
+            icon={<Plus className="w-4 h-4" />}
+          >
             New Type
           </Button>
         )}
@@ -369,7 +394,11 @@ function ReconciliationTab() {
             className="input text-sm w-56"
             placeholder="Fiscal period ID"
             value={periodId}
-            onChange={(e) => setPeriodId(e.target.value)} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other"
+            onChange={(e) => setPeriodId(e.target.value)}
+            autoComplete="off"
+            data-lpignore="true"
+            data-1p-ignore=""
+            data-form-type="other"
           />
           <Button
             variant="secondary"
@@ -467,7 +496,7 @@ function ReconciliationTab() {
 
 // ── KPI strip ──────────────────────────────────────────────
 
-function KpiStrip() {
+function KpiStrip({ onShowUnbilled }: { onShowUnbilled: () => void }) {
   const { data } = useJobs({ page_size: 200 });
   const jobs = data?.data ?? [];
 
@@ -479,11 +508,18 @@ function KpiStrip() {
       j.completed_at &&
       j.completed_at.startsWith(new Date().toISOString().split("T")[0]),
   ).length;
+  // Deliberately NOT gated on `completed` any more. §6.30 only ever asked this
+  // of finished jobs, so the first anyone heard of an unbilled styling fee was
+  // after the hair had gone back to the customer. Internal jobs (shoot, sample,
+  // staff) are excluded because they will never have a sale and counting them
+  // as risk is what made the old number safe to ignore.
   const pocketing = jobs.filter(
     (j) =>
-      j.status === "completed" &&
       !j.sales_order_id &&
-      !j.intercompany_transaction_id,
+      !j.intercompany_transaction_id &&
+      j.revenue_kind !== "internal" &&
+      j.status !== "cancelled" &&
+      j.status !== "rejected",
   ).length;
 
   const rated = jobs.filter((j) => j.customer_rating != null);
@@ -498,11 +534,20 @@ function KpiStrip() {
       <KpiTile label="Pending" value={String(pending)} />
       <KpiTile label="In Progress" value={String(inProgress)} />
       <KpiTile label="Completed Today" value={String(completedToday)} />
-      <KpiTile
-        label="No Sale (risk)"
-        value={String(pocketing)}
-        tone={pocketing > 0 ? "warn" : "neutral"}
-      />
+      {/* The one tile that is a to-do rather than a statistic — it goes
+          somewhere you can act on it. */}
+      <button
+        type="button"
+        onClick={onShowUnbilled}
+        className="text-left rounded-[var(--radius)] focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        title="Show every job with no sale behind it"
+      >
+        <KpiTile
+          label="No Sale (owed)"
+          value={String(pocketing)}
+          tone={pocketing > 0 ? "warn" : "neutral"}
+        />
+      </button>
       <KpiTile
         label="Customer Happiness"
         value={
@@ -529,6 +574,7 @@ type Tab =
   | "board"
   | "qc"
   | "accountability"
+  | "unbilled"
   | "scorecards"
   | "types"
   | "recipes"
@@ -539,6 +585,7 @@ const TAB_IDS: Tab[] = [
   "board",
   "qc",
   "accountability",
+  "unbilled",
   "scorecards",
   "types",
   "recipes",
@@ -619,10 +666,15 @@ export function ServiceJobsPage() {
     { id: "board", label: "Job Board", icon: LayoutGrid },
     { id: "qc", label: "QC Queue", icon: ClipboardCheck },
     { id: "accountability", label: "Wig Accountability", icon: PackageSearch },
+    { id: "unbilled", label: "Unbilled Jobs", icon: ReceiptText },
     { id: "scorecards", label: "Team Scorecards", icon: Trophy },
     { id: "types", label: "Service Types", icon: Wrench },
     { id: "recipes", label: "Recipes", icon: Sparkles },
-    { id: "reconciliation", label: "Chemical Reconciliation", icon: FlaskConical },
+    {
+      id: "reconciliation",
+      label: "Chemical Reconciliation",
+      icon: FlaskConical,
+    },
   ];
   // Personal-cockpit users (stylists / front desk without the approve right)
   // see only their own queue + the recipe library (they need it to actually do
@@ -648,7 +700,9 @@ export function ServiceJobsPage() {
       <WorkingNowStrip enabled={personalCockpit} />
       {/* KPI strip is an ops-wide summary — a stylist doesn't need "no-sale
           risk" or team happiness on their personal cockpit. */}
-      {!personalCockpit && <KpiStrip />}
+      {!personalCockpit && (
+        <KpiStrip onShowUnbilled={() => setTab("unbilled")} />
+      )}
 
       {/* Tabs — glassy pills */}
       <div className="flex gap-1 p-1 rounded-[13px] glass shadow-glass overflow-x-auto">
@@ -679,6 +733,7 @@ export function ServiceJobsPage() {
       {effectiveTab === "board" && <JobBoard canCreate={canCreate} />}
       {effectiveTab === "qc" && <QcQueue />}
       {effectiveTab === "accountability" && <AccountabilityPanel />}
+      {effectiveTab === "unbilled" && <UnbilledPanel canEdit={canEdit} />}
       {effectiveTab === "scorecards" && <ScorecardsPanel />}
       {effectiveTab === "types" && <ServiceTypesTab canCreate={canCreate} />}
       {effectiveTab === "recipes" && <RecipesPanel canCreate={canEdit} />}

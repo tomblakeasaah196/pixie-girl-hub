@@ -10,6 +10,10 @@ const v = require("./sales.validator");
 const vSettings = require("./payment-settings.validator");
 const timelineController = require("./timeline.controller");
 const { requirePermission } = require("../../middleware/rbac");
+// `order.stock_shortfall` is an in-process event and markPaid runs HERE (API
+// payments + gateway webhooks), so the subscriber has to be registered in the
+// web process, not only in the worker. register() is idempotent.
+require("./stock-shortfall.subscribers");
 
 const router = express.Router();
 const can = (a) => requirePermission("sales", a);

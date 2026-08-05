@@ -51,9 +51,71 @@ export interface ChemicalRecipe {
   updated_at: string;
 }
 
+/**
+ * Why a job has no sale behind it. Only the two `customer_*` kinds owe one;
+ * `internal` (shoot, showroom sample, staff hair) never will, which is what
+ * lets the Unbilled queue stop counting them together.
+ * `null` = unclassified: opened before the field existed, or by a path that
+ * never asked. Those lead the queue — nobody has decided about them yet.
+ */
+export type RevenueKind =
+  | "customer_our_hair"
+  | "customer_own_hair"
+  | "internal";
+
+export const REVENUE_KIND_LABEL: Record<RevenueKind, string> = {
+  customer_our_hair: "Customer work — our hair",
+  customer_own_hair: "Customer's own hair — styling fee",
+  internal: "Internal — content / sample / staff",
+};
+
+/** One row of the Unbilled Jobs tab. */
+export interface UnbilledJob {
+  job_id: string;
+  job_number: string;
+  status: JobStatus;
+  revenue_kind: RevenueKind | null;
+  internal_reason: string | null;
+  hair_description: string | null;
+  hair_variant_id: string | null;
+  tag_code: string | null;
+  agreed_cost_ngn: string | null;
+  actual_cost_ngn: string | null;
+  created_at: string;
+  completed_at: string | null;
+  expected_completion_at: string | null;
+  sale_requested_at: string | null;
+  sale_requested_by: string | null;
+  sale_requested_by_name: string | null;
+  service_type_id: string | null;
+  service_type_name: string | null;
+  customer_contact_id: string | null;
+  customer_name: string | null;
+  assigned_staff_user_id: string | null;
+  assigned_staff_name: string | null;
+}
+
+export interface UnbilledCounts {
+  unclassified: number;
+  customer_our_hair: number;
+  customer_own_hair: number;
+  internal: number;
+  /** Jobs that actually owe a sale — internal deliberately excluded. */
+  owed: number;
+}
+
+export interface UnbilledResponse {
+  data: UnbilledJob[];
+  counts: UnbilledCounts;
+}
+
 export interface ServiceJob {
   job_id: string;
   job_number: string;
+  revenue_kind?: RevenueKind | null;
+  internal_reason?: string | null;
+  sale_requested_at?: string | null;
+  sale_requested_by_name?: string | null;
   service_type_id: string;
   service_type_name?: string;
   service_key?: string;
@@ -174,6 +236,10 @@ export interface ChemicalReconciliation {
 
 export interface CreateJobInput {
   service_type_id: string;
+  // Required by the API when there's no sales_order_id — every revenue needs a
+  // sale, so a hand-opened job has to say whether one is owed.
+  revenue_kind?: RevenueKind;
+  internal_reason?: string;
   hair_variant_id?: string;
   hair_unit_id?: string;
   hair_description?: string;

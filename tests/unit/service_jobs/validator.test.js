@@ -21,9 +21,12 @@ const UUID = "11111111-1111-1111-1111-111111111111";
 describe("Stylist Studio validators (PR2)", () => {
   describe("material log", () => {
     test("discrete needs variant_id + quantity", () => {
-      expect(run(v.validateMaterialLog, { kind: "discrete" }).error).toBeDefined();
       expect(
-        run(v.validateMaterialLog, { kind: "discrete", variant_id: UUID }).error,
+        run(v.validateMaterialLog, { kind: "discrete" }).error,
+      ).toBeDefined();
+      expect(
+        run(v.validateMaterialLog, { kind: "discrete", variant_id: UUID })
+          .error,
       ).toBeDefined();
       const { called, req } = run(v.validateMaterialLog, {
         kind: "discrete",
@@ -35,7 +38,9 @@ describe("Stylist Studio validators (PR2)", () => {
     });
 
     test("chemical needs only chemical_name (no per-wig measure)", () => {
-      expect(run(v.validateMaterialLog, { kind: "chemical" }).error).toBeDefined();
+      expect(
+        run(v.validateMaterialLog, { kind: "chemical" }).error,
+      ).toBeDefined();
       const { called } = run(v.validateMaterialLog, {
         kind: "chemical",
         chemical_name: "Toner 6.1",
@@ -63,7 +68,9 @@ describe("Stylist Studio validators (PR2)", () => {
       ).toBe(true);
     });
     test("text reference needs a body", () => {
-      expect(run(v.validateReferenceAdd, { ref_type: "text" }).error).toBeDefined();
+      expect(
+        run(v.validateReferenceAdd, { ref_type: "text" }).error,
+      ).toBeDefined();
     });
   });
 
@@ -90,9 +97,9 @@ describe("Stylist Studio validators (PR2)", () => {
   describe("write-off", () => {
     test("requires a reason", () => {
       expect(run(v.validateWriteOff, {}).error).toBeDefined();
-      expect(run(v.validateWriteOff, { reason: "lost in transit" }).called).toBe(
-        true,
-      );
+      expect(
+        run(v.validateWriteOff, { reason: "lost in transit" }).called,
+      ).toBe(true);
     });
   });
 });

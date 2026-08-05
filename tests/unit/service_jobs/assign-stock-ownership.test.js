@@ -14,11 +14,21 @@
  *
  * These tests pin the rule that replaced it:
  *   1. assignment NEVER deducts — no matter the payment state of the order;
- *   2. it holds the unit instead, and only when the order isn't already
- *      holding it (no stacked reservations);
- *   3. an unlinked job moves no stock and cannot be assigned without an
- *      explicit acknowledgement;
- *   4. the unassign restock is decided from the job's OWN ledger, so a legacy
+ *   2. assignment writes NO stock movement AT ALL. It is a custody event: the
+ *      wig left on_hand when the order was paid, and assigning moves
+ *      possession, not quantity. (It used to place a hold here. That call
+ *      could only ever fire when the sale had neither drawn nor held the unit
+ *      — dead code on a healthy order — and on an unhealthy one it RAISEd
+ *      stock_reserved_le_on_hand and killed the assignment with a 25P02.)
+ *   3. instead it CHECKS: a wig that is neither drawn nor held does not exist,
+ *      so the assignment is refused with a deeplink to Stock → Goods
+ *      Reception. Reachable on a fully PAID order, via pre-orders and
+ *      markPaid's deliberate refusal to fail a payment over missing stock;
+ *   4. a job on the customer's own hair carries no tracked variant and is
+ *      exempt — our stock was never involved;
+ *   5. an unlinked job still needs an explicit acknowledgement, and still
+ *      won't go through if the hair it names isn't on the shelf;
+ *   6. the unassign restock is decided from the job's OWN ledger, so a legacy
  *      job that really did deduct still gets its unit back.
  */
 
@@ -224,7 +234,7 @@ describe("assignStylist — you cannot hand over a wig that isn't there", () => 
       })
       .catch((e) => e);
 
-    expect(err.metadata.resolve_action.url).toContain("tab=reception");
+    expect(err.metadata.resolve_action.url).toContain("tab=receive");
     expect(err.metadata.resolve_action.url).toContain("variant-1");
   });
 

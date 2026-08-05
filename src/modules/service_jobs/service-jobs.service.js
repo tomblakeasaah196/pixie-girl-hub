@@ -1155,9 +1155,12 @@ async function assignStylist({
             // The frontend turns this into the "Receive it in Stock →
             // Reception" button on the refusal, so the block is a door rather
             // than a dead end.
+            // Tab id is `receive` (StockPage) — the tab LABEL is "Goods
+            // Reception", but useUrlTab keys off the id, and a wrong id
+            // silently lands on Overview instead.
             resolve_action: {
               label: "Receive stock",
-              url: `/stock?tab=reception&variant=${problem.variant_id}`,
+              url: `/stock?tab=receive&variant=${problem.variant_id}`,
             },
           },
         },

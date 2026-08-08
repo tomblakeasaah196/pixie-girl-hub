@@ -124,6 +124,14 @@ export interface ServiceJob {
   // Joined display name of the assigned staff member (from the list / getJob
   // query) so job cards read "who has it", not a UUID or a generic label.
   assigned_staff_name?: string | null;
+  // External stylist partner (when the job went out of house rather than to
+  // in-house staff).
+  assigned_stylist_name?: string | null;
+  // Last person the wig physically went OUT to, from the custody ledger. The
+  // ledger is never rewound, so this still names the stylist after the job is
+  // completed, unassigned or cancelled — which is when the live assignment
+  // fields go blank and the drawer used to show nothing at all.
+  last_custody_holder_name?: string | null;
   hair_variant_id: string | null;
   hair_unit_id: string | null;
   hair_description: string | null;

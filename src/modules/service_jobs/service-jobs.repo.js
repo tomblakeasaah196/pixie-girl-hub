@@ -285,6 +285,19 @@ async function getServiceJob({ client, brand, id }) {
             -- Identity/context (name only — never a phone/email; stylists
             -- don't get customer contact details, per V2.2 access rules).
             c.display_name        AS customer_name,
+            -- Who it's (or was) with. Resolved server-side so the name survives
+            -- completion, cancellation and the stylist leaving the assignable
+            -- roster — the admin used to look this up client-side against the
+            -- *assignable* stylist list, which goes blank in all three cases.
+            COALESCE(asu.display_name, asu.email::text) AS assigned_staff_name,
+            sp.display_name       AS assigned_stylist_name,
+            -- Last person the wig physically went OUT to, even if the job has
+            -- since been unassigned/cancelled (custody ledger is never rewound).
+            (SELECT COALESCE(lu.display_name, lu.email::text)
+               FROM ${t(brand, "wig_custody_ledger")} l
+               LEFT JOIN shared.users lu ON lu.user_id = l.stylist_user_id
+              WHERE l.job_id = j.job_id AND l.event = 'out'
+              ORDER BY l.created_at DESC LIMIT 1) AS last_custody_holder_name,
             so.order_number        AS sales_order_number,
             so.placed_at            AS order_placed_at,
             pv.variant_name          AS base_product_name,
@@ -314,6 +327,8 @@ async function getServiceJob({ client, brand, id }) {
        LEFT JOIN shared.intercompany_transactions ic
               ON ic.ic_transaction_id = j.intercompany_transaction_id
        LEFT JOIN shared.contacts c ON c.contact_id = j.customer_contact_id
+       LEFT JOIN shared.users asu ON asu.user_id = j.assigned_staff_user_id
+       LEFT JOIN shared.stylist_partners sp ON sp.stylist_id = j.assigned_stylist_id
        LEFT JOIN ${t(brand, "sales_orders")} so ON so.order_id = j.sales_order_id
        LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = j.hair_variant_id
        LEFT JOIN ${t(brand, "styled_products")} sty ON sty.styled_id = j.styled_id

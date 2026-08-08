@@ -1056,7 +1056,18 @@ function AssignmentPanel({ job, jobId }: { job: ServiceJob; jobId: string }) {
   const [picking, setPicking] = useState(false);
   const [confirmTag, setConfirmTag] = useState<string | null>(null);
   const assigned = !!job.assigned_staff_user_id;
-  const showPicker = !assigned || picking;
+  // Terminal jobs are history, not work to hand out — never open the picker on
+  // them, and always name whoever had the hair (see HistoricAssignee below).
+  const terminal = job.status === "cancelled" || job.status === "completed";
+  const showPicker = !assigned && !terminal ? true : picking;
+  // Who had it, when the live assignment fields are blank. The custody ledger
+  // keeps this after a cancel/unassign, which is exactly the case where the
+  // drawer used to show nothing and Ops couldn't tell who was holding the wig.
+  const historicName =
+    job.assigned_staff_name ??
+    job.assigned_stylist_name ??
+    job.last_custody_holder_name ??
+    null;
 
   return (
     <div className="border-t border-line pt-4 space-y-2">
@@ -1065,6 +1076,14 @@ function AssignmentPanel({ job, jobId }: { job: ServiceJob; jobId: string }) {
       </p>
       {assigned && !picking && (
         <AssignedRow job={job} onChange={() => setPicking(true)} />
+      )}
+      {!assigned && historicName && (
+        <HistoricAssignee name={historicName} status={job.status} />
+      )}
+      {!assigned && !historicName && terminal && (
+        <p className="text-[12px] text-text-muted">
+          No stylist was ever assigned to this job.
+        </p>
       )}
       {showPicker && (
         <StylistPicker
@@ -1085,6 +1104,35 @@ function AssignmentPanel({ job, jobId }: { job: ServiceJob; jobId: string }) {
           onClose={() => setConfirmTag(null)}
         />
       )}
+    </div>
+  );
+}
+
+/** Read-only "who had this" row for jobs with no LIVE assignee — cancelled,
+ *  completed, or reverted to pending. Names the person from the server-side
+ *  join / custody ledger so the trail never goes cold. */
+function HistoricAssignee({
+  name,
+  status,
+}: {
+  name: string;
+  status: JobStatus;
+}) {
+  const label =
+    status === "cancelled"
+      ? "Was assigned to (job cancelled)"
+      : status === "completed"
+        ? "Completed by"
+        : "Previously with";
+  return (
+    <div className="glass p-3 rounded-lg flex items-center gap-3">
+      <div className="w-9 h-9 rounded-full bg-accent/[0.12] grid place-items-center shrink-0">
+        <UserCheck className="w-4 h-4 text-accent-glow" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-semibold truncate">{name}</div>
+        <div className="text-[11px] text-text-muted truncate">{label}</div>
+      </div>
     </div>
   );
 }
@@ -1124,7 +1172,13 @@ function AssignedRow({
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold truncate">
-            {current?.full_name ?? "Assigned stylist"}
+            {/* Fall back to the server-joined name: `current` only resolves for
+                people still on the ASSIGNABLE roster, so a stylist who left,
+                was deactivated or is off-roster showed as "Assigned stylist". */}
+            {current?.full_name ??
+              job.assigned_staff_name ??
+              job.assigned_stylist_name ??
+              "Assigned stylist"}
           </div>
           <div className="text-[11px] text-text-muted truncate flex items-center gap-1.5">
             <span>{current?.job_title ?? "Stylist"}</span>

@@ -11,6 +11,7 @@ import {
   CardGridSkeleton,
   CardShell,
   CardImage,
+  AvailabilityPill,
 } from "./parts";
 import { CostVaultGrants } from "./CostVaultGrants";
 import { BulkImportModal } from "./BulkImportModal";
@@ -146,11 +147,20 @@ function BaseCard({ p, onOpen }: { p: BaseProduct; onOpen: () => void }) {
       <div className="text-[11.5px] text-text-faint mb-3 truncate">
         {specs || "—"}
       </div>
-      {p.preorder_enabled && (
-        <Pill tone="info" dot={false}>
-          <Factory className="w-3 h-3" /> Pre-order ready
-        </Pill>
-      )}
+      <div className="flex items-center gap-2 flex-wrap">
+        {p.track_stock ? (
+          <AvailabilityPill availability={p.availability} />
+        ) : (
+          <Pill tone="neutral" dot={false}>
+            Not stock-tracked
+          </Pill>
+        )}
+        {p.preorder_enabled && (
+          <Pill tone="info" dot={false}>
+            <Factory className="w-3 h-3" /> Pre-order ready
+          </Pill>
+        )}
+      </div>
     </CardShell>
   );
 }

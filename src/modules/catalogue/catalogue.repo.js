@@ -9,7 +9,30 @@
 
 const { ex } = require("../../config/database");
 const { t } = require("../../config/brands");
+const { sellableLocation } = require("./availability");
 const JSONB = new Set(["channel_external_ids", "channel_sync_state"]);
+
+/**
+ * Scalar subquery: sellable units on hand for a BASE product (or one of its
+ * variants), summed across its own active variants at sellable locations —
+ * the same stock definition storefront/styled availability already uses
+ * (availability.js), so a base's card and any styled listing drawing from it
+ * never disagree. Bases are the only stock-bearing register (no rewig/seed-
+ * base resolution needed here — that's styled-product fulfilment logic).
+ */
+function baseStockSql(brand, { productAlias, variantAlias } = {}) {
+  const where = variantAlias
+    ? `sl.variant_id = ${variantAlias}.variant_id`
+    : `pv.product_id = ${productAlias}.product_id AND pv.is_active = true`;
+  const join = variantAlias
+    ? ""
+    : `JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sl.variant_id`;
+  return `(SELECT COALESCE(SUM(sl.available), 0)::int
+             FROM ${t(brand, "stock_levels")} sl
+             ${join}
+            WHERE ${where}
+              AND ${sellableLocation(brand, "sl")}) AS stock_available`;
+}
 
 const CAT_COLS = [
   "parent_category_id",
@@ -228,7 +251,8 @@ async function findAllProducts({
     `SELECT p.*,
             (SELECT pi.cdn_url FROM ${t(brand, "product_images")} pi
               WHERE pi.product_id = p.product_id
-              ORDER BY pi.is_primary DESC, pi.display_order LIMIT 1) AS primary_image_url
+              ORDER BY pi.is_primary DESC, pi.display_order LIMIT 1) AS primary_image_url,
+            ${baseStockSql(brand, { productAlias: "p" })}
        FROM ${t(brand, "products")} p ${w}
       ORDER BY p.created_at DESC LIMIT $${i++} OFFSET $${i++}`,
     [...params, page_size, offset],
@@ -245,7 +269,9 @@ async function findAllProducts({
 }
 async function findProductById({ client, brand, id }) {
   const { rows } = await ex(client)(
-    `SELECT * FROM ${t(brand, "products")} WHERE product_id = $1 AND is_deleted = false`,
+    `SELECT p.*, ${baseStockSql(brand, { productAlias: "p" })}
+       FROM ${t(brand, "products")} p
+      WHERE p.product_id = $1 AND p.is_deleted = false`,
     [id],
   );
   return rows[0] || null;
@@ -351,7 +377,10 @@ async function restoreProduct({ client, brand, id, slug, product_code }) {
 // ── Variants ─────────────────────────────────────────────
 async function listVariants({ client, brand, product_id }) {
   const { rows } = await ex(client)(
-    `SELECT * FROM ${t(brand, "product_variants")} WHERE product_id = $1 ORDER BY display_order, variant_name`,
+    `SELECT pv.*, ${baseStockSql(brand, { variantAlias: "pv" })}
+       FROM ${t(brand, "product_variants")} pv
+      WHERE pv.product_id = $1
+      ORDER BY pv.display_order, pv.variant_name`,
     [product_id],
   );
   return rows;

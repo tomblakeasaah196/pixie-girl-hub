@@ -262,6 +262,7 @@ module.exports = {
   preorderWindowLabel,
   reduceBundleAvailability,
   rewigBonusSql,
+  sellableLocation,
   styledStockSql,
   styledVariantStockSql,
 };

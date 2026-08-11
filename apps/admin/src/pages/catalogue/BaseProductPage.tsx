@@ -28,6 +28,7 @@ import {
 import { CostVaultSection } from "./CostVaultSection";
 import { BaseProductWizard } from "./BaseProductWizard";
 import { CloneAndSizesBar } from "./CloneAndSizesBar";
+import { AvailabilityPill } from "./parts";
 
 export function BaseProductPage() {
   const { id } = useParams();
@@ -312,6 +313,7 @@ function BaseEditor({
                     key={v.variant_id}
                     productId={p.product_id}
                     v={v}
+                    trackStock={p.track_stock}
                   />
                 ))}
               </div>
@@ -468,7 +470,15 @@ function LaceCard({ p, canEdit }: { p: BaseProduct; canEdit: boolean }) {
   );
 }
 
-function VariantRow({ productId, v }: { productId: string; v: Variant }) {
+function VariantRow({
+  productId,
+  v,
+  trackStock,
+}: {
+  productId: string;
+  v: Variant;
+  trackStock: boolean;
+}) {
   return (
     <div className="rounded-[12px] border hairline p-3 bg-text-primary/[0.02] space-y-3">
       <div className="flex items-center gap-2">
@@ -481,6 +491,13 @@ function VariantRow({ productId, v }: { productId: string; v: Variant }) {
         {v.is_default && (
           <Pill tone="accent" dot={false}>
             Default
+          </Pill>
+        )}
+        {trackStock ? (
+          <AvailabilityPill availability={v.availability} />
+        ) : (
+          <Pill tone="neutral" dot={false}>
+            Not stock-tracked
           </Pill>
         )}
       </div>

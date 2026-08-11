@@ -258,6 +258,12 @@ function ApplicantDetail({
     mutationFn: (stars: number) => vacancyApi.setRating(appId, stars),
     onSuccess: inval,
   });
+  const rateQuestion = useMutation({
+    mutationFn: (v: { questionId: string; stars: number; note?: string }) =>
+      vacancyApi.setQuestionRating(appId, v.questionId, v.stars, v.note),
+    onSuccess: inval,
+    onError: (e) => notify("Couldn't save rating", errMsg(e), "high"),
+  });
   const offer = useMutation({
     mutationFn: () => vacancyApi.moveToOffered(appId),
     onSuccess: (r) => {
@@ -341,6 +347,41 @@ function ApplicantDetail({
               <p className="text-xs text-text-faint">Not scored yet.</p>
             )}
           </div>
+
+          {/* Interview scorecard — rate the candidate against the AI questions */}
+          {app.scorecard.length > 0 && (
+            <div className="rounded-xl border border-line p-3">
+              <div className="mb-1 text-xs font-medium text-text-primary">Interview scorecard</div>
+              <p className="mb-2.5 text-[11px] text-text-faint">
+                Rate this candidate against each question during the interview. Your overall rating is
+                the average of these.
+              </p>
+              <div className="space-y-2.5">
+                {app.scorecard.map((q, idx) => (
+                  <div key={q.question_id} className="rounded-lg border border-line/70 p-2.5">
+                    <div className="flex items-start gap-2">
+                      <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-accent/15 text-[10px] font-semibold text-accent-glow">
+                        {idx + 1}
+                      </span>
+                      <p className="flex-1 text-xs text-text-primary">{q.question}</p>
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 pl-6">
+                      <StarRating
+                        value={q.my_stars || 0}
+                        readOnly={!canEdit}
+                        onChange={(n) => rateQuestion.mutate({ questionId: q.question_id, stars: n, note: q.my_note || undefined })}
+                      />
+                      {q.rating_count > 0 && (
+                        <span className="text-[10px] text-text-faint">
+                          team avg {q.avg_stars.toFixed(1)} · {q.rating_count}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* files */}
           <div className="flex flex-wrap gap-2">
@@ -451,7 +492,6 @@ function ScoreBars({ breakdown }: { breakdown: Record<string, unknown> }) {
     ["skills_fit", "Skills"],
     ["experience_fit", "Experience"],
     ["salary_fit", "Salary fit"],
-    ["questionnaire_fit", "Rubric fit"],
     ["portfolio_fit", "Portfolio"],
   ];
   const notes = typeof breakdown.notes === "string" ? breakdown.notes : null;

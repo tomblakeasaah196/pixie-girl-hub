@@ -159,6 +159,18 @@ async function setRating(req, res) {
     }),
   });
 }
+async function setQuestionRating(req, res) {
+  res.json({
+    data: await service.setQuestionRating({
+      brand: req.brand,
+      user: req.user,
+      id: req.params.appId,
+      question_id: req.params.questionId,
+      stars: req.body.stars,
+      note: req.body.note,
+    }),
+  });
+}
 async function scoreApplication(req, res) {
   res.json({
     data: await service.scoreApplication({
@@ -212,6 +224,7 @@ module.exports = {
   updateStage,
   addNote,
   setRating,
+  setQuestionRating,
   scoreApplication,
   moveToOffered,
   downloadFile,

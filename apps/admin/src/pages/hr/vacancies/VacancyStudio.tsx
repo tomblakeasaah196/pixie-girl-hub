@@ -449,7 +449,7 @@ function VacancyEditor({ label, value, onChange, disabled }: {
   );
 }
 
-// ── AI Screening (the 5-question rubric) ───────────────────
+// ── AI interview questions (rated per-candidate on the applicant scorecard) ──
 function ScreeningPanel({
   vacancyId,
   readOnly,
@@ -464,28 +464,11 @@ function ScreeningPanel({
     queryKey: ["vacancies", "questions", vacancyId],
     queryFn: () => vacancyApi.listQuestions(vacancyId),
   });
-  const [answers, setAnswers] = useState<Record<string, string>>({});
-  useEffect(() => {
-    if (questions) {
-      const seed: Record<string, string> = {};
-      for (const q of questions) seed[q.question_id] = q.answer || "";
-      setAnswers(seed);
-    }
-  }, [questions]);
 
   const gen = useMutation({
     mutationFn: () => vacancyApi.generateQuestions(vacancyId),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["vacancies", "questions", vacancyId] }); notify("Generated 5 questions"); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["vacancies", "questions", vacancyId] }); notify("Generated interview questions"); },
     onError: (e) => notify("Couldn't generate", errMsg(e), "high"),
-  });
-  const save = useMutation({
-    mutationFn: () =>
-      vacancyApi.answerQuestions(
-        vacancyId,
-        (questions || []).map((q) => ({ question_id: q.question_id, answer: answers[q.question_id] || "" })),
-      ),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["vacancies", "questions", vacancyId] }); notify("Rubric saved", "Re-score applicants to apply it."); },
-    onError: (e) => notify("Couldn't save", errMsg(e), "high"),
   });
   const scoreAll = useMutation({
     mutationFn: () => vacancyApi.scoreAll(vacancyId),
@@ -496,30 +479,33 @@ function ScreeningPanel({
   if (isLoading) return <Skeleton className="h-64 rounded-[var(--radius)]" />;
 
   const hasQuestions = (questions?.length ?? 0) > 0;
-  const answeredCount = (questions || []).filter((q) => (answers[q.question_id] || "").trim()).length;
 
   return (
     <Card className="space-y-4 p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="max-w-xl">
           <div className="flex items-center gap-1.5 text-sm font-medium text-text-primary">
-            <Sparkles className="h-4 w-4 text-accent-glow" /> AI screening rubric
+            <Sparkles className="h-4 w-4 text-accent-glow" /> AI interview questions
           </div>
           <p className="mt-1 text-xs text-text-muted">
-            AI reads this vacancy and asks 5 strategic questions. Your answers define the ideal
-            candidate — the AI ranks every applicant against them. Candidates never see these.
+            Five strategic questions AI writes for this role. Use them to interview candidates and rate
+            each 1–5 stars on the applicant's <span className="text-text-primary">Interview scorecard</span>{" "}
+            (Applicants → open a candidate). Candidates never see these. The AI match score is separate —
+            it reads each CV against the job description automatically.
           </p>
         </div>
         {!readOnly && (
           <div className="flex flex-wrap gap-2">
             <Button size="sm" icon={gen.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
               disabled={gen.isPending}
-              onClick={() => { if (!hasQuestions || confirm("Regenerate the 5 questions? Existing answers will be cleared.")) gen.mutate(); }}>
+              onClick={() => { if (!hasQuestions || confirm("Regenerate the 5 interview questions?")) gen.mutate(); }}>
               {hasQuestions ? "Regenerate" : "Generate questions"}
             </Button>
             {hasQuestions && (
-              <Button size="sm" variant="primary" icon={save.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-                disabled={save.isPending} onClick={() => save.mutate()}>Save rubric</Button>
+              <Button size="sm" icon={scoreAll.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                disabled={scoreAll.isPending} onClick={() => scoreAll.mutate()}>
+                {scoreAll.isPending ? "Scoring…" : "Re-score all with AI"}
+              </Button>
             )}
           </div>
         )}
@@ -530,7 +516,7 @@ function ScreeningPanel({
           No questions yet. {readOnly ? "" : "Generate them once the job description is written."}
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2.5">
           {(questions || []).map((q: ScreeningQuestion, idx) => (
             <div key={q.question_id} className="rounded-xl border border-line p-3">
               <div className="flex items-start gap-2">
@@ -540,36 +526,14 @@ function ScreeningPanel({
                 <div className="flex-1">
                   <p className="text-sm text-text-primary">{q.question}</p>
                   {q.rationale && <p className="mt-0.5 text-[11px] text-text-faint">{q.rationale}</p>}
-                  <VoiceFieldWrap>
-                    <VoiceField
-                      value={answers[q.question_id] || ""}
-                      onChange={(v) => setAnswers((s) => ({ ...s, [q.question_id]: v }))}
-                      placeholder="Your ideal answer — this is the rubric…"
-                      rows={2}
-                    />
-                  </VoiceFieldWrap>
                 </div>
               </div>
             </div>
           ))}
-
-          <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-            <span className="text-xs text-text-muted">{answeredCount} of {questions?.length} answered</span>
-            {!readOnly && (
-              <Button size="sm" icon={scoreAll.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                disabled={scoreAll.isPending} onClick={() => scoreAll.mutate()}>
-                {scoreAll.isPending ? "Scoring…" : "Re-score all applicants"}
-              </Button>
-            )}
-          </div>
         </div>
       )}
     </Card>
   );
-}
-
-function VoiceFieldWrap({ children }: { children: React.ReactNode }) {
-  return <div className="mt-2">{children}</div>;
 }
 
 function F({ label, children }: { label: string; children: React.ReactNode }) {

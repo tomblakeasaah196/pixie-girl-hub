@@ -486,6 +486,61 @@ async function ratingSummary({ application_id, rater_id }) {
   return rows[0] || { avg_stars: 0, rating_count: 0, my_stars: null };
 }
 
+// ── Interview scorecard (per-question star ratings) ────────
+async function upsertQuestionRating({ application_id, question_id, rater_id, stars, note }) {
+  const { rows } = await query(
+    `INSERT INTO shared.job_application_question_ratings
+       (application_id, question_id, rater_id, stars, note)
+     VALUES ($1,$2,$3,$4,$5)
+     ON CONFLICT (application_id, question_id, rater_id)
+       DO UPDATE SET stars = EXCLUDED.stars, note = EXCLUDED.note, updated_at = now()
+     RETURNING *`,
+    [application_id, question_id, rater_id, stars, note ?? null],
+  );
+  return rows[0];
+}
+
+/**
+ * The interview scorecard for an application: the vacancy's questions joined
+ * with the average stars across all raters (+ count) and THIS rater's own
+ * stars/note. Ordered by the question's display position.
+ */
+async function applicationScorecard({ vacancy_id, application_id, rater_id }) {
+  const { rows } = await query(
+    `SELECT q.question_id, q.position, q.question, q.rationale,
+            COALESCE(agg.avg_stars, 0)::float AS avg_stars,
+            COALESCE(agg.rating_count, 0)::int AS rating_count,
+            mine.stars AS my_stars,
+            mine.note  AS my_note
+       FROM shared.vacancy_screening_questions q
+       LEFT JOIN (
+         SELECT question_id, AVG(stars) AS avg_stars, COUNT(*) AS rating_count
+           FROM shared.job_application_question_ratings
+          WHERE application_id = $2
+          GROUP BY question_id
+       ) agg ON agg.question_id = q.question_id
+       LEFT JOIN shared.job_application_question_ratings mine
+         ON mine.question_id = q.question_id
+        AND mine.application_id = $2
+        AND mine.rater_id = $3
+      WHERE q.vacancy_id = $1
+      ORDER BY q.position`,
+    [vacancy_id, application_id, rater_id || null],
+  );
+  return rows;
+}
+
+/** This rater's average across the questions they've scored (drives the rollup). */
+async function raterQuestionAverage({ application_id, rater_id }) {
+  const { rows } = await query(
+    `SELECT AVG(stars)::float AS avg_stars, COUNT(*)::int AS n
+       FROM shared.job_application_question_ratings
+      WHERE application_id = $1 AND rater_id = $2`,
+    [application_id, rater_id],
+  );
+  return rows[0] || { avg_stars: null, n: 0 };
+}
+
 // ── Scores ─────────────────────────────────────────────────
 async function insertScore({ input }) {
   const { rows } = await query(
@@ -588,6 +643,9 @@ module.exports = {
   // ratings
   upsertRating,
   ratingSummary,
+  upsertQuestionRating,
+  applicationScorecard,
+  raterQuestionAverage,
   // scores
   insertScore,
   listScores,

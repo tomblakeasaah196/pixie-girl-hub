@@ -391,21 +391,18 @@ const SCORE_SCHEMA = {
 };
 
 /**
- * Score one applicant 0–100 against the vacancy and (when answered) the hiring
- * manager's rubric. `attachments` is an array of already-loaded inline parts
- * ({ mime_type, data }) — the CV (image/pdf) and any work-sample images — so
- * this module stays storage-agnostic. Gemini vision only; on any failure we
- * fall back to a deterministic heuristic so every applicant still gets a score.
+ * Score one applicant 0–100 against the vacancy by READING their CV against the
+ * job description + requirements. `attachments` is an array of already-loaded
+ * inline parts ({ mime_type, data }) — the CV (image/pdf) and any work-sample
+ * images — so this module stays storage-agnostic. The score is fully automatic
+ * and does NOT depend on the screening questions (those are now an interview
+ * scorecard). Gemini vision only; on any failure we fall back to a deterministic
+ * estimate so every applicant still gets a score.
  *
  * @returns {{score:number, summary:string, breakdown:object, provider:string, model:string|null, scoring_stage:string}}
  */
-async function scoreApplication({ vacancy, application, questions, attachments }) {
-  const answered = (questions || []).filter((q) => q.answer && q.answer.trim());
-  const scoring_stage = answered.length ? "rubric" : "provisional";
-
-  const rubric = answered.length
-    ? answered.map((q, i) => `Q${i + 1}: ${q.question}\nIdeal answer (rubric): ${q.answer}`).join("\n\n")
-    : "The hiring manager has not yet answered the screening questions — score provisionally on JD fit alone.";
+async function scoreApplication({ vacancy, application, attachments }) {
+  const scoring_stage = "provisional";
 
   const band =
     vacancy.salary_min || vacancy.salary_max
@@ -413,7 +410,8 @@ async function scoreApplication({ vacancy, application, questions, attachments }
       : "not specified";
 
   const textPrompt = `Score this job applicant against the vacancy from 0 to 100 (100 = perfect fit).
-Be discriminating and honest — most applicants are NOT a 90.
+Be discriminating and honest — most applicants are NOT a 90. Base the score primarily on how well
+the CV's actual experience and achievements match the job description and requirements.
 
 VACANCY
 Title: ${vacancy.title}
@@ -423,9 +421,6 @@ Requirements:
 ${vacancy.requirements_markdown || ""}
 Salary band: ${band}
 
-IDEAL-CANDIDATE RUBRIC (weigh this heavily when present):
-${rubric}
-
 APPLICANT
 Name: ${application.full_name}
 Stated skills (with years): ${JSON.stringify(application.skills || [])}
@@ -433,12 +428,12 @@ Desired salary: ${application.desired_salary_text || application.desired_salary 
 Notice period: ${application.notice_period || "not stated"}
 Professional links: ${JSON.stringify(application.portfolio_links || [])}
 ${application.cv_text ? `CV text:\n${String(application.cv_text).slice(0, 8000)}` : "CV is attached as a file/image."}
-${(attachments || []).length ? "Attached: the applicant's CV and/or work-sample images — read them." : ""}
+${(attachments || []).length ? "Attached: the applicant's CV and/or work-sample images — read them fully." : ""}
 
 Return ONLY:
 { "score": <0-100>, "summary": "<one sentence: the single most important reason for this score>",
   "breakdown": { "skills_fit": <0-100>, "experience_fit": <0-100>, "salary_fit": <0-100>,
-                 "questionnaire_fit": <0-100>, "portfolio_fit": <0-100>, "notes": "<2-3 sentence rationale>" } }`;
+                 "portfolio_fit": <0-100>, "notes": "<2-3 sentence rationale>" } }`;
 
   const content = [{ type: "text", text: textPrompt }, ...(attachments || [])];
 

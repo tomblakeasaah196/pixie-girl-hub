@@ -20,6 +20,15 @@ const { isolateSubject } = require("../../services/background-cutout.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { NotFoundError, AppError } = require("../../utils/errors");
+const { computeAvailability } = require("./availability");
+
+// Base products carry their own preorder fields, so `computeAvailability`'s
+// `base` param is just the row itself — no synthesis needed (contrast
+// styled.service.js, which copies those fields off a foreign base row).
+const withAvailability = (p) => ({
+  ...p,
+  availability: computeAvailability(p.stock_available || 0, { base: p }),
+});
 
 // Kebab-case a product name for use as a URL slug.
 function slugify(s) {
@@ -117,9 +126,11 @@ async function archiveCategory({ brand, user, request_id, id }) {
 }
 
 // ── Products ─────────────────────────────────────────────
-function listProducts({ brand, filters, page, page_size }) {
+async function listProducts({ brand, filters, page, page_size }) {
   const offset = (page - 1) * page_size;
-  return repo.findAllProducts({ brand, filters, page, page_size, offset });
+  const res = await repo.findAllProducts({ brand, filters, page, page_size, offset });
+  res.data = res.data.map(withAvailability);
+  return res;
 }
 async function getProduct({ brand, id, user }) {
   const p = await repo.findProductById({ brand, id });
@@ -128,7 +139,16 @@ async function getProduct({ brand, id, user }) {
   // Cost columns are stripped unless the caller holds vault access; a
   // missing/undefined user fails closed (no cost). See cost_vault.service.
   const visible = await vault.canSeeCost({ user, brand });
-  return { ...p, variants: vault.redactVariants(variants, visible) };
+  // Each variant's own stock, but the PRODUCT's preorder policy — a variant
+  // carries no preorder fields of its own (those live on the base row).
+  const enrichedVariants = variants.map((v) => ({
+    ...v,
+    availability: computeAvailability(v.stock_available || 0, { base: p }),
+  }));
+  return {
+    ...withAvailability(p),
+    variants: vault.redactVariants(enrichedVariants, visible),
+  };
 }
 async function createProduct({ brand, user, request_id, input }) {
   return transaction(async (client) => {

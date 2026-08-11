@@ -69,6 +69,10 @@ export interface BaseProduct {
   // Per-base opt-out from ever donating/receiving a rewig substitution.
   // Default true — every base is eligible out of the box.
   rewig_eligible?: boolean;
+  // Sellable units summed across this base's own variants — same stock
+  // definition the storefront/styled cards use (server-computed).
+  stock_available?: number;
+  availability?: Availability;
   created_at: string;
   updated_at: string;
 }
@@ -96,6 +100,10 @@ export interface Variant {
   is_active: boolean;
   // cost_price_ngn / min_price_ngn are NEVER present here — true cost is
   // server-redacted and lives in the vault.
+  // This variant's own sellable stock, and the resulting state under the
+  // parent base's preorder policy (server-computed, detail fetch only).
+  stock_available?: number;
+  availability?: Availability;
 }
 
 export type StyledStatus = "draft" | "live" | "archived";

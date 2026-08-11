@@ -460,14 +460,16 @@ function ScoreBars({ breakdown }: { breakdown: Record<string, unknown> }) {
       {dims.map(([k, label]) => {
         const raw = breakdown[k];
         const v = typeof raw === "number" ? raw : null;
+        // A null dimension means "not assessed" — render it dimmed with an
+        // "n/a" label so an empty bar is never misread as a score of 0.
         return (
-          <div key={k} className="flex items-center gap-2">
+          <div key={k} className={`flex items-center gap-2 ${v === null ? "opacity-45" : ""}`}>
             <span className="w-20 shrink-0 text-[10.5px] text-text-muted">{label}</span>
             <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-text-primary/10">
               {v !== null && <div className="h-full rounded-full bg-accent" style={{ width: `${Math.max(0, Math.min(100, v))}%` }} />}
             </div>
-            <span className="w-7 shrink-0 text-right font-mono text-[10.5px] text-text-muted">
-              {v === null ? "—" : Math.round(v)}
+            <span className="w-8 shrink-0 text-right font-mono text-[10.5px] text-text-muted">
+              {v === null ? "n/a" : Math.round(v)}
             </span>
           </div>
         );

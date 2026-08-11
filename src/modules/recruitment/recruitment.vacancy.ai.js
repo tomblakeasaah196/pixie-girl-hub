@@ -442,71 +442,112 @@ Return ONLY:
 
   const content = [{ type: "text", text: textPrompt }, ...(attachments || [])];
 
-  try {
-    const r = await gemini.chatCompletion({
-      system: "You are a rigorous, fair technical recruiter. You ALWAYS return a single JSON object.",
-      messages: [{ role: "user", content }],
-      temperature: 0.2,
-      maxOutputTokens: 1024,
-      thinkingBudget: 0,
-      responseSchema: SCORE_SCHEMA,
-      timeoutMs: 45000,
-    });
-    const parsed = parseJsonLoose(r.text);
-    if (parsed && typeof parsed.score === "number") {
-      return {
-        score: clamp(parsed.score),
-        summary: parsed.summary || "",
-        breakdown: parsed.breakdown || {},
-        provider: "gemini",
-        model: r.model || null,
-        scoring_stage,
-      };
+  // Two attempts: a CV can be a long multi-page PDF, so we give the read a
+  // generous timeout and retry transient failures once before ever dropping to
+  // the (much weaker) deterministic estimate. Falling back should be rare.
+  let lastErr = null;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const r = await gemini.chatCompletion({
+        system:
+          "You are a rigorous, fair technical recruiter. You open and read the attached CV (PDF or image) in full before scoring. You ALWAYS return a single JSON object.",
+        messages: [{ role: "user", content }],
+        temperature: 0.2,
+        maxOutputTokens: 1200,
+        thinkingBudget: 0,
+        responseSchema: SCORE_SCHEMA,
+        timeoutMs: 120000,
+      });
+      const parsed = parseJsonLoose(r.text);
+      if (parsed && typeof parsed.score === "number") {
+        return {
+          score: clamp(parsed.score),
+          summary: parsed.summary || "",
+          breakdown: parsed.breakdown || {},
+          provider: "gemini",
+          model: r.model || null,
+          scoring_stage,
+        };
+      }
+      logger.warn({ attempt }, "vacancy.ai: gemini scoring returned unusable output");
+    } catch (err) {
+      lastErr = err;
+      logger.warn(
+        { attempt, err: err.message, status: err.status, api_error: err.api_message },
+        "vacancy.ai: gemini scoring attempt failed",
+      );
+      if (err && err.retryable === false) break;
     }
-    logger.warn("vacancy.ai: gemini scoring returned unusable output, using heuristic");
-  } catch (err) {
-    logger.warn({ err: err.message }, "vacancy.ai: gemini scoring failed, using heuristic");
   }
-
+  logger.warn(
+    { err: lastErr && lastErr.message },
+    "vacancy.ai: gemini scoring exhausted — using deterministic estimate",
+  );
   return { ...heuristicScore({ vacancy, application }), scoring_stage };
 }
 
 /**
- * Deterministic fallback score so a vacancy is never un-scorable when AI is
- * down: skills-overlap against the requirements text + desired-salary fit
- * against the band. Coarse but honest, and clearly labelled provider=heuristic.
+ * Deterministic fallback so a vacancy is never un-scorable when the AI read is
+ * unavailable. It does NOT open the CV file — it estimates from the structured
+ * application (declared skills + years, salary vs band, portfolio links). It
+ * deliberately does NOT keyword-match skills against the JD text: a strong CV
+ * whose wording differs from the posting would score near zero, which is
+ * exactly the wrong signal. Clearly labelled provider=heuristic so the UI can
+ * say "AI read pending".
  */
 function heuristicScore({ vacancy, application }) {
-  const reqText = `${vacancy.jd_markdown || ""} ${vacancy.requirements_markdown || ""}`.toLowerCase();
   const skills = Array.isArray(application.skills) ? application.skills : [];
-  let skillHits = 0;
-  for (const s of skills) {
-    const name = String((s && (s.skill || s.name)) || s || "").toLowerCase().trim();
-    if (name && reqText.includes(name)) skillHits += 1;
-  }
-  const skills_fit = skills.length ? Math.round((skillHits / skills.length) * 100) : 40;
+  const yearsOf = (s) => {
+    const raw = String((s && (s.years ?? s.year)) ?? "").replace(/[^\d.]/g, "");
+    const y = Number(raw);
+    return isNaN(y) ? 0 : y;
+  };
+  const yearsList = skills.map(yearsOf);
+  const maxYears = yearsList.length ? Math.max(...yearsList) : 0;
+  const totalYears = yearsList.reduce((a, b) => a + b, 0);
 
-  let salary_fit = 60;
+  // Breadth (how many skills) + depth (accumulated years), capped.
+  const skills_fit = skills.length ? clamp(40 + skills.length * 7 + Math.min(totalYears, 30)) : 30;
+  // Seniority proxy from the deepest single skill.
+  const experience_fit = clamp(maxYears ? 30 + maxYears * 7 : 45);
+
+  // Desired salary vs the band.
+  let salary_fit = 65;
   const desired = Number(application.desired_salary);
   const lo = Number(vacancy.salary_min);
   const hi = Number(vacancy.salary_max);
   if (desired && (lo || hi)) {
     if ((!lo || desired >= lo) && (!hi || desired <= hi)) salary_fit = 100;
-    else if (hi && desired > hi) salary_fit = Math.max(0, 100 - Math.round(((desired - hi) / hi) * 100));
-    else if (lo && desired < lo) salary_fit = 80; // under budget — fine
+    else if (hi && desired > hi) salary_fit = clamp(100 - ((desired - hi) / hi) * 100);
+    else if (lo && desired < lo) salary_fit = 85; // under budget — fine
   }
 
-  const score = clamp(Math.round(skills_fit * 0.6 + salary_fit * 0.4));
+  const links = Array.isArray(application.portfolio_links)
+    ? application.portfolio_links.filter((l) => l && l.url)
+    : [];
+  const portfolio_fit = links.length ? clamp(55 + links.length * 12) : null;
+
+  const dims = [
+    [skills_fit, 0.35],
+    [experience_fit, 0.35],
+    [salary_fit, 0.2],
+    [portfolio_fit, 0.1],
+  ].filter(([v]) => v !== null && v !== undefined);
+  const wsum = dims.reduce((a, [, w]) => a + w, 0) || 1;
+  const score = clamp(dims.reduce((a, [v, w]) => a + v * w, 0) / wsum);
+
   return {
     score,
-    summary: "Provisional score (AI unavailable) from skills overlap and salary fit.",
+    summary:
+      "Estimate from stated skills, experience and salary — a full AI read of the CV is still pending (tap Score to run it).",
     breakdown: {
       skills_fit,
-      experience_fit: null,
+      experience_fit,
       salary_fit,
       questionnaire_fit: null,
-      portfolio_fit: null,
-      notes: "Computed by the deterministic fallback — re-score once AI is available for a full read of the CV.",
+      portfolio_fit,
+      notes:
+        "Interim estimate only — it does NOT open the CV file. Tap “Score” to run the full AI assessment that reads the résumé.",
     },
     provider: "heuristic",
     model: null,

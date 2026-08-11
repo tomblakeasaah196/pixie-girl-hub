@@ -571,3 +571,36 @@ html, body { transition: background-color 0.35s ease, color 0.35s ease; }
     scroll-behavior: auto !important;
   }
 }
+
+/* Careers — job description / requirements rendered from server markdown */
+.careers-prose h1,
+.careers-prose h2,
+.careers-prose h3,
+.careers-prose h4 {
+  font-family: var(--font-display, serif);
+  color: var(--cream, #f4efe9);
+  line-height: 1.2;
+  margin: 1.4rem 0 0.6rem;
+}
+.careers-prose h1 { font-size: 1.6rem; }
+.careers-prose h2 { font-size: 1.3rem; }
+.careers-prose h3 { font-size: 1.1rem; }
+.careers-prose h4 { font-size: 1rem; }
+.careers-prose h1:first-child,
+.careers-prose h2:first-child,
+.careers-prose h3:first-child { margin-top: 0; }
+.careers-prose p { margin: 0.7rem 0; line-height: 1.7; }
+.careers-prose ul,
+.careers-prose ol { margin: 0.7rem 0; padding-left: 1.25rem; }
+.careers-prose ul { list-style: disc; }
+.careers-prose ol { list-style: decimal; }
+.careers-prose li { margin: 0.35rem 0; line-height: 1.6; }
+.careers-prose strong { color: var(--cream, #f4efe9); font-weight: 600; }
+.careers-prose a { color: var(--taupe, #b8a99a); text-decoration: underline; text-underline-offset: 3px; }
+.careers-prose code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.85em;
+  padding: 0.05rem 0.3rem;
+  border-radius: 4px;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}

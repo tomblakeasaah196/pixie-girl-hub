@@ -1,4 +1,4 @@
-import { Sparkles, HelpCircle } from "lucide-react";
+import { Sparkles, HelpCircle, Briefcase } from "lucide-react";
 import { useNavigation, useBranding, useSiteChrome, type FooterColumn } from "@/lib/site-config";
 import { BrandLogo } from "@/components/site/BrandLogo";
 import { SmartLink } from "@/components/site/SmartLink";
@@ -104,6 +104,14 @@ export function SiteFooter() {
             className="inline-flex items-center gap-2 transition-colors hover:text-cream"
           >
             <Sparkles size={14} strokeWidth={1.6} aria-hidden="true" /> Shop with AI
+          </SmartLink>
+          {/* Careers — always shown here so it survives even when a brand has a
+              published Studio footer nav that would otherwise hide it. */}
+          <SmartLink
+            to="/careers"
+            className="inline-flex items-center gap-2 transition-colors hover:text-cream"
+          >
+            <Briefcase size={14} strokeWidth={1.6} aria-hidden="true" /> Careers
           </SmartLink>
           <button
             type="button"

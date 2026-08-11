@@ -120,9 +120,25 @@ async function createVacancy({ brand, user, request_id, input }) {
   return vacancy;
 }
 
+/**
+ * Build the ABSOLUTE public Careers-page URL for a vacancy — it lives on the
+ * brand's storefront (e.g. faitlynhair.com), NOT the admin host, so a relative
+ * link would 404 in the admin. Null when unpublished or no storefront domain
+ * is configured (the admin then hides the "Careers page" button).
+ */
+async function careersUrl(vacancy) {
+  if (!vacancy || !vacancy.slug || vacancy.status !== "published") return null;
+  const dom = await repo.storefrontDomain({ brand: vacancy.business });
+  const host = dom && (dom.storefront_domain || dom.sales_subdomain);
+  if (!host) return null;
+  const clean = String(host).replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+  return `https://${clean}/careers/${vacancy.slug}`;
+}
+
 async function getVacancy({ brand, id }) {
   const vacancy = await repo.getVacancy({ brand, id });
   if (!vacancy) throw new NotFoundError("Vacancy");
+  vacancy.public_careers_url = await careersUrl(vacancy);
   return vacancy;
 }
 

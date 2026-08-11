@@ -548,6 +548,16 @@ async function listRoles() {
   return rows;
 }
 
+/** The brand's public storefront host (drives the absolute Careers-page URL). */
+async function storefrontDomain({ brand }) {
+  const { rows } = await query(
+    `SELECT storefront_domain, sales_subdomain
+       FROM shared.business_config WHERE business_key = $1`,
+    [brand],
+  );
+  return rows[0] || null;
+}
+
 module.exports = {
   transaction,
   // vacancies
@@ -585,4 +595,5 @@ module.exports = {
   listDepartments,
   listPositions,
   listRoles,
+  storefrontDomain,
 };

@@ -11,6 +11,48 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-08-11 — Vacancy-first hiring + public applications + applicant tracking
+
+**Source:** Owner directive — "post a job offer instead… just the job
+description built with AI, then if successful it transitions to the current
+Recruitment tab." Adds the stage that PRECEDES the existing offer-first flow.
+
+**Files:** `000377_shared_job_vacancies.sql` (new, shared).
+
+The recruitment module (`000318`) starts from a candidate you already have and
+drafts them an offer. This adds the front half: create a **vacancy**, publish
+it to a public **Careers** page, collect **applications**, and run an
+**applicant pipeline** with AI scoring — then hand the winner to the existing
+Offer Studio.
+
+New `shared` tables:
+
+- `job_vacancies` — the rich internal vacancy: workplace model (remote/hybrid/
+  on-site + on-site/off-site/off day split + working hours), location, employment
+  type, probation, a **structured NGN salary band** (`salary_min`/`salary_max`,
+  `salary_hidden` to hide from the public page), JD + requirements markdown,
+  target start date, headcount, the granted permission `role_id`, the department
+  `org_unit_id`, and hiring-manager/reviewer **positions** (roles, not named
+  people). `apply_config` JSONB toggles the public form's optional fields; `slug`
+  drives the `/careers/<slug>` URL.
+- `vacancy_screening_questions` — the 5 AI-generated strategic questions +
+  the hiring manager's rubric answers. The candidate never sees these; the AI
+  scores applicants against the answers.
+- `job_applications` — public, no-login submissions (contact + CV + optional
+  headshot + links + skills-with-experience + desired salary + notice period +
+  source), the pipeline `stage`, the denormalised latest `match_score`, and the
+  `offer_id` transition link. `UNIQUE (vacancy_id, email)` — a re-application
+  updates the existing row (dedupe by update).
+- `job_application_media` — the up-to-3 work-sample images ("past successes").
+- `job_application_notes` — internal team feedback.
+- `job_application_ratings` — per-user 1–5 stars (avg shown in the pipeline).
+- `job_application_scores` — AI match-score records (provisional on submit,
+  sharper 'rubric' score once the questionnaire is answered); history kept.
+
+Reuses the existing `recruitment` permission module (no new module). The
+candidate-facing Careers page + application form (public API + storefront
+routes) land in the follow-up PR.
+
 ## 2026-08-03 — Real email delivery receipts from the ESP
 
 **Source:** Owner directive — "wire up the email provider webhooks for real

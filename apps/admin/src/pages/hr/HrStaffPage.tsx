@@ -64,6 +64,7 @@ import { OnboardingSettings } from "./OnboardingSettings";
 import { GeoapifySettingsModal } from "@/components/hr/GeoapifySettingsModal";
 import { useGeoapifySettings } from "@/lib/geoapify-settings-api";
 import RecruitmentTab from "./RecruitmentTab";
+import VacanciesTab from "./vacancies/VacanciesTab";
 import { OnboardingArticlesTab } from "./OnboardingArticlesTab";
 import { RewardsTab } from "./RewardsTab";
 import { DevicesTab, LiveAttendanceStrip, UnknownDeviceFlag } from "./devices";
@@ -997,7 +998,7 @@ export default function HrStaffPage() {
     "queries",
     "targets",
     "rewards",
-    ...(can("recruitment", "view") ? ["recruitment"] : []),
+    ...(can("recruitment", "view") ? ["vacancies", "recruitment"] : []),
     "analytics",
     "settings",
     "onboarding",
@@ -1090,7 +1091,12 @@ export default function HrStaffPage() {
           { key: "queries", label: "Queries", badge: c?.open_queries || undefined },
           { key: "targets", label: "Targets" },
           { key: "rewards", label: "Rewards" },
-          ...(can("recruitment", "view") ? [{ key: "recruitment", label: "Recruitment" }] : []),
+          ...(can("recruitment", "view")
+            ? [
+                { key: "vacancies", label: "Vacancies" },
+                { key: "recruitment", label: "Recruitment" },
+              ]
+            : []),
           { key: "analytics", label: "Analytics" },
           { key: "settings", label: "Settings" },
           { key: "onboarding", label: "Onboarding" },
@@ -1149,6 +1155,13 @@ export default function HrStaffPage() {
       )}
       {tab === "targets" && <TargetsTab onAdd={() => setTargetOpen(true)} />}
       {tab === "rewards" && <RewardsTab />}
+      {tab === "vacancies" && can("recruitment", "view") && (
+        <VacanciesTab
+          canEdit={can("recruitment", "edit")}
+          canCreate={can("recruitment", "create")}
+          canApprove={can("recruitment", "approve")}
+        />
+      )}
       {tab === "recruitment" && can("recruitment", "view") && (
         <RecruitmentTab
           canEdit={can("recruitment", "edit")}

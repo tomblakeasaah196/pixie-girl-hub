@@ -221,9 +221,15 @@ export const MODULE_TABS: ModuleTab[] = [
     { key: "targets", label: "Targets" },
     { key: "rewards", label: "Rewards" },
     {
+      key: "vacancies",
+      label: "Vacancies",
+      keywords: ["jobs", "openings", "careers", "applicants", "applications", "hiring", "recruit", "positions"],
+      requires: { module: "recruitment", action: "view" },
+    },
+    {
       key: "recruitment",
       label: "Recruitment",
-      keywords: ["hiring", "candidates", "jobs"],
+      keywords: ["hiring", "candidates", "jobs", "offers", "onboarding"],
       requires: { module: "recruitment", action: "view" },
     },
     { key: "analytics", label: "Analytics" },

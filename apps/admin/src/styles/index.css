@@ -798,3 +798,20 @@ body.session-locked #root {
 .pgh-mail-editor .pgh-token-pill.ProseMirror-selectednode {
   outline: 2px solid rgb(var(--accent-glow));
 }
+
+/* Vacancy JD/requirements preview (mini-markdown render in the Studio) */
+.vacancy-prose h2 { font-size: 1.05rem; font-weight: 600; margin: 0.75rem 0 0.35rem; }
+.vacancy-prose h3 { font-size: 0.95rem; font-weight: 600; margin: 0.65rem 0 0.3rem; }
+.vacancy-prose h4 { font-size: 0.9rem; font-weight: 600; margin: 0.55rem 0 0.25rem; }
+.vacancy-prose h2:first-child, .vacancy-prose h3:first-child { margin-top: 0; }
+.vacancy-prose p { margin: 0.4rem 0; line-height: 1.55; }
+.vacancy-prose ul { margin: 0.35rem 0; padding-left: 1.15rem; list-style: disc; }
+.vacancy-prose li { margin: 0.15rem 0; line-height: 1.5; }
+.vacancy-prose strong { font-weight: 600; }
+.vacancy-prose code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.85em;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: rgb(var(--text-primary) / 0.07);
+}

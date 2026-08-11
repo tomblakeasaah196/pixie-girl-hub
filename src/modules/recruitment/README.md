@@ -38,6 +38,26 @@ live in `recruitment.routes.js` under the same `/api/v1/recruitment` mount.
 AI scoring is **Gemini-only** (it must read CV *images*, which DeepSeek can't),
 with a deterministic heuristic fallback so a vacancy is never un-scorable.
 
+## Public Careers page (no login)
+
+`recruitment.careers.{service,controller,validator,public.routes}.js`, mounted
+at `/api/public/careers` behind `hostBrandResolverMiddleware` (brand from the
+storefront host):
+
+- `GET  /careers` — published vacancies for the brand
+- `GET  /careers/:slug` — one vacancy (JD/requirements rendered to safe HTML via
+  the shared `recruitment.render.markdownToHtml`)
+- `POST /careers/:slug/apply` — no-login application (multipart: CV + optional
+  headshot + up to 3 work images + cover-letter file). Rate-limited
+  (`publicWriteLimiter`), honeypot-guarded, and optionally Cloudflare-Turnstile
+  verified (only when `TURNSTILE_SECRET_KEY` is set — otherwise skipped). A
+  re-application by the same email UPDATES the existing row. On submit it fires
+  a provisional AI score (fire-and-forget) and a branded "application received"
+  email.
+
+The storefront renders this at `/careers` + `/careers/:slug` (`apps/storefront`),
+linked from the site footer.
+
 ## Flow
 
 ```

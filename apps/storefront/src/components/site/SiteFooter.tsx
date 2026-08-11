@@ -24,6 +24,7 @@ const FALLBACK_COLUMNS: FooterColumn[] = [
       { label: "Our Story", url: "/about" },
       { label: "Journal", url: "/journal" },
       { label: "Services", url: "/services" },
+      { label: "Careers", url: "/careers" },
     ],
   },
   {

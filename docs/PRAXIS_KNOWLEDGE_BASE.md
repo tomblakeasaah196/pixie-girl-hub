@@ -1005,6 +1005,12 @@ disciplinary queries, targets, rewards, recruitment, and HR analytics.
   the whole thing — job description, requirements, work model and a salary band —
   which you review and **Publish** to the public Careers page. The vacancy stays
   open for multiple hires until you close it.
+- *Where do candidates see & apply for jobs?* On the brand's public **Careers**
+  page — `/careers` lists every published role and `/careers/<slug>` is a single
+  role with the no-login application form (CV + optional headshot + up to 3 work
+  images + links). It's linked from the storefront footer ("Careers"). Brand is
+  by domain (Faitlyn's site shows Faitlyn roles). Applications land in HR →
+  **Vacancies** → the vacancy → **Applicants**.
 - *See who applied / track candidates?* HR → **Vacancies** → open a vacancy →
   **Applicants**. Each applicant carries an **AI match score**, a pipeline stage
   (New → Screening → Shortlisted → Interviewed → Offered/Rejected), star ratings

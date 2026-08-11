@@ -121,6 +121,10 @@ const {
   publicRouter: recruitmentPublicRouter,
 } = require("../modules/recruitment/recruitment.routes");
 
+// Careers (public, host-resolved brand): the storefront Careers page + no-login
+// job application form. Feeds the same HR & Staff → Vacancies pipeline.
+const careersPublicRouter = require("../modules/recruitment/recruitment.careers.public.routes");
+
 // Customer onboarding (Online QR welcome form)
 const {
   adminRouter: onboardingAdminRouter,
@@ -315,6 +319,10 @@ function mountRoutes(app) {
   // Candidate offer packet — the emailed link opens this (no auth). GET reads the
   // JD + offer letter; POST /:token/sign captures the e-signature.
   publicRouter.use("/offer", publicWriteLimiter, recruitmentPublicRouter);
+  // Public Careers page + no-login job application form. Brand comes from the
+  // host (the storefront domain); the apply route is write-limited + captcha/
+  // honeypot guarded in the service.
+  publicRouter.use("/careers", hostBrandResolverMiddleware, careersPublicRouter);
   // Customer Onboarding form — public, token-protected. The token
   // itself is sufficient auth; the per-IP write limiter blunts abuse.
   publicRouter.use("/onboarding", publicWriteLimiter, onboardingPublicRouter);

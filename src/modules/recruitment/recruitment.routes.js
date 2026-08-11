@@ -14,6 +14,8 @@
 const express = require("express");
 const controller = require("./recruitment.controller");
 const validate = require("./recruitment.validator");
+const vacancyController = require("./recruitment.vacancy.controller");
+const vacancyValidate = require("./recruitment.vacancy.validator");
 const { requirePermission } = require("../../middleware/rbac");
 
 // Side-effect: register the sign→contract listener.
@@ -47,6 +49,38 @@ adminRouter.patch("/offers/:id", P("edit"), validate.validateEdit, controller.ed
 adminRouter.post("/offers/:id/regenerate", P("edit"), validate.validateRegenerate, controller.regenerate);
 adminRouter.post("/offers/:id/send", P("approve"), validate.validateApprove, controller.approve);
 adminRouter.post("/offers/:id/provision", P("approve"), validate.validateProvision, controller.provision);
+
+// ── Vacancies (vacancy-first hiring) ───────────────────────
+// Pickers for the create wizard (departments, positions, permission roles).
+adminRouter.get("/vacancy-options", P("view"), vacancyController.options);
+// Conversational intake — AI gap-filling follow-ups (hybrid scripted + AI).
+adminRouter.post("/vacancies/intake/followups", P("create"), vacancyValidate.validateFollowups, vacancyController.followups);
+
+adminRouter.get("/vacancies", P("view"), vacancyController.list);
+adminRouter.post("/vacancies", P("create"), vacancyValidate.validateCreate, vacancyController.create);
+adminRouter.get("/vacancies/:id", P("view"), vacancyController.get);
+adminRouter.patch("/vacancies/:id", P("edit"), vacancyValidate.validateUpdate, vacancyController.update);
+adminRouter.post("/vacancies/:id/status", P("approve"), vacancyValidate.validateStatus, vacancyController.setStatus);
+adminRouter.delete("/vacancies/:id", P("edit"), vacancyController.remove);
+
+// Screening questions (the AI rubric — internal only).
+adminRouter.post("/vacancies/:id/questions/generate", P("edit"), vacancyController.generateQuestions);
+adminRouter.get("/vacancies/:id/questions", P("view"), vacancyController.listQuestions);
+adminRouter.put("/vacancies/:id/questions", P("edit"), vacancyValidate.validateAnswers, vacancyController.answerQuestions);
+
+// Applications + pipeline.
+adminRouter.get("/vacancies/:id/applications", P("view"), vacancyController.listApplications);
+adminRouter.post("/vacancies/:id/applications", P("create"), vacancyValidate.validateApplication, vacancyController.addApplication);
+adminRouter.post("/vacancies/:id/score-all", P("edit"), vacancyController.scoreAll);
+
+adminRouter.get("/applications/:appId", P("view"), vacancyController.getApplication);
+adminRouter.post("/applications/:appId/stage", P("edit"), vacancyValidate.validateStage, vacancyController.updateStage);
+adminRouter.post("/applications/:appId/notes", P("edit"), vacancyValidate.validateNote, vacancyController.addNote);
+adminRouter.put("/applications/:appId/rating", P("edit"), vacancyValidate.validateRating, vacancyController.setRating);
+adminRouter.post("/applications/:appId/score", P("edit"), vacancyController.scoreApplication);
+adminRouter.post("/applications/:appId/offer", P("approve"), vacancyController.moveToOffered);
+// Stream a stored file (CV / headshot / cover letter / work image) to the admin.
+adminRouter.get("/applications/:appId/file/:kind", P("view"), vacancyController.downloadFile);
 
 // ── Public (no auth) ───────────────────────────────────────
 const publicRouter = express.Router();

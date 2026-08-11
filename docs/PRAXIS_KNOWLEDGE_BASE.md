@@ -974,8 +974,9 @@ disciplinary queries, targets, rewards, recruitment, and HR analytics.
 **Where.** People → **HR & Staff** · `/hr`
 **Who can see it.** `hr_payroll` permission (Recruitment tab needs `recruitment`).
 **What's inside (tabs).** **Overview** · **Directory** · **Leave** · **Attendance**
-· **Devices** · **Queries** · **Targets** · **Rewards** · **Recruitment** ·
-**Analytics** · **Settings** · **Onboarding**.
+· **Devices** · **Queries** · **Targets** · **Rewards** · **Vacancies** ·
+**Recruitment** · **Analytics** · **Settings** · **Onboarding**.
+(**Vacancies** and **Recruitment** both need the `recruitment` permission.)
 **Common tasks.**
 - *Open an employee's file?* HR → **Directory**, click a person →
   `/hr/employees/<profileId>`.
@@ -999,6 +1000,22 @@ disciplinary queries, targets, rewards, recruitment, and HR analytics.
   set on their **Schedule** (falls back to the brand default closing time in
   **Settings → Payroll**).
 - *Raise a staff query?* HR → **Queries**.
+- *Post a job vacancy / advertise a role?* HR → **Vacancies** tab → **New
+  vacancy**. Answer a few quick questions (type **or speak** them) and AI drafts
+  the whole thing — job description, requirements, work model and a salary band —
+  which you review and **Publish** to the public Careers page. The vacancy stays
+  open for multiple hires until you close it.
+- *See who applied / track candidates?* HR → **Vacancies** → open a vacancy →
+  **Applicants**. Each applicant carries an **AI match score**, a pipeline stage
+  (New → Screening → Shortlisted → Interviewed → Offered/Rejected), star ratings
+  and internal notes. Open one to read the CV, work-sample images and links.
+- *Let AI shortlist the best candidates?* Open a vacancy → **AI Screening** →
+  **Generate questions** (5 role-specific strategic questions), answer them to
+  define your ideal candidate, then **Re-score all applicants** — the AI ranks
+  everyone against your answers. Candidates never see these questions.
+- *Make an offer to a winning applicant?* Open the applicant → **Move to
+  Offered**. This creates a pre-filled offer and jumps to the **Recruitment**
+  tab, where you edit and send it.
 - *Hire someone (JD → offer → e-sign → onboarding)?* HR → **Recruitment** tab.
   Candidates get a public offer link (`/offer/<token>`). On that page the
   candidate can **download the offer as a branded PDF at any time — before or
@@ -1696,6 +1713,8 @@ Use this as the fast lookup. Format: **task → module (group) → link**.
 - Start an appraisal → Performance (People) → `/performance` (Cycles → New cycle)
 - See Sales Exec of the Month / who closed the most sales → Performance → `/performance` (Insights)
 - See the attendance report (present/late/absent, on-time %) → Performance → `/performance` (Insights)
+- Post a job vacancy / advertise a role (AI-drafted, voice intake) → HR → `/hr` (Vacancies)
+- Track applicants / AI-shortlist candidates → HR → `/hr` (Vacancies → open a vacancy → Applicants / AI Screening)
 - Hire someone (JD → offer → e-sign) → HR → `/hr` (Recruitment)
 
 **Growth & AI**

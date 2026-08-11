@@ -1,12 +1,42 @@
 # Recruitment module
 
-Hiring, end to end — surfaced in the admin as **HR & Staff → Recruitment**.
+Hiring, end to end. Two surfaces, one permission module (`recruitment`):
 
-AI drafts a Job Description + Offer Letter, an admin edits them in the Offer
-Studio, the candidate signs a no-login offer packet, and the employment
-contract is generated on signature. A login is **not** created automatically —
-an admin later provisions it and the one-time password is emailed straight to
-the new hire.
+- **HR & Staff → Vacancies** (vacancy-first) — post a role, AI drafts the whole
+  vacancy from a conversational intake, publish it to the public Careers page,
+  and track applicants through a pipeline with an AI match score + the
+  5-question rubric. See `recruitment.vacancy.*` and the "Vacancy flow" below.
+- **HR & Staff → Recruitment** (offer-first) — AI drafts a Job Description +
+  Offer Letter, an admin edits them in the Offer Studio, the candidate signs a
+  no-login offer packet, and the employment contract is generated on signature.
+  A login is **not** created automatically — an admin later provisions it and
+  the one-time password is emailed straight to the new hire.
+
+A **Vacancies** applicant moved to "Offered" spawns a `recruitment_offer`
+pre-filled from the vacancy + application, and the Offer Studio takes over — so
+the two surfaces are one continuous funnel.
+
+## Vacancy flow (000377_shared_job_vacancies)
+
+```
+New vacancy → conversational intake (scripted spine + AI follow-ups, voice via
+  Groq Whisper) → recruitment.vacancy.ai.draftVacancy (Gemini → DeepSeek →
+  template) writes JD + requirements + work model + salary band
+   → review & Publish                              POST /vacancies, /vacancies/:id/status
+   → public Careers page + application form (PR 2)  POST /api/public/careers/... (follow-up PR)
+   → applicants tracked                             GET  /vacancies/:id/applications
+        · AI match score (Gemini vision: CV image/pdf + work images vs JD+rubric)
+        · per-user star ratings, internal notes, pipeline stages
+   → 5 strategic questions (the rubric)             POST /vacancies/:id/questions/generate
+        · hiring manager answers → re-score all      PUT  /vacancies/:id/questions
+   → Move to Offered                                POST /applications/:appId/offer
+        · spawns a recruitment_offer → Offer Studio
+```
+
+Files: `recruitment.vacancy.{repo,ai,service,controller,validator}.js`; routes
+live in `recruitment.routes.js` under the same `/api/v1/recruitment` mount.
+AI scoring is **Gemini-only** (it must read CV *images*, which DeepSeek can't),
+with a deterministic heuristic fallback so a vacancy is never un-scorable.
 
 ## Flow
 

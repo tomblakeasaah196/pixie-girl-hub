@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "motion/react";
 import { MapPin, ArrowUpRight, Briefcase } from "lucide-react";
@@ -17,6 +17,12 @@ export const Route = createFileRoute("/careers")({
 });
 
 function Careers() {
+  // `/careers/$slug` nests under this route, so on any child path we must render
+  // the child via <Outlet/> instead of the listing (mirrors shop.tsx). Without
+  // this, the detail page + application form never mount.
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  if (pathname !== "/careers" && pathname !== "/careers/") return <Outlet />;
+
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["careers", "list"],
     queryFn: () => listVacancies(),

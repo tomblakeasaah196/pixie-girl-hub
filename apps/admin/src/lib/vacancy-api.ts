@@ -52,6 +52,9 @@ export interface Vacancy {
   published_at: string | null;
   closed_at: string | null;
   created_at: string;
+  /** Absolute public Careers-page URL on the brand's storefront (GET one only,
+   *  null when unpublished or no storefront domain is configured). */
+  public_careers_url?: string | null;
   /** On the list endpoint only. */
   application_count?: number;
   new_count?: number;

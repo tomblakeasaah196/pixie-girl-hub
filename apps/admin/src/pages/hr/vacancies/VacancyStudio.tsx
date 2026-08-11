@@ -144,7 +144,9 @@ function StatusControls({
     onError: (e) => notify("Couldn't delete", errMsg(e), "high"),
   });
 
-  const careersUrl = vacancy.slug ? `/careers/${vacancy.slug}` : null;
+  // Absolute storefront URL resolved by the API (the Careers page lives on the
+  // brand's storefront, NOT the admin host — a relative link would 404 here).
+  const careersUrl = vacancy.public_careers_url || null;
 
   return (
     <div className="flex flex-wrap items-center gap-2">

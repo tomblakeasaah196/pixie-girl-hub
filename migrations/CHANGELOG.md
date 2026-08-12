@@ -11,6 +11,27 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-08-11 — Interview scorecard (rate candidates against the 5 questions)
+
+**Source:** Owner directive — the 5 AI screening questions "were questions
+asked to the employer… keep these questions which can help during interview,
+but we should just have stars to rate them instead of providing a response."
+
+**Files:** `000378_shared_interview_scorecard.sql` (new, shared).
+
+Reframes the screening questions from an employer-written rubric into an
+interview scorecard: interviewers rate each candidate against each question
+with 1–5 stars, and the candidate's overall rating rolls up from the average.
+The AI match score no longer depends on any typed answers — it reads the CV
+against the JD automatically.
+
+- `job_application_question_ratings` — one row per (application, question,
+  rater): `stars` (1–5) + optional `note`. `UNIQUE (application_id,
+  question_id, rater_id)`.
+
+The `answer`/`weight`/`answered_by` columns on `vacancy_screening_questions`
+(from 000377) are left in place but no longer used by the UI.
+
 ## 2026-08-11 — Vacancy-first hiring + public applications + applicant tracking
 
 **Source:** Owner directive — "post a job offer instead… just the job

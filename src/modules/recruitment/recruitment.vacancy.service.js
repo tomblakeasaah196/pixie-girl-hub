@@ -270,17 +270,54 @@ async function listApplications({ brand, vacancy_id, stage }) {
   return repo.listApplications({ vacancy_id, stage });
 }
 
-/** Full applicant record for the detail view: base + media + notes + ratings + scores. */
+/** Full applicant record for the detail view: base + media + notes + ratings +
+ *  scores + the interview scorecard (the vacancy's questions with per-question
+ *  stars). */
 async function getApplicationDetail({ brand, id, user }) {
   const application = await repo.getApplication({ brand, id });
   if (!application) throw new NotFoundError("Application");
-  const [media, notes, scores, ratings] = await Promise.all([
+  const [media, notes, scores, ratings, scorecard] = await Promise.all([
     repo.listMedia({ application_id: id }),
     repo.listNotes({ application_id: id }),
     repo.listScores({ application_id: id }),
     repo.ratingSummary({ application_id: id, rater_id: user ? user.user_id : null }),
+    repo.applicationScorecard({
+      vacancy_id: application.vacancy_id,
+      application_id: id,
+      rater_id: user ? user.user_id : null,
+    }),
   ]);
-  return { ...application, media, notes, scores, ratings };
+  return { ...application, media, notes, scores, ratings, scorecard };
+}
+
+/**
+ * Rate a candidate on one interview question (1–5 stars, optional note). The
+ * candidate's OVERALL star rating then rolls up to the average of this rater's
+ * per-question stars, so the pipeline card reflects the interview.
+ */
+async function setQuestionRating({ brand, user, id, question_id, stars, note }) {
+  const application = await repo.getApplication({ brand, id });
+  if (!application) throw new NotFoundError("Application");
+  await repo.upsertQuestionRating({
+    application_id: id,
+    question_id,
+    rater_id: user.user_id,
+    stars,
+    note,
+  });
+  const avg = await repo.raterQuestionAverage({ application_id: id, rater_id: user.user_id });
+  if (avg && avg.avg_stars != null) {
+    await repo.upsertRating({
+      application_id: id,
+      rater_id: user.user_id,
+      stars: Math.max(1, Math.min(5, Math.round(avg.avg_stars))),
+    });
+  }
+  const [scorecard, ratings] = await Promise.all([
+    repo.applicationScorecard({ vacancy_id: application.vacancy_id, application_id: id, rater_id: user.user_id }),
+    repo.ratingSummary({ application_id: id, rater_id: user.user_id }),
+  ]);
+  return { scorecard, ratings };
 }
 
 /** Admin hand-adds an applicant (no file uploads) so the board is usable now. */
@@ -404,10 +441,11 @@ async function scoreApplication({ brand, user, request_id, id }) {
   if (!application) throw new NotFoundError("Application");
   const vacancy = await repo.getVacancy({ brand, id: application.vacancy_id });
   if (!vacancy) throw new NotFoundError("Vacancy");
-  const questions = await repo.listQuestions({ vacancy_id: vacancy.vacancy_id });
   const attachments = await loadAttachments(application);
 
-  const result = await ai.scoreApplication({ vacancy, application, questions, attachments });
+  // Scoring reads the CV against the JD — it does not use the screening
+  // questions (those are the interview scorecard now).
+  const result = await ai.scoreApplication({ vacancy, application, attachments });
 
   await repo.insertScore({
     input: {
@@ -600,6 +638,7 @@ module.exports = {
   updateStage,
   addNote,
   setRating,
+  setQuestionRating,
   scoreApplication,
   scoreAllApplicants,
   moveToOffered,

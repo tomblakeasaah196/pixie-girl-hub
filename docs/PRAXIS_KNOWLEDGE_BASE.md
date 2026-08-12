@@ -1015,10 +1015,15 @@ disciplinary queries, targets, rewards, recruitment, and HR analytics.
   **Applicants**. Each applicant carries an **AI match score**, a pipeline stage
   (New → Screening → Shortlisted → Interviewed → Offered/Rejected), star ratings
   and internal notes. Open one to read the CV, work-sample images and links.
-- *Let AI shortlist the best candidates?* Open a vacancy → **AI Screening** →
-  **Generate questions** (5 role-specific strategic questions), answer them to
-  define your ideal candidate, then **Re-score all applicants** — the AI ranks
-  everyone against your answers. Candidates never see these questions.
+- *How does the AI shortlist candidates?* Every applicant gets an **AI match
+  score** automatically — the AI reads their CV against the job description (tap
+  **Score** on an applicant, or **Re-score all with AI** on the vacancy). It does
+  NOT depend on any answers you type.
+- *What are the 5 AI questions for?* Open a vacancy → **AI Screening** →
+  **Generate questions** — 5 role-specific strategic **interview questions**. You
+  don't answer them; instead, on each applicant's **Interview scorecard** you rate
+  the candidate 1–5 stars per question during the interview, and their overall
+  rating is the average. Candidates never see these questions.
 - *Make an offer to a winning applicant?* Open the applicant → **Move to
   Offered**. This creates a pre-filled offer and jumps to the **Recruitment**
   tab, where you edit and send it.

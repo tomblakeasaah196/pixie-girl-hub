@@ -77,6 +77,8 @@ adminRouter.get("/applications/:appId", P("view"), vacancyController.getApplicat
 adminRouter.post("/applications/:appId/stage", P("edit"), vacancyValidate.validateStage, vacancyController.updateStage);
 adminRouter.post("/applications/:appId/notes", P("edit"), vacancyValidate.validateNote, vacancyController.addNote);
 adminRouter.put("/applications/:appId/rating", P("edit"), vacancyValidate.validateRating, vacancyController.setRating);
+// Interview scorecard — rate a candidate on one screening question (1–5 stars).
+adminRouter.put("/applications/:appId/questions/:questionId/rating", P("edit"), vacancyValidate.validateQuestionRating, vacancyController.setQuestionRating);
 adminRouter.post("/applications/:appId/score", P("edit"), vacancyController.scoreApplication);
 adminRouter.post("/applications/:appId/offer", P("approve"), vacancyController.moveToOffered);
 // Stream a stored file (CV / headshot / cover letter / work image) to the admin.

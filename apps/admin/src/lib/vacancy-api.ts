@@ -143,11 +143,25 @@ export interface ApplicationScore {
 }
 export interface RatingSummary { avg_stars: number; rating_count: number; my_stars: number | null }
 
+/** One row of the interview scorecard: a screening question + how this
+ *  candidate was rated against it. */
+export interface ScorecardItem {
+  question_id: string;
+  position: number;
+  question: string;
+  rationale: string | null;
+  avg_stars: number;
+  rating_count: number;
+  my_stars: number | null;
+  my_note: string | null;
+}
+
 export interface ApplicationDetail extends Application {
   media: ApplicationMedia[];
   notes: ApplicationNote[];
   scores: ApplicationScore[];
   ratings: RatingSummary;
+  scorecard: ScorecardItem[];
 }
 
 export interface VacancyOptions {
@@ -222,6 +236,11 @@ export const vacancyApi = {
     api.post<ApplicationNote>(`/recruitment/applications/${appId}/notes`, { body }),
   setRating: (appId: string, stars: number) =>
     api.put<RatingSummary>(`/recruitment/applications/${appId}/rating`, { stars }),
+  setQuestionRating: (appId: string, questionId: string, stars: number, note?: string) =>
+    api.put<{ scorecard: ScorecardItem[]; ratings: RatingSummary }>(
+      `/recruitment/applications/${appId}/questions/${questionId}/rating`,
+      { stars, note },
+    ),
   score: (appId: string) =>
     api.post<Application & { score: ApplicationScore }>(
       `/recruitment/applications/${appId}/score`,

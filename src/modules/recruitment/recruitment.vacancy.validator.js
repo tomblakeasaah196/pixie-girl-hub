@@ -109,6 +109,12 @@ const applicationSchema = z
 const stageSchema = z.object({ stage: z.enum(STAGES) }).strip();
 const noteSchema = z.object({ body: z.string().min(1).max(8000) }).strip();
 const ratingSchema = z.object({ stars: z.coerce.number().int().min(1).max(5) }).strip();
+const questionRatingSchema = z
+  .object({
+    stars: z.coerce.number().int().min(1).max(5),
+    note: z.string().max(2000).optional(),
+  })
+  .strip();
 
 const mk = (schema) => (req, _res, next) => {
   req.body = schema.parse(req.body || {});
@@ -125,4 +131,5 @@ module.exports = {
   validateStage: mk(stageSchema),
   validateNote: mk(noteSchema),
   validateRating: mk(ratingSchema),
+  validateQuestionRating: mk(questionRatingSchema),
 };

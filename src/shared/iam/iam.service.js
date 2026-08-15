@@ -18,6 +18,7 @@ const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { getClient: getRedis } = require("../../config/redis");
 const { encrypt, decrypt } = require("../../services/encryption.service");
+const sessionIdle = require("../hr_payroll/session-idle");
 const {
   AppError,
   NotFoundError,
@@ -130,6 +131,7 @@ async function revokeAllRedisTokens(userId) {
       if (toDel.length) await redis.del(...toDel);
     }
   } while (cursor !== "0");
+  await sessionIdle.killAllForUser(redis, userId);
 }
 
 // ── CSV builder ─────────────────────────────────────────────

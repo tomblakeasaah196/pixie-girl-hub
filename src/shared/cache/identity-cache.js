@@ -202,6 +202,8 @@ const USER_EVENTS = [
   "user_provisioned",
   "user_deactivated",
   "user_reactivated",
+  "user_trashed",
+  "user_purged",
   "password_reset",
   "session_revoked",
 ];

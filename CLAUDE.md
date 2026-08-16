@@ -34,7 +34,7 @@ npm run db:migrate:shared
 npm run db:bootstrap:pixiegirl
 npm run db:bootstrap:faitlynhair
 npm run db:seed
-npm run db:verify                  # confirms 425 tables
+npm run db:verify                  # asserts per-schema table counts (scripts/verify-schema.js)
 npm run db:repair                  # rebuild missing brand tables
 npm run user:create-admin          # create admin user
 ```

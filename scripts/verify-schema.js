@@ -72,8 +72,13 @@ const pool = new Pool({
 //     crown_action_submissions) → 199 + 8 = 207. Merges shared.loyalty_* +
 //     {brand}.streak_star_* into one status-only Crown 👑 currency (legacy
 //     tables left in place, backfilled + frozen, removed in a later cutover).
+//   - Order amendments (template/000093 + 000379_business_order_amendments):
+//     +1 per-brand table (sales_order_amendments) → 203 + 1 = 204. The audit
+//     spine for Change Order — amending an order's items/delivery after it was
+//     placed. Shared is unchanged: 000379 only seeds a timeline_event_codes ROW
+//     and 000380 only seeds outbound_channel_policy rows, no new tables.
 const EXPECTED_SHARED = 207;
-const EXPECTED_PER_BRAND = 203;
+const EXPECTED_PER_BRAND = 204;
 
 async function countTables(schema) {
   const { rows } = await pool.query(

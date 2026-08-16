@@ -1,12 +1,19 @@
 # Database Schema
 
-**438 tables** across 3 schemas:
+Three schemas:
 
 ```
-shared       112 tables   cross-brand reference, identity, contacts, intercompany, audit, AI
-pixiegirl    163 tables   PXG brand data
-faitlynhair  163 tables   FLH brand data
+shared                    cross-brand reference, identity, contacts, intercompany, audit, AI
+pixiegirl                 PXG brand data
+faitlynhair               FLH brand data
 ```
+
+The authoritative table counts live in `scripts/verify-schema.js`
+(`EXPECTED_SHARED` / `EXPECTED_PER_BRAND`) and are asserted by
+`npm run db:verify`. They are kept there rather than in prose because every
+migration that adds a table has to update them in the same PR — a figure
+repeated across several docs simply goes stale, which is what happened to the
+"425 / 438" numbers still quoted elsewhere in this repo.
 
 > Retention engine additions (migration 000246 + template 000066): shared gains
 > `loyalty_earn_rules`, `loyalty_rewards`, `loyalty_reward_redemptions`,
@@ -37,7 +44,7 @@ To apply:
 npm run db:migrate:shared              # 15 shared migrations
 npm run db:bootstrap:pixiegirl         # creates pixiegirl.* (substitutes templates)
 npm run db:bootstrap:faitlynhair       # creates faitlynhair.* (substitutes templates)
-npm run db:verify                      # confirms 112 + 163 + 163 = 438 tables
+npm run db:verify                      # asserts the per-schema table counts
 ```
 
 See `migrations/CHANGELOG.md` for the full evolution history.

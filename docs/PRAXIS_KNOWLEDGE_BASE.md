@@ -343,6 +343,54 @@ chasing deliveries, matching stray in-store terminal payments, and payment setti
   the rider takes it). Only the fulfilment stages are offered — payment and
   cancellation states are handled automatically. Moving to a customer-facing
   stage sends the matching message if it's switched on in **Messaging settings**.
+- *We recorded the WRONG PRODUCT on an order — how do I fix it (she's already
+  paid)?* Open the order → **Change Order** in the top action bar
+  (`/sales/orders/<orderId>`). This is the only place an order's items can be
+  changed, and it works right up until the order is marked **Completed**. It
+  opens the **same catalogue picker as Quick Sale** — Base Product · Styled
+  Product · Bundle · Service, with the head-size/lace/colour chooser for styled
+  wigs — so you swap the wrong item out, add the right one, and adjust
+  quantities or prices in one cart. **Delivery details are on the same screen**,
+  so "swap the wig AND fix her address" is one change and one message to her.
+  Before you save it shows exactly what will happen: the old total → the new
+  total, how much more she owes (or how much is now in credit), and a warning
+  list you have to tick — studio work already under way, a parcel already with
+  the courier, items that will have to be pre-ordered. A short **reason is
+  required**; it goes on the audit trail. Nothing is written until you press
+  **Save changes**.
+- *What actually happens when I change an order?* Everything moves together, in
+  one go: stock (the removed wig goes back on the shelf, the new one comes off
+  — or is recorded as a **pre-order** if it isn't in stock), the **books** (an
+  adjusting journal for the difference, only when the order was already paid),
+  the **invoice** (re-issued with the new items and totals; a paid invoice goes
+  back to *Partially Paid* when the swap costs more), **Stylist Studio**
+  (unstarted jobs for removed items are cancelled; a new styling item opens a
+  new job), **Logistics** (the parcel's contents and address are re-synced
+  while it's still with us), the order **timeline**, and the **customer** —
+  she gets an "Order Updated" message with what changed and a link to pay the
+  difference. Turn that message off with the **Notify the customer** toggle if
+  you're already on the phone with her.
+- *She now owes more after the change — how does she pay it?* Exactly as
+  before: the order goes back into balance and she pays through her normal
+  **Pay Link**, or you **Record Payment** on the order. The "Order Updated"
+  message already carries the link.
+- *The change made the order CHEAPER — where does her money go?* It stays on
+  her account as a credit (it shows on the order as "credit due to the
+  customer"). Refunding it is a Finance decision, not an Orders-screen one —
+  raise it with Accounts.
+- *Can I change an order that's already completed?* No. Once the job is marked
+  **Completed** the Change Order button disappears and the system refuses —
+  raise a new order or a return instead. It's also blocked while a
+  **cancellation is waiting for a decision**: settle that first.
+- *Where do I see what was changed on an order, and by whom?* Open the order →
+  the **Change history** card, directly under Items. Every change is listed
+  with its number ("Change #2"), what moved, the old total → the new total, the
+  reason someone typed, who made it and when, and what it did downstream
+  ("Books adjusted · Invoice FLH-INV-0043 revised · 1 back to stock · Customer
+  notified"). The order also carries a **Changed ×N** badge at the top.
+- *Who can change an order?* Anyone with the `sales` **edit** right — the same
+  people who can cancel an order. (Cancelling is the more destructive act, so
+  repairing an order is deliberately no harder to reach.)
 
 ### 4.3 CRM
 **What it's for.** Customer relationships: your daily follow-ups, the deal
@@ -453,6 +501,13 @@ the layout:**
 - *Add a chemical recipe?* Ops → **Recipes** → **New Chemical Recipe**.
 - *A stylist opened a job that was reassigned to someone else?* The drawer
   shows "reassigned to X → back to my jobs" (no bare 403).
+- *A job was cancelled and nobody in Studio did it?* Someone changed the order
+  it belonged to (Sales → open the order → **Change Order**) and that item is
+  no longer being bought. Jobs that hadn't finished are cancelled automatically;
+  a job that was **already completed** is deliberately left alone — the labour
+  happened and it stays on the stylist's scorecard — it simply detaches from the
+  order, so Ops can reassign the finished unit to stock or to another order. The
+  order's **Change history** card names who made the change and why.
 
 > Note: "Stylist Studio" (in-house jobs) is different from "**Stylists**" (the
 > external partner programme) — see §4.16.
@@ -741,6 +796,13 @@ remake, apology reship) so they don't read as losses in the report.
 - *Track a delivery / see failed attempts?* Logistics → **Active** or **Issues**.
 - *Add a courier/agency?* Logistics → **Agencies**. Set **How we pay them** — invoice (DHL, GIGL) or per drop (Uber and similar).
 - *Set shipping rates by destination?* Logistics → **Shipping Rates**.
+- *The order changed — is the parcel still right?* Yes, as long as the courier
+  hasn't collected it. Changing an order (Sales → open the order → **Change
+  Order**) re-syncs the delivery's contents and address automatically while it
+  is still **Queued** or **Booked**. Once it's **Picked up** or later we leave
+  the parcel alone — the person making the change is warned about that before
+  they save, and the order's **Change history** records that the delivery was
+  not updated.
 
 ### 4.10 Purchasing
 **What it's for.** Buying stock and imports — purchase orders (POs), suppliers,
@@ -883,6 +945,14 @@ refunds, and a live view of who still owes us (accounts receivable ageing).
   list names the staff member who applied it and when, and staff-recorded rows
   also show the bank name and transaction reference. Gateway captures say so
   rather than naming a person.
+- *This invoice's items changed by themselves — why?* Its order was amended
+  (Sales → open the order → **Change Order**). An order-backed invoice is a
+  view of its order, so it is re-issued with the new items and totals in the
+  same instant, and the PDF is re-rendered. If the change made the order more
+  expensive, a **Paid** invoice correctly drops back to **Partially Paid** and
+  starts showing the outstanding balance again. A **voided** or **refunded**
+  invoice is never touched — it's a closed document. The order's **Change
+  history** card explains what happened.
 
 ### 4.15 Accounting
 **What it's for.** The books — the general ledger, journals, chart of accounts,
@@ -898,6 +968,16 @@ Balance, AR/AP Ageing) · **Journals** · **Chart of Accounts** · **Tax Center*
 - *Add / edit a ledger account?* Accounting → **Chart of Accounts**.
 - *Close a period / file tax?* Accounting → **Periods** / **Tax Center**.
 - *Reconcile the bank?* Accounting → **Bank**.
+- *There's a second journal against one sales order — is that a duplicate?* No.
+  A sale posts exactly one **Sales** journal. A second entry described "Order
+  amended (change #N) — <order number>" is an **adjusting** journal posted when
+  someone changed an order that had already been paid: it books only the
+  DIFFERENCE in revenue, shipping and VAT, plus the cost of any item newly sent
+  out. Items that came back to stock reverse their own cost through a stock
+  **return** movement instead, so nothing is double-counted. The money the
+  customer still owes (or is owed) sits in **Customer Deposits 2400** until she
+  pays it or Finance refunds it. Sales → open the order → **Change history**
+  shows who made the change and why.
 
 ### 4.16 Expenses
 **What it's for.** Staff **claims and advances** — reimbursements, company-card

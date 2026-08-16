@@ -468,6 +468,109 @@ async function createDraftFromOrder({ client, brand, order, user_id = null }) {
   return client ? run(client) : transaction(run);
 }
 
+/**
+ * Re-derive an order-backed invoice from its (just-amended) order — the
+ * Invoicing half of Sales → Change Order.
+ *
+ * Runs INSIDE the amendment's transaction, so Sales and Invoicing can never be
+ * seen disagreeing about what the customer bought. Wholesale re-derivation
+ * rather than a patch: an amendment can add, drop, re-price and re-quantify in
+ * one move, and the invoice is only ever a projection of the order's lines.
+ *
+ * Status is set explicitly because the invoice status trigger only fires on
+ * invoice_payments writes. An amendment moves the TOTAL without any payment,
+ * so a 'paid' invoice whose order just got more expensive has to be walked
+ * back to 'partially_paid' by hand — otherwise it would keep reading "Paid"
+ * while carrying a real outstanding balance, and the reminder sweep would
+ * never chase it.
+ *
+ * A void/refunded invoice is left strictly alone: it is a closed document, and
+ * re-deriving it would rewrite history that Accounting has already reversed.
+ * Returns null when there is nothing to resync.
+ */
+async function resyncFromOrder({ client, brand, order, user_id }) {
+  const existing = await repo.findByOrderId({
+    client,
+    brand,
+    order_id: order.order_id,
+  });
+  if (!existing) return null;
+  if (["void", "refunded"].includes(existing.status)) return null;
+
+  await repo.deleteLines({ client, brand, invoice_id: existing.invoice_id });
+  for (const l of order.lines || []) {
+    await repo.insertLine({
+      client,
+      brand,
+      line: {
+        invoice_id: existing.invoice_id,
+        sales_order_line_id: l.line_id,
+        product_id: l.product_id,
+        variant_id: l.variant_id,
+        description:
+          [l.product_name_snapshot, l.variant_label_snapshot]
+            .filter(Boolean)
+            .join(" — ") || l.product_name_snapshot,
+        sku_snapshot: l.sku_snapshot,
+        quantity: l.quantity,
+        unit_price_ngn: l.unit_price_ngn,
+        line_discount_ngn: l.line_discount_ngn,
+        tax_rate: l.tax_rate,
+        tax_amount_ngn: l.tax_amount_ngn,
+        line_total_ngn: l.line_total_ngn,
+        display_order: l.display_order,
+      },
+    });
+  }
+
+  // net_due = total − WHT; the invoice's own paid figure is authoritative (the
+  // trigger maintains it from invoice_payments, which the amendment doesn't
+  // touch).
+  const paid = money(existing.amount_paid_ngn || 0);
+  const netDue = money(order.total_ngn).minus(money(existing.wht_amount_ngn || 0));
+  let status = existing.status;
+  if (paid.gte(netDue) && netDue.gt(0)) status = "paid";
+  else if (paid.gt(0)) status = "partially_paid";
+  else if (["paid", "partially_paid", "overdue"].includes(existing.status))
+    status = "sent";
+
+  const updated = await repo.setInvoiceTotals({
+    client,
+    brand,
+    id: existing.invoice_id,
+    totals: {
+      subtotal_ngn: order.subtotal_ngn,
+      discount_amount_ngn: order.discount_amount_ngn,
+      tax_amount_ngn: order.tax_amount_ngn,
+      shipping_fee_ngn: order.shipping_fee_ngn,
+      total_ngn: order.total_ngn,
+    },
+    status,
+  });
+
+  // Over-applied payment (the amendment made the order CHEAPER than what has
+  // already been received) is left as an invoice credit rather than silently
+  // clawed back: the money is real, it sits in Customer Deposits 2400 on the
+  // GL side, and whether it becomes a refund or a credit toward her next
+  // order is a finance decision, not an Orders-screen one.
+  await A(
+    brand,
+    user_id,
+    "invoicing.invoice.resync_from_amendment",
+    "invoice",
+    existing.invoice_id,
+    {
+      invoice_number: existing.invoice_number,
+      order_id: order.order_id,
+      total_before_ngn: existing.total_ngn,
+      total_after_ngn: order.total_ngn,
+      status,
+    },
+    null,
+  );
+  return updated;
+}
+
 async function createManual({ brand, user, request_id, input }) {
   return transaction(async (client) => {
     let subtotal = money(0),
@@ -1638,6 +1741,7 @@ module.exports = {
   buildInvoiceAccrualLines,
   createFromOrder,
   createDraftFromOrder,
+  resyncFromOrder,
   createManual,
   listInvoices,
   getById,

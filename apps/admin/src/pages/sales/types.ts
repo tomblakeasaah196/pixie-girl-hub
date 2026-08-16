@@ -211,9 +211,220 @@ export interface SalesOrder {
     quantity: number;
     kind: "product" | "styled" | "bundle" | "service" | null;
   }> | null;
+  /** Change Order (§6.2): how many times this order has been amended, and when
+   *  the last one landed. Denormalised onto the order so the register can badge
+   *  an amended row and the detail page knows to render the history card. */
+  amendment_count?: number | null;
+  last_amended_at?: string | null;
+  /** Frozen delivery address the fulfilment reads — the Change Order modal
+   *  seeds its address fields from this. */
+  delivery_address_snapshot?: DeliveryAddress | null;
+  customer_notes?: string | null;
   lines?: OrderLine[];
   payments?: OrderPayment[];
   discounts?: OrderDiscount[];
+}
+
+// ── Change Order (§6.2 amendments) ──────────────────────────
+
+/** The order's frozen delivery address. All fields optional — older orders and
+ *  walk-ins carry partial (or no) snapshots. */
+export interface DeliveryAddress {
+  line1?: string | null;
+  line2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  country?: string | null;
+  country_code?: string | null;
+  zone_code?: string | null;
+  recipient_name?: string | null;
+  recipient_phone?: string | null;
+}
+
+/**
+ * One line in a Change Order payload. `line_id` present = keep this existing
+ * line (possibly at a new quantity or price); absent = add it. The payload is
+ * DECLARATIVE — it is the order's complete new line set, so an existing line
+ * simply left out is the instruction to remove it.
+ */
+export interface AmendmentLineInput {
+  line_id?: string;
+  variant_id?: string;
+  service_offering_id?: string;
+  styled_id?: string;
+  line_kind?: "product" | "styled" | "bundle" | "service";
+  quantity: number;
+  unit_price_ngn?: number;
+  notes?: string;
+  product_name_snapshot?: string;
+  variant_label_snapshot?: string;
+  sku_snapshot?: string;
+}
+
+export type AmendmentReasonCategory =
+  | "wrong_item"
+  | "customer_change"
+  | "price_correction"
+  | "delivery_change"
+  | "stock_substitution"
+  | "other";
+
+export interface AmendmentPreviewInput {
+  lines: AmendmentLineInput[];
+  shipping_fee_ngn?: number;
+  order_type?: FulfilmentType;
+  delivery_address?: DeliveryAddress;
+  customer_notes?: string;
+}
+
+export interface AmendmentInput extends AmendmentPreviewInput {
+  reason: string;
+  reason_category?: AmendmentReasonCategory;
+  acknowledge_warnings?: boolean;
+  /** Default true — the customer hears about the change unless suppressed. */
+  notify_customer?: boolean;
+}
+
+/** A consequence the operator must positively acknowledge before committing.
+ *  Not an error: each one describes a real, permitted effect of amending an
+ *  order this far along. */
+export interface AmendmentWarning {
+  code: string;
+  message: string;
+  details?: unknown;
+}
+
+/** One entry in the change list — what actually moved on the order. */
+export interface AmendmentLineChange {
+  action: "added" | "removed" | "quantity" | "price";
+  line_id?: string;
+  name: string;
+  quantity?: number;
+  unit_price_ngn?: string;
+  from?: number;
+  to?: number;
+}
+
+export interface AmendmentMoney {
+  subtotal_ngn: string;
+  discount_amount_ngn: string;
+  tax_amount_ngn: string;
+  shipping_fee_ngn: string;
+  total_ngn: string;
+}
+
+export interface AmendmentDeliverySnapshot {
+  order_type: string;
+  shipping_fee_ngn: string;
+  address: DeliveryAddress | null;
+}
+
+/** Dry run: everything the change would do, computed without writing. */
+export interface AmendmentPreview {
+  order_id: string;
+  order_number: string;
+  status: OrderStatus;
+  /** The sale journal is already on the books — the change posts a GL delta. */
+  revenue_recognised: boolean;
+  changed: boolean;
+  before: AmendmentMoney;
+  after: AmendmentMoney;
+  /** Positive = the customer owes more; negative = a credit is due. */
+  difference_ngn: string;
+  amount_paid_ngn: string;
+  balance_after_ngn: string;
+  line_changes: AmendmentLineChange[];
+  lines_after: Array<{
+    line_id: string | null;
+    product_name_snapshot: string;
+    variant_label_snapshot: string | null;
+    sku_snapshot: string | null;
+    quantity: number;
+    unit_price_ngn: string;
+    line_discount_ngn: string;
+    tax_amount_ngn: string;
+    line_total_ngn: string;
+    line_kind: string | null;
+  }>;
+  delivery_before: AmendmentDeliverySnapshot;
+  delivery_after: AmendmentDeliverySnapshot;
+  delivery_changed: boolean;
+  warnings: AmendmentWarning[];
+  summary: string;
+}
+
+/** A committed change, as stored and replayed on the order's history card. */
+export interface OrderAmendment {
+  amendment_id: string;
+  order_id: string;
+  amendment_number: number;
+  reason: string;
+  reason_category: AmendmentReasonCategory;
+  subtotal_before_ngn: string;
+  discount_before_ngn: string;
+  tax_before_ngn: string;
+  shipping_before_ngn: string;
+  total_before_ngn: string;
+  subtotal_after_ngn: string;
+  discount_after_ngn: string;
+  tax_after_ngn: string;
+  shipping_after_ngn: string;
+  total_after_ngn: string;
+  difference_ngn: string;
+  amount_paid_ngn: string;
+  balance_after_ngn: string;
+  lines_before: AmendmentPreview["lines_after"];
+  lines_after: AmendmentPreview["lines_after"];
+  line_changes: AmendmentLineChange[];
+  delivery_before: AmendmentDeliverySnapshot | null;
+  delivery_after: AmendmentDeliverySnapshot | null;
+  effects: {
+    warnings?: AmendmentWarning[];
+    stock?: {
+      returned?: Array<{ variant_id: string; quantity: number }>;
+      released?: Array<{ variant_id: string; quantity: number }>;
+      reserved?: Array<{ variant_id: string; quantity: number }>;
+      deducted?: Array<{ variant_id: string; quantity: number }>;
+      preorder?: Array<{ variant_id: string; quantity: number }>;
+      cogs_added_ngn?: string;
+    };
+    gl?: { posted?: boolean; entry_id?: string | null; reason?: string };
+    invoice?: {
+      invoice_id?: string;
+      invoice_number?: string;
+      status?: string;
+      revised?: boolean;
+    };
+    studio?: { cancelled_job_ids?: string[]; left_open_job_ids?: string[] };
+    logistics?: {
+      delivery_id?: string | null;
+      delivery_number?: string;
+      resynced?: boolean;
+      address_updated?: boolean;
+      reason?: string;
+    };
+    status?: { moved_to?: string; settled_by_amendment?: boolean };
+  } | null;
+  order_status_before: string;
+  revenue_recognised: boolean;
+  journal_entry_id: string | null;
+  customer_notified: boolean;
+  amended_by: string | null;
+  amended_by_name: string | null;
+  amended_by_display_name?: string | null;
+  created_at: string;
+}
+
+/** Commit result. `requires_confirmation` mirrors the archive-restore
+ *  contract: a 200 that wrote nothing, carrying the warnings to show first. */
+export interface AmendOrderResult {
+  requires_confirmation: boolean;
+  order_number?: string;
+  order?: SalesOrder;
+  amendment?: OrderAmendment;
+  warnings?: AmendmentWarning[];
+  difference_ngn?: string;
+  balance_after_ngn?: string;
 }
 
 export interface QuotationLine {

@@ -48,6 +48,12 @@ const MANIFEST = [
   // deploy re-embeds it (ai:reindex) and it never drifts from the codebase —
   // see README "Praxis knowledge base (keep it seeded)".
   { file: "PRAXIS_KNOWLEDGE_BASE.md", type: "product_description" },
+  // Order amendments ("Change Order"): the repair path for an order recorded
+  // against the wrong product. Staff ask about this in the language of the
+  // mistake ("we sold her the wrong wig, she's already paid"), so Praxis needs
+  // the full mechanism — what moves in stock, the books, the invoice, Studio
+  // and Logistics — not just the button's location.
+  { file: "ORDER_AMENDMENTS.md", type: "product_description" },
 ];
 
 // A hand-written orientation chunk so the model always has the big picture even

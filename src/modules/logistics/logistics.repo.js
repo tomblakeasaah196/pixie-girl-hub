@@ -245,6 +245,79 @@ async function addDeliveryItem({ client, brand, item }) {
   );
   return rows[0];
 }
+/**
+ * The live (non-cancelled) delivery for an order, with the fields the Sales
+ * Change Order reconciler needs to decide whether the parcel can still be
+ * changed — status, courier and the address it was booked to.
+ */
+async function liveDeliveryForOrder({ client, brand, order_id }) {
+  const { rows } = await ex(client)(
+    `SELECT delivery_id, delivery_number, status, courier_id,
+            delivery_address_snapshot, courier_fee_ngn
+       FROM ${t(brand, "deliveries")}
+      WHERE order_id = $1 AND status <> 'cancelled'
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [order_id],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Re-sync a queued delivery's manifest to the order's current lines.
+ *
+ * Wholesale replace rather than a per-item diff: delivery_items is a
+ * derived picklist (source_type='sales_order_line'), never a source of truth,
+ * and it carries no state of its own worth preserving — the caller only ever
+ * calls this while the parcel is still 'queued' or 'booked', i.e. before a
+ * courier has scanned anything.
+ */
+async function replaceDeliveryItems({ client, brand, delivery_id, items }) {
+  await ex(client)(
+    `DELETE FROM ${t(brand, "delivery_items")} WHERE delivery_id = $1`,
+    [delivery_id],
+  );
+  const out = [];
+  let i = 0;
+  for (const item of items || []) {
+    out.push(
+      await addDeliveryItem({
+        client,
+        brand,
+        item: { ...item, delivery_id, display_order: i++ },
+      }),
+    );
+  }
+  return out;
+}
+
+/** Point an un-dispatched delivery at a corrected address. */
+async function setDeliveryAddress({
+  client,
+  brand,
+  delivery_id,
+  address_snapshot,
+  recipient_name,
+  recipient_phone,
+}) {
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "deliveries")}
+        SET delivery_address_snapshot   = COALESCE($2::jsonb, delivery_address_snapshot),
+            recipient_name_snapshot     = COALESCE($3, recipient_name_snapshot),
+            recipient_phone_snapshot    = COALESCE($4, recipient_phone_snapshot),
+            updated_at = now()
+      WHERE delivery_id = $1
+      RETURNING *`,
+    [
+      delivery_id,
+      address_snapshot ? JSON.stringify(address_snapshot) : null,
+      recipient_name || null,
+      recipient_phone || null,
+    ],
+  );
+  return rows[0] || null;
+}
+
 async function getDelivery({ client, brand, id }) {
   const { rows } = await ex(client)(
     `SELECT d.*,
@@ -913,6 +986,9 @@ module.exports = {
   updateCourier,
   createDelivery,
   addDeliveryItem,
+  liveDeliveryForOrder,
+  replaceDeliveryItems,
+  setDeliveryAddress,
   getDelivery,
   getDeliveryByToken,
   getNotificationContext,

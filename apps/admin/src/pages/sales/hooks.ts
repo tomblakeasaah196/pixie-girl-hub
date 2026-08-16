@@ -16,6 +16,8 @@ import type {
   QuotationAcceptInput,
   CancellationRequestInput,
   FlexiPaySettingsPatch,
+  AmendmentInput,
+  AmendmentPreviewInput,
 } from "./types";
 
 function useBiz() {
@@ -134,6 +136,55 @@ export function useRestoreOrder() {
       qc.invalidateQueries({ queryKey: ["sales-orders", biz] });
       qc.invalidateQueries({ queryKey: ["sales-orders", biz, "detail", id] });
       qc.invalidateQueries({ queryKey: ["sales-kpis", biz] });
+    },
+  });
+}
+
+// ── Change Order (§6.2 amendments) ──────────────────────────
+
+/** Every change made to this order, newest first — the history card. */
+export function useOrderAmendments(orderId: string | null) {
+  const biz = useBiz();
+  return useQuery({
+    queryKey: ["sales-orders", biz, "amendments", orderId],
+    queryFn: async () => {
+      const res = await salesApi.listAmendments(orderId!);
+      return res.data ?? [];
+    },
+    enabled: !!orderId,
+  });
+}
+
+/** Dry run. A mutation rather than a query: the modal drives it explicitly as
+ *  the operator edits, and it must never be cached or refetched behind them. */
+export function usePreviewAmendment(orderId: string | null) {
+  return useMutation({
+    mutationFn: (input: AmendmentPreviewInput) =>
+      salesApi.previewAmendment(orderId!, input),
+  });
+}
+
+/**
+ * Commit the change. An amendment reaches into stock, the GL, the invoice,
+ * Stylist Studio and Logistics in one transaction, so the invalidation sweep
+ * has to be just as wide — anything narrower leaves one of those screens
+ * showing the pre-change order.
+ */
+export function useAmendOrder(orderId: string | null) {
+  const qc = useQueryClient();
+  const biz = useBiz();
+  return useMutation({
+    mutationFn: (input: AmendmentInput) => salesApi.amendOrder(orderId!, input),
+    onSuccess: (data) => {
+      // The dry run wrote nothing — don't churn the caches for it.
+      if (data.requires_confirmation) return;
+      qc.invalidateQueries({ queryKey: ["sales-orders", biz] });
+      qc.invalidateQueries({ queryKey: ["sales-kpis", biz] });
+      qc.invalidateQueries({ queryKey: ["invoices", biz] });
+      qc.invalidateQueries({ queryKey: ["ar-ageing", biz] });
+      qc.invalidateQueries({ queryKey: ["service-jobs", biz] });
+      qc.invalidateQueries({ queryKey: ["deliveries", biz] });
+      qc.invalidateQueries({ queryKey: ["stock", biz] });
     },
   });
 }

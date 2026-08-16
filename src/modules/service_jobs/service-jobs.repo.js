@@ -834,6 +834,28 @@ async function countJobsForLine({ client, brand, line_id }) {
   );
   return rows[0] ? rows[0].n : 0;
 }
+/**
+ * Every job opened against these order lines — used by the Sales Change Order
+ * reconciler, which must decide what happens to the styling work when its line
+ * is removed from the order.
+ *
+ * Called BEFORE the lines are deleted: sales_order_line_id is ON DELETE SET
+ * NULL, so once the line goes the link is gone and the jobs become
+ * unattributable.
+ */
+async function jobsForLines({ client, brand, line_ids }) {
+  const ids = (line_ids || []).filter(Boolean);
+  if (!ids.length) return [];
+  const { rows } = await ex(client)(
+    `SELECT job_id, job_number, status, sales_order_line_id,
+            assigned_staff_user_id, started_at, completed_at
+       FROM ${t(brand, "service_jobs")}
+      WHERE sales_order_line_id = ANY($1::uuid[])
+      ORDER BY created_at`,
+    [ids],
+  );
+  return rows;
+}
 
 // ── time sessions ──────────────────────────────────────────
 async function getOpenTimeSession({ client, brand, job_id }) {
@@ -1374,6 +1396,7 @@ module.exports = {
   firstStudioLine,
   allStudioLines,
   countJobsForLine,
+  jobsForLines,
   getOpenTimeSession,
   getUsersOpenSession,
   openTimeSession,

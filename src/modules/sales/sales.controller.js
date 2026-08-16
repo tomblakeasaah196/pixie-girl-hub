@@ -5,6 +5,7 @@
 "use strict";
 
 const service = require("./sales.service");
+const amendmentService = require("./amendment.service");
 const paymentLink = require("./payment-link.service");
 const paymentSettings = require("./payment-settings.service");
 const { parsePagination } = require("../../utils/pagination");
@@ -132,6 +133,38 @@ const restoreOrder = async (req, res) =>
       confirm: req.body.confirm === true,
     }),
   });
+// ── Change Order (§6.2 amendments) ──────────────────────────
+// Preview writes nothing: the modal calls it as the operator edits the cart so
+// the difference on screen is computed by the same code the commit will run.
+const previewAmendment = async (req, res) =>
+  res.json({
+    data: await amendmentService.previewAmendment({
+      brand: req.brand,
+      id: req.params.id,
+      input: req.body,
+    }),
+  });
+// Two-phase, same contract as the archive restore: without
+// `acknowledge_warnings` a consequential change answers 200 with
+// { requires_confirmation: true, warnings } instead of writing. That is a
+// legitimate result, not a failure — genuine refusals (completed order,
+// pending cancellation, unknown variant) still throw and surface as 409.
+const amendOrder = async (req, res) =>
+  res.json({
+    data: await amendmentService.amendOrder({
+      ...base(req),
+      id: req.params.id,
+      input: req.body,
+    }),
+  });
+const listAmendments = async (req, res) => {
+  const rows = await amendmentService.listAmendments({
+    brand: req.brand,
+    id: req.params.id,
+  });
+  res.json({ data: rows, meta: { count: rows.length } });
+};
+
 const setOrderStatus = async (req, res) =>
   res.json({
     data: await service.setOrderStatus({
@@ -311,6 +344,9 @@ module.exports = {
   addPayment,
   cancelOrder,
   restoreOrder,
+  previewAmendment,
+  amendOrder,
+  listAmendments,
   createPaymentLink,
   setDeliveryFee,
   getPaymentSettings,

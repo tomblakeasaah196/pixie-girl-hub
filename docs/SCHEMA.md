@@ -1,12 +1,19 @@
 # Database Schema
 
-**438 tables** across 3 schemas:
+Three schemas:
 
 ```
-shared       112 tables   cross-brand reference, identity, contacts, intercompany, audit, AI
-pixiegirl    163 tables   PXG brand data
-faitlynhair  163 tables   FLH brand data
+shared                    cross-brand reference, identity, contacts, intercompany, audit, AI
+pixiegirl                 PXG brand data
+faitlynhair               FLH brand data
 ```
+
+The authoritative table counts live in `scripts/verify-schema.js`
+(`EXPECTED_SHARED` / `EXPECTED_PER_BRAND`) and are asserted by
+`npm run db:verify`. They are kept there rather than in prose because every
+migration that adds a table has to update them in the same PR — a figure
+repeated across several docs simply goes stale, which is what happened to the
+"425 / 438" numbers still quoted elsewhere in this repo.
 
 > Retention engine additions (migration 000246 + template 000066): shared gains
 > `loyalty_earn_rules`, `loyalty_rewards`, `loyalty_reward_redemptions`,
@@ -37,7 +44,7 @@ To apply:
 npm run db:migrate:shared              # 15 shared migrations
 npm run db:bootstrap:pixiegirl         # creates pixiegirl.* (substitutes templates)
 npm run db:bootstrap:faitlynhair       # creates faitlynhair.* (substitutes templates)
-npm run db:verify                      # confirms 112 + 163 + 163 = 438 tables
+npm run db:verify                      # asserts the per-schema table counts
 ```
 
 See `migrations/CHANGELOG.md` for the full evolution history.
@@ -102,6 +109,28 @@ to goals without moving.
 
 RAG memory reuses `shared.ai_embeddings` + `shared.ai_knowledge_chunks` — no new
 embedding table. See `docs/AI_CHIEF_OF_STAFF.md`.
+
+## Order amendments (per-brand, template/000093 + migration 000379)
+
+`<brand>.sales_order_amendments` is the audit spine for **Change Order** — amending
+an order's items, quantities, prices or delivery details after it was placed (and
+possibly paid). One row per change, holding the full before/after of the money and
+the lines, a normalised `line_changes` list, the delivery snapshots, and an
+`effects` JSONB recording exactly which downstream effects were applied (stock
+movements, GL delta journal, invoice revision, Studio jobs cancelled, delivery
+re-synced, customer message sent).
+
+Lines are snapshotted as JSONB rather than kept as rows: an amendment **replaces**
+`sales_order_lines` (removed lines are deleted so invoices, picklists, Studio and
+Logistics all read the truth), so the only durable record of what the order used to
+be lives here. Everything that references a line does so `ON DELETE SET NULL`, except
+`sales_order_discounts.applied_to_line_id`, which CASCADEs — a per-line campaign
+discount correctly dies with its line.
+
+`sales_orders` also carries `amendment_count` + `last_amended_at`, denormalised so
+the Orders register can badge a changed order without a join.
+
+See `ORDER_AMENDMENTS.md` for the full mechanism.
 
 ## Audit log
 

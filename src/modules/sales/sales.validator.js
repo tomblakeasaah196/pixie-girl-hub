@@ -271,6 +271,92 @@ const orderRestore = z.object({
   confirm: z.boolean().optional(),
 });
 
+// ── Change Order (§6.2 amendments) ──────────────────────────
+// A line here is the same shape as an order line, plus `line_id`: present =
+// "keep this existing line (possibly re-quantified)", absent = "this is new".
+// The payload is DECLARATIVE — it is the order's complete new line set, so an
+// existing line simply left out is the instruction to remove it. That is what
+// lets the Change Order modal work like the Quick Sale cart.
+const amendLine = z
+  .object({
+    // Present = an existing line the operator kept; absent = a new line.
+    line_id: z.string().uuid().optional(),
+    variant_id: z.string().uuid().optional(),
+    quantity: z.coerce.number().int().positive(),
+    unit_price_ngn: money.optional(),
+    notes: z.string().max(500).optional(),
+    line_kind: z.enum(["product", "styled", "bundle", "service"]).optional(),
+    service_offering_id: z.string().uuid().optional(),
+    styled_id: z.string().uuid().optional(),
+    product_name_snapshot: z.string().max(300).optional(),
+    variant_label_snapshot: z.string().max(300).optional(),
+    sku_snapshot: z.string().max(120).optional(),
+  })
+  .strict()
+  .refine((v) => !!v.line_id || !!v.variant_id || !!v.service_offering_id, {
+    message:
+      "each line needs a line_id (keeping an existing line) or a variant_id / service_offering_id (adding a new one)",
+  });
+
+const deliveryAddressPatch = z
+  .object({
+    line1: z.string().max(300).optional(),
+    line2: z.string().max(300).optional().nullable(),
+    city: z.string().max(120).optional(),
+    state: z.string().max(120).optional(),
+    country: z.string().max(120).optional(),
+    country_code: z.string().max(4).optional(),
+    zone_code: z.string().max(40).optional(),
+    recipient_name: z.string().max(200).optional(),
+    recipient_phone: z.string().max(40).optional(),
+  })
+  .strict();
+
+const orderAmend = z
+  .object({
+    lines: z.array(amendLine).min(1),
+    shipping_fee_ngn: money.optional(),
+    order_type: z
+      .enum(["walk_in", "dispatch", "digital", "collection"])
+      .optional(),
+    delivery_address: deliveryAddressPatch.optional(),
+    customer_notes: z.string().max(2000).optional(),
+    // Mandatory on commit: an amendment moves money on an order the customer
+    // has already paid, so "why" has to be answerable months later. The
+    // preview doesn't need it (nothing is written), hence the separate schema.
+    reason: z.string().min(3).max(500),
+    reason_category: z
+      .enum([
+        "wrong_item",
+        "customer_change",
+        "price_correction",
+        "delivery_change",
+        "stock_substitution",
+        "other",
+      ])
+      .optional(),
+    // The operator's "yes, I've read the consequences" after the dry run.
+    acknowledge_warnings: z.boolean().optional(),
+    // Default true — the customer is told her order changed unless staff
+    // deliberately suppress it (e.g. they are already on the phone with her).
+    notify_customer: z.boolean().optional(),
+  })
+  .strict();
+
+// Preview is read-only, so the mandatory reason (and the commit-only flags)
+// are dropped rather than making the modal invent a reason on every keystroke.
+const orderAmendPreview = z
+  .object({
+    lines: z.array(amendLine).min(1),
+    shipping_fee_ngn: money.optional(),
+    order_type: z
+      .enum(["walk_in", "dispatch", "digital", "collection"])
+      .optional(),
+    delivery_address: deliveryAddressPatch.optional(),
+    customer_notes: z.string().max(2000).optional(),
+  })
+  .strict();
+
 const mw = (s) => (req, _res, next) => {
   req.body = s.parse(req.body ?? {});
   next();
@@ -297,8 +383,12 @@ module.exports = {
   validateSetDeliveryFee: mw(setDeliveryFee),
   validateOrderStatusSet: mw(orderStatusSet),
   validateOrderRestore: mw(orderRestore),
+  validateOrderAmend: mw(orderAmend),
+  validateOrderAmendPreview: mw(orderAmendPreview),
   validateReportExport: mwQuery(reportExport),
   orderCreate,
   orderUpdate,
   paymentCreate,
+  orderAmend,
+  orderAmendPreview,
 };

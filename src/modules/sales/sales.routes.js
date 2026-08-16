@@ -75,6 +75,29 @@ router.post(
   v.validateOrderRestore,
   c.restoreOrder,
 );
+// Change Order (§6.2 amendments) — swap the products on an order that was
+// already placed (and possibly paid), correct its quantities, its prices or
+// its delivery details, and reconcile stock, the GL, the invoice, Stylist
+// Studio and Logistics in one transaction. See docs/ORDER_AMENDMENTS.md.
+//
+// Gated at sales.edit, the same tier as Cancel: cancelling an order is the
+// strictly more destructive act, so a repair must not be harder to reach than
+// a write-off. The service refuses outright once the order is completed,
+// cancelled, refunded or has a cancellation pending review.
+router.get("/orders/:id/amendments", can("view"), c.listAmendments);
+router.post(
+  "/orders/:id/amendment/preview",
+  can("edit"),
+  v.validateOrderAmendPreview,
+  c.previewAmendment,
+);
+router.post(
+  "/orders/:id/amendment",
+  can("edit"),
+  v.validateOrderAmend,
+  c.amendOrder,
+);
+
 router.post(
   "/orders/:id/status",
   can("edit"),

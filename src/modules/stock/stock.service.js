@@ -450,6 +450,66 @@ async function deductForSale({
 }
 
 /**
+ * Put units back on the shelf that a sale already took — the exact inverse of
+ * deductForSale, booked as a 'return' movement against the same sales order.
+ *
+ * Unlike 'sale' (excluded from MOVEMENT_GL because the order.paid journal owns
+ * its COGS), 'return' IS in the map: applyMovement posts DR Inventory FG /
+ * CR COGS at the movement's cost, so relieving the goods reverses cleanly on
+ * the books without the caller having to hand-write a journal.
+ *
+ * Never releases more than the order actually took: the caller reads
+ * repo.netSoldForOrder first and passes that ceiling. A line that was recorded
+ * as a pre-order was never deducted, so it correctly returns nothing.
+ */
+async function returnFromSale({
+  client,
+  brand,
+  variant_id,
+  location_id,
+  quantity,
+  reference_id,
+  unit_cost_ngn,
+  user_id,
+  reason,
+}) {
+  const qty = Math.abs(quantity);
+  if (qty <= 0) return null;
+  const m = await applyMovement({
+    client,
+    brand,
+    user_id,
+    input: {
+      variant_id,
+      location_id,
+      quantity: qty,
+      movement_type: "return",
+      reference_type: "sales_order",
+      reference_id,
+      unit_cost_ngn,
+      notes: reason || null,
+    },
+  });
+  events.emit("moved", {
+    brand,
+    variant_id,
+    location_id,
+    movement_type: "return",
+    quantity: qty,
+  });
+  await audit({
+    business: brand,
+    user_id,
+    action_key: "stock.movement.return",
+    target_type: "stock_movement",
+    target_id: m.movement_id,
+    after: { variant_id, quantity: qty, reference_id, reason: reason || null },
+    request_id: null,
+  });
+  return m;
+}
+
+/**
  * Add stock for a goods receipt. Call inside the GRN transaction (pass client).
  * quantity is the POSITIVE units received; recorded as a positive 'receive'
  * movement so the SSOT trigger lifts stock_levels.on_hand.
@@ -1335,6 +1395,7 @@ module.exports = {
   getMovement,
   recordMovement,
   deductForSale,
+  returnFromSale,
   receiveStock,
   reserveForOrder,
   reserveForCart,

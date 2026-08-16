@@ -34,7 +34,7 @@ npm run db:migrate:shared
 npm run db:bootstrap:pixiegirl
 npm run db:bootstrap:faitlynhair
 npm run db:seed
-npm run db:verify                  # confirms 425 tables
+npm run db:verify                  # asserts per-schema table counts (scripts/verify-schema.js)
 npm run db:repair                  # rebuild missing brand tables
 npm run user:create-admin          # create admin user
 ```
@@ -156,6 +156,7 @@ Field/endpoint truth: migration SQL → `docs/openapi.yaml` → `docs/Frontend_E
 - `docs/AI_PRAXIS.md` — Praxis AI agent, RAG, guardrails
 - `docs/ENTITY_ISOLATION.md` — schema-per-business design
 - `docs/CONFORMANCE_GAPS.md` — pending V2.2 spec items
+- `docs/ORDER_AMENDMENTS.md` — "Change Order": amending an order's products/delivery after it was placed (and paid), and how stock, the GL, the invoice, Studio and Logistics are reconciled in one transaction
 - `docs/FRONTEND_SCREEN_REQUIREMENTS.md` — per-module UI detail
 - `docs/Frontend_Engineering_Guide_v2.2.md` — screens, tables, states per module
 - `docs/openapi.yaml` — full OpenAPI spec (413KB)

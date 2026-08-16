@@ -149,8 +149,110 @@ function buildCancellationRefundLines({
   return lines;
 }
 
+/**
+ * Order amended AFTER its sale journal was posted (§6.2 "Change Order").
+ *
+ * The original sale journal recognised the order as it stood; an amendment
+ * moves the figures, so the books need the DIFFERENCE — never a re-post, and
+ * never a reversal-and-replay (which would double the order's footprint in
+ * every revenue report).
+ *
+ *   DR/CR Customer Deposits 2400   Δtotal
+ *   CR/DR Revenue (channel)        Δnet    (subtotal − discount)
+ *   CR/DR Shipping Revenue         Δshipping
+ *   CR/DR VAT Output               Δtax
+ *   DR    COGS  / CR Inventory FG  cost of any units ADDED
+ *
+ * Sign handling: each component is posted on its natural side when the figure
+ * grew and on the opposite side when it shrank, so a cheaper amendment simply
+ * mirrors the entry. Since Δtotal ≡ Δnet + Δshipping + Δtax by construction,
+ * and the COGS pair is self-balancing, the entry always balances.
+ *
+ * Why 2400 rather than a receivable: policy Q7 routes every capture through
+ * Customer Deposits, so the money the customer still owes for the upgrade sits
+ * as a debit in 2400 until her top-up payment credits it back — and a
+ * downgrade correctly leaves a credit balance there as money we hold for her.
+ * That is the same account the eventual refund or the next order draws on.
+ *
+ * Removed units are NOT in the COGS figure: returning them to stock goes
+ * through stock's `return` movement, which posts its own DR Inventory /
+ * CR COGS at cost (MOVEMENT_GL in stock.service). Adding them here too would
+ * relieve inventory twice.
+ *
+ * Returns null when nothing moved — the caller skips posting entirely rather
+ * than writing an empty journal.
+ */
+function buildAmendmentLines({
+  delta_total_ngn,
+  delta_net_ngn,
+  delta_shipping_ngn,
+  delta_tax_ngn,
+  cogs_added_ngn,
+  revenue_account_code,
+  contact_id,
+  reference,
+}) {
+  // Post `amount` on `naturalSide` when positive, the other side when negative.
+  const signed = (amount, account_code, naturalSide, description) => {
+    const amt = money(amount || 0);
+    if (amt.isZero()) return null;
+    const positive = amt.gt(0);
+    const value = toCurrencyString(amt.abs());
+    const side =
+      (naturalSide === "debit") === positive ? "debit_ngn" : "credit_ngn";
+    return { account_code, [side]: value, description, contact_id: contact_id || null };
+  };
+
+  const lines = [
+    signed(
+      delta_total_ngn,
+      ACCOUNTS.CUSTOMER_DEPOSITS,
+      "debit",
+      `Order amended — deposits applied (${reference})`,
+    ),
+    signed(
+      delta_net_ngn,
+      revenue_account_code,
+      "credit",
+      `Order amended — revenue adjustment (${reference})`,
+    ),
+    signed(
+      delta_shipping_ngn,
+      ACCOUNTS.SHIPPING_REVENUE,
+      "credit",
+      `Order amended — shipping adjustment (${reference})`,
+    ),
+    signed(
+      delta_tax_ngn,
+      ACCOUNTS.VAT_OUTPUT,
+      "credit",
+      `Order amended — VAT adjustment (${reference})`,
+    ),
+  ].filter(Boolean);
+
+  const cogs = money(cogs_added_ngn || 0);
+  if (cogs.gt(0)) {
+    const value = toCurrencyString(cogs);
+    lines.push({
+      account_code: ACCOUNTS.COGS,
+      debit_ngn: value,
+      description: `Order amended — COGS on added items (${reference})`,
+    });
+    lines.push({
+      account_code: ACCOUNTS.INVENTORY_FG,
+      credit_ngn: value,
+      description: `Order amended — inventory relief (${reference})`,
+    });
+  }
+
+  // postEntry rejects a single-line journal, and a no-op amendment (delivery
+  // address only) legitimately moves nothing on the books.
+  return lines.length >= 2 ? lines : null;
+}
+
 module.exports = {
   buildCaptureLines,
   buildForfeitLines,
   buildCancellationRefundLines,
+  buildAmendmentLines,
 };

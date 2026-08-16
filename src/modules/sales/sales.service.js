@@ -1617,6 +1617,39 @@ async function markPaid({ client, brand, user, _request_id, order }) {
   const shortfallLines = [];
   for (const line of order.lines) {
     if (line.variant_id) {
+      // Re-settlement guard. An order's total can RISE after it was already
+      // paid in full — a delivery fee confirmed late, or a Change Order
+      // amendment — which puts it back into balance. The top-up payment then
+      // re-enters addPayment's "this payment completed the order" branch and
+      // calls markPaid a second time. The order.paid fan-out is protected by
+      // the outbox dedup key, but the stock deduction below is NOT: without
+      // this check every line would be taken off the shelf twice.
+      //
+      // Read what this order has actually drawn from the movement ledger
+      // (sale − return) and only deduct the remainder. First settlement:
+      // drawn = 0, so the full quantity goes as before. Re-settlement after an
+      // amendment: the reconciler already moved the difference, so drawn
+      // matches and this is a clean no-op.
+      const alreadyDrawn = await stockRepo.netSoldForOrder({
+        client,
+        brand,
+        variant_id: line.variant_id,
+        location_id: loc.location_id,
+        reference_id: order.order_id,
+      });
+      const toDeduct = Number(line.quantity) - alreadyDrawn;
+      if (toDeduct <= 0) {
+        logger.info(
+          {
+            order_id: order.order_id,
+            variant_id: line.variant_id,
+            quantity: line.quantity,
+            already_drawn: alreadyDrawn,
+          },
+          "markPaid: stock for this line already drawn — skipping deduction",
+        );
+        continue;
+      }
       // Every order reserves at placement now (Flexi Pay D8) — release the
       // hold first so the 'sale' deduction keeps reserved <= on_hand valid.
       // releaseOrderReservation releases only what THIS order actually holds
@@ -1628,7 +1661,7 @@ async function markPaid({ client, brand, user, _request_id, order }) {
           brand,
           variant_id: line.variant_id,
           location_id: loc.location_id,
-          quantity: line.quantity,
+          quantity: toDeduct,
           reference_id: order.order_id,
           user_id: user.user_id,
           reason: "order paid in full",
@@ -1674,7 +1707,7 @@ async function markPaid({ client, brand, user, _request_id, order }) {
           brand,
           variant_id: line.variant_id,
           location_id: loc.location_id,
-          quantity: line.quantity,
+          quantity: toDeduct,
           reference_id: order.order_id,
           sales_channel: order.sales_channel,
           unit_cost_ngn: costForCogs,
@@ -1686,7 +1719,7 @@ async function markPaid({ client, brand, user, _request_id, order }) {
         await client.query("RELEASE SAVEPOINT pgh_deduct").catch(() => {});
         shortfallLines.push({
           variant_id: line.variant_id,
-          quantity: line.quantity,
+          quantity: toDeduct,
           name: line.product_name_snapshot || null,
         });
         logger.error(
@@ -3100,6 +3133,11 @@ module.exports = {
   createOrder,
   updateOrder,
   addPayment,
+  // Exported for the amendment reconciler (amendment.service): a change that
+  // makes an unsettled order cheaper than what has already been paid settles
+  // it, and that must run the same stock draw + order.paid fan-out a final
+  // payment would. Runs on the caller's client, inside their transaction.
+  markPaid,
   recordSubscriptionCharge,
   cancelOrder, // orders are cancelled (the 'archive' equivalent), never hard-deleted
   restoreOrder, // un-cancel from the archive: re-holds stock, refuses forfeited deposits

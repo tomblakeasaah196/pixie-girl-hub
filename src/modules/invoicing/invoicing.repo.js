@@ -236,6 +236,65 @@ async function markFirstViewed({ client, brand, id }) {
   );
   return rows[0] || null;
 }
+/**
+ * Replace an invoice's lines wholesale — the Sales "Change Order" path.
+ *
+ * An order-backed invoice is a projection of its order's lines, so when the
+ * order's lines change the invoice must be re-derived rather than patched
+ * line-by-line (an amendment can add, drop and re-price in one move). Only
+ * ever called for a non-void invoice inside the amendment transaction.
+ */
+async function deleteLines({ client, brand, invoice_id }) {
+  const { rowCount } = await ex(client)(
+    `DELETE FROM ${t(brand, "invoice_lines")} WHERE invoice_id = $1`,
+    [invoice_id],
+  );
+  return rowCount;
+}
+
+/**
+ * Rewrite an invoice's money after its order was amended.
+ *
+ * `status` is passed explicitly by the caller because the invoice status
+ * trigger only fires on invoice_payments writes — a total that MOVES without a
+ * payment (which is exactly what an amendment does) would otherwise leave a
+ * 'paid' invoice reading paid while carrying a real outstanding balance.
+ * display_total is re-derived from the invoice's OWN booked fx_rate, never a
+ * live one.
+ */
+async function setInvoiceTotals({ client, brand, id, totals, status }) {
+  const sets = [
+    "subtotal_ngn = $2",
+    "discount_amount_ngn = $3",
+    "tax_amount_ngn = $4",
+    "shipping_fee_ngn = $5",
+    "total_ngn = $6",
+    `display_total = CASE
+       WHEN display_currency IS NULL OR display_currency = 'NGN' THEN display_total
+       WHEN COALESCE(fx_rate_used, 0) > 0 THEN ceil($6::numeric / fx_rate_used)
+       ELSE display_total END`,
+    "updated_at = now()",
+  ];
+  const params = [
+    id,
+    totals.subtotal_ngn,
+    totals.discount_amount_ngn,
+    totals.tax_amount_ngn,
+    totals.shipping_fee_ngn,
+    totals.total_ngn,
+  ];
+  if (status) {
+    sets.push(`status = $${params.length + 1}`);
+    params.push(status);
+  }
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "invoices")} SET ${sets.join(", ")}
+      WHERE invoice_id = $1 RETURNING *`,
+    params,
+  );
+  return rows[0] || null;
+}
+
 async function applyPayment({ client, brand, payment }) {
   const { rows } = await ex(client)(
     `INSERT INTO ${t(brand, "invoice_payments")} (invoice_id, sales_order_payment_id, amount_applied_ngn, applied_by, notes)
@@ -512,6 +571,8 @@ module.exports = {
   nextNumber,
   createInvoice,
   insertLine,
+  deleteLines,
+  setInvoiceTotals,
   findById,
   findByOrderId,
   listInvoices,

@@ -198,6 +198,23 @@ async function lockLevel({ client, brand, variant_id, location_id }) {
 }
 
 /**
+ * Non-locking read of one variant's level at one location. For "can we do
+ * this?" previews (the Change Order modal's stock warning) — a check that must
+ * not take a row lock, because the operator may sit on the preview for a
+ * minute before deciding. The reserve/deduct itself still locks and remains
+ * the authority.
+ */
+async function levelFor({ client, brand, variant_id, location_id }) {
+  const { rows } = await ex(client)(
+    `SELECT on_hand, reserved, available
+       FROM ${t(brand, "stock_levels")}
+      WHERE variant_id = $1 AND location_id = $2`,
+    [variant_id, location_id],
+  );
+  return rows[0] || null;
+}
+
+/**
  * Units THIS order still holds reserved for a variant at a location:
  * sum of its 'reserve' movements minus its 'release_reserve' movements.
  * stock_levels.reserved is an aggregate counter across all orders, so a
@@ -222,6 +239,43 @@ async function outstandingReservationForOrder({
   );
   const held = rows[0] ? Number(rows[0].held) : 0;
   return held > 0 ? held : 0;
+}
+
+/**
+ * Units THIS order has actually TAKEN off the shelf for a variant at a
+ * location: its 'sale' movements minus any 'return' movements booked back
+ * against the same order.
+ *
+ * Two callers depend on this being the ledger truth rather than "the line says
+ * quantity N":
+ *
+ *   • markPaid — an order whose total later rose (a delivery-fee change, or an
+ *     amendment) goes back to a balance, and the top-up payment re-enters the
+ *     "this payment completed the order" branch. Without this reading, the
+ *     second pass would deduct every line a SECOND time.
+ *   • the amendment reconciler — removing a line from an already-paid order
+ *     must return exactly what that order took, never more (a pre-order line
+ *     was never deducted at all, so it has nothing to give back).
+ */
+async function netSoldForOrder({
+  client,
+  brand,
+  variant_id,
+  location_id,
+  reference_id,
+}) {
+  const { rows } = await ex(client)(
+    `SELECT COALESCE(SUM(CASE WHEN movement_type = 'sale'   THEN ABS(quantity)
+                              WHEN movement_type = 'return' THEN -ABS(quantity)
+                              ELSE 0 END), 0) AS sold
+       FROM ${t(brand, "stock_movements")}
+      WHERE variant_id = $1 AND location_id = $2
+        AND reference_type = 'sales_order' AND reference_id = $3
+        AND movement_type IN ('sale','return')`,
+    [variant_id, location_id, reference_id],
+  );
+  const sold = rows[0] ? Number(rows[0].sold) : 0;
+  return sold > 0 ? sold : 0;
 }
 
 // Movements (the only way to change on_hand)
@@ -1200,7 +1254,9 @@ module.exports = {
   levelsForVariant,
   seedLevel,
   lockLevel,
+  levelFor,
   outstandingReservationForOrder,
+  netSoldForOrder,
   nextMovementNumber,
   nextDocNumber,
   defaultVariantForProduct,

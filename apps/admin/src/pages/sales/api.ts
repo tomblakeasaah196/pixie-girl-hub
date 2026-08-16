@@ -19,6 +19,11 @@ import type {
   PosTerminalReconciliation,
   PosReconOrderCandidate,
   OrderStatus,
+  AmendmentPreview,
+  AmendmentPreviewInput,
+  AmendmentInput,
+  AmendOrderResult,
+  OrderAmendment,
 } from "./types";
 
 const S = "/sales";
@@ -118,6 +123,33 @@ export interface RestoreOrderResult {
 
 export const restoreOrder = (id: string, confirm = false) =>
   api.post<RestoreOrderResult>(`${S}/orders/${id}/restore`, { confirm });
+
+// ── Change Order (§6.2 amendments) ──────────────────────────
+
+/**
+ * Dry run — what the change would do, computed by the same code that will
+ * commit it. Writes nothing, so the modal can call it freely as the operator
+ * edits the cart.
+ */
+export const previewAmendment = (
+  id: string,
+  input: AmendmentPreviewInput,
+) =>
+  api.post<AmendmentPreview>(`${S}/orders/${id}/amendment/preview`, input);
+
+/**
+ * Commit the change. Two-phase like the archive restore: without
+ * `acknowledge_warnings` a consequential change answers 200 with
+ * `requires_confirmation: true` and the warnings, having written nothing.
+ * Genuine refusals (completed order, pending cancellation, unknown variant)
+ * throw an ApiError instead.
+ */
+export const amendOrder = (id: string, input: AmendmentInput) =>
+  api.post<AmendOrderResult>(`${S}/orders/${id}/amendment`, input);
+
+/** Every change made to this order, newest first. */
+export const listAmendments = (id: string) =>
+  api.get<PaginatedResponse<OrderAmendment>>(`${S}/orders/${id}/amendments`);
 
 // Manual fulfilment-stage move (assigned / order_ready / dispatched / completed).
 // Payment + cancellation states are managed automatically by the backend.

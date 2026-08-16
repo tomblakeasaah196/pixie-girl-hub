@@ -463,6 +463,7 @@ async function startWorkers() {
   require("../modules/sales/payment-comms.subscribers"); // part-payment receipt + milestone → Comms Studio
   require("../modules/sales/order-lifecycle-comms.subscribers"); // order.created → proforma invoice + placement email; order.paid → payment-confirmed email
   require("../modules/sales/duplicate-resolve.subscribers"); // order.paid → cancel pending duplicate twins
+  require("../modules/sales/amendment.subscribers"); // order.amended → customer letter + invoice PDF + Studio job
   require("../modules/stock/stock.subscribers"); // variant.created → seed stock level
   require("../modules/service_jobs/service-jobs.subscribers"); // order.deposit_met + order.paid → service job
   require("../modules/stylist_programme/stylist.subscribers"); // order.paid → stylist referral accrual

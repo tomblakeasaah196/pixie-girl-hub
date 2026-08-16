@@ -7381,6 +7381,96 @@ paths:
         x-is-write: true,
         responses: { "200": { description: Cancelled } },
       }
+  /sales/orders/{id}/amendment/preview:
+    post:
+      {
+        summary: "Change Order — dry run. Re-prices the replacement line set and
+          reports the difference, the per-line changes and the warnings, without
+          writing anything. Computed by the same code the commit runs.",
+        tags: [sales],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "sales.edit",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses:
+          {
+            "200": { description: Amendment preview },
+            "404": { $ref: "#/components/responses/NotFound" },
+            "409": { description: Order can no longer be changed },
+          },
+      }
+  /sales/orders/{id}/amendment:
+    post:
+      {
+        summary: "Change Order — amend an order's items, quantities, prices or
+          delivery details in place, reconciling stock, the GL, the invoice,
+          Stylist Studio and Logistics in one transaction. Allowed until the
+          order is completed. Two-phase: without acknowledge_warnings a
+          consequential change answers 200 with requires_confirmation and the
+          warnings, having written nothing. See docs/ORDER_AMENDMENTS.md.",
+        tags: [sales],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "sales.edit",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses:
+          {
+            "200":
+              {
+                description:
+                  Amended, or requires_confirmation when warnings are
+                  unacknowledged,
+              },
+            "404": { $ref: "#/components/responses/NotFound" },
+            "409":
+              {
+                description:
+                  Order completed/cancelled/refunded, a cancellation is pending,
+                  or a referenced line/variant does not exist,
+              },
+            "422": { description: Nothing on the order changed },
+          },
+      }
+  /sales/orders/{id}/amendments:
+    get:
+      {
+        summary: Change history for an order — every amendment, newest first,
+          with the before/after money, the line changes and the downstream
+          effects that were applied,
+        tags: [sales],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "sales.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Amendments } },
+      }
   /sales/orders/{id}/cancellation:
     post:
       {

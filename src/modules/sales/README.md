@@ -8,19 +8,44 @@
 - `sales_orders`
 - `sales_order_lines`
 - `sales_order_payments`
+- `sales_order_amendments`
 - `quotations`
 - `cancellation_requests`
 
 ## Files
 
-| File                  | Purpose                              |
-| --------------------- | ------------------------------------ |
-| `sales.routes.js`     | Express router — URL → controller    |
-| `sales.controller.js` | HTTP handlers (req/res only)         |
-| `sales.service.js`    | Business logic, transactions, events |
-| `sales.repo.js`       | Parameterised SQL only               |
-| `sales.validator.js`  | Zod input schemas                    |
-| `sales.events.js`     | Domain events for realtime + AI      |
+| File                      | Purpose                                          |
+| ------------------------- | ------------------------------------------------ |
+| `sales.routes.js`         | Express router — URL → controller                |
+| `sales.controller.js`     | HTTP handlers (req/res only)                     |
+| `sales.service.js`        | Business logic, transactions, events             |
+| `sales.repo.js`           | Parameterised SQL only                           |
+| `sales.validator.js`      | Zod input schemas                                |
+| `sales.events.js`         | Domain events for realtime + AI                  |
+| `amendment.service.js`    | Change Order — amend an order + reconcile all modules |
+| `amendment.repo.js`       | Amendment SQL (line replace, header rewrite, history) |
+| `amendment.subscribers.js`| `order.amended` → customer letter, invoice PDF, Studio job |
+
+## Change Order (amendments)
+
+An order recorded against the wrong product used to have no correct repair:
+cancelling forfeits the deposit to Other Income (policy Q7) and loses the order
+number, the invoice and the customer's history; a hand-edit leaves stock, the
+GL, the invoice, the Studio job and the delivery all disagreeing.
+
+`amendment.service.amendOrder` changes the order **in place** and reconciles
+stock, Accounting, Invoicing, Stylist Studio and Logistics in one transaction.
+Allowed until the order is marked completed; two-phase like the archive restore
+(a consequential change answers `requires_confirmation` until the operator
+acknowledges the warnings).
+
+The one thing to know before touching it: **everything branches on whether
+revenue has been recognised.** An unsettled order only holds reservations and
+has no journal, so an amendment moves holds and re-derives the proforma. A
+settled order's stock has left and its sale journal is posted, so removals go
+back as `return` movements and the difference is posted as an adjusting journal.
+
+Full mechanism, pricing rules and the warning vocabulary: **`docs/ORDER_AMENDMENTS.md`**.
 
 ## Quotation → order conversion
 

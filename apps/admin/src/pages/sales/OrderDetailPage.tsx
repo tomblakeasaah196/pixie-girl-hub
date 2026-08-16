@@ -45,6 +45,8 @@ import {
   Clock,
   UserCheck,
   ShieldAlert,
+  PencilLine,
+  History,
 } from "lucide-react";
 import { Card, Pill, MoneyText, Button } from "@/components/ui/primitives";
 import {
@@ -70,8 +72,10 @@ import {
   useContactRecentOrders,
   useInvoiceReminders,
   useStatusAutomations,
+  useOrderAmendments,
 } from "./hooks";
 import { generateReceipt } from "./api";
+import { ChangeOrderModal } from "./ChangeOrderModal";
 import { useToastStore } from "@/components/notifications/NotificationToast";
 import { toastReport } from "@/lib/error-report";
 import { saveFileFromUrl } from "@/lib/api";
@@ -277,8 +281,10 @@ export function OrderDetailPage() {
   const { data: statusAutomations, isLoading: automationsLoading } =
     useStatusAutomations(!!orderId);
   const { data: paymentSettings } = usePaymentSettings();
+  const { data: amendments = [] } = useOrderAmendments(orderId);
 
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [changeOpen, setChangeOpen] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
   const [receiptLoading, setReceiptLoading] = useState(false);
   const [showInvoiceSend, setShowInvoiceSend] = useState(false);
@@ -463,6 +469,19 @@ export function OrderDetailPage() {
   };
 
   // ── Derived flags for the panels ─────────────────────────────
+  // An order can be repaired right up until the job is marked completed (owner
+  // rule). Cancelled/refunded/failed orders are closed, and an order with a
+  // cancellation awaiting a decision has money under review — the backend
+  // refuses all four, so the button simply isn't offered for them.
+  const canAmend =
+    !!order &&
+    ![
+      "completed",
+      "cancelled",
+      "refunded",
+      "failed",
+      "cancellation_requested",
+    ].includes(order.status);
   const needsStudio = !!order?.lines?.some(
     (l) => l.line_kind === "styled" || l.line_kind === "service",
   );
@@ -784,6 +803,20 @@ export function OrderDetailPage() {
                   ]}
                 />
               )}
+            {/* Change Order — the repair path for an order recorded against
+                the wrong product. Available right up until the job is marked
+                completed (owner rule); the backend refuses beyond that, and
+                warns about anything consequential before it commits. */}
+            {order && canAmend && canEditSales && (
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<PencilLine className="w-3.5 h-3.5" />}
+                onClick={() => setChangeOpen(true)}
+              >
+                Change Order
+              </Button>
+            )}
             {order &&
               order.status !== "cancelled" &&
               order.status !== "completed" && (
@@ -860,6 +893,12 @@ export function OrderDetailPage() {
               <Pill tone="accent">
                 <Clock className="w-3 h-3 inline mr-1" />
                 Pre-order
+              </Pill>
+            )}
+            {amendments.length > 0 && (
+              <Pill tone="info">
+                <History className="w-3 h-3 inline mr-1" />
+                Changed ×{amendments.length}
               </Pill>
             )}
             {(needsStudio || job) && (
@@ -1147,6 +1186,119 @@ export function OrderDetailPage() {
                           </div>
                         </div>
                       )}
+                  </div>
+                </Card>
+              )}
+
+              {/* Change history — every amendment, what moved, and what it did
+                  downstream. Sits directly under Items because the first
+                  question anyone asks about a changed order is "changed from
+                  what, and by whom?". */}
+              {amendments.length > 0 && (
+                <Card className="p-4">
+                  <div className="micro mb-3 flex items-center gap-1.5">
+                    <History className="w-3.5 h-3.5" />
+                    Change history
+                  </div>
+                  <div className="space-y-3">
+                    {amendments.map((a) => {
+                      const diff = Number(a.difference_ngn);
+                      const who =
+                        a.amended_by_display_name || a.amended_by_name || "System";
+                      const eff = a.effects ?? {};
+                      const notes: string[] = [];
+                      if (eff.gl?.posted) notes.push("Books adjusted");
+                      if (eff.invoice?.invoice_number)
+                        notes.push(`Invoice ${eff.invoice.invoice_number} revised`);
+                      if (eff.stock?.returned?.length)
+                        notes.push(
+                          `${eff.stock.returned.reduce((s, r) => s + r.quantity, 0)} back to stock`,
+                        );
+                      if (eff.stock?.preorder?.length)
+                        notes.push("Some items on pre-order");
+                      if (eff.studio?.cancelled_job_ids?.length)
+                        notes.push(
+                          `${eff.studio.cancelled_job_ids.length} studio job(s) cancelled`,
+                        );
+                      if (eff.logistics?.resynced) notes.push("Delivery updated");
+                      if (a.customer_notified) notes.push("Customer notified");
+                      return (
+                        <div
+                          key={a.amendment_id}
+                          className="rounded-[11px] border border-line bg-text-primary/[0.02] p-3"
+                        >
+                          <div className="flex items-center justify-between gap-2 flex-wrap mb-1.5">
+                            <div className="text-[13px] font-semibold">
+                              Change #{a.amendment_number}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {diff !== 0 && (
+                                <Pill tone={diff > 0 ? "warn" : "success"}>
+                                  {diff > 0 ? "+" : "−"}
+                                  {money(Math.abs(diff))}
+                                </Pill>
+                              )}
+                              <span className="text-[11px] text-text-faint">
+                                {formatDateTime(a.created_at)} · {who}
+                              </span>
+                            </div>
+                          </div>
+                          <ul className="space-y-1 text-[12.5px]">
+                            {a.line_changes.map((c, i) => (
+                              <li key={i} className="flex items-start gap-2">
+                                <Pill
+                                  tone={
+                                    c.action === "added"
+                                      ? "success"
+                                      : c.action === "removed"
+                                        ? "danger"
+                                        : "info"
+                                  }
+                                >
+                                  {c.action}
+                                </Pill>
+                                <span className="min-w-0">
+                                  {c.name}
+                                  {c.action === "quantity" && (
+                                    <span className="text-text-muted">
+                                      {" "}
+                                      ({c.from} → {c.to})
+                                    </span>
+                                  )}
+                                  {c.action === "price" && (
+                                    <span className="text-text-muted">
+                                      {" "}
+                                      ({money(c.from ?? 0)} → {money(c.to ?? 0)})
+                                    </span>
+                                  )}
+                                </span>
+                              </li>
+                            ))}
+                            {a.delivery_after && (
+                              <li className="flex items-start gap-2">
+                                <Pill tone="info">delivery</Pill>
+                                <span>Delivery details updated.</span>
+                              </li>
+                            )}
+                          </ul>
+                          <div className="mt-2 text-[12px] text-text-muted">
+                            <span className="text-text-faint">Total </span>
+                            {money(Number(a.total_before_ngn))} →{" "}
+                            <span className="font-semibold text-text-primary">
+                              {money(Number(a.total_after_ngn))}
+                            </span>
+                          </div>
+                          <div className="mt-1 text-[12px] italic text-text-muted">
+                            &ldquo;{a.reason}&rdquo;
+                          </div>
+                          {notes.length > 0 && (
+                            <div className="mt-2 text-[11px] text-text-faint">
+                              {notes.join(" · ")}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </Card>
               )}
@@ -1945,6 +2097,19 @@ export function OrderDetailPage() {
 
       {order && payLinkOpen && (
         <PayLinkModal order={order} onClose={() => setPayLinkOpen(false)} />
+      )}
+
+      {/* Change Order. Keyed on the order's updated_at so reopening it after a
+          save reseeds the cart from the CURRENT lines rather than replaying the
+          state it was mounted with. */}
+      {order && changeOpen && (
+        <ChangeOrderModal
+          key={order.updated_at}
+          order={order}
+          open={changeOpen}
+          onClose={() => setChangeOpen(false)}
+          onSaved={(message) => fireToast("Order Updated", message)}
+        />
       )}
     </div>
   );

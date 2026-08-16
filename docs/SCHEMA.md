@@ -103,6 +103,28 @@ to goals without moving.
 RAG memory reuses `shared.ai_embeddings` + `shared.ai_knowledge_chunks` — no new
 embedding table. See `docs/AI_CHIEF_OF_STAFF.md`.
 
+## Order amendments (per-brand, template/000093 + migration 000379)
+
+`<brand>.sales_order_amendments` is the audit spine for **Change Order** — amending
+an order's items, quantities, prices or delivery details after it was placed (and
+possibly paid). One row per change, holding the full before/after of the money and
+the lines, a normalised `line_changes` list, the delivery snapshots, and an
+`effects` JSONB recording exactly which downstream effects were applied (stock
+movements, GL delta journal, invoice revision, Studio jobs cancelled, delivery
+re-synced, customer message sent).
+
+Lines are snapshotted as JSONB rather than kept as rows: an amendment **replaces**
+`sales_order_lines` (removed lines are deleted so invoices, picklists, Studio and
+Logistics all read the truth), so the only durable record of what the order used to
+be lives here. Everything that references a line does so `ON DELETE SET NULL`, except
+`sales_order_discounts.applied_to_line_id`, which CASCADEs — a per-line campaign
+discount correctly dies with its line.
+
+`sales_orders` also carries `amendment_count` + `last_amended_at`, denormalised so
+the Orders register can badge a changed order without a join.
+
+See `ORDER_AMENDMENTS.md` for the full mechanism.
+
 ## Audit log
 
 `shared.audit_log` captures every state-changing action. The table has:

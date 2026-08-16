@@ -1,0 +1,114 @@
+-- ============================================================
+-- TEMPLATE 000093 — Order amendments (Change Order)
+-- Pixie Girl Hub · V2.2 §6.2
+--
+-- "We recorded the wrong product." Until now the only answers were
+-- cancel-and-re-raise (which forfeits a paid deposit to Other Income and
+-- loses the order number, the invoice and the customer's history) or a
+-- silent hand-edit in SQL. This table is the audit spine for the third,
+-- correct answer: AMEND the order in place and reconcile every downstream
+-- module in one transaction.
+--
+-- One row per amendment. It records the full BEFORE/AFTER of the money and
+-- the lines, the per-line changes, and — critically — exactly which
+-- downstream effects were applied (stock movements, GL delta journal,
+-- invoice revision, Studio jobs cancelled/opened, delivery re-synced,
+-- customer message sent). That last part is what makes an amendment
+-- explainable months later: "why does this order's GL show a second
+-- journal?" is answered by the row, not by archaeology.
+--
+-- Lines are snapshotted as JSONB rather than kept as rows: the live
+-- sales_order_lines table is REPLACED by an amendment (removed lines are
+-- deleted so invoices, picklists, Studio and Logistics all read the truth),
+-- so the only durable record of what the order used to be lives here.
+-- ============================================================
+
+-- ── sales_order_amendments ───────────────────────────────
+CREATE TABLE {{BUSINESS}}.sales_order_amendments (
+  amendment_id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id              UUID        NOT NULL
+                          REFERENCES {{BUSINESS}}.sales_orders (order_id) ON DELETE CASCADE,
+  -- 1, 2, 3… per order. Displayed as "Change #2" on the order detail.
+  amendment_number      SMALLINT    NOT NULL,
+  -- Why. The reason is mandatory at the service layer: an amendment moves
+  -- money on a paid order, so "who changed what, and why" must be answerable.
+  reason                TEXT        NOT NULL,
+  reason_category       TEXT        NOT NULL DEFAULT 'other'
+                        CHECK (reason_category IN (
+                          'wrong_item',          -- we recorded the wrong product
+                          'customer_change',     -- she changed her mind
+                          'price_correction',
+                          'delivery_change',     -- address / fulfilment only
+                          'stock_substitution',
+                          'other'
+                        )),
+
+  -- ── MONEY: before / after ───────────────────────────────
+  subtotal_before_ngn   NUMERIC(14,2) NOT NULL,
+  discount_before_ngn   NUMERIC(14,2) NOT NULL,
+  tax_before_ngn        NUMERIC(14,2) NOT NULL,
+  shipping_before_ngn   NUMERIC(14,2) NOT NULL,
+  total_before_ngn      NUMERIC(14,2) NOT NULL,
+  subtotal_after_ngn    NUMERIC(14,2) NOT NULL,
+  discount_after_ngn    NUMERIC(14,2) NOT NULL,
+  tax_after_ngn         NUMERIC(14,2) NOT NULL,
+  shipping_after_ngn    NUMERIC(14,2) NOT NULL,
+  total_after_ngn       NUMERIC(14,2) NOT NULL,
+  -- Positive = the customer owes more; negative = we owe her a refund/credit.
+  difference_ngn        NUMERIC(14,2) GENERATED ALWAYS AS
+                          (total_after_ngn - total_before_ngn) STORED,
+  -- What she had already paid at the moment of the change, and what she still
+  -- owes afterwards. Snapshotted so the history reads correctly even after
+  -- the top-up payment lands.
+  amount_paid_ngn       NUMERIC(14,2) NOT NULL DEFAULT 0,
+  balance_after_ngn     NUMERIC(14,2) NOT NULL DEFAULT 0,
+
+  -- ── WHAT CHANGED ────────────────────────────────────────
+  -- Full line snapshots (array of the persisted line shape) + a normalised
+  -- change list: [{action:'added'|'removed'|'quantity'|'price', name, from, to, …}]
+  lines_before          JSONB       NOT NULL DEFAULT '[]'::jsonb,
+  lines_after           JSONB       NOT NULL DEFAULT '[]'::jsonb,
+  line_changes          JSONB       NOT NULL DEFAULT '[]'::jsonb,
+  -- Delivery snapshot before/after (address + fulfilment type + fee), null
+  -- when the amendment didn't touch delivery.
+  delivery_before       JSONB,
+  delivery_after        JSONB,
+
+  -- ── DOWNSTREAM EFFECTS ACTUALLY APPLIED ─────────────────
+  -- { stock:{returned:[…],reserved:[…],deducted:[…],preorder:[…]},
+  --   gl:{posted:bool,entry_id,…}, invoice:{invoice_id,revised:bool,…},
+  --   studio:{cancelled_job_ids:[…],reopened:bool},
+  --   logistics:{delivery_id,items_resynced:bool,address_updated:bool},
+  --   comms:{event_key,sent:bool}, warnings:[…] }
+  effects               JSONB       NOT NULL DEFAULT '{}'::jsonb,
+  -- The order's status the instant before the change (a paid order behaves
+  -- very differently from a pending one — see the service).
+  order_status_before   TEXT        NOT NULL,
+  -- True when the sale journal had already been posted (order.paid fired), so
+  -- the amendment had to post a GL delta rather than simply let the eventual
+  -- order.paid journal use the final figures.
+  revenue_recognised    BOOLEAN     NOT NULL DEFAULT false,
+  -- The delta journal, when one was posted.
+  journal_entry_id      UUID,
+  -- Whether the "your order was updated" message went out.
+  customer_notified     BOOLEAN     NOT NULL DEFAULT false,
+
+  -- ── AUDIT ───────────────────────────────────────────────
+  amended_by            UUID        REFERENCES shared.users (user_id) ON DELETE SET NULL,
+  -- Denormalised so the history still names a person after a staff offboard.
+  amended_by_name       TEXT,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  CONSTRAINT sales_order_amendment_seq_uq UNIQUE (order_id, amendment_number)
+);
+CREATE INDEX idx_{{BUSINESS}}_sales_order_amendments_order
+  ON {{BUSINESS}}.sales_order_amendments (order_id, amendment_number DESC);
+CREATE INDEX idx_{{BUSINESS}}_sales_order_amendments_recent
+  ON {{BUSINESS}}.sales_order_amendments (created_at DESC);
+
+-- ── sales_orders: cheap "this order was changed" markers ──
+-- Denormalised onto the order so the Orders register can badge an amended row
+-- without a join, and the detail page knows whether to render the history card.
+ALTER TABLE {{BUSINESS}}.sales_orders
+  ADD COLUMN IF NOT EXISTS amendment_count SMALLINT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS last_amended_at TIMESTAMPTZ;

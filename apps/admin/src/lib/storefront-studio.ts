@@ -183,6 +183,21 @@ export function usePublishPopup() {
     onSuccess: () => qc.invalidateQueries({ queryKey: key("popups", brand) }),
   });
 }
+/**
+ * Take a popup OFF the live website without deleting it or publishing the
+ * draft. The `is_active` toggle lives on the draft row, so switching it off
+ * and saving never changed what the site serves — this archives the published
+ * row, which does.
+ */
+export function useUnpublishPopup() {
+  const qc = useQueryClient();
+  const brand = useActiveBrand();
+  return useMutation({
+    mutationFn: (popupKey: string) =>
+      api.post(`/storefront-studio/popups/${popupKey}/unpublish`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: key("popups", brand) }),
+  });
+}
 export function useDeletePopup() {
   const qc = useQueryClient();
   const brand = useActiveBrand();

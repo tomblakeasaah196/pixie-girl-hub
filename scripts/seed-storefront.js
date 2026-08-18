@@ -768,14 +768,16 @@ const POPUPS = [
     trigger_value: 25,
     audience: "all",
     content: {
-      eyebrow: "The Letter",
+      // Canonical Storefront Studio → Popups fields (what the form edits).
       heading: "One curated note. Once a month.",
-      bullets: ["Early access to limited drops", "Hair education from the Lagos atelier", "Founder picks, no spam, ever"],
-      cta_label: "Join the list",
-      placeholder: "your@email.com",
+      button_label: "Join the list",
       image_url: IMG.model2,
+      // Newsletter-only extras the generic form does not expose.
+      eyebrow: "The Letter",
+      bullets: ["Early access to limited drops", "Hair education from the Lagos atelier", "Founder picks, no spam, ever"],
+      placeholder: "your@email.com",
     },
-    display_rules: { frequency: "session" },
+    display_rules: { frequency: "once_per_session" },
     display_order: 0,
   },
 ];
@@ -845,12 +847,19 @@ async function seedPopupsFor(client, brand) {
     process.stdout.write(`  (storefront_popups absent — popups skipped for ${brand})\n`);
     return;
   }
+  // Seed ONCE per key, and never re-publish one the operator has since changed.
+  // This used to DELETE the published row and re-insert it on every run, which
+  // resurrected popups that had been taken down and overwrote operator copy
+  // with the defaults below. Any existing row (draft, published or archived)
+  // means the operator owns this popup now — leave it alone.
+  let seeded = 0;
   for (const p of POPUPS) {
-    await client.query(
-      `DELETE FROM shared.storefront_popups
-        WHERE business = $1 AND popup_key = $2 AND status = 'published'`,
+    const { rows } = await client.query(
+      `SELECT 1 FROM shared.storefront_popups
+        WHERE business = $1 AND popup_key = $2 LIMIT 1`,
       [brand, p.popup_key],
     );
+    if (rows.length) continue;
     await client.query(
       `INSERT INTO shared.storefront_popups
          (business, status, popup_key, trigger_type, trigger_value, audience,
@@ -858,8 +867,13 @@ async function seedPopupsFor(client, brand) {
        VALUES ($1, 'published', $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8)`,
       [brand, p.popup_key, p.trigger_type, p.trigger_value, p.audience, JSON.stringify(p.content), JSON.stringify(p.display_rules), p.display_order],
     );
+    seeded += 1;
   }
-  process.stdout.write(`  seeded ${brand}: ${POPUPS.length} popup(s)\n`);
+  process.stdout.write(
+    `  seeded ${brand}: ${seeded} popup(s)` +
+      (seeded < POPUPS.length ? ` (${POPUPS.length - seeded} already present, left as-is)` : "") +
+      "\n",
+  );
 }
 
 async function seedSectionTemplates(client) {

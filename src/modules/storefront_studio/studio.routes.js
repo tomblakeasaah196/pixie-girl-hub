@@ -129,6 +129,11 @@ router.post(
   can("approve"),
   controller.publishPopup,
 );
+router.post(
+  "/popups/:popupKey/unpublish",
+  can("approve"),
+  controller.unpublishPopup,
+);
 router.delete("/popups/:popupKey", can("approve"), controller.deletePopup);
 
 // Branding/page image upload (logo / favicon / OG / section images) ->

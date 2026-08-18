@@ -16,7 +16,6 @@ import { ssrSite } from "@/lib/server";
 import { SiteHeader } from "@/components/site/SiteHeader";
 import { SiteFooter } from "@/components/site/SiteFooter";
 import { PageTransition } from "@/components/site/PageTransition";
-import { NewsletterModal } from "@/components/site/NewsletterModal";
 import { StudioPopups } from "@/components/site/StudioPopups";
 import { CartDrawer } from "@/components/site/CartDrawer";
 import { FloatingToolbar } from "@/components/site/FloatingToolbar";
@@ -281,7 +280,6 @@ function RootComponent() {
         {immersive ? null : <FloatingToolbar />}
         {immersive ? null : <ConciergeDock />}
         <CartDrawer />
-        {immersive ? null : <NewsletterModal />}
         {immersive ? null : <StudioPopups />}
         {immersive ? null : <HelpGuide />}
         <CustomCursor />

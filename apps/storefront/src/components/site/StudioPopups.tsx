@@ -1,18 +1,33 @@
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { bootstrapAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
+import { NewsletterModal } from "@/components/site/NewsletterModal";
 import { usePopups, type StudioPopup } from "@/lib/site-config";
+import {
+  alreadySeen,
+  armTrigger,
+  audienceOk,
+  markSeen,
+  needsAuth,
+  readAndMarkVisit,
+} from "@/lib/popup-rules";
 
 /**
- * Generic Storefront Studio popup renderer.
+ * Storefront Studio popup renderer — the ONLY thing that opens a popup on the
+ * website.
  *
- * The website used to render only the bespoke <NewsletterModal/> (keyed to the
- * "newsletter" popup), so any OTHER popup an operator built in Studio — e.g.
- * an "AI Stylist" promo — was saved, published and returned by /site but never
- * shown. This component reads EVERY published popup and displays it from its
- * saved content, honouring the trigger / audience / frequency the operator
- * chose. The "newsletter" key is left to its dedicated component.
+ * It reads every popup the public /site endpoint returns (published +
+ * is_active only, filtered server-side) and shows it from its saved content,
+ * honouring the trigger / audience / frequency the operator chose in Studio.
+ * The "newsletter" key renders through the bespoke <NewsletterModal/> (it has
+ * an email capture form); every other key renders generically here.
+ *
+ * The newsletter modal used to mount itself and run its own timer, so it
+ * appeared on the live site from hardcoded defaults even when its popup was
+ * deactivated or absent — an operator had no way to turn it off. Routing every
+ * popup through this one gate means "not published / not active" always means
+ * "not on the site", and only one popup can ever be on screen at a time.
  *
  * Content shape (mirrors the Studio Popups form):
  *   heading, body, image_url, button_label, button_href, discount_code
@@ -30,122 +45,8 @@ type PopupContent = {
   discount_code?: string;
 };
 
-// Fired by lib/useStore.notifyCartChanged() whenever the bag changes — the
-// closest signal the storefront has to "added to cart".
-const CART_CHANGED_EVENT = "sf:cart-changed";
-// Set on the first-ever visit so `new` matches only then and `returning` after.
-const VISITED_KEY = "sf_visited.v1";
-const seenKey = (key: string) => `sf_popup_seen_${key}`;
-
-function frequencyOf(popup: StudioPopup): string {
-  return (popup.display_rules?.frequency as string) || "once_per_session";
-}
-
-// Frequency gate — has this popup already been shown within its window?
-function alreadySeen(popup: StudioPopup): boolean {
-  const key = popup.popup_key;
-  if (!key) return true;
-  try {
-    const freq = frequencyOf(popup);
-    if (freq === "every_visit") return false;
-    if (freq === "once_per_day") {
-      const today = new Date().toISOString().slice(0, 10);
-      return window.localStorage.getItem(seenKey(key)) === today;
-    }
-    return window.sessionStorage.getItem(seenKey(key)) === "1"; // once_per_session
-  } catch {
-    return false; // storage blocked → don't suppress the popup
-  }
-}
-
-function markSeen(popup: StudioPopup): void {
-  const key = popup.popup_key;
-  if (!key) return;
-  try {
-    const freq = frequencyOf(popup);
-    if (freq === "every_visit") return;
-    if (freq === "once_per_day") {
-      window.localStorage.setItem(seenKey(key), new Date().toISOString().slice(0, 10));
-    } else {
-      window.sessionStorage.setItem(seenKey(key), "1");
-    }
-  } catch {
-    /* storage blocked — nothing to persist */
-  }
-}
-
-function audienceOk(
-  popup: StudioPopup,
-  ctx: { returning: boolean; signedIn: boolean },
-): boolean {
-  switch (popup.audience) {
-    case "new":
-      return !ctx.returning;
-    case "returning":
-      return ctx.returning;
-    case "guest":
-      return !ctx.signedIn;
-    case "member":
-      return ctx.signedIn;
-    case "all":
-    default:
-      return true;
-  }
-}
-
-/**
- * Arm a popup's trigger. Calls `fire` once the condition is met and returns a
- * cleanup that removes any listener/timer.
- */
-function armTrigger(popup: StudioPopup, fire: () => void): () => void {
-  const type = popup.trigger_type || "time_delay";
-  const value = Number(popup.trigger_value) || 0;
-
-  if (type === "scroll_depth") {
-    const threshold = value > 0 ? value : 40; // percent of page scrolled
-    const onScroll = () => {
-      const doc = document.documentElement;
-      const max = doc.scrollHeight - window.innerHeight;
-      const pct = max > 0 ? (window.scrollY / max) * 100 : 100;
-      if (pct >= threshold) fire();
-    };
-    window.addEventListener("scroll", onScroll, { passive: true });
-    // A short page may already be past the threshold — check once, but on the
-    // next tick so every trigger is armed (and disarmable) before any can fire.
-    const initial = window.setTimeout(onScroll, 0);
-    return () => {
-      window.clearTimeout(initial);
-      window.removeEventListener("scroll", onScroll);
-    };
-  }
-
-  if (type === "exit_intent") {
-    const onLeave = (e: MouseEvent) => {
-      if (e.clientY <= 0) fire();
-    };
-    document.addEventListener("mouseleave", onLeave);
-    return () => document.removeEventListener("mouseleave", onLeave);
-  }
-
-  if (type === "add_to_cart") {
-    window.addEventListener(CART_CHANGED_EVENT, fire);
-    return () => window.removeEventListener(CART_CHANGED_EVENT, fire);
-  }
-
-  // time_delay & page_load → a timer. page_load shows shortly after paint when
-  // no delay is set; time_delay defaults to a gentle 5s.
-  const secs = value > 0 ? value : type === "page_load" ? 0.6 : 5;
-  const timer = window.setTimeout(fire, secs * 1000);
-  return () => window.clearTimeout(timer);
-}
-
 export function StudioPopups() {
-  const allPopups = usePopups();
-  // The bespoke NewsletterModal owns the "newsletter" popup; render the rest.
-  const popups = useMemo(
-    () => allPopups.filter((p) => p.popup_key && p.popup_key !== "newsletter"),
-    [allPopups],
-  );
+  const popups = usePopups();
   const [openKey, setOpenKey] = useState<string | null>(null);
 
   useEffect(() => {
@@ -156,20 +57,11 @@ export function StudioPopups() {
     const disarm = () => cleanups.forEach((c) => c());
 
     (async () => {
-      let returning = false;
-      try {
-        returning = window.localStorage.getItem(VISITED_KEY) === "1";
-        window.localStorage.setItem(VISITED_KEY, "1");
-      } catch {
-        /* storage blocked — treat as a new visitor */
-      }
+      const returning = readAndMarkVisit();
 
       // Only pay for an auth round-trip when a popup actually targets sign-in.
-      const needsAuth = popups.some(
-        (p) => p.audience === "guest" || p.audience === "member",
-      );
       let signedIn = false;
-      if (needsAuth) {
+      if (needsAuth(popups)) {
         try {
           signedIn = await bootstrapAuth();
         } catch {
@@ -179,7 +71,10 @@ export function StudioPopups() {
       if (cancelled) return;
 
       const eligible = popups.filter(
-        (p) => audienceOk(p, { returning, signedIn }) && !alreadySeen(p),
+        (p) =>
+          p.popup_key &&
+          audienceOk(p, { returning, signedIn }) &&
+          !alreadySeen(p),
       );
       if (eligible.length === 0) return;
 
@@ -204,15 +99,24 @@ export function StudioPopups() {
   }, [popups]);
 
   const active = popups.find((p) => p.popup_key === openKey) || null;
+  const close = () => setOpenKey(null);
 
   return (
     <AnimatePresence>
       {active ? (
-        <StudioPopupModal
-          key={active.popup_key}
-          popup={active}
-          onClose={() => setOpenKey(null)}
-        />
+        active.popup_key === "newsletter" ? (
+          <NewsletterModal
+            key={active.popup_key}
+            popup={active}
+            onClose={close}
+          />
+        ) : (
+          <StudioPopupModal
+            key={active.popup_key}
+            popup={active}
+            onClose={close}
+          />
+        )
       ) : null}
     </AnimatePresence>
   );

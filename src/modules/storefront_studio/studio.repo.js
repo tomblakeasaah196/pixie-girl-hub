@@ -266,6 +266,21 @@ async function updatePopupDraft({ client, brand, popup_key, popup }) {
   return rows[0] || null;
 }
 
+// Take a live popup off the website WITHOUT touching its draft: archive the
+// published row so getPublishedSite() stops returning it. The draft/publish
+// model has no other way back — `publish` only ever promotes a draft, so an
+// operator who wanted a live popup gone had to delete it outright (losing the
+// content) or publish a deactivated draft. Returns null when nothing was live.
+async function unpublishPopup({ client, brand, popup_key }) {
+  const { rows } = await ex(client)(
+    `UPDATE shared.storefront_popups SET status = 'archived'
+      WHERE business = $1 AND popup_key = $2 AND status = 'published'
+      RETURNING *`,
+    [brand, popup_key],
+  );
+  return rows[0] || null;
+}
+
 async function deletePopup({ client, brand, popup_key }) {
   await ex(client)(
     `DELETE FROM shared.storefront_popups WHERE business = $1 AND popup_key = $2`,
@@ -474,6 +489,7 @@ module.exports = {
   getPopupDraft,
   insertPopupDraft,
   updatePopupDraft,
+  unpublishPopup,
   deletePopup,
   listSectionTemplates,
   getStorefrontDomain,

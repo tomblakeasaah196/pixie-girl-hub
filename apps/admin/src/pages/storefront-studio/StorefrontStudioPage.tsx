@@ -49,6 +49,7 @@ import {
   usePopups,
   useSavePopupDraft,
   usePublishPopup,
+  useUnpublishPopup,
   useDeletePopup,
   uploadStorefrontImage,
   buildOgBanner,
@@ -136,6 +137,43 @@ function StatusPill({ status }: { status?: StudioStatus }) {
   return (
     <Pill tone={status === "published" ? "success" : "neutral"} dot={false}>
       {status}
+    </Pill>
+  );
+}
+
+/**
+ * Truthful live-state pill for a popup. A popup key can have a draft AND a
+ * published row at once, so "draft" alone is a lie when something is serving
+ * the website — this says what the visitor actually gets.
+ *   Live         — published + active: on the site now
+ *   Live · edited— on the site, with unpublished draft changes
+ *   Off          — published but deactivated: not on the site
+ *   Draft        — never published: not on the site
+ */
+function PopupLivePill({
+  live,
+  publishedOff,
+  edited,
+}: {
+  live: boolean;
+  publishedOff: boolean;
+  edited: boolean;
+}) {
+  if (live)
+    return (
+      <Pill tone="success" dot={false}>
+        {edited ? "live · edited" : "live"}
+      </Pill>
+    );
+  if (publishedOff)
+    return (
+      <Pill tone="warn" dot={false}>
+        off
+      </Pill>
+    );
+  return (
+    <Pill tone="neutral" dot={false}>
+      draft
     </Pill>
   );
 }
@@ -2997,18 +3035,46 @@ function PopupsTab() {
   const { data, isLoading } = usePopups();
   const save = useSavePopupDraft();
   const publish = usePublishPopup();
+  const unpublish = useUnpublishPopup();
   const del = useDeletePopup();
   const [sel, setSel] = useState<PopupRow | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmTakeDown, setConfirmTakeDown] = useState(false);
 
+  /**
+   * GET /popups returns BOTH rows for a key (draft + published). The list edits
+   * the draft, but it must not hide the fact that a published row is serving
+   * the website: showing a bare "draft" pill next to a live popup is what made
+   * a popup look switched off while it was still on the site. Keep the draft as
+   * the edit target and carry the live state alongside it.
+   */
   const popups = useMemo(() => {
-    const byKey: Record<string, PopupRow> = {};
+    const byKey: Record<
+      string,
+      { edit: PopupRow; live: boolean; publishedOff: boolean; edited: boolean }
+    > = {};
     for (const p of data || []) {
-      if (!byKey[p.popup_key] || p.status === "draft") byKey[p.popup_key] = p;
+      const e = (byKey[p.popup_key] ||= {
+        edit: p,
+        live: false,
+        publishedOff: false,
+        edited: false,
+      });
+      if (p.status === "draft") {
+        e.edit = p;
+        e.edited = true;
+      } else if (p.status === "published") {
+        if (p.is_active) e.live = true;
+        else e.publishedOff = true;
+      }
     }
     return Object.values(byKey);
   }, [data]);
+
+  // Live state of the popup currently open in the editor.
+  const selState = popups.find((p) => p.edit.popup_key === sel?.popup_key);
+  const selIsPublished = Boolean(selState && (selState.live || selState.publishedOff));
 
   function edit(p: PopupRow) {
     setSel({ ...p });
@@ -3067,18 +3133,22 @@ function PopupsTab() {
         </Button>
         <ul className="space-y-1">
           {popups.map((p) => (
-            <li key={p.popup_key}>
+            <li key={p.edit.popup_key}>
               <button
-                onClick={() => edit(p)}
+                onClick={() => edit(p.edit)}
                 className={cn(
-                  "flex w-full items-center justify-between rounded-[10px] px-3 py-2 text-left text-[13px]",
-                  sel?.popup_key === p.popup_key
+                  "flex w-full items-center justify-between gap-2 rounded-[10px] px-3 py-2 text-left text-[13px]",
+                  sel?.popup_key === p.edit.popup_key
                     ? "bg-text-primary/[0.07] text-text-primary"
                     : "text-text-muted hover:bg-text-primary/[0.04] hover:text-text-primary",
                 )}
               >
-                <span>{p.popup_key || "(unnamed)"}</span>
-                <StatusPill status={p.status} />
+                <span className="truncate">{p.edit.popup_key || "(unnamed)"}</span>
+                <PopupLivePill
+                  live={p.live}
+                  publishedOff={p.publishedOff}
+                  edited={p.edited}
+                />
               </button>
             </li>
           ))}
@@ -3193,6 +3263,13 @@ function PopupsTab() {
               checked={sel.is_active}
               onChange={(v) => setSel({ ...sel, is_active: v })}
             />
+            <p className="text-[12px] leading-relaxed text-text-muted">
+              {selState?.live
+                ? "This popup is LIVE on the website right now. Active is part of the draft — it only reaches visitors when you Publish. To pull it off the site immediately, use Take down."
+                : selIsPublished
+                  ? "This popup is published but switched off, so visitors do not see it."
+                  : "This popup has never been published, so visitors do not see it."}
+            </p>
           </Section>
 
           <div className="flex flex-wrap gap-2 pt-1">
@@ -3210,6 +3287,15 @@ function PopupsTab() {
             >
               Publish
             </Button>
+            {selState?.live ? (
+              <Button
+                variant="secondary"
+                disabled={!sel.popup_key || unpublish.isPending}
+                onClick={() => setConfirmTakeDown(true)}
+              >
+                Take down
+              </Button>
+            ) : null}
             <Button
               variant="danger"
               disabled={!sel.popup_key || del.isPending}
@@ -3240,6 +3326,26 @@ function PopupsTab() {
             confirmLabel="Delete"
             tone="danger"
             busy={del.isPending}
+          />
+
+          <ConfirmDialog
+            open={confirmTakeDown}
+            onClose={() => setConfirmTakeDown(false)}
+            onConfirm={() =>
+              runStudio(() => unpublish.mutateAsync(sel.popup_key), {
+                area: `${STUDIO_AREA} → Popups (${sel.popup_key})`,
+                action: "Take popup down",
+                success: "Popup taken down — visitors no longer see it.",
+                onOk: () => {
+                  setConfirmTakeDown(false);
+                  setMsg("Popup taken down.");
+                },
+              })
+            }
+            title="Take popup down"
+            message={`Stop showing the "${sel.popup_key}" popup on the website? Your draft and its content are kept — you can publish it again later.`}
+            confirmLabel="Take down"
+            busy={unpublish.isPending}
           />
         </Card>
       ) : (

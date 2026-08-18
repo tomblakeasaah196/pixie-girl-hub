@@ -1625,6 +1625,20 @@ fonts, colours, favicons, and vocabulary (button text, page copy).
 - *Preview the storefront on a phone / tablet / desktop frame?* Storefront
   Studio → **Preview** (device-size toggle).
 - *Reword storefront buttons/labels?* Storefront Studio → **Content** / vocabulary.
+- *Create or edit a website popup (newsletter, promo, exit-intent)?* Storefront
+  Studio → **Popups** → pick one from the list (or **+ New popup**). Set what it
+  says, when it shows (trigger, who sees it, how often), then **Save draft** and
+  **Publish**.
+- *Stop a popup from showing on the website?* Storefront Studio → **Popups** →
+  open it → **Take down**. That pulls it off the site immediately and keeps your
+  draft and content, so you can publish it again later. **Delete** is different —
+  it removes the popup and its content for good.
+- *I switched a popup to "Active: off" but visitors still see it?* The **Active**
+  toggle is part of the *draft*, so it only reaches visitors when you **Publish**.
+  To take a live popup down right now, use **Take down** (above). The pill next to
+  each popup in the list tells you the truth: **live** = on the site now,
+  **live · edited** = on the site with unpublished draft changes, **off** =
+  published but switched off, **draft** = never published.
 
 ### 4.35 Notifications
 **What it's for.** Your alert feed.

@@ -277,6 +277,27 @@ async function publishPopup({ brand, user, request_id, popup_key }) {
   });
 }
 
+// Pull a popup off the live website, leaving its draft (and content) intact —
+// "Take down" in Studio. Deactivating a draft never affected the live site,
+// which is what made a deactivated popup look impossible to switch off.
+async function unpublishPopup({ brand, user, request_id, popup_key }) {
+  return transaction(async (client) => {
+    const archived = await repo.unpublishPopup({ client, brand, popup_key });
+    if (!archived) throw new NotFoundError("Published popup");
+    await A(
+      brand,
+      user,
+      "studio.popup.unpublish",
+      "storefront_popup",
+      archived.popup_id,
+      { popup_key },
+      request_id,
+    );
+    events.emit("popup.unpublished", { brand, popup_id: archived.popup_id });
+    return archived;
+  });
+}
+
 async function deletePopup({ brand, user, request_id, popup_key }) {
   return transaction(async (client) => {
     await repo.deletePopup({ client, brand, popup_key });
@@ -709,6 +730,7 @@ module.exports = {
   listPopups,
   savePopupDraft,
   publishPopup,
+  unpublishPopup,
   deletePopup,
   listSectionTemplates,
   uploadImage,

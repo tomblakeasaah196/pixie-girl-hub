@@ -100,6 +100,16 @@ async function publishPopup(req, res) {
     }),
   });
 }
+async function unpublishPopup(req, res) {
+  res.json({
+    data: await service.unpublishPopup({
+      brand: req.brand,
+      user: req.user,
+      request_id: req.request_id,
+      popup_key: req.params.popupKey,
+    }),
+  });
+}
 async function deletePopup(req, res) {
   res.json({
     data: await service.deletePopup({
@@ -228,6 +238,7 @@ module.exports = {
   listPopups,
   savePopupDraft,
   publishPopup,
+  unpublishPopup,
   deletePopup,
   listSectionTemplates,
   uploadImage,

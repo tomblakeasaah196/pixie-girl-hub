@@ -11071,6 +11071,93 @@ paths:
         responses: { "200": { description: Published } },
       }
 
+  /storefront-studio/popups:
+    get:
+      {
+        summary: List popups (returns BOTH the draft and published row per popup_key),
+        tags: [storefront_studio],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "storefront_studio.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Popups } },
+      }
+  /storefront-studio/popups/draft:
+    put:
+      {
+        summary: "Save a popup draft (is_active here applies to the DRAFT — it only reaches the website on publish)",
+        tags: [storefront_studio],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "storefront_studio.edit",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "200": { description: Saved } },
+      }
+  /storefront-studio/popups/{popupKey}/publish:
+    post:
+      {
+        summary: Publish a popup (archives the live row and promotes the draft),
+        tags: [storefront_studio],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: popupKey,
+              in: path,
+              required: true,
+              schema: { type: string },
+            },
+          ],
+        x-required-permission: "storefront_studio.approve",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "200": { description: Published } },
+      }
+  /storefront-studio/popups/{popupKey}/unpublish:
+    post:
+      {
+        summary: "Take a popup off the website (archives the published row; the draft and its content are kept)",
+        tags: [storefront_studio],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: popupKey,
+              in: path,
+              required: true,
+              schema: { type: string },
+            },
+          ],
+        x-required-permission: "storefront_studio.approve",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses:
+          {
+            "200": { description: Taken down },
+            "404": { description: No published popup for that key },
+          },
+      }
+  /storefront-studio/popups/{popupKey}:
+    delete:
+      {
+        summary: Delete a popup (removes both the draft and published rows),
+        tags: [storefront_studio],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: popupKey,
+              in: path,
+              required: true,
+              schema: { type: string },
+            },
+          ],
+        x-required-permission: "storefront_studio.approve",
+        x-entity-scope: brand,
+        x-is-write: true,
+        responses: { "200": { description: Deleted } },
+      }
+
   # ── Public storefront / retention (no auth; /api/public) ─────────
   /catalogue/storefront:
     get:

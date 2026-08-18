@@ -50,6 +50,27 @@ export function useStockLevels(params: {
   });
 }
 
+/** Base-product stock register (Stock → Products). Search, location, state
+ *  and sort are all server-side, so a filter spans the whole catalogue rather
+ *  than the page on screen. `placeholderData` keeps the previous page visible
+ *  while typing so the table doesn't flash empty on every keystroke. */
+export function useProductStock(params: {
+  q?: string;
+  location_id?: string;
+  category_id?: string;
+  stock_state?: string;
+  sort?: string;
+  page?: number;
+  page_size?: number;
+}) {
+  const brand = useBrand();
+  return useQuery({
+    queryKey: [brand, "stock", "products", params],
+    queryFn: () => stockApi.listProductStock(params),
+    placeholderData: (prev) => prev,
+  });
+}
+
 export function useStockMovements(params: {
   variant_id?: string;
   movement_type?: string;
@@ -186,6 +207,7 @@ export function useStockMutations() {
       onSuccess: () => {
         invalidate("movements");
         invalidate("levels");
+        invalidate("products");
         invalidate("valuation");
         toast.success("Movement logged");
       },
@@ -206,6 +228,7 @@ export function useStockMutations() {
       onSuccess: () => {
         invalidate("adjustments");
         invalidate("levels");
+        invalidate("products");
         invalidate("valuation");
       },
       onError: onWriteError("approve the adjustment"),
@@ -223,6 +246,7 @@ export function useStockMutations() {
       onSuccess: () => {
         invalidate("adjustments");
         invalidate("levels");
+        invalidate("products");
         invalidate("valuation");
         invalidate("movements");
       },
@@ -233,6 +257,7 @@ export function useStockMutations() {
       onSuccess: () => {
         invalidate("transfers");
         invalidate("levels");
+        invalidate("products");
         invalidate("movements");
         toast.success("Transfer sent");
       },
@@ -243,6 +268,7 @@ export function useStockMutations() {
       onSuccess: () => {
         invalidate("transfers");
         invalidate("levels");
+        invalidate("products");
         invalidate("movements");
         toast.success("Transfer dispatched");
       },
@@ -259,6 +285,7 @@ export function useStockMutations() {
       onSuccess: () => {
         invalidate("transfers");
         invalidate("levels");
+        invalidate("products");
         invalidate("movements");
         toast.success("Transfer received");
       },
@@ -295,6 +322,7 @@ export function useStockMutations() {
       onSuccess: () => {
         invalidate("shipments");
         invalidate("levels");
+        invalidate("products");
         invalidate("movements");
         invalidate("valuation");
         toast.success("Goods receipt logged");
@@ -318,6 +346,7 @@ export function useStockMutations() {
       onSuccess: () => {
         invalidate("shipments");
         invalidate("levels");
+        invalidate("products");
         invalidate("movements");
         toast.success("Shipment received");
       },

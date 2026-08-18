@@ -12,6 +12,7 @@ import type {
   Paginated,
   ValuationSummary,
   ValuationLine,
+  ProductStockResponse,
 } from "./types";
 
 function qs(
@@ -40,6 +41,20 @@ export const stockApi = {
     api.get<{ lines: ValuationLine[]; summary: ValuationSummary }>(
       `/stock/valuation${qs(filters ?? {})}`,
     ),
+
+  /** Base-product stock register — one row per BASE product with quantities
+   *  summed across its variants. `q` searches name / product code / SKU
+   *  server-side, so the filter works across the whole catalogue, not just
+   *  the page on screen. */
+  listProductStock: (params: {
+    q?: string;
+    location_id?: string;
+    category_id?: string;
+    stock_state?: string;
+    sort?: string;
+    page?: number;
+    page_size?: number;
+  }) => api.get<ProductStockResponse>(`/stock/products${qs(params)}`),
 
   listLevels: (params: {
     variant_id?: string;

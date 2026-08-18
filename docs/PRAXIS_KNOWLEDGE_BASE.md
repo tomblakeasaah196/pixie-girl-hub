@@ -610,9 +610,23 @@ Agenda) · **My HR** · **Goals** *(CEO)* · **Notes** *(CEO)* · **AI Chief of 
 stock between locations, transfers, adjustments, low-stock alerts.
 **Where.** Operate → **Stock** · `/stock`
 **Who can see it.** `stock` permission.
-**What's inside (tabs).** **Overview** · **Goods Reception** · **Movements** ·
-**Transfers** · **Adjustments** · **Alerts** · **Locations**.
+**What's inside (tabs).** **Overview** · **Goods Reception** ·
+**Available Products** · **Movements** · **Transfers** · **Adjustments** ·
+**Alerts** · **Locations**.
 **Common tasks.**
+- *See every product we have in stock, and how many?* Stock → **Available
+  Products** tab (`/stock?tab=products`). One row per **base product** with its
+  **on hand**, **reserved** and **available** units summed across all its
+  variants and locations, plus how many locations hold it and when it last
+  moved. Search by product name, product code or SKU; filter by **location**
+  and by **In stock / Low / Out of stock**; sort by most stock, name, lowest
+  stock or recently moved. Tap a row to open that base product in Catalogue.
+- *How many of one particular wig do we have?* Same tab — type its name or SKU
+  into the search box; the count is the **Available** column (**On hand** minus
+  what's already **Reserved** for orders).
+- *Which products are about to run out?* Stock → **Available Products** →
+  **Low** chip (below the reorder point), or the **Alerts** tab for the alert
+  queue.
 - *Receive incoming goods?* Stock → **Goods Reception** tab.
 - *Move / transfer stock between locations?* Stock → **Transfers** → **New Transfer**
   / **Create Transfer**.

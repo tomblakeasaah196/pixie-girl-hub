@@ -30,6 +30,60 @@ export interface StockLevel {
   updated_at: string;
 }
 
+/** A BASE product row on the Products (available stock) tab — quantities
+ *  summed across every variant of the base and, unless a location filter is
+ *  applied, across every location. Physical count, not sellable availability:
+ *  it includes inactive variants and non-storefront locations, so it
+ *  reconciles with a stocktake rather than with a storefront badge. */
+export interface ProductStockRow {
+  product_id: string;
+  product_code: string;
+  name: string;
+  category_id: string | null;
+  category_name: string | null;
+  hair_length_inches: number | null;
+  lace_type: string | null;
+  texture_type: string | null;
+  primary_colour: string | null;
+  is_visible_storefront: boolean;
+  primary_image_url: string | null;
+  /** Default variant's SKU (null when the base has no active variant). */
+  sku: string | null;
+  variant_count: number;
+  /** Summed reorder point across active variants (0 = none set). */
+  reorder_point: number;
+  on_hand: number;
+  reserved: number;
+  available: number;
+  /** Distinct locations physically holding units. */
+  locations_stocked: number;
+  last_movement_at: string | null;
+  stock_state: "in_stock" | "low_stock" | "out_of_stock";
+}
+
+/** Totals for the Products tab — spans the search/location/category filters
+ *  but NOT the stock-state filter, so the state chips can show their counts. */
+export interface ProductStockSummary {
+  products: number;
+  in_stock: number;
+  low_stock: number;
+  out_of_stock: number;
+  total_on_hand: number;
+  total_reserved: number;
+  total_available: number;
+}
+
+export interface ProductStockResponse {
+  data: ProductStockRow[];
+  meta: {
+    page: number;
+    page_size: number;
+    total: number;
+    has_more: boolean;
+  };
+  summary: ProductStockSummary;
+}
+
 export interface StockMovement {
   movement_id: string;
   movement_number: string;

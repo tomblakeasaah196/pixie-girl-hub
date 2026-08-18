@@ -333,6 +333,18 @@ function listLevels({ brand, variant_id, location_id, page, page_size }) {
 const variantStock = ({ brand, variant_id }) =>
   repo.levelsForVariant({ brand, variant_id });
 
+/**
+ * Base-product stock register (Stock → Products): one row per BASE product
+ * with quantities summed across its variants, searchable by name / product
+ * code / SKU and filterable by location, category and stock state.
+ *
+ * Quantity-only — no cost or value — so it needs nothing beyond `stock.view`.
+ */
+function listProductStock({ brand, filters, page, page_size }) {
+  const offset = (page - 1) * page_size;
+  return repo.listProductStock({ brand, filters, page, page_size, offset });
+}
+
 // Movements
 function listMovements({ brand, filters, page, page_size }) {
   const offset = (page - 1) * page_size;
@@ -1390,6 +1402,7 @@ module.exports = {
   exportOnHand,
   exportMovements,
   listLevels,
+  listProductStock,
   variantStock,
   listMovements,
   getMovement,

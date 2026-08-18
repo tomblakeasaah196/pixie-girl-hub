@@ -33,6 +33,10 @@ router.get("/valuation", can("view"), c.valuation);
 // Full stock-on-hand snapshot as .xlsx (All Locations + per-location sheets)
 router.get("/export", can("view"), c.exportOnHand);
 
+// Base-product stock register (Stock → Products): what we hold, per BASE
+// product, searchable. Quantity-only, so plain `view` is enough.
+router.get("/products", can("view"), c.listProductStock);
+
 // Levels (read-only; on_hand changes only via movements)
 router.get("/levels", can("view"), c.listLevels);
 router.get("/levels/variant/:variantId", can("view"), c.variantStock);

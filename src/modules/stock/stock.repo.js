@@ -1243,6 +1243,173 @@ async function onHandSnapshot({ client, brand }) {
   return rows;
 }
 
+/* ── Base-product stock register (Stock → Products) ───────────────────
+   One row per BASE product with its quantities summed across every variant
+   and (optionally) one location — the "what do we actually have on the
+   shelf?" list, searchable by name / product code / SKU.
+
+   Deliberately PHYSICAL, not sellable: it sums every variant's levels
+   (inactive variants included, exactly like `onHandSnapshot`) at every
+   location, so the figures reconcile with a stocktake. `catalogue`'s
+   baseStockSql answers a different question — what a customer may buy — and
+   restricts to active variants at storefront-sellable locations, so the two
+   numbers can legitimately differ.
+
+   Quantity-only by design: cost/value is a field-level-restricted attribute
+   (Cost Vault), and Overview already carries valuation, so nothing here needs
+   more than `stock.view`. */
+const PRODUCT_STOCK_SORTS = {
+  // In-stock first, deepest stock first — the default "what do we have" read.
+  stock: "available > 0 DESC, available DESC, name ASC",
+  name: "name ASC",
+  // Most recently touched stock first (never-moved products last).
+  recent: "last_movement_at DESC NULLS LAST, name ASC",
+  low: "(reorder_point > 0 AND available <= reorder_point) DESC, available ASC, name ASC",
+};
+
+const PRODUCT_STOCK_STATES = {
+  in_stock: "stock_state = 'in_stock'",
+  low_stock: "stock_state = 'low_stock'",
+  out_of_stock: "stock_state = 'out_of_stock'",
+};
+
+async function listProductStock({
+  client,
+  brand,
+  filters = {},
+  page = 1,
+  page_size = 25,
+  offset = 0,
+}) {
+  const params = [];
+  let i = 1;
+
+  // Level aggregate, optionally scoped to a single location.
+  let levelWhere = "";
+  if (filters.location_id) {
+    levelWhere = `WHERE sl.location_id = $${i++}`;
+    params.push(filters.location_id);
+  }
+
+  const prodWhere = ["p.is_deleted = false"];
+  if (filters.category_id) {
+    prodWhere.push(`p.category_id = $${i++}`);
+    params.push(filters.category_id);
+  }
+  if (filters.q) {
+    prodWhere.push(
+      `(p.name ILIKE $${i} OR p.product_code ILIKE $${i} OR p.slug ILIKE $${i}
+         OR EXISTS (SELECT 1 FROM ${t(brand, "product_variants")} pvq
+                     WHERE pvq.product_id = p.product_id AND pvq.sku ILIKE $${i}))`,
+    );
+    params.push(`%${filters.q}%`);
+    i++;
+  }
+
+  // A product that doesn't track stock only shows up if it is physically
+  // holding units — otherwise a non-inventory item would pad the register.
+  const cte = `
+    WITH lv AS (
+      SELECT pv.product_id,
+             COALESCE(SUM(sl.on_hand), 0)::int   AS on_hand,
+             COALESCE(SUM(sl.reserved), 0)::int  AS reserved,
+             COALESCE(SUM(sl.available), 0)::int AS available,
+             COUNT(DISTINCT sl.location_id)
+               FILTER (WHERE sl.on_hand > 0)::int AS locations_stocked,
+             MAX(sl.last_movement_at)            AS last_movement_at
+        FROM ${t(brand, "stock_levels")} sl
+        JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sl.variant_id
+        ${levelWhere}
+       GROUP BY pv.product_id
+    ),
+    va AS (
+      SELECT pv.product_id,
+             COUNT(*)::int                           AS variant_count,
+             COALESCE(SUM(pv.reorder_point), 0)::int AS reorder_point,
+             (ARRAY_AGG(pv.sku ORDER BY pv.is_default DESC,
+                                        pv.display_order ASC,
+                                        pv.created_at ASC))[1] AS sku
+        FROM ${t(brand, "product_variants")} pv
+       WHERE pv.is_active = true
+       GROUP BY pv.product_id
+    ),
+    scoped AS (
+      SELECT p.product_id, p.product_code, p.name, p.category_id,
+             p.hair_length_inches, p.lace_type, p.texture_type,
+             p.primary_colour, p.is_visible_storefront,
+             cat.name AS category_name,
+             (SELECT pi.cdn_url FROM ${t(brand, "product_images")} pi
+               WHERE pi.product_id = p.product_id
+               ORDER BY pi.is_primary DESC, pi.display_order LIMIT 1)
+               AS primary_image_url,
+             va.sku,
+             COALESCE(va.variant_count, 0)     AS variant_count,
+             COALESCE(va.reorder_point, 0)     AS reorder_point,
+             COALESCE(lv.on_hand, 0)           AS on_hand,
+             COALESCE(lv.reserved, 0)          AS reserved,
+             COALESCE(lv.available, 0)         AS available,
+             COALESCE(lv.locations_stocked, 0) AS locations_stocked,
+             lv.last_movement_at,
+             CASE
+               WHEN COALESCE(lv.available, 0) <= 0 THEN 'out_of_stock'
+               WHEN COALESCE(va.reorder_point, 0) > 0
+                 AND COALESCE(lv.available, 0) <= COALESCE(va.reorder_point, 0)
+                 THEN 'low_stock'
+               ELSE 'in_stock'
+             END AS stock_state
+        FROM ${t(brand, "products")} p
+        LEFT JOIN ${t(brand, "product_categories")} cat
+               ON cat.category_id = p.category_id
+        LEFT JOIN lv ON lv.product_id = p.product_id
+        LEFT JOIN va ON va.product_id = p.product_id
+       WHERE ${prodWhere.join(" AND ")}
+         AND (p.track_stock = true OR COALESCE(lv.on_hand, 0) > 0)
+    )`;
+
+  const stateSql = PRODUCT_STOCK_STATES[filters.stock_state] || null;
+  const stateWhere = stateSql ? `WHERE ${stateSql}` : "";
+  const orderBy = PRODUCT_STOCK_SORTS[filters.sort] || PRODUCT_STOCK_SORTS.stock;
+
+  const run = ex(client);
+  // COUNT(*) OVER() is evaluated before LIMIT, so it is the full filtered total.
+  const { rows } = await run(
+    `${cte}
+     SELECT s.*, COUNT(*) OVER()::int AS total_count
+       FROM scoped s
+       ${stateWhere}
+      ORDER BY ${orderBy}
+      LIMIT $${i++} OFFSET $${i++}`,
+    [...params, page_size, offset],
+  );
+
+  // Summary spans the search/location/category filters but NOT the state
+  // filter, so the state chips can carry their own counts.
+  const { rows: sum } = await run(
+    `${cte}
+     SELECT COUNT(*)::int AS products,
+            COUNT(*) FILTER (WHERE stock_state = 'in_stock')::int     AS in_stock,
+            COUNT(*) FILTER (WHERE stock_state = 'low_stock')::int    AS low_stock,
+            COUNT(*) FILTER (WHERE stock_state = 'out_of_stock')::int AS out_of_stock,
+            COALESCE(SUM(on_hand), 0)::int   AS total_on_hand,
+            COALESCE(SUM(reserved), 0)::int  AS total_reserved,
+            COALESCE(SUM(available), 0)::int AS total_available
+       FROM scoped`,
+    params,
+  );
+
+  const total = rows.length ? rows[0].total_count : 0;
+  return {
+    data: rows.map(({ total_count, ...r }) => r), // eslint-disable-line no-unused-vars
+    meta: {
+      page,
+      page_size,
+      total,
+      has_more: offset + rows.length < total,
+    },
+    summary: sum[0],
+  };
+}
+
 module.exports = {
   listLocations,
   getDefaultLocation,
@@ -1250,6 +1417,7 @@ module.exports = {
   updateLocation,
   valuation,
   onHandSnapshot,
+  listProductStock,
   listLevels,
   levelsForVariant,
   seedLevel,

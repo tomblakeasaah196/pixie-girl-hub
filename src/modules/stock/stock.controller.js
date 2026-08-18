@@ -40,6 +40,26 @@ async function listLevels(req, res) {
     }),
   });
 }
+// Base-product stock register — one row per BASE product with its quantities
+// summed across variants (Stock → Products). `q` searches name / product code
+// / SKU; `stock_state` and `sort` are validated against allow-lists in the repo.
+async function listProductStock(req, res) {
+  const { page, page_size } = parsePagination(req.query);
+  res.json({
+    data: await service.listProductStock({
+      brand: req.brand,
+      filters: {
+        q: req.query.q,
+        location_id: req.query.location_id,
+        category_id: req.query.category_id,
+        stock_state: req.query.stock_state,
+        sort: req.query.sort,
+      },
+      page,
+      page_size,
+    }),
+  });
+}
 const valuation = async (req, res) =>
   res.json({
     data: await service.valuation({
@@ -284,6 +304,7 @@ module.exports = {
   exportOnHand,
   exportMovements,
   listLevels,
+  listProductStock,
   variantStock,
   listMovements,
   getMovement,

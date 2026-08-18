@@ -6,6 +6,7 @@ import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { Tabs } from "./parts";
 import OverviewTab from "./OverviewTab";
 import ReceiveTab from "./ReceiveTab";
+import ProductsTab from "./ProductsTab";
 import MovementsTab from "./MovementsTab";
 import TransfersTab from "./TransfersTab";
 import AdjustmentsTab from "./AdjustmentsTab";
@@ -15,6 +16,7 @@ import LocationsTab from "./LocationsTab";
 const TABS = [
   { key: "overview", label: "Overview" },
   { key: "receive", label: "Goods Reception" },
+  { key: "products", label: "Available Products" },
   { key: "movements", label: "Movements" },
   { key: "transfers", label: "Transfers" },
   { key: "adjustments", label: "Adjustments" },
@@ -42,6 +44,7 @@ export function StockPage() {
       <Tabs tabs={TABS} active={tab} onChange={setTab} />
       {tab === "overview" && <OverviewTab />}
       {tab === "receive" && <ReceiveTab />}
+      {tab === "products" && <ProductsTab />}
       {tab === "movements" && <MovementsTab />}
       {tab === "transfers" && <TransfersTab />}
       {tab === "adjustments" && <AdjustmentsTab />}

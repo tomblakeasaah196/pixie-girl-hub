@@ -895,9 +895,10 @@ users and the language selector sits in the page header.
   they see and enter the factory's own currency figures, never the NGN landed
   cost or per-unit cost.
 - *The screen is in English but I chose Chinese?* The whole Production module is
-  translated. If a language added under Settings → **Factory Languages** is
-  missing keys, those strings fall back to English — re-upload the bundle with
-  the full key list from the downloadable guide.
+  translated. If a language added under **Factory Languages**
+  (`/settings/factory-languages` — direct link; no Settings tile) is missing
+  keys, those strings fall back to English — re-upload the bundle with the full
+  key list from the downloadable guide.
 
 ### 4.12 Retail Partners
 **What it's for.** **Consignment** — stock placed with retail partners, tracking
@@ -1298,7 +1299,8 @@ messages across WhatsApp, SMS, and other channels in one place.
   box so you can edit it before sending.
 - *Customer asks "where are you?" or "what time do you close?"* Paperclip →
   **Our address** or **Opening hours**. The address comes from
-  **Settings → Business Setup** (the `address` field); the hours start as
+  **Business Setup** (`/settings/business-setup` — direct link; no Settings
+  tile) — the `address` field; the hours start as
   *Monday to Saturday, 9:00 AM – 8:00 PM*. Both land in the box as normal
   editable text — change the wording, then either just send it, or press
   **Save as default** on the chip above the box to make your wording the one
@@ -1434,8 +1436,8 @@ full-screen **Landing Studio** (`/landing-studio`).
   (`/sales-campaigns/codes`).
 - *Set up campaign bundles?* Sales Campaigns → **Bundles**.
 - *A campaign link shows 404?* Public sale pages live on the brand's **sales
-  subdomain** (e.g. `sales.faitlynhair.com/sale/<slug>`), set in Settings →
-  Business Setup → Public Identity. A link on the bare apex
+  subdomain** (e.g. `sales.faitlynhair.com/sale/<slug>`), set in Business Setup
+  → Public Identity (`/settings/business-setup` — direct link; no Settings tile). A link on the bare apex
   (`faitlynhair.com/sale/…`) 404s — use the subdomain link from **Share kit**.
 
 ### 4.27 Social Studio
@@ -1535,27 +1537,32 @@ focused settings page.
 |---|---|
 | Appearance — **company-wide** logo, fonts & default palette (white-label). For a *personal* look, use **Appearance** in the account menu instead — see §2.3. | `/settings/appearance` |
 | Login screen editor | `/settings/login` |
-| Business setup (company profile) | `/settings/business-setup` |
+| Business setup (company profile) — *not on the Settings grid; direct link only* | `/settings/business-setup` |
 | Businesses (brands) | `/settings/businesses` |
 | Currencies | `/settings/currencies` |
 | Tax rates | `/settings/tax-rates` |
-| Payment gateways (Paystack/Opay/Nomba/Stripe) | `/settings/payment-gateways` |
+| Payment gateways (Paystack/Opay/Nomba/Stripe) — *not on the Settings grid; direct link only* | `/settings/payment-gateways` |
 | Bank accounts | `/settings/bank-accounts` |
 | Document numbering (invoice/PO numbers) | `/settings/document-numbering` |
-| Custom fields | `/settings/custom-fields` |
+| Custom fields — *not on the Settings grid; direct link only* | `/settings/custom-fields` |
 | CRM pipeline stages | `/settings/pipeline-stages` |
 | Document templates | `/settings/document-templates` |
 | Email signatures | `/settings/email-signatures` |
 | Notification preferences | `/settings/notifications` |
 | Scheduled reports | `/settings/scheduled-reports` |
 | Integration secrets / API keys | `/settings/integration-secrets` |
-| Business policies | `/settings/policies` |
+| Business policies — *not on the Settings grid; direct link only* | `/settings/policies` |
 | Contact tags | `/settings/contact-tags` |
-| Factory languages (i18n) | `/settings/factory-languages` |
+| Factory languages (i18n) — *not on the Settings grid; direct link only* | `/settings/factory-languages` |
+
+Five of these pages — Business setup, Business policies, Payment gateways,
+Custom fields and Factory languages — are **hidden from the Settings landing
+grid**. They still work: open them by their direct link above, not by looking
+for a tile.
 
 **Common tasks.**
-- *Connect a payment gateway?* Settings → **Payment gateways**
-  (`/settings/payment-gateways`).
+- *Connect a payment gateway?* Open `/settings/payment-gateways` directly —
+  there is no tile for it on the Settings grid.
 - *Change invoice/PO number format?* Settings → **Document numbering**.
 - *Add a currency / tax rate?* Settings → **Currencies** / **Tax rates**.
 - *Add a bank account?* Settings → **Bank accounts**.
@@ -1850,7 +1857,7 @@ Use this as the fast lookup. Format: **task → module (group) → link**.
 - Give a user access / create a user → IAM → `/iam-security/users`
 - Create or edit a role → Org & Workflow (People) → `/org-workflow`
 - See the audit trail → IAM → `/iam-security/audit`
-- Connect a payment gateway → Settings → `/settings/payment-gateways`
+- Connect a payment gateway → `/settings/payment-gateways` (direct link; no Settings tile)
 - Change invoice/PO numbering → Settings → `/settings/document-numbering`
 - Add a currency / tax rate → Settings → `/settings/currencies` / `/settings/tax-rates`
 - Switch business (PXG ⇄ FLH) → business switcher, top-left

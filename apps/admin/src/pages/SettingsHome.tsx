@@ -48,6 +48,18 @@ interface Section {
   tiles: Tile[];
 }
 
+/**
+ * Tiles hidden from the Settings landing. Routes and pages are untouched —
+ * these are simply not surfaced in the card grid.
+ */
+const HIDDEN_TILES = new Set([
+  "business-setup",
+  "policies",
+  "payment-gateways",
+  "custom-fields",
+  "factory-languages",
+]);
+
 const SECTIONS: Section[] = [
   {
     title: "Identity",
@@ -237,16 +249,20 @@ export function SettingsHome() {
         </p>
       </div>
 
-      {SECTIONS.map((section) => (
-        <section key={section.title} className="mb-7">
-          <div className="micro mb-3">{section.title}</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-            {section.tiles.map((t) => (
-              <SettingsTile key={t.key} tile={t} />
-            ))}
-          </div>
-        </section>
-      ))}
+      {SECTIONS.map((section) => {
+        const tiles = section.tiles.filter((t) => !HIDDEN_TILES.has(t.key));
+        if (tiles.length === 0) return null;
+        return (
+          <section key={section.title} className="mb-7">
+            <div className="micro mb-3">{section.title}</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+              {tiles.map((t) => (
+                <SettingsTile key={t.key} tile={t} />
+              ))}
+            </div>
+          </section>
+        );
+      })}
     </div>
   );
 }

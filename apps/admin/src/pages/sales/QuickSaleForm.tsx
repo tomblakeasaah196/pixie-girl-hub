@@ -796,7 +796,7 @@ export function QuickSaleForm() {
 
       {/* Step 2: Customer */}
       {step >= 2 && (
-        <Card className="p-5">
+        <Card className="p-5 relative z-20">
           <div className="micro mb-3">Customer</div>
           {contactId ? (
             <div className="flex items-center gap-3">

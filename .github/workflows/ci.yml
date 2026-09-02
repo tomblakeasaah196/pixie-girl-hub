@@ -45,16 +45,29 @@ jobs:
     runs-on: ubuntu-latest
     needs: test
     environment: production
+    # The VPS pulls this repo over HTTPS with the token forwarded below, so the
+    # job's token has to be allowed to read the repository's contents.
+    permissions:
+      contents: read
 
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         timeout-minutes: 30
+        env:
+          # Credentials for the VPS's `git fetch` (see the sync step in the
+          # script below). The workflow's own short-lived token is enough to
+          # read this repo; set the VPS_GIT_TOKEN secret to a fine-grained PAT
+          # instead if the box ever needs to fetch something this token can't
+          # reach (a submodule, another private repo).
+          DEPLOY_GIT_TOKEN: ${{ secrets.VPS_GIT_TOKEN || github.token }}
+          DEPLOY_GIT_REMOTE: ${{ github.server_url }}/${{ github.repository }}.git
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           command_timeout: "28m"
+          envs: DEPLOY_GIT_TOKEN,DEPLOY_GIT_REMOTE
           script: |
             set -e
 
@@ -73,8 +86,56 @@ jobs:
             # strategy"), which fails the whole deploy under `set -e`. Fetch and
             # hard-reset so the tree matches origin/main exactly, every time,
             # regardless of the VPS's prior state.
-            git fetch origin main
+            #
+            # Auth: the box holds no GitHub credentials of its own. Its `origin`
+            # is an HTTPS URL, so git asks for a username, finds no terminal on
+            # this SSH session, and the deploy dies at the first command with
+            #   fatal: could not read Username for 'https://github.com':
+            #   No such device or address
+            # This run therefore carries its own credential: DEPLOY_GIT_TOKEN is
+            # forwarded from the workflow (see `envs:` above) and handed to git
+            # through a per-invocation credential helper — so it never lands in
+            # .git/config or any other file on the box, and it stops working
+            # when the run ends. GIT_TERMINAL_PROMPT=0 keeps any future auth
+            # failure a fast, honest error instead of that riddle.
+            # See docs/DEPLOY_GIT_AUTH.md.
+            export GIT_TERMINAL_PROMPT=0
+            export GIT_SSH_COMMAND="ssh -o BatchMode=yes"
+            GIT_CRED_HELPER='!f() { printf "username=x-access-token\npassword=%s\n" "$DEPLOY_GIT_TOKEN"; }; f'
+
+            # `origin` first (it is the configured remote and may legitimately be
+            # SSH); the canonical HTTPS URL of this repo as the fallback, so a
+            # stale or unauthenticated remote on the box cannot block a deploy.
+            # The refspec updates refs/remotes/origin/main either way, so the
+            # hard-reset target below is the same in both cases.
+            fetch_main() {
+              git -c credential.helper= -c credential.helper="$GIT_CRED_HELPER" \
+                  fetch --no-tags "$1" '+refs/heads/main:refs/remotes/origin/main'
+            }
+
+            SYNCED=0
+            for attempt in 1 2 3 4; do
+              if fetch_main origin || fetch_main "$DEPLOY_GIT_REMOTE"; then
+                SYNCED=1
+                break
+              fi
+              [ "$attempt" -lt 4 ] || break
+              DELAY=$((1 << attempt))
+              echo "  fetch attempt $attempt/4 failed — retrying in ${DELAY}s..."
+              sleep "$DELAY"
+            done
+
+            if [ "$SYNCED" -ne 1 ]; then
+              echo "Could not fetch main from GitHub — the VPS tree is untouched."
+              echo "  origin: $(git remote get-url origin 2>/dev/null || echo '<none>')"
+              echo "  fallback: $DEPLOY_GIT_REMOTE"
+              echo "  → GitHub unreachable from the box, or the deploy token"
+              echo "    cannot read this repo. See docs/DEPLOY_GIT_AUTH.md."
+              exit 1
+            fi
+
             git reset --hard origin/main
+            echo "VPS tree now at $(git rev-parse --short HEAD) ✓"
 
             # ── Headless Chrome for PDF rendering ──────────────────
             # PDFs (invoices, receipts, payslips, reports) render via Puppeteer,

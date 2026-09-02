@@ -26,10 +26,17 @@
 
 ## Bulk stock count
 
-A physical recount is imported with `npm run stock:import-count -- --file
-count.xlsx` (see `docs/STOCK_COUNT_IMPORT.md`). It files ONE `count` adjustment
+A physical recount is imported from a spreadsheet — in the Hub via Stock →
+Adjustments → **Import Count** (`POST /stock/adjustments/import-count`), or
+headless via `npm run stock:import-count`. Both file ONE `count` adjustment
 whose lines carry `system_count` vs `physical_count`, submitted for approval —
-stock only moves when an approver posts it.
+stock only moves when an approver posts it. See `docs/STOCK_COUNT_IMPORT.md`.
+
+The matching and reconciliation rules live in `stock.count-sheet.js` (sheet row
+→ base product) and `stock.count-plan.js` (rows + shelf → lines + the reasons
+to refuse), so the endpoint and the CLI can't drift apart. `commit: false`
+previews without writing; the endpoint reports its blockers rather than
+throwing, so the review screen can show them before anyone commits.
 
 Note the difference from Goods Reception, which is the other bulk path:
 reception **adds** units, a count adjustment **replaces** them (posting writes a

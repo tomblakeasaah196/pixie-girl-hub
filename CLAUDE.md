@@ -156,7 +156,7 @@ Field/endpoint truth: migration SQL → `docs/openapi.yaml` → `docs/Frontend_E
 - `docs/AI_PRAXIS.md` — Praxis AI agent, RAG, guardrails
 - `docs/ENTITY_ISOLATION.md` — schema-per-business design
 - `docs/CONFORMANCE_GAPS.md` — pending V2.2 spec items
-- `docs/STOCK_COUNT_IMPORT.md` — turning a physical stock-count spreadsheet into the system's on-hand figures: why Goods Reception *adds* while a `count` adjustment *replaces*, the four-axis (colour × texture × cap × size) row matching, the `--blank` / `--unlisted` decisions that make a sheet a true SSOT, and the interlocks that stop a half-matched sheet emptying the shelf
+- `docs/STOCK_COUNT_IMPORT.md` — turning a physical stock-count spreadsheet into the system's on-hand figures, from Stock → Adjustments → **Import Count** or the `stock:import-count` CLI (both share one reconciliation): why Goods Reception *adds* while a `count` adjustment *replaces*, the four-axis (colour × texture × cap × size) row matching, the blank-cell / not-on-the-sheet decisions that make a sheet a true SSOT, and the interlocks that stop a half-matched sheet emptying the shelf
 - `docs/ORDER_AMENDMENTS.md` — "Change Order": amending an order's products/delivery after it was placed (and paid), and how stock, the GL, the invoice, Studio and Logistics are reconciled in one transaction
 - `docs/FRONTEND_SCREEN_REQUIREMENTS.md` — per-module UI detail
 - `docs/Frontend_Engineering_Guide_v2.2.md` — screens, tables, states per module

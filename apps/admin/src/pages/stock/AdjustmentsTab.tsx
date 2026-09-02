@@ -10,6 +10,7 @@ import {
   ChevronRight,
   ChevronLeft,
   AlertTriangle,
+  Upload,
   X,
 } from "lucide-react";
 import { Button, Card, Pill } from "@/components/ui/primitives";
@@ -30,6 +31,7 @@ import {
   useStockMutations,
 } from "./hooks";
 import type { StockAdjustment, StockLevel } from "./types";
+import { StockCountImportModal } from "./StockCountImportModal";
 import {
   StatusPill,
   SearchBox,
@@ -121,6 +123,7 @@ export default function AdjustmentsTab() {
 
   /* drawers */
   const [stocktakeOpen, setStocktakeOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [writeoffOpen, setWriteoffOpen] = useState(false);
   const [rejectTarget, setRejectTarget] = useState<string | null>(null);
   // The record a notification / approval task deep-links to, and what a row
@@ -386,6 +389,14 @@ export default function AdjustmentsTab() {
         {canCreate && (
           <>
             <Button
+              variant="secondary"
+              size="sm"
+              icon={<Upload className="w-4 h-4" />}
+              onClick={() => setImportOpen(true)}
+            >
+              Import Count
+            </Button>
+            <Button
               variant="primary"
               size="sm"
               icon={<ClipboardCheck className="w-4 h-4" />}
@@ -448,6 +459,13 @@ export default function AdjustmentsTab() {
         mutations={mutations}
       />
 
+      {/* ── Bulk count import (spreadsheet → one count adjustment) ── */}
+      <StockCountImportModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        locations={locations}
+      />
+
       {/* ── Adjustment detail — what a deep link opens ── */}
       <AdjustmentDetailDrawer
         adjustment={
@@ -505,7 +523,13 @@ function StocktakeDrawer({
   const [note, setNote] = useState("");
   const [search, setSearch] = useState("");
   const [countPage, setCountPage] = useState(1);
-  const [counts, setCounts] = useState<Record<string, string>>({});
+  // Each entry carries the system count it was typed against, so the review
+  // and the submit never have to look at `levels` — which only ever holds the
+  // CURRENT page. Counting page 1, paging to page 2 and submitting used to
+  // send page 2 alone and silently drop everything before it.
+  const [counts, setCounts] = useState<
+    Record<string, { physical: string; system: number }>
+  >({});
   const [submitting, setSubmitting] = useState(false);
 
   const locationOptions = useMemo(
@@ -539,16 +563,14 @@ function StocktakeDrawer({
     );
   }, [levels, search]);
 
-  /* summary for step 3 */
+  /* summary for step 3 — over every page counted, not just the one on screen */
   const summary = useMemo(() => {
     let surplus = 0;
     let writeDown = 0;
     let lineCount = 0;
-    for (const lv of levels) {
-      const physical = counts[lv.variant_id];
-      if (physical === undefined || physical === "") continue;
-      const p = Number(physical);
-      const d = p - lv.on_hand;
+    for (const entry of Object.values(counts)) {
+      if (entry.physical === "") continue;
+      const d = Number(entry.physical) - entry.system;
       if (d !== 0) {
         lineCount++;
         if (d > 0) surplus += d;
@@ -556,7 +578,7 @@ function StocktakeDrawer({
       }
     }
     return { lineCount, surplus, writeDown, hasWriteDown: writeDown > 0 };
-  }, [levels, counts]);
+  }, [counts]);
 
   const reset = () => {
     setStep(1);
@@ -576,15 +598,14 @@ function StocktakeDrawer({
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      const lines = levels
-        .filter((lv) => {
-          const p = counts[lv.variant_id];
-          return p !== undefined && p !== "" && Number(p) !== lv.on_hand;
-        })
-        .map((lv) => ({
-          variant_id: lv.variant_id,
-          system_count: lv.on_hand,
-          physical_count: Number(counts[lv.variant_id]),
+      const lines = Object.entries(counts)
+        .filter(
+          ([, e]) => e.physical !== "" && Number(e.physical) !== e.system,
+        )
+        .map(([variant_id, e]) => ({
+          variant_id,
+          system_count: e.system,
+          physical_count: Number(e.physical),
         }));
 
       const adj = await mutations.createAdjustment.mutateAsync({
@@ -719,7 +740,7 @@ function StocktakeDrawer({
                   <TableSkeleton cols={4} rows={8} />
                 ) : (
                   filteredLevels.map((lv) => {
-                    const physical = counts[lv.variant_id] ?? "";
+                    const physical = counts[lv.variant_id]?.physical ?? "";
                     const p = physical === "" ? lv.on_hand : Number(physical);
                     const diff = p - lv.on_hand;
                     let rowColor = "";
@@ -747,7 +768,10 @@ function StocktakeDrawer({
                             onChange={(v) =>
                               setCounts((prev) => ({
                                 ...prev,
-                                [lv.variant_id]: v,
+                                [lv.variant_id]: {
+                                  physical: v,
+                                  system: lv.on_hand,
+                                },
                               }))
                             }
                             placeholder={String(lv.on_hand)}

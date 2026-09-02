@@ -55,14 +55,14 @@ const {
   parseCountRows,
   dedupeRows,
   matchRows,
-} = require("./lib/stock-count-sheet");
+} = require("../src/modules/stock/stock.count-sheet");
 const { readCountSheet } = require("./lib/read-count-sheet");
 const {
   resolveLocation,
   buildLines,
   summarise,
   blockers,
-} = require("./lib/stock-count-plan");
+} = require("../src/modules/stock/stock.count-plan");
 
 // ── CLI ──────────────────────────────────────────────────
 

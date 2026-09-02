@@ -329,6 +329,17 @@ export function useStockMutations() {
       },
       onError: onWriteError("log the goods receipt"),
     }),
+    // Preview and commit share one mutation; only a commit invalidates, since
+    // a preview writes nothing. Errors are surfaced by the modal itself (the
+    // blockers list is actionable), so no toast here.
+    importCount: useMutation({
+      mutationFn: stockApi.importCount,
+      onSuccess: (res) => {
+        if (!res.adjustment) return;
+        invalidate("adjustments");
+        toast.success(`${res.adjustment.adjustment_number} submitted for approval`);
+      },
+    }),
     updateShipmentStatus: useMutation({
       mutationFn: ({ id, status }: { id: string; status: string }) =>
         stockApi.updateShipmentStatus(id, status),

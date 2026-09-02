@@ -50,6 +50,11 @@ const COLUMN_ALIASES = {
   ],
   size: ["size", "capsize", "headsize"],
   units: ["unitsno", "units", "unit", "quantity", "qty", "count", "onhand"],
+  // Present when the sheet came from our own downloadable template, which
+  // pre-fills one row per base product. A code is an exact identity, so it
+  // beats the four fuzzy axes whenever it is there.
+  code: ["productcode", "code", "sku"],
+  product: ["productname", "product", "baseproduct", "name"],
 };
 
 /**
@@ -139,12 +144,23 @@ function pick(row, column) {
 function parseCountRows(rawRows) {
   const out = [];
   rawRows.forEach((raw, index) => {
+    const code = pick(raw, "code");
+    const productName = pick(raw, "product");
     const colour = pick(raw, "colour");
     const texture = pick(raw, "texture");
     const cap = pick(raw, "cap");
     const sizeRaw = pick(raw, "size");
     const unitsRaw = pick(raw, "units");
-    if (!colour && !texture && !cap && !sizeRaw && !unitsRaw) return;
+    if (
+      !code &&
+      !productName &&
+      !colour &&
+      !texture &&
+      !cap &&
+      !sizeRaw &&
+      !unitsRaw
+    )
+      return;
 
     const size = canonicalSize(sizeRaw);
     const unitsNum = unitsRaw === "" ? null : Number(unitsRaw);
@@ -154,8 +170,14 @@ function parseCountRows(rawRows) {
         unitsNum >= 0 &&
         Number.isInteger(unitsNum));
 
+    // A row from our own template identifies its product outright, so the four
+    // axes are only REQUIRED when there is no code and no name to fall back on.
+    const identified = Boolean(code || productName);
+
     let error = null;
-    if (!colour) error = "Missing colour";
+    if (identified) {
+      if (!unitsOk) error = `'${unitsRaw}' is not a whole number of units`;
+    } else if (!colour) error = "Missing colour";
     else if (!texture) error = "Missing texture";
     else if (!cap) error = "Missing cap construction";
     else if (!sizeRaw) error = "Missing size";
@@ -165,6 +187,8 @@ function parseCountRows(rawRows) {
     out.push({
       // 1-based sheet row, counting the header — what the operator sees in Excel.
       row: index + 2,
+      code,
+      productName,
       colour,
       texture,
       cap,
@@ -177,8 +201,14 @@ function parseCountRows(rawRows) {
   return out;
 }
 
-/** The (colour, texture, cap, size) identity of a row, for de-duplication. */
+/**
+ * A row's identity, for de-duplication — the product code when the sheet came
+ * from our template, otherwise the four axes. Keyed the same way the row will
+ * be matched, so two rows that will land on one product collapse here first.
+ */
 function rowKey(row) {
+  if (row.code) return `code:${normKey(row.code)}`;
+  if (row.productName && !row.colour) return `name:${normKey(row.productName)}`;
   return [row.colour, row.texture, row.cap, row.size].map(normKey).join("|");
 }
 
@@ -234,7 +264,43 @@ function dedupeRows(rows) {
  * picks a winner among several — an ambiguous match must reach a human.
  */
 function matchRow(row, products) {
-  const wanted = [row.colour, row.texture, row.cap].map(normKey);
+  // A product code is an exact identity — when the sheet carries one (every
+  // row of our downloadable template does), it settles the match outright and
+  // no amount of axis drift can move it.
+  if (row.code) {
+    const key = normKey(row.code);
+    const byCode = products.find((p) => normKey(p.product_code) === key);
+    if (byCode) return { product: byCode };
+    return {
+      error: `No base product with code '${row.code}'`,
+      candidates: [],
+    };
+  }
+
+  // Then the full product name, which the template also carries.
+  if (row.productName) {
+    const key = normKey(row.productName);
+    const byName = products.filter((p) => normKey(p.name) === key);
+    if (byName.length === 1) return { product: byName[0] };
+    if (byName.length > 1)
+      return {
+        error: `${byName.length} base products are named '${row.productName}'`,
+        candidates: byName,
+      };
+    // A name that matches nothing still falls through to the axes below, so a
+    // renamed product is found by what it is rather than what it was called.
+  }
+
+  const described = [row.colour, row.texture, row.cap].filter(Boolean);
+  if (described.length < 3 || !row.size)
+    return {
+      error: row.productName
+        ? `No base product named '${row.productName}'`
+        : "Row names no product and gives no colour/texture/cap/size",
+      candidates: [],
+    };
+
+  const wanted = described.map(normKey);
   const candidates = products.filter((p) => {
     if (productSize(p) !== row.size) return false;
     const hay = productHaystack(p);

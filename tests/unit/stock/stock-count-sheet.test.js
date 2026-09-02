@@ -1,7 +1,7 @@
 "use strict";
 
 /**
- * The count-sheet parser + matcher behind `scripts/import-stock-count.js`.
+ * The count-sheet parser + matcher behind `stock.count-sheet.js`.
  *
  * These rules decide which base product a hand-typed row lands on, and a wrong
  * landing writes a wrong number into the ledger — so the tests pin the three
@@ -20,7 +20,7 @@ const {
   dedupeRows,
   matchRow,
   matchRows,
-} = require("../../../scripts/lib/stock-count-sheet");
+} = require("../../../src/modules/stock/stock.count-sheet");
 
 const HEADERS = ["Color", "Texture", "Cap Construction", "Size", "Units No."];
 const sheetRow = (colour, texture, cap, size, units) =>

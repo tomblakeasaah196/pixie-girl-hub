@@ -1,7 +1,7 @@
 "use strict";
 
 /**
- * The planning half of `scripts/import-stock-count.js` — matched rows + the
+ * The planning half of `stock.count-plan.js` — matched rows + the
  * current shelf → the lines of a `count` adjustment.
  *
  * This is the code that can do damage: every line becomes a stock movement
@@ -21,7 +21,7 @@ const {
   buildLines,
   summarise,
   blockers,
-} = require("../../../scripts/lib/stock-count-plan");
+} = require("../../../src/modules/stock/stock.count-plan");
 
 const variant = (sku, on_hand, extra = {}) => ({
   variant_id: `var-${sku}`,

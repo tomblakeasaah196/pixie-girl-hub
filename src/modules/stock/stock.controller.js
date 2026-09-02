@@ -296,6 +296,20 @@ const receiveShipment = async (req, res) =>
     }),
   });
 
+// Count import — parsed sheet rows in, reconciliation (and optionally a filed
+// adjustment) out. One endpoint for preview and commit so the review the user
+// approves is computed by the same code path that writes.
+async function importCount(req, res) {
+  res.json({
+    data: await service.importCount({
+      brand: req.brand,
+      user: req.user,
+      request_id: req.id,
+      input: req.body,
+    }),
+  });
+}
+
 module.exports = {
   listLocations,
   createLocation,
@@ -329,6 +343,7 @@ module.exports = {
   getShipment,
   createShipment,
   createGoodsReceipt,
+  importCount,
   updateShipmentStatus,
   receiveShipment,
 };

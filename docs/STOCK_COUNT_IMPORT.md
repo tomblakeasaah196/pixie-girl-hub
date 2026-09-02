@@ -47,7 +47,9 @@ keyed on. This is the shape the CEO already counts in:
 | GG4   | 4mm curl | HD13\*4          | M    | 1         |
 
 - **No SKU or product code is needed** — someone counting a shelf does not have
-  those. Rows are matched to base products on the four axes.
+  those. Rows are matched to base products on the four axes. When a sheet
+  *does* carry a **Product Code** (every row of the downloadable template
+  does), that code settles the match outright and the axes are ignored.
 - **Header spellings are flexible**: `Color`/`Colour`, `Cap Construction`/`Lace`,
   `Units No.`/`Qty`/`Quantity`/`Count`.
 - **Empty rows between colour blocks are fine** — they are dropped.
@@ -115,7 +117,44 @@ All deliberate. Read why before removing one.
 
 ---
 
-## Running it
+## Two ways to run it
+
+Both paths go through the **same** reconciliation code
+(`stock.count-sheet.js` + `stock.count-plan.js`), so they cannot disagree about
+what a sheet means.
+
+| | In the Hub | On the VPS |
+| --- | --- | --- |
+| Where | Stock → Adjustments → **Import Count** | `npm run stock:import-count` |
+| Who | anyone with `stock:create` | ops, over SSH |
+| Template | **Download** button in the modal | — |
+| Preview | the review screen | dry run (the default) |
+| Result | one submitted `count` adjustment | one submitted `count` adjustment |
+
+---
+
+## In the Hub (Stock → Adjustments → Import Count)
+
+1. **Download the Excel template.** It comes pre-filled with one row per base
+   product — Product Code, Product Name, and the four axes already written out
+   — and an empty **Units No.** column. The counter walks the shelf and types
+   numbers; nothing can come back unmatched, because every row *is* a real
+   product.
+2. **Upload the filled sheet.** The browser only reads the workbook; the
+   matching and the reconciliation happen server-side.
+3. **Review.** Every line shows `system → counted` with its delta, plus the
+   unit total the location will hold once posted. Two toggles carry the
+   judgement calls — what a blank cell means, and what happens to products the
+   sheet never names — and the totals re-compute as you switch them.
+4. **Submit for Approval.** One `count` adjustment is filed and submitted. The
+   button stays disabled while anything is unresolved.
+5. **Approve and post** on the Adjustments tab. *Only now does stock move.*
+
+A sheet the CEO typed herself works too — the importer reads her column
+headers directly. The template just removes the possibility of a typo landing
+on nothing.
+
+## On the VPS
 
 ```bash
 # 1. Dry run — read the whole variance before anything is written
@@ -192,11 +231,15 @@ name. Either:
 
 ## Code map
 
-| file                                | role                                        |
-| ----------------------------------- | ------------------------------------------- |
-| `scripts/import-stock-count.js`     | CLI, database reads, files the adjustment    |
-| `scripts/lib/read-count-sheet.js`   | `.xlsx`/`.csv` → header→cell rows            |
-| `scripts/lib/stock-count-sheet.js`  | parsing, normalisation, catalogue matching   |
-| `scripts/lib/stock-count-plan.js`   | rows + shelf → adjustment lines + blockers   |
-| `tests/unit/stock/stock-count-sheet.test.js` | matching rules                      |
-| `tests/unit/stock/stock-count-plan.test.js`  | line building + interlocks          |
+| file | role |
+| --- | --- |
+| `src/modules/stock/stock.count-sheet.js` | parsing, normalisation, catalogue matching |
+| `src/modules/stock/stock.count-plan.js` | rows + shelf → adjustment lines + blockers |
+| `stock.service.js` → `importCount` | preview / commit, shared by both entry points |
+| `POST /stock/adjustments/import-count` | the endpoint the modal calls |
+| `apps/admin/src/pages/stock/StockCountImportModal.tsx` | template, upload, review |
+| `scripts/import-stock-count.js` | the CLI entry point |
+| `scripts/lib/read-count-sheet.js` | `.xlsx`/`.csv` → header→cell rows (CLI only) |
+| `tests/unit/stock/stock-count-sheet.test.js` | matching rules |
+| `tests/unit/stock/stock-count-plan.test.js` | line building + interlocks |
+| `tests/unit/stock/count-import-service.test.js` | preview vs commit, refusals |

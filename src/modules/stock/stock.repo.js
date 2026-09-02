@@ -1410,6 +1410,69 @@ async function listProductStock({
   };
 }
 
+// ── Count import (Stock → Adjustments → Import Count) ────
+// Three reads the importer needs and nothing else owns: the catalogue it
+// matches sheet rows against, the shelf it reconciles them with, and the
+// locations it must not silently pick between.
+
+/**
+ * Every base product a count sheet could name, with the columns the matcher
+ * reads (`stock.count-sheet.js`). Deleted and non-physical products are out —
+ * a service line can never be counted on a shelf.
+ */
+async function productsForCountMatch({ client, brand }) {
+  const { rows } = await ex(client)(
+    `SELECT product_id, product_code, name, primary_colour, texture_type,
+            lace_type, cap_size, lace_size_codes, track_stock
+       FROM ${t(brand, "products")}
+      WHERE is_deleted = false
+        AND product_type = 'physical'
+      ORDER BY name`,
+  );
+  return rows;
+}
+
+/**
+ * On-hand per variant at one location, grouped by base product — the
+ * `system_count` side of every adjustment line.
+ *
+ * LEFT JOIN, not INNER: a variant with no `stock_levels` row has never moved
+ * and reads as 0. Dropping it would make it invisible to the count, so a
+ * product genuinely at zero could never be confirmed at zero.
+ */
+async function levelsByProductAtLocation({ client, brand, location_id }) {
+  const { rows } = await ex(client)(
+    `SELECT pv.product_id, pv.variant_id, pv.sku, pv.variant_name,
+            pv.is_active, COALESCE(sl.on_hand, 0)::int AS on_hand,
+            COALESCE(sl.reserved, 0)::int AS reserved
+       FROM ${t(brand, "product_variants")} pv
+       LEFT JOIN ${t(brand, "stock_levels")} sl
+              ON sl.variant_id = pv.variant_id AND sl.location_id = $1
+      ORDER BY pv.is_default DESC, pv.display_order ASC, pv.created_at ASC`,
+    [location_id],
+  );
+  const byProduct = new Map();
+  for (const r of rows) {
+    if (!byProduct.has(r.product_id)) byProduct.set(r.product_id, []);
+    byProduct.get(r.product_id).push(r);
+  }
+  return byProduct;
+}
+
+/** Locations with the units each holds, so a count can't half-cover a brand. */
+async function locationsWithStock({ client, brand }) {
+  const { rows } = await ex(client)(
+    `SELECT loc.location_id, loc.display_name, loc.is_default, loc.is_active,
+            COALESCE(SUM(sl.on_hand), 0)::int AS on_hand
+       FROM ${t(brand, "stock_locations")} loc
+       LEFT JOIN ${t(brand, "stock_levels")} sl
+              ON sl.location_id = loc.location_id
+      GROUP BY loc.location_id, loc.display_name, loc.is_default, loc.is_active
+      ORDER BY loc.is_default DESC, loc.display_name ASC`,
+  );
+  return rows;
+}
+
 module.exports = {
   listLocations,
   getDefaultLocation,
@@ -1461,4 +1524,7 @@ module.exports = {
   listShipments,
   setShipmentStatus,
   setShipmentLineReceived,
+  productsForCountMatch,
+  levelsByProductAtLocation,
+  locationsWithStock,
 };

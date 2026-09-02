@@ -265,6 +265,66 @@ export interface GoodsReceiptInput {
   lines: GoodsReceiptLine[];
 }
 
+/* ── Count import (Adjustments → Import Count) ─────────── */
+
+/** How an empty Units cell, and a product the sheet never names, are read. */
+export type CountBlankMode = "skip" | "zero";
+
+export interface CountImportInput {
+  /** Raw sheet rows, header -> cell. The server resolves header spellings. */
+  rows: Record<string, string | number | null>[];
+  location_id?: string;
+  blank?: CountBlankMode;
+  unlisted?: CountBlankMode;
+  reason?: string;
+  /** false = reconcile and return the preview without writing anything. */
+  commit?: boolean;
+  allow_unmatched?: boolean;
+}
+
+export interface CountImportLine {
+  /** 'counted' came off the sheet; 'unlisted' is a sweep down to zero. */
+  kind: "counted" | "unlisted";
+  row: number | null;
+  product_id: string;
+  product_name: string;
+  sku: string | null;
+  system_count: number;
+  physical_count: number;
+  delta: number;
+}
+
+export interface CountImportResult {
+  location: { location_id: string; display_name: string };
+  lines: CountImportLine[];
+  unmatched: { row: number; error: string }[];
+  problems: { row: number | null; product_name: string; error: string }[];
+  skipped: { row: number; product_name: string }[];
+  conflicts: string[];
+  bad_rows: { row: number; error: string }[];
+  /** Non-empty = this sheet cannot be filed until a human resolves them. */
+  blockers: string[];
+  summary: {
+    rows_read: number;
+    combinations: number;
+    matched: number;
+    unchanged: number;
+    corrections: number;
+    zeroed: number;
+    surplus: number;
+    writeDown: number;
+    net: number;
+    system_total: number;
+    /** Units the location will hold once the adjustment is posted. */
+    ends_at: number;
+  };
+  adjustment: {
+    adjustment_id: string;
+    adjustment_number: string;
+    status: string;
+  } | null;
+}
+
 export interface ShipmentLine {
   line_id: string;
   shipment_id: string;

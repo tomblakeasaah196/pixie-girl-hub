@@ -131,6 +131,17 @@ function pick(row, column) {
 }
 
 /**
+ * A raw row may carry its own 1-based spreadsheet row number under this key.
+ *
+ * Position in the array is NOT a reliable row number: a reader that drops
+ * blank rows (SheetJS `sheet_to_json` does by default) silently shifts every
+ * row after the first gap, and a caller that filters before parsing shifts
+ * them again. Either way the operator is sent to the wrong line in Excel. A
+ * caller that knows the true row stamps it here and the drift is impossible.
+ */
+const ROW_NUMBER_KEY = "__excel_row";
+
+/**
  * Turn raw sheet rows (header → cell objects) into count rows.
  *
  * `units` is `null` for a blank cell and a non-negative integer otherwise —
@@ -144,6 +155,7 @@ function pick(row, column) {
 function parseCountRows(rawRows) {
   const out = [];
   rawRows.forEach((raw, index) => {
+    const stamped = Number(raw?.[ROW_NUMBER_KEY]);
     const code = pick(raw, "code");
     const productName = pick(raw, "product");
     const colour = pick(raw, "colour");
@@ -185,8 +197,9 @@ function parseCountRows(rawRows) {
     else if (!unitsOk) error = `'${unitsRaw}' is not a whole number of units`;
 
     out.push({
-      // 1-based sheet row, counting the header — what the operator sees in Excel.
-      row: index + 2,
+      // What the operator sees in Excel. Trust the caller's stamp when it has
+      // one; otherwise assume the array still holds every row, header first.
+      row: Number.isInteger(stamped) && stamped > 0 ? stamped : index + 2,
       code,
       productName,
       colour,
@@ -353,6 +366,7 @@ function matchRows(rows, products, { blank = "skip" } = {}) {
 }
 
 module.exports = {
+  ROW_NUMBER_KEY,
   normKey,
   canonicalSize,
   productSize,

@@ -13,6 +13,7 @@
  */
 
 const {
+  ROW_NUMBER_KEY,
   normKey,
   canonicalSize,
   productSize,
@@ -157,6 +158,70 @@ describe("parseCountRows", () => {
     ]);
     expect(row).toMatchObject({ colour: "black", size: "L", units: 4 });
     expect(row.error).toBeNull();
+  });
+
+  test("uses a stamped row number in preference to array position", () => {
+    const [row] = parseCountRows([
+      {
+        ...sheetRow("black", "Straight", "HD13*4", "M", 20),
+        [ROW_NUMBER_KEY]: 23,
+      },
+    ]);
+    expect(row.row).toBe(23);
+  });
+
+  test("a stamped number survives filtering — position does not", () => {
+    // The browser reader drops the blank separator rows before posting. Without
+    // the stamp, 'GG4' would report as row 3 when Excel shows it on row 4 —
+    // the bug this key exists to make impossible.
+    const raw = [
+      {
+        ...sheetRow("black", "Straight", "HD13*4", "M", 20),
+        [ROW_NUMBER_KEY]: 2,
+      },
+      { ...sheetRow("", "", "", "", ""), [ROW_NUMBER_KEY]: 3 },
+      { ...sheetRow("GG4", "Straight", "HD13*4", "M", 2), [ROW_NUMBER_KEY]: 4 },
+    ];
+    const kept = raw.filter((r) => String(r.Color).trim() !== "");
+    expect(parseCountRows(kept).map((r) => r.row)).toEqual([2, 4]);
+  });
+
+  test("falls back to array position when nothing is stamped", () => {
+    const rows = parseCountRows([
+      sheetRow("black", "Straight", "HD13*4", "M", 20),
+      sheetRow("GG4", "Straight", "HD13*4", "M", 2),
+    ]);
+    expect(rows.map((r) => r.row)).toEqual([2, 3]);
+  });
+
+  test("ignores a stamp that is not a usable row number", () => {
+    for (const bad of ["", 0, -4, 2.5, "abc", null]) {
+      const [row] = parseCountRows([
+        {
+          ...sheetRow("black", "Straight", "HD13*4", "M", 1),
+          [ROW_NUMBER_KEY]: bad,
+        },
+      ]);
+      expect(row.row).toBe(2);
+    }
+  });
+
+  test("the stamp is never read as a data column", () => {
+    const [row] = parseCountRows([
+      {
+        ...sheetRow("black", "Straight", "HD13*4", "M", 1),
+        [ROW_NUMBER_KEY]: 9,
+      },
+    ]);
+    expect(row).toMatchObject({
+      colour: "black",
+      texture: "Straight",
+      cap: "HD13*4",
+      size: "M",
+      units: 1,
+      code: "",
+      productName: "",
+    });
   });
 });
 

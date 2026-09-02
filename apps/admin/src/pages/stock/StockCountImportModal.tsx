@@ -17,11 +17,7 @@ import { Select } from "@/components/ui/controls";
 import { useAllBaseProducts, type BaseProduct } from "@/lib/catalogue";
 import { FieldLabel, TextInput } from "./parts";
 import { useStockMutations } from "./hooks";
-import type {
-  StockLocation,
-  CountImportResult,
-  CountBlankMode,
-} from "./types";
+import type { StockLocation, CountImportResult, CountBlankMode } from "./types";
 
 /**
  * Import a physical stock count from a spreadsheet.
@@ -39,6 +35,13 @@ import type {
  */
 
 const COUNT_SHEET = "Stock Count";
+
+/**
+ * Key each posted row carries its true spreadsheet row number under. Must stay
+ * in step with `ROW_NUMBER_KEY` in `src/modules/stock/stock.count-sheet.js`,
+ * which reads it; the server falls back to array position without it.
+ */
+const ROW_NUMBER_KEY = "__excel_row";
 
 /** The workbook a counter fills in: one row per base product, blank Units. */
 function downloadTemplate(bases: BaseProduct[]) {
@@ -97,9 +100,10 @@ function splitName(name: string): {
   size: string;
 } {
   const blank = { colour: "", texture: "", cap: "", size: "" };
-  const m = /^(.*?)\s+((?:HD)?\d+\s*[x×*]\s*\d+[^-]*?)\s*(?:pixie\s+wig)?\s*[-–]\s*([A-Za-z ]+)$/i.exec(
-    name.trim(),
-  );
+  const m =
+    /^(.*?)\s+((?:HD)?\d+\s*[x×*]\s*\d+[^-]*?)\s*(?:pixie\s+wig)?\s*[-–]\s*([A-Za-z ]+)$/i.exec(
+      name.trim(),
+    );
   if (!m) return blank;
   const [, head, cap, size] = m;
   // The colour is the first token unless it is a slashed/hashed code, which
@@ -115,16 +119,40 @@ function splitName(name: string): {
   };
 }
 
-/** Every row of the first sheet, as header -> cell. */
-function readWorkbook(buf: ArrayBuffer): Record<string, string | number | null>[] {
+/**
+ * Every row of the first sheet, as header -> cell, each stamped with the row
+ * number the operator sees in Excel.
+ *
+ * `blankrows: true` matters: by default `sheet_to_json` DROPS entirely-empty
+ * rows, and this sheet uses them as separators between colour blocks. Without
+ * it every row after the first gap shifts up, and the "needs attention" list
+ * sends someone to the wrong line — the further down the sheet, the bigger the
+ * lie. Keeping the blanks makes position match the spreadsheet again; stamping
+ * the number then makes it survive the filtering below (and any future one),
+ * so the empties never have to be shipped to the server.
+ */
+function readWorkbook(
+  buf: ArrayBuffer,
+): Record<string, string | number | null>[] {
   const wb = XLSX.read(buf, { type: "array" });
-  const name =
-    wb.SheetNames.find((n) => /count/i.test(n)) ?? wb.SheetNames[0];
+  const name = wb.SheetNames.find((n) => /count/i.test(n)) ?? wb.SheetNames[0];
   const ws = name ? wb.Sheets[name] : undefined;
   if (!ws) return [];
-  return XLSX.utils.sheet_to_json<Record<string, string | number | null>>(ws, {
-    defval: "",
-  });
+
+  const rows = XLSX.utils.sheet_to_json<Record<string, string | number | null>>(
+    ws,
+    { defval: "", blankrows: true },
+  );
+  return (
+    rows
+      // Header is row 1, so the first data row is 2.
+      .map((row, i) => ({ ...row, [ROW_NUMBER_KEY]: i + 2 }))
+      .filter((row) =>
+        Object.entries(row).some(
+          ([k, v]) => k !== ROW_NUMBER_KEY && String(v ?? "").trim() !== "",
+        ),
+      )
+  );
 }
 
 export function StockCountImportModal({
@@ -241,7 +269,10 @@ export function StockCountImportModal({
     [blank, unlisted, runPreview],
   );
 
-  const decide = (next: { blank?: CountBlankMode; unlisted?: CountBlankMode }) => {
+  const decide = (next: {
+    blank?: CountBlankMode;
+    unlisted?: CountBlankMode;
+  }) => {
     const b = next.blank ?? blank;
     const u = next.unlisted ?? unlisted;
     setBlank(b);
@@ -275,7 +306,9 @@ export function StockCountImportModal({
     <div
       className={cn(
         "fixed inset-0 z-[92] grid place-items-center p-4 bg-black/50 backdrop-blur-[3px] transition-[opacity,visibility] duration-300",
-        open ? "opacity-100 visible" : "opacity-0 invisible pointer-events-none",
+        open
+          ? "opacity-100 visible"
+          : "opacity-0 invisible pointer-events-none",
       )}
       onClick={close}
     >
@@ -686,7 +719,9 @@ function ReviewView({
         result.problems.length > 0 ||
         result.conflicts.length > 0) && (
         <div className="rounded-[11px] border border-danger/25 overflow-hidden">
-          <div className="px-4 py-2 bg-danger/[0.06] micro">Needs attention</div>
+          <div className="px-4 py-2 bg-danger/[0.06] micro">
+            Needs attention
+          </div>
           <ul className="divide-y divide-line text-[12.5px]">
             {result.conflicts.map((c) => (
               <li key={c} className="px-4 py-2 text-text-secondary">

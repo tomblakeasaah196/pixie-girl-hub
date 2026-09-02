@@ -123,6 +123,7 @@ src/modules/<module-name>/
 - [Admin UI requirements](docs/ADMIN_UI_REQUIREMENTS.md) — for frontend pairing
 - [Frontend screen requirements](docs/FRONTEND_SCREEN_REQUIREMENTS.md)
 - [Praxis knowledge base](docs/PRAXIS_KNOWLEDGE_BASE.md) — whole-system navigation guide Praxis is trained on (see "Praxis knowledge base" governance below)
+- [Deploy git auth](docs/DEPLOY_GIT_AUTH.md) — why a deploy can fail with `could not read Username for 'https://github.com'`, and how the VPS sync authenticates
 
 ---
 

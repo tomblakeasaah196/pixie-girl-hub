@@ -24,6 +24,17 @@
 | `stock.validator.js`  | Zod input schemas                    |
 | `stock.events.js`     | Domain events for realtime + AI      |
 
+## Bulk stock count
+
+A physical recount is imported with `npm run stock:import-count -- --file
+count.xlsx` (see `docs/STOCK_COUNT_IMPORT.md`). It files ONE `count` adjustment
+whose lines carry `system_count` vs `physical_count`, submitted for approval —
+stock only moves when an approver posts it.
+
+Note the difference from Goods Reception, which is the other bulk path:
+reception **adds** units, a count adjustment **replaces** them (posting writes a
+movement of `physical − system`, so the counted number becomes the on-hand).
+
 ## TODOs
 
 - [ ] Implement repo create/update with real columns

@@ -644,6 +644,16 @@ stock between locations, transfers, adjustments, low-stock alerts.
   this files a **stock adjustment** (system count vs the correct physical
   count) and submits it to the normal approval queue on Stock →
   **Adjustments**; the count changes only once it is approved and posted.
+- *We recounted everything on a spreadsheet — how do we make that the system's
+  numbers?* A whole physical count is imported in bulk rather than typed in
+  product by product: it files **one** `count` adjustment into Stock →
+  **Adjustments**, listing what the system believed against what was counted,
+  and the count becomes the system's number only once it is approved and
+  posted there. Two things to know: **Goods Reception adds units, a stock
+  count replaces them** (a wig the system thinks we have 9 of, counted at 2,
+  is corrected to 2 — not raised to 11); and the correction is reviewed as a
+  single approval, so whoever signs it owns the whole recount. Ops run it with
+  `npm run stock:import-count` — see `docs/STOCK_COUNT_IMPORT.md`.
 - *A wig was counted out twice (sale + stylist assignment)?* Historic
   double-deductions are repaired by a one-off run that files **found**
   adjustments into Stock → **Adjustments**; approve and post them to put the

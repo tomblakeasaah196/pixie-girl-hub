@@ -9,6 +9,8 @@ import type {
   StockAlert,
   InboundShipment,
   GoodsReceiptInput,
+  CountImportInput,
+  CountImportResult,
   Paginated,
   ValuationSummary,
   ValuationLine,
@@ -172,6 +174,12 @@ export const stockApi = {
 
   createGoodsReceipt: (input: GoodsReceiptInput) =>
     api.post<InboundShipment>("/stock/goods-receipts", input),
+
+  // Bulk count import. The same call previews and commits — `commit: false`
+  // reconciles without writing, so the review the user approves is computed by
+  // the code path that files the adjustment.
+  importCount: (input: CountImportInput) =>
+    api.post<CountImportResult>("/stock/adjustments/import-count", input),
 
   updateShipmentStatus: (id: string, status: string) =>
     api.patch<InboundShipment>(`/stock/shipments/${id}/status`, { status }),

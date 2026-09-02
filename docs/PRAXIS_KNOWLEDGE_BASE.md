@@ -630,7 +630,8 @@ stock between locations, transfers, adjustments, low-stock alerts.
 - *Receive incoming goods?* Stock → **Goods Reception** tab.
 - *Move / transfer stock between locations?* Stock → **Transfers** → **New Transfer**
   / **Create Transfer**.
-- *Do a stock count / stocktake?* Stock → **Adjustments** → **New Stocktake**.
+- *Do a stock count / stocktake?* Stock → **Adjustments** → **New Stocktake**
+  to type it in, or **Import Count** to upload a filled-in spreadsheet.
 - *Log a write-off / damage?* Stock → **Adjustments** → **Log Write-off** /
   **Log Stock Movement**.
 - *See where a movement came from — which order, which channel, who processed
@@ -644,6 +645,25 @@ stock between locations, transfers, adjustments, low-stock alerts.
   this files a **stock adjustment** (system count vs the correct physical
   count) and submits it to the normal approval queue on Stock →
   **Adjustments**; the count changes only once it is approved and posted.
+- *We recounted everything on a spreadsheet — how do we make that the system's
+  numbers?* Stock → **Adjustments** → **Import Count**. Download the **Excel
+  template** (one row per product, already filled in — you only type the Units
+  column), fill it, upload it, and the review screen shows every line as
+  `system → counted` with the unit total the location will end on. Pressing
+  **Submit for Approval** files **one** `count` adjustment; the count becomes
+  the system's number only once it is approved and posted on that same tab.
+  Two things to know: **Goods Reception adds units, a stock count replaces
+  them** (a wig the system thinks we have 9 of, counted at 2, is corrected to
+  2 — not raised to 11); and the whole recount is one approval, so whoever
+  signs it owns all of it. The review screen also asks two questions —
+  what a **blank Units cell** means (we hold none / not counted) and what
+  happens to **products not on the sheet** (zero them / leave alone) — and
+  re-totals live as you switch them. Rows that match no product block the
+  import until they are fixed. Ops can run the same import headless with
+  `npm run stock:import-count` — see `docs/STOCK_COUNT_IMPORT.md`.
+- *Do a stock count by hand instead?* Stock → **Adjustments** → **New
+  Stocktake** — pick the location, type physical counts against the system's,
+  review, submit. Counts you type are kept as you page through the list.
 - *A wig was counted out twice (sale + stylist assignment)?* Historic
   double-deductions are repaired by a one-off run that files **found**
   adjustments into Stock → **Adjustments**; approve and post them to put the

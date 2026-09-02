@@ -54,6 +54,16 @@ router.post(
 );
 
 // Adjustments (count corrections; post → adjustment movements)
+// Bulk count import (spreadsheet → ONE 'count' adjustment, submitted).
+// Literal segment declared before :adjId so it is never shadowed by the param
+// route. `commit: false` previews without writing; both go through the same
+// handler so the review the user approves is what actually gets filed.
+router.post(
+  "/adjustments/import-count",
+  can("create"),
+  v.validateCountImport,
+  c.importCount,
+);
 router.get("/adjustments", can("view"), c.listAdjustments);
 router.post(
   "/adjustments",

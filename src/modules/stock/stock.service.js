@@ -13,6 +13,8 @@ require("./stock.subscribers"); // side-effect: register catalogue listener
 const repo = require("./stock.repo");
 const events = require("./stock.events");
 const costing = require("./stock.costing");
+const countSheet = require("./stock.count-sheet");
+const countPlan = require("./stock.count-plan");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { NotFoundError, AppError } = require("../../utils/errors");
@@ -1394,6 +1396,179 @@ async function receiveShipment({ brand, user, request_id, id, input = {} }) {
   });
 }
 
+// ── Count import (Stock → Adjustments → Import Count) ────
+
+/**
+ * Reconcile a parsed count sheet against the shelf and — when `commit` is set
+ * — file the result as ONE `count` adjustment, submitted for approval.
+ *
+ * The client parses the workbook and posts plain rows; all matching, all
+ * reconciliation and every interlock happens here, so the CLI importer
+ * (`scripts/import-stock-count.js`) and this endpoint cannot drift apart.
+ *
+ * `commit: false` is a dry run that touches nothing: it returns exactly what
+ * committing WOULD do, which is what the review step renders. The interlocks
+ * are evaluated either way, so the preview can grey out its own submit button
+ * for the same reasons the commit would refuse.
+ */
+async function importCount({ brand, user, request_id, input }) {
+  const {
+    rows: rawRows = [],
+    location_id = null,
+    blank = "zero",
+    unlisted = "zero",
+    reason = null,
+    commit = false,
+    allow_unmatched = false,
+  } = input;
+
+  const parsed = countSheet.parseCountRows(rawRows);
+  const { rows: deduped, conflicts } = countSheet.dedupeRows(parsed);
+  const badRows = parsed.filter((r) => r.error);
+
+  const products = await repo.productsForCountMatch({ brand });
+  const { matched, unmatched, skipped } = countSheet.matchRows(
+    deduped,
+    products,
+    { blank },
+  );
+
+  const locations = await repo.locationsWithStock({ brand });
+  // Throws when two locations hold stock and nothing names which was counted —
+  // guessing there would zero a warehouse that was never walked.
+  const location = countPlan.resolveLocation(locations, location_id, unlisted);
+
+  const levelsByProduct = await repo.levelsByProductAtLocation({
+    brand,
+    location_id: location.location_id,
+  });
+  const matchedProductIds = new Set(
+    [...matched, ...skipped].map((m) => m.product.product_id),
+  );
+  const { lines, problems, unchanged } = countPlan.buildLines({
+    matched,
+    levelsByProduct,
+    unlisted,
+    matchedProductIds,
+  });
+
+  const totals = countPlan.summarise(lines);
+  const stop = countPlan.blockers({ conflicts, badRows, unmatched, problems });
+  const systemTotal = [...levelsByProduct.values()]
+    .flat()
+    .reduce((sum, v) => sum + v.on_hand, 0);
+
+  // Everything the review step renders, whether or not we go on to write.
+  const preview = {
+    location: {
+      location_id: location.location_id,
+      display_name: location.display_name,
+    },
+    lines: lines.map((l) => ({
+      kind: l.kind,
+      row: l.row,
+      product_id: l.product.product_id,
+      product_name: l.product.name,
+      sku: l.variant.sku,
+      system_count: l.system_count,
+      physical_count: l.physical_count,
+      delta: l.physical_count - l.system_count,
+    })),
+    unmatched: unmatched.map((u) => ({ row: u.row.row, error: u.error })),
+    problems: problems.map((p) => ({
+      row: p.row,
+      product_name: p.product.name,
+      error: p.error,
+    })),
+    skipped: skipped.map((s) => ({
+      row: s.row.row,
+      product_name: s.product.name,
+    })),
+    conflicts: conflicts.map((c) => c.message),
+    bad_rows: badRows.map((r) => ({ row: r.row, error: r.error })),
+    blockers: stop,
+    summary: {
+      rows_read: parsed.length,
+      combinations: deduped.length,
+      matched: matched.length,
+      unchanged: unchanged.length,
+      corrections: lines.filter((l) => l.kind === "counted").length,
+      zeroed: lines.filter((l) => l.kind === "unlisted").length,
+      ...totals,
+      system_total: systemTotal,
+      ends_at: systemTotal + totals.net,
+    },
+    adjustment: null,
+  };
+
+  if (!commit) return preview;
+
+  if (stop.length && !allow_unmatched)
+    throw new AppError("COUNT_NOT_RECONCILED", stop.join("; "), 422, {
+      user_message:
+        "This sheet can't be filed yet — some rows don't match a product. " +
+        "Fix them in the review list first.",
+      metadata: { blockers: stop },
+    });
+
+  if (!lines.length)
+    throw new AppError(
+      "NOTHING_TO_CORRECT",
+      "Every counted product already matches the system",
+      422,
+      {
+        user_message:
+          "Nothing to correct — the system already holds exactly what the sheet says.",
+      },
+    );
+
+  const adj = await createAdjustment({
+    brand,
+    user,
+    request_id,
+    input: {
+      location_id: location.location_id,
+      adjustment_type: "count",
+      // Capped to the 500 the validator allows, so an imported count is
+      // indistinguishable from a hand-entered one.
+      reason: (
+        (reason ? `${reason} — ` : "") +
+        `Imported stock count. ${preview.summary.corrections} corrected` +
+        (preview.summary.zeroed
+          ? `, ${preview.summary.zeroed} not counted and zeroed`
+          : "") +
+        `. Net ${totals.net >= 0 ? "+" : ""}${totals.net} units.`
+      ).slice(0, 500),
+      lines: lines.map((l) => ({
+        variant_id: l.variant.variant_id,
+        system_count: l.system_count,
+        physical_count: l.physical_count,
+        notes: (l.kind === "unlisted"
+          ? "Not on the count sheet — written down to zero."
+          : `Count sheet row ${l.row}: ${l.product.name}`
+        ).slice(0, 500),
+      })),
+    },
+  });
+
+  // Submitted, never posted: stock moves only when an approver posts it.
+  await submitAdjustment({
+    brand,
+    user,
+    request_id,
+    id: adj.adjustment_id,
+  });
+
+  return {
+    ...preview,
+    adjustment: {
+      adjustment_id: adj.adjustment_id,
+      adjustment_number: adj.adjustment_number,
+      status: "submitted",
+    },
+  };
+}
+
 module.exports = {
   listLocations,
   createLocation,
@@ -1435,4 +1610,5 @@ module.exports = {
   createGoodsReceipt,
   updateShipmentStatus,
   receiveShipment,
+  importCount,
 };

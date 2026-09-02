@@ -247,6 +247,26 @@ const mw = (s) => (req, _res, next) => {
   next();
 };
 
+// Count import (Stock → Adjustments → Import Count). The client parses the
+// workbook and posts plain rows; the sheet's own headers are already resolved
+// to these fields, so anything unrecognised is rejected here rather than
+// silently ignored downstream. `units` is nullable on purpose — null is a
+// BLANK cell, which is not the same as a counted zero.
+const countImport = z
+  .object({
+    location_id: z.string().uuid().optional(),
+    blank: z.enum(["skip", "zero"]).default("zero"),
+    unlisted: z.enum(["skip", "zero"]).default("zero"),
+    reason: z.string().max(300).optional(),
+    commit: z.boolean().default(false),
+    allow_unmatched: z.boolean().default(false),
+    rows: z
+      .array(z.record(z.string(), z.union([z.string(), z.number(), z.null()])))
+      .min(1)
+      .max(5000),
+  })
+  .strict();
+
 module.exports = {
   validateLocationCreate: mw(locationCreate),
   validateLocationUpdate: mw(locationCreate.partial()),
@@ -256,6 +276,7 @@ module.exports = {
   validateTransferReceive: mw(transferReceive),
   validateShipmentCreate: mw(shipmentCreate),
   validateGoodsReceiptCreate: mw(goodsReceiptCreate),
+  validateCountImport: mw(countImport),
   validateShipmentStatus: mw(shipmentStatus),
   validateShipmentReceive: mw(shipmentReceive),
   locationCreate,

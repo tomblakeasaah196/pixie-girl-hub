@@ -119,13 +119,22 @@ async function assignStaff(req, res) {
 }
 // Every job that owes a sale, at every stage — not only the completed ones the
 // §6.30 insight catches after the fact.
+//
+// Note the DOUBLE envelope: the service returns `{ data, counts }`, and the
+// admin api client unwraps any `{ data: ... }` payload down to its `data` field
+// unless a sibling `meta` marks it as a paginated list. Served bare, the
+// `counts` half was stripped in transit, so the panel destructured `counts` off
+// a plain array, got undefined, and crashed the whole tab on `counts.owed`.
+// Wrapping once more means the client unwraps exactly one layer and the panel
+// receives `{ data, counts }` intact — the same fix POS suggestions and My
+// Devices already carry for their sibling-carrying payloads.
 async function listUnbilled(req, res) {
-  res.json(
-    await service.listUnbilledJobs({
+  res.json({
+    data: await service.listUnbilledJobs({
       brand: req.brand,
       kind: req.query.kind,
     }),
-  );
+  });
 }
 // Ask whoever can raise a sale to raise this one.
 async function requestSale(req, res) {

@@ -365,6 +365,17 @@ chasing deliveries, matching stray in-store terminal payments, and payment setti
   every item on the order has passed QC** (see below); the courier hand-off sets
   Dispatched; delivery sets Completed. Cancellations are a separate side-flow
   (**Cancel Requested** / **Cancelled**).
+- *The order page shows a status like "Assigned" but a pill saying "Part paid" —
+  which is right?* Both. The big status chip is the order's **stage**; the first
+  pill in the strip beneath it (next to Studio and Delivery) is its **money**,
+  read straight off the order's total, amount paid and balance: **Unpaid** ·
+  **Part paid** · **Paid** · **Overpaid** · **Refunded** (**No charge** for a
+  ₦0 order). They diverge on purpose — a layaway or deposit order carries on
+  through Assigned, Order Ready and Dispatched while a balance is still
+  outstanding, and the stage never rewinds to say so. If the pill says anything
+  but **Paid**, the customer still owes money (or is owed it): the balance is in
+  the header beside the order number, and **Record Payment** / **Pay Link**
+  clear it.
 - *An order with several products — when does the customer get told it's ready?*
   **Only when all of them are ready.** An order with three products opens three
   Studio jobs, one per item. The first two QC passes finish their own item and

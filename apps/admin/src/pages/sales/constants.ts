@@ -28,6 +28,89 @@ export const ORDER_STATUS: Record<OrderStatus, StatusMeta> = {
   failed: { label: "Failed", tone: "danger" },
 };
 
+// ── Payment state ───────────────────────────────────────────────────────────
+/**
+ * How much of an order has actually been paid — derived from MONEY, never from
+ * `status`.
+ *
+ * `sales_orders.status` is one lifecycle column that mixes payment states
+ * ('pending_payment' → 'partially_paid' → 'paid') with fulfilment states
+ * ('assigned' → 'order_ready' → 'dispatched' → 'completed') and the side-states
+ * ('cancelled', 'refunded', 'failed'). Past 'paid' it deliberately stops saying
+ * anything about money: addPayment's markPaid keeps the fulfilment status rather
+ * than rewinding it, so a layaway order can sit at 'assigned' with a balance
+ * outstanding. Anything of the shape `!["draft","pending_payment"].includes(status)`
+ * therefore reads "paid" for partially paid, cancelled, refunded and failed
+ * orders alike — which is exactly how the order page's pill came to say "Paid"
+ * on an order with ₦5,000 still due.
+ *
+ * The truth is the three money columns: `total_ngn`, `amount_paid_ngn`, and the
+ * generated `balance_due_ngn` (= total − paid). This is what the Orders list's
+ * Balance column has always used.
+ */
+export interface PaymentMeta {
+  label: string;
+  tone: Tone;
+  /** Nothing left to collect — the "safe to hand over the goods" test. */
+  settled: boolean;
+}
+
+const amount = (v: unknown): number => {
+  const n = Number(v ?? 0);
+  return Number.isFinite(n) ? n : 0;
+};
+
+export function orderPaymentMeta(
+  order?: {
+    status?: string | null;
+    total_ngn?: string | number | null;
+    amount_paid_ngn?: string | number | null;
+    balance_due_ngn?: string | number | null;
+  } | null,
+): PaymentMeta {
+  if (!order) return { label: "—", tone: "neutral", settled: false };
+
+  const total = amount(order.total_ngn);
+  const paid = amount(order.amount_paid_ngn);
+  // balance_due_ngn is a generated column (total − paid); recompute only for
+  // payloads that don't carry it.
+  const balance =
+    order.balance_due_ngn == null ? total - paid : amount(order.balance_due_ngn);
+
+  // A refund pays money back out, but the payment rows stay (the trigger's
+  // timestamps are sticky, refunds run through cancellation_requests), so
+  // amount_paid_ngn still reads full and the arithmetic alone would say "Paid".
+  if (order.status === "refunded")
+    return { label: "Refunded", tone: "danger", settled: false };
+
+  // A closed order isn't chasing anybody — an unpaid one is simply closed.
+  // Money still sitting on one is a live refund-or-forfeit decision, so that
+  // case keeps its warning tone below.
+  const closed = order.status === "cancelled" || order.status === "failed";
+
+  if (balance < 0) return { label: "Overpaid", tone: "info", settled: true };
+  if (paid <= 0)
+    return total <= 0
+      ? { label: "No charge", tone: "neutral", settled: true }
+      : { label: "Unpaid", tone: closed ? "neutral" : "warn", settled: false };
+  if (balance > 0) return { label: "Part paid", tone: "warn", settled: false };
+  return { label: "Paid", tone: "success", settled: true };
+}
+
+/** No more money is coming or going — payment polling can stop. */
+export function isOrderPaymentFinal(order?: {
+  status?: string | null;
+  total_ngn?: string | number | null;
+  amount_paid_ngn?: string | number | null;
+  balance_due_ngn?: string | number | null;
+} | null): boolean {
+  if (!order) return false;
+  return (
+    orderPaymentMeta(order).settled ||
+    ["cancelled", "refunded", "failed"].includes(order.status ?? "")
+  );
+}
+
 // The linear happy-path order, for the drawer's manual status stepper. Excludes
 // the side-states (draft/cancel/refunded/failed), which are reached via their
 // own actions, not by stepping forward.

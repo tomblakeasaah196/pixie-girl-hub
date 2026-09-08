@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-query";
 import { useBusinessStore } from "@/stores/business";
 import * as salesApi from "./api";
+import { isOrderPaymentFinal } from "./constants";
 import type {
   OrderCreateInput,
   PaymentCreateInput,
@@ -60,10 +61,11 @@ export function useOrderPaymentWatch(id: string | null) {
     refetchInterval: (query) => {
       const o = query.state.data;
       if (!o) return 3000;
-      const paid =
-        Number(o.balance_due_ngn) <= 0 ||
-        !["draft", "pending_payment"].includes(o.status);
-      return paid ? false : 3000;
+      // Stop only when the money is actually final — settled, or the order
+      // closed. The old test ("status is past pending_payment") stopped polling
+      // the instant a deposit landed and flipped the order to 'partially_paid',
+      // so the balance never cleared on screen.
+      return isOrderPaymentFinal(o) ? false : 3000;
     },
   });
 }

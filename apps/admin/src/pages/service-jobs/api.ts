@@ -369,9 +369,13 @@ export function listCustodyLedger(params?: {
 // COMPLETED jobs, so the first anyone heard of an unbilled styling fee was
 // after the hair had gone back to the customer.
 //
-// This response keeps its envelope — it carries `counts` alongside `data`, so
-// unlike the bare `{data: X}` payloads noted at the top of this file, the api
-// client does NOT unwrap it.
+// This response IS an envelope — it carries `counts` alongside `data`, so the
+// type parameter below is the whole `{data, counts}` object rather than the
+// inner value the note at the top of this file describes. The api client only
+// preserves an envelope that carries `meta` (paginated lists); `counts` is not
+// `meta`, so the controller wraps this payload one extra time and the client
+// unwraps that outer layer, leaving `{data, counts}` here. Serve it bare and
+// the client strips `counts` off in transit and the panel crashes.
 
 export function listUnbilledJobs(params?: {
   kind?: RevenueKind | "unclassified" | "all";

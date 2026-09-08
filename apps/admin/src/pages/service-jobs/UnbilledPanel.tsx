@@ -69,7 +69,12 @@ export function UnbilledPanel({ canEdit }: { canEdit: boolean }) {
       </div>
     );
   }
-  if (isError || !data) {
+  // Guard the SHAPE, not just presence. This payload rides a double envelope
+  // (see the note in ./api.ts) and every tile below reads `counts` unguarded,
+  // so if the envelope ever comes apart again `counts.owed` throws and the
+  // error boundary blanks the whole tab. A retryable error state is the honest
+  // failure — the same four-states rule as every other screen.
+  if (isError || !data?.counts || !Array.isArray(data.data)) {
     return (
       <ErrorState
         message="Couldn't load unbilled jobs."

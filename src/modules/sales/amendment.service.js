@@ -61,6 +61,7 @@ const invoicingService = require("../invoicing/invoicing.service");
 const businessConfig = require("../business_setup/business-config.repo");
 const timelineRepo = require("./timeline.repo");
 const salesPostings = require("./sales.postings");
+const orderReadiness = require("./order-readiness");
 const { revenueAccountForChannel } = require("../accounting/posting-map");
 const { channelPrice } = require("./pricing/channel-price");
 const { clampToMarginFloor } = require("./pricing/margin-floor");
@@ -104,13 +105,11 @@ const DELIVERY_GONE = new Set([
 ]);
 // Studio work that is finished (or was never started) — the two ends of the
 // spectrum the reconciler treats differently when a styling line is removed.
-const JOB_DONE = new Set([
-  "completed",
-  "handed_to_sales",
-  "ready_for_dispatch",
-  "qc_passed",
-]);
-const JOB_CLOSED = new Set(["cancelled", "rejected"]);
+// Both sets come from order-readiness, which is also what gates the customer's
+// "Order Ready" message: the reconciler's idea of a finished wig and the gate's
+// must never drift apart.
+const JOB_DONE = new Set(orderReadiness.JOB_DONE);
+const JOB_CLOSED = new Set(orderReadiness.JOB_VOID);
 
 // ── Line building ───────────────────────────────────────────
 

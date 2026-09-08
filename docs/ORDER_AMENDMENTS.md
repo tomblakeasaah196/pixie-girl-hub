@@ -217,6 +217,27 @@ money must never rewind it. The outstanding balance is expressed by
   fan-out), because from the business's point of view the order just became
   fully paid.
 
+### Adding an item to an order that is already ready
+
+An amendment that adds a styled product opens a **new Studio job**, so the
+order that was "all done" now has outstanding work again. Two rules meet here,
+and they resolve in the direction of not lying to the customer:
+
+- **The status does not rewind.** `order_ready` is a physical fact (the earlier
+  wigs really are packed), and the rule above holds — fulfilment never moves
+  backwards.
+- **The customer is not told twice.** The new hair's QC pass finds the order
+  already at `order_ready`, so `advanceStatus` declines the move and returns
+  `null` — which is exactly the signal the Studio uses to decide whether to
+  send. No second "Order Ready" message, no second delivery.
+
+What Ops sees instead is the truth: the order screen's Studio panel shows the
+new count (`3 of 4 items ready`), and the Logistics queue drops the delivery
+back to **Still in the studio** until the added hair is finished, because
+readiness there is computed from *all* the order's jobs
+(`order-readiness.js`). So the parcel can't leave half-packed even though the
+order's own status stayed put.
+
 ---
 
 ## What it deliberately does NOT do

@@ -54,6 +54,7 @@ const { assertBundleComplete, computeBundleDiscount } = require("./pricing/bundl
 const { exitIntentMatches } = require("./pricing/exit-intent");
 const { computeTotalsAndLines, computeDepositPolicy } = require("./pricing/totals");
 const { REVENUE_STATES } = require("./order-status");
+const orderReadiness = require("./order-readiness");
 
 // Fully-settled states: an order can only reach any of these once it was paid
 // in full, so they gate "don't re-run markPaid / don't cancel here / don't send
@@ -1148,15 +1149,28 @@ async function getById({ brand, id }) {
  * so the admin client preserves the shape (a bare { data } gets unwrapped past
  * the array).
  */
+/**
+ * The order's Stylist Studio jobs, plus how many of them are finished.
+ *
+ * ALL of them: an order can carry several hairs (one job each), and this used
+ * to fetch page_size 1, so a three-wig order showed a single job on the order
+ * screen and no hint that two more existed. The progress figures come from the
+ * same predicate that gates the customer's "Order Ready" message, so what the
+ * screen shows and what the system waits for cannot drift.
+ */
 async function getOrderServiceJob({ brand, id }) {
   const order = await repo.findById({ brand, id });
   if (!order) throw new NotFoundError("Order");
   const r = await serviceJobsRepo.listServiceJobs({
     brand,
     sales_order_id: id,
-    page_size: 1,
+    page_size: 200,
   });
-  return r.data;
+  const progress = await orderReadiness.studioProgress({
+    brand,
+    order_id: id,
+  });
+  return { jobs: r.data, progress };
 }
 
 // Edit an order while it is still editable (draft / pending_payment): header

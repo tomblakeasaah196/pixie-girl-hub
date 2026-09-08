@@ -334,15 +334,30 @@ chasing deliveries, matching stray in-store terminal payments, and payment setti
   waiting for the courier) → **Dispatched** (handed to the courier / on its
   way) → **Completed** (delivered or collected). Most of these move
   automatically: recording payment drives Partially Paid / Paid; assigning a
-  stylist in Studio sets Assigned; a Studio QC pass sets Order Ready; the
-  courier hand-off sets Dispatched; delivery sets Completed. Cancellations are a
-  separate side-flow (**Cancel Requested** / **Cancelled**).
+  stylist in Studio sets Assigned; a Studio QC pass sets Order Ready **once
+  every item on the order has passed QC** (see below); the courier hand-off sets
+  Dispatched; delivery sets Completed. Cancellations are a separate side-flow
+  (**Cancel Requested** / **Cancelled**).
+- *An order with several products — when does the customer get told it's ready?*
+  **Only when all of them are ready.** An order with three products opens three
+  Studio jobs, one per item. The first two QC passes finish their own item and
+  credit their stylist, but the order stays where it is: no status change, no
+  "Order Ready" message, no delivery booked. The third pass releases everything
+  at once — the order moves to **Order Ready**, the customer gets one message,
+  and Logistics gets one delivery for the whole parcel. The order's **Stylist
+  Studio** panel shows the running count ("2 of 3 items ready"), and the
+  Logistics queue shows the order as **Still in the studio** with the specific
+  job that's holding it up. An item that is cancelled or rejected no longer
+  counts as outstanding, so a written-off wig can't strand the rest.
 - *Move an order's status myself?* Open the order → use the **Move to…**
   dropdown in the top action bar to nudge a paid order forward (e.g. mark a
   walk-in **Completed** the moment the customer's happy, or **Dispatched** when
   the rider takes it). Only the fulfilment stages are offered — payment and
   cancellation states are handled automatically. Moving to a customer-facing
   stage sends the matching message if it's switched on in **Messaging settings**.
+  You *can* force **Order Ready** while items are still being styled — the
+  confirmation warns you how many are outstanding — but the customer is told the
+  whole order is ready, so use it only when you really are releasing early.
 - *We recorded the WRONG PRODUCT on an order — how do I fix it (she's already
   paid)?* Open the order → **Change Order** in the top action bar
   (`/sales/orders/<orderId>`). This is the only place an order's items can be
@@ -414,8 +429,9 @@ kanban) · **Clients** · **Reports** (forecast, close time).
 ### 4.4 Stylist Studio (Service Jobs)
 **What it's for.** Faitlyn's **in-house styling operations** — the register of
 styling jobs from booking through QC. A QC pass marks the job **completed**
-and hands the wig over to Logistics; shipping + delivery live on the Sales
-Order / Logistics side.
+and hands that wig over to Logistics; shipping + delivery live on the Sales
+Order / Logistics side. An order with several products has **one job per
+item**, and its customer-facing "Order Ready" step waits for the last of them.
 **Where.** Run → **Stylist Studio** · `/service-jobs`
 **Who can see it.** `service_jobs` permission. **The `approve` right decides
 the layout:**
@@ -493,8 +509,10 @@ the layout:**
   the Studio asked why it had no sale, so nobody has said whether one is owed.
   Notify Sales for the ones that are; mark the rest internal.
 - *QC pass or fail a returned job?* Ops → **QC Queue** tab. Pass = job
-  completed + wig auto-dispatched to Logistics; fail = back to stylist for
-  rework.
+  completed + wig staged for its order; fail = back to stylist for rework. On a
+  multi-item order the parcel is only booked and the customer only told once
+  **every** item has passed — the order screen shows "2 of 3 items ready" until
+  then.
 - *See a stylist's scorecard?* Ops → **Team Scorecards** tab.
 - *See my own scorecard?* Stylist → My Jobs — the "Your scorecard" tile is
   at the top of the queue.

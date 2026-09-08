@@ -55,6 +55,16 @@ jest.mock("../../../src/modules/service_jobs/service-jobs.repo", () => ({
   getUsersOpenSession: jest.fn(),
   addCustody: jest.fn(),
   hasCustodyEvent: jest.fn().mockResolvedValue(true), // avoid double-deduct
+  setShipmentForOrderJobs: jest.fn().mockResolvedValue(1),
+}));
+
+// An order's "ready" effects are gated on ALL its hairs being done. These tests
+// cover the single-hair order, so the gate reports ready; the multi-hair cases
+// live in multi-item-order-readiness.test.js.
+jest.mock("../../../src/modules/sales/order-readiness", () => ({
+  studioProgress: jest
+    .fn()
+    .mockResolvedValue({ total: 1, done: 1, outstanding: 0, ready: true }),
 }));
 
 jest.mock("../../../src/services/notifications.service", () => ({
@@ -69,6 +79,12 @@ jest.mock("../../../src/modules/logistics/logistics.service", () => ({
 
 jest.mock("../../../src/modules/sales/sales.repo", () => ({
   findById: jest.fn(),
+  // Returns the moved row on a real transition — that return is what releases
+  // the customer message and the delivery.
+  advanceStatus: jest.fn().mockResolvedValue({
+    order_id: "order-42",
+    status: "order_ready",
+  }),
 }));
 
 const repo = require("../../../src/modules/service_jobs/service-jobs.repo");
@@ -244,13 +260,22 @@ describe("service_jobs.service.recordQc — QC pass auto-completes", () => {
   });
 
   it("on pass with a linked order, creates the logistics delivery and stamps shipment_id", async () => {
-    repo.getServiceJob.mockResolvedValue({
+    const BASE = {
       job_id: "job-1",
       job_number: "SJ-000001",
       assigned_staff_user_id: STYLIST_A.user_id,
       rework_count: 0,
       sales_order_id: "order-42",
-    });
+    };
+    // First read is the in-transaction "before" row; the second is the
+    // post-commit read-back after the shipment was stamped across the order.
+    repo.getServiceJob
+      .mockResolvedValueOnce(BASE)
+      .mockResolvedValue({
+        ...BASE,
+        status: "completed",
+        shipment_id: "delivery-1",
+      });
     repo.setServiceJobStatus.mockImplementation(
       async ({ status, fields = {} }) => ({
         job_id: "job-1",
@@ -279,8 +304,14 @@ describe("service_jobs.service.recordQc — QC pass auto-completes", () => {
         order: expect.objectContaining({ order_id: "order-42" }),
       }),
     );
-    // The shipment_id stamp is a second setServiceJobStatus call on the
-    // still-completed job — merged into the returned object.
+    // The shipment is stamped across every job on the order (they all travel in
+    // the one parcel), then the fresh row is read back for the caller.
+    expect(repo.setShipmentForOrderJobs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        order_id: "order-42",
+        shipment_id: "delivery-1",
+      }),
+    );
     expect(result.shipment_id).toBe("delivery-1");
     expect(result.status).toBe("completed");
   });

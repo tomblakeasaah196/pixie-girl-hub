@@ -75,6 +75,7 @@ import {
   useOrderAmendments,
 } from "./hooks";
 import { generateReceipt } from "./api";
+import type { OrderServiceJob } from "./api";
 import { ChangeOrderModal } from "./ChangeOrderModal";
 import { useToastStore } from "@/components/notifications/NotificationToast";
 import { toastReport } from "@/lib/error-report";
@@ -147,7 +148,7 @@ interface RiskSignal {
 }
 function computeRisks(args: {
   order: ReturnType<typeof useOrder>["data"];
-  job: ReturnType<typeof useOrderServiceJob>["data"];
+  job: OrderServiceJob | null;
   delivery: ReturnType<typeof useOrderDelivery>["data"];
   invoice: ReturnType<typeof useOrderInvoice>["data"];
   needsStudio: boolean;
@@ -267,7 +268,11 @@ export function OrderDetailPage() {
   const { data: reminders = [] } = useInvoiceReminders(
     invoice?.invoice_id ?? null,
   );
-  const { data: job } = useOrderServiceJob(orderId);
+  const { data: studio } = useOrderServiceJob(orderId);
+  const job = studio?.job ?? null;
+  // Studio progress across ALL the order's hairs. A three-product order opens
+  // three jobs and stays unready until the last one lands.
+  const studioProgress = studio?.progress ?? null;
   const { data: delivery } = useOrderDelivery(orderId);
   const { data: references = [] } = useJobReferences(job?.job_id ?? null);
   const { data: contactHistory } = useContactRecentOrders(
@@ -1564,6 +1569,15 @@ export function OrderDetailPage() {
                       )}
                     </div>
                     <div className="flex items-center gap-2">
+                      {/* A multi-item order finishes only when every hair does.
+                          Without this the drawer showed one job and gave no
+                          hint the other two existed. */}
+                      {studioProgress && studioProgress.total > 1 && (
+                        <Pill tone={studioProgress.ready ? "success" : "warn"}>
+                          {studioProgress.done} of {studioProgress.total} items
+                          ready
+                        </Pill>
+                      )}
                       {job && slaChip && (
                         <Pill tone={slaChip.tone}>{slaChip.label}</Pill>
                       )}
@@ -2048,6 +2062,24 @@ export function OrderDetailPage() {
                       </ul>
                     </div>
                   )}
+                  {/* Forcing "Order Ready" while hairs are still being styled
+                      is allowed — it's the escape hatch for releasing one item
+                      early — but the customer is told the WHOLE order is ready,
+                      so say so plainly before they click. */}
+                  {pendingStatus === "order_ready" &&
+                    studioProgress &&
+                    studioProgress.outstanding > 0 && (
+                      <div className="flex items-start gap-2 rounded-[9px] px-3 py-2 text-sm bg-warn/[0.08] border border-warn/25">
+                        <AlertTriangle className="w-4 h-4 text-warn shrink-0 mt-0.5" />
+                        <span>
+                          {studioProgress.outstanding} of{" "}
+                          {studioProgress.total}{" "}
+                          {studioProgress.total === 1 ? "item is" : "items are"}{" "}
+                          still in the Studio. Moving the order now tells the
+                          customer the whole order is ready.
+                        </span>
+                      </div>
+                    )}
                   {/* Message-bearing moves show the automation's *live* on/off
                       state so staff get a definite "will send"/"won't send"
                       rather than a hedge. Falls back to the honest conditional

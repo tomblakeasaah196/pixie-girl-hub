@@ -11,6 +11,7 @@
 const { query } = require("../../config/database");
 
 const { t } = require("../../config/brands");
+const orderReadiness = require("../sales/order-readiness");
 const ex = (client) => (client ? client.query.bind(client) : query);
 
 function buildUpdate(cols, src, start = 1) {
@@ -162,26 +163,61 @@ async function updateCourier({ client, brand, id, patch }) {
 
 // ── readiness ────────────────────────────────────────────
 // Whether a delivery can actually be dispatched right now. Both gates must
-// clear: the sales order must be packed/queued for courier, AND any styling
+// clear: the sales order must be packed/queued for courier, AND EVERY styling
 // job on it must be out of the studio. Deliveries are auto-created the moment
 // an order is PAID (see logistics.subscribers), so without this the queue is
 // full of rows nobody can act on — a wig still on a stylist's table looks
 // identical to one sitting in a box by the door.
 //
-// Expects `d` (deliveries), `so` (sales_orders) and `sj` (latest service job)
-// in scope. Non-order deliveries (stock transfers, supplier returns) have no
-// fulfilment spine to wait on, so they are ready by definition.
+// The "every" matters: an order can carry several hairs (one job each), and
+// this used to read the single NEWEST job, so a three-wig order flipped to
+// 'ready' the moment that one was done while two were still being styled — the
+// queue invited Ops to book a courier for a parcel that couldn't be packed.
+// It now counts them all: outstanding > 0 means someone is still working.
+//
+// Expects `d` (deliveries), `so` (sales_orders) and `sj` (the per-order studio
+// aggregate from STUDIO_JOIN_SQL) in scope. Non-order deliveries (stock
+// transfers, supplier returns) have no fulfilment spine to wait on, so they are
+// ready by definition.
 const READINESS_SQL = `
   CASE
     WHEN d.order_id IS NULL THEN 'ready'
     WHEN so.status IN ('cancelled','refunded','failed','cancellation_requested')
       THEN 'order_blocked'
-    WHEN sj.job_id IS NOT NULL
-     AND sj.status NOT IN ('ready_for_dispatch','handed_to_sales','completed')
-      THEN 'awaiting_studio'
+    WHEN COALESCE(sj.outstanding, 0) > 0 THEN 'awaiting_studio'
     WHEN so.status IN ('order_ready','dispatched','completed') THEN 'ready'
     ELSE 'awaiting_fulfilment'
   END`;
+
+/**
+ * The studio aggregate every readiness query joins.
+ *
+ * Two things at once, because both screens want both: the COUNTS that decide
+ * readiness (all jobs on the order), and ONE representative job to name in the
+ * UI. The representative is the job still holding the order up — outstanding
+ * work sorts first — so "Still in the studio" can point at the wig that is
+ * actually late, not at whichever job happened to be created last.
+ */
+const STUDIO_JOIN_SQL = (brand) => `
+       LEFT JOIN ${t(brand, "sales_orders")} so ON so.order_id = d.order_id
+       LEFT JOIN LATERAL (
+         SELECT count(*)::int AS total,
+                count(*) FILTER (
+                  WHERE sjx.status NOT IN ${orderReadiness.JOB_SETTLED_SQL}
+                )::int AS outstanding,
+                count(*) FILTER (
+                  WHERE sjx.status IN ${orderReadiness.JOB_DONE_SQL}
+                )::int AS done,
+                (ARRAY_AGG(sjx.job_id   ORDER BY sjx.blocking DESC, sjx.created_at DESC))[1] AS job_id,
+                (ARRAY_AGG(sjx.job_number ORDER BY sjx.blocking DESC, sjx.created_at DESC))[1] AS job_number,
+                (ARRAY_AGG(sjx.status   ORDER BY sjx.blocking DESC, sjx.created_at DESC))[1] AS status
+           FROM (
+             SELECT job_id, job_number, status, created_at,
+                    (status NOT IN ${orderReadiness.JOB_SETTLED_SQL}) AS blocking
+               FROM ${t(brand, "service_jobs")}
+              WHERE sales_order_id = d.order_id
+           ) sjx
+       ) sj ON true`;
 
 // ── deliveries ───────────────────────────────────────────
 async function createDelivery({ client, brand, row }) {
@@ -327,22 +363,18 @@ async function getDelivery({ client, brand, id }) {
             sj.job_id     AS service_job_id,
             sj.job_number AS service_job_number,
             sj.status     AS service_job_status,
+            COALESCE(sj.total, 0)       AS studio_items_total,
+            COALESCE(sj.done, 0)        AS studio_items_done,
+            COALESCE(sj.outstanding, 0) AS studio_items_outstanding,
             ${READINESS_SQL} AS readiness,
             cc.display_name  AS completed_by_name,
             csp.job_title    AS completed_by_job_title,
             COALESCE(so.shipping_fee_ngn, 0) - d.courier_fee_ngn AS delivery_margin_ngn
        FROM ${t(brand, "deliveries")} d
-       LEFT JOIN ${t(brand, "sales_orders")} so ON so.order_id = d.order_id
+       ${STUDIO_JOIN_SQL(brand)}
        LEFT JOIN shared.users cu           ON cu.user_id    = d.completed_by
        LEFT JOIN shared.staff_profiles csp ON csp.profile_id = cu.staff_profile_id
        LEFT JOIN shared.contacts cc        ON cc.contact_id  = csp.contact_id
-       LEFT JOIN LATERAL (
-         SELECT job_id, job_number, status
-           FROM ${t(brand, "service_jobs")} sjx
-          WHERE sjx.sales_order_id = d.order_id
-          ORDER BY sjx.created_at DESC
-          LIMIT 1
-       ) sj ON true
       WHERE d.delivery_id = $1`,
     [id],
   );
@@ -501,15 +533,7 @@ async function listDeliveries({
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
   // The order + latest-service-job joins are needed by the COUNT too, because
   // readiness is derived from them.
-  const JOINS = `
-       LEFT JOIN ${t(brand, "sales_orders")} so ON so.order_id = d.order_id
-       LEFT JOIN LATERAL (
-         SELECT job_id, job_number, status
-           FROM ${t(brand, "service_jobs")} sjx
-          WHERE sjx.sales_order_id = d.order_id
-          ORDER BY sjx.created_at DESC
-          LIMIT 1
-       ) sj ON true`;
+  const JOINS = STUDIO_JOIN_SQL(brand);
   const run = ex(client);
   const { rows: c } = await run(
     `SELECT COUNT(*)::int AS total FROM ${t(brand, "deliveries")} d ${JOINS} ${w}`,
@@ -529,6 +553,9 @@ async function listDeliveries({
             sj.job_id           AS service_job_id,
             sj.job_number       AS service_job_number,
             sj.status           AS service_job_status,
+            COALESCE(sj.total, 0)       AS studio_items_total,
+            COALESCE(sj.done, 0)        AS studio_items_done,
+            COALESCE(sj.outstanding, 0) AS studio_items_outstanding,
             ${READINESS_SQL}    AS readiness,
             -- Completion attribution: who marked it delivered, and when.
             cc.display_name     AS completed_by_name,

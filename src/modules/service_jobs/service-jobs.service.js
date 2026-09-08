@@ -17,6 +17,7 @@ const sharedTasksRepo = require("../../shared/tasks/tasks.repo");
 const grantsRepo = require("../../shared/access/grants.repo");
 const events = require("./service-jobs.events");
 const ai = require("./service-jobs.ai");
+const orderReadiness = require("../sales/order-readiness");
 const { audit } = require("../../middleware/audit");
 const { transaction, withSavepoint } = require("../../config/database");
 const { captureError } = require("../kaizen/errors/errors.capture");
@@ -1657,6 +1658,22 @@ async function returnForQc({ brand, user, request_id, id }) {
  */
 async function recordQc({ brand, user, request_id, id, input }) {
   const nowIso = new Date().toISOString();
+  // Set inside the transaction, read after it commits. Two different flags,
+  // because the two post-commit effects want different questions answered:
+  //
+  //   orderReleased — did THIS pass move the order to order_ready? Gates the
+  //     customer message, which must go out exactly once.
+  //   orderReady    — is the order's studio work finished at all? Gates the
+  //     Logistics delivery, which is an idempotent backstop: it must still run
+  //     when the order reached order_ready some other way (a manual early
+  //     release from the drawer), but never while hairs are outstanding.
+  //
+  // `orderProgress` carries the "2 of 3" figures for the audit trail.
+  // transaction() makes one attempt and never retries, so closing over these
+  // is safe.
+  let orderReleased = false;
+  let orderReady = false;
+  let orderProgress = null;
   const job = await transaction(async (client) => {
     const before = await repo.getServiceJob({ client, brand, id });
     if (!before) throw new NotFoundError("Service job");
@@ -1705,7 +1722,10 @@ async function recordQc({ brand, user, request_id, id, input }) {
         priority: "high",
       });
     } else {
-      // Wig leaves the studio for Logistics/Sales — keep custody balanced.
+      // This wig leaves the stylist's hands for staging — keep custody
+      // balanced. Per-wig and immediate on purpose: the stylist's ledger
+      // balance is Σ(out) − Σ(return) − Σ(dispatched), and this hair really has
+      // left them, whether or not its order-mates are finished.
       await repo.addCustody({
         client,
         brand,
@@ -1714,22 +1734,43 @@ async function recordQc({ brand, user, request_id, id, input }) {
           event: "dispatched",
           quantity: 1,
           created_by: user.user_id,
-          reason: "QC passed → to logistics",
+          reason: "QC passed → staged for order",
         },
       });
-      // Styling is done and the wig is packed → advance the linked order to
-      // 'order_ready' (packed, waiting for the courier). Deliberately NOT
-      // 'dispatched' — the parcel hasn't left, so the customer is never told it
-      // shipped at QC. Guarded so a re-QC can't rewind a later stage.
+      // Styling is done on THIS hair — but an order can carry several (a
+      // three-product order opens three jobs). The order only becomes
+      // 'order_ready' when the LAST of them is done, so a client who ordered
+      // three wigs isn't told the order is ready while two are still on a
+      // bench. `studioProgress` runs on this transaction's client, so it counts
+      // the job we just completed above.
+      //
+      // Deliberately NOT 'dispatched' — the parcel hasn't left, so the customer
+      // is never told it shipped at QC. Guarded so a re-QC can't rewind a later
+      // stage.
       if (before.sales_order_id) {
         const salesRepo = require("../sales/sales.repo");
-        await salesRepo.advanceStatus({
+        const progress = await orderReadiness.studioProgress({
           client,
           brand,
-          id: before.sales_order_id,
-          to: "order_ready",
-          from: ["paid", "partially_paid", "assigned", "order_ready"],
+          order_id: before.sales_order_id,
         });
+        orderReady = progress.ready;
+        if (progress.ready) {
+          const moved = await salesRepo.advanceStatus({
+            client,
+            brand,
+            id: before.sales_order_id,
+            to: "order_ready",
+            from: ["paid", "partially_paid", "assigned"],
+          });
+          // Only a REAL transition releases the customer-facing effects below.
+          // 'order_ready' is deliberately absent from the `from` list: an order
+          // already sitting there returns null here, so a re-QC after rework —
+          // or a hair added by a Change Order after the order went ready —
+          // can't send the customer a second "Order Ready".
+          orderReleased = Boolean(moved);
+        }
+        orderProgress = progress;
       }
     }
     await A(
@@ -1742,8 +1783,20 @@ async function recordQc({ brand, user, request_id, id, input }) {
       // the actual reason at each QC pass, not just pass/fail — the job row
       // itself only ever holds the LATEST quality_notes, overwritten on the
       // next QC call, so this audit trail is the only place a past rework
-      // reason survives.
-      { result: input.result, quality_notes: input.quality_notes ?? null },
+      // reason survives. The studio progress at this moment rides along too, so
+      // "why didn't the client get the mail on wig #1?" is answerable from the
+      // audit trail alone.
+      {
+        result: input.result,
+        quality_notes: input.quality_notes ?? null,
+        ...(orderProgress
+          ? {
+              order_items_done: orderProgress.done,
+              order_items_total: orderProgress.total,
+              order_released: orderReleased,
+            }
+          : {}),
+      },
       request_id,
     );
     events.emit("advanced", { brand, job_id: id, status });
@@ -1751,30 +1804,39 @@ async function recordQc({ brand, user, request_id, id, input }) {
     return updated;
   });
 
-  // Post-commit, best-effort: on QC pass, create the Logistics delivery.
-  // Reuses the idempotent order→delivery creator, which no-ops for orders
-  // that don't need shipping (e.g. own-wig pickup). Never blocks the QC
-  // decision itself — if this fails, Ops can still ship from the order.
-  if (job && job.status === "completed" && job.sales_order_id) {
+  // Post-commit, best-effort: tell the customer and create the Logistics
+  // delivery — but only once the WHOLE order is finished. On a three-wig order
+  // the first two passes fall straight through here: no mail, no parcel, no
+  // status move. Reuses the idempotent order→delivery creator, which no-ops for
+  // orders that don't need shipping (e.g. own-wig pickup) and for one that
+  // already has a delivery. Never blocks the QC decision itself — if this
+  // fails, Ops can still ship from the order.
+  if (orderReady && job && job.status === "completed" && job.sales_order_id) {
     try {
       const salesRepo = require("../sales/sales.repo");
       const logistics = require("../logistics/logistics.service");
       const orderComms = require("../sales/order-comms");
       const order = await salesRepo.findById({ brand, id: job.sales_order_id });
-      // "Order Ready" customer message (gated by Messaging settings; no-op if the
-      // CEO toggled it Off). Best-effort — never blocks the logistics handoff.
-      if (order) await orderComms.orderReady({ brand, order });
+      // "Order Ready" customer message (gated by Messaging settings; no-op if
+      // the CEO toggled it Off). Only on the pass that actually released the
+      // order: if it was already at order_ready — a re-QC after rework, or a
+      // manual early release that already messaged her — she is not told twice.
+      if (order && orderReleased) await orderComms.orderReady({ brand, order });
       const delivery = order
         ? await logistics.createForOrder({ brand, order })
         : null;
       if (delivery && delivery.delivery_id) {
-        const stamped = await repo.setServiceJobStatus({
+        // Every hair on this order travels in that one parcel, so every job on
+        // it carries the shipment — not just the one that happened to finish
+        // last. Without this the first two wigs of a three-wig order would show
+        // no shipment at all on the job screen.
+        await repo.setShipmentForOrderJobs({
           brand,
-          id,
-          status: "completed",
-          fields: { shipment_id: delivery.delivery_id },
+          order_id: job.sales_order_id,
+          shipment_id: delivery.delivery_id,
         });
-        return stamped;
+        const stamped = await repo.getServiceJob({ brand, id });
+        if (stamped) return stamped;
       }
     } catch (err) {
       logger.warn(

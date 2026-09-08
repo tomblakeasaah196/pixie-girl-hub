@@ -532,6 +532,30 @@ async function setServiceJobStatus({ client, brand, id, status, fields = {} }) {
   );
   return rows[0] || null;
 }
+/**
+ * Stamp one shipment across every job on an order.
+ *
+ * An order's hairs all travel in the same parcel, and the delivery is created
+ * once — on the QC pass that finishes the last of them. Stamping only that job
+ * would leave the earlier wigs showing no shipment, so the whole set is
+ * stamped together. Only fills blanks: a job already tied to a shipment (an
+ * amendment that split the order, say) keeps its own.
+ */
+async function setShipmentForOrderJobs({
+  client,
+  brand,
+  order_id,
+  shipment_id,
+}) {
+  if (!order_id || !shipment_id) return 0;
+  const { rowCount } = await ex(client)(
+    `UPDATE ${t(brand, "service_jobs")}
+        SET shipment_id = $2, updated_at = now()
+      WHERE sales_order_id = $1 AND shipment_id IS NULL`,
+    [order_id, shipment_id],
+  );
+  return rowCount || 0;
+}
 async function updateServiceJob({ client, brand, id, patch }) {
   const allowed = [
     "assigned_staff_user_id",
@@ -1388,6 +1412,7 @@ module.exports = {
   getJobAssigneeName,
   serviceJobExistsForOrder,
   setServiceJobStatus,
+  setShipmentForOrderJobs,
   updateServiceJob,
   linkIntercompany,
   getStudioConfig,

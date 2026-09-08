@@ -242,14 +242,27 @@ export function useOrderInvoice(orderId: string | null) {
   });
 }
 
-/** The Stylist Studio job opened for this order (null while none exists). */
+/**
+ * The Stylist Studio jobs opened for this order, with the progress summary.
+ *
+ * `job` is the one the drawer has always shown (the first); `jobs` is all of
+ * them, because a three-product order opens three; `progress` is the server's
+ * own readiness gate — the same one that decides whether the customer gets the
+ * "Order Ready" message — so the screen can say "2 of 3 items ready" without
+ * re-deriving the rule.
+ */
 export function useOrderServiceJob(orderId: string | null) {
   const biz = useBiz();
   return useQuery({
     queryKey: ["sales-orders", biz, "service-job", orderId],
     queryFn: async () => {
       const res = await salesApi.getOrderServiceJob(orderId!);
-      return res.data?.[0] ?? null;
+      const jobs = res.data ?? [];
+      // Annotated because tsconfig has noUncheckedIndexedAccess off: without it
+      // TS types jobs[0] as always-present and collapses the `?? null`, and
+      // every consumer then thinks the job can't be missing.
+      const job: salesApi.OrderServiceJob | null = jobs[0] ?? null;
+      return { job, jobs, progress: res.meta?.studio ?? null };
     },
     enabled: !!orderId,
   });

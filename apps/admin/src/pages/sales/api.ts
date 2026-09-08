@@ -225,7 +225,7 @@ export const getInvoiceReminders = (invoiceId: string) =>
 
 // ── Order rollup (Studio + Delivery + Customer history) ─────
 
-/** The Studio job attached to this order (paginated list; first row is what we want). */
+/** One Studio job attached to this order. An order with three hairs has three. */
 export interface OrderServiceJob {
   job_id: string;
   job_number: string;
@@ -251,14 +251,35 @@ export interface OrderServiceJob {
   created_at: string;
 }
 
-// Read the order's Stylist Studio job THROUGH the order (sales.view), not the
+/**
+ * How much of the order's studio work is finished.
+ *
+ * An order can carry several hairs — one job each — and nothing customer-facing
+ * happens until every one of them is done. `ready` is the server's own gate, so
+ * the screen never has to re-derive the rule.
+ */
+export interface StudioProgress {
+  /** Jobs opened for this order. 0 = a plain product sale, no styling. */
+  total: number;
+  /** Finished and out of the studio. */
+  done: number;
+  /** Still on someone's bench — any of these holds the whole order. */
+  outstanding: number;
+  /** total > 0 and nothing outstanding. */
+  ready: boolean;
+}
+
+export interface OrderServiceJobResponse {
+  data: OrderServiceJob[];
+  meta: { count: number; studio: StudioProgress };
+}
+
+// Read the order's Stylist Studio jobs THROUGH the order (sales.view), not the
 // service_jobs list endpoint (which is stylist own-scoped). A salesperson is
 // never the assigned stylist, so the old path returned an empty list for them
 // and the Order drawer misreported "Studio: not opened yet".
 export const getOrderServiceJob = (orderId: string) =>
-  api.get<PaginatedResponse<OrderServiceJob>>(
-    `${S}/orders/${orderId}/service-job`,
-  );
+  api.get<OrderServiceJobResponse>(`${S}/orders/${orderId}/service-job`);
 
 /** The delivery attached to this order. */
 export interface OrderDelivery {

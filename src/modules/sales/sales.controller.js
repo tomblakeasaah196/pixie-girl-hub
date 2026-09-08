@@ -48,11 +48,14 @@ const getById = async (req, res) =>
 // are never the assigned stylist. `meta` sibling keeps the admin api client
 // from unwrapping the {data:[...]} envelope past the array.
 const getOrderServiceJob = async (req, res) => {
-  const jobs = await service.getOrderServiceJob({
+  const { jobs, progress } = await service.getOrderServiceJob({
     brand: req.brand,
     id: req.params.id,
   });
-  res.json({ data: jobs, meta: { count: jobs.length } });
+  // `progress` rides in meta so the order screen can say "2 of 3 items ready"
+  // and warn before a manual "Order Ready" that would jump the queue. The data
+  // array keeps its existing shape.
+  res.json({ data: jobs, meta: { count: jobs.length, studio: progress } });
 };
 const receiptPdf = async (req, res) =>
   res.status(201).json({

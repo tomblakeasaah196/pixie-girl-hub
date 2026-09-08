@@ -681,3 +681,76 @@ export interface PosReconOrderCandidate {
   balance_due_ngn: string;
   created_at: string;
 }
+
+/* ── Post-hoc coupon (§6.23.2) ───────────────────────────────
+   Applying a code to an order that was already placed — the discount she was
+   eligible for that nobody entered at checkout. The waiver is capped at the
+   order's outstanding balance, so it can settle an order but never drive it
+   into credit. */
+
+/** A code that can't be used here. A 200, not an error: mistyping a code at the
+ *  counter is ordinary behaviour, and the form renders `message` inline. */
+export interface OrderCouponRejected {
+  valid: false;
+  coupon_code: string;
+  reason: string;
+  /** Staff-facing sentence — already written for the counter, show it as-is. */
+  message: string;
+}
+
+/** What a code is worth on this order, and what it would actually take off. */
+export interface OrderCouponQuote {
+  valid: true;
+  order_id: string;
+  order_number: string;
+  coupon_code: string;
+  display_name: string;
+  description: string | null;
+  discount_type:
+    | "percentage"
+    | "fixed_amount"
+    | "free_shipping"
+    | "buy_x_get_y";
+  /** The code's face value on this order, BEFORE the balance cap. */
+  coupon_value_ngn: string;
+  /** What it actually waives — this is the figure that gets committed. */
+  discount_ngn: string;
+  /** True when the code was worth more than the balance and got trimmed. */
+  capped_to_balance: boolean;
+  capped_by_ngn: string | null;
+  total_before_ngn: string;
+  total_after_ngn: string;
+  balance_before_ngn: string;
+  balance_after_ngn: string;
+  /** The waiver clears the balance outright — the order settles on apply. */
+  settles_order: boolean;
+}
+
+export type OrderCouponPreview = OrderCouponQuote | OrderCouponRejected;
+
+export interface ApplyOrderCouponInput {
+  coupon_code: string;
+  /** Free text for the audit note — "loyalty voucher, missed at checkout". */
+  reason?: string;
+}
+
+export interface ApplyOrderCouponResult {
+  order: SalesOrder;
+  quote: OrderCouponQuote;
+  effects: {
+    gl: { posted: boolean; entry_id: string | null; reason?: string };
+    status: {
+      moved_to: string;
+      settled_by_coupon?: boolean;
+      unchanged?: boolean;
+    };
+    invoice:
+      | {
+          invoice_id: string;
+          invoice_number: string;
+          status: string;
+          total_ngn: string;
+        }
+      | { revised: false };
+  };
+}

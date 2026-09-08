@@ -56,6 +56,7 @@ import {
   NumberField,
 } from "@/components/ui/controls";
 import { FormGrid, Field, TextInput } from "@/components/ui/Form";
+import { ApplyCouponPanel } from "./ApplyCouponPanel";
 import { useAuthStore } from "@/stores/auth";
 import {
   useOrder,
@@ -1364,6 +1365,37 @@ export function OrderDetailPage() {
                         {money(Number(order.total_ngn))}
                       </div>
                     </div>
+
+                    {/* Discount code — sits with Record Payment because
+                      that is where the missed discount surfaces: she is
+                      settling up and mentions the voucher nobody applied.
+                      Capped at the balance, so it can close the order but
+                      never push it into credit. */}
+                    {canEditSales && (
+                      <ApplyCouponPanel
+                        orderId={orderId!}
+                        appliedCode={order.coupon_code}
+                        disabled={balanceDue <= 0}
+                        onApplied={(res) =>
+                          fireToast(
+                            "Discount Applied",
+                            `${res.quote.coupon_code} took ${money(
+                              Number(res.quote.discount_ngn),
+                            )} off ${order.order_number}${
+                              res.quote.settles_order
+                                ? " — that clears the balance, so the order is settled."
+                                : `. ${money(
+                                    Number(res.quote.balance_after_ngn),
+                                  )} still due.`
+                            }`,
+                            "payment",
+                          )
+                        }
+                        onError={(msg) =>
+                          fireToast("Discount Not Applied", msg, "payment", "high")
+                        }
+                      />
+                    )}
 
                     {/* Record payment — inline, so accepting money never means
                       opening the invoice. Who recorded it and when is stamped

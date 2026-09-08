@@ -86,6 +86,12 @@ const DISC = [
   "applied_to_line_id",
   "amount_ngn",
   "discount_type",
+  // A coupon applied AFTER placement (order-coupon.service) records the hard
+  // FK back to shared.coupons, who authorised the waiver, and why — checkout
+  // leaves all three NULL because the code arrived with the order itself.
+  "coupon_id",
+  "approved_by",
+  "notes",
 ];
 const PAY = [
   "payment_number",
@@ -462,6 +468,25 @@ async function setStatus({ client, brand, id, status }) {
   const { rows } = await ex(client)(
     `UPDATE ${t(brand, "sales_orders")} SET status = $2 WHERE order_id = $1 RETURNING *`,
     [id, status],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Stamp the coupon a code was applied under. Written at checkout by
+ * createOrder; written again by order-coupon.service when a code is applied to
+ * an order that was already placed. The column is denormalised — the amount and
+ * the redemption live in sales_order_discounts and shared.coupon_redemptions —
+ * but retention's settlement subscriber reads it, so it has to be set either
+ * way the coupon arrived.
+ */
+async function setCouponCode({ client, brand, id, coupon_code }) {
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "sales_orders")}
+        SET coupon_code = $2, updated_at = now()
+      WHERE order_id = $1
+      RETURNING *`,
+    [id, coupon_code],
   );
   return rows[0] || null;
 }
@@ -1457,6 +1482,7 @@ module.exports = {
   findById,
   listOrders,
   setStatus,
+  setCouponCode,
   advanceStatus,
   markDepositMet,
   listAbandonableLayaway,

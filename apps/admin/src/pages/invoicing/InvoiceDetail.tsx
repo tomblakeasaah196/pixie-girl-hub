@@ -21,11 +21,13 @@ import {
   NumberField,
 } from "@/components/ui/controls";
 import { FormGrid, Field, TextInput } from "@/components/ui/Form";
-import { usePaymentSettings } from "@/pages/sales/hooks";
+import { usePaymentSettings, useOrder } from "@/pages/sales/hooks";
+import { ApplyCouponPanel } from "@/pages/sales/ApplyCouponPanel";
+import { useAuthStore } from "@/stores/auth";
 import { useToastStore } from "@/components/notifications/NotificationToast";
 import { toastReport } from "@/lib/error-report";
 import { saveFileFromUrl } from "@/lib/api";
-import { formatDateTime, formatDate } from "@/lib/format";
+import { formatDateTime, formatDate, money } from "@/lib/format";
 import {
   useInvoice,
   useInvoicePdf,
@@ -248,6 +250,11 @@ export function InvoiceDetail({
     !["void", "refunded"].includes(invoice.status) &&
     Number(invoice.balance_due_ngn) > 0;
   const isOrderBacked = !!invoice?.order_id;
+  // A discount code applies to the ORDER, not the invoice — so it is offered
+  // only on an order-backed invoice, and the order is what tells us whether a
+  // code is already on it. Cached: the order screen reads the same key.
+  const canEditSales = useAuthStore((s) => s.can)("sales", "edit");
+  const { data: backingOrder } = useOrder(invoice?.order_id ?? null);
   // Manual entry is the same business-level switch the order drawer honours —
   // an order-backed invoice records through the order, so the same gate applies.
   const manualAllowed =
@@ -379,6 +386,29 @@ export function InvoiceDetail({
                   .
                 </span>
               </div>
+            )}
+
+            {/* Discount code — the same waiver the order screen offers,
+                surfaced here because this is the other place staff are
+                looking at a balance and taking money against it. Invoice-only
+                (non-order) invoices have no order to discount, so it stays
+                hidden for them. */}
+            {isOrderBacked && canPay && canEditSales && invoice?.order_id && (
+              <ApplyCouponPanel
+                orderId={invoice.order_id}
+                appliedCode={backingOrder?.coupon_code}
+                onApplied={(res) =>
+                  fireToast(
+                    "Discount Applied",
+                    `${res.quote.coupon_code} took ${money(
+                      Number(res.quote.discount_ngn),
+                    )} off ${res.quote.order_number}. This invoice has been revised.`,
+                  )
+                }
+                onError={(msg) =>
+                  fireToast("Discount Not Applied", msg, "high")
+                }
+              />
             )}
 
             {/* Record payment form */}

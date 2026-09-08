@@ -24,6 +24,9 @@ import type {
   AmendmentInput,
   AmendOrderResult,
   OrderAmendment,
+  OrderCouponPreview,
+  ApplyOrderCouponInput,
+  ApplyOrderCouponResult,
 } from "./types";
 
 const S = "/sales";
@@ -510,3 +513,30 @@ export const searchPosReconcilableOrders = (search: string) =>
   api.get<PaginatedResponse<SalesOrder>>(
     `/sales/orders${qs({ q: search, page_size: 10 })}`,
   );
+
+// ── Post-hoc coupon (§6.23.2) ───────────────────────────────
+
+/**
+ * What would this code do to this order? Read-only, so the payment form can
+ * call it the moment staff stop typing.
+ *
+ * An unusable code answers 200 with `valid: false` and a sentence rather than
+ * throwing — mistyping a code at the counter is ordinary behaviour, not an
+ * error condition, and the panel renders the reason inline either way.
+ */
+export const previewOrderCoupon = (id: string, coupon_code: string) =>
+  api.post<OrderCouponPreview>(`${S}/orders/${id}/coupon/preview`, {
+    coupon_code,
+  });
+
+/**
+ * Commit the waiver. Reduces the order total, records the discount and the
+ * coupon redemption, reconciles the invoice and the GL, and settles the order
+ * outright when the waiver clears the balance — one transaction.
+ *
+ * Capped at the outstanding balance, so a code worth more than the balance
+ * waives the balance and no more. Unlike the preview, an unusable code here
+ * throws an ApiError: by this point it is a real refusal.
+ */
+export const applyOrderCoupon = (id: string, input: ApplyOrderCouponInput) =>
+  api.post<ApplyOrderCouponResult>(`${S}/orders/${id}/coupon`, input);

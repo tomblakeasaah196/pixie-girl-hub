@@ -357,6 +357,25 @@ const orderAmendPreview = z
   })
   .strict();
 
+// Applying a coupon to an order that was already placed (order-coupon.service).
+// The code is upper-cased in the service, not here, so the raw entry survives
+// into the "that code doesn't exist" message staff read back.
+const orderCouponPreview = z
+  .object({
+    coupon_code: z.string().min(2).max(60),
+  })
+  .strict();
+
+const orderCouponApply = z
+  .object({
+    coupon_code: z.string().min(2).max(60),
+    // Free text for the discount row's audit note — "eligible for the loyalty
+    // voucher, missed at checkout". Optional: the code and the operator are
+    // already stamped, a sentence is a courtesy to whoever reads it later.
+    reason: z.string().max(500).optional(),
+  })
+  .strict();
+
 const mw = (s) => (req, _res, next) => {
   req.body = s.parse(req.body ?? {});
   next();
@@ -385,10 +404,14 @@ module.exports = {
   validateOrderRestore: mw(orderRestore),
   validateOrderAmend: mw(orderAmend),
   validateOrderAmendPreview: mw(orderAmendPreview),
+  validateOrderCouponPreview: mw(orderCouponPreview),
+  validateOrderCouponApply: mw(orderCouponApply),
   validateReportExport: mwQuery(reportExport),
   orderCreate,
   orderUpdate,
   paymentCreate,
   orderAmend,
   orderAmendPreview,
+  orderCouponPreview,
+  orderCouponApply,
 };

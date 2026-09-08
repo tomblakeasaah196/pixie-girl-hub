@@ -250,9 +250,55 @@ function buildAmendmentLines({
   return lines.length >= 2 ? lines : null;
 }
 
+/**
+ * A coupon applied AFTER the sale journal already posted (order-coupon.service).
+ *
+ * The sale journal drew Customer Deposits 2400 down by the full order total and
+ * credited revenue with it. Waiving `discount_ngn` means that draw-down was too
+ * large and that much revenue was never really earned, so reverse exactly that
+ * slice: DR revenue (or shipping revenue, for a free-shipping code, since that
+ * is the account the fee was credited to) and CR 2400 back up.
+ *
+ * Nothing touches stock or COGS — the goods on the order did not change, only
+ * what the customer is being charged for them.
+ *
+ * The ordinary case never reaches here: an order still carrying a balance has
+ * no sale journal yet, and its eventual order.paid posting simply uses the
+ * reduced total.
+ */
+function buildOrderDiscountLines({
+  discount_ngn,
+  is_shipping_waiver,
+  revenue_account_code,
+  contact_id,
+  reference,
+  coupon_code,
+}) {
+  const amt = money(discount_ngn || 0);
+  if (amt.lte(0)) return null;
+  const value = toCurrencyString(amt);
+  const label = coupon_code ? `Coupon ${coupon_code}` : "Discount";
+  return [
+    {
+      account_code: is_shipping_waiver
+        ? ACCOUNTS.SHIPPING_REVENUE
+        : revenue_account_code,
+      debit_ngn: value,
+      description: `${label} applied after placement — ${is_shipping_waiver ? "shipping" : "revenue"} reduced (${reference})`,
+    },
+    {
+      account_code: ACCOUNTS.CUSTOMER_DEPOSITS,
+      credit_ngn: value,
+      description: `${label} applied after placement — deposit released (${reference})`,
+      contact_id: contact_id || null,
+    },
+  ];
+}
+
 module.exports = {
   buildCaptureLines,
   buildForfeitLines,
   buildCancellationRefundLines,
   buildAmendmentLines,
+  buildOrderDiscountLines,
 };

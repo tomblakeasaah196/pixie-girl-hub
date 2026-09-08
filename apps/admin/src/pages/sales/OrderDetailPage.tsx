@@ -89,6 +89,7 @@ import {
   messagingChannelLabel,
   SALES_CHANNELS,
   fulfilmentLabel,
+  orderPaymentMeta,
 } from "./constants";
 import type { OrderPayment, OrderStatus, SalesOrder } from "./types";
 import { useJobReferences } from "@/pages/service-jobs/hooks";
@@ -507,11 +508,11 @@ export function OrderDetailPage() {
   const deliveryDone = delivery
     ? DELIVERY_TERMINAL.has(delivery.status)
     : false;
-  const paidTone: Tone = ["draft", "pending_payment"].includes(
-    order?.status ?? "",
-  )
-    ? "warn"
-    : "success";
+  // Payment state comes from the money (total / paid / balance), never from
+  // `order.status` — that column stops tracking payment the moment fulfilment
+  // starts, so reading it here labelled partially-paid, cancelled and refunded
+  // orders alike as "Paid". See orderPaymentMeta.
+  const payMeta = orderPaymentMeta(order);
   const invoiceDelivery = invoice
     ? invoice.first_viewed_at
       ? { label: "Opened", tone: "success" as const }
@@ -886,9 +887,7 @@ export function OrderDetailPage() {
         <>
           {/* Fulfilment strip. */}
           <div className="flex flex-wrap items-center gap-2">
-            <Pill tone={paidTone}>
-              {paidTone === "success" ? "Paid" : "Payment pending"}
-            </Pill>
+            <Pill tone={payMeta.tone}>{payMeta.label}</Pill>
             {order.payment_plan === "instalment" && (
               <Pill tone="accent">
                 <CreditCard className="w-3 h-3 inline mr-1" />

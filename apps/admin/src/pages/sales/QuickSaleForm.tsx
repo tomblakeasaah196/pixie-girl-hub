@@ -48,6 +48,7 @@ import {
   SALES_CHANNELS,
   SALES_CHANNEL_GROUPS,
   FULFILMENT_OPTIONS,
+  orderPaymentMeta,
 } from "./constants";
 import {
   useCreateOrder,
@@ -280,10 +281,11 @@ export function QuickSaleForm() {
   // once the gateway confirms — no manual payment entry (anti-pocketing).
   const paymentWatch = useOrderPaymentWatch(sentOrderId);
   const watchedOrder = paymentWatch.data;
-  const isPaid = watchedOrder
-    ? Number(watchedOrder.balance_due_ngn) <= 0 ||
-      !["draft", "pending_payment"].includes(watchedOrder.status)
-    : false;
+  // "Paid" here licenses handing over the goods, so it means the balance is
+  // clear — not merely that the order left 'pending_payment'. A deposit moves
+  // the order to 'partially_paid', which the old status test read as paid in
+  // full: the exact anti-pocketing hole this watch exists to close.
+  const isPaid = orderPaymentMeta(watchedOrder).settled;
   // Walk-in = customer is at the counter → pay on the spot by scanning.
   const inStore = fulfilment === "walk_in";
 

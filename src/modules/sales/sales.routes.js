@@ -98,6 +98,29 @@ router.post(
   c.amendOrder,
 );
 
+// Post-hoc coupon (§6.23.2) — apply a code to an order that was already
+// placed, and often already part-paid: the discount she was eligible for but
+// nobody entered at checkout. The waiver is capped at the outstanding balance,
+// so it can settle an order but never drive it into credit.
+//
+// Gated at sales.edit, the same tier as Record Payment and Change Order: the
+// people who take the money at the counter are the people who discover the
+// missed discount, and Change Order (which can rewrite the whole basket) is
+// strictly the more powerful act. Every application is stamped with the
+// operator, the code, the uncapped value and the amount actually waived.
+router.post(
+  "/orders/:id/coupon/preview",
+  can("edit"),
+  v.validateOrderCouponPreview,
+  c.previewOrderCoupon,
+);
+router.post(
+  "/orders/:id/coupon",
+  can("edit"),
+  v.validateOrderCouponApply,
+  c.applyOrderCoupon,
+);
+
 router.post(
   "/orders/:id/status",
   can("edit"),

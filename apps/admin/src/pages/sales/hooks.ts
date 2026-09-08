@@ -18,6 +18,7 @@ import type {
   FlexiPaySettingsPatch,
   AmendmentInput,
   AmendmentPreviewInput,
+  ApplyOrderCouponInput,
 } from "./types";
 
 function useBiz() {
@@ -182,6 +183,46 @@ export function useAmendOrder(orderId: string | null) {
       qc.invalidateQueries({ queryKey: ["sales-kpis", biz] });
       qc.invalidateQueries({ queryKey: ["invoices", biz] });
       qc.invalidateQueries({ queryKey: ["ar-ageing", biz] });
+      qc.invalidateQueries({ queryKey: ["service-jobs", biz] });
+      qc.invalidateQueries({ queryKey: ["deliveries", biz] });
+      qc.invalidateQueries({ queryKey: ["stock", biz] });
+    },
+  });
+}
+
+/**
+ * Dry run for a post-hoc coupon. A mutation rather than a query: staff drive it
+ * explicitly by pressing Check, and a stale cached quote is worse than none —
+ * the balance it was capped against moves every time a payment lands.
+ */
+export function usePreviewOrderCoupon(orderId: string | null) {
+  return useMutation({
+    mutationFn: (code: string) => salesApi.previewOrderCoupon(orderId!, code),
+  });
+}
+
+/**
+ * Commit the waiver. It reduces the order total, spends the coupon, rewrites
+ * the invoice, may post to the GL and may settle the order outright — so the
+ * invalidation sweep is as wide as Change Order's. Anything narrower leaves
+ * Invoicing or the AR ageing showing the pre-discount balance.
+ */
+export function useApplyOrderCoupon(orderId: string | null) {
+  const qc = useQueryClient();
+  const biz = useBiz();
+  return useMutation({
+    mutationFn: (input: ApplyOrderCouponInput) =>
+      salesApi.applyOrderCoupon(orderId!, input),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: ["sales-orders", biz, "detail", orderId],
+      });
+      qc.invalidateQueries({ queryKey: ["sales-orders", biz] });
+      qc.invalidateQueries({ queryKey: ["sales-kpis", biz] });
+      qc.invalidateQueries({ queryKey: ["invoices", biz] });
+      qc.invalidateQueries({ queryKey: ["ar-ageing", biz] });
+      // Settling the order fires the full order.paid fan-out — a Studio job and
+      // a delivery can both come into existence on the back of a coupon.
       qc.invalidateQueries({ queryKey: ["service-jobs", biz] });
       qc.invalidateQueries({ queryKey: ["deliveries", biz] });
       qc.invalidateQueries({ queryKey: ["stock", biz] });

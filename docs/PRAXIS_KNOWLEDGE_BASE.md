@@ -318,6 +318,33 @@ chasing deliveries, matching stray in-store terminal payments, and payment setti
   (`/sales?tab=payments`); until then payments must arrive through a gateway,
   and the order's Payments card says so where the button would be. You can
   still send a pay link.
+- *Apply a discount code to an order that was already placed?* Open the order →
+  **Payments** card → **Apply a discount code**. Use this when a customer was
+  eligible for a code — a loyalty voucher, a campaign coupon, an apology
+  discount — and nobody entered it at checkout. Type the code and press
+  **Check**: the panel shows what the code is worth, the new order total and
+  the new balance due *before* anything is written. Press **Apply** to commit.
+  The order total drops, the discount is recorded on the order, the invoice is
+  re-issued and the code is marked used, all in the same instant. It works on
+  an order that is part-paid — that's the point — so a customer who has already
+  put a deposit down simply owes less.
+- *A code is worth more than the customer still owes — what happens?* The
+  waiver is capped at the outstanding balance. A ₦20,000 code on an order with
+  ₦15,000 left to pay takes off ₦15,000 and settles the order; it never puts
+  the order into credit and never starts a refund. The panel says so plainly
+  before you apply, including how much of the code's value is not carried
+  forward — applying it still marks the code used, so tell the customer.
+- *Applying a code cleared the balance — does the order settle?* Yes, and the
+  panel warns you before you commit. The moment the balance reaches zero the
+  order settles exactly as a final payment would: stock is drawn, the invoice
+  is marked paid and any Stylist Studio job opens.
+- *Can I put a second discount code on an order?* No — an order holds one code.
+  If a code is already on the order the Payments card names it instead of
+  offering the field. Use **Change Order** if the pricing needs to move again.
+- *"Apply a discount code" isn't showing?* Three reasons: the order has nothing
+  left to pay (a code only reduces an outstanding balance), the order is
+  completed / cancelled / refunded, or you don't have Sales **edit** permission
+  — the same permission Record Payment and Change Order need.
 - *Send a customer a pay link instead?* Open the order → **Pay Link** in the
   action bar. Leave the amount blank for the full balance, or type a
   part amount, then **Generate & copy pay link** and paste it into WhatsApp or
@@ -990,6 +1017,13 @@ refunds, and a live view of who still owes us (accounts receivable ageing).
   the receipt all move together. Recording it from the order page does exactly
   the same thing — use whichever screen you're already on. Manual entry honours
   the same Sales → **Payments** switch in both places.
+- *Apply a discount code from the invoice?* Open the invoice → **Apply a
+  discount code**, in the same place you record a payment. It only appears on an
+  invoice raised from a sales order, because the discount applies to the
+  **order** — the invoice is re-issued from it in the same instant. Check the
+  code first to see the new total and balance, then apply. The waiver is capped
+  at what is still owed, so it can settle the invoice but never put it into
+  credit. Doing it from the order page does exactly the same thing.
 - *Which order is this invoice for?* The invoice names it at the top: click the
   order number, or **View Order**, to open it. The order page links back to the
   invoice the same way, and the Invoices list carries an **Order** column.

@@ -6,6 +6,7 @@
 
 const service = require("./sales.service");
 const amendmentService = require("./amendment.service");
+const orderCouponService = require("./order-coupon.service");
 const paymentLink = require("./payment-link.service");
 const paymentSettings = require("./payment-settings.service");
 const { parsePagination } = require("../../utils/pagination");
@@ -160,6 +161,29 @@ const amendOrder = async (req, res) =>
       input: req.body,
     }),
   });
+// Post-hoc coupon (order-coupon.service). The preview answers 200 with
+// { valid: false, message } for a code that can't be used — mistyping a code at
+// the counter is ordinary behaviour, not an error condition, and the payment
+// form renders the reason inline either way. The apply endpoint DOES throw on
+// an unusable code: by then it is a real refusal.
+const previewOrderCoupon = async (req, res) =>
+  res.json({
+    data: await orderCouponService.previewOrderCoupon({
+      brand: req.brand,
+      id: req.params.id,
+      code: req.body.coupon_code,
+    }),
+  });
+
+const applyOrderCoupon = async (req, res) =>
+  res.json({
+    data: await orderCouponService.applyOrderCoupon({
+      ...base(req),
+      id: req.params.id,
+      input: req.body,
+    }),
+  });
+
 const listAmendments = async (req, res) => {
   const rows = await amendmentService.listAmendments({
     brand: req.brand,
@@ -349,6 +373,8 @@ module.exports = {
   restoreOrder,
   previewAmendment,
   amendOrder,
+  previewOrderCoupon,
+  applyOrderCoupon,
   listAmendments,
   createPaymentLink,
   setDeliveryFee,

@@ -21,6 +21,9 @@ import {
   Target,
   ListTodo,
   FileText,
+  Image as ImageIcon,
+  Eye,
+  FolderLock,
   MessageSquareWarning,
   TriangleAlert,
   Sunrise,
@@ -49,12 +52,18 @@ import {
   myContracts,
   myTargets,
   myPayslips,
+  listMyDocuments,
+  myDocumentBlob,
+  downloadMyDocument,
   type HrQuery,
   type PerformanceTarget,
+  type StaffDocument,
 } from "@/lib/hr-api";
 import { downloadDocument } from "@/lib/documents-api";
+import { DocumentPreviewDrawer } from "./DocumentPreviewDrawer";
 import {
   WeekScheduleView,
+  fileSize,
   SectionTitle,
   QueryStatusPill,
   ClockLocationLink,
@@ -238,7 +247,7 @@ function TasksSection() {
   );
 }
 
-/** "Contracts & documents" — 10/page. */
+/** "Contracts" — issued contracts, 10/page. Uploaded files are in My documents. */
 function ContractsSection() {
   const [page, setPage] = useState(1);
   const { data, isLoading } = useQuery({
@@ -248,7 +257,7 @@ function ContractsSection() {
   return (
     <div>
       <SectionTitle icon={<FileText className="h-4 w-4 text-accent-glow" />}>
-        Contracts &amp; documents
+        Contracts
       </SectionTitle>
       {isLoading || !data ? (
         <Skeleton className="h-16 rounded-[var(--radius)]" />
@@ -275,6 +284,103 @@ function ContractsSection() {
       ) : (
         <Card className="p-4 text-sm text-text-muted">No contracts on file yet.</Card>
       )}
+    </div>
+  );
+}
+
+/**
+ * "My documents" — the file HR holds on me: contract, guarantor form, NIN
+ * slip, passport photograph. Read-only by design; filing stays with HR, who
+ * upload from the employee's Documents tab. Anything still outstanding shows
+ * as a chip, so chasing paperwork doesn't need an email thread.
+ */
+function MyDocumentsSection() {
+  const notify = useNotify("My HR");
+  const [preview, setPreview] = useState<StaffDocument | null>(null);
+  const { data, isLoading } = useQuery({
+    queryKey: ["my-hr", "documents"],
+    queryFn: () => listMyDocuments(),
+  });
+
+  const download = (d: StaffDocument) =>
+    downloadMyDocument(d.document_id, d.title || d.type_label).catch((e) =>
+      notify("Download failed", errMsg(e), "high"),
+    );
+
+  return (
+    <div>
+      <SectionTitle icon={<FolderLock className="h-4 w-4 text-accent-glow" />}>
+        My documents
+      </SectionTitle>
+      {isLoading || !data ? (
+        <Skeleton className="h-16 rounded-[var(--radius)]" />
+      ) : (
+        <>
+          {data.missing_required.length > 0 && (
+            <div className="mb-2 flex flex-wrap items-center gap-2 rounded-[11px] border border-warn/30 bg-warn/[0.06] px-3 py-2 text-[12px] text-text-muted">
+              <span className="text-warn">HR still needs:</span>
+              {data.missing_required.map((m) => (
+                <Pill key={m.type_key} tone="warn">
+                  {m.label}
+                </Pill>
+              ))}
+            </div>
+          )}
+          {data.documents.length ? (
+            <div className="space-y-2">
+              {data.documents.map((d) => (
+                <Card key={d.document_id} className="flex items-center gap-3 p-3">
+                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] border border-line bg-text-primary/[0.04]">
+                    {d.is_image ? (
+                      <ImageIcon className="h-4 w-4 text-accent-glow" />
+                    ) : (
+                      <FileText className="h-4 w-4 text-accent-glow" />
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setPreview(d)}
+                    className="min-w-0 flex-1 text-left"
+                    title="Preview"
+                  >
+                    <div className="truncate text-sm text-text-primary">
+                      {d.title || d.type_label}
+                    </div>
+                    <div className="mt-0.5 truncate text-xs text-text-muted">
+                      {d.type_label} · {fileSize(d.file_size_bytes)}
+                    </div>
+                  </button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    icon={<Eye className="h-3.5 w-3.5" />}
+                    onClick={() => setPreview(d)}
+                  >
+                    View
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    icon={<Download className="h-3.5 w-3.5" />}
+                    onClick={() => download(d)}
+                  >
+                    Save
+                  </Button>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <Card className="p-4 text-sm text-text-muted">
+              No documents on file yet. HR uploads these from your employee record.
+            </Card>
+          )}
+        </>
+      )}
+      <DocumentPreviewDrawer
+        doc={preview}
+        fetchBlob={myDocumentBlob}
+        onClose={() => setPreview(null)}
+        onDownload={download}
+      />
     </div>
   );
 }
@@ -717,6 +823,9 @@ export default function MyHrPage() {
             <TasksSection />
             <ContractsSection />
           </div>
+
+          {/* The file HR holds on me — read-only */}
+          <MyDocumentsSection />
 
           {/* My devices — enrol the phone/laptop you clock in with */}
           <MyDevicesSection />

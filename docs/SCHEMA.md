@@ -132,6 +132,38 @@ the Orders register can badge a changed order without a join.
 
 See `ORDER_AMENDMENTS.md` for the full mechanism.
 
+## Employee documents (shared, migration 000382)
+
+`shared.hr_document_types` is the **per-brand catalogue** of employee document
+types — Employment Contract, Guarantor Form, NIN Slip, Passport Photograph and
+whatever HR adds later. It is the only new table: the files themselves are
+ordinary `shared.documents` rows, distinguished by
+
+    reference_type = 'staff_profile'
+    reference_id   = staff_profiles.profile_id
+    document_type  = hr_document_types.type_key
+
+so storage, size, mime type, SHA-256 content hash, uploader and soft-delete all
+come from the existing file registry rather than a parallel one.
+
+`type_key` is a stable slug and is **never** updated — it is written into
+`shared.documents.document_type`, which is immutable after insert, so renaming
+`label` is what relabels every document already filed under a type. For the same
+reason a type that is seeded (`is_system`) or already in use is **archived**
+(`is_active = false`) rather than deleted; only an unused custom type is removed
+outright. `is_required` drives the "missing documents" checklist on an
+employee's Documents tab, and `accepts` (`any` | `pdf` | `image`) is enforced
+server-side at upload, not just by the file picker.
+
+**These rows are fenced off from the Documents module.** A NIN slip or a signed
+contract identifies a person and their pay, and the `documents` permission is
+granted far more widely than `hr_payroll` — so `documents.repo.findAll`,
+`getById`, `download`, `remove` and the global-search document entity all
+exclude `reference_type = 'staff_profile'`, and the files are served only by the
+HR-gated routes under `/hr` (plus `/hr/me/documents`, where the profile is
+resolved from the token rather than the URL). Downloads are written to
+`audit_log` as sensitive accesses; previews are not.
+
 ## Audit log
 
 `shared.audit_log` captures every state-changing action. The table has:

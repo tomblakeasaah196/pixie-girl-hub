@@ -94,6 +94,21 @@ export function WeekScheduleView({ schedule }: { schedule: WorkSchedule }) {
 }
 
 /** Short local-time label from an ISO timestamp (canonical 24-hour "08:57"). */
+/** Byte count in the unit a person would say out loud. */
+export function fileSize(bytes: number): string {
+  if (!bytes) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** The `accept` attribute for an employee-document type's upload guard. */
+export function acceptAttr(accepts: "any" | "pdf" | "image"): string {
+  if (accepts === "image") return "image/*";
+  if (accepts === "pdf") return "application/pdf";
+  return "application/pdf,image/*";
+}
+
 export function clockTime(iso: string | null): string {
   return formatTime(iso);
 }

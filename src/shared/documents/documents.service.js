@@ -202,8 +202,20 @@ async function store({
   return client ? run(client) : transaction(run);
 }
 
+/**
+ * Employee documents are HR-only. They live in this table but are not part of
+ * this module: a `documents` grant is much broader than `hr_payroll`, and a
+ * NIN slip should not be one guessed id away. Treated as absent rather than
+ * forbidden so probing an id tells the caller nothing.
+ */
+function assertNotHrOnly(d) {
+  if (d && d.reference_type === repo.HR_ONLY_REFERENCE)
+    throw new NotFoundError("Document");
+  return d;
+}
+
 async function getById({ brand, id }) {
-  const d = await repo.findById({ brand, id });
+  const d = assertNotHrOnly(await repo.findById({ brand, id }));
   if (!d) throw new NotFoundError("Document");
   await repo.attachTags({ rows: [d] });
   return d;
@@ -214,11 +226,14 @@ function list({ brand, filters, page, page_size }) {
   return repo.findAll({ brand, filters, page, page_size, offset });
 }
 
-const listForReference = ({ brand, reference_type, reference_id }) =>
-  repo.listByReference({ brand, reference_type, reference_id });
+const listForReference = ({ brand, reference_type, reference_id }) => {
+  if (reference_type === repo.HR_ONLY_REFERENCE)
+    throw new NotFoundError("Document");
+  return repo.listByReference({ brand, reference_type, reference_id });
+};
 
 async function download({ brand, id }) {
-  const d = await repo.findById({ brand, id });
+  const d = assertNotHrOnly(await repo.findById({ brand, id }));
   if (!d) throw new NotFoundError("Document");
   const buffer = await storage.get(d.file_path);
   return {
@@ -230,6 +245,7 @@ async function download({ brand, id }) {
 }
 
 async function remove({ brand, user, request_id, id }) {
+  assertNotHrOnly(await repo.findById({ brand, id }));
   const ok = await repo.softDelete({ brand, id });
   if (!ok) throw new NotFoundError("Document");
   await audit({

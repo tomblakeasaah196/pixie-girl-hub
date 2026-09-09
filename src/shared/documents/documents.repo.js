@@ -10,6 +10,14 @@
 const { ex } = require("../../config/database");
 const { VALID } = require("../../config/brands");
 
+/**
+ * Documents filed against a staff profile are fenced off from this module
+ * entirely (list, fetch, download, delete) and reachable only through the
+ * HR-gated routes. Kept as a constant so the fence is greppable — the HR side
+ * writes the same value as staff_documents.repo.STAFF_REF.
+ */
+const HR_ONLY_REFERENCE = "staff_profile";
+
 async function nextNumber({ client, brand }) {
   if (!VALID.has(brand)) throw new Error(`Invalid brand: ${brand}`);
   const { rows } = await ex(client)(
@@ -152,7 +160,15 @@ async function findAll({
   page_size = 25,
   offset = 0,
 }) {
-  const where = ["business = $1", "is_deleted = false"];
+  const where = [
+    "business = $1",
+    "is_deleted = false",
+    // Employee documents (contracts, NIN slips, passport photographs) are
+    // HR-only and never surface here: the `documents` permission is granted
+    // far more widely than `hr_payroll`. They are served exclusively through
+    // /hr/employees/:id/documents — see hr_payroll/staff_documents.service.
+    `reference_type IS DISTINCT FROM '${HR_ONLY_REFERENCE}'`,
+  ];
   const params = [brand];
   let i = 2;
   if (filters.document_type) {
@@ -212,6 +228,7 @@ async function softDelete({ client, brand, id }) {
 }
 
 module.exports = {
+  HR_ONLY_REFERENCE,
   nextNumber,
   insert,
   findDuplicate,

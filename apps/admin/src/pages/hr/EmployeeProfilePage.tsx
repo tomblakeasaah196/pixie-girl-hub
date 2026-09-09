@@ -45,6 +45,7 @@ import {
 import { orgApi } from "@/lib/org-api";
 import { Modal } from "@/components/ui/Modal";
 import { downloadDocument } from "@/lib/documents-api";
+import EmployeeDocumentsTab from "./EmployeeDocumentsTab";
 import {
   StatCard,
   SectionTitle,
@@ -82,6 +83,7 @@ export default function EmployeeProfilePage() {
   useBreadcrumbs([{ label: "HR & Staff", href: "/hr" }, { label: "Employee" }]);
 
   const canEdit = can("hr_payroll", "edit");
+  const canDelete = can("hr_payroll", "delete");
   const allowed = can("hr_payroll", "view");
   const { data, isLoading, isError } = useQuery({
     queryKey: ["hr", "employee-360", profileId],
@@ -240,6 +242,7 @@ export default function EmployeeProfilePage() {
           { key: "pay", label: "Pay" },
           { key: "performance", label: "Performance" },
           { key: "queries", label: "Queries & Leave" },
+          { key: "documents", label: "Documents" },
         ]}
       />
 
@@ -476,6 +479,15 @@ export default function EmployeeProfilePage() {
             )}
           </div>
         </div>
+      )}
+
+      {tab === "documents" && (
+        <EmployeeDocumentsTab
+          profileId={profileId}
+          employeeName={p.display_name}
+          canEdit={canEdit}
+          canDelete={canDelete}
+        />
       )}
 
       {tab === "overview" && data.contracts.length > 0 && (

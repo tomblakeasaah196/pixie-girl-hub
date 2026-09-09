@@ -9331,6 +9331,282 @@ paths:
         x-is-write: true,
         responses: { "204": { description: Deactivated } },
       }
+  # ── Employee documents ────────────────────────────────────────────────
+  # Contracts, guarantor forms, NIN slips, passport photographs. Deliberately
+  # NOT under /documents: these rows are excluded from that module and from
+  # global search, because `documents` is granted far more widely than
+  # `hr_payroll`. Files ride shared.documents with reference_type=staff_profile.
+  /hr/document-types:
+    get:
+      {
+        summary: List employee document types for the brand,
+        description: "Per-brand catalogue. Pass include_archived=true to see retired types.",
+        tags: [hr_payroll],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: include_archived,
+              in: query,
+              required: false,
+              schema: { type: boolean },
+            },
+          ],
+        x-required-permission: "hr_payroll.view",
+        x-entity-scope: shared,
+        x-is-write: false,
+        responses: { "200": { description: Document types } },
+      }
+    post:
+      {
+        summary: Create an employee document type,
+        description: "type_key is slugified from the label. Re-creating an archived type revives it.",
+        tags: [hr_payroll],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-required-permission: "hr_payroll.edit",
+        x-entity-scope: shared,
+        x-is-write: true,
+        responses:
+          {
+            "201": { description: Created },
+            "409": { description: A live type with that key already exists },
+          },
+      }
+  /hr/document-types/{typeId}:
+    patch:
+      {
+        summary: Rename / re-flag / reorder / archive a document type,
+        description: "type_key is immutable — documents reference it. Rename the label instead.",
+        tags: [hr_payroll],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: typeId,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "hr_payroll.edit",
+        x-entity-scope: shared,
+        x-is-write: true,
+        responses: { "200": { description: Updated } },
+      }
+    delete:
+      {
+        summary: Remove a document type,
+        description: "Seeded types, and types with documents filed under them, are archived rather than deleted.",
+        tags: [hr_payroll],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: typeId,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "hr_payroll.delete",
+        x-entity-scope: shared,
+        x-is-write: true,
+        responses: { "200": { description: Deleted or archived } },
+      }
+  /hr/employees/{id}/documents:
+    get:
+      {
+        summary: An employee's documents plus the required types still missing,
+        tags: [hr_payroll],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "hr_payroll.view",
+        x-entity-scope: shared,
+        x-is-write: false,
+        responses:
+          { "200": { description: "documents, missing_required and the type catalogue" } },
+      }
+    post:
+      {
+        summary: File a document against an employee,
+        description: "multipart/form-data — file (PDF or image) plus document_type (a live type_key) and an optional title. The type's accepts guard is enforced server-side.",
+        tags: [hr_payroll],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        requestBody:
+          {
+            required: true,
+            content:
+              {
+                multipart/form-data:
+                  {
+                    schema:
+                      {
+                        type: object,
+                        required: [file, document_type],
+                        properties:
+                          {
+                            file: { type: string, format: binary },
+                            document_type: { type: string },
+                            title: { type: string },
+                          },
+                      },
+                  },
+              },
+          },
+        x-required-permission: "hr_payroll.edit",
+        x-entity-scope: shared,
+        x-is-write: true,
+        responses:
+          {
+            "201": { description: Filed },
+            "400": { description: "Unknown type, or a file kind the type refuses" },
+          },
+      }
+  /hr/employees/{id}/documents/{documentId}/preview:
+    get:
+      {
+        summary: Document bytes for in-page preview (Content-Disposition inline),
+        tags: [hr_payroll],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+            {
+              name: documentId,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "hr_payroll.view",
+        x-entity-scope: shared,
+        x-is-write: false,
+        responses: { "200": { description: File bytes } },
+      }
+  /hr/employees/{id}/documents/{documentId}/download:
+    get:
+      {
+        summary: Download a document (audited as a sensitive access),
+        tags: [hr_payroll],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+            {
+              name: documentId,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "hr_payroll.view",
+        x-entity-scope: shared,
+        x-is-write: false,
+        responses: { "200": { description: File bytes } },
+      }
+  /hr/employees/{id}/documents/{documentId}:
+    delete:
+      {
+        summary: Remove a document from an employee's file (soft delete),
+        tags: [hr_payroll],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: id,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+            {
+              name: documentId,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-required-permission: "hr_payroll.delete",
+        x-entity-scope: shared,
+        x-is-write: true,
+        responses: { "204": { description: Removed } },
+      }
+  /hr/me/documents:
+    get:
+      {
+        summary: My own documents (self-service — no hr_payroll permission),
+        description: "The staff profile is resolved from the token, never the URL. Read-only; filing stays with HR.",
+        tags: [hr_payroll],
+        parameters: [{ $ref: "#/components/parameters/BrandContext" }],
+        x-entity-scope: shared,
+        x-is-write: false,
+        responses:
+          { "200": { description: "My documents and anything still outstanding" } },
+      }
+  /hr/me/documents/{documentId}/preview:
+    get:
+      {
+        summary: Preview one of my own documents,
+        tags: [hr_payroll],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: documentId,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-entity-scope: shared,
+        x-is-write: false,
+        responses: { "200": { description: File bytes } },
+      }
+  /hr/me/documents/{documentId}/download:
+    get:
+      {
+        summary: Download one of my own documents,
+        tags: [hr_payroll],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            {
+              name: documentId,
+              in: path,
+              required: true,
+              schema: { type: string, format: uuid },
+            },
+          ],
+        x-entity-scope: shared,
+        x-is-write: false,
+        responses: { "200": { description: File bytes } },
+      }
   /hr/commission-rules:
     get:
       {

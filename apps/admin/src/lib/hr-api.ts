@@ -1200,3 +1200,134 @@ export const announceWinner = (body: { from?: string; to?: string }) =>
     `/hr/insights/announce-winner`,
     body,
   );
+
+// ── Employee documents (HR & Staff → Employee → Documents) ──
+// Contracts, guarantor forms, NIN slips, passport photographs. Served ONLY
+// from /hr — these rows are deliberately excluded from the Documents module
+// and from global search, because the `documents` permission is granted far
+// more widely than `hr_payroll`.
+
+export type DocumentAccepts = "any" | "pdf" | "image";
+
+export interface StaffDocumentType {
+  type_id: string;
+  business: string;
+  type_key: string;
+  label: string;
+  description: string | null;
+  is_required: boolean;
+  accepts: DocumentAccepts;
+  sort_order: number;
+  is_active: boolean;
+  is_system: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StaffDocument {
+  document_id: string;
+  document_number: string;
+  document_type: string;
+  type_label: string;
+  type_is_required: boolean;
+  title: string | null;
+  mime_type: string;
+  file_size_bytes: number;
+  is_image: boolean;
+  is_pdf: boolean;
+  uploaded_by: string | null;
+  uploaded_by_name: string | null;
+  created_at: string;
+}
+
+export interface MissingDocument {
+  type_key: string;
+  label: string;
+  accepts: DocumentAccepts;
+}
+
+export interface StaffDocumentFile {
+  documents: StaffDocument[];
+  missing_required: MissingDocument[];
+  types: StaffDocumentType[];
+}
+
+export const listStaffDocuments = (profileId: string) =>
+  api.get<StaffDocumentFile>(`/hr/employees/${profileId}/documents`);
+
+export const listDocumentTypes = (includeArchived = false) =>
+  api.get<StaffDocumentType[]>(
+    `/hr/document-types${includeArchived ? "?include_archived=true" : ""}`,
+  );
+
+export const createDocumentType = (body: {
+  label: string;
+  description?: string;
+  is_required?: boolean;
+  accepts?: DocumentAccepts;
+}) => api.post<StaffDocumentType>("/hr/document-types", body);
+
+export const updateDocumentType = (
+  typeId: string,
+  patch: Partial<
+    Pick<
+      StaffDocumentType,
+      "label" | "description" | "is_required" | "accepts" | "sort_order" | "is_active"
+    >
+  >,
+) => api.patch<StaffDocumentType>(`/hr/document-types/${typeId}`, patch);
+
+/** Archives rather than deletes when the type is seeded or already in use. */
+export const removeDocumentType = (typeId: string) =>
+  api.delete<{ deleted: boolean; archived: boolean; documents: number }>(
+    `/hr/document-types/${typeId}`,
+  );
+
+export const uploadStaffDocument = (
+  profileId: string,
+  input: { file: File; document_type: string; title?: string },
+  onProgress?: (pct: number) => void,
+) => {
+  const form = new FormData();
+  form.append("file", input.file);
+  form.append("document_type", input.document_type);
+  if (input.title) form.append("title", input.title);
+  return api.postForm<StaffDocument>(
+    `/hr/employees/${profileId}/documents`,
+    form,
+    { onProgress },
+  );
+};
+
+export const deleteStaffDocument = (profileId: string, documentId: string) =>
+  api.delete<void>(`/hr/employees/${profileId}/documents/${documentId}`);
+
+/**
+ * Bytes for the in-page preview. The token lives in memory, so an <img src>
+ * or <iframe src> can't fetch these itself — the caller turns the blob into
+ * an object URL and revokes it when the preview closes.
+ */
+export const staffDocumentBlob = (profileId: string, documentId: string) =>
+  api.getBlob(`/hr/employees/${profileId}/documents/${documentId}/preview`);
+
+export const downloadStaffDocument = (
+  profileId: string,
+  documentId: string,
+  filename: string,
+) =>
+  api.download(
+    `/hr/employees/${profileId}/documents/${documentId}/download`,
+    filename,
+  );
+
+// ── My HR: an employee reads their own file back (read-only) ──
+export const listMyDocuments = () =>
+  api.get<{ documents: StaffDocument[]; missing_required: MissingDocument[] }>(
+    "/hr/me/documents",
+  );
+
+export const myDocumentBlob = (documentId: string) =>
+  api.getBlob(`/hr/me/documents/${documentId}/preview`);
+
+export const downloadMyDocument = (documentId: string, filename: string) =>
+  api.download(`/hr/me/documents/${documentId}/download`, filename);

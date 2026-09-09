@@ -646,6 +646,11 @@ Agenda) · **My HR** · **Goals** *(CEO)* · **Notes** *(CEO)* · **AI Chief of 
 - *Clock in / out?* Top bar **Clock in** button (or Workspace → **My HR**).
 - *Request leave / see my payslip?* Workspace → **My HR** tab.
   (Old `/my-hr` links redirect here: `/workspace?tab=my-hr`.)
+- *See the documents HR holds on me (contract, guarantor form, NIN, passport
+  photograph)?* Workspace → **My HR** → **My documents**. You can preview and
+  download your own files; uploading is HR's job, so anything still
+  outstanding shows as a "HR still needs:" chip. Contracts issued to you stay
+  in the separate **Contracts** card.
 - *Set a goal?* Workspace → **Goals** → **New Goal** / **Create Goal** (CEO).
 - *Plan with the AI Chief of Staff?* (CEO) Workspace → **AI Chief of Staff** →
   describe what you want in plain language. It proposes a whole plan (goal +
@@ -1156,7 +1161,33 @@ disciplinary queries, targets, rewards, recruitment, and HR analytics.
 (**Vacancies** and **Recruitment** both need the `recruitment` permission.)
 **Common tasks.**
 - *Open an employee's file?* HR → **Directory**, click a person →
-  `/hr/employees/<profileId>`.
+  `/hr/employees/<profileId>`. The file has six tabs: **Profile** ·
+  **Attendance** · **Pay** · **Performance** · **Queries & Leave** ·
+  **Documents**.
+- *Upload an employee's contract, guarantor form, NIN slip or passport
+  photograph?* Open their file → **Documents** tab → **Upload**. Pick the
+  document type, choose a PDF or image, Save. Photos are compressed (and HEIC
+  converted) automatically.
+- *File a document type that isn't in the list (e.g. Work Permit)?* In that
+  same upload panel, **New type** → name it, say whether it's required for
+  every employee and whether it accepts a PDF, an image or either → **Add
+  type**. It's then available for every employee, on this brand.
+- *See who's missing paperwork?* The **Documents** tab shows a
+  "**N required documents missing**" strip at the top listing the required
+  types this person has no file for — click one to upload it straight away.
+  When nothing is outstanding it reads "All required documents are on file."
+- *Read a document without downloading it?* Click the row (or the eye icon) on
+  the **Documents** tab — PDFs and images open in an in-page preview with a
+  **Download** button.
+- *Retire a document type?* HR → the type stays available to documents already
+  filed under it: a seeded type, or one already in use, is **archived** (hidden
+  from the picker) rather than deleted, so old files keep their label.
+- *Why isn't an employee's contract in the Documents module?* By design.
+  Employee documents are HR-only — they never appear in **Documents**
+  (`/documents`) or in global search, whatever `documents` permission someone
+  holds. They are reachable only from the employee's **Documents** tab
+  (needs `hr_payroll`) and from the employee's own **My HR**. Uploading needs
+  `hr_payroll` **edit**; removing one needs **delete**.
 - *Onboard a new staff member?* HR → **Onboarding**, or Contacts →
   **contacts/staff/new** (`/contacts/staff/new`). The onboarding wizard sets
   the work schedule — on-site/remote/off per weekday, plus the **start and
@@ -1676,6 +1707,12 @@ invoices, receipts, IDs, and media, linked to the record they belong to.
   Invoice, Receipt, ID, …) or by the record it's attached to.
 - *Send a document for e-signature?* Documents attach to the sign engine; the
   signer gets a public link (`/sign/<token>`) and can verify at `/verify/<code>`.
+- *Looking for an employee's contract, NIN or passport photograph?* Not here —
+  employee documents are deliberately excluded from this module and from global
+  search, however wide someone's `documents` permission is. They live on the
+  person: HR → **Directory** → open them → **Documents** tab
+  (`/hr/employees/<profileId>`), and the employee's own copy is in Workspace →
+  **My HR** → **My documents**.
 
 ### 4.33 AI Control
 **What it's for.** AI **governance** — this is where you *teach* Praxis, set its
@@ -1906,6 +1943,10 @@ Use this as the fast lookup. Format: **task → module (group) → link**.
 **People & pay**
 - Onboard a new staff member → HR (People) → `/hr` (Onboarding) or `/contacts/staff/new`
 - Open an employee file → HR → `/hr/employees/<id>`
+- Upload an employee's contract / guarantor form / NIN / passport photo → HR → `/hr/employees/<id>` (Documents → Upload)
+- Add a new employee document type → HR → `/hr/employees/<id>` (Documents → Upload → New type)
+- See which employees are missing required paperwork → HR → `/hr/employees/<id>` (Documents — the missing-documents strip)
+- See my own HR documents → Workspace → `/workspace` (My HR → My documents)
 - Approve leave → HR → `/hr` (Leave)
 - Run payroll → Payroll (People) → `/payroll`
 - See one employee's full pay breakdown (lateness, deductions, bonuses) → Payroll → open the run → click the employee

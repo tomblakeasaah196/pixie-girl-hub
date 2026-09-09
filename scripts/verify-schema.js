@@ -77,7 +77,11 @@ const pool = new Pool({
 //     spine for Change Order — amending an order's items/delivery after it was
 //     placed. Shared is unchanged: 000379 only seeds a timeline_event_codes ROW
 //     and 000380 only seeds outbound_channel_policy rows, no new tables.
-const EXPECTED_SHARED = 207;
+//   - Employee documents (000382_shared_hr_staff_documents): +1 shared table
+//     (hr_document_types) → 207 + 1 = 208. Only the per-brand catalogue of
+//     document types; the employee files themselves ride the existing
+//     shared.documents registry (reference_type = 'staff_profile').
+const EXPECTED_SHARED = 208;
 const EXPECTED_PER_BRAND = 204;
 
 async function countTables(schema) {

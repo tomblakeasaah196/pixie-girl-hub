@@ -160,6 +160,17 @@ async function bootstrap(opts, pool) {
       }
     }
 
+    // Per-business rows that live in `shared`, not in the brand schema, so the
+    // templates can't carry them. The shared migrations run BEFORE this script,
+    // when business_config is still empty, so seeding has to happen here or a
+    // fresh provision comes up with an empty catalogue.
+    //   · hr_document_types — the employee document types HR files under
+    //     (Employment Contract, Guarantor Form, NIN Slip, …). Without them the
+    //     Employee → Documents tab has nothing to file against. The default
+    //     list lives in the function (migration 000382) so this path and the
+    //     migration's own seed can never drift apart.
+    await client.query(`SELECT shared.fn_seed_hr_document_types($1)`, [key]);
+
     await client.query("COMMIT");
 
     const { rows } = await client.query(

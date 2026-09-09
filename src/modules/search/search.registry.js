@@ -624,6 +624,10 @@ const ENTITIES = [
            FROM shared.documents d
           WHERE d.business = $1
             AND d.is_deleted = false
+            -- Employee documents are HR-only and this entity is ungated, so a
+            -- staff contract or NIN slip must never surface in global search.
+            -- They are reachable only via /hr/employees/:id/documents.
+            AND d.reference_type IS DISTINCT FROM 'staff_profile'
             AND (d.title           ILIKE $2
                  OR d.document_number ILIKE $2)
           ORDER BY d.created_at DESC

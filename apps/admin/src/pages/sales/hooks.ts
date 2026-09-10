@@ -113,8 +113,9 @@ export function useCancelOrder() {
   const qc = useQueryClient();
   const biz = useBiz();
   return useMutation({
-    mutationFn: (id: string) => salesApi.cancelOrder(id),
-    onSuccess: (_data, id) => {
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
+      salesApi.cancelOrder(id, reason),
+    onSuccess: (_data, { id }) => {
       qc.invalidateQueries({ queryKey: ["sales-orders", biz] });
       qc.invalidateQueries({ queryKey: ["sales-orders", biz, "detail", id] });
       qc.invalidateQueries({ queryKey: ["sales-kpis", biz] });

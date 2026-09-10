@@ -243,17 +243,41 @@ chasing deliveries, matching stray in-store terminal payments, and payment setti
   (falls back to picking a chat manually if not). Free either way — this is
   a plain click-to-chat link, not the metered WhatsApp Business API, so it
   never triggers a per-message charge; the sender still taps Send themselves.
-- *Where did a cancelled order go / how do I un-cancel one?* Cancelled orders
-  are hidden from the Orders list so it stays a working view. Open them with the
-  **archive icon** beside the **Part-paid** button on Sales → **Orders**
-  (`/sales?tab=orders`) — it lists every cancelled order with a **Restore**
-  button. (You can also still pick **Cancelled** in the status dropdown to see
-  them inline.) Restoring returns the order to the exact status it held before
-  it was cancelled and re-holds its stock. If some items have since sold out,
-  it asks first and tells you those lines will come back as **pre-orders** —
-  everything still in stock is re-held immediately. An order whose **deposit was
-  forfeited** when it was cancelled cannot be restored: that money was already
-  posted to income, so raise a new order instead.
+- *Where did a cancelled order go / how do I un-cancel one?* Two ways, same
+  result. If you have the order open, a cancelled order shows a **Reinstate**
+  button in its top bar (`/sales/orders/<orderId>`). If you're hunting for it,
+  cancelled orders are hidden from the Orders list so it stays a working view —
+  open them with the **archive icon** beside the **Part-paid** button on
+  Sales → **Orders** (`/sales?tab=orders`), which lists every cancelled order
+  with a **Restore** button. (You can also still pick **Cancelled** in the
+  status dropdown to see them inline.) Either way it returns the order to the
+  exact status it held before it was cancelled and re-holds its stock. If some
+  items have since sold out, it asks first and tells you those lines will come
+  back as **pre-orders** — everything still in stock is re-held immediately. An
+  order whose **deposit was forfeited** when it was cancelled cannot be
+  restored: that money was already posted to income, so raise a new order
+  instead. Reinstating needs the `sales` **edit** right.
+- *Why was this order cancelled / who cancelled it?* Open the order — a
+  cancelled one carries a red banner under its status pills giving the date and
+  the reason ("Cancelled on 10/09/2026, 03:30 — Checkout abandoned"). The same
+  reason shows beside each row in the archive drawer. Cancelling by hand asks
+  you to pick a reason first (customer changed their mind, wrong item,
+  duplicate order, item no longer in stock, payment failed, test order, or
+  **Other…** to type your own) — you can't cancel without one. Orders the
+  system cancelled say so instead: **Checkout abandoned** (an unpaid self-serve
+  order past the expiry window), **Instalment plan abandoned**, or superseded by
+  a paid duplicate. An older order may say *no reason recorded (cancelled by
+  hand)* — those pre-date the reason picker.
+- *The system cancelled an order on its own — when is it allowed to?* Only when
+  an order is unpaid or part-paid; a fully paid order is never auto-cancelled
+  (that needs a refund). Three sweeps do it: an unpaid **self-serve** checkout
+  (Website, sales campaign, public form) past **24 hours** with ₦0 paid; an
+  **instalment** order with money on it but no payment for the abandonment
+  window; and a **pending duplicate** of an order the customer has just paid
+  under another number. All three release the stock the order was holding. The
+  windows live at Sales → **Payments** (`/sales?tab=payments`) — the expiry
+  cannot be set below 24 hours. Any payment above ₦0 takes an order out of the
+  abandoned-checkout sweep for good.
 - *See pre-orders and their production deadlines?* Sales → **Pre-orders** tab
   (`/sales?tab=preorders`). Every order carrying a made-to-order line, soonest
   ship-by first, with overdue/urgent flags — click through to the order.

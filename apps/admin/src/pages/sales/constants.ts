@@ -326,10 +326,30 @@ export function fulfilmentLabel(orderType?: string | null): string {
 // keys in step with the reasons passed to salesService.cancelOrder in
 // src/jobs/schedulers/ and src/modules/sales/duplicate-resolve.subscribers.js.
 export const CANCELLATION_REASON_LABELS: Record<string, string> = {
+  // Written by the automatic sweeps.
   checkout_abandoned: "Checkout abandoned — went unpaid past the expiry window",
   layaway_abandoned:
     "Instalment plan abandoned — no payment for the full window",
+  // Chosen by staff in the Cancel Order dialog.
+  customer_changed_mind: "Customer changed their mind",
+  wrong_item: "Wrong item ordered",
+  duplicate_order: "Duplicate order",
+  out_of_stock: "Item no longer in stock",
+  payment_failed: "Payment failed / never came through",
+  test_order: "Test or training order",
 };
+
+// What staff can pick in the Cancel Order dialog. One click records a stable
+// code the archive and the order detail can render; "Other" reveals a free-text
+// box so an unusual case is still explained rather than left blank.
+export const MANUAL_CANCELLATION_REASONS: { value: string; label: string }[] = [
+  { value: "customer_changed_mind", label: "Customer changed their mind" },
+  { value: "wrong_item", label: "Wrong item ordered" },
+  { value: "duplicate_order", label: "Duplicate order" },
+  { value: "out_of_stock", label: "Item no longer in stock" },
+  { value: "payment_failed", label: "Payment failed" },
+  { value: "test_order", label: "Test / training order" },
+];
 
 /**
  * Friendly cancellation reason, or null when the order carries none (every

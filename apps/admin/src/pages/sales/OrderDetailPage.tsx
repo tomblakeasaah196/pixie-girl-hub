@@ -47,6 +47,7 @@ import {
   ShieldAlert,
   PencilLine,
   History,
+  RotateCcw,
 } from "lucide-react";
 import { Card, Pill, MoneyText, Button } from "@/components/ui/primitives";
 import {
@@ -65,6 +66,7 @@ import {
   useAddPayment,
   usePaymentSettings,
   useCancelOrder,
+  useRestoreOrder,
   useSetOrderStatus,
   useOrderInvoice,
   useSendOrderInvoice,
@@ -76,7 +78,7 @@ import {
   useOrderAmendments,
 } from "./hooks";
 import { generateReceipt } from "./api";
-import type { OrderServiceJob } from "./api";
+import type { OrderServiceJob, RestoreShortLine } from "./api";
 import { ChangeOrderModal } from "./ChangeOrderModal";
 import { useToastStore } from "@/components/notifications/NotificationToast";
 import { toastReport } from "@/lib/error-report";
@@ -91,6 +93,7 @@ import {
   fulfilmentLabel,
   orderPaymentMeta,
   cancellationReasonLabel,
+  MANUAL_CANCELLATION_REASONS,
 } from "./constants";
 import type { OrderPayment, OrderStatus, SalesOrder } from "./types";
 import { useJobReferences } from "@/pages/service-jobs/hooks";
@@ -284,6 +287,7 @@ export function OrderDetailPage() {
   );
   const sendInvoice = useSendOrderInvoice(orderId);
   const cancelOrder = useCancelOrder();
+  const restoreOrder = useRestoreOrder();
   const setStatus = useSetOrderStatus();
   // Live on/off state of the stage messages, for the status-move impact modal.
   const { data: statusAutomations, isLoading: automationsLoading } =
@@ -292,6 +296,17 @@ export function OrderDetailPage() {
   const { data: amendments = [] } = useOrderAmendments(orderId);
 
   const [confirmCancel, setConfirmCancel] = useState(false);
+  // Why this order is being cancelled. Staff pick a preset (or "other" and
+  // type); an order that can't say why it died is what sent everyone digging
+  // through the stock ledger, so the dialog won't commit without one.
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelReasonText, setCancelReasonText] = useState("");
+  // Reinstate (un-cancel) — two-phase, like the archive drawer: the first call
+  // dry-runs and reports lines that can no longer be re-held from stock.
+  const [reinstateShort, setReinstateShort] = useState<{
+    lines: RestoreShortLine[];
+    message: string;
+  } | null>(null);
   const [changeOpen, setChangeOpen] = useState(false);
   const [pendingStatus, setPendingStatus] = useState<string | null>(null);
   const [receiptLoading, setReceiptLoading] = useState(false);
@@ -424,15 +439,55 @@ export function OrderDetailPage() {
     }
   };
 
+  // The reason actually sent: the preset code, or what they typed under Other.
+  const resolvedCancelReason =
+    cancelReason === "other" ? cancelReasonText.trim() : cancelReason;
+
   const handleCancel = async () => {
-    if (!orderId) return;
+    if (!orderId || !resolvedCancelReason) return;
     try {
-      await cancelOrder.mutateAsync(orderId);
+      await cancelOrder.mutateAsync({
+        id: orderId,
+        reason: resolvedCancelReason,
+      });
       setConfirmCancel(false);
+      setCancelReason("");
+      setCancelReasonText("");
       fireToast("Order Cancelled", "The order has been cancelled.");
       goBack();
     } catch {
       fireToast("Cancel Failed", "Failed to cancel order.", "order", "high");
+    }
+  };
+
+  // Un-cancel. `confirm` is the operator's explicit yes after the dry run
+  // reported lines that can't be re-held — those come back as pre-orders.
+  const handleReinstate = async (confirm: boolean) => {
+    if (!orderId) return;
+    try {
+      const res = await restoreOrder.mutateAsync({ id: orderId, confirm });
+      if (res.requires_confirmation) {
+        setReinstateShort({
+          lines: res.short_lines ?? [],
+          message: res.message ?? "Some items are no longer in stock.",
+        });
+        return;
+      }
+      setReinstateShort(null);
+      fireToast(
+        "Order reinstated",
+        res.preorder_line_count
+          ? `Back as ${res.restored_to?.replace(/_/g, " ")} — ${res.preorder_line_count} item${res.preorder_line_count === 1 ? "" : "s"} as pre-order.`
+          : `Back as ${res.restored_to?.replace(/_/g, " ")}.`,
+      );
+    } catch (err) {
+      setReinstateShort(null);
+      fireToast(
+        "Couldn't reinstate",
+        err instanceof Error ? err.message : "Please try again.",
+        "order",
+        "high",
+      );
     }
   };
 
@@ -837,6 +892,22 @@ export function OrderDetailPage() {
                   Cancel
                 </Button>
               )}
+            {/* Reinstate — un-cancel from the order itself, rather than making
+                staff find it again in the Archive drawer. Same two-phase
+                restore the archive uses: it re-holds the stock the cancel
+                released and puts the order back where it was. An order whose
+                deposit was forfeited is refused by the API. */}
+            {order && order.status === "cancelled" && canEditSales && (
+              <Button
+                variant="primary"
+                size="sm"
+                icon={<RotateCcw className="w-3.5 h-3.5" />}
+                onClick={() => handleReinstate(false)}
+                disabled={restoreOrder.isPending}
+              >
+                {restoreOrder.isPending ? "Reinstating…" : "Reinstate"}
+              </Button>
+            )}
           </div>
         </div>
         {/* Inline invoice-send row — appears under the bar when armed. */}
@@ -2086,12 +2157,77 @@ export function OrderDetailPage() {
 
       <ConfirmDialog
         open={confirmCancel}
-        onClose={() => setConfirmCancel(false)}
+        onClose={() => {
+          setConfirmCancel(false);
+          setCancelReason("");
+          setCancelReasonText("");
+        }}
         onConfirm={handleCancel}
         title="Cancel Order"
-        message="Are you sure you want to cancel this order? This action cannot be undone."
+        message={
+          <div className="space-y-3">
+            <p>
+              This releases the stock the order is holding and moves it to the
+              archive. You can reinstate it afterwards, but any deposit it
+              carries is forfeited to income and cannot be brought back.
+            </p>
+            <div>
+              <div className="text-[12px] font-semibold text-text-primary mb-1.5">
+                Why is it being cancelled?
+              </div>
+              <Select
+                value={cancelReason}
+                onChange={setCancelReason}
+                options={[
+                  { value: "", label: "Choose a reason…" },
+                  ...MANUAL_CANCELLATION_REASONS,
+                  { value: "other", label: "Other…" },
+                ]}
+              />
+            </div>
+            {cancelReason === "other" && (
+              <TextInput
+                autoFocus
+                maxLength={500}
+                placeholder="Say what happened"
+                value={cancelReasonText}
+                onChange={(e) => setCancelReasonText(e.target.value)}
+              />
+            )}
+            <p className="text-[11.5px] text-text-faint">
+              The reason is shown on the order and in the archive, so whoever
+              looks at this next can see what happened.
+            </p>
+          </div>
+        }
         confirmLabel="Cancel Order"
         busy={cancelOrder.isPending}
+        disabled={!resolvedCancelReason}
+      />
+      {/* Reinstate dry run came back short: some lines can't be re-held. */}
+      <ConfirmDialog
+        open={!!reinstateShort}
+        onClose={() => setReinstateShort(null)}
+        onConfirm={() => handleReinstate(true)}
+        title="Reinstate as pre-order?"
+        tone="accent"
+        confirmLabel="Reinstate anyway"
+        busy={restoreOrder.isPending}
+        message={
+          <div className="space-y-2">
+            <p>{reinstateShort?.message}</p>
+            <ul className="space-y-1">
+              {(reinstateShort?.lines ?? []).map((l) => (
+                <li key={l.line_id} className="flex justify-between gap-3">
+                  <span className="truncate">{l.name || "Item"}</span>
+                  <span className="text-text-faint shrink-0">
+                    want {l.wanted}, have {l.available}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        }
       />
       {pendingStatus &&
         (() => {

@@ -265,6 +265,16 @@ const reportExport = z.object({
   sales_channel: z.string().max(40).optional(),
 });
 
+// Manual cancel. `reason` is why the operator is cancelling — a stable code
+// from the Orders screen's picker (customer_changed_mind, wrong_item, …) or
+// free text they typed under "Other". Optional at the API so the auto-cancel
+// sweeps and older clients still work; the admin UI asks for one every time,
+// because a cancelled order that can't say why it died is what sent staff
+// digging through the stock ledger in the first place.
+const orderCancel = z
+  .object({ reason: z.string().min(1).max(500).optional() })
+  .strict();
+
 // Archive restore. `confirm` is the operator's explicit "yes, bring it back as
 // a pre-order" after the dry run reported lines that can no longer be re-held.
 const orderRestore = z.object({
@@ -401,6 +411,7 @@ module.exports = {
   validateCancellationReview: mw(cancellationReview),
   validateSetDeliveryFee: mw(setDeliveryFee),
   validateOrderStatusSet: mw(orderStatusSet),
+  validateOrderCancel: mw(orderCancel),
   validateOrderRestore: mw(orderRestore),
   validateOrderAmend: mw(orderAmend),
   validateOrderAmendPreview: mw(orderAmendPreview),

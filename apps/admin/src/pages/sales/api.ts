@@ -96,8 +96,8 @@ export const createPaymentLink = (
     input,
   );
 
-export const cancelOrder = (id: string) =>
-  api.post<SalesOrder>(`${S}/orders/${id}/cancel`);
+export const cancelOrder = (id: string, reason?: string) =>
+  api.post<SalesOrder>(`${S}/orders/${id}/cancel`, reason ? { reason } : {});
 
 /** A line the archive restore can no longer re-hold from stock. */
 export interface RestoreShortLine {

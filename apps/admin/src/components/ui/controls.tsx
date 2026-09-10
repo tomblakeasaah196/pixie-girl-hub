@@ -290,6 +290,7 @@ export function ConfirmDialog({
   confirmLabel = "Confirm",
   tone = "danger",
   busy,
+  disabled,
 }: {
   open: boolean;
   onClose: () => void;
@@ -299,6 +300,9 @@ export function ConfirmDialog({
   confirmLabel?: string;
   tone?: "danger" | "accent";
   busy?: boolean;
+  /** Blocks confirming without claiming to be working — e.g. a dialog whose
+      message asks for an input the operator hasn't filled in yet. */
+  disabled?: boolean;
 }) {
   return (
     <Modal open={open} onClose={onClose} title={title}>
@@ -314,7 +318,7 @@ export function ConfirmDialog({
         </button>
         <button
           onClick={onConfirm}
-          disabled={busy}
+          disabled={busy || disabled}
           className={cn(
             "h-9 px-4 rounded-[10px] text-[13px] font-semibold text-white disabled:opacity-50",
             tone === "danger"

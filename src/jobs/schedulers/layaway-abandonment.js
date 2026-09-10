@@ -45,6 +45,7 @@ async function runLayawayAbandonmentSweep() {
           user: SYSTEM_USER,
           request_id: null,
           id: order.order_id,
+          reason: "layaway_abandoned",
         });
         cancelled += 1;
         logger.info(

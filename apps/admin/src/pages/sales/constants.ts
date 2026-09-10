@@ -320,6 +320,35 @@ export function fulfilmentLabel(orderType?: string | null): string {
   );
 }
 
+// Why an order was cancelled. The system's auto-cancel sweeps record a stable
+// code in sales_orders.cancellation_reason; a human cancelling from the UI
+// records nothing, and older free-text reasons are shown as written. Keep these
+// keys in step with the reasons passed to salesService.cancelOrder in
+// src/jobs/schedulers/ and src/modules/sales/duplicate-resolve.subscribers.js.
+export const CANCELLATION_REASON_LABELS: Record<string, string> = {
+  checkout_abandoned: "Checkout abandoned — went unpaid past the expiry window",
+  layaway_abandoned:
+    "Instalment plan abandoned — no payment for the full window",
+};
+
+/**
+ * Friendly cancellation reason, or null when the order carries none (every
+ * manual cancel — the UI asks for no reason). Unknown codes are un-snaked
+ * rather than shown raw; a free-text reason is passed through untouched.
+ */
+export function cancellationReasonLabel(reason?: string | null): string | null {
+  const raw = (reason ?? "").trim();
+  if (!raw) return null;
+  const known = CANCELLATION_REASON_LABELS[raw];
+  if (known) return known;
+  // A code (no spaces) reads better un-snaked; a sentence is already prose.
+  if (!raw.includes(" ")) {
+    const words = raw.replace(/_/g, " ");
+    return words.charAt(0).toUpperCase() + words.slice(1);
+  }
+  return raw;
+}
+
 export const SEND_VIA_OPTIONS = [
   { value: "email", label: "Email" },
   { value: "whatsapp", label: "WhatsApp" },

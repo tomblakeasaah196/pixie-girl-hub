@@ -1249,12 +1249,6 @@ async function findPendingTwins({
 }
 
 /**
- * Stamp why/when an order was cancelled. Used by the auto-cancel paths so the
- * order list/detail can show that a pending duplicate was retired by the system
- * (rather than silently vanishing). abandonment_reason is the existing TEXT
- * column for auto-cancellation rationale.
- */
-/**
  * The status an order sat in immediately before it was cancelled, read from the
  * state-history trail so a restore returns it exactly where it was rather than
  * guessing. NULL when the order has no recorded cancellation transition (legacy
@@ -1282,14 +1276,32 @@ async function clearCancellation({ client, brand, id }) {
   );
 }
 
-async function setCancellationReason({ client, brand, id, reason }) {
-  await ex(client)(
+/**
+ * Stamp why/when an order was cancelled. Used by the auto-cancel paths so the
+ * order list/detail can show that the system retired the order (rather than it
+ * silently vanishing).
+ *
+ * The reason goes to sales_orders.cancellation_reason — the §6.4 cancellation
+ * column that sits beside cancelled_at and is the one the Orders archive and
+ * the order detail read. It was previously written to abandonment_reason (the
+ * layaway-abandonment column, which nothing reads), so every system cancel
+ * looked reasonless in the UI; migration 000383 backfills the historical rows.
+ *
+ * Called on every cancellation, reason or not, because cancelled_at has no
+ * trigger behind it — a manual cancel used to leave it NULL and the archive
+ * then showed the order's creation date as its cancellation date. A null
+ * reason only stamps the date; it never clears a reason already recorded.
+ */
+async function setCancellationReason({ client, brand, id, reason = null }) {
+  const { rows } = await ex(client)(
     `UPDATE ${t(brand, "sales_orders")}
-        SET abandonment_reason = $2,
-            cancelled_at       = COALESCE(cancelled_at, now())
-      WHERE order_id = $1`,
+        SET cancellation_reason = COALESCE($2, cancellation_reason),
+            cancelled_at        = COALESCE(cancelled_at, now())
+      WHERE order_id = $1
+      RETURNING *`,
     [id, reason],
   );
+  return rows[0] || null;
 }
 
 // ── Reporting / export ───────────────────────────────────

@@ -90,6 +90,7 @@ import {
   SALES_CHANNELS,
   fulfilmentLabel,
   orderPaymentMeta,
+  cancellationReasonLabel,
 } from "./constants";
 import type { OrderPayment, OrderStatus, SalesOrder } from "./types";
 import { useJobReferences } from "@/pages/service-jobs/hooks";
@@ -923,6 +924,32 @@ export function OrderDetailPage() {
               </Pill>
             )}
           </div>
+
+          {/* Why this order is cancelled. The auto-cancel sweeps (abandoned
+              checkout, layaway abandonment, duplicate resolver) record a
+              reason; a manual cancel records only the date. Without this the
+              order simply reads CANCELLED and no screen can say what happened. */}
+          {order.status === "cancelled" && (
+            <div className="flex items-start gap-2 p-3 rounded-[11px] bg-danger/[0.06] border border-danger/20">
+              <XCircle className="w-4 h-4 text-danger shrink-0 mt-0.5" />
+              <div className="text-[12.5px]">
+                <span className="font-semibold">Cancelled</span>
+                {order.cancelled_at
+                  ? ` on ${formatDateTime(order.cancelled_at)}`
+                  : ""}
+                {cancellationReasonLabel(order.cancellation_reason) ? (
+                  <span className="text-text-muted">
+                    {" — "}
+                    {cancellationReasonLabel(order.cancellation_reason)}.
+                  </span>
+                ) : (
+                  <span className="text-text-muted">
+                    {" — no reason recorded (cancelled by hand)."}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* AI risk chip strip — one line, only when something's off. */}
           {risks.length > 0 && (

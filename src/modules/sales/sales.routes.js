@@ -66,7 +66,12 @@ router.post(
   v.validatePaymentLink,
   c.createPaymentLink,
 );
-router.post("/orders/:id/cancel", can("edit"), c.cancelOrder);
+router.post(
+  "/orders/:id/cancel",
+  can("edit"),
+  v.validateOrderCancel,
+  c.cancelOrder,
+);
 // Un-cancel from the Orders archive. Body { confirm: true } commits when the
 // dry run reported lines that can no longer be re-held.
 router.post(

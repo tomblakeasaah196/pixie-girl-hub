@@ -13,7 +13,8 @@
  *      reminders can't collide with it because they require amount_paid > 0.
  *
  *   2. EXPIRE — orders older than abandoned_checkout_expiry_hours (default
- *      48) are cancelled through salesService.cancelOrder, which releases
+ *      24, floored at 24 by the validator) are cancelled through
+ *      salesService.cancelOrder, which releases
  *      the stock reservation every order now takes at placement (D8). Silent:
  *      no message on expiry. Each order is its own transaction so one bad row
  *      can't fail the batch.
@@ -52,7 +53,7 @@ async function runAbandonedCheckoutSweep() {
       continue;
     }
     const nudgeHours = Number(settings.abandoned_checkout_nudge_hours ?? 2);
-    const expiryHours = Number(settings.abandoned_checkout_expiry_hours ?? 48);
+    const expiryHours = Number(settings.abandoned_checkout_expiry_hours ?? 24);
 
     // ── 1. Nudge ──────────────────────────────────────────
     if (settings.abandoned_checkout_nudge_enabled !== false) {

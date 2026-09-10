@@ -34,9 +34,12 @@ const settingsPatch = z
       .min(0)
       .max(168)
       .optional(),
+    // Floor of 24h is a CEO decision (owner session 2026-09-10): a self-serve
+    // buyer always gets at least one overnight to pay. A 12-hour window set
+    // here once killed a ₦577,200 storefront order at 03:30 the same night.
     abandoned_checkout_expiry_hours: z.coerce
       .number()
-      .min(1)
+      .min(24)
       .max(720)
       .optional(),
     milestone_messages_enabled: z.boolean().optional(),

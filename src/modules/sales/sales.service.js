@@ -2115,11 +2115,16 @@ async function cancelOrder({ brand, user, request_id, id, reason }) {
       }
     }
     const o = await repo.setStatus({ client, brand, id, status: "cancelled" });
-    // Persist why/when when a reason is supplied (e.g. system auto-cancel of a
-    // superseded duplicate) so the order detail explains the cancellation.
-    if (reason) {
-      await repo.setCancellationReason({ client, brand, id, reason });
-    }
+    // Stamp when — and why, when a reason is supplied (e.g. the system
+    // auto-cancel of an abandoned checkout or a superseded duplicate) — so the
+    // Orders archive and the order detail can explain the cancellation instead
+    // of showing a cancelled order with no date and no rationale.
+    const stamped = await repo.setCancellationReason({
+      client,
+      brand,
+      id,
+      reason: reason || null,
+    });
     // Policy Q7: deposits held by a cancelled unpaid order (layaway
     // abandonment sweep, manual cancel) are forfeited to Other Income —
     // the 2400 liability cannot survive an order that no longer exists.
@@ -2163,7 +2168,10 @@ async function cancelOrder({ brand, user, request_id, id, reason }) {
       order_id: id,
       reason: reason || null,
     });
-    return o;
+    // The stamped row (cancelled_at + reason) is the truthful one — `o` was
+    // read before the stamp, so returning it would hand the caller a cancelled
+    // order with no cancellation date.
+    return stamped || o;
   });
 }
 

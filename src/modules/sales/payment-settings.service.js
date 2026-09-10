@@ -43,7 +43,7 @@ const DEFAULTS = Object.freeze({
   auto_cancel_after_no_payment: true,
   abandoned_checkout_nudge_enabled: true,
   abandoned_checkout_nudge_hours: 2,
-  abandoned_checkout_expiry_hours: 48,
+  abandoned_checkout_expiry_hours: 24,
   milestone_messages_enabled: true,
   channels: {
     storefront: true,

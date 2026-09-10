@@ -121,7 +121,11 @@ const addPayment = async (req, res) =>
   });
 const cancelOrder = async (req, res) =>
   res.json({
-    data: await service.cancelOrder({ ...base(req), id: req.params.id }),
+    data: await service.cancelOrder({
+      ...base(req),
+      id: req.params.id,
+      reason: req.body?.reason,
+    }),
   });
 // Two-phase: without `confirm` the service dry-runs and may answer
 // { requires_confirmation: true, short_lines } so the UI can warn that restoring

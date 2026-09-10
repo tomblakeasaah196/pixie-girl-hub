@@ -4,6 +4,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Pill, MoneyText, Button } from "@/components/ui/primitives";
 import { ConfirmDialog, ErrorState } from "@/components/ui/controls";
 import { formatDate } from "@/lib/format";
+import { cancellationReasonLabel } from "./constants";
 import { useOrders, useRestoreOrder } from "./hooks";
 import { useToastStore } from "@/components/notifications/NotificationToast";
 import type { SalesOrder } from "./types";
@@ -146,7 +147,9 @@ export function OrdersArchiveModal({
                     {o.cancelled_at
                       ? `cancelled ${formatDate(o.cancelled_at)}`
                       : formatDate(o.created_at)}
-                    {o.cancellation_reason ? ` · ${o.cancellation_reason}` : ""}
+                    {cancellationReasonLabel(o.cancellation_reason)
+                      ? ` · ${cancellationReasonLabel(o.cancellation_reason)}`
+                      : ""}
                   </div>
                 </div>
                 <MoneyText ngn={Number(o.total_ngn)} className="text-[13px]" />

@@ -7379,6 +7379,39 @@ paths:
         x-required-permission: "sales.edit",
         x-entity-scope: brand,
         x-is-write: true,
+        requestBody:
+          {
+            required: false,
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      {
+                        type: object,
+                        additionalProperties: false,
+                        properties:
+                          {
+                            reason:
+                              {
+                                type: string,
+                                minLength: 1,
+                                maxLength: 500,
+                                description: "Why the order is being cancelled.
+                                  A stable code from the admin picker
+                                  (customer_changed_mind, wrong_item,
+                                  duplicate_order, out_of_stock,
+                                  payment_failed, test_order) or free text.
+                                  The automatic sweeps send their own codes
+                                  (checkout_abandoned, layaway_abandoned).
+                                  Stored on sales_orders.cancellation_reason
+                                  and shown on the order and in the archive.",
+                              },
+                          },
+                      },
+                  },
+              },
+          },
         responses: { "200": { description: Cancelled } },
       }
   /sales/orders/{id}/amendment/preview:

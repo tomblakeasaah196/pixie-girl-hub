@@ -1473,32 +1473,11 @@ async function markLinesPreorder({ client, brand, line_ids }) {
   );
 }
 
-/**
- * Set or CLEAR the made-to-order flag on specific lines.
- *
- * `markLinesPreorder` above only ever raises the flag, and nothing else in the
- * codebase lowers it — so a line that went in as a pre-order stayed one for the
- * life of the order even once the units were really held. A Change Order is the
- * moment that changes: if the amendment has now secured the line's units (or
- * swapped it onto a size that is in stock), the line is no longer made to order
- * and the order must stop advertising a production window it no longer has.
- */
-async function setLinesPreorder({ client, brand, line_ids, is_preorder }) {
-  const ids = (line_ids || []).filter(Boolean);
-  if (!ids.length) return;
-  await ex(client)(
-    `UPDATE ${t(brand, "sales_order_lines")}
-        SET is_preorder = $2 WHERE line_id = ANY($1::uuid[])`,
-    [ids, Boolean(is_preorder)],
-  );
-}
-
 module.exports = {
   getPreorderPolicy,
   excludedPreorderProductIds,
   markOrderPreorder,
   markLinesPreorder,
-  setLinesPreorder,
   updateOrderHeader,
   listDiscounts,
   nextNumber,

@@ -284,7 +284,12 @@ beforeEach(() => {
   world();
 
   repo.findById.mockImplementation(async () => orderWithSThatPreordered());
-  const catalogue = { [VAR_S]: VARIANT_S, [VAR_M]: VARIANT_M };
+  const catalogue = {
+    [VAR_S]: VARIANT_S,
+    [VAR_M]: VARIANT_M,
+    // The sibling base, in case a later amendment reads the re-pointed row.
+    [VAR_L]: { ...VARIANT_M, variant_id: VAR_L, sku: "PXG-L", product_id: PROD_L },
+  };
   repo.variantContexts.mockImplementation(async ({ variant_ids }) => {
     const m = new Map();
     for (const id of variant_ids) if (catalogue[id]) m.set(id, { ...catalogue[id] });
@@ -628,5 +633,82 @@ describe("on an already-paid order the units have left, so they are deducted", (
     expect(stockService.reserveForOrder).not.toHaveBeenCalled();
     expect(res.stock.substituted[0].sku).toBe("PXG-L");
     expect(repo.repointLineVariant).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── After the substitution, the ledger and the line agree ────
+
+describe("a line already fulfilled from a sibling base stays coherent", () => {
+  /** The order as the FIRST amendment left it: the row points at the Large. */
+  const donorPointedOrder = () => {
+    const order = orderWithSThatPreordered();
+    order.lines = [
+      {
+        ...order.lines[0],
+        variant_id: VAR_L,
+        product_id: PROD_L,
+        variant_label_snapshot: "Medium",
+        sku_snapshot: "PXG-M",
+        quantity: 1,
+        is_preorder: false,
+        notes:
+          "Rewig substitution: fulfil from Nala Sleek Bangs — Large (PXG-L) — resize to Medium.",
+      },
+    ];
+    return order;
+  };
+
+  test("the next change moves the sibling variant, not the ordered one", async () => {
+    // The customer asked for Medium; the row (and the unit in her parcel) is the
+    // Large. A second amendment reads that row, so its delta must land on the
+    // Large — and must not try to substitute again on top of a substitution.
+    repo.findById.mockImplementation(async () => donorPointedOrder());
+    world({ onHand: { [VAR_L]: 2 } });
+    held[VAR_L] = 1; // the unit the first substitution reserved
+
+    const res = await amend({
+      lines: [{ line_id: "line-S", quantity: 2, unit_price_ngn: 395000 }],
+      reason: "She wants a second one",
+      reason_category: "customer_change",
+      acknowledge_warnings: true,
+    });
+
+    expect(reservedVariants()).toEqual([VAR_L]);
+    expect(repo.repointLineVariant).not.toHaveBeenCalled();
+    expect(res.stock.substituted).toEqual([]);
+    expect(held[VAR_L]).toBe(2);
+  });
+
+  test("taking the line off gives the sibling unit back, not the ordered one", async () => {
+    // Two lines: the substituted one and an ordinary one that stays. Removing
+    // the substituted line releases the Large — the SKU the order really holds —
+    // so the shelf and the ledger never drift.
+    const order = donorPointedOrder();
+    order.lines.push({
+      ...order.lines[0],
+      line_id: "line-2",
+      variant_id: VAR_S,
+      product_id: PROD_S,
+      variant_label_snapshot: "Small",
+      sku_snapshot: "PXG-S",
+      notes: null,
+    });
+    repo.findById.mockImplementation(async () => order);
+    world({ onHand: { [VAR_L]: 1, [VAR_S]: 1 } });
+    held[VAR_L] = 1;
+    held[VAR_S] = 1;
+
+    const res = await amend({
+      lines: [{ line_id: "line-2", quantity: 1, unit_price_ngn: 395000 }],
+      reason: "She is keeping only the Small",
+      reason_category: "customer_change",
+      acknowledge_warnings: true,
+    });
+
+    expect(
+      stockService.releaseOrderReservation.mock.calls.map((c) => c[0].variant_id),
+    ).toEqual([VAR_L]);
+    expect(held[VAR_L]).toBe(0);
+    expect(res.stock.released).toEqual([{ variant_id: VAR_L, quantity: 1 }]);
   });
 });

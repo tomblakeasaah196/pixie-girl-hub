@@ -54,6 +54,7 @@ const events = require("./sales.events");
 const outbox = require("../../shared/outbox/outbox");
 const stockService = require("../stock/stock.service");
 const stockRepo = require("../stock/stock.repo");
+const rewigService = require("../catalogue/rewig.service");
 const serviceJobsRepo = require("../service_jobs/service-jobs.repo");
 const logisticsRepo = require("../logistics/logistics.repo");
 const accountingRepo = require("../accounting/accounting.repo");
@@ -440,6 +441,142 @@ async function buildPlan({ client, brand, order, input }) {
   };
 }
 
+// ── Stock: what a short line will actually be filled from ───
+
+/**
+ * Units THIS order already claims of a variant at a location — held while the
+ * order is unsettled, drawn once its revenue is recognised. Zero means the order
+ * has nothing of that SKU yet.
+ */
+async function claimedByOrder({
+  client,
+  brand,
+  variant_id,
+  location_id,
+  order_id,
+  revenueRecognised,
+}) {
+  if (!variant_id || !location_id) return 0;
+  const n = revenueRecognised
+    ? await stockRepo.netSoldForOrder({
+        client,
+        brand,
+        variant_id,
+        location_id,
+        reference_id: order_id,
+      })
+    : await stockRepo.outstandingReservationForOrder({
+        client,
+        brand,
+        variant_id,
+        location_id,
+        reference_id: order_id,
+      });
+  return Number(n) || 0;
+}
+
+/**
+ * The size-adjacent sibling base a short delta can be fulfilled from, or null
+ * when it genuinely has to pre-order.
+ *
+ * Shared by the preview (`buildWarnings`, read-only) and the commit
+ * (`reconcileStock`), so the change the operator is shown is the change that
+ * runs. The donor decision itself is `rewig.service.resolveDonorVariant` — the
+ * same one placement uses — and it covers ALL `quantity` units or nothing: a
+ * partial fill is not a substitution, it is a pre-order with extra steps.
+ *
+ * The one rule that is the amendment's own: a substitution RE-POINTS the line
+ * at the sibling SKU, so it is only honest when every unit of that line is
+ * going to come from the sibling. If this order already holds (or has drawn)
+ * units of the ordered variant, one line would have to be picked from two
+ * different SKUs, and a later release / return — which follows the line's
+ * variant — would put the wrong unit back on the shelf. Those lines pre-order
+ * instead. It also keeps the one-hop rule honest: a line already filled from a
+ * sibling has that sibling's unit claimed by this order, so this will never
+ * chain on to a second, further sibling.
+ */
+async function substitutionForDelta({
+  client,
+  brand,
+  order,
+  plan,
+  variant_id,
+  quantity,
+  location_id,
+  revenueRecognised,
+}) {
+  const line = plan.afterLines.find((l) => l.variant_id === variant_id);
+  if (!line) return null;
+
+  const already = await claimedByOrder({
+    client,
+    brand,
+    variant_id,
+    location_id,
+    order_id: order.order_id,
+    revenueRecognised,
+  });
+  if (already > 0) return null;
+
+  const donor = await rewigService.resolveDonorVariant({
+    client,
+    brand,
+    line,
+    quantity,
+    location_id,
+  });
+  if (!donor) return null;
+
+  return {
+    variant_id: donor.variant_id,
+    product_id: donor.product_id,
+    product_name: donor.product_name,
+    sku: donor.sku,
+    available: donor.available,
+    ordered_variant_id: variant_id,
+    quantity,
+    // The line as the operator sees it, for the warning text.
+    name: describeLine(line),
+  };
+}
+
+/**
+ * Does the order now really hold (or own) what its lines promise for this
+ * variant at this location?
+ *
+ * Reads the movement ledger, never the line's quantity: the units are only
+ * truly secured when they have been held (unsettled) or drawn (recognised) for
+ * THIS order.
+ *
+ * `demand` is the TOTAL the order's lines want of the variant, not one line's
+ * share — the ledger is keyed per (variant, order) and has no idea which line a
+ * unit was held for, so that is the only granularity at which the question has
+ * an honest answer. Two Medium lines with one Medium held are not "both
+ * covered"; the order is short one Medium.
+ */
+async function variantUnitsSecured({
+  client,
+  brand,
+  order,
+  variant_id,
+  demand,
+  location_id,
+  revenueRecognised,
+}) {
+  if (!variant_id) return true; // service line — nothing to hold
+  const wanted = Number(demand) || 0;
+  if (wanted <= 0) return true;
+  const claimed = await claimedByOrder({
+    client,
+    brand,
+    variant_id,
+    location_id,
+    order_id: order.order_id,
+    revenueRecognised,
+  });
+  return claimed >= wanted;
+}
+
 /**
  * Everything the operator must positively acknowledge before the change lands.
  *
@@ -525,8 +662,16 @@ async function buildWarnings({ client, brand, order, plan, revenueRecognised }) 
   // Can the added units actually be found? A read-only availability check so
   // the modal can warn before the operator commits; the reserve/deduct below
   // is still the authority.
+  //
+  // "Found" includes the adjacency fallback (000088): a line whose own size is
+  // exhausted is NOT necessarily a pre-order, because a size-adjacent sibling
+  // in stock can cover it. Asking the reconciler's own resolver here is the
+  // whole point — an operator who changes an order to a size that only an
+  // adjacent base can fill must see "resized from the Large", not "will be
+  // recorded as a pre-order", or the engine looks like it ignored the swap.
   const loc = await stockRepo.getDefaultLocation({ client, brand });
   const short = [];
+  const substitutions = [];
   if (loc) {
     for (const [variant_id, delta] of plan.stockDelta) {
       if (delta <= 0) continue;
@@ -537,16 +682,40 @@ async function buildWarnings({ client, brand, order, plan, revenueRecognised }) 
         location_id: loc.location_id,
       });
       const available = level ? Number(level.available || 0) : 0;
-      if (available < delta) {
-        const line = plan.afterLines.find((l) => l.variant_id === variant_id);
-        short.push({
-          variant_id,
-          name: line ? describeLine(line) : "Item",
-          wanted: delta,
-          available,
-        });
+      if (available >= delta) continue;
+
+      const donor = await substitutionForDelta({
+        client,
+        brand,
+        order,
+        plan,
+        variant_id,
+        quantity: delta,
+        location_id: loc.location_id,
+        revenueRecognised,
+      });
+      if (donor) {
+        substitutions.push(donor);
+        continue;
       }
+
+      const line = plan.afterLines.find((l) => l.variant_id === variant_id);
+      short.push({
+        variant_id,
+        name: line ? describeLine(line) : "Item",
+        wanted: delta,
+        available,
+      });
     }
+  }
+  if (substitutions.length) {
+    warnings.push({
+      code: "REWIG_SUBSTITUTION",
+      message: `${substitutions.length === 1 ? "1 item is" : `${substitutions.length} items are`} out of stock in the size ordered, but a size-adjacent base is in stock and will be resized to fit: ${substitutions
+        .map((s) => `${s.name} ← ${s.product_name} (${s.sku}, ${s.available} available)`)
+        .join("; ")}. The order line is pointed at that SKU so the Studio resizes the unit actually taken off the shelf.`,
+      details: substitutions,
+    });
   }
   if (short.length) {
     warnings.push({
@@ -760,16 +929,19 @@ async function amendOrder({ brand, user, request_id, id, input }) {
         amount_ngn: l._campaign_per_line_discount_ngn,
       });
     }
-    const insertedLines = [];
     for (const l of plan.afterLines) {
       if (l._source_line_id) continue;
-      insertedLines.push(
-        await repo.insertLine({
-          client,
-          brand,
-          line: { ...toDbLine(l), order_id: order.order_id },
-        }),
-      );
+      const inserted = await repo.insertLine({
+        client,
+        brand,
+        line: { ...toDbLine(l), order_id: order.order_id },
+      });
+      // Hang the row id back on the plan line (underscore-prefixed, so it can
+      // never reach the DB or the public payload). Stock reconciliation flags
+      // and re-points lines by id, and "which line is this delta about?" has to
+      // be answerable for a brand-new line — matching on variant_id alone would
+      // pick the wrong row when an order carries two lines of one variant.
+      l._line_id = inserted.line_id;
     }
     // A carried discount the new cart couldn't absorb was clipped (the operator
     // saw the DISCOUNT_CLIPPED warning). The order's discount_amount_ngn counts
@@ -819,9 +991,9 @@ async function amendOrder({ brand, user, request_id, id, input }) {
       order,
       plan,
       revenueRecognised,
-      insertedLines,
     });
     effects.stock = stock;
+    // Derives the ORDER-level flag from the lines the reconciler just ruled on.
     await amendRepo.refreshPreorderFlag({ client, brand, id });
 
     // ── 4. Accounting ───────────────────────────────────────
@@ -1003,6 +1175,11 @@ async function amendOrder({ brand, user, request_id, id, input }) {
       order: await repo.findById({ client, brand, id }),
       amendment,
       warnings,
+      // What the reconciler actually did about stock — the authoritative
+      // version of the preview's promises, so the modal can tell the operator
+      // "resized from an adjacent size" the moment it saves rather than letting
+      // them discover it on the picklist.
+      stock,
       difference_ngn: toCurrencyString(plan.difference),
       balance_after_ngn: toCurrencyString(plan.balanceAfter),
     };
@@ -1079,6 +1256,8 @@ async function clipOrderDiscountRows({ client, brand, plan }) {
  * Nothing here may fail the amendment. A unit that cannot be found becomes a
  * pre-order line (exactly as it would at checkout) and a warning on the
  * record — the customer's order must not be lost because a shelf was empty.
+ * "Cannot be found" means the ordered variant AND any size-adjacent sibling
+ * (rewig, 000088): the same fallback chain a fresh sale walks.
  */
 async function reconcileStock({
   client,
@@ -1087,16 +1266,20 @@ async function reconcileStock({
   order,
   plan,
   revenueRecognised,
-  insertedLines,
 }) {
   const out = {
     returned: [],
     released: [],
     reserved: [],
     deducted: [],
+    // Units drawn from a size-adjacent sibling base instead of the ordered one.
+    substituted: [],
     preorder: [],
     cogs_added_ngn: "0.00",
   };
+  // Lines this reconciler asked stock for — the only ones whose made-to-order
+  // state it may re-decide (see the verdict block at the end of the loop).
+  const touchedLines = [];
   const loc = await stockRepo.getDefaultLocation({ client, brand });
   if (!loc) {
     out.skipped = "no active stock location";
@@ -1113,6 +1296,49 @@ async function reconcileStock({
     }
   }
   let cogsAdded = money(0);
+
+  /**
+   * Draw `quantity` units of ONE variant for this order — reserve while the
+   * order is unsettled, deduct once its revenue is recognised. Isolated in its
+   * own savepoint so a failure leaves the transaction healthy. Returns null on
+   * success, else the error.
+   */
+  const attemptDraw = async (variant_id, quantity, unit_cost_ngn) => {
+    try {
+      await withSavepoint(client, async () => {
+        if (revenueRecognised) {
+          await stockService.deductForSale({
+            client,
+            brand,
+            variant_id,
+            location_id: loc.location_id,
+            quantity,
+            reference_id: order.order_id,
+            sales_channel: order.sales_channel,
+            unit_cost_ngn,
+            user_id: user.user_id,
+          });
+        } else {
+          await stockService.reserveForOrder({
+            client,
+            brand,
+            variant_id,
+            location_id: loc.location_id,
+            quantity,
+            reference_id: order.order_id,
+            user_id: user.user_id,
+          });
+        }
+      });
+      return null;
+    } catch (err) {
+      return err;
+    }
+  };
+
+  // Lines that came in as pre-orders and whose draw below only PARTLY covered
+  // them — the reconciler tops those up after the loop (see the block below).
+  const partialLines = [];
 
   for (const [variant_id, delta] of plan.stockDelta) {
     if (delta < 0) {
@@ -1167,62 +1393,134 @@ async function reconcileStock({
     // delta > 0 — the order now needs more of this variant.
     const qty = delta;
     const unitCost = costByVariant.get(variant_id) ?? null;
-    let failure = null;
-    try {
-      await withSavepoint(client, async () => {
-        if (revenueRecognised) {
-          await stockService.deductForSale({
-            client,
-            brand,
-            variant_id,
-            location_id: loc.location_id,
-            quantity: qty,
-            reference_id: order.order_id,
-            sales_channel: order.sales_channel,
-            unit_cost_ngn: unitCost,
-            user_id: user.user_id,
-          });
-        } else {
-          await stockService.reserveForOrder({
-            client,
-            brand,
-            variant_id,
-            location_id: loc.location_id,
-            quantity: qty,
-            reference_id: order.order_id,
-            user_id: user.user_id,
-          });
-        }
+    // Every surviving line that wants this variant. Kept lines are re-flagged
+    // in place; a substitution re-points them, so the list is also what the
+    // repoint and the made-to-order verdict below work from.
+    const deltaLines = plan.afterLines.filter(
+      (l) => l.variant_id === variant_id,
+    );
+    // The line's own cost snapshot, whether the units come from the ordered
+    // variant or a sibling: a substitution takes the sibling unit at the
+    // ORDERED variant's recorded cost, exactly as a rewig at placement does —
+    // a resize is never a revaluation.
+    const tryDraw = (target_variant_id) =>
+      attemptDraw(target_variant_id, qty, unitCost);
+
+    let drawnVariantId = variant_id;
+    let failure = await tryDraw(variant_id);
+    let substitution = null;
+    if (failure) {
+      // Rewig adjacency (000088) — the ordered size is exhausted at THIS
+      // location, so before falling through to pre-order, ask whether a
+      // size-adjacent sibling base can cover these units. The exact same
+      // resolver the placement engine uses (rewig.service), so a Change Order
+      // reaches for an adjacent size on the same terms a fresh sale would:
+      // brand switch, per-listing override, both bases' eligibility, one hop
+      // only, and all of it scoped to the one location the reserve targets.
+      //
+      // This is the gap that made a repaired order pre-order through a sibling
+      // sitting on the shelf: the amendment reconciler only ever tried the
+      // line's own variant, so an S or M that was out of stock while its L sat
+      // in stock was written as made-to-order — the very outcome 000088 exists
+      // to prevent, and the reason "change it to the size we can actually fill"
+      // looked like it did nothing.
+      substitution = await substitutionForDelta({
+        client,
+        brand,
+        order,
+        plan,
+        variant_id,
+        quantity: qty,
+        location_id: loc.location_id,
+        revenueRecognised,
       });
-    } catch (err) {
-      failure = err;
+      if (substitution) {
+        const donorErr = await tryDraw(substitution.variant_id);
+        if (!donorErr) {
+          drawnVariantId = substitution.variant_id;
+          failure = null;
+        } else {
+          failure = donorErr;
+        }
+      }
     }
     if (!failure) {
+      if (substitution) {
+        // Point the line(s) at the sibling unit actually drawn — the picklist,
+        // payment-time deduction, COGS and a later cancellation's release all
+        // follow the line's variant, so leaving it on the ordered SKU would
+        // send a picker to an empty shelf and release the wrong hold. The
+        // snapshot text stays the customer's item (she still ordered Medium);
+        // the note tells the Studio which unit to resize.
+        for (const l of deltaLines) {
+          const lineId = l._line_id || l._source_line_id;
+          if (!lineId) continue;
+          await repo.repointLineVariant({
+            client,
+            brand,
+            line_id: lineId,
+            product_id: substitution.product_id,
+            variant_id: substitution.variant_id,
+            note: `Rewig substitution: fulfil from ${substitution.product_name} (${substitution.sku}) — resize to ${l.variant_label_snapshot || "the ordered size"}.`,
+          });
+          // Keep the in-memory rows in step: the made-to-order verdict below
+          // and any later read of this plan must see the unit really drawn.
+          l.product_id = substitution.product_id;
+          l.variant_id = substitution.variant_id;
+        }
+        out.substituted.push({
+          ...substitution,
+          line_ids: deltaLines
+            .map((l) => l._line_id || l._source_line_id)
+            .filter(Boolean),
+        });
+        logger.info(
+          {
+            order_id: order.order_id,
+            variant_id,
+            donor_variant_id: substitution.variant_id,
+            donor_sku: substitution.sku,
+            quantity: qty,
+          },
+          "amendment: rewig substitution — units drawn from size-adjacent sibling",
+        );
+      }
       if (revenueRecognised) {
-        out.deducted.push({ variant_id, quantity: qty });
+        out.deducted.push({
+          variant_id: drawnVariantId,
+          quantity: qty,
+          ...(substitution ? { ordered_variant_id: variant_id } : {}),
+        });
         if (unitCost) cogsAdded = cogsAdded.plus(money(unitCost).times(qty));
       } else {
-        out.reserved.push({ variant_id, quantity: qty });
+        out.reserved.push({
+          variant_id: drawnVariantId,
+          quantity: qty,
+          ...(substitution ? { ordered_variant_id: variant_id } : {}),
+        });
+      }
+      touchedLines.push(...deltaLines);
+      // A line that was already a pre-order still owes the units it started
+      // with (it never held them) — noted here, topped up after the loop.
+      for (const l of deltaLines) {
+        const wasPreorder = l._source_line_id
+          ? plan.beforeLines.find((b) => b.line_id === l._source_line_id)
+              ?.is_preorder
+          : false;
+        if (wasPreorder) partialLines.push(l);
       }
       continue;
     }
 
-    // Short. Record the added line(s) for this variant as a pre-order — the
-    // same outcome checkout produces, so the customer is told a production
-    // window rather than losing the item.
-    const shortLines = insertedLines.filter((l) => l.variant_id === variant_id);
-    if (shortLines.length) {
-      await repo.markLinesPreorder({
-        client,
-        brand,
-        line_ids: shortLines.map((l) => l.line_id),
-      });
-    }
+    // Short. The added line(s) become a pre-order — the same outcome checkout
+    // produces, so the customer is told a production window rather than losing
+    // the item. The flag is written below, once every delta has had its chance.
     out.preorder.push({
       variant_id,
       quantity: qty,
       reason: failure.message,
     });
+    touchedLines.push(...deltaLines);
     logger.info(
       {
         err: failure.message,
@@ -1230,9 +1528,132 @@ async function reconcileStock({
         variant_id,
         quantity: qty,
         revenue_recognised: revenueRecognised,
+        rewig_donor_found: !!substitution,
       },
       "amendment: stock short — added units recorded as pre-order",
     );
+  }
+
+  // ── The rest of a pre-order line's hold ──────────────────
+  // Net-delta arithmetic assumes the order holds what it did before. A line
+  // that went in as a pre-order holds NOTHING — the units were never there to
+  // hold — so moving only the difference leaves it permanently short of its
+  // own quantity, and therefore permanently flagged made-to-order, even after
+  // the shelf it was waiting for has arrived. Before the flag is decided, give
+  // the gap one chance to be taken for real. If the stock still isn't there,
+  // nothing changes: the line simply stays a pre-order.
+  //
+  // This is the "change it to the size we have and it should stop saying
+  // pre-order" half of the fix. Only lines this amendment actually touched are
+  // topped up, and only up to what those lines already promise to deliver.
+  for (const line of partialLines) {
+    const claimed = await claimedByOrder({
+      client,
+      brand,
+      variant_id: line.variant_id,
+      location_id: loc.location_id,
+      order_id: order.order_id,
+      revenueRecognised,
+    });
+    const need = Number(line.quantity) - claimed;
+    if (need <= 0) continue;
+    const err = await attemptDraw(
+      line.variant_id,
+      need,
+      line.unit_cost_ngn ?? null,
+    );
+    if (err) {
+      logger.info(
+        {
+          err: err.message,
+          order_id: order.order_id,
+          line_id: line._line_id || line._source_line_id,
+          variant_id: line.variant_id,
+          short_by: need,
+        },
+        "amendment: pre-order top-up unavailable — line stays made to order",
+      );
+      continue;
+    }
+    if (revenueRecognised) {
+      out.deducted.push({
+        variant_id: line.variant_id,
+        quantity: need,
+        top_up: true,
+      });
+      if (line.unit_cost_ngn) {
+        cogsAdded = cogsAdded.plus(money(line.unit_cost_ngn).times(need));
+      }
+    } else {
+      out.reserved.push({
+        variant_id: line.variant_id,
+        quantity: need,
+        top_up: true,
+      });
+    }
+  }
+
+  // ── Made-to-order truth on the lines ─────────────────────
+  // The order-level flag is derived from the LINES (refreshPreorderFlag), and
+  // until now nothing ever lowered a line's flag: a line that went in as a
+  // pre-order stayed one for the life of the order, so "change it to a size we
+  // have" could secure the unit and the order would still advertise a
+  // production window. Each line this amendment actually asked stock for is
+  // re-judged from the movement ledger — secured (directly or from an adjacent
+  // size) clears it, short sets it. Lines the amendment didn't ask stock for
+  // keep whatever they had: an untouched back-order must not be re-labelled by
+  // a delivery-only change, and a legacy order with no reservation ledger at
+  // all must not be re-read as one giant pre-order.
+  const demandByVariant = new Map();
+  for (const l of plan.afterLines) {
+    if (!l.variant_id) continue;
+    demandByVariant.set(
+      l.variant_id,
+      (demandByVariant.get(l.variant_id) || 0) + (Number(l.quantity) || 0),
+    );
+  }
+  const flagNow = [];
+  const clearNow = [];
+  const seenLines = new Set();
+  for (const line of touchedLines) {
+    const lineId = line._line_id || line._source_line_id;
+    if (!lineId || seenLines.has(lineId)) continue;
+    seenLines.add(lineId);
+    // What the line was BEFORE this amendment — a line born on this amendment
+    // was never a pre-order. Only real transitions are written, so the effects
+    // record names exactly the lines this change re-labelled.
+    const wasPreorder = line._source_line_id
+      ? (plan.beforeLines.find((b) => b.line_id === line._source_line_id)
+          ?.is_preorder ?? false)
+      : false;
+    const secured = await variantUnitsSecured({
+      client,
+      brand,
+      order,
+      variant_id: line.variant_id,
+      demand: demandByVariant.get(line.variant_id) || 0,
+      location_id: loc.location_id,
+      revenueRecognised,
+    });
+    if (!secured && !wasPreorder) flagNow.push(lineId);
+    if (secured && wasPreorder) clearNow.push(lineId);
+  }
+  if (flagNow.length) {
+    await amendRepo.setLinesPreorder({
+      client,
+      brand,
+      line_ids: flagNow,
+      is_preorder: true,
+    });
+  }
+  if (clearNow.length) {
+    await amendRepo.setLinesPreorder({
+      client,
+      brand,
+      line_ids: clearNow,
+      is_preorder: false,
+    });
+    out.preorder_cleared = clearNow;
   }
 
   if (out.preorder.length) {

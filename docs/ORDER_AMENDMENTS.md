@@ -51,7 +51,7 @@ journal failed to post.
 | --- | --- | --- |
 | Stock state | units are **reserved** | units have **left** (a `sale` movement) |
 | Removing an item | `release_reserve` | `return` movement (which posts DR Inventory / CR COGS itself), then release any remaining hold |
-| Adding an item | `reserve` (falls back to a **pre-order** line if short) | `deductForSale` (falls back to a **pre-order** line if short) |
+| Adding an item | `reserve` — then an adjacent size, then a **pre-order** line | `deductForSale` — then an adjacent size, then a **pre-order** line |
 | GL | **nothing** — the eventual `order.paid` journal uses the final figures | an **adjusting journal** for the difference |
 | Invoice | the proforma is re-derived | the issued invoice is re-derived, and drops from `paid` → `partially_paid` when the total rose |
 
@@ -149,6 +149,53 @@ reason matters:
 Nothing in the reconciliation may fail the amendment. A unit that can't be found
 becomes a **pre-order** line (exactly as it would at checkout) plus a warning on
 the record — the customer's order must not be lost because a shelf was empty.
+
+### Adjacency: "a unit that can't be found" means the sibling too
+
+A size whose own base is exhausted is **not** automatically a pre-order. Rewig
+adjacency (000088) lets a base one size up or down fill the order — same styling
+job, no separate service or SKU — and a change that swaps an out-of-stock size
+for one an adjacent base can cover must reach for it exactly as the original
+sale would. The reconciler therefore walks the placement engine's chain, through
+the same shared decision (`catalogue/rewig.service`): try the ordered variant,
+then `resolveDonorVariant`, then pre-order. The brand switch, the listing's own
+`rewig_override`, both bases' eligibility and the one-hop limit all apply, and
+every read is scoped to the single location the reserve targets.
+
+When it fires:
+
+- the units are drawn from the sibling variant, and the line is **re-pointed**
+  at it (`repointLineVariant` + a resize note) so the picklist, payment-time
+  deduction, COGS and a later cancellation's release all follow the SKU that
+  actually left the shelf — the customer's snapshot still reads her size;
+- the preview warns `REWIG_SUBSTITUTION` instead of `STOCK_SHORT`, so what the
+  operator is shown is what runs;
+- it refuses to substitute a line that this order **partly holds on the ordered
+  variant**: one line cannot honestly be picked from two SKUs, and a later
+  release/return follows the line's variant. Those pre-order the extra units.
+  (That rule is also what keeps the one-hop promise: a line already filled from
+  a sibling has that sibling's unit claimed, so it never chains to a further
+  one.)
+
+### Made-to-order flags go down as well as up
+
+`is_preorder` on the lines is derived from the **movement ledger**, not from the
+plan: a line is made-to-order while the order does not hold (or, once paid, has
+not drawn) everything its lines promise for that variant. Two consequences:
+
+- **A change that puts the line on the shelf clears the flag.** Nothing used to
+  lower it, so an order could hold every unit and still advertise a production
+  window. Only lines this amendment actually asked stock for are re-judged —
+  a delivery-only change never re-labels an untouched back-order.
+- **A pre-order line's missing units get one chance to be taken.** Net-delta
+  arithmetic assumes the order holds what it did before, but a pre-order line
+  holds *nothing*, so moving only the difference leaves it permanently short of
+  its own quantity. Lines that were already pre-orders and are part of this
+  change are topped up to what they promise (`top_up: true` in the effects)
+  before the flag is decided; if the stock isn't there, nothing changes.
+
+The order-level flag still comes from `refreshPreorderFlag`, which is run after
+the reconciler has ruled on the lines.
 
 ### `netSoldForOrder` and the re-settlement guard
 
@@ -273,6 +320,7 @@ the commit refuses without `acknowledge_warnings`.
 | `FREE_SHIPPING_OVERRIDDEN` | The order carries a free-delivery coupon and the fee is being changed. |
 | `DISCOUNT_CLIPPED` | The new cart can't absorb all the discounts already granted. |
 | `STOCK_SHORT` | Added units aren't in stock and will be recorded as a pre-order. |
+| `REWIG_SUBSTITUTION` | The size ordered is out of stock but a size-adjacent base is in stock: the units will be taken from it and resized to fit, and the line is pointed at that SKU. |
 
 ---
 
@@ -306,3 +354,4 @@ Studio automation.
 | `tests/unit/sales/amendment-diff.test.js` | line diffing, net per-variant stock delta, the customer-facing summary, delivery-change detection |
 | `tests/unit/sales/amendment-plan.test.js` | re-pricing: kept-line price/VAT/cost carry-forward, discount carry-forward and clipping, delivery detection, reference guards |
 | `tests/unit/sales/amendment-postings.test.js` | the GL delta balances in every direction, and posts nothing when nothing moved |
+| `tests/unit/sales/amendment-rewig.test.js` | the stock reconciler's adjacency fallback end to end: units drawn from the sibling base and the line re-pointed, the brand/listing gates refusing it, the partial-hold refusal, the pre-order top-up and flag clearing, and the recognised-order deduction path |

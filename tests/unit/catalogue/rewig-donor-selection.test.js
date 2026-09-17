@@ -22,9 +22,13 @@ jest.mock("../../../src/modules/catalogue/styled_variants.repo", () => ({
   getConfig: jest.fn(),
   listRewigSiblings: jest.fn(),
 }));
+jest.mock("../../../src/modules/stock/stock.repo", () => ({
+  variantWithStockForProduct: jest.fn(),
+}));
 
 const { query } = require("../../../src/config/database");
 const repo = require("../../../src/modules/catalogue/styled_variants.repo");
+const stockRepo = require("../../../src/modules/stock/stock.repo");
 const rewig = require("../../../src/modules/catalogue/rewig.service");
 
 const BRAND = "faitlynhair";
@@ -245,5 +249,150 @@ describe("pickRewigDonorProductId — location scoping", () => {
       }),
     ).resolves.toBe(SIB_LARGE);
     expect(query).toHaveBeenCalledWith(expect.any(String), [ORIGIN, null]);
+  });
+});
+
+// ── resolveDonorVariant: product AND the concrete variant ────
+//
+// The donor decision above answers "which sibling base, if any". Both engines
+// that move stock for an order line — placement (sales.service) and the Change
+// Order reconciler (amendment.service) — then need the variant that actually
+// holds the units, and that lookup has to be scoped to the SAME location the
+// decision was. This wrapper is the one both call, so a Change Order can never
+// substitute on looser terms than the sale that created the order.
+
+describe("resolveDonorVariant", () => {
+  const ORIGIN_VARIANT = "var-origin";
+  const LINE = { product_id: ORIGIN, variant_id: ORIGIN_VARIANT, styled_id: null };
+
+  const donorVariant = (extra = {}) => ({
+    variant_id: "var-large",
+    sku: "PXG-STY-001-L",
+    variant_name: "Large",
+    available: 7,
+    ...extra,
+  });
+
+  test("returns the donor product, its variant and the display name", async () => {
+    fixture({
+      ownAvailable: 0,
+      siblings: [{ product_id: SIB_LARGE, size_diff: 1, available: 7 }],
+    });
+    stockRepo.variantWithStockForProduct.mockResolvedValue(donorVariant());
+    query.mockResolvedValueOnce({ rows: [{ available: 0 }] }); // own stock
+    query.mockResolvedValueOnce({ rows: [{ name: "Nala — Large" }] }); // donor name
+
+    await expect(
+      rewig.resolveDonorVariant({
+        brand: BRAND,
+        line: LINE,
+        quantity: 1,
+        location_id: LOC,
+      }),
+    ).resolves.toEqual({
+      product_id: SIB_LARGE,
+      product_name: "Nala — Large",
+      variant_id: "var-large",
+      sku: "PXG-STY-001-L",
+      available: 7,
+      origin_variant_id: ORIGIN_VARIANT,
+    });
+  });
+
+  test("asks for the variant at the SAME location the decision was scoped to", async () => {
+    fixture({
+      ownAvailable: 0,
+      siblings: [{ product_id: SIB_LARGE, size_diff: 1, available: 7 }],
+    });
+    stockRepo.variantWithStockForProduct.mockResolvedValue(donorVariant());
+
+    await rewig.resolveDonorVariant({
+      brand: BRAND,
+      line: LINE,
+      quantity: 2,
+      location_id: LOC,
+    });
+
+    expect(stockRepo.variantWithStockForProduct).toHaveBeenCalledWith(
+      expect.objectContaining({
+        product_id: SIB_LARGE,
+        location_id: LOC,
+        quantity: 2,
+      }),
+    );
+  });
+
+  test("null when the sibling product has no single variant with enough units", async () => {
+    fixture({
+      ownAvailable: 0,
+      siblings: [{ product_id: SIB_LARGE, size_diff: 1, available: 7 }],
+    });
+    // The sibling base looks stocked in aggregate but its active variants don't
+    // add up to the order — the reserve would fail, so there is no donor.
+    stockRepo.variantWithStockForProduct.mockResolvedValue(null);
+
+    await expect(
+      rewig.resolveDonorVariant({
+        brand: BRAND,
+        line: LINE,
+        quantity: 3,
+        location_id: LOC,
+      }),
+    ).resolves.toBeNull();
+  });
+
+  test("reads the listing's own override before deciding", async () => {
+    fixture({
+      ownAvailable: 0,
+      siblings: [{ product_id: SIB_LARGE, size_diff: 1, available: 7 }],
+    });
+    // styled_id is present → the listing's override row is fetched, and a
+    // disabled listing stops it there.
+    query.mockResolvedValueOnce({ rows: [{ rewig_override: "disabled" }] });
+
+    await expect(
+      rewig.resolveDonorVariant({
+        brand: BRAND,
+        line: { ...LINE, styled_id: "styl-1" },
+        quantity: 1,
+        location_id: LOC,
+      }),
+    ).resolves.toBeNull();
+    expect(repo.listRewigSiblings).not.toHaveBeenCalled();
+  });
+
+  test("returns null rather than throwing when the lookup itself fails", async () => {
+    fixture({
+      ownAvailable: 0,
+      siblings: [{ product_id: SIB_LARGE, size_diff: 1, available: 7 }],
+    });
+    repo.getConfig.mockRejectedValue(new Error("connection reset"));
+
+    // A donor lookup must never cost an order: the caller falls through to the
+    // pre-order path it would have taken without adjacency at all.
+    await expect(
+      rewig.resolveDonorVariant({
+        brand: BRAND,
+        line: LINE,
+        quantity: 1,
+        location_id: LOC,
+      }),
+    ).resolves.toBeNull();
+  });
+
+  test("no location, no substitution — the reserve has to be able to reach the units", async () => {
+    fixture({
+      ownAvailable: 0,
+      siblings: [{ product_id: SIB_LARGE, size_diff: 1, available: 7 }],
+    });
+    await expect(
+      rewig.resolveDonorVariant({
+        brand: BRAND,
+        line: LINE,
+        quantity: 1,
+        location_id: null,
+      }),
+    ).resolves.toBeNull();
+    expect(repo.getConfig).not.toHaveBeenCalled();
   });
 });

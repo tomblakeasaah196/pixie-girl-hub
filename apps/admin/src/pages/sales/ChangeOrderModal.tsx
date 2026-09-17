@@ -438,12 +438,20 @@ export function ChangeOrderModal({
         return;
       }
       const diff = Number(res.difference_ngn ?? 0);
+      // The reconciler walks the same adjacency fallback the sale did, so the
+      // size that was out of stock may well have been filled from the sibling
+      // one away. Say so now — the alternative is the operator (or the Studio)
+      // meeting it for the first time on the picklist.
+      const substituted = res.stock?.substituted?.length ?? 0;
+      const resizeNote = substituted
+        ? ` ${substituted === 1 ? "One item" : `${substituted} items`} will be resized from a size-adjacent base in stock — the picklist carries the instruction.`
+        : "";
       onSaved(
-        diff > 0
+        (diff > 0
           ? `Order updated. ${ngn(diff)} more is now due — the customer has been sent the balance.`
           : diff < 0
             ? `Order updated. ${ngn(Math.abs(diff))} is now in credit on this order.`
-            : "Order updated.",
+            : "Order updated.") + resizeNote,
       );
       onClose();
     } catch (err) {

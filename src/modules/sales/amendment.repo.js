@@ -344,6 +344,26 @@ async function bumpAmendmentCounters({ client, brand, id }) {
 }
 
 /**
+ * Set or clear the made-to-order flag on specific order lines.
+ *
+ * The reconciler's verdict, written down: a line whose units the amendment
+ * really secured (directly, or from a size-adjacent sibling) is no longer
+ * back-ordered, and one it could not secure is. Without the clearing half, a
+ * line that went in as a pre-order stayed one forever — and because the ORDER
+ * flag is derived from these, the order kept advertising a production window
+ * even after the amendment put the unit on the shelf.
+ */
+async function setLinesPreorder({ client, brand, line_ids, is_preorder }) {
+  const ids = (line_ids || []).filter(Boolean);
+  if (!ids.length) return;
+  await ex(client)(
+    `UPDATE ${t(brand, "sales_order_lines")}
+        SET is_preorder = $2 WHERE line_id = ANY($1::uuid[])`,
+    [ids, Boolean(is_preorder)],
+  );
+}
+
+/**
  * Clear the pre-order flag when nothing on the order is made-to-order any
  * more — an amendment that swaps a back-ordered wig for one on the shelf must
  * stop the order advertising a production window it no longer has.
@@ -380,6 +400,7 @@ module.exports = {
   listOrderLevelDiscounts,
   setOrderTotals,
   setDeliveryDetails,
+  setLinesPreorder,
   bumpAmendmentCounters,
   refreshPreorderFlag,
 };

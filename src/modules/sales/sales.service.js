@@ -98,72 +98,20 @@ async function createOrder({ brand, user, request_id, input }) {
 /**
  * Rewig adjacency (000088) donor lookup for a stock-short order line.
  *
- * Resolves the line's own base product to a size-adjacent sibling that can
- * cover `line.quantity` AT `location_id` — the same single location the reserve
- * targets — and then to a concrete variant of that sibling which actually holds
- * the units. Both steps are location-scoped on purpose: availability reads sum
- * every location, so an unscoped answer names a donor the reserve cannot reach
- * and the line pre-orders anyway.
- *
- * Runs on the caller's `client` so it sees reservations already taken by
- * earlier lines of this same order — two units of the same short size cannot
- * both be promised the last sibling on the shelf.
- *
- * Returns null (caller falls through to pre-order) whenever rewig is switched
- * off, the listing opted out, the line isn't styled, or no sibling qualifies.
+ * The decision itself lives in rewig.service (shared with the Change Order
+ * reconciler, which needs the same answer for the same question); this is the
+ * placement-time call site. Delegating rather than keeping a second copy here
+ * is deliberate — two implementations of "which sibling size may this line be
+ * filled from" is exactly the drift the shared module exists to prevent.
  */
-async function resolveRewigDonor({ client, brand, line, location_id }) {
-  if (!line.product_id || !location_id) return null;
-  try {
-    // rewig_override is a per-listing opt in/out that beats the brand mode.
-    // A non-styled line has no listing row and simply follows the brand mode.
-    let styled = null;
-    if (line.styled_id) {
-      const { rows } = await client.query(
-        `SELECT rewig_override FROM ${brand}.styled_products WHERE styled_id = $1`,
-        [line.styled_id],
-      );
-      styled = rows[0] || null;
-    }
-    const donorProductId = await rewigService.pickRewigDonorProductId({
-      client,
-      brand,
-      styled,
-      originProductId: line.product_id,
-      quantity: line.quantity,
-      location_id,
-    });
-    if (!donorProductId) return null;
-
-    const variant = await stockRepo.variantWithStockForProduct({
-      client,
-      brand,
-      product_id: donorProductId,
-      location_id,
-      quantity: line.quantity,
-    });
-    if (!variant) return null;
-
-    const { rows: prod } = await client.query(
-      `SELECT name FROM ${brand}.products WHERE product_id = $1`,
-      [donorProductId],
-    );
-    return {
-      product_id: donorProductId,
-      product_name: prod[0] ? prod[0].name : "sibling size",
-      variant_id: variant.variant_id,
-      sku: variant.sku,
-      origin_variant_id: line.variant_id,
-    };
-  } catch (err) {
-    // A donor lookup must never cost the order. Reads only, so there is no
-    // partial state to unwind — log and let the line pre-order as before.
-    logger.warn(
-      { err: err.message, line_id: line.line_id },
-      "rewig donor lookup failed — falling through to pre-order",
-    );
-    return null;
-  }
+function resolveRewigDonor({ client, brand, line, location_id }) {
+  return rewigService.resolveDonorVariant({
+    client,
+    brand,
+    line,
+    quantity: line.quantity,
+    location_id,
+  });
 }
 
 async function createOrderTx({ brand, user, request_id, input }) {

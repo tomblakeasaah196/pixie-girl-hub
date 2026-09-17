@@ -415,6 +415,21 @@ export interface OrderAmendment {
   created_at: string;
 }
 
+/** What the stock reconciler actually did — the authoritative version of the
+ *  preview's promises. `substituted` is non-empty when units were drawn from a
+ *  size-adjacent sibling base instead of the ordered size (rewig adjacency),
+ *  which the operator needs to hear before the picklist surprises them. */
+export interface AmendmentStockEffects {
+  substituted?: Array<{
+    /** The line as the operator sees it, e.g. "Nala Sleek Bangs — Medium". */
+    name: string;
+    product_name: string;
+    sku: string;
+    quantity: number;
+  }>;
+  preorder?: Array<{ variant_id: string; quantity: number; reason?: string }>;
+}
+
 /** Commit result. `requires_confirmation` mirrors the archive-restore
  *  contract: a 200 that wrote nothing, carrying the warnings to show first. */
 export interface AmendOrderResult {
@@ -423,6 +438,7 @@ export interface AmendOrderResult {
   order?: SalesOrder;
   amendment?: OrderAmendment;
   warnings?: AmendmentWarning[];
+  stock?: AmendmentStockEffects;
   difference_ngn?: string;
   balance_after_ngn?: string;
 }

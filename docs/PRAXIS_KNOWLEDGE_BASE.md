@@ -796,10 +796,16 @@ categories, collections, bundles, shades, and bookable services.
   listing" beats the brand setting**, so a listing set that way never substitutes
   even while adjacency is on everywhere else. The substitution applies on every
   channel that raises an order: storefront, sales campaigns, WhatsApp/Instagram
-  order links, **and the Sales → Quick Sale form and Quotations**. When it fires,
-  the order line is repointed to the sibling SKU actually taken off the shelf and
-  carries a note telling the stylist which unit to resize, so the picklist never
-  sends out the wrong size unresized.
+  order links, **the Sales → Quick Sale form and Quotations**, and **changing an
+  already-placed order** (Sales → order → Change Order). A change that swaps an
+  out-of-stock size for one an adjacent base can fill takes the units from that
+  base instead of writing the line as a pre-order. When it fires, the order line
+  is repointed to the sibling SKU actually taken off the shelf and carries a note
+  telling the stylist which unit to resize, so the picklist never sends out the
+  wrong size unresized — and the change screen says the item will be resized
+  rather than pre-ordered. An order that was a pre-order **stops being one** as
+  soon as a change puts its units on the shelf (or a change tops up what it was
+  still short of).
 - *The screen says units are in stock but the order still pre-ordered — why?*
   Stock only counts locations marked **available for storefront** (Stock →
   Locations), and a sale reserves against a single location. Stock parked at a

@@ -16,16 +16,18 @@ const base = (req) => ({
 
 async function listTasks(req, res) {
   const { page, page_size } = parsePagination(req.query);
+  // "me" asks for MY tasks (assigned to me or raised by me) — not for
+  // "tasks whose assignee is my user_id", which silently drops every
+  // unassigned task. See service.listTasks / service.getBoard.
+  const mine = req.query.assigned_to === "me";
   res.json(
     await service.listTasks({
       brand: req.brand,
       scope: req.permission_scope,
       user: req.user,
+      mine,
       status: req.query.status,
-      assigned_to:
-        req.query.assigned_to === "me"
-          ? req.user.user_id
-          : req.query.assigned_to,
+      assigned_to: mine ? undefined : req.query.assigned_to,
       priority: req.query.priority,
       reference_type: req.query.reference_type,
       reference_id: req.query.reference_id,
@@ -45,15 +47,14 @@ async function listAssignees(req, res) {
   });
 }
 async function getBoard(req, res) {
+  const mine = req.query.assigned_to === "me";
   res.json({
     data: await service.getBoard({
       brand: req.brand,
       scope: req.permission_scope,
       user: req.user,
-      assigned_to:
-        req.query.assigned_to === "me"
-          ? req.user.user_id
-          : req.query.assigned_to,
+      mine,
+      assigned_to: mine ? undefined : req.query.assigned_to,
     }),
   });
 }

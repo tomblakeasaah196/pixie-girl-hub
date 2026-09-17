@@ -101,8 +101,10 @@ function withLink(task) {
   };
 }
 
-async function listTasks({ scope, user, ...args }) {
-  if (scope === "own") args.visible_to = user.user_id;
+async function listTasks({ scope, user, mine, ...args }) {
+  // Same "mine" resolution as the board: assigned to me OR raised by me.
+  // See getBoard for why `assigned_to = me` alone is wrong.
+  if (scope === "own" || mine) args.visible_to = user.user_id;
   const result = await repo.listTasks(args);
   // The repo returns either a bare array or { data, meta } depending on the
   // caller — handle both rather than assuming.
@@ -121,12 +123,26 @@ function listAssignees({ brand, search, limit }) {
   return repo.listAssignableUsers({ brand, search, limit });
 }
 
-/** Kanban board: active tasks grouped by status column. */
-async function getBoard({ brand, scope, user, assigned_to }) {
+/**
+ * Kanban board: active tasks grouped by status column.
+ *
+ * `mine` is the UI's "?assigned_to=me" and it means MY BOARD, not "tasks whose
+ * assignee is my user_id" — so it resolves to the same definition of "mine"
+ * the list already uses for 'own' scope: assigned to me OR raised by me.
+ *
+ * It used to be passed straight through as `assigned_to`, which the repo turns
+ * into the equality filter `t.assigned_to = <me>`. The Workspace "New Task"
+ * form posts no assignee (there is no assignee field), so every task created
+ * in the UI is stored with assigned_to NULL — and `NULL = '<uuid>'` is NULL,
+ * not true. Every task a user created was written to the database and then
+ * filtered out of their own board. "Created a task, it never showed up" was
+ * that one clause.
+ */
+async function getBoard({ brand, scope, user, assigned_to, mine }) {
   const rows = await repo.boardTasks({
     brand,
     assigned_to,
-    visible_to: scope === "own" ? user.user_id : undefined,
+    visible_to: scope === "own" || mine ? user.user_id : undefined,
   });
   const board = { to_do: [], in_progress: [], in_review: [], done: [] };
   for (const t of rows) {

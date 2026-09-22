@@ -39,8 +39,8 @@ body.capturing .dl-bar{display:none!important;}
   position:relative;box-sizing:border-box;display:flex;flex-direction:column;margin-bottom:46px;overflow:hidden;}
 .ph{padding:11mm 18mm 3.4mm;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;}
 .ph-line{width:calc(100% - 36mm);margin:0 auto;height:1px;background:var(--border-light);flex-shrink:0;}
-.pc{flex:1;padding:4.6mm 18mm 2.4mm;overflow:hidden;}
-.pf{padding:2.4mm 18mm 7mm;flex-shrink:0;display:flex;justify-content:space-between;align-items:center;
+.pc{flex:1;padding:3.7mm 18mm 1.9mm;overflow:hidden;}
+.pf{padding:2.2mm 18mm 7mm;flex-shrink:0;display:flex;justify-content:space-between;align-items:center;
   font-family:'Fira Code',monospace;font-size:6.6pt;color:var(--text-light);text-transform:uppercase;letter-spacing:.8px;}
 .lg{display:inline-flex;align-items:center;gap:6px;}
 .lg img{height:21px;display:block;}
@@ -65,8 +65,8 @@ body.capturing .dl-bar{display:none!important;}
 .cover-title h1{font-family:'Montserrat',sans-serif;font-size:31pt;font-weight:900;color:#fff;line-height:.98;
   text-transform:uppercase;margin:0;}
 .cover-title h1 span{color:var(--luminous-teal);}
-.cover-sub{font-size:9.2pt;color:rgba(255,255,255,.58);max-width:150mm;margin-top:6mm;line-height:1.5;}
-.cstats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6mm;margin-top:11mm;
+.cover-sub{font-size:9.2pt;color:rgba(255,255,255,.58);max-width:152mm;margin-top:6mm;line-height:1.5;}
+.cstats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6mm;margin-top:10mm;
   border-top:1px solid rgba(0,229,255,.22);padding-top:6mm;}
 .cstats .k{font-family:'Fira Code',monospace;font-size:6.6pt;color:var(--luminous-teal);text-transform:uppercase;
   letter-spacing:.9px;margin-bottom:2mm;}
@@ -81,82 +81,72 @@ body.capturing .dl-bar{display:none!important;}
   font-family:'Fira Code',monospace;font-size:7pt;color:rgba(255,255,255,.4);letter-spacing:.8px;text-transform:uppercase;}
 /* ---------- headings ---------- */
 h1.sec{font-family:'Montserrat',sans-serif;font-size:13.5pt;font-weight:800;color:var(--midnight-navy);
-  text-transform:uppercase;margin:0 0 2mm;line-height:1.1;}
+  text-transform:uppercase;margin:0 0 1.8mm;line-height:1.1;}
 h1.sec .sn{color:var(--luminous-teal);}
-.h1b{width:40px;height:2.6px;background:var(--luminous-teal);margin-bottom:2.6mm;}
-h2.sub{font-family:'Montserrat',sans-serif;font-size:8.4pt;font-weight:800;color:var(--midnight-navy);
-  border-left:3px solid var(--luminous-teal);padding-left:7px;margin:1.8mm 0 1.1mm;text-transform:uppercase;
+.h1b{width:40px;height:2.6px;background:var(--luminous-teal);margin-bottom:1.8mm;}
+h2.sub{font-family:'Montserrat',sans-serif;font-size:8.2pt;font-weight:800;color:var(--midnight-navy);
+  border-left:3px solid var(--luminous-teal);padding-left:7px;margin:1.3mm 0 .85mm;text-transform:uppercase;
   letter-spacing:.3px;}
 h2.sub:first-of-type{margin-top:.4mm;}
 /* ---------- meta strip ---------- */
-.meta-strip{display:grid;grid-template-columns:1fr 1fr;gap:1mm 7mm;background:var(--soft-bg);
-  border-left:3px solid var(--midnight-navy);padding:1.8mm 3mm;margin-bottom:.6mm;
-  font-size:7pt;line-height:1.36;color:var(--text-body);}
+.meta-strip{display:grid;grid-template-columns:1fr 1fr;gap:.9mm 7mm;background:var(--soft-bg);
+  border-left:3px solid var(--midnight-navy);padding:1.2mm 3mm;margin-bottom:.5mm;
+  font-size:7pt;line-height:1.34;color:var(--text-body);}
 .meta-strip b{font-family:'Fira Code',monospace;font-size:6.4pt;color:var(--midnight-navy);
   text-transform:uppercase;letter-spacing:.4px;margin-right:3px;}
 /* ---------- master table ---------- */
-table.mst{width:100%;border-collapse:collapse;font-size:7.1pt;margin:0 0 1.2mm;}
-table.mst th{background:var(--midnight-navy);color:#fff;text-align:left;padding:3.4px 6px;
-  font-family:'Montserrat',sans-serif;font-weight:700;font-size:6.4pt;text-transform:uppercase;letter-spacing:.4px;}
-table.mst td{padding:2.8px 6px;border-bottom:1px solid var(--border-light);vertical-align:top;line-height:1.33;}
+table.mst{width:100%;border-collapse:collapse;font-size:6.4pt;margin:0 0 1mm;table-layout:fixed;}
+table.mst th{background:var(--midnight-navy);color:#fff;text-align:left;padding:2.8px 4px;
+  font-family:'Montserrat',sans-serif;font-weight:700;font-size:6pt;text-transform:uppercase;letter-spacing:.4px;}
+table.mst td{padding:2px 4px;border-bottom:1px solid var(--border-light);vertical-align:top;line-height:1.26;}
 table.mst tr:nth-child(even) td{background:var(--row-alt);}
-table.mst td.rid{font-family:'Fira Code',monospace;font-weight:600;color:var(--midnight-navy);white-space:nowrap;
-  font-size:6.8pt;}
+table.mst td.rid{font-family:'Fira Code',monospace;font-weight:600;color:var(--midnight-navy);
+  white-space:nowrap;font-size:6.4pt;}
 table.mst td.num{text-align:right;font-family:'Fira Code',monospace;font-weight:600;color:var(--midnight-navy);
   white-space:nowrap;}
+table.mst td.wk{font-family:'Fira Code',monospace;font-size:6.2pt;color:var(--text-light);}
+table.mst td.wt{font-family:'Fira Code',monospace;font-size:6.2pt;color:var(--midnight-navy);text-align:right;}
+table.mst td.cmp{font-family:'Montserrat',sans-serif;font-weight:700;font-size:6.05pt;color:var(--midnight-navy);
+  line-height:1.2;}
 table.mst tr.tot td{background:var(--soft-bg);font-weight:800;color:var(--midnight-navy);
-  border-top:2px solid var(--midnight-navy);border-bottom:none;font-size:7.4pt;}
-table.mst td.cmp{font-family:'Montserrat',sans-serif;font-weight:700;font-size:7.1pt;color:var(--midnight-navy);}
-.keyline{background:#ECFDF5;border-left:3px solid var(--accent-green);padding:1.7mm 3mm;font-size:7.1pt;
-  line-height:1.36;color:var(--text-body);}
+  border-top:2px solid var(--midnight-navy);border-bottom:none;font-size:6.7pt;}
+.keyline{background:#ECFDF5;border-left:3px solid var(--accent-green);padding:1.5mm 3mm;font-size:6.9pt;
+  line-height:1.32;color:var(--text-body);}
 .keyline b{color:var(--midnight-navy);}
 /* ---------- callout ---------- */
-.callout{background:var(--soft-bg);border-left:3px solid var(--luminous-teal);padding:1.7mm 3mm;
-  margin:0 0 1.6mm;font-size:7.1pt;line-height:1.36;}
-.callout .ct{font-family:'Montserrat',sans-serif;font-weight:800;font-size:7.1pt;color:var(--midnight-navy);
+.callout{background:var(--soft-bg);border-left:3px solid var(--luminous-teal);padding:1.5mm 3mm;
+  margin:0 0 1.2mm;font-size:6.9pt;line-height:1.32;}
+.callout .ct{font-family:'Montserrat',sans-serif;font-weight:800;font-size:6.9pt;color:var(--midnight-navy);
   text-transform:uppercase;letter-spacing:.3px;margin-right:2px;}
 .callout b{color:var(--midnight-navy);}
-/* ---------- milestone strip ---------- */
-.strip{display:grid;grid-template-columns:repeat(5,1fr);gap:1.3mm;}
-.ms{border:1px solid var(--border-light);border-top:2.2px solid var(--luminous-teal);border-radius:2px;
-  padding:1.3mm 1.5mm;background:#fff;display:flex;flex-direction:column;min-height:12mm;}
-.ms.rel{border-top-color:var(--accent-gold);background:#FFFBEB;}
-.msk{font-family:'Fira Code',monospace;font-size:6.6pt;font-weight:600;color:var(--midnight-navy);}
-.msn{font-size:6.1pt;line-height:1.24;margin-top:.4mm;color:var(--text-body);}
-.msd{margin-top:auto;padding-top:.8mm;font-family:'Fira Code',monospace;font-size:5.5pt;
-  color:var(--text-light);}
-.mssum{display:flex;justify-content:space-between;align-items:center;margin-top:1.2mm;
-  font-family:'Fira Code',monospace;font-size:6.6pt;color:var(--text-light);letter-spacing:.3px;}
-.mssum .amt{color:var(--midnight-navy);font-weight:600;}
-.mssum .rel{color:#B45309;font-weight:600;}
 /* ---------- two-up cards ---------- */
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:2mm;}
-.card{border:1px solid var(--border-light);border-left:3px solid var(--midnight-navy);padding:1.8mm 2.4mm;
-  font-size:7pt;line-height:1.36;background:#fff;}
+.card{border:1px solid var(--border-light);border-left:3px solid var(--midnight-navy);padding:1.6mm 2.2mm;
+  font-size:6.9pt;line-height:1.32;background:#fff;}
 .card.gold{border-left-color:var(--accent-gold);background:#FFFBEB;}
-.card .ch{font-family:'Montserrat',sans-serif;font-weight:800;font-size:7.1pt;color:var(--midnight-navy);
-  text-transform:uppercase;letter-spacing:.3px;margin-bottom:.8mm;display:flex;justify-content:space-between;}
+.card .ch{font-family:'Montserrat',sans-serif;font-weight:800;font-size:7pt;color:var(--midnight-navy);
+  text-transform:uppercase;letter-spacing:.3px;margin-bottom:.7mm;display:flex;justify-content:space-between;}
 .card .price{font-family:'Fira Code',monospace;color:var(--midnight-navy);}
 .card .price.free{color:var(--accent-green);}
 /* ---------- requirement bullets ---------- */
-ul.req{margin:0;padding-left:4.2mm;list-style:none;}
-ul.req li{position:relative;font-size:7pt;line-height:1.34;margin-bottom:1.05mm;}
-ul.req li::before{content:"";position:absolute;left:-3.4mm;top:1.25mm;width:1.5mm;height:1.5mm;
+ul.req{margin:0;padding-left:4mm;list-style:none;}
+ul.req li{position:relative;font-size:6.9pt;line-height:1.3;margin-bottom:.9mm;}
+ul.req li::before{content:"";position:absolute;left:-3.2mm;top:1.15mm;width:1.4mm;height:1.4mm;
   background:var(--luminous-teal);}
 ul.req li strong{color:var(--midnight-navy);}
 ul.req li:last-child{margin-bottom:0;}
 /* ---------- inline sign-off ---------- */
 .so-band{border:1px solid var(--border-light);border-top:2.2px solid var(--midnight-navy);
-  padding:1.8mm 2.4mm;display:grid;grid-template-columns:1fr 1fr;gap:1.6mm 6mm;}
-.so-party{font-size:6.6pt;color:var(--text-body);}
-.so-party .sp-t{font-family:'Montserrat',sans-serif;font-weight:800;font-size:6.9pt;color:var(--midnight-navy);
-  text-transform:uppercase;letter-spacing:.3px;display:block;margin-bottom:1.2mm;}
-.so-party .row{display:flex;gap:3mm;margin-bottom:1.4mm;}
+  padding:1.6mm 2.2mm;display:grid;grid-template-columns:1fr 1fr;gap:1.4mm 6mm;}
+.so-party{font-size:6.5pt;color:var(--text-body);}
+.so-party .sp-t{font-family:'Montserrat',sans-serif;font-weight:800;font-size:6.8pt;color:var(--midnight-navy);
+  text-transform:uppercase;letter-spacing:.3px;display:block;margin-bottom:1.1mm;}
+.so-party .row{display:flex;gap:3mm;margin-bottom:1.3mm;}
 .so-party .fld{flex:1;border-bottom:1px dotted var(--text-light);font-family:'Fira Code',monospace;
   font-size:5.4pt;color:var(--text-light);text-transform:uppercase;letter-spacing:.4px;
   padding-bottom:.3mm;white-space:nowrap;}
-.doc-end{text-align:center;margin-top:2mm;}
-.doc-end .es{font-family:'Fira Code',monospace;font-size:6.2pt;color:var(--text-light);letter-spacing:1.2px;
+.doc-end{text-align:center;margin-top:1.4mm;}
+.doc-end .es{font-family:'Fira Code',monospace;font-size:6.1pt;color:var(--text-light);letter-spacing:1px;
   text-transform:uppercase;}
 </style>
 </head>
@@ -178,16 +168,15 @@ ul.req li:last-child{margin-bottom:0;}
       <h2>JBS Praxis engineering · for MyCity App</h2>
       <h1>MyCity App:<br>Commercial Terms<br>&amp; Delivery <span>Timeline</span></h1>
     </div>
-    <div class="cover-sub">A two-component build drawn directly from the MyCity App Product
-      Requirements (&sect;1&ndash;&sect;23), delivered on the proven Pixie Girl Hub engineering
-      pattern &mdash; one business line, one platform, ten weekly milestones. This document states
-      the scope, the investment, the payment structure, the delivery timetable and the maintenance
-      terms offered for approval.</div>
+    <div class="cover-sub">The complete platform &mdash; all eleven workstreams of the MyCity App
+      Product Requirements (&sect;1&ndash;&sect;23) delivered on the proven Pixie Girl Hub engineering
+      pattern. Ten build weeks, one training week, and payment released only on your acceptance.
+      Nothing is deferred.</div>
     <div class="cstats">
       <div><div class="k">Investment</div><div class="val">&#8358;4,000,000</div>
-        <div class="note">Ten weekly milestones of &#8358;400,000</div></div>
-      <div><div class="k">Delivery</div><div class="val">10 weeks</div>
-        <div class="note">28 Sep &ndash; 4 Dec 2026 &middot; two releases</div></div>
+        <div class="note">&#8358;500,000 deposit + 11 weighted milestones</div></div>
+      <div><div class="k">Delivery</div><div class="val">11 weeks</div>
+        <div class="note">28 Sep &ndash; 11 Dec 2026 &middot; 10 build + 1 training</div></div>
       <div><div class="k">Maintenance</div><div class="val">Year 1 free</div>
         <div class="note">Then from &#8358;300,000 per year</div></div>
     </div>
@@ -199,8 +188,8 @@ ul.req li:last-child{margin-bottom:0;}
       <div><div class="k">Date</div><div class="v">22 September 2026 &middot; valid 30 days</div></div>
       <div><div class="k">Reference</div><div class="v">MyCity App Product Requirements &amp;
         Recommendations (12 pp, &sect;1&ndash;&sect;23, 10 September 2026)</div></div>
-      <div><div class="k">Contents</div><div class="v">Scope &amp; commercial summary &middot; Ten weekly
-        milestones &middot; Maintenance &amp; support &middot; Terms &amp; change control &middot;
+      <div><div class="k">Contents</div><div class="v">Complete scope &amp; weighted milestone schedule
+        &middot; Payment on acceptance &middot; Maintenance &amp; support &middot; Terms &middot;
         Acceptance</div></div>
       <div style="grid-column:1/-1;"><div class="k">Purpose</div><div class="v">A single-page commercial
         summary and delivery timeline, prepared to the same engineering and branding standard as the
@@ -223,109 +212,148 @@ ul.req li:last-child{margin-bottom:0;}
     <div class="h1b"></div>
 
     <div class="meta-strip">
-      <span><b>Client</b> MyCity App Ltd &mdash; single business line</span>
-      <span><b>Basis</b> MyCity App Product Requirements &sect;1&ndash;&sect;23</span>
-      <span><b>Investment</b> &#8358;4,000,000 &mdash; ten weekly milestones</span>
-      <span><b>Delivery</b> 10 weeks &middot; 28 Sep &ndash; 4 Dec 2026</span>
+      <span><b>Client</b> MyCity App Ltd &mdash; one business line</span>
+      <span><b>Basis</b> Product Requirements &sect;1&ndash;&sect;23</span>
+      <span><b>Investment</b> &#8358;4,000,000 &middot; 11 weighted milestones</span>
+      <span><b>Delivery</b> 11 wks &middot; 28 Sep &ndash; 11 Dec 2026</span>
     </div>
 
-    <h2 class="sub">1 &middot; Scope &amp; Commercial Summary</h2>
+    <h2 class="sub">1 &middot; Complete Scope &amp; Weighted Milestone Schedule</h2>
     <table class="mst">
       <thead>
-        <tr><th style="width:11mm;">Ref</th><th style="width:34mm;">Component</th>
-          <th>Included in this phase</th><th style="width:20mm;text-align:right;">Fee (&#8358;)</th></tr>
+        <tr><th style="width:6mm;">M</th><th style="width:30mm;">Workstream</th>
+          <th>Included in this phase</th><th style="width:8mm;">Wk</th>
+          <th style="width:12mm;text-align:right;">Weight</th>
+          <th style="width:22mm;text-align:right;">Fee (&#8358;)</th></tr>
       </thead>
       <tbody>
         <tr>
-          <td class="rid">A</td>
-          <td class="cmp">Core Operations &amp; Employee Management</td>
-          <td>Management dashboard configured to MyCity &middot; clock-in/out with <b>location &amp; device
-            validation</b> &middot; attendance history and exception visibility &middot;
-            <b>Employee Self-Service (ESS)</b> records &middot; staff community with department groups.</td>
-          <td class="num">1,750,000</td>
+          <td class="rid">M1</td><td class="cmp">Core Operations &amp; Employee Management</td>
+          <td>Dashboard &middot; geolocation clock-in/out &middot; attendance history &amp; exceptions
+            &middot; <b>ESS</b> records &middot; staff community &middot; search, reports, data
+            migration.</td>
+          <td class="wk">W1</td><td class="wt">12%</td><td class="num">420,000</td>
         </tr>
         <tr>
-          <td class="rid">B</td>
-          <td class="cmp">Productivity &amp; Performance</td>
-          <td>Tasks across <b>To Do / In Progress / In Review / Done</b> &middot; manager visibility of
-            current, completed, pending and overdue work &middot; retained task history &middot;
-            role-based <b>KPIs, weights and targets</b> &middot; line-manager assessments and review
-            history.</td>
-          <td class="num">1,750,000</td>
+          <td class="rid">M2</td><td class="cmp">Productivity &amp; Performance</td>
+          <td>Tasks (<b>To Do / In Progress / In Review / Done</b>) &middot; overdue work &middot; task
+            history &middot; productivity &amp; attendance analytics &middot; role-based <b>KPIs, targets,
+            reviews</b>.</td>
+          <td class="wk">W2</td><td class="wt">9%</td><td class="num">315,000</td>
         </tr>
         <tr>
-          <td class="rid">C</td>
-          <td class="cmp">Platform, integration &amp; training</td>
-          <td>Single-business-line configuration &middot; role-based access and audit trails &middot;
-            configurable notifications &middot; three hands-on training sessions on your live data with
-            user manual &middot; deployment and go-live.</td>
-          <td class="num">500,000</td>
+          <td class="rid">M3</td><td class="cmp">Queries &amp; Consequence Management</td>
+          <td>Rule-driven &amp; manual queries &middot; thresholds &middot; employee response and review
+            &middot; <b>Query &rarr; Warning &rarr; Suspension &rarr; Termination</b>.</td>
+          <td class="wk">W3</td><td class="wt">5%</td><td class="num">175,000</td>
+        </tr>
+        <tr>
+          <td class="rid">M4</td><td class="cmp">Recruitment &mdash; End to End</td>
+          <td>Vacancy to onboarding &middot; <b>candidate assessment platform</b> (psychometric, technical,
+            case study) &middot; multi-panel blind scoring &middot; weighted scorecards &middot; SLA
+            tracking.</td>
+          <td class="wk">W4</td><td class="wt">13%</td><td class="num">455,000</td>
+        </tr>
+        <tr>
+          <td class="rid">M5</td><td class="cmp">Offers, Documentation &amp; Onboarding</td>
+          <td>Offers with <b>e-signature</b> &amp; expiry &middot; documentation &rarr; pre-onboarding
+            &rarr; onboarding &middot; employee timeline &middot; document vault &middot; <b>MOU &amp;
+            contract lifecycle</b>.</td>
+          <td class="wk">W5</td><td class="wt">11%</td><td class="num">385,000</td>
+        </tr>
+        <tr>
+          <td class="rid">M6</td><td class="cmp">Payroll &amp; Notifications</td>
+          <td>Monthly payroll &middot; salary &amp; automatic deductions &middot; statutory <b>PAYE, pension,
+            ITF, NSITF</b> &middot; payslips &amp; reporting &middot; automated notifications and
+            reminders.</td>
+          <td class="wk">W6</td><td class="wt">11%</td><td class="num">385,000</td>
+        </tr>
+        <tr>
+          <td class="rid">M7</td><td class="cmp">Partnerships, CRM &amp; Trackers</td>
+          <td>Replaces the Excel tracker &middot; contacts, history, pipeline stages, owner, value &middot;
+            proposals as PDF &middot; <b>contract lifecycle</b> &middot; search &amp; reporting.</td>
+          <td class="wk">W7</td><td class="wt">10%</td><td class="num">350,000</td>
+        </tr>
+        <tr>
+          <td class="rid">M8</td><td class="cmp">Expenses &amp; Budget Control</td>
+          <td>Request &rarr; approval &rarr; disbursement &rarr; transaction record &rarr; reporting &middot;
+            configurable hierarchy &middot; budget checks &middot; duplicate-claim detection &middot;
+            <b>budget vs actual</b>.</td>
+          <td class="wk">W8</td><td class="wt">8%</td><td class="num">280,000</td>
+        </tr>
+        <tr>
+          <td class="rid">M9</td><td class="cmp">Settings &amp; Governance</td>
+          <td>Roles &amp; granular permissions &middot; HR/payroll data restricted by role &middot; MFA,
+            session &amp; device management &middot; <b>audit logs</b> &middot; <b>notification &amp;
+            escalation centre</b>.</td>
+          <td class="wk">W9</td><td class="wt">7%</td><td class="num">245,000</td>
+        </tr>
+        <tr>
+          <td class="rid">M10</td><td class="cmp">Staff Knowledge Hub &amp; AI Assistance</td>
+          <td>HR policies, SOPs, training resources, FAQs &middot; <b>AI-powered HR assistant</b> answering
+            permission-scoped questions &middot; AI-driven analytics, auditable answers.</td>
+          <td class="wk">W10</td><td class="wt">10%</td><td class="num">350,000</td>
+        </tr>
+        <tr>
+          <td class="rid">M11</td><td class="cmp">Handover &amp; Training</td>
+          <td>Three training sessions on your live data &middot; user manual &amp; documentation &middot;
+            knowledge transfer &middot; maintenance cover begins.</td>
+          <td class="wk">W11</td><td class="wt">4%</td><td class="num">140,000</td>
         </tr>
         <tr class="tot">
-          <td class="rid">&#931;</td>
-          <td colspan="2">TOTAL PROJECT INVESTMENT &mdash; TEN-WEEK BUILD &nbsp;&middot;&nbsp; 12 months'
-            maintenance included at no charge (&sect;3)</td>
-          <td class="num">4,000,000</td>
+          <td class="rid">&#931;</td><td class="cmp">ALL ELEVEN WORKSTREAMS</td>
+          <td>Ten build weeks + one training week &mdash; the complete Product Requirements, nothing
+            deferred.</td>
+          <td class="wk">11 wks</td><td class="wt">100%</td><td class="num">3,500,000</td>
         </tr>
       </tbody>
     </table>
-    <div class="keyline"><b>Delivery:</b> ten weeks, Monday 28 September to Friday 4 December 2026
-      &middot; <b>Release 1</b> at week 5 (geolocation clock-in) &middot; <b>Release 2</b> and go-live at
-      week 10 &middot; no production releases between 21 December 2026 and 5 January 2027.</div>
+    <div class="keyline"><b>Total investment &#8358;4,000,000</b> = &#8358;500,000 deposit (payable on
+      signature to commence) + <b>&#8358;3,500,000</b> milestone schedule above. <b>Build:</b> Mon 28
+      September &ndash; Fri 4 December 2026 &middot; <b>handover &amp; training</b> to Fri 11 December
+      2026 &middot; no production releases 21 Dec 2026 &ndash; 5 Jan 2027.</div>
 
-    <h2 class="sub">2 &middot; Payment &mdash; Ten Weekly Milestones</h2>
-    <div class="callout"><span class="ct">&#8358;400,000 &times; 10 = &#8358;4,000,000.</span>
-      Each milestone is split <b>&#8358;200,000 on commencement</b> and <b>&#8358;200,000 on written
-      acceptance</b>. The next is released once the previous is accepted; a milestone not accepted
-      within three working days is deemed accepted.</div>
-    <div class="strip">
-      <div class="ms"><div class="msk">M1</div><div class="msn">Discovery &amp; solution confirmation</div><div class="msd">w/c 28 Sep</div></div>
-      <div class="ms"><div class="msk">M2</div><div class="msn">Platform foundation &amp; data model</div><div class="msd">w/c 05 Oct</div></div>
-      <div class="ms"><div class="msk">M3</div><div class="msn">Roles, permissions &amp; audit trails</div><div class="msd">w/c 12 Oct</div></div>
-      <div class="ms"><div class="msk">M4</div><div class="msn">Management dashboard</div><div class="msd">w/c 19 Oct</div></div>
-      <div class="ms rel"><div class="msk">M5</div><div class="msn">Geolocation clock-in &middot; Release 1</div><div class="msd">w/c 26 Oct</div></div>
-      <div class="ms"><div class="msk">M6</div><div class="msn">Attendance history, exceptions &amp; ESS</div><div class="msd">w/c 02 Nov</div></div>
-      <div class="ms"><div class="msk">M7</div><div class="msn">Staff community &amp; announcements</div><div class="msd">w/c 09 Nov</div></div>
-      <div class="ms"><div class="msk">M8</div><div class="msn">Tasks &amp; productivity visibility</div><div class="msd">w/c 16 Nov</div></div>
-      <div class="ms"><div class="msk">M9</div><div class="msn">KPIs, targets &amp; performance reviews</div><div class="msd">w/c 23 Nov</div></div>
-      <div class="ms rel"><div class="msk">M10</div><div class="msn">Training &amp; go-live &middot; Release 2</div><div class="msd">w/c 30 Nov</div></div>
-    </div>
-    <div class="mssum"><span>&#8358;400,000 each &middot; <span class="amt">&#8358;200,000</span>
-      commencement + <span class="amt">&#8358;200,000</span> acceptance</span>
-      <span class="rel">Release 1 &mdash; M5 &nbsp;|&nbsp; Release 2 &mdash; M10</span></div>
+    <h2 class="sub">2 &middot; Payment &mdash; Released on Demo &amp; Acceptance</h2>
+    <div class="callout"><span class="ct">&#8358;500,000 on signature &middot; the rest on
+      acceptance.</span> Each milestone is demoed, your team tests it, and the fee is released only when
+      you accept it &mdash; <b>no milestone is invoiced before you accept it.</b> Values are weighted by
+      effort and risk (see table), not divided equally.</div>
+    <ul class="req">
+      <li><strong>Acceptance.</strong> Each milestone is demonstrated and handed over for testing; on
+        written acceptance it is invoiced, due in seven working days. No written defect list within five
+        working days means deemed accepted, protecting the schedule.</li>
+    </ul>
 
     <h2 class="sub">3 &middot; Maintenance &amp; Support</h2>
     <div class="grid2">
       <div class="card"><div class="ch"><span>Year 1 &mdash; included</span><span class="price free">&#8358;0</span></div>
-        Defect fixes and bug resolution &middot; security patching and dependency updates &middot; daily
-        backups and uptime monitoring &middot; six support hours per month &middot; email and WhatsApp
-        support channel.</div>
+        Defect fixes &middot; security patching and dependency updates &middot; daily backups and uptime
+        monitoring &middot; six support hours per month &middot; email and WhatsApp support.</div>
       <div class="card gold"><div class="ch"><span>From year 2</span><span class="price">&#8358;300,000 / yr</span></div>
-        <b>Essential &#8358;300,000/yr</b> carries the year-one cover above. <b>Growth &#8358;600,000/yr</b>
-        adds 20 support hours per month, four-hour priority response, a monthly performance report and a
-        quarterly roadmap session. Hosting, domain, SMS and third-party fees pass through at cost;
-        reviewed annually, uplift capped at 15%.</div>
+        <b>Essential &#8358;300,000/yr</b> carries the above. <b>Growth &#8358;600,000/yr</b> adds 20 support
+        hours a month, four-hour priority response, a monthly report and a quarterly roadmap session;
+        capped at 15% annual uplift.</div>
     </div>
 
-    <h2 class="sub">4 &middot; Terms, Change Control &amp; Ownership</h2>
+    <h2 class="sub">4 &middot; Terms, Dependencies &amp; Ownership</h2>
     <ul class="req">
-      <li><strong>Change control.</strong> Additional or out-of-scope work is captured in a written
-        Change Report, quoted and approved before it starts, and invoiced separately &mdash; it does not
-        consume a milestone.</li>
-      <li><strong>Acceptance.</strong> Three working days per milestone, after which it is deemed
-        accepted. Three revision rounds per milestone included; further rounds by Change Report.</li>
-      <li><strong>Not in this phase.</strong> Recruitment and assessments (&sect;4&ndash;&sect;5), payroll
-        and statutory filings (&sect;6), partnerships CRM (&sect;7), expenses and budget control
-        (&sect;8), the AI assistant (&sect;22), native mobile apps and direct social publishing &mdash;
-        each available as a separate phase or Change Report.</li>
-      <li><strong>Tax &amp; invoicing.</strong> VAT is not currently chargeable: JBS Praxis is below the
-        &#8358;50,000,000 registration threshold under the Nigeria Tax Act 2025, and will apply it if that
-        status changes. Our TIN accompanies the first invoice; withholding tax deducted at source is
-        evidenced and treated as part-payment. Invoices are due within seven working days.</li>
+      <li><strong>Change control.</strong> Work beyond the Product Requirements
+        (&sect;1&ndash;&sect;23) is captured in a written Change Report, quoted and approved first, then
+        invoiced separately.</li>
+      <li><strong>Client inputs.</strong> Brand assets, organigram, KPI definitions, salary structure,
+        Excel trackers and HR policies by email in week 1; decisions back within two working days. The
+        clock pauses while an input is outstanding.</li>
+      <li><strong>Hosting excluded.</strong> Server, domain, SSL, business email, SMS/WhatsApp credits and
+        gateway charges are not part of the &#8358;4,000,000 &mdash; MyCity provides them or authorises
+        us in writing to source and invoice at cost.</li>
+      <li><strong>Compressed schedule.</strong> Eleven workstreams run on overlapping parallel tracks; the
+        permissions and audit foundation is laid at M1, the governance console completes at M9, and the
+        AI assistant (M10) ships behind a feature flag.</li>
       <li><strong>Ownership &amp; data.</strong> On final payment MyCity App Ltd owns the delivered
-        custom application and all MyCity data; JBS Praxis retains its underlying reusable frameworks and
-        tooling. MyCity remains the data controller and JBS Praxis the processor under the Nigeria Data
-        Protection Act.</li>
+        application and all MyCity data; JBS Praxis retains its reusable frameworks. MyCity is the data
+        controller, JBS Praxis the processor under the Nigeria Data Protection Act.</li>
+      <li><strong>Invoicing.</strong> Issued on acceptance, due within seven working days; withholding tax
+        deducted at source counts as part-payment. Quotation valid 30 days.</li>
     </ul>
 
     <h2 class="sub">5 &middot; Acceptance</h2>
@@ -339,9 +367,7 @@ ul.req li:last-child{margin-bottom:0;}
         <div class="row"><span class="fld">Signature</span><span class="fld">Date</span></div>
       </div>
     </div>
-    <div class="doc-end">
-      <div class="es">// End of commercial terms &mdash; signature confirms the scope, the ten-milestone payment schedule and the maintenance terms above</div>
-    </div>
+    <div class="doc-end"><span class="es">// End of commercial terms &mdash; signature confirms scope, schedule, payment on acceptance and maintenance</span></div>
   </div>
   <div class="pf">
     <span>Built by JBS Praxis engineering &mdash; MyCity App Commercial Terms</span>
@@ -376,7 +402,7 @@ function numb(){
   });
 }
 numb();
-/* ---------- A4 fit check: run this after every edit to confirm the one-pager holds ---------- */
+/* ---------- A4 fit check: re-runs on every edit so the one-pager can never silently break ---------- */
 var MM = 3.7795275591; /* px per mm at 96dpi */
 /* Natural content height: briefly release the flex stretch and let the container
    size to its content, then restore. Accurate for both the content pages and the
@@ -395,9 +421,7 @@ function fitCheck(){
   pages.forEach(function(p, i){
     var box = p.querySelector(".pc") || p.querySelector(".cover-content");
     if (!box) return;
-    var avail = box.clientHeight;
-    var used  = naturalHeight(box);
-    var fill  = used / avail;
+    var avail = box.clientHeight, used = naturalHeight(box), fill = used / avail;
     if (worst === null || fill > worst.fill) worst = { page:i+1, fill:fill, used:used, avail:avail };
   });
   if (!worst) return;

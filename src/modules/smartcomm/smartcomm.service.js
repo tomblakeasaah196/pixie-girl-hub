@@ -2671,8 +2671,10 @@ async function addAttachment({ brand, user, request_id, message_id, input }) {
 /**
  * Send-invoice card: posts a `send_invoice` message into the channel that
  * references an existing invoice (no PDF embedded — the customer taps the
- * link to view + pay). Reads the invoice from the brand's invoices table
- * and resolves a per-brand storefront URL via brand-urls.
+ * link to view + pay). Reads the invoice from the brand's invoices table and
+ * resolves the canonical hub document URL — the same link the email and
+ * WhatsApp delivery carry, which serves the branded PDF (the old storefront
+ * /invoice/<uuid> path was never a route and 404'd).
  */
 async function sendInvoiceIntoThread({
   brand,
@@ -2689,8 +2691,9 @@ async function sendInvoiceIntoThread({
   const invoice = await invoicingRepo.findById({ brand, id: invoice_id });
   if (!invoice) throw new NotFoundError("Invoice");
 
-  const base = await brandUrls.publicBaseUrl(brand);
-  const url = `${base}/invoice/${invoice_id}`;
+  // Canonical hub document link (serves the branded PDF, stamps first view).
+  // Under /api/public — the prefix every vhost proxies to this app.
+  const url = `${brandUrls.hubBaseUrl()}/api/public/documents/invoice/${invoice_id}`;
 
   return postMessage({
     brand,
@@ -2706,6 +2709,78 @@ async function sendInvoiceIntoThread({
         due_date: invoice.due_date,
         url,
       },
+    },
+  });
+}
+
+/**
+ * Resolve what a chat share of an invoice would send: the invoice row plus the
+ * branded PDF document (archived copy, or rendered once by the invoicing
+ * module). Enforces the same state rule as the invoice send flow, so a
+ * cancelled statement can't be put in front of a customer from the chat.
+ */
+async function resolveInvoiceShare({ brand, invoice_id }) {
+  const invoicingRepo = require("../invoicing/invoicing.repo");
+  const invoicing = require("../invoicing/invoicing.service");
+
+  const invoice = await invoicingRepo.findById({ brand, id: invoice_id });
+  if (!invoice) throw new NotFoundError("Invoice");
+  if (["void", "refunded"].includes(invoice.status))
+    throw new AppError(
+      "INVALID_STATE",
+      `Cannot send a ${invoice.status} invoice`,
+      409,
+    );
+
+  const doc = await invoicing.ensureInvoiceDocument({ brand, id: invoice_id });
+  if (!doc) throw new NotFoundError("Invoice");
+  return { invoice, doc };
+}
+
+/**
+ * Send-invoice PDF: posts the invoice's branded PDF into the chat as a
+ * document message — the "Share PDF" half of the composer's invoice picker.
+ *
+ * The PDF is resolved and (when nothing is archived yet) rendered SERVER-side
+ * through the invoicing module's single resolver, so the operator needs no
+ * documents-module permissions, no upload round-trip, and the chat always
+ * carries the same document the customer-facing link serves. Delivery is the
+ * normal attachment path: WhatsApp uploads the bytes to Meta; Instagram, which
+ * has no PDF bubble, gets a download link (see buildOutboundJobsForChannel).
+ *
+ * Void/refunded invoices are refused — the same guard the invoice send flow
+ * applies (409 INVALID_STATE) — so a cancelled statement can never be put in
+ * front of a customer from the chat either.
+ */
+async function shareInvoicePdfIntoThread({
+  brand,
+  user,
+  request_id,
+  channel_id,
+  invoice_id,
+  is_human_agent,
+}) {
+  if (!brand)
+    throw new AppError("BRAND_REQUIRED", "Brand context required", 400);
+
+  const { invoice, doc } = await resolveInvoiceShare({ brand, invoice_id });
+
+  return postMessage({
+    brand,
+    user,
+    request_id,
+    id: channel_id,
+    input: {
+      message_type: "document",
+      attachments: [
+        {
+          document_id: doc.document_id,
+          display_name: `Invoice ${invoice.invoice_number || invoice_id}.pdf`,
+        },
+      ],
+      // Instagram only: the operator's explicit opt-in to a HUMAN_AGENT-tagged
+      // send when the 24h window has closed (mirrors a dropped file).
+      is_human_agent: is_human_agent || undefined,
     },
   });
 }
@@ -2941,6 +3016,8 @@ module.exports = {
   sendToCustomer,
   sendTransactionalEmail,
   sendInvoiceIntoThread,
+  shareInvoicePdfIntoThread,
+  resolveInvoiceShare,
   recordInboundFromCustomer,
   recordAgentReplyFromPlatform,
   findOrCreateCustomerThread,

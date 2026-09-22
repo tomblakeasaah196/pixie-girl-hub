@@ -10,6 +10,8 @@ import {
   Package,
   UserCheck,
   ShieldAlert,
+  Link2,
+  Share2,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Drawer } from "@/components/ui/Drawer";
@@ -28,6 +30,7 @@ import { useToastStore } from "@/components/notifications/NotificationToast";
 import { toastReport } from "@/lib/error-report";
 import { saveFileFromUrl } from "@/lib/api";
 import { formatDateTime, formatDate, money } from "@/lib/format";
+import { invoiceDocumentUrl } from "@/lib/public-documents";
 import {
   useInvoice,
   useInvoicePdf,
@@ -135,6 +138,72 @@ export function InvoiceDetail({
         err instanceof Error
           ? err.message
           : "Failed to generate the invoice PDF.",
+        "high",
+      );
+    }
+  };
+
+  // The customer-facing link for THIS invoice — the same canonical document
+  // URL the email/WhatsApp delivery carries (lib/public-documents is the one
+  // place that builds it).
+  const publicLink = invoice ? invoiceDocumentUrl(invoice.invoice_id) : null;
+
+  const handleCopyLink = async () => {
+    if (!publicLink) return;
+    try {
+      await navigator.clipboard.writeText(publicLink);
+      fireToast(
+        "Customer link copied",
+        "Paste it anywhere — it opens the branded invoice on any phone.",
+      );
+    } catch {
+      // Clipboard API blocked (insecure context / permissions) — the prompt
+      // is the honest fallback (select-all + copy).
+      window.prompt("Copy the invoice link:", publicLink);
+    }
+  };
+
+  const handleShareInvoice = async () => {
+    if (!invoice || !publicLink) return;
+    const title = `Invoice ${invoice.invoice_number}`;
+    try {
+      if (typeof navigator.share === "function") {
+        // Share the actual PDF FILE (or the canonical link when the device
+        // can't share files). Never a blob: URL — a file payload can't be
+        // scoped to this browser session.
+        if (typeof navigator.canShare === "function") {
+          const { url } = await pdf.mutateAsync();
+          const res = await fetch(url, { credentials: "include" });
+          if (res.ok) {
+            const blob = await res.blob();
+            const file = new File(
+              [blob],
+              `${invoice.invoice_number || "invoice"}.pdf`,
+              { type: "application/pdf" },
+            );
+            if (navigator.canShare({ files: [file] })) {
+              await navigator.share({
+                title,
+                text: `Invoice ${invoice.invoice_number}`,
+                files: [file],
+                url: publicLink,
+              });
+              return;
+            }
+          }
+        }
+        await navigator.share({ title, url: publicLink });
+        return;
+      }
+      // Desktop without a share sheet — copying is the same outcome.
+      await handleCopyLink();
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") return;
+      fireToast(
+        "Share failed",
+        err instanceof Error
+          ? `${err.message} — use Copy link instead.`
+          : "This device can't share — use Copy link instead.",
         "high",
       );
     }
@@ -298,6 +367,29 @@ export function InvoiceDetail({
               >
                 {pdf.isPending ? "Generating…" : "Download PDF"}
               </Button>
+              {/* The customer-facing link, one tap from anywhere. This is
+                  the link the "corrupted link" incident was about — surfacing
+                  the canonical URL here means staff never copy a PDF's
+                  transient blob: URL or a dead storefront path again. */}
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<Link2 className="w-3.5 h-3.5" />}
+                onClick={handleCopyLink}
+              >
+                Copy customer link
+              </Button>
+              {typeof navigator !== "undefined" &&
+                typeof navigator.share === "function" && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon={<Share2 className="w-3.5 h-3.5" />}
+                    onClick={handleShareInvoice}
+                  >
+                    Share
+                  </Button>
+                )}
             </div>
 
             {/* Source order — the invoice used to name no order at all, leaving

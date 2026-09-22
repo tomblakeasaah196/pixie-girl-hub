@@ -37,9 +37,22 @@ function dispatchDisabled() {
   return process.env.INVOICE_DISPATCH_DISABLED === "true";
 }
 
-/** Secure customer-facing link that renders the invoice and stamps first view. */
+/**
+ * Secure customer-facing link: the canonical document URL that serves the
+ * branded invoice PDF and stamps first view. The unguessable UUID is the
+ * credential — brand needn't ride in the path.
+ *
+ * It stays INSIDE /api/public on purpose: every vhost in this repo (hub,
+ * both brand apexes, kaizen) proxies /api/* to this Node app and serves
+ * everything else from nginx/the SPA — so a prettier root path would land
+ * the customer on a login page. The short /i/<uuid> alias exists for
+ * Node-served hosts (see ops/hub/nginx-document-links.conf).
+ *
+ * Old /api/public/invoices/<brand>/<id>/view links 301 here, so anything
+ * already sent keeps working.
+ */
 function publicViewUrl(brand, invoiceId) {
-  return `${config.APP_URL}/api/public/invoices/${brand}/${invoiceId}/view`;
+  return `${config.APP_URL}/api/public/documents/invoice/${invoiceId}`;
 }
 
 function ngn(value) {

@@ -42,9 +42,13 @@ const invoice = (over = {}) => ({
 });
 
 describe("publicViewUrl", () => {
-  test("embeds brand + invoice id (unguessable UUID link)", () => {
+  test("is the canonical short hub document link (unguessable UUID)", () => {
     const url = delivery.publicViewUrl("pixiegirl", "abc-123");
-    expect(url).toMatch(/\/api\/public\/invoices\/pixiegirl\/abc-123\/view$/);
+    // Brand-free canonical document link: the UUID is the credential and
+    // the hub serves the branded PDF. It rides /api/public because that is
+    // the prefix every vhost proxies to Node (a root path would be eaten by
+    // the SPA fallback). Old /api/public/.../view links 301 here.
+    expect(url).toMatch(/\/api\/public\/documents\/invoice\/abc-123$/);
   });
 });
 

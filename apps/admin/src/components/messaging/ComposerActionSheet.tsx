@@ -194,7 +194,12 @@ export function ComposerActionSheet({ anchorRef, actions, onClose }: Props) {
           <div className="grid place-items-center pt-2 pb-1">
             <span className="h-1 w-10 rounded-full bg-text-faint/40" />
           </div>
-          {grid}
+          {/* The tile list grows as actions are added (Invoices, quick
+              replies…). Cap it and let it scroll so the top row can never be
+              pushed off a short viewport. */}
+          <div className="max-h-[68vh] overflow-y-auto overscroll-contain">
+            {grid}
+          </div>
         </div>
       </>,
       document.body,

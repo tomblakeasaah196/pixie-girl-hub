@@ -322,6 +322,18 @@ async function sendInvoiceIntoThread(req, res) {
   res.status(201).json(data);
 }
 
+async function shareInvoicePdfIntoThread(req, res) {
+  const data = await service.shareInvoicePdfIntoThread({
+    brand: req.brand,
+    user: req.user,
+    request_id: req.request_id,
+    channel_id: req.params.id,
+    invoice_id: req.body.invoice_id,
+    is_human_agent: req.body.is_human_agent,
+  });
+  res.status(201).json(data);
+}
+
 // ── Quick replies ─────────────────────────────────────────
 
 async function listQuickReplies(req, res) {
@@ -473,6 +485,7 @@ module.exports = {
   createOrderLink,
   listOrderLinks,
   sendInvoiceIntoThread,
+  shareInvoicePdfIntoThread,
   listQuickReplies,
   createQuickReply,
   updateQuickReply,

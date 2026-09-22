@@ -110,6 +110,17 @@ router.post(
   v.validateSendInvoiceCard,
   c.sendInvoiceIntoThread,
 );
+// The composer picker's "Share PDF": posts the invoice's branded PDF into the
+// thread as a document message. Same permissions as the card above — sharing
+// an invoice requires seeing invoices — but the PDF is resolved + rendered
+// server-side, so the operator needs no documents-module access.
+router.post(
+  "/channels/:id/send-invoice-pdf",
+  can("edit"),
+  requirePermission("invoicing", "view"),
+  v.validateShareInvoicePdf,
+  c.shareInvoicePdfIntoThread,
+);
 
 // ── Quick replies ──────────────────────────────────────────
 router.get("/quick-replies", can("view"), c.listQuickReplies);

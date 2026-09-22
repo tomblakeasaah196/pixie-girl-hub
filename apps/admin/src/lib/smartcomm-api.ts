@@ -137,6 +137,21 @@ export const smartcommApi = {
     api.post<Message>(`/smartcomm/channels/${channelId}/send-invoice`, {
       invoice_id,
     }),
+  /**
+   * Invoice picker → "Share PDF": the backend resolves the invoice's branded
+   * PDF (archived copy, or a one-off render) and posts it into the thread as a
+   * document message. WhatsApp delivers a native PDF; Instagram, which has no
+   * document bubble, gets a download link.
+   */
+  sendInvoicePdf: (
+    channelId: string,
+    invoice_id: string,
+    opts: { is_human_agent?: boolean } = {},
+  ) =>
+    api.post<Message>(`/smartcomm/channels/${channelId}/send-invoice-pdf`, {
+      invoice_id,
+      is_human_agent: opts.is_human_agent,
+    }),
   editMessage: (message_id: string, content: string) =>
     api.patch<Message>(`/smartcomm/messages/${message_id}`, { content }),
   deleteMessage: (message_id: string) =>

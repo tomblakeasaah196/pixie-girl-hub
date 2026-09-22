@@ -1567,31 +1567,16 @@ async function getReceiptDelivery({ brand, id }) {
  * Public, no-auth view of a receipt via its (unguessable UUID) link. The first
  * open records an `opened` comms-log row (guarded once, since receipts carry no
  * viewed column). Returns a minimal, customer-safe projection.
+ *
+ * Not on the HTTP surface any more (the legacy view path 301s to the receipt
+ * PDF — see publicReceiptPdf); kept as the JSON projection sharing the exact
+ * same open-recording.
  */
 async function getReceiptPublicView({ brand, id }) {
   const receipt = await repo.findReceiptById({ brand, id });
   if (!receipt) throw new NotFoundError("Receipt");
 
-  const alreadyOpened = await commsLog.hasStatus({
-    reference_type: receiptDelivery.REFERENCE_TYPE,
-    reference_id: id,
-    status: "opened",
-  });
-  if (!alreadyOpened) {
-    commsLog
-      .record({
-        business: brand,
-        contact_id: receipt.contact_id,
-        channel: receipt.sent_to_whatsapp ? "whatsapp" : "email",
-        event_key: "receipt.opened",
-        recipient: receipt.sent_to_email || receipt.sent_to_whatsapp || null,
-        subject: `Receipt ${receipt.receipt_number || ""} opened`,
-        status: "opened",
-        reference_type: receiptDelivery.REFERENCE_TYPE,
-        reference_id: id,
-      })
-      .catch(() => {});
-  }
+  await recordReceiptOpened(brand, receipt);
 
   return {
     receipt_number: receipt.receipt_number,
@@ -1657,31 +1642,71 @@ async function getDelivery({ brand, id }) {
 }
 
 /**
+ * Stamp "she opened it" exactly once: first_viewed_at on the invoice plus a
+ * single `opened` comms-log row. Shared by BOTH public surfaces (the JSON view
+ * and the PDF document route) so whichever link the customer taps produces the
+ * same honest signal. The stamp is idempotent (IS NULL guard); the log write
+ * is fire-and-forget so a comms hiccup never blocks the document.
+ */
+async function recordInvoiceFirstView(brand, inv) {
+  const firstView = await repo.markFirstViewed({ brand, id: inv.invoice_id });
+  if (!firstView) return;
+  commsLog
+    .record({
+      business: brand,
+      contact_id: inv.contact_id,
+      channel: inv.sent_via === "whatsapp" ? "whatsapp" : "email",
+      event_key: "invoice.opened",
+      recipient: inv.contact_email || inv.contact_phone || null,
+      subject: `Invoice ${inv.invoice_number || ""} opened`,
+      status: "opened",
+      reference_type: delivery.REFERENCE_TYPE,
+      reference_id: inv.invoice_id,
+    })
+    .catch(() => {});
+}
+
+/** Receipt twin — receipts carry no viewed column, so the once-guard is the
+ *  comms log itself (an existing `opened` row means already recorded). */
+async function recordReceiptOpened(brand, receipt) {
+  const alreadyOpened = await commsLog.hasStatus({
+    reference_type: receiptDelivery.REFERENCE_TYPE,
+    reference_id: receipt.receipt_id,
+    status: "opened",
+  });
+  if (alreadyOpened) return;
+  commsLog
+    .record({
+      business: brand,
+      contact_id: receipt.contact_id,
+      channel: receipt.sent_to_whatsapp ? "whatsapp" : "email",
+      event_key: "receipt.opened",
+      recipient: receipt.sent_to_email || receipt.sent_to_whatsapp || null,
+      subject: `Receipt ${receipt.receipt_number || ""} opened`,
+      status: "opened",
+      reference_type: receiptDelivery.REFERENCE_TYPE,
+      reference_id: receipt.receipt_id,
+    })
+    .catch(() => {});
+}
+
+/**
  * Public, no-auth view of an invoice via its (unguessable UUID) link. The first
  * open stamps `first_viewed_at` — the honest "customer received it" signal —
  * and records an `opened` row on the comms log exactly once. Returns a minimal,
  * customer-safe projection (no internal columns, no cost/margin fields).
+ *
+ * Not on the HTTP surface any more: /api/public/invoices/:brand/:id/view now
+ * 301s to the PDF document route, so what a customer opens is the document
+ * itself (see publicInvoicePdf below). Kept as the JSON projection of the same
+ * customer-safe fields — same first-view bookkeeping, so a caller can never
+ * disagree with the PDF route about what "opened" means.
  */
 async function getPublicView({ brand, id }) {
   const inv = await repo.findById({ brand, id });
   if (!inv) throw new NotFoundError("Invoice");
 
-  const firstView = await repo.markFirstViewed({ brand, id });
-  if (firstView) {
-    commsLog
-      .record({
-        business: brand,
-        contact_id: inv.contact_id,
-        channel: inv.sent_via === "whatsapp" ? "whatsapp" : "email",
-        event_key: "invoice.opened",
-        recipient: inv.contact_email || inv.contact_phone || null,
-        subject: `Invoice ${inv.invoice_number || ""} opened`,
-        status: "opened",
-        reference_type: delivery.REFERENCE_TYPE,
-        reference_id: id,
-      })
-      .catch(() => {});
-  }
+  await recordInvoiceFirstView(brand, inv);
 
   return {
     invoice_number: inv.invoice_number,
@@ -1703,6 +1728,200 @@ async function getPublicView({ brand, id }) {
       unit_price_ngn: l.unit_price_ngn,
       line_total_ngn: l.line_total_ngn,
     })),
+  };
+}
+
+/**
+ * The bytes the customer-facing document link serves (canonical
+ * /api/public/documents/invoice/<uuid>, short alias /i/<uuid>): the invoice's
+ * branded PDF. Resolution order:
+ *   1. an already-archived copy in Documents (the send flow archives on
+ *      dispatch) — instant, zero re-render, and the SAME file the customer
+ *      would get re-opened tomorrow;
+ *   2. a first-open render (the rare path — only when the archive step
+ *      never ran, e.g. an invoice issued without a send).
+ *
+ * The first-view stamp happens BEFORE the bytes go out: a customer who
+ * opened the link and got a network error on the download must NOT lose
+ * their "opened" signal. Brand is resolved from the row — the link carries
+ * no brand segment (unguessable UUID is the credential).
+ */
+async function publicInvoicePdf({ id }) {
+  const hit = await repo.findInvoiceByIdAnyBrand(id);
+  if (!hit) throw new NotFoundError("Invoice");
+  const { brand, invoice } = hit;
+
+  await recordInvoiceFirstView(brand, invoice);
+
+  const doc = await ensureInvoiceDocument({ brand, id });
+  const storage = require("../../services/storage.service");
+  return {
+    buffer: await storage.get(doc.file_path),
+    filename: `Invoice ${invoice.invoice_number || id}.pdf`,
+  };
+}
+
+/**
+ * The archived PDF document row for an invoice, rendering + archiving it on
+ * first use. ONE resolver, used by the public document route and by the
+ * messaging "share as PDF" action, so both always attach the same document.
+ *
+ * Never stamps first_view — this runs when STAFF touch the document (share,
+ * download); only a customer open counts as a view.
+ */
+async function ensureInvoiceDocument({ brand, id }) {
+  // Lazy requires: documents.service requires pdf.service and the repo layer
+  // in ways that would cycle at module-load time if imported up top.
+  const documents = require("../../shared/documents/documents.service");
+  const archived =
+    (await documents.listForReference({
+      brand,
+      reference_type: "invoice",
+      reference_id: id,
+    })) || [];
+  const doc =
+    archived.find((d) => d.document_type === "invoice") || archived[0];
+  if (doc && doc.file_path) return doc;
+
+  const rendered = await _renderInvoicePdf({ brand, user: null, id });
+  if (!rendered) throw new NotFoundError("Invoice");
+  return rendered;
+}
+
+/**
+ * The bytes `/r/<uuid>` serves: the branded receipt PDF. Receipts are
+ * usually born from a paid ORDER, whose receipt PDF the order.paid
+ * subscriber archives under the order reference — serve that when present
+ * so the customer sees the exact archived document. Receipts with no order
+ * (manual invoices) render from the invoice + receipt rows on first open and
+ * are archived under the receipt reference for subsequent opens.
+ */
+async function publicReceiptPdf({ id }) {
+  const hit = await repo.findReceiptByIdAnyBrand(id);
+  if (!hit) throw new NotFoundError("Receipt");
+  const { brand, receipt } = hit;
+
+  await recordReceiptOpened(brand, receipt);
+
+  const documents = require("../../shared/documents/documents.service");
+  const storage = require("../../services/storage.service");
+
+  const pick = (rows) =>
+    (rows || []).find((d) => d.document_type === "receipt") || (rows || [])[0];
+
+  // 1. Archived under the receipt itself (manual-invoice receipts, or a
+  //    re-rendered public copy).
+  let doc = pick(
+    await documents.listForReference({
+      brand,
+      reference_type: "receipt",
+      reference_id: id,
+    }),
+  );
+
+  // 2. Otherwise, the order's archived receipt (order.paid subscriber) — but
+  //    ONLY when this receipt settles the whole invoice in one go. The order
+  //    receipt is the order's FINAL "paid in full" document; a partial or
+  //    manual receipt must not masquerade as it. (receipts carry no
+  //    order_id column — the order is reached via the invoice.)
+  const invoice = receipt.invoice_id
+    ? await repo.findById({ brand, id: receipt.invoice_id })
+    : null;
+  const settlesInFull =
+    invoice &&
+    invoice.order_id &&
+    Math.abs(Number(receipt.amount_ngn) - Number(invoice.total_ngn)) < 0.005;
+  if (!doc && settlesInFull) {
+    doc = pick(
+      await documents.listForReference({
+        brand,
+        reference_type: "sales_order",
+        reference_id: invoice.order_id,
+      }),
+    );
+  }
+
+  let buffer;
+  if (doc && doc.file_path) {
+    buffer = await storage.get(doc.file_path);
+  } else {
+    // First open: render. A full-settlement order receipt reuses the sales
+    // module's canonical order receipt (documents.store is idempotent by
+    // content hash, so this returns the archived file when it exists — no
+    // duplicate document). Everything else builds from the receipt row.
+    if (settlesInFull) {
+      // Lazy: sales.service imports half the app — a top-level require from
+      // here would cycle.
+      const sales = require("../sales/sales.service");
+      const rendered = await sales.receiptPdf({
+        brand,
+        user: null,
+        id: invoice.order_id,
+      });
+      buffer = await storage.get(rendered.file_path);
+    } else {
+      const [tokens, copy] = await Promise.all([
+        emailRender.resolveBrandTokens(brand),
+        docCopy.resolveCopy(brand),
+      ]);
+      const brandObj = brandDocs.brandFromTokens(tokens);
+      const docForRender = {
+        kind: "RECEIPT",
+        watermark: "Paid",
+        watermark_tone: "paid",
+        from: {
+          name: brandObj.brand_legal_name || brandObj.brand_name,
+          address: brandObj.brand_address,
+          phone: brandObj.brand_phone,
+          email: brandObj.support_email,
+        },
+        bill_to: {
+          name: receipt.contact_name || (invoice && invoice.contact_name) || "",
+          phone: receipt.contact_phone || null,
+          email: receipt.contact_email || null,
+        },
+        meta: [
+          [
+            invoice && invoice.order_number ? "Order #" : "Invoice #",
+            (invoice && (invoice.order_number || invoice.invoice_number)) ||
+              "—",
+          ],
+          ["Receipt #", receipt.receipt_number || "—"],
+          ["Paid on", formatDate(receipt.issued_at)],
+          ["Method", String(receipt.payment_method || "—").replace(/_/g, " ")],
+        ],
+        lines: ((invoice && invoice.lines) || []).map((l) => ({
+          description: l.description,
+          quantity: l.quantity,
+          unit_price_ngn: l.unit_price_ngn,
+          line_total_ngn: l.line_total_ngn,
+        })),
+        subtotal_ngn: invoice ? invoice.subtotal_ngn : receipt.amount_ngn,
+        discount_amount_ngn: invoice ? invoice.discount_amount_ngn : "0",
+        shipping_fee_ngn: invoice ? invoice.shipping_fee_ngn : "0",
+        tax_amount_ngn: invoice ? invoice.tax_amount_ngn : "0",
+        total_ngn: receipt.amount_ngn,
+        notes_label: copy ? copy.note_label : "Note",
+        notes: copy ? docCopy.fillTokens(copy.note || "", {}) : "",
+        thanks: copy ? docCopy.fillTokens(copy.message || "", {}) : "",
+      };
+      const html = brandDocs.receiptHtml(brandObj, docForRender);
+      const rendered = await pdf.renderAndStore({
+        brand,
+        user_id: null,
+        html,
+        title: `Receipt ${receipt.receipt_number || id}`,
+        document_type: "receipt",
+        reference_type: "receipt",
+        reference_id: id,
+        pdfOptions: brandDocs.PDF_OPTIONS,
+      });
+      buffer = await storage.get(rendered.file_path);
+    }
+  }
+  return {
+    buffer,
+    filename: `Receipt ${receipt.receipt_number || id}.pdf`,
   };
 }
 
@@ -1763,6 +1982,9 @@ module.exports = {
   cancelReminder,
   sendDueReminders,
   invoicePdf,
+  ensureInvoiceDocument,
+  publicInvoicePdf,
+  publicReceiptPdf,
   getDelivery,
   getPublicView,
   getDocumentSettings,

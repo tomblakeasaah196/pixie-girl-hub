@@ -352,6 +352,17 @@ function mountRoutes(app) {
   publicRouter.use("/manifest.webmanifest", manifestPublicRouter);
   app.use("/api/public", publicRouter);
 
+  // ── Public document links — the customer-facing invoice/receipt PDFs ──
+  // Canonical: /api/public/documents/{invoice|receipt}/<uuid> — inside the
+  // /api prefix every vhost in this repo proxies to Node (the rest of the
+  // host is nginx/SPA, so a bare /<uuid> would show a customer a login page).
+  publicRouter.use("/documents", publicInvoiceRouter.documentRouter);
+
+  // Short aliases /i/<uuid> and /r/<uuid> for Node-served hosts (Docker,
+  // local, or a vhost that proxies root paths). Mounted at the ROOT, before
+  // the SPA fallback in server.js.
+  app.use(publicInvoiceRouter.shortDocumentRouter);
+
   // Public branding assets (logos, login background) — served only from
   // the storage root's `branding/` subfolder so private media (documents,
   // product files) is never exposed. Cached for a day.

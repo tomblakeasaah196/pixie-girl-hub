@@ -122,9 +122,9 @@ const LoginEditorPage = lazyNamed(
   () => import("@/pages/LoginEditorPage"),
   "LoginEditorPage",
 );
-const ModulePlaceholder = lazyNamed(
-  () => import("@/pages/ModulePlaceholder"),
-  "ModulePlaceholder",
+const CatchAll = lazyNamed(
+  () => import("@/pages/CatchAll"),
+  "CatchAll",
 );
 const OrgWorkflowPage = lazyNamed(
   () => import("@/pages/OrgWorkflowPage"),
@@ -307,6 +307,13 @@ const SignDocumentPage = lazyWithRetry(() =>
 const VerifyDocumentPage = lazyWithRetry(() =>
   import("@/pages/sign/VerifyDocumentPage").then((m) => ({
     default: m.VerifyDocumentPage,
+  })),
+);
+// Customer document link (/i|/r/<uuid>) that reached the SPA rather than the
+// backend proxy — bounces to the always-proxied /api/public document URL.
+const DocumentLinkRedirect = lazyWithRetry(() =>
+  import("@/pages/DocumentLinkRedirect").then((m) => ({
+    default: m.DocumentLinkRedirect,
   })),
 );
 const OfferPage = lazyWithRetry(() =>
@@ -530,6 +537,18 @@ export const router = createBrowserRouter(
           <VerifyDocumentPage />
         </Suspense>
       ),
+    },
+    // Customer document links (/i|/r/<uuid>). Normally nginx proxies these to
+    // the backend, which streams the PDF; when a host serves the SPA instead
+    // these bounce straight to the proxied API path so the customer still
+    // lands on their invoice — not a login screen. Public by design.
+    {
+      path: "/i/:id",
+      element: <DocumentLinkRedirect kind="invoice" />,
+    },
+    {
+      path: "/r/:id",
+      element: <DocumentLinkRedirect kind="receipt" />,
     },
     {
       element: <RequireAuth />,
@@ -1010,7 +1029,10 @@ export const router = createBrowserRouter(
               ),
             },
 
-            { path: "*", element: <ModulePlaceholder /> },
+            // Catch-all: a bare /<uuid> path routes to that invoice's drawer
+            // (the "module renders here" dead end is gone); anything else
+            // keeps the unbuilt-module scaffold.
+            { path: "*", element: <CatchAll /> },
           ],
         },
       ],

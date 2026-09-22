@@ -37,9 +37,9 @@ const receipt = (over = {}) => ({
 });
 
 describe("receipt publicViewUrl", () => {
-  test("targets the public receipts view", () => {
+  test("is the canonical short hub receipt link (unguessable UUID)", () => {
     expect(delivery.publicViewUrl("faitlynhair", "r1")).toMatch(
-      /\/api\/public\/receipts\/faitlynhair\/r1\/view$/,
+      /\/api\/public\/documents\/receipt\/r1$/,
     );
   });
 });

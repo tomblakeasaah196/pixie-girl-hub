@@ -30,8 +30,11 @@ function dispatchDisabled() {
   return process.env.INVOICE_DISPATCH_DISABLED === "true";
 }
 
+/** Canonical receipt link (twin of the invoice one) — serves the branded
+ *  receipt PDF and records the open. See invoice-delivery.publicViewUrl for
+ *  why it rides /api/public and carries no brand. */
 function publicViewUrl(brand, receiptId) {
-  return `${config.APP_URL}/api/public/receipts/${brand}/${receiptId}/view`;
+  return `${config.APP_URL}/api/public/documents/receipt/${receiptId}`;
 }
 
 function ngn(value) {

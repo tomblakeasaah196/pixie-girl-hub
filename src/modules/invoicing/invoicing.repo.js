@@ -8,7 +8,7 @@
 
 const { query } = require("../../config/database");
 
-const { t } = require("../../config/brands");
+const { t, BRANDS } = require("../../config/brands");
 const ex = (client) => (client ? client.query.bind(client) : query);
 
 const INV_COLS = [
@@ -181,6 +181,24 @@ async function listInvoices({
       `i.status NOT IN ('paid','void','refunded') AND i.due_date < CURRENT_DATE`,
     );
   }
+  // Free-text search across the four things a picker actually greps for:
+  // invoice number, customer name, order number, and the order's line
+  // descriptions ("order details"). ILIKE so "flh-inv-0159" matches
+  // "FLH-INV-0159" without the operator uppercasing it.
+  if (filters.search) {
+    const like = `%${String(filters.search).trim()}%`;
+    where.push(
+      `(i.invoice_number ILIKE $${i}
+        OR c.display_name ILIKE $${i}
+        OR o.order_number ILIKE $${i}
+        OR EXISTS (
+          SELECT 1 FROM ${t(brand, "invoice_lines")} l
+           WHERE l.invoice_id = i.invoice_id AND l.description ILIKE $${i}
+        ))`,
+    );
+    params.push(like);
+    i += 1;
+  }
   const w = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const run = ex(client);
   const { rows: c } = await run(
@@ -189,10 +207,17 @@ async function listInvoices({
   );
   const { rows } = await run(
     `SELECT i.*, c.display_name AS contact_name,
-            o.order_number, o.status AS order_status
+            o.order_number, o.status AS order_status,
+            ls.line_summary, ls.line_count
        FROM ${t(brand, "invoices")} i
        LEFT JOIN shared.contacts c ON c.contact_id = i.contact_id
        LEFT JOIN ${t(brand, "sales_orders")} o ON o.order_id = i.order_id
+       LEFT JOIN LATERAL (
+         SELECT left(string_agg(l.description, ' · ' ORDER BY l.display_order), 160) AS line_summary,
+                count(*)::int AS line_count
+           FROM ${t(brand, "invoice_lines")} l
+          WHERE l.invoice_id = i.invoice_id
+       ) ls ON true
        ${w}
       ORDER BY i.issue_date DESC, i.created_at DESC LIMIT $${i++} OFFSET $${i++}`,
     [...params, page_size, offset],
@@ -567,6 +592,31 @@ async function bumpReminderCount({ client, brand, invoice_id }) {
   );
 }
 
+/**
+ * Find an invoice by UUID WITHOUT knowing its brand — the public
+ * `/i/<uuid>` document link carries no brand in the path. Ids are UUIDv4,
+ * so a cross-brand scan (at most one row per brand table, usually a
+ * single probe) is both safe and cheap. Returns `{ brand, invoice }` or
+ * null; callers answer null with the same 404 as a brand-scoped miss so
+ * probing an id discloses nothing.
+ */
+async function findInvoiceByIdAnyBrand(id) {
+  for (const brand of BRANDS) {
+    const invoice = await findById({ brand, id });
+    if (invoice) return { brand, invoice };
+  }
+  return null;
+}
+
+/** Receipt twin of findInvoiceByIdAnyBrand — public `/r/<uuid>`. */
+async function findReceiptByIdAnyBrand(id) {
+  for (const brand of BRANDS) {
+    const receipt = await findReceiptById({ brand, id });
+    if (receipt) return { brand, receipt };
+  }
+  return null;
+}
+
 module.exports = {
   nextNumber,
   createInvoice,
@@ -575,6 +625,8 @@ module.exports = {
   setInvoiceTotals,
   findById,
   findByOrderId,
+  findInvoiceByIdAnyBrand,
+  findReceiptByIdAnyBrand,
   listInvoices,
   setStatus,
   markFirstViewed,

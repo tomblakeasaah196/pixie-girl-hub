@@ -104,6 +104,10 @@ export interface Invoice {
   /** Number + status of the order this bills for (detail fetch only). */
   order_number?: string | null;
   order_status?: string | null;
+  /** List-only: first invoice-line descriptions, joined ("order details").
+   *  Powers the messaging invoice picker's row preview. */
+  line_summary?: string | null;
+  line_count?: number | null;
   intercompany_transaction_id: string | null;
   contact_id: string;
   contact_name: string | null;

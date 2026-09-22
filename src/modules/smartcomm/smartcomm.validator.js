@@ -192,6 +192,17 @@ const draftSave = z
 
 const sendInvoiceCard = z.object({ invoice_id: z.string().uuid() }).strict();
 
+// The same shape serves the composer picker's "Share PDF" (the invoice's PDF
+// is resolved server-side and posted as a document message) — kept as its own
+// schema so the two actions can diverge without breaking each other.
+const shareInvoicePdf = z
+  .object({
+    invoice_id: z.string().uuid(),
+    // Instagram outside the 24h window: opt into a HUMAN_AGENT-tagged send.
+    is_human_agent: z.boolean().optional(),
+  })
+  .strict();
+
 // One id field per item; `kind` disambiguates (the picker always sends it,
 // older callers may omit it and send only product_id).
 const orderLinkItem = z
@@ -344,5 +355,6 @@ module.exports = {
   validateQuickReplyUpdate: mk(quickReplyUpdate),
   validateOrderLinkCreate: mk(orderLinkCreate),
   validateSendInvoiceCard: mk(sendInvoiceCard),
+  validateShareInvoicePdf: mk(shareInvoicePdf),
   validateChannelAccessSet: mk(channelAccessSet),
 };

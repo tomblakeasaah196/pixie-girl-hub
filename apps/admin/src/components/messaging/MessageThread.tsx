@@ -63,6 +63,8 @@ import { useAuthStore } from "@/stores/auth";
 import { useActiveBusiness } from "@/stores/business";
 import { useIsPhone } from "@/hooks/useMediaQuery";
 import { smartcommApi, onboardingApi } from "@/lib/smartcomm-api";
+import { invoiceDocumentUrl } from "@/lib/public-documents";
+import type { Invoice } from "@/pages/invoicing/types";
 import { emitTyping } from "@/lib/socket";
 import { cn } from "@/lib/cn";
 import { toastReport } from "@/lib/error-report";
@@ -92,6 +94,7 @@ import { GroupInfoModal } from "./GroupInfoModal";
 import { ThreadSearch } from "./ThreadSearch";
 import { VoiceRecorder } from "./VoiceRecorder";
 import { CataloguePickerModal } from "./CataloguePickerModal";
+import { InvoicePickerModal } from "./InvoicePickerModal";
 import { QuickReplyVarsModal } from "./QuickReplyVarsModal";
 import { EmojiPicker } from "./EmojiPicker";
 import {
@@ -168,6 +171,13 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
   const [editing, setEditing] = useState<Message | null>(null);
   const [costOpen, setCostOpen] = useState(false);
   const [catalogueOpen, setCatalogueOpen] = useState(false);
+  const [invoicePickerOpen, setInvoicePickerOpen] = useState(false);
+  // Set when an invoice LINK is dropped into the composer from the picker —
+  // the chip tells the operator what just landed (and can be dismissed).
+  // PDF picks don't set it: the file is sent immediately, not staged.
+  const [invoiceChip, setInvoiceChip] = useState<{
+    number: string;
+  } | null>(null);
   const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
   const [sendingTemplate, setSendingTemplate] = useState(false);
   const [varReply, setVarReply] = useState<QuickReply | null>(null);
@@ -345,6 +355,10 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
     setAttachOpen(false);
     setQrOpen(false);
     setEmojiOpen(false);
+    // The invoice picker + its "link ready" chip must never carry a
+    // previous customer's selection into this thread.
+    setInvoicePickerOpen(false);
+    setInvoiceChip(null);
     subjectSeededRef.current = null;
   }, [channelId]);
 
@@ -411,6 +425,7 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
   function resetTextarea() {
     setContent("");
     setTemplateChip(null);
+    setInvoiceChip(null);
     if (textareaRef.current) textareaRef.current.style.height = "auto";
   }
 
@@ -861,6 +876,49 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
     setTemplateChip({ kind: "hours", token: "{hours}", value: hours });
   }
 
+  // Picker → "Share link": drop the tappable link into the composer (NOT
+  // send it) so the operator can soften the wording first — same contract as
+  // the welcome-form / WhatsApp handoff inserts. Stages the "link ready" chip.
+  // The URL builder is shared with the invoice drawer (lib/public-documents),
+  // so the operator and the automated comms never disagree on the link.
+  function insertInvoiceLink(invoice: Invoice) {
+    insertReplyBody(invoiceDocumentUrl(invoice.invoice_id));
+    setInvoiceChip({ number: invoice.invoice_number || "" });
+    setInvoicePickerOpen(false);
+  }
+
+  // Picker → "Share PDF": the PDF goes OUT immediately, as its own bubble.
+  // One backend call: the server resolves the invoice's archived document (or
+  // renders it once), attaches it and dispatches — the same attachment path a
+  // dropped file takes, so WhatsApp delivers a native PDF and Instagram, which
+  // has no PDF bubble, gets a download link. The client never touches the
+  // documents module here, and the file can't be a browser-local blob:.
+  async function sendInvoicePdf(invoice: Invoice) {
+    setInvoicePickerOpen(false);
+    setBusy("sending");
+    setError(null);
+    try {
+      await smartcommApi.sendInvoicePdf(channelId, invoice.invoice_id, {
+        // Instagram outside its 24h window still accepts a HUMAN_AGENT-tagged
+        // send (the composer passes the same flag for dropped files).
+        is_human_agent: igWindowClosed || undefined,
+      });
+      setReplyTo(null);
+      invalidate();
+    } catch (e: unknown) {
+      toastReport("Messaging → Invoice picker", "Share invoice PDF", e);
+      setError(e instanceof Error ? e.message : "Could not send the invoice PDF");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // The picker's single exit — link stages into the composer, PDF sends now.
+  function handleInvoicePick(invoice: Invoice, mode: "link" | "pdf") {
+    if (mode === "link") return insertInvoiceLink(invoice);
+    void sendInvoicePdf(invoice);
+  }
+
   // Persist the current composer text as this brand's new default for the
   // staged template. The live URL/number/address/hours is swapped back to
   // its {placeholder} so the saved template stays reusable.
@@ -1088,6 +1146,21 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
           },
         ]
       : []),
+    // Invoices — right of "WhatsApp us" on Instagram threads…
+    ...(isCustomerThread && isInstagram
+      ? [
+          {
+            key: "invoices",
+            label: "Invoices",
+            hint: "link or PDF",
+            icon: FileText,
+            tone: "accent" as const,
+            onSelect: () => setInvoicePickerOpen(true),
+          },
+        ]
+      : []),
+    // …and right of "Template" on WhatsApp threads. (Link or PDF — the
+    // picker asks; both channels deliver both, IG PDFs as a download link.)
     ...(isCustomerThread && isWhatsapp
       ? [
           {
@@ -1097,6 +1170,14 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
             icon: LayoutTemplate,
             tone: "accent" as const,
             onSelect: () => setTemplatePickerOpen(true),
+          },
+          {
+            key: "invoices",
+            label: "Invoices",
+            hint: "link or PDF",
+            icon: FileText,
+            tone: "accent" as const,
+            onSelect: () => setInvoicePickerOpen(true),
           },
         ]
       : []),
@@ -1435,6 +1516,26 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
           )}
           <button
             onClick={() => setTemplateChip(null)}
+            className="shrink-0 text-text-faint hover:text-text-primary"
+            title="Dismiss"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Invoice-link chip — the picker dropped the invoice's document link
+          into the composer; it's editable like any text, this just says what
+          it is. */}
+      {invoiceChip && composerText.trim() && (
+        <div className="mx-3 sm:mx-4 mb-1 flex items-center gap-2 rounded-xl border border-accent/30 bg-accent/5 px-3 py-1.5 text-[11.5px] text-text-muted">
+          <FileText className="w-3.5 h-3.5 text-accent-glow shrink-0" />
+          <span className="flex-1 min-w-0 truncate">
+            Invoice {invoiceChip.number} link ready — edit the wording, then
+            send.
+          </span>
+          <button
+            onClick={() => setInvoiceChip(null)}
             className="shrink-0 text-text-faint hover:text-text-primary"
             title="Dismiss"
           >
@@ -1865,6 +1966,14 @@ export function MessageThread({ channelId, onBack, onResolve }: Props) {
         onClose={() => setCatalogueOpen(false)}
         channel={channel}
         onSent={invalidate}
+      />
+
+      {/* Invoice picker — find an invoice, then share its link or PDF */}
+      <InvoicePickerModal
+        open={invoicePickerOpen}
+        onClose={() => setInvoicePickerOpen(false)}
+        isInstagram={isInstagram}
+        onPick={handleInvoicePick}
       />
 
       {/* Approved-template picker + send confirmation */}

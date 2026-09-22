@@ -153,6 +153,112 @@ describe("instagram recipient resolution", () => {
   });
 });
 
+// ── Invoice PDF delivery: WhatsApp document bubble, IG link fallback ──
+//
+// The composer's invoice picker "Share PDF" posts a `document` message with the
+// invoice's archived PDF attached. Delivery is what the operator actually
+// cares about ("WhatsApp can even share the PDF directly"), so pin both
+// branches: WhatsApp uploads the bytes to Meta as a real document, and
+// Instagram — which has no document attachment type in its API — sends a
+// download link instead of failing the send.
+function waChannel(overrides = {}) {
+  return {
+    channel_id: "ch-wa",
+    channel_type: "customer_thread",
+    business: "faitlynhair",
+    external_platform: "whatsapp",
+    metadata: {},
+    ...overrides,
+  };
+}
+
+const INVOICE_PDF_ATTACHMENT = {
+  file_path: "faitlynhair/documents/0007.pdf",
+  mime_type: "application/pdf",
+  display_name: "Invoice FLH-INV-0159.pdf",
+};
+
+describe("invoice PDF delivery", () => {
+  test("WhatsApp: uploads the PDF to Meta as a document job", async () => {
+    stubMember({ contact_id: "c-1", whatsapp_number: "+2348012345678" });
+    repo.getAttachmentsForSend.mockResolvedValueOnce([INVOICE_PDF_ATTACHMENT]);
+
+    const jobs = await service.buildOutboundJobsForChannel({
+      channel: waChannel(),
+      message: textMessage({ message_type: "document" }),
+      content: null,
+      client: {},
+    });
+
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0].queue).toBe("whatsapp-send");
+    expect(jobs[0].data.to).toBe("+2348012345678");
+    expect(jobs[0].data.kind).toBe("document");
+    // The storage key rides the job; the processor uploads those bytes to
+    // Meta (the file never needs to be publicly reachable).
+    expect(jobs[0].data.media_key).toBe("faitlynhair/documents/0007.pdf");
+    expect(jobs[0].data.filename).toBe("Invoice FLH-INV-0159.pdf");
+    expect(jobs[0].data.mime_type).toBe("application/pdf");
+  });
+
+  test("WhatsApp: a missing attachment fails loudly instead of sending nothing", async () => {
+    stubMember({ contact_id: "c-1", whatsapp_number: "+2348012345678" });
+    repo.getAttachmentsForSend.mockResolvedValueOnce([]);
+
+    const jobs = await service.buildOutboundJobsForChannel({
+      channel: waChannel(),
+      message: textMessage({ message_type: "document" }),
+      content: null,
+      client: {},
+    });
+
+    expect(jobs).toEqual([]);
+    expect(repo.setMessageDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        delivery_status: "failed",
+        delivery_error: "NOTHING_TO_SEND",
+      }),
+    );
+  });
+
+  test("Instagram: sends the PDF as a download link (no document bubble exists)", async () => {
+    stubMember({ contact_id: "c-1", ig_user_id: "IGSID_1" });
+    repo.getAttachmentsForSend.mockResolvedValueOnce([INVOICE_PDF_ATTACHMENT]);
+
+    const jobs = await service.buildOutboundJobsForChannel({
+      channel: igChannel(),
+      message: textMessage({ message_type: "document" }),
+      content: null,
+      client: {},
+    });
+
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0].queue).toBe("instagram-send");
+    expect(jobs[0].data.recipient_id).toBe("IGSID_THREAD");
+    // A text bubble carrying the public URL — the customer can still open
+    // their invoice; the send is not silently dropped.
+    expect(jobs[0].data.text).toContain("Invoice FLH-INV-0159.pdf");
+    expect(jobs[0].data.text).toContain(
+      "https://hub.example.com/media/faitlynhair/documents/0007.pdf",
+    );
+    expect(jobs[0].data.media_kind).toBeUndefined();
+  });
+
+  test("Instagram: an outside-window PDF send is HUMAN_AGENT-tagged", async () => {
+    stubMember({ contact_id: "c-1", ig_user_id: "IGSID_1" });
+    repo.getAttachmentsForSend.mockResolvedValueOnce([INVOICE_PDF_ATTACHMENT]);
+
+    const jobs = await service.buildOutboundJobsForChannel({
+      channel: igChannel({ ig_window_expires_at: PAST }),
+      message: textMessage({ message_type: "document" }),
+      content: null,
+      client: {},
+    });
+
+    expect(jobs[0].data.tag).toBe("HUMAN_AGENT");
+  });
+});
+
 // ── Email: branding, subject, Cc, attachments ─────────────
 function emailChannel(overrides = {}) {
   return {

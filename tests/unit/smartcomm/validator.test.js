@@ -21,6 +21,36 @@ function run(mw, body) {
 }
 
 describe("smartcomm validators", () => {
+  // Composer invoice picker → "Share PDF". The invoice id is the only thing
+  // that identifies the document, so it must be a real UUID; the IG
+  // outside-window flag is optional; unknown keys are rejected (strict) so a
+  // typo'd field can never be silently ignored.
+  test("shareInvoicePdf requires a UUID invoice id", () => {
+    expect(run(v.validateShareInvoicePdf, {}).error).toBeDefined();
+    expect(run(v.validateShareInvoicePdf, { invoice_id: "nope" }).error).toBeDefined();
+    const { calledNext } = run(v.validateShareInvoicePdf, {
+      invoice_id: "11111111-1111-4111-8111-111111111111",
+    });
+    expect(calledNext).toBe(true);
+  });
+
+  test("shareInvoicePdf accepts the Instagram human-agent flag", () => {
+    const { calledNext, req } = run(v.validateShareInvoicePdf, {
+      invoice_id: "11111111-1111-4111-8111-111111111111",
+      is_human_agent: true,
+    });
+    expect(calledNext).toBe(true);
+    expect(req.body.is_human_agent).toBe(true);
+  });
+
+  test("shareInvoicePdf rejects unknown fields", () => {
+    const { error } = run(v.validateShareInvoicePdf, {
+      invoice_id: "11111111-1111-4111-8111-111111111111",
+      mode: "pdf",
+    });
+    expect(error).toBeDefined();
+  });
+
   test("postMessage requires content or attachments", () => {
     const { error } = run(v.validatePostMessage, {});
     expect(error).toBeDefined();

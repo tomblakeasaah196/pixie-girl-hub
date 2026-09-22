@@ -23,6 +23,9 @@ async function listInvoices(req, res) {
         contact_id: req.query.contact_id,
         order_id: req.query.order_id,
         overdue: req.query.overdue === "true",
+        // Free-text search (invoice # / customer / order # / line
+        // descriptions) — the messaging invoice picker greps on these.
+        search: req.query.search || undefined,
       },
       page,
       page_size,
@@ -70,17 +73,43 @@ const getDelivery = async (req, res) =>
     data: await service.getDelivery({ brand: req.brand, id: req.params.id }),
   });
 
-// Public (no auth): customer-facing invoice view. Brand comes from the path,
-// not a header — the link is opened straight from an email/WhatsApp.
-const PUBLIC_BRANDS = new Set(["pixiegirl", "faitlynhair"]);
+// Public (no auth): customer-facing document views. The links are opened
+// straight from an email/WhatsApp/DM — no auth, no brand header; the
+// unguessable UUID IS the credential.
 const viewPublicInvoice = async (req, res) => {
-  const { brand, id } = req.params;
-  if (!PUBLIC_BRANDS.has(brand)) {
-    return res.status(404).json({ error: { code: "NOT_FOUND" } });
-  }
-  res.json({
-    data: await service.getPublicView({ brand, id }),
+  // The customer now opens the canonical document link (the branded PDF).
+  // Every link already in the wild (old emails, WhatsApp notes, DMs) 301s
+  // there permanently — nothing a customer has saved stops working.
+  res.redirect(301, `/api/public/documents/invoice/${req.params.id}`);
+};
+const viewPublicReceipt = async (req, res) => {
+  res.redirect(301, `/api/public/documents/receipt/${req.params.id}`);
+};
+
+/** Serve the public invoice PDF (GET /i/:id). See service.publicInvoicePdf. */
+const viewPublicInvoicePdf = async (req, res) => {
+  const { buffer, filename } = await service.publicInvoicePdf({
+    id: req.params.id,
   });
+  res.set("Content-Type", "application/pdf");
+  res.set("Content-Disposition", `inline; filename="${filename}"`);
+  // The document is per-invoice and mutable (a reissue re-renders it) —
+  // never let a CDN/browser cache a stale statement.
+  res.set("Cache-Control", "private, no-store");
+  res.set("X-Content-Type-Options", "nosniff");
+  res.send(buffer);
+};
+
+/** Serve the public receipt PDF (GET /r/:id). */
+const viewPublicReceiptPdf = async (req, res) => {
+  const { buffer, filename } = await service.publicReceiptPdf({
+    id: req.params.id,
+  });
+  res.set("Content-Type", "application/pdf");
+  res.set("Content-Disposition", `inline; filename="${filename}"`);
+  res.set("Cache-Control", "private, no-store");
+  res.set("X-Content-Type-Options", "nosniff");
+  res.send(buffer);
 };
 
 // Credit notes
@@ -138,14 +167,6 @@ const getReceiptDelivery = async (req, res) =>
       id: req.params.id,
     }),
   });
-const viewPublicReceipt = async (req, res) => {
-  const { brand, id } = req.params;
-  if (!PUBLIC_BRANDS.has(brand)) {
-    return res.status(404).json({ error: { code: "NOT_FOUND" } });
-  }
-  res.json({ data: await service.getReceiptPublicView({ brand, id }) });
-};
-
 // Reminders (F-10)
 const listReminders = async (req, res) =>
   res.json({
@@ -186,6 +207,7 @@ module.exports = {
   invoicePdf,
   getDelivery,
   viewPublicInvoice,
+  viewPublicInvoicePdf,
   getDocumentSettings,
   updateDocumentSettings,
   listCreditNotes,
@@ -197,6 +219,7 @@ module.exports = {
   sendReceipt,
   getReceiptDelivery,
   viewPublicReceipt,
+  viewPublicReceiptPdf,
   listReminders,
   cancelReminder,
 };

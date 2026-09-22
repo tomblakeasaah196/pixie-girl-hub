@@ -52,9 +52,10 @@ export function InvoicePickerModal({
 
   const search = debouncedTerm.trim();
   const { data, isLoading, isFetching, isError, error } = useInvoices(
-    search
-      ? { search, page_size: 25 }
-      : { page_size: 25 },
+    search ? { search, page_size: 25 } : { page_size: 25 },
+    // The picker is mounted with every thread; don't fetch a page of invoices
+    // until the operator actually opens it.
+    { enabled: open },
   );
   // Void and refunded invoices are never shareable — the invoice send flow
   // refuses them outright (409 INVALID_STATE), so offering them here would

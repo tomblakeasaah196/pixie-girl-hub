@@ -20,12 +20,21 @@ function useBiz() {
 
 // ── Invoices ────────────────────────────────────────────────
 
-export function useInvoices(params: invoicingApi.InvoiceListParams = {}) {
+/**
+ * The invoice list. `enabled` exists for surfaces that mount long before they
+ * need data — the messaging invoice picker lives inside every open thread, and
+ * without this it would pull a page of invoices on each one.
+ */
+export function useInvoices(
+  params: invoicingApi.InvoiceListParams = {},
+  opts: { enabled?: boolean } = {},
+) {
   const biz = useBiz();
   return useQuery({
     queryKey: ["invoices", biz, params],
     queryFn: () => invoicingApi.listInvoices(params),
     placeholderData: keepPreviousData,
+    enabled: opts.enabled ?? true,
   });
 }
 

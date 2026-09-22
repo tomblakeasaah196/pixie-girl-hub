@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MyCity App — Commercial Terms &amp; Delivery Timeline · JBS Praxis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@300;400;500;600;700&family=Montserrat:wght@600;700;800;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --midnight-navy:#0A1128; --luminous-teal:#00E5FF; --stark-white:#FFFFFF; --slate-navy:#141E3C;
+  --soft-bg:#F4F6F9; --text-body:#2D3142; --text-light:#6B7280; --border-light:#E2E6EC;
+  --row-alt:#F8FAFB; --accent-gold:#FFB800; --accent-green:#10B981;
+}
+*{box-sizing:border-box;}
+body{margin:0;background:#EAEEF2;padding:96px 0 70px;display:flex;flex-direction:column;align-items:center;
+  font-family:'Inter',sans-serif;font-size:10pt;color:var(--text-body);}
+/* ---------- download / edit bar ---------- */
+.dl-bar{position:fixed;top:0;left:0;right:0;z-index:9999;background:var(--midnight-navy);
+  display:flex;justify-content:center;align-items:center;gap:14px;padding:12px 0;
+  box-shadow:0 4px 18px rgba(10,17,40,.35);}
+.dl-bar .dl-brand{position:absolute;left:24px;display:flex;align-items:center;gap:10px;}
+.dl-bar .dl-brand span{font-family:'Fira Code',monospace;font-size:8pt;color:rgba(255,255,255,.45);letter-spacing:.6px;}
+.dl-btn{background:var(--luminous-teal);color:var(--midnight-navy);font-family:'Montserrat',sans-serif;font-weight:800;
+  font-size:10pt;text-transform:uppercase;letter-spacing:1px;border:none;padding:11px 30px;cursor:pointer;
+  transition:opacity .2s;border-radius:3px;}
+.dl-btn.alt{background:transparent;color:var(--luminous-teal);border:1.5px solid rgba(0,229,255,.55);}
+.dl-btn:disabled{opacity:.5;cursor:wait;}
+.dl-status{font-family:'Fira Code',monospace;font-size:8.6pt;color:rgba(255,255,255,.6);}
+.dl-status.ok{color:#10B981;}
+.dl-status.warn{color:#EF4444;}
+body.editing:not(.capturing) .pc,
+body.editing:not(.capturing) .cover-content{outline:1.5px dashed rgba(0,184,212,.55);outline-offset:-2px;}
+body.capturing .dl-bar{display:none!important;}
+@media print{.dl-bar{display:none!important;} body{padding:0;background:#fff;} .page{margin:0!important;box-shadow:none!important;page-break-after:always;}}
+/* ---------- page model (A4, mm) ---------- */
+.page{width:210mm;height:297mm;background:var(--stark-white);box-shadow:0 20px 40px rgba(0,0,0,0.08);
+  position:relative;box-sizing:border-box;display:flex;flex-direction:column;margin-bottom:46px;overflow:hidden;}
+.ph{padding:11mm 18mm 3.4mm;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;}
+.ph-line{width:calc(100% - 36mm);margin:0 auto;height:1px;background:var(--border-light);flex-shrink:0;}
+.pc{flex:1;padding:4.6mm 18mm 2.4mm;overflow:hidden;}
+.pf{padding:2.4mm 18mm 7mm;flex-shrink:0;display:flex;justify-content:space-between;align-items:center;
+  font-family:'Fira Code',monospace;font-size:6.6pt;color:var(--text-light);text-transform:uppercase;letter-spacing:.8px;}
+.lg{display:inline-flex;align-items:center;gap:6px;}
+.lg img{height:21px;display:block;}
+.lg.lg-fallback::before{content:"JBS PRAXIS";font-family:'Montserrat',sans-serif;font-weight:800;
+  font-size:9.5pt;color:var(--midnight-navy);letter-spacing:.6px;}
+.pn{font-family:'Fira Code',monospace;font-size:8pt;color:var(--text-light);}
+/* ---------- dark cover ---------- */
+.page.dark{background:var(--midnight-navy);color:#fff;}
+.page.dark::before{content:"";position:absolute;top:-80px;right:-80px;width:320px;height:320px;
+  border:1px solid rgba(255,255,255,.06);border-radius:50%;}
+.page.dark::after{content:"";position:absolute;bottom:-120px;left:-120px;width:380px;height:380px;
+  border:1px solid rgba(0,229,255,.08);border-radius:50%;}
+.cover-content{flex:1;padding:18mm 18mm 12mm;display:flex;flex-direction:column;position:relative;}
+.cover-logo{height:15mm;display:flex;align-items:center;}
+.cover-logo img{height:15mm;display:block;}
+.cover-logo.lg-fallback::before{content:"JBS PRAXIS";font-family:'Montserrat',sans-serif;font-weight:900;
+  font-size:20pt;color:#fff;letter-spacing:1px;}
+.cover-tag{font-family:'Fira Code',monospace;font-size:8.6pt;color:var(--luminous-teal);letter-spacing:1px;
+  border-left:2px solid var(--luminous-teal);padding-left:10px;margin:8mm 0 7mm;}
+.cover-title h2{font-family:'Montserrat',sans-serif;font-size:12pt;font-weight:700;color:var(--luminous-teal);
+  text-transform:uppercase;letter-spacing:.5px;margin:0 0 6px;}
+.cover-title h1{font-family:'Montserrat',sans-serif;font-size:31pt;font-weight:900;color:#fff;line-height:.98;
+  text-transform:uppercase;margin:0;}
+.cover-title h1 span{color:var(--luminous-teal);}
+.cover-sub{font-size:9.2pt;color:rgba(255,255,255,.58);max-width:150mm;margin-top:6mm;line-height:1.5;}
+.cstats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6mm;margin-top:11mm;
+  border-top:1px solid rgba(0,229,255,.22);padding-top:6mm;}
+.cstats .k{font-family:'Fira Code',monospace;font-size:6.6pt;color:var(--luminous-teal);text-transform:uppercase;
+  letter-spacing:.9px;margin-bottom:2mm;}
+.cstats .val{font-family:'Montserrat',sans-serif;font-size:17pt;font-weight:900;color:#fff;line-height:1;}
+.cstats .note{font-size:7.4pt;color:rgba(255,255,255,.5);margin-top:2mm;line-height:1.4;}
+.cmeta{margin-top:auto;border-top:1px solid rgba(255,255,255,.14);padding-top:5mm;
+  display:grid;grid-template-columns:1fr 1fr;gap:4mm 9mm;}
+.cmeta .k{font-family:'Fira Code',monospace;font-size:7pt;color:var(--luminous-teal);text-transform:uppercase;
+  letter-spacing:.9px;margin-bottom:1.2mm;}
+.cmeta .v{font-size:8.2pt;color:rgba(255,255,255,.8);line-height:1.42;}
+.cfoot{flex-shrink:0;padding:0 18mm 9mm;display:flex;justify-content:space-between;
+  font-family:'Fira Code',monospace;font-size:7pt;color:rgba(255,255,255,.4);letter-spacing:.8px;text-transform:uppercase;}
+/* ---------- headings ---------- */
+h1.sec{font-family:'Montserrat',sans-serif;font-size:13.5pt;font-weight:800;color:var(--midnight-navy);
+  text-transform:uppercase;margin:0 0 2mm;line-height:1.1;}
+h1.sec .sn{color:var(--luminous-teal);}
+.h1b{width:40px;height:2.6px;background:var(--luminous-teal);margin-bottom:2.6mm;}
+h2.sub{font-family:'Montserrat',sans-serif;font-size:8.4pt;font-weight:800;color:var(--midnight-navy);
+  border-left:3px solid var(--luminous-teal);padding-left:7px;margin:1.8mm 0 1.1mm;text-transform:uppercase;
+  letter-spacing:.3px;}
+h2.sub:first-of-type{margin-top:.4mm;}
+/* ---------- meta strip ---------- */
+.meta-strip{display:grid;grid-template-columns:1fr 1fr;gap:1mm 7mm;background:var(--soft-bg);
+  border-left:3px solid var(--midnight-navy);padding:1.8mm 3mm;margin-bottom:.6mm;
+  font-size:7pt;line-height:1.36;color:var(--text-body);}
+.meta-strip b{font-family:'Fira Code',monospace;font-size:6.4pt;color:var(--midnight-navy);
+  text-transform:uppercase;letter-spacing:.4px;margin-right:3px;}
+/* ---------- master table ---------- */
+table.mst{width:100%;border-collapse:collapse;font-size:7.1pt;margin:0 0 1.2mm;}
+table.mst th{background:var(--midnight-navy);color:#fff;text-align:left;padding:3.4px 6px;
+  font-family:'Montserrat',sans-serif;font-weight:700;font-size:6.4pt;text-transform:uppercase;letter-spacing:.4px;}
+table.mst td{padding:2.8px 6px;border-bottom:1px solid var(--border-light);vertical-align:top;line-height:1.33;}
+table.mst tr:nth-child(even) td{background:var(--row-alt);}
+table.mst td.rid{font-family:'Fira Code',monospace;font-weight:600;color:var(--midnight-navy);white-space:nowrap;
+  font-size:6.8pt;}
+table.mst td.num{text-align:right;font-family:'Fira Code',monospace;font-weight:600;color:var(--midnight-navy);
+  white-space:nowrap;}
+table.mst tr.tot td{background:var(--soft-bg);font-weight:800;color:var(--midnight-navy);
+  border-top:2px solid var(--midnight-navy);border-bottom:none;font-size:7.4pt;}
+table.mst td.cmp{font-family:'Montserrat',sans-serif;font-weight:700;font-size:7.1pt;color:var(--midnight-navy);}
+.keyline{background:#ECFDF5;border-left:3px solid var(--accent-green);padding:1.7mm 3mm;font-size:7.1pt;
+  line-height:1.36;color:var(--text-body);}
+.keyline b{color:var(--midnight-navy);}
+/* ---------- callout ---------- */
+.callout{background:var(--soft-bg);border-left:3px solid var(--luminous-teal);padding:1.7mm 3mm;
+  margin:0 0 1.6mm;font-size:7.1pt;line-height:1.36;}
+.callout .ct{font-family:'Montserrat',sans-serif;font-weight:800;font-size:7.1pt;color:var(--midnight-navy);
+  text-transform:uppercase;letter-spacing:.3px;margin-right:2px;}
+.callout b{color:var(--midnight-navy);}
+/* ---------- milestone strip ---------- */
+.strip{display:grid;grid-template-columns:repeat(5,1fr);gap:1.3mm;}
+.ms{border:1px solid var(--border-light);border-top:2.2px solid var(--luminous-teal);border-radius:2px;
+  padding:1.3mm 1.5mm;background:#fff;display:flex;flex-direction:column;min-height:12mm;}
+.ms.rel{border-top-color:var(--accent-gold);background:#FFFBEB;}
+.msk{font-family:'Fira Code',monospace;font-size:6.6pt;font-weight:600;color:var(--midnight-navy);}
+.msn{font-size:6.1pt;line-height:1.24;margin-top:.4mm;color:var(--text-body);}
+.msd{margin-top:auto;padding-top:.8mm;font-family:'Fira Code',monospace;font-size:5.5pt;
+  color:var(--text-light);}
+.mssum{display:flex;justify-content:space-between;align-items:center;margin-top:1.2mm;
+  font-family:'Fira Code',monospace;font-size:6.6pt;color:var(--text-light);letter-spacing:.3px;}
+.mssum .amt{color:var(--midnight-navy);font-weight:600;}
+.mssum .rel{color:#B45309;font-weight:600;}
+/* ---------- two-up cards ---------- */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:2mm;}
+.card{border:1px solid var(--border-light);border-left:3px solid var(--midnight-navy);padding:1.8mm 2.4mm;
+  font-size:7pt;line-height:1.36;background:#fff;}
+.card.gold{border-left-color:var(--accent-gold);background:#FFFBEB;}
+.card .ch{font-family:'Montserrat',sans-serif;font-weight:800;font-size:7.1pt;color:var(--midnight-navy);
+  text-transform:uppercase;letter-spacing:.3px;margin-bottom:.8mm;display:flex;justify-content:space-between;}
+.card .price{font-family:'Fira Code',monospace;color:var(--midnight-navy);}
+.card .price.free{color:var(--accent-green);}
+/* ---------- requirement bullets ---------- */
+ul.req{margin:0;padding-left:4.2mm;list-style:none;}
+ul.req li{position:relative;font-size:7pt;line-height:1.34;margin-bottom:1.05mm;}
+ul.req li::before{content:"";position:absolute;left:-3.4mm;top:1.25mm;width:1.5mm;height:1.5mm;
+  background:var(--luminous-teal);}
+ul.req li strong{color:var(--midnight-navy);}
+ul.req li:last-child{margin-bottom:0;}
+/* ---------- inline sign-off ---------- */
+.so-band{border:1px solid var(--border-light);border-top:2.2px solid var(--midnight-navy);
+  padding:1.8mm 2.4mm;display:grid;grid-template-columns:1fr 1fr;gap:1.6mm 6mm;}
+.so-party{font-size:6.6pt;color:var(--text-body);}
+.so-party .sp-t{font-family:'Montserrat',sans-serif;font-weight:800;font-size:6.9pt;color:var(--midnight-navy);
+  text-transform:uppercase;letter-spacing:.3px;display:block;margin-bottom:1.2mm;}
+.so-party .row{display:flex;gap:3mm;margin-bottom:1.4mm;}
+.so-party .fld{flex:1;border-bottom:1px dotted var(--text-light);font-family:'Fira Code',monospace;
+  font-size:5.4pt;color:var(--text-light);text-transform:uppercase;letter-spacing:.4px;
+  padding-bottom:.3mm;white-space:nowrap;}
+.doc-end{text-align:center;margin-top:2mm;}
+.doc-end .es{font-family:'Fira Code',monospace;font-size:6.2pt;color:var(--text-light);letter-spacing:1.2px;
+  text-transform:uppercase;}
+</style>
+</head>
+<body class="editing">
+<div class="dl-bar">
+  <div class="dl-brand"><span>JBS PRAXIS — ENGINEERING DOCUMENT</span></div>
+  <button class="dl-btn" id="btnPdf" onclick="generatePDF()">Download PDF</button>
+  <button class="dl-btn alt" id="btnEdit" onclick="toggleEdit()">Edit: ON</button>
+  <span class="dl-status" id="st">Checking fit…</span>
+</div>
+
+<!-- ══════════ PAGE 1 · COVER ══════════ -->
+<div class="page dark">
+  <div class="cover-content" contenteditable="true" spellcheck="true">
+    <div class="cover-logo"><img src="https://i.ibb.co/9mX9TgfJ/JBS-LOGO-ON-GREY.png" alt="JBS Praxis"
+      onerror="this.parentNode.classList.add('lg-fallback');this.remove();"></div>
+    <div class="cover-tag">// COMMERCIAL TERMS — CLIENT APPROVAL</div>
+    <div class="cover-title">
+      <h2>JBS Praxis engineering · for MyCity App</h2>
+      <h1>MyCity App:<br>Commercial Terms<br>&amp; Delivery <span>Timeline</span></h1>
+    </div>
+    <div class="cover-sub">A two-component build drawn directly from the MyCity App Product
+      Requirements (&sect;1&ndash;&sect;23), delivered on the proven Pixie Girl Hub engineering
+      pattern &mdash; one business line, one platform, ten weekly milestones. This document states
+      the scope, the investment, the payment structure, the delivery timetable and the maintenance
+      terms offered for approval.</div>
+    <div class="cstats">
+      <div><div class="k">Investment</div><div class="val">&#8358;4,000,000</div>
+        <div class="note">Ten weekly milestones of &#8358;400,000</div></div>
+      <div><div class="k">Delivery</div><div class="val">10 weeks</div>
+        <div class="note">28 Sep &ndash; 4 Dec 2026 &middot; two releases</div></div>
+      <div><div class="k">Maintenance</div><div class="val">Year 1 free</div>
+        <div class="note">Then from &#8358;300,000 per year</div></div>
+    </div>
+    <div class="cmeta">
+      <div style="grid-column:1/-1;"><div class="k">Prepared for</div><div class="v">Ifeoma &mdash; Chief
+        Executive Officer &middot; Bode &mdash; Chief Technology Officer &middot; Cynthia Osakunih &mdash;
+        Operations Manager &amp; Admin</div></div>
+      <div><div class="k">From</div><div class="v">JBS Praxis engineering</div></div>
+      <div><div class="k">Date</div><div class="v">22 September 2026 &middot; valid 30 days</div></div>
+      <div><div class="k">Reference</div><div class="v">MyCity App Product Requirements &amp;
+        Recommendations (12 pp, &sect;1&ndash;&sect;23, 10 September 2026)</div></div>
+      <div><div class="k">Contents</div><div class="v">Scope &amp; commercial summary &middot; Ten weekly
+        milestones &middot; Maintenance &amp; support &middot; Terms &amp; change control &middot;
+        Acceptance</div></div>
+      <div style="grid-column:1/-1;"><div class="k">Purpose</div><div class="v">A single-page commercial
+        summary and delivery timeline, prepared to the same engineering and branding standard as the
+        Pixie Girl Hub documentation.</div></div>
+    </div>
+  </div>
+  <div class="cfoot"><span>Built by JBS Praxis engineering</span><span class="cfno">Page 01 of 02</span></div>
+</div>
+
+<!-- ══════════ PAGE 2 · COMMERCIAL ONE-PAGER ══════════ -->
+<div class="page">
+  <div class="ph">
+    <span class="lg logo-full"><img src="https://i.ibb.co/kZJNFD4/JBS-LOGO-FULL-COLOUR.png" alt="JBS Praxis"
+      onerror="this.parentNode.classList.add('lg-fallback');this.remove();"></span>
+    <span class="pn">02 / 02</span>
+  </div>
+  <div class="ph-line"></div>
+  <div class="pc" contenteditable="true" spellcheck="true">
+    <h1 class="sec"><span class="sn">//</span> Commercial Terms &amp; Delivery Timeline</h1>
+    <div class="h1b"></div>
+
+    <div class="meta-strip">
+      <span><b>Client</b> MyCity App Ltd &mdash; single business line</span>
+      <span><b>Basis</b> MyCity App Product Requirements &sect;1&ndash;&sect;23</span>
+      <span><b>Investment</b> &#8358;4,000,000 &mdash; ten weekly milestones</span>
+      <span><b>Delivery</b> 10 weeks &middot; 28 Sep &ndash; 4 Dec 2026</span>
+    </div>
+
+    <h2 class="sub">1 &middot; Scope &amp; Commercial Summary</h2>
+    <table class="mst">
+      <thead>
+        <tr><th style="width:11mm;">Ref</th><th style="width:34mm;">Component</th>
+          <th>Included in this phase</th><th style="width:20mm;text-align:right;">Fee (&#8358;)</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="rid">A</td>
+          <td class="cmp">Core Operations &amp; Employee Management</td>
+          <td>Management dashboard configured to MyCity &middot; clock-in/out with <b>location &amp; device
+            validation</b> &middot; attendance history and exception visibility &middot;
+            <b>Employee Self-Service (ESS)</b> records &middot; staff community with department groups.</td>
+          <td class="num">1,750,000</td>
+        </tr>
+        <tr>
+          <td class="rid">B</td>
+          <td class="cmp">Productivity &amp; Performance</td>
+          <td>Tasks across <b>To Do / In Progress / In Review / Done</b> &middot; manager visibility of
+            current, completed, pending and overdue work &middot; retained task history &middot;
+            role-based <b>KPIs, weights and targets</b> &middot; line-manager assessments and review
+            history.</td>
+          <td class="num">1,750,000</td>
+        </tr>
+        <tr>
+          <td class="rid">C</td>
+          <td class="cmp">Platform, integration &amp; training</td>
+          <td>Single-business-line configuration &middot; role-based access and audit trails &middot;
+            configurable notifications &middot; three hands-on training sessions on your live data with
+            user manual &middot; deployment and go-live.</td>
+          <td class="num">500,000</td>
+        </tr>
+        <tr class="tot">
+          <td class="rid">&#931;</td>
+          <td colspan="2">TOTAL PROJECT INVESTMENT &mdash; TEN-WEEK BUILD &nbsp;&middot;&nbsp; 12 months'
+            maintenance included at no charge (&sect;3)</td>
+          <td class="num">4,000,000</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="keyline"><b>Delivery:</b> ten weeks, Monday 28 September to Friday 4 December 2026
+      &middot; <b>Release 1</b> at week 5 (geolocation clock-in) &middot; <b>Release 2</b> and go-live at
+      week 10 &middot; no production releases between 21 December 2026 and 5 January 2027.</div>
+
+    <h2 class="sub">2 &middot; Payment &mdash; Ten Weekly Milestones</h2>
+    <div class="callout"><span class="ct">&#8358;400,000 &times; 10 = &#8358;4,000,000.</span>
+      Each milestone is split <b>&#8358;200,000 on commencement</b> and <b>&#8358;200,000 on written
+      acceptance</b>. The next is released once the previous is accepted; a milestone not accepted
+      within three working days is deemed accepted.</div>
+    <div class="strip">
+      <div class="ms"><div class="msk">M1</div><div class="msn">Discovery &amp; solution confirmation</div><div class="msd">w/c 28 Sep</div></div>
+      <div class="ms"><div class="msk">M2</div><div class="msn">Platform foundation &amp; data model</div><div class="msd">w/c 05 Oct</div></div>
+      <div class="ms"><div class="msk">M3</div><div class="msn">Roles, permissions &amp; audit trails</div><div class="msd">w/c 12 Oct</div></div>
+      <div class="ms"><div class="msk">M4</div><div class="msn">Management dashboard</div><div class="msd">w/c 19 Oct</div></div>
+      <div class="ms rel"><div class="msk">M5</div><div class="msn">Geolocation clock-in &middot; Release 1</div><div class="msd">w/c 26 Oct</div></div>
+      <div class="ms"><div class="msk">M6</div><div class="msn">Attendance history, exceptions &amp; ESS</div><div class="msd">w/c 02 Nov</div></div>
+      <div class="ms"><div class="msk">M7</div><div class="msn">Staff community &amp; announcements</div><div class="msd">w/c 09 Nov</div></div>
+      <div class="ms"><div class="msk">M8</div><div class="msn">Tasks &amp; productivity visibility</div><div class="msd">w/c 16 Nov</div></div>
+      <div class="ms"><div class="msk">M9</div><div class="msn">KPIs, targets &amp; performance reviews</div><div class="msd">w/c 23 Nov</div></div>
+      <div class="ms rel"><div class="msk">M10</div><div class="msn">Training &amp; go-live &middot; Release 2</div><div class="msd">w/c 30 Nov</div></div>
+    </div>
+    <div class="mssum"><span>&#8358;400,000 each &middot; <span class="amt">&#8358;200,000</span>
+      commencement + <span class="amt">&#8358;200,000</span> acceptance</span>
+      <span class="rel">Release 1 &mdash; M5 &nbsp;|&nbsp; Release 2 &mdash; M10</span></div>
+
+    <h2 class="sub">3 &middot; Maintenance &amp; Support</h2>
+    <div class="grid2">
+      <div class="card"><div class="ch"><span>Year 1 &mdash; included</span><span class="price free">&#8358;0</span></div>
+        Defect fixes and bug resolution &middot; security patching and dependency updates &middot; daily
+        backups and uptime monitoring &middot; six support hours per month &middot; email and WhatsApp
+        support channel.</div>
+      <div class="card gold"><div class="ch"><span>From year 2</span><span class="price">&#8358;300,000 / yr</span></div>
+        <b>Essential &#8358;300,000/yr</b> carries the year-one cover above. <b>Growth &#8358;600,000/yr</b>
+        adds 20 support hours per month, four-hour priority response, a monthly performance report and a
+        quarterly roadmap session. Hosting, domain, SMS and third-party fees pass through at cost;
+        reviewed annually, uplift capped at 15%.</div>
+    </div>
+
+    <h2 class="sub">4 &middot; Terms, Change Control &amp; Ownership</h2>
+    <ul class="req">
+      <li><strong>Change control.</strong> Additional or out-of-scope work is captured in a written
+        Change Report, quoted and approved before it starts, and invoiced separately &mdash; it does not
+        consume a milestone.</li>
+      <li><strong>Acceptance.</strong> Three working days per milestone, after which it is deemed
+        accepted. Three revision rounds per milestone included; further rounds by Change Report.</li>
+      <li><strong>Not in this phase.</strong> Recruitment and assessments (&sect;4&ndash;&sect;5), payroll
+        and statutory filings (&sect;6), partnerships CRM (&sect;7), expenses and budget control
+        (&sect;8), the AI assistant (&sect;22), native mobile apps and direct social publishing &mdash;
+        each available as a separate phase or Change Report.</li>
+      <li><strong>Tax &amp; invoicing.</strong> VAT is not currently chargeable: JBS Praxis is below the
+        &#8358;50,000,000 registration threshold under the Nigeria Tax Act 2025, and will apply it if that
+        status changes. Our TIN accompanies the first invoice; withholding tax deducted at source is
+        evidenced and treated as part-payment. Invoices are due within seven working days.</li>
+      <li><strong>Ownership &amp; data.</strong> On final payment MyCity App Ltd owns the delivered
+        custom application and all MyCity data; JBS Praxis retains its underlying reusable frameworks and
+        tooling. MyCity remains the data controller and JBS Praxis the processor under the Nigeria Data
+        Protection Act.</li>
+    </ul>
+
+    <h2 class="sub">5 &middot; Acceptance</h2>
+    <div class="so-band">
+      <div class="so-party"><span class="sp-t">Accepted for MyCity App Ltd</span>
+        <div class="row"><span class="fld">Name</span><span class="fld">Position</span></div>
+        <div class="row"><span class="fld">Signature</span><span class="fld">Date</span></div>
+      </div>
+      <div class="so-party"><span class="sp-t">For JBS Praxis engineering</span>
+        <div class="row"><span class="fld">Name</span><span class="fld">Position</span></div>
+        <div class="row"><span class="fld">Signature</span><span class="fld">Date</span></div>
+      </div>
+    </div>
+    <div class="doc-end">
+      <div class="es">// End of commercial terms &mdash; signature confirms the scope, the ten-milestone payment schedule and the maintenance terms above</div>
+    </div>
+  </div>
+  <div class="pf">
+    <span>Built by JBS Praxis engineering &mdash; MyCity App Commercial Terms</span>
+    <span class="pfno">Page 02 of 02</span>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+/* ---------- WYSIWYG edit mode (JBS Praxis style) ---------- */
+function toggleEdit(){
+  var on = !document.body.classList.contains("editing");
+  document.body.classList.toggle("editing", on);
+  document.querySelectorAll(".pc, .cover-content").forEach(function(el){
+    el.contentEditable = on ? "true" : "false"; el.spellcheck = on;
+  });
+  document.getElementById("btnEdit").textContent = on ? "Edit: ON" : "Edit: OFF";
+  var st = document.getElementById("st");
+  if (on) { st.textContent = "Edit mode — click any text to change it"; st.className = "dl-status"; }
+  else { fitCheck(); }
+}
+/* ---------- page numbering: every page, header + footer (+ cover foot) ---------- */
+var pages = [].slice.call(document.querySelectorAll(".page"));
+function pad(n){ return String(n).length < 2 ? "0"+n : String(n); }
+function numb(){
+  var N = pages.length;
+  pages.forEach(function(p, i){
+    var a = p.querySelector(".pn");   if(a) a.textContent = pad(i+1)+" / "+pad(N);
+    var b = p.querySelector(".pfno"); if(b) b.textContent = "Page "+pad(i+1)+" of "+pad(N);
+    var c = p.querySelector(".cfno"); if(c) c.textContent = "Page "+pad(i+1)+" of "+pad(N);
+  });
+}
+numb();
+/* ---------- A4 fit check: run this after every edit to confirm the one-pager holds ---------- */
+var MM = 3.7795275591; /* px per mm at 96dpi */
+/* Natural content height: briefly release the flex stretch and let the container
+   size to its content, then restore. Accurate for both the content pages and the
+   cover (whose metadata block is pushed down with margin-top:auto), and immune
+   to the decorative cover circles that inflate scrollHeight. */
+function naturalHeight(el){
+  var prevFlex = el.style.flex, prevHeight = el.style.height;
+  el.style.flex = "0 0 auto"; el.style.height = "auto";
+  var used = el.scrollHeight;
+  el.style.flex = prevFlex; el.style.height = prevHeight;
+  return used;
+}
+function fitCheck(){
+  var st = document.getElementById("st");
+  var worst = null;
+  pages.forEach(function(p, i){
+    var box = p.querySelector(".pc") || p.querySelector(".cover-content");
+    if (!box) return;
+    var avail = box.clientHeight;
+    var used  = naturalHeight(box);
+    var fill  = used / avail;
+    if (worst === null || fill > worst.fill) worst = { page:i+1, fill:fill, used:used, avail:avail };
+  });
+  if (!worst) return;
+  var pct = Math.round(worst.fill * 100);
+  if (worst.used > worst.avail + 1) {
+    st.textContent = "OVERFLOW — page " + worst.page + " exceeds A4 by "
+      + ((worst.used - worst.avail) / MM).toFixed(1) + "mm; trim content (fill " + pct + "%)";
+    st.className = "dl-status warn";
+  } else if ((worst.avail - worst.used) / MM < 2.5) {
+    st.textContent = "Nearly full — page " + worst.page + " fill " + pct + "% ("
+      + ((worst.avail - worst.used) / MM).toFixed(1) + "mm spare); edit with care";
+    st.className = "dl-status warn";
+  } else {
+    st.textContent = "Fits A4 — one-pager fill " + pct + "% · "
+      + ((worst.avail - worst.used) / MM).toFixed(1) + "mm spare · ready to export";
+    st.className = "dl-status ok";
+  }
+}
+window.addEventListener("load", function(){ fitCheck(); setTimeout(fitCheck, 600); });
+document.addEventListener("input", function(){
+  clearTimeout(window.__ft); window.__ft = setTimeout(fitCheck, 400);
+});
+/* ---------- PDF export: html2canvas -> jsPDF, sequential, A4 portrait ---------- */
+var jsPDF = (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF : window.jsPDF;
+function renderPDF(list, filename, done){
+  var pdf = new jsPDF("p","mm","a4"); var W = 210; var T = list.length;
+  var st = document.getElementById("st");
+  document.body.classList.add("capturing");
+  var go = function(i){
+    if(i >= T){ pdf.save(filename); document.body.classList.remove("capturing"); done(); return; }
+    st.textContent = "Page "+(i+1)+" of "+T+"...";
+    html2canvas(list[i], {
+      scale: 3, useCORS: true, logging: false,
+      backgroundColor: list[i].classList.contains("dark") ? "#0A1128" : "#FFFFFF"
+    }).then(function(c){
+      var d = c.toDataURL("image/jpeg", 0.97);
+      var h = c.height * W / c.width;
+      if(i > 0) pdf.addPage();
+      pdf.addImage(d, "JPEG", 0, 0, W, Math.min(h, 297));
+      go(i+1);
+    });
+  };
+  setTimeout(function(){ go(0); }, 300);
+}
+function generatePDF(){
+  var btn = document.getElementById("btnPdf");
+  btn.disabled = true; var old = btn.textContent; btn.textContent = "Generating...";
+  document.fonts.ready.then(function(){
+    renderPDF(pages, "JBS-Praxis_MyCity-App_Commercial-Terms-and-Timeline.pdf", function(){
+      btn.disabled = false; btn.textContent = old;
+      document.getElementById("st").textContent = "Downloaded!";
+      setTimeout(fitCheck, 2500);
+    });
+  });
+}
+</script>
+</body>
+</html>

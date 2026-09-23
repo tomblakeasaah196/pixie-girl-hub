@@ -110,11 +110,15 @@ function roundExpr(ngnCol, rate, rounding) {
 
 /** WHERE clause selecting rows with at least one non-null NGN source (the rows a
  *  run would touch), optionally scoped to the active brand for shared tables. */
-function affectedWhere(def, brandParamIdx) {
+function affectedWhere(def, brandParamIdx, brand) {
   const ngnCols = [...new Set(Object.values(def.cols))];
   const anyNotNull = ngnCols.map((c) => `${c} IS NOT NULL`).join(" OR ");
   let w = `(${anyNotNull})`;
   if (def.brandScoped) w += ` AND business = $${brandParamIdx}`;
+  // This wig/global action must not silently reprice each separately-authored
+  // Care SKU. Retail currencies are manually set until explicitly opted in.
+  if (def.key === "variants")
+    w += ` AND product_id IN (SELECT product_id FROM ${brandSchema(brand)}.products WHERE catalogue_role = 'base')`;
   return w;
 }
 
@@ -127,7 +131,7 @@ async function counts({ client, brand }) {
     const params = def.brandScoped ? [brand] : [];
     const { rows } = await run(
       `SELECT count(*)::int AS n FROM ${tableRef(brand, def)}
-        WHERE ${affectedWhere(def, 1)}`,
+        WHERE ${affectedWhere(def, 1, brand)}`,
       params,
     );
     out[def.key] = rows[0].n;
@@ -168,7 +172,7 @@ async function applyAll({ client, brand, rate, rounding }) {
     const usdCols = Object.keys(def.cols);
     // rate is $1; brand (for shared tables) is $2.
     const brandParamIdx = 2;
-    const where = affectedWhere(def, brandParamIdx);
+    const where = affectedWhere(def, brandParamIdx, brand);
     const params = def.brandScoped ? [rate, brand] : [rate];
 
     // 1. Snapshot prior USD values (flattened: { pk, <usd_col>: <prev>, … }).
@@ -179,7 +183,7 @@ async function applyAll({ client, brand, rate, rounding }) {
       `SELECT COALESCE(json_agg(json_build_object(
                 'pk', ${def.pk}::text, ${snapSelect})), '[]'::json) AS rows
          FROM ${ref}
-        WHERE ${affectedWhere(def, 1)}`,
+        WHERE ${affectedWhere(def, 1, brand)}`,
       def.brandScoped ? [brand] : [],
     );
     const rowsSnap = snapRows[0].rows;

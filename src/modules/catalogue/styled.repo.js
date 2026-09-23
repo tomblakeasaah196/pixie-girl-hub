@@ -228,7 +228,8 @@ async function baseProduct({ client, brand, base_product_id }) {
     `SELECT product_id, name, product_code, is_deleted, track_stock,
             preorder_enabled, expected_ready_date, production_lead_days,
             lace_size_codes
-       FROM ${t(brand, "products")} WHERE product_id = $1`,
+       FROM ${t(brand, "products")}
+      WHERE product_id = $1 AND catalogue_role = 'base'`,
     [base_product_id],
   );
   return rows[0] || null;

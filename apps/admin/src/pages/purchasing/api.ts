@@ -137,6 +137,7 @@ export interface PoReceivingPlanLine {
   product_name: string | null;
   variant_name: string | null;
   sku: string | null;
+  catalogue_role: "base" | "retail" | null;
   description: string;
   qty_ordered: number;
   qty_received: number;

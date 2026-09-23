@@ -23,6 +23,7 @@ import { toast } from "@/stores/toast";
 import { toastReport } from "@/lib/error-report";
 import * as purchasingApi from "@/pages/purchasing/api";
 import { BaseProductPicker } from "@/pages/catalogue/BaseProductPicker";
+import { useVaultAccess } from "@/lib/catalogue";
 import { VariantPicker } from "@/components/catalogue/VariantPicker";
 import {
   useInboundShipments,
@@ -136,6 +137,9 @@ function ShipmentStepper({ status }: { status: string }) {
 interface ReceiptLine {
   id: string;
   product_id: string;
+  variant_id?: string;
+  catalogue_role?: "base" | "retail" | null;
+  unit_cost_ngn?: string;
   quantity: string;
   /* Set when the line came from a purchase order. Carrying it through means
      the receipt books itself back against the PO — the ordered quantity comes
@@ -198,6 +202,7 @@ export default function ReceiveTab() {
     page_size: pageSize,
   });
   const locationsQuery = useStockLocations();
+  const vaultAccess = useVaultAccess();
   const mutations = useStockMutations();
 
   const locations = useMemo(
@@ -268,9 +273,12 @@ export default function ReceiveTab() {
             ? due.map((l) => ({
                 id: crypto.randomUUID(),
                 product_id: l.product_id as string,
+                variant_id: l.catalogue_role === "retail" ? l.variant_id ?? undefined : undefined,
+                catalogue_role: l.catalogue_role,
+                unit_cost_ngn: "",
                 quantity: String(l.qty_outstanding),
                 po_line_id: l.line_id,
-                label: l.product_name || l.description,
+                label: l.catalogue_role === "retail" ? `${l.product_name} · ${l.variant_name} (${l.sku})` : l.product_name || l.description,
                 ordered: Number(l.qty_ordered),
                 outstanding: Number(l.qty_outstanding),
               }))
@@ -314,9 +322,13 @@ export default function ReceiveTab() {
     );
 
   const recValidLines = recLines.filter(
-    (l) => l.product_id && Number(l.quantity) > 0,
+    (l) => (l.catalogue_role === "retail" ? !!l.variant_id : !!l.product_id) && Number(l.quantity) > 0,
   );
-  const recCanSubmit = !!recLocationId && recValidLines.length > 0;
+  const recCanSubmit = !!recLocationId && recValidLines.length > 0 &&
+    recValidLines.every((l) => Number.isSafeInteger(Number(l.quantity)) &&
+      (l.outstanding == null || Number(l.quantity) <= l.outstanding) &&
+      (l.catalogue_role !== "retail" || (vaultAccess.data?.can_see === true &&
+        Number(l.unit_cost_ngn) > 0 && Number.isFinite(Number(l.unit_cost_ngn)))));
 
   const handleCreateReception = useCallback(() => {
     if (!recCanSubmit) return;
@@ -327,7 +339,7 @@ export default function ReceiveTab() {
         received_by_name: recReceiver || undefined,
         ...(recPoId ? { purchase_order_id: recPoId } : {}),
         lines: recValidLines.map((l) => ({
-          product_id: l.product_id,
+          ...(l.catalogue_role === "retail" ? { variant_id: l.variant_id, unit_cost_ngn: Number(l.unit_cost_ngn) } : { product_id: l.product_id }),
           quantity: Number(l.quantity),
           ...(l.po_line_id ? { po_line_id: l.po_line_id } : {}),
         })),
@@ -772,8 +784,14 @@ export default function ReceiveTab() {
             <div className="flex items-start gap-2">
               <Info className="w-4 h-4 shrink-0 mt-0.5" />
               <span>
-                Receive <strong>base products</strong> only — no cost is entered
-                here. Unit cost lives in the base-product Cost Vault.
+                {recLines.some((l) => l.catalogue_role === "retail") ? <>
+                  Receive each <strong>Care & Accessories SKU</strong> against the exact PO line;
+                  a positive operational cost and Cost Vault access are required. Uncosted
+                  or mismatched options cannot post.
+                </> : <>
+                  Receive <strong>base products</strong> only — no cost is entered
+                  here. Unit cost lives in the base-product Cost Vault.
+                </>}
               </span>
             </div>
           </InfoBanner>
@@ -800,7 +818,7 @@ export default function ReceiveTab() {
                   <div>
                     {idx === 0 && (
                       <span className="text-[10px] text-text-faint uppercase">
-                        Base Product
+                        {line.catalogue_role === "retail" ? "Exact Care SKU" : "Base Product"}
                       </span>
                     )}
                     {line.po_line_id ? (
@@ -822,6 +840,11 @@ export default function ReceiveTab() {
                         }
                       />
                     )}
+                    {line.catalogue_role === "retail" && <div className="mt-2 space-y-1">
+                      <span className="text-[10px] text-text-faint uppercase">Operational unit cost (NGN) · required</span>
+                      <NumberField value={line.unit_cost_ngn ?? ""} onChange={(v) => updateRecLine(line.id, "unit_cost_ngn", v)} placeholder="0" />
+                      {vaultAccess.data?.can_see !== true && <p className="text-danger text-[11px]">Cost Vault access required to receive Care SKU</p>}
+                    </div>}
                   </div>
                   <div>
                     {idx === 0 && (

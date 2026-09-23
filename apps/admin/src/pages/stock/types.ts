@@ -253,12 +253,16 @@ export interface InboundShipment {
 /** A Goods Reception line — a BASE product + quantity. No cost (Cost Vault
  *  owns it); the server resolves the base product to its default variant. */
 export interface GoodsReceiptLine {
-  product_id: string;
+  product_id?: string; // base product → default SKU (legacy)
+  variant_id?: string; // exact Care SKU, never a guessed default
   quantity: number;
+  unit_cost_ngn?: number; // operational Care receipt cost; Cost Vault authorised
+  po_line_id?: string;
 }
 
 export interface GoodsReceiptInput {
   destination_location_id: string;
+  purchase_order_id?: string;
   received_at?: string;
   received_by_name?: string;
   notes?: string;

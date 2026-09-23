@@ -20,6 +20,11 @@ const usdReprice = require("./usd-reprice.controller");
 const usdRepriceV = require("./usd-reprice.validator");
 const shades = require("./shades.controller");
 const shadesV = require("./shades.validator");
+const care = require("./care-accessories.controller");
+const careV = require("./care-accessories.validator");
+const careGate = require("./care-accessories.gate");
+const productRepo = require("./catalogue.repo");
+const { NotFoundError } = require("../../utils/errors");
 const { config } = require("../../config/env");
 const { requirePermission } = require("../../middleware/rbac");
 
@@ -47,7 +52,31 @@ router.patch(
 );
 router.delete("/categories/:catId", can("delete"), c.archiveCategory);
 
-// Products
+// PXG Care & Accessories (PR 1: staff authoring/stock ONLY). All mutations
+// require the server-side brand allowlist + default-off flag, independently of
+// UI tab visibility. The readiness route lets the admin hide the tab when off.
+router.get("/care-accessories/availability", can("view"), care.availability);
+router.use("/care-accessories", (req, _res, next) => {
+  careGate.requireEnabled(req.brand);
+  next();
+});
+router.get("/care-accessories/categories", can("view"), care.categories);
+router.post("/care-accessories/import", can("create"), careV.validateImport, care.importProducts);
+router.get("/care-accessories/trash", can("view"), care.listTrash);
+router.get("/care-accessories", can("view"), care.list);
+router.post("/care-accessories", can("create"), careV.validateCreate, care.create);
+router.get("/care-accessories/:id", can("view"), care.getOne);
+router.patch("/care-accessories/:id", can("edit"), careV.validateUpdate, care.update);
+router.delete("/care-accessories/:id", can("delete"), care.remove);
+router.post("/care-accessories/:id/restore", can("edit"), care.restore);
+router.post("/care-accessories/:id/clone", can("create"), careV.validateClone, care.clone);
+router.post("/care-accessories/:id/publish", can("approve"), care.publish);
+router.post("/care-accessories/:id/unpublish", can("approve"), careV.validateUnpublish, care.unpublish);
+router.post("/care-accessories/:id/variants", can("create"), careV.validateVariantCreate, care.addVariant);
+router.patch("/care-accessories/:id/variants/:variantId", can("edit"), careV.validateVariantUpdate, care.updateVariant);
+router.delete("/care-accessories/:id/variants/:variantId", can("edit"), care.deactivateVariant);
+
+// Products — legacy endpoints stay hair-base-only, including clone/import.
 router.get("/products", can("view"), c.listProducts);
 router.post(
   "/products",
@@ -74,6 +103,17 @@ router.post(
 // Trash bin — soft-deleted products available to restore. Literal segment
 // declared before :id so it is never shadowed by the param route.
 router.get("/products/trash", can("view"), c.listTrash);
+// Shared media/Cost Vault URLs are also used by the new editor. No guessed
+// retail product ID may bypass the PXG gate through an old /products/:id path.
+router.use("/products/:id", (req, _res, next) => {
+  productRepo.findProductById({ brand: req.brand, id: req.params.id })
+    .then((p) => {
+      if (!p) throw new NotFoundError("Product");
+      if (p.catalogue_role === "retail") careGate.requireEnabled(req.brand);
+      next();
+    })
+    .catch(next);
+});
 router.get("/products/:id", can("view"), c.getProduct);
 router.patch(
   "/products/:id",

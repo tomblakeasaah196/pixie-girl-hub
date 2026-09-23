@@ -56,7 +56,7 @@ const slugify = (s) =>
 async function referenceLists(brand) {
   const [bases, collections, bundles, sizes, lace, shades] = await Promise.all([
     query(
-      `SELECT name FROM ${t(brand, "products")} WHERE is_deleted = false ORDER BY name`,
+      `SELECT name FROM ${t(brand, "products")} WHERE is_deleted = false AND catalogue_role = 'base' ORDER BY name`,
     ),
     query(
       `SELECT name FROM ${t(brand, "product_collections")} WHERE is_active = true ORDER BY name`,
@@ -308,7 +308,7 @@ async function importStyled({ brand, user, request_id, buffer }) {
 
   // Resolve names → ids once.
   const baseRes = await query(
-    `SELECT product_id, name FROM ${t(brand, "products")} WHERE is_deleted = false`,
+    `SELECT product_id, name FROM ${t(brand, "products")} WHERE is_deleted = false AND catalogue_role = 'base'`,
   );
   const baseByName = nameIndex(baseRes.rows, "name");
   const colRes = await query(

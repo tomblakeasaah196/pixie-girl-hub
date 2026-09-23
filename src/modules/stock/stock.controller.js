@@ -304,8 +304,22 @@ async function importCount(req, res) {
     data: await service.importCount({
       brand: req.brand,
       user: req.user,
-      request_id: req.id,
+      request_id: req.request_id,
       input: req.body,
+    }),
+  });
+}
+
+async function listCareSkus(req, res) {
+  res.json({ data: await service.listCareSkus({
+    brand: req.brand, location_id: req.query.location_id,
+  }) });
+}
+
+async function importCareCount(req, res) {
+  res.json({
+    data: await service.importCareCount({
+      brand: req.brand, user: req.user, request_id: req.request_id, input: req.body,
     }),
   });
 }
@@ -344,6 +358,8 @@ module.exports = {
   createShipment,
   createGoodsReceipt,
   importCount,
+  importCareCount,
+  listCareSkus,
   updateShipmentStatus,
   receiveShipment,
 };

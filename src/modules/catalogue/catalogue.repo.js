@@ -20,18 +20,29 @@ const JSONB = new Set(["channel_external_ids", "channel_sync_state"]);
  * never disagree. Bases are the only stock-bearing register (no rewig/seed-
  * base resolution needed here — that's styled-product fulfilment logic).
  */
-function baseStockSql(brand, { productAlias, variantAlias } = {}) {
+function baseStockSql(brand, { productAlias, variantAlias, includeOnHand = false } = {}) {
   const where = variantAlias
     ? `sl.variant_id = ${variantAlias}.variant_id`
     : `pv.product_id = ${productAlias}.product_id AND pv.is_active = true`;
   const join = variantAlias
     ? ""
     : `JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sl.variant_id`;
-  return `(SELECT COALESCE(SUM(sl.available), 0)::int
+  const available = `(SELECT COALESCE(SUM(sl.available), 0)::int
              FROM ${t(brand, "stock_levels")} sl
              ${join}
             WHERE ${where}
               AND ${sellableLocation(brand, "sl")}) AS stock_available`;
+  // Care admin detail needs the physical shelf total across locations, not
+  // only sellable availability. Opt in to avoid extra queries for base/public.
+  if (!includeOnHand) return available;
+  const physicalWhere = variantAlias
+    ? `sl.variant_id = ${variantAlias}.variant_id`
+    : `pv.product_id = ${productAlias}.product_id`;
+  return `${available},
+          (SELECT COALESCE(SUM(sl.on_hand), 0)::int
+             FROM ${t(brand, "stock_levels")} sl
+             ${join}
+            WHERE ${physicalWhere}) AS stock_on_hand`;
 }
 
 const CAT_COLS = [
@@ -219,24 +230,33 @@ async function findAllProducts({
   page_size = 25,
   offset = 0,
 }) {
-  const where = ["is_deleted = false"];
-  const params = [];
-  let i = 1;
+  // Base is the default for EVERY historical picker/import/wig workflow.
+  // Only the dedicated PXG Care & Accessories service opts into retail.
+  const where = ["p.is_deleted = false", "p.catalogue_role = $1"];
+  const params = [filters.catalogue_role === "retail" ? "retail" : "base"];
+  let i = 2;
   if (filters.category_id) {
-    where.push(`category_id = $${i++}`);
+    where.push(`p.category_id = $${i++}`);
     params.push(filters.category_id);
   }
   if (filters.product_type) {
     where.push(`product_type = $${i++}`);
     params.push(filters.product_type);
   }
+  if (filters.retail_status && filters.catalogue_role === "retail") {
+    where.push(`p.retail_status = $${i++}`);
+    params.push(filters.retail_status);
+  }
   if (filters.visible !== undefined) {
-    where.push(`is_visible_storefront = $${i++}`);
+    where.push(`p.is_visible_storefront = $${i++}`);
     params.push(filters.visible);
   }
   if (filters.q) {
     where.push(
-      `(name ILIKE $${i} OR product_code ILIKE $${i} OR slug ILIKE $${i})`,
+      `(p.name ILIKE $${i} OR p.product_code ILIKE $${i} OR p.slug ILIKE $${i}
+         OR EXISTS (SELECT 1 FROM ${t(brand, "product_variants")} pvq
+                     WHERE pvq.product_id = p.product_id
+                       AND (pvq.sku ILIKE $${i} OR pvq.barcode ILIKE $${i})))`,
     );
     params.push(`%${filters.q}%`);
     i++;
@@ -244,16 +264,18 @@ async function findAllProducts({
   const w = `WHERE ${where.join(" AND ")}`;
   const run = ex(client);
   const { rows: c } = await run(
-    `SELECT COUNT(*)::int AS total FROM ${t(brand, "products")} ${w}`,
+    `SELECT COUNT(*)::int AS total FROM ${t(brand, "products")} p ${w}`,
     params,
   );
   const { rows } = await run(
-    `SELECT p.*,
+    `SELECT p.*, cat.name AS category_name,
             (SELECT pi.cdn_url FROM ${t(brand, "product_images")} pi
               WHERE pi.product_id = p.product_id
               ORDER BY pi.is_primary DESC, pi.display_order LIMIT 1) AS primary_image_url,
-            ${baseStockSql(brand, { productAlias: "p" })}
-       FROM ${t(brand, "products")} p ${w}
+            ${baseStockSql(brand, { productAlias: "p", includeOnHand: filters.catalogue_role === "retail" })}
+       FROM ${t(brand, "products")} p
+       LEFT JOIN ${t(brand, "product_categories")} cat ON cat.category_id = p.category_id
+       ${w}
       ORDER BY p.created_at DESC LIMIT $${i++} OFFSET $${i++}`,
     [...params, page_size, offset],
   );
@@ -267,9 +289,9 @@ async function findAllProducts({
     },
   };
 }
-async function findProductById({ client, brand, id }) {
+async function findProductById({ client, brand, id, includeOnHand = false }) {
   const { rows } = await ex(client)(
-    `SELECT p.*, ${baseStockSql(brand, { productAlias: "p" })}
+    `SELECT p.*, ${baseStockSql(brand, { productAlias: "p", includeOnHand })}
        FROM ${t(brand, "products")} p
       WHERE p.product_id = $1 AND p.is_deleted = false`,
     [id],
@@ -281,7 +303,7 @@ async function findProductById({ client, brand, id }) {
 async function findProductByName({ client, brand, name }) {
   const { rows } = await ex(client)(
     `SELECT * FROM ${t(brand, "products")}
-      WHERE lower(name) = lower($1) AND is_deleted = false
+      WHERE lower(name) = lower($1) AND is_deleted = false AND catalogue_role = 'base'
       ORDER BY created_at ASC LIMIT 1`,
     [name],
   );
@@ -317,14 +339,14 @@ async function updateProduct({ client, brand, id, patch }) {
   if (!f.length) return findProductById({ client, brand, id });
   p.push(id);
   const { rows } = await ex(client)(
-    `UPDATE ${t(brand, "products")} SET ${f.join(",")} WHERE product_id = $${next} AND is_deleted = false RETURNING *`,
+    `UPDATE ${t(brand, "products")} SET ${f.join(",")} WHERE product_id = $${next} AND is_deleted = false AND catalogue_role = 'base' RETURNING *`,
     p,
   );
   return rows[0] || null;
 }
 async function softDeleteProduct({ client, brand, id }) {
   const { rowCount } = await ex(client)(
-    `UPDATE ${t(brand, "products")} SET is_deleted = true, deleted_at = now() WHERE product_id = $1 AND is_deleted = false`,
+    `UPDATE ${t(brand, "products")} SET is_deleted = true, deleted_at = now() WHERE product_id = $1 AND is_deleted = false AND catalogue_role = 'base'`,
     [id],
   );
   return rowCount > 0;
@@ -339,10 +361,10 @@ async function listTrashedProducts({
 }) {
   const run = ex(client);
   const { rows: c } = await run(
-    `SELECT COUNT(*)::int AS total FROM ${t(brand, "products")} WHERE is_deleted = true`,
+    `SELECT COUNT(*)::int AS total FROM ${t(brand, "products")} WHERE is_deleted = true AND catalogue_role = 'base'`,
   );
   const { rows } = await run(
-    `SELECT * FROM ${t(brand, "products")} WHERE is_deleted = true
+    `SELECT * FROM ${t(brand, "products")} WHERE is_deleted = true AND catalogue_role = 'base'
       ORDER BY deleted_at DESC NULLS LAST LIMIT $1 OFFSET $2`,
     [page_size, offset],
   );
@@ -358,7 +380,7 @@ async function listTrashedProducts({
 }
 async function getTrashedProductById({ client, brand, id }) {
   const { rows } = await ex(client)(
-    `SELECT * FROM ${t(brand, "products")} WHERE product_id = $1 AND is_deleted = true`,
+    `SELECT * FROM ${t(brand, "products")} WHERE product_id = $1 AND is_deleted = true AND catalogue_role = 'base'`,
     [id],
   );
   return rows[0] || null;
@@ -368,16 +390,16 @@ async function restoreProduct({ client, brand, id, slug, product_code }) {
     `UPDATE ${t(brand, "products")}
         SET is_deleted = false, deleted_at = null,
             slug = COALESCE($2, slug), product_code = COALESCE($3, product_code)
-      WHERE product_id = $1 AND is_deleted = true RETURNING *`,
+      WHERE product_id = $1 AND is_deleted = true AND catalogue_role = 'base' RETURNING *`,
     [id, slug || null, product_code || null],
   );
   return rows[0] || null;
 }
 
 // ── Variants ─────────────────────────────────────────────
-async function listVariants({ client, brand, product_id }) {
+async function listVariants({ client, brand, product_id, includeOnHand = false }) {
   const { rows } = await ex(client)(
-    `SELECT pv.*, ${baseStockSql(brand, { variantAlias: "pv" })}
+    `SELECT pv.*, ${baseStockSql(brand, { variantAlias: "pv", includeOnHand })}
        FROM ${t(brand, "product_variants")} pv
       WHERE pv.product_id = $1
       ORDER BY pv.display_order, pv.variant_name`,

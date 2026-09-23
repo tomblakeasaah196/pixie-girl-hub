@@ -110,6 +110,10 @@ const BaseProductPage = lazyNamed(
   () => import("@/pages/catalogue/BaseProductPage"),
   "BaseProductPage",
 );
+const CareProductPage = lazyNamed(
+  () => import("@/pages/catalogue/CareProductPage"),
+  "CareProductPage",
+);
 const StyledProductPage = lazyNamed(
   () => import("@/pages/catalogue/StyledProductPage"),
   "StyledProductPage",
@@ -672,6 +676,7 @@ export const router = createBrowserRouter(
             // bundles. Detail/create live on their own routes.
             { path: "catalogue", element: <CataloguePage /> },
             { path: "catalogue/base/:id", element: <BaseProductPage /> },
+            { path: "catalogue/care/:id", element: <CareProductPage /> },
             { path: "catalogue/styled/:id", element: <StyledProductPage /> },
 
             // Workspace (Tasks + Calendar + My Day)

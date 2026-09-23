@@ -38,6 +38,11 @@ jest.mock("../../../src/modules/stock/stock.repo", () => ({
   defaultVariantForProduct: jest.fn(async ({ product_id }) =>
     product_id === "prod-1" ? { variant_id: "var-1" } : null,
   ),
+  // PO authoring now checks that even an auto-selected base variant is active;
+  // the old fixture omitted this newer repository lookup entirely.
+  variantForIntake: jest.fn(async ({ variant_id }) => ({
+    variant_id, product_id: "prod-1", is_active: true, is_deleted: false, catalogue_role: "base",
+  })),
 }));
 jest.mock("../../../src/modules/purchasing/purchasing.repo", () => ({
   nextNumber: jest.fn(async () => "FLH-PO-0001"),

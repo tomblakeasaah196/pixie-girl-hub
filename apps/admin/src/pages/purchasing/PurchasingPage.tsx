@@ -46,6 +46,7 @@ import {
   useStockLocationOptions,
 } from "./hooks";
 import { ProductPicker } from "@/components/catalogue/ProductPicker";
+import { useCareAvailability, useCareProducts, useCareProduct } from "@/lib/care-accessories";
 import {
   PO_STATUS_META,
   PO_NEXT_STATES,
@@ -752,6 +753,7 @@ const PO_CURRENCIES = ["CNY", "USD", "NGN", "GBP", "EUR"];
 
 interface PoLineDraft {
   product_id?: string;
+  variant_id?: string; // Care: exact option SKU, never a guessed product default
   product_label?: string;
   description: string;
   qty: string;
@@ -784,6 +786,7 @@ const EMPTY_LINE: PoLineDraft = {
  *  them, and losing what was specified to the factory would be worse than
  *  putting it in text the supplier can read on the printed PO. */
 function attributeNote(l: PoLineDraft): string | undefined {
+  if (l.variant_id) return undefined; // a bottle/comb has no wig attributes
   const bits = [
     l.lace_type && `Lace: ${l.lace_type}`,
     l.hair_texture && `Texture: ${l.hair_texture}`,
@@ -805,6 +808,7 @@ function CreatePoDrawer({
 }) {
   const { data: suppliers } = useSuppliers();
   const { data: locations } = useStockLocationOptions();
+  const careOn = useCareAvailability().data?.enabled === true;
   const create = useCreatePo();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [supplierId, setSupplierId] = useState("");
@@ -833,7 +837,7 @@ function CreatePoDrawer({
     setLines((p) => {
       const kept = p.filter(
         (l) =>
-          l.product_id ||
+          l.product_id || l.variant_id ||
           l.description.trim() ||
           l.unit_price.trim() ||
           l.qty !== "1",
@@ -891,7 +895,7 @@ function CreatePoDrawer({
         ...(locationId ? { delivery_location_id: locationId } : {}),
         ...(expected ? { expected_delivery: expected } : {}),
         lines: lines.map((l) => ({
-          ...(l.product_id ? { product_id: l.product_id } : {}),
+          ...(l.variant_id ? { variant_id: l.variant_id } : l.product_id ? { product_id: l.product_id } : {}),
           description: l.description.trim(),
           qty_ordered: Number(l.qty) || 1,
           unit_price: Number(l.unit_price) || 0,
@@ -1110,38 +1114,34 @@ function CreatePoDrawer({
               {/* Pick the base product being bought — this is what makes the
                   line receivable into stock without re-keying. */}
               <Field label="Base product">
-                {line.product_id ? (
+                {line.product_id || line.variant_id ? (
                   <div className="flex items-center justify-between gap-2 h-[38px] px-[11px] rounded-[10px] bg-accent/[0.07] border border-accent/30">
                     <span className="text-[13px] text-text-primary truncate">
                       {line.product_label}
                     </span>
                     <button
-                      onClick={() => {
-                        setLineF(i, "product_id", "");
-                        setLineF(i, "product_label", "");
-                      }}
+                      onClick={() => setLines((prev) => prev.map((l, j) => i === j ? { ...l, product_id: "", variant_id: "", product_label: "" } : l))}
                       className="text-[11px] text-text-muted hover:text-danger shrink-0"
                     >
                       Change
                     </button>
                   </div>
                 ) : (
-                  <ProductPicker
-                    onPick={(hit) => {
-                      setLines((p) =>
-                        p.map((l, j) =>
-                          j === i
-                            ? {
-                                ...l,
-                                product_id: hit.id,
-                                product_label: hit.label,
-                                description: l.description || hit.label,
-                              }
-                            : l,
-                        ),
-                      );
-                    }}
-                  />
+                  <div className="space-y-2">
+                    <ProductPicker
+                      onPick={(hit) => {
+                        setLines((p) =>
+                          p.map((l, j) =>
+                            j === i ? { ...l, product_id: hit.id, variant_id: "", product_label: hit.label, description: l.description || hit.label } : l,
+                          ),
+                        );
+                      }}
+                    />
+                    {careOn && <CarePoSkuPicker onPick={(id, label) => setLines((prev) => prev.map((l, j) => j === i ? {
+                      ...l, product_id: "", variant_id: id, product_label: label,
+                      description: l.description || label, manufacturing_location: "", expanded: false,
+                    } : l))} />}
+                  </div>
                 )}
               </Field>
 
@@ -1180,7 +1180,7 @@ function CreatePoDrawer({
                 </Field>
               </div>
 
-              <button
+              {!line.variant_id && <button
                 onClick={() => toggleLineExpand(i)}
                 className="flex items-center gap-1.5 text-[11px] text-accent-glow font-semibold"
               >
@@ -1190,9 +1190,9 @@ function CreatePoDrawer({
                   <ChevronRight className="w-3 h-3" />
                 )}
                 Wig attributes (optional)
-              </button>
+              </button>}
 
-              {line.expanded && (
+              {!line.variant_id && line.expanded && (
                 <div className="grid grid-cols-2 gap-3 pt-1 border-t hairline">
                   {[
                     {
@@ -1297,7 +1297,7 @@ function CreatePoDrawer({
               >
                 <span className="text-text-muted truncate mr-3">
                   {l.description}
-                  {!l.product_id && (
+                  {!l.product_id && !l.variant_id && (
                     <span className="text-[11px] text-warn ml-2">
                       not stock-linked
                     </span>
@@ -1316,7 +1316,7 @@ function CreatePoDrawer({
               </span>
             </div>
           </div>
-          {lines.some((l) => !l.product_id) && (
+          {lines.some((l) => !l.product_id && !l.variant_id) && (
             <p className="text-[12px] text-text-muted">
               Lines without a base product can&rsquo;t be received straight into
               stock — you&rsquo;ll pick the product when the goods arrive.
@@ -1327,6 +1327,31 @@ function CreatePoDrawer({
       )}
     </Drawer>
   );
+}
+
+/** PXG purchasing picks an exact SKU before ordering, never a default wig
+ * variant. The server checks brand, role and SKU again when the PO is saved. */
+function CarePoSkuPicker({ onPick }: { onPick: (variantId: string, label: string) => void }) {
+  const [search, setSearch] = useState("");
+  const [productId, setProductId] = useState<string | null>(null);
+  const results = useCareProducts({ q: search || undefined, page_size: 12 });
+  const item = useCareProduct(productId);
+  return <div className="space-y-2 rounded-[10px] border border-line p-3 text-[12px]">
+    <label className="font-semibold text-accent-glow block">Or order a Care & Accessories SKU</label>
+    <input className="w-full h-9 px-3 rounded-[10px] bg-text-primary/[0.04] border border-line text-text-primary"
+      placeholder="Search item name / code / SKU" value={search} onChange={(e) => { setSearch(e.target.value); setProductId(null); }} />
+    {search && !productId && <div className="max-h-36 overflow-y-auto space-y-1">
+      {results.isLoading ? "Searching…" : results.isError ? "Could not search Care items" :
+        (results.data?.data ?? []).length ? (results.data?.data ?? []).map((p) => <button type="button" key={p.product_id} className="w-full text-left py-1 hover:text-accent-glow"
+          onClick={() => setProductId(p.product_id)}>{p.name} · {p.product_code}</button>) : "No exact Care item found"}
+    </div>}
+    {productId && <div className="space-y-1 max-h-36 overflow-y-auto">
+      <div className="text-text-muted">Choose the exact option to order:</div>
+      {item.isLoading ? "Loading options…" : item.isError ? "Could not load SKUs" : (item.data?.variants ?? []).filter((v) => v.is_active).map((v) => <button type="button" key={v.variant_id}
+        className="w-full text-left py-1 font-mono hover:text-accent-glow"
+        onClick={() => onPick(v.variant_id, `${item.data?.name} · ${v.variant_name} (${v.sku})`)}>{v.variant_name} · {v.sku}</button>)}
+    </div>}
+  </div>;
 }
 
 // ── Suppliers Tab ─────────────────────────────────────────

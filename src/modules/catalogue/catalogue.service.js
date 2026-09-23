@@ -7,6 +7,8 @@
 "use strict";
 
 const repo = require("./catalogue.repo");
+const careRepo = require("./care-accessories.repo");
+const careGate = require("./care-accessories.gate");
 const vault = require("./cost_vault.service");
 const events = require("./catalogue.events");
 const outbox = require("../../shared/outbox/outbox");
@@ -134,7 +136,7 @@ async function listProducts({ brand, filters, page, page_size }) {
 }
 async function getProduct({ brand, id, user }) {
   const p = await repo.findProductById({ brand, id });
-  if (!p) throw new NotFoundError("Product");
+  if (!p || p.catalogue_role !== "base") throw new NotFoundError("Base product");
   const variants = await repo.listVariants({ brand, product_id: id });
   // Cost columns are stripped unless the caller holds vault access; a
   // missing/undefined user fails closed (no cost). See cost_vault.service.
@@ -317,7 +319,8 @@ async function createBaseProducts({ brand, user, request_id, input }) {
  *  for cloning. */
 async function loadCloneSource(client, brand, id) {
   const src = await repo.findProductById({ client, brand, id });
-  if (!src || src.is_deleted) throw new NotFoundError("Base product");
+  if (!src || src.is_deleted || src.catalogue_role !== "base")
+    throw new NotFoundError("Base product");
   const srcVariant = await repo.getDefaultVariant({ client, brand, product_id: id });
   const fields = {};
   for (const c of CLONE_PROD_FIELDS) {
@@ -672,7 +675,7 @@ async function resolveCategoryId(client, brand, name, user) {
 }
 async function updateProduct({ brand, user, request_id, id, patch }) {
   const before = await repo.findProductById({ brand, id });
-  if (!before) throw new NotFoundError("Product");
+  if (!before || before.catalogue_role !== "base") throw new NotFoundError("Base product");
   // Never allow an update to publish a base product to the storefront.
   const p = await repo.updateProduct({
     brand,
@@ -759,7 +762,8 @@ async function restoreProduct({ brand, user, request_id, id }) {
 // ── Variants ─────────────────────────────────────────────
 async function listVariants({ brand, id, user }) {
   const exists = await repo.findProductById({ brand, id });
-  if (!exists) throw new NotFoundError("Product");
+  if (!exists || exists.catalogue_role !== "base")
+    throw new NotFoundError("Base product");
   const variants = await repo.listVariants({ brand, product_id: id });
   const visible = await vault.canSeeCost({ user, brand });
   return vault.redactVariants(variants, visible);
@@ -767,7 +771,8 @@ async function listVariants({ brand, id, user }) {
 async function addVariant({ brand, user, request_id, id, input }) {
   const created = await transaction(async (client) => {
     const product = await repo.findProductById({ client, brand, id });
-    if (!product) throw new NotFoundError("Product");
+    if (!product || product.catalogue_role !== "base")
+      throw new NotFoundError("Base product");
     const v = await repo.createVariant({
       client,
       brand,
@@ -817,6 +822,9 @@ async function updateVariant({
   variant_id,
   patch,
 }) {
+  const product = await repo.findProductById({ brand, id });
+  if (!product || product.catalogue_role !== "base")
+    throw new NotFoundError("Base product");
   const before = await repo.getVariant({ brand, product_id: id, variant_id });
   if (!before) throw new NotFoundError("Variant");
   const v = await repo.updateVariant({
@@ -840,6 +848,9 @@ async function updateVariant({
   return vault.redactVariant(v, visible);
 }
 async function removeVariant({ brand, user, request_id, id, variant_id }) {
+  const product = await repo.findProductById({ brand, id });
+  if (!product || product.catalogue_role !== "base")
+    throw new NotFoundError("Base product");
   const ok = await repo.deactivateVariant({
     brand,
     product_id: id,
@@ -995,12 +1006,17 @@ async function removeCollectionMember({
 
 // ── Images (every file routes through the Documents gateway, §6.13) ──
 async function listImages({ brand, id }) {
-  await getProduct({ brand, id });
+  const p = await repo.findProductById({ brand, id });
+  if (!p) throw new NotFoundError("Product");
+  if (p.catalogue_role === "retail") careGate.requireEnabled(brand);
   return repo.listImages({ brand, product_id: id });
 }
 async function addImage({ brand, user, request_id, id, file, meta }) {
   const product = await repo.findProductById({ brand, id });
   if (!product) throw new NotFoundError("Product");
+  if (meta.variant_id && !(await repo.getVariant({
+    brand, product_id: id, variant_id: meta.variant_id,
+  }))) throw new AppError("INVALID_IMAGE_VARIANT", "Image SKU must belong to this product", 422);
   // Re-encode oversized/heavy images to high-quality, smaller bytes (and
   // convert HEIC → JPEG) before they hit storage — keeps galleries crisp
   // without bloating the CDN. Size is gated on both sides of compression;
@@ -1036,6 +1052,8 @@ async function addImage({ brand, user, request_id, id, file, meta }) {
         uploaded_by: user.user_id,
       },
     });
+    if (product.catalogue_role === "retail")
+      await careRepo.syncPrimaryImage({ client, brand, id });
     await A(
       brand,
       user.user_id,
@@ -1112,36 +1130,30 @@ async function imageCutout({ file }) {
 }
 
 async function updateImage({ brand, user, request_id, id, image_id, patch }) {
-  const img = await repo.updateImage({
-    brand,
-    product_id: id,
-    image_id,
-    patch,
+  return transaction(async (client) => {
+    const product = await repo.findProductById({ client, brand, id });
+    if (!product) throw new NotFoundError("Product");
+    if (patch.variant_id && !(await repo.getVariant({
+      client, brand, product_id: id, variant_id: patch.variant_id,
+    }))) throw new AppError("INVALID_IMAGE_VARIANT", "Image SKU must belong to this product", 422);
+    const img = await repo.updateImage({ client, brand, product_id: id, image_id, patch });
+    if (!img) throw new NotFoundError("Image");
+    if (product.catalogue_role === "retail")
+      await careRepo.syncPrimaryImage({ client, brand, id });
+    await A(brand, user.user_id, "catalogue.image.update", "product_image", image_id, img, request_id);
+    return img;
   });
-  if (!img) throw new NotFoundError("Image");
-  await A(
-    brand,
-    user.user_id,
-    "catalogue.image.update",
-    "product_image",
-    image_id,
-    img,
-    request_id,
-  );
-  return img;
 }
 async function removeImage({ brand, user, request_id, id, image_id }) {
-  const ok = await repo.removeImage({ brand, product_id: id, image_id });
-  if (!ok) throw new NotFoundError("Image");
-  await A(
-    brand,
-    user.user_id,
-    "catalogue.image.remove",
-    "product_image",
-    image_id,
-    null,
-    request_id,
-  );
+  return transaction(async (client) => {
+    const product = await repo.findProductById({ client, brand, id });
+    if (!product) throw new NotFoundError("Product");
+    const ok = await repo.removeImage({ client, brand, product_id: id, image_id });
+    if (!ok) throw new NotFoundError("Image");
+    if (product.catalogue_role === "retail")
+      await careRepo.syncPrimaryImage({ client, brand, id });
+    await A(brand, user.user_id, "catalogue.image.remove", "product_image", image_id, null, request_id);
+  });
 }
 
 // ── Videos (embed; direct_upload also goes through Documents) ──

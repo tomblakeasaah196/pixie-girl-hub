@@ -537,7 +537,7 @@ async function outstandingPoLines({ client, brand, po_id }) {
     `SELECT l.line_id, l.po_id, l.variant_id, l.description, l.supplier_sku,
             l.qty_ordered, l.qty_received, l.qty_rejected, l.qty_outstanding,
             pv.sku, pv.variant_name, pv.product_id,
-            p.name AS product_name
+            p.name AS product_name, p.catalogue_role
        FROM ${t(brand, "po_lines")} l
        LEFT JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = l.variant_id
        LEFT JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id

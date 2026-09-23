@@ -20,10 +20,15 @@ const events = require("./purchasing.events");
 const accounting = require("../accounting/accounting.service");
 const { ACCOUNTS } = require("../accounting/posting-map");
 const stock = require("../stock/stock.service");
+const stockRepo = require("../stock/stock.repo");
+const careGate = require("../catalogue/care-accessories.gate");
+const vault = require("../catalogue/cost_vault.service");
 const {
   NotFoundError,
   ConflictError,
   ValidationError,
+  AppError,
+  PermissionDeniedError,
 } = require("../../utils/errors");
 
 const PRICE_TOLERANCE_NGN = money("1.00"); // accept ≤ ₦1 rounding drift on price match
@@ -46,6 +51,37 @@ const A = (
     request_id,
   });
 
+// Purchasing has its OWN receipt path (GRNs) besides Stock → Goods Reception.
+// Verify the exact PO SKU and cost here too; otherwise a forged GRN could
+// bypass the stock intake permission check while still posting a movement.
+async function assertCareGrnLine({ client, brand, user, po_id, line, totals }) {
+  const poLine = await stockRepo.poLineForReceipt({
+    client, brand, po_id, po_line_id: line.po_line_id,
+  });
+  if (!poLine) throw new AppError("INVALID_PO_LINE", "GRN line must belong to this purchase order", 422);
+  const v = line.variant_id
+    ? await stockRepo.variantForIntake({ client, brand, variant_id: line.variant_id })
+    : null;
+  const ordered = poLine.variant_id
+    ? await stockRepo.variantForIntake({ client, brand, variant_id: poLine.variant_id })
+    : null;
+  if (v?.catalogue_role !== "retail" && ordered?.catalogue_role !== "retail") return;
+  careGate.requireEnabled(brand);
+  if (!v || v.catalogue_role !== "retail" || v.variant_id !== poLine.variant_id ||
+      v.is_deleted || !v.is_active || !v.track_stock)
+    throw new AppError("PO_SKU_MISMATCH", "GRN must specify the active Care SKU ordered on this PO line", 422);
+  if (!(await vault.canSeeCost({ client, user, brand })))
+    throw new PermissionDeniedError("A Care GRN requires Cost Vault access");
+  const prior = totals.get(line.po_line_id) ||
+    { sum: 0, outstanding: Number(poLine.qty_outstanding) };
+  const total = prior.sum + Number(line.qty_received || 0) + Number(line.qty_rejected || 0);
+  totals.set(line.po_line_id, { ...prior, sum: total });
+  if (total > prior.outstanding)
+    throw new AppError("PO_OVER_RECEIPT", "Care GRN exceeds this SKU's outstanding PO quantity", 422);
+  if (Number(line.qty_received) > 0 && !(Number(line.unit_cost_ngn) > 0))
+    throw new AppError("COST_REQUIRED", "Enter positive operational cost for the exact Care SKU", 422);
+}
+
 // ── Goods received notes ─────────────────────────────────
 async function createGrn({ brand, user, request_id, input }) {
   if (!input.lines || input.lines.length === 0)
@@ -56,7 +92,9 @@ async function createGrn({ brand, user, request_id, input }) {
     let expected = 0,
       received = 0,
       rejected = 0;
+    const careTotals = new Map();
     for (const l of input.lines) {
+      await assertCareGrnLine({ client, brand, user, po_id: input.po_id, line: l, totals: careTotals });
       expected += Number(l.qty_expected || 0);
       received += Number(l.qty_received || 0);
       rejected += Number(l.qty_rejected || 0);
@@ -129,7 +167,9 @@ async function postGrn({ brand, user, request_id, id }) {
     const po = await repo.getPo({ client, brand, id: grn.po_id });
     if (!po) throw new NotFoundError("Purchase order not found");
 
+    const careTotals = new Map();
     for (const line of grn.lines) {
+      await assertCareGrnLine({ client, brand, user, po_id: grn.po_id, line, totals: careTotals });
       if (Number(line.qty_received) > 0 && line.variant_id) {
         await stock.receiveStock({
           client,

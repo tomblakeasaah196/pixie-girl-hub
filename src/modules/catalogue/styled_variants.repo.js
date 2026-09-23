@@ -188,7 +188,7 @@ async function listTrashedLace({ client, brand }) {
 async function findBaseByName({ client, brand, name }) {
   const { rows } = await ex(client)(
     `SELECT product_id, name FROM ${t(brand, "products")}
-      WHERE lower(name) = lower($1) AND is_deleted = false LIMIT 1`,
+      WHERE lower(name) = lower($1) AND is_deleted = false AND catalogue_role = 'base' LIMIT 1`,
     [name],
   );
   return rows[0] || null;

@@ -15,9 +15,12 @@ const events = require("./stock.events");
 const costing = require("./stock.costing");
 const countSheet = require("./stock.count-sheet");
 const countPlan = require("./stock.count-plan");
+const careCount = require("./stock.care-count");
+const careGate = require("../catalogue/care-accessories.gate");
+const vault = require("../catalogue/cost_vault.service");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
-const { NotFoundError, AppError } = require("../../utils/errors");
+const { NotFoundError, AppError, PermissionDeniedError } = require("../../utils/errors");
 const { buildWorkbook } = require("../../services/spreadsheet.service");
 
 // GL treatment per movement type (policies Q5/Q6). 'sale' is EXCLUDED —
@@ -366,6 +369,12 @@ async function getMovement({ brand, movement_id }) {
 
 async function recordMovement({ brand, user, request_id, input }) {
   return transaction(async (client) => {
+    const v = await repo.variantForIntake({ client, brand, variant_id: input.variant_id });
+    if (v?.catalogue_role === "retail") {
+      careGate.requireEnabled(brand);
+      throw new AppError("CARE_STOCK_WORKFLOW_REQUIRED",
+        "Use Goods Reception, a SKU count adjustment or a documented transfer for Care stock movements", 422);
+    }
     const m = await applyMovement({
       client,
       brand,
@@ -760,8 +769,15 @@ async function getAdjustment({ brand, id }) {
   if (!a) throw new NotFoundError("Adjustment");
   return a;
 }
-async function createAdjustment({ brand, user, request_id, input }) {
+async function createAdjustment({ brand, user, request_id, input, careScoped = false }) {
   return transaction(async (client) => {
+    if (input.adjustment_type === "count") {
+      for (const line of input.lines) {
+        const v = await repo.variantForIntake({ client, brand, variant_id: line.variant_id });
+        if (v?.catalogue_role === "retail" && !careScoped)
+          throw new AppError("CARE_COUNT_SCOPE", "Count retail with the SKU-exact Care & Accessories count flow", 422);
+      }
+    }
     const adj = await repo.createAdjustment({
       client,
       brand,
@@ -923,6 +939,28 @@ async function postAdjustment({ brand, user, request_id, id }) {
     }
     for (const line of adj.lines) {
       const delta = line.physical_count - line.system_count;
+      const v = await repo.variantForIntake({ client, brand, variant_id: line.variant_id });
+      if (v?.catalogue_role === "retail") {
+        careGate.requireEnabled(brand);
+        if (adj.adjustment_type === "count" && adj.status !== "approved")
+          throw new AppError("APPROVAL_REQUIRED", "Care SKU counts require approval before posting any correction", 409);
+        // Counts can sit awaiting CEO approval while stock moves at this
+        // location. Lock and reject a stale snapshot instead of applying an
+        // old delta to a newer shelf count (or writing down reservations).
+        const current = await repo.lockLevel({
+          client, brand, variant_id: line.variant_id, location_id: adj.location_id,
+        });
+        if (Number(current?.on_hand || 0) !== Number(line.system_count) ||
+            Number(line.physical_count) < Number(current?.reserved || 0))
+          throw new AppError("STALE_CARE_COUNT", "Care SKU stock or reservations changed; recount before posting", 409);
+        if (delta !== 0) {
+          const basis = await repo.getCostBasisForVariants({
+            client, brand, variant_ids: [line.variant_id],
+          });
+          if (!(Number(line.unit_cost_ngn) > 0) && !(Number(basis.get(line.variant_id)) > 0))
+            throw new AppError("COST_REQUIRED", "Care SKU needs a positive operational cost before adjustment", 422);
+        }
+      }
       if (delta === 0) continue;
       await applyMovement({
         client,
@@ -1171,6 +1209,20 @@ async function getShipment({ brand, id }) {
 }
 async function createShipment({ brand, user, request_id, input }) {
   return transaction(async (client) => {
+    for (const line of input.lines || []) {
+      const v = await repo.variantForIntake({ client, brand, variant_id: line.variant_id });
+      if (v?.catalogue_role === "retail") {
+        careGate.requireEnabled(brand);
+        if (v.is_deleted || !v.is_active || !v.track_stock)
+          throw new AppError("NO_STOCK_VARIANT", "Choose an active Care SKU", 422);
+        if (line.po_line_id)
+          throw new AppError("PO_RECEIPT_REQUIRED", "Receive a Care PO through Goods Reception with exact PO line matching", 422);
+        if (!(await vault.canSeeCost({ client, user, brand })))
+          throw new PermissionDeniedError("Operational receipt costs require Cost Vault access");
+        if (!(Number(line.unit_cost_ngn) > 0))
+          throw new AppError("COST_REQUIRED", "Enter a positive operational cost per Care SKU", 422);
+      }
+    }
     const sh = await repo.createShipment({ client, brand, header: input });
     for (const line of input.lines || [])
       await repo.addShipmentLine({
@@ -1206,30 +1258,44 @@ async function createGoodsReceipt({ brand, user, request_id, input }) {
     throw new AppError("VALIDATION", "At least one line is required", 422);
 
   return transaction(async (client) => {
-    // Resolve every base product → its default variant up front so a bad
-    // product aborts the whole receipt before any stock moves.
+    // Base receipts retain their existing product → default-variant path.
+    // Retail receipts MUST name an exact variant. Verify role, location, PO
+    // identity and authorised operational cost BEFORE recording any movement.
     const resolved = [];
     for (const ln of lines) {
-      const variant = await repo.defaultVariantForProduct({
-        client,
-        brand,
-        product_id: ln.product_id,
-      });
-      if (!variant)
-        throw new AppError(
-          "NO_STOCK_VARIANT",
-          `Base product ${ln.product_id} has no stock-bearing variant`,
-          422,
-          {
-            user_message:
-              "One of the products can't hold stock yet. Open it in the catalogue and try again.",
-            metadata: { product_id: ln.product_id },
-          },
-        );
+      const variant = ln.variant_id
+        ? await repo.variantForIntake({ client, brand, variant_id: ln.variant_id })
+        : await repo.defaultVariantForProduct({ client, brand, product_id: ln.product_id });
+      if (!variant || variant.is_deleted || variant.is_active === false ||
+          variant.track_stock === false)
+        throw new AppError("NO_STOCK_VARIANT", "Active stock-bearing SKU not found", 422);
+      if (ln.product_id && variant.product_id && ln.product_id !== variant.product_id)
+        throw new AppError("SKU_MISMATCH", "SKU belongs to a different product", 422);
+      const retail = variant.catalogue_role === "retail";
+      if (retail) {
+        careGate.requireEnabled(brand);
+        if (!(await vault.canSeeCost({ client, user, brand })))
+          throw new PermissionDeniedError("Operational receipt costs require Cost Vault access");
+        if (!(Number(ln.unit_cost_ngn) > 0))
+          throw new AppError("COST_REQUIRED", "Enter a positive operational cost per Care SKU", 422);
+      }
+      if (ln.po_line_id && !input.purchase_order_id)
+        throw new AppError("PO_REQUIRED", "A PO line requires its purchase order", 422);
+      if (retail && input.purchase_order_id && !ln.po_line_id)
+        throw new AppError("PO_LINE_REQUIRED", "Pick the exact Care SKU PO line", 422);
+      if (ln.po_line_id) {
+        const poLine = await repo.poLineForReceipt({
+          client, brand, po_id: input.purchase_order_id, po_line_id: ln.po_line_id,
+        });
+        if (!poLine || (poLine.variant_id && poLine.variant_id !== variant.variant_id) ||
+            (retail && (!poLine.variant_id || Number(poLine.qty_outstanding) < ln.quantity)))
+          throw new AppError("PO_SKU_MISMATCH", "PO line does not match this exact SKU or outstanding quantity", 422);
+      }
       resolved.push({
         variant_id: variant.variant_id,
         quantity: ln.quantity,
         po_line_id: ln.po_line_id || null,
+        unit_cost_ngn: retail ? ln.unit_cost_ngn : null,
       });
     }
 
@@ -1254,6 +1320,7 @@ async function createGoodsReceipt({ brand, user, request_id, input }) {
         line: {
           variant_id: r.variant_id,
           qty_expected: r.quantity,
+          unit_cost_ngn: r.unit_cost_ngn,
           // Keeps the receipt traceable back to the order it satisfies.
           po_line_id: r.po_line_id,
         },
@@ -1275,6 +1342,7 @@ async function createGoodsReceipt({ brand, user, request_id, input }) {
           movement_type: "receive",
           reference_type: "inbound_shipment",
           reference_id: sh.shipment_id,
+          unit_cost_ngn: r.unit_cost_ngn,
         },
       });
     }
@@ -1360,6 +1428,14 @@ async function receiveShipment({ brand, user, request_id, id, input = {} }) {
         qty_rejected: r.qty_rejected,
       });
       if (qty > 0) {
+        const v = await repo.variantForIntake({ client, brand, variant_id: line.variant_id });
+        if (v?.catalogue_role === "retail") {
+          careGate.requireEnabled(brand);
+          if (v.is_deleted || !v.is_active || !v.track_stock || !(Number(line.unit_cost_ngn) > 0))
+            throw new AppError("INVALID_CARE_RECEIPT", "A Care SKU must be active, stock-bearing and costed before receipt", 422);
+          if (line.po_line_id)
+            throw new AppError("PO_RECEIPT_REQUIRED", "Receive a Care PO through Goods Reception with exact PO line matching", 422);
+        }
         await applyMovement({
           client,
           brand,
@@ -1394,6 +1470,67 @@ async function receiveShipment({ brand, user, request_id, id, input = {} }) {
     events.emit("shipment.received", { brand, id });
     return done;
   });
+}
+
+// ── SKU-exact PXG Care count (separate from the hair-axis import) ─────
+// Read-only sheet template/receipt picker: all retail SKUs at ONE explicit
+// location, with quantities but never operational/true cost amounts.
+async function listCareSkus({ brand, location_id }) {
+  careGate.requireEnabled(brand);
+  const locations = await repo.locationsWithStock({ brand });
+  const location = locations.find((l) => l.location_id === location_id && l.is_active);
+  if (!location) throw new AppError("INVALID_LOCATION", "Pick an active stock location", 422);
+  const rows = await repo.careVariantsAtLocation({ brand, location_id });
+  return { location: { location_id, display_name: location.display_name }, rows };
+}
+async function importCareCount({ brand, user, request_id, input }) {
+  careGate.requireEnabled(brand);
+  const locations = await repo.locationsWithStock({ brand });
+  const location = locations.find((l) =>
+    l.location_id === input.location_id && l.is_active,
+  );
+  if (!location) throw new AppError("INVALID_LOCATION", "Pick an active stock location", 422);
+  const variants = await repo.careVariantsAtLocation({
+    brand, location_id: location.location_id,
+  });
+  const preview = careCount.plan({
+    rows: input.rows, variants,
+    blank: input.blank || "skip", unlisted: input.unlisted || "skip",
+  });
+  const result = {
+    ...preview,
+    location: { location_id: location.location_id, display_name: location.display_name },
+    adjustment: null,
+  };
+  if (!input.commit) return result;
+  if (preview.blockers.length)
+    throw new AppError("COUNT_NOT_RECONCILED", preview.blockers.join("; "), 422);
+  if (!preview.lines.length)
+    throw new AppError("NO_CHANGES", "The Care SKU count already matches the shelf", 422);
+  const adj = await createAdjustment({
+    brand, user, request_id, careScoped: true,
+    input: {
+      location_id: location.location_id, adjustment_type: "count",
+      reason: (`${input.reason ? `${input.reason} — ` : ""}Care & Accessories SKU count: ` +
+        `${preview.summary.corrections} corrected, ${preview.summary.zeroed} not listed. ` +
+        `Net ${preview.summary.net >= 0 ? "+" : ""}${preview.summary.net} units.`).slice(0, 500),
+      lines: preview.lines.map((line) => ({
+        variant_id: line.variant_id, system_count: line.system_count,
+        physical_count: line.physical_count,
+        notes: (line.kind === "unlisted"
+          ? `Unlisted Care SKU ${line.sku} counted as zero`
+          : `Care count row ${line.row}: ${line.sku}`).slice(0, 500),
+      })),
+    },
+  });
+  await submitAdjustment({ brand, user, request_id, id: adj.adjustment_id });
+  return {
+    ...result,
+    adjustment: {
+      adjustment_id: adj.adjustment_id,
+      adjustment_number: adj.adjustment_number, status: "submitted",
+    },
+  };
 }
 
 // ── Count import (Stock → Adjustments → Import Count) ────
@@ -1611,4 +1748,6 @@ module.exports = {
   updateShipmentStatus,
   receiveShipment,
   importCount,
+  importCareCount,
+  listCareSkus,
 };

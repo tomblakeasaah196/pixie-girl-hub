@@ -320,6 +320,9 @@ function MyJobCard({ job, onOpen }: { job: ServiceJob; onOpen: () => void }) {
                 📦 {job.sales_order_number}
               </span>
             )}
+            {((job as any).order_specific_instructions || (job.specification as any)?.order_specific_instructions) && (
+              <span className="px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 border border-amber-500/20">📝 Specific instructions</span>
+            )}
             {due && (
               <span className={`font-semibold ${DUE_TEXT[due.tone]}`}>
                 {due.label}

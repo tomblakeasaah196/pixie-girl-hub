@@ -422,6 +422,7 @@ export interface CheckoutInput {
   payment_gateway?: string;
   coupon_code?: string;
   customer_referral_code?: string;
+  specific_instructions?: string;
   redeem_points?: number;
   client_idempotency_key: string;
 }

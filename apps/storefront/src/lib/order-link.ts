@@ -137,6 +137,7 @@ export interface OrderFormBody {
   // Buyer's gateway pick (nomba | paystack) — server prefers it on the
   // active chain and falls over automatically if it's down.
   payment_gateway?: string;
+  specific_instructions?: string;
   client_idempotency_key?: string;
 }
 

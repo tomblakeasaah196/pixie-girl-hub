@@ -1347,6 +1347,7 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
       // resolves + applies the friend discount and stamps referral_code_used
       // so the retention subscriber credits the referrer on order.paid.
       customer_referral_code: input.customer_referral_code || null,
+      specific_instructions: (input.specific_instructions && String(input.specific_instructions).trim()) ? String(input.specific_instructions).trim().slice(0,2000) : undefined,
       client_idempotency_key: input.client_idempotency_key,
       utm_source: input.utm?.utm_source || null,
       utm_medium: input.utm?.utm_medium || null,

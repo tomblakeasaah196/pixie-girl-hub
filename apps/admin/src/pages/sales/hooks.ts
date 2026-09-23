@@ -527,6 +527,21 @@ export function useSetOrderDeliveryFee() {
   });
 }
 
+export function useSetSpecificInstructions() {
+  const qc = useQueryClient();
+  const biz = useBiz();
+  return useMutation({
+    mutationFn: ({ id, specific_instructions }: { id: string; specific_instructions: string }) =>
+      salesApi.setSpecificInstructions(id, specific_instructions),
+    onSuccess: (_data, { id }) => {
+      qc.invalidateQueries({ queryKey: ["sales-orders", biz, "detail", id] });
+      qc.invalidateQueries({ queryKey: ["sales-orders", biz] });
+      qc.invalidateQueries({ queryKey: ["sales-orders", biz, "service-job", id] });
+      qc.invalidateQueries({ queryKey: ["sales-orders", biz, "timeline", id] });
+    },
+  });
+}
+
 // ── KPIs ────────────────────────────────────────────────────
 
 export function useSalesKpis() {

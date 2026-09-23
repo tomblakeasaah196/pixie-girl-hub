@@ -55,6 +55,8 @@ const ORDER = [
   // subscriber then bumps the referrer's counters + credits their reward on
   // order.paid. Distinct from stylist_referral_code above.
   "referral_code_used",
+  // Specific Instructions (Q1=A order-level, Q3=A checkbox, Q5=A internal only)
+  "specific_instructions",
 ];
 const LINE = [
   "order_id",
@@ -724,6 +726,7 @@ const HEADER_COLS = [
   "utm_source",
   "utm_medium",
   "utm_campaign",
+  "specific_instructions",
 ];
 async function updateOrderHeader({ client, brand, id, patch }) {
   const f = [],
@@ -1463,6 +1466,18 @@ async function markOrderPreorder({
   );
 }
 
+
+async function setSpecificInstructions({ client, brand, id, specific_instructions }) {
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "sales_orders")}
+        SET specific_instructions = $2, updated_at = now()
+      WHERE order_id = $1
+      RETURNING *`,
+    [id, specific_instructions],
+  );
+  return rows[0] || null;
+}
+
 async function markLinesPreorder({ client, brand, line_ids }) {
   const ids = (line_ids || []).filter(Boolean);
   if (!ids.length) return;
@@ -1478,6 +1493,7 @@ module.exports = {
   excludedPreorderProductIds,
   markOrderPreorder,
   markLinesPreorder,
+  setSpecificInstructions,
   updateOrderHeader,
   listDiscounts,
   nextNumber,

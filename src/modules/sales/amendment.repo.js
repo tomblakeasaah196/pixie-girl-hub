@@ -313,12 +313,15 @@ async function setDeliveryDetails({
   order_type,
   address_snapshot,
   customer_notes,
+  specific_instructions,
 }) {
+  const hasSpec = specific_instructions !== undefined;
   const { rows } = await ex(client)(
     `UPDATE ${t(brand, "sales_orders")}
         SET order_type = COALESCE($2, order_type),
             delivery_address_snapshot = COALESCE($3::jsonb, delivery_address_snapshot),
             customer_notes = COALESCE($4, customer_notes),
+            specific_instructions = CASE WHEN $5::boolean THEN $6::text ELSE specific_instructions END,
             updated_at = now()
       WHERE order_id = $1
       RETURNING *`,
@@ -327,10 +330,13 @@ async function setDeliveryDetails({
       order_type || null,
       address_snapshot ? JSON.stringify(address_snapshot) : null,
       customer_notes === undefined ? null : customer_notes,
+      hasSpec,
+      hasSpec ? specific_instructions : null,
     ],
   );
   return rows[0] || null;
 }
+
 
 /** Denormalised "this order has been changed" markers on the order row. */
 async function bumpAmendmentCounters({ client, brand, id }) {

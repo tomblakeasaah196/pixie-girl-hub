@@ -214,6 +214,8 @@ function CheckoutPage() {
   // isn't re-applied to the next order.
   const { code: capturedReferral, clear: clearReferral } = useReferralCode();
   const [referralCode, setReferralCode] = useState("");
+  const [hasSpecificInstructions, setHasSpecificInstructions] = useState(false);
+  const [specificInstructions, setSpecificInstructions] = useState("");
   useEffect(() => {
     if (capturedReferral && !referralCode) setReferralCode(capturedReferral);
   }, [capturedReferral, referralCode]);
@@ -477,6 +479,7 @@ function CheckoutPage() {
         // (either typed here or attached to the cart) so createOrder actually
         // redeems it — before this the FE never sent coupon_code at all.
         coupon_code: promoCode.trim() || promoAppliedCode || undefined,
+        specific_instructions: hasSpecificInstructions && specificInstructions.trim() ? specificInstructions.trim().slice(0,2000) : undefined,
         // P0-3: forward the customer referral code (from ?ref= capture or the
         // "have a friend's code?" field). createOrder resolves it against
         // shared.referrals, applies the friend discount, and stamps
@@ -764,6 +767,19 @@ function CheckoutPage() {
                     {copy.pickupPending}
                   </p>
                 )}
+              </div>
+            )}
+          </fieldset>
+
+          <fieldset className="space-y-3 rounded-lg border border-border p-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={hasSpecificInstructions} onChange={(e)=>setHasSpecificInstructions(e.target.checked)} className="rounded" />
+              <span className="text-body-sm font-medium">Add specific instructions</span>
+            </label>
+            {hasSpecificInstructions && (
+              <div className="mt-2">
+                <textarea value={specificInstructions} onChange={(e)=>setSpecificInstructions(e.target.value.slice(0,2000))} placeholder="Any special request for your order? e.g. styling preference, delivery note…" rows={4} maxLength={2000} className="input-line w-full resize-none text-body-sm" />
+                <div className="mt-1 text-right text-caption text-muted-foreground">{specificInstructions.length}/2000</div>
               </div>
             )}
           </fieldset>

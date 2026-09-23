@@ -437,7 +437,7 @@ async function buildPlan({ client, brand, order, input }) {
     deliveryTouched,
     addressMoved,
     carriedDiscounts,
-    changed: lineChanges.length > 0 || deliveryTouched,
+    changed: lineChanges.length > 0 || deliveryTouched || false, // specific_instructions handled separately in commit
   };
 }
 
@@ -972,7 +972,7 @@ async function amendOrder({ brand, user, request_id, id, input }) {
       id,
       totals: plan.after,
     });
-    if (plan.deliveryTouched || input.customer_notes !== undefined) {
+    if (plan.deliveryTouched || input.customer_notes !== undefined || input.specific_instructions !== undefined) {
       await amendRepo.setDeliveryDetails({
         client,
         brand,
@@ -980,6 +980,7 @@ async function amendOrder({ brand, user, request_id, id, input }) {
         order_type: input.order_type,
         address_snapshot: plan.addressMoved ? plan.deliveryAfter.address : null,
         customer_notes: input.customer_notes,
+        specific_instructions: input.specific_instructions,
       });
     }
 

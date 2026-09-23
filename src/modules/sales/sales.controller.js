@@ -351,6 +351,15 @@ const setDeliveryFee = async (req, res) =>
     }),
   });
 
+const setSpecificInstructions = async (req, res) =>
+  res.json({
+    data: await service.setSpecificInstructions({
+      ...base(req),
+      id: req.params.id,
+      specific_instructions: req.body.specific_instructions,
+    }),
+  });
+
 // Flexi Pay settings (Sales → Payments tab)
 const getPaymentSettings = async (req, res) =>
   res.json({ data: await paymentSettings.getSettings(req.brand) });
@@ -382,6 +391,7 @@ module.exports = {
   listAmendments,
   createPaymentLink,
   setDeliveryFee,
+  setSpecificInstructions,
   getPaymentSettings,
   updatePaymentSettings,
   listQuotations,

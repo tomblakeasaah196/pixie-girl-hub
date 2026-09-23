@@ -223,6 +223,8 @@ function CheckoutForm({
 
   const [deliveryFee, setDeliveryFee] = useState<number | null>(null);
   const [quoting, setQuoting] = useState(false);
+  const [hasSpecificInstructions, setHasSpecificInstructions] = useState(false);
+  const [specificInstructions, setSpecificInstructions] = useState("");
   // Buyer's gateway pick — shown only when the brand has >1 pickable gateway
   // active; the server prefers the pick and falls over if it's down.
   const [payCfg, setPayCfg] = useState<PayConfig | null>(null);
@@ -439,6 +441,7 @@ function CheckoutForm({
         sales_channel: chan,
         items: resolvedItems.flatMap((i) => i.lines),
         bundle_id: bundleId || undefined,
+        specific_instructions: hasSpecificInstructions && specificInstructions.trim() ? specificInstructions.trim().slice(0,2000) : undefined,
         payment_plan: "full",
         payment_gateway: gateway,
         client_idempotency_key: `order:${slug}`,
@@ -792,6 +795,19 @@ function CheckoutForm({
             value={email}
             onChange={setEmail}
           />
+        </div>
+
+        <div className="space-y-2 rounded-md border border-border p-3">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={hasSpecificInstructions} onChange={(e)=>setHasSpecificInstructions(e.target.checked)} className="h-4 w-4" />
+            <span className="text-body-sm font-medium">Add specific instructions</span>
+          </label>
+          {hasSpecificInstructions && (
+            <div className="mt-2">
+              <textarea value={specificInstructions} onChange={(e)=>setSpecificInstructions(e.target.value.slice(0,2000))} placeholder="Any special request? e.g. styling preference, delivery note…" rows={3} maxLength={2000} className="w-full rounded-md border border-border bg-background p-2 text-body-sm resize-none" />
+              <div className="mt-1 text-right text-[11px] text-muted-foreground">{specificInstructions.length}/2000</div>
+            </div>
+          )}
         </div>
 
         {/* Gateway pick — mirrors the main storefront checkout. Hidden when

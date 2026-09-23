@@ -142,6 +142,8 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const [, startTransition] = useTransition();
 
   const [notes, setNotes] = useState("");
+  const [hasSpecificInstructions, setHasSpecificInstructions] = useState(false);
+  const [specificInstructions, setSpecificInstructions] = useState("");
   const [isGift, setIsGift] = useState(false);
   const [giftName, setGiftName] = useState("");
   const [giftPhone, setGiftPhone] = useState("");
@@ -612,6 +614,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
             : "full",
         client_idempotency_key: idemKey,
         coupon_code: promoApplied && promoCode ? promoCode : undefined,
+        specific_instructions: hasSpecificInstructions && specificInstructions.trim() ? specificInstructions.trim().slice(0,2000) : undefined,
         // P0-3: forward the customer referral code. The Hub validates it
         // brand-scoped, applies the friend discount, and stamps
         // referral_code_used so the referrer's reward posts on order.paid.
@@ -946,6 +949,19 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                       placeholder="Anything we should know…"
                     />
                   </Field>
+                </div>
+              )}
+            </Section>
+
+            <Section title="Specific instructions">
+              <label className="flex items-center gap-2 text-[13px] cursor-pointer mb-2">
+                <input type="checkbox" checked={hasSpecificInstructions} onChange={(e)=>setHasSpecificInstructions(e.target.checked)} className="accent-[rgb(var(--accent-deep))]" />
+                <span>Add specific instructions for this order</span>
+              </label>
+              {hasSpecificInstructions && (
+                <div>
+                  <Textarea value={specificInstructions} onChange={setSpecificInstructions} placeholder="Any special request? e.g. styling preference, delivery note…" />
+                  <div className="mt-1 text-right text-[11px] text-[rgb(var(--text-faint))]">{specificInstructions.length}/2000</div>
                 </div>
               )}
             </Section>

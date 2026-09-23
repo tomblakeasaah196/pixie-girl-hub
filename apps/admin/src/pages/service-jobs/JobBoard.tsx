@@ -412,6 +412,9 @@ function JobCard({
           {job.hair_description}
         </p>
       )}
+      {((job as any).order_specific_instructions || (job.specification as any)?.order_specific_instructions) && (
+        <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 border border-amber-500/20">📝 Specific instructions</span>
+      )}
       <div className="flex items-center justify-between gap-2 pt-0.5">
         <span
           className="text-xs text-text-muted truncate min-w-0"
@@ -1940,6 +1943,22 @@ function JobDetailDrawer({
         {/* Details tab */}
         {tab === "details" && (
           <div className="space-y-4">
+            {/* Specific instructions — from the linked sales order, read-only */}
+            {((job as any).order_specific_instructions || (job.specification as any)?.order_specific_instructions) && (
+              <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">Specific Instructions</span>
+                  {job.sales_order_number && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300">Order {job.sales_order_number}</span>
+                  )}
+                  {(job.specification as any)?.order_specific_instructions_updated_at && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-line text-text-muted">edited</span>
+                  )}
+                </div>
+                <p className="text-sm text-text-primary whitespace-pre-wrap leading-relaxed">{(job as any).order_specific_instructions || (job.specification as any)?.order_specific_instructions}</p>
+                <p className="text-[10px] text-text-muted">Visible to all stylists — managed in Sales → Order detail.</p>
+              </div>
+            )}
             <AiSummaryBox jobId={jobId} />
 
             {/* Ratings at a glance — open the whole time the job is live, not

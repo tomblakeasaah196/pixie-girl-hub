@@ -198,6 +198,8 @@ export function OrderCheckoutPublic() {
   );
   const [quoting, setQuoting] = useState(false);
   const [showDeliveryHelp, setShowDeliveryHelp] = useState(false);
+  const [hasSpecificInstructions, setHasSpecificInstructions] = useState(false);
+  const [specificInstructions, setSpecificInstructions] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -543,6 +545,7 @@ export function OrderCheckoutPublic() {
           // The buyer's gateway pick — the server prefers it on the active
           // chain and still falls over automatically if it's down.
           payment_gateway: gateway,
+          specific_instructions: hasSpecificInstructions && specificInstructions.trim() ? specificInstructions.trim().slice(0,2000) : undefined,
           client_idempotency_key: `order:${slug}`,
         },
         "public",
@@ -1038,6 +1041,19 @@ export function OrderCheckoutPublic() {
             )}
           </Section>
         )}
+
+        <Section title="Specific instructions">
+          <label className="flex items-center gap-2 cursor-pointer mb-2">
+            <input type="checkbox" checked={hasSpecificInstructions} onChange={(e)=>setHasSpecificInstructions(e.target.checked)} className="w-4 h-4 accent-[var(--accent,#690909)]" />
+            <span className="text-[13px]">Add specific instructions for this order</span>
+          </label>
+          {hasSpecificInstructions && (
+            <div>
+              <textarea value={specificInstructions} onChange={(e)=>setSpecificInstructions(e.target.value.slice(0,2000))} placeholder="Any special request? e.g. styling preference, delivery note…" rows={4} maxLength={2000} className="w-full rounded-xl bg-panel-2 border hairline px-3 py-2 text-[13.5px] focus:outline-none focus:border-accent/40 resize-none" />
+              <div className="mt-1 text-right text-[11px] text-text-faint">{specificInstructions.length}/2000</div>
+            </div>
+          )}
+        </Section>
 
         <Section title="Contact">
           <Field

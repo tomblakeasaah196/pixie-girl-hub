@@ -221,6 +221,8 @@ export function QuickSaleForm() {
   const instalmentsEnabled =
     !!flexiSettings && flexiSettings.channels[channel] !== false;
   const [paymentPlan, setPaymentPlan] = useState<"full" | "instalment">("full");
+  const [hasSpecificInstructions, setHasSpecificInstructions] = useState(false);
+  const [specificInstructions, setSpecificInstructions] = useState("");
   const [fulfilment, setFulfilment] = useState<FulfilmentType>("walk_in");
   // Delivery address — same country → state → LGA zone-code picker as the
   // storefront checkout and the public order-link page (order-checkout-geo),
@@ -611,6 +613,7 @@ export function QuickSaleForm() {
       ),
       bundle_id: bundleId || undefined,
       coupon_code: coupon || undefined,
+      specific_instructions: hasSpecificInstructions && specificInstructions.trim() ? specificInstructions.trim().slice(0,2000) : undefined,
       shipping_fee_ngn: shipping || undefined,
       payment_plan:
         instalmentsEnabled && paymentPlan === "instalment"
@@ -728,6 +731,8 @@ export function QuickSaleForm() {
     setApplyVat(false);
     setCoupon("");
     setPaymentPlan("full");
+    setHasSpecificInstructions(false);
+    setSpecificInstructions("");
     setFulfilment("walk_in");
     setAddressLine1("");
     setAddressLine2("");
@@ -1089,6 +1094,27 @@ export function QuickSaleForm() {
               onChange={setApplyVat}
               label="Apply VAT (7.5%)"
             />
+          </div>
+
+          <div className="mt-5 rounded-[11px] border border-line bg-text-primary/[0.02] p-3">
+            <Toggle
+              checked={hasSpecificInstructions}
+              onChange={setHasSpecificInstructions}
+              label="Add specific instructions"
+            />
+            {hasSpecificInstructions && (
+              <div className="mt-3">
+                <textarea
+                  value={specificInstructions}
+                  onChange={(e) => setSpecificInstructions(e.target.value.slice(0, 2000))}
+                  placeholder="e.g. Client wants soft curls, part in middle, no glue. Deliver after 3pm only…"
+                  rows={4}
+                  maxLength={2000}
+                  className="w-full rounded-lg border border-line bg-white/5 px-3 py-2 text-sm outline-none focus:border-accent resize-none"
+                />
+                <div className="mt-1 text-right text-[11px] text-text-faint">{specificInstructions.length}/2000</div>
+              </div>
+            )}
           </div>
 
           {instalmentsEnabled && (

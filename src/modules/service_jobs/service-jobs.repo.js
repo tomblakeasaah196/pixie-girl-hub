@@ -299,6 +299,7 @@ async function getServiceJob({ client, brand, id }) {
               WHERE l.job_id = j.job_id AND l.event = 'out'
               ORDER BY l.created_at DESC LIMIT 1) AS last_custody_holder_name,
             so.order_number        AS sales_order_number,
+            so.specific_instructions AS order_specific_instructions,
             so.placed_at            AS order_placed_at,
             pv.variant_name          AS base_product_name,
             sty.name                  AS styled_product_name,
@@ -452,6 +453,7 @@ async function listServiceJobs({
   // along here).
   const { rows } = await query(
     `SELECT sj.*, so.order_number AS sales_order_number,
+            so.specific_instructions AS order_specific_instructions,
             u.display_name AS assigned_staff_name,
             c.display_name AS customer_name,
             sty.name AS styled_product_name,

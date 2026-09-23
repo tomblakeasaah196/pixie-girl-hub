@@ -76,6 +76,7 @@ import {
   useInvoiceReminders,
   useStatusAutomations,
   useOrderAmendments,
+  useSetSpecificInstructions,
 } from "./hooks";
 import { generateReceipt } from "./api";
 import type { OrderServiceJob, RestoreShortLine } from "./api";
@@ -1199,6 +1200,9 @@ export function OrderDetailPage() {
                   </div>
                 </FormGrid>
               </Card>
+
+              {/* Specific Instructions — editable until terminal */}
+              <SpecificInstructionsCard order={order} />
 
               {/* Items */}
               {order.lines && order.lines.length > 0 && (
@@ -2340,6 +2344,114 @@ export function OrderDetailPage() {
     </div>
   );
 }
+
+function SpecificInstructionsCard({ order }: { order: SalesOrder }) {
+  const canEditSales = useAuthStore((s) => s.can)("sales", "edit");
+  const toast = useToastStore();
+  const setSpec = useSetSpecificInstructions();
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(order.specific_instructions || "");
+  const [showHistory, setShowHistory] = useState(false);
+  const { data: timeline } = useOrderTimeline(order.order_id);
+  const terminal = ["completed","cancelled","refunded","failed"].includes(order.status);
+  const hasInstructions = !!order.specific_instructions?.trim();
+
+  const specEvents = useMemo(() => {
+    if (!timeline) return [];
+    return (timeline as any[]).filter((ev) => {
+      const code = (ev.event_code || "").toLowerCase();
+      const label = (ev.label || "").toLowerCase();
+      const internal = ev.internal_payload || {};
+      return code.includes("specific_instruction") || label.includes("specific instruction") || (internal && internal.specific_instructions !== undefined);
+    });
+  }, [timeline]);
+
+  useEffect(() => {
+    setValue(order.specific_instructions || "");
+  }, [order.specific_instructions]);
+
+  const handleSave = async () => {
+    const trimmed = value.trim().slice(0,2000);
+    try {
+      await setSpec.mutateAsync({ id: order.order_id, specific_instructions: trimmed });
+      setEditing(false);
+      toast.add({
+        notification_id: crypto.randomUUID(),
+        user_id: "",
+        business: null,
+        type: "order",
+        priority: "normal",
+        title: "Instructions updated",
+        body: trimmed ? "Specific instructions saved — Studio will see the update." : "Specific instructions cleared.",
+        reference_type: null,
+        reference_id: null,
+        action_url: null,
+        is_read: false,
+        read_at: null,
+        created_at: new Date().toISOString(),
+      });
+    } catch (e:any) {
+      toastReport("Sales → Order", "Failed to update instructions", e);
+    }
+  };
+
+  const isEdited = specEvents.length > 0;
+
+  return (
+    <Card className="p-4 border border-amber-500/20 bg-amber-500/[0.03]">
+      <div className="flex items-center justify-between mb-3">
+        <div className="micro flex items-center gap-1.5">
+          <PencilLine className="w-3.5 h-3.5 text-amber-600" />
+          Specific Instructions
+          {isEdited && <Pill tone="warn">Updated</Pill>}
+        </div>
+        <div className="flex items-center gap-2">
+          {specEvents.length > 0 && (
+            <Button variant="ghost" size="sm" onClick={()=>setShowHistory(v=>!v)} icon={<History className="w-3.5 h-3.5" />}>{showHistory ? "Hide history" : "History"}</Button>
+          )}
+          {!terminal && canEditSales && !editing && (
+            <Button variant="secondary" size="sm" icon={<PencilLine className="w-3.5 h-3.5" />} onClick={()=>setEditing(true)}>{hasInstructions ? "Edit" : "Add"}</Button>
+          )}
+        </div>
+      </div>
+      {!editing ? (
+        hasInstructions ? (
+          <div className="text-[13px] whitespace-pre-wrap rounded-[10px] bg-white/[0.04] border border-line p-3 leading-relaxed">{order.specific_instructions}</div>
+        ) : (
+          <div className="text-[13px] text-text-faint italic">No specific instructions — add one if the customer has a special request. Visible to Stylist Studio.</div>
+        )
+      ) : (
+        <div className="space-y-3">
+          <textarea value={value} onChange={(e)=>setValue(e.target.value.slice(0,2000))} rows={4} maxLength={2000} placeholder="e.g. Client wants soft curls, part in middle, no glue. Deliver after 3pm only…" className="w-full rounded-lg border border-line bg-white/5 px-3 py-2 text-sm outline-none focus:border-accent resize-none" autoFocus />
+          <div className="flex items-center justify-between">
+            <div className="text-[11px] text-text-faint">{value.length}/2000 characters</div>
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" onClick={()=>{ setEditing(false); setValue(order.specific_instructions || ""); }}>Cancel</Button>
+              <Button variant="primary" size="sm" onClick={handleSave} disabled={setSpec.isPending}>{setSpec.isPending ? "Saving…" : "Save"}</Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {terminal && !editing && hasInstructions && (
+        <div className="mt-2 text-[11px] text-text-faint">This order is {order.status} — instructions are read-only.</div>
+      )}
+      {showHistory && specEvents.length > 0 && (
+        <div className="mt-3 space-y-2 border-t border-line pt-3">
+          {(specEvents as any[]).map((ev)=>(
+            <div key={ev.event_id} className="text-[11px] text-text-muted flex flex-col gap-0.5">
+              <div><span className="font-semibold">{formatDateTime(ev.occurred_at)}</span> — {ev.label || ev.event_code}</div>
+              {ev.internal_payload?.specific_instructions && <div className="italic bg-white/[0.03] rounded px-2 py-1 mt-1 whitespace-pre-wrap">“{ev.internal_payload.specific_instructions}”</div>}
+            </div>
+          ))}
+        </div>
+      )}
+      {hasInstructions && !editing && (
+        <div className="mt-2 text-[11px] text-text-faint flex items-center gap-1"><span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500" />Visible to Stylist Studio — any edit here updates the job&apos;s specification snapshot.</div>
+      )}
+    </Card>
+  );
+}
+
 
 // ── Pay link (Flexi Pay, PR-3) ───────────────────────────────
 // Mints a customer-facing checkout link for a chosen amount (blank = the full

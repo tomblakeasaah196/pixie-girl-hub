@@ -246,6 +246,7 @@ CREATE TABLE {{BUSINESS}}.sales_orders (
   -- Notes
   customer_notes        TEXT,                                   -- "leave with security"
   internal_notes        TEXT,                                   -- "VIP, gift-wrap"
+  specific_instructions TEXT,                                   -- free text behind checkbox (Q1=A, Q3=A) — stylist directive
   -- Audit
   created_by            UUID        REFERENCES shared.users (user_id) ON DELETE SET NULL,
   created_at            TIMESTAMPTZ NOT NULL DEFAULT now(),

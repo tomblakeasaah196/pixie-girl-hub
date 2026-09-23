@@ -397,6 +397,9 @@ export const listDeliveryPendingOrders = (
 export const setOrderDeliveryFee = (id: string, fee_ngn: number) =>
   api.patch<SalesOrder>(`${S}/orders/${id}/delivery-fee`, { fee_ngn });
 
+export const setSpecificInstructions = (id: string, specific_instructions: string) =>
+  api.patch<SalesOrder>(`${S}/orders/${id}/specific-instructions`, { specific_instructions });
+
 // ── Contact search ─────────────────────────────────────────
 
 export const searchContacts = (q: string, limit = 6) =>

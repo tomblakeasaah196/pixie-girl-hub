@@ -37,7 +37,8 @@ const businessConfig = require("../business_setup/business-config.repo");
 const paymentSettings = require("./payment-settings.service");
 const salesReportExport = require("./sales-report.export");
 const { audit } = require("../../middleware/audit");
-const { transaction, query } = require("../../config/database");
+const { transaction, query, withSavepoint } = require("../../config/database");
+const timelineRepo = require("./timeline.repo");
 const { money, toCurrencyString } = require("../../utils/money");
 const { toUtc, formatTz } = require("../../utils/dates");
 const { NotFoundError, AppError } = require("../../utils/errors");
@@ -599,6 +600,7 @@ async function createOrderTx({ brand, user, request_id, input }) {
         // and post the store-credit reward (see retention.subscribers).
         // Distinct from stylist_referral_code (§6.26 stylist rail).
         referral_code_used: referralMeta ? referralMeta.code : null,
+        specific_instructions: (input.specific_instructions && String(input.specific_instructions).trim()) ? String(input.specific_instructions).trim().slice(0,2000) : null,
         payment_plan: paymentPlan,
         payment_model: paymentModel,
         required_deposit_pct:
@@ -2206,6 +2208,77 @@ async function setOrderStatus({ brand, user, request_id, id, status }) {
  * MANUAL_STATUS_EVENT map setOrderStatus dispatches from, so the promise and
  * the send stay in lockstep.
  */
+
+async function setSpecificInstructions({ brand, user, request_id, id, specific_instructions }) {
+  return transaction(async (client) => {
+    const before = await repo.findById({ client, brand, id });
+    if (!before) throw new NotFoundError("Order");
+    // Q2=A editable until terminal states
+    if (["completed", "cancelled", "refunded", "failed"].includes(before.status)) {
+      throw new AppError(
+        "INVALID_STATE",
+        `Cannot edit specific instructions on a ${before.status} order`,
+        409,
+        { user_message: `This order is ${before.status} — specific instructions can no longer be changed.` },
+      );
+    }
+    const trimmed = specific_instructions && String(specific_instructions).trim() ? String(specific_instructions).trim().slice(0,2000) : null;
+    const updated = await repo.setSpecificInstructions({ client, brand, id, specific_instructions: trimmed });
+
+    await audit({
+      business: brand,
+      user_id: user.user_id,
+      action_key: "sales.order.specific_instructions.update",
+      target_type: "sales_order",
+      target_id: id,
+      before: { specific_instructions: before.specific_instructions || null },
+      after: { specific_instructions: trimmed },
+      request_id,
+    });
+
+    // Timeline — internal only, shows in admin timeline + history toggle
+    await withSavepoint(client, () =>
+      timelineRepo.insert({
+        client,
+        brand,
+        event: {
+          sales_order_id: id,
+          event_code: "specific_instructions_updated",
+          label: trimmed ? "Specific Instructions Updated" : "Specific Instructions Cleared",
+          source_module: "sales",
+          is_customer_visible: false,
+          internal_payload: { specific_instructions: trimmed, before: before.specific_instructions || null },
+          recorded_by: user.user_id || null,
+        },
+      }),
+    ).catch((err) => {
+      const { logger: _log } = require("../../config/logger");
+      _log.warn({ err, order_id: id }, "setSpecificInstructions: timeline insert skipped");
+    });
+
+    // Q4=C — if a Studio job exists, snapshot the edited instructions into its spec for audit
+    // and keep live join for current view. Best-effort, no throw.
+    try {
+      const jobs = await serviceJobsRepo.listServiceJobs({ brand, sales_order_id: id, page_size: 50 });
+      for (const j of (jobs.data || [])) {
+        // merge into specification jsonb if exists
+        await client.query(
+          `UPDATE ${brand}.service_jobs SET specification = COALESCE(specification, '{}'::jsonb) || jsonb_build_object('order_specific_instructions', $2::text, 'order_specific_instructions_updated_at', now()::text, 'order_specific_instructions_updated_by', $3::text) WHERE job_id = $1`,
+          [j.job_id, trimmed, user.user_id || null],
+        );
+      }
+    } catch (e) {
+      // non-blocking
+      const { logger } = require("../../config/logger");
+      logger.warn({ err: e.message, order_id: id }, "setSpecificInstructions: snapshot to service_jobs failed");
+    }
+
+    events.emit("order.updated", { brand, order_id: id });
+    return updated;
+  });
+}
+
+
 async function getStatusAutomationStates({ brand }) {
   const orderComms = require("./order-comms");
   const commsStudio = require("../comms_studio/comms-studio.service");
@@ -3112,6 +3185,7 @@ module.exports = {
   cancelOrder, // orders are cancelled (the 'archive' equivalent), never hard-deleted
   restoreOrder, // un-cancel from the archive: re-holds stock, refuses forfeited deposits
   setOrderStatus,
+  setSpecificInstructions,
   getStatusAutomationStates,
   listQuotations,
   getQuotation,

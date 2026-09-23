@@ -166,6 +166,7 @@ export interface SalesOrder {
   display_total: string | null;
   fx_rate_used: string | null;
   coupon_code: string | null;
+  specific_instructions?: string | null;
   /** Flexi Pay: the buyer's explicit plan choice ('full' | 'instalment'). */
   payment_plan: string | null;
   payment_model: string | null;
@@ -542,6 +543,7 @@ export interface OrderCreateInput {
   bundle_id?: string;
   client_idempotency_key?: string;
   shipping_fee_ngn?: number;
+  specific_instructions?: string;
   required_deposit_pct?: number;
   /** Flexi Pay: 'instalment' raises the order on the flexible plan. */
   payment_plan?: "full" | "instalment";

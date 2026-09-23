@@ -79,6 +79,8 @@ const orderCreate = z
     // a supervisor entering an order for a colleague can override it here.
     // Left null for customer self-service (storefront / public form).
     closed_by_user_id: z.string().uuid().optional().nullable(),
+    // Specific Instructions (Q1=A order-level, Q3=A checkbox-gated free text)
+    specific_instructions: z.string().max(2000).optional(),
   })
   .strict();
 
@@ -150,6 +152,13 @@ const orderUpdate = z
     utm_source: z.string().max(80).optional(),
     utm_medium: z.string().max(80).optional(),
     utm_campaign: z.string().max(120).optional(),
+    specific_instructions: z.string().max(2000).optional().nullable(),
+  })
+  .strict();
+
+const specificInstructionsUpdate = z
+  .object({
+    specific_instructions: z.string().max(2000).nullable(),
   })
   .strict();
 
@@ -331,6 +340,7 @@ const orderAmend = z
       .optional(),
     delivery_address: deliveryAddressPatch.optional(),
     customer_notes: z.string().max(2000).optional(),
+    specific_instructions: z.string().max(2000).optional().nullable(),
     // Mandatory on commit: an amendment moves money on an order the customer
     // has already paid, so "why" has to be answerable months later. The
     // preview doesn't need it (nothing is written), hence the separate schema.
@@ -364,6 +374,7 @@ const orderAmendPreview = z
       .optional(),
     delivery_address: deliveryAddressPatch.optional(),
     customer_notes: z.string().max(2000).optional(),
+    specific_instructions: z.string().max(2000).optional().nullable(),
   })
   .strict();
 
@@ -415,11 +426,13 @@ module.exports = {
   validateOrderRestore: mw(orderRestore),
   validateOrderAmend: mw(orderAmend),
   validateOrderAmendPreview: mw(orderAmendPreview),
+  validateSpecificInstructions: mw(specificInstructionsUpdate),
   validateOrderCouponPreview: mw(orderCouponPreview),
   validateOrderCouponApply: mw(orderCouponApply),
   validateReportExport: mwQuery(reportExport),
   orderCreate,
   orderUpdate,
+  specificInstructionsUpdate,
   paymentCreate,
   orderAmend,
   orderAmendPreview,

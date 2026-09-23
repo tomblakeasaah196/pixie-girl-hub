@@ -705,6 +705,8 @@ async function submitOrderForm({ brand, input, request_id }) {
         stylist_referral_code: await resolveStylistReferral(
           input.referral_code,
         ),
+        // Specific Instructions (Q1=A order-level, Q3=A checkbox)
+        specific_instructions: (input.specific_instructions && String(input.specific_instructions).trim()) ? String(input.specific_instructions).trim().slice(0,2000) : undefined,
         // Attribute the sale to whoever shared the order link (if any).
         closed_by_user_id: closedByUserId,
       },
@@ -1597,6 +1599,7 @@ async function checkout({ brand, cart_id, sessionCustomerId = null, input = {} }
       // referral_code_used on the order so retention.subscribers can credit
       // the referrer on order.paid.
       customer_referral_code: input.customer_referral_code || null,
+      specific_instructions: (input.specific_instructions && String(input.specific_instructions).trim()) ? String(input.specific_instructions).trim().slice(0,2000) : undefined,
       // Loyalty points redemption (optional) — createOrder validates + caps it.
       redeem_points: input.redeem_points || undefined,
       // Bundle savings folded into the order-level deal discount (floor-respecting

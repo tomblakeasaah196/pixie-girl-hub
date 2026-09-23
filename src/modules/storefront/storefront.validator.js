@@ -95,6 +95,8 @@ const orderFormSchema = z
     // the active chain with this one preferred, so a down gateway falls
     // over instead of failing the checkout.
     payment_gateway: z.enum(["nomba", "paystack"]).optional(),
+    // Specific Instructions (Q1=A order-level, Q3=A checkbox)
+    specific_instructions: z.string().max(2000).optional(),
     // Where the gateway returns the buyer after paying (the /o page passes
     // its own thank-you URL). Server-side createPaymentLink appends
     // ?ref & order_id.
@@ -237,6 +239,8 @@ const checkoutSchema = z
       .strict()
       .optional(),
     client_idempotency_key: z.string().max(80).optional(),
+    // Specific Instructions (Q1=A order-level, Q3=A checkbox)
+    specific_instructions: z.string().max(2000).optional(),
     // The gateway return URL base — sent by the storefront so the buyer
     // lands back on OUR thank-you page. Route also derives this from the
     // inbound host header when the client omits it.

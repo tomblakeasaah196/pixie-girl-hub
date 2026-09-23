@@ -642,6 +642,7 @@ const checkoutSchema = z.object({
   // forwarded here so createOrder can apply the friend discount + stamp
   // sales_orders.referral_code_used.
   customer_referral_code: z.string().max(80).optional(),
+  specific_instructions: z.string().max(2000).optional(),
   // When the server returns POTENTIAL_DUPLICATE and the buyer confirms they
   // want a new order, the frontend re-posts with this flag to bypass the
   // near-duplicate guard for this one request.

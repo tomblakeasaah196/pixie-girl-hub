@@ -52,6 +52,20 @@ export function JobWorkPanel({
 
   return (
     <div className="space-y-3">
+      {/* Specific instructions — from the order, read-only for Studio */}
+      {((job as any).order_specific_instructions || (job.specification as any)?.order_specific_instructions) && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 space-y-1.5">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">Specific Instructions</span>
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300">from order {job.sales_order_number ?? ''}</span>
+            {(job.specification as any)?.order_specific_instructions_updated_at && (
+              <span className="text-[10px] text-text-muted">edited {(job.specification as any).order_specific_instructions_updated_at ? new Date((job.specification as any).order_specific_instructions_updated_at).toLocaleDateString() : ''}</span>
+            )}
+          </div>
+          <p className="text-sm text-text-primary whitespace-pre-wrap leading-relaxed">{(job as any).order_specific_instructions || (job.specification as any)?.order_specific_instructions}</p>
+          <p className="text-[10px] text-text-muted">Visible to all stylists — edited in Sales → Order detail.</p>
+        </div>
+      )}
       {/* Timer */}
       {canTime && (
         <div className="flex items-center gap-3 rounded-lg border border-line bg-white/5 px-3 py-2">

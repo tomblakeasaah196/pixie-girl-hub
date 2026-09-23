@@ -138,6 +138,7 @@ export interface ServiceJob {
   sales_order_id: string | null;
   sales_order_line_id: string | null;
   sales_order_number: string | null;
+  order_specific_instructions?: string | null;
   customer_contact_id: string | null;
   intercompany_transaction_id: string | null;
   is_intercompany: boolean;

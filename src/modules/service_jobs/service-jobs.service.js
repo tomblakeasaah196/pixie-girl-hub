@@ -631,6 +631,12 @@ async function openStudioJobForLine({ client, brand, order, line }) {
     brand,
     type: "service_job",
   });
+  const spec = {};
+  if (dna && dna.sop_steps) spec.sop_steps = dna.sop_steps;
+  if (order.specific_instructions && String(order.specific_instructions).trim()) {
+    spec.order_specific_instructions = String(order.specific_instructions).trim().slice(0, 2000);
+    spec.order_specific_instructions_at = new Date().toISOString();
+  }
   const job = await repo.createServiceJob({
     client,
     brand,
@@ -643,7 +649,7 @@ async function openStudioJobForLine({ client, brand, order, line }) {
       customer_contact_id: order.contact_id,
       status: "pending",
       recipe_id: (dna && dna.default_recipe_id) || null,
-      specification: dna && dna.sop_steps ? { sop_steps: dna.sop_steps } : null,
+      specification: Object.keys(spec).length ? spec : null,
       expected_completion_at: expected,
       agreed_cost_ngn: agreed,
     },

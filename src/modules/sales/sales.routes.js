@@ -138,6 +138,12 @@ router.patch(
   v.validateSetDeliveryFee,
   c.setDeliveryFee,
 );
+router.patch(
+  "/orders/:id/specific-instructions",
+  can("edit"),
+  v.validateSpecificInstructions,
+  c.setSpecificInstructions,
+);
 
 // Quotations
 router.get("/quotations", can("view"), c.listQuotations);

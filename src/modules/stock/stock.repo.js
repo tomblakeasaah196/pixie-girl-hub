@@ -559,16 +559,20 @@ async function updateVariantCosting({
 }
 
 /**
- * COGS basis per variant: the weighted average when one exists, else the
- * variant's (deprecated but still populated) standard cost. Returns a
- * Map(variant_id → cost string); variants with no basis are absent.
+ * COGS basis per variant: retail uses ONLY the weighted-average operational
+ * cost from receipts (never Cost Vault or a deprecated plaintext field). Hair
+ * bases preserve their historical standard-cost fallback. Returns a Map;
+ * variants with no basis are absent.
  */
 async function getCostBasisForVariants({ client, brand, variant_ids }) {
   if (!variant_ids || variant_ids.length === 0) return new Map();
   const { rows } = await ex(client)(
     `SELECT pv.variant_id,
-            COALESCE(NULLIF(vc.avg_cost_ngn, 0), pv.cost_price_ngn) AS unit_cost_ngn
+            CASE WHEN p.catalogue_role = 'retail' THEN NULLIF(vc.avg_cost_ngn, 0)
+                 ELSE COALESCE(NULLIF(vc.avg_cost_ngn, 0), pv.cost_price_ngn)
+            END AS unit_cost_ngn
        FROM ${t(brand, "product_variants")} pv
+       JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
        LEFT JOIN ${t(brand, "variant_costing")} vc ON vc.variant_id = pv.variant_id
       WHERE pv.variant_id = ANY($1)`,
     [variant_ids],
@@ -968,9 +972,12 @@ async function setAlertStatus({ client, brand, id, status, user_id }) {
 // catalogue module.
 async function defaultVariantForProduct({ client, brand, product_id }) {
   const { rows } = await ex(client)(
-    `SELECT variant_id, sku, variant_name FROM ${t(brand, "product_variants")}
-      WHERE product_id = $1
-      ORDER BY is_default DESC, display_order ASC, created_at ASC
+    `SELECT pv.variant_id, pv.sku, pv.variant_name
+       FROM ${t(brand, "product_variants")} pv
+       JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
+      WHERE pv.product_id = $1 AND p.catalogue_role = 'base'
+        AND p.is_deleted = false AND pv.is_active = true
+      ORDER BY pv.is_default DESC, pv.display_order ASC, pv.created_at ASC
       LIMIT 1`,
     [product_id],
   );
@@ -1174,7 +1181,9 @@ async function setShipmentLineReceived({
   );
 }
 
-// ── Valuation (on_hand × variant standard cost) ──────────
+// ── Valuation (on_hand × per-SKU operational weighted-average cost) ──
+// Retain the legacy standard-cost fallback for wig rows not yet received via
+// costed movements. The encrypted true-cost vault is never queried here.
 async function valuation({ client, brand, filters = {} }) {
   const where = ["sl.on_hand > 0"];
   const params = [];
@@ -1196,10 +1205,12 @@ async function valuation({ client, brand, filters = {} }) {
   const { rows: lines } = await run(
     `SELECT sl.variant_id, sl.location_id, loc.display_name AS location_name,
             pv.product_id, pv.sku, pv.variant_name,
-            sl.on_hand, COALESCE(pv.cost_price_ngn, 0) AS unit_cost_ngn,
-            (sl.on_hand * COALESCE(pv.cost_price_ngn, 0))::numeric(14,2) AS value_ngn
+            sl.on_hand,
+            COALESCE(NULLIF(vc.avg_cost_ngn, 0), pv.cost_price_ngn, 0) AS unit_cost_ngn,
+            (sl.on_hand * COALESCE(NULLIF(vc.avg_cost_ngn, 0), pv.cost_price_ngn, 0))::numeric(14,2) AS value_ngn
        FROM ${t(brand, "stock_levels")} sl
        JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sl.variant_id
+       LEFT JOIN ${t(brand, "variant_costing")} vc ON vc.variant_id = pv.variant_id
        JOIN ${t(brand, "stock_locations")} loc ON loc.location_id = sl.location_id
        ${w}
       ORDER BY value_ngn DESC`,
@@ -1208,10 +1219,11 @@ async function valuation({ client, brand, filters = {} }) {
   const { rows: summary } = await run(
     `SELECT COUNT(*)::int AS sku_locations,
             COALESCE(SUM(sl.on_hand), 0)::int AS total_units,
-            COALESCE(SUM(sl.on_hand * COALESCE(pv.cost_price_ngn, 0)), 0)::numeric(14,2) AS total_value_ngn,
-            COUNT(*) FILTER (WHERE pv.cost_price_ngn IS NULL)::int AS missing_cost_count
+            COALESCE(SUM(sl.on_hand * COALESCE(NULLIF(vc.avg_cost_ngn, 0), pv.cost_price_ngn, 0)), 0)::numeric(14,2) AS total_value_ngn,
+            COUNT(*) FILTER (WHERE COALESCE(NULLIF(vc.avg_cost_ngn, 0), NULLIF(pv.cost_price_ngn, 0)) IS NULL)::int AS missing_cost_count
        FROM ${t(brand, "stock_levels")} sl
        JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sl.variant_id
+       LEFT JOIN ${t(brand, "variant_costing")} vc ON vc.variant_id = pv.variant_id
        ${w}`,
     params,
   );
@@ -1232,10 +1244,11 @@ async function onHandSnapshot({ client, brand }) {
             p.product_id, p.name AS product_name, p.product_code,
             pv.sku, pv.variant_name,
             sl.on_hand, sl.reserved, sl.available,
-            COALESCE(pv.cost_price_ngn, 0) AS unit_cost_ngn,
-            (sl.on_hand * COALESCE(pv.cost_price_ngn, 0))::numeric(14,2) AS value_ngn
+            COALESCE(NULLIF(vc.avg_cost_ngn, 0), pv.cost_price_ngn, 0) AS unit_cost_ngn,
+            (sl.on_hand * COALESCE(NULLIF(vc.avg_cost_ngn, 0), pv.cost_price_ngn, 0))::numeric(14,2) AS value_ngn
        FROM ${t(brand, "stock_levels")} sl
        JOIN ${t(brand, "product_variants")} pv ON pv.variant_id = sl.variant_id
+       LEFT JOIN ${t(brand, "variant_costing")} vc ON vc.variant_id = pv.variant_id
        JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
        JOIN ${t(brand, "stock_locations")} loc ON loc.location_id = sl.location_id
       ORDER BY loc.display_name ASC, p.name ASC, pv.sku ASC`,
@@ -1291,7 +1304,9 @@ async function listProductStock({
     params.push(filters.location_id);
   }
 
-  const prodWhere = ["p.is_deleted = false"];
+  // This legacy register is the hair-base stock view. SKU-level Care stock
+  // lives in the dedicated PXG authoring view; never call a bottle a wig base.
+  const prodWhere = ["p.is_deleted = false", "p.catalogue_role = 'base'"];
   if (filters.category_id) {
     prodWhere.push(`p.category_id = $${i++}`);
     params.push(filters.category_id);
@@ -1425,7 +1440,7 @@ async function productsForCountMatch({ client, brand }) {
     `SELECT product_id, product_code, name, primary_colour, texture_type,
             lace_type, cap_size, lace_size_codes, track_stock
        FROM ${t(brand, "products")}
-      WHERE is_deleted = false
+      WHERE is_deleted = false AND catalogue_role = 'base'
         AND product_type = 'physical'
       ORDER BY name`,
   );
@@ -1446,8 +1461,10 @@ async function levelsByProductAtLocation({ client, brand, location_id }) {
             pv.is_active, COALESCE(sl.on_hand, 0)::int AS on_hand,
             COALESCE(sl.reserved, 0)::int AS reserved
        FROM ${t(brand, "product_variants")} pv
+       JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
        LEFT JOIN ${t(brand, "stock_levels")} sl
               ON sl.variant_id = pv.variant_id AND sl.location_id = $1
+      WHERE p.catalogue_role = 'base' AND p.is_deleted = false
       ORDER BY pv.is_default DESC, pv.display_order ASC, pv.created_at ASC`,
     [location_id],
   );
@@ -1457,6 +1474,50 @@ async function levelsByProductAtLocation({ client, brand, location_id }) {
     byProduct.get(r.product_id).push(r);
   }
   return byProduct;
+}
+
+// SKU-exact Care & Accessories count scope. Hair-only unlisted:zero can never
+// touch these rows; an omitted 50 ml SKU can be zeroed ONLY by a retail sheet.
+async function careVariantsAtLocation({ client, brand, location_id }) {
+  const { rows } = await ex(client)(
+    `SELECT pv.variant_id, pv.product_id, pv.sku, pv.variant_name, pv.is_active,
+            p.name AS product_name, COALESCE(sl.on_hand, 0)::int AS on_hand,
+            COALESCE(sl.reserved, 0)::int AS reserved,
+            COALESCE(vc.avg_cost_ngn > 0, false) AS has_operational_cost
+       FROM ${t(brand, "product_variants")} pv
+       JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
+       LEFT JOIN ${t(brand, "variant_costing")} vc ON vc.variant_id = pv.variant_id
+       LEFT JOIN ${t(brand, "stock_levels")} sl
+              ON sl.variant_id = pv.variant_id AND sl.location_id = $1
+      WHERE p.catalogue_role = 'retail' AND p.is_deleted = false
+      ORDER BY p.name, pv.display_order, pv.sku`,
+    [location_id],
+  );
+  return rows;
+}
+
+// Use the same identity check for variant-exact receipts, purchase orders and
+// stale-count posting. No silently choosing a default bottle size.
+async function variantForIntake({ client, brand, variant_id }) {
+  const { rows } = await ex(client)(
+    `SELECT pv.variant_id, pv.product_id, pv.sku, pv.is_active,
+            p.catalogue_role, p.is_deleted, p.track_stock
+       FROM ${t(brand, "product_variants")} pv
+       JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
+      WHERE pv.variant_id = $1`,
+    [variant_id],
+  );
+  return rows[0] || null;
+}
+
+async function poLineForReceipt({ client, brand, po_id, po_line_id }) {
+  const { rows } = await ex(client)(
+    `SELECT variant_id, qty_outstanding
+       FROM ${t(brand, "po_lines")}
+      WHERE po_id = $1 AND line_id = $2 FOR UPDATE`,
+    [po_id, po_line_id],
+  );
+  return rows[0] || null;
 }
 
 /** Locations with the units each holds, so a count can't half-cover a brand. */
@@ -1526,5 +1587,8 @@ module.exports = {
   setShipmentLineReceived,
   productsForCountMatch,
   levelsByProductAtLocation,
+  careVariantsAtLocation,
+  variantForIntake,
+  poLineForReceipt,
   locationsWithStock,
 };

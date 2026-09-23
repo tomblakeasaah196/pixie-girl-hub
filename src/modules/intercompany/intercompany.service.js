@@ -146,6 +146,18 @@ async function computeEffectiveMargin({
  * are the mirrored journals posted and stock moved (V2.2 §5.1: "requires
  * CEO approval before the invoice pair is raised").
  */
+// PR 1 Care items are inventory-only. Intercompany approval posts mirrored
+// revenue/expense BEFORE its best-effort stock deduction, so the stock-ledger
+// sale trigger alone would leave a bad financial trade on the books.
+async function assertNoCareIntercompany({ seller_brand, buyer_brand, reference_type, reference_id }) {
+  if (reference_type !== "product_variant" || !reference_id) return;
+  for (const brand of [seller_brand, buyer_brand]) {
+    const v = await stockRepo.variantForIntake({ brand, variant_id: reference_id });
+    if (v?.catalogue_role === "retail")
+      throw new AppError("CARE_SALES_DISABLED", "Care & Accessories cannot enter intercompany trades before typed selling", 422);
+  }
+}
+
 async function recordTransaction({ user, request_id, input }) {
   if (!isValidBrand(input.seller_brand) || !isValidBrand(input.buyer_brand))
     throw new AppError("INVALID_BRAND", "Unknown seller or buyer brand", 422);
@@ -155,6 +167,7 @@ async function recordTransaction({ user, request_id, input }) {
       "seller_brand and buyer_brand must differ",
       422,
     );
+  await assertNoCareIntercompany(input);
 
   const seller_doc_type = input.seller_doc_type || "invoice";
   await verifySellerDoc({
@@ -250,6 +263,7 @@ async function approveTransaction({ user, request_id, id, notes }) {
       `Cannot approve a '${txn.status}' txn`,
       409,
     );
+  await assertNoCareIntercompany(txn);
 
   const instance = await wf.findOpenInstance({
     business: txn.seller_brand,
@@ -414,6 +428,7 @@ async function matchTransaction({ user, request_id, id }) {
       `Cannot match a '${txn.status}' txn`,
       409,
     );
+  await assertNoCareIntercompany(txn);
   const updated = await repo.setStatus({
     id,
     status: "matched",

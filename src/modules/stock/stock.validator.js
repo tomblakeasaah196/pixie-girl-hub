@@ -177,9 +177,10 @@ const shipmentCreate = z
   })
   .strict();
 
-// Goods Reception — base products + quantity only. No cost (Cost Vault owns
-// it). received_at is a calendar date (defaults to today server-side when
-// omitted); received_by_name is the editable receiver shown on the register.
+// Goods Reception: base product_id still resolves to its default variant;
+// Care & Accessories MUST name an exact variant_id and positive operational
+// unit cost. True confidential cost stays separately in the Cost Vault.
+// received_at is a calendar date, receiver editable on the register.
 const goodsReceiptCreate = z
   .object({
     destination_location_id: z.string().uuid(),
@@ -198,13 +199,18 @@ const goodsReceiptCreate = z
       .array(
         z
           .object({
-            product_id: z.string().uuid(),
+            product_id: z.string().uuid().optional(),
+            variant_id: z.string().uuid().optional(),
             quantity: z.coerce.number().int().positive(),
+            unit_cost_ngn: z.coerce.number().positive().optional(),
             // Which PO line this quantity satisfies. Per line, because one
             // delivery can close some lines and leave others outstanding.
             po_line_id: z.string().uuid().optional(),
           })
-          .strict(),
+          .strict()
+          .refine((l) => Boolean(l.product_id) !== Boolean(l.variant_id), {
+            message: "Provide a base product_id OR an exact SKU variant_id",
+          }),
       )
       .min(1),
   })
@@ -252,6 +258,18 @@ const mw = (s) => (req, _res, next) => {
 // to these fields, so anything unrecognised is rejected here rather than
 // silently ignored downstream. `units` is nullable on purpose — null is a
 // BLANK cell, which is not the same as a counted zero.
+// SKU-exact PXG Care count. Never reuse the hair-axis matcher and never let a
+// client override the family/brand; the route and service hard-code retail.
+const careCountImport = z.object({
+  location_id: z.string().uuid(),
+  blank: z.enum(["skip", "zero"]).default("skip"),
+  unlisted: z.enum(["skip", "zero"]).default("skip"),
+  reason: z.string().max(300).optional(),
+  commit: z.boolean().default(false),
+  rows: z.array(z.record(z.string(), z.union([z.string(), z.number(), z.null()])))
+    .min(1).max(5000),
+}).strict();
+
 const countImport = z
   .object({
     location_id: z.string().uuid().optional(),
@@ -277,6 +295,7 @@ module.exports = {
   validateShipmentCreate: mw(shipmentCreate),
   validateGoodsReceiptCreate: mw(goodsReceiptCreate),
   validateCountImport: mw(countImport),
+  validateCareCountImport: mw(careCountImport),
   validateShipmentStatus: mw(shipmentStatus),
   validateShipmentReceive: mw(shipmentReceive),
   locationCreate,

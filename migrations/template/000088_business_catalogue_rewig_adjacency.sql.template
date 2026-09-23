@@ -83,6 +83,10 @@ UPDATE {{BUSINESS}}.products p
    SET size_code = t.size_code
   FROM {{BUSINESS}}.styled_size_tiers t
  WHERE p.size_code IS NULL
+   -- 000088 is replayed by repair. After 000094, never give a retail product
+   -- whose name ends in " - Small" a wig tier/family. Before 000094 the JSON
+   -- key is absent, so legacy base rows still receive the original backfill.
+   AND (to_jsonb(p)->>'catalogue_role') IS DISTINCT FROM 'retail'
    AND t.is_active = true
    AND p.name ILIKE '%' || ' - ' || t.label
    AND length(p.name) > length(t.label) + 3;
@@ -97,6 +101,7 @@ WITH fam AS (
     JOIN {{BUSINESS}}.styled_size_tiers t ON t.size_code = p.size_code
    WHERE p.base_family_id IS NULL
      AND p.size_code IS NOT NULL
+     AND (to_jsonb(p)->>'catalogue_role') IS DISTINCT FROM 'retail'
 ),
 grp AS (
   SELECT family_key, gen_random_uuid() AS family_id

@@ -13,11 +13,14 @@ const { money, toCurrencyString } = require("../../utils/money");
 const wf = require("../../workflows/engine");
 const repo = require("./purchasing.repo");
 const contactsRepo = require("../../shared/contacts/contacts.repo");
+const stockRepo = require("../stock/stock.repo");
+const careGate = require("../catalogue/care-accessories.gate");
 const events = require("./purchasing.events");
 const {
   NotFoundError,
   ConflictError,
   ValidationError,
+  AppError,
 } = require("../../utils/errors");
 const pdf = require("../../services/pdf.service");
 
@@ -40,6 +43,14 @@ const A = (
     metadata,
     request_id,
   });
+
+async function assertSupplierSku({ client, brand, variant_id }) {
+  if (!variant_id) return;
+  const v = await stockRepo.variantForIntake({ client, brand, variant_id });
+  if (!v || v.is_deleted || !v.is_active)
+    throw new AppError("INVALID_PURCHASING_SKU", "Choose an active stock SKU", 422);
+  if (v.catalogue_role === "retail") careGate.requireEnabled(brand);
+}
 
 // Allowed PO factory-tracking transitions (after approval). Mirrors inbound_shipments.
 const PO_FLOW = {
@@ -100,12 +111,14 @@ async function createSupplier({ brand, user, request_id, input }) {
       },
     });
     if (input.products) {
-      for (const p of input.products)
+      for (const p of input.products) {
+        await assertSupplierSku({ client, brand, variant_id: p.variant_id });
         await repo.addSupplierProduct({
           client,
           brand,
           row: { ...p, supplier_id: supplier.supplier_id },
         });
+      }
     }
     await A(
       brand,
@@ -231,6 +244,7 @@ async function addSupplierProduct({
   input,
 }) {
   return transaction(async (client) => {
+    await assertSupplierSku({ client, brand, variant_id: input.variant_id });
     const row = await repo.addSupplierProduct({
       client,
       brand,
@@ -304,12 +318,14 @@ async function createRfq({ brand, user, request_id, input }) {
       row: { ...input, rfq_number, created_by: user?.user_id },
     });
     let order = 0;
-    for (const l of input.lines || [])
+    for (const l of input.lines || []) {
+      await assertSupplierSku({ client, brand, variant_id: l.variant_id });
       await repo.addRfqLine({
         client,
         brand,
         line: { ...l, rfq_id: rfq.rfq_id, display_order: order++ },
       });
+    }
     await A(
       brand,
       user?.user_id,
@@ -495,24 +511,32 @@ async function createPo({ brand, user, request_id, input }) {
       brand,
       row: { ...input, po_number, created_by: user?.user_id },
     });
-    // Base-product lines carry a product_id; po_lines hold a variant. Resolve
-    // it here, once, so the ordered SKU and the received SKU are the same
-    // thing — that identity is what lets a delivery book itself back against
-    // the order. A product with no stock-bearing variant still orders fine;
-    // the line simply isn't stock-linked (freight, samples, a style not yet in
-    // the catalogue), and reception asks for the product then.
-    const stockRepo = require("../stock/stock.repo");
+    // Base-only product picks keep their historical default-SKU behavior.
+    // Care & Accessories must specify its exact option variant_id on the PO;
+    // an unlinked order for the wrong bottle cannot later satisfy a receipt.
+    const productRepo = require("../catalogue/catalogue.repo");
     const resolvedLines = [];
     for (const line of input.lines) {
       const { product_id, ...rest } = line;
       let variant_id = rest.variant_id;
+      if (product_id) {
+        const product = await productRepo.findProductById({ client, brand, id: product_id });
+        if (product?.catalogue_role === "retail") {
+          careGate.requireEnabled(brand);
+          if (!variant_id)
+            throw new AppError("SKU_REQUIRED", "Purchase Care & Accessories by exact SKU", 422);
+        }
+      }
       if (!variant_id && product_id) {
-        const variant = await stockRepo.defaultVariantForProduct({
-          client,
-          brand,
-          product_id,
-        });
+        const variant = await stockRepo.defaultVariantForProduct({ client, brand, product_id });
         variant_id = variant ? variant.variant_id : undefined;
+      }
+      if (variant_id) {
+        const v = await stockRepo.variantForIntake({ client, brand, variant_id });
+        if (!v || v.is_deleted || !v.is_active ||
+            (product_id && v.product_id !== product_id))
+          throw new AppError("INVALID_PO_SKU", "PO SKU is inactive or belongs to a different item", 422);
+        if (v.catalogue_role === "retail") careGate.requireEnabled(brand);
       }
       resolvedLines.push({ ...rest, variant_id });
     }

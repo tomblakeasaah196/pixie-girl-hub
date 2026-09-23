@@ -360,6 +360,9 @@ const schema = z.object({
     .default(8192),
 
   // Feature flags
+  // PR 1: PXG-only catalogue authoring. Public sales stay disabled in SQL
+  // until the typed checkout release; never enable this for another brand.
+  FEATURE_PXG_CARE_ACCESSORIES_ENABLED: zBool(false),
   FEATURE_MANUAL_PAYMENTS_ENABLED: zBool(false),
   FEATURE_PRAXIS_VOICE_ENABLED: zBool(true),
   FEATURE_UGC_INGESTION_ENABLED: zBool(true),

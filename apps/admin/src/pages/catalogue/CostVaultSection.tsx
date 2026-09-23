@@ -21,7 +21,7 @@ export function CostVaultSection({
   variant,
 }: {
   productId: string;
-  variant: Variant;
+  variant: Pick<Variant, "variant_id">;
 }) {
   const access = useVaultAccess();
   const [revealed, setRevealed] = useState(false);

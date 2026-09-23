@@ -64,6 +64,13 @@ router.post(
   v.validateCountImport,
   c.importCount,
 );
+router.get("/adjustments/care-skus", can("view"), c.listCareSkus);
+router.post(
+  "/adjustments/import-care-count",
+  can("create"),
+  v.validateCareCountImport,
+  c.importCareCount,
+);
 router.get("/adjustments", can("view"), c.listAdjustments);
 router.post(
   "/adjustments",

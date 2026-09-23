@@ -1,0 +1,161 @@
+-- TEMPLATE 000094 — PXG Care & Accessories (PR 1)
+-- ALTER-only: bootstrap runs this after 000093; repair safely replays it.
+-- Shared schema shape, but the CHECK below forbids retail rows in FLH (or
+-- any other brand). No historical product is guessed/reclassified: all are base.
+ALTER TABLE {{BUSINESS}}.products
+  ADD COLUMN IF NOT EXISTS catalogue_role TEXT NOT NULL DEFAULT 'base',
+  ADD COLUMN IF NOT EXISTS retail_status TEXT NOT NULL DEFAULT 'draft',
+  ADD COLUMN IF NOT EXISTS ingredients TEXT,
+  ADD COLUMN IF NOT EXISTS directions TEXT,
+  ADD COLUMN IF NOT EXISTS warnings TEXT;
+
+DO $pxg$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conrelid = '{{BUSINESS}}.products'::regclass
+       AND conname = 'chk_care_accessories_role'
+  ) THEN
+    ALTER TABLE {{BUSINESS}}.products ADD CONSTRAINT chk_care_accessories_role
+      CHECK (
+        catalogue_role IN ('base', 'retail')
+        AND retail_status IN ('draft', 'live', 'archived')
+        AND (catalogue_role = 'base' OR '{{BUSINESS}}' = 'pixiegirl')
+        AND (catalogue_role <> 'retail' OR (
+          (product_type = 'physical') IS TRUE AND track_stock IS TRUE
+          AND is_custom IS FALSE AND preorder_enabled IS FALSE
+          AND preorder_excluded IS TRUE AND rewig_eligible IS FALSE
+          AND size_code IS NULL AND base_family_id IS NULL
+          AND hair_length_inches IS NULL AND texture_type IS NULL
+          AND lace_type IS NULL AND density IS NULL AND cap_size IS NULL
+          AND hair_origin IS NULL AND required_deposit_pct IS NULL
+          AND (payment_model = 'full_payment_only') IS TRUE
+          AND is_visible_storefront IS FALSE
+          -- All customer AND POS channel flags remain off until typed sales.
+          AND visible_on_channels = '{}'::text[]
+          AND ((taxable IS TRUE AND vat_rate IS NOT NULL AND vat_rate BETWEEN 0 AND 1)
+            OR (taxable IS FALSE AND vat_rate IS NULL))
+        ))
+      );
+  END IF;
+END $pxg$;
+
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_products_care_role
+  ON {{BUSINESS}}.products (retail_status, category_id, created_at DESC)
+  WHERE catalogue_role = 'retail' AND is_deleted = false;
+
+-- A catalogue identity cannot be rewritten once created (especially not after
+-- a sale or a styled/base link). All old rows are base by default.
+CREATE OR REPLACE FUNCTION {{BUSINESS}}.fn_care_role_immutable()
+RETURNS trigger LANGUAGE plpgsql AS $pxg$
+BEGIN
+  IF OLD.catalogue_role IS DISTINCT FROM NEW.catalogue_role THEN
+    RAISE EXCEPTION 'Product catalogue_role is immutable';
+  END IF;
+  RETURN NEW;
+END $pxg$;
+DROP TRIGGER IF EXISTS trg_care_role_immutable ON {{BUSINESS}}.products;
+CREATE TRIGGER trg_care_role_immutable
+  BEFORE UPDATE OF catalogue_role ON {{BUSINESS}}.products
+  FOR EACH ROW EXECUTE FUNCTION {{BUSINESS}}.fn_care_role_immutable();
+
+-- No styled wig (or its per-size donor) can point at Care & Accessories, even
+-- through an importer or a direct SQL write that bypasses the application.
+CREATE OR REPLACE FUNCTION {{BUSINESS}}.fn_styled_hair_base_only()
+RETURNS trigger LANGUAGE plpgsql AS $pxg$
+BEGIN
+  IF NEW.base_product_id IS NOT NULL AND EXISTS (
+    SELECT 1 FROM {{BUSINESS}}.products p
+     WHERE p.product_id = NEW.base_product_id AND p.catalogue_role <> 'base'
+  ) THEN
+    RAISE EXCEPTION 'Styled products require a hair base';
+  END IF;
+  IF TG_TABLE_NAME = 'styled_products'
+     AND (to_jsonb(NEW)->>'base_variant_id') IS NOT NULL
+     AND EXISTS (
+       SELECT 1 FROM {{BUSINESS}}.product_variants pv
+       JOIN {{BUSINESS}}.products p ON p.product_id = pv.product_id
+        WHERE pv.variant_id = (to_jsonb(NEW)->>'base_variant_id')::uuid
+          AND p.catalogue_role <> 'base'
+     ) THEN
+    RAISE EXCEPTION 'Styled products require a hair base variant';
+  END IF;
+  RETURN NEW;
+END $pxg$;
+DROP TRIGGER IF EXISTS trg_styled_hair_base_only ON {{BUSINESS}}.styled_products;
+CREATE TRIGGER trg_styled_hair_base_only
+  BEFORE INSERT OR UPDATE OF base_product_id, base_variant_id
+  ON {{BUSINESS}}.styled_products
+  FOR EACH ROW EXECUTE FUNCTION {{BUSINESS}}.fn_styled_hair_base_only();
+DROP TRIGGER IF EXISTS trg_styled_variant_hair_base_only ON {{BUSINESS}}.styled_product_variants;
+CREATE TRIGGER trg_styled_variant_hair_base_only
+  BEFORE INSERT OR UPDATE OF base_product_id
+  ON {{BUSINESS}}.styled_product_variants
+  FOR EACH ROW EXECUTE FUNCTION {{BUSINESS}}.fn_styled_hair_base_only();
+
+-- PR 1 is authoring/inventory only. Even with its authoring flag ON in
+-- staging, a forged cart/Quick Sale/DM link must not create a retail sale
+-- before PR 2 installs the shared typed order resolver. PR 2 deliberately
+-- replaces/removes this temporary fail-closed trigger after real-DB checkout
+-- coverage; the PR 4 pilot gate stays OFF until every channel is safe.
+CREATE OR REPLACE FUNCTION {{BUSINESS}}.fn_care_no_sales_before_pr2()
+RETURNS trigger LANGUAGE plpgsql AS $pxg$
+BEGIN
+  IF (NEW.product_id IS NOT NULL AND EXISTS (
+       SELECT 1 FROM {{BUSINESS}}.products p
+        WHERE p.product_id = NEW.product_id AND p.catalogue_role = 'retail'
+     )) OR (NEW.variant_id IS NOT NULL AND EXISTS (
+       SELECT 1 FROM {{BUSINESS}}.product_variants v
+       JOIN {{BUSINESS}}.products p ON p.product_id = v.product_id
+        WHERE v.variant_id = NEW.variant_id AND p.catalogue_role = 'retail'
+     )) THEN
+    RAISE EXCEPTION 'Care & Accessories sales are disabled until the typed checkout release';
+  END IF;
+  RETURN NEW;
+END $pxg$;
+DROP TRIGGER IF EXISTS trg_care_no_sales_before_pr2 ON {{BUSINESS}}.sales_order_lines;
+CREATE TRIGGER trg_care_no_sales_before_pr2
+  BEFORE INSERT OR UPDATE OF product_id, variant_id
+  ON {{BUSINESS}}.sales_order_lines
+  FOR EACH ROW EXECUTE FUNCTION {{BUSINESS}}.fn_care_no_sales_before_pr2();
+
+-- Same temporary gate on the stock ledger: a raw movement endpoint cannot
+-- reserve, sell, return-to-sellable or run factory production on a retail SKU
+-- while PR 1 is inventory-only. Legitimate receipts, counts, transfers and
+-- write-offs remain possible. PR 2 removes/replaces this on typed sale paths.
+CREATE OR REPLACE FUNCTION {{BUSINESS}}.fn_care_stock_only_before_pr2()
+RETURNS trigger LANGUAGE plpgsql AS $pxg$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM {{BUSINESS}}.product_variants v
+    JOIN {{BUSINESS}}.products p ON p.product_id = v.product_id
+     WHERE v.variant_id = NEW.variant_id AND p.catalogue_role = 'retail'
+  ) AND NEW.movement_type NOT IN (
+    'receive', 'transfer_in', 'transfer_out', 'adjustment_in', 'adjustment_out',
+    'damage', 'sample', 'theft_writeoff'
+  ) THEN
+    RAISE EXCEPTION 'Care & Accessories SKU is inventory-only until typed selling is released';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM {{BUSINESS}}.product_variants v
+    JOIN {{BUSINESS}}.products p ON p.product_id = v.product_id
+     WHERE v.variant_id = NEW.variant_id AND p.catalogue_role = 'retail'
+  ) AND NEW.movement_type = 'receive'
+    AND COALESCE(NEW.unit_cost_ngn, 0) <= 0 THEN
+    RAISE EXCEPTION 'Care & Accessories receipts require positive operational cost per SKU';
+  END IF;
+  RETURN NEW;
+END $pxg$;
+DROP TRIGGER IF EXISTS trg_care_stock_only_before_pr2 ON {{BUSINESS}}.stock_movements;
+CREATE TRIGGER trg_care_stock_only_before_pr2
+  BEFORE INSERT ON {{BUSINESS}}.stock_movements
+  FOR EACH ROW EXECUTE FUNCTION {{BUSINESS}}.fn_care_stock_only_before_pr2();
+
+-- Create the PXG browsing root once. Do not enable global categories or
+-- create a similarly named category in FLH. PR 2 adds typed storefront nav.
+INSERT INTO {{BUSINESS}}.product_categories
+  (name, slug, description, is_visible_storefront, is_active)
+SELECT 'Care & Accessories', 'care-and-accessories',
+       'Care products, tools and accessories for your hair.', false, true
+ WHERE '{{BUSINESS}}' = 'pixiegirl'
+ON CONFLICT (slug) DO NOTHING;

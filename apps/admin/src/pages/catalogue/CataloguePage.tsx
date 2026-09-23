@@ -4,7 +4,9 @@ import { ModuleInsights } from "@/components/insights/ModuleInsights";
 import { useAuthStore } from "@/stores/auth";
 import { DeniedState } from "@/components/ui/controls";
 import { useCategoriesEnabled } from "@/lib/catalogue";
+import { useCareAvailability } from "@/lib/care-accessories";
 import { Tabs } from "./parts";
+import { CareTab } from "./CareTab";
 import { BaseTab } from "./BaseTab";
 import { StyledTab } from "./StyledTab";
 import { CategoriesTab } from "./CategoriesTab";
@@ -34,6 +36,7 @@ export function CataloguePage() {
   };
   // Categories are hidden unless re-enabled from Config (owner directive).
   const categoriesOn = useCategoriesEnabled();
+  const careOn = useCareAvailability().data?.enabled === true;
 
   if (!can("catalogue", "view")) {
     return (
@@ -44,6 +47,7 @@ export function CataloguePage() {
   const tabs = [
     { key: "styled", label: "Styled" },
     { key: "base", label: "Base" },
+    ...(careOn ? [{ key: "care", label: "Care & Accessories" }] : []),
     ...(categoriesOn ? [{ key: "categories", label: "Categories" }] : []),
     { key: "collections", label: "Collections" },
     { key: "shades", label: "Shades" },
@@ -53,7 +57,7 @@ export function CataloguePage() {
   ];
 
   // If Categories gets switched off while it's the active tab, fall back.
-  const active = tab === "categories" && !categoriesOn ? "styled" : tab;
+  const active = (tab === "categories" && !categoriesOn) || (tab === "care" && !careOn) ? "styled" : tab;
 
   return (
     <div className="space-y-5">
@@ -61,6 +65,7 @@ export function CataloguePage() {
       <Tabs tabs={tabs} active={active} onChange={setTab} />
       {active === "styled" && <StyledTab />}
       {active === "base" && <BaseTab />}
+      {active === "care" && careOn && <CareTab />}
       {active === "categories" && categoriesOn && <CategoriesTab />}
       {active === "collections" && <CollectionsTab />}
       {active === "shades" && <ShadesTab />}

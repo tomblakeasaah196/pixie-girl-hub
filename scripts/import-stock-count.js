@@ -70,6 +70,7 @@ function parseArgs(argv) {
   const args = {
     file: null,
     brand: "faitlynhair",
+    family: "base", // --family=care is PXG-only and matches exact SKU
     sheet: null,
     location: null,
     // A blank Units cell means "not counted" — leave the system's number
@@ -78,6 +79,7 @@ function parseArgs(argv) {
     // A base product the sheet never names is written down to zero: the sheet
     // is the single source of truth for what we hold.
     unlisted: "zero",
+    unlistedProvided: false,
     user: null,
     report: null,
     commit: false,
@@ -94,6 +96,9 @@ function parseArgs(argv) {
       case "--brand":
         args.brand = value();
         break;
+      case "--family":
+        args.family = value();
+        break;
       case "--sheet":
         args.sheet = value();
         break;
@@ -105,6 +110,7 @@ function parseArgs(argv) {
         break;
       case "--unlisted":
         args.unlisted = value();
+        args.unlistedProvided = true;
         break;
       case "--user":
         args.user = value();
@@ -134,14 +140,19 @@ Import a physical stock count and file it as a 'count' adjustment for approval.
 
   --file <path>        .xlsx or .csv count sheet                    (required)
   --brand <key>        brand schema                       (default: faitlynhair)
+  --family base|care   wig/base axes OR PXG exact-SKU sheet    (default: base)
   --sheet <name>       worksheet to read              (default: the first sheet)
   --location <id|name> stock location the count covers  (default: the only one)
   --blank skip|zero    what an empty Units cell means           (default: skip)
-  --unlisted zero|skip products the sheet never names         (default: zero)
+  --unlisted zero|skip products the sheet never names    (base: zero, care: skip)
   --user <email>       who the adjustment is filed as         (default: the CEO)
   --report <path>      write the full variance table to a CSV
   --commit             actually file the adjustment      (default: dry run only)
-  --allow-unmatched    proceed past every blocker listed above    (dangerous)
+  --allow-unmatched    base only: proceed past blockers      (forbidden for care)
+
+Care example: --file count.xlsx --brand pixiegirl --family care --location <id|name>
+  Headers: SKU | Units; exact, case-sensitive SKU only. No batch/expiry columns.
+  Dry-run by default; --commit submits an adjustment for approval, never posts.
 `;
 
 // ── Catalogue + stock reads ──────────────────────────────
@@ -152,7 +163,7 @@ async function loadProducts(brand) {
     `SELECT product_id, product_code, name, primary_colour, texture_type,
             lace_type, cap_size, lace_size_codes, track_stock
        FROM ${t(brand, "products")}
-      WHERE is_deleted = false
+      WHERE is_deleted = false AND catalogue_role = 'base'
         AND product_type = 'physical'`,
   );
   return rows;
@@ -165,8 +176,10 @@ async function loadLevels(brand, location_id) {
             pv.is_active, COALESCE(sl.on_hand, 0)::int AS on_hand,
             COALESCE(sl.reserved, 0)::int AS reserved
        FROM ${t(brand, "product_variants")} pv
+       JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
        LEFT JOIN ${t(brand, "stock_levels")} sl
               ON sl.variant_id = pv.variant_id AND sl.location_id = $1
+      WHERE p.catalogue_role = 'base' AND p.is_deleted = false
       ORDER BY pv.is_default DESC, pv.display_order ASC, pv.created_at ASC`,
     [location_id],
   );
@@ -281,6 +294,47 @@ function writeReport(file, { lines, unchanged, unmatched, skipped, problems }) {
   );
 }
 
+// The Care count is intentionally NOT run through this file's wig matcher or
+// its --allow-unmatched escape hatch. CLI and browser share the same server
+// reconciliation, so --unlisted=zero remains confined to retail SKUs.
+async function runCare(args, rawRows, sheetName) {
+  if (args.brand !== "pixiegirl")
+    throw new Error("--family=care is PXG-only; use --brand pixiegirl");
+  const locations = await loadLocations(args.brand);
+  const location = resolveLocation(locations, args.location, args.unlisted);
+  if (!location.is_active) throw new Error("Selected stock location is inactive");
+  const input = {
+    location_id: location.location_id, rows: rawRows, blank: args.blank,
+    unlisted: args.unlisted, reason: `Physical count — ${path.basename(args.file)}`,
+    commit: false,
+  };
+  const preview = await stockService.importCareCount({
+    brand: args.brand, input, user: null, request_id: null,
+  });
+  console.log(`\n${path.basename(args.file)} → '${sheetName}' — exact Care SKUs at ${location.display_name}`);
+  for (const l of preview.lines)
+    console.log(`  ${l.sku}: ${l.system_count} → ${l.physical_count} (${l.delta >= 0 ? "+" : ""}${l.delta})`);
+  for (const issue of preview.blockers) console.warn(`  ✖ ${issue}`);
+  console.log(`  ${preview.summary.corrections} corrected · ${preview.summary.zeroed} unlisted zeroed · ` +
+    `${preview.summary.unchanged} unchanged · ends at ${preview.summary.ends_at} units`);
+  if (args.report) {
+    const header = ["outcome", "row", "sku", "product", "system_count", "physical_count", "delta"];
+    const data = preview.lines.map((l) => [l.kind, l.row || "", l.sku, l.product_name,
+      l.system_count, l.physical_count, l.delta]);
+    fs.writeFileSync(args.report,
+      [header, ...data].map((r) => r.map(csvCell).join(",")).join("\n") + "\n");
+    console.log(`  Variance report → ${args.report}`);
+  }
+  if (preview.blockers.length) throw new Error("Care count has blockers; nothing was filed");
+  if (!preview.lines.length) { console.log("Nothing to correct."); return; }
+  if (!args.commit) { console.log("Dry run — nothing was written. Add --commit to file for approval."); return; }
+  const user = await resolveUser(args.user);
+  const result = await stockService.importCareCount({
+    brand: args.brand, input: { ...input, commit: true }, user, request_id: null,
+  });
+  console.log(`→ ${result.adjustment.adjustment_number} submitted. Stock moves ONLY after approval/posting.`);
+}
+
 // ── Main ─────────────────────────────────────────────────
 
 (async () => {
@@ -292,6 +346,13 @@ function writeReport(file, { lines, unchanged, unmatched, skipped, problems }) {
       if (!args.file && !args.help) throw new Error("--file is required");
       return;
     }
+    if (!["base", "care"].includes(args.family))
+      throw new Error("--family must be 'base' or 'care'");
+    if (args.family === "care" && !args.unlistedProvided) args.unlisted = "skip";
+    if (args.family === "care" && args.allowUnmatched)
+      throw new Error("--allow-unmatched is never permitted for Care & Accessories counts");
+    if (args.family === "care" && !args.location)
+      throw new Error("Name an explicit --location for a Care SKU count");
     if (!["skip", "zero"].includes(args.blank))
       throw new Error("--blank must be 'skip' or 'zero'");
     if (!["skip", "zero"].includes(args.unlisted))
@@ -311,6 +372,10 @@ function writeReport(file, { lines, unchanged, unmatched, skipped, problems }) {
       args.file,
       args.sheet,
     );
+    if (args.family === "care") {
+      await runCare(args, rawRows, sheetName);
+      return;
+    }
     const parsed = parseCountRows(rawRows);
     const { rows: deduped, conflicts } = dedupeRows(parsed);
 

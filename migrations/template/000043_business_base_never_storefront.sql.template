@@ -29,12 +29,18 @@ ALTER TABLE {{BUSINESS}}.products
 ALTER TABLE {{BUSINESS}}.products
   ALTER COLUMN visible_on_channels SET DEFAULT '{pos}';
 
--- 2. Backfill: pull every existing base product off the storefront.
-UPDATE {{BUSINESS}}.products
+-- 2. Backfill: pull only BASE products off the storefront. This ALTER-only
+-- template runs before 000094 on a fresh/old schema and again AFTER 000094 on
+-- every repair. to_jsonb safely reads the absent column as NULL pre-upgrade;
+-- after upgrade it leaves explicitly published retail rows alone. Never use
+-- an unconditional UPDATE here: it would silently unpublish retail on repair.
+UPDATE {{BUSINESS}}.products p
    SET is_visible_storefront = false
- WHERE is_visible_storefront = true;
+ WHERE p.is_visible_storefront = true
+   AND (to_jsonb(p)->>'catalogue_role') IS DISTINCT FROM 'retail';
 
--- 3. Drop 'storefront' from any base product's channel list.
-UPDATE {{BUSINESS}}.products
-   SET visible_on_channels = array_remove(visible_on_channels, 'storefront')
- WHERE 'storefront' = ANY (visible_on_channels);
+-- 3. Drop 'storefront' only from base channel lists (same upgrade behavior).
+UPDATE {{BUSINESS}}.products p
+   SET visible_on_channels = array_remove(p.visible_on_channels, 'storefront')
+ WHERE 'storefront' = ANY (p.visible_on_channels)
+   AND (to_jsonb(p)->>'catalogue_role') IS DISTINCT FROM 'retail';

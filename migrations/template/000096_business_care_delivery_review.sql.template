@@ -1,0 +1,227 @@
+-- TEMPLATE 000096 — PXG Care & Accessories (PR 3): manual delivery-fee review
+--
+-- WHY THIS EXISTS
+--   An order containing Care & Accessories items cannot have its delivery fee
+--   calculated by the website: the owner has NOT approved the provisional
+--   initial-zone-fee assumption, and the existing zone rate card prices by WIG
+--   quantity, so it would charge several combs as several wigs. Retail web
+--   delivery therefore stays fail-closed (pickup, or staff arrange it).
+--
+--   When staff DO arrange a retail delivery, the final fee is calculated by a
+--   human and entered by a human. That has to be a durable, auditable state on
+--   the order — not a substring match on a JSON blob in a text column. The
+--   existing `fee_pending` marker lives inside `sales_orders.internal_notes`
+--   (TEXT holding JSON) and is read back with
+--   `internal_notes LIKE '%"fee_pending":true%'`; it is written by one caller,
+--   cleared by `setDeliveryFee`, and cannot express "a fee was proposed, the
+--   customer has not accepted it yet". Reusing it as the review state would
+--   make the queue a text-search artefact. This migration adds real columns.
+--
+--   `sales.repo.setDeliveryFee` updates shipping + total and clears that text
+--   flag. It does NOT touch invoices, payment links, the paid balance or the
+--   ledger, and it records no customer consent — so on an order that has
+--   already been paid it can silently leave the financial documents disagreeing
+--   with the order. The review lifecycle below is what makes a fee change safe:
+--   consent, a verified top-up or refund, document reconciliation, and a hard
+--   block on dispatch until all of it has happened.
+--
+-- IDEMPOTENCY / REPLAY
+--   The first CREATE TABLE is the repair sentinel: once
+--   `delivery_fee_reviews` exists, repair-business-schema skips this template.
+--   Every statement is still written to be re-runnable, so a fresh bootstrap
+--   and a pre-upgrade repair both behave.
+--
+-- BRAND SCOPE
+--   Rendered for BOTH brands (shared SQL expects compatible columns), but only
+--   PXG ever sets `needs_delivery_review`, because only PXG can hold a retail
+--   row (000094 chk_care_accessories_role) and only the PXG-gated review
+--   service opens a review. On FLH the trigger below is a permanent no-op and
+--   wig-only/FLH shipping behaviour is unchanged byte-for-byte.
+
+-- 1. Durable review state on the order itself.
+ALTER TABLE {{BUSINESS}}.sales_orders
+  ADD COLUMN IF NOT EXISTS needs_delivery_review BOOLEAN NOT NULL DEFAULT false;
+
+-- When the agreed fee was settled, so fulfilment/reporting can tell an
+-- unresolved order from one a human already priced.
+ALTER TABLE {{BUSINESS}}.sales_orders
+  ADD COLUMN IF NOT EXISTS delivery_review_settled_at TIMESTAMPTZ;
+
+COMMENT ON COLUMN {{BUSINESS}}.sales_orders.needs_delivery_review IS
+  'PR 3 (Care & Accessories): a retail-containing delivery order whose final fee must be calculated and agreed by staff before dispatch. Durable review state — deliberately NOT the internal_notes "fee_pending" text marker, which cannot express consent/top-up lifecycle and is read back with a LIKE substring match.';
+
+-- 2. The review row: one lifecycle per order fee decision.
+CREATE TABLE IF NOT EXISTS {{BUSINESS}}.delivery_fee_reviews (
+  review_id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id            UUID        NOT NULL
+                      REFERENCES {{BUSINESS}}.sales_orders (order_id) ON DELETE CASCADE,
+  business            TEXT        NOT NULL,
+
+  -- Lifecycle:
+  --   pending_review     queued; nobody has priced it yet
+  --   awaiting_customer  a fee was proposed and is HIGHER than what the
+  --                      customer agreed/paid — explicit acceptance plus a
+  --                      verified separate payment are required before dispatch
+  --   accepted           customer accepted and the top-up is verified
+  --   declined           customer refused the increase (cancel/refund path)
+  --   credited           the final fee was LOWER — difference refunded/credited
+  --   confirmed          the amount already agreed is final; nothing further due
+  --   cancelled          the order was cancelled under the supported decline path
+  status              TEXT        NOT NULL DEFAULT 'pending_review'
+                      CHECK (status IN ('pending_review','awaiting_customer',
+                                        'accepted','declined','credited',
+                                        'confirmed','cancelled')),
+
+  -- What the customer agreed/paid at checkout (₦0 for a fail-closed retail
+  -- delivery or a pickup), what staff calculated, and what was finally agreed.
+  initial_fee_ngn     NUMERIC(14,2) NOT NULL DEFAULT 0,
+  proposed_fee_ngn    NUMERIC(14,2),
+  agreed_fee_ngn      NUMERIC(14,2),
+  -- proposed - initial, signed by `direction`; what the customer still owes or
+  -- is owed. Never inferred from text.
+  difference_ngn      NUMERIC(14,2) NOT NULL DEFAULT 0,
+  direction           TEXT        CHECK (direction IN ('increase','decrease','no_change')),
+
+  -- How the human arrived at the number. Free text on purpose: there is no
+  -- weight/volumetric engine and none may be implied.
+  calculation_basis   TEXT,
+
+  -- Customer consent. A website notice is NOT consent, so an increase needs a
+  -- recorded, attributable acceptance before any money moves.
+  customer_consent_at          TIMESTAMPTZ,
+  customer_consent_channel     TEXT,
+  customer_consent_reference   TEXT,
+  customer_declined_at         TIMESTAMPTZ,
+
+  -- Verified money movement (sales_order_payments rows), never a promise.
+  topup_payment_id    UUID,
+  refund_payment_id   UUID,
+  topup_verified_at   TIMESTAMPTZ,
+  refund_verified_at  TIMESTAMPTZ,
+
+  -- Document reconciliation, all of which must happen BEFORE dispatch.
+  invoice_synced_at   TIMESTAMPTZ,
+  payment_link_synced_at TIMESTAMPTZ,
+  ledger_posted_at    TIMESTAMPTZ,
+  customer_notified_at TIMESTAMPTZ,
+
+  settled_at          TIMESTAMPTZ,
+  settled_by          UUID,
+  opened_by           UUID,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  -- A fee is never negative and an agreed fee must be a real number once set.
+  CONSTRAINT delivery_fee_review_non_negative
+    CHECK (initial_fee_ngn >= 0
+           AND (proposed_fee_ngn IS NULL OR proposed_fee_ngn >= 0)
+           AND (agreed_fee_ngn IS NULL OR agreed_fee_ngn >= 0)),
+  -- An increase cannot be marked accepted without the consent that authorises
+  -- it. This is the invariant the guide calls "no silent card charge".
+  CONSTRAINT delivery_fee_review_accept_needs_consent
+    CHECK (status <> 'accepted' OR customer_consent_at IS NOT NULL),
+  -- Settled states must carry the agreed figure.
+  CONSTRAINT delivery_fee_review_settled_needs_agreed
+    CHECK (status NOT IN ('accepted','credited','confirmed')
+           OR agreed_fee_ngn IS NOT NULL)
+);
+
+-- ONE open review per order. A second open row would let two staff members
+-- price the same delivery differently and reconcile against whichever wrote
+-- last. Settled/cancelled reviews stay as history.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_delivery_fee_review_open
+  ON {{BUSINESS}}.delivery_fee_reviews (order_id)
+  WHERE status NOT IN ('accepted','declined','credited','confirmed','cancelled');
+
+CREATE INDEX IF NOT EXISTS idx_delivery_fee_review_queue
+  ON {{BUSINESS}}.delivery_fee_reviews (status, created_at);
+
+DROP TRIGGER IF EXISTS trg_delivery_fee_reviews_updated_at
+  ON {{BUSINESS}}.delivery_fee_reviews;
+CREATE TRIGGER trg_delivery_fee_reviews_updated_at
+  BEFORE UPDATE ON {{BUSINESS}}.delivery_fee_reviews
+  FOR EACH ROW EXECUTE FUNCTION shared.fn_set_updated_at();
+
+-- 3. Per-step audit trail. shared.audit_log records who called what; this
+--    records the fee decision's own history in order, which is what an
+--    operations or finance review actually reads.
+CREATE TABLE IF NOT EXISTS {{BUSINESS}}.delivery_fee_review_events (
+  event_id       UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  review_id      UUID        NOT NULL
+                 REFERENCES {{BUSINESS}}.delivery_fee_reviews (review_id) ON DELETE CASCADE,
+  order_id       UUID        NOT NULL,
+  event_type     TEXT        NOT NULL
+                 CHECK (event_type IN ('opened','fee_proposed','consent_requested',
+                                       'consent_received','consent_declined',
+                                       'topup_verified','refund_verified',
+                                       'fee_confirmed','documents_synced',
+                                       'notified','cancelled','settled')),
+  from_status    TEXT,
+  to_status      TEXT,
+  amount_ngn     NUMERIC(14,2),
+  note           TEXT,
+  actor_user_id  UUID,
+  actor_name     TEXT,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_delivery_fee_review_events_order
+  ON {{BUSINESS}}.delivery_fee_review_events (order_id, created_at);
+
+-- 4. HARD DISPATCH BLOCK. A retail delivery order whose fee is not settled
+--    cannot be dispatched. Enforced in the database so it holds for EVERY
+--    caller — the staff order drawer, the logistics subscriber rolling a
+--    courier's `picked_up` up onto the order, and a driver self-confirming
+--    through the public tracking link all end at advanceStatus('dispatched').
+--    An application-level check alone would miss at least one of them.
+CREATE OR REPLACE FUNCTION {{BUSINESS}}.fn_block_dispatch_pending_delivery_review()
+RETURNS trigger LANGUAGE plpgsql AS $pxg$
+BEGIN
+  IF NEW.status = 'dispatched'
+     AND OLD.status IS DISTINCT FROM 'dispatched'
+     AND NEW.needs_delivery_review = TRUE THEN
+    RAISE EXCEPTION
+      'Order % cannot dispatch: its delivery fee is still under staff review (agreed fee, customer consent and payment reconciliation are required first)',
+      NEW.order_number
+      USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END $pxg$;
+
+DROP TRIGGER IF EXISTS trg_block_dispatch_pending_delivery_review
+  ON {{BUSINESS}}.sales_orders;
+CREATE TRIGGER trg_block_dispatch_pending_delivery_review
+  BEFORE UPDATE OF status ON {{BUSINESS}}.sales_orders
+  FOR EACH ROW EXECUTE FUNCTION {{BUSINESS}}.fn_block_dispatch_pending_delivery_review();
+
+-- 5. Keep the durable flag and the review rows from disagreeing. The flag is
+--    what the dispatch trigger and the staff queue read, so a settled review
+--    left behind a raised flag would strand an order forever, and a raised
+--    review under a cleared flag would dispatch an unpriced delivery.
+CREATE OR REPLACE FUNCTION {{BUSINESS}}.fn_sync_needs_delivery_review()
+RETURNS trigger LANGUAGE plpgsql AS $pxg$
+DECLARE
+  v_open INTEGER;
+BEGIN
+  SELECT COUNT(*)::int INTO v_open
+    FROM {{BUSINESS}}.delivery_fee_reviews r
+   WHERE r.order_id = COALESCE(NEW.order_id, OLD.order_id)
+     AND r.status NOT IN ('accepted','declined','credited','confirmed','cancelled');
+
+  UPDATE {{BUSINESS}}.sales_orders
+     SET needs_delivery_review = (v_open > 0),
+         delivery_review_settled_at = CASE
+           WHEN v_open = 0 THEN now()
+           ELSE NULL
+         END
+   WHERE order_id = COALESCE(NEW.order_id, OLD.order_id)
+     AND (needs_delivery_review IS DISTINCT FROM (v_open > 0)
+          OR (v_open = 0 AND delivery_review_settled_at IS NULL));
+  RETURN NEW;
+END $pxg$;
+
+DROP TRIGGER IF EXISTS trg_sync_needs_delivery_review
+  ON {{BUSINESS}}.delivery_fee_reviews;
+CREATE TRIGGER trg_sync_needs_delivery_review
+  AFTER INSERT OR UPDATE OF status ON {{BUSINESS}}.delivery_fee_reviews
+  FOR EACH ROW EXECUTE FUNCTION {{BUSINESS}}.fn_sync_needs_delivery_review();

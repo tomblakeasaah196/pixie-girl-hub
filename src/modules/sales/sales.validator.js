@@ -257,6 +257,80 @@ const setDeliveryFee = z
   .object({ fee_ngn: z.coerce.number().nonnegative() })
   .strict();
 
+// ── Delivery-fee review (PR 3, Care & Accessories) ─────────────────────
+// Every one of these is `.strict()`: an unexpected key is a 400, not a
+// silently-ignored field. That matters because the fee is money — a caller must
+// not be able to smuggle `status`, `agreed_fee_ngn` or `needs_delivery_review`
+// past the service's lifecycle by adding a key. Only an authenticated,
+// permission-checked staff member reaches these at all (no customer-facing or
+// anonymous route), and the fee itself is always human-entered.
+const deliveryReviewOpen = z
+  .object({ calculation_basis: z.string().max(1000).optional() })
+  .strict();
+
+const deliveryReviewFee = z
+  .object({
+    proposed_fee_ngn: z.coerce.number().nonnegative(),
+    // Mandatory: a human calculated this number and must say how, so the
+    // decision is reviewable later. Free text — no rate-card or weight input is
+    // accepted, because none may be implied.
+    calculation_basis: z.string().trim().min(3).max(1000),
+  })
+  .strict();
+
+const deliveryReviewConsent = z
+  .object({
+    accepted: z.boolean(),
+    // Where the customer said yes/no, and the message or ticket that proves it.
+    // A website notice is not consent, so both are required.
+    channel: z.string().trim().min(1).max(60),
+    reference: z.string().trim().min(1).max(200),
+    note: z.string().max(500).optional(),
+  })
+  .strict();
+
+const deliveryReviewTopUp = z
+  .object({ payment_id: z.string().uuid() })
+  .strict();
+
+const deliveryReviewRefund = z
+  .object({
+    credit_note_id: z.string().uuid().optional(),
+    refund_payment_id: z.string().uuid().optional(),
+    note: z.string().max(500).optional(),
+  })
+  .strict()
+  .refine((v) => v.credit_note_id || v.refund_payment_id, {
+    message: "a credit_note_id or a refund_payment_id is required",
+  });
+
+const deliveryReviewConfirm = z
+  .object({ calculation_basis: z.string().max(1000).optional() })
+  .strict();
+
+const deliveryReviewDeclineRoute = z
+  .object({ note: z.string().max(500).optional() })
+  .strict();
+
+const deliveryReviewQueueQuery = z
+  .object({
+    status: z
+      .enum([
+        "all",
+        "pending_review",
+        "awaiting_customer",
+        "accepted",
+        "declined",
+        "credited",
+        "confirmed",
+        "cancelled",
+      ])
+      .optional(),
+    page: z.coerce.number().int().positive().max(100000).optional(),
+    page_size: z.coerce.number().int().positive().max(100).optional(),
+  })
+  .strict();
+
 // Manual status move from the drawer — only the fulfilment stages are settable
 // here (payment + cancel states are automatic; the service rejects anything else).
 const orderStatusSet = z
@@ -421,6 +495,14 @@ module.exports = {
   validateCancellationRequest: mw(cancellationRequest),
   validateCancellationReview: mw(cancellationReview),
   validateSetDeliveryFee: mw(setDeliveryFee),
+  validateDeliveryReviewOpen: mw(deliveryReviewOpen),
+  validateDeliveryReviewFee: mw(deliveryReviewFee),
+  validateDeliveryReviewConsent: mw(deliveryReviewConsent),
+  validateDeliveryReviewTopUp: mw(deliveryReviewTopUp),
+  validateDeliveryReviewRefund: mw(deliveryReviewRefund),
+  validateDeliveryReviewConfirm: mw(deliveryReviewConfirm),
+  validateDeliveryReviewDeclineRoute: mw(deliveryReviewDeclineRoute),
+  validateDeliveryReviewQueue: mwQuery(deliveryReviewQueueQuery),
   validateOrderStatusSet: mw(orderStatusSet),
   validateOrderCancel: mw(orderCancel),
   validateOrderRestore: mw(orderRestore),

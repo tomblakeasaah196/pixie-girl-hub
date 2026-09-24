@@ -38,6 +38,12 @@ process.env.ENCRYPTION_KEY =
 
 const T94 = fs.readFileSync(path.resolve(__dirname, "../../migrations/template/000094_business_care_accessories.sql.template"), "utf8");
 const T95 = fs.readFileSync(path.resolve(__dirname, "../../migrations/template/000095_business_care_typed_sales.sql.template"), "utf8");
+// PR 3 added the delivery-fee review tables + the dispatch block. This helper
+// renders the REAL migration templates, so it has to carry the current set —
+// without 000096 a mixed wig+retail DISPATCH order fails inside createOrder
+// when it tries to queue itself for manual fee review (correctly: an order that
+// cannot be queued must not be placed).
+const T96 = fs.readFileSync(path.resolve(__dirname, "../../migrations/template/000096_business_care_delivery_review.sql.template"), "utf8");
 
 // ── Fixture DDL — real columns for every table the PR 2 SQL touches ──
 const SHARED_DDL = `
@@ -498,6 +504,7 @@ async function boot() {
     await db.exec(BRAND_DDL(brand));
     await db.exec(T94.replace(/\{\{BUSINESS\}\}/g, brand));
     await db.exec(T95.replace(/\{\{BUSINESS\}\}/g, brand));
+    await db.exec(T96.replace(/\{\{BUSINESS\}\}/g, brand));
     await db.query(
       `INSERT INTO shared.document_numbering (business, document_type, prefix, padding, next_number)
        VALUES ($1,'sales_order',$2,4,1), ($1,'stock_movement',$3,4,1)`,
@@ -753,6 +760,19 @@ test("createOrder: mixed wig + retail keeps the order-wide instalment plan", asy
   assert.equal(order.is_preorder, false);
   const kinds = order.lines.map((l) => l.line_kind).sort();
   assert.deepEqual(kinds, ["product", "product"]);
+  // PR 3: a retail-containing DISPATCH order is queued for a human the moment it
+  // is placed — the zone rate card prices by wig quantity, so it cannot price
+  // this basket. The durable flag (not a text status filter) is what later
+  // blocks dispatch until the fee is agreed, consented and reconciled.
+  const queued = await db.query(`
+    SELECT o.needs_delivery_review, r.review_id, r.status, r.initial_fee_ngn
+    FROM pixiegirl.sales_orders o
+    LEFT JOIN pixiegirl.delivery_fee_reviews r ON r.order_id = o.order_id
+    WHERE o.order_id = $1
+  `, [order.order_id]);
+  assert.equal(queued.rows[0].needs_delivery_review, true, "mixed dispatch order is queued");
+  assert.equal(queued.rows[0].status, "pending_review");
+  assert.equal(Number(queued.rows[0].initial_fee_ngn), Number(order.shipping_fee_ngn));
 });
 
 test("createOrder: sold-out retail is OUT_OF_STOCK — never a pre-order, never a rewig", async () => {

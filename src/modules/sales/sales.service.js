@@ -1109,6 +1109,69 @@ async function createOrderTx({ brand, user, request_id, input }) {
     // created only once payment clears — logistics subscribes to `order.paid`
     // alone. (Previously we enqueued `order.confirmed` here to pre-queue a
     // dispatch; that path is intentionally removed.)
+
+    // ── Care & Accessories delivery review (PR 3) ─────────────
+    // A retail-containing DISPATCH order cannot have its delivery fee produced
+    // by the zone rate card: that card prices by WIG quantity, so it would
+    // charge several combs as several wigs, and the owner has not approved the
+    // provisional initial-zone-fee assumption. So the order is queued for a
+    // human the moment it is placed. Every channel converges on createOrder —
+    // Quick Sale, quote conversion, the storefront cart, an /o order link — so
+    // this is the one place the queue has to be fed.
+    //
+    // Inserting the review row is what raises `needs_delivery_review` (000096
+    // trigger), and that durable flag is what blocks dispatch until a staff
+    // member has agreed the fee, captured the customer's consent for any
+    // increase, verified the top-up or refund, and reconciled the invoice,
+    // payment link and ledger. A pickup/collection order carries no delivery
+    // charge and is never queued. Wig-only and FLH orders never reach this
+    // branch, so their shipping behaviour is unchanged byte-for-byte.
+    //
+    // This deliberately does NOT swallow failures: if the review cannot be
+    // opened, the order must not be placed, because the alternative is a retail
+    // delivery that can dispatch with nobody having priced it.
+    if (hasRetailLine && (order.order_type || input.order_type) === "dispatch") {
+      const deliveryReviewRepo = require("./delivery-review.repo");
+      const alreadyQueued = await deliveryReviewRepo.findOpenByOrder({
+        client,
+        brand,
+        order_id: order.order_id,
+      });
+      if (!alreadyQueued) {
+        const opened = await deliveryReviewRepo.insertReview({
+          client,
+          brand,
+          review: {
+            order_id: order.order_id,
+            status: "pending_review",
+            initial_fee_ngn: toCurrencyString(shipping),
+            calculation_basis: null,
+            opened_by: user.user_id,
+          },
+        });
+        await deliveryReviewRepo.addEvent({
+          client,
+          brand,
+          event: {
+            review_id: opened.review_id,
+            order_id: order.order_id,
+            event_type: "opened",
+            to_status: "pending_review",
+            amount_ngn: toCurrencyString(shipping),
+            note:
+              "Order contains Care & Accessories items — delivery fee queued for manual calculation and customer agreement before dispatch",
+            actor_user_id: user.user_id,
+            actor_name: user.full_name || user.email || null,
+          },
+        });
+        notices.push({
+          code: "DELIVERY_FEE_REVIEW",
+          message:
+            "EXTRA DELIVERY FEES MAY APPLY — this order's delivery fee is being calculated by our team and will be confirmed with you before it ships.",
+        });
+      }
+    }
+
     const finalOrder = await repo.findById({
       client,
       brand,

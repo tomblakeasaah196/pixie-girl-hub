@@ -7,6 +7,7 @@ import {
   Layers,
   Box,
   Sparkles,
+  Droplets,
   Plus,
   Check,
   ShoppingBag,
@@ -23,31 +24,37 @@ import { resolveMessagingSalesChannel } from "@/lib/messaging-utils";
 import { cn } from "@/lib/cn";
 import { toastReport } from "@/lib/error-report";
 import type { ProductCard, Channel } from "@/lib/smartcomm-types";
+import { useCareAvailability } from "@/lib/care-accessories";
 import {
   StyledVariantPicker,
   type StyledPick,
 } from "@/components/catalogue/StyledVariantPicker";
 
 // The in-chat picker offers services too (the ERP-wide PRODUCT_KINDS does not).
-// Care & Accessories are deliberately NOT chat-shareable in PR 2 — a share
-// surfaces a /o checkout link, and retail checkouts from chat are later work.
-type ChatKind = Exclude<ProductKind, "care">;
+// PR 3: Care & Accessories are chat-shareable. The search kind is "care"; the
+// shared card + /o order-link item kind is "retail" and carries the EXACT
+// variant id the operator picked (no default-size guessing). The chip is only
+// offered when the brand's care gate is on; the server re-checks regardless.
+type ChatKind = ProductKind;
+type CardKind = ProductCard["kind"];
 const CHAT_KINDS: { key: ChatKind; label: string }[] = [
   { key: "base", label: "Base Product" },
   { key: "styled", label: "Styled Product" },
   { key: "bundle", label: "Bundle" },
   { key: "service", label: "Service" },
+  { key: "care", label: "Care & Accessories" },
 ];
 
-// Care & Accessories are sellable in POS/quotes/storefront but are NOT shared
-// in-chat (that surfaces a /o checkout link, which is later gated work), so
-// the chat picker's icon map deliberately omits the care kind.
-const KIND_ICON: Record<Exclude<ProductKind, "care">, typeof Package> = {
+const KIND_ICON: Record<ProductKind, typeof Package> = {
   base: Package,
   styled: Layers,
   bundle: Box,
   service: Sparkles,
+  care: Droplets,
 };
+
+/** Search kind → shared card kind. */
+const cardKind = (k: ProductKind): CardKind => (k === "care" ? "retail" : k);
 
 const ngn = (v: string | number | null | undefined) =>
   v == null ? "—" : `₦${Number(v).toLocaleString()}`;
@@ -81,6 +88,12 @@ export function CataloguePickerModal({
   onSent: () => void;
 }) {
   const [kind, setKind] = useState<ProductKind>("styled");
+  // Care chip only when the PXG gate + flag are on (server re-checks).
+  const careAvail = useCareAvailability();
+  const chatKinds = useMemo(
+    () => CHAT_KINDS.filter((k) => k.key !== "care" || careAvail.data?.enabled === true),
+    [careAvail.data?.enabled],
+  );
   const [term, setTerm] = useState("");
   const [hits, setHits] = useState<ProductHit[]>([]);
   const [loading, setLoading] = useState(false);
@@ -134,11 +147,7 @@ export function CataloguePickerModal({
   }, [channel]);
 
   function toggle(h: ProductHit) {
-    // CHAT_KINDS never offers care, but keep the guard explicit so the kind
-    // narrows to the commerce set the ProductCard payload accepts. Capture it
-    // in a const so the narrowing survives the setSelected closure below.
-    if (h.kind === "care") return;
-    const chatKind: ChatKind = h.kind;
+    const chatKind: CardKind = cardKind(h.kind);
     const exists = selected.find((s) => s.kind === chatKind && s.id === h.id);
     if (exists) {
       setSelected((arr) =>
@@ -162,6 +171,10 @@ export function CataloguePickerModal({
         image_url: h.image_url ?? null,
         sub: h.sub,
         qty: 1,
+        // Care: the exact SKU behind the hit (id is its variant id).
+        ...(h.kind === "care" && h.care
+          ? { product_id: h.care.product_id, sku: h.care.sku }
+          : {}),
       },
     ]);
   }
@@ -227,8 +240,15 @@ export function CataloguePickerModal({
       contact_id: contactId ?? undefined,
       channel_id: channel.channel_id,
       items: cards.map((c) => ({
-        kind: c.kind as "base" | "styled" | "bundle" | "service",
-        product_id: c.kind === "base" ? c.id : undefined,
+        kind: c.kind,
+        product_id:
+          c.kind === "base"
+            ? c.id
+            : c.kind === "retail"
+              ? (c.product_id ?? undefined)
+              : undefined,
+        variant_id: c.kind === "retail" ? c.id : undefined,
+        sku: c.kind === "retail" ? (c.sku ?? undefined) : undefined,
         styled_id: c.kind === "styled" ? c.id : undefined,
         bundle_id: c.kind === "bundle" ? c.id : undefined,
         service_id: c.kind === "service" ? c.id : undefined,
@@ -260,6 +280,8 @@ export function CataloguePickerModal({
         price: s.price ?? null,
         image_url: s.image_url ?? null,
         sub: s.sub ?? null,
+        product_id: s.product_id ?? null,
+        sku: s.sku ?? null,
         capture_url,
         // Carry the picked variant so the shared bubble shows the right
         // size/lace + price (not the base anchor).
@@ -284,7 +306,7 @@ export function CataloguePickerModal({
   }
 
   const isSelected = (h: ProductHit) =>
-    selected.some((s) => s.kind === h.kind && s.id === h.id);
+    selected.some((s) => s.kind === cardKind(h.kind) && s.id === h.id);
 
   return (
     <Modal
@@ -320,7 +342,7 @@ export function CataloguePickerModal({
     >
       {/* Kind tabs */}
       <div className="mb-3 flex flex-wrap gap-1.5">
-        {CHAT_KINDS.map((k) => {
+        {chatKinds.map((k) => {
           const Icon = KIND_ICON[k.key];
           const on = kind === k.key;
           return (

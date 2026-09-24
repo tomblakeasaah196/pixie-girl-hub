@@ -7,6 +7,7 @@
 const express = require("express");
 const c = require("./sales.controller");
 const v = require("./sales.validator");
+const dr = require("./delivery-review.controller");
 const vSettings = require("./payment-settings.validator");
 const timelineController = require("./timeline.controller");
 const { requirePermission } = require("../../middleware/rbac");
@@ -137,6 +138,65 @@ router.patch(
   can("edit"),
   v.validateSetDeliveryFee,
   c.setDeliveryFee,
+);
+
+// ── Delivery-fee review (PR 3, Care & Accessories) ─────────────────────
+// The staff queue + lifecycle for a retail-containing online order whose
+// delivery fee a human must calculate, agree with the customer and reconcile
+// before dispatch. The plain `/delivery-fee` endpoint above is left exactly as
+// it was for wig-only orders; it does NOT reconcile paid documents, so it is
+// not a substitute for this flow on a retail delivery.
+//
+// Literals are declared before "/orders/:id" is reached, and the review
+// sub-paths are under /orders/:id so they cannot be shadowed.
+router.get(
+  "/delivery-reviews",
+  can("view"),
+  v.validateDeliveryReviewQueue,
+  dr.listQueue,
+);
+router.get("/orders/:id/delivery-review", can("view"), dr.getReview);
+router.post(
+  "/orders/:id/delivery-review",
+  can("edit"),
+  v.validateDeliveryReviewOpen,
+  dr.openReview,
+);
+router.post(
+  "/orders/:id/delivery-review/fee",
+  can("edit"),
+  v.validateDeliveryReviewFee,
+  dr.proposeFee,
+);
+router.post(
+  "/orders/:id/delivery-review/consent",
+  can("approve"),
+  v.validateDeliveryReviewConsent,
+  dr.recordConsent,
+);
+router.post(
+  "/orders/:id/delivery-review/top-up",
+  can("approve"),
+  v.validateDeliveryReviewTopUp,
+  dr.verifyTopUp,
+);
+router.post(
+  "/orders/:id/delivery-review/refund",
+  can("approve"),
+  v.validateDeliveryReviewRefund,
+  dr.verifyRefund,
+);
+router.post(
+  "/orders/:id/delivery-review/confirm",
+  can("approve"),
+  v.validateDeliveryReviewConfirm,
+  dr.confirmFee,
+);
+router.post(
+  "/orders/:id/delivery-review/decline-route",
+  can("approve"),
+  v.validateDeliveryReviewDeclineRoute,
+  dr.routeDecline,
 );
 router.patch(
   "/orders/:id/specific-instructions",

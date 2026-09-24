@@ -41,6 +41,7 @@ router.post("/:slug/activity", async (req, res) => {
     const cart = req.body && req.body.cart;
     if (Array.isArray(cart)) {
       const slim = cart.slice(0, 30).map((c) => ({
+        // 'retail' is a valid kind (PR 3) and fits the 12-char cap.
         kind: String(c.kind || "base").slice(0, 12),
         ref_id: c.ref_id || null,
         name: String(c.name || "").slice(0, 160),

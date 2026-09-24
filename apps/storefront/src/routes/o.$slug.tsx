@@ -112,7 +112,16 @@ const ORDER_LINK_DEFAULTS = {
   errUndeliverable:
     "We can't price delivery to this location yet. Check your address, or choose pickup.",
   errPlaceFailed: "Couldn't place your order. Try again.",
+  // Care & Accessories. The notice headline is fixed policy wording and is
+  // deliberately NOT a Studio slot: it must read exactly "EXTRA DELIVERY FEES
+  // MAY APPLY" (MAY, never WILL), bold and uppercase.
+  careDeliveryBody:
+    "Delivery for orders with care products is arranged with our team. Choose pickup in store, or message us on WhatsApp and we'll set up delivery for you.",
+  careDeliveryUnavailable: "Arranged by our team",
+  errCareDelivery:
+    "Orders with care products can't be delivered from this page yet. Choose pickup in store, or message us on WhatsApp to arrange delivery.",
 };
+export const CARE_DELIVERY_NOTICE = "EXTRA DELIVERY FEES MAY APPLY";
 function useOrderLinkCopy() {
   return withSlots(ORDER_LINK_DEFAULTS, usePageSlots("order_link"));
 }
@@ -299,10 +308,26 @@ function CheckoutForm({
     () => resolvedItems.find((i) => i.kind === "bundle")?.bundle_id,
     [resolvedItems],
   );
-  const totalQty = useMemo(
-    () => resolvedItems.reduce((s, i) => s + i.qty, 0) || 1,
+  // Care & Accessories never count toward the wig-quantity delivery band. The
+  // server re-classifies every line from the exact variant id, so this is
+  // display only.
+  const hasRetail = useMemo(
+    () => resolvedItems.some((i) => i.kind === "retail"),
     [resolvedItems],
   );
+  const totalQty = useMemo(
+    () =>
+      resolvedItems
+        .filter((i) => i.kind !== "retail")
+        .reduce((s, i) => s + i.qty, 0) || 1,
+    [resolvedItems],
+  );
+  // Charged web delivery for a retail-containing basket is fail-closed until
+  // the owner approves the initial-fee and retail-tax assumptions (the server
+  // answers RETAIL_DELIVERY_ARRANGED). Pickup stays available.
+  useEffect(() => {
+    if (hasRetail && fulfilment === "delivery") setFulfilment("pickup");
+  }, [hasRetail, fulfilment]);
 
   // Report the live selection so the team's chat sidebar updates. Best-effort.
   useEffect(() => {
@@ -373,6 +398,10 @@ function CheckoutForm({
     setErr(null);
 
     const wantsDelivery = !serviceOnly && fulfilment === "delivery";
+    if (wantsDelivery && hasRetail) {
+      setErr(s.errCareDelivery);
+      return;
+    }
     if (wantsDelivery) {
       if (!effectiveZone) {
         setErr(isNigeria ? s.errPickStateNg : s.errPickCountry);
@@ -572,6 +601,11 @@ function CheckoutForm({
                       </span>
                     )}
                   </p>
+                  {it.kind === "retail" && it.variant_label && (
+                    <p className="truncate text-body-sm text-muted-foreground">
+                      {it.variant_label}
+                    </p>
+                  )}
                   {it.price_ngn != null && (
                     <p className="text-body-sm text-muted-foreground">
                       {money(Number(it.price_ngn))}
@@ -584,7 +618,9 @@ function CheckoutForm({
                   )}
                   {unavailable && (
                     <p className="mt-0.5 text-body-sm text-amber-600">
-                      {s.unavailableNote}
+                      {it.kind === "retail" && it.unresolved_reason
+                        ? it.unresolved_reason
+                        : s.unavailableNote}
                     </p>
                   )}
                 </div>
@@ -666,7 +702,8 @@ function CheckoutForm({
                 active={fulfilment === "delivery"}
                 onClick={() => setFulfilment("delivery")}
                 icon={<Truck className="h-3.5 w-3.5" />}
-                label={s.deliveryLabel}
+                label={hasRetail ? `${s.deliveryLabel} · ${s.careDeliveryUnavailable}` : s.deliveryLabel}
+                disabled={hasRetail}
               />
               <Pill
                 active={fulfilment === "pickup"}
@@ -675,6 +712,18 @@ function CheckoutForm({
                 label={s.pickupLabel}
               />
             </div>
+            {hasRetail && (
+              <div
+                role="note"
+                data-testid="care-delivery-notice"
+                className="rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-body-sm"
+              >
+                <p className="font-bold uppercase tracking-wide">
+                  {CARE_DELIVERY_NOTICE}
+                </p>
+                <p className="mt-1 text-muted-foreground">{s.careDeliveryBody}</p>
+              </div>
+            )}
           </div>
         )}
 
@@ -930,20 +979,26 @@ function Pill({
   onClick,
   icon,
   label,
+  disabled = false,
 }: {
   active: boolean;
   onClick: () => void;
   icon: React.ReactNode;
   label: string;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-center justify-center gap-1.5 rounded-md border py-3 text-body-sm ${
-        active
-          ? "border-foreground bg-foreground text-background"
-          : "border-border text-muted-foreground hover:bg-secondary"
+      disabled={disabled}
+      aria-disabled={disabled}
+      className={`flex items-center justify-center gap-1.5 rounded-md border px-2 py-3 text-body-sm ${
+        disabled
+          ? "cursor-not-allowed border-border text-muted-foreground opacity-50"
+          : active
+            ? "border-foreground bg-foreground text-background"
+            : "border-border text-muted-foreground hover:bg-secondary"
       }`}
     >
       {icon}

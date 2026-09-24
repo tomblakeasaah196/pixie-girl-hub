@@ -1233,7 +1233,27 @@ async function resolveProductForShare({ business, kind, ref_id }) {
         image_url: svc.image_url || null,
       };
     }
-    // base product
+    if (kind === "retail") {
+      // Care & Accessories: `ref_id` is the EXACT variant id. Resolved through
+      // the same typed resolver as every other retail path, so the PXG gate,
+      // brand isolation, publication state and live price all apply — a forged
+      // or FLH card resolves to null and falls back to its (unpriced) label.
+      const retailResolver = require("../catalogue/retail-resolver");
+      const r = await retailResolver.resolveSellableVariant({
+        brand: business,
+        variant_id: ref_id,
+        channel: "storefront",
+      });
+      return {
+        name: r.variant_label ? `${r.name} — ${r.variant_label}` : r.name,
+        description: null,
+        price_ngn: Number(r.unit_price_ngn),
+        image_url: r.image_url || null,
+      };
+    }
+    // base product. `products` has no is_active column (only variants do);
+    // the old `p.is_active` filter threw, the catch below swallowed it, and
+    // every base card silently lost its live name/price/image.
     const { rows } = await query(
       `SELECT p.name, p.short_description, p.long_description,
               (SELECT pi.cdn_url FROM ${schema}.product_images pi
@@ -1243,7 +1263,8 @@ async function resolveProductForShare({ business, kind, ref_id }) {
                 WHERE pv.product_id = p.product_id AND pv.is_active = true
                 ORDER BY pv.is_default DESC, pv.created_at ASC LIMIT 1) AS price_ngn
          FROM ${schema}.products p
-        WHERE p.product_id = $1 AND p.is_active = true`,
+        WHERE p.product_id = $1 AND p.is_deleted = false
+          AND p.catalogue_role = 'base'`,
       [ref_id],
     );
     const p = rows[0];

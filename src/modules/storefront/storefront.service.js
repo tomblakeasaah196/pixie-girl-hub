@@ -577,7 +577,38 @@ async function submitOrderForm({ brand, input, request_id }) {
   // checkouts ship nothing, so no zone/fee applies.
   const fulfilmentType =
     productItems.length === 0 ? "pickup" : input.fulfilment_type || "delivery";
+
+  // PR 3: which submitted lines are Care & Accessories SKUs? Resolved
+  // server-side from the variant ids through the same typed resolver the cart
+  // and main checkout use — never from a client-supplied flag, and never from
+  // the link row alone (a shopper POSTs the items, so the POST body is what has
+  // to be classified). FLH and gated-off PXG simply have no retail rows, so
+  // this is a no-op for them and their behaviour is unchanged.
+  const retailIds = await retailResolver.retailVariantIds({
+    brand,
+    variant_ids: productItems.map((it) => it.variant_id),
+  });
+  const hasRetail = retailIds.size > 0;
+
   let shipping_fee_ngn = 0;
+  if (fulfilmentType === "delivery" && hasRetail) {
+    // MONEY PATH STOPPED — identical rule to the main storefront checkout.
+    // The owner has not approved the provisional initial-zone-fee assumption
+    // (no issue, no discussion, no PR decision exists), so a retail-containing
+    // /o delivery must not be charged ANY delivery figure: not a guessed zone
+    // fee derived from a wig rate card that would count combs as wigs, and
+    // never ₦0. Pickup is the paid self-serve option; staff arrange retail
+    // deliveries manually and enter the fee themselves.
+    throw new AppError(
+      "RETAIL_DELIVERY_ARRANGED",
+      "Retail-containing web delivery checkout is gated pending the owner's fee approval",
+      422,
+      {
+        user_message:
+          "EXTRA DELIVERY FEES MAY APPLY for orders containing care products. Delivery for these orders is arranged with our team — please choose store pickup, or contact us and we'll set up delivery for you.",
+      },
+    );
+  }
   if (fulfilmentType === "delivery") {
     if (!input.zone_code)
       throw new AppError(
@@ -585,7 +616,15 @@ async function submitOrderForm({ brand, input, request_id }) {
         "A delivery zone (country/state/LGA) is required for delivery orders",
         422,
       );
-    const qty = input.items.reduce((s, it) => s + Number(it.quantity || 0), 0);
+    // Retail pieces NEVER count as extra wigs in the delivery tier. Today a
+    // retail basket can't reach this quote at all (the gate above), but the
+    // wig-only quantity stays correct for the day the fee assumption is
+    // approved — several combs must not be charged as several wigs.
+    const qty = productItems.reduce(
+      (s, it) =>
+        s + (retailIds.has(it.variant_id) ? 0 : Number(it.quantity || 0)),
+      0,
+    );
     const quote = await zonesService.quote({
       brand,
       country_code: input.zone_code,
@@ -805,6 +844,16 @@ async function submitOrderForm({ brand, input, request_id }) {
         order && order._preorder && order._preorder.is_preorder
           ? order._preorder
           : null,
+      // PR 3: the exact owner-approved delivery disclosure, for both /o hosts
+      // to render wherever this order's delivery amount is shown. "MAY" is
+      // deliberate — a staff member calculates the real fee after the order is
+      // placed, so this is a warning, not a promise, and not consent.
+      has_care_items: hasRetail,
+      care_delivery_notice: hasRetail ? "EXTRA DELIVERY FEES MAY APPLY" : null,
+      // Retail never goes to Stylist Studio and is never made to order; the
+      // confirmation copy on both /o pages keys off this so it can't promise
+      // wig production for a bottle of oil.
+      care_only: hasRetail && productItems.every((it) => retailIds.has(it.variant_id)),
     };
   });
 
@@ -1019,7 +1068,22 @@ async function resolveOrderLinkLineMeta({ brand, order_link_slug }) {
     for (const r of resolved) {
       const lines = r.lines || [];
       if (lines.length !== 1) continue; // bundle — left as-is, see above
-      if (r.kind !== "styled" && r.kind !== "base") continue;
+      if (r.kind !== "styled" && r.kind !== "base" && r.kind !== "retail") continue;
+      // A retail line snapshots the retail PRODUCT name and its EXACT SKU
+      // (`PXG-OIL-50`, not the product code) — the customer picked that size on
+      // the /o page, so the invoice/receipt must say so. line_kind stays
+      // 'product': retail is an ordinary physical sales line and must never be
+      // stamped 'styled', which is what auto-opens a Stylist Studio job.
+      if (r.kind === "retail") {
+        const retailMeta = {
+          product_name_snapshot: r.name || undefined,
+          variant_label_snapshot: r.variant_label || undefined,
+          sku_snapshot: r.sku || undefined,
+          line_kind: "product",
+        };
+        if (lines[0].variant_id) map.set(lines[0].variant_id, retailMeta);
+        continue;
+      }
       const meta = {
         product_name_snapshot: r.name || undefined,
         sku_snapshot: r.product_code || undefined,

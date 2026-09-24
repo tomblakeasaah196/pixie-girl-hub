@@ -11,6 +11,16 @@
  * turned into a sellable order line — deleted/inactive product, no
  * active variant, non-live styled product, unresolvable bundle
  * component — and the checkout excludes it from the submitted order.
+ *
+ * Kinds: `base` (a raw/base product), `styled` (a wig sold through its base
+ * stock variant), `bundle`, `service`, and — added in PR 3 — `retail`, a Care
+ * & Accessories SKU. Retail is resolved through `catalogue/retail-resolver`,
+ * the same typed resolver the storefront cart, Quick Sale, quotations and
+ * amendments use, so the PXG gate, brand isolation, publication state, live
+ * channel price and sellable-location stock all come from one implementation.
+ * Retail identity is ALWAYS an exact `variant_id`; there is no default-variant
+ * fallback, because a 50 ml and a 100 ml are different products at different
+ * prices with different stock.
  */
 
 "use strict";
@@ -51,19 +61,64 @@ async function isVariantSellable(schema, variant_id) {
   return rows.length > 0;
 }
 
-/** Resolve a `kind: 'base'` item into one sellable line. */
+/** Resolve a `kind: 'base'` item into one sellable line.
+ *
+ *  Two PR 3 fixes here, both found by reading the SQL against the real schema:
+ *
+ *  1. `p.is_active` DOES NOT EXIST on `products` (only `product_variants` has
+ *     it). The query raised "column p.is_active does not exist" at runtime, the
+ *     per-item try/catch in resolveItems swallowed it as "Lookup failed", and
+ *     EVERY base-product order link silently resolved to zero sellable lines.
+ *     The real lifecycle columns are `is_deleted` (+ `catalogue_role` /
+ *     `retail_status` for retail). `is_visible_storefront` is deliberately NOT
+ *     required: migration 000043 hides all base products from the storefront on
+ *     purpose, yet staff still share them over DM — requiring it would have
+ *     broken base links a second time.
+ *
+ *  2. The chosen variant is now PRESERVED. Previously a base item always sold
+ *     its default variant, so a staff member who picked a specific size shared
+ *     a link that sold something else. `it.variant_id` wins when it is still
+ *     sellable; the default is only a fallback for links that never carried a
+ *     pick (and for a pin that has since rotted).
+ */
 async function resolveBaseItem(schema, it) {
   const { rows } = await query(
-    `SELECT p.product_id, p.name, p.product_code,
+    `SELECT p.product_id, p.name, p.product_code, p.catalogue_role,
             (SELECT pi.cdn_url FROM ${schema}.product_images pi
               WHERE pi.product_id = p.product_id
               ORDER BY pi.is_primary DESC, pi.display_order LIMIT 1) AS primary_image_url
        FROM ${schema}.products p
-      WHERE p.product_id = $1 AND p.is_active = true`,
+      WHERE p.product_id = $1 AND p.is_deleted = false`,
     [it.product_id],
   );
   const p = rows[0];
-  const v = await defaultVariant(schema, it.product_id);
+
+  // A Care & Accessories product shared as `base` is a mis-kinded (or forged)
+  // payload. Refuse it rather than selling the product's default SKU: retail is
+  // stock-only and priced per exact SKU, so a default-variant fallback would
+  // silently substitute a different bottle size and price.
+  if (p && p.catalogue_role === "retail") {
+    return {
+      kind: "base",
+      ref_id: it.product_id,
+      name: p.name,
+      product_code: p.product_code,
+      image_url: p.primary_image_url,
+      qty: it.qty,
+      price_ngn: it.price_ngn || null,
+      note: it.note || null,
+      unresolved_reason:
+        "Care & Accessories items must be shared with their exact size/SKU",
+      lines: [],
+    };
+  }
+
+  // Honour an explicit, still-sellable pick; otherwise fall back to the default.
+  const pinned =
+    it.variant_id && (await isVariantSellable(schema, it.variant_id))
+      ? { variant_id: it.variant_id }
+      : null;
+  const v = pinned || (await defaultVariant(schema, it.product_id));
   return {
     kind: "base",
     ref_id: it.product_id,
@@ -73,12 +128,98 @@ async function resolveBaseItem(schema, it) {
     qty: it.qty,
     price_ngn: it.price_ngn || null,
     note: it.note || null,
+    variant_id: v ? v.variant_id : null,
     unresolved_reason: !p
-      ? "Product is inactive or deleted"
+      ? "Product is deleted or does not exist"
       : !v
         ? "Product has no active variant to sell"
         : null,
     lines: v ? [{ variant_id: v.variant_id, quantity: it.qty }] : [],
+  };
+}
+
+/** Resolve a `kind: 'retail'` item — one exact Care & Accessories SKU.
+ *
+ *  This deliberately does NOT reuse the base/styled fallback machinery. It goes
+ *  through the same typed resolver every other retail sales path uses
+ *  (`catalogue/retail-resolver`), so one implementation owns the PXG gate,
+ *  brand isolation, live publication state, variant ownership/activity, live
+ *  channel price and sellable-location stock. A forged FLH link, an unpublished
+ *  item, a wrong-brand variant id or a base-wig variant all refuse here.
+ *
+ *  `variant_id` is mandatory and there is NO default-variant fallback: guessing
+ *  a bottle size is exactly the bug PR 3 fixes.
+ *
+ *  The returned `price_ngn` is the LIVE resolved price, for display. It is
+ *  never used to override what Sales charges a retail line — retail always
+ *  re-prices from the live channel price at order time (see
+ *  storefront.service.resolveStyledUnitPrices, which maps styled picks only),
+ *  so a stale or tampered link-row price cannot set the amount charged.
+ */
+async function resolveRetailItem(business, it) {
+  const shape = {
+    kind: "retail",
+    ref_id: it.variant_id || it.product_id || null,
+    product_id: it.product_id || null,
+    variant_id: it.variant_id || null,
+    sku: it.sku || null,
+    name: null,
+    product_code: null,
+    variant_label: null,
+    image_url: null,
+    qty: it.qty,
+    price_ngn: it.price_ngn || null,
+    note: it.note || null,
+    available: 0,
+    lines: [],
+  };
+  if (!it.variant_id) {
+    return {
+      ...shape,
+      unresolved_reason:
+        "A Care & Accessories item needs its exact size/SKU — re-share it from the catalogue picker",
+    };
+  }
+  const retailResolver = require("../catalogue/retail-resolver");
+  let r;
+  try {
+    r = await retailResolver.resolveSellableVariant({
+      brand: business,
+      variant_id: it.variant_id,
+      product_id: it.product_id || null,
+      channel: "storefront",
+    });
+  } catch (err) {
+    // NotFound (gate off / FLH / unpublished / trashed / wrong-role / wrong
+    // brand) and RETAIL_UNPRICED both land here as "can't be sold" — the
+    // customer-facing message, never the raw SQL detail.
+    return {
+      ...shape,
+      unresolved_reason:
+        (err && (err.options?.user_message || err.user_message || err.message)) ||
+        "This Care & Accessories item isn't available",
+    };
+  }
+  return {
+    ...shape,
+    ref_id: r.variant_id,
+    product_id: r.product_id,
+    variant_id: r.variant_id,
+    sku: r.sku,
+    name: r.name,
+    product_code: r.product_code || null,
+    variant_label: r.variant_label || null,
+    image_url: r.image_url || null,
+    price_ngn: String(r.unit_price_ngn),
+    available: Number(r.available) || 0,
+    taxable: r.taxable === true,
+    vat_rate: r.vat_rate === null || r.vat_rate === undefined ? null : Number(r.vat_rate),
+    // Stock-only invariants, surfaced so no downstream surface can promise a
+    // pre-order, a rewig substitute or a styling job for a retail line.
+    preorder: false,
+    rewig_eligible: false,
+    unresolved_reason: null,
+    lines: [{ variant_id: r.variant_id, quantity: it.qty }],
   };
 }
 
@@ -319,7 +460,13 @@ async function resolveItems(business, items) {
   const out = [];
   for (const it of items || []) {
     try {
-      if (it.kind === "styled" && it.styled_id) {
+      if (it.kind === "retail") {
+        // Retail is routed on `kind` alone — never on which id happens to be
+        // present — so a retail item that lost its variant_id fails loudly
+        // inside resolveRetailItem instead of falling through to the base
+        // path and selling a default SKU.
+        out.push(await resolveRetailItem(business, it));
+      } else if (it.kind === "styled" && it.styled_id) {
         out.push(await resolveStyledItem(business, it));
       } else if (it.kind === "bundle" && it.bundle_id) {
         out.push(await resolveBundleItem(business, it));
@@ -332,7 +479,12 @@ async function resolveItems(business, items) {
       out.push({
         kind: it.kind || "base",
         ref_id:
-          it.product_id || it.styled_id || it.bundle_id || it.service_id || null,
+          it.variant_id ||
+          it.product_id ||
+          it.styled_id ||
+          it.bundle_id ||
+          it.service_id ||
+          null,
         name: null,
         product_code: null,
         image_url: null,
@@ -349,7 +501,9 @@ async function resolveItems(business, items) {
 
 module.exports = {
   defaultVariant,
+  isVariantSellable,
   resolveBaseItem,
+  resolveRetailItem,
   resolveStyledItem,
   resolveBundleItem,
   resolveServiceItem,

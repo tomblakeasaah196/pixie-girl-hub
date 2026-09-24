@@ -42,12 +42,18 @@ function ngn(v) {
 }
 
 // ── Item normalisation (shared by the minter) ──────────────
-// Items may reference a base product, a styled product, a bundle, or a
-// service; `kind` picks the field (inferred from whichever id is present
-// when omitted). Styled products additionally carry the staff-picked
-// head-size × lace × colour so the order is priced + fulfilled for that
-// exact combination.
+// Items may reference a base product, a styled product, a bundle, a service,
+// or (PR 3) a Care & Accessories retail SKU; `kind` picks the field (inferred
+// from whichever id is present when omitted). Styled products additionally
+// carry the staff-picked head-size × lace × colour so the order is priced +
+// fulfilled for that exact combination.
+//
+// `retail` is NEVER inferred from a bare `variant_id`: a legacy base pick may
+// also carry one, and mis-inferring would route a wig through the retail
+// resolver. Retail must be declared, and must carry its exact variant_id — the
+// validator enforces both, so a normalised retail item always has one.
 function itemKind(it) {
+  if (it.kind === "retail") return "retail";
   return (
     it.kind ||
     (it.styled_id
@@ -60,18 +66,40 @@ function itemKind(it) {
   );
 }
 function itemId(it) {
-  return it.product_id || it.styled_id || it.bundle_id || it.service_id || it.id;
+  return (
+    it.product_id ||
+    it.styled_id ||
+    it.bundle_id ||
+    it.service_id ||
+    it.variant_id ||
+    it.id
+  );
 }
 function normaliseItems(items) {
   return items.map((it) => {
     const kind = itemKind(it);
-    const id = itemId(it);
+    // Explicit per-kind field mapping. `itemId` is only the "is this item
+    // identifiable at all" check in createLink — assigning it blindly would put
+    // a variant_id into product_id for a base pick that carries only a variant.
+    const productId =
+      kind === "base" || kind === "retail"
+        ? it.product_id || (kind === "base" ? it.id : undefined) || undefined
+        : undefined;
     return {
       kind,
-      product_id: kind === "base" ? id : undefined,
-      styled_id: kind === "styled" ? id : undefined,
-      bundle_id: kind === "bundle" ? id : undefined,
-      service_id: kind === "service" ? id : undefined,
+      product_id: productId,
+      styled_id: kind === "styled" ? it.styled_id || it.id || undefined : undefined,
+      bundle_id: kind === "bundle" ? it.bundle_id || it.id || undefined : undefined,
+      service_id: kind === "service" ? it.service_id || it.id || undefined : undefined,
+      // The exact sellable SKU. Kept for base picks too (previously discarded,
+      // which is why a base link always sold the default variant). Mandatory
+      // for retail — enforced by the validator, and re-checked by the resolver.
+      variant_id:
+        kind === "retail" || kind === "base"
+          ? it.variant_id || undefined
+          : undefined,
+      // Informational only — identity is always variant_id.
+      sku: kind === "retail" ? it.sku || undefined : undefined,
       qty: Number(it.qty),
       price_ngn:
         it.price_ngn !== undefined && it.price_ngn !== null
@@ -108,7 +136,17 @@ async function createLink({ brand, user, request_id, input }) {
     if (!itemId(it)) {
       throw new AppError(
         "ITEM_INVALID",
-        "Every item needs a product_id, styled_id, bundle_id, or service_id",
+        "Every item needs a product_id, styled_id, bundle_id, service_id, or variant_id",
+        422,
+      );
+    }
+    // Retail must be exact-SKU. The validator already refuses this on the HTTP
+    // path; createLink is also called internally (composer quick-share), so the
+    // invariant is enforced here too rather than trusted to the caller.
+    if (itemKind(it) === "retail" && !it.variant_id) {
+      throw new AppError(
+        "ITEM_INVALID",
+        "A Care & Accessories item needs its exact size/SKU (variant_id)",
         422,
       );
     }
@@ -265,6 +303,20 @@ async function buildPrefillContext(link) {
     fx_rate_ngn_per_usd = null;
   }
 
+  // PR 3: retail signals for both `/o` hosts, computed SERVER-side from the
+  // resolved items so neither page has to infer them (and neither can be
+  // talked into a delivery fee by a tampered client). A link carrying any
+  // Care & Accessories SKU cannot quote a web delivery fee until the owner
+  // approves the provisional zone fee — same fail-closed rule as the main
+  // storefront cart/checkout. Pickup and staff-arranged delivery still work.
+  const sellable = items.filter(
+    (r) => r.kind !== "service" && Array.isArray(r.lines) && r.lines.length > 0,
+  );
+  const careItems = items.filter((r) => r.kind === "retail");
+  const hasCare = careItems.length > 0;
+  const careOnly =
+    hasCare && sellable.length > 0 && sellable.every((r) => r.kind === "retail");
+
   return {
     status: "active",
     brand: link.business,
@@ -275,6 +327,12 @@ async function buildPrefillContext(link) {
       ? new Date(link.expires_at).toISOString()
       : null,
     fx_rate_ngn_per_usd,
+    has_care_items: hasCare,
+    care_delivery_notice: hasCare ? "EXTRA DELIVERY FEES MAY APPLY" : null,
+    // Exact required wording: MAY, never WILL.
+    care_only: careOnly,
+    delivery_available: !hasCare,
+    delivery_unavailable_reason: hasCare ? "care_items_staff_arranged" : null,
     contact: contact
       ? {
           contact_id: contact.contact_id,

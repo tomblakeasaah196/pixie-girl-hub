@@ -9,6 +9,7 @@ import {
   CreditCard,
   Landmark,
   CalendarClock,
+  PackageSearch,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button, KpiTile } from "@/components/ui/primitives";
@@ -25,6 +26,8 @@ import { OrdersView } from "./OrdersView";
 import { PreordersView } from "./PreordersView";
 import { QuotationsView } from "./QuotationsView";
 import { DeliveryPendingView } from "./DeliveryPendingView";
+import { DeliveryReviewView } from "./DeliveryReviewView";
+import { useCareAvailability } from "@/lib/care-accessories";
 import { PosReconciliationView } from "./PosReconciliationView";
 import { PaymentSettingsView } from "./PaymentSettingsView";
 import { SalesReportExportModal } from "./SalesReportExportModal";
@@ -35,6 +38,7 @@ type SalesTab =
   | "preorders"
   | "quotations"
   | "delivery-pending"
+  | "delivery-review"
   | "pos-reconciliation"
   | "payments";
 const TABS: { key: SalesTab; label: string; icon: typeof Zap }[] = [
@@ -43,6 +47,8 @@ const TABS: { key: SalesTab; label: string; icon: typeof Zap }[] = [
   { key: "preorders", label: "Pre-orders", icon: CalendarClock },
   { key: "quotations", label: "Quotations", icon: FileText },
   { key: "delivery-pending", label: "Delivery Pending", icon: Truck },
+  // Care & Accessories manual fee review — only shown when the PXG gate is on.
+  { key: "delivery-review", label: "Delivery Fee Review", icon: PackageSearch },
   { key: "pos-reconciliation", label: "POS Reconciliation", icon: Landmark },
   { key: "payments", label: "Payments", icon: CreditCard },
 ];
@@ -57,6 +63,8 @@ export function SalesPage() {
   const { data: pendingRecon } = usePosReconciliation({ page_size: 1 });
   const pendingReconCount = pendingRecon?.meta?.total ?? 0;
   const can = useAuthStore((s) => s.can);
+  const careOn = useCareAvailability().data?.enabled === true;
+  const tabs = TABS.filter((t) => t.key !== "delivery-review" || careOn);
   const [exportOpen, setExportOpen] = useState(false);
 
   return (
@@ -104,7 +112,7 @@ export function SalesPage() {
         className="flex gap-1 p-1 rounded-[13px] glass shadow-glass overflow-x-auto hide-scrollbar"
         role="tablist"
       >
-        {TABS.map((t) => {
+        {tabs.map((t) => {
           const on = t.key === tab;
           const Icon = t.icon;
           return (
@@ -152,6 +160,7 @@ export function SalesPage() {
       {tab === "preorders" && <PreordersView />}
       {tab === "quotations" && <QuotationsView />}
       {tab === "delivery-pending" && <DeliveryPendingView />}
+      {tab === "delivery-review" && careOn && <DeliveryReviewView />}
       {tab === "pos-reconciliation" && <PosReconciliationView />}
       {tab === "payments" && <PaymentSettingsView />}
     </div>

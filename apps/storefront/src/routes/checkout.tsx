@@ -41,6 +41,7 @@ import {
   type PickupAddress,
 } from "@/lib/geo";
 import { Section, EmptyState } from "@/components/parts";
+import { CareDeliveryNotice, CARE_DELIVERY_NOTICE } from "@/components/care";
 
 export const Route = createFileRoute("/checkout")({ component: CheckoutPage });
 
@@ -166,6 +167,15 @@ function CheckoutPage() {
   // The currency the order will actually CHARGE in: the display currency when
   // it's settlement-enabled, else USD (buyer sees their currency, pays USD).
   const settleCur = settlementFor(currency);
+
+  // Care & Accessories (PR 2/3). The SERVER decides whether a web delivery fee
+  // can be quoted for this basket (`delivery_available`) and supplies the exact
+  // disclosure string. Until the owner approves the provisional initial zone
+  // fee, a retail-containing basket is fail-closed: pickup is the paid
+  // self-serve option and staff arrange delivery manually. Never charge a
+  // guessed fee, and never let it slip through at ₦0.
+  const hasCare = quoteQ.data?.has_care_items === true;
+  const careDeliveryBlocked = hasCare && quoteQ.data?.delivery_available === false;
 
   const subtotalNgn = n(quoteQ.data?.subtotal_ngn);
   const discountNgn = n(quoteQ.data?.discount_ngn);
@@ -330,9 +340,16 @@ function CheckoutPage() {
     };
   }, []);
 
+  // A retail basket cannot be delivered through the website yet — drop the
+  // buyer onto pickup (the one paid self-serve option) the moment the server
+  // says so, rather than letting them fill in an address that must refuse.
+  useEffect(() => {
+    if (careDeliveryBlocked) setFulfilment("pickup");
+  }, [careDeliveryBlocked]);
+
   // Re-quote the delivery fee whenever the zone or basket size changes.
   useEffect(() => {
-    if (fulfilment !== "delivery" || !effectiveZone) {
+    if (fulfilment !== "delivery" || !effectiveZone || careDeliveryBlocked) {
       setDeliveryFee(null);
       setDeliveryZoneName(null);
       setQuoting(false);
@@ -352,7 +369,7 @@ function CheckoutPage() {
     return () => {
       cancelled = true;
     };
-  }, [fulfilment, effectiveZone, wigQty]);
+  }, [fulfilment, effectiveZone, wigQty, careDeliveryBlocked]);
 
   // Delivery due now (pickup is free; a delivery order only ever carries a real,
   // positive fee — a ₦0/unpriced zone is blocked, never charged at ₦0).
@@ -365,7 +382,7 @@ function CheckoutPage() {
   // refuses any delivery order whose fee is not > ₦0.
   const deliveryFeeOk =
     fulfilment === "pickup" ||
-    (!quoting && deliveryFee != null && deliveryFee > 0);
+    (!careDeliveryBlocked && !quoting && deliveryFee != null && deliveryFee > 0);
   // Total = discounted goods (server quote) + delivery. This is the figure the
   // gateway actually charges, so the "Pay" button and the order it creates now
   // agree to the naira.
@@ -501,8 +518,26 @@ function CheckoutPage() {
           /* storage unavailable — the confirmation email still tells them */
         }
       }
+      // Carry the disclosure to the thank-you page, which is where the order's
+      // delivery amount is next shown to the buyer.
+      if (res.has_care_items) {
+        try {
+          sessionStorage.setItem(
+            "pgh_care_notice",
+            res.care_delivery_notice || CARE_DELIVERY_NOTICE,
+          );
+        } catch {
+          /* storage unavailable — the confirmation email still carries it */
+        }
+      }
       window.location.href = res.payment_url;
     } catch (e) {
+      // The server refuses a retail web delivery outright (fail-closed until
+      // the owner approves the provisional zone fee). Move the buyer onto the
+      // fulfilment that CAN be paid for, rather than just showing a toast.
+      if ((e as { code?: string })?.code === "RETAIL_DELIVERY_ARRANGED") {
+        setFulfilment("pickup");
+      }
       const m =
         (e as { userMessage?: string })?.userMessage || copy.errCheckoutFailed;
       setErr(m);
@@ -616,26 +651,54 @@ function CheckoutPage() {
                     icon: Store,
                   },
                 ]
-              ).map((opt) => (
-                <button
-                  key={opt.v}
-                  type="button"
-                  onClick={() => setFulfilment(opt.v)}
-                  className={`rounded-lg border p-3 text-left transition-colors ${
-                    fulfilment === opt.v
-                      ? "border-primary bg-secondary"
-                      : "border-border"
-                  }`}
-                >
-                  <span className="flex items-center gap-1.5 text-body-sm">
-                    <opt.icon size={15} /> {opt.label}
-                  </span>
-                  <span className="mt-0.5 block text-caption text-muted-foreground">
-                    {opt.desc}
-                  </span>
-                </button>
-              ))}
+              ).map((opt) => {
+                // Fail-closed for a retail basket: the delivery option is
+                // offered but inert, with the reason stated, so the buyer is
+                // never led into an address form that must refuse at submit.
+                const blocked = opt.v === "delivery" && careDeliveryBlocked;
+                return (
+                  <button
+                    key={opt.v}
+                    type="button"
+                    disabled={blocked}
+                    aria-disabled={blocked}
+                    onClick={() => {
+                      if (!blocked) setFulfilment(opt.v);
+                    }}
+                    className={`rounded-lg border p-3 text-left transition-colors ${
+                      fulfilment === opt.v
+                        ? "border-primary bg-secondary"
+                        : "border-border"
+                    } ${blocked ? "cursor-not-allowed opacity-50" : ""}`}
+                  >
+                    <span className="flex items-center gap-1.5 text-body-sm">
+                      <opt.icon size={15} /> {opt.label}
+                    </span>
+                    <span className="mt-0.5 block text-caption text-muted-foreground">
+                      {blocked ? "Arranged with our team" : opt.desc}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
+
+            {/* The exact owner-approved disclosure, shown before payment.
+                "MAY" is deliberate and must never be rendered as "WILL". */}
+            {hasCare ? (
+              <div className="rounded-md border border-taupe/40 bg-secondary/40 px-3 py-2.5">
+                <CareDeliveryNotice
+                  notice={quoteQ.data?.care_delivery_notice}
+                  className="text-[0.65rem] leading-relaxed"
+                />
+                {careDeliveryBlocked ? (
+                  <p className="mt-1.5 text-caption leading-snug text-muted-foreground">
+                    Delivery for these items is arranged with our team — collect
+                    from our store, or message us and we'll set delivery up and
+                    confirm the fee with you before anything ships.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
 
             {fulfilment === "delivery" ? (
               <div id="delivery-address" className="space-y-4">
@@ -896,6 +959,18 @@ function CheckoutPage() {
                 </dt>
                 <dd className="font-mono tabular-nums">{deliveryLabel}</dd>
               </div>
+
+              {/* Repeat the disclosure right where this order's delivery amount
+                  is shown — the guide requires it wherever a retail-containing
+                  delivery order's initial fee appears. */}
+              {hasCare ? (
+                <div className="rounded-md border border-taupe/40 bg-secondary/40 px-3 py-2">
+                  <CareDeliveryNotice
+                    notice={quoteQ.data?.care_delivery_notice}
+                    className="text-[0.65rem] leading-relaxed"
+                  />
+                </div>
+              ) : null}
 
               {/* A delivery address that didn't resolve to a real, positive
                   fee blocks checkout outright — no ₦0 delivery, no "confirm

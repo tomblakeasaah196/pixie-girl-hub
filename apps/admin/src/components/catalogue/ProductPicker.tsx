@@ -1,5 +1,5 @@
-import { useRef, useState } from "react";
-import { Search, Package, Layers, Box, Sparkles, Check, X } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { Search, Package, Layers, Box, Sparkles, Droplets, Check, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { AnchoredDropdown } from "@/components/ui/AnchoredDropdown";
 import {
@@ -8,6 +8,7 @@ import {
   type ProductKind,
   type ProductHit,
 } from "@/lib/product-search";
+import { useCareAvailability } from "@/lib/care-accessories";
 
 /**
  * The ERP-wide product picker. The operator FIRST picks the kind — Base,
@@ -29,12 +30,14 @@ const KIND_ICON: Record<ProductKind, typeof Package> = {
   styled: Layers,
   bundle: Box,
   service: Sparkles,
+  care: Droplets,
 };
 const KIND_NOUN: Record<ProductKind, string> = {
   base: "base products",
   styled: "styled products",
   bundle: "bundles",
   service: "services",
+  care: "care & accessories",
 };
 
 /** Fallback glyph shown in the result thumbnail when a hit has no image. */
@@ -68,6 +71,15 @@ export function ProductPicker({
   const [selected, setSelected] = useState<ProductHit[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounce = useRef<ReturnType<typeof setTimeout>>();
+
+  // The Care & Accessories kind exists only behind the PXG gate + flag. The
+  // server re-checks both on every sellable call; hiding the chip here is only
+  // about not offering a dead button.
+  const careAvail = useCareAvailability();
+  const kinds = useMemo(
+    () => PRODUCT_KINDS.filter((k) => k.key !== "care" || careAvail.data?.enabled === true),
+    [careAvail.data?.enabled],
+  );
 
   const isSelected = (h: ProductHit) =>
     selected.some((s) => s.kind === h.kind && s.id === h.id);
@@ -130,7 +142,7 @@ export function ProductPicker({
     <div className={cn("space-y-2.5", className)}>
       {/* Step 1 — pick the product type */}
       <div className="flex flex-wrap gap-1.5">
-        {PRODUCT_KINDS.map((k) => {
+        {kinds.map((k) => {
           const on = k.key === kind;
           const Icon = KIND_ICON[k.key];
           return (

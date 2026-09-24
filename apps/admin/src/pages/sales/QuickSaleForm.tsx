@@ -87,6 +87,8 @@ interface CartLine {
   /** Sellable units behind this line at pick time — drives the in-stock /
    *  made-to-order badge. Null/undefined = no stock reading (e.g. a service). */
   available?: number | null;
+  /** Care & Accessories SKU — stock-only, never pre-order or re-wig. */
+  is_care?: boolean;
 }
 
 interface SearchResult {
@@ -130,9 +132,13 @@ function toAbsoluteUrl(url: string): string {
 function StockBadge({
   available,
   quantity,
+  stockOnly,
 }: {
   available?: number | null;
   quantity: number;
+  /** Care & Accessories sell stock-only: a shortfall is never "made to
+   *  order", it is a hard limit the checkout will enforce. */
+  stockOnly?: boolean;
 }) {
   const { data: sizeCfg } = useSizeConfig();
   if (available == null) return null;
@@ -148,17 +154,20 @@ function StockBadge({
         )}
       >
         {short
-          ? `Only ${available} left — ${quantity - available} will be made to order`
+          ? stockOnly
+            ? `Only ${available} in stock — care items are stock-only`
+            : `Only ${available} left — ${quantity - available} will be made to order`
           : `In stock · ${available} left`}
       </div>
     );
   }
 
-  // Out of stock. Pre-orders switched off brand-wide means a genuine sold-out.
-  if (cfg && cfg.preorder_enabled === false) {
+  // Out of stock. Pre-orders switched off brand-wide — or a stock-only care
+  // SKU — means a genuine sold-out, never a made-to-order promise.
+  if (stockOnly || (cfg && cfg.preorder_enabled === false)) {
     return (
       <div className="mt-1 text-[11px] font-medium text-red-400">
-        Out of stock
+        {stockOnly ? "Out of stock — care items are stock-only" : "Out of stock"}
       </div>
     );
   }
@@ -1011,6 +1020,11 @@ export function QuickSaleForm() {
                   <div className="flex-1 min-w-0">
                     <div className="text-[13px] font-semibold truncate">
                       {line.label}
+                      {line.is_care && (
+                        <span className="ml-1.5 inline-flex items-center px-1.5 py-[1px] rounded-[6px] text-[10px] font-bold uppercase tracking-wide bg-accent/15 text-accent-glow border border-accent/30 align-middle">
+                          Care
+                        </span>
+                      )}
                     </div>
                     <div className="text-[11px] text-text-faint">
                       {line.sku}
@@ -1018,6 +1032,7 @@ export function QuickSaleForm() {
                     <StockBadge
                       available={line.available}
                       quantity={line.quantity}
+                      stockOnly={line.is_care}
                     />
                   </div>
                   <div className="flex items-center gap-2">

@@ -248,6 +248,10 @@ async function styledVariantBaseAvailability({ client, brand, styled_variant_ids
 }
 
 // Base-product/variant lines (legacy + auth carts) → that variant's product.
+// Stock is restricted to ACTIVE, STOREFRONT-SELLABLE locations — the same
+// definition the catalogue, storefront and retail resolver use. Summing every
+// location reported transit/production units as buyable (and let the last
+// sellable bottle "sell" from a warehouse the checkout can't reach).
 async function baseVariantAvailability({ client, brand, variant_ids }) {
   if (!variant_ids || !variant_ids.length) return [];
   const { rows } = await ex(client)(
@@ -257,7 +261,14 @@ async function baseVariantAvailability({ client, brand, variant_ids }) {
             COALESCE(SUM(sl.available), 0)::int AS base_available
        FROM ${t(brand, "product_variants")} pv
        JOIN ${t(brand, "products")} b ON b.product_id = pv.product_id
-       LEFT JOIN ${t(brand, "stock_levels")} sl ON sl.variant_id = pv.variant_id
+       LEFT JOIN ${t(brand, "stock_levels")} sl
+              ON sl.variant_id = pv.variant_id
+             AND EXISTS (
+               SELECT 1 FROM ${t(brand, "stock_locations")} loc
+                WHERE loc.location_id = sl.location_id
+                  AND loc.is_active = true
+                  AND loc.available_for_storefront = true
+             )
       WHERE pv.variant_id = ANY($1::uuid[])
       GROUP BY pv.variant_id, b.preorder_enabled, b.preorder_excluded,
                b.expected_ready_date, b.production_lead_days`,

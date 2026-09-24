@@ -16,6 +16,9 @@ const repo = require("./cart.repo");
 const { transaction, query } = require("../../config/database");
 const { NotFoundError, AppError } = require("../../utils/errors");
 const { VALID } = require("../../config/brands");
+// PR 2 — the single typed authority for Care & Accessories SKUs (gate,
+// publication, exact variant, live price, sellable stock).
+const retailResolver = require("../catalogue/retail-resolver");
 // Reuse the catalogue composers for the styled snapshot price — never re-derive
 // pricing here. (Snapshots are display-only; checkout re-prices server-side.)
 const styledRepo = require("../catalogue/styled.repo");
@@ -159,13 +162,68 @@ async function addItem({ business, cart_id, item }) {
   if (!cart || cart.business !== business || cart.status !== "active")
     throw new NotFoundError("Cart");
 
-  // Validate product/variant exists in this brand's catalogue.
-  //const { query } = require("../../config/database");
-  const { rows: variants } = await query(
-    `SELECT pv.variant_id, pv.price_ngn, p.product_name, pv.variant_label, pv.thumbnail_url
+  // Classify the variant first: a Care & Accessories SKU takes the typed
+  // resolver path; anything else stays on the repaired legacy variant path.
+  const { rows: roleRows } = await query(
+    `SELECT p.catalogue_role
        FROM ${business}.product_variants pv
        JOIN ${business}.products p ON p.product_id = pv.product_id
-      WHERE pv.variant_id = $1 AND pv.is_active = true AND p.is_active = true`,
+      WHERE pv.variant_id = $1`,
+    [item.variant_id],
+  );
+
+  if (roleRows[0] && roleRows[0].catalogue_role === "retail") {
+    // Typed retail path (PR 2). The resolver is fail-closed: gate off,
+    // unpublished, archived, trashed, wrong-role, unpriced or forged ids all
+    // 404 — nothing enters the bag that the typed checkout cannot sell.
+    const r = await retailResolver.resolveSellableVariant({
+      brand: business,
+      variant_id: item.variant_id,
+      product_id: item.product_id || null,
+      channel: "storefront",
+    });
+    const qty = Math.max(1, parseInt(item.quantity, 10) || 1);
+    if (qty > r.available)
+      throw new AppError(
+        "OUT_OF_STOCK",
+        `Retail SKU ${r.sku} has ${r.available} sellable unit(s)`,
+        409,
+        {
+          user_message: `${r.name}${r.variant_label ? ` (${r.variant_label})` : ""} is out of stock.`,
+        },
+      );
+    const cartItem = await repo.upsertCartItem({
+      item: {
+        cart_id,
+        business,
+        product_id: r.product_id,
+        variant_id: r.variant_id,
+        quantity: qty,
+        product_name_snapshot: r.name,
+        variant_label_snapshot: r.variant_label || null,
+        thumbnail_url_snapshot: r.image_url,
+        unit_price_ngn: r.unit_price_ngn,
+        unit_display_price: r.unit_price_usd ?? null,
+        display_currency: item.display_currency || "NGN",
+      },
+    });
+    await repo.updateCart({
+      cart_id,
+      patch: { last_interaction_at: new Date().toISOString() },
+    });
+    return cartItem;
+  }
+
+  // Legacy base-variant path — repaired to select the REAL catalogue columns
+  // (the old query referenced price_ngn / product_name / variant_label /
+  // thumbnail_url / is_active, none of which exist on products/variants).
+  const { rows: variants } = await query(
+    `SELECT pv.variant_id,
+            COALESCE(pv.price_storefront_ngn, pv.price_pos_ngn) AS price_ngn,
+            p.name AS product_name, pv.variant_name AS variant_label
+       FROM ${business}.product_variants pv
+       JOIN ${business}.products p ON p.product_id = pv.product_id
+      WHERE pv.variant_id = $1 AND pv.is_active = true AND p.is_deleted = false`,
     [item.variant_id],
   );
   const variant = variants[0];
@@ -186,8 +244,7 @@ async function addItem({ business, cart_id, item }) {
       product_name_snapshot: item.product_name_snapshot || variant.product_name,
       variant_label_snapshot:
         item.variant_label_snapshot || variant.variant_label,
-      thumbnail_url_snapshot:
-        item.thumbnail_url_snapshot || variant.thumbnail_url,
+      thumbnail_url_snapshot: item.thumbnail_url_snapshot || null,
       unit_price_ngn: item.unit_price_ngn || variant.price_ngn,
       unit_display_price: item.unit_display_price || null,
       display_currency: item.display_currency || "NGN",
@@ -472,10 +529,13 @@ async function listWishlist({ business, contact_id }) {
 
 async function addToWishlist({ business, contact_id, item }) {
   assertBrand(business);
-  // Confirm variant exists
-  //const { query } = require("../../config/database");
+  // Confirm variant exists (real catalogue columns — the old query selected
+  // price_ngn / product_name / variant_label / thumbnail_url, which don't
+  // exist). Retail SKUs are wishlisted through the same variant rail.
   const { rows } = await query(
-    `SELECT pv.variant_id, pv.price_ngn, p.product_name, pv.variant_label, pv.thumbnail_url
+    `SELECT pv.variant_id,
+            COALESCE(pv.price_storefront_ngn, pv.price_pos_ngn) AS price_ngn,
+            p.name AS product_name, pv.variant_name AS variant_label
        FROM ${business}.product_variants pv
        JOIN ${business}.products p ON p.product_id = pv.product_id
       WHERE pv.variant_id = $1`,
@@ -496,7 +556,7 @@ async function addToWishlist({ business, contact_id, item }) {
       variant_id: item.variant_id,
       product_name_snapshot: variant.product_name,
       variant_label_snapshot: variant.variant_label,
-      thumbnail_url_snapshot: variant.thumbnail_url,
+      thumbnail_url_snapshot: null,
       price_ngn_at_add: variant.price_ngn,
     },
   });

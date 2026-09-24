@@ -14,19 +14,44 @@
 import { api } from "@/lib/api";
 import type { Paginated } from "@/lib/catalogue";
 
-export type ProductKind = "base" | "styled" | "bundle" | "service";
+export type ProductKind = "base" | "styled" | "bundle" | "service" | "care";
 
 // The ERP-wide sellable kinds the shared ProductPicker offers (orders,
 // quotations, invoices, Quick Sale). Services are sold as a first-class kind
 // alongside products — the picker returns a hit with kind='service' and
 // resolvePick() lowers it into a service order line (service_offering_id +
 // line_kind='service'). Retained in the in-chat catalogue picker too.
+//
+// "care" (Care & Accessories) is the PXG-only retail kind — one hit per
+// ACTIVE, sellable SKU at the live POS-tier price. The ProductPicker only
+// offers it when the brand's care gate is on; a care pick lowers into a plain
+// variant line carrying `is_care` so sales surfaces can badge it stock-only.
 export const PRODUCT_KINDS: { key: ProductKind; label: string }[] = [
   { key: "base", label: "Base Product" },
   { key: "styled", label: "Styled Product" },
   { key: "bundle", label: "Bundle" },
   { key: "service", label: "Service" },
+  { key: "care", label: "Care & Accessories" },
 ];
+
+/** The typed row the Care & Accessories sellable endpoint returns for one
+ * ACTIVE SKU. Carried verbatim on the hit so resolving a care pick needs no
+ * second round-trip (and can never resolve a different SKU than was shown). */
+export interface CareSellable {
+  product_id: string;
+  variant_id: string;
+  sku: string;
+  barcode: string | null;
+  name: string;
+  slug: string;
+  variant_label: string | null;
+  unit_price_ngn: number;
+  unit_price_usd: number | null;
+  taxable: boolean;
+  vat_rate: number | null;
+  available: number;
+  image_url: string | null;
+}
 
 /** A search result the picker renders. `id` is the kind's primary key.
  * Optional fields surface the card preview (image + price) for in-chat
@@ -38,6 +63,8 @@ export interface ProductHit {
   sub: string;
   image_url?: string | null;
   price?: string | number | null;
+  /** Present only for kind='care' — the live sellable SKU behind the hit. */
+  care?: CareSellable;
 }
 
 /** A concrete, sellable line resolved from a pick — ready for any cart. */
@@ -71,6 +98,9 @@ export interface ResolvedLine {
    *  includes any rewig-adjacent sibling stock (styledVariantStockSql). Null
    *  when the pick carries no stock reading (services, matrix-less styled). */
   available?: number | null;
+  /** True when the pick was a Care & Accessories SKU. Sales stamps this so the
+   *  cart can badge the line stock-only (retail never pre-orders or re-wigs). */
+  is_care?: boolean;
 }
 
 export interface ResolvedPick {
@@ -205,6 +235,28 @@ export async function searchByKind(
       }));
   }
 
+  if (kind === "care") {
+    // One hit per ACTIVE, sellable SKU at the live POS-tier price. The server
+    // filters out anything unpublished/unpriced/off-gate, so a hit here is
+    // always something we may charge for right now.
+    // api.get unwraps the { data } envelope, so this resolves to the row list.
+    const rows =
+      (await api.get<CareSellable[]>(
+        `/catalogue/care-accessories/sellable?q=${enc(term)}&page_size=10`,
+      )) ?? [];
+    return rows.map((r) => ({
+      kind,
+      id: r.variant_id,
+      label: r.variant_label ? `${r.name} — ${r.variant_label}` : r.name,
+      sub: `${r.sku} · ${ngn(r.unit_price_ngn)} · ${
+        r.available > 0 ? `${r.available} in stock` : "out of stock"
+      }`,
+      image_url: r.image_url,
+      price: r.unit_price_ngn,
+      care: r,
+    }));
+  }
+
   // service — fetch all (small list) and filter client-side.
   const services = await api.get<ServiceRow[]>("/service-catalogue");
   const lower = term.toLowerCase();
@@ -292,6 +344,28 @@ export async function resolvePick(hit: ProductHit): Promise<ResolvedPick> {
           unit_price: num(hit.price ?? 0),
           quantity: 1,
           image_url: hit.image_url,
+        },
+      ],
+    };
+  }
+
+  if (hit.kind === "care") {
+    // A care pick resolves to exactly the SKU the operator saw in the search —
+    // the live POS-tier price and sellable stock were already on the hit, so
+    // there is nothing left to fetch (and no way to drift onto a sibling SKU).
+    const c = hit.care;
+    if (!c) return { lines: [] };
+    return {
+      lines: [
+        {
+          variant_id: c.variant_id,
+          label: c.variant_label ? `${c.name} — ${c.variant_label}` : c.name,
+          sku: c.sku,
+          unit_price: c.unit_price_ngn,
+          quantity: 1,
+          image_url: c.image_url,
+          available: c.available,
+          is_care: true,
         },
       ],
     };

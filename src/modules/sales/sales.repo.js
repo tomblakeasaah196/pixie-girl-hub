@@ -158,6 +158,8 @@ async function variantContexts({ client, brand, variant_ids }) {
             pv.price_wholesale_ngn, pv.price_partner_ngn, pv.cost_price_ngn, pv.min_price_ngn,
             p.product_id, p.name AS product_name, p.taxable, p.vat_rate AS product_vat,
             p.category_id
+       , p.catalogue_role, p.retail_status, p.is_deleted AS product_deleted,
+            pv.is_active AS variant_active
        FROM ${t(brand, "product_variants")} pv
        JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
       WHERE pv.variant_id = ANY($1::uuid[])`,
@@ -173,6 +175,8 @@ async function variantContext({ client, brand, variant_id }) {
             pv.price_wholesale_ngn, pv.price_partner_ngn, pv.cost_price_ngn, pv.min_price_ngn,
             p.product_id, p.name AS product_name, p.taxable, p.vat_rate AS product_vat,
             p.category_id
+       , p.catalogue_role, p.retail_status, p.is_deleted AS product_deleted,
+            pv.is_active AS variant_active
        FROM ${t(brand, "product_variants")} pv
        JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
       WHERE pv.variant_id = $1`,

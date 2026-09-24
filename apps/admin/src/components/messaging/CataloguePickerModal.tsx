@@ -29,14 +29,20 @@ import {
 } from "@/components/catalogue/StyledVariantPicker";
 
 // The in-chat picker offers services too (the ERP-wide PRODUCT_KINDS does not).
-const CHAT_KINDS: { key: ProductKind; label: string }[] = [
+// Care & Accessories are deliberately NOT chat-shareable in PR 2 — a share
+// surfaces a /o checkout link, and retail checkouts from chat are later work.
+type ChatKind = Exclude<ProductKind, "care">;
+const CHAT_KINDS: { key: ChatKind; label: string }[] = [
   { key: "base", label: "Base Product" },
   { key: "styled", label: "Styled Product" },
   { key: "bundle", label: "Bundle" },
   { key: "service", label: "Service" },
 ];
 
-const KIND_ICON: Record<ProductKind, typeof Package> = {
+// Care & Accessories are sellable in POS/quotes/storefront but are NOT shared
+// in-chat (that surfaces a /o checkout link, which is later gated work), so
+// the chat picker's icon map deliberately omits the care kind.
+const KIND_ICON: Record<Exclude<ProductKind, "care">, typeof Package> = {
   base: Package,
   styled: Layers,
   bundle: Box,
@@ -128,10 +134,15 @@ export function CataloguePickerModal({
   }, [channel]);
 
   function toggle(h: ProductHit) {
-    const exists = selected.find((s) => s.kind === h.kind && s.id === h.id);
+    // CHAT_KINDS never offers care, but keep the guard explicit so the kind
+    // narrows to the commerce set the ProductCard payload accepts. Capture it
+    // in a const so the narrowing survives the setSelected closure below.
+    if (h.kind === "care") return;
+    const chatKind: ChatKind = h.kind;
+    const exists = selected.find((s) => s.kind === chatKind && s.id === h.id);
     if (exists) {
       setSelected((arr) =>
-        arr.filter((s) => !(s.kind === h.kind && s.id === h.id)),
+        arr.filter((s) => !(s.kind === chatKind && s.id === h.id)),
       );
       return;
     }
@@ -144,7 +155,7 @@ export function CataloguePickerModal({
     setSelected((arr) => [
       ...arr,
       {
-        kind: h.kind,
+        kind: chatKind,
         id: h.id,
         name: h.label,
         price: h.price ?? null,

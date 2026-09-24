@@ -104,6 +104,35 @@ async function getBundle(req, res) {
   });
 }
 
+// ── Care & Accessories (PR 2) — typed public retail catalogue ──
+// PXG-only + gated inside the resolver; every other brand gets a clean 404.
+async function listCareProducts(req, res) {
+  res.json(
+    await service.listCareProducts({
+      brand: brandHint(req),
+      q: req.query.q || null,
+      category_id: req.query.category_id || null,
+      page: parseInt(req.query.page || "1", 10),
+      page_size: Math.min(parseInt(req.query.page_size || "24", 10), 60),
+    }),
+  );
+}
+
+async function getCareProduct(req, res) {
+  res.json({
+    data: await service.getCareProduct({
+      brand: brandHint(req),
+      slug: req.params.slug,
+    }),
+  });
+}
+
+async function careEnabled(req, res) {
+  res.json({
+    data: { enabled: service.careEnabled({ brand: brandHint(req) }) },
+  });
+}
+
 // Published Studio config for the SSR shell (theme tokens, nav, pages, popups).
 // Optional ?path narrows to one page. The website hydrates the shell from this.
 async function getSite(req, res) {
@@ -199,6 +228,9 @@ module.exports = {
   listCollections,
   listBundles,
   getBundle,
+  listCareProducts,
+  getCareProduct,
+  careEnabled,
   getSite,
   listContent,
   getContent,

@@ -9,6 +9,7 @@ const fs = require("fs");
 const path = require("path");
 const { PGlite } = require("@electric-sql/pglite");
 const raw = fs.readFileSync(path.resolve(__dirname, "../../migrations/template/000094_business_care_accessories.sql.template"), "utf8");
+const pr2 = fs.readFileSync(path.resolve(__dirname, "../../migrations/template/000095_business_care_typed_sales.sql.template"), "utf8");
 const old43 = fs.readFileSync(path.resolve(__dirname, "../../migrations/template/000043_business_base_never_storefront.sql.template"), "utf8");
 const before94 = `
 CREATE TABLE %s.product_categories (
@@ -60,6 +61,7 @@ async function fixture(brand) {
   return db;
 }
 const sql = (brand) => raw.replace(/\{\{BUSINESS\}\}/g, brand);
+const sql95 = (brand) => pr2.replace(/\{\{BUSINESS\}\}/g, brand);
 const retail = (brand) => `INSERT INTO ${brand}.products
   (product_id, product_code, name, catalogue_role, retail_status, product_type, track_stock,
     is_custom, preorder_enabled, preorder_excluded, rewig_eligible, payment_model,
@@ -112,7 +114,10 @@ test("Care catalogue cannot gain wig attributes, payment plans, web/DM channel f
   await assert.rejects(db.exec(`UPDATE pixiegirl.products SET catalogue_role = 'retail' WHERE product_id = '${wigId}'`), /immutable/);
 });
 
-test("Care item cannot serve as styled base or variant donor, and cannot be sold through order line", async () => {
+test("PR1 fail-closed block holds until PR 2 replaces it: bare-order-line retail sale refused pre-000095", async () => {
+  // This pins the PR 1 behaviour on a schema that has ONLY 000094 applied:
+  // retail cannot be sold at all yet. It guards against a regression where
+  // the temporary trigger disappears before the typed PR 2 resolver exists.
   db = await fixture("pixiegirl");
   await db.exec(sql("pixiegirl"));
   await db.query(retail("pixiegirl"), [careId]);
@@ -124,18 +129,60 @@ test("Care item cannot serve as styled base or variant donor, and cannot be sold
   await assert.rejects(db.exec(`INSERT INTO pixiegirl.sales_order_lines(variant_id) VALUES ('${careSku}')`), /sales are disabled/);
 });
 
-test("Care stock ledger permits costed receipts/counts/transfers but never uncosted intake, reserve or sale", async () => {
+test("Care item never serves as styled base/donor; PR 2 opens exact-variant sales but never a bare product line", async () => {
   db = await fixture("pixiegirl");
   await db.exec(sql("pixiegirl"));
+  await db.exec(sql95("pixiegirl"));
+  await db.query(retail("pixiegirl"), [careId]);
+  await db.query("INSERT INTO pixiegirl.product_variants (variant_id, product_id, sku) VALUES ($1,$2,'PXG-OIL-50')", [careSku, careId]);
+  await assert.rejects(db.exec(`INSERT INTO pixiegirl.styled_products(base_product_id) VALUES ('${careId}')`), /hair base/);
+  await assert.rejects(db.exec(`INSERT INTO pixiegirl.styled_product_variants(base_product_id) VALUES ('${careId}')`), /hair base/);
+  await assert.rejects(db.exec(`INSERT INTO pixiegirl.styled_products(base_product_id,base_variant_id) VALUES ('${wigId}','${careSku}')`), /hair base variant/);
+  // The typed release allows a sale line ONLY with its exact SKU attached...
+  await db.exec(`INSERT INTO pixiegirl.sales_order_lines(product_id,variant_id) VALUES ('${careId}','${careSku}')`);
+  // ...and still refuses a bare retail product line (no variant).
+  await assert.rejects(db.exec(`INSERT INTO pixiegirl.sales_order_lines(product_id) VALUES ('${careId}')`), /exact SKU/);
+  // A wig line is untouched by the retail invariant.
+  await db.exec(`INSERT INTO pixiegirl.sales_order_lines(product_id) VALUES ('${wigId}')`);
+});
+
+test("Care stock ledger after PR 2: typed sale movements open, production/consignment and uncosted intake stay closed", async () => {
+  db = await fixture("pixiegirl");
+  await db.exec(sql("pixiegirl"));
+  await db.exec(sql95("pixiegirl"));
   await db.query(retail("pixiegirl"), [careId]);
   await db.query("INSERT INTO pixiegirl.product_variants (variant_id, product_id, sku) VALUES ($1,$2,'PXG-OIL-50')", [careSku, careId]);
   const move = (type, cost) => db.query("INSERT INTO pixiegirl.stock_movements(variant_id,movement_type,unit_cost_ngn) VALUES ($1,$2,$3)", [careSku, type, cost]);
-  for (const type of ["reserve", "release_reserve", "sale", "return", "production_in", "consignment_out"])
-    await assert.rejects(move(type, 500), /inventory-only/);
+  // Typed sales paths (reserve/release/sale/return) are now permitted.
+  for (const type of ["reserve", "release_reserve", "sale", "return"])
+    await move(type, 500);
+  // Styling production and partner consignment remain closed to retail SKUs.
+  for (const type of ["production_in", "production_out", "consignment_out", "consignment_return"])
+    await assert.rejects(move(type, 500), /styling production or consignment/);
+  // Receipts still require a positive operational cost per SKU.
   await assert.rejects(move("receive", null), /positive operational cost/);
   await assert.rejects(move("receive", 0), /positive operational cost/);
   await move("receive", 500);
   await move("adjustment_in", null); // Requires approval at service layer.
   await move("transfer_in", null);
-  assert.equal((await db.query("SELECT count(*)::int AS n FROM pixiegirl.stock_movements")).rows[0].n, 3);
+  assert.equal((await db.query("SELECT count(*)::int AS n FROM pixiegirl.stock_movements")).rows[0].n, 7);
+});
+
+test("000095 replays cleanly on repair and on fresh bootstrap", async () => {
+  db = await fixture("pixiegirl");
+  await db.exec(sql("pixiegirl"));
+  await db.exec(sql95("pixiegirl"));
+  // Repeated repair: dropping the temporary trigger/function twice and
+  // recreating the permanent ones must be idempotent.
+  await db.exec(sql95("pixiegirl"));
+  await db.exec(sql("pixiegirl")); // 000094 replay after 000095 stays safe.
+  await db.exec(sql95("pixiegirl"));
+  const trig = await db.query(
+    `SELECT count(*)::int AS n FROM pg_trigger WHERE tgname IN
+       ('trg_care_no_sales_before_pr2','trg_care_stock_only_before_pr2')`);
+  assert.equal(trig.rows[0].n, 0, "temporary PR 1 triggers must be gone");
+  const perm = await db.query(
+    `SELECT count(*)::int AS n FROM pg_trigger WHERE tgname IN
+       ('trg_care_sales_line_exact_variant','trg_care_stock_typed_movements')`);
+  assert.equal(perm.rows[0].n, 2, "permanent PR 2 triggers must be present");
 });

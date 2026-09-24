@@ -38,6 +38,35 @@ module.exports = [
     },
   },
   {
+    // `.mjs` files are ES modules by definition (scripts/generate-app-icons.mjs,
+    // scripts/generate-favicon.mjs, apps/landing/next.config.mjs, and the CI
+    // result asserter). Without this override the shared commonjs block above
+    // makes `import`/`export` a parse error, so they cannot be linted at all.
+    files: ["**/*.mjs"],
+    languageOptions: {
+      ecmaVersion: 2024,
+      sourceType: "module",
+      globals: {
+        process: "readonly",
+        console: "readonly",
+        Buffer: "readonly",
+        URL: "readonly",
+        fetch: "readonly",
+        setTimeout: "readonly",
+        clearTimeout: "readonly",
+        __dirname: "readonly",
+        __filename: "readonly",
+      },
+    },
+    rules: {
+      "no-console": "off",
+      "no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+      "prefer-const": "error",
+      "no-var": "error",
+      eqeqeq: ["error", "always"],
+    },
+  },
+  {
     files: ["tests/**/*.js", "**/*.test.js"],
     languageOptions: {
       globals: {

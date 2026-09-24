@@ -1,0 +1,219 @@
+# PR Checks — the review gate for every pull request.
+#
+# This is deliberately separate from ci.yml, which is the production DEPLOY
+# pipeline (push to main) and runs its tests with continue-on-error: true.
+# Nothing in this repository gated a PR before this workflow existed.
+#
+# What it runs, and the honest limits of each job:
+#
+#   unit-tests       the FULL Jest unit suite, gated by an explicit allowlist of
+#                    pre-existing failures (scripts/ci/assert-unit-results.mjs).
+#                    Main is not green: three suites were already failing before
+#                    this feature work. A gate that is permanently red gets
+#                    ignored, so the known-bad suites are quarantined BY NAME
+#                    with a recorded reason and anything else must pass.
+#                    Integration suites are NOT run here — they need a real
+#                    PostgreSQL/Redis, which this workflow does not provision.
+#
+#   admin-build      apps/admin `tsc -b && vite build` (the build IS the
+#                    typecheck for that app).
+#
+#   storefront-build apps/storefront `vite build` PLUS a separate
+#                    `npx tsc --noEmit`. The storefront build does not run
+#                    TypeScript, and it generates src/routeTree.gen.ts, so the
+#                    typecheck has to run after the build to see the routes.
+#
+#   lint-scoped      ESLint on the files THIS change touches. Repository-wide
+#                    lint carries a large pre-existing debt across unrelated
+#                    files, so a full run would be permanently red for the same
+#                    reason as the unit suite. apps/storefront has no ESLint
+#                    config of its own, so its files are not linted — that gap
+#                    is recorded rather than papered over.
+
+name: PR Checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Superseded runs on the same PR are cancelled; a push to main always completes.
+concurrency:
+  group: pr-checks-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Puppeteer's Chromium download is not needed by any check here and is slow
+  # and flaky on runners.
+  PUPPETEER_SKIP_DOWNLOAD: "true"
+  PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    name: Unit suite (full, allowlisted)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install root dependencies
+        run: npm ci --prefer-offline --no-audit --fund=false
+        timeout-minutes: 15
+
+      - name: Run the full unit suite
+        # Jest exits non-zero when anything fails, including the quarantined
+        # suites — that is expected here. The assertion script decides.
+        run: |
+          set +e
+          npm run test:unit -- --runInBand --json --outputFile=unit-results.json
+          echo "jest_exit=$?" >> "$GITHUB_ENV"
+          exit 0
+
+      - name: Assert against the pre-existing-failure allowlist
+        run: node scripts/ci/assert-unit-results.mjs unit-results.json
+
+      - name: Report the raw Jest exit code
+        if: always()
+        run: echo "Jest exited ${{ env.jest_exit }} (non-zero is expected while allowlisted suites fail)"
+
+      - name: Upload the Jest JSON report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-results
+          path: unit-results.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+  admin-build:
+    name: Admin build + typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: apps/admin/package-lock.json
+
+      - name: Install admin dependencies
+        run: npm --prefix apps/admin ci --prefer-offline --no-audit --fund=false
+        timeout-minutes: 15
+
+      - name: Build admin (runs tsc -b first)
+        run: npm --prefix apps/admin run build
+        timeout-minutes: 20
+
+  storefront-build:
+    name: Storefront build + tsc --noEmit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: apps/storefront/package-lock.json
+
+      - name: Install storefront dependencies
+        run: npm --prefix apps/storefront ci --prefer-offline --no-audit --fund=false
+        timeout-minutes: 15
+
+      # Order matters: the build generates src/routeTree.gen.ts, which the
+      # typecheck needs in order to resolve the file-based routes.
+      - name: Build storefront
+        run: npm --prefix apps/storefront run build
+        timeout-minutes: 20
+
+      - name: Typecheck storefront
+        run: npx tsc --noEmit
+        working-directory: apps/storefront
+        timeout-minutes: 15
+
+  lint-scoped:
+    name: ESLint (changed files only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # Full history so the diff base is always reachable.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install root dependencies
+        run: npm ci --prefer-offline --no-audit --fund=false
+        timeout-minutes: 15
+
+      - name: Install admin dependencies (for its ESLint config + plugins)
+        run: npm --prefix apps/admin ci --prefer-offline --no-audit --fund=false
+        timeout-minutes: 15
+
+      - name: Work out which files this change touched
+        id: changed
+        run: |
+          set -euo pipefail
+          BASE=""
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+          elif [ -n "${{ github.event.before }}" ] && [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            BASE="${{ github.event.before }}"
+          fi
+          # Fall back to the merge-base with main (workflow_dispatch, a brand-new
+          # branch, or a force-push that invalidated `before`).
+          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            git fetch --no-tags origin main --depth=200 || true
+            BASE="$(git merge-base HEAD origin/main 2>/dev/null || echo "")"
+          fi
+          if [ -z "$BASE" ]; then
+            echo "No usable diff base — linting nothing rather than linting everything."
+            : > changed.txt
+          else
+            echo "Diff base: $BASE"
+            git diff --name-only --diff-filter=ACMR "$BASE" HEAD > changed.txt || : > changed.txt
+          fi
+          echo "--- changed files ---"
+          cat changed.txt
+          grep -E '^(src|tests|scripts)/.*\.(js|cjs|mjs)$' changed.txt > backend.txt || true
+          grep -E '^apps/admin/src/.*\.(ts|tsx)$' changed.txt > admin.txt || true
+          grep -E '^apps/storefront/.*\.(ts|tsx)$' changed.txt > storefront.txt || true
+          echo "backend=$(wc -l < backend.txt) admin=$(wc -l < admin.txt) storefront=$(wc -l < storefront.txt)"
+
+      - name: ESLint changed backend files
+        run: |
+          set -euo pipefail
+          if [ ! -s backend.txt ]; then echo "No backend files changed — skipped."; exit 0; fi
+          xargs -a backend.txt -r npx eslint --max-warnings=0
+
+      - name: ESLint changed admin files
+        run: |
+          set -euo pipefail
+          if [ ! -s admin.txt ]; then echo "No admin files changed — skipped."; exit 0; fi
+          # Run from the app so its own flat config (tseslint + react-hooks) applies.
+          sed 's#^apps/admin/##' admin.txt > admin-rel.txt
+          ( cd apps/admin && xargs -a ../admin-rel.txt -r npx eslint --max-warnings=0 )
+
+      - name: Report the storefront lint gap
+        run: |
+          if [ -s storefront.txt ]; then
+            echo "::warning title=Storefront lint not run::apps/storefront has no ESLint config, so $(wc -l < storefront.txt) changed file(s) were typechecked and built but not linted."
+          else
+            echo "No storefront files changed."
+          fi

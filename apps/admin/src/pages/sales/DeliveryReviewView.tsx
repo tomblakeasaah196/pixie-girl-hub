@@ -355,9 +355,15 @@ function ReviewModal({ orderId, onClose }: { orderId: string; onClose: () => voi
               {canApprove && rv.status === "declined" && (
                 <Step title="Customer refused the increase">
                   <p className="text-text-muted mb-2">
-                    No cancellation fee is invented. Route to a manager to cancel &amp; refund, switch to pickup, or re-price.
+                    Dispatch stays blocked. No cancellation fee is invented: re-price the delivery,
+                    or route to a manager to cancel &amp; refund (or switch the order to pickup).
                   </p>
-                  <Button variant="secondary" disabled={act.isPending} onClick={() => act.mutate({ path: "/decline-route", body: {} })}>Route to manager</Button>
+                  <div className="flex gap-2 flex-wrap">
+                    {canEdit && (
+                      <Button disabled={act.isPending} onClick={() => act.mutate({ path: "", body: {} })}>Re-price (new review)</Button>
+                    )}
+                    <Button variant="secondary" disabled={act.isPending} onClick={() => act.mutate({ path: "/decline-route", body: {} })}>Route to manager</Button>
+                  </div>
                 </Step>
               )}
 

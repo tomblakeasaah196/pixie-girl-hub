@@ -136,7 +136,7 @@ async function getReview({ brand, order_id }) {
   const order = await salesRepo.findById({ brand, id: order_id });
   if (!order) throw new NotFoundError("Order");
   const reviews = await repo.listByOrder({ brand, order_id });
-  const open = reviews.find((r) => repo.OPEN_STATUSES.includes(r.status)) || null;
+  const open = reviews.find((r) => repo.BLOCKING_STATUSES.includes(r.status)) || null;
   const events = open ? await repo.listEvents({ brand, review_id: open.review_id }) : [];
   return {
     order: {
@@ -171,6 +171,26 @@ async function openReview({ brand, user, request_id, order_id, calculation_basis
 
     const existing = await repo.findOpenByOrder({ client, brand, order_id });
     if (existing) return existing;
+
+    // Re-pricing after a refusal: the declined review is superseded (it keeps
+    // its history) so it stops holding the order once THIS review settles.
+    const superseded = await repo.supersedeDeclined({ client, brand, order_id });
+    for (const old of superseded) {
+      await repo.addEvent({
+        client,
+        brand,
+        event: {
+          review_id: old.review_id,
+          order_id,
+          event_type: "cancelled",
+          from_status: "declined",
+          to_status: "cancelled",
+          note: "Superseded by a new delivery-fee review (re-priced after the customer declined)",
+          actor_user_id: user.user_id,
+          actor_name: user.full_name || user.email || null,
+        },
+      });
+    }
 
     const review = await repo.insertReview({
       client,
@@ -734,8 +754,35 @@ async function verifyRefund({
     // refund payment must be a real row on THIS order in a refunded state.
     let evidence;
     if (credit_note_id) {
-      const cn = await invoicingService.getCreditNote({ brand, id: credit_note_id });
-      evidence = `credit note ${cn.credit_note_number || credit_note_id}`;
+      // Must be a real, issued credit note raised against an invoice of THIS
+      // order, covering at least the difference — an arbitrary credit note id
+      // from another order is not evidence of this refund.
+      const { rows: cnRows } = await client.query(
+        `SELECT cn.credit_note_id, cn.credit_note_number, cn.status, cn.total_ngn
+           FROM ${t(brand, "credit_notes")} cn
+           JOIN ${t(brand, "invoices")} i ON i.invoice_id = cn.invoice_id
+          WHERE cn.credit_note_id = $1 AND i.order_id = $2`,
+        [credit_note_id, order_id],
+      );
+      const cn = cnRows[0];
+      if (!cn) throw new NotFoundError("Credit note for this order");
+      if (!["issued", "applied", "refunded"].includes(cn.status)) {
+        throw new AppError(
+          "CREDIT_NOTE_NOT_ISSUED",
+          `Credit note ${cn.credit_note_number} is '${cn.status}', not issued`,
+          409,
+        );
+      }
+      if (money(cn.total_ngn).lt(money(review.difference_ngn).abs())) {
+        throw new AppError(
+          "CREDIT_SHORT",
+          `Credit note ${cn.credit_note_number} covers ₦${toCurrencyString(
+            money(cn.total_ngn),
+          )} of the ₦${toCurrencyString(money(review.difference_ngn).abs())} decrease`,
+          409,
+        );
+      }
+      evidence = `credit note ${cn.credit_note_number}`;
     } else {
       const run = client ? client.query.bind(client) : query;
       const { rows } = await run(
@@ -868,7 +915,7 @@ async function confirmFee({ brand, user, request_id, order_id, calculation_basis
 async function routeDecline({ brand, user, request_id, order_id, note }) {
   const order = await salesRepo.findById({ brand, id: order_id });
   if (!order) throw new NotFoundError("Order");
-  const review = await repo.findOpenByOrder({ brand, order_id });
+  const review = await repo.findBlockingByOrder({ brand, order_id });
   if (!review || review.status !== "declined") {
     throw new AppError(
       "INVALID_STATE",
@@ -985,6 +1032,7 @@ const withFollowUp = (fn) => async (args) =>
 module.exports = {
   OPEN_STATUSES: repo.OPEN_STATUSES,
   SETTLED_STATUSES: repo.SETTLED_STATUSES,
+  BLOCKING_STATUSES: repo.BLOCKING_STATUSES,
   orderRetailLineCount,
   listQueue,
   getReview,

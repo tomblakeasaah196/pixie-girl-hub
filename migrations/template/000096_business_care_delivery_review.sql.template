@@ -206,7 +206,11 @@ BEGIN
   SELECT COUNT(*)::int INTO v_open
     FROM {{BUSINESS}}.delivery_fee_reviews r
    WHERE r.order_id = COALESCE(NEW.order_id, OLD.order_id)
-     AND r.status NOT IN ('accepted','declined','credited','confirmed','cancelled');
+     -- `declined` still BLOCKS: the customer refused what the delivery costs,
+     -- so the order must not ship at the old figure. Released only by a
+     -- superseding review that settles (the old one becomes 'cancelled') or
+     -- by cancelling the order.
+     AND r.status NOT IN ('accepted','credited','confirmed','cancelled');
 
   UPDATE {{BUSINESS}}.sales_orders
      SET needs_delivery_review = (v_open > 0),

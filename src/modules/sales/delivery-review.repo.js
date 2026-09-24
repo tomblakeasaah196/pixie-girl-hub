@@ -41,6 +41,39 @@ const SETTLED_STATUSES = [
 ];
 
 /** The order's currently open review, or null. */
+// Statuses that still BLOCK dispatch. A `declined` review is closed as a fee
+// decision (the unique open-review index lets staff re-price with a fresh
+// review) but it must keep the order held: the customer refused the fee the
+// delivery actually costs, so shipping at the old figure would be the silent
+// under-charge this feature exists to prevent. It is released only by a
+// superseding review that settles, or by cancelling the order.
+const BLOCKING_STATUSES = [...OPEN_STATUSES, "declined"];
+
+/** The latest review still blocking dispatch (open OR declined). */
+async function findBlockingByOrder({ client, brand, order_id }) {
+  const { rows } = await ex(client)(
+    `SELECT * FROM ${t(brand, "delivery_fee_reviews")}
+      WHERE order_id = $1::uuid
+        AND status::text = ANY($2::text[])
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [order_id, BLOCKING_STATUSES],
+  );
+  return rows[0] || null;
+}
+
+/** Mark earlier declined reviews as superseded (status 'cancelled'). */
+async function supersedeDeclined({ client, brand, order_id }) {
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "delivery_fee_reviews")}
+        SET status = 'cancelled', updated_at = now()
+      WHERE order_id = $1::uuid AND status = 'declined'
+      RETURNING *`,
+    [order_id],
+  );
+  return rows;
+}
+
 async function findOpenByOrder({ client, brand, order_id }) {
   const { rows } = await ex(client)(
     `SELECT * FROM ${t(brand, "delivery_fee_reviews")}
@@ -222,13 +255,17 @@ async function listEvents({ client, brand, review_id }) {
 async function listQueue({ client, brand, status, page = 1, page_size = 25 }) {
   const params = [];
   let i = 1;
-  const where = [`so.needs_delivery_review = true`];
+  // Cancelled/refunded orders never dispatch, so they drop out of the queue.
+  const where = [
+    `so.needs_delivery_review = true`,
+    `so.status NOT IN ('cancelled','refunded')`,
+  ];
   if (status && status !== "all") {
     where.push(`r.status::text = $${i++}::text`);
     params.push(status);
   } else {
     where.push(`r.status::text = ANY($${i++}::text[])`);
-    params.push(OPEN_STATUSES);
+    params.push(BLOCKING_STATUSES);
   }
   const offset = Math.max(0, (Number(page) - 1) * Number(page_size));
   const { rows } = await ex(client)(
@@ -291,6 +328,9 @@ async function setOrderReviewFlag({ client, brand, order_id, needs }) {
 module.exports = {
   OPEN_STATUSES,
   SETTLED_STATUSES,
+  BLOCKING_STATUSES,
+  findBlockingByOrder,
+  supersedeDeclined,
   findOpenByOrder,
   listByOrder,
   getById,

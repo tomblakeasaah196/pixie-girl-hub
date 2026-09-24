@@ -153,7 +153,7 @@ async function getReview({ brand, order_id }) {
     open_review: open,
     reviews,
     events,
-    // The exact owner-approved disclosure, so the staff UI repeats the same
+    // The exact required disclosure, so the staff UI repeats the same
     // wording the customer saw. "MAY", never "WILL".
     care_delivery_notice: "EXTRA DELIVERY FEES MAY APPLY",
   };

@@ -42,9 +42,19 @@ interface PrefillLine {
   quantity: number;
 }
 
+// Fixed policy wording for retail-containing delivery — exact text, bold
+// uppercase, MAY never WILL.
+const CARE_DELIVERY_NOTICE = "EXTRA DELIVERY FEES MAY APPLY";
+
 interface PrefillItem {
-  kind: "base" | "styled" | "bundle" | "service";
+  kind: "base" | "styled" | "bundle" | "service" | "retail";
   ref_id: string | null;
+  // Care & Accessories (kind "retail"): exact SKU picked by staff. The server
+  // re-resolves and re-prices it; the browser never classifies a line.
+  variant_id?: string | null;
+  variant_label?: string | null;
+  sku?: string | null;
+  unresolved_reason?: string | null;
   qty: number;
   price_ngn: string | null;
   note: string | null;
@@ -374,10 +384,24 @@ export function OrderCheckoutPublic() {
     () => resolvedItems.find((i) => i.kind === "bundle")?.bundle_id,
     [resolvedItems],
   );
-  const totalQty = useMemo(
-    () => resolvedItems.reduce((s, i) => s + i.qty, 0) || 1,
+  // Retail never counts toward the wig-quantity delivery band.
+  const hasRetail = useMemo(
+    () => resolvedItems.some((i) => i.kind === "retail"),
     [resolvedItems],
   );
+  const totalQty = useMemo(
+    () =>
+      resolvedItems
+        .filter((i) => i.kind !== "retail")
+        .reduce((s, i) => s + i.qty, 0) || 1,
+    [resolvedItems],
+  );
+  // Charged web delivery for a retail-containing basket is fail-closed until
+  // the owner approves the initial-fee + retail-tax assumptions (server:
+  // RETAIL_DELIVERY_ARRANGED). Pickup stays available.
+  useEffect(() => {
+    if (hasRetail && fulfilment === "delivery") setFulfilment("pickup");
+  }, [hasRetail, fulfilment]);
 
   const isNigeria = country === "Nigeria" || countryCode === "NG";
   const isLagos = isNigeria && norm(address.state) === "lagos";
@@ -452,6 +476,12 @@ export function OrderCheckoutPublic() {
     if (!canSubmit || !ctx) return;
     setErrMsg(null);
 
+    if (!serviceOnly && fulfilment === "delivery" && hasRetail) {
+      setErrMsg(
+        "Orders with care products can't be delivered from this page yet. Choose pickup in store, or message us on WhatsApp to arrange delivery.",
+      );
+      return;
+    }
     if (!serviceOnly && fulfilment === "delivery") {
       if (!effectiveZone) {
         setErrMsg(
@@ -755,6 +785,11 @@ export function OrderCheckoutPublic() {
                         </span>
                       )}
                     </div>
+                    {i.kind === "retail" && i.variant_label && (
+                      <div className="text-[11.5px] text-text-faint truncate">
+                        {i.variant_label}
+                      </div>
+                    )}
                     {i.price_ngn != null && (
                       <div className="text-[11.5px] text-text-faint">
                         ₦{Number(i.price_ngn).toLocaleString()}
@@ -770,7 +805,9 @@ export function OrderCheckoutPublic() {
                     )}
                     {!isSvc && i.lines.length === 0 && (
                       <div className="text-[11px] text-amber-300 mt-0.5">
-                        Unavailable right now — we&rsquo;ll confirm by WhatsApp.
+                        {i.kind === "retail" && i.unresolved_reason
+                          ? i.unresolved_reason
+                          : "Unavailable right now — we’ll confirm by WhatsApp."}
                       </div>
                     )}
                   </div>
@@ -884,7 +921,8 @@ export function OrderCheckoutPublic() {
                 active={fulfilment === "delivery"}
                 onClick={() => setFulfilment("delivery")}
                 icon={<Truck className="w-3.5 h-3.5" />}
-                label="Delivery"
+                label={hasRetail ? "Delivery · Arranged by our team" : "Delivery"}
+                disabled={hasRetail}
               />
               <FulfilmentPill
                 active={fulfilment === "pickup"}
@@ -893,6 +931,22 @@ export function OrderCheckoutPublic() {
                 label="Pickup in store"
               />
             </div>
+            {hasRetail && (
+              <div
+                role="note"
+                data-testid="care-delivery-notice"
+                className="mt-2 rounded-xl border border-amber-400/40 bg-amber-400/5 p-3 text-[12px]"
+              >
+                <div className="font-bold uppercase tracking-wide">
+                  {CARE_DELIVERY_NOTICE}
+                </div>
+                <div className="mt-1 text-text-muted">
+                  Delivery for orders with care products is arranged with our
+                  team. Choose pickup in store, or message us on WhatsApp and
+                  we&rsquo;ll set up delivery for you.
+                </div>
+              </div>
+            )}
           </Section>
         )}
 
@@ -1285,19 +1339,25 @@ function FulfilmentPill({
   onClick,
   icon,
   label,
+  disabled = false,
 }: {
   active: boolean;
   onClick: () => void;
   icon: React.ReactNode;
   label: string;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
+      aria-disabled={disabled}
       className={cn(
         "flex items-center justify-center gap-1.5 rounded-xl border px-3 py-2.5 text-[12.5px] font-medium transition-colors",
-        active
+        disabled
+          ? "hairline text-text-faint opacity-50 cursor-not-allowed"
+          : active
           ? "border-accent bg-accent/15 text-accent-glow"
           : "hairline text-text-muted hover:text-text-primary",
       )}

@@ -205,13 +205,26 @@ const shareInvoicePdf = z
 
 // One id field per item; `kind` disambiguates (the picker always sends it,
 // older callers may omit it and send only product_id).
+//
+// PR 3 adds `retail` — a Care & Accessories SKU. It is deliberately NOT
+// modelled as a `base` product with an optional variant: retail is stock-only
+// and sold by EXACT SKU (a 50 ml and a 100 ml are different products with
+// different prices and stock), so a retail item MUST carry `variant_id` and
+// the resolver refuses to guess a default. `styled_variant_id` stays the
+// wig-only head-size × lace × colour pick and is never used for retail.
 const orderLinkItem = z
   .object({
-    kind: z.enum(["base", "styled", "bundle", "service"]).optional(),
+    kind: z.enum(["base", "styled", "bundle", "service", "retail"]).optional(),
     product_id: z.string().uuid().optional(),
     styled_id: z.string().uuid().optional(),
     bundle_id: z.string().uuid().optional(),
     service_id: z.string().uuid().optional(),
+    /** Exact sellable SKU. Mandatory for kind='retail'; optional (and now
+     *  honoured, rather than discarded) for kind='base'. */
+    variant_id: z.string().uuid().optional(),
+    /** Informational SKU code for the retail line — never trusted as an
+     *  identity, `variant_id` is. */
+    sku: z.string().max(64).optional(),
     qty: z.number().positive().max(100),
     price_ngn: z.union([z.string(), z.number()]).optional(),
     note: z.string().max(280).optional(),
@@ -227,8 +240,26 @@ const orderLinkItem = z
   })
   .strict()
   .refine(
-    (it) => it.product_id || it.styled_id || it.bundle_id || it.service_id,
-    { message: "item needs a product_id, styled_id, bundle_id, or service_id" },
+    (it) =>
+      it.product_id || it.styled_id || it.bundle_id || it.service_id || it.variant_id,
+    {
+      message:
+        "item needs a product_id, styled_id, bundle_id, service_id, or variant_id",
+    },
+  )
+  // A retail line without its exact SKU is refused at the door: the alternative
+  // is the resolver picking a default bottle size, which is precisely the bug
+  // this PR fixes.
+  .refine((it) => it.kind !== "retail" || Boolean(it.variant_id), {
+    message: "a retail (Care & Accessories) item needs an exact variant_id/SKU",
+  })
+  // Retail never carries a wig's head-size/lace/colour spec, and a wig never
+  // carries a retail SKU. Mixing the two is a forged payload, not a typo.
+  .refine(
+    (it) =>
+      it.kind !== "retail" ||
+      !(it.styled_variant_id || it.size_code || it.lace_code || it.colour_id),
+    { message: "a retail item cannot carry a styled variant / size / lace / colour" },
   );
 
 const orderLinkCreate = z

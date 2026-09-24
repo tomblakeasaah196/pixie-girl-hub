@@ -3,7 +3,7 @@
 - **Decisions recorded:** 23 September 2026
 - **Business:** Pixie Girl (`pixiegirl`) **only**; Faitlyn Hair (`faitlynhair`) must not receive this feature.
 - **Source-audit baseline:** `513136e` (re-read current HEAD in a new Arena session; code may have moved).
-- **Status:** PR 1 is being submitted as a **draft PR while verification continues** on `arena/01a0cf2b-pixie-girl-hub` (see the dated progress log); PRs 2–4 are not started. The source audit predates these implementation changes. No production DB checks or provider calls are authorized by this guide. Estimates are planning ranges, not a quotation.
+- **Status (updated 2026-09-24):** PR 1 and PR 2 are **merged into `main`** — PR #733 → merge `45701c9` on 2026-09-23; PR #734 → merge `770f833` on 2026-09-24 — both verified through the GitHub API rather than assumed. PR 2 merged as an explicit work-in-progress with three named leftovers; those were completed as foundation commits at the start of the PR 3 branch (storefront `/care-and-accessories` routes + disclosure UI, `.github/workflows/pr-checks.yml`, and this progress-row update). **PR 3 is in progress.** PR 4 is not started. The public feature gate `FEATURE_PXG_CARE_ACCESSORIES_ENABLED` remains **off** — no pilot is authorized before PR 4. The source audit predates these implementation changes. No production DB checks or provider calls are authorized by this guide. Estimates are planning ranges, not a quotation.
 
 ## How to use this guide in a new Arena chat
 
@@ -44,10 +44,10 @@ After a web order is placed, show it in a durable staff **delivery review** queu
 
 | PR | Scope | State | PR URL / merge evidence | Verification / blocker |
 |---|---|---|---|---|
-| **1** | PXG classification, Care & Accessories authoring, SKU stock/cost/count safety | Draft PR — validation in progress | `arena/01a0cf2b-pixie-girl-hub` (PR URL to be added after creation) | 12 focused suites/62 tests pass; full suite and global lint are not green; no deployed-database validation; see 2026-09-23 entry |
-| **2** | Staff Sales, common retail resolver, storefront search/cart/checkout | Not started | — | — |
-| **3** | Instagram/WhatsApp order links, both `/o` checkouts, manual fee operations | Not started | — | — |
-| **4** | Campaigns/merchandising, incentive exclusion, full regression and gated PXG pilot | Not started | — | — |
+| **1** | PXG classification, Care & Accessories authoring, SKU stock/cost/count safety | **Merged** — 2026-09-23 | [#733](https://github.com/tomblakeasaah196/pixie-girl-hub/pull/733), merge `45701c9ebee26dedf485569053cb89bed4247cef` (state `MERGED`, verified via GitHub API 2026-09-24) | 12 focused suites/62 tests passed at submission; the full unit suite and repo-wide lint were **not** green when it merged and still are not (see the PR 3 baseline below). Migration `000094` has never been replayed against a complete deployed PostgreSQL schema — fresh bootstrap/upgrade/replay and staff browser workflows remain **unproven**. See the 2026-09-23 entry. |
+| **2** | Staff Sales, common retail resolver, storefront search/cart/checkout | **Merged** — 2026-09-24 (merged as an explicit WIP; leftovers completed on the PR 3 branch) | [#734](https://github.com/tomblakeasaah196/pixie-girl-hub/pull/734), merge `770f833f5f240d00ea4843519566e592482d9f39` (state `MERGED`, verified via GitHub API 2026-09-24) | Shipped: typed retail resolver, `000095`, createOrder/quotation/amendment retail gates, cart + checkout fail-closed delivery, public `/care*` routes, admin picker/Quick Sale care kind. Merged **without** the storefront `/care-and-accessories` pages, `pr-checks.yml` and this row update; all three were completed as PR 3 foundation commits. **Blocker carried forward:** no owner approval for the provisional initial-zone delivery fee or for retail tax treatment, so the retail web delivery money path stays fail-closed. No staging/real-PostgreSQL validation. |
+| **3** | Instagram/WhatsApp order links, both `/o` checkouts, manual fee operations | **In progress** | branch `arena/01a0d212-pixie-girl-hub` (PR URL added when opened) | Foundation commits done (PR 2 leftovers a/b/c). Baseline on `main` at `770f833`: full unit suite 276 suites / 273 pass / **3 pre-existing failures** (`praxis_ai/sql-agent-chain`, `praxis_ai/sql-agent-fallback`, `services/currency-service`), 2433 tests / 2431 pass; all 12 care suites green (56 tests). Money-path gate re-checked and **still unresolved** — see the PR 3 entry. |
+| **4** | Campaigns/merchandising, incentive exclusion, full regression and gated PXG pilot | Not started | — | Gated behind a merged PR 3. |
 
 **Required update protocol (for the next Arena agent):**
 
@@ -69,7 +69,16 @@ Migration/replay/rollout and rollback notes:
 Review findings, follow-ups and next PR gate:
 ```
 
-### PR 1 — 2026-09-23 — Draft PR; verification in progress
+### PR 1 — 2026-09-23 — Merged (submitted as a draft; verification was still in progress)
+
+> **Post-merge note (2026-09-24, written from the PR 3 branch):** PR 1 did merge —
+> [#733](https://github.com/tomblakeasaah196/pixie-girl-hub/pull/733), merge SHA
+> `45701c9ebee26dedf485569053cb89bed4247cef`, `mergedAt` 2026-09-23T22:26:33Z,
+> confirmed through `gh pr view 733 --json state,mergedAt,mergeCommit`. The entry
+> below is preserved as it was written **before** that merge, including its
+> "not merged" wording and its list of unproven items — those caveats were true
+> at the time and several are still open. Nothing in it should be read as
+> evidence that the migration was replayed against a deployed schema.
 
 - **PR / merge:** branch `arena/01a0cf2b-pixie-girl-hub`; PR URL pending creation; **not merged**. The owner asked for a PR before all checks were green; this is a draft, not `Ready for review`.
 - **Implemented so far:** PXG-only default-off authoring gate, draft/publish and distinct Care SKU options, category, price/tax/copy/media, cost-redacted admin view, create-only spreadsheet import/export, clone/trash/restore, costed receipts/PO/GRN, location/SKU-exact counts submitted for approval, and temporary database triggers prohibiting sales/production before typed checkout. FLH retail writes fail the SQL constraint. Instagram remains the existing DM catalogue-share → `/o` flow for **PR 3**, not a native Shop; batch/lot/expiry tracking is **not** included. PRs 2–4 have not started.
@@ -77,7 +86,29 @@ Review findings, follow-ups and next PR gate:
 - **Not green / still to verify:** the first full unit run had 4 failures/271 passes; the Care migration assertion was corrected and its focused suite passed, but the full run must be repeated. Three other failures involve SQL-agent expectations and a pre-existing Jest factory error in the currency suite. Repository-wide backend/admin lint commands fail on existing unrelated files. The 000094 migration has **not** been run against a complete PostgreSQL staging schema, so fresh bootstrap/upgrade/replay and staff browser workflows are unproven. No live payment/provider calls or production database actions were performed. All unchecked PR 1 acceptance items remain unchecked pending actual evidence.
 - **Rollout/rollback:** leave `FEATURE_PXG_CARE_ACCESSORIES_ENABLED=false` outside controlled verification; no pilot and no customer selling. Migration is additive and intentionally fails closed for retail sales. If the feature must be halted, keep the flag off and retail sales trigger in place; do not drop columns or erase SKU/stock history. Do not merge before migration validation, reviewed green PR checks and conflict verification.
 
-PR 1 implementation is in progress; the source assessment and impact maps follow below. No PR 2–4 work has begun.
+### PR 2 — 2026-09-24 — Merged (as an explicit WIP; leftovers completed on the PR 3 branch)
+
+```text
+PR: https://github.com/tomblakeasaah196/pixie-girl-hub/pull/734
+merge SHA/date: 770f833f5f240d00ea4843519566e592482d9f39 / 2026-09-24T06:15:03Z
+                (state MERGED, verified with `gh pr view 734 --json state,mergedAt,mergeCommit`)
+```
+
+- **Baseline / HEAD:** based on merged PR 1 (`45701c9`). Implementing branch was `arena/01a0d07e-pixie-girl-hub`; merged into `main` at `770f833`, which is the base of the PR 3 branch.
+- **Shipped (19 files):** `src/modules/catalogue/retail-resolver.js` (typed one-row-per-active-SKU projection: live channel price, sellable-location stock, `preorder: false` / `rewig_eligible: false`); migration `000095_business_care_typed_sales`; `sales.service.js` + `sales.repo.js` + `amendment.service.js` retail gates converging on `createOrder` (`RETAIL_FULL_PAYMENT_REQUIRED`, `RETAIL_NOT_CUSTOM`, amendment shortfalls → `OUT_OF_STOCK` never a pre-order/rewig); `storefront/{cart.service,cart.repo,storefront.service,storefront.controller,public.routes}.js` (exact-SKU adds, live re-pricing at quote, `care_delivery_notice`, `delivery_available: false`, checkout `RETAIL_DELIVERY_ARRANGED` 422, public `/care/enabled` + `/care` + `/care/:slug`); admin `product-search.ts` `care` kind, `ProductPicker`, `QuickSaleForm` stock-only badge, and an in-chat `CataloguePickerModal` that deliberately still **excluded** care.
+- **Checks run (as reported by the PR, and re-verified on `main` from the PR 3 branch):** all 12 care suites green — `npm test -- --runInBand tests/unit/catalogue/care- tests/unit/stock/care- tests/unit/purchasing/care- tests/unit/storefront/care-` → **12 suites / 56 tests passed**; `care-sales-pglite.node.cjs` 14/14 and `care-migration-pglite.node.cjs` 7/7 under embedded PostgreSQL (PGlite) rendering the **real** `000094`/`000095` templates per brand; `npm --prefix apps/admin run build` green.
+- **Checks NOT run / still open:** no staging or real-PostgreSQL validation — `tests/integration/*` needs a live database and cannot run in the sandbox, so the generic-cart SQL repair is proven only against PGlite fixtures. No browser walkthrough of the storefront. `000095` has not been replayed against a complete deployed schema.
+- **Outstanding business decisions (the money-path gate):** searched GitHub for owner approval of (a) the provisional initial-zone delivery fee and (b) actual retail tax treatment — the repository has **zero issues**, **Discussions are disabled** (`HTTP 410`), and PRs #733/#734 have **no comments or reviews** recording a decision. Both remain **unresolved**, so retail web delivery stays fail-closed (pickup allowed; staff manual fee entry allowed) and retail tax still reuses the product-level `taxable` / `vat_rate`. This is a carried-forward blocker for PR 3 and PR 4, not something PR 2 settled.
+- **Merged with three known leftovers,** all completed as foundation commits at the start of PR 3: (a) the storefront app's `/care-and-accessories` list + detail routes and cart/checkout disclosure UI, (b) `.github/workflows/pr-checks.yml`, (c) this progress-row update. The PR's own "Remaining" list named all three; it was merged anyway with a WIP banner, so PR 3 verified them independently rather than trusting the merge.
+- **Rollout / rollback:** `FEATURE_PXG_CARE_ACCESSORIES_ENABLED` stays **off**; no pilot. Killing the flag stops new retail creation and public sale while already-placed retail order read/fulfilment/refund paths keep working. `000095` is idempotent (`DROP` → `CREATE OR REPLACE`) so repair replay is safe.
+
+### PR 3 — 2026-09-24 — In progress
+
+- **Baseline / HEAD:** `main` at `770f833` (merged PR 2). Implementing Arena session branch: `arena/01a0d212-pixie-girl-hub`.
+- **Prerequisites re-verified independently,** not taken on trust: `git fetch origin main` → `origin/main == 770f833`; `gh pr view 733/734 --json state,mergedAt,mergeCommit` → both `MERGED` (`45701c9` / `770f833`). PR 2's three leftovers were audited in the working tree and confirmed genuinely absent (no `/care-and-accessories` route files, no `pr-checks.yml`, PR 2's table row still `Not started`) before any PR 3 work began.
+- **Baseline recorded on `main` before changes:** full unit suite `npm run test:unit -- --runInBand` → **276 suites, 273 passed, 3 failed; 2433 tests, 2431 passed, 2 failed**. The three failures are pre-existing and unrelated to this feature (`tests/unit/praxis_ai/sql-agent-chain.test.js`, `tests/unit/praxis_ai/sql-agent-fallback.test.js`, `tests/unit/services/currency-service.test.js`) — they are quarantined by name in `scripts/ci/assert-unit-results.mjs` rather than hidden behind `continue-on-error`.
+- **Money-path gate re-run before any charged delivery path was written:** see the PR 2 entry — still unresolved, so retail web delivery remains fail-closed in PR 3 as well.
+- Detailed PR 3 evidence (scope, commands, results, blockers) is appended to this entry as the work completes.
 
 ---
 

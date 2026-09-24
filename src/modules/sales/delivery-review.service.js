@@ -500,7 +500,12 @@ async function settle({ client, brand, user, request_id, order, review, agreedFe
 
   // 2. Invoice: rebuild its lines/totals from the order so the customer's
   //    document matches what they were actually charged.
+  //    Runs under a SAVEPOINT: on PostgreSQL a failed statement aborts the
+  //    whole transaction, so catching the error without rolling back to a
+  //    savepoint would make every later statement in this settle fail with
+  //    "current transaction is aborted".
   let invoiceSynced = false;
+  await client.query("SAVEPOINT delivery_review_invoice");
   try {
     const inv = await invoicingService.resyncFromOrder({
       client,
@@ -509,9 +514,11 @@ async function settle({ client, brand, user, request_id, order, review, agreedFe
       user_id: user.user_id,
     });
     invoiceSynced = Boolean(inv);
+    await client.query("RELEASE SAVEPOINT delivery_review_invoice");
   } catch (err) {
-    // resyncFromOrder needs the full invoicing schema; a missing/void invoice is
-    // a legitimate "nothing to sync". Anything else must not settle silently.
+    await client.query("ROLLBACK TO SAVEPOINT delivery_review_invoice");
+    // A missing/void invoice is a legitimate "nothing to sync"; the review
+    // records invoice_synced_at = NULL so the gap stays visible.
     logger.warn(
       { err: err.message, order_id: order.order_id },
       "delivery-review: invoice resync skipped",

@@ -843,9 +843,18 @@ async function firstStudioLine({ client, brand, order_id }) {
 // createForOrder fans each out into `quantity` hair-jobs.
 async function allStudioLines({ client, brand, order_id }) {
   const { rows } = await ex(client)(
-    `SELECT * FROM ${t(brand, "sales_order_lines")}
-      WHERE order_id = $1 AND line_kind IN ('styled','service')
-      ORDER BY display_order, line_id`,
+    // Care & Accessories (retail) SKUs are stock-only and never styling work,
+    // even if a caller mislabelled the line kind: excluded here so a retail
+    // bottle can never open a Stylist Studio job. Mixed orders still open jobs
+    // for their genuine wig lines. FLH holds no retail rows, so this is a no-op
+    // there and wig-only behaviour is unchanged.
+    `SELECT l.* FROM ${t(brand, "sales_order_lines")} l
+      WHERE l.order_id = $1 AND l.line_kind IN ('styled','service')
+        AND NOT EXISTS (
+          SELECT 1 FROM ${t(brand, "product_variants")} pv
+            JOIN ${t(brand, "products")} p ON p.product_id = pv.product_id
+           WHERE pv.variant_id = l.variant_id AND p.catalogue_role = 'retail')
+      ORDER BY l.display_order, l.line_id`,
     [order_id],
   );
   return rows;

@@ -2298,6 +2298,45 @@ async function setOrderStatus({ brand, user, request_id, id, status }) {
         },
       );
     }
+    // Care & Accessories. (1) Dispatch is refused while the delivery fee is
+    // under manual review — the 000096 trigger enforces it for every caller;
+    // this turns it into a clear message instead of a raw constraint error.
+    if (status === "dispatched" && before.needs_delivery_review === true) {
+      throw new AppError(
+        "DELIVERY_REVIEW_PENDING",
+        "Delivery fee review must be settled before dispatch",
+        409,
+        {
+          user_message:
+            "This order contains care products and its delivery fee is still under review. Settle it in Sales → Delivery Fee Review before dispatching.",
+        },
+      );
+    }
+    // (2) A retail-only order is never stylist work: it goes paid → ready →
+    // dispatched/collected → completed, skipping 'assigned'. Mixed orders keep
+    // 'assigned' for their genuine wig lines. No-op on FLH (no retail rows).
+    if (status === "assigned") {
+      const { rows: mix } = await client.query(
+        `SELECT count(*)::int AS total,
+                count(*) FILTER (WHERE p.catalogue_role = 'retail')::int AS retail
+           FROM ${brand}.sales_order_lines l
+           LEFT JOIN ${brand}.product_variants pv ON pv.variant_id = l.variant_id
+           LEFT JOIN ${brand}.products p ON p.product_id = pv.product_id
+          WHERE l.order_id = $1`,
+        [id],
+      );
+      if (mix[0] && mix[0].total > 0 && mix[0].retail === mix[0].total) {
+        throw new AppError(
+          "RETAIL_NOT_STYLED",
+          "Care & Accessories orders are not assigned to a stylist",
+          422,
+          {
+            user_message:
+              "This order only contains care products — there is no styling work. Mark it Order ready instead.",
+          },
+        );
+      }
+    }
     const row = await repo.setStatus({ client, brand, id, status });
     await audit({
       business: brand,

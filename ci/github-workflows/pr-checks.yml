@@ -187,6 +187,7 @@ jobs:
             : > changed.txt
           else
             echo "Diff base: $BASE"
+            echo "base=$BASE" >> "$GITHUB_OUTPUT"
             git diff --name-only --diff-filter=ACMR "$BASE" HEAD > changed.txt || : > changed.txt
           fi
           echo "--- changed files ---"
@@ -200,15 +201,16 @@ jobs:
         run: |
           set -euo pipefail
           if [ ! -s backend.txt ]; then echo "No backend files changed — skipped."; exit 0; fi
-          xargs -a backend.txt -r npx eslint --max-warnings=0
+          # Gate only lines this change touched; legacy debt is informational.
+          xargs -a backend.txt -r node scripts/ci/lint-changed.mjs "${{ steps.changed.outputs.base }}"
 
       - name: ESLint changed admin files
         run: |
           set -euo pipefail
           if [ ! -s admin.txt ]; then echo "No admin files changed — skipped."; exit 0; fi
-          # Run from the app so its own flat config (tseslint + react-hooks) applies.
-          sed 's#^apps/admin/##' admin.txt > admin-rel.txt
-          ( cd apps/admin && xargs -a ../admin-rel.txt -r npx eslint --max-warnings=0 )
+          # lint-changed.mjs runs apps/admin files from apps/admin so its own
+          # flat config (tseslint + react-hooks) applies.
+          xargs -a admin.txt -r node scripts/ci/lint-changed.mjs "${{ steps.changed.outputs.base }}"
 
       - name: Report the storefront lint gap
         run: |

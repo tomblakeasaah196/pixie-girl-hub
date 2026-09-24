@@ -17,8 +17,8 @@
  * clean; untouched legacy lines are reported as informational, not as failures.
  *
  * Usage:
- *   node scripts/ci/lint-changed.mjs <base-ref> <eslint-config-dir> [file...]
- *   node scripts/ci/lint-changed.mjs origin/main . src/a.js apps/admin/src/b.tsx
+ *   node scripts/ci/lint-changed.mjs <base-ref> [file...]
+ *   node scripts/ci/lint-changed.mjs origin/main src/a.js apps/admin/src/b.tsx
  *
  * Files under a directory with its own flat ESLint config (apps/admin) are linted
  * from that directory so its tseslint + react-hooks rules apply.

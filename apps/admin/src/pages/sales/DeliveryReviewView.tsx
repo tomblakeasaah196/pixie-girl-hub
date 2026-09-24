@@ -187,6 +187,10 @@ function ReviewModal({ orderId, onClose }: { orderId: string; onClose: () => voi
   const canEdit = can("sales", "edit");
   const canApprove = can("sales", "approve");
   const [msg, setMsg] = useState<string | null>(null);
+  const [followUp, setFollowUp] = useState<{
+    payment_link: { checkout_url: string; amount_ngn: string } | null;
+    customer_notified: boolean;
+  } | null>(null);
 
   const detail = useQuery({
     queryKey: ["delivery-review", brand, orderId],
@@ -199,9 +203,14 @@ function ReviewModal({ orderId, onClose }: { orderId: string; onClose: () => voi
 
   const act = useMutation({
     mutationFn: ({ path, body }: { path: string; body: Record<string, unknown> }) =>
-      api.post(`${R}/orders/${orderId}/delivery-review${path}`, body),
-    onSuccess: () => {
+      api.post<{ payment_link?: { checkout_url: string; amount_ngn: string } | null; customer_notified?: boolean }>(
+        `${R}/orders/${orderId}/delivery-review${path}`,
+        body,
+      ),
+    onSuccess: (res) => {
       setMsg(null);
+      if (res && "customer_notified" in res)
+        setFollowUp({ payment_link: res.payment_link ?? null, customer_notified: res.customer_notified === true });
       qc.invalidateQueries({ queryKey: ["delivery-review", brand, orderId] });
       qc.invalidateQueries({ queryKey: ["delivery-reviews", brand] });
       qc.invalidateQueries({ queryKey: ["sales-order", brand, orderId] });
@@ -237,6 +246,20 @@ function ReviewModal({ orderId, onClose }: { orderId: string; onClose: () => voi
             <Stat label="Paid" value={ngn(d.order.amount_paid_ngn)} />
             <Stat label="Balance" value={ngn(d.order.balance_due_ngn)} />
           </div>
+
+{followUp && (
+            <div className="rounded-lg border hairline p-3 text-[12.5px] space-y-1">
+              <div>Settled. Customer message: {followUp.customer_notified ? "sent" : "not sent — tell the customer yourself"}.</div>
+              {followUp.payment_link && (
+                <div>
+                  New balance link ({ngn(followUp.payment_link.amount_ngn)}):{" "}
+                  <a className="underline break-all" href={followUp.payment_link.checkout_url} target="_blank" rel="noreferrer">
+                    {followUp.payment_link.checkout_url}
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
 
           {!rv ? (
             <p className="text-text-muted">

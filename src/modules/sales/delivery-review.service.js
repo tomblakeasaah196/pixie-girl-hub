@@ -899,6 +899,89 @@ async function routeDecline({ brand, user, request_id, order_id, note }) {
   };
 }
 
+/**
+ * Post-commit follow-up once a review has settled (money + documents are
+ * already reconciled inside the settle transaction):
+ *
+ *  - Payment link: links are minted on demand for the balance at that moment,
+ *    so a link sent before the fee changed carries the OLD amount. When money
+ *    is still due, a fresh link is minted for the exact new balance and
+ *    returned to staff to send; `payment_link_synced_at` records it.
+ *  - Customer notice: the `delivery_fee_settled` Comms Studio automation is
+ *    dispatched (it no-ops with reason `not_configured` until an operator
+ *    configures the template). `customer_notified_at` is stamped ONLY when a
+ *    message was actually dispatched — never assumed.
+ *
+ * Both are best-effort by design: a gateway or messaging outage must not undo
+ * an already-reconciled fee, and the review row shows exactly which follow-ups
+ * happened.
+ */
+async function followUp({ brand, result }) {
+  if (!result || !result.review || !result.order) return result;
+  const review = result.review;
+  const order = await salesRepo.findById({ brand, id: result.order.order_id });
+  const patch = {};
+  let payment_link = null;
+  if (order && money(order.balance_due_ngn || 0).gt(0)) {
+    try {
+      const paymentLinks = require("./payment-link.service");
+      payment_link = await paymentLinks.createPaymentLink({
+        brand,
+        order_id: order.order_id,
+      });
+      patch.payment_link_synced_at = new Date().toISOString();
+    } catch (err) {
+      logger.warn(
+        { err: err.message, order_id: order.order_id },
+        "delivery-review: fresh payment link not minted",
+      );
+    }
+  }
+  let notified = false;
+  if (order && order.contact_id) {
+    try {
+      const commsStudio = require("../comms_studio/dispatcher");
+      const r = await commsStudio.dispatch({
+        brand,
+        event_key: "delivery_fee_settled",
+        contact_id: order.contact_id,
+        reference_type: "sales_order",
+        reference_id: order.order_id,
+        dedup_key: `delivery_fee_settled:${review.review_id}`,
+        variables: {
+          order_number: order.order_number,
+          delivery_fee_ngn: toCurrencyString(money(order.shipping_fee_ngn || 0)),
+          total_ngn: toCurrencyString(money(order.total_ngn || 0)),
+          balance_due_ngn: toCurrencyString(money(order.balance_due_ngn || 0)),
+          payment_url: payment_link ? payment_link.checkout_url : null,
+        },
+      });
+      notified = Boolean(r && r.dispatched);
+    } catch (err) {
+      logger.warn(
+        { err: err.message, order_id: order.order_id },
+        "delivery-review: customer notice not dispatched",
+      );
+    }
+  }
+  if (notified) patch.customer_notified_at = new Date().toISOString();
+  const updated = Object.keys(patch).length
+    ? await repo.updateReview({ brand, review_id: review.review_id, patch })
+    : review;
+  return {
+    ...result,
+    review: updated,
+    order: order || result.order,
+    payment_link: payment_link
+      ? { checkout_url: payment_link.checkout_url, amount_ngn: payment_link.amount_ngn }
+      : null,
+    customer_notified: notified,
+  };
+}
+
+const withFollowUp = (fn) => async (args) =>
+  followUp({ brand: args.brand, result: await fn(args) });
+
 module.exports = {
   OPEN_STATUSES: repo.OPEN_STATUSES,
   SETTLED_STATUSES: repo.SETTLED_STATUSES,
@@ -908,8 +991,9 @@ module.exports = {
   openReview,
   proposeFee,
   recordConsent,
-  verifyTopUp,
-  verifyRefund,
-  confirmFee,
+  verifyTopUp: withFollowUp(verifyTopUp),
+  verifyRefund: withFollowUp(verifyRefund),
+  confirmFee: withFollowUp(confirmFee),
   routeDecline,
+  followUp,
 };

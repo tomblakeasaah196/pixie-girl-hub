@@ -17,8 +17,15 @@ export interface OrderLinkLine {
 }
 
 export interface OrderLinkItem {
-  kind: "base" | "styled" | "bundle" | "service";
+  kind: "base" | "styled" | "bundle" | "service" | "retail";
   ref_id: string | null;
+  // Care & Accessories (kind "retail"): the exact SKU the staffer picked. The
+  // server re-resolves it and re-prices from the live channel price; the
+  // browser never decides that a line is retail or what it costs.
+  variant_id?: string | null;
+  variant_label?: string | null;
+  sku?: string | null;
+  unresolved_reason?: string | null;
   name: string | null;
   product_code: string | null;
   image_url: string | null;

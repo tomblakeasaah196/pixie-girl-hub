@@ -1,0 +1,72 @@
+-- TEMPLATE 000095 — PXG Care & Accessories (PR 2): typed sales release
+-- ALTER/trigger-only: bootstrap runs this after 000094; repair safely replays
+-- it (no CREATE TABLE sentinel, so it is ALWAYS re-run and must stay
+-- idempotent — every statement below is).
+--
+-- PR 1 shipped two TEMPORARY fail-closed triggers that blocked every retail
+-- sale and every sale-type stock movement. PR 2 installs the typed, PXG-gated
+-- sales paths (catalogue/retail-resolver + cart/checkout/sales enforcement),
+-- so those two temporary triggers are REPLACED here by the permanent
+-- invariants. Nothing here globally opens a bypass:
+--   * FLH still cannot hold a retail row (000094 chk_care_accessories_role),
+--     so on FLH these triggers are no-ops;
+--   * on PXG the application gate (brand allowlist + rollout flag) is checked
+--     before any resolver/sales path runs;
+--   * factory/production and consignment movements remain closed to retail
+--     SKUs for good — a bottle is never styled, consumed by a styling job or
+--     shipped to a retail partner through the old paths.
+
+-- 1. Sales lines: the blanket "no retail sales before PR 2" trigger goes.
+--    The permanent replacement keeps one structural invariant — a retail line
+--    must always reference its EXACT variant (a 50 ml order can never be a
+--    bare product reference that a later process resolves to any bottle).
+CREATE OR REPLACE FUNCTION {{BUSINESS}}.fn_care_sales_line_exact_variant()
+RETURNS trigger LANGUAGE plpgsql AS $pxg$
+BEGIN
+  IF NEW.product_id IS NOT NULL AND EXISTS (
+    SELECT 1 FROM {{BUSINESS}}.products p
+     WHERE p.product_id = NEW.product_id AND p.catalogue_role = 'retail'
+  ) AND NEW.variant_id IS NULL THEN
+    RAISE EXCEPTION 'Care & Accessories lines require an exact SKU (variant)';
+  END IF;
+  RETURN NEW;
+END $pxg$;
+
+DROP TRIGGER IF EXISTS trg_care_no_sales_before_pr2 ON {{BUSINESS}}.sales_order_lines;
+DROP FUNCTION IF EXISTS {{BUSINESS}}.fn_care_no_sales_before_pr2();
+DROP TRIGGER IF EXISTS trg_care_sales_line_exact_variant ON {{BUSINESS}}.sales_order_lines;
+CREATE TRIGGER trg_care_sales_line_exact_variant
+  BEFORE INSERT OR UPDATE OF product_id, variant_id
+  ON {{BUSINESS}}.sales_order_lines
+  FOR EACH ROW EXECUTE FUNCTION {{BUSINESS}}.fn_care_sales_line_exact_variant();
+
+-- 2. Stock ledger: typed sale movements (reserve / release / sale / return)
+--    are now permitted on retail SKUs because they only occur through the
+--    typed sales paths. Production and consignment stay closed permanently,
+--    and receipts still require a positive operational cost per SKU.
+CREATE OR REPLACE FUNCTION {{BUSINESS}}.fn_care_stock_typed_movements()
+RETURNS trigger LANGUAGE plpgsql AS $pxg$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM {{BUSINESS}}.product_variants v
+    JOIN {{BUSINESS}}.products p ON p.product_id = v.product_id
+     WHERE v.variant_id = NEW.variant_id AND p.catalogue_role = 'retail'
+  ) THEN
+    IF NEW.movement_type IN ('production_in', 'production_out',
+                             'consignment_out', 'consignment_return') THEN
+      RAISE EXCEPTION 'Care & Accessories SKUs do not take part in styling production or consignment';
+    END IF;
+    IF NEW.movement_type = 'receive'
+       AND COALESCE(NEW.unit_cost_ngn, 0) <= 0 THEN
+      RAISE EXCEPTION 'Care & Accessories receipts require positive operational cost per SKU';
+    END IF;
+  END IF;
+  RETURN NEW;
+END $pxg$;
+
+DROP TRIGGER IF EXISTS trg_care_stock_only_before_pr2 ON {{BUSINESS}}.stock_movements;
+DROP FUNCTION IF EXISTS {{BUSINESS}}.fn_care_stock_only_before_pr2();
+DROP TRIGGER IF EXISTS trg_care_stock_typed_movements ON {{BUSINESS}}.stock_movements;
+CREATE TRIGGER trg_care_stock_typed_movements
+  BEFORE INSERT ON {{BUSINESS}}.stock_movements
+  FOR EACH ROW EXECUTE FUNCTION {{BUSINESS}}.fn_care_stock_typed_movements();

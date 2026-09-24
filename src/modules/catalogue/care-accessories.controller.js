@@ -2,10 +2,21 @@
 
 const service = require("./care-accessories.service");
 const gate = require("./care-accessories.gate");
+const resolver = require("./retail-resolver");
 const { parsePagination } = require("../../utils/pagination");
 const context = (req) => ({ brand: req.brand, user: req.user, request_id: req.request_id });
 
 const availability = (req, res) => res.json({ data: { enabled: gate.enabled(req.brand) } });
+// PR 2: staff selling search — one hit per ACTIVE, sellable SKU (exact
+// variant, live POS-tier price, sellable-location stock). Powers the shared
+// ProductPicker's Care & Accessories kind in Quick Sale/quotes/amendments.
+const sellable = async (req, res) => {
+  const { page, page_size } = parsePagination(req.query);
+  res.json(await resolver.listSellable({
+    brand: req.brand, q: req.query.q, category_id: req.query.category_id,
+    page, page_size, channel: "pos",
+  }));
+};
 const categories = async (req, res) => res.json({ data: await service.categories({ brand: req.brand }) });
 const list = async (req, res) => {
   const { page, page_size } = parsePagination(req.query);
@@ -32,7 +43,7 @@ const listTrash = async (req, res) => {
 const restore = async (req, res) => res.json({ data: await service.restore({ ...context(req), id: req.params.id }) });
 
 module.exports = {
-  availability, categories, list, getOne, create, importProducts, clone,
+  availability, sellable, categories, list, getOne, create, importProducts, clone,
   update, publish, unpublish, addVariant, updateVariant, deactivateVariant,
   remove, listTrash, restore,
 };

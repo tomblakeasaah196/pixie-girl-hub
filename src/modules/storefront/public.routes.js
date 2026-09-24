@@ -28,6 +28,12 @@ router.get("/collections/:slug", controller.getCollection);
 // Bundles — index + bundle detail (":slug" === bundle_code).
 router.get("/bundles", controller.listBundles);
 router.get("/bundles/:slug", controller.getBundle);
+// Care & Accessories (PR 2) — typed PXG retail catalogue. Canonical web route
+// /care-and-accessories/:slug maps to /care/:slug here. Gated PXG-only inside
+// the resolver; unpublished/archived/trashed items are plain 404s.
+router.get("/care/enabled", controller.careEnabled);
+router.get("/care", controller.listCareProducts);
+router.get("/care/:slug", controller.getCareProduct);
 // Published Studio config for the SSR shell (theme/nav/pages/popups).
 router.get("/site", controller.getSite);
 // Content posts: list (journal/policies index) + single post.

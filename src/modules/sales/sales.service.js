@@ -33,6 +33,7 @@ const stockService = require("../stock/stock.service");
 const stockRepo = require("../stock/stock.repo");
 const serviceJobsRepo = require("../service_jobs/service-jobs.repo");
 const rewigService = require("../catalogue/rewig.service");
+const careGate = require("../catalogue/care-accessories.gate");
 const businessConfig = require("../business_setup/business-config.repo");
 const paymentSettings = require("./payment-settings.service");
 const salesReportExport = require("./sales-report.export");
@@ -176,6 +177,59 @@ async function createOrderTx({ brand, user, request_id, input }) {
           : (channelPrice(ctx, input.sales_channel) ?? 0),
       );
       built.push({ li, ctx, unit, perUnitDiscount: money(0) });
+    }
+
+    // ── Care & Accessories gate (PR 2) ──────────────────────
+    // EVERY channel converges on createOrder, so this is the one place retail
+    // lines are authorised for the whole system: PXG gate on, published,
+    // undeleted, exact variant active. Retail-only orders pay IN FULL — the
+    // instalment plan is an order-wide wig policy and never applies to a
+    // care-only basket (mixed baskets keep the existing order-wide plan).
+    const hasRetailLine = built.some(
+      (b) => b.ctx.catalogue_role === "retail",
+    );
+    if (hasRetailLine) {
+      careGate.requireEnabled(brand); // 404 when gated off or non-PXG
+      for (const b of built) {
+        const c = b.ctx;
+        if (c.catalogue_role !== "retail") continue;
+        if (
+          c.product_deleted ||
+          c.retail_status !== "live" ||
+          c.variant_active === false
+        )
+          throw new AppError(
+            "REFERENCE_INVALID",
+            `Care & Accessories SKU is not currently sellable (variant ${b.li.variant_id})`,
+            409,
+            {
+              user_message:
+                "One of your items is no longer available. Please remove it and try again.",
+            },
+          );
+      }
+    }
+    const retailOnlyOrder =
+      hasRetailLine &&
+      built.length > 0 &&
+      built.every((b) => b.ctx.catalogue_role === "retail");
+    if (retailOnlyOrder) {
+      if (input.payment_plan === "instalment")
+        throw new AppError(
+          "RETAIL_FULL_PAYMENT_REQUIRED",
+          "Care-only orders are paid in full",
+          409,
+          {
+            user_message:
+              "Care & Accessories orders are paid in full. The instalment plan applies to wig orders.",
+          },
+        );
+      if (input.is_custom_order)
+        throw new AppError(
+          "RETAIL_NOT_CUSTOM",
+          "Care items are stock orders, never custom production",
+          422,
+        );
     }
 
     // 2. Campaign discount (engine = single source of truth), if attached.
@@ -899,12 +953,18 @@ async function createOrderTx({ brand, user, request_id, input }) {
         // paths and any channel added later. It is idempotent for the callers
         // that already resolved a donor: their reserve succeeds first try and
         // this block never runs.
-        const donor = await resolveRewigDonor({
-          client,
-          brand,
-          line,
-          location_id: loc.location_id,
-        });
+        // Retail SKUs are stock-only: never resized from a sibling base.
+        // (000094 already forbids them a size family; this is belt-and-braces.)
+        const lineCtx = variantCtxById.get(line.variant_id);
+        const donor =
+          lineCtx && lineCtx.catalogue_role === "retail"
+            ? null
+            : await resolveRewigDonor({
+                client,
+                brand,
+                line,
+                location_id: loc.location_id,
+              });
         if (donor) {
           const donorErr = await tryReserve(donor.variant_id, line.quantity);
           if (!donorErr) {
@@ -2333,6 +2393,22 @@ async function buildQuotationLines({
         `Variant ${li.variant_id} not found`,
         409,
       );
+    // Care & Accessories (PR 2): a retail SKU can only be quoted through the
+    // PXG gate while published. Conversion re-validates inside createOrder —
+    // a quote never whitelists a later sale of an unpublished item.
+    if (ctx.catalogue_role === "retail") {
+      careGate.requireEnabled(brand);
+      if (
+        ctx.product_deleted ||
+        ctx.retail_status !== "live" ||
+        ctx.variant_active === false
+      )
+        throw new AppError(
+          "REFERENCE_INVALID",
+          `Care & Accessories SKU is not currently sellable (variant ${li.variant_id})`,
+          409,
+        );
+    }
     const unit = money(
       li.unit_price_ngn !== undefined
         ? li.unit_price_ngn

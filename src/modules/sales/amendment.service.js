@@ -55,6 +55,8 @@ const outbox = require("../../shared/outbox/outbox");
 const stockService = require("../stock/stock.service");
 const stockRepo = require("../stock/stock.repo");
 const rewigService = require("../catalogue/rewig.service");
+const retailResolver = require("../catalogue/retail-resolver");
+const careGate = require("../catalogue/care-accessories.gate");
 const serviceJobsRepo = require("../service_jobs/service-jobs.repo");
 const logisticsRepo = require("../logistics/logistics.repo");
 const accountingRepo = require("../accounting/accounting.repo");
@@ -191,6 +193,28 @@ async function buildLines({ client, brand, order, inputLines }) {
           : `Variant ${li.variant_id} not found`,
         409,
       );
+    }
+    // Care & Accessories (PR 2): NEW retail lines added by an amendment must
+    // pass the same gate/publish checks as every other typed sale. Kept
+    // retail lines inherit their identity from the existing order row — a
+    // swap to a different care SKU arrives as a NEW line (no line_id) and is
+    // validated here.
+    if (ctx.catalogue_role === "retail" && !prior) {
+      careGate.requireEnabled(brand);
+      if (
+        ctx.product_deleted ||
+        ctx.retail_status !== "live" ||
+        ctx.variant_active === false
+      )
+        throw new AppError(
+          "REFERENCE_INVALID",
+          `Care & Accessories SKU is not currently sellable (variant ${li.variant_id})`,
+          409,
+          {
+            user_message:
+              "That care item is not currently available. Pick a different one.",
+          },
+        );
     }
 
     let unit;
@@ -1341,6 +1365,15 @@ async function reconcileStock({
   // them — the reconciler tops those up after the loop (see the block below).
   const partialLines = [];
 
+  // Care & Accessories (PR 2): which of the variants this amendment touches
+  // are retail SKUs. Retail is STOCK-ONLY — an amendment shortfall on a care
+  // item must fail loudly, never become a pre-order or a rewig resize.
+  const retailIds = await retailResolver.retailVariantIds({
+    client,
+    brand,
+    variant_ids: [...plan.stockDelta.keys()],
+  });
+
   for (const [variant_id, delta] of plan.stockDelta) {
     if (delta < 0) {
       let toGiveBack = Math.abs(delta);
@@ -1410,6 +1443,20 @@ async function reconcileStock({
     let drawnVariantId = variant_id;
     let failure = await tryDraw(variant_id);
     let substitution = null;
+    if (failure && retailIds.has(variant_id)) {
+      // Stock-only contract: a care SKU that cannot be drawn from the shelf
+      // is a genuine OUT_OF_STOCK — the amendment is refused rather than the
+      // bottle silently turning into a 4–8 week pre-order or a wig resize.
+      throw new AppError(
+        "OUT_OF_STOCK",
+        `Care & Accessories SKU short at amendment (variant ${variant_id})`,
+        409,
+        {
+          user_message:
+            "There isn't enough stock of one of the care items to make this change. Adjust the quantity or pick a different item.",
+        },
+      );
+    }
     if (failure) {
       // Rewig adjacency (000088) — the ordered size is exhausted at THIS
       // location, so before falling through to pre-order, ask whether a

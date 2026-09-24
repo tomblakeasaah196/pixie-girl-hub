@@ -61,6 +61,7 @@ router.use("/care-accessories", (req, _res, next) => {
   next();
 });
 router.get("/care-accessories/categories", can("view"), care.categories);
+router.get("/care-accessories/sellable", can("view"), care.sellable);
 router.post("/care-accessories/import", can("create"), careV.validateImport, care.importProducts);
 router.get("/care-accessories/trash", can("view"), care.listTrash);
 router.get("/care-accessories", can("view"), care.list);

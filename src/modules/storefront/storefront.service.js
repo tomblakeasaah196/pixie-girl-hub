@@ -16,6 +16,9 @@ const repo = require("./storefront.repo");
 const styledRepo = require("../catalogue/styled.repo");
 const styledVariantsRepo = require("../catalogue/styled_variants.repo");
 const rewigService = require("../catalogue/rewig.service");
+// PR 2 — typed Care & Accessories resolution (PXG-gated, sellable-only).
+const retailResolver = require("../catalogue/retail-resolver");
+const careGate = require("../catalogue/care-accessories.gate");
 const {
   computeAvailability,
   reduceBundleAvailability,
@@ -1284,19 +1287,85 @@ async function resolveCartToOrderLines({ brand, items }) {
         }),
       );
     } else {
+      // Generic product line. Retail SKUs are re-validated against the live
+      // catalogue RIGHT HERE (publication, exact variant, live price) — a
+      // stale, unpublished or forged line never reaches createOrder. The
+      // cart's snapshot price is display history only; createOrder re-prices
+      // from the live channel price regardless.
+      const resolved = ci.variant_id
+        ? await retailResolver
+            .resolveSellableVariants({
+              brand,
+              variant_ids: [ci.variant_id],
+              channel: "storefront",
+            })
+            .catch(() => new Map())
+        : new Map();
+      const retail = ci.variant_id ? resolved.get(ci.variant_id) : null;
+      if (ci.variant_id && !retail) {
+        // Not a sellable retail SKU: either a legacy base variant (keep the
+        // old default path) or a retail line that went stale/gated. Tell the
+        // two apart before deciding.
+        const { rows: role } = await query(
+          `SELECT p.catalogue_role, p.retail_status, p.is_deleted, pv.is_active
+             FROM ${brand}.product_variants pv
+             JOIN ${brand}.products p ON p.product_id = pv.product_id
+            WHERE pv.variant_id = $1`,
+          [ci.variant_id],
+        );
+        if (role[0] && role[0].catalogue_role === "retail")
+          throw new AppError(
+            "CART_ITEM_UNRESOLVED",
+            "A Care & Accessories item in your cart is no longer available. Please remove it and try again.",
+            409,
+            {
+              user_message:
+                "One of your items is no longer available. Please remove it and try again.",
+            },
+          );
+      }
       let variant_id = ci.variant_id;
-      if (!variant_id)
+      if (!variant_id) {
+        // No explicit SKU: only the LEGACY base path may default-resolve.
+        // Retail never falls back to another bottle size.
+        if (ci.product_id) {
+          const { rows: role } = await query(
+            `SELECT catalogue_role FROM ${brand}.products WHERE product_id = $1`,
+            [ci.product_id],
+          );
+          if (role[0] && role[0].catalogue_role === "retail")
+            throw new AppError(
+              "CART_ITEM_UNRESOLVED",
+              "A Care & Accessories item needs its exact SKU",
+              409,
+              {
+                user_message:
+                  "One of your items is no longer available. Please remove it and try again.",
+              },
+            );
+        }
         variant_id = await defaultVariantId({
           brand,
           product_id: ci.product_id,
         });
+      }
       if (!variant_id)
         throw new AppError(
           "CART_ITEM_UNRESOLVED",
           "One of your items is no longer available. Please remove it and try again.",
           409,
         );
-      orderLines.push({ variant_id, quantity: ci.quantity });
+      orderLines.push(
+        retail
+          ? {
+              variant_id,
+              quantity: ci.quantity,
+              product_name_snapshot: retail.name,
+              variant_label_snapshot: retail.variant_label || null,
+              sku_snapshot: retail.sku,
+            }
+          : { variant_id, quantity: ci.quantity },
+      );
     }
   }
   return { orderLines, bundleDiscountNgn };
@@ -1514,11 +1583,38 @@ async function checkout({ brand, cart_id, sessionCustomerId = null, input = {} }
   //    AND a real, positive fee — zero exceptions, see the guard below).
   let shippingFeeNgn = 0;
   let deliveryQuote = null;
+  // PR 2: which of these lines are Care & Accessories SKUs?
+  const retailIds = await retailResolver.retailVariantIds({
+    brand,
+    variant_ids: orderLines.map((l) => l.variant_id),
+  });
+  const hasRetail = retailIds.size > 0;
+  if (!isPickup && hasRetail) {
+    // MONEY PATH STOPPED (owner approval pending): the provisional
+    // initial-zone-fee assumption in the Care & Accessories guide has not
+    // been approved, so a retail-containing website cart must not be charged
+    // ANY delivery figure — not a guessed zone fee, and never ₦0. Pickup is
+    // the paid self-serve option; staff arrange retail deliveries manually
+    // (Quick Sale/quote with an agreed fee). Wig-only carts below are
+    // untouched by this rule.
+    throw new AppError(
+      "RETAIL_DELIVERY_ARRANGED",
+      "Retail-containing web delivery checkout is gated pending the owner's fee approval",
+      422,
+      {
+        user_message:
+          "EXTRA DELIVERY FEES MAY APPLY for orders containing care products. Delivery for these orders is arranged with our team — please choose store pickup, or contact us and we'll set up delivery for you.",
+      },
+    );
+  }
   if (!isPickup) {
     const addr = c.address || {};
     const zoneCode = addr.zone_code || addr.country_code || null;
+    // Retail pieces NEVER count as extra wigs in the delivery tier. (Today a
+    // retail cart can't reach a zone quote — see the gate above — but the
+    // wig-only quantity stays correct when the fee assumption is approved.)
     const wigQty = orderLines.reduce(
-      (s, l) => s + (Number(l.quantity) || 0),
+      (s, l) => s + (retailIds.has(l.variant_id) ? 0 : Number(l.quantity) || 0),
       0,
     );
     if (!zoneCode)
@@ -1781,6 +1877,10 @@ async function checkout({ brand, cart_id, sessionCustomerId = null, input = {} }
     order_number: order.order_number,
     payment_url: payResult.checkout_url,
     public_tracking_token: order.public_tracking_token || null,
+    // PR 2: lets the thank-you page repeat the delivery disclosure where the
+    // order contained Care & Accessories items (pickup orders only today).
+    has_care_items: hasRetail,
+    care_delivery_notice: hasRetail ? "EXTRA DELIVERY FEES MAY APPLY" : null,
     // Pre-order notice threaded off the created order (000086) so the website
     // checkout + thank-you page can tell the buyer some items are made to order.
     preorder:
@@ -1817,8 +1917,29 @@ async function quoteCart({
 
   let subtotal = money(0);
   const lines = [];
+  // PR 2: generic (non-styled, non-bundle) lines are re-priced LIVE from the
+  // catalogue — the old branch kept the add-time snapshot forever, so a price
+  // change or an unpublished Care SKU quoted at a stale number right up to
+  // checkout. Retail lines resolve through the typed resolver; an unresolvable
+  // line keeps its snapshot for display but is flagged unavailable so the UI
+  // blocks the purchase (checkout re-validates and rejects it anyway).
+  const genericIds = items
+    .filter((ci) => !ci.styled_variant_id && !ci.bundle_id && ci.variant_id)
+    .map((ci) => ci.variant_id);
+  let liveGeneric = new Map();
+  if (genericIds.length) {
+    liveGeneric = await retailResolver
+      .resolveSellableVariants({
+        brand,
+        variant_ids: genericIds,
+        channel: "storefront",
+      })
+      .catch(() => new Map());
+  }
+  let careCount = 0;
   for (const ci of items) {
     let unit;
+    let unavailable = false;
     if (ci.styled_variant_id) {
       const resolved = await resolveStyledLine({
         brand,
@@ -1840,7 +1961,29 @@ async function quoteCart({
         ? money(b.effective_price_ngn || 0)
         : money(ci.unit_price_ngn || 0);
     } else {
-      unit = money(ci.unit_price_ngn || 0);
+      const live = ci.variant_id ? liveGeneric.get(ci.variant_id) : null;
+      if (live && live.kind === "retail") {
+        careCount += 1;
+        unit = money(live.unit_price_ngn);
+      } else if (live) {
+        unit = money(live.unit_price_ngn);
+      } else if (ci.variant_id) {
+        // Unresolvable live (retail gated/unpublished, deleted variant…) —
+        // keep the snapshot price for display, mark the line blocked.
+        unit = money(ci.unit_price_ngn || 0);
+        const { rows: role } = await query(
+          `SELECT p.catalogue_role FROM ${brand}.product_variants pv
+             JOIN ${brand}.products p ON p.product_id = pv.product_id
+            WHERE pv.variant_id = $1`,
+          [ci.variant_id],
+        );
+        if (role[0] && role[0].catalogue_role === "retail") {
+          careCount += 1;
+          unavailable = true;
+        }
+      } else {
+        unit = money(ci.unit_price_ngn || 0);
+      }
     }
     const lineTotal = unit.times(ci.quantity || 1);
     subtotal = subtotal.plus(lineTotal);
@@ -1851,12 +1994,22 @@ async function quoteCart({
       quantity: ci.quantity,
       unit_price_ngn: toCurrencyString(unit),
       line_total_ngn: toCurrencyString(lineTotal),
+      ...(unavailable ? { unavailable: true } : {}),
     });
   }
 
+  // PR 2 delivery policy: a cart with Care & Accessories items never quotes a
+  // web delivery fee until the owner approves the initial-zone-fee assumption
+  // (see checkout's RETAIL_DELIVERY_ARRANGED gate). The disclosure is exact:
+  // EXTRA DELIVERY FEES MAY APPLY — "MAY" is deliberate.
   let deliveryNgn = 0;
+  let deliveryAvailable = true;
+  let deliveryUnavailableReason = null;
   const zoneCode = address && (address.zone_code || address.country_code);
-  if (zoneCode) {
+  if (careCount > 0) {
+    deliveryAvailable = false;
+    deliveryUnavailableReason = "care_items_staff_arranged";
+  } else if (zoneCode) {
     const wigQty = items.reduce((s, ci) => s + (Number(ci.quantity) || 0), 0);
     const dq = await zonesService
       .quote({ brand, country_code: zoneCode, qty: wigQty })
@@ -1909,6 +2062,11 @@ async function quoteCart({
     discount_ngn: toCurrencyString(discountNgn),
     delivery_ngn: toCurrencyString(money(deliveryNgn)),
     total_ngn: toCurrencyString(totalNgn),
+    // PR 2 Care & Accessories signals for the cart/checkout UI:
+    has_care_items: careCount > 0,
+    care_delivery_notice: careCount > 0 ? "EXTRA DELIVERY FEES MAY APPLY" : null,
+    delivery_available: deliveryAvailable,
+    delivery_unavailable_reason: deliveryUnavailableReason,
     display_currency: cur,
     subtotal_display: toDisplay(subtotal),
     discount_display: toDisplay(discountNgn),
@@ -1919,6 +2077,24 @@ async function quoteCart({
     // field and forward the code on submit.
     applied_coupon_code: appliedCode,
   };
+}
+
+// ── Care & Accessories (PR 2) — typed public retail reads ──
+// PXG-only (the resolver's gate 404s every other brand). One row per ACTIVE
+// variant — a 50 ml / 100 ml product is two individually sellable options.
+async function listCareProducts({ brand, q, category_id, page, page_size }) {
+  return retailResolver.listSellable({ brand, q, category_id, page, page_size });
+}
+
+// Canonical /care-and-accessories/:slug detail — live retail products only.
+async function getCareProduct({ brand, slug }) {
+  return retailResolver.getProductBySlug({ brand, slug });
+}
+
+// Is Care & Accessories sellable on this brand? Drives the storefront nav
+// link + routes so FLH (or a gated-off PXG) never offers the section.
+function careEnabled({ brand }) {
+  return careGate.enabled(brand);
 }
 
 // ── Analytics ──────────────────────────────────────────────
@@ -1993,6 +2169,9 @@ module.exports = {
   submitOrderForm,
   checkout,
   quoteCart,
+  listCareProducts,
+  getCareProduct,
+  careEnabled,
   startSession,
   recordPageView,
   recordFunnelEvent,

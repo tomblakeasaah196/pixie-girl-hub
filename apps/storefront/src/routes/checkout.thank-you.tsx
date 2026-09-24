@@ -4,6 +4,7 @@ import { CheckCircle2 } from "lucide-react";
 import { usePageSlots, withSlots } from "@/lib/site-config";
 import { Section } from "@/components/parts";
 import type { PreorderNoticeData } from "@/lib/storefront";
+import { CareDeliveryNotice } from "@/components/care";
 
 export const Route = createFileRoute("/checkout/thank-you")({
   validateSearch: (s: Record<string, unknown>) => ({
@@ -19,12 +20,20 @@ function ThankYou() {
   // Pre-order (000086): the checkout stashed the notice before redirecting to
   // the gateway — pick it up once, show it, then clear it.
   const [preorder, setPreorder] = useState<PreorderNoticeData | null>(null);
+  // Care & Accessories (PR 2/3): the checkout stashed the delivery disclosure
+  // so the confirmation repeats it wherever the order's delivery amount shows.
+  const [careNotice, setCareNotice] = useState<string | null>(null);
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem("pgh_preorder");
       if (raw) {
         setPreorder(JSON.parse(raw) as PreorderNoticeData);
         sessionStorage.removeItem("pgh_preorder");
+      }
+      const notice = sessionStorage.getItem("pgh_care_notice");
+      if (notice) {
+        setCareNotice(notice);
+        sessionStorage.removeItem("pgh_care_notice");
       }
     } catch {
       /* storage unavailable */
@@ -54,6 +63,22 @@ function ThankYou() {
               (preorder.window_label
                 ? `Some of your items are made to order and ship in about ${preorder.window_label}. We'll keep you posted.`
                 : "Some of your items are made to order. We'll keep you posted as they're crafted.")}
+          </p>
+        </div>
+      ) : null}
+      {careNotice ? (
+        <div className="mt-6 rounded-lg border border-taupe/30 bg-taupe/10 px-4 py-3 text-left">
+          <span className="text-[0.62rem] font-medium uppercase tracking-[0.22em] text-taupe">
+            Delivery
+          </span>
+          <CareDeliveryNotice
+            notice={careNotice}
+            className="mt-1.5 text-[0.68rem] leading-relaxed text-foreground/85"
+          />
+          <p className="mt-1.5 text-body-sm text-foreground/70">
+            If your order is being delivered, our team will confirm the final
+            delivery fee with you before it ships — you'll never be charged an
+            unagreed amount.
           </p>
         </div>
       ) : null}

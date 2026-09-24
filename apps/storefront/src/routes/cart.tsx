@@ -15,6 +15,7 @@ import { useCurrency, notifyCartChanged } from "@/lib/useStore";
 import { usePageSlots, withSlots } from "@/lib/site-config";
 import { Section, EmptyState, ErrorState } from "@/components/parts";
 import { preorderText } from "@/components/availability";
+import { CareDeliveryNotice } from "@/components/care";
 
 export const Route = createFileRoute("/cart")({ component: CartPage });
 
@@ -118,6 +119,14 @@ function CartPage() {
                     {preorderText(it.availability)}
                   </span>
                 ) : null}
+                {/* A Care & Accessories line the server can no longer sell
+                    (unpublished / trashed / unpriced since it was added). The
+                    checkout refuses it, so say so here instead of at payment. */}
+                {q?.lines?.find((l) => l.cart_item_id === it.cart_item_id)?.unavailable ? (
+                  <span className="mt-1 inline-block rounded-full border border-destructive/50 px-2 py-0.5 text-[0.55rem] font-medium uppercase tracking-[0.2em] text-destructive">
+                    No longer available — remove to continue
+                  </span>
+                ) : null}
                 <div className="mt-2 flex items-center gap-2">
                   <button
                     disabled={busy}
@@ -174,6 +183,26 @@ function CartPage() {
             <dt className="text-muted-foreground">{s.deliveryLabel}</dt>
             <dd className="font-mono">{s.deliveryValue}</dd>
           </div>
+          {/* Care & Accessories disclosure (PR 2). The server returns the exact
+              owner-approved string; it renders bold + uppercase and "MAY" is
+              never changed to "WILL" — the real fee is calculated by staff
+              after the order is placed, so this notice is a warning, not a
+              promise and not consent to a specific charge. */}
+          {q?.has_care_items ? (
+            <div className="rounded-md border border-taupe/40 bg-secondary/40 px-3 py-2">
+              <CareDeliveryNotice
+                notice={q.care_delivery_notice}
+                className="text-[0.65rem] leading-relaxed"
+              />
+              {q.delivery_available === false ? (
+                <p className="mt-1.5 text-[0.7rem] text-muted-foreground">
+                  Delivery for these items is arranged with our team — choose
+                  store pickup at checkout, or contact us and we'll set delivery
+                  up for you.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
           <div className="flex justify-between border-t border-border pt-2 text-body">
             <dt>{s.totalLabel}</dt>
             <dd className="font-mono">{total ?? "-"}</dd>

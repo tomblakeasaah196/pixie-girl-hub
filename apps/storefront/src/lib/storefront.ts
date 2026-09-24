@@ -132,6 +132,9 @@ export interface CartItem {
   styled_variant_id?: string | null;
   bundle_id?: string | null;
   product_id?: string | null;
+  /** Exact sellable SKU behind the line. A Care & Accessories (retail) item
+   *  always carries this and never a styled_variant_id. */
+  variant_id?: string | null;
   unstyled?: boolean;
   quantity: number;
   product_name_snapshot: string;
@@ -160,12 +163,23 @@ export interface Quote {
     quantity: number;
     unit_price_ngn: string;
     line_total_ngn: string;
+    /** True when this line's Care & Accessories SKU is no longer sellable
+     *  (unpublished/trashed/unpriced) — the checkout must refuse it. */
+    unavailable?: boolean;
   }[];
   subtotal_ngn: string;
   discount_ngn?: string;
   delivery_ngn: string;
   total_ngn: string;
   display_currency: Currency;
+  /** Care & Accessories (PR 2/3) delivery disclosure. `care_delivery_notice`
+   *  is the EXACT owner-approved string — render it bold and uppercase with
+   *  "MAY" unchanged. `delivery_available === false` means a web delivery fee
+   *  cannot be quoted for this basket (retail present, or no priced zone). */
+  has_care_items?: boolean;
+  care_delivery_notice?: string | null;
+  delivery_available?: boolean;
+  delivery_unavailable_reason?: string | null;
   subtotal_display?: string | null;
   discount_display?: string | null;
   delivery_display?: string | null;
@@ -254,6 +268,67 @@ export const getBundleDetail = (slug: string, ctx?: ApiContext) =>
     /** Bundle-level in-stock / pre-order / sold-out state (000086). */
     availability?: Availability | null;
   }>(`${SF}/bundles/${slug}`, ctx);
+
+// --- Care & Accessories (PXG retail) ---
+// Typed retail catalogue reads. PXG-only and gated server-side: every other
+// brand (and PXG with FEATURE_PXG_CARE_ACCESSORIES_ENABLED off) gets a 404,
+// so `getCareEnabled` is the ONLY safe way to decide whether to render the
+// section at all. Canonical web route is /care-and-accessories/:slug; the
+// backend path is /care/:slug.
+export interface CareOption {
+  kind: "retail";
+  brand: string;
+  product_id: string;
+  variant_id: string;
+  sku: string;
+  barcode?: string | null;
+  name: string;
+  product_code?: string | null;
+  slug?: string | null;
+  variant_label?: string | null;
+  is_default_variant?: boolean;
+  category_id?: string | null;
+  unit_price_ngn: number;
+  unit_price_usd?: number | null;
+  taxable?: boolean;
+  vat_rate?: number | null;
+  available: number;
+  image_url?: string | null;
+  /** Retail is stock-only: never a pre-order, never a rewig substitute. */
+  preorder: false;
+  rewig_eligible: false;
+}
+
+export interface CareDetail {
+  kind: "retail";
+  brand: string;
+  product_id: string;
+  slug: string;
+  name: string;
+  product_code?: string | null;
+  category_id?: string | null;
+  short_description?: string | null;
+  long_description?: string | null;
+  ingredients?: string | null;
+  directions?: string | null;
+  warnings?: string | null;
+  image_url?: string | null;
+  taxable?: boolean;
+  vat_rate?: number | null;
+  options: CareOption[];
+}
+
+// The api client unwraps the Hub `{ data }` envelope, so these resolve to the
+// payload directly: /care → CareOption[], /care/:slug → CareDetail,
+// /care/enabled → { enabled }.
+export const getCareEnabled = (ctx?: ApiContext) =>
+  api.get<{ enabled: boolean }>(`${SF}/care/enabled`, ctx);
+
+export const getCareProducts = (qs = "", ctx?: ApiContext) =>
+  api.get<CareOption[]>(`${SF}/care${qs}`, ctx);
+
+export const getCareProduct = (slug: string, ctx?: ApiContext) =>
+  api.get<CareDetail>(`${SF}/care/${slug}`, ctx);
 
 // --- Services (bookable offerings) ---
 export interface ServiceCard {
@@ -386,6 +461,10 @@ export const addCartItem = (body: {
   styled_variant_id?: string;
   bundle_id?: string;
   product_id?: string;
+  /** Exact sellable SKU. Mandatory for a Care & Accessories (retail) add —
+   *  the server resolves it through the typed retail resolver and refuses a
+   *  default-variant fallback, so a 50 ml never silently sells as 100 ml. */
+  variant_id?: string;
   unstyled?: boolean;
   quantity?: number;
   display_currency?: Currency;
@@ -446,6 +525,10 @@ export const checkout = (body: CheckoutInput) =>
     payment_url: string;
     public_tracking_token: string;
     preorder?: PreorderNoticeData | null;
+    /** Care & Accessories disclosure echoed so the thank-you page can repeat
+     *  it wherever the order's delivery amount is shown. */
+    has_care_items?: boolean;
+    care_delivery_notice?: string | null;
   }>(`${SF}/checkout`, body);
 
 export const getDeliveryQuote = (params: string) =>

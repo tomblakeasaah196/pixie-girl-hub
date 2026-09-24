@@ -28,6 +28,7 @@ import { bootstrapAuth, getReferral } from "@/lib/auth";
 import { useCurrencyFeed } from "@/lib/useCurrencyFeed";
 import { useTheme } from "@/lib/theme";
 import { socialIcon } from "@/components/site/social-icons";
+import { useCareEnabled } from "@/components/care";
 
 // Module-scoped referral cache so re-opening the drawer doesn't re-hit the
 // network. undefined = not yet checked · null = guest (no code) · string = code.
@@ -98,10 +99,38 @@ export function SiteHeader() {
   // built-in grouped default keeps Shop ▾ / Services / Maison ▾ intact; a Studio
   // nav that carries groups still wins, so the header stays fully editable.
   const studio = nav?.header_items;
-  const groups: NavItem[] =
+  const baseGroups: NavItem[] =
     studio && studio.some((i) => i.children && i.children.length)
       ? studio
       : NAV_GROUPS;
+
+  // Care & Accessories (PR 2) — PXG-only and server-gated. The nav label is the
+  // owner-approved public name; it is appended only when the backend gate says
+  // the section is live for this brand, so FLH (and PXG before the flag is
+  // lifted) never renders a link to a 404. A published Studio nav still wins
+  // for everything else.
+  const careEnabled = useCareEnabled();
+  const CARE_NAV_URL = "/care-and-accessories";
+  const groups: NavItem[] = (() => {
+    if (!careEnabled) return baseGroups;
+    const already =
+      baseGroups.some((g) => g.url === CARE_NAV_URL) ||
+      baseGroups.some((g) => (g.children ?? []).some((c) => c.url === CARE_NAV_URL));
+    if (already) return baseGroups;
+    const shop = baseGroups.find((g) => g.url === "/shop");
+    if (!shop) return [...baseGroups, { label: "Care & Accessories", url: CARE_NAV_URL }];
+    return baseGroups.map((g) =>
+      g.url === "/shop"
+        ? {
+            ...g,
+            children: [
+              ...(g.children ?? []),
+              { label: "Care & Accessories", url: CARE_NAV_URL },
+            ],
+          }
+        : g,
+    );
+  })();
 
   // Entrance gate — play the stagger after the cinematic preloader (fast on
   // return visits where it's skipped).

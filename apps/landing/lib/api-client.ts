@@ -90,6 +90,7 @@ export async function postCheckout(args: {
   cart: Array<{
     bundle_id?: string;
     product_id?: string;
+    variant_id?: string;
     styled_variant_id?: string;
     size_code?: string;
     quantity: number;
@@ -210,6 +211,7 @@ export async function postQuote(args: {
   cart: Array<{
     bundle_id?: string;
     product_id?: string;
+    variant_id?: string;
     styled_variant_id?: string;
     unstyled?: boolean;
     size_code?: string;

@@ -379,6 +379,17 @@ async function markAttributionsPaid({ client, payout_id }) {
     [payout_id],
   );
 }
+async function voidAttributionsForOrder({ client, business, order_id }) {
+  const { rows } = await ex(client)(
+    `UPDATE shared.stylist_referral_attributions
+        SET status = 'void', updated_at = now()
+      WHERE business = $1 AND order_id = $2
+        AND status IN ('pending','payable')
+      RETURNING *`,
+    [business, order_id],
+  );
+  return rows;
+}
 
 // ════════════════════════════════════════════════════════════
 // Notifications (in-portal feed)
@@ -725,6 +736,7 @@ module.exports = {
   payableAttributions,
   linkAttributionToPayout,
   markAttributionsPaid,
+  voidAttributionsForOrder,
   insertNotification,
   listNotifications,
   markNotificationRead,

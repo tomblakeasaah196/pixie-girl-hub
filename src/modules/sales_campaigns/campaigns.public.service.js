@@ -26,6 +26,7 @@ const paymentSettings = require("../sales/payment-settings.service");
 const brandUrls = require("../../utils/brand-urls");
 const contactsRepo = require("../../shared/contacts/contacts.repo");
 const styledRepo = require("../catalogue/styled.repo");
+const careGate = require("../catalogue/care-accessories.gate");
 const styledVariantsRepo = require("../catalogue/styled_variants.repo");
 const rewigService = require("../catalogue/rewig.service");
 const { transaction, query } = require("../../config/database");
@@ -169,10 +170,18 @@ async function getLanding({ slug, brand, brandHint }) {
     }),
   ]);
 
-  const payload = main.buildLandingPayload(campaign, products, state);
+  const publicProducts = careGate.enabled(resolvedBrand)
+    ? products
+    : products.filter((p) => p.catalogue_role !== "retail");
+  const payload = main.buildLandingPayload(campaign, publicProducts, state);
 
   if (state === "live" || state === "before") {
-    payload.bundles = bundles || [];
+    payload.bundles = careGate.enabled(resolvedBrand)
+      ? bundles || []
+      : (bundles || []).filter(
+          (bundle) =>
+            !(bundle.components || []).some((component) => component.is_retail),
+        );
     payload.tiers = tiers || [];
     payload.upsells = upsells || [];
   }
@@ -433,21 +442,69 @@ async function buildDealLines({ brand, cart }) {
         bundle_id: item.bundle_id,
       });
       const wigUnits = items.reduce(
-        (a, bi) => a + (Number(bi.quantity) || 1),
+        (a, bi) =>
+          bi.catalogue_role === "retail"
+            ? a
+            : a + (Number(bi.quantity) || 1),
         0,
       );
       lines.push({
         kind: "bundle",
         bundle_id: item.bundle_id,
         quantity,
-        wig_units: wigUnits || 1,
+        wig_units: wigUnits || 0,
       });
-    } else if (item.styled_variant_id || item.product_id) {
+    } else if (item.variant_id) {
+      const { rows } = await query(
+        `SELECT p.catalogue_role
+           FROM ${brand}.product_variants pv
+           JOIN ${brand}.products p ON p.product_id = pv.product_id
+          WHERE pv.variant_id = $1`,
+        [item.variant_id],
+      );
+      const isRetail =
+        rows[0] &&
+        rows[0].catalogue_role === "retail";
+      if (isRetail) {
+        lines.push({
+          kind: "retail",
+          quantity,
+          wig_units: 0,
+        });
+      } else {
+        lines.push({
+          kind: item.unstyled ? "raw" : "styled",
+          quantity,
+          wig_units: 1,
+        });
+      }
+    } else if (item.styled_variant_id) {
       lines.push({
         kind: item.unstyled ? "raw" : "styled",
         quantity,
         wig_units: 1,
       });
+    } else if (item.product_id) {
+      const { rows } = await query(
+        `SELECT catalogue_role FROM ${brand}.products WHERE product_id = $1`,
+        [item.product_id],
+      );
+      const isRetail =
+        rows[0] &&
+        rows[0].catalogue_role === "retail";
+      if (isRetail) {
+        lines.push({
+          kind: "retail",
+          quantity,
+          wig_units: 0,
+        });
+      } else {
+        lines.push({
+          kind: item.unstyled ? "raw" : "styled",
+          quantity,
+          wig_units: 1,
+        });
+      }
     }
   }
   return lines;
@@ -499,10 +556,17 @@ async function quoteCart({ slug, brand, brandHint, input }) {
       ? Number(campaign.free_shipping_threshold_ngn)
       : null;
 
+  const hasCareItems = dealLines.some((l) => l.kind === "retail");
+  const isRetailOnly =
+    hasCareItems && dealLines.every((l) => l.kind === "retail");
+
   return {
     slug: campaign.slug,
     currency: "NGN",
     ...breakdown,
+    has_care_items: hasCareItems,
+    care_delivery_notice: hasCareItems ? "EXTRA DELIVERY FEES MAY APPLY" : null,
+    care_only: isRetailOnly,
     free_shipping_threshold_ngn: freeShippingThreshold,
     free_shipping_unlocked:
       freeShippingThreshold !== null && cartSubtotal >= freeShippingThreshold,
@@ -598,6 +662,23 @@ async function resolveBundleForCheckout({
   if (!items.length) {
     throw new AppError("BUNDLE_EMPTY", `Bundle ${bundle_id} has no items`, 409);
   }
+  const hasRetailComponent = items.some(
+    (item) => item.catalogue_role === "retail",
+  );
+  const link = await bundleRepo.getCampaignBundle({
+    brand,
+    campaign_id,
+    bundle_id,
+  });
+  // Retail bundles must be explicitly attached to this campaign. Preserve the
+  // historic styled-bundle resolver behavior for existing callers/tests.
+  if (hasRetailComponent && !link) {
+    throw new AppError(
+      "CAMPAIGN_BUNDLE_UNAVAILABLE",
+      "This bundle is not included in the campaign",
+      409,
+    );
+  }
   // Head-size premium (₦ per wig, S = 0). Added to each line AFTER the S-based
   // discount; the discount math below still uses the bare S `components`.
   const { premium: sizePremium, label: sizeLabel } = await sizePremiumFor({
@@ -613,6 +694,9 @@ async function resolveBundleForCheckout({
     const compQty = Number(bi.quantity) || 1;
     const unitPrice = bi.unit_price_ngn || 0; // styled retail / variant storefront
     components.push({ unit_price_ngn: unitPrice, quantity: compQty });
+
+    const isRetail = bi.catalogue_role === "retail";
+    if (isRetail) careGate.requireEnabled(brand);
 
     if (bi.styled_id) {
       let baseVariantId = bi.styled_base_variant_id;
@@ -647,19 +731,29 @@ async function resolveBundleForCheckout({
         );
       }
       orderLines.push({
+        line_kind: "product",
         variant_id: baseVariantId,
         quantity: compQty * copies,
-        unit_price_ngn: lineUnit(unitPrice),
-        product_name_snapshot: nameWithSize(bi.styled_name || bi.display_name),
+        unit_price_ngn: isRetail
+          ? toCurrencyString(unitPrice)
+          : lineUnit(unitPrice),
+        product_name_snapshot: isRetail
+          ? bi.styled_name || bi.display_name
+          : nameWithSize(bi.styled_name || bi.display_name),
+        is_retail: isRetail,
       });
     } else if (bi.variant_id) {
       orderLines.push({
+        line_kind: "product",
         variant_id: bi.variant_id,
         quantity: compQty * copies,
-        unit_price_ngn: lineUnit(unitPrice),
-        ...(sizeLabel
+        unit_price_ngn: isRetail
+          ? toCurrencyString(unitPrice)
+          : lineUnit(unitPrice),
+        ...(sizeLabel && !isRetail
           ? { product_name_snapshot: nameWithSize(bi.display_name) }
-          : {}),
+          : { product_name_snapshot: bi.display_name || bi.product_name }),
+        is_retail: isRetail,
       });
     } else if (bi.product_id) {
       const variantId = await defaultVariantId({
@@ -674,12 +768,16 @@ async function resolveBundleForCheckout({
         );
       }
       orderLines.push({
+        line_kind: "product",
         variant_id: variantId,
         quantity: compQty * copies,
-        unit_price_ngn: lineUnit(unitPrice),
-        ...(sizeLabel
+        unit_price_ngn: isRetail
+          ? toCurrencyString(unitPrice)
+          : lineUnit(unitPrice),
+        ...(sizeLabel && !isRetail
           ? { product_name_snapshot: nameWithSize(bi.display_name) }
-          : {}),
+          : { product_name_snapshot: bi.display_name || bi.product_name }),
+        is_retail: isRetail,
       });
     }
   }
@@ -690,11 +788,6 @@ async function resolveBundleForCheckout({
       409,
     );
   }
-  const link = await bundleRepo.getCampaignBundle({
-    brand,
-    campaign_id,
-    bundle_id,
-  });
   const { discountPerBundle, effectivePrice, sumOfParts } =
     computeBundleDiscount({
       components,
@@ -717,12 +810,22 @@ async function priceQuoteLine({ brand, item, campaign_id }) {
       bundle_id: item.bundle_id,
     });
     if (!items.length) return null;
+    if (items.some((bi) => bi.catalogue_role === "retail")) {
+      careGate.requireEnabled(brand);
+    }
     // Bundle quote price = the operator-set campaign bundle price when present,
     // else the live sum of component prices (styled retail / variant storefront,
     // already resolved by listBundleItems). STYLED components have no variant_id
     // and used to be skipped here, quoting the bundle at ₦0 — they are now priced
     // the same way checkout charges them, so the cart matches the till.
-    const wigUnits = items.reduce((a, bi) => a + (Number(bi.quantity) || 1), 0);
+    // Retail components inside bundles are excluded from wig_units.
+    const wigUnits = items.reduce(
+      (a, bi) =>
+        bi.catalogue_role === "retail"
+          ? a
+          : a + (Number(bi.quantity) || 1),
+      0,
+    );
     const components = items.map((bi) => ({
       unit_price_ngn: bi.unit_price_ngn || 0,
       quantity: Number(bi.quantity) || 1,
@@ -734,27 +837,77 @@ async function priceQuoteLine({ brand, item, campaign_id }) {
           bundle_id: item.bundle_id,
         })
       : null;
+    if (
+      campaign_id &&
+      !link &&
+      items.some((component) => component.catalogue_role === "retail")
+    ) {
+      throw new AppError(
+        "CAMPAIGN_BUNDLE_UNAVAILABLE",
+        "This bundle is not included in the campaign",
+        409,
+      );
+    }
     const { effectivePrice } = computeBundleDiscount({
       components,
       campaignBundlePrice: effectiveCampaignBundlePrice(link, components),
     });
     // Head-size premium rides on top of the discounted-at-S price, once per wig
     // — the same figure listCampaignBundles' size_options and checkout produce.
+    // Retail bundle components are excluded from head-size premiums.
     const { premium: sizePremium } = await sizePremiumFor({
       brand,
       size_code: item.size_code,
     });
     const sizedPrice = effectivePrice.plus(
-      money(sizePremium).times(wigUnits || 1),
+      money(sizePremium).times(wigUnits || 0),
     );
     return {
       kind: "bundle",
       bundle_id: item.bundle_id,
       unit_price_ngn: toCurrencyString(sizedPrice),
-      wig_units: wigUnits || 1,
+      wig_units: wigUnits || 0,
       floor_ngn: null,
       name: null,
     };
+  }
+
+  if (item.variant_id) {
+    const { rows: vrows } = await query(
+      `SELECT pv.variant_id, pv.product_id, p.catalogue_role
+         FROM ${brand}.product_variants pv
+         JOIN ${brand}.products p ON p.product_id = pv.product_id
+        WHERE pv.variant_id = $1 AND pv.is_active = true`,
+      [item.variant_id],
+    );
+    const vrow = vrows[0];
+    if (
+      vrow &&
+      (vrow.catalogue_role === "retail")
+    ) {
+      if (campaign_id) {
+        const { rows: mem } = await query(
+          `SELECT 1 FROM ${brand}.sales_campaign_products
+            WHERE campaign_id = $1 AND product_id = $2 AND include_exclude = 'include'`,
+          [campaign_id, vrow.product_id],
+        );
+        if (!mem.length) return null;
+      }
+      const retailResolver = require("../catalogue/retail-resolver");
+      const priced = await retailResolver.resolveSellableVariant({
+        brand,
+        variant_id: item.variant_id,
+        product_id: vrow.product_id,
+        channel: "storefront",
+      });
+      return {
+        kind: "retail",
+        unit_price_ngn: toCurrencyString(priced.unit_price_ngn),
+        wig_units: 0,
+        floor_ngn: null,
+        name: priced.name,
+      };
+    }
   }
 
   if (item.styled_variant_id) {
@@ -798,6 +951,46 @@ async function priceQuoteLine({ brand, item, campaign_id }) {
   }
 
   if (item.product_id) {
+    const { rows: products } = await query(
+      `SELECT catalogue_role
+         FROM ${brand}.products
+        WHERE product_id = $1`,
+      [item.product_id],
+    );
+    if (products[0]?.catalogue_role === "retail") {
+      careGate.requireEnabled(brand);
+      if (!item.variant_id) {
+        throw new AppError(
+          "RETAIL_VARIANT_REQUIRED",
+          "An exact Care & Accessories SKU is required",
+          422,
+        );
+      }
+      if (campaign_id) {
+        const { rows: mem } = await query(
+          `SELECT 1
+             FROM ${brand}.sales_campaign_products
+            WHERE campaign_id = $1 AND product_id = $2 AND include_exclude = 'include'`,
+          [campaign_id, item.product_id],
+        );
+        if (!mem.length) return null;
+      }
+      const retailResolver = require("../catalogue/retail-resolver");
+      const priced = await retailResolver.resolveSellableVariant({
+        brand,
+        variant_id: item.variant_id,
+        product_id: item.product_id,
+        channel: "storefront",
+      });
+      return {
+        kind: "retail",
+        unit_price_ngn: toCurrencyString(priced.unit_price_ngn),
+        wig_units: 0,
+        floor_ngn: null,
+        name: priced.name,
+      };
+    }
+
     const { rows } = await query(
       `SELECT variant_id, price_storefront_ngn, min_price_ngn
          FROM ${brand}.product_variants
@@ -970,6 +1163,55 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
       });
       orderLines.push(...resolved.orderLines);
       bundlePriceDiscount = bundlePriceDiscount.plus(resolved.discountNgn);
+    } else if (cartItem.variant_id) {
+      const { rows: vrows } = await query(
+        `SELECT pv.variant_id, pv.product_id, p.catalogue_role
+           FROM ${resolvedBrand}.product_variants pv
+           JOIN ${resolvedBrand}.products p ON p.product_id = pv.product_id
+          WHERE pv.variant_id = $1 AND pv.is_active = true`,
+        [cartItem.variant_id],
+      );
+      const vr = vrows[0];
+      if (
+        vr &&
+        (vr.catalogue_role === "retail")
+      ) {
+        const { rows: mem } = await query(
+          `SELECT 1 FROM ${resolvedBrand}.sales_campaign_products
+            WHERE campaign_id = $1 AND product_id = $2 AND include_exclude = 'include'`,
+          [campaign.campaign_id, vr.product_id],
+        );
+        if (!mem.length) {
+          throw new AppError(
+            "CAMPAIGN_PRODUCT_UNAVAILABLE",
+            "This retail item is not included in this campaign",
+            409,
+          );
+        }
+        const retailResolver = require("../catalogue/retail-resolver");
+        const sellable = await retailResolver.resolveSellableVariant({
+          brand: resolvedBrand,
+          variant_id: cartItem.variant_id,
+          product_id: vr.product_id,
+          channel: "storefront",
+        });
+        orderLines.push({
+          line_kind: "product",
+          product_id: sellable.product_id,
+          variant_id: sellable.variant_id,
+          quantity: cartItem.quantity,
+          unit_price_ngn: toCurrencyString(sellable.unit_price_ngn),
+          product_name_snapshot: sellable.name,
+          variant_label_snapshot: sellable.variant_label || null,
+          sku_snapshot: sellable.sku,
+          is_retail: true,
+        });
+      } else {
+        orderLines.push({
+          variant_id: cartItem.variant_id,
+          quantity: cartItem.quantity,
+        });
+      }
     } else if (cartItem.styled_variant_id) {
       // Styled product line. Price comes from the STYLED tables (not the base
       // product_variants, which are intentionally ₦0 for a styled product):
@@ -1091,6 +1333,22 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
         sku_snapshot: sv.styled_sku,
       });
     } else if (cartItem.product_id) {
+      const { rows: prows } = await query(
+        `SELECT catalogue_role FROM ${resolvedBrand}.products WHERE product_id = $1`,
+        [cartItem.product_id],
+      );
+      if (
+        prows[0] &&
+        (prows[0].catalogue_role === "retail")
+      ) {
+        if (!cartItem.variant_id) {
+          throw new AppError(
+            "RETAIL_VARIANT_REQUIRED",
+            "An exact Care & Accessories SKU is required",
+            422,
+          );
+        }
+      }
       const { rows } = await query(
         `SELECT variant_id FROM ${resolvedBrand}.product_variants
            WHERE product_id = $1 AND is_active = true
@@ -1125,28 +1383,37 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
     throw new AppError("EMPTY_ORDER", "No valid items in the cart", 400);
   }
 
+  const hasCareItems = orderLines.some((l) => l.is_retail);
+  const retailOnly = hasCareItems && orderLines.every((l) => l.is_retail);
+
+  // FAIL-CLOSED DELIVERY GATE FOR RETAIL:
+  // Pending owner approval of provisional web delivery fee, retail web delivery
+  // checkout is strictly gated to store pickup only.
+  if (hasCareItems && !isPickup) {
+    throw new AppError(
+      "RETAIL_DELIVERY_ARRANGED",
+      "Retail-containing web delivery checkout is gated pending the owner's fee approval",
+      422,
+      {
+        user_message:
+          "EXTRA DELIVERY FEES MAY APPLY for orders containing care products. Delivery for these orders is arranged with our team — please choose store pickup, or contact us and we'll set up delivery for you.",
+      },
+    );
+  }
+
   // ── 2b. Resolve the delivery fee server-side ───────────
   // The wig-quantity tier × the buyer's delivery zone drives the fee. We NEVER
   // trust a client-sent amount — we re-quote against the seeded zone using the
   // zone_code (NG state/LGA) or ISO-2 country code the autofill captured.
   // Pickup is always free.
-  //
-  // FAIL CLOSED (owner mandate): a *delivery* order must resolve to a real,
-  // billable zone before it can be created. Browser autofill (or typing a
-  // country/state without picking it from the list) leaves the zone code blank
-  // while the visible address looks complete — and an uncovered zone prices to
-  // null. Both used to fall back to ₦0, so we shipped hair we couldn't bill and
-  // ate the logistics cost. We now refuse the order in both cases. Every
-  // country, every NG state and every Lagos LGA is seeded, so a genuine buyer
-  // selection always prices; if it ever doesn't, this surfaces the seeding gap
-  // loudly instead of silently absorbing the freight.
+  // Retail lines are excluded from wigQty.
   let shippingFeeNgn = 0;
   let deliveryQuote = null;
   if (!isPickup) {
     const addr = input.contact.address || {};
     const zoneCode = addr.zone_code || addr.country_code || null;
     const wigQty = orderLines.reduce(
-      (s, l) => s + (Number(l.quantity) || 0),
+      (s, l) => s + (l.is_retail ? 0 : Number(l.quantity) || 0),
       0,
     );
 
@@ -1341,7 +1608,12 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
       // Flexi Pay (PR-2): the buyer's plan choice. createOrder re-validates
       // instalment availability (channel config + this campaign's
       // allow_instalments) and snapshots the deposit policy on the order.
-      payment_plan: input.payment_plan === "instalment" ? "instalment" : "full",
+      // Retail-only orders must be paid in full. Mixed carts retain the
+      // campaign's wig instalment plan; retail adds no separate instalment.
+      payment_plan:
+        !retailOnly && input.payment_plan === "instalment"
+          ? "instalment"
+          : "full",
       coupon_code: input.coupon_code || null,
       // P0-3: customer referral rail — forwarded to createOrder which
       // resolves + applies the friend discount and stamps referral_code_used
@@ -1500,6 +1772,11 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
     return {
       order_id: order.order_id,
       payment_url: payResult.checkout_url,
+      has_care_items: hasCareItems,
+      care_delivery_notice: hasCareItems
+        ? "EXTRA DELIVERY FEES MAY APPLY"
+        : null,
+      care_only: hasCareItems && orderLines.every((l) => l.is_retail),
       ...(flexi ? { flexi_pay: flexi } : {}),
       ...(preorder ? { preorder } : {}),
       ...(order._notices && order._notices.length
@@ -1592,6 +1869,76 @@ async function getProductDetail({ slug, brand, brandHint, styled_id }) {
   const { campaign, brand: resolvedBrand } = found;
   if (!PUBLIC_STATUSES.has(campaign.status)) {
     throw new NotFoundError("Campaign");
+  }
+
+  // Check if styled_id is a retail product attached to the campaign:
+  const { rows: retailLink } = await query(
+    `SELECT p.product_id, p.slug
+       FROM ${resolvedBrand}.sales_campaign_products scp
+       JOIN ${resolvedBrand}.products p ON p.product_id = scp.product_id
+      WHERE scp.campaign_id = $1 AND scp.product_id = $2
+        AND scp.include_exclude = 'include'
+        AND p.catalogue_role = 'retail' AND p.retail_status = 'live' AND p.is_deleted = false
+      LIMIT 1`,
+    [campaign.campaign_id, styled_id],
+  );
+  if (retailLink.length > 0) {
+    if (!careGate.enabled(resolvedBrand)) throw new NotFoundError("Product");
+    const retailResolver = require("../catalogue/retail-resolver");
+    const retailProduct = await retailResolver.getProductBySlug({
+      brand: resolvedBrand,
+      slug: retailLink[0].slug,
+    });
+    const { rows: imgRows } = await query(
+      `SELECT COALESCE(cdn_url, file_path) AS url, alt_text, is_primary, display_order
+         FROM ${resolvedBrand}.product_images
+        WHERE product_id = $1 AND styled_id IS NULL
+        ORDER BY is_primary DESC, display_order ASC NULLS LAST
+        LIMIT 24`,
+      [retailProduct.product_id],
+    );
+    const seen = new Set();
+    const gallery = [];
+    for (const r of imgRows) {
+      if (!r.url || seen.has(r.url)) continue;
+      seen.add(r.url);
+      gallery.push(r);
+    }
+    return {
+      is_retail: true,
+      styled_id: null,
+      product_id: retailProduct.product_id,
+      name: retailProduct.name,
+      slug: retailProduct.slug,
+      short_description: retailProduct.short_description,
+      long_description: retailProduct.long_description,
+      ingredients: retailProduct.ingredients,
+      directions: retailProduct.directions,
+      warnings: retailProduct.warnings,
+      retail_price_ngn: retailProduct.options[0]?.unit_price_ngn ?? null,
+      anchor_price_ngn: retailProduct.options[0]?.unit_price_ngn ?? null,
+      gallery,
+      options: retailProduct.options,
+      variants: retailProduct.options.map((opt) => ({
+        variant_id: opt.variant_id,
+        colour_name: "",
+        size_code: null,
+        size_label: opt.variant_label || "Standard",
+        size_premium_ngn: 0,
+        lace_code: null,
+        lace_label: null,
+        lace_premium_ngn: 0,
+        effective_price_ngn: opt.unit_price_ngn,
+        available: opt.available,
+        is_default: opt.is_default_variant,
+      })),
+      size_tiers: [],
+      lace_sizes: [],
+      size_guide: null,
+      size_guide_video_url: null,
+      delivery_weeks: campaign.delivery_weeks || null,
+      preorder: false,
+    };
   }
 
   // Authorisation: the styled product must be referenced by this campaign,

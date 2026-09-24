@@ -323,6 +323,8 @@ async function listProducts({ client, brand, campaign_id }) {
   const { rows } = await exec(client)(
     `SELECT scp.*,
             p.name  AS product_name,
+            p.catalogue_role,
+            p.slug  AS product_slug,
             pc.name AS category_name,
             sp.name AS styled_name,
             sp.slug AS styled_slug,
@@ -330,12 +332,37 @@ async function listProducts({ client, brand, campaign_id }) {
             sp.long_description  AS styled_long_description,
             sp.retail_price_ngn  AS styled_retail_price_ngn,
             sp.retail_price_usd  AS styled_retail_price_usd,
-            COALESCE(spi.image_url, scp.image_url) AS resolved_image_url,
-            COALESCE(vstk.live_base_stock, bstk.live_base_stock) AS live_base_stock
+            COALESCE(spi.image_url, rpi.image_url, scp.image_url) AS resolved_image_url,
+            rv.variant_id AS retail_variant_id,
+            rv.sku AS retail_variant_sku,
+            rv.variant_name AS retail_variant_label,
+            COALESCE(rstk.live_retail_stock, vstk.live_base_stock, bstk.live_base_stock) AS live_base_stock
        FROM ${t(brand, "sales_campaign_products")} scp
        LEFT JOIN ${t(brand, "products")} p          ON p.product_id   = scp.product_id
        LEFT JOIN ${t(brand, "product_categories")} pc ON pc.category_id = scp.category_id
        LEFT JOIN ${t(brand, "styled_products")} sp  ON sp.styled_id   = scp.styled_id
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(cdn_url, file_path) AS image_url
+           FROM ${t(brand, "product_images")}
+          WHERE product_id = p.product_id AND styled_id IS NULL
+          ORDER BY is_primary DESC, display_order ASC LIMIT 1
+       ) rpi ON p.catalogue_role = 'retail'
+       LEFT JOIN LATERAL (
+         SELECT pv.variant_id, pv.sku, pv.variant_name
+           FROM ${t(brand, "product_variants")} pv
+          WHERE pv.product_id = p.product_id AND pv.is_active = true
+          ORDER BY pv.is_default DESC, pv.display_order ASC, pv.created_at ASC
+          LIMIT 1
+       ) rv ON p.catalogue_role = 'retail'
+       LEFT JOIN LATERAL (
+         SELECT COALESCE(SUM(sl.available), 0)::INTEGER AS live_retail_stock
+           FROM ${t(brand, "product_variants")} pv
+           JOIN ${t(brand, "stock_levels")} sl     ON sl.variant_id = pv.variant_id
+           JOIN ${t(brand, "stock_locations")} loc ON loc.location_id = sl.location_id
+          WHERE pv.product_id = p.product_id
+            AND loc.available_for_storefront = true
+            AND pv.is_active = true
+       ) rstk ON p.catalogue_role = 'retail'
        LEFT JOIN LATERAL (
          -- Resolve the card image the way the catalogue does, STYLED-ONLY:
          -- explicit primary_image_id → the default colour's first picture →

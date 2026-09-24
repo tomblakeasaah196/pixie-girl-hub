@@ -204,6 +204,16 @@ export function FeaturedProducts({
               : sectionSubtitle
           }
         />
+        {products.some(
+          (p) => p.is_retail || p.catalogue_role === "retail",
+        ) && (
+          <div
+            role="note"
+            className="mx-auto mt-5 max-w-[680px] rounded-xl border border-[rgb(var(--warn)/0.35)] bg-[rgb(var(--warn)/0.09)] px-4 py-3 text-center text-[12px] font-semibold tracking-[0.08em] text-[rgb(var(--warn))]"
+          >
+            EXTRA DELIVERY FEES MAY APPLY · CARE PRODUCTS ARE PICKUP ONLY ONLINE
+          </div>
+        )}
 
         {/* Styled vs Wholesale segmented control — only when the campaign
             offers wholesale (bulk tiers configured). Gives the buyer a clear
@@ -409,6 +419,9 @@ function Card({
   const campaignPrice = Number(product.campaign_price_ngn || 0);
   const retail = Number(product.regular_price_ngn || 0);
   const price = campaignPrice > 0 ? campaignPrice : retail;
+  const isRetail = Boolean(
+    product.is_retail || product.catalogue_role === "retail",
+  );
   // Wholesale (raw) economics: the anchor is what checkout charges for an
   // unstyled wig; the best bulk price is the anchor minus the top tier's
   // per-wig discount.
@@ -424,15 +437,16 @@ function Card({
     liveStock?.[product.styled_id ?? ""] ??
     liveStock?.[product.product_id ?? ""];
   const effectiveStock = liveQty ?? product.stock_remaining;
-  const isPreorder = effectiveStock != null && effectiveStock <= 0;
+  const isPreorder = !isRetail && effectiveStock != null && effectiveStock <= 0;
   const weeks = isPreorder
     ? (deliveryWeeks || 0) + (preorderExtraWeeks ?? 4)
     : deliveryWeeks;
   const deal = cardHeadline(product, payload);
-  const openable = Boolean(product.styled_id);
+  const openable = Boolean(product.styled_id || (isRetail && product.product_id));
 
   function open() {
-    if (openable && product.styled_id) onOpen(product.styled_id);
+    const detailId = product.styled_id || (isRetail ? product.product_id : null);
+    if (openable && detailId) onOpen(detailId);
   }
 
   return (
@@ -623,12 +637,13 @@ function Card({
           ) : (
             <button
               type="button"
+              disabled={isRetail && effectiveStock != null && effectiveStock <= 0}
               onClick={(e) => {
                 e.stopPropagation();
-                // Styled products must be configured (size/lace) before adding —
-                // the base product_id prices at ₦0. Open the detail modal, which
-                // adds the chosen styled_variant_id to the cart.
-                if (product.styled_id) {
+                // Styled and Care & Accessories products use the detail modal:
+                // styled products need a size/lace SKU; retail products need an
+                // exact stock-tracked SKU and its channel price.
+                if (product.styled_id || isRetail) {
                   open();
                   return;
                 }
@@ -651,10 +666,14 @@ function Card({
                 });
                 openCart();
               }}
-              className="btn-cta mt-3 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg text-[12px] font-semibold cta-sheen"
+              className="btn-cta mt-3 inline-flex items-center justify-center gap-1.5 h-9 rounded-lg text-[12px] font-semibold cta-sheen disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ShoppingBag className="w-3.5 h-3.5" />{" "}
-              {isPreorder ? "Pre-order" : "Add"}
+              {isRetail && effectiveStock != null && effectiveStock <= 0
+                ? "Out of stock"
+                : isPreorder
+                  ? "Pre-order"
+                  : "Add"}
             </button>
           ))}
       </div>

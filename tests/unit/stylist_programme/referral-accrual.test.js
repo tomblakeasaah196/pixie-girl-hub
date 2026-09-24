@@ -6,6 +6,12 @@
  * quality-hold payable_at, and idempotency on replay.
  */
 
+jest.mock("../../../src/config/database", () => ({
+  query: jest.fn().mockResolvedValue({
+    rows: [{ line_total_ngn: "120000.00", line_kind: "product", catalogue_role: "base" }],
+  }),
+  transaction: jest.fn(),
+}));
 jest.mock("../../../src/modules/stylist_programme/stylist.repo", () => ({
   findPartner: jest.fn(),
 }));

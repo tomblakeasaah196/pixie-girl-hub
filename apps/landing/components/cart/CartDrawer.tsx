@@ -19,6 +19,7 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
   const open = useCart((s) => s.open);
   const close = useCart((s) => s.closeCart);
   const items = useCart((s) => s.items);
+  const hasRetailItems = items.some((i) => i.type === "retail");
   const setQ = useCart((s) => s.setQuantity);
   const remove = useCart((s) => s.remove);
   const subtotal = useCart((s) => s.subtotalNgn());
@@ -65,6 +66,7 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
         cart: items.map((i) => ({
           bundle_id: i.bundle_id,
           product_id: i.product_id,
+          variant_id: i.variant_id,
           styled_variant_id: i.styled_variant_id,
           unstyled: i.unstyled,
           size_code: i.size_code,
@@ -196,6 +198,14 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
             </div>
 
             <div className="flex-1 overflow-y-auto p-5 space-y-3">
+              {hasRetailItems && (
+                <div
+                  role="note"
+                  className="rounded-xl border border-[rgb(var(--warn)/0.35)] bg-[rgb(var(--warn)/0.09)] px-3.5 py-3 text-[11px] font-semibold tracking-[0.06em] text-[rgb(var(--warn))]"
+                >
+                  EXTRA DELIVERY FEES MAY APPLY · PICKUP ONLY ONLINE
+                </div>
+              )}
               {items.length === 0 && (
                 <div className="text-center pt-10">
                   <span className="inline-grid place-items-center w-16 h-16 rounded-2xl bg-[rgb(var(--accent)/0.1)] text-[rgb(var(--accent-glow))] mb-3">

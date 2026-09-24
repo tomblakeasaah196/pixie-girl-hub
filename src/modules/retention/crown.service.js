@@ -238,6 +238,32 @@ async function awardForAction({
 async function earnForOrder({ brand, contact_id, order_id, total_ngn }) {
   if (!contact_id) return;
   await transaction(async (client) => {
+    // Check order lines to determine eligible wig value vs retail lines
+    const { rows: lines } = await client.query(
+      `SELECT sol.line_total_ngn, sol.line_kind, p.catalogue_role
+         FROM ${brand}.sales_order_lines sol
+         LEFT JOIN ${brand}.product_variants pv ON pv.variant_id = sol.variant_id
+         LEFT JOIN ${brand}.products p ON p.product_id = COALESCE(sol.product_id, pv.product_id)
+        WHERE sol.order_id = $1`,
+      [order_id],
+    );
+    const wigLines = lines.filter(
+      (l) =>
+        l.line_kind !== "service" && l.catalogue_role !== "retail",
+    );
+    if (!wigLines.length) {
+      // Retail-only order: zero loyalty/crowns, no purchase streak advance
+      return;
+    }
+    const wigTotal = wigLines.reduce(
+      (s, l) => Number(s) + Number(l.line_total_ngn || 0),
+      0,
+    );
+    const reportedTotal = Number(total_ngn);
+    const eligibleAmount = Number.isFinite(reportedTotal)
+      ? Math.min(wigTotal, reportedTotal)
+      : wigTotal;
+
     await awardForAction({
       client,
       brand,
@@ -253,7 +279,7 @@ async function earnForOrder({ brand, contact_id, order_id, total_ngn }) {
       action_type: "money_spent",
       reference_type: "sales_order",
       reference_id: order_id,
-      amount_ngn: total_ngn,
+      amount_ngn: eligibleAmount,
     });
     await streak.recordQualifyingAction({
       client,

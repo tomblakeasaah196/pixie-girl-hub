@@ -145,9 +145,20 @@ function computeDiscount(coupon, subtotalNgn) {
 
 async function firstTimeOk({ brand, contact_id }) {
   if (!contact_id) return true;
+  // A customer's earlier retail-only purchases do not erase first-wig offer eligibility:
+  // only previous orders that contained wig lines count against first-wig eligibility.
   const { rows } = await query(
-    `SELECT count(*)::int AS c FROM ${brand}.sales_orders
-      WHERE contact_id = $1 AND status IN ('paid','assigned','order_ready','dispatched','completed')`,
+    `SELECT count(*)::int AS c FROM ${brand}.sales_orders so
+      WHERE so.contact_id = $1
+        AND so.status IN ('paid','assigned','order_ready','dispatched','completed')
+        AND EXISTS (
+          SELECT 1 FROM ${brand}.sales_order_lines sol
+          LEFT JOIN ${brand}.product_variants pv ON pv.variant_id = sol.variant_id
+          LEFT JOIN ${brand}.products p ON p.product_id = COALESCE(sol.product_id, pv.product_id)
+          WHERE sol.order_id = so.order_id
+            AND COALESCE(sol.line_kind, 'product') <> 'service'
+            AND (p.catalogue_role IS NULL OR p.catalogue_role <> 'retail')
+                    )`,
     [contact_id],
   );
   return rows[0].c === 0;

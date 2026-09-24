@@ -50,6 +50,7 @@ type Gateway = "paystack" | "nomba";
 export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const router = useRouter();
   const items = useCart((s) => s.items);
+  const hasRetailItems = items.some((i) => i.type === "retail");
   // Local line-sum — an instant optimistic figure used only while the
   // server quote is in flight.
   const subtotal = useCart((s) => s.subtotalNgn());
@@ -116,8 +117,15 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   const [phone, setPhone] = useState("+234 ");
   const [insta, setInsta] = useState("");
 
-  // Fulfilment: ship to address, or collect in store.
-  const [fulfilment, setFulfilment] = useState<Fulfilment>("delivery");
+  // Fulfilment: ship to address, or collect in store. Retail-containing
+  // campaign orders are fail-closed to pickup until web delivery fee/tax
+  // treatment is owner-approved.
+  const [fulfilment, setFulfilment] = useState<Fulfilment>(
+    hasRetailItems ? "pickup" : "delivery",
+  );
+  useEffect(() => {
+    if (hasRetailItems) setFulfilment("pickup");
+  }, [hasRetailItems]);
 
   const [addressLine1, setAddressLine1] = useState("");
   const [addressLine2, setAddressLine2] = useState("");
@@ -261,6 +269,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
         cart: items.map((i) => ({
           bundle_id: i.bundle_id,
           product_id: i.product_id,
+          variant_id: i.variant_id,
           styled_variant_id: i.styled_variant_id,
           unstyled: i.unstyled,
           size_code: i.size_code,
@@ -594,6 +603,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
         cart: items.map((i) => ({
           bundle_id: i.bundle_id,
           product_id: i.product_id,
+          variant_id: i.variant_id,
           styled_variant_id: i.styled_variant_id,
           unstyled: i.unstyled,
           size_code: i.size_code,
@@ -787,6 +797,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                     key={opt.v}
                     type="button"
                     onClick={() => setFulfilment(opt.v)}
+                    disabled={hasRetailItems && opt.v === "delivery"}
                     className={`p-3 rounded-xl border text-left transition-colors ${
                       fulfilment === opt.v
                         ? "border-[rgb(var(--accent)/0.5)] bg-[rgb(var(--accent)/0.08)]"
@@ -803,6 +814,23 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                   </button>
                 ))}
               </div>
+
+              {hasRetailItems && (
+                <div
+                  role="note"
+                  data-testid="care-delivery-notice"
+                  className="rounded-xl border border-amber-400/40 bg-amber-400/[0.06] p-3 text-[12px] text-[rgb(var(--text-muted))]"
+                >
+                  <strong className="font-bold uppercase tracking-wide text-[rgb(var(--text-primary))]">
+                    EXTRA DELIVERY FEES MAY APPLY
+                  </strong>
+                  <p className="mt-1">
+                    Care & Accessories orders are currently pickup-only while our
+                    team confirms delivery arrangements. Choose Pick up, or
+                    contact us to arrange delivery.
+                  </p>
+                </div>
+              )}
 
               {fulfilment === "delivery" ? (
                 <div id="delivery-address" className="space-y-3 pt-1">

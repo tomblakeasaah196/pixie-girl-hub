@@ -21,6 +21,7 @@ const { audit } = require("../../middleware/audit");
 const { money, toCurrencyString } = require("../../utils/money");
 const { NotFoundError, AppError } = require("../../utils/errors");
 const { logger } = require("../../config/logger");
+const { transaction } = require("../../config/database");
 
 // ── Links ─────────────────────────────────────────────────
 async function createLink({ stylist_id, business, input }) {
@@ -88,11 +89,34 @@ async function accrueForPaidOrder({ brand, order_id }) {
     );
     return null;
   }
+
+  // Check lines to determine eligible wig total vs retail items.
+  const { query: dbQuery } = require("../../config/database");
+  const { rows: lines } = await dbQuery(
+    `SELECT sol.line_total_ngn, sol.line_kind, p.catalogue_role
+       FROM ${brand}.sales_order_lines sol
+       LEFT JOIN ${brand}.product_variants pv ON pv.variant_id = sol.variant_id
+       LEFT JOIN ${brand}.products p ON p.product_id = COALESCE(sol.product_id, pv.product_id)
+      WHERE sol.order_id = $1`,
+    [order_id],
+  );
+  const wigLines = lines.filter(
+    (l) => l.line_kind !== "service" && l.catalogue_role !== "retail",
+  );
+  if (!wigLines.length) {
+    // Retail-only order: zero stylist referral commission
+    return null;
+  }
+  const wigTotal = wigLines.reduce(
+    (s, l) => s.plus(money(l.line_total_ngn || 0)),
+    money(0),
+  );
+  const total = wigTotal.gt(order.total_ngn) ? money(order.total_ngn) : wigTotal;
+
   const cfg = await programmeRepo.getConfig({ business: brand });
   const pct = money(
     hit.referral_commission_pct ?? (cfg ? cfg.referral_commission_pct : 10),
   );
-  const total = money(order.total_ngn || 0);
   const commission = total.times(pct).dividedBy(100);
   const holdDays = cfg ? Number(cfg.quality_hold_days || 7) : 7;
 
@@ -143,6 +167,24 @@ async function listAttributions(args) {
   return programmeRepo.listAttributions(args);
 }
 
+async function voidForCancelledOrder({ brand, order_id }) {
+  const voided = await transaction((client) =>
+    programmeRepo.voidAttributionsForOrder({
+      client,
+      business: brand,
+      order_id,
+    }),
+  );
+  for (const attribution of voided || []) {
+    events.emit("referral.voided", {
+      stylist_id: attribution.stylist_id,
+      attribution_id: attribution.attribution_id,
+      order_id,
+    });
+  }
+  return voided;
+}
+
 async function summary({ stylist_id }) {
   const rows = await programmeRepo.listAttributions({ stylist_id });
   const sum = (status) =>
@@ -170,5 +212,6 @@ module.exports = {
   validateCode,
   accrueForPaidOrder,
   listAttributions,
+  voidForCancelledOrder,
   summary,
 };

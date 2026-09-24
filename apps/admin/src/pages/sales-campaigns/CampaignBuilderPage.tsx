@@ -86,7 +86,9 @@ import {
 } from "@/lib/campaigns";
 import { useBusinessConfig } from "@/lib/settings";
 import { type StyledProduct } from "@/lib/catalogue";
+import { type CareProduct } from "@/lib/care-accessories";
 import { StyledProductPicker } from "@/components/campaign/StyledProductPicker";
+import { CareProductPicker } from "@/components/campaign/CareProductPicker";
 
 const TONE_FOR: Record<CampaignStatus, Tone> = {
   draft: "neutral",
@@ -1232,10 +1234,14 @@ function ProductsStep({
   const addBatch = useAddProductsBatch(campaign.campaign_id);
   const removeProduct = useRemoveCampaignProduct(campaign.campaign_id);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [carePickerOpen, setCarePickerOpen] = useState(false);
 
   const products = (productsQ.data?.data || []) as CampaignProduct[];
   const excludeIds = new Set(
     products.filter((p) => p.styled_id).map((p) => p.styled_id!),
+  );
+  const excludeCareIds = new Set(
+    products.filter((p) => !p.styled_id && p.product_id).map((p) => p.product_id!),
   );
 
   async function handleAdd(items: StyledProduct[]) {
@@ -1258,6 +1264,29 @@ function ProductsStep({
     );
   }
 
+  async function handleAddCare(items: CareProduct[]) {
+    await addBatch.mutateAsync(
+      items.map((p) => {
+        const variant = p.variants?.find((v) => v.is_default && v.is_active)
+          ?? p.variants?.find((v) => v.is_active);
+        return {
+          product_id: p.product_id,
+          image_url: p.primary_image_url || null,
+          regular_price_ngn: variant?.price_storefront_ngn != null
+            ? Number(variant.price_storefront_ngn)
+            : null,
+          regular_price_usd: variant?.price_storefront_usd != null
+            ? Number(variant.price_storefront_usd)
+            : null,
+          short_description: p.short_description,
+          long_description: p.long_description,
+          include_exclude: "include",
+          is_featured: false,
+        };
+      }),
+    );
+  }
+
   return (
     <Card className="p-5 space-y-4">
       <div className="flex items-end justify-between gap-3">
@@ -1272,13 +1301,22 @@ function ProductsStep({
           </p>
         </div>
         {canEdit && (
-          <Button
-            variant="primary"
-            icon={<Plus className="w-4 h-4" />}
-            onClick={() => setPickerOpen(true)}
-          >
-            Add products
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="primary"
+              icon={<Plus className="w-4 h-4" />}
+              onClick={() => setPickerOpen(true)}
+            >
+              Add wig products
+            </Button>
+            <Button
+              variant="secondary"
+              icon={<Plus className="w-4 h-4" />}
+              onClick={() => setCarePickerOpen(true)}
+            >
+              Add care
+            </Button>
+          </div>
         )}
       </div>
 
@@ -1388,6 +1426,18 @@ function ProductsStep({
           excludeIds={excludeIds}
           onAdd={handleAdd}
           onClose={() => setPickerOpen(false)}
+        />
+      </Modal>
+      <Modal
+        open={carePickerOpen}
+        onClose={() => setCarePickerOpen(false)}
+        title="Add Care & Accessories"
+        size="lg"
+      >
+        <CareProductPicker
+          excludeIds={excludeCareIds}
+          onAdd={handleAddCare}
+          onClose={() => setCarePickerOpen(false)}
         />
       </Modal>
     </Card>

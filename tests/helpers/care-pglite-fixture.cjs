@@ -526,8 +526,20 @@ async function boot() {
     activeTx ? activeTx.query(sql, params) : db.query(sql, params);
   dbmod.ex = (client) =>
     client ? client.query.bind(client) : (sql, params) => dbmod.query(sql, params);
-  dbmod.transaction = async (fn) =>
-    db.transaction(async (tx) => {
+  // Reentrant: production code sometimes opens a transaction from inside
+  // another (e.g. the /o order form calls sales.createOrder inside its own
+  // contact transaction). On PostgreSQL the inner one takes a second pooled
+  // connection; PGlite has exactly one, so a nested db.transaction() would
+  // wait on the outer forever. The inner block therefore joins the open
+  // transaction — the same statements run in the same order; the only
+  // difference is that an inner failure also rolls back the outer, which the
+  // suites never rely on.
+  dbmod.transaction = async (fn) => {
+    if (activeTx) {
+      const tx = activeTx;
+      return fn({ query: (sql, params) => tx.query(sql, params) });
+    }
+    return db.transaction(async (tx) => {
       const prev = activeTx;
       activeTx = tx;
       try {
@@ -537,6 +549,7 @@ async function boot() {
         activeTx = prev;
       }
     });
+  };
   // Payment gateway double: PR 2 never exercises live providers.
   const payPath = require.resolve("../../src/modules/sales/payment-link.service");
   require.cache[payPath] = {

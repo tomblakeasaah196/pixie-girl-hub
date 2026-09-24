@@ -329,8 +329,7 @@ async function buildPrefillContext(link) {
     fx_rate_ngn_per_usd,
     has_care_items: hasCare,
     care_delivery_notice: hasCare ? "EXTRA DELIVERY FEES MAY APPLY" : null,
-    // Exact-string copy for the confirmation screen; the word MAY is
-    // owner-approved and must never be rendered as WILL.
+    // Exact required wording: MAY, never WILL.
     care_only: careOnly,
     delivery_available: !hasCare,
     delivery_unavailable_reason: hasCare ? "care_items_staff_arranged" : null,

@@ -190,8 +190,11 @@ export interface Message {
  * picker domain (base/styled/bundle/service). `capture_url` is the shared
  * `/o/<slug>` order-link URL (same link for every card in the share). */
 export interface ProductCard {
-  kind: "base" | "styled" | "bundle" | "service";
+  // "retail" = a Care & Accessories SKU; `id` is then the exact variant id.
+  kind: "base" | "styled" | "bundle" | "service" | "retail";
   id: string;
+  product_id?: string | null;
+  sku?: string | null;
   name: string;
   price?: string | number | null;
   image_url?: string | null;

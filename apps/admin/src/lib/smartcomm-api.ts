@@ -253,8 +253,11 @@ export const smartcommApi = {
     contact_id?: string;
     channel_id?: string;
     items: {
-      kind?: "base" | "styled" | "bundle" | "service";
+      kind?: "base" | "styled" | "bundle" | "service" | "retail";
       product_id?: string;
+      // Exact Care & Accessories SKU (mandatory for kind "retail").
+      variant_id?: string;
+      sku?: string;
       styled_id?: string;
       bundle_id?: string;
       service_id?: string;

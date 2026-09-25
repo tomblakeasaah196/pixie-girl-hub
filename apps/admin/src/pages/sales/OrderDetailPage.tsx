@@ -77,6 +77,7 @@ import {
   useStatusAutomations,
   useOrderAmendments,
   useSetSpecificInstructions,
+  useNotifyPreorderArrival,
 } from "./hooks";
 import { generateReceipt } from "./api";
 import type { OrderServiceJob, RestoreShortLine } from "./api";
@@ -295,6 +296,7 @@ export function OrderDetailPage() {
     useStatusAutomations(!!orderId);
   const { data: paymentSettings } = usePaymentSettings();
   const { data: amendments = [] } = useOrderAmendments(orderId);
+  const notifyArrival = useNotifyPreorderArrival(orderId ?? "");
 
   const [confirmCancel, setConfirmCancel] = useState(false);
   // Why this order is being cancelled. Staff pick a preset (or "other" and
@@ -507,6 +509,21 @@ export function OrderDetailPage() {
       );
     } finally {
       setReceiptLoading(false);
+    }
+  };
+
+  const handleNotifyArrival = async () => {
+    if (!orderId) return;
+    try {
+      const res = await notifyArrival.mutateAsync();
+      fireToast("Customer notified", `Arrival email sent to ${res.to}.`);
+    } catch (err) {
+      fireToast(
+        "Email Failed",
+        err instanceof Error ? err.message : "Failed to send the arrival email.",
+        "order",
+        "high",
+      );
     }
   };
 
@@ -1057,22 +1074,58 @@ export function OrderDetailPage() {
             </Card>
           )}
 
-          {/* Pre-order deadline + production window (000086). The order
-              carries a made-to-order line; ship-by is placement + the max
-              production weeks, snapshotted at checkout. */}
-          {order.is_preorder && (
+          {/* Pre-order deadline + production window (000086) and, once stock has
+              arrived (000097), the email-only "notify customer of arrival"
+              button. Shown while the order is still a pre-order OR after it was
+              fulfilled by arriving stock, so the button survives is_preorder
+              flipping back to false. */}
+          {(order.is_preorder || order.preorder_fulfilled_at) && (
             <div className="flex items-start gap-2 p-3 rounded-[11px] bg-accent/[0.06] border border-accent/20">
               <Clock className="w-4 h-4 text-accent-glow shrink-0 mt-0.5" />
-              <div className="text-[12.5px]">
-                <span className="font-semibold">Pre-order</span>
-                {" — made to order."}
-                {preorderWindow ? ` Ships in about ${preorderWindow}.` : ""}
-                {order.preorder_ready_by ? (
-                  <span className="text-text-muted">
-                    {" "}
-                    Ready by {formatDate(order.preorder_ready_by)}.
-                  </span>
+              <div className="text-[12.5px] flex-1 min-w-0">
+                {order.is_preorder ? (
+                  <>
+                    <span className="font-semibold">Pre-order</span>
+                    {" — made to order."}
+                    {preorderWindow ? ` Ships in about ${preorderWindow}.` : ""}
+                    {order.preorder_ready_by ? (
+                      <span className="text-text-muted">
+                        {" "}
+                        Ready by {formatDate(order.preorder_ready_by)}.
+                      </span>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <span className="font-semibold">Pre-order fulfilled</span>
+                    {" — stock has arrived and been applied to this order."}
+                  </>
+                )}
+                {order.preorder_arrival_notified_at ? (
+                  <div className="text-text-muted mt-1">
+                    Customer emailed about arrival on{" "}
+                    {formatDate(order.preorder_arrival_notified_at)}.
+                  </div>
                 ) : null}
+                <div className="mt-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleNotifyArrival}
+                    disabled={notifyArrival.isPending || !order.contact_email}
+                    title={
+                      order.contact_email
+                        ? "Email the customer that their pre-order has arrived"
+                        : "No email on file for this customer"
+                    }
+                  >
+                    {notifyArrival.isPending
+                      ? "Sending…"
+                      : order.preorder_arrival_notified_at
+                        ? "Resend arrival email"
+                        : "Notify customer (email)"}
+                  </Button>
+                </div>
               </div>
             </div>
           )}

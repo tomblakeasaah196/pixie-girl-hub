@@ -6,6 +6,7 @@
 
 const service = require("./sales.service");
 const amendmentService = require("./amendment.service");
+const preorderArrival = require("./preorder-arrival.service");
 const orderCouponService = require("./order-coupon.service");
 const paymentLink = require("./payment-link.service");
 const paymentSettings = require("./payment-settings.service");
@@ -43,6 +44,15 @@ async function listOrders(req, res) {
 const getById = async (req, res) =>
   res.json({
     data: await service.getById({ brand: req.brand, id: req.params.id }),
+  });
+// Manual, email-only "your pre-order has arrived" notice to the customer.
+const notifyPreorderArrival = async (req, res) =>
+  res.status(201).json({
+    data: await preorderArrival.notifyPreorderArrival({
+      brand: req.brand,
+      user: req.user,
+      order_id: req.params.id,
+    }),
   });
 // The order's Stylist Studio job — served THROUGH the order (sales.view), so a
 // salesperson who can see the order sees its studio progress even though they
@@ -375,6 +385,7 @@ module.exports = {
   listOrders,
   getById,
   getOrderServiceJob,
+  notifyPreorderArrival,
   receiptPdf,
   exportReport,
   createOrder,

@@ -144,6 +144,20 @@ export function useRestoreOrder() {
   });
 }
 
+/** Email the customer that their pre-order has arrived (email-only). */
+export function useNotifyPreorderArrival(orderId: string) {
+  const qc = useQueryClient();
+  const biz = useBiz();
+  return useMutation({
+    mutationFn: () => salesApi.notifyPreorderArrival(orderId),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: ["sales-orders", biz, "detail", orderId],
+      });
+    },
+  });
+}
+
 // ── Change Order (§6.2 amendments) ──────────────────────────
 
 /** Every change made to this order, newest first — the history card. */

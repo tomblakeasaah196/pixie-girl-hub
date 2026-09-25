@@ -465,6 +465,7 @@ async function startWorkers() {
   require("../modules/sales/duplicate-resolve.subscribers"); // order.paid → cancel pending duplicate twins
   require("../modules/sales/amendment.subscribers"); // order.amended → customer letter + invoice PDF + Studio job
   require("../modules/stock/stock.subscribers"); // variant.created → seed stock level
+  require("../modules/sales/preorder-allocation.subscribers"); // stock.received → draw/reserve waiting pre-orders (+ ops/sales notify)
   require("../modules/service_jobs/service-jobs.subscribers"); // order.deposit_met + order.paid → service job
   require("../modules/stylist_programme/stylist.subscribers"); // order.paid → stylist referral accrual
   require("../modules/business_setup/webhooks.service"); // webhook.received → dispatch

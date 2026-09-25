@@ -12,6 +12,12 @@ const { t } = require("../../config/brands");
 const {
   nextDocumentNumber,
 } = require("../../shared/numbering/document-number");
+const { REVENUE_STATES_SQL } = require("./order-status");
+
+// Orders that are dead (or in limbo) never receive an auto-allocation of
+// arriving stock — never draw a unit for an order that is cancelled, failed,
+// still a draft, or has a cancellation pending.
+const PREORDER_DEAD_STATES_SQL = `('draft','cancelled','refunded','failed','cancellation_requested')`;
 const ORDER = [
   "order_number",
   "contact_id",
@@ -1492,11 +1498,157 @@ async function markLinesPreorder({ client, brand, line_ids }) {
   );
 }
 
+// ── Pre-order auto-allocation (fulfil waiting pre-orders when stock arrives) ──
+/**
+ * Every open pre-order line waiting on a variant, with the order context the
+ * allocator needs, in fulfilment priority order: PAID orders first (money has
+ * landed — fulfil them before anyone), then oldest-first within each group so
+ * the earliest pre-order placed is served first. Dead/limbo orders (cancelled,
+ * failed, draft, cancellation pending) are excluded — never draw a unit for an
+ * order that may never complete.
+ */
+async function openPreorderLinesForVariant({ client, brand, variant_id }) {
+  const { rows } = await ex(client)(
+    `SELECT sol.line_id, sol.order_id, sol.variant_id, sol.quantity,
+            sol.product_name_snapshot, sol.unit_cost_ngn, sol.styled_product_id,
+            so.order_number, so.status, so.sales_channel, so.contact_id,
+            COALESCE(so.placed_at, so.created_at) AS ordered_at,
+            (so.status IN ${REVENUE_STATES_SQL}) AS is_paid
+       FROM ${t(brand, "sales_order_lines")} sol
+       JOIN ${t(brand, "sales_orders")} so ON so.order_id = sol.order_id
+      WHERE sol.variant_id = $1
+        AND sol.is_preorder = true
+        AND so.status NOT IN ${PREORDER_DEAD_STATES_SQL}
+      ORDER BY is_paid DESC,
+               COALESCE(so.placed_at, so.created_at) ASC,
+               so.order_number ASC,
+               sol.line_id ASC`,
+    [variant_id],
+  );
+  return rows;
+}
+
+/** Distinct variants that still have at least one open pre-order line on a live
+ *  order — the work list for the deploy/backfill reconcile sweep. */
+async function variantsWithOpenPreorders({ client, brand }) {
+  const { rows } = await ex(client)(
+    `SELECT DISTINCT sol.variant_id
+       FROM ${t(brand, "sales_order_lines")} sol
+       JOIN ${t(brand, "sales_orders")} so ON so.order_id = sol.order_id
+      WHERE sol.is_preorder = true
+        AND sol.variant_id IS NOT NULL
+        AND so.status NOT IN ${PREORDER_DEAD_STATES_SQL}`,
+  );
+  return rows.map((r) => r.variant_id);
+}
+
+/** Clear the pre-order flag on lines that are now fully stock-backed (drawn for
+ *  a paid order, reserved for an unpaid one). */
+async function resolvePreorderLines({ client, brand, line_ids }) {
+  const ids = (line_ids || []).filter(Boolean);
+  if (!ids.length) return;
+  await ex(client)(
+    `UPDATE ${t(brand, "sales_order_lines")}
+        SET is_preorder = false WHERE line_id = ANY($1::uuid[])`,
+    [ids],
+  );
+}
+
+/**
+ * Recompute the order header's pre-order state from its lines: is_preorder is
+ * true iff any line is still waiting, and the FIRST time no line is left waiting
+ * we stamp preorder_fulfilled_at (kept forever after, so the order detail can
+ * still offer "notify customer of arrival"). Returns whether the order still has
+ * open pre-order lines and whether THIS call is the one that just fulfilled it.
+ */
+async function recomputeOrderPreorderState({ client, brand, order_id }) {
+  const { rows } = await ex(client)(
+    `WITH before AS (
+       SELECT preorder_fulfilled_at AS old_fulfilled
+         FROM ${t(brand, "sales_orders")} WHERE order_id = $1
+     ),
+     has_open AS (
+       SELECT EXISTS (
+         SELECT 1 FROM ${t(brand, "sales_order_lines")}
+          WHERE order_id = $1 AND is_preorder = true
+       ) AS open
+     )
+     UPDATE ${t(brand, "sales_orders")} so
+        SET is_preorder = (SELECT open FROM has_open),
+            preorder_fulfilled_at = CASE
+              WHEN NOT (SELECT open FROM has_open) AND so.preorder_fulfilled_at IS NULL
+                THEN now() ELSE so.preorder_fulfilled_at END,
+            updated_at = now()
+      WHERE so.order_id = $1
+      RETURNING so.is_preorder,
+                so.preorder_fulfilled_at,
+                (SELECT old_fulfilled FROM before) AS old_fulfilled`,
+    [order_id],
+  );
+  const r = rows[0];
+  if (!r) return { is_preorder: false, just_fulfilled: false };
+  return {
+    is_preorder: r.is_preorder,
+    just_fulfilled: !r.old_fulfilled && !!r.preorder_fulfilled_at,
+  };
+}
+
+/**
+ * Prune a resolved variant from the order's `stock_shortfall` internal note —
+ * markPaid recorded "paid but nothing to draw" there, and once the allocator has
+ * drawn it, that entry is stale and must not keep ops chasing a fulfilled line.
+ * Best-effort: leaves free-text notes untouched, only edits the JSON shape it
+ * itself wrote.
+ */
+async function clearShortfallForVariant({ client, brand, order_id, variant_id }) {
+  const { rows } = await ex(client)(
+    `SELECT internal_notes FROM ${t(brand, "sales_orders")} WHERE order_id = $1`,
+    [order_id],
+  );
+  const raw = rows[0] && rows[0].internal_notes;
+  if (!raw) return;
+  let obj;
+  try {
+    obj = JSON.parse(raw);
+  } catch {
+    return; // free text, nothing structured to prune
+  }
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return;
+  const sf = obj.stock_shortfall;
+  if (!sf || !Array.isArray(sf.lines)) return;
+  const remaining = sf.lines.filter((l) => l && l.variant_id !== variant_id);
+  if (remaining.length === sf.lines.length) return; // nothing matched
+  if (remaining.length) obj.stock_shortfall = { ...sf, lines: remaining };
+  else delete obj.stock_shortfall;
+  await ex(client)(
+    `UPDATE ${t(brand, "sales_orders")} SET internal_notes = $2 WHERE order_id = $1`,
+    [order_id, JSON.stringify(obj)],
+  );
+}
+
+/** Stamp when the customer was last emailed that their pre-order arrived. */
+async function markArrivalNotified({ client, brand, order_id }) {
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "sales_orders")}
+        SET preorder_arrival_notified_at = now(), updated_at = now()
+      WHERE order_id = $1
+      RETURNING preorder_arrival_notified_at`,
+    [order_id],
+  );
+  return rows[0] ? rows[0].preorder_arrival_notified_at : null;
+}
+
 module.exports = {
   getPreorderPolicy,
   excludedPreorderProductIds,
   markOrderPreorder,
   markLinesPreorder,
+  openPreorderLinesForVariant,
+  variantsWithOpenPreorders,
+  resolvePreorderLines,
+  recomputeOrderPreorderState,
+  clearShortfallForVariant,
+  markArrivalNotified,
   setSpecificInstructions,
   updateOrderHeader,
   listDiscounts,

@@ -993,11 +993,34 @@ async function accrueForOrder({ brand, order }) {
     });
     if (!rule || (!rule.rate_pct && !rule.rate_fixed_ngn)) return null;
 
-    const net = money(order.subtotal_ngn).minus(
-      money(order.discount_amount_ngn || 0),
+    // Check order lines: retail value earns zero sales commission.
+    const { rows: lines } = await client.query(
+      `SELECT sol.line_total_ngn, sol.unit_price_ngn, sol.quantity, sol.line_kind,
+              p.catalogue_role
+         FROM ${brand}.sales_order_lines sol
+         LEFT JOIN ${brand}.product_variants pv ON pv.variant_id = sol.variant_id
+         LEFT JOIN ${brand}.products p ON p.product_id = COALESCE(sol.product_id, pv.product_id)
+        WHERE sol.order_id = $1`,
+      [order.order_id],
     );
+    const wigLines = lines.filter(
+      (l) =>
+        l.line_kind !== "service" && l.catalogue_role !== "retail",
+    );
+    if (!wigLines.length) return null; // retail-only orders earn zero sales commission
+
+    const wigNet = wigLines.reduce(
+      (s, l) => s.plus(money(l.line_total_ngn || 0)),
+      money(0),
+    );
+    const wigGross = wigLines.reduce(
+      (s, l) =>
+        s.plus(money(l.unit_price_ngn || 0).times(Number(l.quantity || 1))),
+      money(0),
+    );
+
     const basis =
-      rule.calculation_basis === "gross_revenue" ? money(order.total_ngn) : net;
+      rule.calculation_basis === "gross_revenue" ? wigGross : wigNet;
     let amount = money(0);
     if (rule.rate_pct) amount = amount.plus(basis.times(money(rule.rate_pct)));
     if (rule.rate_fixed_ngn) amount = amount.plus(money(rule.rate_fixed_ngn));
@@ -1214,6 +1237,37 @@ async function payslipPdf({ brand, user, payslip_id }) {
   });
 }
 
+async function reverseForCancelledOrder({ brand, order_id }) {
+  return transaction(async (client) => {
+    const { rows } = await client.query(
+      `SELECT earning_id, status
+         FROM ${brand}.commission_earned
+        WHERE order_id = $1 AND status IN ('accrued','approved')
+        FOR UPDATE`,
+      [order_id],
+    );
+    for (const earning of rows) {
+      await repo.setCommissionStatus({
+        client,
+        brand,
+        earning_id: earning.earning_id,
+        status: "reversed",
+      });
+      await aud({
+        business: brand,
+        user_id: null,
+        action_key: "hr_payroll.commission.reverse_on_order_cancel",
+        target_type: "commission_earned",
+        target_id: earning.earning_id,
+        after: { order_id, status: "reversed" },
+      });
+    }
+    // Paid/settled rows are deliberately not selected: cancellation never
+    // rewrites a settled payroll result.
+    return rows.length;
+  });
+}
+
 module.exports = {
   listRuns,
   getRun,
@@ -1234,6 +1288,7 @@ module.exports = {
   listCommissions,
   accrueCommission,
   accrueForOrder,
+  reverseForCancelledOrder,
   approveCommission,
   reverseCommission,
   listBonuses,

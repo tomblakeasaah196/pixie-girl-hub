@@ -13,6 +13,7 @@
 const crypto = require("crypto");
 const repo = require("./campaigns.repo");
 const styledRepo = require("../catalogue/styled.repo");
+const careGate = require("../catalogue/care-accessories.gate");
 const events = require("./campaigns.events");
 const readiness = require("./campaigns.readiness.service");
 const wf = require("../../workflows/engine");
@@ -479,6 +480,28 @@ async function resolveStyledInput(client, brand, input) {
   return { ...input, product_id: styled.base_product_id };
 }
 
+async function assertCampaignProductAllowed(client, brand, input) {
+  if (!input.product_id || input.styled_id) return;
+  const { rows } = await client.query(
+    `SELECT catalogue_role, retail_status, is_deleted
+       FROM ${brand}.products
+      WHERE product_id = $1`,
+    [input.product_id],
+  );
+  const product = rows[0];
+  if (!product) throw new NotFoundError("Product");
+  if (product.catalogue_role === "retail") {
+    careGate.requireEnabled(brand);
+    if (product.is_deleted || product.retail_status !== "live") {
+      throw new AppError(
+        "CAMPAIGN_PRODUCT_UNAVAILABLE",
+        "This Care & Accessories product is not live",
+        409,
+      );
+    }
+  }
+}
+
 async function addProduct({ brand, user, request_id, id, input }) {
   return transaction(async (client) => {
     const campaign = await repo.findById({ client, brand, id });
@@ -488,6 +511,7 @@ async function addProduct({ brand, user, request_id, id, input }) {
       ["draft", "pending_approval", "scheduled", "live", "paused"],
       "edit products of",
     );
+    await assertCampaignProductAllowed(client, brand, input);
     const resolved = await resolveStyledInput(client, brand, input);
     const link = await repo.addProduct({
       client,
@@ -558,6 +582,9 @@ async function addProductsBatch({ brand, user, request_id, id, items }) {
       campaign,
       ["draft", "pending_approval", "scheduled", "live", "paused"],
       "edit products of",
+    );
+    await Promise.all(
+      items.map((item) => assertCampaignProductAllowed(client, brand, item)),
     );
     const resolved = await Promise.all(
       items.map((item) => resolveStyledInput(client, brand, item)),
@@ -636,11 +663,13 @@ function buildLandingPayload(c, products, state) {
       live_now_pill: extras.live_now_pill || null,
       browse_cta_text: extras.browse_cta_text || null,
       overlay_opacity:
-        extras.hero_overlay_opacity != null
+        extras.hero_overlay_opacity !== null &&
+        extras.hero_overlay_opacity !== undefined
           ? Number(extras.hero_overlay_opacity)
           : null,
       watermark_opacity:
-        extras.watermark_opacity != null
+        extras.watermark_opacity !== null &&
+        extras.watermark_opacity !== undefined
           ? Number(extras.watermark_opacity)
           : null,
     },
@@ -691,51 +720,60 @@ function buildLandingPayload(c, products, state) {
       state === "live"
         ? products
             .filter((p) => p.include_exclude !== "exclude")
-            .map((p) => ({
-              product_id: p.product_id,
-              styled_id: p.styled_id,
-              category_id: p.category_id,
-              name: p.styled_name || p.product_name || p.category_name,
-              // Long + short copy: the Catalogue is the single source of truth,
-              // so prefer the LIVE styled product description and only fall back
-              // to the snapshot taken on add when the styled row is gone (e.g.
-              // deleted from the catalogue). This makes catalogue copy edits show
-              // on the live campaign card immediately — no re-import required.
-              short_description:
-                p.styled_short_description ?? p.short_description ?? null,
-              long_description:
-                p.styled_long_description ?? p.long_description ?? null,
-              campaign_price_ngn: p.campaign_price_ngn,
-              campaign_price_usd: p.campaign_price_usd,
-              // Both-currency reference (strikethrough) prices. Catalogue is the
-              // source of truth, so prefer the LIVE styled retail price and fall
-              // back to the snapshot only when the styled row is gone. The actual
-              // sale price (campaign_price_*) stays a deliberate per-campaign
-              // override and is intentionally NOT re-derived here.
-              regular_price_ngn:
-                p.styled_retail_price_ngn ?? p.regular_price_ngn ?? null,
-              regular_price_usd:
-                p.styled_retail_price_usd ?? p.regular_price_usd ?? null,
-              // Raw / unstyled anchor price — what checkout charges for a wig
-              // ordered WITHOUT styling (styled_products.retail_price_ngn, the
-              // same source the checkout's raw line uses). Surfaced so the
-              // wholesale view can show the real per-wig trade price instead of
-              // only a "save ₦X" hint.
-              anchor_price_ngn:
-                p.styled_retail_price_ngn ?? p.regular_price_ngn ?? null,
-              is_featured: p.is_featured,
-              // live_base_stock is computed from stock_levels across all
-              // storefront locations for the base product. All styled products
-              // sharing the same base product draw from this single pool, so
-              // their stock_remaining values move in lockstep and cannot
-              // collectively oversell the base.
-              stock_remaining: p.live_base_stock,
-              preorder:
-                p.live_base_stock !== null &&
-                p.live_base_stock !== undefined &&
-                Number(p.live_base_stock) <= 0,
-              image_url: p.resolved_image_url || p.image_url,
-            }))
+            .map((p) => {
+              const isRetail = p.catalogue_role === "retail";
+              return {
+                product_id: p.product_id,
+                styled_id: p.styled_id,
+                variant_id: p.retail_variant_id || null,
+                variant_label: p.retail_variant_label || p.retail_variant_sku || null,
+                category_id: p.category_id,
+                catalogue_role: p.catalogue_role || (p.styled_id ? "styled" : "product"),
+                is_retail: isRetail,
+                name: p.styled_name || p.product_name || p.category_name,
+                // Long + short copy: the Catalogue is the single source of truth,
+                // so prefer the LIVE styled product description and only fall back
+                // to the snapshot taken on add when the styled row is gone (e.g.
+                // deleted from the catalogue). This makes catalogue copy edits show
+                // on the live campaign card immediately — no re-import required.
+                short_description:
+                  p.styled_short_description ?? p.short_description ?? null,
+                long_description:
+                  p.styled_long_description ?? p.long_description ?? null,
+                campaign_price_ngn: p.campaign_price_ngn,
+                campaign_price_usd: p.campaign_price_usd,
+                // Both-currency reference (strikethrough) prices. Catalogue is the
+                // source of truth, so prefer the LIVE styled retail price and fall
+                // back to the snapshot only when the styled row is gone. The actual
+                // sale price (campaign_price_*) stays a deliberate per-campaign
+                // override and is intentionally NOT re-derived here.
+                regular_price_ngn:
+                  p.styled_retail_price_ngn ?? p.regular_price_ngn ?? null,
+                regular_price_usd:
+                  p.styled_retail_price_usd ?? p.regular_price_usd ?? null,
+                // Raw / unstyled anchor price — what checkout charges for a wig
+                // ordered WITHOUT styling (styled_products.retail_price_ngn, the
+                // same source the checkout's raw line uses). Surfaced so the
+                // wholesale view can show the real per-wig trade price instead of
+                // only a "save ₦X" hint.
+                anchor_price_ngn:
+                  p.styled_retail_price_ngn ?? p.regular_price_ngn ?? null,
+                is_featured: p.is_featured,
+                // live_base_stock is computed from stock_levels across all
+                // storefront locations for the base product. All styled products
+                // sharing the same base product draw from this single pool, so
+                // their stock_remaining values move in lockstep and cannot
+                // collectively oversell the base.
+                stock_remaining: p.live_base_stock,
+                // Retail is stock-only: never preorder!
+                preorder:
+                  !isRetail &&
+                  p.live_base_stock !== null &&
+                  p.live_base_stock !== undefined &&
+                  Number(p.live_base_stock) <= 0,
+                image_url: p.resolved_image_url || p.image_url,
+              };
+            })
         : [],
     ended:
       state === "ended"

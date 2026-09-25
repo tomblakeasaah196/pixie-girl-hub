@@ -15,6 +15,7 @@
 "use strict";
 
 const serviceJobEvents = require("../service_jobs/service-jobs.events");
+const salesEvents = require("../sales/sales.events");
 const documentsEvents = require("../../shared/documents/documents.events");
 const outbox = require("../../shared/outbox/outbox");
 const repo = require("./stylist.repo");
@@ -85,6 +86,18 @@ function register() {
       });
     },
   );
+
+  salesEvents.on("order.cancelled", async ({ brand, order_id }) => {
+    try {
+      const referral = require("./referral.service");
+      await referral.voidForCancelledOrder({ brand, order_id });
+    } catch (err) {
+      logger.error(
+        { err: err.message, brand, order_id },
+        "stylist: referral cancellation reversal failed",
+      );
+    }
+  });
 
   // 3. Contract fully signed → badge (in-process; signing happens in the API
   //    process via the public sign endpoint).

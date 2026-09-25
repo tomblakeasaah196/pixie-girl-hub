@@ -247,6 +247,8 @@ async function listCampaignBundles({ brand, campaign_id }) {
       const components = items.map((it) => {
         const qty = Number(it.quantity) || 1;
         const unit = Number(it.unit_price_ngn) || 0;
+        const isRetail =
+          it.catalogue_role === "retail";
         return {
           bundle_item_id: it.bundle_item_id,
           styled_id: it.styled_id,
@@ -258,10 +260,16 @@ async function listCampaignBundles({ brand, campaign_id }) {
           quantity: qty,
           unit_price_ngn: unit,
           line_total_ngn: unit * qty,
+          is_retail: isRetail,
         };
       });
       const totalRetail = components.reduce((s, c) => s + c.line_total_ngn, 0);
       const totalQty = components.reduce((s, c) => s + c.quantity, 0);
+      // Retail components never receive hair head-size premiums.
+      const wigQty = components.reduce(
+        (s, c) => (c.is_retail ? s : s + c.quantity),
+        0,
+      );
       // Price priority:
       //   1. LIVE from the source Catalogue offer — so a discount edited + saved
       //      in Catalogue → Bundles shows on the storefront immediately. SSOT.
@@ -287,6 +295,7 @@ async function listCampaignBundles({ brand, campaign_id }) {
       // brand premium applied to every wig in the bundle (S premium = 0, so the
       // S option equals the bundle price). The buyer picks a size; the premium
       // rides on top of the discount, exactly as checkout charges it.
+      // Retail components are excluded from wig head-size premiums.
       const sizeOptions = (sizeTiers || []).map((t) => {
         const premium = Number(t.premium_ngn) || 0;
         return {
@@ -296,7 +305,7 @@ async function listCampaignBundles({ brand, campaign_id }) {
           price_ngn: bundleSizePrice({
             bundlePrice,
             premium_ngn: premium,
-            units: totalQty,
+            units: wigQty,
           }),
         };
       });

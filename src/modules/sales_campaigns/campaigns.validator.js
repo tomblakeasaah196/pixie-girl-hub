@@ -593,6 +593,7 @@ const checkoutSchema = z.object({
       z.object({
         bundle_id: z.string().uuid().optional(),
         product_id: z.string().uuid().optional(),
+        variant_id: z.string().uuid().optional(),
         // A styled product/colour/size SKU. When present the server prices the
         // line from the styled tables (styled_product_variants), not the base
         // product_variants — see campaigns.public.service checkout().
@@ -661,6 +662,7 @@ const quoteSchema = z.object({
       z.object({
         bundle_id: z.string().uuid().optional(),
         product_id: z.string().uuid().optional(),
+        variant_id: z.string().uuid().optional(),
         styled_variant_id: z.string().uuid().optional(),
         unstyled: z.boolean().optional(),
         size_code: z.string().max(8).optional(),

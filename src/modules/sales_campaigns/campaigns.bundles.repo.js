@@ -40,6 +40,7 @@ async function listBundleItems({ client, brand, bundle_id }) {
             bop.display_order           AS display_position,
             COALESCE(sp.name, p.name)   AS display_name,
             p.name                      AS product_name,
+            p.catalogue_role            AS catalogue_role,
             sp.name                     AS styled_name,
             sp.slug                     AS styled_slug,
             sp.base_variant_id          AS styled_base_variant_id,

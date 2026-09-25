@@ -42,6 +42,9 @@ export interface LandingBlock {
 export interface LandingProduct {
   product_id?: string;
   styled_id?: string;
+  variant_id?: string | null;
+  catalogue_role?: string | null;
+  is_retail?: boolean;
   category_id?: string | null;
   name?: string;
   short_description?: string | null;
@@ -87,6 +90,7 @@ export interface BundleComponent {
   quantity: number;
   unit_price_ngn: number;
   line_total_ngn: number;
+  is_retail?: boolean;
 }
 
 /** A head-size choice for a bundle. `price_ngn` is the whole-bundle price at

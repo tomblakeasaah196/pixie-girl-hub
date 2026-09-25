@@ -37,16 +37,17 @@ interface ProductGalleryImage {
 
 interface ProductVariant {
   variant_id: string;
-  colour_name: string;
-  colour_hex: string | null;
-  colour_premium_ngn: number;
-  size_code: string;
-  size_label: string;
-  size_premium_ngn: number;
-  lace_code: string | null;
-  lace_label: string | null;
-  lace_premium_ngn: number;
+  colour_name?: string;
+  colour_hex?: string | null;
+  colour_premium_ngn?: number;
+  size_code?: string | null;
+  size_label?: string | null;
+  size_premium_ngn?: number;
+  lace_code?: string | null;
+  lace_label?: string | null;
+  lace_premium_ngn?: number;
   effective_price_ngn: number;
+  available?: number;
   is_default: boolean;
 }
 
@@ -65,7 +66,9 @@ interface ProductLaceSize {
 }
 
 interface ProductDetail {
-  styled_id: string;
+  styled_id: string | null;
+  product_id?: string;
+  is_retail?: boolean;
   name: string;
   slug: string;
   short_description: string | null;
@@ -242,7 +245,7 @@ export function ProductDetailModal({
         // product view for retargeting + view→purchase optimisation.
         fbTrack("ViewContent", {
           content_type: "product",
-          content_ids: [json.data.styled_id],
+          content_ids: [json.data.product_id || json.data.styled_id],
           content_name: json.data.name,
           value:
             json.data.anchor_price_ngn ??
@@ -351,18 +354,28 @@ export function ProductDetailModal({
     }
     const price =
       Number(selectedVariant.effective_price_ngn) || effectivePrice || 0;
+    if (
+      product.is_retail &&
+      selectedVariant.available != null &&
+      selectedVariant.available <= 0
+    ) {
+      setAddErr("This care product is currently out of stock.");
+      return;
+    }
     if (!price) {
       setAddErr(
         "We couldn't price this option. Please pick a size and lace, or contact us to order.",
       );
       return;
     }
+    const retail = product.is_retail === true;
     add({
-      // Unique per styled variant so different size/colour are separate lines.
-      id: `styled:${selectedVariant.variant_id}`,
-      type: "styled",
-      styled_variant_id: selectedVariant.variant_id,
-      product_id: undefined,
+      // Unique per SKU so different Care & Accessories options remain separate.
+      id: `${retail ? "retail" : "styled"}:${selectedVariant.variant_id}`,
+      type: retail ? "retail" : "styled",
+      variant_id: retail ? selectedVariant.variant_id : undefined,
+      product_id: retail ? product.product_id : undefined,
+      styled_variant_id: retail ? undefined : selectedVariant.variant_id,
       name: product.name,
       variant_label: chosenVariantLabel || undefined,
       image_url: product.gallery[0]?.url,
@@ -682,7 +695,7 @@ export function ProductDetailModal({
                         </div>
                       )}
                       {/* Wholesale / unstyled gate */}
-                      {anchorOnly > 0 && hasWholesale && (
+                      {!product.is_retail && anchorOnly > 0 && hasWholesale && (
                         <div className="rounded-[14px] border border-white/10 bg-white/[0.03] p-4 space-y-3">
                           <div className="flex items-center gap-2">
                             <Store
@@ -835,7 +848,7 @@ export function ProductDetailModal({
                         </div>
                       )}
                       {/* No bulk tiers configured — show plain unstyled option */}
-                      {anchorOnly > 0 && !hasWholesale && (
+                      {!product.is_retail && anchorOnly > 0 && !hasWholesale && (
                         <button
                           type="button"
                           onClick={handleAddUnstyled}

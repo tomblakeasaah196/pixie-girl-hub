@@ -10,6 +10,7 @@
 
 const outbox = require("../outbox/outbox");
 const salesRepo = require("../../modules/sales/sales.repo");
+const salesEvents = require("../../modules/sales/sales.events");
 const payroll = require("./payroll.service");
 const { logger } = require("../../config/logger");
 
@@ -26,6 +27,16 @@ function register() {
   if (registered) return;
   registered = true;
   outbox.register("order.paid", "commission", accrueCommission);
+  // Cancellation reversal is intentionally limited to accrued/approved
+  // commissions. Payroll.service leaves paid rows untouched.
+  salesEvents.on("order.cancelled", ({ brand, order_id }) => {
+    payroll.reverseForCancelledOrder({ brand, order_id }).catch((err) =>
+      logger.error(
+        { err: err.message, brand, order_id },
+        "hr_payroll commission cancellation reversal failed",
+      ),
+    );
+  });
   logger.info(
     "hr_payroll subscribers registered (outbox order.paid → commission)",
   );

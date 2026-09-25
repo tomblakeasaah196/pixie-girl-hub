@@ -6,9 +6,11 @@ import { fbTrack } from "@/lib/fbpixel";
 
 export interface CartItem {
   id: string;
-  type: "bundle" | "product" | "styled";
+  type: "bundle" | "product" | "styled" | "retail";
   bundle_id?: string;
   product_id?: string;
+  /** Exact Care & Accessories SKU. Retail lines must always carry this identity. */
+  variant_id?: string;
   /** Styled product/colour/size SKU. Set for styled items; the server prices
    *  the line from the styled tables (styled_product_variants). */
   styled_variant_id?: string;
@@ -52,6 +54,7 @@ export function isBrokenCartItem(it: unknown): boolean {
   const qty = Number(item.quantity);
   if (!Number.isFinite(qty) || qty <= 0) return true;
   if (item.type === "styled" && !item.styled_variant_id) return true;
+  if (item.type === "retail" && !item.variant_id) return true;
   return false;
 }
 

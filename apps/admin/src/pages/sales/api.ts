@@ -162,6 +162,12 @@ export const setOrderStatus = (id: string, status: string) =>
 export const generateReceipt = (id: string) =>
   api.post<{ url: string }>(`${S}/orders/${id}/receipt`);
 
+/** Email-only "your pre-order has arrived" notice to the customer. */
+export const notifyPreorderArrival = (id: string) =>
+  api.post<{ sent: boolean; to: string; notified_at: string | null }>(
+    `${S}/orders/${id}/preorder-arrival-email`,
+  );
+
 /** Live on/off state of the customer message a manual fulfilment move fires. */
 export interface StatusAutomationState {
   /** Comms Studio automation this move triggers (e.g. "order_ready"). */

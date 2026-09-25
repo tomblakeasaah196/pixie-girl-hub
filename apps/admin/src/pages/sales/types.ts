@@ -191,6 +191,10 @@ export interface SalesOrder {
   preorder_ready_by?: string | null;
   preorder_min_weeks?: number | null;
   preorder_max_weeks?: number | null;
+  /** Pre-order fulfilment (000097): when the last waiting line was covered by
+   *  arriving stock, and when the customer was last emailed it arrived. */
+  preorder_fulfilled_at?: string | null;
+  preorder_arrival_notified_at?: string | null;
   /** Pre-order confirmation returned by createOrder (000086) — present only when
    *  a line actually went in as made-to-order, so Quick Sale can toast it. */
   preorder?: {

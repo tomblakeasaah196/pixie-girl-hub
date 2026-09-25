@@ -54,6 +54,12 @@ const MANIFEST = [
   // the full mechanism — what moves in stock, the books, the invoice, Studio
   // and Logistics — not just the button's location.
   { file: "ORDER_AMENDMENTS.md", type: "product_description" },
+  // Pre-order stock deduction: when the stock a pre-order is waiting on arrives,
+  // the Hub draws it for paid pre-orders and reserves it for unpaid ones,
+  // paid-first then oldest-first, and offers an email-only "your pre-order has
+  // arrived" notice. Staff ask "when does a pre-order get fulfilled / how do I
+  // tell the customer it's in?", so Praxis needs the mechanism + the button.
+  { file: "PREORDER_STOCK_DEDUCTION.md", type: "product_description" },
 ];
 
 // A hand-written orientation chunk so the model always has the big picture even

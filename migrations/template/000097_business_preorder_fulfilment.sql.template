@@ -1,0 +1,32 @@
+-- ============================================================
+-- TEMPLATE 000097 — Pre-order FULFILMENT state (auto-allocation of arriving stock)
+--   • preorder_fulfilled_at       — when the last waiting pre-order line on the
+--                                    order was covered by newly-received stock
+--                                    (drawn for a paid order / reserved for an
+--                                    unpaid one). Lets the order detail keep the
+--                                    "notify customer of arrival" action visible
+--                                    AFTER is_preorder has flipped back to false.
+--   • preorder_arrival_notified_at — when a human last sent the customer the
+--                                    "your pre-order has arrived" email (Sales →
+--                                    order → Notify customer). Email-only, manual.
+-- Pixie Girl Hub · JBS Praxis · V2.2
+--
+-- Companion to 000086 (universal pre-orders). When stock is received for a
+-- variant that has waiting pre-orders, the allocator (src/modules/sales/
+-- preorder-allocation.service.js) draws the units for already-paid pre-orders
+-- and reserves them for unpaid ones, paid-first then oldest-first, and clears
+-- is_preorder on each line/order it fully covers. These two timestamps are the
+-- durable trace of that fulfilment on the order header.
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- ALTER-only + ADD COLUMN IF NOT EXISTS → idempotent; safe to re-run on repair.
+-- ============================================================
+
+ALTER TABLE {{BUSINESS}}.sales_orders
+  ADD COLUMN IF NOT EXISTS preorder_fulfilled_at       TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS preorder_arrival_notified_at TIMESTAMPTZ;
+
+-- Ops view "recently fulfilled pre-orders, newest first".
+CREATE INDEX IF NOT EXISTS idx_{{BUSINESS}}_sales_orders_preorder_fulfilled
+  ON {{BUSINESS}}.sales_orders (preorder_fulfilled_at DESC)
+  WHERE preorder_fulfilled_at IS NOT NULL;

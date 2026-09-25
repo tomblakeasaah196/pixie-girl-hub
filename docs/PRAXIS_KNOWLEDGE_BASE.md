@@ -281,6 +281,18 @@ chasing deliveries, matching stray in-store terminal payments, and payment setti
 - *See pre-orders and their production deadlines?* Sales → **Pre-orders** tab
   (`/sales?tab=preorders`). Every order carrying a made-to-order line, soonest
   ship-by first, with overdue/urgent flags — click through to the order.
+- *When does a pre-order get fulfilled once stock comes back?* Automatically. The
+  moment stock is received for the variant (Goods Reception, production, or a
+  count that raises on-hand), the Hub applies it to the waiting pre-orders
+  **first** — **drawn** for already-paid orders, **reserved** for unpaid ones —
+  **paid-first, then oldest-first**, before that stock is exposed to a new sale.
+  Ops and sales get a "pre-orders fulfilled by new stock" notice. No manual step.
+  A deploy-time reconcile also backfills anything the live path missed. (Details:
+  `docs/PREORDER_STOCK_DEDUCTION.md`.)
+- *Tell the customer their pre-order has arrived?* Open the order (Sales → the
+  order) → the **Pre-order card** → **Notify customer (email)**. Sends a branded
+  "your pre-order has arrived" email — **email only** — and records when it was
+  sent; resend is allowed. Needs a customer email on file and `sales:edit`.
 - *Turn pre-orders on/off or change the delivery window?* Catalogue → **Config**
   (`/catalogue?tab=config`) → **Pre-orders**: master switch + the production
   window buyers see (default 4–8 weeks). Exclude a single product from its own

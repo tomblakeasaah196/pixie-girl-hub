@@ -50,6 +50,12 @@ router.get("/orders/:id", can("view"), c.getById);
 // see its studio progress.
 router.get("/orders/:id/service-job", can("view"), c.getOrderServiceJob);
 router.post("/orders/:id/receipt", can("view"), c.receiptPdf);
+// Email-only "your pre-order has arrived" notice to the customer (manual button).
+router.post(
+  "/orders/:id/preorder-arrival-email",
+  can("edit"),
+  c.notifyPreorderArrival,
+);
 router.patch("/orders/:id", can("edit"), v.validateOrderUpdate, c.updateOrder);
 
 // Order timeline (F-5 / §6.23.6) — staff record + view

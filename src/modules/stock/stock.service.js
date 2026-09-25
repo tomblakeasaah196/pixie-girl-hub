@@ -118,6 +118,44 @@ async function applyMovement({ client, brand, input, user_id }) {
       });
     }
   }
+
+  // Pre-order fulfilment hook (000097): a movement that ADDS to the shelf may be
+  // the stock a paid/placed pre-order has been waiting on. Enqueue a durable,
+  // post-commit `stock.received` so the allocator (sales/preorder-allocation)
+  // draws it for paid pre-orders and reserves it for unpaid ones — paid-first,
+  // oldest-first — before that stock is exposed to a fresh sale. Atomic with the
+  // movement (writes on the caller's tx client), deduped per movement so an
+  // at-least-once dispatch never enqueues twice, and only for inbound types so a
+  // sale/reserve/return never triggers a pointless sweep.
+  const RAISES_ON_HAND = m.movement_type === "receive"
+    || m.movement_type === "production_in"
+    || m.movement_type === "adjustment_in";
+  if (client && RAISES_ON_HAND && Number(m.quantity) > 0 && m.variant_id) {
+    try {
+      const outbox = require("../../shared/outbox/outbox");
+      await outbox.enqueue(client, {
+        business: brand,
+        event_type: "stock.received",
+        payload: {
+          variant_id: m.variant_id,
+          location_id: m.location_id,
+          movement_id: m.movement_id,
+          movement_type: m.movement_type,
+        },
+        dedup_key: `stock.received:${m.movement_id}`,
+      });
+    } catch (err) {
+      // Never let the fulfilment hook fail the movement itself — the receipt is
+      // the system of record; the deploy reconcile sweep will catch anything a
+      // missed enqueue leaves behind.
+      const { logger } = require("../../config/logger");
+      logger.warn(
+        { err: err.message, brand, movement_id: m.movement_id },
+        "stock.received enqueue skipped — deploy reconcile will backfill",
+      );
+    }
+  }
+
   return m;
 }
 

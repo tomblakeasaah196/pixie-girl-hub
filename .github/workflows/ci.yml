@@ -184,6 +184,19 @@ jobs:
             NODE_ENV=production node scripts/migrate-shared.js run
             NODE_ENV=production node scripts/repair-business-schema.js --all run
 
+            # ── Pre-order allocation reconcile (safety net) ────────
+            # Apply any stock that arrived while a pre-order was waiting but was
+            # never drawn/reserved for it — history from before this feature, or
+            # anything the live path (worker: stock.received → allocate) missed.
+            # Idempotent: coverage is re-derived from the movement ledger, so it
+            # only fills a genuine deficit against available stock and a re-run
+            # (or the live path having already handled it) is a clean no-op —
+            # which is exactly why it is safe to run on every deploy. Best-effort:
+            # a hiccup must NOT fail the deploy; the next deploy sweeps again.
+            echo "--- Reconciling pre-order allocations (stock that arrived while a pre-order waited)"
+            NODE_ENV=production npm run backfill:preorder-allocations \
+              || echo "WARNING: pre-order allocation reconcile did not complete — re-run 'npm run backfill:preorder-allocations' on the VPS."
+
             # ── Praxis AI knowledge refresh ────────────────────────
             # Rebuild Praxis's RAG corpus AFTER migrations so its knowledge of the
             # system (docs + LIVE database schema) matches this deploy — this is

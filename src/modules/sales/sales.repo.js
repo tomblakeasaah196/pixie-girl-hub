@@ -1508,9 +1508,13 @@ async function markLinesPreorder({ client, brand, line_ids }) {
  * order that may never complete.
  */
 async function openPreorderLinesForVariant({ client, brand, variant_id }) {
+  // NB: no sol.styled_product_id here — that column exists only in some brand
+  // schemas (not the base template), so selecting it fails at parse time for a
+  // brand that lacks it. The allocator costs a draw from unit_cost_ngn alone
+  // (informational on a GL-excluded 'sale'), so the styled add-on isn't needed.
   const { rows } = await ex(client)(
     `SELECT sol.line_id, sol.order_id, sol.variant_id, sol.quantity,
-            sol.product_name_snapshot, sol.unit_cost_ngn, sol.styled_product_id,
+            sol.product_name_snapshot, sol.unit_cost_ngn,
             so.order_number, so.status, so.sales_channel, so.contact_id,
             COALESCE(so.placed_at, so.created_at) AS ordered_at,
             (so.status IN ${REVENUE_STATES_SQL}) AS is_paid

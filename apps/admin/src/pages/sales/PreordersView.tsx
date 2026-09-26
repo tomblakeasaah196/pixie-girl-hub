@@ -1,10 +1,12 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { CalendarClock } from "lucide-react";
+import { CalendarClock, CheckCircle2 } from "lucide-react";
 import { DataTable, type Column } from "@/components/ui/DataTable";
-import { Pill, MoneyText } from "@/components/ui/primitives";
+import { Pill, MoneyText, Button } from "@/components/ui/primitives";
 import { formatDate } from "@/lib/format";
 import { ErrorState } from "@/components/ui/controls";
 import { useOrders } from "./hooks";
+import { PreorderHistoryModal } from "./PreorderHistoryModal";
 import { ORDER_STATUS } from "./constants";
 import type { SalesOrder, OrderStatus } from "./types";
 
@@ -99,6 +101,7 @@ const columns: Column<SalesOrder>[] = [
  *  so ops can see what to produce/procure and by when (000086). */
 export function PreordersView() {
   const navigate = useNavigate();
+  const [historyOpen, setHistoryOpen] = useState(false);
   const { data, isLoading, isError, refetch } = useOrders({
     preorder: true,
     page_size: 50,
@@ -108,18 +111,37 @@ export function PreordersView() {
   if (isError) return <ErrorState onRetry={() => refetch()} />;
 
   return (
-    <DataTable
-      columns={columns}
-      rows={orders}
-      rowKey={(o) => o.order_id}
-      onRowClick={(o) => navigate(`/sales/orders/${o.order_id}`)}
-      loading={isLoading}
-      empty={{
-        icon: <CalendarClock className="w-8 h-8" />,
-        title: "No pre-orders",
-        message:
-          "When an out-of-stock item is ordered, it shows here with its production deadline.",
-      }}
-    />
+    <>
+      <DataTable
+        columns={columns}
+        rows={orders}
+        rowKey={(o) => o.order_id}
+        onRowClick={(o) => navigate(`/sales/orders/${o.order_id}`)}
+        loading={isLoading}
+        empty={{
+          icon: <CalendarClock className="w-8 h-8" />,
+          title: "No pre-orders",
+          message:
+            "When an out-of-stock item is ordered, it shows here with its production deadline.",
+        }}
+        toolbar={
+          <div className="flex-1 flex justify-end">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setHistoryOpen(true)}
+              title="Pre-orders fulfilled by arriving stock, and a manual backfill"
+            >
+              <CheckCircle2 className="h-4 w-4 mr-1.5" />
+              Fulfilled pre-orders
+            </Button>
+          </div>
+        }
+      />
+      <PreorderHistoryModal
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+      />
+    </>
   );
 }

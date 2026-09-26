@@ -1642,6 +1642,59 @@ async function markArrivalNotified({ client, brand, order_id }) {
   return rows[0] ? rows[0].preorder_arrival_notified_at : null;
 }
 
+// ── Pre-order history (the "Fulfilled pre-orders" modal) ─────
+/** Pre-orders that stock has been applied to, newest fulfilment first. The
+ *  current status shows how far each has since travelled (paid → dispatched). */
+async function listFulfilledPreorders({ client, brand, limit = 100 }) {
+  const { rows } = await ex(client)(
+    `SELECT so.order_id, so.order_number, so.status, so.total_ngn,
+            so.preorder_ready_by, so.preorder_fulfilled_at,
+            so.preorder_arrival_notified_at,
+            c.display_name AS contact_name
+       FROM ${t(brand, "sales_orders")} so
+       LEFT JOIN shared.contacts c ON c.contact_id = so.contact_id
+      WHERE so.preorder_fulfilled_at IS NOT NULL
+      ORDER BY so.preorder_fulfilled_at DESC
+      LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+
+/** Pre-orders STILL waiting on stock, soonest ship-by first (overdue at the
+ *  top) — the "is anything stuck?" half of the modal. Dead/limbo orders are
+ *  excluded, exactly as the allocator excludes them. */
+async function listWaitingPreorders({ client, brand, limit = 100 }) {
+  const { rows } = await ex(client)(
+    `SELECT so.order_id, so.order_number, so.status, so.total_ngn,
+            so.preorder_ready_by, so.preorder_min_weeks, so.preorder_max_weeks,
+            c.display_name AS contact_name
+       FROM ${t(brand, "sales_orders")} so
+       LEFT JOIN shared.contacts c ON c.contact_id = so.contact_id
+      WHERE so.is_preorder = true
+        AND so.status NOT IN ${PREORDER_DEAD_STATES_SQL}
+      ORDER BY so.preorder_ready_by ASC NULLS LAST, so.order_number ASC
+      LIMIT $1`,
+    [limit],
+  );
+  return rows;
+}
+
+/** The most recent allocation reconcile run for this brand (deploy sweep or a
+ *  manual "Run backfill"), for the modal's last-run status line. */
+async function lastAllocationRun({ client, brand }) {
+  const { rows } = await ex(client)(
+    `SELECT mode, variants_scanned, orders_fulfilled, units_deducted,
+            units_reserved, ok, started_at, finished_at
+       FROM shared.preorder_allocation_runs
+      WHERE business = $1
+      ORDER BY started_at DESC
+      LIMIT 1`,
+    [brand],
+  );
+  return rows[0] || null;
+}
+
 module.exports = {
   getPreorderPolicy,
   excludedPreorderProductIds,
@@ -1653,6 +1706,9 @@ module.exports = {
   recomputeOrderPreorderState,
   clearShortfallForVariant,
   markArrivalNotified,
+  listFulfilledPreorders,
+  listWaitingPreorders,
+  lastAllocationRun,
   setSpecificInstructions,
   updateOrderHeader,
   listDiscounts,

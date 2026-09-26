@@ -158,6 +158,30 @@ export function useNotifyPreorderArrival(orderId: string) {
   });
 }
 
+/** Fulfilled + still-waiting pre-orders and the last reconcile run (the
+ *  "Fulfilled pre-orders" modal). Only fetches while the modal is open. */
+export function usePreorderHistory(enabled: boolean) {
+  const biz = useBiz();
+  return useQuery({
+    queryKey: ["preorder-history", biz],
+    queryFn: () => salesApi.getPreorderHistory(),
+    enabled,
+  });
+}
+
+/** Run the pre-order reconcile for the active brand on demand. */
+export function useRunPreorderBackfill() {
+  const qc = useQueryClient();
+  const biz = useBiz();
+  return useMutation({
+    mutationFn: () => salesApi.runPreorderBackfill(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["preorder-history", biz] });
+      qc.invalidateQueries({ queryKey: ["sales-orders", biz] });
+    },
+  });
+}
+
 // ── Change Order (§6.2 amendments) ──────────────────────────
 
 /** Every change made to this order, newest first — the history card. */

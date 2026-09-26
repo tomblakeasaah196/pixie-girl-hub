@@ -168,6 +168,50 @@ export const notifyPreorderArrival = (id: string) =>
     `${S}/orders/${id}/preorder-arrival-email`,
   );
 
+// ── Pre-order history modal ("Fulfilled pre-orders") ────────
+export interface PreorderHistoryOrder {
+  order_id: string;
+  order_number: string;
+  status: OrderStatus | string;
+  total_ngn: string | number;
+  contact_name?: string | null;
+  preorder_ready_by?: string | null;
+  preorder_fulfilled_at?: string | null;
+  preorder_arrival_notified_at?: string | null;
+  preorder_min_weeks?: number | null;
+  preorder_max_weeks?: number | null;
+}
+export interface PreorderAllocationRun {
+  mode: string;
+  variants_scanned: number;
+  orders_fulfilled: number;
+  units_deducted: number;
+  units_reserved: number;
+  ok: boolean;
+  started_at: string;
+  finished_at?: string | null;
+}
+export interface PreorderHistoryResponse {
+  fulfilled: PreorderHistoryOrder[];
+  waiting: PreorderHistoryOrder[];
+  last_run: PreorderAllocationRun | null;
+}
+export interface PreorderBackfillResult {
+  ok: boolean;
+  variants_scanned: number;
+  orders_fulfilled: number;
+  units_deducted: number;
+  units_reserved: number;
+}
+
+/** Fulfilled + still-waiting pre-orders, plus the last reconcile run. */
+export const getPreorderHistory = () =>
+  api.get<PreorderHistoryResponse>(`${S}/preorders/history`);
+
+/** Run the pre-order reconcile for the active brand, on demand (notifies ops+sales). */
+export const runPreorderBackfill = () =>
+  api.post<PreorderBackfillResult>(`${S}/preorders/backfill`);
+
 /** Live on/off state of the customer message a manual fulfilment move fires. */
 export interface StatusAutomationState {
   /** Comms Studio automation this move triggers (e.g. "order_ready"). */

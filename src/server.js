@@ -109,6 +109,19 @@ async function bootstrap() {
   } catch (err) {
     logger.warn({ err: err.message }, "kaizen subscribers init failed (non-fatal)");
   }
+  // Pre-order allocation subscribers. MUST be registered in the WEB process for
+  // the manual "Run backfill" endpoint: it runs the reconcile here over HTTP and
+  // emits `preorder.allocated` in-process, so without this listener the ops +
+  // sales notification would never fire for a manual run. (The outbox handler it
+  // also registers is inert here — the web process never dispatches the outbox.)
+  try {
+    require("./modules/sales/preorder-allocation.subscribers");
+  } catch (err) {
+    logger.warn(
+      { err: err.message },
+      "preorder allocation subscribers init failed (non-fatal)",
+    );
+  }
 
   // ── ERP frontend (Vite + React build) ────────────────────
   // The ERP frontend is served from the SAME origin as the

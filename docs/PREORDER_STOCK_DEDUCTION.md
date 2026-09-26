@@ -97,6 +97,30 @@ and stamps `preorder_arrival_notified_at` (shown as "Customer emailed about
 arrival on …"). Resend is allowed — stock can arrive in waves. Requires
 `sales:edit`. Endpoint: `POST /api/v1/sales/orders/:id/preorder-arrival-email`.
 
+## Seeing it / running it by hand — the "Fulfilled pre-orders" modal
+
+Sales → **Pre-orders** tab → **Fulfilled pre-orders** button opens a modal that
+is the visibility surface for all of the above (the main Pre-orders table only
+lists orders *still* waiting, so fulfilled ones need their own home):
+
+- **Fulfilled** — pre-orders stock has been applied to, newest first, each with
+  its current order status (so you can see one that has since gone
+  paid → dispatched) and whether the customer was emailed the arrival notice.
+- **Still waiting** — pre-orders not yet covered, soonest ship-by first with
+  overdue flagged, so the modal also answers "is anything stuck?".
+- **Last reconcile** — the most recent run from `shared.preorder_allocation_runs`
+  (when, mode, how many fulfilled), so the screen is proof the automation ran.
+- **Run backfill now** (`sales:edit`) — a confirm-first manual reconcile for the
+  **active brand**, with ops+sales notifications ON, so a manual run behaves
+  exactly like a real stock receipt. Idempotent, so it's safe to click any time.
+  Endpoints: `GET /api/v1/sales/preorders/history`,
+  `POST /api/v1/sales/preorders/backfill`.
+
+Note the manual run executes in the web process, so
+`preorder-allocation.subscribers` is registered there too (see `src/server.js`) —
+otherwise the in-process `preorder.allocated` notification would have no listener
+on a manual run.
+
 ## Where it lives
 
 | Piece | File |
@@ -105,6 +129,8 @@ arrival on …"). Resend is allowed — stock can arrive in waves. Requires
 | Live trigger (outbox) + ops/sales notify | `src/modules/sales/preorder-allocation.subscribers.js` |
 | `stock.received` enqueue | `src/modules/stock/stock.service.js` (`applyMovement`) |
 | Customer arrival email | `src/modules/sales/preorder-arrival.service.js` |
+| History modal read + manual run | `src/modules/sales/preorder-history.service.js` |
+| History modal (frontend) | `apps/admin/src/pages/sales/PreorderHistoryModal.tsx` |
 | Pre-order queries | `src/modules/sales/sales.repo.js` |
 | Deploy/backfill reconcile | `scripts/backfill-preorder-allocations.js` |
 | Fulfilment timestamps | `sales_orders.preorder_fulfilled_at`, `preorder_arrival_notified_at` (000097 / 000387) |

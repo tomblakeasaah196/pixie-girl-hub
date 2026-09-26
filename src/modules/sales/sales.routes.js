@@ -39,6 +39,10 @@ router.get(
   c.exportReport,
 );
 
+// Pre-order history modal + on-demand backfill (Sales → Pre-orders → Fulfilled).
+router.get("/preorders/history", can("view"), c.getPreorderHistory);
+router.post("/preorders/backfill", can("edit"), c.runPreorderBackfill);
+
 router.get("/orders", can("view"), c.listOrders);
 router.post("/orders", can("create"), v.validateOrderCreate, c.createOrder);
 // Impact-modal live state: on/off of the messages a manual move fires.

@@ -7,6 +7,7 @@
 const service = require("./sales.service");
 const amendmentService = require("./amendment.service");
 const preorderArrival = require("./preorder-arrival.service");
+const preorderHistory = require("./preorder-history.service");
 const orderCouponService = require("./order-coupon.service");
 const paymentLink = require("./payment-link.service");
 const paymentSettings = require("./payment-settings.service");
@@ -52,6 +53,21 @@ const notifyPreorderArrival = async (req, res) =>
       brand: req.brand,
       user: req.user,
       order_id: req.params.id,
+    }),
+  });
+
+// "Fulfilled pre-orders" modal: fulfilled + still-waiting pre-orders + last run.
+const getPreorderHistory = async (req, res) =>
+  res.json({
+    data: await preorderHistory.getHistory({ brand: req.brand }),
+  });
+
+// Manual "Run backfill now" — reconcile this brand's waiting pre-orders.
+const runPreorderBackfill = async (req, res) =>
+  res.status(201).json({
+    data: await preorderHistory.runBackfill({
+      brand: req.brand,
+      user: req.user,
     }),
   });
 // The order's Stylist Studio job — served THROUGH the order (sales.view), so a
@@ -386,6 +402,8 @@ module.exports = {
   getById,
   getOrderServiceJob,
   notifyPreorderArrival,
+  getPreorderHistory,
+  runPreorderBackfill,
   receiptPdf,
   exportReport,
   createOrder,

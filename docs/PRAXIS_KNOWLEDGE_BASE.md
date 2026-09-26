@@ -293,6 +293,18 @@ chasing deliveries, matching stray in-store terminal payments, and payment setti
   order) → the **Pre-order card** → **Notify customer (email)**. Sends a branded
   "your pre-order has arrived" email — **email only** — and records when it was
   sent; resend is allowed. Needs a customer email on file and `sales:edit`.
+- *See which pre-orders were fulfilled by stock (and what's still stuck)?* Sales
+  → **Pre-orders** tab → **Fulfilled pre-orders** button (top-right). Opens a
+  modal listing pre-orders stock has been applied to (with current status and
+  whether the customer was emailed) and a "Still waiting" section (overdue at the
+  top), plus the last reconcile run. The main Pre-orders table only shows orders
+  still waiting; this modal is where fulfilled ones live.
+- *Manually re-run the pre-order stock check / backfill?* In that same **Fulfilled
+  pre-orders** modal, **Run backfill now** (needs `sales:edit`) reconciles this
+  brand's waiting pre-orders against available stock on demand — draws for paid,
+  reserves for unpaid, notifies ops+sales. It normally runs automatically (on
+  every stock receipt and every deploy); this is the manual escape hatch and is
+  safe to click any time (it never double-draws).
 - *Turn pre-orders on/off or change the delivery window?* Catalogue → **Config**
   (`/catalogue?tab=config`) → **Pre-orders**: master switch + the production
   window buyers see (default 4–8 weeks). Exclude a single product from its own

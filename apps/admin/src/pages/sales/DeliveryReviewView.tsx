@@ -17,10 +17,12 @@ const useBrand = () => useBusinessStore((st) => st.activeKey);
  *
  * Every retail-containing DELIVERY order lands here when it is placed. A person
  * prices the delivery; the order cannot be dispatched (DB trigger) until the
- * review settles. Nothing here moves money: a fee increase needs recorded
- * customer consent plus an EXISTING captured payment; a decrease needs a real
- * credit note or refunded payment. The server re-checks every step and
- * permission — this screen only collects the facts.
+ * review settles. Nothing here charges anyone: a fee increase needs the
+ * customer's recorded acceptance (which puts the new fee on the order and
+ * mints a top-up link) and then a SEPARATE payment captured after that
+ * acceptance; a decrease on a paid order needs a real credit note or refunded
+ * payment. The server re-checks every step and permission — this screen only
+ * collects the facts.
  */
 
 // Fixed policy wording, shown to staff exactly as the customer saw it.
@@ -115,7 +117,7 @@ export function DeliveryReviewView() {
   const rows = q.data?.data ?? [];
   return (
     <div className="space-y-3">
-      <div className="rounded-xl border border-amber-400/40 bg-amber-400/5 p-3 text-[12.5px]">
+      <div className="rounded-xl border border-warn/40 bg-warn/5 p-3 text-[12.5px]">
         <div className="font-bold uppercase tracking-wide">{CARE_DELIVERY_NOTICE}</div>
         <div className="mt-1 text-text-muted">
           Delivery orders containing care products are priced by hand here before
@@ -187,6 +189,7 @@ function ReviewModal({ orderId, onClose }: { orderId: string; onClose: () => voi
   const canEdit = can("sales", "edit");
   const canApprove = can("sales", "approve");
   const [msg, setMsg] = useState<string | null>(null);
+  const [topUpLink, setTopUpLink] = useState<{ checkout_url: string; amount_ngn: string } | null>(null);
   const [followUp, setFollowUp] = useState<{
     payment_link: { checkout_url: string; amount_ngn: string } | null;
     customer_notified: boolean;
@@ -211,6 +214,7 @@ function ReviewModal({ orderId, onClose }: { orderId: string; onClose: () => voi
       setMsg(null);
       if (res && "customer_notified" in res)
         setFollowUp({ payment_link: res.payment_link ?? null, customer_notified: res.customer_notified === true });
+      else if (res && res.payment_link) setTopUpLink(res.payment_link);
       qc.invalidateQueries({ queryKey: ["delivery-review", brand, orderId] });
       qc.invalidateQueries({ queryKey: ["delivery-reviews", brand] });
       qc.invalidateQueries({ queryKey: ["sales-order", brand, orderId] });
@@ -233,6 +237,19 @@ function ReviewModal({ orderId, onClose }: { orderId: string; onClose: () => voi
   const payments = (order.data?.payments ?? []).filter((p) =>
     ["captured", "refunded", "partially_refunded"].includes(p.status),
   );
+  // A top-up must be a SEPARATE payment taken after the customer accepted
+  // (the server refuses anything earlier, e.g. the original checkout payment).
+  const consentAt = rv?.customer_consent_at ? new Date(rv.customer_consent_at).getTime() : null;
+  const topUpCandidates = payments.filter(
+    (p) => p.status === "captured" && (consentAt == null || new Date(p.captured_at).getTime() >= consentAt),
+  );
+  // Would a lower fee leave the customer overpaid? Then it needs a refund.
+  const newTotalAfterDecrease =
+    d && rv && rv.proposed_fee_ngn != null
+      ? Number(d.order.total_ngn) - Number(d.order.shipping_fee_ngn) + Number(rv.proposed_fee_ngn)
+      : null;
+  const decreaseNeedsRefund =
+    newTotalAfterDecrease != null && Number(d?.order.amount_paid_ngn ?? 0) > newTotalAfterDecrease;
 
   return (
     <Modal open onClose={onClose} size="lg" title={`Delivery fee review — ${d?.order.order_number ?? ""}`}>
@@ -281,6 +298,11 @@ function ReviewModal({ orderId, onClose }: { orderId: string; onClose: () => voi
               </div>
 
               {/* 1 — price it */}
+              {canApprove && rv.status === "pending_review" && !rv.direction && (
+                <Step title={`The fee already on the order (${ngn(d.order.shipping_fee_ngn)}) is correct`}>
+                  <Button disabled={act.isPending} onClick={() => act.mutate({ path: "/confirm", body: {} })}>Confirm &amp; release for dispatch</Button>
+                </Step>
+              )}
               {canEdit && (rv.status === "pending_review" || rv.status === "awaiting_customer") && !rv.customer_consent_at && (
                 <Step title="1. Enter the calculated delivery fee">
                   <div className="flex gap-2 flex-wrap">
@@ -311,20 +333,34 @@ function ReviewModal({ orderId, onClose }: { orderId: string; onClose: () => voi
 
               {canApprove && rv.direction === "increase" && rv.customer_consent_at && rv.status === "awaiting_customer" && (
                 <Step title={`3. Verify the separate top-up payment (≥ ${ngn(rv.difference_ngn)})`}>
+                  {topUpLink && (
+                    <div className="mb-2 text-[12.5px]">
+                      Top-up link ({ngn(topUpLink.amount_ngn)}) — send it to the customer:{" "}
+                      <a className="underline break-all" href={topUpLink.checkout_url} target="_blank" rel="noreferrer">
+                        {topUpLink.checkout_url}
+                      </a>
+                    </div>
+                  )}
                   <div className="flex gap-2 flex-wrap">
                     <select className="input flex-1" value={paymentId} onChange={(e) => setPaymentId(e.target.value)}>
-                      <option value="">Select a captured payment…</option>
-                      {payments.filter((p) => p.status === "captured").map((p) => (
+                      <option value="">Select a payment captured after the customer agreed…</option>
+                      {topUpCandidates.map((p) => (
                         <option key={p.payment_id} value={p.payment_id}>{p.payment_number} · {ngn(p.amount_ngn)} · {p.method}</option>
                       ))}
                     </select>
                     <Button disabled={act.isPending || !paymentId} onClick={() => act.mutate({ path: "/top-up", body: { payment_id: paymentId } })}>Verify &amp; settle</Button>
                   </div>
-                  <p className="text-text-faint mt-1">Record the payment on the order first (payment link or manual receipt). Nothing is charged from here.</p>
+                  <p className="text-text-faint mt-1">The new fee is already on the order; the balance link collects the difference. Record the payment on the order first (payment link or manual receipt). Nothing is charged from here.</p>
                 </Step>
               )}
 
-              {canApprove && rv.direction === "decrease" && (
+              {canApprove && rv.direction === "decrease" && !decreaseNeedsRefund && (
+                <Step title="Confirm the lower fee (nothing has been over-paid)">
+                  <Button disabled={act.isPending} onClick={() => act.mutate({ path: "/confirm", body: {} })}>Confirm &amp; release for dispatch</Button>
+                </Step>
+              )}
+
+              {canApprove && rv.direction === "decrease" && decreaseNeedsRefund && (
                 <Step title={`Refund / credit the difference (${ngn(rv.difference_ngn)})`}>
                   <div className="flex gap-2 flex-wrap">
                     <select className="input w-44" value={refundRef.kind} onChange={(e) => setRefundRef({ kind: e.target.value as typeof refundRef.kind, id: "" })}>
@@ -368,7 +404,7 @@ function ReviewModal({ orderId, onClose }: { orderId: string; onClose: () => voi
               )}
 
               {msg && (
-                <div className="flex items-start gap-2 text-rose-300">
+                <div className="flex items-start gap-2 text-danger">
                   <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" /> {msg}
                 </div>
               )}

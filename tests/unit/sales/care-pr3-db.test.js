@@ -16,6 +16,6 @@ test("PXG care PR 3 — real SQL order links / /o checkout / delivery-fee review
   if (check.error || check.status !== 0)
     throw new Error(`${check.error?.message ?? ""}\n${check.stdout}\n${check.stderr}`);
   // Guard against a silently empty run.
-  if (!/# pass 13\b/.test(check.stdout)) throw new Error(`expected 13 passing cases\n${check.stdout}`);
+  if (!/# pass 16\b/.test(check.stdout)) throw new Error(`expected 16 passing cases\n${check.stdout}`);
   if (!/# fail 0\b/.test(check.stdout)) throw new Error(check.stdout);
 }, 150_000);

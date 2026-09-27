@@ -156,7 +156,7 @@ async function getOrCreateCart({
   return { ...cart, items };
 }
 
-async function addItem({ business, cart_id, item }) {
+async function addItem({ business, cart_id, item, publicStorefront = false }) {
   assertBrand(business);
   const cart = await repo.findCartById({ id: cart_id });
   if (!cart || cart.business !== business || cart.status !== "active")
@@ -213,6 +213,14 @@ async function addItem({ business, cart_id, item }) {
     });
     return cartItem;
   }
+
+  if (publicStorefront)
+    throw new AppError(
+      "VARIANT_NOT_FOUND",
+      "This item is not sold on the website",
+      404,
+      { user_message: "This item is no longer available." },
+    );
 
   // Legacy base-variant path — repaired to select the REAL catalogue columns
   // (the old query referenced price_ngn / product_name / variant_label /
@@ -372,8 +380,13 @@ async function addStorefrontItem({
       display_currency: cur,
     };
   } else if (item.product_id || item.variant_id) {
-    // Base product line — reuse the existing variant-validated path.
-    return addItem({ business, cart_id, item });
+    // The public storefront sells a bare variant ONLY when it is a Care &
+    // Accessories SKU (typed retail path inside addItem). Hair bases are private
+    // stock — never storefront-visible (000043) and usually ₦0 because a wig
+    // sells through its styled record — so a guessed/leaked base variant id must
+    // not enter a public bag. (The authenticated staff cart keeps addItem's
+    // legacy base path.)
+    return addItem({ business, cart_id, item, publicStorefront: true });
   } else {
     throw new AppError("CART_ITEM_INVALID", "Nothing to add to the cart", 422);
   }
@@ -391,15 +404,42 @@ async function updateItem({ business, cart_id, cart_item_id, quantity }) {
   const cart = await repo.findCartById({ id: cart_id });
   if (!cart || cart.business !== business || cart.status !== "active")
     throw new NotFoundError("Cart");
-  if (quantity <= 0) {
-    await repo.removeCartItem({ cart_item_id });
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    await repo.removeCartItem({ cart_id, cart_item_id });
     await repo.updateCart({
       cart_id,
       patch: { last_interaction_at: new Date().toISOString() },
     });
     return null;
   }
-  const updated = await repo.updateCartItemQuantity({ cart_item_id, quantity });
+  const existing = await repo.findCartItem({ cart_id, cart_item_id });
+  if (!existing) throw new NotFoundError("Cart item");
+  // Care & Accessories are stock-only: the add path refuses more than the
+  // sellable shelf holds, so the quantity stepper must too (no back-order).
+  if (existing.variant_id && !existing.styled_variant_id && !existing.bundle_id) {
+    const live = await retailResolver
+      .resolveSellableVariants({
+        brand: business,
+        variant_ids: [existing.variant_id],
+        channel: "storefront",
+      })
+      .catch(() => new Map());
+    const r = live.get(existing.variant_id);
+    if (r && quantity > r.available)
+      throw new AppError(
+        "OUT_OF_STOCK",
+        `Retail SKU ${r.sku} has ${r.available} sellable unit(s)`,
+        409,
+        {
+          user_message: `Only ${r.available} of ${r.name}${r.variant_label ? ` (${r.variant_label})` : ""} left in stock.`,
+        },
+      );
+  }
+  const updated = await repo.updateCartItemQuantity({
+    cart_id,
+    cart_item_id,
+    quantity,
+  });
   if (!updated) throw new NotFoundError("Cart item");
   await repo.updateCart({
     cart_id,
@@ -413,7 +453,7 @@ async function removeItem({ business, cart_id, cart_item_id }) {
   const cart = await repo.findCartById({ id: cart_id });
   if (!cart || cart.business !== business || cart.status !== "active")
     throw new NotFoundError("Cart");
-  await repo.removeCartItem({ cart_item_id });
+  await repo.removeCartItem({ cart_id, cart_item_id });
   await repo.updateCart({
     cart_id,
     patch: { last_interaction_at: new Date().toISOString() },

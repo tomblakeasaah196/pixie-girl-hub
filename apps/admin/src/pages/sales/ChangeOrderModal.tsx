@@ -510,7 +510,7 @@ export function ChangeOrderModal({
         {/* ── Items ── */}
         <section>
           <div className="micro mb-2">Items</div>
-          <ProductPicker onPick={handlePick} />
+          <ProductPicker onPick={handlePick} allowCare />
 
           {pendingStyled && (
             <div className="mt-3">

@@ -1360,7 +1360,8 @@ async function resolveStorefrontBundle({ brand, bundle_id, copies }) {
 
 // Resolve every cart line to sellable order lines + the accumulated bundle
 // discount. Styled → base variant + styled price; bundle → expanded components
-// + discount; base product → its variant. Prices never trusted from the client.
+// + discount; Care & Accessories → its exact live SKU. A bare hair-base line is
+// refused (bases are never sold publicly). Prices never trusted from the client.
 async function resolveCartToOrderLines({ brand, items }) {
   const orderLines = [];
   let bundleDiscountNgn = money(0);
@@ -1400,70 +1401,29 @@ async function resolveCartToOrderLines({ brand, items }) {
             .catch(() => new Map())
         : new Map();
       const retail = ci.variant_id ? resolved.get(ci.variant_id) : null;
-      if (ci.variant_id && !retail) {
-        // Not a sellable retail SKU: either a legacy base variant (keep the
-        // old default path) or a retail line that went stale/gated. Tell the
-        // two apart before deciding.
-        const { rows: role } = await query(
-          `SELECT p.catalogue_role, p.retail_status, p.is_deleted, pv.is_active
-             FROM ${brand}.product_variants pv
-             JOIN ${brand}.products p ON p.product_id = pv.product_id
-            WHERE pv.variant_id = $1`,
-          [ci.variant_id],
-        );
-        if (role[0] && role[0].catalogue_role === "retail")
-          throw new AppError(
-            "CART_ITEM_UNRESOLVED",
-            "A Care & Accessories item in your cart is no longer available. Please remove it and try again.",
-            409,
-            {
-              user_message:
-                "One of your items is no longer available. Please remove it and try again.",
-            },
-          );
-      }
-      let variant_id = ci.variant_id;
-      if (!variant_id) {
-        // No explicit SKU: only the LEGACY base path may default-resolve.
-        // Retail never falls back to another bottle size.
-        if (ci.product_id) {
-          const { rows: role } = await query(
-            `SELECT catalogue_role FROM ${brand}.products WHERE product_id = $1`,
-            [ci.product_id],
-          );
-          if (role[0] && role[0].catalogue_role === "retail")
-            throw new AppError(
-              "CART_ITEM_UNRESOLVED",
-              "A Care & Accessories item needs its exact SKU",
-              409,
-              {
-                user_message:
-                  "One of your items is no longer available. Please remove it and try again.",
-              },
-            );
-        }
-        variant_id = await defaultVariantId({
-          brand,
-          product_id: ci.product_id,
-        });
-      }
-      if (!variant_id)
+      // The ONLY generic (non-styled, non-bundle) line a public checkout may
+      // sell is a live Care & Accessories SKU. Anything else here is a private
+      // hair-base variant — never storefront-visible (000043), usually priced
+      // ₦0 because the wig sells through its styled record — and letting it
+      // through would hand out stock at whatever its base channel price is.
+      // A stale/gated retail line and a base line both refuse the same way.
+      if (!retail)
         throw new AppError(
           "CART_ITEM_UNRESOLVED",
           "One of your items is no longer available. Please remove it and try again.",
           409,
+          {
+            user_message:
+              "One of your items is no longer available. Please remove it and try again.",
+          },
         );
-      orderLines.push(
-        retail
-          ? {
-              variant_id,
-              quantity: ci.quantity,
-              product_name_snapshot: retail.name,
-              variant_label_snapshot: retail.variant_label || null,
-              sku_snapshot: retail.sku,
-            }
-          : { variant_id, quantity: ci.quantity },
-      );
+      orderLines.push({
+        variant_id: retail.variant_id,
+        quantity: ci.quantity,
+        product_name_snapshot: retail.name,
+        variant_label_snapshot: retail.variant_label || null,
+        sku_snapshot: retail.sku,
+      });
     }
   }
   return { orderLines, bundleDiscountNgn };
@@ -2024,6 +1984,7 @@ async function priceCartItems({ brand, items }) {
     let unit;
     let pair = noPair;
     let unavailable = false;
+    let lineVatRate = null;
     if (ci.styled_variant_id) {
       const resolved = await resolveStyledLine({
         brand,
@@ -2048,40 +2009,57 @@ async function priceCartItems({ brand, items }) {
       pair = await usdPricing
         .bundlePair({ brand, bundle_id: ci.bundle_id })
         .catch(() => noPair);
+      // A bundle carrying a Care & Accessories component checks out through
+      // the same retail delivery gate (checkout classifies the EXPANDED
+      // lines), so the quote must not offer a delivery fee checkout refuses.
+      const comps = await bundleRepo
+        .listComponents({ brand, bundle_id: ci.bundle_id })
+        .catch(() => []);
+      const compProductIds = comps
+        .map((c) => c.match_product_id || c.product_id)
+        .filter(Boolean);
+      if (compProductIds.length) {
+        const { rows: compRetail } = await query(
+          `SELECT 1 FROM ${brand}.products
+            WHERE product_id = ANY($1::uuid[]) AND catalogue_role = 'retail'
+            LIMIT 1`,
+          [compProductIds],
+        );
+        if (compRetail.length) careCount += 1;
+      }
     } else {
       const live = ci.variant_id ? liveGeneric.get(ci.variant_id) : null;
       if (live && live.kind === "retail") {
         careCount += 1;
         unit = money(live.unit_price_ngn);
+        // createOrder ADDS a taxable product's VAT on top of the price.
+        if (live.taxable && live.vat_rate) lineVatRate = money(live.vat_rate);
         pair = {
           catalogue_ngn: live.unit_price_ngn,
           catalogue_usd: live.unit_price_usd,
         };
-      } else if (live) {
-        unit = money(live.unit_price_ngn);
-      } else if (ci.variant_id) {
-        // Unresolvable live (retail gated/unpublished, deleted variant…) —
-        // keep the snapshot price for display, mark the line blocked.
-        unit = money(ci.unit_price_ngn || 0);
-        const { rows: role } = await query(
-          `SELECT p.catalogue_role FROM ${brand}.product_variants pv
-             JOIN ${brand}.products p ON p.product_id = pv.product_id
-            WHERE pv.variant_id = $1`,
-          [ci.variant_id],
-        );
-        if (role[0] && role[0].catalogue_role === "retail") {
-          careCount += 1;
-          unavailable = true;
-        }
       } else {
+        // Not a live Care SKU: a retail line that went stale/gated, or a bare
+        // hair-base line (never publicly sellable — checkout refuses both).
+        // Keep the snapshot for display and mark the line blocked.
         unit = money(ci.unit_price_ngn || 0);
+        unavailable = true;
+        if (ci.variant_id) {
+          const { rows: role } = await query(
+            `SELECT p.catalogue_role FROM ${brand}.product_variants pv
+               JOIN ${brand}.products p ON p.product_id = pv.product_id
+              WHERE pv.variant_id = $1`,
+            [ci.variant_id],
+          );
+          if (role[0] && role[0].catalogue_role === "retail") careCount += 1;
+        }
       }
       if (ci.variant_id && pair === noPair)
         pair = await usdPricing
           .variantPair({ brand, variant_id: ci.variant_id, unit_ngn: unit })
           .catch(() => noPair);
     }
-    priced.push({ ci, unit, pair, unavailable });
+    priced.push({ ci, unit, pair, unavailable, vatRate: lineVatRate });
   }
   return { priced, careCount };
 }
@@ -2113,10 +2091,16 @@ async function quoteCart({
 
   const { priced, careCount } = await priceCartItems({ brand, items });
   let subtotal = money(0);
+  // VAT on taxable Care & Accessories lines. createOrder ADDS it on top of
+  // the price (pricing/totals.js), so a quote without it would show less than
+  // the gateway charges. Styled/bundle lines are unchanged.
+  let taxNgn = money(0);
   const lines = [];
-  for (const { ci, unit, unavailable } of priced) {
+  for (const { ci, unit, unavailable, vatRate } of priced) {
     const lineTotal = unit.times(ci.quantity || 1);
     subtotal = subtotal.plus(lineTotal);
+    if (vatRate && !unavailable)
+      taxNgn = taxNgn.plus(money(toCurrencyString(lineTotal.times(vatRate))));
     lines.push({
       cart_item_id: ci.cart_item_id,
       name: ci.product_name_snapshot,
@@ -2172,7 +2156,10 @@ async function quoteCart({
     }
   }
 
-  const totalNgn = subtotal.minus(discountNgn).plus(money(deliveryNgn));
+  const totalNgn = subtotal
+    .minus(discountNgn)
+    .plus(taxNgn)
+    .plus(money(deliveryNgn));
   // Dollar figures come from the USD engine (usd-pricing): each item's
   // catalogue USD price, the coupon scaled at the goods' dollar ratio, delivery
   // at the catalogue rate — the SAME engine checkout locks onto the order, so
@@ -2198,11 +2185,29 @@ async function quoteCart({
       );
     });
   const negate = (v) => toCurrencyString(money(0).minus(money(v)));
+  // The engine folds everything beyond goods + delivery (discount AND Care
+  // VAT) into one adjustment at the goods' $/₦ ratio; split the VAT back out
+  // at that same ratio so each summary row shows its own dollar figure.
+  let taxUsd = money(0);
+  if (usd && taxNgn.gt(0)) {
+    const goodsNgn = priced.reduce(
+      (sum, { ci, unit }) => sum.plus(unit.times(ci.quantity || 1)),
+      money(0),
+    );
+    const ratio = goodsNgn.gt(0)
+      ? money(usd.goods_usd).dividedBy(goodsNgn)
+      : fxRate
+        ? money(1).dividedBy(money(fxRate))
+        : money(0);
+    taxUsd = taxNgn.times(ratio).toDecimalPlaces(2);
+  }
 
   return {
     lines,
     subtotal_ngn: toCurrencyString(subtotal),
     discount_ngn: toCurrencyString(discountNgn),
+    // VAT added on top of taxable Care & Accessories lines (0.00 otherwise).
+    tax_ngn: toCurrencyString(taxNgn),
     delivery_ngn: toCurrencyString(money(deliveryNgn)),
     total_ngn: toCurrencyString(totalNgn),
     // PR 2 Care & Accessories signals for the cart/checkout UI:
@@ -2212,14 +2217,17 @@ async function quoteCart({
     delivery_unavailable_reason: deliveryUnavailableReason,
     display_currency: cur,
     subtotal_display: usd ? usd.goods_usd : null,
-    // Only a discount lives in the adjustments here (the preview has no VAT or
-    // points), so its dollar figure is the negated adjustment.
-    discount_display: usd ? negate(usd.adjustments_usd) : null,
+    // Adjustments hold the discount (negative) and any Care VAT (positive);
+    // the discount's dollar figure is the adjustment without the VAT share.
+    discount_display: usd
+      ? negate(money(usd.adjustments_usd).minus(taxUsd))
+      : null,
+    tax_display: usd ? toCurrencyString(taxUsd) : null,
     delivery_display: usd ? usd.delivery_usd : null,
     total_display: usd ? usd.usd_total : null,
-    // The discounted goods in dollars, before delivery — the checkout page adds
-    // its live delivery quote to this (delivery: ₦ ÷ fx_rate_used, rounded up
-    // to the dollar, exactly as checkout prices it).
+    // The discounted goods in dollars (Care VAT included), before delivery —
+    // the checkout page adds its live delivery quote to this (delivery:
+    // ₦ ÷ fx_rate_used, rounded up to the dollar, exactly as checkout prices it).
     goods_total_display: usd
       ? toCurrencyString(money(usd.goods_usd).plus(money(usd.adjustments_usd)))
       : null,

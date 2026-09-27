@@ -145,20 +145,23 @@ function computeDiscount(coupon, subtotalNgn) {
 
 async function firstTimeOk({ brand, contact_id }) {
   if (!contact_id) return true;
-  // A customer's earlier retail-only purchases do not erase first-wig offer eligibility:
-  // only previous orders that contained wig lines count against first-wig eligibility.
+  // A customer whose earlier purchases were ONLY Care & Accessories keeps
+  // their first-time (first-wig) eligibility (owner rule). Every other past
+  // order counts exactly as before — including service-only orders, which
+  // this check has always counted.
   const { rows } = await query(
     `SELECT count(*)::int AS c FROM ${brand}.sales_orders so
       WHERE so.contact_id = $1
         AND so.status IN ('paid','assigned','order_ready','dispatched','completed')
-        AND EXISTS (
-          SELECT 1 FROM ${brand}.sales_order_lines sol
-          LEFT JOIN ${brand}.product_variants pv ON pv.variant_id = sol.variant_id
-          LEFT JOIN ${brand}.products p ON p.product_id = COALESCE(sol.product_id, pv.product_id)
-          WHERE sol.order_id = so.order_id
-            AND COALESCE(sol.line_kind, 'product') <> 'service'
-            AND (p.catalogue_role IS NULL OR p.catalogue_role <> 'retail')
-                    )`,
+        AND NOT (
+          EXISTS (SELECT 1 FROM ${brand}.sales_order_lines l WHERE l.order_id = so.order_id)
+          AND NOT EXISTS (
+            SELECT 1 FROM ${brand}.sales_order_lines sol
+              LEFT JOIN ${brand}.product_variants pv ON pv.variant_id = sol.variant_id
+              LEFT JOIN ${brand}.products p
+                     ON p.product_id = COALESCE(sol.product_id, pv.product_id)
+             WHERE sol.order_id = so.order_id
+               AND p.catalogue_role IS DISTINCT FROM 'retail'))`,
     [contact_id],
   );
   return rows[0].c === 0;
@@ -323,4 +326,6 @@ module.exports = {
   validateCoupon,
   redeemCoupon,
   mintVoucherInTx,
+  // Exported for tests (first-wig eligibility after Care-only purchases).
+  firstTimeOk,
 };

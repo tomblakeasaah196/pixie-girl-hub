@@ -24,9 +24,12 @@
  *
  * LIFECYCLE
  *   open → proposeFee
- *     • increase → awaiting_customer → recordConsent(accepted)
- *                  → verifyTopUp(a CAPTURED payment covering the difference)
- *                  → settle → confirmed
+ *     • increase → awaiting_customer → recordConsent(accepted) — the agreed
+ *                  fee is applied to the order HERE (total, invoice, ledger)
+ *                  so a payment link for the difference can be minted, but
+ *                  the order stays blocked
+ *                  → verifyTopUp(a CAPTURED payment taken AFTER consent,
+ *                    covering the difference, not already used) → accepted
  *     • increase → awaiting_customer → recordConsent(declined)
  *                  → decline path (cancel while unpaid, refund route when paid)
  *     • decrease → verifyRefund(credit note / refund recorded) → credited
@@ -90,9 +93,11 @@ async function orderRetailLineCount({ client, brand, order_id }) {
 /** Refuse anything that is not a PXG retail delivery needing a human fee. */
 async function assertReviewable({ client, brand, order }) {
   if (!order) throw new NotFoundError("Order");
-  // Brand + rollout gate. FLH can never hold a retail row (000094 CHECK), and
-  // the gate is off in production until PR 4.
-  careGate.requireEnabled(brand);
+  // Brand allowlist only — NOT the rollout flag. FLH can never hold a retail
+  // row (000094 CHECK). The flag is the kill switch for NEW selling; an order
+  // already placed must still be priceable, or the 000096 trigger would block
+  // its dispatch forever once the flag is turned off.
+  careGate.requireCareBrand(brand);
   if (["cancelled", "refunded"].includes(order.status)) {
     throw new AppError(
       "INVALID_STATE",
@@ -124,15 +129,16 @@ async function assertReviewable({ client, brand, order }) {
 
 /** The staff queue. `sales.view` is enforced at the route. */
 async function listQueue({ brand, status, page, page_size }) {
-  // The gate keeps FLH out of the feature entirely; the queue is empty there by
-  // construction, but refuse rather than return a confusing empty list.
-  careGate.requireEnabled(brand);
+  // The brand allowlist keeps FLH out entirely (its queue is empty by
+  // construction, but refuse rather than return a confusing empty list). The
+  // rollout flag is deliberately NOT checked: queued orders outlive the switch.
+  careGate.requireCareBrand(brand);
   return repo.listQueue({ brand, status, page, page_size });
 }
 
 /** Full review detail for one order, including its audit trail. */
 async function getReview({ brand, order_id }) {
-  careGate.requireEnabled(brand);
+  careGate.requireCareBrand(brand);
   const order = await salesRepo.findById({ brand, id: order_id });
   if (!order) throw new NotFoundError("Order");
   const reviews = await repo.listByOrder({ brand, order_id });
@@ -262,6 +268,16 @@ async function proposeFee({
         409,
       );
     }
+    if (review.customer_consent_at) {
+      // The customer agreed to THAT number and it is already on the order,
+      // invoice and ledger. Silently re-pricing would reuse their consent for
+      // a different amount — cancel the order or verify the top-up instead.
+      throw new AppError(
+        "CONSENT_ALREADY_RECORDED",
+        "The customer already accepted this fee — it can't be re-priced under the same consent",
+        409,
+      );
+    }
     if (proposed_fee_ngn === null || proposed_fee_ngn === undefined) {
       throw new AppError("FEE_REQUIRED", "A calculated delivery fee is required", 422);
     }
@@ -377,6 +393,16 @@ async function recordConsent({
       );
     }
 
+    if (review.customer_consent_at) {
+      // Acceptance already put the fee on the order; a later "no" is a
+      // cancellation/refund conversation, not a silent consent flip.
+      throw new AppError(
+        "CONSENT_ALREADY_RECORDED",
+        "The customer's acceptance is already recorded — verify the top-up payment, or cancel the order",
+        409,
+      );
+    }
+
     if (accepted === false) {
       const declined = await repo.updateReview({
         client,
@@ -424,14 +450,30 @@ async function recordConsent({
       };
     }
 
+    // Put the agreed fee on the order NOW (total, invoice, ledger once revenue
+    // is recognised). Until it is there the balance does not include the
+    // increase, so no payment link could ever collect it — the review stays
+    // `awaiting_customer`, which keeps dispatch blocked until the separate
+    // top-up is verified.
+    const applied = await applyAgreedFee({
+      client,
+      brand,
+      user,
+      order,
+      review,
+      agreedFeeNgn: review.proposed_fee_ngn,
+    });
+    const now = new Date().toISOString();
     const consented = await repo.updateReview({
       client,
       brand,
       review_id: review.review_id,
       patch: {
-        customer_consent_at: new Date().toISOString(),
+        customer_consent_at: now,
         customer_consent_channel: String(channel).trim().slice(0, 60),
         customer_consent_reference: String(reference).trim().slice(0, 200),
+        ...(applied.invoiceSynced ? { invoice_synced_at: now } : {}),
+        ...(applied.ledgerPosted ? { ledger_posted_at: now } : {}),
       },
     });
     await repo.addEvent({
@@ -444,7 +486,9 @@ async function recordConsent({
         from_status: review.status,
         to_status: consented.status,
         amount_ngn: review.difference_ngn,
-        note: `Customer accepted the increase via ${channel} (${reference})`,
+        note: `Customer accepted the increase via ${channel} (${reference}); fee ₦${toCurrencyString(
+          applied.agreed,
+        )} applied to the order (ledger ${applied.ledgerNote}) — awaiting the top-up`,
         actor_user_id: user.user_id,
         actor_name: user.full_name || user.email || null,
       },
@@ -455,15 +499,25 @@ async function recordConsent({
       action_key: "sales.delivery_review.consent_received",
       target_type: "sales_order",
       target_id: order_id,
-      after: { channel, reference },
+      after: {
+        channel,
+        reference,
+        shipping_fee_ngn: applied.fresh.shipping_fee_ngn,
+        total_ngn: applied.fresh.total_ngn,
+        balance_due_ngn: applied.fresh.balance_due_ngn,
+      },
       request_id,
     });
-    return { review: consented, next_action: "verify_topup" };
+    return { review: consented, order: applied.fresh, next_action: "verify_topup" };
   });
 }
 
-/** Look up a payment row and insist it is real, captured and on this order. */
-async function verifiedPayment({ client, brand, order_id, payment_id, minimum_ngn }) {
+/** Look up a payment row and insist it is real, captured, on this order and
+ *  — for a top-up — taken after the customer's consent and not already used
+ *  as another review's evidence. Without those two checks the ORIGINAL
+ *  checkout payment (captured before any increase existed) "covered" the
+ *  increase and released dispatch with the difference never paid. */
+async function verifiedPayment({ client, brand, order_id, payment_id, minimum_ngn, captured_after = null, review_id = null }) {
   const run = client ? client.query.bind(client) : query;
   const { rows } = await run(
     `SELECT payment_id, payment_number, amount_ngn, status, method, provider,
@@ -481,6 +535,27 @@ async function verifiedPayment({ client, brand, order_id, payment_id, minimum_ng
       409,
     );
   }
+  if (captured_after && p.captured_at && new Date(p.captured_at) < new Date(captured_after)) {
+    throw new AppError(
+      "TOPUP_PREDATES_CONSENT",
+      `Payment ${p.payment_number} was taken before the customer accepted the new fee — it can't be the separate top-up`,
+      409,
+    );
+  }
+  if (review_id) {
+    const { rows: used } = await run(
+      `SELECT 1 FROM ${t(brand, "delivery_fee_reviews")}
+        WHERE topup_payment_id = $1::uuid AND review_id <> $2::uuid LIMIT 1`,
+      [payment_id, review_id],
+    );
+    if (used.length) {
+      throw new AppError(
+        "TOPUP_ALREADY_USED",
+        `Payment ${p.payment_number} already settled another delivery-fee review`,
+        409,
+      );
+    }
+  }
   if (money(p.amount_ngn).lt(money(minimum_ngn))) {
     throw new AppError(
       "TOPUP_SHORT",
@@ -494,22 +569,41 @@ async function verifiedPayment({ client, brand, order_id, payment_id, minimum_ng
 }
 
 /**
- * Settle the review: write the agreed fee onto the order AND reconcile every
- * document that carries a money figure, in one transaction, before dispatch.
- *
- * `sales.repo.setDeliveryFee` only does the first line of this. Everything
- * after it is the part that was missing.
+ * Has this order's sale been recognised on the GL? Same authority the Change
+ * Order flow uses (amendment.service.isRevenueRecognised). Before recognition
+ * the order.paid journal posts the FINAL total — shipping included — so an
+ * adjusting entry here as well would count the fee difference twice.
  */
-async function settle({ client, brand, user, request_id, order, review, agreedFeeNgn, event }) {
+async function revenueRecognised({ brand, order }) {
+  const amendment = require("./amendment.service");
+  return amendment.isRevenueRecognised({ brand, order });
+}
+
+/**
+ * Write the agreed fee onto the order and reconcile the documents that carry a
+ * money figure, in the caller's transaction:
+ *   1. order shipping + total (the legacy fee_pending marker is cleared too);
+ *   2. invoice lines/totals resynced from the order;
+ *   3. an adjusting GL entry for the shipping delta — ONLY once revenue is
+ *      recognised (otherwise order.paid will post the final figures).
+ *
+ * `evidence: "credit_note"` skips 2 and 3: an issued credit note has ALREADY
+ * reversed the difference on the GL (Sales Returns / AR) and marked the
+ * invoice partially refunded, so resyncing the invoice down and posting a
+ * second reversal would reduce revenue and the customer's documents twice.
+ *
+ * Does NOT close the review — see closeReview.
+ */
+async function applyAgreedFee({ client, brand, user, order, review, agreedFeeNgn, evidence = null }) {
   const agreed = money(agreedFeeNgn);
   const before = {
     shipping_fee_ngn: order.shipping_fee_ngn,
     total_ngn: order.total_ngn,
     balance_due_ngn: order.balance_due_ngn,
   };
+  const deltaShipping = agreed.minus(money(before.shipping_fee_ngn || 0));
+  const recognised = await revenueRecognised({ brand, order });
 
-  // 1. The order row: shipping + recomputed total (and the legacy fee_pending
-  //    marker cleared, so the old Delivery Pending filter stays consistent).
   await salesRepo.setDeliveryFee({
     client,
     brand,
@@ -518,83 +612,96 @@ async function settle({ client, brand, user, request_id, order, review, agreedFe
   });
   const fresh = await salesRepo.findById({ client, brand, id: order.order_id });
 
-  // 2. Invoice: rebuild its lines/totals from the order so the customer's
-  //    document matches what they were actually charged.
-  //    Runs under a SAVEPOINT: on PostgreSQL a failed statement aborts the
-  //    whole transaction, so catching the error without rolling back to a
-  //    savepoint would make every later statement in this settle fail with
-  //    "current transaction is aborted".
   let invoiceSynced = false;
-  await client.query("SAVEPOINT delivery_review_invoice");
-  try {
-    const inv = await invoicingService.resyncFromOrder({
-      client,
-      brand,
-      order: fresh,
-      user_id: user.user_id,
-    });
-    invoiceSynced = Boolean(inv);
-    await client.query("RELEASE SAVEPOINT delivery_review_invoice");
-  } catch (err) {
-    await client.query("ROLLBACK TO SAVEPOINT delivery_review_invoice");
-    // A missing/void invoice is a legitimate "nothing to sync"; the review
-    // records invoice_synced_at = NULL so the gap stays visible.
-    logger.warn(
-      { err: err.message, order_id: order.order_id },
-      "delivery-review: invoice resync skipped",
-    );
-  }
-
-  // 3. Ledger: post the difference as an adjusting entry with its own
-  //    idempotency key, so a retried settle cannot double-post. Reuses the
-  //    amendment posting builder — a delivery-fee change is the same shape of
-  //    adjustment (shipping delta, no COGS, no net-goods change).
-  const deltaShipping = agreed.minus(money(before.shipping_fee_ngn || 0));
   let ledgerPosted = false;
-  if (!deltaShipping.isZero()) {
-    const lines = salesPostings.buildAmendmentLines({
-      delta_total_ngn: toCurrencyString(deltaShipping),
-      delta_net_ngn: "0.00",
-      delta_shipping_ngn: toCurrencyString(deltaShipping),
-      delta_tax_ngn: "0.00",
-      cogs_added_ngn: null,
-      revenue_account_code: revenueAccountForChannel(order.sales_channel),
-      contact_id: order.contact_id,
-      reference: order.order_number,
-    });
-    if (lines) {
-      const accounting = require("../accounting/accounting.service");
-      const entry = await accounting.postEntry({
+  let ledgerNote = "no delta";
+  if (evidence === "credit_note") {
+    ledgerNote = "reversed by the credit note";
+  } else {
+    // Invoice resync under a SAVEPOINT: on PostgreSQL a failed statement
+    // aborts the whole transaction, so catching the error without rolling back
+    // to a savepoint would make every later statement fail.
+    await client.query("SAVEPOINT delivery_review_invoice");
+    try {
+      const inv = await invoicingService.resyncFromOrder({
         client,
         brand,
+        order: fresh,
         user_id: user.user_id,
-        entry: {
-          source_type: "accrual",
-          source_table: "delivery_fee_reviews",
-          source_id: order.order_id,
-          reference: order.order_number,
-          description: `Delivery fee agreed by staff — ${order.order_number}`,
-          idempotency_key: `delivery_review:${review.review_id}`,
-        },
-        lines,
       });
-      ledgerPosted = Boolean(entry);
+      invoiceSynced = Boolean(inv);
+      await client.query("RELEASE SAVEPOINT delivery_review_invoice");
+    } catch (err) {
+      await client.query("ROLLBACK TO SAVEPOINT delivery_review_invoice");
+      // A missing/void invoice is a legitimate "nothing to sync"; the review
+      // records invoice_synced_at = NULL so the gap stays visible.
+      logger.warn(
+        { err: err.message, order_id: order.order_id },
+        "delivery-review: invoice resync skipped",
+      );
     }
-  } else {
-    ledgerPosted = true; // nothing to post
-  }
 
-  // 4. Close the review and drop the durable flag, which is what releases the
-  //    000096 dispatch block.
+    if (deltaShipping.isZero()) {
+      ledgerPosted = true; // nothing to post
+    } else if (!recognised) {
+      // Unpaid: the order.paid journal will carry the final shipping figure.
+      ledgerPosted = true;
+      ledgerNote = "deferred to the order.paid journal";
+    } else {
+      // Same shape as a Change Order adjustment (shipping delta, no COGS, no
+      // net-goods change), with its own idempotency key so a retried apply
+      // cannot double-post.
+      const lines = salesPostings.buildAmendmentLines({
+        delta_total_ngn: toCurrencyString(deltaShipping),
+        delta_net_ngn: "0.00",
+        delta_shipping_ngn: toCurrencyString(deltaShipping),
+        delta_tax_ngn: "0.00",
+        cogs_added_ngn: null,
+        revenue_account_code: revenueAccountForChannel(order.sales_channel),
+        contact_id: order.contact_id,
+        reference: order.order_number,
+      });
+      if (lines) {
+        const accounting = require("../accounting/accounting.service");
+        const entry = await accounting.postEntry({
+          client,
+          brand,
+          user_id: user.user_id,
+          entry: {
+            source_type: "accrual",
+            source_table: "delivery_fee_reviews",
+            source_id: order.order_id,
+            reference: order.order_number,
+            description: `Delivery fee agreed by staff — ${order.order_number}`,
+            idempotency_key: `delivery_review:${review.review_id}`,
+          },
+          lines,
+        });
+        ledgerPosted = Boolean(entry);
+        ledgerNote = ledgerPosted ? "posted" : "not posted";
+      }
+    }
+  }
+  return { agreed, before, fresh, invoiceSynced, ledgerPosted, ledgerNote };
+}
+
+/**
+ * Close the review and drop the durable flag, which releases the 000096
+ * dispatch block. `applied` is the result of applyAgreedFee (same or earlier
+ * transaction).
+ */
+async function closeReview({ client, brand, user, request_id, order, review, applied, event }) {
+  const { agreed, before, fresh, invoiceSynced, ledgerPosted, ledgerNote } = applied;
+  const now = new Date().toISOString();
   const settled = await repo.updateReview({
     client,
     brand,
     review_id: review.review_id,
     patch: {
       agreed_fee_ngn: toCurrencyString(agreed),
-      invoice_synced_at: invoiceSynced ? new Date().toISOString() : null,
-      ledger_posted_at: ledgerPosted ? new Date().toISOString() : null,
-      settled_at: new Date().toISOString(),
+      ...(invoiceSynced ? { invoice_synced_at: now } : {}),
+      ...(ledgerPosted ? { ledger_posted_at: now } : {}),
+      settled_at: now,
       settled_by: user.user_id,
       ...event,
     },
@@ -618,8 +725,8 @@ async function settle({ client, brand, user, request_id, order, review, agreedFe
       to_status: settled.status,
       amount_ngn: toCurrencyString(agreed),
       note: `Agreed delivery fee ₦${toCurrencyString(agreed)} applied; invoice ${
-        invoiceSynced ? "resynced" : "not present"
-      }, ledger ${ledgerPosted ? "posted" : "no delta"}`,
+        invoiceSynced || settled.invoice_synced_at ? "resynced" : "not resynced"
+      }, ledger ${ledgerNote}`,
       actor_user_id: user.user_id,
       actor_name: user.full_name || user.email || null,
     },
@@ -641,6 +748,14 @@ async function settle({ client, brand, user, request_id, order, review, agreedFe
     request_id,
   });
   return { review: settled, order: fresh, invoiceSynced, ledgerPosted };
+}
+
+/** Apply the agreed fee and close the review in one transaction. */
+async function settle({ client, brand, user, request_id, order, review, agreedFeeNgn, event, evidence }) {
+  const applied = await applyAgreedFee({
+    client, brand, user, order, review, agreedFeeNgn, evidence,
+  });
+  return closeReview({ client, brand, user, request_id, order, review, applied, event });
 }
 
 /**
@@ -675,6 +790,8 @@ async function verifyTopUp({ brand, user, request_id, order_id, payment_id }) {
       order_id,
       payment_id,
       minimum_ngn: review.difference_ngn,
+      captured_after: review.customer_consent_at,
+      review_id: review.review_id,
     });
     await repo.updateReview({
       client,
@@ -702,14 +819,28 @@ async function verifyTopUp({ brand, user, request_id, order_id, payment_id }) {
         actor_name: user.full_name || user.email || null,
       },
     });
-    const result = await settle({
+    // The fee was already applied at consent (recordConsent); only close the
+    // review here. Re-applying would be a no-op delta at best.
+    const fresh = await salesRepo.findById({ client, brand, id: order_id });
+    const result = await closeReview({
       client,
       brand,
       user,
       request_id,
       order,
       review,
-      agreedFeeNgn: review.proposed_fee_ngn,
+      applied: {
+        agreed: money(review.proposed_fee_ngn),
+        before: {
+          shipping_fee_ngn: order.shipping_fee_ngn,
+          total_ngn: order.total_ngn,
+          balance_due_ngn: order.balance_due_ngn,
+        },
+        fresh,
+        invoiceSynced: Boolean(review.invoice_synced_at),
+        ledgerPosted: Boolean(review.ledger_posted_at),
+        ledgerNote: review.ledger_posted_at ? "reconciled at consent" : "not posted",
+      },
       event: { status: "accepted" },
     });
     return { ...result, payment_number: payment.payment_number };
@@ -836,6 +967,9 @@ async function verifyRefund({
       order,
       review,
       agreedFeeNgn: review.proposed_fee_ngn,
+      // A credit note already reversed the difference on the GL and the
+      // invoice — settle must not reverse it a second time.
+      evidence: credit_note_id ? "credit_note" : "refund_payment",
       event: {
         status: "credited",
         refund_payment_id: refund_payment_id || null,
@@ -865,6 +999,21 @@ async function confirmFee({ brand, user, request_id, order_id, calculation_basis
       );
     }
     const agreed = review.direction === "decrease" ? review.proposed_fee_ngn : review.initial_fee_ngn;
+    if (review.direction === "decrease") {
+      // A lower fee on an order the customer has already paid more than the
+      // new total for leaves them overpaid — that difference must go back
+      // through verifyRefund (credit note / refunded payment), not vanish.
+      const newTotal = money(order.total_ngn || 0)
+        .minus(money(order.shipping_fee_ngn || 0))
+        .plus(money(agreed));
+      if (money(order.amount_paid_ngn || 0).gt(newTotal)) {
+        throw new AppError(
+          "REFUND_REQUIRED",
+          "The customer has paid more than the new total — record the refund or credit note for the difference instead of confirming",
+          409,
+        );
+      }
+    }
     if (calculation_basis) {
       await repo.updateReview({
         client,
@@ -913,6 +1062,7 @@ async function confirmFee({ brand, user, request_id, order_id, calculation_basis
  * through the existing refund flow with a human deciding the amount.
  */
 async function routeDecline({ brand, user, request_id, order_id, note }) {
+  careGate.requireCareBrand(brand);
   const order = await salesRepo.findById({ brand, id: order_id });
   if (!order) throw new NotFoundError("Order");
   const review = await repo.findBlockingByOrder({ brand, order_id });
@@ -1029,6 +1179,39 @@ async function followUp({ brand, result }) {
 const withFollowUp = (fn) => async (args) =>
   followUp({ brand: args.brand, result: await fn(args) });
 
+/**
+ * Post-commit for an ACCEPTED increase: the new fee is on the order, so mint a
+ * payment link for the exact outstanding balance and hand it to staff to send
+ * (nothing is charged from here). Best-effort — a gateway outage never undoes
+ * the recorded consent; staff can still record a manual receipt.
+ */
+async function consentFollowUp({ brand, result }) {
+  if (!result || result.next_action !== "verify_topup" || !result.order) return result;
+  const order = await salesRepo.findById({ brand, id: result.order.order_id });
+  if (!order || !money(order.balance_due_ngn || 0).gt(0)) return result;
+  try {
+    const paymentLinks = require("./payment-link.service");
+    const link = await paymentLinks.createPaymentLink({ brand, order_id: order.order_id });
+    const review = await repo.updateReview({
+      brand,
+      review_id: result.review.review_id,
+      patch: { payment_link_synced_at: new Date().toISOString() },
+    });
+    return {
+      ...result,
+      review,
+      order,
+      payment_link: link ? { checkout_url: link.checkout_url, amount_ngn: link.amount_ngn } : null,
+    };
+  } catch (err) {
+    logger.warn(
+      { err: err.message, order_id: order.order_id },
+      "delivery-review: top-up payment link not minted",
+    );
+    return { ...result, order, payment_link: null };
+  }
+}
+
 module.exports = {
   OPEN_STATUSES: repo.OPEN_STATUSES,
   SETTLED_STATUSES: repo.SETTLED_STATUSES,
@@ -1038,7 +1221,8 @@ module.exports = {
   getReview,
   openReview,
   proposeFee,
-  recordConsent,
+  recordConsent: async (args) =>
+    consentFollowUp({ brand: args.brand, result: await recordConsent(args) }),
   verifyTopUp: withFollowUp(verifyTopUp),
   verifyRefund: withFollowUp(verifyRefund),
   confirmFee: withFollowUp(confirmFee),

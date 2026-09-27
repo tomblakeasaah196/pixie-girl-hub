@@ -221,7 +221,9 @@ chasing deliveries, matching stray in-store terminal payments, and payment setti
 **Where.** Run → **Sales** · `/sales`
 **Who can see it.** `sales` permission.
 **What's inside (tabs).** **Quick Sale** · **Orders** · **Pre-orders** ·
-**Quotations** · **Delivery Pending** · **POS Reconciliation** · **Payments**.
+**Quotations** · **Delivery Pending** · **Delivery Fee Review** (Pixie Girl, when
+Care & Accessories is on or orders are waiting) · **POS Reconciliation** ·
+**Payments**.
 **Common tasks.**
 - *Ring up a fast sale?* Sales → **Quick Sale** tab (`/sales`). Fill the Quick
   Sale Form, add items, take payment. (This replaced the old POS.) If an item is
@@ -337,6 +339,25 @@ chasing deliveries, matching stray in-store terminal payments, and payment setti
   converted from, and the quote shows the order it became — the link is stamped
   both ways at conversion.
 - *See orders waiting to ship?* Sales → **Delivery Pending** tab.
+- *Sell a Care & Accessories item (comb, oil, brush) — Pixie Girl only?* In
+  Quick Sale, Quotations or Change Order, pick the **Care & Accessories** chip in
+  the product picker and choose the exact option/SKU (e.g. 50 ml vs 100 ml). Care
+  items are **stock-only**: they never become a pre-order, a care-only basket is
+  always **paid in full** (no Flexi Pay), and they never go to Stylist Studio.
+  For delivery, calculate the fee by hand and type it in — the zone rate only
+  counts wigs.
+- *Price the delivery for an order with care products?* Sales → **Delivery Fee
+  Review** (`/sales?tab=delivery-review`). Every Pixie Girl **delivery** order
+  containing Care & Accessories lands here and **can't be dispatched** until its
+  fee is settled. Open the row, then either **Confirm** the fee already on the
+  order, or enter the calculated fee with how you worked it out. A **higher** fee
+  needs the customer's recorded "yes" (channel + message reference) — that puts
+  the new fee on the order and gives you a **top-up link** to send; once a
+  separate payment taken *after* they agreed is on the order, **Verify & settle**.
+  A **lower** fee on an order they already paid more for needs the refunded
+  payment or credit note first. If they say no, the order stays blocked — re-price
+  it or route it to a manager to cancel/refund. The website notice customers see
+  is exactly **EXTRA DELIVERY FEES MAY APPLY**.
 - *A payment came in but no order matched it?* Sales → **POS Reconciliation**
   tab (`/sales?tab=pos-reconciliation`). This holds every payment we captured
   but couldn't attach to an order — in-store terminal charges AND online
@@ -792,8 +813,9 @@ raw item) → **styled product** (the sellable, styled version) model, plus
 categories, collections, bundles, shades, and bookable services.
 **Where.** Operate → **Catalogue** · `/catalogue`
 **Who can see it.** `catalogue` permission.
-**What's inside (tabs).** **Styled** · **Base** · **Categories** · **Collections**
-· **Shades** · **Bundles** · **Services** · **Config**.
+**What's inside (tabs).** **Styled** · **Base** · **Care & Accessories** (Pixie
+Girl only, when switched on) · **Categories** · **Collections** · **Shades** ·
+**Bundles** · **Services** · **Config**.
 **Common tasks.**
 - *Add a raw/base product?* Catalogue → **Base** → **New base product** opens a
   guided **wizard**: Step 1 basics (name, texture, lace, length, category, cap
@@ -860,6 +882,26 @@ categories, collections, bundles, shades, and bookable services.
   and **Shop by shade** pickers show where it already lives as chips; click a
   chip's **✕** to remove it, or search to add it somewhere new.
 - *Add a bookable service (Faitlyn)?* Catalogue → **Services** → **New Service Type**.
+- *Add a comb, hair oil or other accessory (Pixie Girl)?* Catalogue → **Care &
+  Accessories** (`/catalogue?tab=care`) → **New care item**
+  (`/catalogue/care/new`). Give it a name, category, tax treatment (exempt, or
+  taxable with the approved VAT rate) and one or more **options**, each with its
+  own exact SKU, storefront and staff/POS price (e.g. "50 ml" and "100 ml"). It
+  starts as a **draft**. Open an existing one at `/catalogue/care/<id>`.
+- *Put a care item on sale?* Open it → add a photo and prices on every active
+  option → **Publish**. Published items are sellable on every enabled channel.
+  **Editing** details, prices, options or photos returns it to **draft** (off
+  sale) until you publish again. **Archive** takes it off sale; an archived item
+  has **Return to draft**.
+- *Receive or count care stock?* Catalogue → **Care & Accessories** → **Receive
+  SKUs** (adds stock; needs a positive operational unit cost and Cost Vault
+  access) or **Count SKUs** (replaces the on-hand count at one location; goes for
+  approval). Both match by **exact SKU** — never by name — and have
+  download-able templates. Care items can also be bought on a purchase order by
+  exact SKU (Purchasing → new PO → **Or order a Care & Accessories SKU**).
+- *Bulk-create care items from a spreadsheet?* Care & Accessories → **Import /
+  export** (create-only; one row per SKU, repeat the product code to group
+  options).
 - *Set the dollar (USD) rate or dollar prices?* Catalogue → **Config** →
   **Apply USD exchange rate**: enter one ₦ per $1 rate, pick the rounding
   (exact, whole dollars or .99) and apply — every USD price in the catalogue is
@@ -1626,6 +1668,11 @@ full-screen **Landing Studio** (`/landing-studio`).
 - *Create a discount code?* Sales Campaigns → **Special Codes**
   (`/sales-campaigns/codes`).
 - *Set up campaign bundles?* Sales Campaigns → **Bundles**.
+- *Add Care & Accessories to a campaign (Pixie Girl)?* Open the campaign builder
+  → Products step → **Add care** → tick live care items. Only items you add are
+  sold on that landing page; they never count as an extra wig in wig deals or get
+  head-size premiums, and online orders with care items are **pickup only** for
+  now (the page shows EXTRA DELIVERY FEES MAY APPLY).
 - *What ₦/$ rate does a campaign show dollar prices at?* The catalogue's live
   rate (Catalogue → **Config** → **Apply USD exchange rate**) and each
   product's catalogue USD price — the same as the website. The campaign
@@ -1859,6 +1906,14 @@ fonts, colours, favicons, and vocabulary (button text, page copy).
   each popup in the list tells you the truth: **live** = on the site now,
   **live · edited** = on the site with unpublished draft changes, **off** =
   published but switched off, **draft** = never published.
+- *Where do customers buy Care & Accessories (Pixie Girl)?* On the shop website
+  at `/care-and-accessories` (the list) and `/care-and-accessories/<slug>` (one
+  item, with its size/option picker) — wigs stay on `/product/<slug>`. Only
+  **published** care items appear. Staff can also send them in a WhatsApp or
+  Instagram order link (Messaging → catalogue picker → **Care & Accessories**).
+  Taxable care items show "Plus X% VAT, added at checkout", and the bag/checkout
+  add that VAT to the total. Online orders with care items are **pickup only**
+  for now and show **EXTRA DELIVERY FEES MAY APPLY**.
 
 ### 4.35 Notifications
 **What it's for.** Your alert feed.

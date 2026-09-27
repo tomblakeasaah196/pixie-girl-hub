@@ -22,6 +22,7 @@ const { money, toCurrencyString } = require("../../utils/money");
 const { NotFoundError, AppError } = require("../../utils/errors");
 const { logger } = require("../../config/logger");
 const { transaction } = require("../../config/database");
+const { retailShare, minusShare } = require("../sales/incentive-basis");
 
 // ── Links ─────────────────────────────────────────────────
 async function createLink({ stylist_id, business, input }) {
@@ -90,28 +91,14 @@ async function accrueForPaidOrder({ brand, order_id }) {
     return null;
   }
 
-  // Check lines to determine eligible wig total vs retail items.
-  const { query: dbQuery } = require("../../config/database");
-  const { rows: lines } = await dbQuery(
-    `SELECT sol.line_total_ngn, sol.line_kind, p.catalogue_role
-       FROM ${brand}.sales_order_lines sol
-       LEFT JOIN ${brand}.product_variants pv ON pv.variant_id = sol.variant_id
-       LEFT JOIN ${brand}.products p ON p.product_id = COALESCE(sol.product_id, pv.product_id)
-      WHERE sol.order_id = $1`,
-    [order_id],
-  );
-  const wigLines = lines.filter(
-    (l) => l.line_kind !== "service" && l.catalogue_role !== "retail",
-  );
-  if (!wigLines.length) {
-    // Retail-only order: zero stylist referral commission
-    return null;
-  }
-  const wigTotal = wigLines.reduce(
-    (s, l) => s.plus(money(l.line_total_ngn || 0)),
-    money(0),
-  );
-  const total = wigTotal.gt(order.total_ngn) ? money(order.total_ngn) : wigTotal;
+  // Care & Accessories earn no stylist referral commission (owner rule): a
+  // retail-only order accrues nothing, a mixed order accrues on its
+  // non-retail value, every other order on its total exactly as before.
+  const share = await retailShare({ brand, order_id });
+  if (share.retailOnly) return null;
+  const total = share.hasRetail
+    ? minusShare(order.total_ngn, share.retailTotal)
+    : money(order.total_ngn || 0);
 
   const cfg = await programmeRepo.getConfig({ business: brand });
   const pct = money(

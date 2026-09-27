@@ -62,8 +62,9 @@ export function CareProductPicker({
         ) : (
           products.map((p) => {
             const checked = selected.has(p.product_id);
-            const price = p.variants?.find((v) => v.is_default && v.is_active)?.price_storefront_ngn
-              ?? p.variants?.find((v) => v.is_active)?.price_storefront_ngn;
+            // List rows carry the default SKU's price (the list endpoint does
+            // not return variants).
+            const price = p.default_storefront_price?.ngn ?? null;
             return (
               <button
                 key={p.product_id}

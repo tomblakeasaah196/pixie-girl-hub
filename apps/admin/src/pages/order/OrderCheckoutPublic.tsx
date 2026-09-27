@@ -55,6 +55,10 @@ interface PrefillItem {
   variant_label?: string | null;
   sku?: string | null;
   unresolved_reason?: string | null;
+  // Retail tax (server-resolved). Sales ADDS a taxable item's VAT on top of
+  // its price, so the preview total must too.
+  taxable?: boolean;
+  vat_rate?: number | null;
   qty: number;
   price_ngn: string | null;
   note: string | null;
@@ -393,6 +397,12 @@ export function OrderCheckoutPublic() {
     () => resolvedItems.some((i) => i.kind === "retail"),
     [resolvedItems],
   );
+  // A care-only basket is always paid in full (the server refuses an
+  // instalment plan for it), so don't offer one.
+  const careOnly = useMemo(
+    () => resolvedItems.length > 0 && resolvedItems.every((i) => i.kind === "retail"),
+    [resolvedItems],
+  );
   const totalQty = useMemo(
     () =>
       resolvedItems
@@ -458,7 +468,19 @@ export function OrderCheckoutPublic() {
       arr.reduce((s, i) => s + (Number(i.price_ngn) || 0) * i.qty, 0);
     return sum(resolvedItems) + sum(serviceItems);
   }, [resolvedItems, serviceItems]);
-  const orderTotal = itemsSubtotal + deliveryDue;
+  // VAT on taxable Care & Accessories lines, rounded per line like the server.
+  const careVat = useMemo(
+    () =>
+      resolvedItems.reduce(
+        (s, i) =>
+          i.kind === "retail" && i.taxable && i.vat_rate
+            ? s + Math.round((Number(i.price_ngn) || 0) * i.qty * Number(i.vat_rate) * 100) / 100
+            : s,
+        0,
+      ),
+    [resolvedItems],
+  );
+  const orderTotal = itemsSubtotal + careVat + deliveryDue;
   // A $ link charges in dollars: each item at its catalogue USD price (from
   // the Hub's USD engine), delivery at the catalogue rate rounded UP to the
   // dollar — the figures the order locks when it's placed. A ₦ link charges
@@ -478,9 +500,21 @@ export function OrderCheckoutPublic() {
         0,
       )
     : null;
+  // Care VAT in dollars: the server scales it at the goods' own $/₦ ratio
+  // (the USD engine's order-adjustment rule), rounded half-up to the cent.
+  const careVatUsd = (() => {
+    if (!usdLink || careVat <= 0) return 0;
+    let usd = 0;
+    let ngn = 0;
+    for (const i of resolvedItems) {
+      usd += (usdOf(i.idx) ?? 0) * i.qty;
+      ngn += (Number(i.price_ngn) || 0) * i.qty;
+    }
+    return ngn > 0 ? Math.round(((careVat * usd) / ngn) * 100 + 1e-9) / 100 : 0;
+  })();
   const orderTotalUsd =
     itemsSubtotalUsd != null
-      ? Math.round((itemsSubtotalUsd + deliveryUsd) * 100) / 100
+      ? Math.round((itemsSubtotalUsd + careVatUsd + deliveryUsd) * 100) / 100
       : null;
   const fmtUsd = (v: number) =>
     `$${v.toLocaleString("en-US", {
@@ -604,7 +638,7 @@ export function OrderCheckoutPublic() {
           bundle_id: bundleId || undefined,
           // Flexi Pay (PR-2): only send 'instalment' when the channel offers it.
           payment_plan:
-            flexi?.instalments_enabled && paymentPlan === "instalment"
+            flexi?.instalments_enabled && !careOnly && paymentPlan === "instalment"
               ? "instalment"
               : "full",
           // The buyer's gateway pick — the server prefers it on the active
@@ -1163,7 +1197,7 @@ export function OrderCheckoutPublic() {
           />
         </Section>
 
-        {!serviceOnly && flexi?.instalments_enabled && (
+        {!serviceOnly && !careOnly && flexi?.instalments_enabled && (
           <Section title="Payment plan">
             <div className="grid grid-cols-2 gap-2">
               <button
@@ -1241,6 +1275,14 @@ export function OrderCheckoutPublic() {
                   : `₦${itemsSubtotal.toLocaleString()}`}
               </span>
             </div>
+            {careVat > 0 && (
+              <div className="flex items-center justify-between text-[12.5px]">
+                <span className="text-text-muted">VAT (care products)</span>
+                <span className="font-mono tabular-nums">
+                  {usdLink ? fmtUsd(careVatUsd) : `₦${careVat.toLocaleString()}`}
+                </span>
+              </div>
+            )}
             {!serviceOnly && fulfilment === "delivery" && (
               <div className="flex items-center justify-between text-[12.5px]">
                 <span className="text-text-muted">Delivery</span>

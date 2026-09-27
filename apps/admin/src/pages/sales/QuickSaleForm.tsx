@@ -333,10 +333,23 @@ export function QuickSaleForm() {
   );
   // Wig count — drives the delivery fee's quantity tier, same as the
   // storefront checkout (wigQty) and the public order-link page (totalQty).
+  // Care & Accessories never count as extra wigs in that tier.
   const totalQty = useMemo(
-    () => Math.max(1, cart.reduce((s, l) => s + l.quantity, 0)),
+    () =>
+      Math.max(
+        1,
+        cart.reduce((s, l) => s + (l.is_care ? 0 : l.quantity), 0),
+      ),
     [cart],
   );
+  // Care & Accessories: staff calculate the delivery fee by hand (no rate card
+  // prices a bottle), and a care-only basket is always paid in full.
+  const hasCare = useMemo(() => cart.some((l) => l.is_care), [cart]);
+  const careOnly = useMemo(
+    () => cart.length > 0 && cart.every((l) => l.is_care),
+    [cart],
+  );
+  const offerInstalments = instalmentsEnabled && !careOnly;
   const vatAmount = applyVat ? subtotal * 0.075 : 0;
   const shipping = Number(shippingFee) || 0;
   const total = subtotal + vatAmount + shipping;
@@ -610,7 +623,9 @@ export function QuickSaleForm() {
         setZoneStatus(q?.fee_status ?? (q?.fee_ngn != null ? "priced" : "unserviceable"));
         if (q?.fee_ngn != null) {
           setSystemFee(q.fee_ngn);
-          setShippingFee(String(q.fee_ngn));
+          // With Care items in the basket the zone rate is only a reference —
+          // never overwrite the fee staff calculated by hand.
+          if (!hasCare) setShippingFee(String(q.fee_ngn));
         } else {
           setSystemFee(null);
         }
@@ -621,13 +636,14 @@ export function QuickSaleForm() {
     return () => {
       cancelled = true;
     };
-  }, [fulfilment, effectiveZone, totalQty, activeBiz]);
+  }, [fulfilment, effectiveZone, totalQty, activeBiz, hasCare]);
 
   // Any manual edit that lands away from the system's own rate needs an
   // explicit "yes, really" — staff can still override (an unconfigured zone,
   // a goodwill discount, a phone-negotiated deal), but never silently.
   const handleShippingBlur = () => {
-    if (systemFee == null) return;
+    // Care baskets are priced by hand — the zone rate is only a reference.
+    if (systemFee == null || hasCare) return;
     const typed = Number(shippingFee) || 0;
     if (typed === systemFee || typed === confirmedFee) return;
     setFeeConfirm({ from: systemFee, to: typed });
@@ -675,7 +691,7 @@ export function QuickSaleForm() {
       specific_instructions: hasSpecificInstructions && specificInstructions.trim() ? specificInstructions.trim().slice(0,2000) : undefined,
       shipping_fee_ngn: shipping || undefined,
       payment_plan:
-        instalmentsEnabled && paymentPlan === "instalment"
+        offerInstalments && paymentPlan === "instalment"
           ? "instalment"
           : "full",
     };
@@ -1023,7 +1039,7 @@ export function QuickSaleForm() {
           <div className="micro mb-3">Products</div>
 
           <div className="mb-3">
-            <ProductPicker onPick={handlePick} />
+            <ProductPicker onPick={handlePick} allowCare />
           </div>
 
           {pendingStyled && (
@@ -1193,7 +1209,7 @@ export function QuickSaleForm() {
             )}
           </div>
 
-          {instalmentsEnabled && (
+          {offerInstalments && (
             <div className="mt-5">
               <div className="micro mb-2">Payment plan</div>
               <div className="flex gap-2">
@@ -1366,6 +1382,22 @@ export function QuickSaleForm() {
                     suffix="NGN"
                   />
                 </Field>
+                {hasCare && (
+                  <div
+                    role="note"
+                    className="rounded-[11px] border border-warn/40 bg-warn/5 p-3 text-[12px]"
+                  >
+                    <div className="font-bold uppercase tracking-wide">
+                      EXTRA DELIVERY FEES MAY APPLY
+                    </div>
+                    <div className="mt-1 text-text-muted">
+                      This order has Care &amp; Accessories items — calculate the
+                      delivery fee by hand and enter it above (the zone rate only
+                      counts wigs). It is queued in Sales → Delivery Fee Review
+                      and can&rsquo;t be dispatched until that fee is confirmed.
+                    </div>
+                  </div>
+                )}
                 {!effectiveZone && (
                   <p className="text-[12px] text-text-faint">
                     Pick the country (and state/LGA for Nigeria) from the

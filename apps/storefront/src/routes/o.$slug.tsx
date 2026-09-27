@@ -99,6 +99,7 @@ const ORDER_LINK_DEFAULTS = {
   payWithLabel: "Pay with",
   subtotalLabel: "Subtotal",
   deliverySummaryLabel: "Delivery",
+  careVatLabel: "VAT (care products)",
   calculating: "Calculating…",
   totalLabel: "Total",
   bookingCta: "Place booking request",
@@ -380,7 +381,20 @@ function CheckoutForm({
       arr.reduce((s, i) => s + (Number(i.price_ngn) || 0) * i.qty, 0);
     return sum(resolvedItems) + sum(serviceItems);
   }, [resolvedItems, serviceItems]);
-  const orderTotal = itemsSubtotal + deliveryDue;
+  // VAT on taxable Care & Accessories lines — Sales adds it on top of the
+  // price, so the preview must too (rounded per line like the server).
+  const careVat = useMemo(
+    () =>
+      resolvedItems.reduce(
+        (sum, i) =>
+          i.kind === "retail" && i.taxable && i.vat_rate
+            ? sum + Math.round((Number(i.price_ngn) || 0) * i.qty * Number(i.vat_rate) * 100) / 100
+            : sum,
+        0,
+      ),
+    [resolvedItems],
+  );
+  const orderTotal = itemsSubtotal + careVat + deliveryDue;
 
   // $ link: each item at its catalogue USD price (the Hub's USD engine),
   // delivery at the catalogue rate rounded UP to the dollar — the figures the
@@ -400,9 +414,21 @@ function CheckoutForm({
         0,
       )
     : null;
+  // Care VAT in dollars: the server scales it at the goods' own $/₦ ratio
+  // (the USD engine's order-adjustment rule), rounded half-up to the cent.
+  const careVatUsd = (() => {
+    if (!usdLink || careVat <= 0) return 0;
+    let usd = 0;
+    let ngn = 0;
+    for (const i of resolvedItems) {
+      usd += (usdOf(i.idx) ?? 0) * i.qty;
+      ngn += (Number(i.price_ngn) || 0) * i.qty;
+    }
+    return ngn > 0 ? Math.round(((careVat * usd) / ngn) * 100 + 1e-9) / 100 : 0;
+  })();
   const orderTotalUsd =
     itemsSubtotalUsd != null
-      ? Math.round((itemsSubtotalUsd + deliveryUsd) * 100) / 100
+      ? Math.round((itemsSubtotalUsd + careVatUsd + deliveryUsd) * 100) / 100
       : null;
   const show = {
     item: (idx: number, ngn: number) =>
@@ -413,6 +439,8 @@ function CheckoutForm({
       itemsSubtotalUsd != null
         ? formatCurrency(itemsSubtotalUsd, "USD")
         : money(itemsSubtotal),
+    vat: () =>
+      usdLink ? formatCurrency(careVatUsd, "USD") : money(careVat),
     delivery: () =>
       usdLink ? formatCurrency(deliveryUsd, "USD") : money(deliveryDue),
     total: () =>
@@ -935,6 +963,12 @@ function CheckoutForm({
               <span className="text-muted-foreground">{s.subtotalLabel}</span>
               <span className="tabular-nums">{show.subtotal()}</span>
             </div>
+            {careVat > 0 && (
+              <div className="mt-1 flex items-center justify-between text-body-sm">
+                <span className="text-muted-foreground">{s.careVatLabel}</span>
+                <span className="tabular-nums">{show.vat()}</span>
+              </div>
+            )}
             {!serviceOnly && fulfilment === "delivery" && (
               <div className="mt-1 flex items-center justify-between text-body-sm">
                 <span className="text-muted-foreground">{s.deliverySummaryLabel}</span>

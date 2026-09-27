@@ -41,6 +41,7 @@ function decryptField(v) {
   }
 }
 const numbering = require("../../services/numbering.service");
+const { retailShare, minusShare } = require("../../modules/sales/incentive-basis");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { money, toCurrencyString } = require("../../utils/money");
@@ -993,34 +994,23 @@ async function accrueForOrder({ brand, order }) {
     });
     if (!rule || (!rule.rate_pct && !rule.rate_fixed_ngn)) return null;
 
-    // Check order lines: retail value earns zero sales commission.
-    const { rows: lines } = await client.query(
-      `SELECT sol.line_total_ngn, sol.unit_price_ngn, sol.quantity, sol.line_kind,
-              p.catalogue_role
-         FROM ${brand}.sales_order_lines sol
-         LEFT JOIN ${brand}.product_variants pv ON pv.variant_id = sol.variant_id
-         LEFT JOIN ${brand}.products p ON p.product_id = COALESCE(sol.product_id, pv.product_id)
-        WHERE sol.order_id = $1`,
-      [order.order_id],
+    // Care & Accessories value earns no sales commission (owner rule). A
+    // retail-only order earns nothing; a mixed order keeps the historical
+    // basis minus its retail share; every other order (wig-only, services,
+    // FLH) is computed exactly as before.
+    const share = await retailShare({ client, brand, order_id: order.order_id });
+    if (share.retailOnly) return null;
+    const net = money(order.subtotal_ngn).minus(
+      money(order.discount_amount_ngn || 0),
     );
-    const wigLines = lines.filter(
-      (l) =>
-        l.line_kind !== "service" && l.catalogue_role !== "retail",
-    );
-    if (!wigLines.length) return null; // retail-only orders earn zero sales commission
-
-    const wigNet = wigLines.reduce(
-      (s, l) => s.plus(money(l.line_total_ngn || 0)),
-      money(0),
-    );
-    const wigGross = wigLines.reduce(
-      (s, l) =>
-        s.plus(money(l.unit_price_ngn || 0).times(Number(l.quantity || 1))),
-      money(0),
-    );
-
     const basis =
-      rule.calculation_basis === "gross_revenue" ? wigGross : wigNet;
+      rule.calculation_basis === "gross_revenue"
+        ? share.hasRetail
+          ? minusShare(order.total_ngn, share.retailTotal)
+          : money(order.total_ngn)
+        : share.hasRetail
+          ? minusShare(net, share.retailNet)
+          : net;
     let amount = money(0);
     if (rule.rate_pct) amount = amount.plus(basis.times(money(rule.rate_pct)));
     if (rule.rate_fixed_ngn) amount = amount.plus(money(rule.rate_fixed_ngn));

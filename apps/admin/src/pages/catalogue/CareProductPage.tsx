@@ -159,26 +159,30 @@ function CareEditor({ p, onBack }: { p: CareProduct; onBack: () => void }) {
   const { can } = useAuthStore();
   const actions = useCareActions();
   const [d, setD] = useState<Details>(() => fromProduct(p));
-  const [confirm, setConfirm] = useState<"publish" | "unpublish" | "archive" | "trash" | null>(null);
+  const [confirm, setConfirm] = useState<"publish" | "unpublish" | "archive" | "restore" | "trash" | "save" | null>(null);
   const [cloneOpen, setCloneOpen] = useState(false);
   useEffect(() => { setD(fromProduct(p)); }, [p]);
   const act = async () => {
     if (!confirm) return;
     try {
+      if (confirm === "save") { setConfirm(null); await persist(); return; }
       if (confirm === "publish") await actions.publish.mutateAsync(p.product_id);
-      if (confirm === "unpublish" || confirm === "archive") await actions.unpublish.mutateAsync({ id: p.product_id, archive: confirm === "archive" });
+      if (confirm === "unpublish" || confirm === "archive" || confirm === "restore") await actions.unpublish.mutateAsync({ id: p.product_id, archive: confirm === "archive" });
       if (confirm === "trash") { await actions.trash.mutateAsync(p.product_id); nav("/catalogue?tab=care"); }
-      toast.success(`Care item ${confirm === "publish" ? "published for staff review (public sales remain off)" : confirm === "trash" ? "moved to trash" : confirm === "archive" ? "archived" : "returned to draft"}`);
+      toast.success(`Care item ${confirm === "publish" ? "published — now sellable on enabled channels" : confirm === "trash" ? "moved to trash" : confirm === "archive" ? "archived" : "returned to draft"}`);
       setConfirm(null);
     } catch (e) { error(e); }
   };
-  const save = async () => {
+  const persist = async () => {
     try {
       const { product_code: _code, ...patch } = fields(d);
       await actions.update.mutateAsync({ id: p.product_id, patch });
-      toast.success("Care details saved · draft review required");
+      toast.success(p.retail_status === "live" ? "Care details saved · item unpublished until you publish it again" : "Care details saved · still a draft");
     } catch (e) { error(e); }
   };
+  // Any edit returns a published item to draft (server rule), which takes it
+  // off sale everywhere — never do that without saying so first.
+  const save = () => (p.retail_status === "live" ? setConfirm("save") : void persist());
   return <div className="max-w-[1020px] space-y-4">
     <Button variant="ghost" size="sm" icon={<ArrowLeft className="w-4 h-4" />} onClick={onBack}>Care & Accessories</Button>
     <div className="flex items-center flex-wrap gap-3">
@@ -189,9 +193,10 @@ function CareEditor({ p, onBack }: { p: CareProduct; onBack: () => void }) {
         {p.retail_status !== "live" && p.retail_status !== "archived" && <Button variant="primary" size="sm" onClick={() => setConfirm("publish")}>Publish</Button>}
         {p.retail_status === "live" && <Button size="sm" onClick={() => setConfirm("unpublish")}>Unpublish</Button>}
         {p.retail_status !== "archived" && <Button size="sm" onClick={() => setConfirm("archive")}>Archive</Button>}
+        {p.retail_status === "archived" && <Button size="sm" onClick={() => setConfirm("restore")}>Return to draft</Button>}
       </div>}
     </div>
-    <p className="text-[12px] text-text-muted">Publication is a catalogue review state in PR1. Customer-facing sales, links and checkout remain disabled until later gated PRs.</p>
+    <p className="text-[12px] text-text-muted">Published items are sellable on every enabled channel. Editing details, prices, options or photos returns the item to draft (off sale) until it is published again.</p>
     <div className="grid grid-cols-1 lg:grid-cols-[1fr_310px] gap-4">
       <div className="space-y-4">
         <Card className="p-5"><DetailsForm d={d} set={setD} isNew={false} />
@@ -234,9 +239,9 @@ function CareEditor({ p, onBack }: { p: CareProduct; onBack: () => void }) {
     </div>
     {cloneOpen && <CloneCareModal p={p} onClose={() => setCloneOpen(false)} />}
     <ConfirmDialog open={!!confirm} onClose={() => setConfirm(null)} onConfirm={act}
-      title={`${confirm ?? "Change"} care item?`}
-      message={confirm === "publish" ? "Confirm category, photo, approved copy and all active SKU prices. Publishing here will NOT enable customer-facing sales." : confirm === "trash" ? "Stock must be zero and any open PO or shipment closed before moving this item to trash." : "This changes the staff catalogue state. Existing stock remains independent."}
-      confirmLabel={confirm === "publish" ? "Publish for staff" : "Confirm"} />
+      title={confirm === "save" ? "Save and unpublish?" : confirm === "restore" ? "Return item to draft?" : `${confirm ?? "Change"} care item?`}
+      message={confirm === "publish" ? "Confirm category, photo, approved copy and all active SKU prices. Publishing makes this item sellable on every enabled channel (Quick Sale, quotes, storefront, order links and campaigns it is added to)." : confirm === "save" ? "This item is live. Saving changes returns it to draft, which takes it off sale everywhere until you publish it again." : confirm === "trash" ? "Stock must be zero and any open PO or shipment closed before moving this item to trash." : confirm === "archive" ? "Archiving takes the item off sale. Existing stock and order history are kept." : "This changes the catalogue state. Existing stock remains independent."}
+      confirmLabel={confirm === "publish" ? "Publish" : confirm === "save" ? "Save & unpublish" : "Confirm"} />
   </div>;
 }
 

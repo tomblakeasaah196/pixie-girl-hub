@@ -61,6 +61,18 @@ async function isVariantSellable(schema, variant_id) {
   return rows.length > 0;
 }
 
+/** True when `variant_id` is an ACTIVE variant of `product_id`. */
+async function isVariantOfProduct(schema, variant_id, product_id) {
+  if (!variant_id || !product_id) return false;
+  const { rows } = await query(
+    `SELECT 1 FROM ${schema}.product_variants
+      WHERE variant_id = $1 AND product_id = $2 AND is_active = true
+      LIMIT 1`,
+    [variant_id, product_id],
+  );
+  return rows.length > 0;
+}
+
 /** Resolve a `kind: 'base'` item into one sellable line.
  *
  *  Two PR 3 fixes here, both found by reading the SQL against the real schema:
@@ -113,9 +125,12 @@ async function resolveBaseItem(schema, it) {
     };
   }
 
-  // Honour an explicit, still-sellable pick; otherwise fall back to the default.
+  // Honour an explicit, still-sellable pick — but only a variant OF THIS base
+  // product. Without the ownership check a link could pair product X's name
+  // and code with any other variant id (another wig, or a Care SKU slipping
+  // past the typed retail resolver) and the invoice would name the wrong item.
   const pinned =
-    it.variant_id && (await isVariantSellable(schema, it.variant_id))
+    it.variant_id && (await isVariantOfProduct(schema, it.variant_id, it.product_id))
       ? { variant_id: it.variant_id }
       : null;
   const v = pinned || (await defaultVariant(schema, it.product_id));

@@ -13,7 +13,7 @@ jest.mock("../../../src/middleware/rbac", () => ({
     req.user?.permissions?.includes(`${module}.${action}`) ? next() : res.status(403).json({ error: { code: "DENIED" } }),
 }));
 jest.mock("../../../src/modules/catalogue/care-accessories.service");
-jest.mock("../../../src/modules/catalogue/catalogue.repo", () => ({ findProductById: jest.fn() }));
+jest.mock("../../../src/modules/catalogue/catalogue.repo", () => ({ findProductById: jest.fn(), findProductRole: jest.fn() }));
 jest.mock("../../../src/modules/catalogue/catalogue.controller", () =>
   new Proxy({}, { get: () => jest.fn((_req, res) => res.json({ data: "legacy handler" })) }));
 jest.mock("../../../src/modules/catalogue/styled.controller", () =>
@@ -46,6 +46,7 @@ const id = "11111111-1111-4111-8111-111111111111";
 beforeEach(() => {
   config.FEATURE_PXG_CARE_ACCESSORIES_ENABLED = false;
   productRepo.findProductById.mockResolvedValue({ product_id: id, catalogue_role: "retail" });
+  productRepo.findProductRole.mockResolvedValue("retail");
   service.list.mockResolvedValue({ data: [], meta: { total: 0 } });
   service.categories.mockResolvedValue([]);
   service.getOne.mockResolvedValue({ product_id: id });
@@ -87,4 +88,16 @@ test("create requires Catalogue Create and correct schema; publish requires Cata
   expect((await request(app).post(`${careUrl}/${id}/publish`).set("x-test-perms", "catalogue.edit")).status).toBe(403);
   service.publish.mockResolvedValue({ product_id: id, retail_status: "live" });
   expect((await request(app).post(`${careUrl}/${id}/publish`).set("x-test-perms", "catalogue.approve")).status).toBe(200);
+});
+
+test("legacy /products/:id guard never blocks a base product — including restoring a TRASHED one", async () => {
+  // Regression: the guard used a live-rows-only lookup and 404'd every base
+  // restore (the product is trashed, so it "didn't exist").
+  productRepo.findProductRole.mockResolvedValue("base");
+  const restore = await request(app).post(`/catalogue/products/${id}/restore`).set("x-test-perms", "catalogue.edit");
+  expect(restore.status).toBe(200);
+  expect(restore.body.data).toBe("legacy handler");
+  // Unknown ids fall through to the handler's own not-found answer.
+  productRepo.findProductRole.mockResolvedValue(null);
+  expect((await request(app).get(`/catalogue/products/${id}`)).status).toBe(200);
 });

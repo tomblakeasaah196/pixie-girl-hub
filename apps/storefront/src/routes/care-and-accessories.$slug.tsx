@@ -238,7 +238,7 @@ function CareDetailPage() {
 
             {data.taxable && data.vat_rate ? (
               <p className="mt-3 text-body-sm text-muted-foreground">
-                Inclusive of {Math.round(Number(data.vat_rate) * 1000) / 10}% VAT.
+                Plus {Math.round(Number(data.vat_rate) * 1000) / 10}% VAT, added at checkout.
               </p>
             ) : null}
 

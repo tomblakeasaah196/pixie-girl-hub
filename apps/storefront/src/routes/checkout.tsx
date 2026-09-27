@@ -94,6 +94,7 @@ function CheckoutPage() {
       summaryTitle: "Order summary",
       subtotalLabel: "Subtotal",
       discountLabel: "Discount",
+      taxLabel: "VAT (care products)",
       deliverySummaryLabel: "Delivery",
       deliveryFreeLabel: "Free",
       deliveryCalculating: "Calculating…",
@@ -412,6 +413,10 @@ function CheckoutPage() {
       usdQuote ? formatCurrency(n(usdQuote.subtotal_display), "USD") : fmt(subtotalNgn),
     discount: () =>
       usdQuote ? formatCurrency(n(usdQuote.discount_display), "USD") : fmt(discountNgn),
+    tax: () =>
+      usdQuote
+        ? formatCurrency(n(usdQuote.tax_display), "USD")
+        : fmt(n(quoteQ.data?.tax_ngn)),
     delivery: (ngn: number) =>
       usdQuote && usdRate
         ? formatCurrency(Math.ceil(ngn / usdRate - 1e-9), "USD")
@@ -974,6 +979,14 @@ function CheckoutPage() {
                   </dt>
                   <dd className="font-mono tabular-nums">
                     −{show.discount()}
+                  </dd>
+                </div>
+              ) : null}
+              {n(quoteQ.data?.tax_ngn) > 0 ? (
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">{copy.taxLabel}</dt>
+                  <dd className="font-mono tabular-nums">
+                    {show.tax()}
                   </dd>
                 </div>
               ) : null}

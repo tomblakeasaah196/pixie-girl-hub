@@ -85,7 +85,7 @@ import {
 } from "@/lib/campaigns";
 import { useBusinessConfig } from "@/lib/settings";
 import { type StyledProduct } from "@/lib/catalogue";
-import { type CareProduct } from "@/lib/care-accessories";
+import { type CareProduct, useCareAvailability } from "@/lib/care-accessories";
 import { StyledProductPicker } from "@/components/campaign/StyledProductPicker";
 import { CareProductPicker } from "@/components/campaign/CareProductPicker";
 
@@ -1152,6 +1152,8 @@ function ProductsStep({
   const removeProduct = useRemoveCampaignProduct(campaign.campaign_id);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [carePickerOpen, setCarePickerOpen] = useState(false);
+  // PXG-only + rollout flag; the server re-checks on every campaign write.
+  const careOn = useCareAvailability().data?.enabled === true;
 
   const products = (productsQ.data?.data || []) as CampaignProduct[];
   const excludeIds = new Set(
@@ -1184,17 +1186,14 @@ function ProductsStep({
   async function handleAddCare(items: CareProduct[]) {
     await addBatch.mutateAsync(
       items.map((p) => {
-        const variant = p.variants?.find((v) => v.is_default && v.is_active)
-          ?? p.variants?.find((v) => v.is_active);
+        // The picker's list rows carry the default SKU's storefront price
+        // (they have no `variants`), so snapshot that as the reference price.
+        const price = p.default_storefront_price;
         return {
           product_id: p.product_id,
           image_url: p.primary_image_url || null,
-          regular_price_ngn: variant?.price_storefront_ngn != null
-            ? Number(variant.price_storefront_ngn)
-            : null,
-          regular_price_usd: variant?.price_storefront_usd != null
-            ? Number(variant.price_storefront_usd)
-            : null,
+          regular_price_ngn: price?.ngn != null ? Number(price.ngn) : null,
+          regular_price_usd: price?.usd != null ? Number(price.usd) : null,
           short_description: p.short_description,
           long_description: p.long_description,
           include_exclude: "include",
@@ -1226,13 +1225,15 @@ function ProductsStep({
             >
               Add wig products
             </Button>
-            <Button
-              variant="secondary"
-              icon={<Plus className="w-4 h-4" />}
-              onClick={() => setCarePickerOpen(true)}
-            >
-              Add care
-            </Button>
+            {careOn && (
+              <Button
+                variant="secondary"
+                icon={<Plus className="w-4 h-4" />}
+                onClick={() => setCarePickerOpen(true)}
+              >
+                Add care
+              </Button>
+            )}
           </div>
         )}
       </div>

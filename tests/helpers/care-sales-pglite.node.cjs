@@ -96,6 +96,10 @@ test("storefront quote: live re-pricing replaces stale snapshots and shows the M
     address: { country_code: "NG", zone_code: "NG" }, display_currency: "NGN",
   });
   assert.equal(q.lines[0].unit_price_ngn, "5000.00", "stale add-time price must not survive the quote");
+  // The oil is taxable at 7.5 %: createOrder adds VAT on top, so the quote
+  // must too, or the gateway charges more than the bag showed.
+  assert.equal(q.tax_ngn, "375.00");
+  assert.equal(q.total_ngn, "5375.00");
   assert.equal(q.has_care_items, true);
   assert.equal(q.care_delivery_notice, "EXTRA DELIVERY FEES MAY APPLY");
   assert.equal(q.delivery_available, false, "retail web delivery money path is gated off");
@@ -107,10 +111,13 @@ test("wig-only cart delivery quotes exactly as before (no retail interference)",
   const cartService = require("../../src/modules/storefront/cart.service");
   const storefront = require("../../src/modules/storefront/storefront.service");
   const cart = await cartService.getOrCreateCart({ business: PXG, session_token: "guest-wig" });
-  // Legacy repaired base-variant path (real columns now).
-  await cartService.addStorefrontItem({
-    business: PXG, cart_id: cart.cart_id, item: { variant_id: IDS.vWig, quantity: 2 },
-  });
+  // A legacy non-retail row (the public add path now refuses bare hair-base
+  // variants — see the next test) still quotes the wig zone tier untouched.
+  await db.query(
+    `INSERT INTO shared.cart_items (cart_id, business, product_id, variant_id, quantity, product_name_snapshot, unit_price_ngn)
+     VALUES ($1, $2, $3, $4, 2, 'Classic Base', 120000)`,
+    [cart.cart_id, PXG, IDS.wigBase, IDS.vWig],
+  );
   const q = await storefront.quoteCart({
     brand: PXG, cart_id: cart.cart_id,
     address: { country_code: "NG", zone_code: "NG" }, display_currency: "NGN",
@@ -118,6 +125,8 @@ test("wig-only cart delivery quotes exactly as before (no retail interference)",
   assert.equal(q.has_care_items, false);
   assert.equal(q.delivery_available, true);
   assert.equal(q.delivery_ngn, "2500.00", "2 wigs stay in tier 1–2");
+  assert.equal(q.lines[0].unavailable, true, "a bare hair-base line is never publicly sellable");
+  assert.equal(q.tax_ngn, "0.00");
 });
 
 test("createOrder: retail-only pays in full, reserves real stock, keeps exact SKU + product tax", async () => {
@@ -235,21 +244,62 @@ test("storefront checkout: retail pickup completes; retail delivery refuses with
   assert.equal(cartRow.rows[0].status, "converted");
 });
 
-test("storefront checkout: wig-only delivery still charges the zone tier (unchanged)", async () => {
+test("storefront: a raw hair-base variant can't be added or checked out publicly (no ₦0 / private-stock leak)", async () => {
   const cartService = require("../../src/modules/storefront/cart.service");
   const storefront = require("../../src/modules/storefront/storefront.service");
   const cart = await cartService.getOrCreateCart({ business: PXG, session_token: "guest-wigdel" });
-  await cartService.addStorefrontItem({ business: PXG, cart_id: cart.cart_id, item: { variant_id: IDS.vWig, quantity: 1 } });
-  const result = await storefront.checkout({
-    brand: PXG, cart_id: cart.cart_id,
-    input: {
-      fulfilment_type: "delivery",
-      contact: { first_name: "Bee", phone: "+2348022222222", address: { line1: "2 Wig Rd", city: "Lagos", country_code: "NG", zone_code: "NG" } },
-    },
-  });
-  const ord = await db.query(`SELECT shipping_fee_ngn, order_type FROM pixiegirl.sales_orders WHERE order_id = $1`, [result.order_id]);
-  assert.equal(Number(ord.rows[0].shipping_fee_ngn), 2500);
-  assert.equal(ord.rows[0].order_type, "dispatch");
+  // Hair bases are private stock (000043) and usually ₦0 because a wig sells
+  // through its styled record; a guessed/leaked base variant id must not buy one.
+  await assert.rejects(
+    cartService.addStorefrontItem({ business: PXG, cart_id: cart.cart_id, item: { variant_id: IDS.vWig, quantity: 1 } }),
+    (err) => err.code === "VARIANT_NOT_FOUND",
+  );
+  await assert.rejects(
+    cartService.addStorefrontItem({ business: PXG, cart_id: cart.cart_id, item: { product_id: IDS.wigBase, quantity: 1 } }),
+    (err) => err.code === "VARIANT_NOT_FOUND",
+  );
+  // …and a legacy row already in a bag refuses at checkout.
+  await db.query(
+    `INSERT INTO shared.cart_items (cart_id, business, product_id, variant_id, quantity, product_name_snapshot, unit_price_ngn)
+     VALUES ($1, $2, $3, $4, 1, 'Classic Base', 0)`,
+    [cart.cart_id, PXG, IDS.wigBase, IDS.vWig],
+  );
+  await assert.rejects(
+    storefront.checkout({
+      brand: PXG, cart_id: cart.cart_id,
+      input: {
+        fulfilment_type: "delivery",
+        contact: { first_name: "Bee", phone: "+2348022222222", address: { line1: "2 Wig Rd", city: "Lagos", country_code: "NG", zone_code: "NG" } },
+      },
+    }),
+    (err) => err.code === "CART_ITEM_UNRESOLVED",
+  );
+});
+
+test("cart: item edits are scoped to the shopper's own cart; Care quantities are stock-only", async () => {
+  const cartService = require("../../src/modules/storefront/cart.service");
+  const mine = await cartService.getOrCreateCart({ business: PXG, session_token: "guest-owner" });
+  const theirs = await cartService.getOrCreateCart({ business: PXG, session_token: "guest-other" });
+  const line = await cartService.addStorefrontItem({ business: PXG, cart_id: mine.cart_id, item: { variant_id: IDS.v50, quantity: 1 } });
+  // Another shopper's cart id + my item id must not touch my bag.
+  await assert.rejects(
+    cartService.updateItem({ business: PXG, cart_id: theirs.cart_id, cart_item_id: line.cart_item_id, quantity: 2 }),
+    (err) => /not found/i.test(err.message),
+  );
+  await cartService.removeItem({ business: PXG, cart_id: theirs.cart_id, cart_item_id: line.cart_item_id });
+  const still = await cartService.getCart({ business: PXG, session_token: "guest-owner" });
+  assert.equal(still.items.length, 1, "a foreign cart id cannot delete my line");
+  // The stepper can't back-order a stock-only SKU past its sellable shelf
+  // (earlier tests reserved some units, so read the live figure).
+  const resolver = require("../../src/modules/catalogue/retail-resolver");
+  const { available } = await resolver.resolveSellableVariant({ brand: PXG, variant_id: IDS.v50 });
+  assert.ok(available >= 1);
+  await assert.rejects(
+    cartService.updateItem({ business: PXG, cart_id: mine.cart_id, cart_item_id: line.cart_item_id, quantity: available + 1 }),
+    (err) => err.code === "OUT_OF_STOCK",
+  );
+  const ok = await cartService.updateItem({ business: PXG, cart_id: mine.cart_id, cart_item_id: line.cart_item_id, quantity: available });
+  assert.equal(ok.quantity, available);
 });
 
 test("unpublish after add-to-cart blocks quote lines and checkout (kill-switch behaviour)", async () => {

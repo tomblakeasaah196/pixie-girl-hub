@@ -24,7 +24,6 @@ const care = require("./care-accessories.controller");
 const careV = require("./care-accessories.validator");
 const careGate = require("./care-accessories.gate");
 const productRepo = require("./catalogue.repo");
-const { NotFoundError } = require("../../utils/errors");
 const { config } = require("../../config/env");
 const { requirePermission } = require("../../middleware/rbac");
 
@@ -106,11 +105,14 @@ router.post(
 router.get("/products/trash", can("view"), c.listTrash);
 // Shared media/Cost Vault URLs are also used by the new editor. No guessed
 // retail product ID may bypass the PXG gate through an old /products/:id path.
+// The lookup must include TRASHED rows and must not 404 on its own: this guard
+// sits in front of POST /products/:id/restore, and a "live rows only" read
+// here made every base-product restore fail with 404. Missing/unknown ids fall
+// through to the handler, which owns its own not-found answer.
 router.use("/products/:id", (req, _res, next) => {
-  productRepo.findProductById({ brand: req.brand, id: req.params.id })
-    .then((p) => {
-      if (!p) throw new NotFoundError("Product");
-      if (p.catalogue_role === "retail") careGate.requireEnabled(req.brand);
+  productRepo.findProductRole({ brand: req.brand, id: req.params.id })
+    .then((role) => {
+      if (role === "retail") careGate.requireEnabled(req.brand);
       next();
     })
     .catch(next);

@@ -458,6 +458,9 @@ function Card({
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       className="glass rounded-[var(--radius)] overflow-hidden flex flex-col"
+      // The live page's ₦⇄$ toggle converts this card's figures at the
+      // product's own catalogue rate (its catalogue USD price, to the cent).
+      data-ngn-per-usd={product.ngn_per_usd ?? undefined}
     >
       {/* Clickable cover: tapping the image OR the title opens the product
           detail modal (gallery + long copy + size/lace variant picker +

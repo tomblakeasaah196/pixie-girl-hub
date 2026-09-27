@@ -24,6 +24,10 @@ export function notifyCartChanged() {
     window.dispatchEvent(new Event(CART_EVENT));
 }
 
+// ₦ and $ only (Nomba charges nothing else). A shopper who picked GBP/EUR
+// before the toolbar narrowed keeps a foreign preference → dollars.
+const onlyNgnOrUsd = (c: string): Currency => (c === "NGN" ? "NGN" : "USD");
+
 export function useCurrency(): [Currency, (c: Currency) => void] {
   const [currency, setCurrencyState] = useState<Currency>("NGN");
   // Re-render when the currency runtime hydrates so module-cached rates take
@@ -32,10 +36,10 @@ export function useCurrency(): [Currency, (c: Currency) => void] {
 
   useEffect(() => {
     const stored = window.localStorage.getItem(CURRENCY_KEY);
-    if (stored) setCurrencyState(stored);
+    if (stored) setCurrencyState(onlyNgnOrUsd(stored));
     const onChange = () => {
       const v = window.localStorage.getItem(CURRENCY_KEY);
-      if (v) setCurrencyState(v);
+      if (v) setCurrencyState(onlyNgnOrUsd(v));
     };
     window.addEventListener(CURRENCY_EVENT, onChange);
     window.addEventListener(CURRENCY_RUNTIME_EVENT, bump);
@@ -46,6 +50,7 @@ export function useCurrency(): [Currency, (c: Currency) => void] {
   }, []);
 
   const setCurrency = useCallback((c: Currency) => {
+    c = onlyNgnOrUsd(c);
     window.localStorage.setItem(CURRENCY_KEY, c);
     setCurrencyState(c);
     window.dispatchEvent(new Event(CURRENCY_EVENT));

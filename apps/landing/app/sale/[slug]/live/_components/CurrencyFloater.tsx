@@ -4,10 +4,10 @@
  * CurrencyFloater — brand-tinted floating ₦⇄$ toggle for the live sale page.
  *
  * Rewritten June 2026 (owner directive):
- *  • Picks up the campaign's STATIC `ngn_per_usd_rate` from the landing
- *    payload, not a live FX feed. This matches the SSOT we agreed on:
- *    landing display uses the static rate; order settlement still uses the
- *    LIVE rate stamped into sales_orders.fx_rate_used at payment.
+ *  • Picks up `ngn_per_usd_rate` from the landing payload — the LIVE
+ *    catalogue ₦/$ rate (campaigns follow the catalogue, Sept 2026). A card
+ *    that declares its product's own rate (`data-ngn-per-usd`) converts at
+ *    that instead, so it reads in the product's catalogue USD price.
  *  • Themed via the brand's CSS variables (Pixie Girl oxblood, Faitlyn
  *    brown) the way the BrandThemeProvider sets them — no more black pill.
  *  • Desktop hover expands the pill to reveal both glyphs as a swap
@@ -48,21 +48,58 @@ function ngnToNumber(raw: string): number | null {
   return n * mult;
 }
 
-function formatUsd(n: number): string {
-  // Ceil to a whole dollar per owner directive: 10.29 USD → $11.
-  const whole = Math.ceil(n);
-  return "$" + whole.toLocaleString("en-US");
+function formatUsd(n: number, toCent: boolean): string {
+  if (!toCent) {
+    // At the catalogue rate: ceil to a whole dollar per owner directive
+    // (10.29 USD → $11) — the rule for an item with no catalogue USD price.
+    const whole = Math.ceil(n - 1e-9);
+    return "$" + whole.toLocaleString("en-US");
+  }
+  // At a product's own catalogue rate: its catalogue USD price, to the cent
+  // ($249.99), whole dollars shown without decimals.
+  const v = Math.round((n + Number.EPSILON) * 100) / 100;
+  const hasCents = Math.round(v * 100) % 100 !== 0;
+  return (
+    "$" +
+    v.toLocaleString("en-US", {
+      minimumFractionDigits: hasCents ? 2 : 0,
+      maximumFractionDigits: 2,
+    })
+  );
 }
 
-function convertString(value: string, rate: number): string | null {
+function convertString(
+  value: string,
+  rate: number,
+  toCent: boolean,
+): string | null {
   let changed = false;
   const out = value.replace(AMOUNT_RE, (match, amount: string) => {
     const ngn = ngnToNumber(amount);
     if (ngn == null) return match;
     changed = true;
-    return formatUsd(ngn / rate);
+    return formatUsd(ngn / rate, toCent);
   });
   return changed ? out : null;
+}
+
+/**
+ * The ₦-per-$ a price text node converts at: the nearest card that declares
+ * its product's own rate (`data-ngn-per-usd` = catalogue ₦ ÷ catalogue $, so
+ * its sale price and savings read in the product's catalogue dollars, exactly
+ * as checkout prices them), else the catalogue ₦/$ rate.
+ */
+function rateFor(node: Text, fallback: number): { rate: number; toCent: boolean } {
+  let el = node.parentElement;
+  while (el) {
+    const own = el.getAttribute("data-ngn-per-usd");
+    if (own) {
+      const r = Number(own);
+      if (r > 0) return { rate: r, toCent: true };
+    }
+    el = el.parentElement;
+  }
+  return { rate: fallback, toCent: false };
 }
 
 function priceTextNodes(root: Node): Text[] {
@@ -151,7 +188,8 @@ export function CurrencyFloater({ payload }: { payload: LandingPayload }) {
     const rate = rateRef.current;
     if (!rate || rate <= 0) return;
     for (const node of priceTextNodes(document.body)) {
-      const conv = convertString(node.nodeValue || "", rate);
+      const at = rateFor(node, rate);
+      const conv = convertString(node.nodeValue || "", at.rate, at.toCent);
       if (conv != null) {
         if (!originals.current.has(node))
           originals.current.set(node, node.nodeValue || "");

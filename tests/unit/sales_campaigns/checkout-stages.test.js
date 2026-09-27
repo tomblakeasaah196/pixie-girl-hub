@@ -130,36 +130,25 @@ describe("computeBundleDiscount", () => {
 });
 
 describe("resolveDisplayCurrency", () => {
-  const campaign = { ngn_per_usd_rate: "1500" };
+  const usd = { total_usd: "249.99", fx_rate: "1520.060802" };
 
-  it("USD converts NGN total → whole dollars, ceil, at the campaign rate", () => {
-    const r = stages.resolveDisplayCurrency({
-      display_currency: "usd",
-      campaign,
-      total_ngn: "100001",
-    });
+  it("USD locks the engine's dollar total + effective rate", () => {
+    const r = stages.resolveDisplayCurrency({ display_currency: "usd", usd });
     expect(r.displayCurrency).toBe("USD");
-    expect(r.displayTotal).toBe("67.00"); // ceil(100001/1500 = 66.667)
-    expect(r.fxRateUsed).toBe(1500);
+    expect(r.displayTotal).toBe("249.99");
+    expect(r.fxRateUsed).toBe("1520.060802");
   });
 
   it("NGN keeps the defaults (null total, null rate)", () => {
-    const r = stages.resolveDisplayCurrency({
-      display_currency: undefined,
-      campaign,
-      total_ngn: "100000",
-    });
+    const r = stages.resolveDisplayCurrency({ display_currency: undefined, usd });
     expect(r.displayCurrency).toBe("NGN");
     expect(r.displayTotal).toBeNull();
     expect(r.fxRateUsed).toBeNull();
   });
 
-  it("USD without a campaign rate records nothing", () => {
-    const r = stages.resolveDisplayCurrency({
-      display_currency: "USD",
-      campaign: {},
-      total_ngn: "100000",
-    });
+  it("USD the engine couldn't price records nothing (the pay link decides)", () => {
+    const r = stages.resolveDisplayCurrency({ display_currency: "USD", usd: null });
+    expect(r.displayCurrency).toBe("USD");
     expect(r.displayTotal).toBeNull();
     expect(r.fxRateUsed).toBeNull();
   });

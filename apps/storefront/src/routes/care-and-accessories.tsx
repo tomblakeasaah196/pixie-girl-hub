@@ -2,8 +2,7 @@ import { useState } from "react";
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Search } from "lucide-react";
-import { getCareProducts, type CareOption } from "@/lib/storefront";
-import { formatFromNgn } from "@/lib/money";
+import { getCareProducts, priceFor, type CareOption } from "@/lib/storefront";
 import { useCurrency } from "@/lib/useStore";
 import { Section, LoadingGrid, ErrorState } from "@/components/parts";
 import { useCareEnabled } from "@/components/care";
@@ -164,7 +163,11 @@ function CareCard({ item, currency }: { item: CareOption; currency: string }) {
         </p>
       ) : null}
       <p className="mt-1 font-mono text-body-sm">
-        {formatFromNgn(Number(item.unit_price_ngn) || 0, currency)}
+        {/* USD: the SKU's catalogue USD price — what checkout charges. */}
+        {priceFor(
+          { retail_price_ngn: item.unit_price_ngn, retail_price_usd: item.unit_price_usd },
+          currency,
+        )}
       </p>
     </Link>
   );

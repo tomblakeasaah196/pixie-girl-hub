@@ -25,6 +25,10 @@ export function Price({
 }) {
   const [currency] = useCurrency();
   const cur = forceUsd ? "USD" : currency;
+  // Dollars: the canonical (catalogue) USD price as-is — $249.99 stays $249.99,
+  // exactly what checkout charges — never re-derived from Naira.
+  if (cur === "USD" && Number.isFinite(usd) && usd > 0)
+    return <span className={className}>{formatCurrency(usd, "USD")}</span>;
   const rateUsd = rateToNgn("USD");
   const ngn =
     ngnOverride != null ? ngnOverride : rateUsd != null ? usd * rateUsd : null;

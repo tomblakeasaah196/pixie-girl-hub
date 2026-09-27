@@ -237,6 +237,8 @@ function BundleCard({
       onMouseEnter={() => setOpened(true)}
       onMouseLeave={() => setOpened(false)}
       className="glass rounded-[var(--radius)] overflow-hidden flex flex-col"
+      // ₦⇄$ toggle: a fixed-price bundle converts at its own catalogue rate.
+      data-ngn-per-usd={bundle.ngn_per_usd ?? undefined}
     >
       <div
         role="button"

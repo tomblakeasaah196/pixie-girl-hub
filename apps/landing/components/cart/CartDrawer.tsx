@@ -6,7 +6,7 @@ import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { Gift, Minus, Plus, ShoppingBag, Sparkles, Trash2, X } from "lucide-react";
 import { useCart } from "@/lib/cart-store";
-import { displayMoney } from "@/lib/format";
+import { displayMoney, formatUsd } from "@/lib/format";
 import { useDisplayCurrency } from "@/lib/currency";
 import { useCartUpsell } from "@/lib/use-cart-upsell";
 import { postQuote, type CartQuote } from "@/lib/api-client";
@@ -36,7 +36,8 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
   const hasRate = typeof fxRate === "number" && fxRate > 0;
   const [currency] = useDisplayCurrency();
   const displayCurrency = hasRate ? currency : "NGN";
-  const money = (ngn: number) => displayMoney(ngn, displayCurrency, fxRate);
+  const moneyAtRate = (ngn: number) =>
+    displayMoney(ngn, displayCurrency, fxRate);
 
   // Server-authoritative quote: the Hub applies EVERY deal rule (per-wig
   // position ladder, bundle stacking bonus, quantity-tier ladder, reseller/bulk
@@ -45,6 +46,28 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
   // subtotal is used only as an instant optimistic figure while the quote
   // is in flight.
   const [quote, setQuote] = useState<CartQuote | null>(null);
+
+  // Dollars come from the Hub's USD engine (quote.usd): each line's catalogue
+  // USD price, and every goods-side ₦ figure (savings, nudges) at the goods'
+  // own $ ratio — the arithmetic checkout locks and Nomba charges. Before the
+  // quote lands, the plain rate conversion is the brief placeholder.
+  const usdQ =
+    displayCurrency === "USD" && quote?.usd && quote.usd.ratio
+      ? quote.usd
+      : null;
+  // To the cent, ties away from zero — the Hub's Decimal ROUND_HALF_UP — so a
+  // negative adjustment rounds exactly as the server locks it.
+  const cents = (x: number) =>
+    (Math.sign(x) * Math.round((Math.abs(x) + Number.EPSILON) * 100)) / 100;
+  const money = (ngn: number) =>
+    usdQ ? formatUsd(cents(ngn * Number(usdQ.ratio))) : moneyAtRate(ngn);
+  const lineMoney = (idx: number, ngn: number, qty: number) => {
+    const u =
+      usdQ && quote?.lines && quote.lines.length === items.length
+        ? quote.lines[idx]?.unit_price_usd
+        : undefined;
+    return u != null ? formatUsd(cents(Number(u) * qty)) : money(ngn);
+  };
 
   // Re-quote (debounced) whenever the cart contents change.
   const quoteKey = useMemo(
@@ -284,7 +307,7 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
                   </motion.div>
                 )}
               </AnimatePresence>
-              {items.map((it) => (
+              {items.map((it, idx) => (
                 <div
                   key={it.id}
                   className="glass rounded-[14px] p-3 flex gap-3 items-center"
@@ -328,7 +351,7 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
                       )
                     )}
                     <div className="font-display tabular-nums text-[14px] mt-1">
-                      {money(it.unit_price_ngn * it.quantity)}
+                      {lineMoney(idx, it.unit_price_ngn * it.quantity, it.quantity)}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -426,7 +449,11 @@ export function CartDrawer({ payload }: { payload: LandingPayload }) {
               >
                 {rawBelowMin
                   ? `Add ${rawShortfall} more raw wig${rawShortfall !== 1 ? "s" : ""} to continue`
-                  : `Checkout · ${money(Math.max(0, finalTotal))}`}
+                  : `Checkout · ${
+                      usdQ
+                        ? formatUsd(Number(usdQ.total_usd))
+                        : money(Math.max(0, finalTotal))
+                    }`}
               </button>
               <p className="text-[11px] text-[rgb(var(--text-faint))] text-center">
                 DHL rates apply. Secure checkout — payment options shown at the

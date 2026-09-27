@@ -22,7 +22,8 @@ const ORDER_USD = {
   total_ngn: "992400.00",
   amount_paid_ngn: "0.00",
   display_currency: "USD",
-  fx_rate_used: "1300", // locked at placement → ₦992,400 ÷ 1,300 = $763.38 → $764
+  fx_rate_used: "1300", // locked at placement → ₦992,400 ÷ 1,300 = $763.38
+  display_total: "764.00", // the dollar total the landing page quoted
 };
 
 const ORDER_NGN = {
@@ -67,7 +68,11 @@ jest.mock("../../../src/modules/sales/sales.repo", () => ({
   findByOrderNumber: jest.fn(async () => null),
   lockSettlementCurrency: jest.fn(async (args) => {
     mockLocks.push(args);
-    return {};
+    return {
+      display_currency: args.currency,
+      fx_rate_used: args.fx_rate,
+      display_total: args.display_total,
+    };
   }),
 }));
 
@@ -135,7 +140,7 @@ describe("createPaymentLink — settlement currency defaults to the order", () =
     // Whole-dollar figure at the ORDER's locked 1,300 rate, NOT the 1,401
     // campaign rate (which would give $709) and NOT a Naira figure.
     expect(mockNombaCalls[0].currency).toBe("USD");
-    expect(mockNombaCalls[0].amount).toBe("764");
+    expect(mockNombaCalls[0].amount).toBe("764.00");
     // The gateway chain must be routed by USD, not the default NGN rail.
     expect(mockChainCalls).toContain("USD");
   });
@@ -202,28 +207,45 @@ describe("currency lock — NGN + USD only, customers can't switch", () => {
       currency: "NGN",
     });
     expect(mockNombaCalls[0].currency).toBe("USD");
-    expect(mockNombaCalls[0].amount).toBe("764");
+    expect(mockNombaCalls[0].amount).toBe("764.00");
   });
 
-  test("a staff USD link on an unlocked order pins the rate it charged at onto the order", async () => {
-    mockOrder = ORDER_QUICK_SALE;
+  test("a staff USD link on an unlocked order locks the catalogue-priced dollar total", async () => {
+    // One ₦500,000 line with no catalogue USD price → ₦500,000 ÷ 1,500 =
+    // 333.33 → $334 (whole-dollar rule for items without a USD price).
+    mockOrder = {
+      ...ORDER_QUICK_SALE,
+      shipping_fee_ngn: "0.00",
+      lines: [{ line_kind: "product", variant_id: "var-x", unit_price_ngn: "500000.00", quantity: 1 }],
+    };
     await paymentLink.createPaymentLink({
       brand: "faitlynhair",
       order_id: ORDER_QUICK_SALE.order_id,
       currency: "USD",
     });
-    // ₦500,000 ÷ catalogue ₦1,500 = 333.33 → $334
+    expect(mockLocks).toHaveLength(1);
+    expect(mockLocks[0]).toMatchObject({
+      brand: "faitlynhair",
+      id: ORDER_QUICK_SALE.order_id,
+      currency: "USD",
+      display_total: "334.00",
+    });
+    // The effective rate divides the Naira total back to the dollar total.
+    expect(Number(mockLocks[0].fx_rate).toFixed(6)).toBe((500000 / 334).toFixed(6));
+    // Full balance → the locked dollar total, exactly.
     expect(mockNombaCalls[0].currency).toBe("USD");
-    expect(mockNombaCalls[0].amount).toBe("334");
-    expect(mockLocks).toEqual([
-      {
-        brand: "faitlynhair",
-        id: ORDER_QUICK_SALE.order_id,
-        currency: "USD",
-        fx_rate: 1500,
-        display_total: "334.00",
-      },
-    ]);
+    expect(mockNombaCalls[0].amount).toBe("334.00");
+  });
+
+  test("a part payment on a USD order converts at the locked rate, to the cent", async () => {
+    mockOrder = ORDER_USD;
+    await paymentLink.createPaymentLink({
+      brand: "faitlynhair",
+      order_id: ORDER_USD.order_id,
+      amount_ngn: 100000,
+    });
+    // ₦100,000 ÷ 1,300 = 76.923 → $76.92
+    expect(mockNombaCalls[0].amount).toBe("76.92");
   });
 
   test("an order already locked to USD is never re-pinned", async () => {

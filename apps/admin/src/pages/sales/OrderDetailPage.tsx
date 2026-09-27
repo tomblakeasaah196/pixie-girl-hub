@@ -2581,7 +2581,11 @@ function PayLinkModal({
         // saw $708.25 instead of the quoted $764). NGN orders pass undefined.
         ...(currency ? { currency } : {}),
       });
-      await navigator.clipboard.writeText(res.checkout_url).catch(() => {});
+      // Copy the order's pay page, not the raw checkout: it expires if the
+      // order changes (the customer then sees the updated balance).
+      await navigator.clipboard
+        .writeText(res.share_url || res.checkout_url)
+        .catch(() => {});
       notify("Pay link copied", "The payment link is on your clipboard.");
       onClose();
     } catch (e) {

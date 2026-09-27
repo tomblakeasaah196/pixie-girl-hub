@@ -1787,6 +1787,18 @@ export interface UsdPricingStatus {
   counts: UsdRepriceCounts;
   // Live NGN-per-USD market rate (hint), or null when no FX provider configured.
   market_rate: number | null;
+  // A rate change someone asked for, waiting on the CEO (null when none).
+  pending_request: UsdRateChangeRequest | null;
+}
+
+export interface UsdRateChangeRequest {
+  instance_id: string;
+  rate: number;
+  rounding: UsdRounding;
+  current_rate: number | null;
+  requested_by: string | null;
+  requested_by_email: string | null;
+  requested_at: string;
 }
 
 export interface UsdRepricePreview {
@@ -1801,7 +1813,8 @@ export interface UsdRepricePreview {
   }[];
 }
 
-export interface UsdRepriceResult {
+export interface UsdRepriceApplied {
+  status: "applied";
   run_id: string;
   rate: number;
   rounding: UsdRounding;
@@ -1809,6 +1822,16 @@ export interface UsdRepriceResult {
   counts: UsdRepriceCounts;
   applied_at: string;
 }
+
+/** A non-CEO's Apply: nothing changed yet — it waits on the CEO. */
+export interface UsdRateChangePending {
+  status: "pending_approval";
+  instance_id: string;
+  rate: number;
+  rounding: UsdRounding;
+}
+
+export type UsdRepriceResult = UsdRepriceApplied | UsdRateChangePending;
 
 export function useUsdPricing() {
   const brand = useBrand();
@@ -1851,6 +1874,24 @@ export function useApplyUsdReprice() {
         ...input,
         confirm: true,
       }),
+    onSuccess: () => invalidateAllCatalogue(qc, brand),
+  });
+}
+
+/** CEO: approve a requested rate (applies it) or reject it (nothing changes). */
+export function useDecideUsdRateChange() {
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (input: {
+      instance_id: string;
+      decision: "approve" | "reject";
+      notes?: string;
+    }) =>
+      api.post<UsdRepriceApplied | { status: "rejected" | "pending_approval" }>(
+        `/catalogue/usd-pricing/requests/${input.instance_id}/${input.decision}`,
+        input.notes ? { notes: input.notes } : {},
+      ),
     onSuccess: () => invalidateAllCatalogue(qc, brand),
   });
 }

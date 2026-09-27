@@ -2,10 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Check,
+  Clock,
   DollarSign,
   RefreshCw,
+  Send,
   TrendingUp,
   Undo2,
+  X,
 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/primitives";
@@ -13,11 +16,14 @@ import { formatDate } from "@/lib/format";
 import { NumberField, Select } from "@/components/ui/controls";
 import {
   useApplyUsdReprice,
+  useDecideUsdRateChange,
   useUndoUsdReprice,
   useUsdPricing,
   useUsdRepricePreview,
+  type UsdRateChangeRequest,
   type UsdRounding,
 } from "@/lib/catalogue";
+import { useAuthStore } from "@/stores/auth";
 
 /**
  * "Apply USD exchange rate" (Catalogue → Config). The owner enters ONE
@@ -26,6 +32,11 @@ import {
  * bundles and this brand's services. A preview shows before → after; a soft
  * warning makes the overwrite explicit; a confirm box gates Apply; and the last
  * run can be undone (prior values are snapshotted server-side).
+ *
+ * The rate is what every dollar checkout converts at, so changing it is the
+ * CEO's call: the CEO's Apply reprices at once, anyone else's Apply sends the
+ * CEO an approval request (nothing changes until they approve). One request
+ * waits at a time; only the CEO can undo.
  */
 const ROUNDING_OPTIONS: { value: UsdRounding; label: string }[] = [
   { value: "exact", label: "Exact (2 decimals)" },
@@ -54,6 +65,9 @@ export function UsdRepriceModal({
   const preview = useUsdRepricePreview();
   const apply = useApplyUsdReprice();
   const undo = useUndoUsdReprice();
+  const decide = useDecideUsdRateChange();
+  const isCeo = useAuthStore((st) => st.user?.isCeo ?? false);
+  const pending = status.data?.pending_request ?? null;
 
   const [rate, setRate] = useState("");
   const [rounding, setRounding] = useState<UsdRounding>("exact");
@@ -68,6 +82,7 @@ export function UsdRepriceModal({
     setConfirm(false);
     apply.reset();
     preview.reset();
+    decide.reset();
     setRate(
       lastRate != null
         ? String(lastRate)
@@ -117,7 +132,19 @@ export function UsdRepriceModal({
     );
   };
 
-  const appliedOk = apply.isSuccess && apply.data;
+  // What the last action produced: an applied reprice (the CEO's Apply, or the
+  // CEO approving a request), or a request sent for approval.
+  const applied =
+    apply.data?.status === "applied"
+      ? apply.data
+      : decide.data?.status === "applied"
+        ? decide.data
+        : null;
+  const requested = apply.data?.status === "pending_approval" ? apply.data : null;
+  const rejected = decide.data?.status === "rejected";
+  const appliedOk = !!(applied || requested || rejected);
+  // A request is already waiting: nobody but the CEO (deciding it) can act.
+  const blockedByPending = !!pending && !appliedOk;
 
   const footer = useMemo(
     () => (
@@ -125,20 +152,32 @@ export function UsdRepriceModal({
         <Button variant="ghost" onClick={onClose}>
           {appliedOk ? "Done" : "Cancel"}
         </Button>
-        {!appliedOk && (
+        {!appliedOk && !blockedByPending && (
           <Button
             variant="primary"
-            icon={<DollarSign className="w-4 h-4" />}
+            icon={
+              isCeo ? (
+                <DollarSign className="w-4 h-4" />
+              ) : (
+                <Send className="w-4 h-4" />
+              )
+            }
             disabled={!rateValid || !previewFresh || !confirm || apply.isPending}
             onClick={doApply}
           >
-            {apply.isPending ? "Applying…" : "Apply rate"}
+            {apply.isPending
+              ? isCeo
+                ? "Applying…"
+                : "Sending…"
+              : isCeo
+                ? "Apply rate"
+                : "Request approval"}
           </Button>
         )}
       </>
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [appliedOk, rateValid, previewFresh, confirm, apply.isPending],
+    [appliedOk, blockedByPending, isCeo, rateValid, previewFresh, confirm, apply.isPending],
   );
 
   return (
@@ -149,13 +188,31 @@ export function UsdRepriceModal({
       title="Apply USD exchange rate"
       footer={footer}
     >
-      {appliedOk ? (
+      {applied ? (
         <AppliedPanel
-          rowsChanged={apply.data!.rows_changed}
-          rate={apply.data!.rate}
+          rowsChanged={applied.rows_changed}
+          rate={applied.rate}
+          canUndo={isCeo}
           onUndo={() => undo.mutate()}
           undoing={undo.isPending}
           undone={undo.isSuccess}
+        />
+      ) : requested ? (
+        <RequestedPanel rate={requested.rate} />
+      ) : rejected ? (
+        <div className="py-2 text-[13px] text-text-muted flex items-center gap-2">
+          <X className="w-4 h-4 text-danger" />
+          Rate change rejected — nothing was changed.
+        </div>
+      ) : blockedByPending ? (
+        <PendingPanel
+          request={pending!}
+          isCeo={isCeo}
+          deciding={decide.isPending}
+          failed={decide.isError}
+          onDecide={(decision) =>
+            decide.mutate({ instance_id: pending!.instance_id, decision })
+          }
         />
       ) : (
         <div className="space-y-5">
@@ -305,6 +362,12 @@ export function UsdRepriceModal({
             <span className="text-[12.5px] text-text-muted">
               I understand this overwrites <strong>all</strong> USD prices across
               the catalogue, and have reviewed the preview.
+              {!isCeo && (
+                <span className="block text-[11.5px] text-text-faint mt-0.5">
+                  The CEO approves rate changes — this sends them the request;
+                  nothing changes until they approve.
+                </span>
+              )}
             </span>
           </label>
 
@@ -319,15 +382,103 @@ export function UsdRepriceModal({
   );
 }
 
+/** The request is with the CEO — nothing has changed yet. */
+function RequestedPanel({ rate }: { rate: number }) {
+  return (
+    <div className="flex items-center gap-3 py-2">
+      <div className="grid place-items-center w-11 h-11 rounded-full bg-info/15 text-info shrink-0">
+        <Send className="w-5 h-5" />
+      </div>
+      <div>
+        <h3 className="font-display text-[16px]">Sent to the CEO for approval</h3>
+        <p className="text-[12.5px] text-text-muted">
+          <span className="font-mono">₦{Number(rate).toLocaleString()}/$1</span>{" "}
+          is waiting for approval. Prices and dollar checkouts don’t change until
+          it’s approved.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/** A rate change is waiting: the CEO decides it here; anyone else waits. */
+function PendingPanel({
+  request,
+  isCeo,
+  deciding,
+  failed,
+  onDecide,
+}: {
+  request: UsdRateChangeRequest;
+  isCeo: boolean;
+  deciding: boolean;
+  failed: boolean;
+  onDecide: (decision: "approve" | "reject") => void;
+}) {
+  return (
+    <div className="space-y-4 py-1">
+      <div className="rounded-[12px] border border-info/30 bg-info/[0.06] p-3.5 flex gap-2.5">
+        <Clock className="w-4 h-4 text-info shrink-0 mt-0.5" />
+        <div className="text-[12.5px] text-text-muted space-y-1">
+          <p>
+            <span className="font-mono text-text-primary">
+              ₦{Number(request.rate).toLocaleString()}/$1
+            </span>{" "}
+            was requested
+            {request.requested_by_email ? ` by ${request.requested_by_email}` : ""} on{" "}
+            {formatDate(request.requested_at)}
+            {request.current_rate != null
+              ? ` (now ₦${Number(request.current_rate).toLocaleString()}/$1)`
+              : ""}
+            .
+          </p>
+          <p className="text-[11.5px] text-text-faint">
+            {isCeo
+              ? "Approving reprices every USD price in the catalogue at this rate and makes it the rate dollar checkouts convert at."
+              : "It’s waiting for the CEO. Another change can’t be requested until this one is approved or rejected."}
+          </p>
+        </div>
+      </div>
+      {isCeo && (
+        <div className="flex items-center gap-2">
+          <Button
+            variant="primary"
+            icon={<Check className="w-4 h-4" />}
+            disabled={deciding}
+            onClick={() => onDecide("approve")}
+          >
+            {deciding ? "Working…" : "Approve & apply"}
+          </Button>
+          <Button
+            variant="ghost"
+            icon={<X className="w-4 h-4" />}
+            disabled={deciding}
+            onClick={() => onDecide("reject")}
+          >
+            Reject
+          </Button>
+        </div>
+      )}
+      {failed && (
+        <p className="text-[12.5px] text-danger">
+          That didn’t go through and nothing was changed. Please try again.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function AppliedPanel({
   rowsChanged,
   rate,
+  canUndo,
   onUndo,
   undoing,
   undone,
 }: {
   rowsChanged: number;
   rate: number;
+  canUndo: boolean;
   onUndo: () => void;
   undoing: boolean;
   undone: boolean;
@@ -354,7 +505,7 @@ function AppliedPanel({
           <Undo2 className="w-4 h-4 text-accent-glow" />
           Reverted — USD prices restored to their previous values.
         </div>
-      ) : (
+      ) : canUndo ? (
         <div className="rounded-[11px] border border-line p-3 flex items-center justify-between gap-3">
           <span className="text-[12px] text-text-muted">
             Changed your mind? Restore the previous USD prices.
@@ -368,7 +519,7 @@ function AppliedPanel({
             {undoing ? "Undoing…" : "Undo this apply"}
           </Button>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -223,7 +223,10 @@ router.post(
 
 // ── USD pricing: bulk "Apply exchange rate" tool (Catalogue → Config) ──
 // One NGN-per-USD rate recomputes every USD price from its NGN value; the run
-// is snapshotted so it can be undone. Reads are view; writes are edit.
+// is snapshotted so it can be undone. Reads are view; writes are edit. A
+// non-CEO Apply becomes a CEO approval request (catalogue:usd_rate_change);
+// approve/reject are decided by the workflow engine (CEO stage), and undo is
+// CEO-only in the service.
 router.get("/usd-pricing", can("view"), usdReprice.status);
 router.get("/usd-pricing/market-rate", can("view"), usdReprice.marketRate);
 router.post(
@@ -239,6 +242,18 @@ router.post(
   usdReprice.apply,
 );
 router.post("/usd-pricing/undo", can("edit"), usdReprice.undo);
+router.post(
+  "/usd-pricing/requests/:instanceId/approve",
+  can("edit"),
+  usdRepriceV.validateDecision,
+  usdReprice.approveRequest,
+);
+router.post(
+  "/usd-pricing/requests/:instanceId/reject",
+  can("edit"),
+  usdRepriceV.validateDecision,
+  usdReprice.rejectRequest,
+);
 // Import / export engine (PR-B): multi-sheet .xlsx (styled + colours +
 // reference). Literal segments before :id so they're never shadowed.
 router.get("/styled-products/import-template", can("view"), c.styledTemplate);

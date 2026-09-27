@@ -1150,7 +1150,11 @@ async function followUp({ brand, result }) {
           delivery_fee_ngn: toCurrencyString(money(order.shipping_fee_ngn || 0)),
           total_ngn: toCurrencyString(money(order.total_ngn || 0)),
           balance_due_ngn: toCurrencyString(money(order.balance_due_ngn || 0)),
-          payment_url: payment_link ? payment_link.checkout_url : null,
+          // The order's pay page (expires if the order changes again), not a
+          // raw gateway checkout for today's amount.
+          payment_url: payment_link
+            ? payment_link.share_url || payment_link.checkout_url
+            : null,
         },
       });
       notified = Boolean(r && r.dispatched);
@@ -1169,8 +1173,13 @@ async function followUp({ brand, result }) {
     ...result,
     review: updated,
     order: order || result.order,
+    // checkout_url here is the link staff send: the pay page when it could be
+    // built (it expires with order changes), else the gateway checkout.
     payment_link: payment_link
-      ? { checkout_url: payment_link.checkout_url, amount_ngn: payment_link.amount_ngn }
+      ? {
+          checkout_url: payment_link.share_url || payment_link.checkout_url,
+          amount_ngn: payment_link.amount_ngn,
+        }
       : null,
     customer_notified: notified,
   };
@@ -1201,7 +1210,9 @@ async function consentFollowUp({ brand, result }) {
       ...result,
       review,
       order,
-      payment_link: link ? { checkout_url: link.checkout_url, amount_ngn: link.amount_ngn } : null,
+      payment_link: link
+        ? { checkout_url: link.share_url || link.checkout_url, amount_ngn: link.amount_ngn }
+        : null,
     };
   } catch (err) {
     logger.warn(

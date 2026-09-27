@@ -52,6 +52,9 @@ const ROUTES = {
   cash_advances: (id) => `/expenses?advance=${id}`,
   intercompany_transactions: (id) => `/intercompany?transaction=${id}`,
   social_content_plans: (id) => `/social?tab=calendar&plan=${id}`,
+  // A requested USD exchange-rate change has no record screen of its own — the
+  // pending request is shown (and decided) on Catalogue → Config.
+  catalogue_usd_rate_changes: () => `/catalogue?tab=config`,
 
   // ── Records people get pointed at for reasons other than approval ──
   sales_order: (id) => `/sales/orders/${id}`,
@@ -82,6 +85,7 @@ const LABELS = {
   price_change: "price change",
   intercompany_transaction: "intercompany transaction",
   sales_campaign: "campaign",
+  catalogue_usd_rate_changes: "USD exchange rate change",
   workflow_instance: "approval",
 };
 

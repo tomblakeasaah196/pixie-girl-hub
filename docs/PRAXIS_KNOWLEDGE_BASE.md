@@ -446,7 +446,17 @@ Care & Accessories is on or orders are waiting) · **POS Reconciliation** ·
 - *Send a customer a pay link instead?* Open the order → **Pay Link** in the
   action bar. Leave the amount blank for the full balance, or type a
   part amount, then **Generate & copy pay link** and paste it into WhatsApp or
-  email.
+  email. What you copy is the order's own pay page, not a one-off checkout: it
+  opens on the live balance (in dollars for a dollar order) with your part
+  amount filled in. Quick Sale's **Copy** / **Share** and the delivery-fee
+  top-up link work the same way (the in-store QR is still a direct checkout,
+  paid on the spot).
+- *The order changed after I sent a pay link — will they pay the old amount?*
+  No. A pay link expires when what the order costs changes (Change Order, a new
+  delivery fee, a discount, a currency re-lock). Opened afterwards, it tells the
+  customer the order was updated and shows what's due now; the old amount is not
+  offered. A payment already recorded does not expire it — the page just shows
+  the smaller balance.
 - *Jump between an order and its invoice?* Four ways, all one click: the order
   page's invoice strip links to the invoice (click the invoice number or **View
   Invoice**); the invoice's order strip links back (click the order number or
@@ -929,7 +939,12 @@ Girl only, when switched on) · **Categories** · **Collections** · **Shades** 
 - *Set the dollar (USD) rate or dollar prices?* Catalogue → **Config** →
   **Apply USD exchange rate**: enter one ₦ per $1 rate, pick the rounding
   (exact, whole dollars or .99) and apply — every USD price in the catalogue is
-  recomputed from its Naira price (undo reverts the last apply). That rate is
+  recomputed from its Naira price (undo reverts the last apply). **Changing the
+  rate needs the CEO.** The CEO's Apply takes effect at once; anyone else's
+  button reads **Request approval** and sends the CEO a task — nothing changes
+  until they open Catalogue → Config → **Review request** and choose **Approve &
+  apply** (it applies the rate that was requested) or **Reject**. Only one
+  request can wait at a time, and only the CEO can undo. That rate is
   the ONLY ₦/$ rate for sales: the website, sales campaigns, Quick Sale and
   pay links all use it (Settings → Currencies does not override it). A
   product's own USD price — including one you edit by hand — is exactly what a

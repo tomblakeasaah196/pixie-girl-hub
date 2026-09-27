@@ -15,6 +15,8 @@
 
 "use strict";
 
+const crypto = require("crypto");
+const { URLSearchParams } = require("url");
 const salesRepo = require("./sales.repo");
 const paymentSettings = require("./payment-settings.service");
 const brandUrls = require("../../utils/brand-urls");
@@ -307,6 +309,55 @@ async function initOnGateway({
  * outstanding balance (the "pay any amount" link can pass a partial amount).
  * Returns { provider, reference, checkout_url, amount_ngn, attempts }.
  */
+/**
+ * A short fingerprint of what the order costs — total, delivery and its
+ * currency lock. A pay link staff share carries it (`?v=`). When the order is
+ * changed afterwards (Change Order, a new delivery fee, a discount) the
+ * fingerprint no longer matches, so the pay page treats the link as expired:
+ * it says the order was updated and shows what is due NOW instead of charging
+ * the old amount. Payments don't change it — the page always shows the live
+ * balance anyway.
+ */
+function payLinkVersion(order) {
+  const num = (v) =>
+    v === null || v === undefined || v === "" ? "" : money(v).toFixed(6);
+  const basis = [
+    num(order.total_ngn),
+    num(order.shipping_fee_ngn),
+    String(order.display_currency || "NGN").toUpperCase(),
+    num(order.display_total),
+    num(order.fx_rate_used),
+  ].join("|");
+  return crypto.createHash("sha256").update(basis).digest("hex").slice(0, 12);
+}
+
+/**
+ * The link staff send: the order's permanent pay page (`/pay/{token}`), not the
+ * raw gateway checkout. It carries the order's version (so it expires when the
+ * order changes) and, for a part payment, the amount to prefill — in the
+ * currency the checkout charges. Null when it can't be built; the gateway
+ * checkout URL is then the fallback.
+ */
+async function shareUrlFor({ brand, order, charge_amount, partial }) {
+  try {
+    const token = await salesRepo.ensurePublicTrackingToken({
+      brand,
+      id: order.order_id,
+    });
+    const base = await brandUrls.payLinkUrl(brand, token);
+    if (!base) return null;
+    const params = new URLSearchParams({ v: payLinkVersion(order) });
+    if (partial && charge_amount) params.set("a", String(charge_amount));
+    return `${base}?${params.toString()}`;
+  } catch (err) {
+    logger.warn(
+      { err: err.message, order_id: order.order_id },
+      "pay link: share URL not built — staff get the gateway checkout",
+    );
+    return null;
+  }
+}
+
 async function createPaymentLink({
   brand,
   order_id,
@@ -381,6 +432,9 @@ async function createPaymentLink({
   ).toUpperCase();
   assertSettlementCurrency(settleCurrency);
   let chargeAmount = amountStr;
+  // The order as the checkout prices it (after any currency lock below) —
+  // what the share link's version is taken from.
+  let finalOrder = order;
   if (settleCurrency !== "NGN") {
     let priced = order;
     // Currency lock: an order with no dollar price of its own (a Quick Sale, a
@@ -412,6 +466,7 @@ async function createPaymentLink({
         ? { ...order, ...locked }
         : await salesRepo.findById({ brand, id: order.order_id });
     }
+    finalOrder = priced;
     const rate = lockedRate(priced, settleCurrency);
     if (!rate)
       throw new AppError(
@@ -470,11 +525,19 @@ async function createPaymentLink({
       });
       // currency + charge_amount: exactly what the checkout charges (e.g.
       // USD "249.99"), so staff screens can show "Charged: $249.99".
+      // share_url: what staff SEND — the pay page, which expires with order
+      // changes; checkout_url stays for opening the checkout on the spot.
       return {
         ...res,
         amount_ngn: amountStr,
         currency: settleCurrency,
         charge_amount: chargeAmount,
+        share_url: await shareUrlFor({
+          brand,
+          order: finalOrder,
+          charge_amount: chargeAmount,
+          partial: amount_ngn !== null && amount_ngn !== undefined && amt.lt(outstanding),
+        }),
         attempts,
       };
     } catch (err) {
@@ -785,6 +848,9 @@ async function previewByToken({ token }) {
       outstanding.lt(0) ? money(0) : outstanding,
     ),
     min_next_payment_ngn: toCurrencyString(minNext),
+    // What the order costs right now, fingerprinted: a shared link whose ?v=
+    // differs was made for an earlier version of the order (expired).
+    link_version: payLinkVersion(order),
     // A USD order: the dollar figures the checkout will actually charge —
     // the whole balance (usdCharge: the quoted total when untouched) and the
     // plan minimum — so the page never does its own rate maths.
@@ -805,7 +871,6 @@ async function previewByToken({ token }) {
   };
 }
 
-/** Dollar preview fields for a USD-locked order (empty for Naira orders). */
 /**
  * A USD-locked order's outstanding balance in dollars — the figure its pay
  * page shows and a full-balance checkout charges. Null for a Naira order.
@@ -818,6 +883,7 @@ function outstandingUsd(order) {
   return p.outstanding_usd === undefined ? null : p.outstanding_usd;
 }
 
+/** Dollar preview fields for a USD-locked order (empty for Naira orders). */
 function usdPreview(order, outstanding, minNext) {
   const rate = lockedRate(order, "USD");
   if (!rate) return {};
@@ -893,6 +959,7 @@ module.exports = {
   settlementFxRate,
   lockedCurrency,
   outstandingUsd,
+  payLinkVersion,
   previewByToken,
   createPublicPaymentLink,
   createQuotationPaymentLink,

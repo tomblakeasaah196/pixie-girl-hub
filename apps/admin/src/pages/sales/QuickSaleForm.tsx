@@ -270,6 +270,10 @@ export function QuickSaleForm() {
   const [sentOrderId, setSentOrderId] = useState<string | null>(null);
   const [bundleId, setBundleId] = useState<string | null>(null);
   const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
+  // The link to SEND (copy / WhatsApp): the order's pay page, which expires if
+  // the order changes. The in-store QR keeps the gateway checkout — it's paid
+  // on the spot.
+  const [shareLink, setShareLink] = useState<string | null>(null);
   // Set when the order was saved but its payment link couldn't be minted (e.g.
   // a gateway/network blip). The order EXISTS — we surface a retry rather than
   // a "failed" that invites a duplicate order.
@@ -299,6 +303,7 @@ export function QuickSaleForm() {
   const isPaid = orderPaymentMeta(watchedOrder).settled;
   // Walk-in = customer is at the counter → pay on the spot by scanning.
   const inStore = fulfilment === "walk_in";
+  const sendUrl = shareLink ?? paymentUrl;
 
   const fireToast = (
     title: string,
@@ -760,6 +765,7 @@ export function QuickSaleForm() {
         currency: currency !== "NGN" ? currency : undefined,
       });
       setPaymentUrl(link.checkout_url);
+      setShareLink(link.share_url || null);
       setCharged(
         link.currency && link.charge_amount
           ? { currency: link.currency, amount: link.charge_amount }
@@ -791,6 +797,7 @@ export function QuickSaleForm() {
         currency: currency !== "NGN" ? currency : undefined,
       });
       setPaymentUrl(link.checkout_url);
+      setShareLink(link.share_url || null);
       setCharged(
         link.currency && link.charge_amount
           ? { currency: link.currency, amount: link.charge_amount }
@@ -834,6 +841,7 @@ export function QuickSaleForm() {
     setSentOrderId(null);
     setBundleId(null);
     setPaymentUrl(null);
+    setShareLink(null);
     setPaymentLinkError(null);
     setFirstChargeNgn(null);
     setCharged(null);
@@ -1723,17 +1731,17 @@ export function QuickSaleForm() {
                   on Nomba
                 </p>
               )}
-              {paymentUrl && (
+              {sendUrl && (
                 <div className="mb-4 p-3 rounded-[11px] bg-text-primary/[0.03] border border-line">
                   <div className="text-[11px] text-text-faint mb-1">
                     Payment Link
                   </div>
                   <div className="inline-block bg-white p-3 rounded-[14px] my-2">
-                    <QRCodeSVG value={paymentUrl} size={160} level="M" />
+                    <QRCodeSVG value={sendUrl} size={160} level="M" />
                   </div>
                   <div className="flex items-center gap-2 justify-center flex-wrap">
                     <code className="text-[11px] text-accent-glow font-mono break-all">
-                      {paymentUrl}
+                      {sendUrl}
                     </code>
                   </div>
                   <div className="flex items-center gap-2 justify-center flex-wrap mt-2">
@@ -1742,7 +1750,7 @@ export function QuickSaleForm() {
                       size="sm"
                       icon={<Copy className="w-3 h-3" />}
                       onClick={() => {
-                        navigator.clipboard.writeText(paymentUrl);
+                        navigator.clipboard.writeText(sendUrl);
                         fireToast("Copied", "Payment link copied to clipboard");
                       }}
                     >
@@ -1764,7 +1772,7 @@ export function QuickSaleForm() {
                           watchedOrder?.order_number
                             ? ` for order ${watchedOrder.order_number}`
                             : ""
-                        }: ${paymentUrl}`;
+                        }: ${sendUrl}`;
                         const shareUrl = waNumber
                           ? `https://wa.me/${waNumber}?text=${encodeURIComponent(text)}`
                           : `https://wa.me/?text=${encodeURIComponent(text)}`;

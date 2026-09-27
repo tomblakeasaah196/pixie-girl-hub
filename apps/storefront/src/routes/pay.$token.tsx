@@ -29,7 +29,24 @@ import { Section, ErrorState } from "@/components/parts";
 const ngn = (v: string | number | null | undefined) =>
   `₦${Number(v || 0).toLocaleString()}`;
 
-export const Route = createFileRoute("/pay/$token")({ component: PayPage });
+// A link staff send carries the order's version (`v`) and, for a part
+// payment, the amount to prefill (`a`, in the currency the order is paid in).
+// Anything else on the URL (the gateway's return params) is ignored.
+interface PaySearch {
+  v?: string;
+  a?: string;
+}
+
+export const Route = createFileRoute("/pay/$token")({
+  validateSearch: (s: Record<string, unknown>): PaySearch => ({
+    v: typeof s.v === "string" ? s.v : undefined,
+    a:
+      typeof s.a === "string" || typeof s.a === "number"
+        ? String(s.a)
+        : undefined,
+  }),
+  component: PayPage,
+});
 
 const DEFAULTS = {
   loading: "Loading your order…",
@@ -47,6 +64,8 @@ const DEFAULTS = {
   payCta: "Pay {amount}",
   paying: "Redirecting to secure payment…",
   invalidAmount: "Enter an amount between the plan minimum and the balance.",
+  updatedNotice:
+    "This link was sent for an earlier version of your order. Your order has since been updated — below is what's due now.",
   payError: "Couldn't start payment — please try again.",
   secureNote: "Secured checkout · you're never charged twice on a retry.",
 };
@@ -111,12 +130,25 @@ function PayBody({
   const money = (v: number | string) =>
     usdOrder ? formatCurrency(Number(v) || 0, "USD") : ngn(v);
 
-  const [amount, setAmount] = useState(String(due || ""));
-  // Reset the field to the fresh balance whenever the server data changes
-  // (e.g. after a re-fetch on gateway return).
+  // A shared link made before the order changed is expired: say so, and don't
+  // prefill the old amount — the balance below is what's due now.
+  const search = Route.useSearch();
+  const expired =
+    !!search.v && !!data.link_version && search.v !== data.link_version;
+  // A current link for a part payment prefills that amount (if it's still
+  // payable); otherwise the whole balance.
+  const requested = !expired && search.a ? Number(search.a) : NaN;
+  const initial =
+    Number.isFinite(requested) && requested > 0 && requested >= min && requested <= due
+      ? requested
+      : due;
+
+  const [amount, setAmount] = useState(String(initial || ""));
+  // Reset the field whenever the server data changes (e.g. after a re-fetch on
+  // gateway return).
   useEffect(() => {
-    setAmount(String(due || ""));
-  }, [due]);
+    setAmount(String(initial || ""));
+  }, [initial]);
 
   const parsed = Number(amount) || 0;
   // ₦ to request: a $ amount at the order's locked rate. Paying the whole $
@@ -163,6 +195,11 @@ function PayBody({
 
   return (
     <div className="mt-6 space-y-6">
+      {expired && (
+        <p className="rounded-md border border-border bg-secondary/40 p-3 text-body-sm text-muted-foreground">
+          {s.updatedNotice}
+        </p>
+      )}
       <dl className="rounded-md border border-border p-4 space-y-2 text-body-sm">
         <div className="flex justify-between">
           <dt className="text-muted-foreground">{s.totalLabel}</dt>

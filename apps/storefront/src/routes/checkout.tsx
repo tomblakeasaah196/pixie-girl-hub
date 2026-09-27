@@ -94,6 +94,7 @@ function CheckoutPage() {
       summaryTitle: "Order summary",
       subtotalLabel: "Subtotal",
       discountLabel: "Discount",
+      taxLabel: "VAT (care products)",
       deliverySummaryLabel: "Delivery",
       deliveryFreeLabel: "Free",
       deliveryCalculating: "Calculating…",
@@ -945,6 +946,14 @@ function CheckoutPage() {
                   </dt>
                   <dd className="font-mono tabular-nums">
                     −{fmt(discountNgn)}
+                  </dd>
+                </div>
+              ) : null}
+              {n(quoteQ.data?.tax_ngn) > 0 ? (
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">{copy.taxLabel}</dt>
+                  <dd className="font-mono tabular-nums">
+                    {fmt(n(quoteQ.data?.tax_ngn))}
                   </dd>
                 </div>
               ) : null}

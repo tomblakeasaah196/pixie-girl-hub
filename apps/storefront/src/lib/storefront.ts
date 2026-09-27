@@ -169,6 +169,9 @@ export interface Quote {
   }[];
   subtotal_ngn: string;
   discount_ngn?: string;
+  /** VAT added on top of taxable Care & Accessories lines (0.00 otherwise);
+   *  already included in total_ngn. */
+  tax_ngn?: string;
   delivery_ngn: string;
   total_ngn: string;
   display_currency: Currency;

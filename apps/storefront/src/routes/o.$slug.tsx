@@ -100,6 +100,7 @@ const ORDER_LINK_DEFAULTS = {
   payWithLabel: "Pay with",
   subtotalLabel: "Subtotal",
   deliverySummaryLabel: "Delivery",
+  careVatLabel: "VAT (care products)",
   calculating: "Calculating…",
   totalLabel: "Total",
   bookingCta: "Place booking request",
@@ -380,7 +381,20 @@ function CheckoutForm({
       arr.reduce((s, i) => s + (Number(i.price_ngn) || 0) * i.qty, 0);
     return sum(resolvedItems) + sum(serviceItems);
   }, [resolvedItems, serviceItems]);
-  const orderTotal = itemsSubtotal + deliveryDue;
+  // VAT on taxable Care & Accessories lines — Sales adds it on top of the
+  // price, so the preview must too (rounded per line like the server).
+  const careVat = useMemo(
+    () =>
+      resolvedItems.reduce(
+        (sum, i) =>
+          i.kind === "retail" && i.taxable && i.vat_rate
+            ? sum + Math.round((Number(i.price_ngn) || 0) * i.qty * Number(i.vat_rate) * 100) / 100
+            : sum,
+        0,
+      ),
+    [resolvedItems],
+  );
+  const orderTotal = itemsSubtotal + careVat + deliveryDue;
 
   const canSubmit =
     !!phone &&
@@ -890,6 +904,12 @@ function CheckoutForm({
               <span className="text-muted-foreground">{s.subtotalLabel}</span>
               <span className="tabular-nums">{money(itemsSubtotal)}</span>
             </div>
+            {careVat > 0 && (
+              <div className="mt-1 flex items-center justify-between text-body-sm">
+                <span className="text-muted-foreground">{s.careVatLabel}</span>
+                <span className="tabular-nums">{money(careVat)}</span>
+              </div>
+            )}
             {!serviceOnly && fulfilment === "delivery" && (
               <div className="mt-1 flex items-center justify-between text-body-sm">
                 <span className="text-muted-foreground">{s.deliverySummaryLabel}</span>

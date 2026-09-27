@@ -179,7 +179,10 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   // deposit now (server-computed on the true total incl. delivery) and the rest
   // later via the permanent pay link. Only offered when this campaign enables it.
   const flexi = payload.flexi_pay;
-  const instalmentsEnabled = !!flexi?.instalments_enabled;
+  // A Care & Accessories-only cart is always paid in full (the server forces
+  // it), so never offer a deposit plan the charge would not honour.
+  const retailOnlyCart = items.length > 0 && items.every((i) => i.type === "retail");
+  const instalmentsEnabled = !!flexi?.instalments_enabled && !retailOnlyCart;
   const [paymentPlan, setPaymentPlan] = useState<"full" | "instalment">("full");
   const [busy, setBusy] = useState(false);
   // Warm "we need an address we can ship to" modal. It opens when the buyer
@@ -1251,6 +1254,16 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                     </span>
                   </div>
                 ))}
+                {quote && n(quote.tax_ngn) > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-[rgb(var(--text-muted))]">
+                      VAT (care products)
+                    </span>
+                    <span className="tabular-nums font-mono">
+                      {fmt(n(quote.tax_ngn))}
+                    </span>
+                  </div>
+                )}
                 {totalDiscount > 0 && (
                   <div className="flex justify-between text-[rgb(var(--success))] font-semibold">
                     <span>You save</span>

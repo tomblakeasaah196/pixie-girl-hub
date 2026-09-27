@@ -1,5 +1,8 @@
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+import { useBusinessStore } from "@/stores/business";
 import {
   ShoppingBag,
   Zap,
@@ -64,7 +67,21 @@ export function SalesPage() {
   const pendingReconCount = pendingRecon?.meta?.total ?? 0;
   const can = useAuthStore((s) => s.can);
   const careOn = useCareAvailability().data?.enabled === true;
-  const tabs = TABS.filter((t) => t.key !== "delivery-review" || careOn);
+  // The review queue outlives the rollout flag: orders already queued must
+  // still be priced (they can't dispatch until they are), so keep the tab for
+  // PXG while anything is waiting even if Care selling is switched off.
+  const activeBrand = useBusinessStore((s) => s.activeKey);
+  const { data: reviewQueue } = useQuery({
+    queryKey: ["delivery-reviews", activeBrand, "count"],
+    queryFn: () =>
+      api.get<{ data: unknown[]; meta: { total: number } }>(
+        "/sales/delivery-reviews?page_size=1",
+      ),
+    enabled: activeBrand === "pixiegirl" && !careOn,
+    retry: false,
+  });
+  const showReviews = careOn || (reviewQueue?.meta?.total ?? 0) > 0;
+  const tabs = TABS.filter((t) => t.key !== "delivery-review" || showReviews);
   const [exportOpen, setExportOpen] = useState(false);
 
   return (
@@ -160,7 +177,7 @@ export function SalesPage() {
       {tab === "preorders" && <PreordersView />}
       {tab === "quotations" && <QuotationsView />}
       {tab === "delivery-pending" && <DeliveryPendingView />}
-      {tab === "delivery-review" && careOn && <DeliveryReviewView />}
+      {tab === "delivery-review" && showReviews && <DeliveryReviewView />}
       {tab === "pos-reconciliation" && <PosReconciliationView />}
       {tab === "payments" && <PaymentSettingsView />}
     </div>

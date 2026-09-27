@@ -492,7 +492,7 @@ export function QuoteFormModal({
       {/* Step 2: Products */}
       {formStep === 2 && (
         <div className="space-y-3">
-          <ProductPicker onPick={handlePick} autoFocus />
+          <ProductPicker onPick={handlePick} autoFocus allowCare />
 
           {pendingStyled && (
             <StyledVariantPicker

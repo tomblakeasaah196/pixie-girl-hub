@@ -196,6 +196,8 @@ export interface CartQuote {
   gross_discount_ngn: string;
   total_discount_ngn: string;
   final_total_ngn: string;
+  /** VAT on taxable Care & Accessories lines — already inside final_total_ngn. */
+  tax_ngn?: string;
   clamped: boolean;
 }
 

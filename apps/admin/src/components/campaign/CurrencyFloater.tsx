@@ -2,8 +2,8 @@
  * Floating currency toggle for sales-campaign landing pages.
  *
  * Small icon-only pill in the bottom-right that flips every price on the
- * page between ₦ and $ using the campaign's static FX rate (the SSOT for
- * customer-facing display — order settlement uses the LIVE rate elsewhere).
+ * page between ₦ and $ at the live catalogue ₦/$ rate (the preview payload's
+ * `ngn_per_usd_rate` — campaigns no longer carry a rate of their own).
  *
  * Theming: paints itself with the brand's CSS variables that LandingRender
  * already injects (`--accent`, `--accent-deep`, `--accent-glow`), so it
@@ -14,7 +14,7 @@
  *  • Desktop hover: pill expands to show both glyphs so the visitor sees
  *    what tapping will switch to.
  *  • Mobile tap: single tap flips the active currency.
- *  • Hidden entirely when the campaign has no `ngn_per_usd_rate` set.
+ *  • Hidden entirely when no catalogue ₦/$ rate is set.
  */
 
 import { useCurrencyStore, isUsdEnabled } from "@/lib/currency";

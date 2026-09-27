@@ -77,6 +77,8 @@ router.post(
   v.validatePaymentLink,
   c.createPaymentLink,
 );
+// Quick Sale "≈ $ total" before the order exists (read-only pricing).
+router.post("/usd-quote", can("create"), v.validateUsdQuote, c.usdQuote);
 router.post(
   "/orders/:id/cancel",
   can("edit"),

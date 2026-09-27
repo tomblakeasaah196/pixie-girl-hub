@@ -73,6 +73,20 @@ const orderFormSchema = z
     // Short order-link slug (the `/o/<slug>` checkout) — marks the link used,
     // applies the staff-picked styled prices, and posts thread events.
     order_link_slug: z.string().max(64).optional(),
+    // The customer's picks on a $ order link: which of the link's items they
+    // kept (index into the link's items) and how many. The order's dollar
+    // total is locked from exactly these — the figures the page showed.
+    link_picks: z
+      .array(
+        z
+          .object({
+            idx: z.number().int().min(0).max(99),
+            qty: z.number().int().min(1).max(100),
+          })
+          .strict(),
+      )
+      .max(100)
+      .optional(),
     utm_source: z.string().max(80).optional(),
     utm_medium: z.string().max(80).optional(),
     utm_campaign: z.string().max(120).optional(),

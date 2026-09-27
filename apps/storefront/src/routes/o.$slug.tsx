@@ -16,8 +16,7 @@ import {
   type GeoOptions,
 } from "@/lib/geo";
 import { fetchDeliveryQuote } from "@/lib/geo";
-import { formatFromNgn } from "@/lib/money";
-import { useCurrency } from "@/lib/useStore";
+import { formatCurrency, formatFromNgn } from "@/lib/money";
 import { usePageSlots, withSlots } from "@/lib/site-config";
 import { Section } from "@/components/parts";
 import {
@@ -129,9 +128,10 @@ function useOrderLinkCopy() {
 
 function OrderLinkCheckout() {
   const { slug } = Route.useParams();
-  const [currency] = useCurrency();
   const s = useOrderLinkCopy();
-  const money = (ngn: number) => formatFromNgn(ngn, currency);
+  // An order link charges in the currency staff chose for it (₦ or $), never
+  // the site toolbar's — so the page shows exactly what the customer pays.
+  const money = (ngn: number) => formatFromNgn(ngn, "NGN");
 
   const q = useQuery<OrderLinkContext>({
     queryKey: ["order-link", slug],
@@ -396,6 +396,59 @@ function CheckoutForm({
   );
   const orderTotal = itemsSubtotal + careVat + deliveryDue;
 
+  // $ link: each item at its catalogue USD price (the Hub's USD engine),
+  // delivery at the catalogue rate rounded UP to the dollar — the figures the
+  // order locks when it's placed, so the Pay button's $ is what Nomba charges.
+  const usdLink = ctx?.currency === "USD" && ctx.usd ? ctx.usd : null;
+  const usdOf = (idx: number) => {
+    const p = usdLink?.prices?.[idx];
+    return p != null ? Number(p) : null;
+  };
+  const deliveryUsd =
+    usdLink && usdLink.rate && deliveryDue > 0
+      ? Math.ceil(deliveryDue / usdLink.rate - 1e-9)
+      : 0;
+  const itemsSubtotalUsd = usdLink
+    ? [...resolvedItems, ...serviceItems].reduce(
+        (sum, i) => sum + (usdOf(i.idx) ?? 0) * i.qty,
+        0,
+      )
+    : null;
+  // Care VAT in dollars: the server scales it at the goods' own $/₦ ratio
+  // (the USD engine's order-adjustment rule), rounded half-up to the cent.
+  const careVatUsd = (() => {
+    if (!usdLink || careVat <= 0) return 0;
+    let usd = 0;
+    let ngn = 0;
+    for (const i of resolvedItems) {
+      usd += (usdOf(i.idx) ?? 0) * i.qty;
+      ngn += (Number(i.price_ngn) || 0) * i.qty;
+    }
+    return ngn > 0 ? Math.round(((careVat * usd) / ngn) * 100 + 1e-9) / 100 : 0;
+  })();
+  const orderTotalUsd =
+    itemsSubtotalUsd != null
+      ? Math.round((itemsSubtotalUsd + careVatUsd + deliveryUsd) * 100) / 100
+      : null;
+  const show = {
+    item: (idx: number, ngn: number) =>
+      usdLink && usdOf(idx) != null
+        ? formatCurrency(usdOf(idx) as number, "USD")
+        : money(ngn),
+    subtotal: () =>
+      itemsSubtotalUsd != null
+        ? formatCurrency(itemsSubtotalUsd, "USD")
+        : money(itemsSubtotal),
+    vat: () =>
+      usdLink ? formatCurrency(careVatUsd, "USD") : money(careVat),
+    delivery: () =>
+      usdLink ? formatCurrency(deliveryUsd, "USD") : money(deliveryDue),
+    total: () =>
+      orderTotalUsd != null
+        ? formatCurrency(orderTotalUsd, "USD")
+        : money(orderTotal),
+  };
+
   const canSubmit =
     !!phone &&
     (hasProducts || serviceItems.length > 0) &&
@@ -459,6 +512,12 @@ function CheckoutForm({
             }
           : undefined,
         order_link_slug: slug,
+        // What the customer kept + how many — a $ link locks its dollar
+        // total from exactly these (the figures shown above).
+        link_picks: [...resolvedItems, ...serviceItems].map((i) => ({
+          idx: i.idx,
+          qty: i.qty,
+        })),
         service_bookings: serviceItems.length
           ? serviceItems.map((s) => ({
               service_id: s.service_id as string,
@@ -622,7 +681,7 @@ function CheckoutForm({
                   )}
                   {it.price_ngn != null && (
                     <p className="text-body-sm text-muted-foreground">
-                      {money(Number(it.price_ngn))}
+                      {show.item(idx, Number(it.price_ngn))}
                     </p>
                   )}
                   {it.note && (
@@ -902,12 +961,12 @@ function CheckoutForm({
           <div className="rounded-md border border-border p-4">
             <div className="flex items-center justify-between text-body-sm">
               <span className="text-muted-foreground">{s.subtotalLabel}</span>
-              <span className="tabular-nums">{money(itemsSubtotal)}</span>
+              <span className="tabular-nums">{show.subtotal()}</span>
             </div>
             {careVat > 0 && (
               <div className="mt-1 flex items-center justify-between text-body-sm">
                 <span className="text-muted-foreground">{s.careVatLabel}</span>
-                <span className="tabular-nums">{money(careVat)}</span>
+                <span className="tabular-nums">{show.vat()}</span>
               </div>
             )}
             {!serviceOnly && fulfilment === "delivery" && (
@@ -917,7 +976,7 @@ function CheckoutForm({
                   {quoting
                     ? s.calculating
                     : deliveryDue > 0
-                      ? money(deliveryDue)
+                      ? show.delivery()
                       : "—"}
                 </span>
               </div>
@@ -926,7 +985,7 @@ function CheckoutForm({
             <div className="flex items-center justify-between">
               <span className="text-body font-medium">{s.totalLabel}</span>
               <span className="text-body font-display tabular-nums">
-                {money(orderTotal)}
+                {show.total()}
               </span>
             </div>
           </div>
@@ -948,7 +1007,7 @@ function CheckoutForm({
           ) : serviceOnly ? (
             s.bookingCta
           ) : (
-            s.payCta.replace("{total}", money(orderTotal))
+            s.payCta.replace("{total}", show.total())
           )}
         </button>
 

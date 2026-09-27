@@ -59,7 +59,6 @@ import {
   type CartUpsell,
   type BundleItem,
   type CampaignStatus,
-  type PaymentGateway,
   useAddProductsBatch,
   useBrand,
   useBundle,
@@ -541,21 +540,9 @@ function BriefStep({
   const [multiCurrency, setMultiCurrency] = useState(
     campaign.allow_multi_currency_display,
   );
-  // Payment gateways offered at checkout for this campaign. Older rows with no
-  // value fall back to both rails on. At least one must stay enabled.
-  const initialGateways =
-    campaign.allowed_payment_gateways &&
-    campaign.allowed_payment_gateways.length
-      ? campaign.allowed_payment_gateways
-      : (["paystack", "nomba"] as PaymentGateway[]);
-  const [gwPaystack, setGwPaystack] = useState(
-    initialGateways.includes("paystack"),
-  );
-  const [gwNomba, setGwNomba] = useState(initialGateways.includes("nomba"));
-  const allowedGateways = [
-    ...(gwPaystack ? (["paystack"] as PaymentGateway[]) : []),
-    ...(gwNomba ? (["nomba"] as PaymentGateway[]) : []),
-  ];
+  // Payment rails and the ₦/$ rate are no longer per-campaign: every sale
+  // pays on Nomba (₦ and $), and dollar prices come from the catalogue's USD
+  // prices at the catalogue rate (Catalogue → Config → Apply USD exchange rate).
   // Flexi Pay (PR-3): does this sale offer the instalment plan at checkout?
   const [allowInstalments, setAllowInstalments] = useState(
     campaign.allow_instalments ?? false,
@@ -568,11 +555,6 @@ function BriefStep({
   );
   const [preorderExtraWeeks, setPreorderExtraWeeks] = useState<string>(
     String(campaign.preorder_extra_weeks ?? 4),
-  );
-  // Static "1 USD = N NGN" rate used by the landing-page currency toggle.
-  // Customer-facing display only — order settlement uses the LIVE FX rate.
-  const [ngnPerUsd, setNgnPerUsd] = useState<string>(
-    campaign.ngn_per_usd_rate != null ? String(campaign.ngn_per_usd_rate) : "",
   );
   // Free-shipping threshold: when cart goods subtotal ≥ this amount, delivery
   // is automatically zeroed. Empty string = no threshold.
@@ -618,8 +600,6 @@ function BriefStep({
     exitBody !== (campaign.exit_intent_body || "") ||
     exitButton !== (campaign.exit_intent_button || "") ||
     multiCurrency !== campaign.allow_multi_currency_display ||
-    allowedGateways.slice().sort().join(",") !==
-      initialGateways.slice().sort().join(",") ||
     allowInstalments !== (campaign.allow_instalments ?? false) ||
     abandonment !== campaign.abandonment_recovery_enabled ||
     deliveryWeeks !==
@@ -627,10 +607,6 @@ function BriefStep({
         ? String(campaign.delivery_weeks)
         : "") ||
     preorderExtraWeeks !== String(campaign.preorder_extra_weeks ?? 4) ||
-    ngnPerUsd !==
-      (campaign.ngn_per_usd_rate != null
-        ? String(campaign.ngn_per_usd_rate)
-        : "") ||
     freeShippingThreshold !==
       (campaign.free_shipping_threshold_ngn != null
         ? String(campaign.free_shipping_threshold_ngn)
@@ -668,12 +644,10 @@ function BriefStep({
         exit_intent_body: exitEnabled ? exitBody || null : null,
         exit_intent_button: exitEnabled ? exitButton || null : null,
         allow_multi_currency_display: multiCurrency,
-        allowed_payment_gateways: allowedGateways,
         allow_instalments: allowInstalments,
         abandonment_recovery_enabled: abandonment,
         delivery_weeks: deliveryWeeks ? Number(deliveryWeeks) : null,
         preorder_extra_weeks: Number(preorderExtraWeeks) || 4,
-        ngn_per_usd_rate: ngnPerUsd ? Number(ngnPerUsd) : null,
         free_shipping_threshold_ngn: freeShippingThreshold
           ? Number(freeShippingThreshold)
           : null,
@@ -758,36 +732,11 @@ function BriefStep({
             />
           </Field>
         </div>
-        {/* Static FX rate for the landing-page currency toggle. SSOT for
-            customer-facing display only — order settlement uses the LIVE FX
-            rate captured into sales_orders.fx_rate_used at payment. */}
-        <Field
-          label="Dollar exchange rate"
-          hint="Landing-page display only · order settlement uses live FX · leave blank to hide the $ toggle"
-        >
-          <div className="flex items-stretch gap-2 max-w-md">
-            <span className="inline-flex items-center px-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-muted text-[13px] font-mono">
-              1 USD =
-            </span>
-            <input
-              value={ngnPerUsd}
-              onChange={(e) =>
-                setNgnPerUsd(e.target.value.replace(/[^0-9.]/g, ""))
-              }
-              disabled={!canEdit}
-              inputMode="decimal"
-              placeholder="1310"
-              className="flex-1 h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line outline-none focus:border-accent/50 font-mono text-[13px] tabular-nums disabled:opacity-50"
-              autoComplete="off"
-              data-lpignore="true"
-              data-1p-ignore=""
-              data-form-type="other"
-            />
-            <span className="inline-flex items-center px-3 rounded-[11px] bg-text-primary/[0.04] border border-line text-text-muted text-[13px] font-mono">
-              NGN
-            </span>
-          </div>
-        </Field>
+        <p className="text-[12px] text-text-faint">
+          Dollar prices on this sale are each product&apos;s catalogue USD
+          price at the live catalogue rate — set it in Catalogue → Config →
+          Apply USD exchange rate. There is no per-campaign rate.
+        </p>
       </FormSection>
 
       <FormSection title="Top-level discount">
@@ -887,36 +836,12 @@ function BriefStep({
         </div>
       </FormSection>
 
-      <FormSection title="Payment gateways">
+      <FormSection title="Payments">
         <p className="text-[12px] text-text-faint -mt-2 mb-2">
-          Choose which gateways buyers can pay with on this sale's checkout.
-          Keep at least one on. USD orders always settle on Nomba (the only USD
-          rail), so turning Nomba off only affects Naira checkout.
+          Buyers pay on Nomba, in Naira or US Dollars — the only payment
+          gateway. There is nothing to switch per sale.
         </p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Field label="Paystack" hint="Cards, bank transfer, USSD (NGN)">
-            <Toggle
-              checked={gwPaystack}
-              onChange={(next) => {
-                // Never let both rails be turned off — refuse the last one.
-                if (!next && !gwNomba) return;
-                setGwPaystack(next);
-              }}
-              disabled={!canEdit}
-              label={gwPaystack ? "On" : "Off"}
-            />
-          </Field>
-          <Field label="Nomba" hint="NGN + the USD settlement rail">
-            <Toggle
-              checked={gwNomba}
-              onChange={(next) => {
-                if (!next && !gwPaystack) return;
-                setGwNomba(next);
-              }}
-              disabled={!canEdit}
-              label={gwNomba ? "On" : "Off"}
-            />
-          </Field>
           <Field
             label="Allow Flexi Pay (instalments)"
             hint="Buyers can reserve with a deposit & pay the balance later"
@@ -934,14 +859,6 @@ function BriefStep({
             Flexi Pay must also be enabled for the Sales Campaign channel in
             Sales → Payments for this to show at checkout.
           </p>
-        )}
-        {!gwNomba && multiCurrency && (
-          <div className="flex items-center gap-2 text-[12px] text-warn mt-1">
-            <span>
-              USD display is on but Nomba is off — USD buyers won't be able to
-              pay. Turn Nomba back on or disable multi-currency display.
-            </span>
-          </div>
         )}
       </FormSection>
 

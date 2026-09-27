@@ -253,6 +253,30 @@ const paymentLink = z
   })
   .strict();
 
+// Quick Sale "≈ $ total" preview: the draft cart's lines + Naira totals,
+// priced in dollars by the USD engine exactly as the pay link will lock them.
+const usdQuote = z
+  .object({
+    lines: z
+      .array(
+        z
+          .object({
+            variant_id: z.string().uuid().optional(),
+            styled_id: z.string().uuid().optional(),
+            service_offering_id: z.string().uuid().optional(),
+            line_kind: z.string().max(20).optional(),
+            unit_price_ngn: z.coerce.number().nonnegative(),
+            quantity: z.coerce.number().int().positive(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(200),
+    total_ngn: z.coerce.number().nonnegative(),
+    shipping_fee_ngn: z.coerce.number().nonnegative().optional(),
+  })
+  .strict();
+
 const setDeliveryFee = z
   .object({ fee_ngn: z.coerce.number().nonnegative() })
   .strict();
@@ -487,6 +511,7 @@ module.exports = {
   validateOrderUpdate: mw(orderUpdate),
   validatePaymentCreate: mw(paymentCreate),
   validatePaymentLink: mw(paymentLink),
+  validateUsdQuote: mw(usdQuote),
   validateQuotationCreate: mw(quotationCreate),
   validateQuotationSend: mw(quotationSend),
   validateQuotationAccept: mw(quotationAccept),

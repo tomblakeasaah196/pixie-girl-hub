@@ -468,7 +468,15 @@ async function createPaymentLink({
         email,
         return_url_base,
       });
-      return { ...res, amount_ngn: amountStr, attempts };
+      // currency + charge_amount: exactly what the checkout charges (e.g.
+      // USD "249.99"), so staff screens can show "Charged: $249.99".
+      return {
+        ...res,
+        amount_ngn: amountStr,
+        currency: settleCurrency,
+        charge_amount: chargeAmount,
+        attempts,
+      };
     } catch (err) {
       attempts.push({
         provider: link.provider,
@@ -777,14 +785,39 @@ async function previewByToken({ token }) {
       outstanding.lt(0) ? money(0) : outstanding,
     ),
     min_next_payment_ngn: toCurrencyString(minNext),
+    // A USD order: the dollar figures the checkout will actually charge —
+    // the whole balance (usdCharge: the quoted total when untouched) and the
+    // plan minimum — so the page never does its own rate maths.
+    ...usdPreview(order, outstanding, minNext),
     payments: payments
       .filter((p) => p.status === "captured")
       .map((p) => ({
         payment_number: p.payment_number,
         amount_ngn: toCurrencyString(money(p.amount_ngn)),
+        paid_currency: p.paid_currency || "NGN",
+        paid_amount:
+          p.paid_amount !== null && p.paid_amount !== undefined
+            ? toCurrencyString(money(p.paid_amount))
+            : null,
         method: p.method,
         paid_at: p.captured_at || p.recorded_at,
       })),
+  };
+}
+
+/** Dollar preview fields for a USD-locked order (empty for Naira orders). */
+function usdPreview(order, outstanding, minNext) {
+  const rate = lockedRate(order, "USD");
+  if (!rate) return {};
+  const due = outstanding.lt(0) ? money(0) : outstanding;
+  return {
+    outstanding_usd: due.gt(0)
+      ? usdCharge({ order, amt: due, rate })
+      : "0.00",
+    min_next_payment_usd: money(minNext)
+      .dividedBy(money(rate))
+      .toDecimalPlaces(2, Decimal.ROUND_UP)
+      .toFixed(2),
   };
 }
 
@@ -819,8 +852,32 @@ async function createPublicPaymentLink({ token, amount_ngn }) {
   });
 }
 
+/**
+ * Quick Sale preview: a draft cart (lines + Naira totals, before the order
+ * exists) priced in dollars by the USD engine — the same orderUsdFromLines
+ * pass the pay link runs on the real order, so the "≈ $X" staff quote is the
+ * figure the USD checkout will charge (bar server-side adjustments such as a
+ * coupon the preview didn't include). Null when unpriceable (no rate set).
+ */
+async function usdQuoteForLines({ brand, lines, total_ngn, shipping_fee_ngn }) {
+  const quote = await usdPricing.orderUsdFromLines({
+    brand,
+    order: { lines, total_ngn, shipping_fee_ngn: shipping_fee_ngn || 0 },
+    rate: await usdPricing.catalogueRate(brand),
+  });
+  if (!quote) return null;
+  return {
+    currency: "USD",
+    usd_total: quote.usd_total,
+    goods_usd: quote.goods_usd,
+    delivery_usd: quote.delivery_usd,
+    lines: quote.lines.map((l) => l.unit_price_usd),
+  };
+}
+
 module.exports = {
   createPaymentLink,
+  usdQuoteForLines,
   settlementFxRate,
   lockedCurrency,
   previewByToken,

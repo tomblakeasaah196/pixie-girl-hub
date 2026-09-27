@@ -246,6 +246,18 @@ const createPaymentLink = async (req, res) =>
     }),
   });
 
+// Quick Sale: the draft cart in dollars (usd-pricing engine, catalogue rate) —
+// the same figure the USD pay link locks once the order exists.
+const usdQuote = async (req, res) =>
+  res.json({
+    data: await paymentLink.usdQuoteForLines({
+      brand: req.brand,
+      lines: req.body.lines,
+      total_ngn: req.body.total_ngn,
+      shipping_fee_ngn: req.body.shipping_fee_ngn,
+    }),
+  });
+
 // Quotations
 async function listQuotations(req, res) {
   const { page, page_size } = parsePagination(req.query);
@@ -419,6 +431,7 @@ module.exports = {
   applyOrderCoupon,
   listAmendments,
   createPaymentLink,
+  usdQuote,
   setDeliveryFee,
   setSpecificInstructions,
   getPaymentSettings,

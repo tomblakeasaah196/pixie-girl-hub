@@ -155,41 +155,13 @@ describe("resolveDisplayCurrency", () => {
 });
 
 describe("selectPaymentGateway", () => {
-  it("honours the buyer's pick when the campaign allows it", () => {
-    expect(
-      stages.selectPaymentGateway({
-        checkoutCurrency: "NGN",
-        requestedGateway: "nomba",
-        campaign: { allowed_payment_gateways: ["paystack", "nomba"] },
-      }),
-    ).toBe("nomba");
-  });
-
-  it("falls back to the campaign's first enabled rail", () => {
-    expect(
-      stages.selectPaymentGateway({
-        checkoutCurrency: "NGN",
-        requestedGateway: "stripe",
-        campaign: { allowed_payment_gateways: ["paystack"] },
-      }),
-    ).toBe("paystack");
-  });
-
-  it("USD forces nomba — and throws when the campaign disabled it", () => {
-    expect(
-      stages.selectPaymentGateway({
-        checkoutCurrency: "USD",
-        requestedGateway: "paystack",
-        campaign: {},
-      }),
-    ).toBe("nomba");
-    expect(() =>
-      stages.selectPaymentGateway({
-        checkoutCurrency: "USD",
-        requestedGateway: null,
-        campaign: { allowed_payment_gateways: ["paystack"] },
-      }),
-    ).toThrow("USD payment is not available");
+  it("is always Nomba — the only gateway (owner, Sept 2026)", () => {
+    for (const args of [
+      { checkoutCurrency: "NGN", requestedGateway: "paystack", campaign: { allowed_payment_gateways: ["paystack"] } },
+      { checkoutCurrency: "USD", requestedGateway: null, campaign: {} },
+      { checkoutCurrency: "NGN", requestedGateway: "stripe", campaign: { allowed_payment_gateways: ["paystack", "nomba"] } },
+    ])
+      expect(stages.selectPaymentGateway(args)).toBe("nomba");
   });
 });
 

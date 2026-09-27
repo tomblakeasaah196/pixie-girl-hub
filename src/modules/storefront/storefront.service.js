@@ -875,19 +875,45 @@ async function submitOrderForm({ brand, input, request_id }) {
   // order_id (exactly like the cart checkout), so the token isn't needed here.
   if (input.order_link_slug && result.order_id) {
     try {
-      // The buyer's gateway pick from the /o page (same rails as the main
-      // storefront checkout). createPaymentLink still walks the whole active
-      // chain with this one preferred, so a down gateway falls over rather
-      // than dead-ending the order.
-      const allowedGateways = ["nomba", "paystack"];
-      const preferredProvider = allowedGateways.includes(input.payment_gateway)
-        ? input.payment_gateway
-        : "nomba";
+      // A USD link (staff chose $ when sharing it): lock the order's dollar
+      // total from the link's catalogue USD prices — the exact figures the /o
+      // page showed — so the checkout below charges that, in dollars.
+      const orderLinksRepo = require("../smartcomm/smartcomm.order-links.repo");
+      const link = await orderLinksRepo.getBySlug({
+        slug: input.order_link_slug,
+      });
+      if (link && link.business === brand && link.currency === "USD") {
+        const salesRepo = require("../sales/sales.repo");
+        const orderLinks = require("../smartcomm/smartcomm.order-links.service");
+        const placed = await salesRepo.findById({ brand, id: result.order_id });
+        const usd = placed
+          ? await orderLinks.lockUsdForLinkOrder({
+              brand,
+              link_items: link.items,
+              order: placed,
+              picks: input.link_picks,
+            })
+          : null;
+        if (usd && usd.fx_rate)
+          await salesRepo.lockSettlementCurrency({
+            brand,
+            id: result.order_id,
+            currency: "USD",
+            fx_rate: usd.fx_rate,
+            display_total: usd.usd_total,
+          });
+      }
+      // Nomba — the only gateway for ₦ and $ (owner, Sept 2026). A client-sent
+      // payment_gateway from an older /o page is ignored.
+      const preferredProvider = "nomba";
       const pay = await paymentLink.createPaymentLink({
         brand,
         order_id: result.order_id,
         amount_ngn:
           result.payment_plan === "instalment" ? result.pay_now_ngn : undefined,
+        // The link's currency (a USD order was just locked above; a USD link
+        // the engine couldn't price fails here rather than charging Naira).
+        currency: link && link.currency === "USD" ? "USD" : undefined,
         preferred_provider: preferredProvider,
         return_url_base: input.return_url_base || undefined,
       });
@@ -1839,18 +1865,11 @@ async function checkout({ brand, cart_id, sessionCustomerId = null, input = {} }
     logger.warn({ err, cart_id }, "cart convert flag skipped");
   }
 
-  // 7. Initiate payment on the SETTLEMENT currency. NGN → buyer's pick (Nomba
-  //    default, Paystack); any foreign currency → Nomba (the foreign rail). The
-  //    gateway chain + Nomba integration + webhook are unchanged — they already
-  //    route by the order's settlement currency.
+  // 7. Initiate payment on the SETTLEMENT currency, on Nomba — the only
+  //    gateway for ₦ and $ (owner, Sept 2026). A client-sent payment_gateway
+  //    is ignored.
   const checkoutCurrency = settlementCurrency;
-  const allowed = ["nomba", "paystack"];
-  const preferredProvider =
-    checkoutCurrency !== "NGN"
-      ? "nomba"
-      : input.payment_gateway && allowed.includes(input.payment_gateway)
-        ? input.payment_gateway
-        : "nomba";
+  const preferredProvider = "nomba";
   // Flexi Pay (PR-2): full plan charges the whole balance; instalment charges
   // the chosen first payment (or the snapshotted deposit). createPaymentLink
   // enforces the minimum and clamps to the outstanding balance. The storefront

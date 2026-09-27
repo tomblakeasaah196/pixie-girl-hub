@@ -354,6 +354,56 @@ export function QuickSaleForm() {
   const shipping = Number(shippingFee) || 0;
   const total = subtotal + vatAmount + shipping;
 
+  // ── Dollar total (USD sales) ─────────────────────────────
+  // The Hub's USD engine prices the draft cart exactly as the USD pay link
+  // will lock it: each item's catalogue USD price, delivery at the catalogue
+  // rate. Staff see the $ the customer will be charged before sending.
+  const [usdTotal, setUsdTotal] = useState<number | null>(null);
+  useEffect(() => {
+    if (currency !== "USD" || cart.length === 0) {
+      setUsdTotal(null);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const q = await salesApi.usdQuote({
+          lines: cart.map((l) =>
+            l.service_offering_id
+              ? {
+                  service_offering_id: l.service_offering_id,
+                  line_kind: "service",
+                  unit_price_ngn: l.unit_price,
+                  quantity: l.quantity,
+                }
+              : {
+                  variant_id: l.variant_id,
+                  ...(l.styled_id
+                    ? { styled_id: l.styled_id, line_kind: "styled" }
+                    : {}),
+                  unit_price_ngn: l.unit_price,
+                  quantity: l.quantity,
+                },
+          ),
+          total_ngn: Math.round(total * 100) / 100,
+          shipping_fee_ngn: shipping,
+        });
+        if (!cancelled) setUsdTotal(q ? Number(q.usd_total) : null);
+      } catch {
+        if (!cancelled) setUsdTotal(null);
+      }
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [currency, cart, total, shipping]);
+  // What the minted checkout actually charges ("USD" / "249.99").
+  const [charged, setCharged] = useState<{
+    currency: string;
+    amount: string;
+  } | null>(null);
+
   // ── Contact search ───────────────────────────────────────
   const contactDebounce = useRef<ReturnType<typeof setTimeout>>();
   const handleContactSearch = useCallback((q: string) => {
@@ -710,6 +760,11 @@ export function QuickSaleForm() {
         currency: currency !== "NGN" ? currency : undefined,
       });
       setPaymentUrl(link.checkout_url);
+      setCharged(
+        link.currency && link.charge_amount
+          ? { currency: link.currency, amount: link.charge_amount }
+          : null,
+      );
       setPaymentLinkError(null);
       fireToast(
         "Order Created",
@@ -736,6 +791,11 @@ export function QuickSaleForm() {
         currency: currency !== "NGN" ? currency : undefined,
       });
       setPaymentUrl(link.checkout_url);
+      setCharged(
+        link.currency && link.charge_amount
+          ? { currency: link.currency, amount: link.charge_amount }
+          : null,
+      );
       setPaymentLinkError(null);
     } catch (err) {
       setPaymentLinkError(describeError(err).message);
@@ -776,6 +836,7 @@ export function QuickSaleForm() {
     setPaymentUrl(null);
     setPaymentLinkError(null);
     setFirstChargeNgn(null);
+    setCharged(null);
     setCaptureUrl(null);
     setCaptureSubmissionId(null);
     setShowQr(false);
@@ -1482,8 +1543,12 @@ export function QuickSaleForm() {
             )}
             <div className="flex justify-between text-[16px] font-semibold pt-1">
               <span>Total</span>
+              {/* USD: the engine's dollar total, the ₦ figure beneath. */}
               <MoneyText
                 ngn={total}
+                display={
+                  currency === "USD" && usdTotal != null ? usdTotal : undefined
+                }
                 currency={currency}
                 className="text-[16px]"
               />
@@ -1611,6 +1676,15 @@ export function QuickSaleForm() {
                 <span className="w-2.5 h-2.5 rounded-full bg-warn animate-pulse" />
                 Waiting for payment…
               </div>
+              {charged && charged.currency !== "NGN" && (
+                <p className="text-[13px] mb-4">
+                  Charging{" "}
+                  <strong className="font-mono">
+                    {charged.currency} {charged.amount}
+                  </strong>{" "}
+                  on Nomba
+                </p>
+              )}
 
               {/* Fallback: send/copy the link if they'd rather use their own device */}
               <div className="flex items-center gap-2 justify-center flex-wrap">
@@ -1640,6 +1714,15 @@ export function QuickSaleForm() {
                 Payment link has been sent to the customer. The order confirms
                 automatically once payment is received via the gateway.
               </p>
+              {charged && charged.currency !== "NGN" && (
+                <p className="text-[13px] mb-4">
+                  The link charges{" "}
+                  <strong className="font-mono">
+                    {charged.currency} {charged.amount}
+                  </strong>{" "}
+                  on Nomba
+                </p>
+              )}
               {paymentUrl && (
                 <div className="mb-4 p-3 rounded-[11px] bg-text-primary/[0.03] border border-line">
                   <div className="text-[11px] text-text-faint mb-1">

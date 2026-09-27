@@ -67,6 +67,19 @@ let CONTACT = null;
 before(async () => {
   await fixture.boot();
   await q(LINKS_DDL);
+  // Real migration 000389 on top of the hand-written table: the ₦/$ currency
+  // an order link charges in (Nomba NGN/USD work).
+  await fixture
+    .db()
+    .exec(
+      require("node:fs").readFileSync(
+        require("node:path").resolve(
+          __dirname,
+          "../../migrations/000389_shared_order_link_currency.sql",
+        ),
+        "utf8",
+      ),
+    );
   for (const b of [PXG, FLH]) await fixture.db().exec(EXTRA_DDL(b));
   await seed();
   // PR 3 suites place many orders — top up sellable stock so the lifecycle

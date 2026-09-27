@@ -126,35 +126,12 @@ function resolveDisplayCurrency({ display_currency, usd }) {
   };
 }
 
-// Per-campaign gateway gate: the owner can disable a rail for this sale in
-// the builder. Enforced server-side — the public checkout only shows the
-// allowed buttons, so a value outside this set is a stale/tampered client.
-// USD has only the Nomba rail; NGN honours the buyer's pick, else the first
-// gateway the campaign still has enabled.
-function selectPaymentGateway({ checkoutCurrency, requestedGateway, campaign }) {
-  const allowedGateways =
-    Array.isArray(campaign.allowed_payment_gateways) &&
-    campaign.allowed_payment_gateways.length
-      ? campaign.allowed_payment_gateways
-      : ["paystack", "nomba"];
-  const preferredProvider =
-    checkoutCurrency === "USD"
-      ? "nomba"
-      : requestedGateway && allowedGateways.includes(requestedGateway)
-        ? requestedGateway
-        : allowedGateways[0];
-  if (!allowedGateways.includes(preferredProvider)) {
-    // Either the buyer forced a disabled rail, or USD checkout hit a campaign
-    // that has turned Nomba off — there is no valid rail to settle on.
-    throw new AppError(
-      "GATEWAY_NOT_AVAILABLE",
-      checkoutCurrency === "USD"
-        ? "USD payment is not available for this sale."
-        : "That payment method is not available for this sale.",
-      422,
-    );
-  }
-  return preferredProvider;
+// Payment rail. Nomba is the only gateway for every sale, ₦ or $ (owner,
+// Sept 2026): a campaign's old allowed_payment_gateways list and the buyer's
+// pick no longer choose between rails — they are accepted and ignored, so an
+// older landing page that still posts "paystack" checks out on Nomba.
+function selectPaymentGateway() {
+  return "nomba";
 }
 
 // Structured internal notes for the back office: gift instructions, consent,

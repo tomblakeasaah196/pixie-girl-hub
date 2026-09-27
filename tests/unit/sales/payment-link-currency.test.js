@@ -257,3 +257,24 @@ describe("currency lock — NGN + USD only, customers can't switch", () => {
     expect(mockLocks).toHaveLength(0);
   });
 });
+
+describe("Quick Sale USD preview + charged amount", () => {
+  test("usdQuoteForLines prices a draft cart like the pay link will lock it", async () => {
+    // One ₦500,000 line with no catalogue USD price → ceil(333.33) = $334.
+    const q = await paymentLink.usdQuoteForLines({
+      brand: "faitlynhair",
+      lines: [{ variant_id: "var-x", unit_price_ngn: 500000, quantity: 1 }],
+      total_ngn: 500000,
+    });
+    expect(q).toMatchObject({ currency: "USD", usd_total: "334.00" });
+  });
+
+  test("the pay link reports the currency + amount its checkout charges", async () => {
+    mockOrder = ORDER_USD;
+    const link = await paymentLink.createPaymentLink({
+      brand: "faitlynhair",
+      order_id: ORDER_USD.order_id,
+    });
+    expect(link).toMatchObject({ currency: "USD", charge_amount: "764.00" });
+  });
+});

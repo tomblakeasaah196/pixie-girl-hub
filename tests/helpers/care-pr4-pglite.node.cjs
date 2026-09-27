@@ -59,7 +59,8 @@ async function addPr4Tables() {
     CREATE TABLE pixiegirl.commission_earned (
       earning_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       order_id uuid NOT NULL, status text NOT NULL,
-      amount_ngn numeric NOT NULL DEFAULT 0
+      amount_ngn numeric NOT NULL DEFAULT 0,
+      payroll_run_id uuid, paid_at timestamptz
     );
   `);
 }
@@ -84,40 +85,6 @@ async function addLine({ orderId, productId, variantId, total, kind = "product" 
   );
 }
 
-async function eligibleWigValue(orderId) {
-  const { rows } = await q(
-    `SELECT COALESCE(SUM(sol.line_total_ngn), 0)::numeric AS eligible_ngn
-       FROM pixiegirl.sales_order_lines sol
-       LEFT JOIN pixiegirl.product_variants pv ON pv.variant_id = sol.variant_id
-       LEFT JOIN pixiegirl.products p ON p.product_id = COALESCE(sol.product_id, pv.product_id)
-      WHERE sol.order_id = $1
-        AND COALESCE(sol.line_kind, 'product') <> 'service'
-        AND (p.catalogue_role IS NULL OR p.catalogue_role <> 'retail')`,
-    [orderId],
-  );
-  return Number(rows[0].eligible_ngn);
-}
-
-async function firstWigEligible(contactId) {
-  const { rows } = await q(
-    `SELECT count(*)::int AS c
-       FROM pixiegirl.sales_orders so
-      WHERE so.contact_id = $1
-        AND so.status IN ('paid','assigned','order_ready','dispatched','completed')
-        AND EXISTS (
-          SELECT 1
-            FROM pixiegirl.sales_order_lines sol
-            LEFT JOIN pixiegirl.product_variants pv ON pv.variant_id = sol.variant_id
-            LEFT JOIN pixiegirl.products p ON p.product_id = COALESCE(sol.product_id, pv.product_id)
-           WHERE sol.order_id = so.order_id
-             AND COALESCE(sol.line_kind, 'product') <> 'service'
-             AND (p.catalogue_role IS NULL OR p.catalogue_role <> 'retail')
-        )`,
-    [contactId],
-  );
-  return rows[0].c === 0;
-}
-
 test.before(async () => {
   await fixture.boot();
   await fixture.seed();
@@ -129,38 +96,38 @@ test.after(async () => {
   if (db) await db.close();
 });
 
-test("campaign membership requires an explicit PXG link and preserves exact retail SKU identity", async () => {
+test("campaign quote pricing: retail needs explicit membership, keeps its exact SKU, never counts as a wig", async () => {
+  // Calls the REAL campaigns.public.service.priceQuoteLine (the function the
+  // landing quote and checkout rely on), not a re-implementation of its SQL.
+  const campaigns = require("../../src/modules/sales_campaigns/campaigns.public.service");
   const campaignId = "11111111-0000-4000-8000-000000000001";
+  const otherCampaign = "11111111-0000-4000-8000-000000000009";
+  await q(`INSERT INTO pixiegirl.sales_campaigns (campaign_id, slug, status) VALUES ($1,'care-drop','live'), ($2,'no-care','live')`,
+    [campaignId, otherCampaign]);
   await q(
-    `INSERT INTO pixiegirl.sales_campaigns (campaign_id, slug, status)
-     VALUES ($1,'care-drop','live')`,
-    [campaignId],
-  );
-  await q(
-    `INSERT INTO pixiegirl.sales_campaign_products
-       (campaign_id, product_id, include_exclude, campaign_price_ngn)
+    `INSERT INTO pixiegirl.sales_campaign_products (campaign_id, product_id, include_exclude, campaign_price_ngn)
      VALUES ($1,$2,'include',7000)`,
     [campaignId, IDS.careProduct],
   );
-  const { rows } = await q(
-    `SELECT pv.variant_id, pv.sku, p.catalogue_role
-       FROM pixiegirl.sales_campaign_products scp
-       JOIN pixiegirl.products p ON p.product_id = scp.product_id
-       JOIN pixiegirl.product_variants pv ON pv.product_id = p.product_id
-      WHERE scp.campaign_id = $1
-        AND scp.include_exclude = 'include'
-        AND pv.variant_id = $2
-        AND p.catalogue_role = 'retail'`,
-    [campaignId, IDS.v100],
+  const priced = await campaigns.priceQuoteLine({
+    brand: "pixiegirl", campaign_id: campaignId,
+    item: { variant_id: IDS.v100, product_id: IDS.careProduct, quantity: 1 },
+  });
+  assert.equal(priced.kind, "retail");
+  assert.equal(priced.wig_units, 0, "a bottle is never another wig");
+  assert.equal(priced.unit_price_ngn, "8000.00", "the exact 100 ml SKU's live price, not the 50 ml default");
+  assert.equal(Number(priced.vat_rate), 0.075, "taxable care carries its VAT into the quote");
+  // Not a member of this campaign → not priced (checkout refuses it too).
+  const outside = await campaigns.priceQuoteLine({
+    brand: "pixiegirl", campaign_id: otherCampaign,
+    item: { variant_id: IDS.v100, product_id: IDS.careProduct, quantity: 1 },
+  });
+  assert.equal(outside, null, "retail cannot bypass campaign membership");
+  // A retail product without its exact SKU is refused, never defaulted.
+  await assert.rejects(
+    campaigns.priceQuoteLine({ brand: "pixiegirl", campaign_id: campaignId, item: { product_id: IDS.careProduct, quantity: 1 } }),
+    (err) => err.code === "RETAIL_VARIANT_REQUIRED",
   );
-  assert.deepEqual(rows.map((r) => [r.variant_id, r.sku, r.catalogue_role]), [[IDS.v100, "PXG-OIL-100", "retail"]]);
-
-  const { rows: omitted } = await q(
-    `SELECT 1 FROM pixiegirl.sales_campaign_products
-      WHERE campaign_id = $1 AND product_id = $2 AND include_exclude = 'include'`,
-    [campaignId, IDS.draftCare],
-  );
-  assert.equal(omitted.length, 0, "another retail product cannot bypass campaign membership");
 });
 
 test("canonical bundle rows exclude retail from wig units and size-premium units", async () => {
@@ -207,32 +174,54 @@ test("canonical bundle rows exclude retail from wig units and size-premium units
   assert.equal(legacy[0].legacy_table, null, "bundle source remains canonical");
 });
 
-test("mixed incentives calculate only eligible wig value; retail-only is zero", async () => {
+test("incentive basis (real helper): mixed subtracts only the retail share; retail-only is zero; others untouched", async () => {
+  const { retailShare, minusShare } = require("../../src/modules/sales/incentive-basis");
   const mixed = "33333333-0000-4000-8000-000000000001";
   const retailOnly = "33333333-0000-4000-8000-000000000002";
-  await createOrder({ orderId: mixed, number: "PXG-PR4-MIX", total: 130000 });
+  const withService = "33333333-0000-4000-8000-000000000003";
+  await createOrder({ orderId: mixed, number: "PXG-PR4-MIX", total: 132500 });
   await addLine({ orderId: mixed, productId: IDS.wigBase, variantId: IDS.vWig, total: 120000 });
   await addLine({ orderId: mixed, productId: IDS.careProduct, variantId: IDS.v50, total: 10000 });
   await addLine({ orderId: mixed, productId: null, variantId: null, total: 2500, kind: "service" });
   await createOrder({ orderId: retailOnly, number: "PXG-PR4-RET", total: 10000 });
   await addLine({ orderId: retailOnly, productId: IDS.careProduct, variantId: IDS.v50, total: 10000 });
-  assert.equal(await eligibleWigValue(mixed), 120000);
-  assert.equal(await eligibleWigValue(retailOnly), 0);
+  await createOrder({ orderId: withService, number: "PXG-PR4-SVC", total: 2500 });
+  await addLine({ orderId: withService, productId: null, variantId: null, total: 2500, kind: "service" });
+
+  const m = await retailShare({ brand: "pixiegirl", order_id: mixed });
+  assert.equal(m.hasRetail, true);
+  assert.equal(m.retailOnly, false);
+  // Services keep counting exactly as before PR 4 — only retail is removed.
+  assert.equal(minusShare("132500", m.retailTotal).toFixed(2), "122500.00");
+  const r = await retailShare({ brand: "pixiegirl", order_id: retailOnly });
+  assert.equal(r.retailOnly, true, "retail-only earns nothing");
+  const svc = await retailShare({ brand: "pixiegirl", order_id: withService });
+  assert.equal(svc.hasRetail, false, "a service-only order is untouched (PR 4 had zeroed it)");
+  assert.equal(svc.retailOnly, false);
 });
 
-test("retail-only purchase does not consume first-wig eligibility, but a wig purchase does", async () => {
+test("first-wig eligibility (real coupon.firstTimeOk): Care-only history keeps it; wig or service history uses it", async () => {
+  const coupons = require("../../src/modules/retention/coupon.service");
   const contactId = "44444444-0000-4000-8000-000000000001";
   const retailOrder = "44444444-0000-4000-8000-000000000002";
   const wigOrder = "44444444-0000-4000-8000-000000000003";
   await createOrder({ orderId: retailOrder, number: "PXG-PR4-FIRST-R", total: 10000 });
   await q(`UPDATE pixiegirl.sales_orders SET contact_id = $1 WHERE order_id = $2`, [contactId, retailOrder]);
   await addLine({ orderId: retailOrder, productId: IDS.careProduct, variantId: IDS.v50, total: 10000 });
-  assert.equal(await firstWigEligible(contactId), true);
+  assert.equal(await coupons.firstTimeOk({ brand: "pixiegirl", contact_id: contactId }), true);
 
   await createOrder({ orderId: wigOrder, number: "PXG-PR4-FIRST-W", total: 120000 });
   await q(`UPDATE pixiegirl.sales_orders SET contact_id = $1 WHERE order_id = $2`, [contactId, wigOrder]);
   await addLine({ orderId: wigOrder, productId: IDS.wigBase, variantId: IDS.vWig, total: 120000 });
-  assert.equal(await firstWigEligible(contactId), false);
+  assert.equal(await coupons.firstTimeOk({ brand: "pixiegirl", contact_id: contactId }), false);
+
+  // A service-only past order counted before PR 4 and still does.
+  const svcContact = "44444444-0000-4000-8000-000000000009";
+  const svcOrder = "44444444-0000-4000-8000-000000000008";
+  await createOrder({ orderId: svcOrder, number: "PXG-PR4-FIRST-S", total: 2500 });
+  await q(`UPDATE pixiegirl.sales_orders SET contact_id = $1 WHERE order_id = $2`, [svcContact, svcOrder]);
+  await addLine({ orderId: svcOrder, productId: null, variantId: null, total: 2500, kind: "service" });
+  assert.equal(await coupons.firstTimeOk({ brand: "pixiegirl", contact_id: svcContact }), false);
 });
 
 test("FLH rejects retail role at the database boundary", async () => {
@@ -248,7 +237,9 @@ test("FLH rejects retail role at the database boundary", async () => {
   );
 });
 
-test("cancellation voids unpaid referral/commission rows but leaves paid rows unchanged", async () => {
+test("cancellation (real repo/service): voids unpaid referral + commission rows, leaves paid rows", async () => {
+  const programmeRepo = require("../../src/modules/stylist_programme/programme.repo");
+  const payroll = require("../../src/shared/hr_payroll/payroll.service");
   const orderId = "55555555-0000-4000-8000-000000000001";
   await q(
     `INSERT INTO shared.stylist_referral_attributions
@@ -263,19 +254,10 @@ test("cancellation voids unpaid referral/commission rows but leaves paid rows un
      VALUES ($1,'accrued',12000),($1,'approved',12000),($1,'paid',12000)`,
     [orderId],
   );
-  await q(
-    `UPDATE shared.stylist_referral_attributions
-        SET status = 'void', updated_at = now()
-      WHERE business = 'pixiegirl' AND order_id = $1
-        AND status IN ('pending','payable')`,
-    [orderId],
-  );
-  await q(
-    `UPDATE pixiegirl.commission_earned
-        SET status = 'reversed'
-      WHERE order_id = $1 AND status IN ('accrued','approved')`,
-    [orderId],
-  );
+  const voided = await programmeRepo.voidAttributionsForOrder({ business: "pixiegirl", order_id: orderId });
+  assert.equal(voided.length, 2);
+  const reversed = await payroll.reverseForCancelledOrder({ brand: "pixiegirl", order_id: orderId });
+  assert.equal(reversed, 2);
   const { rows } = await q(
     `SELECT
        (SELECT count(*) FROM shared.stylist_referral_attributions WHERE order_id = $1 AND status = 'void')::int AS void_referrals,

@@ -239,12 +239,13 @@ export async function searchByKind(
     // One hit per ACTIVE, sellable SKU at the live POS-tier price. The server
     // filters out anything unpublished/unpriced/off-gate, so a hit here is
     // always something we may charge for right now.
-    // api.get unwraps the { data } envelope, so this resolves to the row list.
-    const rows =
-      (await api.get<CareSellable[]>(
-        `/catalogue/care-accessories/sellable?q=${enc(term)}&page_size=10`,
-      )) ?? [];
-    return rows.map((r) => ({
+    // The endpoint is PAGINATED ({ data, meta }), and api.get only unwraps
+    // `data` when there is no `meta` sibling — so read `.data` explicitly
+    // (treating the envelope as the row list made every Care search throw).
+    const res = await api.get<Paginated<CareSellable>>(
+      `/catalogue/care-accessories/sellable?q=${enc(term)}&page_size=10`,
+    );
+    return (res?.data ?? []).map((r) => ({
       kind,
       id: r.variant_id,
       label: r.variant_label ? `${r.name} — ${r.variant_label}` : r.name,

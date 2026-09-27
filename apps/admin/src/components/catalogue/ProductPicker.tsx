@@ -53,6 +53,7 @@ export function ProductPicker({
   addLabel = "Add",
   autoFocus,
   className,
+  allowCare = false,
 }: {
   onPick?: (hit: ProductHit) => void;
   /** Batch handler — required when `multi` is set. */
@@ -62,6 +63,11 @@ export function ProductPicker({
   addLabel?: string;
   autoFocus?: boolean;
   className?: string;
+  /** Offer the Care & Accessories kind. SELLING screens only (Quick Sale,
+   *  quotes, Change Order): a care hit's id is a variant, and hair-only
+   *  contexts (production runs, styled BOM, consignment, purchasing) would
+   *  misread it as a product or feed a bottle into a wig workflow. */
+  allowCare?: boolean;
 }) {
   const [kind, setKind] = useState<ProductKind | null>(null);
   const [q, setQ] = useState("");
@@ -72,13 +78,17 @@ export function ProductPicker({
   const inputRef = useRef<HTMLInputElement>(null);
   const debounce = useRef<ReturnType<typeof setTimeout>>();
 
-  // The Care & Accessories kind exists only behind the PXG gate + flag. The
-  // server re-checks both on every sellable call; hiding the chip here is only
-  // about not offering a dead button.
+  // The Care & Accessories kind exists only on selling screens that opt in,
+  // and only behind the PXG gate + flag. The server re-checks both on every
+  // sellable call; hiding the chip here is about not offering a dead button.
   const careAvail = useCareAvailability();
   const kinds = useMemo(
-    () => PRODUCT_KINDS.filter((k) => k.key !== "care" || careAvail.data?.enabled === true),
-    [careAvail.data?.enabled],
+    () =>
+      PRODUCT_KINDS.filter(
+        (k) =>
+          k.key !== "care" || (allowCare && careAvail.data?.enabled === true),
+      ),
+    [allowCare, careAvail.data?.enabled],
   );
 
   const isSelected = (h: ProductHit) =>

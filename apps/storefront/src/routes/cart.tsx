@@ -32,6 +32,7 @@ function CartPage() {
       summaryTitle: "Summary",
       subtotalLabel: "Subtotal",
       discountLabel: "Discount",
+      taxLabel: "VAT (care products)",
       deliveryLabel: "Delivery",
       deliveryValue: "calculated at checkout",
       totalLabel: "Total",
@@ -195,6 +196,16 @@ function CartPage() {
                 {usdQuote
                   ? formatCurrency(num(usdQuote.discount_display), "USD")
                   : formatFromNgn(num(q.discount_ngn), currency)}
+              </dd>
+            </div>
+          ) : null}
+          {q && Number(q.tax_ngn || 0) > 0 ? (
+            <div className="flex justify-between">
+              <dt className="text-muted-foreground">{s.taxLabel}</dt>
+              <dd className="font-mono">
+                {usdQuote
+                  ? formatCurrency(num(usdQuote.tax_display), "USD")
+                  : formatFromNgn(num(q.tax_ngn), currency)}
               </dd>
             </div>
           ) : null}

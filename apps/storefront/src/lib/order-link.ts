@@ -26,6 +26,9 @@ export interface OrderLinkItem {
   variant_label?: string | null;
   sku?: string | null;
   unresolved_reason?: string | null;
+  // Retail tax (server-resolved): Sales ADDS a taxable item's VAT on top.
+  taxable?: boolean;
+  vat_rate?: number | null;
   name: string | null;
   product_code: string | null;
   image_url: string | null;

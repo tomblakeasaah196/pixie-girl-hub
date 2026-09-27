@@ -50,6 +50,8 @@ export interface CareProduct {
   variants?: CareVariant[];
   images?: ProductImage[];
   has_cost_gap?: boolean;
+  /** List rows only: the default active SKU's storefront prices. */
+  default_storefront_price?: { ngn: number | string | null; usd: number | string | null } | null;
 }
 
 export interface CareVariantInput {

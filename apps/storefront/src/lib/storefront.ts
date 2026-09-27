@@ -172,6 +172,9 @@ export interface Quote {
   }[];
   subtotal_ngn: string;
   discount_ngn?: string;
+  /** VAT added on top of taxable Care & Accessories lines (0.00 otherwise);
+   *  already included in total_ngn. */
+  tax_ngn?: string;
   delivery_ngn: string;
   total_ngn: string;
   display_currency: Currency;
@@ -185,6 +188,8 @@ export interface Quote {
   delivery_unavailable_reason?: string | null;
   subtotal_display?: string | null;
   discount_display?: string | null;
+  /** Care VAT in dollars (USD engine, goods ratio). */
+  tax_display?: string | null;
   delivery_display?: string | null;
   total_display?: string | null;
   /** USD bag: discounted goods in dollars, before delivery. The checkout page

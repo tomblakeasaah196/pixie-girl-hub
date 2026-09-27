@@ -273,6 +273,17 @@ async function findAllProducts({
               WHERE pi.product_id = p.product_id
               ORDER BY pi.is_primary DESC, pi.display_order LIMIT 1) AS primary_image_url,
             ${baseStockSql(brand, { productAlias: "p", includeOnHand: filters.catalogue_role === "retail" })}
+            ${filters.catalogue_role === "retail"
+              // Care list/picker rows show (and campaigns snapshot) the default
+              // SKU's storefront price without a detail fetch per item.
+              ? `, (SELECT json_build_object(
+                          'ngn', dv.price_storefront_ngn,
+                          'usd', dv.price_storefront_usd)
+                      FROM ${t(brand, "product_variants")} dv
+                     WHERE dv.product_id = p.product_id AND dv.is_active = true
+                     ORDER BY dv.is_default DESC, dv.display_order, dv.created_at
+                     LIMIT 1) AS default_storefront_price`
+              : ""}
        FROM ${t(brand, "products")} p
        LEFT JOIN ${t(brand, "product_categories")} cat ON cat.category_id = p.category_id
        ${w}
@@ -300,6 +311,17 @@ async function findProductById({ client, brand, id, includeOnHand = false }) {
 }
 // Exact full-name match among LIVE products — drives the import upsert (a
 // re-imported row updates the existing product instead of duplicating it).
+/** catalogue_role for ANY row (trashed included) — the route-level Care gate
+ *  reads it; null when the id is unknown or not a UUID. */
+async function findProductRole({ client, brand, id }) {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(id || "")))
+    return null;
+  const { rows } = await ex(client)(
+    `SELECT catalogue_role FROM ${t(brand, "products")} WHERE product_id = $1`,
+    [id],
+  );
+  return rows[0] ? rows[0].catalogue_role : null;
+}
 async function findProductByName({ client, brand, name }) {
   const { rows } = await ex(client)(
     `SELECT * FROM ${t(brand, "products")}
@@ -869,6 +891,7 @@ module.exports = {
   findAllProducts,
   findProductById,
   findProductByName,
+  findProductRole,
   productSlugTaken,
   productCodeTaken,
   createProduct,

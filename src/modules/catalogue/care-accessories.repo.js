@@ -165,6 +165,12 @@ async function hasSkuHistory({ client, brand, variant_id }) {
          OR EXISTS (SELECT 1 FROM ${t(brand, "po_lines")}
                      WHERE variant_id = $1)
          OR EXISTS (SELECT 1 FROM ${t(brand, "inbound_shipment_lines")}
+                     WHERE variant_id = $1)
+         -- A SKU on an order or a quotation is printed on customer documents;
+         -- renaming it would make the invoice/quote disagree with the shelf.
+         OR EXISTS (SELECT 1 FROM ${t(brand, "sales_order_lines")}
+                     WHERE variant_id = $1)
+         OR EXISTS (SELECT 1 FROM ${t(brand, "quotation_lines")}
                      WHERE variant_id = $1) AS used`,
     [variant_id],
   );

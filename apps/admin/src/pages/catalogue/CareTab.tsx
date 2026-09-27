@@ -17,7 +17,7 @@ const statusTabs = [
 ];
 const statusTone = { draft: "warn", live: "success", archived: "neutral" } as const;
 
-/** Staff-only in PR1; no customer catalogue, links or checkout yet. */
+/** PXG Care & Accessories list — authoring, stock tools and trash. */
 export function CareTab() {
   const nav = useNavigate();
   const { can } = useAuthStore();
@@ -38,7 +38,7 @@ export function CareTab() {
   return (
     <div className="space-y-4">
       <p className="text-[12px] text-text-muted">
-        PXG Care & Accessories · author, price and receive stock here. Publication is an explicit staff review; customer sales stay off in this PR.
+        PXG Care & Accessories · author, price and receive stock here. Items start as drafts; publishing makes an item sellable on every enabled channel (Quick Sale, quotes, storefront, order links and campaigns it is added to).
       </p>
       <div className="flex gap-2 flex-wrap items-center">
         <SearchBox value={q} onChange={(v) => { setQ(v); reset(); }} placeholder="Search name, product code or exact SKU…" />

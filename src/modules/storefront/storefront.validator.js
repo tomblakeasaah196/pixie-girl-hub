@@ -34,9 +34,11 @@ const orderFormSchema = z
       .array(
         z.object({
           variant_id: z.string().uuid(),
-          quantity: z.coerce.number().int().positive(),
+          quantity: z.coerce.number().int().positive().max(10000),
         }),
       )
+      // Bounded: every line is matched against the order link server-side.
+      .max(100)
       // A service-only checkout has no product lines — the object-level
       // refine below still requires at least one item OR one booking.
       .default([]),

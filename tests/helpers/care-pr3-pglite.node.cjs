@@ -57,6 +57,19 @@ CREATE TABLE IF NOT EXISTS shared.smartcomm_order_links (
   open_count integer NOT NULL DEFAULT 0, first_opened_at timestamptz, last_opened_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS shared.service_offerings (
+  service_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  business text NOT NULL, name text NOT NULL, description text,
+  base_price_ngn numeric(14,2), duration_minutes integer, image_url text,
+  is_active boolean NOT NULL DEFAULT true
+);
+CREATE TABLE IF NOT EXISTS shared.service_booking_requests (
+  request_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  business text NOT NULL, link_id uuid, channel_id uuid, contact_id uuid,
+  service_id uuid NOT NULL, order_id uuid, qty integer NOT NULL DEFAULT 1,
+  price_ngn numeric(14,2), requested_for timestamptz, note text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
 `;
 
 const posted = [];
@@ -66,7 +79,7 @@ let CONTACT = null;
 
 before(async () => {
   await fixture.boot();
-  await q(LINKS_DDL);
+  await fixture.db().exec(LINKS_DDL);
   for (const b of [PXG, FLH]) await fixture.db().exec(EXTRA_DDL(b));
   await seed();
   // PR 3 suites place many orders — top up sellable stock so the lifecycle
@@ -191,6 +204,17 @@ test("order link: forged retail items refuse (wig variant, draft SKU, FLH, missi
 });
 
 // ── /o order-form checkout ─────────────────────────────────
+// The public order form only sells what a live order link offers, so every
+// checkout below goes through a real link minted by the real service.
+async function linkFor(items) {
+  const links = require("../../src/modules/smartcomm/smartcomm.order-links.service");
+  const created = await links.createLink({
+    brand: PXG, user: STAFF, request_id: `t-link-${Math.random()}`,
+    input: { sales_channel: "whatsapp", items },
+  });
+  return created.slug;
+}
+const RETAIL_50 = { kind: "retail", product_id: IDS.careProduct, variant_id: IDS.v50, qty: 1 };
 function formInput(extra) {
   return {
     first_name: "Ada", last_name: "Obi", phone: "+2348010000001",
@@ -201,26 +225,35 @@ function formInput(extra) {
   };
 }
 
-test("/o checkout: retail pickup places a full-payment order; double-submit returns the same order", async () => {
+test("/o checkout: retail pickup places a full-payment order; replay returns it; the link is then single-use", async () => {
   const sf = require("../../src/modules/storefront/storefront.service");
-  const a = await sf.submitOrderForm({ brand: PXG, request_id: "t-o-1", input: formInput({ client_idempotency_key: "order:slug-dup" }) });
+  const slug = await linkFor([RETAIL_50]);
+  const a = await sf.submitOrderForm({ brand: PXG, request_id: "t-o-1", input: formInput({ order_link_slug: slug, client_idempotency_key: "order:slug-dup" }) });
   assert.ok(a.order_id);
   const row = await orderRow(a.order_id);
   assert.equal(row.payment_plan, "full");
   assert.equal(Number(row.shipping_fee_ngn || 0), 0);
   assert.equal(row.needs_delivery_review, false, "pickup is never queued");
-  const b = await sf.submitOrderForm({ brand: PXG, request_id: "t-o-2", input: formInput({ client_idempotency_key: "order:slug-dup" }) });
+  // A double-submit of the SAME checkout is an idempotent replay…
+  const b = await sf.submitOrderForm({ brand: PXG, request_id: "t-o-2", input: formInput({ order_link_slug: slug, client_idempotency_key: "order:slug-dup" }) });
   assert.equal(b.order_id, a.order_id, "idempotent: no second order");
   const n = await q(`SELECT count(*)::int AS n FROM pixiegirl.sales_orders WHERE client_idempotency_key = 'order:slug-dup'`);
   assert.equal(n.rows[0].n, 1);
+  // …but a NEW checkout on a used link is refused (it used to create a
+  // second order at the link's prices while the single-use mark no-oped).
+  await assert.rejects(
+    sf.submitOrderForm({ brand: PXG, request_id: "t-o-2b", input: formInput({ order_link_slug: slug, client_idempotency_key: "order:slug-second" }) }),
+    (err) => err.code === "LINK_ALREADY_USED",
+  );
 });
 
 test("/o checkout: retail delivery is refused fail-closed with the exact MAY notice (never ₦0)", async () => {
   const sf = require("../../src/modules/storefront/storefront.service");
+  const slug = await linkFor([RETAIL_50]);
   await assert.rejects(
     sf.submitOrderForm({
       brand: PXG, request_id: "t-o-3",
-      input: formInput({ fulfilment_type: "delivery", zone_code: "NG", address: { line1: "1 Test St", country_code: "NG" }, delivery_address: "1 Test St" }),
+      input: formInput({ order_link_slug: slug, fulfilment_type: "delivery", zone_code: "NG", address: { line1: "1 Test St", country_code: "NG" }, delivery_address: "1 Test St" }),
     }),
     (err) => {
       assert.equal(err.code, "RETAIL_DELIVERY_ARRANGED");
@@ -234,9 +267,11 @@ test("/o checkout: retail delivery is refused fail-closed with the exact MAY not
 
 test("/o checkout: wig-only delivery still charges the zone tier (unchanged)", async () => {
   const sf = require("../../src/modules/storefront/storefront.service");
+  const slug = await linkFor([{ kind: "base", product_id: IDS.wigBase, qty: 1 }]);
   const r = await sf.submitOrderForm({
     brand: PXG, request_id: "t-o-4",
     input: formInput({
+      order_link_slug: slug,
       items: [{ variant_id: IDS.vWig, quantity: 1 }],
       fulfilment_type: "delivery", zone_code: "NG",
       address: { line1: "1 Test St", country_code: "NG" }, delivery_address: "1 Test St",
@@ -246,6 +281,73 @@ test("/o checkout: wig-only delivery still charges the zone tier (unchanged)", a
   const row = await orderRow(r.order_id);
   assert.equal(Number(row.shipping_fee_ngn), 2500, "zone tier 1–2 wigs");
   assert.equal(row.needs_delivery_review, false, "wig-only is never queued");
+});
+
+test("/o checkout: the public form only sells what a live link offers (no forged items, ₦0 lines or stale links)", async () => {
+  const sf = require("../../src/modules/storefront/storefront.service");
+  const submit = (extra) => sf.submitOrderForm({ brand: PXG, request_id: `t-o-f-${Math.random()}`, input: formInput(extra) });
+  const count = async () => (await q(`SELECT count(*)::int AS n FROM pixiegirl.sales_orders`)).rows[0].n;
+  const before = await count();
+
+  // No link → no product lines (any variant id could be bought off the API).
+  await assert.rejects(submit({ items: [{ variant_id: IDS.vWig, quantity: 1 }] }), (e) => e.code === "ORDER_LINK_REQUIRED");
+  // A variant that isn't on the link is refused (the 100 ml on a 50 ml link).
+  const slug = await linkFor([RETAIL_50]);
+  await assert.rejects(submit({ order_link_slug: slug, items: [{ variant_id: IDS.v100, quantity: 1 }] }), (e) => e.code === "ORDER_ITEM_NOT_IN_LINK");
+  await assert.rejects(submit({ order_link_slug: slug, items: [{ variant_id: IDS.vWig, quantity: 1 }] }), (e) => e.code === "ORDER_ITEM_NOT_IN_LINK");
+  // Quantity stays within what the page allows (1–100 per link item).
+  await assert.rejects(submit({ order_link_slug: slug, items: [{ variant_id: IDS.v50, quantity: 101 }] }), (e) => e.code === "ORDER_QTY_EXCEEDED");
+  // A bundle that isn't on the link can't be claimed.
+  await assert.rejects(submit({ order_link_slug: slug, bundle_id: "99999999-0000-4000-8000-000000000001" }), (e) => e.code === "ORDER_ITEM_NOT_IN_LINK");
+  // Another brand's slug is not a valid link here.
+  await assert.rejects(sf.submitOrderForm({ brand: FLH, request_id: "t-o-f-flh", input: formInput({ order_link_slug: slug }) }), (e) => e.code === "LINK_INVALID");
+
+  // Expired and revoked links are refused.
+  const expired = await linkFor([RETAIL_50]);
+  await q(`UPDATE shared.smartcomm_order_links SET expires_at = now() - interval '1 minute' WHERE public_slug = $1`, [expired]);
+  await assert.rejects(submit({ order_link_slug: expired }), (e) => e.code === "LINK_EXPIRED");
+  const revoked = await linkFor([RETAIL_50]);
+  await q(`UPDATE shared.smartcomm_order_links SET status = 'revoked' WHERE public_slug = $1`, [revoked]);
+  await assert.rejects(submit({ order_link_slug: revoked }), (e) => e.code === "LINK_REVOKED");
+
+  // A base product with no selling price never becomes a ₦0 order line.
+  const freeBase = "bbbbbbbb-0000-4000-8000-0000000000f1";
+  const freeVar = "bbbbbbbb-0000-4000-8000-0000000000f2";
+  await q(`INSERT INTO pixiegirl.products (product_id, product_code, name, slug, catalogue_role, product_type, track_stock, visible_on_channels)
+           VALUES ($1,'PXG-FREE','Unpriced Base','unpriced-base','base','physical',true,'{pos}')`, [freeBase]);
+  await q(`INSERT INTO pixiegirl.product_variants (variant_id, product_id, sku, variant_name, is_default) VALUES ($1,$2,'PXG-FREE-1','Default',true)`, [freeVar, freeBase]);
+  const freeSlug = await linkFor([{ kind: "base", product_id: freeBase, qty: 1 }]);
+  await assert.rejects(submit({ order_link_slug: freeSlug, items: [{ variant_id: freeVar, quantity: 1 }] }), (e) => e.code === "ITEM_UNPRICED");
+
+  assert.equal(await count(), before, "no refused checkout created an order");
+});
+
+test("/o checkout: service bookings carry the server's price, never the posted one", async () => {
+  const sf = require("../../src/modules/storefront/storefront.service");
+  const svc = await q(`INSERT INTO shared.service_offerings (business, name, base_price_ngn) VALUES ('pixiegirl','Install',15000) RETURNING service_id`);
+  const serviceId = svc.rows[0].service_id;
+  // With no link: the catalogue price wins over a forged ₦1.
+  await sf.submitOrderForm({
+    brand: PXG, request_id: "t-o-svc-1",
+    input: formInput({ items: [], service_bookings: [{ service_id: serviceId, qty: 1, price_ngn: "1" }] }),
+  });
+  // On a link: the link's price wins, and an off-link service is refused.
+  const slug = await linkFor([{ kind: "service", service_id: serviceId, qty: 1, price_ngn: "12000" }]);
+  await sf.submitOrderForm({
+    brand: PXG, request_id: "t-o-svc-2",
+    input: formInput({ order_link_slug: slug, items: [], service_bookings: [{ service_id: serviceId, qty: 1, price_ngn: "1" }] }),
+  });
+  const rows = await q(`SELECT price_ngn, link_id FROM shared.service_booking_requests WHERE service_id = $1 ORDER BY created_at`, [serviceId]);
+  assert.deepEqual(rows.rows.map((r) => Number(r.price_ngn)), [15000, 12000]);
+  const other = await q(`INSERT INTO shared.service_offerings (business, name, base_price_ngn) VALUES ('pixiegirl','Revamp',9000) RETURNING service_id`);
+  const slug2 = await linkFor([{ kind: "service", service_id: serviceId, qty: 1 }]);
+  await assert.rejects(
+    sf.submitOrderForm({
+      brand: PXG, request_id: "t-o-svc-3",
+      input: formInput({ order_link_slug: slug2, items: [], service_bookings: [{ service_id: other.rows[0].service_id, qty: 1 }] }),
+    }),
+    (e) => e.code === "ORDER_ITEM_NOT_IN_LINK",
+  );
 });
 
 // ── delivery-fee review lifecycle ──────────────────────────

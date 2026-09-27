@@ -569,6 +569,17 @@ async function submitOrderForm({ brand, input, request_id }) {
   if (productItems.length === 0 && serviceBookings.length === 0)
     throw new AppError("NO_ITEMS", "At least one item is required", 422);
 
+  // Nothing in this body is trusted until it is matched against a live order
+  // link (see authoriseOrderForm). `bookings` carry the server's prices.
+  const authorised = await authoriseOrderForm({
+    brand,
+    input,
+    productItems,
+    serviceBookings,
+  });
+  const linkLineOf = (variant_id) =>
+    authorised.substitutions.get(variant_id) || variant_id;
+
   // Never trust a client-supplied shipping_fee_ngn for a delivery order —
   // re-quote it from the logistics zones every time, exactly like the
   // main storefront checkout (sale/:slug/checkout). Pickup is the only
@@ -667,6 +678,16 @@ async function submitOrderForm({ brand, input, request_id }) {
     order_link_slug: input.order_link_slug,
   });
 
+  // Lines without a staff-picked link price are charged at the variant's
+  // channel price — refuse any that would be ₦0.
+  await assertOrderFormPriced({
+    brand,
+    salesChannel: input.sales_channel || "public_form",
+    variantIds: productItems
+      .filter((it) => !styledUnitPriceByVariant.has(linkLineOf(it.variant_id)))
+      .map((it) => it.variant_id),
+  });
+
   const result = await transaction(async (client) => {
     // 1. Upsert the customer as a contact.
     let contact = await repo.findContactByEmailOrPhone({
@@ -711,20 +732,21 @@ async function submitOrderForm({ brand, input, request_id }) {
         contact_id: contact.contact_id,
         sales_channel: input.sales_channel || "public_form",
         order_type: fulfilmentType === "pickup" ? "collection" : "dispatch",
-        lines: input.items.map((it) => ({
+        lines: productItems.map((it) => ({
           variant_id: it.variant_id,
           quantity: it.quantity,
           // Apply the staff-picked styled variant price when this line's
           // variant was priced in the signed token; otherwise Sales prices
-          // it by the variant's channel price as usual.
-          ...(styledUnitPriceByVariant.has(it.variant_id)
-            ? { unit_price_ngn: styledUnitPriceByVariant.get(it.variant_id) }
+          // it by the variant's channel price as usual. A size-adjacent
+          // sibling keeps the price of the link line it stands in for.
+          ...(styledUnitPriceByVariant.has(linkLineOf(it.variant_id))
+            ? { unit_price_ngn: styledUnitPriceByVariant.get(linkLineOf(it.variant_id)) }
             : {}),
           // Shop-facing name/SKU/provenance (resolved from the link row, never
           // the POST body) — without this a styled pick sells through its base
           // stock variant with no name override, so Sales falls back to the
           // raw base-product name on the invoice/receipt.
-          ...(lineMetaByVariant.get(it.variant_id) || {}),
+          ...(lineMetaByVariant.get(linkLineOf(it.variant_id)) || {}),
         })),
         shipping_fee_ngn,
         utm_source: input.utm_source,
@@ -756,39 +778,44 @@ async function submitOrderForm({ brand, input, request_id }) {
     });
 
     // 3. Order-link completion: mark the link used (single-use), file the
-    //    service booking requests, and announce everything in the thread.
-    //    A bad/expired token never breaks a checkout that already worked.
+    //    service booking requests (at the SERVER's prices — see
+    //    authoriseOrderForm), and announce everything in the thread. An
+    //    idempotent replay of the link's own order skips this (already done).
     let bookings = [];
-    if (input.order_link_slug) {
+    let linkTaken = false;
+    if (authorised.link && !authorised.replay) {
+      // Savepoint: a thread-post/booking hiccup is logged and the order
+      // stands, without poisoning the surrounding transaction.
+      await client.query("SAVEPOINT order_link_completion");
       try {
-        const orderLinksRepo = require("../smartcomm/smartcomm.order-links.repo");
         const orderLinks = require("../smartcomm/smartcomm.order-links.service");
-        const link = await orderLinksRepo.getBySlug({
+        const done = await orderLinks.completeOrder({
           client,
-          slug: input.order_link_slug,
+          link_id: authorised.link.link_id,
+          order_id: order ? order.order_id : null,
+          order_number: order ? order.order_number : null,
+          total_ngn: order ? order.total_ngn : null,
+          contact_id: contact.contact_id,
+          bookings: authorised.bookings,
         });
-        if (link && link.business === brand) {
-          const done = await orderLinks.completeOrder({
-            client,
-            link_id: link.link_id,
-            order_id: order ? order.order_id : null,
-            order_number: order ? order.order_number : null,
-            total_ngn: order ? order.total_ngn : null,
-            contact_id: contact.contact_id,
-            bookings: serviceBookings,
-          });
-          bookings = done ? done.bookings : [];
-        }
+        // null = another checkout used this single-use link between our
+        // check and now — this second order must not stand.
+        if (!done) linkTaken = true;
+        else bookings = done.bookings;
+        await client.query("RELEASE SAVEPOINT order_link_completion");
       } catch (err) {
+        await client
+          .query("ROLLBACK TO SAVEPOINT order_link_completion")
+          .catch(() => {});
         logger.warn(
           { err: err.message },
           "order-form: order-link completion failed (order stands)",
         );
       }
-    } else if (serviceBookings.length) {
+    } else if (!authorised.link && authorised.bookings.length) {
       // Service bookings can also arrive without a link (direct form use).
       const orderLinks = require("../smartcomm/smartcomm.order-links.repo");
-      for (const b of serviceBookings) {
+      for (const b of authorised.bookings) {
         bookings.push(
           await orderLinks.createBookingRequest({
             client,
@@ -806,6 +833,13 @@ async function submitOrderForm({ brand, input, request_id }) {
         );
       }
     }
+    if (linkTaken)
+      throw new AppError(
+        "LINK_ALREADY_USED",
+        "This order link has already been used to place an order",
+        409,
+        { user_message: "This order link has already been used. Ask the team for a fresh one." },
+      );
 
     // The amount to charge at the gateway RIGHT NOW so the checkout page can
     // redirect straight to payment: the full balance for a pay-in-full order,
@@ -991,6 +1025,206 @@ async function upsertCheckoutContactExtras({ client, contact, input }) {
  * Sales. An unknown/cross-brand slug yields an empty map (order prices as
  * usual, never fails the checkout).
  */
+/**
+ * Authorise what a PUBLIC order-form POST may buy. The body is written by the
+ * shopper's browser, so nothing in it is trusted on its own:
+ *
+ *  - Product lines need a live order link (`/o/<slug>`, the only UI that
+ *    posts here). Without one, any variant id — a private hair base, often
+ *    ₦0 — could be ordered straight off the API.
+ *  - The link must belong to this brand and still be usable: revoked and
+ *    expired links are refused, and a link that already produced an order is
+ *    only accepted for an idempotent replay of THAT order (same client key).
+ *    Before, the "single-use" mark silently no-oped and a second order went
+ *    through at the link's staff-set prices.
+ *  - Every posted variant must be one of the link's resolved lines. A styled
+ *    or bundle line may land on a size-adjacent sibling of the same base
+ *    family (the rewig donor can change with stock between page load and
+ *    submit); that sibling is mapped back to its link line so it keeps the
+ *    staff-picked price and name.
+ *  - Quantities stay within what the page allows (1–100 of each link item).
+ *  - Service bookings must be services on the link (or, with no link, an
+ *    active service) and carry the SERVER's price, never the posted one.
+ *  - `bundle_id` must be a bundle on the link.
+ *
+ * Returns the link row, `substitutions` (posted variant → link-line variant),
+ * price-corrected `bookings`, and whether this is an idempotent `replay`.
+ */
+async function authoriseOrderForm({ brand, input, productItems, serviceBookings }) {
+  const resolvers = require("../smartcomm/smartcomm.order-links.resolvers");
+  const slug = input.order_link_slug || null;
+  const substitutions = new Map();
+
+  if (!slug) {
+    if (productItems.length)
+      throw new AppError(
+        "ORDER_LINK_REQUIRED",
+        "Products can only be ordered through a shop order link",
+        422,
+        { user_message: "Please order through the link we sent you, or shop on our website." },
+      );
+    const bookings = [];
+    for (const b of serviceBookings) {
+      const svc = await resolvers.resolveServiceItem(brand, { service_id: b.service_id, qty: b.qty });
+      if (svc.unresolved_reason)
+        throw new AppError("SERVICE_UNAVAILABLE", "That service isn't available", 409);
+      bookings.push({ ...b, price_ngn: svc.price_ngn });
+    }
+    return { link: null, substitutions, bookings, replay: false };
+  }
+
+  const orderLinksRepo = require("../smartcomm/smartcomm.order-links.repo");
+  const link = await orderLinksRepo.getBySlug({ slug });
+  if (!link || link.business !== brand)
+    throw new AppError("LINK_INVALID", "This order link isn't valid.", 404);
+  if (link.status === "revoked")
+    throw new AppError("LINK_REVOKED", "This order link was cancelled. Ask the team for a fresh one.", 410);
+  let replay = false;
+  if (link.status === "ordered") {
+    const salesRepo = require("../sales/sales.repo");
+    const existing = input.client_idempotency_key
+      ? await salesRepo.findByIdempotencyKey({ brand, key: input.client_idempotency_key })
+      : null;
+    if (!existing || !link.order_id || existing !== link.order_id)
+      throw new AppError(
+        "LINK_ALREADY_USED",
+        "This order link has already been used to place an order",
+        409,
+        { user_message: "This order link has already been used. Ask the team for a fresh one." },
+      );
+    replay = true;
+  } else if (
+    link.status === "expired" ||
+    (link.expires_at && new Date(link.expires_at).getTime() < Date.now())
+  ) {
+    throw new AppError("LINK_EXPIRED", "This order link has expired. Ask the team for a fresh one.", 410);
+  }
+
+  const resolved = await resolvers.resolveItems(brand, Array.isArray(link.items) ? link.items : []);
+
+  // Allowed product lines: variant → { cap, familyOk }.
+  const allowed = new Map();
+  for (const r of resolved) {
+    if (r.kind === "service") continue;
+    const base = Math.max(1, Number(r.qty) || 1);
+    for (const l of r.lines || []) {
+      if (!l.variant_id) continue;
+      const perUnit = (Number(l.quantity) || 1) / base;
+      const prev = allowed.get(l.variant_id) || { cap: 0, familyOk: false };
+      allowed.set(l.variant_id, {
+        cap: prev.cap + Math.ceil(perUnit * 100),
+        familyOk: prev.familyOk || r.kind === "styled" || r.kind === "bundle",
+      });
+    }
+  }
+
+  const unknown = [...new Set(productItems.map((it) => it.variant_id))].filter(
+    (v) => !allowed.has(v),
+  );
+  if (unknown.length) {
+    // Map a size-adjacent sibling back to its styled/bundle link line.
+    const familyTargets = [...allowed].filter(([, a]) => a.familyOk).map(([v]) => v);
+    const { rows } = familyTargets.length
+      ? await query(
+          `SELECT pv.variant_id, p.base_family_id, p.catalogue_role
+             FROM ${brand}.product_variants pv
+             JOIN ${brand}.products p ON p.product_id = pv.product_id
+            WHERE pv.variant_id = ANY($1::uuid[])
+              AND pv.is_active = true AND p.is_deleted = false`,
+          [[...unknown, ...familyTargets]],
+        )
+      : { rows: [] };
+    const fam = new Map(rows.map((r) => [r.variant_id, r]));
+    for (const v of unknown) {
+      const mine = fam.get(v);
+      const target =
+        mine && mine.catalogue_role === "base" && mine.base_family_id
+          ? familyTargets.find((t) => {
+              const tr = fam.get(t);
+              return tr && tr.catalogue_role === "base" && tr.base_family_id === mine.base_family_id;
+            })
+          : null;
+      if (!target)
+        throw new AppError(
+          "ORDER_ITEM_NOT_IN_LINK",
+          `Variant ${v} is not part of this order link`,
+          409,
+          { user_message: "One of your items is no longer available. Please refresh the page and try again." },
+        );
+      substitutions.set(v, target);
+    }
+  }
+
+  const ordered = new Map();
+  for (const it of productItems) {
+    const key = substitutions.get(it.variant_id) || it.variant_id;
+    ordered.set(key, (ordered.get(key) || 0) + (Number(it.quantity) || 0));
+  }
+  for (const [key, qty] of ordered) {
+    if (qty > allowed.get(key).cap)
+      throw new AppError(
+        "ORDER_QTY_EXCEEDED",
+        "Quantity exceeds what this order link allows",
+        422,
+        { user_message: "That quantity isn't available on this link — message us for a larger order." },
+      );
+  }
+
+  if (input.bundle_id) {
+    const onLink = resolved.some((r) => r.kind === "bundle" && r.bundle_id === input.bundle_id);
+    if (!onLink)
+      throw new AppError("ORDER_ITEM_NOT_IN_LINK", "That bundle is not part of this order link", 409);
+  }
+
+  const linkServices = new Map(
+    resolved
+      .filter((r) => r.kind === "service" && r.service_id && !r.unresolved_reason)
+      .map((r) => [r.service_id, r]),
+  );
+  const bookings = serviceBookings.map((b) => {
+    const svc = linkServices.get(b.service_id);
+    if (!svc)
+      throw new AppError(
+        "ORDER_ITEM_NOT_IN_LINK",
+        `Service ${b.service_id} is not part of this order link`,
+        409,
+        { user_message: "One of your items is no longer available. Please refresh the page and try again." },
+      );
+    return { ...b, price_ngn: svc.price_ngn };
+  });
+
+  return { link, substitutions, bookings, replay };
+}
+
+/**
+ * A public order line with no staff-picked link price is charged at its
+ * variant's channel price. Refuse any that resolves to ₦0 — a bare base
+ * variant with no selling price must never become a free order line.
+ */
+async function assertOrderFormPriced({ brand, salesChannel, variantIds }) {
+  const ids = [...new Set(variantIds.filter(Boolean))];
+  if (!ids.length) return;
+  const { channelPrice } = require("../sales/pricing/channel-price");
+  const { rows } = await query(
+    `SELECT variant_id, price_storefront_ngn, price_pos_ngn,
+            price_wholesale_ngn, price_partner_ngn
+       FROM ${brand}.product_variants WHERE variant_id = ANY($1::uuid[])`,
+    [ids],
+  );
+  const byId = new Map(rows.map((r) => [r.variant_id, r]));
+  for (const id of ids) {
+    const row = byId.get(id);
+    const price = row ? channelPrice(row, salesChannel) : null;
+    if (price === null || price === undefined || !(Number(price) > 0))
+      throw new AppError(
+        "ITEM_UNPRICED",
+        `Variant ${id} has no selling price on the ${salesChannel} channel`,
+        409,
+        { user_message: "One of your items can't be priced online right now — message us and we'll complete your order." },
+      );
+  }
+}
+
 /**
  * Resolve the staff member who SHARED a catalogue/order link, so a checkout
  * completed through that link is credited to them on the Performance → Insights
@@ -2316,4 +2550,6 @@ module.exports = {
   recordPageView,
   recordFunnelEvent,
   getInstallHub,
+  // Exported for unit tests.
+  authoriseOrderForm,
 };

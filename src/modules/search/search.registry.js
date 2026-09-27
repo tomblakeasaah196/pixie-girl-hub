@@ -174,6 +174,7 @@ const ENTITIES = [
                 p.name,
                 p.product_code,
                 p.is_visible_storefront,
+                p.catalogue_role,
                 v.sku AS matched_sku
            FROM ${t(brand, "products")} p
            LEFT JOIN ${t(brand, "product_variants")} v
@@ -193,10 +194,14 @@ const ENTITIES = [
         subtitle: r.matched_sku
           ? `SKU ${r.matched_sku}`
           : r.product_code || "—",
-        meta: { visible: r.is_visible_storefront },
-        // Products are base (stock-bearing) records — their detail page is
-        // /catalogue/base/:id. There is no /catalogue/:id route.
-        route: `/catalogue/base/${r.id}`,
+        meta: { visible: r.is_visible_storefront, catalogue_role: r.catalogue_role },
+        // Base (stock-bearing hair) records open /catalogue/base/:id; PXG Care
+        // & Accessories items have their own editor — the base page 404s them.
+        // There is no /catalogue/:id route.
+        route:
+          r.catalogue_role === "retail"
+            ? `/catalogue/care/${r.id}`
+            : `/catalogue/base/${r.id}`,
       }));
     },
   },
@@ -211,15 +216,19 @@ const ENTITIES = [
     async resolve({ ex, brand, q, limit }) {
       const like = likeToken(q);
       const { rows } = await ex(
+        // product_variants has no variant_label / is_deleted columns (the
+        // label is variant_name; deletion lives on the product) — the old
+        // query errored, so SKU search never returned anything.
         `SELECT v.variant_id AS id,
                 v.sku,
-                v.variant_label,
+                v.variant_name AS variant_label,
                 v.product_id,
-                p.name AS product_name
+                p.name AS product_name,
+                p.catalogue_role
            FROM ${t(brand, "product_variants")} v
            JOIN ${t(brand, "products")} p ON p.product_id = v.product_id
-          WHERE COALESCE(v.is_deleted, false) = false
-            AND (v.sku ILIKE $1 OR v.variant_label ILIKE $1 OR p.name ILIKE $1)
+          WHERE p.is_deleted = false
+            AND (v.sku ILIKE $1 OR v.variant_name ILIKE $1 OR p.name ILIKE $1)
           ORDER BY p.name ASC
           LIMIT $2`,
         [like, limit],
@@ -230,9 +239,12 @@ const ENTITIES = [
         title: r.sku || r.variant_label || r.product_name,
         subtitle: r.product_name,
         meta: { variant_label: r.variant_label },
-        // A SKU belongs to a base product; its detail page shows the variant
-        // and its live stock. (The Stock module has no per-SKU deep-link.)
-        route: `/catalogue/base/${r.product_id}`,
+        // A SKU's product page shows the variant and its live stock (the Stock
+        // module has no per-SKU deep-link). Care SKUs open the Care editor.
+        route:
+          r.catalogue_role === "retail"
+            ? `/catalogue/care/${r.product_id}`
+            : `/catalogue/base/${r.product_id}`,
       }));
     },
   },

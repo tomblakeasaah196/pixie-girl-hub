@@ -34,9 +34,12 @@ const { AppError, NotFoundError } = require("../../utils/errors");
 
 const ex = (client) => (client ? client.query.bind(client) : query);
 
-/** Live channel price for a retail variant row — mirrors sales channel-price
- *  tiers but NEVER falls through to another tier silently: a retail SKU is
- *  sellable on a channel only when that channel's own price is positive. */
+/** Live channel price for a retail variant row — the same tier rules as
+ *  sales/pricing/channel-price.js (and so the same number createOrder will
+ *  charge): the channel's own tier, falling back to the storefront tier when
+ *  that tier is unset. Publishing requires a positive storefront AND staff/POS
+ *  price on every active SKU, so a live SKU always resolves; a zero/missing
+ *  result is refused by assertSellable rather than sold at ₦0. */
 function retailChannelPrice(row, channel) {
   const num = (v) => (v === null || v === undefined ? null : Number(v));
   if (channel === "pos" || channel === "quick_sale")

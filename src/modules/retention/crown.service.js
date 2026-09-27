@@ -20,8 +20,9 @@ const streak = require("./crown.streak");
 const events = require("./retention.events");
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
-const { money } = require("../../utils/money");
+const { money, toCurrencyString } = require("../../utils/money");
 const { NotFoundError, AppError } = require("../../utils/errors");
+const { retailShare, minusShare } = require("../sales/incentive-basis");
 
 const DEFAULT_VOUCHER_EXPIRY_DAYS = 90;
 
@@ -238,31 +239,14 @@ async function awardForAction({
 async function earnForOrder({ brand, contact_id, order_id, total_ngn }) {
   if (!contact_id) return;
   await transaction(async (client) => {
-    // Check order lines to determine eligible wig value vs retail lines
-    const { rows: lines } = await client.query(
-      `SELECT sol.line_total_ngn, sol.line_kind, p.catalogue_role
-         FROM ${brand}.sales_order_lines sol
-         LEFT JOIN ${brand}.product_variants pv ON pv.variant_id = sol.variant_id
-         LEFT JOIN ${brand}.products p ON p.product_id = COALESCE(sol.product_id, pv.product_id)
-        WHERE sol.order_id = $1`,
-      [order_id],
-    );
-    const wigLines = lines.filter(
-      (l) =>
-        l.line_kind !== "service" && l.catalogue_role !== "retail",
-    );
-    if (!wigLines.length) {
-      // Retail-only order: zero loyalty/crowns, no purchase streak advance
-      return;
-    }
-    const wigTotal = wigLines.reduce(
-      (s, l) => Number(s) + Number(l.line_total_ngn || 0),
-      0,
-    );
-    const reportedTotal = Number(total_ngn);
-    const eligibleAmount = Number.isFinite(reportedTotal)
-      ? Math.min(wigTotal, reportedTotal)
-      : wigTotal;
+    // Care & Accessories earn no crowns (owner rule). A retail-only order
+    // earns nothing and does not advance the purchase streak; a mixed order
+    // earns on its non-retail value; every other order is exactly as before.
+    const share = await retailShare({ client, brand, order_id });
+    if (share.retailOnly) return;
+    const eligibleAmount = share.hasRetail
+      ? toCurrencyString(minusShare(total_ngn, share.retailTotal))
+      : total_ngn;
 
     await awardForAction({
       client,

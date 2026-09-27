@@ -27,6 +27,8 @@ const events = require("./retention.events");
 const repo = require("./retention.repo");
 const couponRepo = require("./coupon.repo");
 const { query, transaction } = require("../../config/database");
+const { toCurrencyString } = require("../../utils/money");
+const { retailShare, minusShare } = require("../sales/incentive-basis");
 const { VALID } = require("../../config/brands");
 const { logger } = require("../../config/logger");
 
@@ -256,34 +258,22 @@ async function awardLoyaltyAndStreak(payload) {
 
   // 2. Referral auto-redeem on full settlement, if the order used a code.
   if (referral_code) {
-    const { rows: lines } = await query(
-      `SELECT sol.line_total_ngn, sol.line_kind, p.catalogue_role
-         FROM ${brand}.sales_order_lines sol
-         LEFT JOIN ${brand}.product_variants pv ON pv.variant_id = sol.variant_id
-         LEFT JOIN ${brand}.products p ON p.product_id = COALESCE(sol.product_id, pv.product_id)
-        WHERE sol.order_id = $1`,
-      [order_id],
+    // Care & Accessories value earns no referral reward (owner rule): a
+    // retail-only order redeems nothing, a mixed order redeems on its
+    // non-retail value, every other order exactly as before.
+    const share = await retailShare({ brand, order_id }).catch(
+      swallow("referral retail share"),
     );
-    const wigLines = lines.filter(
-      (l) =>
-        l.line_kind !== "service" && l.catalogue_role !== "retail",
-    );
-    if (wigLines.length > 0) {
-      const wigTotal = wigLines.reduce(
-        (s, l) => Number(s) + Number(l.line_total_ngn || 0),
-        0,
-      );
-      const reportedTotal = Number(total_ngn);
-      const eligibleWigValue = Number.isFinite(reportedTotal)
-        ? Math.min(wigTotal, reportedTotal)
-        : wigTotal;
+    if (share && !share.retailOnly) {
       await service
         .redeemReferral({
           brand,
           code: referral_code,
           referred_contact_id: contact_id,
           order_id,
-          order_value: eligibleWigValue,
+          order_value: share.hasRetail
+            ? toCurrencyString(minusShare(total_ngn, share.retailTotal))
+            : total_ngn,
         })
         .catch(swallow("referral redeem"));
     }

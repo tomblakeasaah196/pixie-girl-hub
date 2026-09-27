@@ -11,7 +11,11 @@ jest.mock("../../../src/shared/outbox/outbox", () => ({ register: jest.fn() }));
 jest.mock("../../../src/modules/retention/strategy.engine", () => ({ trigger: jest.fn().mockResolvedValue({}) }));
 jest.mock("../../../src/modules/retention/retention.events", () => ({ on: jest.fn(), emit: jest.fn() }));
 jest.mock("../../../src/config/database", () => ({ query: jest.fn().mockResolvedValue({ rows: [{ c: 1 }] }) }));
-jest.mock("../../../src/config/brands", () => ({ VALID: new Set(["pixiegirl"]), BRANDS: ["pixiegirl"] }));
+jest.mock("../../../src/config/brands", () => ({
+  VALID: new Set(["pixiegirl"]),
+  BRANDS: ["pixiegirl"],
+  t: (brand, table) => `${brand}.${table}`,
+}));
 jest.mock("../../../src/modules/retention/retention.service", () => ({
   earnForOrder: jest.fn().mockResolvedValue(null),
   awardStars: jest.fn().mockResolvedValue(null),
@@ -33,6 +37,28 @@ describe("retention subscriber — referral auto-redeem", () => {
     expect(service.redeemReferral).toHaveBeenCalledWith(
       expect.objectContaining({ code: "FAITH123", referred_contact_id: "c1", order_id: "o1" }),
     );
+  });
+
+  test("Care & Accessories: retail-only redeems nothing; mixed redeems on non-retail value", async () => {
+    const { query } = require("../../../src/config/database");
+    const line = (is_retail, total) => ({
+      quantity: 1, unit_price_ngn: total, line_discount_ngn: 0, line_total_ngn: total, is_retail,
+    });
+    query.mockImplementation(async (sql) =>
+      /sales_order_lines/.test(sql) ? { rows: [line(true, 8000)] } : { rows: [{ c: 1 }] });
+    service.redeemReferral.mockClear();
+    await awardLoyaltyAndStreak({ ...base, referral_code: "FAITH123" });
+    expect(service.redeemReferral).not.toHaveBeenCalled();
+
+    query.mockImplementation(async (sql) =>
+      /sales_order_lines/.test(sql)
+        ? { rows: [line(false, 42000), line(true, 8000)] }
+        : { rows: [{ c: 1 }] });
+    await awardLoyaltyAndStreak({ ...base, referral_code: "FAITH123" });
+    expect(service.redeemReferral).toHaveBeenCalledWith(
+      expect.objectContaining({ order_value: "42000.00" }),
+    );
+    query.mockImplementation(async () => ({ rows: [{ c: 1 }] }));
   });
 
   test("does not redeem when no referral code", async () => {

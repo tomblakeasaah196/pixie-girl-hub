@@ -29,6 +29,7 @@ const brandUrls = require("../../utils/brand-urls");
 const invoicingService = require("../invoicing/invoicing.service");
 const invoiceDelivery = require("../invoicing/invoice-delivery.service");
 const commsStudio = require("../comms_studio/comms-studio.service");
+const paidCurrency = require("./paid-currency");
 const { logger } = require("../../config/logger");
 
 const ngn = (v) =>
@@ -107,7 +108,8 @@ async function onOrderCreated({ brand, order_id }) {
     variables: {
       order_number: order.order_number,
       item_name: itemNameFor(order),
-      total: ngn(order.total_ngn),
+      // A USD order speaks dollars — the figure its checkout charges.
+      total: paidCurrency.lockedTotalLabel(order) || ngn(order.total_ngn),
       pay_url: payUrl,
       invoice_url: invoiceUrl || payUrl,
       attachments,
@@ -130,6 +132,19 @@ async function onOrderPaid({ brand, order_id }) {
     );
   }
 
+  // What the customer actually parted with: the dollars received for a USD
+  // order paid in dollars, never the Naira credit the books carry.
+  let total = ngn(order.total_ngn);
+  try {
+    const payments = await salesRepo.listPayments({ brand, order_id });
+    total = paidCurrency.paidTotalLabel(order, payments) || total;
+  } catch (err) {
+    logger.warn(
+      { err: err.message, brand, order_id },
+      "order-paid-confirmation: payment lookup failed — quoting the Naira total",
+    );
+  }
+
   await commsStudio.dispatch({
     brand,
     event_key: "order_paid_confirmation",
@@ -139,7 +154,7 @@ async function onOrderPaid({ brand, order_id }) {
     dedup_key: `order_paid_confirmation:${order_id}`,
     variables: {
       order_number: order.order_number,
-      total: ngn(order.total_ngn),
+      total,
       invoice_url: invoiceUrl || "",
     },
   });

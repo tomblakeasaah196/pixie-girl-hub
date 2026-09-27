@@ -73,6 +73,11 @@ export interface OrderLinkContext {
   sales_channel: string | null;
   expires_at: string | null;
   fx_rate_ngn_per_usd?: number | null;
+  /** The currency staff chose for this link — the customer pays in it. */
+  currency?: "NGN" | "USD";
+  /** USD link: each item's dollar price (index-aligned with `items`; null =
+   *  not sellable) + the catalogue rate for delivery (₦ ÷ rate, rounded UP). */
+  usd?: { rate: number | null; prices: (string | null)[] } | null;
   contact: OrderLinkContact | null;
   require_contact_form?: boolean;
   delivery_address: OrderLinkAddress | null;
@@ -130,6 +135,9 @@ export interface OrderFormBody {
     landmark?: string;
   };
   order_link_slug?: string;
+  /** The customer's picks (index into the link's items + qty) — a $ link's
+   *  order locks its dollar total from exactly these. */
+  link_picks?: { idx: number; qty: number }[];
   service_bookings?: {
     service_id: string;
     qty: number;

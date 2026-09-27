@@ -71,6 +71,11 @@ const {
   settlementAccountForProvider,
 } = require("../accounting/posting-map");
 const salesPostings = require("./sales.postings");
+const paidCurrency = require("./paid-currency");
+
+// A payment that takes an order more than this above its total raises
+// order.overpaid (kobo-level noise never does).
+const OVERPAYMENT_ALERT_FLOOR_NGN = "1.00";
 
 async function createOrder({ brand, user, request_id, input }) {
   // Idempotency (H-9): a double-submitted public checkout must not create two
@@ -1459,6 +1464,10 @@ async function addPayment({ brand, user, request_id, id, input }) {
           provider: isStaffRecorded ? "manual" : input.provider,
           contact_id: order.contact_id,
           reference: order.order_number,
+          // A USD Nomba capture lands in the USD wallet (1141), carrying the
+          // dollars received; staff-recorded transfers are always Naira.
+          paid_currency: isStaffRecorded ? null : input.paid_currency,
+          paid_amount: isStaffRecorded ? null : input.paid_amount,
         }),
       });
     }
@@ -1489,7 +1498,11 @@ async function addPayment({ brand, user, request_id, id, input }) {
             description: `${input.provider} processing fee`,
           },
           {
-            account_code: settlementAccountForProvider(input.provider),
+            // The same (currency-aware) float the capture debited.
+            account_code: settlementAccountForProvider(
+              input.provider,
+              input.paid_currency,
+            ),
             credit_ngn: feeStr,
             description: `${input.provider} fee netted from settlement`,
           },
@@ -1705,6 +1718,35 @@ async function addPayment({ brand, user, request_id, id, input }) {
             total_ngn: String(updated.total_ngn),
           },
           dedup_key: `order.payment_milestone:half:${id}`,
+        });
+      }
+    }
+
+    // Overpaid — money beyond the order total (a customer paying twice, an
+    // outdated link for a higher amount, a USD capture well over the dollar
+    // balance). It stays in Customer Deposits 2400 as money held for the
+    // customer (the Change Order downgrade model); refunding it or keeping it
+    // as credit is Finance's call, so tell them. Rounding never gets here:
+    // the gateway paths settle cent-level differences exactly, and the ₦1
+    // floor ignores kobo. Only the excess THIS payment added is reported.
+    {
+      const floor = paidBefore.gt(totalDue) ? paidBefore : totalDue;
+      const addedOver = paidNow.minus(floor);
+      if (addedOver.gt(money(OVERPAYMENT_ALERT_FLOOR_NGN))) {
+        await outbox.enqueue(client, {
+          business: brand,
+          event_type: "order.overpaid",
+          payload: {
+            brand,
+            order_id: id,
+            order_number: order.order_number,
+            payment_id: paymentRow.payment_id,
+            overpaid_ngn: toCurrencyString(paidNow.minus(totalDue)),
+            added_ngn: toCurrencyString(addedOver),
+            paid_currency: input.paid_currency || null,
+            paid_amount: input.paid_amount || null,
+          },
+          dedup_key: `order.overpaid:${paymentRow.payment_id}`,
         });
       }
     }
@@ -3324,6 +3366,19 @@ function buildReceiptDoc({ order, brandObj, copy }) {
     tax_amount_ngn: order.tax_amount_ngn,
     tax_rate: taxRate,
     total_ngn: order.total_ngn,
+    // A USD order settled in dollars prints what the customer actually paid.
+    paid_in: (() => {
+      const paid = paidCurrency.paidCurrencyDisplay(payments);
+      return paid
+        ? {
+            label: `Paid in ${paid.display_currency}`,
+            value: paidCurrency.formatMoney(
+              paid.display_amount,
+              paid.display_currency,
+            ),
+          }
+        : null;
+    })(),
     notes_label: c.note_label,
     notes: docCopy.fillTokens(c.note, tokens),
     thanks: docCopy.fillTokens(c.message, tokens),

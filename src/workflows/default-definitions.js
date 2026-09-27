@@ -169,6 +169,31 @@ const DEFINITIONS = {
     },
   },
 
+  // ── Catalogue USD exchange rate — CEO only ─────────────────────────────
+  // One rate reprices every USD price in the catalogue and is the rate every
+  // dollar checkout, pay link and Nomba USD credit converts at, so a change
+  // waits on the CEO. The CEO applying it directly skips the request.
+  "catalogue:usd_rate_change": {
+    name: "USD Exchange Rate Change",
+    description:
+      "Changing the catalogue's USD exchange rate (Catalogue → Config) reprices every USD price and every dollar checkout, so it needs CEO approval.",
+    trigger_module: "catalogue",
+    trigger_action: "usd_rate_change",
+    definition: {
+      trigger: { module: "catalogue", action: "usd_rate_change" },
+      stages: [
+        {
+          order: 1,
+          name: "CEO approval",
+          approvers: [{ type: "role", value: "ceo" }],
+          timeout_hours: 72,
+          on_timeout: "escalate",
+          fallback_to_deputy: false,
+        },
+      ],
+    },
+  },
+
   // ── Inter-company trade (§5.1) — CEO only, sensitive cross-entity ───────
   "intercompany:create": {
     name: "Inter-Company Transaction Approval",

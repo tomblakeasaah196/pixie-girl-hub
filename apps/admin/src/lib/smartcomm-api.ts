@@ -272,6 +272,8 @@ export const smartcommApi = {
       spec?: string;
     }[];
     sales_channel?: string;
+    /** Currency the customer pays in (default ₦). */
+    currency?: "NGN" | "USD";
     notes?: string;
     expires_in?: number;
   }) =>

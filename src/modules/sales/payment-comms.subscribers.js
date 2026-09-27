@@ -24,6 +24,7 @@ const salesRepo = require("./sales.repo");
 const paymentSettings = require("./payment-settings.service");
 const brandUrls = require("../../utils/brand-urls");
 const commsStudio = require("../comms_studio/comms-studio.service");
+const paidCurrency = require("./paid-currency");
 const { logger } = require("../../config/logger");
 
 const ngn = (v) =>
@@ -48,6 +49,15 @@ async function onPaymentRecorded({
   const balance = new Decimal(total_ngn || 0).minus(
     new Decimal(amount_paid_ngn || 0),
   );
+  const figures = {
+    amount: ngn(amount_ngn),
+    paid_total: ngn(amount_paid_ngn),
+    balance: ngn(balance.lt(0) ? 0 : balance),
+  };
+  Object.assign(
+    figures,
+    await paidCurrencyFigures({ brand, order, payment_id }),
+  );
   await commsStudio.dispatch({
     brand,
     event_key: "payment_received",
@@ -57,13 +67,53 @@ async function onPaymentRecorded({
     dedup_key: `payment_received:${payment_id}`,
     variables: {
       order_number: order.order_number,
-      amount: ngn(amount_ngn),
-      paid_total: ngn(amount_paid_ngn),
-      balance: ngn(balance.lt(0) ? 0 : balance),
+      ...figures,
       pay_url: payUrl,
       plan_name: settings.plan_display_name,
     },
   });
+}
+
+/**
+ * The same three figures in the currency the customer pays in. A USD order
+ * (short-paid through Nomba, or on a dollar instalment plan) must hear
+ * "we received $150.00 — balance $99.99", with the pay link charging exactly
+ * that balance; the Naira credit is the books' figure, not hers.
+ *   amount     — this payment as paid ("$150.00")
+ *   paid_total — every payment so far, when all were in that currency
+ *   balance    — the order's dollar balance (what its pay page shows)
+ * Returns {} for a Naira order so the Naira figures stand. Never throws.
+ */
+async function paidCurrencyFigures({ brand, order, payment_id }) {
+  try {
+    const locked = paidCurrency.lockedTotalLabel(order);
+    const payments = await salesRepo.listPayments({
+      brand,
+      order_id: order.order_id,
+    });
+    const payment = payments.find((p) => p.payment_id === payment_id);
+    const out = {};
+    if (payment && String(payment.paid_currency || "NGN").toUpperCase() !== "NGN")
+      out.amount = paidCurrency.paymentAmountLabel(payment);
+    const paid = paidCurrency.paidCurrencyDisplay(payments);
+    if (paid)
+      out.paid_total = paidCurrency.formatMoney(
+        paid.display_amount,
+        paid.display_currency,
+      );
+    if (locked) {
+      const paymentLink = require("./payment-link.service");
+      const usd = paymentLink.outstandingUsd(order);
+      if (usd !== null) out.balance = paidCurrency.formatMoney(usd, "USD");
+    }
+    return out;
+  } catch (err) {
+    logger.warn(
+      { err: err.message, brand, order_id: order.order_id },
+      "payment-comms: paid-currency figures unavailable — sending Naira",
+    );
+    return {};
+  }
 }
 
 async function onPaymentMilestone({
@@ -86,6 +136,11 @@ async function onPaymentMilestone({
   const balance = new Decimal(total_ngn || 0).minus(
     new Decimal(amount_paid_ngn || 0),
   );
+  const { paid_total, balance: owed } = await paidCurrencyFigures({
+    brand,
+    order,
+    payment_id: null,
+  });
   await commsStudio.dispatch({
     brand,
     event_key: "payment_milestone",
@@ -95,8 +150,8 @@ async function onPaymentMilestone({
     dedup_key: `payment_milestone:${order_id}:${milestone || "half"}`,
     variables: {
       order_number: order.order_number,
-      paid_total: ngn(amount_paid_ngn),
-      balance: ngn(balance.lt(0) ? 0 : balance),
+      paid_total: paid_total || ngn(amount_paid_ngn),
+      balance: owed || ngn(balance.lt(0) ? 0 : balance),
       pay_url: payUrl,
       plan_name: settings.plan_display_name,
     },

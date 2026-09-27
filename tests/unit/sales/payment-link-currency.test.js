@@ -66,6 +66,7 @@ jest.mock("../../../src/modules/sales/sales.repo", () => ({
       : null,
   ),
   findByOrderNumber: jest.fn(async () => null),
+  ensurePublicTrackingToken: jest.fn(async () => "tok"),
   lockSettlementCurrency: jest.fn(async (args) => {
     mockLocks.push(args);
     return {
@@ -255,5 +256,64 @@ describe("currency lock — NGN + USD only, customers can't switch", () => {
       order_id: ORDER_USD.order_id,
     });
     expect(mockLocks).toHaveLength(0);
+  });
+});
+
+describe("Quick Sale USD preview + charged amount", () => {
+  test("usdQuoteForLines prices a draft cart like the pay link will lock it", async () => {
+    // One ₦500,000 line with no catalogue USD price → ceil(333.33) = $334.
+    const q = await paymentLink.usdQuoteForLines({
+      brand: "faitlynhair",
+      lines: [{ variant_id: "var-x", unit_price_ngn: 500000, quantity: 1 }],
+      total_ngn: 500000,
+    });
+    expect(q).toMatchObject({ currency: "USD", usd_total: "334.00" });
+  });
+
+  test("the pay link reports the currency + amount its checkout charges", async () => {
+    mockOrder = ORDER_USD;
+    const link = await paymentLink.createPaymentLink({
+      brand: "faitlynhair",
+      order_id: ORDER_USD.order_id,
+    });
+    expect(link).toMatchObject({ currency: "USD", charge_amount: "764.00" });
+  });
+});
+
+describe("share links expire when the order changes", () => {
+  test("the link staff send is the pay page, stamped with the order's version", async () => {
+    mockOrder = ORDER_NGN;
+    const res = await paymentLink.createPaymentLink({
+      brand: "faitlynhair",
+      order_id: ORDER_NGN.order_id,
+    });
+    const url = new URL(res.share_url);
+    expect(url.origin + url.pathname).toBe("https://shop.example.com/pay/tok");
+    expect(url.searchParams.get("v")).toBe(paymentLink.payLinkVersion(ORDER_NGN));
+    // Full balance → no amount to prefill; the gateway checkout is still returned.
+    expect(url.searchParams.get("a")).toBeNull();
+    expect(res.checkout_url).toBe("https://pay.nomba.com/checkout/xyz");
+  });
+
+  test("a part-payment link carries the amount in the currency it charges", async () => {
+    mockOrder = ORDER_USD;
+    const res = await paymentLink.createPaymentLink({
+      brand: "faitlynhair",
+      order_id: ORDER_USD.order_id,
+      amount_ngn: 130000, // $100 at the locked ₦1,300
+    });
+    expect(new URL(res.share_url).searchParams.get("a")).toBe("100.00");
+  });
+
+  test("the version changes with what the order costs, not with payments", () => {
+    const v = paymentLink.payLinkVersion;
+    const base = { ...ORDER_USD, shipping_fee_ngn: "6000.00" };
+    expect(v(base)).toBe(v({ ...base })); // stable
+    expect(v({ ...base, amount_paid_ngn: "130000.00" })).toBe(v(base));
+    expect(v({ ...base, total_ngn: "998400.00" })).not.toBe(v(base)); // Change Order
+    expect(v({ ...base, shipping_fee_ngn: "9000.00" })).not.toBe(v(base)); // new delivery fee
+    expect(v({ ...base, display_total: "770.00" })).not.toBe(v(base)); // re-locked
+    // Number formatting from the DB doesn't matter.
+    expect(v({ ...base, total_ngn: "992400" })).toBe(v(base));
   });
 });

@@ -92,6 +92,30 @@ async function getInstance({ brand, instance_id }) {
 }
 
 async function act({ brand, user, request_id, instance_id, action, notes }) {
+  // A catalogue USD rate request is decided by its own module: approving it
+  // must APPLY the requested rate in the same transaction as the decision, not
+  // just mark the instance approved (which would leave the rate unchanged
+  // while the requester is told it was approved).
+  if (action === "approve" || action === "reject") {
+    const found = await repo.findInstance({ business: brand, instance_id });
+    const usdReprice = require("../../modules/catalogue/usd-reprice.service");
+    if (found && found.reference_table === usdReprice.RATE_CHANGE_REF) {
+      const decide =
+        action === "approve"
+          ? usdReprice.approveRateChange
+          : usdReprice.rejectRateChange;
+      await decide({ brand, user, request_id, instance_id, notes });
+      events.emit("approval_decided", {
+        brand,
+        instance_id,
+        action,
+        status: action === "approve" ? "approved" : "rejected",
+        user_id: user.user_id,
+      });
+      return getInstance({ brand, instance_id });
+    }
+  }
+
   // The engine opens its own transaction, locks the instance, records the
   // decision, and advances or terminates. It throws PERMISSION_DENIED if the
   // current stage requires the CEO and the actor is not one.

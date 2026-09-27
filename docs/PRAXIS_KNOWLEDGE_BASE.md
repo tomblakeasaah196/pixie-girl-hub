@@ -229,6 +229,11 @@ Care & Accessories is on or orders are waiting) · **POS Reconciliation** ·
   Sale Form, add items, take payment. (This replaced the old POS.) If an item is
   out of stock it still sells — as a **pre-order** — and a toast confirms it went
   in as made-to-order.
+- *Sell to a customer paying in dollars?* Quick Sale → **Currency** → **USD**
+  (only NGN or USD — Nomba charges nothing else). The Total shows the exact
+  dollar figure (each product's catalogue USD price) with the Naira beneath,
+  and after **Create Order & Send Pay Link** the confirmation says what the
+  link charges, e.g. "Charging USD 249.99 on Nomba".
 - *Get a walk-in customer's details without typing them in?* Quick Sale →
   Customer step → **QR Code** button — shows a scannable code for the order
   capture link, next to a **Share** button that opens WhatsApp with the link
@@ -313,8 +318,8 @@ Care & Accessories is on or orders are waiting) · **POS Reconciliation** ·
   page (base product → Pre-order · production → "Exclude from pre-orders").
 - *Create a full order and send a pay link?* Sales → **Orders** → **New Sale** /
   **Create Order & Send Pay Link**. The customer gets a short checkout link
-  (`/o/<slug>`), picks their gateway (Nomba / Paystack, whichever are active),
-  and is redirected straight to payment.
+  (`/o/<slug>`) and is redirected straight to payment on **Nomba** — the only
+  payment gateway, for Naira and US Dollars.
 - *Send a quotation?* Sales → **Quotations** → **New Quotation** / **Create Quotation**.
 - *Let a customer PAY a quotation (and turn it into an order automatically)?*
   Sales → **Quotations** → open the quote → **Payment Link**. That mints a
@@ -363,9 +368,33 @@ Care & Accessories is on or orders are waiting) · **POS Reconciliation** ·
   exactly as if the gateway had reported it directly — or **Ignore** a false
   positive/duplicate/test with a short reason. A payment whose brand we
   couldn't determine shows in a CEO-only cross-brand section until resolved.
+  A **dollar** payment shows its **$** amount (it has no Naira figure until it's
+  placed): the suggestions are the dollar orders whose balance it pays, and
+  **Match** converts it at *that order's* locked rate and records it as a dollar
+  payment (dollar receipt, Nomba USD wallet in the books). A dollar payment made
+  on a **cancelled** order also lands here, for a refund decision. Every 10
+  minutes the Hub also reads Nomba's own statement and parks any credit it has
+  no payment for; a dollar credit there parks in dollars too.
 - *Where do failed Nomba payments go?* Nowhere — by design there is no such
   pile. A payment we can't place is never dropped or retried silently; it goes
   straight to **POS Reconciliation** for a person to decide.
+- *A customer paid less than the dollar total?* The order is credited with what
+  they actually paid (never the whole balance) and stays **Part paid**; they're
+  sent the balance in dollars with their pay link automatically. Nothing for you
+  to do unless they don't pay it.
+- *A customer paid more than the order total (paid twice, or a dollar payment
+  well over the balance)?* The whole payment is recorded, the order shows an
+  **In credit** pill with the excess, and Finance (Accounting editors and the
+  CEO) get an **Overpayment on <order>** notification. The excess is the
+  customer's money held in **Customer Deposits 2400** — refund it, or keep it as
+  credit for their next order. A few cents over (rounding a dollar total) never
+  counts as an overpayment.
+- *Why does a receipt or payment message show dollars?* Receipts, the "payment
+  received" message and the "order paid" confirmation speak the currency the
+  customer actually paid: a dollar order paid in dollars says "$249.99", with
+  the Naira figure staying in the books. A receipt shows **Paid in USD** under
+  the Naira total. An order paid partly in ₦ and partly in $ keeps a Naira
+  receipt.
 - *Open one order?* Sales → **Orders**, click the order → `/sales/orders/<orderId>`.
 - *Record a payment against an order?* Open the order → **Record Payment**
   (in the action bar at the top, or on the **Payments** card). The form opens
@@ -417,7 +446,17 @@ Care & Accessories is on or orders are waiting) · **POS Reconciliation** ·
 - *Send a customer a pay link instead?* Open the order → **Pay Link** in the
   action bar. Leave the amount blank for the full balance, or type a
   part amount, then **Generate & copy pay link** and paste it into WhatsApp or
-  email.
+  email. What you copy is the order's own pay page, not a one-off checkout: it
+  opens on the live balance (in dollars for a dollar order) with your part
+  amount filled in. Quick Sale's **Copy** / **Share** and the delivery-fee
+  top-up link work the same way (the in-store QR is still a direct checkout,
+  paid on the spot).
+- *The order changed after I sent a pay link — will they pay the old amount?*
+  No. A pay link expires when what the order costs changes (Change Order, a new
+  delivery fee, a discount, a currency re-lock). Opened afterwards, it tells the
+  customer the order was updated and shows what's due now; the old amount is not
+  offered. A payment already recorded does not expire it — the page just shows
+  the smaller balance.
 - *Jump between an order and its invoice?* Four ways, all one click: the order
   page's invoice strip links to the invoice (click the invoice number or **View
   Invoice**); the invoice's order strip links back (click the order number or
@@ -900,7 +939,12 @@ Girl only, when switched on) · **Categories** · **Collections** · **Shades** 
 - *Set the dollar (USD) rate or dollar prices?* Catalogue → **Config** →
   **Apply USD exchange rate**: enter one ₦ per $1 rate, pick the rounding
   (exact, whole dollars or .99) and apply — every USD price in the catalogue is
-  recomputed from its Naira price (undo reverts the last apply). That rate is
+  recomputed from its Naira price (undo reverts the last apply). **Changing the
+  rate needs the CEO.** The CEO's Apply takes effect at once; anyone else's
+  button reads **Request approval** and sends the CEO a task — nothing changes
+  until they open Catalogue → Config → **Review request** and choose **Approve &
+  apply** (it applies the rate that was requested) or **Reject**. Only one
+  request can wait at a time, and only the CEO can undo. That rate is
   the ONLY ₦/$ rate for sales: the website, sales campaigns, Quick Sale and
   pay links all use it (Settings → Currencies does not override it). A
   product's own USD price — including one you edit by hand — is exactly what a
@@ -1180,6 +1224,12 @@ Balance, AR/AP Ageing) · **Journals** · **Chart of Accounts** · **Tax Center*
 - *Add / edit a ledger account?* Accounting → **Chart of Accounts**.
 - *Close a period / file tax?* Accounting → **Periods** / **Tax Center**.
 - *Reconcile the bank?* Accounting → **Bank**.
+- *Where do dollar (USD) payments sit in the books?* In **1141 Nomba Settlement —
+  USD Wallet** (Chart of Accounts), not the Naira **1140 Nomba Settlement**. Each
+  USD capture debits it with the Naira value at the order's locked rate and
+  carries the dollars received on the journal line; Nomba's fee on a dollar
+  payment nets against the same wallet. Post a journal to clear it when Nomba
+  pays the dollars out or converts them.
 - *There's a second journal against one sales order — is that a duplicate?* No.
   A sale posts exactly one **Sales** journal. A second entry described "Order
   amended (change #N) — <order number>" is an **adjusting** journal posted when
@@ -1532,6 +1582,12 @@ messages across WhatsApp, SMS, and other channels in one place.
   the **paperclip** → **Catalogue** → pick Base / Styled / **Bundle** /
   Service items → **Send**. The customer gets photo cards plus one short
   order link (`/o/<slug>`) to pick, confirm delivery, and pay.
+- *Send an IG/WhatsApp order link a customer pays in dollars?* In the same
+  **Catalogue** picker, switch the footer toggle to **Pay in $** before
+  **Send** (default **Pay in ₦**). The link shows each item at its catalogue
+  USD price and charges dollars on Nomba; the customer can't switch it. A $
+  link needs the dollar rate set first (Catalogue → **Config** → **Apply USD
+  exchange rate**).
 - *Connect a WhatsApp/SMS number?* That's **Messaging Accounts** (permission
   `messaging_accounts`) — connect channels there.
 - *Edit the automatic messages customers get (receipts, order updates)?* That's
@@ -1664,9 +1720,10 @@ full-screen **Landing Studio** (`/landing-studio`).
   now (the page shows EXTRA DELIVERY FEES MAY APPLY).
 - *What ₦/$ rate does a campaign show dollar prices at?* The catalogue's live
   rate (Catalogue → **Config** → **Apply USD exchange rate**) and each
-  product's catalogue USD price — the same as the website. A campaign no longer
-  has a dollar rate of its own; changing the catalogue rate changes a live
-  campaign's dollar prices for new orders (placed orders keep theirs).
+  product's catalogue USD price — the same as the website. The campaign
+  builder has no dollar-rate field and no payment-gateway switches any more:
+  every sale pays on Nomba in ₦ or $. Changing the catalogue rate changes a
+  live campaign's dollar prices for new orders (placed orders keep theirs).
 - *A campaign link shows 404?* Public sale pages live on the brand's **sales
   subdomain** (e.g. `sales.faitlynhair.com/sale/<slug>`), set in Settings →
   Business Setup → Public Identity. A link on the bare apex
@@ -1789,7 +1846,8 @@ focused settings page.
 
 **Common tasks.**
 - *Connect a payment gateway?* Settings → **Payment gateways**
-  (`/settings/payment-gateways`).
+  (`/settings/payment-gateways`). **Nomba** is the only gateway checkouts use
+  (Naira and US Dollars); Paystack/Stripe settings no longer take payments.
 - *Change invoice/PO number format?* Settings → **Document numbering**.
 - *Add a currency / tax rate?* Settings → **Currencies** / **Tax rates**.
 - *Add a bank account?* Settings → **Bank accounts**.

@@ -440,13 +440,9 @@ function CheckoutPage() {
             ? copy.deliveryNoService
             : copy.deliverySelectLocation;
 
-  // Payment rails: any FOREIGN settlement routes through Nomba only; only a NGN
-  // settlement offers the Paystack alternative. Keep the selected rail valid
-  // when the currency flips.
-  const rails = useMemo(
-    () => (settleCur !== "NGN" ? ["nomba"] : ["nomba", "paystack"]),
-    [settleCur],
-  );
+  // Payment rail: Nomba is the only gateway, for ₦ and $ alike (owner, Sept
+  // 2026). The picker shows it as the single secure-payment option.
+  const rails = useMemo(() => ["nomba"], []);
   useEffect(() => {
     if (!rails.includes(gateway)) setGateway(rails[0]);
   }, [rails, gateway]);

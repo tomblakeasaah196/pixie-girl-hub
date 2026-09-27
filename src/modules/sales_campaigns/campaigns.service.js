@@ -645,7 +645,12 @@ async function preview({ brand, id, state }) {
   const c = await repo.findById({ brand, id });
   if (!c) throw new NotFoundError("Campaign");
   const products = await repo.listProducts({ brand, campaign_id: id });
-  return buildLandingPayload(c, products, state || resolveState(c));
+  const payload = buildLandingPayload(c, products, state || resolveState(c));
+  // Same live catalogue ₦/$ rate the public landing uses.
+  payload.ngn_per_usd_rate = await require("../../services/usd-pricing.service")
+    .catalogueRate(brand)
+    .catch(() => null);
+  return payload;
 }
 
 /** A product's effective ₦ per $1 from its catalogue pair, or null. */
@@ -686,14 +691,10 @@ function buildLandingPayload(c, products, state) {
       extras.countdown_closes_label || c.countdown_message || null,
     signup_for_notifications: state === "before" && c.signup_for_notifications,
     blocks: c.landing_blocks || [],
-    // The ₦/$ rate the landing converts at. The public landing overwrites
-    // this with the LIVE catalogue rate (campaigns follow the catalogue rate,
-    // owner Sept 2026); the builder's stored value only reaches the admin
-    // preview.
-    ngn_per_usd_rate:
-      c.ngn_per_usd_rate !== null && c.ngn_per_usd_rate !== undefined
-        ? Number(c.ngn_per_usd_rate)
-        : null,
+    // The ₦/$ rate the landing converts at: the LIVE catalogue rate, filled
+    // in by the caller (getLanding / preview) — campaigns have no rate of
+    // their own (owner, Sept 2026).
+    ngn_per_usd_rate: null,
     // Top-level discount — surfaced so the landing card can render a
     // "save ₦X per wig" estimate alongside the price.
     discount_type: c.discount_type || null,
@@ -710,13 +711,9 @@ function buildLandingPayload(c, products, state) {
     position_ladder: c.position_ladder || null,
     stacking_bonus: c.stacking_bonus || null,
     bulk_tiers: c.bulk_tiers || null,
-    // Gateways this campaign offers at checkout. Falls back to both rails for
-    // older rows created before the column existed. USD still forces Nomba.
-    allowed_payment_gateways:
-      Array.isArray(c.allowed_payment_gateways) &&
-      c.allowed_payment_gateways.length
-        ? c.allowed_payment_gateways
-        : ["paystack", "nomba"],
+    // Gateways offered at checkout: Nomba only, for ₦ and $ (owner, Sept
+    // 2026) — whatever an older campaign's stored list says.
+    allowed_payment_gateways: ["nomba"],
     // Goods subtotal threshold above which delivery is automatically free.
     free_shipping_threshold_ngn:
       c.free_shipping_threshold_ngn !== null &&

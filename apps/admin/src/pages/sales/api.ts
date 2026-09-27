@@ -91,10 +91,43 @@ export const createPaymentLink = (
   orderId: string,
   input: PaymentLinkInput = {},
 ) =>
-  api.post<{ checkout_url: string }>(
-    `${S}/orders/${orderId}/payment-link`,
-    input,
-  );
+  api.post<{
+    /** The gateway checkout itself — for paying on the spot (in-store QR). */
+    checkout_url: string;
+    /** The link to SEND the customer: the order's pay page, which expires if
+     *  the order changes (then it shows the updated balance). */
+    share_url?: string | null;
+    /** What the checkout charges: its currency and amount in that currency
+     *  (e.g. "USD" / "249.99"). */
+    currency?: string;
+    charge_amount?: string;
+  }>(`${S}/orders/${orderId}/payment-link`, input);
+
+/** A draft Quick Sale cart line, as the USD preview prices it. */
+export interface UsdQuoteLine {
+  variant_id?: string;
+  styled_id?: string;
+  service_offering_id?: string;
+  line_kind?: string;
+  unit_price_ngn: number;
+  quantity: number;
+}
+
+/** Quick Sale "≈ $ total": the draft cart priced in dollars by the Hub's USD
+ *  engine (catalogue USD prices, catalogue rate) — the figure the USD pay
+ *  link will lock. Null when no rate/USD price can price it. */
+export const usdQuote = (input: {
+  lines: UsdQuoteLine[];
+  total_ngn: number;
+  shipping_fee_ngn?: number;
+}) =>
+  api.post<{
+    currency: "USD";
+    usd_total: string;
+    goods_usd: string;
+    delivery_usd: string;
+    lines: string[];
+  } | null>(`${S}/usd-quote`, input);
 
 export const cancelOrder = (id: string, reason?: string) =>
   api.post<SalesOrder>(`${S}/orders/${id}/cancel`, reason ? { reason } : {});

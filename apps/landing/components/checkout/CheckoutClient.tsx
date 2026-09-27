@@ -104,12 +104,9 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   // full, undiscounted amount.)
   const [quote, setQuote] = useState<CartQuote | null>(null);
 
-  // Gateways this campaign offers. Absent/empty → both rails (older campaigns).
-  // The owner can turn a rail off per campaign in the builder.
-  const allowedGateways: Gateway[] =
-    payload.allowed_payment_gateways && payload.allowed_payment_gateways.length
-      ? payload.allowed_payment_gateways
-      : ["paystack", "nomba"];
+  // Nomba is the only gateway, for ₦ and $ alike (owner, Sept 2026); the Hub
+  // ignores any other pick, so the page offers exactly that one rail.
+  const allowedGateways: Gateway[] = ["nomba"];
 
   const [first, setFirst] = useState("");
   const [last, setLast] = useState("");

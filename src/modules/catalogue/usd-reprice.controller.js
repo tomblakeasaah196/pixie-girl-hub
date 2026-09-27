@@ -46,4 +46,32 @@ async function undo(req, res) {
   res.json({ data: await service.undo({ ...base(req) }) });
 }
 
-module.exports = { status, marketRate, preview, apply, undo };
+async function approveRequest(req, res) {
+  res.json({
+    data: await service.approveRateChange({
+      ...base(req),
+      instance_id: req.params.instanceId,
+      notes: req.body.notes,
+    }),
+  });
+}
+
+async function rejectRequest(req, res) {
+  res.json({
+    data: await service.rejectRateChange({
+      ...base(req),
+      instance_id: req.params.instanceId,
+      notes: req.body.notes,
+    }),
+  });
+}
+
+module.exports = {
+  status,
+  marketRate,
+  preview,
+  apply,
+  undo,
+  approveRequest,
+  rejectRequest,
+};

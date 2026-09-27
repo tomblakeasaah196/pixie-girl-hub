@@ -89,6 +89,10 @@ function totalsRows(doc, accent) {
     rows.push(r("VAT" + rate, ngn(doc.tax_amount_ngn)));
   }
   rows.push(r("Total", ngn(doc.total_ngn), { strong: true, cls: "t-total" }));
+  // Paid in another currency (a USD order settled in dollars): what the
+  // customer actually parted with, under the Naira total the books carry.
+  if (doc.paid_in && present(doc.paid_in.value))
+    rows.push(r(doc.paid_in.label || "Paid", doc.paid_in.value, { strong: true }));
   if (present(doc.amount_paid_ngn)) rows.push(r("Amount paid", ngn(doc.amount_paid_ngn)));
   if (present(doc.balance_due_ngn)) rows.push(r("Balance due", ngn(doc.balance_due_ngn)));
   return rows.join("");

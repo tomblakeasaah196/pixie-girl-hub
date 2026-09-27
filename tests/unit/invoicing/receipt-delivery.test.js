@@ -56,6 +56,26 @@ describe("buildReceiptEmail", () => {
   });
 });
 
+describe("receipts in the currency the customer paid", () => {
+  test("a USD receipt says the dollars, not the Naira credit", async () => {
+    const emailRender = require("../../../src/modules/email_campaigns/email-render");
+    const tokens = await emailRender.resolveBrandTokens("faitlynhair");
+    const usd = receipt({
+      amount_ngn: "374985.00",
+      display_currency: "USD",
+      display_amount: "249.99",
+    });
+    const out = delivery.buildReceiptEmail({ brandTokens: tokens, receipt: usd, viewUrl: "https://x" });
+    expect(out.html).toContain("$249.99");
+    expect(out.html).not.toContain("₦374,985.00");
+    expect(delivery.paidLabel(usd)).toBe("$249.99");
+  });
+
+  test("a Naira receipt is unchanged", () => {
+    expect(delivery.paidLabel(receipt())).toBe("₦30,000.00");
+  });
+});
+
 describe("dispatchReceipt", () => {
   afterEach(() => {
     delete process.env.INVOICE_DISPATCH_DISABLED;

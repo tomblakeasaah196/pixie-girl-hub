@@ -278,10 +278,14 @@ async function insertEntry({ client, brand, entry }) {
   return rows[0] || null;
 }
 async function insertLine({ client, brand, line }) {
+  // transaction_currency + debit/credit_transaction_currency (the original
+  // foreign amount — e.g. the dollars a USD capture put in the Nomba USD
+  // wallet) are optional; a Naira line leaves them NULL.
   const { rows } = await ex(client)(
     `INSERT INTO ${t(brand, "journal_lines")}
-       (entry_id, account_id, description, debit_ngn, credit_ngn, contact_id, invoice_id, cost_centre, project, display_order)
-     VALUES ($1,$2,$3,COALESCE($4,0::numeric),COALESCE($5,0::numeric),$6,$7,$8,$9,COALESCE($10,0)) RETURNING *`,
+       (entry_id, account_id, description, debit_ngn, credit_ngn, contact_id, invoice_id, cost_centre, project, display_order,
+        transaction_currency, debit_transaction_currency, credit_transaction_currency)
+     VALUES ($1,$2,$3,COALESCE($4,0::numeric),COALESCE($5,0::numeric),$6,$7,$8,$9,COALESCE($10,0),$11,$12,$13) RETURNING *`,
     [
       line.entry_id,
       line.account_id,
@@ -293,6 +297,9 @@ async function insertLine({ client, brand, line }) {
       line.cost_centre || null,
       line.project || null,
       line.display_order,
+      line.transaction_currency || null,
+      line.debit_transaction_currency ?? null,
+      line.credit_transaction_currency ?? null,
     ],
   );
   return rows[0];

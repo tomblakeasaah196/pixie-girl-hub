@@ -97,9 +97,13 @@ interface PrefillContext {
   slug?: string;
   sales_channel: string | null;
   expires_at: string;
-  // NGN per $1 from the brand's Catalogue → Config USD rate, so the page can
-  // show a "≈ $X" equivalent next to the Naira total. Null when unset.
+  // NGN per $1 from the brand's Catalogue → Config USD rate.
   fx_rate_ngn_per_usd?: number | null;
+  // The currency staff chose for this link — the customer pays in it.
+  currency?: "NGN" | "USD";
+  // USD link: each item's dollar price (index-aligned with `items`; null =
+  // not sellable) + the catalogue rate for delivery (₦ ÷ rate, rounded UP).
+  usd?: { rate: number | null; prices: (string | null)[] } | null;
   // Null on no-contact links: the page shows the inline "your details"
   // block (welcome-form mirror) and the contact is created at submit.
   contact: {
@@ -477,9 +481,46 @@ export function OrderCheckoutPublic() {
     [resolvedItems],
   );
   const orderTotal = itemsSubtotal + careVat + deliveryDue;
-  const usdRate = ctx?.fx_rate_ngn_per_usd ?? null;
+  // A $ link charges in dollars: each item at its catalogue USD price (from
+  // the Hub's USD engine), delivery at the catalogue rate rounded UP to the
+  // dollar — the figures the order locks when it's placed. A ₦ link charges
+  // Naira only, so it shows no $ figure at all.
+  const usdLink = ctx?.currency === "USD" && ctx.usd ? ctx.usd : null;
+  const usdOf = (idx: number) => {
+    const p = usdLink?.prices?.[idx];
+    return p != null ? Number(p) : null;
+  };
+  const deliveryUsd =
+    usdLink && usdLink.rate && deliveryDue > 0
+      ? Math.ceil(deliveryDue / usdLink.rate - 1e-9)
+      : 0;
+  const itemsSubtotalUsd = usdLink
+    ? [...resolvedItems, ...serviceItems].reduce(
+        (s, i) => s + (usdOf(i.idx) ?? 0) * i.qty,
+        0,
+      )
+    : null;
+  // Care VAT in dollars: the server scales it at the goods' own $/₦ ratio
+  // (the USD engine's order-adjustment rule), rounded half-up to the cent.
+  const careVatUsd = (() => {
+    if (!usdLink || careVat <= 0) return 0;
+    let usd = 0;
+    let ngn = 0;
+    for (const i of resolvedItems) {
+      usd += (usdOf(i.idx) ?? 0) * i.qty;
+      ngn += (Number(i.price_ngn) || 0) * i.qty;
+    }
+    return ngn > 0 ? Math.round(((careVat * usd) / ngn) * 100 + 1e-9) / 100 : 0;
+  })();
   const orderTotalUsd =
-    usdRate && usdRate > 0 ? orderTotal / usdRate : null;
+    itemsSubtotalUsd != null
+      ? Math.round((itemsSubtotalUsd + careVatUsd + deliveryUsd) * 100) / 100
+      : null;
+  const fmtUsd = (v: number) =>
+    `$${v.toLocaleString("en-US", {
+      minimumFractionDigits: Math.round(v * 100) % 100 !== 0 ? 2 : 0,
+      maximumFractionDigits: 2,
+    })}`;
 
   const needsWho = !!ctx?.require_contact_form;
   const canSubmit =
@@ -555,6 +596,12 @@ export function OrderCheckoutPublic() {
           // Marks the link used, applies staff-picked prices, and posts
           // order/booking events in the thread.
           order_link_slug: slug || undefined,
+          // What the customer kept + how many — a $ link locks its dollar
+          // total from exactly these (the figures shown above).
+          link_picks: [...resolvedItems, ...serviceItems].map((i) => ({
+            idx: i.idx,
+            qty: i.qty,
+          })),
           service_bookings: serviceItems.length
             ? serviceItems.map((s) => ({
                 service_id: s.service_id as string,
@@ -814,7 +861,9 @@ export function OrderCheckoutPublic() {
                     )}
                     {i.price_ngn != null && (
                       <div className="text-[11.5px] text-text-faint">
-                        ₦{Number(i.price_ngn).toLocaleString()}
+                        {usdLink && usdOf(idx) != null
+                          ? fmtUsd(usdOf(idx) as number)
+                          : `₦${Number(i.price_ngn).toLocaleString()}`}
                         {isSvc && i.duration_minutes
                           ? ` · ~${i.duration_minutes} min`
                           : ""}
@@ -1221,14 +1270,16 @@ export function OrderCheckoutPublic() {
             <div className="flex items-center justify-between text-[12.5px]">
               <span className="text-text-muted">Subtotal</span>
               <span className="font-mono tabular-nums">
-                ₦{itemsSubtotal.toLocaleString()}
+                {itemsSubtotalUsd != null
+                  ? fmtUsd(itemsSubtotalUsd)
+                  : `₦${itemsSubtotal.toLocaleString()}`}
               </span>
             </div>
             {careVat > 0 && (
               <div className="flex items-center justify-between text-[12.5px]">
                 <span className="text-text-muted">VAT (care products)</span>
                 <span className="font-mono tabular-nums">
-                  ₦{careVat.toLocaleString()}
+                  {usdLink ? fmtUsd(careVatUsd) : `₦${careVat.toLocaleString()}`}
                 </span>
               </div>
             )}
@@ -1236,7 +1287,11 @@ export function OrderCheckoutPublic() {
               <div className="flex items-center justify-between text-[12.5px]">
                 <span className="text-text-muted">Delivery</span>
                 <span className="font-mono tabular-nums">
-                  {deliveryDue > 0 ? `₦${deliveryDue.toLocaleString()}` : "—"}
+                  {deliveryDue > 0
+                    ? usdLink
+                      ? fmtUsd(deliveryUsd)
+                      : `₦${deliveryDue.toLocaleString()}`
+                    : "—"}
                 </span>
               </div>
             )}
@@ -1245,17 +1300,10 @@ export function OrderCheckoutPublic() {
               <span className="text-[13px] font-semibold">Total</span>
               <div className="text-right">
                 <div className="font-mono font-semibold tabular-nums text-[17px] leading-none">
-                  ₦{orderTotal.toLocaleString()}
+                  {orderTotalUsd != null
+                    ? fmtUsd(orderTotalUsd)
+                    : `₦${orderTotal.toLocaleString()}`}
                 </div>
-                {orderTotalUsd != null && (
-                  <div className="text-[11px] text-text-faint mt-1 font-mono tabular-nums">
-                    ≈ $
-                    {orderTotalUsd.toLocaleString(undefined, {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
-                  </div>
-                )}
               </div>
             </div>
           </div>

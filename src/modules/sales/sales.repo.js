@@ -849,10 +849,34 @@ async function findReconcilablePosOrders({
   client,
   brand,
   amount_ngn,
+  paid_currency = null,
+  paid_amount = null,
   since = null,
   until = null,
   limit = 20,
 }) {
+  if (paid_currency && paid_amount !== null && paid_amount !== undefined) {
+    // A foreign (USD) payment: orders locked to that currency whose balance,
+    // at their own locked rate, is within one unit of what was paid (older
+    // orders carry a whole-dollar ceil total).
+    const { rows } = await ex(client)(
+      `SELECT order_id, order_number, status, total_ngn, amount_paid_ngn,
+              balance_due_ngn, display_currency, display_total, fx_rate_used,
+              created_at
+         FROM ${t(brand, "sales_orders")}
+        WHERE display_currency = $1
+          AND fx_rate_used > 0 AND fx_rate_used <> 1
+          AND balance_due_ngn > 0
+          AND ABS(balance_due_ngn - $2::numeric * fx_rate_used) < fx_rate_used
+          AND status NOT IN ('cancelled','refunded','voided')
+          AND ($3::timestamptz IS NULL OR created_at >= $3)
+          AND ($4::timestamptz IS NULL OR created_at <= $4)
+        ORDER BY created_at DESC
+        LIMIT $5`,
+      [String(paid_currency).toUpperCase(), paid_amount, since, until, limit],
+    );
+    return rows;
+  }
   const { rows } = await ex(client)(
     `SELECT order_id, order_number, status, total_ngn, amount_paid_ngn,
             balance_due_ngn, created_at
@@ -884,20 +908,34 @@ async function paymentExistsByProviderRef({
 }
 
 /**
- * Same dedup check as paymentExistsByProviderRef but WITHOUT an order_id —
- * used by the Nomba ledger reconciliation sweep, which sees a raw account
- * credit and doesn't know which order (if any) it already settled.
+ * Nomba ledger sweep: has any of this ledger row's references already been
+ * recorded as a payment? Two routes to a match:
+ *   • directly — the payment's provider_reference is one of the refs (terminal
+ *     taps and transfers carry transactionId / merchantTxRef / rrn);
+ *   • through the webhook log — an online checkout is stored under OUR
+ *     orderReference ('nomba-PXG-SO-…'), while the ledger names Nomba's own
+ *     transactionId. The Nomba webhook we received carries both, so a recent
+ *     delivery bridges the two. Without this every settled online checkout
+ *     looked "unmatched" to the sweep.
+ * The webhook window is bounded (the sweep looks back minutes, not days) so
+ * the bridge rides the (source, received_at) index.
  */
-async function paymentExistsByProviderRefAnyOrder({
-  client,
-  brand,
-  provider_reference,
-}) {
-  if (!provider_reference) return false;
+async function paymentExistsForNombaLedgerRefs({ client, brand, refs }) {
+  const list = [...new Set((refs || []).filter(Boolean).map(String))];
+  if (!list.length) return false;
   const { rows } = await ex(client)(
-    `SELECT 1 FROM ${t(brand, "sales_order_payments")}
-      WHERE provider_reference = $1 LIMIT 1`,
-    [provider_reference],
+    `SELECT 1 FROM ${t(brand, "sales_order_payments")} p
+      WHERE p.provider_reference = ANY($1::text[])
+         OR p.provider_reference IN (
+              SELECT w.payload->'data'->'order'->>'orderReference'
+                FROM shared.webhook_log w
+               WHERE w.source = 'nomba'
+                 AND w.received_at > now() - interval '3 days'
+                 AND (w.payload->'data'->'transaction'->>'transactionId' = ANY($1::text[])
+                      OR w.payload->'data'->'transaction'->>'sessionId' = ANY($1::text[]))
+            )
+      LIMIT 1`,
+    [list],
   );
   return rows.length > 0;
 }
@@ -1787,7 +1825,7 @@ module.exports = {
   listPayments,
   findReconcilablePosOrders,
   paymentExistsByProviderRef,
-  paymentExistsByProviderRefAnyOrder,
+  paymentExistsForNombaLedgerRefs,
   claimReminderSend,
   createQuotation,
   insertQuotationLine,

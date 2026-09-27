@@ -649,8 +649,15 @@ async function parkUnmatchedPayment({
   sender_name = null,
   sender_bank = null,
   transaction_time = null,
+  // A foreign-currency capture (USD Nomba checkout): what the customer paid,
+  // in that currency. Match converts it at the chosen order's locked rate —
+  // never at a Naira figure guessed here.
+  paid_currency = null,
+  paid_amount = null,
 }) {
   const posRepo = require("../pos/pos.repo");
+  const ccy = paid_currency ? String(paid_currency).toUpperCase() : null;
+  const foreign = ccy && ccy !== "NGN" && paid_amount !== null && paid_amount !== undefined;
   const row = await posRepo.enqueueReconciliation({
     row: {
       webhook_id,
@@ -664,6 +671,8 @@ async function parkUnmatchedPayment({
       // an open order. "0" is honest when we genuinely have no NGN figure —
       // the true amount and currency are in note + raw_payload.
       amount_ngn: amount_ngn || "0",
+      paid_currency: foreign ? ccy : undefined,
+      paid_amount: foreign ? toCurrencyString(money(paid_amount)) : undefined,
       transaction_time,
       provider_reference: reference || null,
       note,
@@ -676,6 +685,8 @@ async function parkUnmatchedPayment({
       recon_id: row.recon_id,
       business: brand || null,
       amount_ngn: amount_ngn || "0",
+      paid_currency: foreign ? ccy : null,
+      paid_amount: foreign ? toCurrencyString(money(paid_amount)) : null,
     });
   }
   logger.warn(
@@ -849,18 +860,30 @@ async function confirmOpayCharge(log) {
  * Naira credit for a foreign-currency (USD) Nomba capture: what the buyer
  * ACTUALLY paid, converted at the rate the checkout was charged at (the rate
  * locked on the order — payment-link.settlementFxRate, the same resolver the
- * link used), capped at what the order still owes.
+ * link used).
  *
  * This replaces "credit the order's whole outstanding balance", which let a
  * $1 "pay any amount" checkout — or a genuine USD Flexi Pay deposit, or an old
  * link paid after Change Order raised the total — settle the entire order and
  * release its stock.
  *
- * Paying the quoted dollar total can land a few Naira either side of the
- * balance (a whole-dollar ceil on older orders, cent rounding on newer ones):
- * the cap absorbs an excess, and a shortfall within one cent settles the
- * balance. Anything beyond is a real overpayment and is logged for staff
- * (paid_amount on the row keeps the truth).
+ *   • Within one cent of the balance (either side) → settles it exactly. A USD
+ *     total and its effective rate round to the cent, so paying the quoted
+ *     total can land a few Naira off total_ngn; that must neither leave the
+ *     order a kobo unpaid nor flag an "overpayment".
+ *   • Short → credits the real value; the order stays part-paid and the
+ *     customer is sent the dollar balance with their pay link
+ *     (payment-comms, order.payment_recorded).
+ *   • Over by less than one whole unit → the balance is settled and the rest
+ *     absorbed as rounding (orders locked before cent pricing carry a
+ *     whole-dollar ceil total, so paying it lands up to $1 over).
+ *   • Over by a whole unit or more → credits the FULL value. The excess stays
+ *     in Customer Deposits 2400 as money held for the customer — the same
+ *     model Change Order uses for a downgrade — and addPayment raises
+ *     order.overpaid so staff refund it or hold it as credit. Capping it (the
+ *     old behaviour) left the Nomba wallet holding dollars the ledger never
+ *     recorded, and the customer's money untracked.
+ *   • On a cancelled/refunded order → parked for a refund decision.
  *
  * Returns { amount_ngn, fx_rate } or { park: note, value_ngn } when the capture
  * cannot be credited automatically.
@@ -881,30 +904,29 @@ async function foreignCaptureCredit({ brand, order, currency, paidAmount }) {
       value_ngn: "0",
     };
   const value = paid.times(money(rate));
+  if (["cancelled", "refunded"].includes(order.status))
+    return {
+      park: `${label} paid on ${order.order_number}, which is ${order.status} — refund it or move it to the customer's new order.`,
+      value_ngn: toCurrencyString(value),
+    };
   const outstanding = money(order.total_ngn).minus(
     money(order.amount_paid_ngn || 0),
   );
-  if (outstanding.lte(0))
-    return {
-      park: `${label} arrived after ${order.order_number} was already fully paid — refund it or hold it as credit.`,
-      value_ngn: toCurrencyString(value),
-    };
-  // A payment within one cent of the balance settles it: a USD total and its
-  // effective rate round to the cent, so paying the quoted total can land a
-  // few Naira short of total_ngn — that must not leave the order a kobo
-  // unpaid (and its stock unreleased).
-  const settles = outstanding.minus(value).lte(money(rate).times("0.01"));
-  const credit = settles || value.gt(outstanding) ? outstanding : value;
-  const over = value.minus(credit);
-  if (over.gt(money(rate)))
+  const cent = money(rate).times("0.01");
+  const unit = money(rate);
+  const over = value.minus(outstanding);
+  let credit = value;
+  if (outstanding.gt(0) && over.abs().lte(cent)) credit = outstanding;
+  else if (outstanding.gt(0) && over.gt(0) && over.lt(unit)) credit = outstanding;
+  if (credit.gt(outstanding))
     logger.warn(
       {
         brand,
         order_id: order.order_id,
         paid: label,
-        overpaid_ngn: toCurrencyString(over),
+        overpaid_ngn: toCurrencyString(credit.minus(outstanding.gt(0) ? outstanding : money(0))),
       },
-      "nomba: foreign capture exceeds the balance by more than rounding — review for refund/credit",
+      "nomba: foreign capture exceeds the balance — credited in full and flagged as an overpayment",
     );
   return { amount_ngn: toCurrencyString(credit), fx_rate: rate };
 }
@@ -1141,6 +1163,8 @@ async function confirmNombaCharge(log) {
         note: isSelfTestReference(reference)
           ? `Gateway self-test checkout — ${settledCurrency} ${foreignAmount}. Not a customer order; ignore this row.`
           : `${settledCurrency} ${foreignAmount} paid with no matching order — match it to the right order to convert at that order's locked rate.`,
+        paid_currency: settledCurrency,
+        paid_amount: foreignAmount,
         raw_event: evt,
         terminal_id: dataTerminal.terminalId || null,
         alias_account_name:
@@ -1200,6 +1224,8 @@ async function confirmNombaCharge(log) {
         amount_ngn: credit.value_ngn,
         reference: paymentRef,
         note: credit.park,
+        paid_currency: settledCurrency,
+        paid_amount: txAmount,
         raw_event: evt,
         terminal_id: dataTerminal.terminalId || null,
         alias_account_name:
@@ -1512,6 +1538,7 @@ async function enqueueReplay({
 }
 
 module.exports = {
+  foreignCaptureCredit,
   receive,
   metaChallenge,
   register,

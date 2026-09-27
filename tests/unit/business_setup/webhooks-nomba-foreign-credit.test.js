@@ -10,9 +10,11 @@
  * marked paid in full and its stock released. The same bug hit honest buyers —
  * a USD Flexi Pay deposit or a part top-up also settled the entire order.
  *
- * Now: credit = paid × the order's locked rate, capped at the balance (the
- * whole-dollar ceil makes a full payment worth up to $1 more). A capture on an
- * already-settled order parks for staff; a replay of a recorded capture is a
+ * Now: credit = paid × the order's locked rate. Rounding either side of the
+ * balance settles it (the whole-dollar ceil makes a full payment worth up to
+ * $1 more); a real overpayment is credited in FULL and flagged by addPayment
+ * (the excess is the customer's money, held in 2400); a capture on a
+ * cancelled order parks for a refund; a replay of a recorded capture is a
  * no-op. Payload `metadata` (unsigned, and never sent by us) is ignored.
  */
 
@@ -158,14 +160,52 @@ test("a full whole-dollar payment settles exactly the balance (ceil surplus abso
   expect(mockPayments[0].paid_amount).toBe("334.00");
 });
 
-test("a USD capture on an already-settled order parks instead of crediting twice", async () => {
+test("a second USD capture on a settled order is recorded in full as an overpayment", async () => {
+  // A real second payment (not a replay): the dollars are in the wallet, so
+  // the order carries them — addPayment flags order.overpaid for a refund or
+  // credit decision instead of the money vanishing into the queue.
   mockOrder = { ...USD_ORDER, amount_paid_ngn: "500000.00" };
+  mockLog = onlineCapture({ amount: 334, currency: "USD" });
+  await confirm();
+
+  expect(mockParked).toHaveLength(0);
+  expect(mockPayments).toHaveLength(1);
+  expect(mockPayments[0]).toMatchObject({
+    amount_ngn: "501000.00",
+    paid_currency: "USD",
+    paid_amount: "334.00",
+  });
+});
+
+test("paying $10 over the balance credits the full value (the excess is held for the customer)", async () => {
+  // Balance ₦500,000 = $333.33; $343.33 is $10 over.
+  mockLog = onlineCapture({ amount: 343.33, currency: "USD" });
+  await confirm();
+  expect(mockPayments[0].amount_ngn).toBe("514995.00");
+});
+
+test("rounding short of the balance settles it; more than a cent short does not", async () => {
+  // One cent at ₦1,500/$ is ₦15.
+  // $333.33 × 1,500 = ₦499,995 — ₦5 short (rounding) → settles the balance.
+  mockLog = onlineCapture({ amount: 333.33, currency: "USD" });
+  await confirm();
+  expect(mockPayments[0].amount_ngn).toBe("500000.00");
+
+  mockPayments.length = 0;
+  // $333.32 × 1,500 = ₦499,980 — ₦20 short → credited as paid.
+  mockLog = onlineCapture({ amount: 333.32, currency: "USD" });
+  await confirm();
+  expect(mockPayments[0].amount_ngn).toBe("499980.00");
+});
+
+test("a USD capture on a cancelled order parks for a refund", async () => {
+  mockOrder = { ...USD_ORDER, status: "cancelled" };
   mockLog = onlineCapture({ amount: 334, currency: "USD" });
   await confirm();
 
   expect(mockPayments).toHaveLength(0);
   expect(mockParked).toHaveLength(1);
-  expect(mockParked[0].note).toMatch(/already fully paid/i);
+  expect(mockParked[0].note).toMatch(/cancelled — refund it/);
   expect(mockParked[0].amount_ngn).toBe("501000.00");
 });
 

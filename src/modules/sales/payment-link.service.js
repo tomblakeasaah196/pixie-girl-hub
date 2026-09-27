@@ -806,6 +806,18 @@ async function previewByToken({ token }) {
 }
 
 /** Dollar preview fields for a USD-locked order (empty for Naira orders). */
+/**
+ * A USD-locked order's outstanding balance in dollars — the figure its pay
+ * page shows and a full-balance checkout charges. Null for a Naira order.
+ */
+function outstandingUsd(order) {
+  const outstanding = money(order.total_ngn).minus(
+    money(order.amount_paid_ngn || 0),
+  );
+  const p = usdPreview(order, outstanding, 0);
+  return p.outstanding_usd === undefined ? null : p.outstanding_usd;
+}
+
 function usdPreview(order, outstanding, minNext) {
   const rate = lockedRate(order, "USD");
   if (!rate) return {};
@@ -880,6 +892,7 @@ module.exports = {
   usdQuoteForLines,
   settlementFxRate,
   lockedCurrency,
+  outstandingUsd,
   previewByToken,
   createPublicPaymentLink,
   createQuotationPaymentLink,

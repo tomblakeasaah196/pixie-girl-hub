@@ -368,9 +368,33 @@ Care & Accessories is on or orders are waiting) · **POS Reconciliation** ·
   exactly as if the gateway had reported it directly — or **Ignore** a false
   positive/duplicate/test with a short reason. A payment whose brand we
   couldn't determine shows in a CEO-only cross-brand section until resolved.
+  A **dollar** payment shows its **$** amount (it has no Naira figure until it's
+  placed): the suggestions are the dollar orders whose balance it pays, and
+  **Match** converts it at *that order's* locked rate and records it as a dollar
+  payment (dollar receipt, Nomba USD wallet in the books). A dollar payment made
+  on a **cancelled** order also lands here, for a refund decision. Every 10
+  minutes the Hub also reads Nomba's own statement and parks any credit it has
+  no payment for; a dollar credit there parks in dollars too.
 - *Where do failed Nomba payments go?* Nowhere — by design there is no such
   pile. A payment we can't place is never dropped or retried silently; it goes
   straight to **POS Reconciliation** for a person to decide.
+- *A customer paid less than the dollar total?* The order is credited with what
+  they actually paid (never the whole balance) and stays **Part paid**; they're
+  sent the balance in dollars with their pay link automatically. Nothing for you
+  to do unless they don't pay it.
+- *A customer paid more than the order total (paid twice, or a dollar payment
+  well over the balance)?* The whole payment is recorded, the order shows an
+  **In credit** pill with the excess, and Finance (Accounting editors and the
+  CEO) get an **Overpayment on <order>** notification. The excess is the
+  customer's money held in **Customer Deposits 2400** — refund it, or keep it as
+  credit for their next order. A few cents over (rounding a dollar total) never
+  counts as an overpayment.
+- *Why does a receipt or payment message show dollars?* Receipts, the "payment
+  received" message and the "order paid" confirmation speak the currency the
+  customer actually paid: a dollar order paid in dollars says "$249.99", with
+  the Naira figure staying in the books. A receipt shows **Paid in USD** under
+  the Naira total. An order paid partly in ₦ and partly in $ keeps a Naira
+  receipt.
 - *Open one order?* Sales → **Orders**, click the order → `/sales/orders/<orderId>`.
 - *Record a payment against an order?* Open the order → **Record Payment**
   (in the action bar at the top, or on the **Payments** card). The form opens
@@ -1185,6 +1209,12 @@ Balance, AR/AP Ageing) · **Journals** · **Chart of Accounts** · **Tax Center*
 - *Add / edit a ledger account?* Accounting → **Chart of Accounts**.
 - *Close a period / file tax?* Accounting → **Periods** / **Tax Center**.
 - *Reconcile the bank?* Accounting → **Bank**.
+- *Where do dollar (USD) payments sit in the books?* In **1141 Nomba Settlement —
+  USD Wallet** (Chart of Accounts), not the Naira **1140 Nomba Settlement**. Each
+  USD capture debits it with the Naira value at the order's locked rate and
+  carries the dollars received on the journal line; Nomba's fee on a dollar
+  payment nets against the same wallet. Post a journal to clear it when Nomba
+  pays the dollars out or converts them.
 - *There's a second journal against one sales order — is that a duplicate?* No.
   A sale posts exactly one **Sales** journal. A second entry described "Order
   amended (change #N) — <order number>" is an **adjusting** journal posted when

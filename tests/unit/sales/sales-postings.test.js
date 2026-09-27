@@ -45,6 +45,45 @@ describe("buildCaptureLines — DR settlement / CR deposits", () => {
   });
 });
 
+describe("buildCaptureLines — a USD Nomba capture lands in the USD wallet", () => {
+  test("debits 1141 and carries the dollars received on the line", () => {
+    const lines = buildCaptureLines({
+      amount_ngn: "374985.00",
+      provider: "nomba",
+      contact_id: "c-1",
+      reference: "FLH-SO-0200",
+      paid_currency: "USD",
+      paid_amount: "249.99",
+    });
+    const { dr, cr } = totals(lines);
+    expect(dr).toBe(cr);
+    expect(lines[0]).toMatchObject({
+      account_code: "1141",
+      debit_ngn: "374985.00",
+      transaction_currency: "USD",
+      debit_transaction_currency: "249.99",
+    });
+    // Deposits are always Naira — the order's credit.
+    expect(lines[1]).toMatchObject({
+      account_code: "2400",
+      credit_ngn: "374985.00",
+    });
+    expect(lines[1].transaction_currency).toBeUndefined();
+  });
+
+  test("a Naira Nomba capture is unchanged (1140, no transaction currency)", () => {
+    const [debit] = buildCaptureLines({
+      amount_ngn: "50000.00",
+      provider: "nomba",
+      reference: "FLH-SO-0201",
+      paid_currency: "NGN",
+      paid_amount: "50000.00",
+    });
+    expect(debit.account_code).toBe("1140");
+    expect(debit.transaction_currency).toBeUndefined();
+  });
+});
+
 describe("buildForfeitLines — abandoned deposits become income", () => {
   test("DR 2400 / CR 4900 for the held amount", () => {
     const lines = buildForfeitLines({

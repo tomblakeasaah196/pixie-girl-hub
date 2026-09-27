@@ -35,6 +35,10 @@ const ENQUEUE_COLS = [
   "sender_name",
   "sender_bank",
   "amount_ngn",
+  // What the customer actually paid when it wasn't Naira (000391): a USD row
+  // is matched by converting paid_amount at the chosen order's locked rate.
+  "paid_currency",
+  "paid_amount",
   "transaction_time",
   "provider_reference",
   // Why this payment could not be auto-matched — shown to staff on the row.

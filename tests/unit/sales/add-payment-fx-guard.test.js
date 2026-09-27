@@ -107,3 +107,54 @@ test("a capture at a different rate than the lock still books the real variance"
   expect(accounting.postFxGainLoss).toHaveBeenCalledTimes(1);
   expect(accounting.postFxGainLoss.mock.calls[0][0].delta_ngn).toBe("10000.00");
 });
+
+// ── Nomba USD wallet + overpayment (Phase 4 books) ──────────────────────
+const outbox = require("../../../src/shared/outbox/outbox");
+
+test("a USD Nomba capture debits the USD wallet (1141) with the dollars received", async () => {
+  mockOrder = { ...BASE_ORDER, display_currency: "USD", fx_rate_used: "1500.000000" };
+  await payUsd({ amount_ngn: "150000.00", paid_amount: "100.00", fx_rate_used: "1500.000000" });
+  const capture = accounting.postEntry.mock.calls.find(
+    ([arg]) => arg.entry.idempotency_key === "payment_capture:pay-1",
+  )[0];
+  expect(capture.lines[0]).toMatchObject({
+    account_code: "1141",
+    debit_ngn: "150000.00",
+    transaction_currency: "USD",
+    debit_transaction_currency: "100.00",
+  });
+});
+
+test("a payment on an already-settled order raises order.overpaid with the excess", async () => {
+  // Paid in full already; a second $100 arrives (paid twice / an old link).
+  mockOrder = {
+    ...BASE_ORDER,
+    status: "paid",
+    display_currency: "USD",
+    fx_rate_used: "1500.000000",
+  };
+  mockPaidSoFar = "500000.00";
+  await payUsd({ amount_ngn: "150000.00", paid_amount: "100.00", fx_rate_used: "1500.000000" });
+  const overpaid = outbox.enqueue.mock.calls.find(
+    ([, evt]) => evt.event_type === "order.overpaid",
+  );
+  expect(overpaid).toBeDefined();
+  expect(overpaid[1]).toMatchObject({
+    dedup_key: "order.overpaid:pay-1",
+    payload: expect.objectContaining({
+      order_id: "ord-1",
+      overpaid_ngn: "150000.00",
+      added_ngn: "150000.00",
+      paid_currency: "USD",
+      paid_amount: "100.00",
+    }),
+  });
+});
+
+test("a part payment is not an overpayment", async () => {
+  mockOrder = { ...BASE_ORDER, display_currency: "USD", fx_rate_used: "1500.000000" };
+  await payUsd({ amount_ngn: "150000.00", paid_amount: "100.00", fx_rate_used: "1500.000000" });
+  expect(
+    outbox.enqueue.mock.calls.some(([, evt]) => evt.event_type === "order.overpaid"),
+  ).toBe(false);
+});

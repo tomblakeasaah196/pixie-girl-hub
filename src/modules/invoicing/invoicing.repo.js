@@ -453,8 +453,9 @@ async function setCreditNoteStatus({ client, brand, id, status, extra = {} }) {
 // ── Receipts ─────────────────────────────────────────────
 async function createReceipt({ client, brand, receipt }) {
   const { rows } = await ex(client)(
-    `INSERT INTO ${t(brand, "receipts")} (receipt_number, invoice_id, payment_id, contact_id, amount_ngn, payment_method, issued_by, notes)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+    `INSERT INTO ${t(brand, "receipts")} (receipt_number, invoice_id, payment_id, contact_id, amount_ngn, payment_method, issued_by, notes,
+       display_amount, display_currency, fx_rate_used)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
     [
       receipt.receipt_number,
       receipt.invoice_id || null,
@@ -464,6 +465,11 @@ async function createReceipt({ client, brand, receipt }) {
       receipt.payment_method,
       receipt.issued_by || null,
       receipt.notes || null,
+      // The currency the customer actually paid in (USD order paid in
+      // dollars) — NULL for a Naira receipt.
+      receipt.display_amount ?? null,
+      receipt.display_currency || null,
+      receipt.fx_rate_used ?? null,
     ],
   );
   return rows[0];

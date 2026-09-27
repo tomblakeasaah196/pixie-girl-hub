@@ -21,6 +21,7 @@ const whatsapp = require("../../services/whatsapp.service");
 const { enqueue } = require("../../jobs/queue");
 const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
+const paidCurrency = require("../sales/paid-currency");
 
 const EVENT_KEY = "receipt.sent";
 const REFERENCE_TYPE = "receipt";
@@ -48,6 +49,23 @@ function ngn(value) {
   );
 }
 
+/**
+ * What the customer paid, in the currency they paid it in: "$249.99" for a USD
+ * order settled in dollars (display_currency/display_amount on the receipt),
+ * "₦374,985.00" otherwise. The Naira figure is the books' — the customer
+ * never saw it.
+ */
+function paidLabel(receipt) {
+  const ccy = String(receipt.display_currency || "NGN").toUpperCase();
+  if (
+    ccy !== "NGN" &&
+    receipt.display_amount !== null &&
+    receipt.display_amount !== undefined
+  )
+    return paidCurrency.formatMoney(receipt.display_amount, ccy);
+  return ngn(receipt.amount_ngn);
+}
+
 function firstName(name) {
   return String(name || "").trim().split(/\s+/)[0] || "";
 }
@@ -57,7 +75,7 @@ function buildReceiptEmail({ brandTokens, receipt, viewUrl }) {
   const brandName = brandTokens.brand_name || "";
   const who = firstName(receipt.contact_name);
   const greeting = who ? `Hello ${T.esc(who)},` : "Hello,";
-  const amount = ngn(receipt.amount_ngn);
+  const amount = paidLabel(receipt);
 
   const content = [
     T.eyebrow("PAYMENT RECEIVED"),
@@ -101,7 +119,7 @@ function buildReceiptWhatsApp({ brandTokens, receipt, viewUrl }) {
   const lines = [
     `*${brandName}*`,
     "",
-    `Receipt ${receipt.receipt_number || ""} — payment of ${ngn(receipt.amount_ngn)} received${receipt.invoice_number ? ` for invoice ${receipt.invoice_number}` : ""}.`,
+    `Receipt ${receipt.receipt_number || ""} — payment of ${paidLabel(receipt)} received${receipt.invoice_number ? ` for invoice ${receipt.invoice_number}` : ""}.`,
     "",
     `View it here: ${viewUrl}`,
   ];
@@ -203,6 +221,7 @@ module.exports = {
   dispatchReceipt,
   publicViewUrl,
   buildReceiptEmail,
+  paidLabel,
   EVENT_KEY,
   REFERENCE_TYPE,
 };

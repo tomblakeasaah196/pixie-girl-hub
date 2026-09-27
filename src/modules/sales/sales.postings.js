@@ -25,14 +25,40 @@ const { money, toCurrencyString } = require("../../utils/money");
  * Payment captured → DR gateway settlement / CR Customer Deposits.
  * POD payments are excluded by the caller — logistics owns COD money
  * movement (collect → 1610, remit → bank).
+ *
+ * A foreign-currency capture (paid_currency + paid_amount) debits that
+ * currency's wallet when the gateway keeps one (Nomba USD → 1141) and carries
+ * the amount actually received on the line's transaction-currency columns, so
+ * the wallet's dollar balance can be read straight off the ledger. The Naira
+ * figure is still the order's credit — deposits are always Naira.
  */
-function buildCaptureLines({ amount_ngn, provider, contact_id, reference }) {
+function buildCaptureLines({
+  amount_ngn,
+  provider,
+  contact_id,
+  reference,
+  paid_currency = null,
+  paid_amount = null,
+}) {
   const amt = toCurrencyString(money(amount_ngn));
+  const ccy = paid_currency ? String(paid_currency).toUpperCase() : null;
+  const foreign =
+    ccy && ccy !== "NGN" && paid_amount !== null && paid_amount !== undefined
+      ? {
+          transaction_currency: ccy,
+          debit_transaction_currency: toCurrencyString(money(paid_amount)),
+        }
+      : {};
   return [
     {
-      account_code: settlementAccountForProvider(provider),
+      account_code: settlementAccountForProvider(provider, ccy),
       debit_ngn: amt,
-      description: `${provider || "direct"} capture — ${reference}`,
+      description: `${provider || "direct"} capture — ${reference}${
+        foreign.transaction_currency
+          ? ` (${ccy} ${foreign.debit_transaction_currency})`
+          : ""
+      }`,
+      ...foreign,
     },
     {
       account_code: ACCOUNTS.CUSTOMER_DEPOSITS,

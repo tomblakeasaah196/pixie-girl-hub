@@ -772,6 +772,21 @@ export function OrderDetailPage() {
               <MoneyText ngn={Number(order.balance_due_ngn)} className="ml-1" />
             </Pill>
           )}
+          {/* Paid more than the total (paid twice, an outdated link, a USD
+              payment well over the balance): the excess is the customer's
+              money, held in Customer Deposits until Finance refunds it or
+              keeps it as credit. */}
+          {order && Number(order.balance_due_ngn) < -0.005 && (
+            <span title="The customer paid more than this order's total. The excess is held for them — refund it or keep it as credit for their next order.">
+              <Pill tone="info">
+                In credit{" "}
+                <MoneyText
+                  ngn={Math.abs(Number(order.balance_due_ngn))}
+                  className="ml-1"
+                />
+              </Pill>
+            </span>
+          )}
           <div className="ml-auto flex items-center gap-2 flex-wrap">
             {/* Accepting money is the primary action on an unpaid order, so it
                 leads the bar. It arms the form down in the Payments card —

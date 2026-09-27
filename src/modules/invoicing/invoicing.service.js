@@ -22,6 +22,7 @@ const docCopy = require("../../services/document-copy");
 const emailRender = require("../email_campaigns/email-render");
 const delivery = require("./invoice-delivery.service");
 const receiptDelivery = require("./receipt-delivery.service");
+const paidCurrency = require("../sales/paid-currency");
 const commsLog = require("../../services/comms-log.service");
 
 const A = (
@@ -1457,6 +1458,27 @@ function listReceipts({ brand, invoice_id }) {
   return repo.listReceipts({ brand, invoice_id });
 }
 /**
+ * The currency the customer paid the invoice's order in (USD order paid in
+ * dollars → the dollars received), so the receipt says what they parted with.
+ * Null for Naira, mixed-currency or order-less invoices — and never throws: a
+ * receipt without the dollar figure beats no receipt.
+ */
+async function paidCurrencyForOrder({ client, brand, order_id }) {
+  if (!order_id) return null;
+  try {
+    const salesRepo = require("../sales/sales.repo");
+    const payments = await salesRepo.listPayments({ client, brand, order_id });
+    return paidCurrency.paidCurrencyDisplay(payments);
+  } catch (err) {
+    logger.warn(
+      { err: err.message, brand, order_id },
+      "receipt: could not read the paid currency — issuing a Naira receipt",
+    );
+    return null;
+  }
+}
+
+/**
  * Issue a receipt record for a fully-paid invoice. Used by the automatic paths
  * (auto-invoice on order.paid + manual full payment) so the Receipts section is
  * never empty for a paid invoice and no one has to issue it by hand. Runs inside
@@ -1476,6 +1498,11 @@ async function issueReceiptInternal({
     brand,
     type: "receipt",
   });
+  const paid = await paidCurrencyForOrder({
+    client,
+    brand,
+    order_id: invoice.order_id,
+  });
   const receipt = await repo.createReceipt({
     client,
     brand,
@@ -1488,6 +1515,7 @@ async function issueReceiptInternal({
       payment_method,
       issued_by: user_id,
       notes: "Auto-issued on payment",
+      ...(paid || {}),
     },
   });
   await A(
@@ -1585,7 +1613,21 @@ async function getReceiptPublicView({ brand, id }) {
     currency: "NGN",
     contact_name: receipt.contact_name,
     amount_ngn: receipt.amount_ngn,
+    // The currency the customer paid in, when it wasn't Naira.
+    paid_currency: receipt.display_currency || null,
+    paid_amount: receipt.display_amount ?? null,
     payment_method: receipt.payment_method,
+  };
+}
+
+/** PDF "Paid in USD  $249.99" row for a receipt settled in another currency. */
+function receiptPaidIn(receipt) {
+  const ccy = String(receipt.display_currency || "NGN").toUpperCase();
+  if (ccy === "NGN" || receipt.display_amount === null || receipt.display_amount === undefined)
+    return null;
+  return {
+    label: `Paid in ${ccy}`,
+    value: paidCurrency.formatMoney(receipt.display_amount, ccy),
   };
 }
 
@@ -1901,6 +1943,7 @@ async function publicReceiptPdf({ id }) {
         shipping_fee_ngn: invoice ? invoice.shipping_fee_ngn : "0",
         tax_amount_ngn: invoice ? invoice.tax_amount_ngn : "0",
         total_ngn: receipt.amount_ngn,
+        paid_in: receiptPaidIn(receipt),
         notes_label: copy ? copy.note_label : "Note",
         notes: copy ? docCopy.fillTokens(copy.note || "", {}) : "",
         thanks: copy ? docCopy.fillTokens(copy.message || "", {}) : "",

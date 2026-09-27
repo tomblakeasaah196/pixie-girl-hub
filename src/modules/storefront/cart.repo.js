@@ -162,18 +162,23 @@ async function upsertCartItem({ client, item }) {
   return rows[0];
 }
 
-async function updateCartItemQuantity({ client, cart_item_id, quantity }) {
+// Both writes are scoped to the caller's own cart: a cart_item_id alone is not
+// authority — without the cart_id filter any guest could edit or empty another
+// shopper's bag by item id.
+async function updateCartItemQuantity({ client, cart_id, cart_item_id, quantity }) {
   const { rows } = await ex(client)(
-    `UPDATE shared.cart_items SET quantity = $2 WHERE cart_item_id = $1 RETURNING *`,
-    [cart_item_id, quantity],
+    `UPDATE shared.cart_items SET quantity = $2
+      WHERE cart_item_id = $1 AND cart_id = $3 RETURNING *`,
+    [cart_item_id, quantity, cart_id],
   );
   return rows[0] || null;
 }
 
-async function removeCartItem({ client, cart_item_id }) {
-  await ex(client)(`DELETE FROM shared.cart_items WHERE cart_item_id = $1`, [
-    cart_item_id,
-  ]);
+async function removeCartItem({ client, cart_id, cart_item_id }) {
+  await ex(client)(
+    `DELETE FROM shared.cart_items WHERE cart_item_id = $1 AND cart_id = $2`,
+    [cart_item_id, cart_id],
+  );
 }
 
 async function clearCartItems({ client, cart_id }) {

@@ -559,11 +559,37 @@ async function quoteCart({ slug, brand, brandHint, input }) {
   const hasCareItems = dealLines.some((l) => l.kind === "retail");
   const isRetailOnly =
     hasCareItems && dealLines.every((l) => l.kind === "retail");
+  // VAT on taxable Care & Accessories lines. createOrder ADDS it on top of the
+  // line price, so without it the landing total would read less than the
+  // gateway charges. Wig lines are unchanged.
+  const careTax = dealLines.reduce(
+    (sum, l) =>
+      l.kind === "retail" && l.vat_rate
+        ? sum.plus(
+            money(
+              toCurrencyString(
+                money(l.unit_price_ngn || 0)
+                  .times(Number(l.quantity) || 0)
+                  .times(money(l.vat_rate)),
+              ),
+            ),
+          )
+        : sum,
+    money(0),
+  );
 
   return {
     slug: campaign.slug,
     currency: "NGN",
     ...breakdown,
+    tax_ngn: toCurrencyString(careTax),
+    ...(careTax.gt(0) && breakdown.final_total_ngn !== undefined
+      ? {
+          final_total_ngn: toCurrencyString(
+            money(breakdown.final_total_ngn).plus(careTax),
+          ),
+        }
+      : {}),
     has_care_items: hasCareItems,
     care_delivery_notice: hasCareItems ? "EXTRA DELIVERY FEES MAY APPLY" : null,
     care_only: isRetailOnly,
@@ -906,6 +932,8 @@ async function priceQuoteLine({ brand, item, campaign_id }) {
         wig_units: 0,
         floor_ngn: null,
         name: priced.name,
+        // Sales adds a taxable item's VAT on top — the quote must show it.
+        vat_rate: priced.taxable && priced.vat_rate ? priced.vat_rate : null,
       };
     }
   }
@@ -988,6 +1016,8 @@ async function priceQuoteLine({ brand, item, campaign_id }) {
         wig_units: 0,
         floor_ngn: null,
         name: priced.name,
+        // Sales adds a taxable item's VAT on top — the quote must show it.
+        vat_rate: priced.taxable && priced.vat_rate ? priced.vat_rate : null,
       };
     }
 
@@ -1150,6 +1180,22 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
   let bundlePriceDiscount = money(0);
 
   for (const cartItem of input.cart) {
+    // Only a Care & Accessories SKU may arrive as a bare `variant_id`. Anything
+    // else keeps the pre-retail routing below (styled / product / refused): a
+    // non-retail variant id straight from the browser would skip campaign
+    // membership and styled pricing and sell private hair-base stock at its
+    // base channel price (often ₦0).
+    let retailVariant = null;
+    if (!cartItem.bundle_id && cartItem.variant_id) {
+      const { rows: vrows } = await query(
+        `SELECT pv.variant_id, pv.product_id, p.catalogue_role
+           FROM ${resolvedBrand}.product_variants pv
+           JOIN ${resolvedBrand}.products p ON p.product_id = pv.product_id
+          WHERE pv.variant_id = $1 AND pv.is_active = true`,
+        [cartItem.variant_id],
+      );
+      if (vrows[0] && vrows[0].catalogue_role === "retail") retailVariant = vrows[0];
+    }
     if (cartItem.bundle_id) {
       // Resolve the bundle to variant-level lines (INCLUDING styled components,
       // which were previously skipped → ₦0 bundles) and accumulate the discount
@@ -1163,19 +1209,9 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
       });
       orderLines.push(...resolved.orderLines);
       bundlePriceDiscount = bundlePriceDiscount.plus(resolved.discountNgn);
-    } else if (cartItem.variant_id) {
-      const { rows: vrows } = await query(
-        `SELECT pv.variant_id, pv.product_id, p.catalogue_role
-           FROM ${resolvedBrand}.product_variants pv
-           JOIN ${resolvedBrand}.products p ON p.product_id = pv.product_id
-          WHERE pv.variant_id = $1 AND pv.is_active = true`,
-        [cartItem.variant_id],
-      );
-      const vr = vrows[0];
-      if (
-        vr &&
-        (vr.catalogue_role === "retail")
-      ) {
+    } else if (retailVariant) {
+      const vr = retailVariant;
+      {
         const { rows: mem } = await query(
           `SELECT 1 FROM ${resolvedBrand}.sales_campaign_products
             WHERE campaign_id = $1 AND product_id = $2 AND include_exclude = 'include'`,
@@ -1205,11 +1241,6 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
           variant_label_snapshot: sellable.variant_label || null,
           sku_snapshot: sellable.sku,
           is_retail: true,
-        });
-      } else {
-        orderLines.push({
-          variant_id: cartItem.variant_id,
-          quantity: cartItem.quantity,
         });
       }
     } else if (cartItem.styled_variant_id) {
@@ -1337,17 +1368,15 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
         `SELECT catalogue_role FROM ${resolvedBrand}.products WHERE product_id = $1`,
         [cartItem.product_id],
       );
-      if (
-        prows[0] &&
-        (prows[0].catalogue_role === "retail")
-      ) {
-        if (!cartItem.variant_id) {
-          throw new AppError(
-            "RETAIL_VARIANT_REQUIRED",
-            "An exact Care & Accessories SKU is required",
-            422,
-          );
-        }
+      if (prows[0] && prows[0].catalogue_role === "retail") {
+        // A live retail SKU was handled above; reaching here means no variant
+        // or one that is not an active SKU of a Care item — never fall back to
+        // the product's default bottle size.
+        throw new AppError(
+          "RETAIL_VARIANT_REQUIRED",
+          "An exact Care & Accessories SKU is required",
+          422,
+        );
       }
       const { rows } = await query(
         `SELECT variant_id FROM ${resolvedBrand}.product_variants
@@ -2171,4 +2200,5 @@ module.exports = {
   // Exported for unit tests / reuse.
   computeBundleDiscount,
   resolveBundleForCheckout,
+  priceQuoteLine,
 };

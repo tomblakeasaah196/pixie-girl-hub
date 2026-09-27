@@ -283,7 +283,7 @@ export const getBundleDetail = (slug: string, ctx?: ApiContext) =>
 
 // --- Care & Accessories (PXG retail) ---
 // Typed retail catalogue reads. PXG-only and gated server-side: every other
-// brand (and PXG with FEATURE_PXG_CARE_ACCESSORIES_ENABLED off) gets a 404,
+// brand (and PXG with Care & Accessories off in Catalogue → Config) gets a 404,
 // so `getCareEnabled` is the ONLY safe way to decide whether to render the
 // section at all. Canonical web route is /care-and-accessories/:slug; the
 // backend path is /care/:slug.

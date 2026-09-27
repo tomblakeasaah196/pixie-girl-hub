@@ -17,7 +17,7 @@ import { useCareEnabled } from "@/components/care";
  * Server rules honoured here: one row per ACTIVE, PRICED, PUBLISHED retail SKU
  * (a 50 ml and a 100 ml are two separate cards, because each is its own exact
  * SKU with its own stock); PXG-only and gated, so the whole section disappears
- * for FLH and for PXG until FEATURE_PXG_CARE_ACCESSORIES_ENABLED is on.
+ * for FLH and for PXG while Care & Accessories is off (Catalogue → Config).
  */
 export const Route = createFileRoute("/care-and-accessories")({
   head: () => ({

@@ -266,11 +266,13 @@ async function upsertConfig({ client, brand, patch, user_id }) {
        (singleton, size_guide_title, head_size_guide_md, head_size_video_url,
         categories_enabled, allow_base_in_collections_bundles,
         preorder_enabled, preorder_min_weeks, preorder_max_weeks,
-        rewig_enabled, rewig_mode, rewig_direction, updated_by)
+        rewig_enabled, rewig_mode, rewig_direction, care_accessories_enabled,
+        updated_by)
      VALUES (true, COALESCE($1,'How to find your head size'), $2, $6,
              COALESCE($3,false), COALESCE($5,false),
              COALESCE($8,true), COALESCE($9,4), COALESCE($10,8),
-             COALESCE($11,true), COALESCE($12,'automatic'), COALESCE($13,'down_first'), $4)
+             COALESCE($11,true), COALESCE($12,'automatic'), COALESCE($13,'down_first'),
+             COALESCE($14,true), $4)
      ON CONFLICT (singleton) DO UPDATE SET
        size_guide_title = COALESCE(EXCLUDED.size_guide_title, ${t(brand, "catalogue_config")}.size_guide_title),
        head_size_guide_md = COALESCE(EXCLUDED.head_size_guide_md, ${t(brand, "catalogue_config")}.head_size_guide_md),
@@ -283,6 +285,7 @@ async function upsertConfig({ client, brand, patch, user_id }) {
        rewig_enabled = COALESCE($11, ${t(brand, "catalogue_config")}.rewig_enabled),
        rewig_mode = COALESCE($12, ${t(brand, "catalogue_config")}.rewig_mode),
        rewig_direction = COALESCE($13, ${t(brand, "catalogue_config")}.rewig_direction),
+       care_accessories_enabled = COALESCE($14, ${t(brand, "catalogue_config")}.care_accessories_enabled),
        updated_by = EXCLUDED.updated_by,
        updated_at = now()
      RETURNING *`,
@@ -300,6 +303,7 @@ async function upsertConfig({ client, brand, patch, user_id }) {
       patch.rewig_enabled ?? null,
       patch.rewig_mode ?? null,
       patch.rewig_direction ?? null,
+      patch.care_accessories_enabled ?? null,
     ],
   );
   return rows[0];

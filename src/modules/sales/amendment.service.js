@@ -200,7 +200,7 @@ async function buildLines({ client, brand, order, inputLines }) {
     // swap to a different care SKU arrives as a NEW line (no line_id) and is
     // validated here.
     if (ctx.catalogue_role === "retail" && !prior) {
-      careGate.requireEnabled(brand);
+      await careGate.requireEnabled(brand);
       if (
         ctx.product_deleted ||
         ctx.retail_status !== "live" ||

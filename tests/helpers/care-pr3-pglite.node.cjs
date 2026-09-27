@@ -300,7 +300,7 @@ test("/o checkout: the public form only sells what a live link offers (no forged
   const sf = require("../../src/modules/storefront/storefront.service");
   const submit = (extra) => sf.submitOrderForm({ brand: PXG, request_id: `t-o-f-${Math.random()}`, input: formInput(extra) });
   const count = async () => (await q(`SELECT count(*)::int AS n FROM pixiegirl.sales_orders`)).rows[0].n;
-  const before = await count();
+  const ordersAtStart = await count();
 
   // No link → no product lines (any variant id could be bought off the API).
   await assert.rejects(submit({ items: [{ variant_id: IDS.vWig, quantity: 1 }] }), (e) => e.code === "ORDER_LINK_REQUIRED");
@@ -332,7 +332,7 @@ test("/o checkout: the public form only sells what a live link offers (no forged
   const freeSlug = await linkFor([{ kind: "base", product_id: freeBase, qty: 1 }]);
   await assert.rejects(submit({ order_link_slug: freeSlug, items: [{ variant_id: freeVar, quantity: 1 }] }), (e) => e.code === "ITEM_UNPRICED");
 
-  assert.equal(await count(), before, "no refused checkout created an order");
+  assert.equal(await count(), ordersAtStart, "no refused checkout created an order");
 });
 
 test("/o checkout: service bookings carry the server's price, never the posted one", async () => {
@@ -511,18 +511,26 @@ test("review: a lower fee on an over-paid order needs refund evidence; a credit 
   assert.equal(Number((await orderRow(order.order_id)).shipping_fee_ngn), 2500);
 });
 
-test("review: turning the rollout flag OFF never strands an already-queued order", async () => {
-  const { config } = require("../../src/config/env");
+test("review: switching Care & Accessories OFF never strands an already-queued order", async () => {
+  const gate = require("../../src/modules/catalogue/care-accessories.gate");
+  const setCare = async (on) => {
+    await q(`UPDATE pixiegirl.catalogue_config SET care_accessories_enabled = $1`, [on]);
+    gate.invalidate();
+  };
   const order = await retailDispatchOrder({ shipping: 2000 });
-  config.FEATURE_PXG_CARE_ACCESSORIES_ENABLED = false;
+  await setCare(false);
   try {
+    // OFF really stops new Care selling…
+    assert.equal(await gate.enabled(PXG), false);
+    await assert.rejects(retailDispatchOrder({ shipping: 2000 }), (e) => e.code === "NOT_FOUND");
+    // …but the order already placed still clears its fee review.
     const queue = await dr().listQueue({ brand: PXG, page: 1, page_size: 100 });
     assert.ok(queue.data.some((r) => r.order_id === order.order_id));
     const c = await dr().confirmFee({ brand: PXG, user: STAFF, request_id: "t", order_id: order.order_id });
     assert.equal(c.review.status, "confirmed");
     assert.equal((await orderRow(order.order_id)).needs_delivery_review, false);
   } finally {
-    config.FEATURE_PXG_CARE_ACCESSORIES_ENABLED = true;
+    await setCare(true);
   }
 });
 

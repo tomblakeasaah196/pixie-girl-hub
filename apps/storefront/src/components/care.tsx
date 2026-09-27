@@ -12,8 +12,8 @@ import { getCareEnabled } from "@/lib/storefront";
  *     unknown future charge, and the fee is genuinely undetermined until a
  *     staff member calculates it (see the guide's money-path gate).
  *
- *  2. The section is PXG-only and feature-gated on the SERVER. FLH, and PXG
- *     with FEATURE_PXG_CARE_ACCESSORIES_ENABLED off, both 404 — so the nav
+ *  2. The section is PXG-only and switched on the SERVER. FLH, and PXG with
+ *     Care & Accessories off (Catalogue → Config), both 404 — so the nav
  *     link and the routes must ask `getCareEnabled` before rendering rather
  *     than trusting the host or a client flag.
  */

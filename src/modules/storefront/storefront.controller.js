@@ -129,7 +129,7 @@ async function getCareProduct(req, res) {
 
 async function careEnabled(req, res) {
   res.json({
-    data: { enabled: service.careEnabled({ brand: brandHint(req) }) },
+    data: { enabled: await service.careEnabled({ brand: brandHint(req) }) },
   });
 }
 

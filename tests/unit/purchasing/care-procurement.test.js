@@ -1,7 +1,13 @@
 "use strict";
 
-jest.mock("../../../src/config/env", () => ({ config: { FEATURE_PXG_CARE_ACCESSORIES_ENABLED: true } }));
-jest.mock("../../../src/config/database", () => ({ transaction: jest.fn((fn) => fn({ query: jest.fn() })) }));
+let mockCareOn = true;
+jest.mock("../../../src/config/env", () => ({ config: {} }));
+jest.mock("../../../src/config/database", () => ({
+  transaction: jest.fn((fn) => fn({ query: jest.fn() })),
+  // The Catalogue → Config Care & Accessories switch the gate reads.
+  query: jest.fn(async (sql) =>
+    /care_accessories_enabled/.test(sql) ? { rows: [{ care_accessories_enabled: mockCareOn }] } : { rows: [] }),
+}));
 jest.mock("../../../src/middleware/audit", () => ({ audit: jest.fn() }));
 jest.mock("../../../src/modules/purchasing/purchasing.repo");
 jest.mock("../../../src/modules/purchasing/purchasing.events", () => ({ emit: jest.fn() }));
@@ -17,7 +23,9 @@ const stockRepo = require("../../../src/modules/stock/stock.repo");
 const catalogue = require("../../../src/modules/catalogue/catalogue.repo");
 const vault = require("../../../src/modules/catalogue/cost_vault.service");
 const stock = require("../../../src/modules/stock/stock.service");
-const { config } = require("../../../src/config/env");
+const gate = require("../../../src/modules/catalogue/care-accessories.gate");
+// Flip the Catalogue → Config switch (the gate caches it, so drop the cache).
+const setCare = (on) => { mockCareOn = on; gate.invalidate(); };
 const purchasing = require("../../../src/modules/purchasing/purchasing.service");
 const payables = require("../../../src/modules/purchasing/purchasing.payables.service");
 const ctx = { brand: "pixiegirl", user: { user_id: "buyer" }, request_id: "req1" };
@@ -28,7 +36,7 @@ const grnLine = (patch = {}) => ({ po_line_id: "po-line", variant_id: "v100", qt
   qty_received: 2, qty_rejected: 0, unit_cost_ngn: 500, ...patch });
 
 beforeEach(() => {
-  config.FEATURE_PXG_CARE_ACCESSORIES_ENABLED = true;
+  setCare(true);
   repo.nextNumber.mockResolvedValue("PXG-PO-1");
   repo.createPo.mockResolvedValue({ po_id: "po1" });
   repo.getPo.mockResolvedValue({ po_id: "po1", supplier_id: "supplier" });
@@ -41,7 +49,7 @@ beforeEach(() => {
   repo.createGrn.mockResolvedValue({ grn_id: "grn1" });
   repo.getGrn.mockResolvedValue({ grn_id: "grn1", status: "draft", po_id: "po1", received_at_location_id: "loc1", lines: [grnLine()] });
 });
-afterEach(() => { config.FEATURE_PXG_CARE_ACCESSORIES_ENABLED = false; });
+afterEach(() => { setCare(false); });
 
 test("PO must name exact active SKU; no fallback default for PXG retail", async () => {
   await expect(purchasing.createPo({ ...ctx, input: poInput({ product_id: "oil" }) })).rejects.toThrow(/exact SKU/);
@@ -51,9 +59,9 @@ test("PO must name exact active SKU; no fallback default for PXG retail", async 
   expect(repo.addPoLine).toHaveBeenCalledWith(expect.objectContaining({ line: expect.objectContaining({ variant_id: "v100" }) }));
 });
 
-test("FLH/flag-off cannot purchase or link PXG Care via forged variant IDs", async () => {
+test("FLH/switch-off cannot purchase or link PXG Care via forged variant IDs", async () => {
   await expect(purchasing.createPo({ ...ctx, brand: "faitlynhair", input: poInput({ variant_id: "v100" }) })).rejects.toThrow();
-  config.FEATURE_PXG_CARE_ACCESSORIES_ENABLED = false;
+  setCare(false);
   await expect(purchasing.createPo({ ...ctx, input: poInput({ variant_id: "v100" }) })).rejects.toThrow();
   expect(repo.addPoLine).not.toHaveBeenCalled();
 });

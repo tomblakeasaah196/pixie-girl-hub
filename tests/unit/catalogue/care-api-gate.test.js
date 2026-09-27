@@ -7,7 +7,13 @@ require("express-async-errors");
 const express = require("express");
 const request = require("supertest");
 
-jest.mock("../../../src/config/env", () => ({ config: { FEATURE_PXG_CARE_ACCESSORIES_ENABLED: false, MEDIA_MAX_FILE_SIZE_MB: 10 } }));
+let mockCareOn = false;
+jest.mock("../../../src/config/env", () => ({ config: { MEDIA_MAX_FILE_SIZE_MB: 10 } }));
+jest.mock("../../../src/config/database", () => ({
+  // The Catalogue → Config Care & Accessories switch the gate reads.
+  query: jest.fn(async (sql) =>
+    /care_accessories_enabled/.test(sql) ? { rows: [{ care_accessories_enabled: mockCareOn }] } : { rows: [] }),
+}));
 jest.mock("../../../src/middleware/rbac", () => ({
   requirePermission: (module, action) => (req, res, next) =>
     req.user?.permissions?.includes(`${module}.${action}`) ? next() : res.status(403).json({ error: { code: "DENIED" } }),
@@ -27,7 +33,9 @@ jest.mock("../../../src/modules/catalogue/usd-reprice.controller", () =>
 jest.mock("../../../src/modules/catalogue/shades.controller", () =>
   new Proxy({}, { get: () => jest.fn((_req, res) => res.json({ data: "shade handler" })) }));
 
-const { config } = require("../../../src/config/env");
+const gate = require("../../../src/modules/catalogue/care-accessories.gate");
+// Flip the Catalogue → Config switch (the gate caches it, so drop the cache).
+const setCare = (on) => { mockCareOn = on; gate.invalidate(); };
 const service = require("../../../src/modules/catalogue/care-accessories.service");
 const productRepo = require("../../../src/modules/catalogue/catalogue.repo");
 const router = require("../../../src/modules/catalogue/catalogue.routes");
@@ -44,7 +52,7 @@ const careUrl = "/catalogue/care-accessories";
 const id = "11111111-1111-4111-8111-111111111111";
 
 beforeEach(() => {
-  config.FEATURE_PXG_CARE_ACCESSORIES_ENABLED = false;
+  setCare(false);
   productRepo.findProductById.mockResolvedValue({ product_id: id, catalogue_role: "retail" });
   productRepo.findProductRole.mockResolvedValue("retail");
   service.list.mockResolvedValue({ data: [], meta: { total: 0 } });
@@ -52,18 +60,18 @@ beforeEach(() => {
   service.getOne.mockResolvedValue({ product_id: id });
 });
 
-test("only PXG reports availability true, and only after explicit server flag", async () => {
+test("only PXG reports availability true, and only while the Config switch is on", async () => {
   expect((await request(app).get(`${careUrl}/availability`)).body.data).toEqual({ enabled: false });
-  config.FEATURE_PXG_CARE_ACCESSORIES_ENABLED = true;
+  setCare(true);
   expect((await request(app).get(`${careUrl}/availability`)).body.data).toEqual({ enabled: true });
   expect((await request(app).get(`${careUrl}/availability`).set("x-test-brand", "faitlynhair")).body.data).toEqual({ enabled: false });
 });
 
-test("FLH and flag-off block forged catalogue and legacy image/variant URL before handler", async () => {
+test("FLH and switch-off block forged catalogue and legacy image/variant URL before handler", async () => {
   expect((await request(app).get(careUrl)).status).toBe(404);
   expect((await request(app).get(`/catalogue/products/${id}/images`)).status).toBe(404);
   expect(service.list).not.toHaveBeenCalled();
-  config.FEATURE_PXG_CARE_ACCESSORIES_ENABLED = true;
+  setCare(true);
   for (const url of [careUrl, `${careUrl}/${id}`, `/catalogue/products/${id}/variants`, `/catalogue/products/${id}/images`])
     expect((await request(app).get(url).set("x-test-brand", "faitlynhair")).status).toBe(404);
   expect(service.list).not.toHaveBeenCalled();
@@ -71,7 +79,7 @@ test("FLH and flag-off block forged catalogue and legacy image/variant URL befor
 });
 
 test("PXG-only list/detail/categories are routed, but every read still needs catalogue.view", async () => {
-  config.FEATURE_PXG_CARE_ACCESSORIES_ENABLED = true;
+  setCare(true);
   expect((await request(app).get(careUrl).set("x-test-perms", "stock.view")).status).toBe(403);
   expect((await request(app).get(careUrl)).status).toBe(200);
   expect(service.list).toHaveBeenCalledWith(expect.objectContaining({ brand: "pixiegirl" }));
@@ -80,7 +88,7 @@ test("PXG-only list/detail/categories are routed, but every read still needs cat
 });
 
 test("create requires Catalogue Create and correct schema; publish requires Catalogue Approve", async () => {
-  config.FEATURE_PXG_CARE_ACCESSORIES_ENABLED = true;
+  setCare(true);
   expect((await request(app).post(careUrl).send({ name: "Comb" })).status).toBe(403);
   const invalid = await request(app).post(careUrl).set("x-test-perms", "catalogue.create").send({ name: "Comb", batch_number: "x" });
   expect(invalid.status).toBeGreaterThanOrEqual(400);

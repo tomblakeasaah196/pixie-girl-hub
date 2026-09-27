@@ -2485,8 +2485,8 @@ async function getCareProduct({ brand, slug }) {
 }
 
 // Is Care & Accessories sellable on this brand? Drives the storefront nav
-// link + routes so FLH (or a gated-off PXG) never offers the section.
-function careEnabled({ brand }) {
+// link + routes so FLH (or a switched-off PXG) never offers the section.
+async function careEnabled({ brand }) {
   return careGate.enabled(brand);
 }
 

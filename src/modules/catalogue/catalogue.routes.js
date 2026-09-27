@@ -51,13 +51,12 @@ router.patch(
 );
 router.delete("/categories/:catId", can("delete"), c.archiveCategory);
 
-// PXG Care & Accessories (PR 1: staff authoring/stock ONLY). All mutations
-// require the server-side brand allowlist + default-off flag, independently of
-// UI tab visibility. The readiness route lets the admin hide the tab when off.
+// PXG Care & Accessories. Every route below requires the server-side brand
+// allowlist + the Catalogue → Config switch, independently of UI tab
+// visibility. The readiness route lets the admin hide the tab when off.
 router.get("/care-accessories/availability", can("view"), care.availability);
 router.use("/care-accessories", (req, _res, next) => {
-  careGate.requireEnabled(req.brand);
-  next();
+  careGate.requireEnabled(req.brand).then(() => next(), next);
 });
 router.get("/care-accessories/categories", can("view"), care.categories);
 router.get("/care-accessories/sellable", can("view"), care.sellable);
@@ -111,11 +110,10 @@ router.get("/products/trash", can("view"), c.listTrash);
 // through to the handler, which owns its own not-found answer.
 router.use("/products/:id", (req, _res, next) => {
   productRepo.findProductRole({ brand: req.brand, id: req.params.id })
-    .then((role) => {
-      if (role === "retail") careGate.requireEnabled(req.brand);
-      next();
+    .then(async (role) => {
+      if (role === "retail") await careGate.requireEnabled(req.brand);
     })
-    .catch(next);
+    .then(() => next(), next);
 });
 router.get("/products/:id", can("view"), c.getProduct);
 router.patch(

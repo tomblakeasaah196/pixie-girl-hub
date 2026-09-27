@@ -86,12 +86,12 @@ async function createOne(client, brand, user, request_id, input, source) {
 }
 
 async function create({ brand, user, request_id, input }) {
-  gate.requireEnabled(brand);
+  await gate.requireEnabled(brand);
   return transaction((client) => createOne(client, brand, user, request_id, input, "authoring"));
 }
 
 async function importProducts({ brand, user, request_id, input }) {
-  gate.requireEnabled(brand);
+  await gate.requireEnabled(brand);
   return transaction(async (client) => {
     const created = [];
     for (const row of input.products)
@@ -101,7 +101,7 @@ async function importProducts({ brand, user, request_id, input }) {
 }
 
 async function clone({ brand, user, request_id, id, input }) {
-  gate.requireEnabled(brand);
+  await gate.requireEnabled(brand);
   return transaction(async (client) => {
     const source = await load(client, brand, id); // never a base or cross-brand id
     const originals = (await baseRepo.listVariants({ client, brand, product_id: id }))
@@ -137,7 +137,7 @@ async function clone({ brand, user, request_id, id, input }) {
 }
 
 async function list({ brand, q, category_id, status, page = 1, page_size = 25 }) {
-  gate.requireEnabled(brand);
+  await gate.requireEnabled(brand);
   const res = await baseRepo.findAllProducts({
     brand, page, page_size, offset: (page - 1) * page_size,
     filters: { catalogue_role: "retail", q, category_id, retail_status: status },
@@ -149,7 +149,7 @@ async function list({ brand, q, category_id, status, page = 1, page_size = 25 })
 }
 
 async function getOne({ brand, id }) {
-  gate.requireEnabled(brand);
+  await gate.requireEnabled(brand);
   const p = await load(null, brand, id);
   const [variants, images, health] = await Promise.all([
     baseRepo.listVariants({ brand, product_id: id, includeOnHand: true }),
@@ -170,12 +170,12 @@ async function getOne({ brand, id }) {
 }
 
 async function categories({ brand }) {
-  gate.requireEnabled(brand);
+  await gate.requireEnabled(brand);
   return repo.categories({ brand });
 }
 
 async function update({ brand, user, request_id, id, patch }) {
-  gate.requireEnabled(brand);
+  await gate.requireEnabled(brand);
   return transaction(async (client) => {
     const before = await load(client, brand, id);
     if (patch.category_id !== undefined)
@@ -203,7 +203,7 @@ async function update({ brand, user, request_id, id, patch }) {
 }
 
 async function publish({ brand, user, request_id, id }) {
-  gate.requireEnabled(brand);
+  await gate.requireEnabled(brand);
   return transaction(async (client) => {
     const p = await load(client, brand, id);
     if (p.retail_status === "archived")
@@ -225,7 +225,7 @@ async function publish({ brand, user, request_id, id }) {
 }
 
 async function unpublish({ brand, user, request_id, id, archive = false }) {
-  gate.requireEnabled(brand);
+  await gate.requireEnabled(brand);
   return transaction(async (client) => {
     const before = await load(client, brand, id);
     const status = archive ? "archived" : "draft";
@@ -241,7 +241,7 @@ async function unpublish({ brand, user, request_id, id, archive = false }) {
 }
 
 async function addVariant({ brand, user, request_id, id, input }) {
-  gate.requireEnabled(brand);
+  await gate.requireEnabled(brand);
   return transaction(async (client) => {
     const p = await load(client, brand, id);
     if (p.retail_status === "archived")
@@ -265,7 +265,7 @@ async function addVariant({ brand, user, request_id, id, input }) {
 }
 
 async function updateVariant({ brand, user, request_id, id, variant_id, patch }) {
-  gate.requireEnabled(brand);
+  await gate.requireEnabled(brand);
   return transaction(async (client) => {
     const p = await load(client, brand, id);
     const before = await baseRepo.getVariant({ client, brand, product_id: id, variant_id });
@@ -291,7 +291,7 @@ async function updateVariant({ brand, user, request_id, id, variant_id, patch })
 }
 
 async function deactivateVariant({ brand, user, request_id, id, variant_id }) {
-  gate.requireEnabled(brand);
+  await gate.requireEnabled(brand);
   return transaction(async (client) => {
     await load(client, brand, id);
     const before = await baseRepo.getVariant({ client, brand, product_id: id, variant_id });
@@ -310,7 +310,7 @@ async function deactivateVariant({ brand, user, request_id, id, variant_id }) {
 }
 
 async function remove({ brand, user, request_id, id }) {
-  gate.requireEnabled(brand);
+  await gate.requireEnabled(brand);
   return transaction(async (client) => {
     await load(client, brand, id);
     const p = await repo.trash({ client, brand, id });
@@ -326,13 +326,13 @@ async function remove({ brand, user, request_id, id }) {
 }
 
 async function listTrash({ brand, page = 1, page_size = 25 }) {
-  gate.requireEnabled(brand);
+  await gate.requireEnabled(brand);
   const { rows, total } = await repo.trashList({ brand, page_size, offset: (page - 1) * page_size });
   return { data: rows, meta: { page, page_size, total, has_more: page * page_size < total } };
 }
 
 async function restore({ brand, user, request_id, id }) {
-  gate.requireEnabled(brand);
+  await gate.requireEnabled(brand);
   return transaction(async (client) => {
     const p = await repo.trashed({ client, brand, id });
     if (!p) throw new NotFoundError("Care & Accessories item");

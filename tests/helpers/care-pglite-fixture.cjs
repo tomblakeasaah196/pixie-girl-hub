@@ -12,7 +12,6 @@ const fs = require("fs");
 const path = require("path");
 const { PGlite } = require("@electric-sql/pglite");
 
-process.env.FEATURE_PXG_CARE_ACCESSORIES_ENABLED = "true";
 process.env.ENABLE_AUDIT_LOG = "true";
 // Env schema validation dummies — no real connection is ever opened; the pg
 // pool is swapped for PGlite before any repo runs a query.
@@ -37,6 +36,9 @@ const T95 = fs.readFileSync(path.resolve(__dirname, "../../migrations/template/0
 // when it tries to queue itself for manual fee review (correctly: an order that
 // cannot be queued must not be placed).
 const T96 = fs.readFileSync(path.resolve(__dirname, "../../migrations/template/000096_business_care_delivery_review.sql.template"), "utf8");
+// The Care & Accessories on/off switch (Catalogue → Config, default ON) — the
+// gate reads it from catalogue_config, so the suites run on the real column.
+const T99 = fs.readFileSync(path.resolve(__dirname, "../../migrations/template/000099_business_care_accessories_switch.sql.template"), "utf8");
 
 // ── Fixture DDL — real columns for every table the PR 2 SQL touches ──
 const SHARED_DDL = `
@@ -498,6 +500,7 @@ async function boot() {
     await db.exec(T94.replace(/\{\{BUSINESS\}\}/g, brand));
     await db.exec(T95.replace(/\{\{BUSINESS\}\}/g, brand));
     await db.exec(T96.replace(/\{\{BUSINESS\}\}/g, brand));
+    await db.exec(T99.replace(/\{\{BUSINESS\}\}/g, brand));
     await db.query(
       `INSERT INTO shared.document_numbering (business, document_type, prefix, padding, next_number)
        VALUES ($1,'sales_order',$2,4,1), ($1,'stock_movement',$3,4,1)`,

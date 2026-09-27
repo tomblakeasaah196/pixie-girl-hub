@@ -346,8 +346,8 @@ test("public catalogue: list + slug detail expose only live, priced SKUs", async
   assert.ok(!JSON.stringify(detail).includes("cost_price"), "no cost data may leak");
   await assert.rejects(storefront.getCareProduct({ brand: PXG, slug: "draft-comb" }));
   await assert.rejects(storefront.getCareProduct({ brand: "faitlynhair", slug: "pixie-hair-oil" }));
-  assert.equal(storefront.careEnabled({ brand: PXG }), true);
-  assert.equal(storefront.careEnabled({ brand: "faitlynhair" }), false);
+  assert.equal(await storefront.careEnabled({ brand: PXG }), true);
+  assert.equal(await storefront.careEnabled({ brand: "faitlynhair" }), false);
 });
 
 test("amendment: retail shortfalls refuse loudly — never a pre-order or a rewig", async () => {

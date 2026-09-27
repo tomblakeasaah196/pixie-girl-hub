@@ -1286,6 +1286,22 @@ async function setDeliveryFee({ brand, user, request_id, id, fee_ngn }) {
         409,
       );
     }
+    // Care & Accessories: the delivery-fee REVIEW is the only supported way to
+    // change a retail delivery order's fee (consent, verified top-up/refund,
+    // invoice + ledger reconciliation). This bare setter does none of that, so
+    // it must not be a side door while a review is open — nor re-price an order
+    // whose fee a review already agreed (open a new review instead).
+    if (before.needs_delivery_review === true || before.delivery_review_settled_at) {
+      throw new AppError(
+        "DELIVERY_REVIEW_REQUIRED",
+        "This order's delivery fee is managed by the Care & Accessories delivery-fee review",
+        409,
+        {
+          user_message:
+            "This order contains care products — change its delivery fee in Sales → Delivery Fee Review.",
+        },
+      );
+    }
     const updated = await repo.setDeliveryFee({ client, brand, id, fee_ngn });
     await audit({
       business: brand,

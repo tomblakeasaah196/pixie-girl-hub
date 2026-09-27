@@ -182,6 +182,12 @@ test("order link: forged retail items refuse (wig variant, draft SKU, FLH, missi
   }
   const [flh] = await resolvers.resolveItems(FLH, [{ kind: "retail", variant_id: IDS.v50, qty: 1 }]);
   assert.equal(flh.lines.length, 0, "FLH never resolves a retail link");
+  // A base item may only pin a variant OF THAT product: pairing the wig base
+  // with a Care SKU must not sell the bottle under the wig's name.
+  const [basePinnedForeign] = await resolvers.resolveItems(PXG, [
+    { kind: "base", product_id: IDS.wigBase, variant_id: IDS.v50, qty: 1 },
+  ]);
+  assert.equal(basePinnedForeign.variant_id, IDS.vWig, "foreign pin ignored → the base's own default SKU");
 });
 
 // ── /o order-form checkout ─────────────────────────────────
@@ -243,7 +249,7 @@ test("/o checkout: wig-only delivery still charges the zone tier (unchanged)", a
 });
 
 // ── delivery-fee review lifecycle ──────────────────────────
-test("review: increase → consent → verified top-up settles, reconciles and unblocks dispatch", async () => {
+test("review: increase → consent applies the fee → a SEPARATE post-consent top-up settles and unblocks dispatch", async () => {
   const sales = require("../../src/modules/sales/sales.service");
   const order = await retailDispatchOrder({ shipping: 2500 });
   await markPaid(order.order_id);
@@ -260,6 +266,11 @@ test("review: increase → consent → verified top-up settles, reconciles and u
     q(`UPDATE pixiegirl.sales_orders SET status = 'dispatched' WHERE order_id = $1`, [order.order_id]),
     /cannot dispatch/,
   );
+  // The bare delivery-fee setter is not a side door around the review.
+  await assert.rejects(
+    sales.setDeliveryFee({ brand: PXG, user: STAFF, request_id: "t", id: order.order_id, fee_ngn: 0 }),
+    (e) => e.code === "DELIVERY_REVIEW_REQUIRED",
+  );
 
   // openReview is idempotent (the order was auto-queued at placement).
   const again = await dr().openReview({ brand: PXG, user: STAFF, request_id: "t", order_id: order.order_id });
@@ -271,12 +282,52 @@ test("review: increase → consent → verified top-up settles, reconciles and u
   assert.equal(p.review.status, "awaiting_customer");
   assert.equal(Number(p.review.difference_ngn), 1500);
 
-  // No top-up before consent.
+  // No top-up before consent — and the ORIGINAL payment can never be one.
   const early = await addPayment(order.order_id, 1500);
-  await assert.rejects(dr().verifyTopUp({ brand: PXG, user: STAFF, request_id: "t", order_id: order.order_id, payment_id: early }));
+  await assert.rejects(
+    dr().verifyTopUp({ brand: PXG, user: STAFF, request_id: "t", order_id: order.order_id, payment_id: early }),
+    (e) => e.code === "CONSENT_REQUIRED",
+  );
 
-  await dr().recordConsent({ brand: PXG, user: STAFF, request_id: "t", order_id: order.order_id, accepted: true, channel: "whatsapp", reference: "msg-42" });
+  posted.length = 0; dispatched.length = 0;
+  const consent = await dr().recordConsent({ brand: PXG, user: STAFF, request_id: "t", order_id: order.order_id, accepted: true, channel: "whatsapp", reference: "msg-42" });
+  assert.equal(consent.next_action, "verify_topup");
+  // The agreed fee is on the order NOW, so the balance (and the link) carry it…
+  row = await orderRow(order.order_id);
+  assert.equal(Number(row.shipping_fee_ngn), 4000);
+  assert.equal(Number(row.total_ngn), totalBefore + 1500, "total reconciled at consent");
+  assert.ok(consent.payment_link && consent.payment_link.checkout_url, "top-up link minted for the new balance");
+  // …but the order still can't ship until the difference is actually paid.
+  assert.equal(row.needs_delivery_review, true);
+  await assert.rejects(q(`UPDATE pixiegirl.sales_orders SET status = 'dispatched' WHERE order_id = $1`, [order.order_id]), /cannot dispatch/);
+  // Paid order → revenue recognised → exactly one balanced shipping-delta entry.
+  assert.equal(posted.length, 1, "one GL adjusting entry");
+  assert.equal(posted[0].entry.idempotency_key, `delivery_review:${consent.review.review_id}`);
+  const { ACCOUNTS } = require("../../src/modules/accounting/posting-map");
+  const lines = posted[0].lines;
+  assert.equal(lines.length, 2, JSON.stringify(lines));
+  const debit = lines.find((l) => l.debit_ngn);
+  const credit = lines.find((l) => l.credit_ngn);
+  assert.equal(debit.account_code, ACCOUNTS.CUSTOMER_DEPOSITS);
+  assert.equal(credit.account_code, ACCOUNTS.SHIPPING_REVENUE);
+  assert.equal(Number(debit.debit_ngn), 1500);
+  assert.equal(Number(credit.credit_ngn), 1500);
+  // Consent can't be flipped or the fee re-priced under it.
+  await assert.rejects(
+    dr().recordConsent({ brand: PXG, user: STAFF, request_id: "t", order_id: order.order_id, accepted: false, channel: "phone", reference: "call" }),
+    (e) => e.code === "CONSENT_ALREADY_RECORDED",
+  );
+  await assert.rejects(
+    dr().proposeFee({ brand: PXG, user: STAFF, request_id: "t", order_id: order.order_id, proposed_fee_ngn: 9000, calculation_basis: "Try again" }),
+    (e) => e.code === "CONSENT_ALREADY_RECORDED",
+  );
 
+  // A payment taken BEFORE consent (e.g. the original checkout payment) is
+  // not the separate top-up.
+  await assert.rejects(
+    dr().verifyTopUp({ brand: PXG, user: STAFF, request_id: "t", order_id: order.order_id, payment_id: early }),
+    (e) => e.code === "TOPUP_PREDATES_CONSENT",
+  );
   const pending = await addPayment(order.order_id, 1500, "pending");
   await assert.rejects(
     dr().verifyTopUp({ brand: PXG, user: STAFF, request_id: "t", order_id: order.order_id, payment_id: pending }),
@@ -289,25 +340,14 @@ test("review: increase → consent → verified top-up settles, reconciles and u
   );
 
   posted.length = 0; dispatched.length = 0;
-  const done = await dr().verifyTopUp({ brand: PXG, user: STAFF, request_id: "t", order_id: order.order_id, payment_id: early });
+  const topUp = await addPayment(order.order_id, 1500);
+  const done = await dr().verifyTopUp({ brand: PXG, user: STAFF, request_id: "t", order_id: order.order_id, payment_id: topUp });
   assert.equal(done.review.status, "accepted");
   row = await orderRow(order.order_id);
   assert.equal(Number(row.shipping_fee_ngn), 4000);
-  assert.equal(Number(row.total_ngn), totalBefore + 1500, "total reconciled");
+  assert.equal(Number(row.total_ngn), totalBefore + 1500, "not applied twice");
   assert.equal(row.needs_delivery_review, false);
-  assert.equal(posted.length, 1, "one GL adjusting entry");
-  assert.equal(posted[0].entry.idempotency_key, `delivery_review:${done.review.review_id}`);
-  // Balanced shipping-delta entry: debit customer deposits, credit shipping
-  // revenue, ₦1,500 each; no revenue/VAT lines for a fee-only change.
-  const { ACCOUNTS } = require("../../src/modules/accounting/posting-map");
-  const lines = posted[0].lines;
-  assert.equal(lines.length, 2, JSON.stringify(lines));
-  const debit = lines.find((l) => l.debit_ngn);
-  const credit = lines.find((l) => l.credit_ngn);
-  assert.equal(debit.account_code, ACCOUNTS.CUSTOMER_DEPOSITS);
-  assert.equal(credit.account_code, ACCOUNTS.SHIPPING_REVENUE);
-  assert.equal(Number(debit.debit_ngn), 1500);
-  assert.equal(Number(credit.credit_ngn), 1500);
+  assert.equal(posted.length, 0, "the ledger was reconciled at consent — no second entry");
   assert.equal(dispatched[0].event_key, "delivery_fee_settled");
   assert.ok(done.review.customer_notified_at, "notified only because dispatch reported sent");
 
@@ -321,6 +361,54 @@ test("review: increase → consent → verified top-up settles, reconciles and u
   // Now dispatch is allowed.
   const out = await sales.setOrderStatus({ brand: PXG, user: STAFF, request_id: "t", id: order.order_id, status: "dispatched" });
   assert.equal(out.status, "dispatched");
+});
+
+test("review: an UNPAID order's fee change posts no GL delta (order.paid will post the final figures)", async () => {
+  const order = await retailDispatchOrder({ shipping: 1000 });
+  await dr().proposeFee({ brand: PXG, user: STAFF, request_id: "t", order_id: order.order_id, proposed_fee_ngn: 1000, calculation_basis: "Same as agreed" });
+  posted.length = 0;
+  const c = await dr().confirmFee({ brand: PXG, user: STAFF, request_id: "t", order_id: order.order_id });
+  assert.equal(c.review.status, "confirmed");
+  const order2 = await retailDispatchOrder({ shipping: 1000 });
+  await dr().proposeFee({ brand: PXG, user: STAFF, request_id: "t", order_id: order2.order_id, proposed_fee_ngn: 3000, calculation_basis: "Courier" });
+  await dr().recordConsent({ brand: PXG, user: STAFF, request_id: "t", order_id: order2.order_id, accepted: true, channel: "whatsapp", reference: "ok" });
+  assert.equal(posted.length, 0, "no adjusting entry before revenue is recognised — else shipping counts twice");
+  assert.equal(Number((await orderRow(order2.order_id)).shipping_fee_ngn), 3000);
+});
+
+test("review: a lower fee on an over-paid order needs refund evidence; a credit note is not reversed twice", async () => {
+  const order = await retailDispatchOrder({ shipping: 4000 });
+  await markPaid(order.order_id);
+  await dr().proposeFee({ brand: PXG, user: STAFF, request_id: "t", order_id: order.order_id, proposed_fee_ngn: 2500, calculation_basis: "Cheaper courier" });
+  // Confirming would leave the customer ₦1,500 over-paid with no refund.
+  await assert.rejects(
+    dr().confirmFee({ brand: PXG, user: STAFF, request_id: "t", order_id: order.order_id }),
+    (e) => e.code === "REFUND_REQUIRED",
+  );
+  const inv = await q(`INSERT INTO pixiegirl.invoices (invoice_number, order_id, status, total_ngn) VALUES ('INV-CN-1',$1,'partially_refunded', 1) RETURNING invoice_id`, [order.order_id]);
+  const cn = await q(`INSERT INTO pixiegirl.credit_notes (credit_note_number, invoice_id, total_ngn, status) VALUES ('CN-1',$1,1500,'issued') RETURNING credit_note_id`, [inv.rows[0].invoice_id]);
+  posted.length = 0;
+  const done = await dr().verifyRefund({ brand: PXG, user: STAFF, request_id: "t", order_id: order.order_id, credit_note_id: cn.rows[0].credit_note_id });
+  assert.equal(done.review.status, "credited");
+  assert.equal(posted.length, 0, "the credit note already reversed the difference on the GL");
+  const invAfter = await q(`SELECT total_ngn FROM pixiegirl.invoices WHERE invoice_id = $1`, [inv.rows[0].invoice_id]);
+  assert.equal(Number(invAfter.rows[0].total_ngn), 1, "invoice not resynced down on top of the credit note");
+  assert.equal(Number((await orderRow(order.order_id)).shipping_fee_ngn), 2500);
+});
+
+test("review: turning the rollout flag OFF never strands an already-queued order", async () => {
+  const { config } = require("../../src/config/env");
+  const order = await retailDispatchOrder({ shipping: 2000 });
+  config.FEATURE_PXG_CARE_ACCESSORIES_ENABLED = false;
+  try {
+    const queue = await dr().listQueue({ brand: PXG, page: 1, page_size: 100 });
+    assert.ok(queue.data.some((r) => r.order_id === order.order_id));
+    const c = await dr().confirmFee({ brand: PXG, user: STAFF, request_id: "t", order_id: order.order_id });
+    assert.equal(c.review.status, "confirmed");
+    assert.equal((await orderRow(order.order_id)).needs_delivery_review, false);
+  } finally {
+    config.FEATURE_PXG_CARE_ACCESSORIES_ENABLED = true;
+  }
 });
 
 test("review: customer refuses the increase → dispatch stays blocked → re-price releases it", async () => {

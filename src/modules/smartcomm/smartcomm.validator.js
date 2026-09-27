@@ -267,6 +267,9 @@ const orderLinkCreate = z
     contact_id: z.string().uuid().optional(),
     channel_id: z.string().uuid().optional(),
     items: z.array(orderLinkItem).min(1).max(20),
+    // The currency the customer pays in — ₦ or $ (Nomba charges nothing
+    // else). Staff decide; the customer can't switch it on the page.
+    currency: z.enum(["NGN", "USD"]).optional().default("NGN"),
     sales_channel: z
       .enum([
         "whatsapp",

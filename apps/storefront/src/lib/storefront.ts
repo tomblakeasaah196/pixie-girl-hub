@@ -590,6 +590,9 @@ export const confirmDriverDelivery = (
 export interface PayLinkPayment {
   payment_number: string;
   amount_ngn: string;
+  /** What the customer actually paid in (USD payments keep their $ figure). */
+  paid_currency?: string;
+  paid_amount?: string | null;
   method: string;
   paid_at: string;
 }
@@ -606,6 +609,9 @@ export interface PayLinkPreview {
   amount_paid_ngn: string;
   outstanding_ngn: string;
   min_next_payment_ngn: string;
+  /** USD order only: the $ the whole balance charges, and the $ plan minimum. */
+  outstanding_usd?: string;
+  min_next_payment_usd?: string;
   payments: PayLinkPayment[];
 }
 export const previewPayLink = (token: string, ctx?: ApiContext) =>

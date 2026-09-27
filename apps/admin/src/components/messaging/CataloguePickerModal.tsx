@@ -101,6 +101,9 @@ export function CataloguePickerModal({
   const [intro, setIntro] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The currency the customer pays in — ₦ or $ (Nomba charges nothing else).
+  // A $ link shows each item's catalogue USD price and charges in dollars.
+  const [linkCurrency, setLinkCurrency] = useState<"NGN" | "USD">("NGN");
   // A styled hit awaiting a size/lace pick (opens StyledVariantPicker).
   const [pendingStyled, setPendingStyled] = useState<ProductHit | null>(null);
 
@@ -263,6 +266,7 @@ export function CataloguePickerModal({
         spec: c.spec ?? undefined,
       })),
       sales_channel: resolveMessagingSalesChannel(channel.external_platform),
+      currency: linkCurrency,
     });
     return r.url;
   }
@@ -321,6 +325,29 @@ export function CataloguePickerModal({
       }
       footer={
         <>
+          <div
+            className="mr-auto inline-flex items-center rounded-full border border-line p-0.5 text-[12px] font-semibold"
+            role="group"
+            aria-label="Customer pays in"
+            title="Currency the customer pays in"
+          >
+            {(["NGN", "USD"] as const).map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setLinkCurrency(c)}
+                aria-pressed={linkCurrency === c}
+                className={
+                  "h-7 px-3 rounded-full transition-colors " +
+                  (linkCurrency === c
+                    ? "bg-accent/10 text-accent-readable"
+                    : "text-text-muted hover:text-text-primary")
+                }
+              >
+                {c === "NGN" ? "Pay in ₦" : "Pay in $"}
+              </button>
+            ))}
+          </div>
           <Button variant="ghost" size="sm" onClick={onClose}>
             Cancel
           </Button>

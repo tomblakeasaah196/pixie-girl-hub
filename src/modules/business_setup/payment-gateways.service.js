@@ -391,14 +391,19 @@ async function resolveCredentials({ brand, provider }) {
 }
 
 /**
- * Ordered gateway chain to attempt for a payment in `currency` (C / §6.21).
- *
- * Owner-directed routing (June 2026):
- *   • NGN → Nomba primary, Paystack fallback. Stripe is OUT of the NGN chain.
- *   • non-NGN (USD etc.) → Nomba ONLY (Nomba's USD account is the sole rail).
- *
- * Falls back to env-only providers when no DB config exists. Returns
- * [{ provider, credentials }].
+ * Gateways a sale's checkout may use. Owner decision (Sept 2026): Nomba is the
+ * ONLY payment gateway from now on, for Naira and US Dollars alike. Paystack,
+ * OPay and Stripe stay implemented — their webhooks still settle any checkout
+ * opened before the switch — but none joins a NEW checkout chain, whatever
+ * ENABLED_PAYMENT_GATEWAYS lists. A Nomba outage therefore stops new payments
+ * (the order is saved and its pay link retries) rather than falling over.
+ */
+const CHECKOUT_PROVIDERS = Object.freeze(["nomba"]);
+
+/**
+ * Ordered gateway chain to attempt for a payment in `currency` (C / §6.21):
+ * Nomba only (see CHECKOUT_PROVIDERS), when it is enabled and has credentials.
+ * Returns [{ provider, credentials }].
  */
 async function getActiveChain({ brand, currency = "NGN" }) {
   const ngn = String(currency).toUpperCase() === "NGN";
@@ -409,20 +414,10 @@ async function getActiveChain({ brand, currency = "NGN" }) {
     rows = [];
   }
   const allowed = enabledProviders();
-  // Owner-directed routing (June 2026, rev.): Stripe is the UNIVERSAL last-resort
-  // fallback so a Nomba (and Paystack) outage never blocks a sale.
-  //   • NGN → Nomba primary, Paystack fallback, Stripe last-resort.
-  //   • non-NGN (USD etc.) → Nomba primary, Stripe fallback.
-  // Stripe is only ever used if it's enabled AND has credentials, and only after
-  // the local rails are tried (it sorts last via `preference`).
-  const allowedForCurrency = ngn
-    ? allowed
-    : allowed.filter((p) => p === "nomba" || p === "stripe");
-  // Stable preference order — Nomba first, then the local fallback, Stripe last.
-  // Wins over DB ordering so the fallback sequence is deterministic.
-  const preference = ngn
-    ? ["nomba", "paystack", "stripe"]
-    : ["nomba", "stripe"];
+  const allowedForCurrency = allowed.filter((p) =>
+    CHECKOUT_PROVIDERS.includes(p),
+  );
+  const preference = CHECKOUT_PROVIDERS;
   const sortPref = (a, b) => {
     const ai = preference.indexOf(a.provider);
     const bi = preference.indexOf(b.provider);
@@ -431,18 +426,20 @@ async function getActiveChain({ brand, currency = "NGN" }) {
     return an - bn;
   };
   const chain = [];
-  if (rows.length) {
-    const ordered = [...rows].sort(sortPref);
-    for (const r of ordered) {
-      if (!allowedForCurrency.includes(r.provider)) continue;
-      const creds = await resolveCredentials({ brand, provider: r.provider });
-      if (creds) chain.push({ provider: r.provider, credentials: creds });
-    }
-  } else {
-    // No DB config → env fallback (single-tenant), restricted to the gateways
-    // enabled for this deployment, in owner preference order.
+  const ordered = [...rows].sort(sortPref);
+  for (const r of ordered) {
+    if (!allowedForCurrency.includes(r.provider)) continue;
+    const creds = await resolveCredentials({ brand, provider: r.provider });
+    if (creds) chain.push({ provider: r.provider, credentials: creds });
+  }
+  if (!chain.length) {
+    // No usable DB row for a checkout provider (none saved, or only a
+    // Paystack/Stripe row) → env fallback, restricted to the checkout
+    // providers enabled for this deployment. resolveCredentials still returns
+    // null for a provider whose DB row is explicitly switched off.
     const candidates = preference.filter((p) => allowedForCurrency.includes(p));
     for (const p of candidates) {
+      if (chain.some((c) => c.provider === p)) continue;
       const creds = await resolveCredentials({ brand, provider: p });
       if (creds) chain.push({ provider: p, credentials: creds });
     }
@@ -452,6 +449,7 @@ async function getActiveChain({ brand, currency = "NGN" }) {
 
 module.exports = {
   PROVIDERS,
+  CHECKOUT_PROVIDERS,
   enabledProviders,
   isEnabled,
   listGateways,

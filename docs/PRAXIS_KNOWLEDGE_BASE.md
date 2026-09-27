@@ -227,6 +227,11 @@ chasing deliveries, matching stray in-store terminal payments, and payment setti
   Sale Form, add items, take payment. (This replaced the old POS.) If an item is
   out of stock it still sells — as a **pre-order** — and a toast confirms it went
   in as made-to-order.
+- *Sell to a customer paying in dollars?* Quick Sale → **Currency** → **USD**
+  (only NGN or USD — Nomba charges nothing else). The Total shows the exact
+  dollar figure (each product's catalogue USD price) with the Naira beneath,
+  and after **Create Order & Send Pay Link** the confirmation says what the
+  link charges, e.g. "Charging USD 249.99 on Nomba".
 - *Get a walk-in customer's details without typing them in?* Quick Sale →
   Customer step → **QR Code** button — shows a scannable code for the order
   capture link, next to a **Share** button that opens WhatsApp with the link
@@ -311,8 +316,8 @@ chasing deliveries, matching stray in-store terminal payments, and payment setti
   page (base product → Pre-order · production → "Exclude from pre-orders").
 - *Create a full order and send a pay link?* Sales → **Orders** → **New Sale** /
   **Create Order & Send Pay Link**. The customer gets a short checkout link
-  (`/o/<slug>`), picks their gateway (Nomba / Paystack, whichever are active),
-  and is redirected straight to payment.
+  (`/o/<slug>`) and is redirected straight to payment on **Nomba** — the only
+  payment gateway, for Naira and US Dollars.
 - *Send a quotation?* Sales → **Quotations** → **New Quotation** / **Create Quotation**.
 - *Let a customer PAY a quotation (and turn it into an order automatically)?*
   Sales → **Quotations** → open the quote → **Payment Link**. That mints a
@@ -1490,6 +1495,12 @@ messages across WhatsApp, SMS, and other channels in one place.
   the **paperclip** → **Catalogue** → pick Base / Styled / **Bundle** /
   Service items → **Send**. The customer gets photo cards plus one short
   order link (`/o/<slug>`) to pick, confirm delivery, and pay.
+- *Send an IG/WhatsApp order link a customer pays in dollars?* In the same
+  **Catalogue** picker, switch the footer toggle to **Pay in $** before
+  **Send** (default **Pay in ₦**). The link shows each item at its catalogue
+  USD price and charges dollars on Nomba; the customer can't switch it. A $
+  link needs the dollar rate set first (Catalogue → **Config** → **Apply USD
+  exchange rate**).
 - *Connect a WhatsApp/SMS number?* That's **Messaging Accounts** (permission
   `messaging_accounts`) — connect channels there.
 - *Edit the automatic messages customers get (receipts, order updates)?* That's
@@ -1617,9 +1628,10 @@ full-screen **Landing Studio** (`/landing-studio`).
 - *Set up campaign bundles?* Sales Campaigns → **Bundles**.
 - *What ₦/$ rate does a campaign show dollar prices at?* The catalogue's live
   rate (Catalogue → **Config** → **Apply USD exchange rate**) and each
-  product's catalogue USD price — the same as the website. A campaign no longer
-  has a dollar rate of its own; changing the catalogue rate changes a live
-  campaign's dollar prices for new orders (placed orders keep theirs).
+  product's catalogue USD price — the same as the website. The campaign
+  builder has no dollar-rate field and no payment-gateway switches any more:
+  every sale pays on Nomba in ₦ or $. Changing the catalogue rate changes a
+  live campaign's dollar prices for new orders (placed orders keep theirs).
 - *A campaign link shows 404?* Public sale pages live on the brand's **sales
   subdomain** (e.g. `sales.faitlynhair.com/sale/<slug>`), set in Settings →
   Business Setup → Public Identity. A link on the bare apex
@@ -1742,7 +1754,8 @@ focused settings page.
 
 **Common tasks.**
 - *Connect a payment gateway?* Settings → **Payment gateways**
-  (`/settings/payment-gateways`).
+  (`/settings/payment-gateways`). **Nomba** is the only gateway checkouts use
+  (Naira and US Dollars); Paystack/Stripe settings no longer take payments.
 - *Change invoice/PO number format?* Settings → **Document numbering**.
 - *Add a currency / tax rate?* Settings → **Currencies** / **Tax rates**.
 - *Add a bank account?* Settings → **Bank accounts**.

@@ -36,9 +36,9 @@ async function createOrderLink({ client, link }) {
       const { rows } = await ex(client)(
         `INSERT INTO shared.smartcomm_order_links
            (business, channel_id, contact_id, created_by, mode, sales_channel,
-            items, notes, expires_at, public_slug)
+            items, notes, expires_at, public_slug, currency)
          VALUES ($1,$2,$3,$4,COALESCE($5,'shop'),COALESCE($6,'whatsapp'),
-                 $7::jsonb,$8,$9,$10)
+                 $7::jsonb,$8,$9,$10,COALESCE($11,'NGN'))
          RETURNING *`,
         [
           link.business,
@@ -51,6 +51,7 @@ async function createOrderLink({ client, link }) {
           link.notes || null,
           link.expires_at,
           slug,
+          link.currency || null,
         ],
       );
       return rows[0];

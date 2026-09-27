@@ -28,7 +28,9 @@ jest.mock("../../../src/services/paystack.service", () => ({}));
 jest.mock("../../../src/services/opay.service", () => ({}));
 jest.mock("../../../src/services/nomba.service", () => ({}));
 jest.mock("../../../src/services/stripe.service", () => ({}));
-jest.mock("../../../src/services/currency.service", () => ({}));
+jest.mock("../../../src/services/currency.service", () => ({
+  SETTLEMENT_CURRENCIES: ["NGN", "USD"],
+}));
 jest.mock("../../../src/config/database", () => ({ query: jest.fn() }));
 jest.mock("../../../src/config/brands", () => ({
   VALID: new Set(["pixiegirl", "faitlynhair"]),
@@ -98,6 +100,20 @@ describe("previewByToken", () => {
     // USD display rate locked at placement.
     expect(p.display_currency).toBe("USD");
     expect(p.display_fx_rate).toBe(1300);
+    // The $ the pay page shows and charges: ₦105,000 ÷ 1,300 = $80.77, and
+    // the ₦1,000 minimum rounded UP to the cent ($0.77).
+    expect(p.outstanding_usd).toBe("80.77");
+    expect(p.min_next_payment_usd).toBe("0.77");
+  });
+
+  it("a Naira order carries no dollar fields", async () => {
+    mockRepo.findByPublicToken.mockImplementation(async ({ brand }) =>
+      brand === "faitlynhair"
+        ? { ...ORDER, display_currency: "NGN", fx_rate_used: "1.000000" }
+        : null,
+    );
+    const p = await paymentLink.previewByToken({ token: "tok-abc" });
+    expect(p.outstanding_usd).toBeUndefined();
   });
 
   it("lists only captured payments", async () => {

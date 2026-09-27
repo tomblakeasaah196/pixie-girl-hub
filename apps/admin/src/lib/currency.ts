@@ -1,13 +1,10 @@
 /**
  * Customer-facing currency store for sales-campaign landing pages.
  *
- * SSOT split:
- *  • STATIC FX (this store)   — the campaign's `ngn_per_usd_rate`, used
- *    purely to display prices on the landing page when the visitor flips
- *    the toggle. Stable for the whole drop so the price never wobbles.
- *  • LIVE  FX (server-side)   — captured into `sales_orders.fx_rate_used`
- *    at payment time. Used to settle orders, book realised FX gain/loss,
- *    and price everything in the admin (orders, quotes, accounting).
+ * Rate: the live catalogue ₦/$ rate (Catalogue → Config → Apply USD
+ * exchange rate), served as the payload's `ngn_per_usd_rate`. Checkout prices
+ * dollars from each product's catalogue USD price and locks the order's own
+ * dollar total + effective rate into `sales_orders.fx_rate_used`.
  *
  * Initial pick:
  *  1. Persisted user choice (localStorage) wins if the visitor has flipped

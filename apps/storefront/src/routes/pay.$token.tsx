@@ -8,6 +8,7 @@ import {
   type PayLinkPreview,
 } from "@/lib/storefront";
 import { usePageSlots, withSlots } from "@/lib/site-config";
+import { formatCurrency } from "@/lib/money";
 import { Section, ErrorState } from "@/components/parts";
 
 /**
@@ -98,19 +99,39 @@ function PayBody({
   const s = usePayCopy();
   const outstanding = Number(data.outstanding_ngn) || 0;
   const minNext = Number(data.min_next_payment_ngn) || 0;
+  // A USD order is paid in dollars: the balance and the amount box are in $
+  // (the server's own figures — the $ the whole balance charges, the $ plan
+  // minimum), converted to the order's locked ₦ rate only to call the API.
+  const rate = Number(data.display_fx_rate) || 0;
+  const usdOrder = data.outstanding_usd != null && rate > 0;
+  const outstandingUsd = Number(data.outstanding_usd) || 0;
+  const minNextUsd = Number(data.min_next_payment_usd) || 0;
+  const due = usdOrder ? outstandingUsd : outstanding;
+  const min = usdOrder ? minNextUsd : minNext;
+  const money = (v: number | string) =>
+    usdOrder ? formatCurrency(Number(v) || 0, "USD") : ngn(v);
 
-  const [amount, setAmount] = useState(String(outstanding || ""));
+  const [amount, setAmount] = useState(String(due || ""));
   // Reset the field to the fresh balance whenever the server data changes
   // (e.g. after a re-fetch on gateway return).
   useEffect(() => {
-    setAmount(String(outstanding || ""));
-  }, [outstanding]);
+    setAmount(String(due || ""));
+  }, [due]);
+
+  const parsed = Number(amount) || 0;
+  // ₦ to request: a $ amount at the order's locked rate. Paying the whole $
+  // balance sends the exact ₦ balance, so the checkout charges the quoted $.
+  const amountNgn = usdOrder
+    ? parsed >= outstandingUsd || parsed * rate >= outstanding
+      ? outstanding
+      : Math.round(parsed * rate * 100) / 100
+    : parsed;
+  const chargeShown = usdOrder && amountNgn === outstanding ? outstandingUsd : parsed;
 
   const pay = useMutation({
     mutationFn: async () => {
-      const amt = Number(amount);
       const res = await createPayLinkCheckout(token, {
-        amount_ngn: amt > 0 ? amt : undefined,
+        amount_ngn: amountNgn > 0 ? amountNgn : undefined,
       });
       return res;
     },
@@ -119,9 +140,7 @@ function PayBody({
     },
   });
 
-  const parsed = Number(amount) || 0;
-  const amountValid =
-    parsed > 0 && parsed >= minNext && parsed <= outstanding;
+  const amountValid = parsed > 0 && parsed >= min && parsed <= due;
 
   if (outstanding <= 0) {
     return (
@@ -147,19 +166,32 @@ function PayBody({
       <dl className="rounded-md border border-border p-4 space-y-2 text-body-sm">
         <div className="flex justify-between">
           <dt className="text-muted-foreground">{s.totalLabel}</dt>
-          <dd className="font-mono tabular-nums">{ngn(data.total_ngn)}</dd>
+          <dd className="font-mono tabular-nums">
+            {usdOrder
+              ? money(
+                  Number(data.amount_paid_ngn) > 0
+                    ? Math.round((Number(data.total_ngn) / rate) * 100) / 100
+                    : outstandingUsd,
+                )
+              : ngn(data.total_ngn)}
+          </dd>
         </div>
         {Number(data.amount_paid_ngn) > 0 && (
           <div className="flex justify-between">
             <dt className="text-muted-foreground">{s.paidLabel}</dt>
             <dd className="font-mono tabular-nums">
-              {ngn(data.amount_paid_ngn)}
+              {usdOrder
+                ? money(
+                    Math.round((Number(data.amount_paid_ngn) / rate) * 100) /
+                      100,
+                  )
+                : ngn(data.amount_paid_ngn)}
             </dd>
           </div>
         )}
         <div className="flex justify-between border-t border-border pt-2 text-body font-medium">
           <dt>{s.balanceLabel}</dt>
-          <dd className="font-mono tabular-nums">{ngn(outstanding)}</dd>
+          <dd className="font-mono tabular-nums">{money(due)}</dd>
         </div>
       </dl>
 
@@ -170,8 +202,8 @@ function PayBody({
         <input
           type="number"
           inputMode="decimal"
-          min={minNext || 0}
-          max={outstanding}
+          min={min || 0}
+          max={due}
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
           className="input-line text-body"
@@ -179,9 +211,9 @@ function PayBody({
         <span className="mt-1 block text-caption text-muted-foreground">
           {s.amountHint}
         </span>
-        {minNext > 0 && minNext < outstanding && (
+        {min > 0 && min < due && (
           <span className="mt-0.5 block text-caption text-muted-foreground">
-            {s.minNote.replace("{min}", ngn(minNext))}
+            {s.minNote.replace("{min}", money(min))}
           </span>
         )}
       </label>
@@ -208,7 +240,8 @@ function PayBody({
           </>
         ) : (
           <>
-            <Lock size={16} /> {s.payCta.replace("{amount}", ngn(parsed))}
+            <Lock size={16} />{" "}
+            {s.payCta.replace("{amount}", money(chargeShown))}
           </>
         )}
       </button>
@@ -250,7 +283,11 @@ function PaymentHistory({
             <span className="text-muted-foreground">
               {new Date(p.paid_at).toLocaleDateString()} · {p.method}
             </span>
-            <span className="font-mono tabular-nums">{ngn(p.amount_ngn)}</span>
+            <span className="font-mono tabular-nums">
+              {p.paid_currency === "USD" && p.paid_amount != null
+                ? formatCurrency(Number(p.paid_amount), "USD")
+                : ngn(p.amount_ngn)}
+            </span>
           </li>
         ))}
       </ul>

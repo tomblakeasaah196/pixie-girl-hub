@@ -26,6 +26,8 @@ const smartcommRepo = require("./smartcomm.repo");
 const events = require("./smartcomm.events");
 const brandUrls = require("../../utils/brand-urls");
 const currencyService = require("../../services/currency.service");
+const usdPricing = require("../../services/usd-pricing.service");
+const styledVariantsRepo = require("../catalogue/styled_variants.repo");
 const { audit } = require("../../middleware/audit");
 const { query } = require("../../config/database");
 const { logger } = require("../../config/logger");
@@ -155,6 +157,23 @@ async function createLink({ brand, user, request_id, input }) {
     }
   }
 
+  // A $ link needs the catalogue ₦/$ rate — refuse it up front rather than
+  // share a link whose checkout can't be priced in dollars.
+  if (
+    input.currency === "USD" &&
+    !(await usdPricing.catalogueRate(brand).catch(() => null))
+  ) {
+    throw new AppError(
+      "NO_FX_RATE",
+      "No catalogue USD rate is set for this brand",
+      422,
+      {
+        user_message:
+          "Set the dollar rate first (Catalogue → Config → Apply USD exchange rate), then share a $ link.",
+      },
+    );
+  }
+
   const normalisedItems = normaliseItems(items);
   const expiresIn = Number(input.expires_in) || DEFAULT_EXPIRY_SECONDS;
   const expires_at = new Date(Date.now() + expiresIn * 1000).toISOString();
@@ -184,6 +203,7 @@ async function createLink({ brand, user, request_id, input }) {
       items: normalisedItems,
       notes: input.notes || null,
       expires_at,
+      currency: input.currency === "USD" ? "USD" : "NGN",
     },
   });
 
@@ -199,6 +219,7 @@ async function createLink({ brand, user, request_id, input }) {
       items_count: items.length,
       contact_id: input.contact_id || null,
       sales_channel: input.sales_channel || "whatsapp",
+      currency: linkRow.currency || "NGN",
       expires_at,
     },
     request_id,
@@ -208,6 +229,7 @@ async function createLink({ brand, user, request_id, input }) {
     url,
     slug: linkRow.public_slug,
     link_id: linkRow.link_id,
+    currency: linkRow.currency || "NGN",
     expires_at,
     warnings,
   };
@@ -257,6 +279,97 @@ async function getPublicContext(slug) {
   return ctx;
 }
 
+const NO_USD_PAIR = { catalogue_ngn: null, catalogue_usd: null };
+
+/**
+ * USD engine lines for a link's resolved items, index-aligned with `items`
+ * (null for an item that can't be sold). Each item is priced by its OWN
+ * catalogue (₦, $) pair at the staff-picked ₦ price: a styled pick uses the
+ * exact variant's catalogue USD, a fixed-price bundle its bundle USD, a
+ * base/retail SKU its channel USD, a service its service USD. The `/o` page
+ * shows these figures and the order-form locks the order's dollar total from
+ * them, so what the customer sees is what Nomba charges.
+ */
+async function linkUsdLines(brand, items) {
+  const out = [];
+  for (const r of items || []) {
+    const sellable =
+      r.kind === "service" || (Array.isArray(r.lines) && r.lines.length > 0);
+    if (!sellable || !(Number(r.price_ngn) > 0)) {
+      out.push(null);
+      continue;
+    }
+    let pair = NO_USD_PAIR;
+    try {
+      if (r.kind === "styled" && r.styled_variant_id) {
+        const variants = await styledVariantsRepo.listVariants({
+          brand,
+          styled_id: r.ref_id,
+        });
+        const v = variants.find(
+          (x) => x.styled_variant_id === r.styled_variant_id,
+        );
+        pair = v
+          ? usdPricing.pairFromStyled({ variant: v })
+          : await usdPricing.styledPair({ brand, styled_id: r.ref_id });
+      } else if (r.kind === "styled") {
+        pair = await usdPricing.styledPair({ brand, styled_id: r.ref_id });
+      } else if (r.kind === "bundle") {
+        pair = await usdPricing.bundlePair({ brand, bundle_id: r.ref_id });
+      } else if (r.kind === "service") {
+        pair = await usdPricing.servicePair({ service_id: r.ref_id });
+      } else if (r.variant_id) {
+        pair = await usdPricing.variantPair({
+          brand,
+          variant_id: r.variant_id,
+          unit_ngn: r.price_ngn,
+        });
+      }
+    } catch {
+      pair = NO_USD_PAIR;
+    }
+    out.push({
+      kind: r.kind,
+      unit_ngn: r.price_ngn,
+      quantity: Number(r.qty) || 1,
+      ...pair,
+    });
+  }
+  return out;
+}
+
+/**
+ * The dollar lock for an order placed through a USD link: exactly the items
+ * the customer kept, at the quantities they chose (`picks` — index into the
+ * link's items + qty, sent by the /o page), priced by linkUsdLines — the same
+ * figures the page showed — against the order's real Naira total + delivery.
+ * Services become bookings, not order lines, so they're left out.
+ *
+ * Without picks (a page cached from before they were sent) the order's own
+ * lines are priced instead (usd-pricing.orderUsdFromLines). Null when
+ * unpriceable.
+ */
+async function lockUsdForLinkOrder({ brand, link_items, order, picks }) {
+  const rate = await usdPricing.catalogueRate(brand);
+  if (!Array.isArray(picks) || !picks.length)
+    return usdPricing.orderUsdFromLines({ brand, order, rate });
+  const items = await resolvers.resolveItems(brand, link_items || []);
+  const priced = await linkUsdLines(brand, items);
+  const lines = [];
+  for (const p of picks) {
+    const l = priced[p.idx];
+    if (!l || l.kind === "service") continue;
+    lines.push({ ...l, quantity: Number(p.qty) || 1 });
+  }
+  if (!lines.length) return null;
+  return usdPricing.orderUsd({
+    lines,
+    total_ngn: order.total_ngn,
+    delivery_ngn: order.shipping_fee_ngn || 0,
+    rate,
+  });
+}
+
 /** Hydrate a link row into the public checkout payload. */
 async function buildPrefillContext(link) {
   // Contact is optional: no-contact links collect the customer inline
@@ -301,6 +414,21 @@ async function buildPrefillContext(link) {
     });
   } catch {
     fx_rate_ngn_per_usd = null;
+  }
+
+  const currency = link.currency === "USD" ? "USD" : "NGN";
+  let usd = null;
+  if (currency === "USD") {
+    const rate = await usdPricing.catalogueRate(link.business).catch(() => null);
+    const lines = await linkUsdLines(link.business, items);
+    usd = {
+      rate,
+      prices: lines.map((l) => {
+        if (!l) return null;
+        const u = usdPricing.lineUsd({ ...l, rate });
+        return u === null ? null : u.toFixed(2);
+      }),
+    };
   }
 
   // PR 3: retail signals for both `/o` hosts, computed SERVER-side from the
@@ -350,6 +478,12 @@ async function buildPrefillContext(link) {
     require_contact_form: !contact,
     delivery_address: addresses[0] || null,
     items,
+    // The currency staff chose for this link — the customer pays in it.
+    currency,
+    // USD link: each item's dollar price (index-aligned with `items`; null =
+    // not sellable) + the catalogue rate for delivery (₦ ÷ rate, rounded UP
+    // to the dollar) — the same figures the order locks at checkout.
+    usd,
     notes: link.notes || null,
   };
 }
@@ -523,6 +657,8 @@ async function listForChannel({ channel_id, limit }) {
 
 module.exports = {
   createLink,
+  linkUsdLines,
+  lockUsdForLinkOrder,
   getPublicContext,
   recordCartBySlug,
   recordOpen,

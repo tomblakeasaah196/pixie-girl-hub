@@ -45,6 +45,9 @@ router.get("/:token", async (req, res, next) => {
   }
 });
 
+// `currency` is still accepted (the landing pay page sends the order's own
+// currency) but never honoured: the order is paid in its locked currency. A
+// buyer choosing it was how a Naira order became a $1 USD checkout.
 const bodySchema = z
   .object({
     amount_ngn: z.coerce.number().positive().optional(),
@@ -58,7 +61,6 @@ router.post("/:token", async (req, res, next) => {
     const data = await service.createPublicPaymentLink({
       token: req.params.token,
       amount_ngn: input.amount_ngn,
-      currency: input.currency,
     });
     res.status(201).json({ data });
   } catch (err) {

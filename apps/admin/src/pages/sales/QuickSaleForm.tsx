@@ -97,11 +97,11 @@ interface SearchResult {
   sub: string;
 }
 
+// Nomba — the only gateway — settles Naira and US Dollars; the Hub refuses any
+// other checkout currency (payment-link UNSUPPORTED_CURRENCY).
 const CURRENCY_OPTIONS = [
   { value: "NGN", label: "NGN" },
   { value: "USD", label: "USD" },
-  { value: "GBP", label: "GBP" },
-  { value: "EUR", label: "EUR" },
 ];
 
 const ngn = (v: number) => `₦${v.toLocaleString()}`;

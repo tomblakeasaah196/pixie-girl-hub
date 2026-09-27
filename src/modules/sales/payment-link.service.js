@@ -109,6 +109,44 @@ function describeGatewayError(err) {
 const toKobo = (amountStr) => Number(money(amountStr).times(100).toFixed(0));
 
 /**
+ * Refuse any charge outside NGN / USD. Nomba settles only those two, and this
+ * is the one place every pay link is minted, so no caller (Quick Sale's old
+ * GBP/EUR picker, a hand-built request) can route another currency to it.
+ */
+function assertSettlementCurrency(cur) {
+  if (!currencyService.SETTLEMENT_CURRENCIES.includes(cur))
+    throw new AppError(
+      "UNSUPPORTED_CURRENCY",
+      `Payments can only be taken in NGN or USD (requested ${cur})`,
+      422,
+      {
+        user_message: "Payments can only be made in Naira (₦) or US Dollars ($).",
+      },
+    );
+}
+
+/**
+ * The currency an order (or quotation) is locked to: its display_currency when
+ * that is a settlement currency, else NGN. Customers always pay in this; only
+ * staff may switch a balance to the other currency (owner decision, Sept 2026).
+ */
+function lockedCurrency(doc) {
+  const cur = String((doc && doc.display_currency) || "NGN").toUpperCase();
+  return currencyService.SETTLEMENT_CURRENCIES.includes(cur) ? cur : "NGN";
+}
+
+/**
+ * The ₦ rate LOCKED on an order/quote for `currency`, or null. 1.0 is the
+ * column default ("never captured"), so it never counts as a lock; nor does a
+ * rate captured for a different currency.
+ */
+function lockedRate(doc, currency) {
+  if (!doc || lockedCurrency(doc) !== currency) return null;
+  const rate = Number(doc.fx_rate_used);
+  return rate > 0 && rate !== 1 ? rate : null;
+}
+
+/**
  * The campaign's static NGN→foreign rate (ngn_per_usd_rate) for a foreign-
  * currency checkout. This is the SAME rate the landing page used to display the
  * buyer's price, so the gateway charges exactly what they saw. Returns null when
@@ -131,24 +169,24 @@ async function campaignFxRate({ brand, order }) {
 
 /**
  * The NGN→foreign rate to settle THIS order at, for `currency`. Precedence:
- *   1. The rate LOCKED on the order at placement (fx_rate_used) — the exact rate
- *      the buyer was quoted (re-reading a live rate is unsafe: the owner can edit
- *      it after placement). Only called for foreign settlement, where 1.0 is the
- *      "never captured" default, so we ignore 1.0 and fall through.
- *   2. The campaign's static rate (campaign orders — USD display).
+ *   1. The rate LOCKED on the order for this currency (fx_rate_used) — the exact
+ *      rate the buyer was quoted (re-reading a live rate is unsafe: the owner can
+ *      edit it after placement). 1.0 is the "never captured" default, and a rate
+ *      locked for another currency doesn't apply, so both fall through.
+ *   2. The campaign's static ₦/$ rate (campaign orders, USD only).
  *   3. The system SSOT rate for the settlement currency (currency.service):
- *      USD → the brand catalogue tool's usd_fx_rate; GBP/EUR/… → the admin-set
- *      shared.currency_rates. Currency-aware, so a non-USD order settles at ITS
- *      own rate rather than the USD one.
+ *      USD → the brand catalogue tool's usd_fx_rate.
+ * Also used by the Nomba webhook to convert a USD capture back to Naira, so a
+ * payment is credited at the same rate its checkout was charged at.
  */
 async function settlementFxRate({ brand, order, currency }) {
-  const locked = order && Number(order.fx_rate_used);
-  if (locked && locked > 0 && locked !== 1) return locked;
-  const campaignRate = await campaignFxRate({ brand, order });
-  if (campaignRate && campaignRate > 0) return campaignRate;
-  const cur = String(
-    currency || (order && order.display_currency) || "USD",
-  ).toUpperCase();
+  const cur = String(currency || lockedCurrency(order)).toUpperCase();
+  const locked = lockedRate(order, cur);
+  if (locked) return locked;
+  if (cur === "USD") {
+    const campaignRate = await campaignFxRate({ brand, order });
+    if (campaignRate && campaignRate > 0) return campaignRate;
+  }
   return currencyService.systemFxRate({ brand, currency: cur });
 }
 
@@ -330,9 +368,13 @@ async function createPaymentLink({
   // the order's locked rate (settlementFxRate) and ceil to a whole dollar — the
   // exact figure the landing page showed the buyer (owner: 10.29 → $11). We
   // never hardcode a rate; whatever the order locked in is what we charge.
+  //
+  // `currency` is a STAFF override (admin Send Pay Link) — customer-facing
+  // callers never pass one, so a buyer always pays in the order's own currency.
   const settleCurrency = String(
-    currency || order.display_currency || "NGN",
+    currency || lockedCurrency(order),
   ).toUpperCase();
+  assertSettlementCurrency(settleCurrency);
   let chargeAmount = amountStr;
   if (settleCurrency !== "NGN") {
     const rate = await settlementFxRate({
@@ -347,6 +389,21 @@ async function createPaymentLink({
         422,
       );
     chargeAmount = amt.dividedBy(money(rate)).ceil().toString();
+    // Currency lock: an order with no rate of its own for this currency (a
+    // Quick Sale, a staff switch from NGN) is pinned to the rate this checkout
+    // charges at. The webhook then credits the capture at exactly this rate,
+    // and every later link on the order reuses it instead of a live rate.
+    if (!lockedRate(order, settleCurrency)) {
+      await salesRepo.lockSettlementCurrency({
+        brand,
+        id: order.order_id,
+        currency: settleCurrency,
+        fx_rate: rate,
+        display_total: toCurrencyString(
+          money(order.total_ngn).dividedBy(money(rate)).ceil(),
+        ),
+      });
+    }
   }
 
   const email = await contactEmail(order.contact_id);
@@ -478,8 +535,9 @@ async function createQuotationPaymentLink({
   // so campaignFxRate short-circuits to null and we fall through to the system
   // rate when nothing was locked.
   const settleCurrency = String(
-    currency || quote.display_currency || "NGN",
+    currency || lockedCurrency(quote),
   ).toUpperCase();
+  assertSettlementCurrency(settleCurrency);
   let chargeAmount = amountStr;
   if (settleCurrency !== "NGN") {
     const rate = await settlementFxRate({
@@ -620,8 +678,12 @@ async function previewQuotationByToken({ token }) {
   };
 }
 
-/** Public, no-auth: generate a checkout link for a tokenised quotation. */
-async function createPublicQuotationPaymentLink({ token, currency }) {
+/**
+ * Public, no-auth: generate a checkout link for a tokenised quotation. Always
+ * settles in the quote's own currency — a client-sent `currency` is ignored
+ * (currency lock: only staff may switch).
+ */
+async function createPublicQuotationPaymentLink({ token }) {
   const found = await resolveQuotationByToken(token);
   if (!found) throw new NotFoundError("Quotation");
   // Return the buyer to THIS quote page after the gateway. Resolved server-side
@@ -636,7 +698,6 @@ async function createPublicQuotationPaymentLink({ token, currency }) {
   return createQuotationPaymentLink({
     brand: found.brand,
     quotation_id: found.quote.quotation_id,
-    currency,
     return_url_base: returnUrlBase,
   });
 }
@@ -705,8 +766,13 @@ async function previewByToken({ token }) {
   };
 }
 
-/** Public, no-auth: generate a checkout link for a tokenised order. */
-async function createPublicPaymentLink({ token, amount_ngn, currency }) {
+/**
+ * Public, no-auth: generate a checkout link for a tokenised order. Always
+ * settles in the order's own currency — a client-sent `currency` is ignored.
+ * Letting the public choose was the exploit: flip a Naira order to USD, pay a
+ * $1 "any amount" checkout, and the webhook used to credit the whole balance.
+ */
+async function createPublicPaymentLink({ token, amount_ngn }) {
   const found = await resolveByToken(token);
   if (!found) throw new NotFoundError("Order");
   // Return the buyer to THIS pay page after the gateway so they see the updated
@@ -719,21 +785,22 @@ async function createPublicPaymentLink({ token, amount_ngn, currency }) {
   } catch {
     returnUrlBase = undefined;
   }
-  // Pass currency through as-is — when the caller omits it, createPaymentLink
-  // settles in the order's own display_currency. Defaulting to "NGN" here would
-  // force a USD order's public "pay any amount" link back into Naira, the same
-  // way the admin "Send Pay Link" button did (FLH-SO-0059).
+  // No currency is passed: createPaymentLink settles in the order's own locked
+  // currency. (Forcing "NGN" here would push a USD order's "pay any amount"
+  // link back into Naira, the FLH-SO-0059 bug; passing the client's value
+  // through would let anyone flip the order's currency.)
   return createPaymentLink({
     brand: found.brand,
     order_id: found.order.order_id,
     amount_ngn,
-    currency,
     return_url_base: returnUrlBase,
   });
 }
 
 module.exports = {
   createPaymentLink,
+  settlementFxRate,
+  lockedCurrency,
   previewByToken,
   createPublicPaymentLink,
   createQuotationPaymentLink,

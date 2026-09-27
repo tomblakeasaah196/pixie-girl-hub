@@ -1430,6 +1430,42 @@ async function setDeliveryFee({ client, brand, id, fee_ngn }) {
   return rows[0] || null;
 }
 
+/**
+ * Lock an order to a foreign settlement currency at a fixed ₦ rate (currency
+ * lock, Sept 2026). Written the first time a USD pay link is minted for an
+ * order that has no rate of its own (a Quick Sale, a staff switch from NGN), so
+ * the deposit, every top-up and the webhook credit all convert at this one
+ * figure rather than whatever the live rate says that day. Never overwrites a
+ * rate an earlier checkout already locked for the same currency — the WHERE
+ * guard makes a concurrent second mint a no-op. Returns the row, or null when
+ * the order was already locked.
+ */
+async function lockSettlementCurrency({
+  client,
+  brand,
+  id,
+  currency,
+  fx_rate,
+  display_total,
+}) {
+  const { rows } = await ex(client)(
+    `UPDATE ${t(brand, "sales_orders")}
+        SET display_currency = $2,
+            fx_rate_used     = $3,
+            display_total    = $4,
+            updated_at       = now()
+      WHERE order_id = $1
+        AND NOT (
+          display_currency = $2
+          AND COALESCE(fx_rate_used, 0) > 0
+          AND fx_rate_used <> 1
+        )
+      RETURNING *`,
+    [id, currency, fx_rate, display_total],
+  );
+  return rows[0] || null;
+}
+
 // ── Pre-orders (migration 000086) ────────────────────────
 /** Brand pre-order policy from catalogue_config, with safe defaults when the
  *  singleton row predates the feature (master switch on, 4–8 week window). */
@@ -1696,6 +1732,7 @@ async function lastAllocationRun({ client, brand }) {
 }
 
 module.exports = {
+  lockSettlementCurrency,
   getPreorderPolicy,
   excludedPreorderProductIds,
   markOrderPreorder,

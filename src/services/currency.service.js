@@ -22,10 +22,10 @@
  * Returns null when no rate is configured for a currency — the caller then
  * treats it as not displayable / not settleable (never guesses a rate).
  *
- * `is_settlement` on `shared.currencies` is the gate for CHARGING in a currency
- * (a Nomba/Stripe account exists for it). A currency can be display-only (shown
- * in the toolbar, prices converted) without being a settlement currency — then
- * the buyer SEES it but is charged in the default foreign settlement (USD).
+ * CHARGING is limited to SETTLEMENT_CURRENCIES (NGN + USD — what Nomba settles).
+ * A currency can be display-only (shown in the toolbar, prices converted) — the
+ * buyer SEES it but is charged in USD. `is_settlement` on `shared.currencies`
+ * no longer widens that set.
  */
 
 "use strict";
@@ -105,24 +105,27 @@ async function systemFxRate({ brand, currency }) {
 }
 
 /**
+ * The only currencies a checkout may charge in. Nomba — the sole gateway from
+ * Sept 2026 — settles Naira and US Dollars on one account; nothing else may
+ * reach a gateway, whatever `is_settlement` says on a shared.currencies row.
+ */
+const SETTLEMENT_CURRENCIES = Object.freeze(["NGN", "USD"]);
+
+/**
  * Resolve the currency an order should SETTLE (charge) in, given the buyer's
  * chosen DISPLAY currency:
- *   • NGN display                    → settle NGN.
- *   • a settlement-enabled currency  → settle that currency (e.g. GBP once a
- *     Nomba GBP account is linked and the currency is marked is_settlement).
- *   • any other foreign display      → settle the default foreign currency
- *     (USD) — the buyer sees their currency but pays USD, as today.
+ *   • NGN display          → settle NGN.
+ *   • any foreign display  → settle USD — the buyer sees their currency but
+ *     pays dollars. A GBP/EUR row flagged is_settlement no longer routes a
+ *     GBP/EUR charge to the gateway (Nomba takes NGN + USD only).
  */
 async function resolveSettlementCurrency({ displayCurrency }) {
   const disp = String(displayCurrency || "NGN").toUpperCase();
-  if (disp === "NGN") return "NGN";
-  const list = await listActiveCurrencies();
-  const row = list.find((c) => c.currency_code === disp);
-  if (row && row.is_settlement) return disp;
-  return "USD";
+  return disp === "NGN" ? "NGN" : "USD";
 }
 
 module.exports = {
+  SETTLEMENT_CURRENCIES,
   listActiveCurrencies,
   systemFxRate,
   resolveSettlementCurrency,

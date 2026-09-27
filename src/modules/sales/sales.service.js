@@ -1485,11 +1485,30 @@ async function addPayment({ brand, user, request_id, id, input }) {
     // currency, the NGN actually received differs from the amount the order
     // booked at its captured rate. Post the variance to the realised FX
     // account, atomic with the payment.
+    //
+    // Only against a REAL lock: the order must be denominated in the paid
+    // currency at a captured rate (1.0 is the column default, not a rate).
+    // Against an unlocked NGN order, paid_amount × 1.0 made a $764 capture
+    // look like a ~₦990k "FX gain". And a capture converted at the order's own
+    // locked rate (every Nomba USD credit) is not an FX event at all — dollars
+    // sit in the USD wallet until converted; any sub-dollar ceil surplus is not
+    // a loss either.
+    const orderRate = money(order.fx_rate_used || 0);
+    const lockedToPaidCurrency =
+      String(order.display_currency || "").toUpperCase() ===
+        String(input.paid_currency || "").toUpperCase() &&
+      orderRate.gt(0) &&
+      !orderRate.eq(1);
+    const sameRateCapture =
+      input.fx_rate_used !== null &&
+      input.fx_rate_used !== undefined &&
+      money(input.fx_rate_used).eq(orderRate);
     if (
       input.paid_currency &&
       input.paid_currency !== "NGN" &&
       input.paid_amount &&
-      order.fx_rate_used
+      lockedToPaidCurrency &&
+      !sameRateCapture
     ) {
       const bookedNgn = money(input.paid_amount).times(
         money(order.fx_rate_used),

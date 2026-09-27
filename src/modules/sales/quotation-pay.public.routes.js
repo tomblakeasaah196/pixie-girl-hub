@@ -33,16 +33,18 @@ router.get("/:token", async (req, res, next) => {
 // No amount: a quote is paid in full or not at all. There is no order yet, so
 // there is no balance to part-pay and no Flexi Pay plan to apply — a deposit
 // sale is accepted-and-converted first, then part-paid on the order's own link.
+//
+// `currency` is still accepted (older pages send it) but never honoured: the
+// quote is paid in its own currency. Only staff may switch a currency.
 const bodySchema = z
   .object({ currency: z.string().length(3).optional() })
   .strict();
 
 router.post("/:token", async (req, res, next) => {
   try {
-    const input = bodySchema.parse(req.body || {});
+    bodySchema.parse(req.body || {});
     const data = await service.createPublicQuotationPaymentLink({
       token: req.params.token,
-      currency: input.currency,
     });
     res.status(201).json({ data });
   } catch (err) {

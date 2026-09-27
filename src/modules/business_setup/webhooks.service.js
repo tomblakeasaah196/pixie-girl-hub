@@ -845,6 +845,88 @@ async function confirmOpayCharge(log) {
   });
 }
 
+/**
+ * Naira credit for a foreign-currency (USD) Nomba capture: what the buyer
+ * ACTUALLY paid, converted at the rate the checkout was charged at (the rate
+ * locked on the order — payment-link.settlementFxRate, the same resolver the
+ * link used), capped at what the order still owes.
+ *
+ * This replaces "credit the order's whole outstanding balance", which let a
+ * $1 "pay any amount" checkout — or a genuine USD Flexi Pay deposit, or an old
+ * link paid after Change Order raised the total — settle the entire order and
+ * release its stock.
+ *
+ * The whole-dollar ceil at checkout means a full payment is worth up to one
+ * dollar more than the balance; the cap absorbs that. Anything beyond is a real
+ * overpayment and is logged for staff (paid_amount on the row keeps the truth).
+ *
+ * Returns { amount_ngn, fx_rate } or { park: note, value_ngn } when the capture
+ * cannot be credited automatically.
+ */
+async function foreignCaptureCredit({ brand, order, currency, paidAmount }) {
+  const paymentLink = require("../sales/payment-link.service");
+  const paid = money(paidAmount || 0);
+  const label = `${currency} ${toCurrencyString(paid)}`;
+  if (paid.lte(0))
+    return {
+      park: `${label} capture with no amount — check it in Nomba before crediting ${order.order_number}.`,
+      value_ngn: "0",
+    };
+  const rate = await paymentLink.settlementFxRate({ brand, order, currency });
+  if (!rate || rate <= 0)
+    return {
+      park: `${label} paid on ${order.order_number}, but no ₦/${currency} rate is set to convert it — match it manually.`,
+      value_ngn: "0",
+    };
+  const value = paid.times(money(rate));
+  const outstanding = money(order.total_ngn).minus(
+    money(order.amount_paid_ngn || 0),
+  );
+  if (outstanding.lte(0))
+    return {
+      park: `${label} arrived after ${order.order_number} was already fully paid — refund it or hold it as credit.`,
+      value_ngn: toCurrencyString(value),
+    };
+  const credit = value.gt(outstanding) ? outstanding : value;
+  const over = value.minus(credit);
+  if (over.gt(money(rate)))
+    logger.warn(
+      {
+        brand,
+        order_id: order.order_id,
+        paid: label,
+        overpaid_ngn: toCurrencyString(over),
+      },
+      "nomba: foreign capture exceeds the balance by more than rounding — review for refund/credit",
+    );
+  return { amount_ngn: toCurrencyString(credit), fx_rate: rate };
+}
+
+/**
+ * Amount + currency from Nomba's own record of the checkout (the re-verify
+ * response), when it states them. Nomba's webhook HMAC signs only ids, type,
+ * time and response code — NOT amount, currency or orderReference — so a
+ * disagreement between the delivery and Nomba's record is worth shouting
+ * about. Returns null when the response carries no recognisable figures (its
+ * shape varies by path and isn't pinned in our docs), so this only ever warns;
+ * the credit itself is already bounded by foreignCaptureCredit.
+ */
+function verifiedNombaFigures(res) {
+  const d = res && res.data;
+  if (!d || typeof d !== "object") return null;
+  for (const c of [d.order, d.transaction, d.transactionDetails, d]) {
+    if (!c || typeof c !== "object") continue;
+    const amt =
+      c.amount !== undefined && c.amount !== null ? c.amount : c.transactionAmount;
+    if (amt !== undefined && amt !== null && Number.isFinite(Number(amt)))
+      return {
+        amount: Number(amt),
+        currency: c.currency ? String(c.currency).toUpperCase() : null,
+      };
+  }
+  return null;
+}
+
 async function confirmNombaCharge(log) {
   const evt = log.payload || {};
   const dataOrder = (evt.data && evt.data.order) || {};
@@ -900,11 +982,19 @@ async function confirmNombaCharge(log) {
   // configured account (only the owner returns the transaction).
   const gateways = require("./payment-gateways.service");
   let res = null;
-  const orderMeta = dataOrder.metadata || dataOrder.orderMetaData || {};
-  const txMeta = dataTx.metadata || {};
-  const meta = { ...txMeta, ...orderMeta };
+  // Nomba's checkout API takes no metadata — we send only orderReference (see
+  // payment-link initOnGateway) — so anything under `metadata` in a delivery
+  // did not come from us. It also sits OUTSIDE the fields Nomba's HMAC signs.
+  // It must never pick the order, the brand or the amount credited (it used to:
+  // metadata.amount_ngn overrode Nomba's own figure). `channel` is kept only
+  // as the legacy online/terminal hint, which decides nothing about money.
+  const payloadMeta = {
+    ...(dataTx.metadata || {}),
+    ...(dataOrder.metadata || dataOrder.orderMetaData || {}),
+  };
+  const meta = { channel: payloadMeta.channel };
 
-  let resolvedBrand = meta.brand || null;
+  let resolvedBrand = null;
 
   // If brand not in metadata, extract from order number pattern in reference.
   // "nomba-FLH-SO-0037-mqsyyrps" → FLH → faitlynhair
@@ -1054,21 +1144,71 @@ async function confirmNombaCharge(log) {
       });
       return;
     }
-    const outstanding = money(order.total_ngn).minus(
-      money(order.amount_paid_ngn || 0),
-    );
-    amount_ngn = toCurrencyString(
-      outstanding.gt(0) ? outstanding : money(order.total_ngn),
-    );
-    paid_currency = settledCurrency;
     // For online_checkout, amount is in dataOrder; for terminal, Nomba uses
     // data.transaction.transactionAmount (not the non-existent tx.amount).
     const txAmount = isOnlineCheckout
       ? dataOrder.amount
       : dataTx.transactionAmount || tx.amount || dataTx.amount || 0;
+
+    // A re-driven delivery of a capture we already recorded is a no-op — check
+    // BEFORE the balance test below, which would otherwise see the now-settled
+    // order and park the replay as an unexplained overpayment.
+    const paymentRef = reference || tx.transactionId || tx.sessionId;
+    if (
+      resolvedBrand &&
+      (await salesRepo.paymentExistsByProviderRef({
+        brand: resolvedBrand,
+        order_id,
+        provider_reference: paymentRef,
+      }))
+    )
+      return;
+
+    const verified = verifiedNombaFigures(res);
+    if (
+      verified &&
+      (Math.abs(verified.amount - Number(txAmount)) > 0.01 ||
+        (verified.currency && verified.currency !== settledCurrency))
+    )
+      logger.warn(
+        {
+          reference,
+          webhook: `${settledCurrency} ${txAmount}`,
+          nomba: `${verified.currency || "?"} ${verified.amount}`,
+        },
+        "nomba: webhook amount/currency disagree with Nomba's own record — review this capture",
+      );
+
+    const credit = await foreignCaptureCredit({
+      brand: resolvedBrand,
+      order,
+      currency: settledCurrency,
+      paidAmount: txAmount,
+    });
+    if (credit.park) {
+      await parkUnmatchedPayment({
+        webhook_id: log.webhook_id,
+        provider: "nomba",
+        brand: resolvedBrand,
+        amount_ngn: credit.value_ngn,
+        reference: paymentRef,
+        note: credit.park,
+        raw_event: evt,
+        terminal_id: dataTerminal.terminalId || null,
+        alias_account_name:
+          tx.aliasAccountName || dataTx.aliasAccountName || null,
+        sender_name: dataCustomer.senderName || null,
+        sender_bank: dataCustomer.bankName || null,
+        transaction_time: tx.time || dataTx.time || null,
+      });
+      return;
+    }
+    amount_ngn = credit.amount_ngn;
+    paid_currency = settledCurrency;
     paid_amount = toCurrencyString(money(txAmount));
-    if (money(paid_amount).gt(0))
-      fx_rate_used = money(amount_ngn).dividedBy(money(paid_amount)).toFixed(6);
+    // The rate the credit was converted at — the order's locked rate — so
+    // addPayment sees a same-rate capture and posts no phantom FX variance.
+    fx_rate_used = money(credit.fx_rate).toFixed(6);
   } else {
     // Nomba sends the NGN figure under different keys depending on the path:
     //   • online checkout / bank transfer → data.order.amount      (dataOrder.amount)

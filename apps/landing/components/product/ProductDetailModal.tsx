@@ -66,6 +66,8 @@ interface ProductLaceSize {
 }
 
 interface ProductDetail {
+  /** ₦ per catalogue $ for this product (Hub usd-pricing). */
+  ngn_per_usd?: number | null;
   styled_id: string | null;
   product_id?: string;
   is_retail?: boolean;
@@ -478,6 +480,8 @@ export function ProductDetailModal({
             role="dialog"
             aria-modal="true"
             className="relative dropglass rounded-2xl w-[min(1100px,96vw)] max-h-[calc(100dvh-2rem)] flex flex-col"
+            // ₦⇄$ toggle: convert at this product's own catalogue rate.
+            data-ngn-per-usd={product?.ngn_per_usd ?? undefined}
           >
             <button
               type="button"

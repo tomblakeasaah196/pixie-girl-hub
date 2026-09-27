@@ -59,6 +59,10 @@ export interface LandingProduct {
   is_featured?: boolean;
   stock_remaining?: number | null;
   image_url?: string | null;
+  /** This product's own ₦ per catalogue $ (catalogue ₦ ÷ catalogue USD).
+   *  Its card converts at it so the USD figure is its catalogue USD price;
+   *  null → the catalogue ₦/$ rate. */
+  ngn_per_usd?: number | null;
 }
 
 export interface PositionLadderItem {
@@ -105,6 +109,8 @@ export interface BundleSizeOption {
 export interface LandingBundle {
   link_id: string;
   bundle_id: string;
+  /** A fixed-price bundle's own ₦ per catalogue $ (see LandingProduct). */
+  ngn_per_usd?: number | null;
   bundle_slug: string;
   bundle_name: string;
   description?: string | null;

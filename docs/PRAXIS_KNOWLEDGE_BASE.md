@@ -855,6 +855,20 @@ categories, collections, bundles, shades, and bookable services.
   and **Shop by shade** pickers show where it already lives as chips; click a
   chip's **✕** to remove it, or search to add it somewhere new.
 - *Add a bookable service (Faitlyn)?* Catalogue → **Services** → **New Service Type**.
+- *Set the dollar (USD) rate or dollar prices?* Catalogue → **Config** →
+  **Apply USD exchange rate**: enter one ₦ per $1 rate, pick the rounding
+  (exact, whole dollars or .99) and apply — every USD price in the catalogue is
+  recomputed from its Naira price (undo reverts the last apply). That rate is
+  the ONLY ₦/$ rate for sales: the website, sales campaigns, Quick Sale and
+  pay links all use it (Settings → Currencies does not override it). A
+  product's own USD price — including one you edit by hand — is exactly what a
+  dollar customer pays for it; a product with no USD price converts at the
+  rate, rounded up to the dollar.
+- *Why does a dollar customer pay $249.99, not ₦ ÷ rate?* Dollar checkouts
+  charge each product's catalogue USD price; a campaign or discounted price
+  keeps the same percentage off in dollars, and delivery converts at the rate.
+  The order locks its dollar total when it's placed, so later rate changes
+  never reprice it. Payments are taken in Naira or US Dollars only (Nomba).
 
 ### 4.9 Logistics
 **What it's for.** Getting orders to customers — the delivery queue, active
@@ -1601,6 +1615,11 @@ full-screen **Landing Studio** (`/landing-studio`).
 - *Create a discount code?* Sales Campaigns → **Special Codes**
   (`/sales-campaigns/codes`).
 - *Set up campaign bundles?* Sales Campaigns → **Bundles**.
+- *What ₦/$ rate does a campaign show dollar prices at?* The catalogue's live
+  rate (Catalogue → **Config** → **Apply USD exchange rate**) and each
+  product's catalogue USD price — the same as the website. A campaign no longer
+  has a dollar rate of its own; changing the catalogue rate changes a live
+  campaign's dollar prices for new orders (placed orders keep theirs).
 - *A campaign link shows 404?* Public sale pages live on the brand's **sales
   subdomain** (e.g. `sales.faitlynhair.com/sale/<slug>`), set in Settings →
   Business Setup → Public Identity. A link on the bare apex

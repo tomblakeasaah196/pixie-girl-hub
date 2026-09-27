@@ -11,7 +11,7 @@
 
 "use strict";
 
-const { money, toCurrencyString } = require("../../utils/money");
+const { money } = require("../../utils/money");
 const { AppError } = require("../../utils/errors");
 
 // ── Wholesale minimum (cart-wide) ──────────────────────────
@@ -108,27 +108,22 @@ function computeBundleDiscount({ components, campaignBundlePrice }) {
   return { sumOfParts, effectivePrice, discountPerBundle };
 }
 
-// Currency snapshot (admin clarity). USD checkouts settle in dollars at the
-// gateway using the campaign's static rate (ngn_per_usd_rate, set in the
-// builder); the dollar total is NGN total → whole units, ceil — the same
-// conversion the gateway charges. NGN orders keep the defaults
-// (display_total null, fx_rate_used null → existing NOT NULL default 1.0).
-function resolveDisplayCurrency({ display_currency, campaign, total_ngn }) {
-  const displayCurrency = String(display_currency || "NGN").toUpperCase();
-  const campaignRate =
-    campaign.ngn_per_usd_rate !== null &&
-    campaign.ngn_per_usd_rate !== undefined
-      ? Number(campaign.ngn_per_usd_rate)
-      : null;
-  let displayTotal = null;
-  let fxRateUsed = null;
-  if (displayCurrency !== "NGN" && campaignRate && campaignRate > 0) {
-    displayTotal = toCurrencyString(
-      money(total_ngn).dividedBy(money(campaignRate)).ceil(),
-    );
-    fxRateUsed = campaignRate;
-  }
-  return { displayCurrency, displayTotal, fxRateUsed };
+// Currency snapshot. A USD checkout locks the dollar figure the USD engine
+// priced (campaignUsd → usd-pricing: catalogue USD prices, live catalogue
+// rate): display_total = the $ total, fx_rate_used = its effective ₦/$. NGN
+// orders keep the defaults (display_total null, fx_rate_used null → the
+// column's NOT NULL default 1.0). A USD order the engine couldn't price is
+// still marked USD; the pay link then prices it from its lines or refuses.
+function resolveDisplayCurrency({ display_currency, usd }) {
+  const displayCurrency =
+    String(display_currency || "NGN").toUpperCase() === "USD" ? "USD" : "NGN";
+  if (displayCurrency === "NGN" || !usd || !usd.fx_rate)
+    return { displayCurrency, displayTotal: null, fxRateUsed: null };
+  return {
+    displayCurrency,
+    displayTotal: usd.total_usd,
+    fxRateUsed: usd.fx_rate,
+  };
 }
 
 // Per-campaign gateway gate: the owner can disable a rail for this sale in

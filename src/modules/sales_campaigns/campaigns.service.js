@@ -648,6 +648,13 @@ async function preview({ brand, id, state }) {
   return buildLandingPayload(c, products, state || resolveState(c));
 }
 
+/** A product's effective ₦ per $1 from its catalogue pair, or null. */
+function productNgnPerUsd(ngn, usd) {
+  const n = Number(ngn);
+  const u = Number(usd);
+  return n > 0 && u > 0 ? Number((n / u).toFixed(6)) : null;
+}
+
 function buildLandingPayload(c, products, state) {
   const extras = c.landing_extras || {};
   return {
@@ -679,10 +686,10 @@ function buildLandingPayload(c, products, state) {
       extras.countdown_closes_label || c.countdown_message || null,
     signup_for_notifications: state === "before" && c.signup_for_notifications,
     blocks: c.landing_blocks || [],
-    // Customer-facing FX SSOT: the static "1 USD = N NGN" rate the campaign
-    // owner sets in the builder. The landing currency toggle uses this so the
-    // visitor sees a stable price for the whole drop. Order settlement uses
-    // the LIVE rate captured into sales_orders.fx_rate_used at payment.
+    // The ₦/$ rate the landing converts at. The public landing overwrites
+    // this with the LIVE catalogue rate (campaigns follow the catalogue rate,
+    // owner Sept 2026); the builder's stored value only reaches the admin
+    // preview.
     ngn_per_usd_rate:
       c.ngn_per_usd_rate !== null && c.ngn_per_usd_rate !== undefined
         ? Number(c.ngn_per_usd_rate)
@@ -772,6 +779,19 @@ function buildLandingPayload(c, products, state) {
                   p.live_base_stock !== undefined &&
                   Number(p.live_base_stock) <= 0,
                 image_url: p.resolved_image_url || p.image_url,
+                // This product's own ₦ per catalogue $ (its catalogue ₦ price ÷
+                // catalogue USD price): every ₦ figure on its card — sale price,
+                // savings, bulk price — converts at it, so a $249.99 wig reads
+                // $249.99 and "10% off" is 10% in dollars, exactly as checkout
+                // prices it (usd-pricing). Null → the catalogue ₦/$ rate.
+                ngn_per_usd: productNgnPerUsd(
+                  isRetail
+                    ? p.retail_variant_price_ngn
+                    : p.styled_retail_price_ngn,
+                  isRetail
+                    ? p.retail_variant_price_usd
+                    : p.styled_retail_price_usd,
+                ),
               };
             })
         : [],

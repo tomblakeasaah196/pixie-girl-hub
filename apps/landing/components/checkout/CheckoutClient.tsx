@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { useCart } from "@/lib/cart-store";
 import { fbTrack } from "@/lib/fbpixel";
-import { displayMoney } from "@/lib/format";
+import { displayMoney, formatUsd } from "@/lib/format";
 import { useDisplayCurrency } from "@/lib/currency";
 import {
   postCheckout,
@@ -437,10 +437,64 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
   // first payment is sent, so the two always reconcile at the gateway.
   const depositPct = flexi?.min_first_payment_pct ?? 30;
   const depositEstimate = Math.max(0, Math.round((total * depositPct) / 100));
-  const chargeNow =
+
+  // ── Dollars (USD display) ─────────────────────────────────────────────
+  // Every $ figure comes from the Hub's USD engine (quote.usd): each line's
+  // catalogue USD price; goods-side ₦ amounts (deal rows, codes) at the goods'
+  // own $ ratio; delivery at the catalogue rate, rounded UP to the dollar.
+  // Checkout locks the same arithmetic onto the order, so the Pay button's $
+  // is exactly what Nomba charges.
+  const usdQ =
+    displayCurrency === "USD" && quote?.usd && quote.usd.ratio
+      ? quote.usd
+      : null;
+  const usdRatio = usdQ ? Number(usdQ.ratio) : 0;
+  const usdRate = (usdQ && usdQ.rate) || fxRate || 0;
+  // To the cent, ties away from zero — the Hub's Decimal ROUND_HALF_UP — so a
+  // negative adjustment rounds exactly as the server locks it.
+  const cents = (x: number) =>
+    (Math.sign(x) * Math.round((Math.abs(x) + Number.EPSILON) * 100)) / 100;
+  const deliveryUsdOf = (ngn: number) =>
+    ngn > 0 && usdRate ? Math.ceil(ngn / usdRate - 1e-9) : 0;
+  const totalUsd = usdQ
+    ? cents(
+        Number(usdQ.goods_usd) +
+          cents(
+            (discountedGoods -
+              exitIntentDiscount -
+              couponDiscount -
+              quotedSubtotal) *
+              usdRatio,
+          ) +
+          deliveryUsdOf(deliveryDue),
+      )
+    : null;
+  const depositUsd =
+    totalUsd != null ? cents((totalUsd * depositPct) / 100) : null;
+  // Goods-side ₦ figure (a price, a saving, the subtotal) in the display currency.
+  const fmtGoods = (ngn: number) =>
+    usdQ ? formatUsd(cents(ngn * usdRatio)) : fmt(ngn);
+  // A line: its own catalogue USD price when the quote lines up with the cart.
+  const fmtLine = (idx: number, ngn: number, qty: number) => {
+    const u =
+      usdQ && quote?.lines && quote.lines.length === items.length
+        ? quote.lines[idx]?.unit_price_usd
+        : undefined;
+    return u != null ? formatUsd(cents(Number(u) * qty)) : fmtGoods(ngn);
+  };
+  const fmtDelivery = (ngn: number) =>
+    usdQ ? formatUsd(deliveryUsdOf(ngn)) : fmt(ngn);
+  const fmtTotal = () => (totalUsd != null ? formatUsd(totalUsd) : fmt(total));
+  const fmtDeposit = () =>
+    depositUsd != null ? formatUsd(depositUsd) : fmt(depositEstimate);
+  const fmtBalance = () =>
+    totalUsd != null && depositUsd != null
+      ? formatUsd(cents(totalUsd - depositUsd))
+      : fmt(total - depositEstimate);
+  const fmtChargeNow = () =>
     instalmentsEnabled && paymentPlan === "instalment"
-      ? depositEstimate
-      : total;
+      ? fmtDeposit()
+      : fmtTotal();
 
   // Right-hand summary label for the delivery line. A delivery order must show a
   // real, positive fee. A ₦0 outcome of any kind — "free" promo, "pending"
@@ -453,7 +507,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
       : quoting
         ? "Calculating…"
         : deliveryFee != null && deliveryFee > 0
-          ? fmt(deliveryFee)
+          ? fmtDelivery(deliveryFee)
           : effectiveZone
             ? "No delivery to this address"
             : "Select location";
@@ -1056,7 +1110,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                       Pay in full
                     </span>
                     <span className="font-mono text-[13px] text-[rgb(var(--text-muted))]">
-                      {fmt(total)}
+                      {fmtTotal()}
                     </span>
                   </button>
                   <button
@@ -1072,16 +1126,16 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                       {flexi?.plan_display_name || "Flexi Pay"} — pay part now
                     </span>
                     <span className="font-mono text-[13px] text-[rgb(var(--text-muted))]">
-                      ≈ {fmt(depositEstimate)} today
+                      ≈ {fmtDeposit()} today
                     </span>
                   </button>
                 </div>
                 {paymentPlan === "instalment" && (
                   <div className="mt-2 space-y-2 text-[12px] text-[rgb(var(--text-muted))]">
                     <p>
-                      Pay <strong>≈ {fmt(depositEstimate)}</strong> now to
+                      Pay <strong>≈ {fmtDeposit()}</strong> now to
                       reserve your order. Pay the rest (
-                      {fmt(total - depositEstimate)}) any time using the
+                      {fmtBalance()}) any time using the
                       personal link we send you — your order ships once
                       it&apos;s fully paid.
                     </p>
@@ -1198,7 +1252,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                 )}
               </div>
               <ul className="space-y-2.5">
-                {items.map((i) => (
+                {items.map((i, idx) => (
                   <li key={i.id} className="flex items-start gap-3 text-[13px]">
                     <div className="font-mono text-[rgb(var(--text-faint))] tabular-nums">
                       ×{i.quantity}
@@ -1226,7 +1280,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                       )}
                     </div>
                     <div className="tabular-nums font-mono">
-                      {fmt(i.unit_price_ngn * i.quantity)}
+                      {fmtLine(idx, i.unit_price_ngn * i.quantity, i.quantity)}
                     </div>
                   </li>
                 ))}
@@ -1237,7 +1291,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                     Subtotal
                   </span>
                   <span className="tabular-nums font-mono">
-                    {fmt(quotedSubtotal)}
+                    {fmtGoods(quotedSubtotal)}
                   </span>
                 </div>
                 {dealRows.map((row) => (
@@ -1247,7 +1301,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                   >
                     <span>{row.label}</span>
                     <span className="tabular-nums font-mono">
-                      −{fmt(row.amount)}
+                      −{fmtGoods(row.amount)}
                     </span>
                   </div>
                 ))}
@@ -1255,7 +1309,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                   <div className="flex justify-between text-[rgb(var(--success))] font-semibold">
                     <span>You save</span>
                     <span className="tabular-nums font-mono">
-                      −{fmt(totalDiscount)}
+                      −{fmtGoods(totalDiscount)}
                     </span>
                   </div>
                 )}
@@ -1265,7 +1319,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                       <Gift className="w-3 h-3" /> Code {promoCode}
                     </span>
                     <span className="tabular-nums font-mono">
-                      −{fmt(exitIntentDiscount)}
+                      −{fmtGoods(exitIntentDiscount)}
                     </span>
                   </div>
                 )}
@@ -1275,7 +1329,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                       <Gift className="w-3 h-3" /> Code {promoCode}
                     </span>
                     <span className="tabular-nums font-mono">
-                      −{fmt(couponDiscount)}
+                      −{fmtGoods(couponDiscount)}
                     </span>
                   </div>
                 )}
@@ -1387,9 +1441,9 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                           {promoCode}
                         </span>{" "}
                         {exitIntentApplied
-                          ? `— ${fmt(exitIntentDiscount)} off`
+                          ? `— ${fmtGoods(exitIntentDiscount)} off`
                           : couponDiscount > 0
-                            ? `— ${fmt(couponDiscount)} off`
+                            ? `— ${fmtGoods(couponDiscount)} off`
                             : "will be applied at checkout"}
                       </>
                     )}
@@ -1400,7 +1454,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
               <div className="border-t hairline pt-3 flex justify-between items-baseline">
                 <span className="font-semibold">Total</span>
                 <span className="font-display text-[22px] tabular-nums">
-                  {fmt(total)}
+                  {fmtTotal()}
                 </span>
               </div>
               {/* Near-duplicate warning — shown instead of the normal error */}
@@ -1561,7 +1615,7 @@ export function CheckoutClient({ payload }: { payload: LandingPayload }) {
                   </>
                 ) : (
                   <>
-                    <Lock className="w-4 h-4" /> Pay {fmt(chargeNow)}
+                    <Lock className="w-4 h-4" /> Pay {fmtChargeNow()}
                     {instalmentsEnabled && paymentPlan === "instalment"
                       ? " now"
                       : ""}

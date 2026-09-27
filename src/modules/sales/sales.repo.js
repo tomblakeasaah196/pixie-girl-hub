@@ -1413,6 +1413,15 @@ async function setDeliveryFee({ client, brand, id, fee_ngn }) {
     `UPDATE ${t(brand, "sales_orders")}
         SET shipping_fee_ngn = $2,
             total_ngn        = subtotal_ngn - discount_amount_ngn + tax_amount_ngn + $2,
+            -- A USD order's dollar total follows its Naira total at the rate it
+            -- was booked at (same rule as amendment.repo.setOrderTotals), so
+            -- the delivery-fee pay link doesn't quote a stale dollar figure.
+            display_total    = CASE
+              WHEN display_currency IS NULL OR display_currency = 'NGN' THEN display_total
+              WHEN COALESCE(fx_rate_used, 0) > 0 AND fx_rate_used <> 1
+                THEN round((subtotal_ngn - discount_amount_ngn + tax_amount_ngn + $2) / fx_rate_used, 2)
+              ELSE display_total
+            END,
             internal_notes   = CASE
               WHEN internal_notes IS NULL OR left(btrim(internal_notes), 1) <> '{' THEN internal_notes
               WHEN (internal_notes::jsonb) -> 'delivery' IS NULL THEN internal_notes

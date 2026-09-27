@@ -32,6 +32,7 @@ const contactsRepo = require("../../shared/contacts/contacts.repo");
 const zonesService = require("../logistics/zones.service");
 const paymentLink = require("../sales/payment-link.service");
 const currencyService = require("../../services/currency.service");
+const usdPricing = require("../../services/usd-pricing.service");
 const { transaction, query } = require("../../config/database");
 const { money, toCurrencyString } = require("../../utils/money");
 const { NotFoundError, AppError } = require("../../utils/errors");
@@ -1250,6 +1251,13 @@ async function resolveStyledLine({ brand, item }) {
     // auto-opens a job on order.paid (V2.2 §6.24).
     styled_id,
     line_kind: "styled",
+    // The exact variant's catalogue (₦, $) pair for the USD engine. Not an
+    // order-line column: resolveCartToOrderLines strips it before createOrder.
+    usd_pair: usdPricing.pairFromStyled({
+      styled,
+      variant: v,
+      unstyled: item.unstyled,
+    }),
   };
 }
 
@@ -1340,16 +1348,16 @@ async function resolveCartToOrderLines({ brand, items }) {
       orderLines.push(...resolved.orderLines);
       bundleDiscountNgn = bundleDiscountNgn.plus(resolved.discountNgn);
     } else if (ci.styled_variant_id) {
-      orderLines.push(
-        await resolveStyledLine({
-          brand,
-          item: {
-            styled_variant_id: ci.styled_variant_id,
-            unstyled: ci.unstyled,
-            quantity: ci.quantity,
-          },
-        }),
-      );
+      const line = await resolveStyledLine({
+        brand,
+        item: {
+          styled_variant_id: ci.styled_variant_id,
+          unstyled: ci.unstyled,
+          quantity: ci.quantity,
+        },
+      });
+      delete line.usd_pair;
+      orderLines.push(line);
     } else {
       // Generic product line. Retail SKUs are re-validated against the live
       // catalogue RIGHT HERE (publication, exact variant, live price) — a
@@ -1775,31 +1783,31 @@ async function checkout({ brand, cart_id, sessionCustomerId = null, input = {} }
     },
   });
 
-  // 5. Metadata + currency snapshot. The buyer picks a DISPLAY currency; we
-  //    settle in the currency that has a gateway account (currency.service):
-  //    NGN → NGN; a settlement-enabled currency (e.g. GBP once its Nomba account
-  //    is linked) → itself; any other foreign display → USD (they see their
-  //    currency, pay USD, exactly as today). The rate is the SSOT rate for the
-  //    SETTLEMENT currency (USD → catalogue tool, unchanged; GBP/EUR/… → the
-  //    admin-set shared.currency_rates), so display and charge always agree.
+  // 5. Metadata + currency snapshot. NGN display settles NGN; any foreign
+  //    display settles USD (Nomba charges NGN + USD only). A USD order is
+  //    priced by the USD engine (usd-pricing) from the SAME live cart pass the
+  //    bag showed — each item's catalogue USD price, adjustments at the goods'
+  //    dollar ratio, delivery at the catalogue rate — and locked on the order:
+  //    display_total = the dollar total, fx_rate_used = its effective ₦ per $,
+  //    which the pay link divides by and the webhook credits at.
   const displayCurrency = String(input.display_currency || "NGN").toUpperCase();
   const settlementCurrency = await currencyService.resolveSettlementCurrency({
     displayCurrency,
   });
-  const fxRate =
-    settlementCurrency === "NGN"
-      ? null
-      : await currencyService.systemFxRate({
-          brand,
-          currency: settlementCurrency,
-        });
   let displayTotal = null;
   let fxRateUsed = null;
-  if (settlementCurrency !== "NGN" && fxRate && fxRate > 0) {
-    displayTotal = toCurrencyString(
-      money(order.total_ngn).dividedBy(money(fxRate)).ceil(),
-    );
-    fxRateUsed = fxRate;
+  if (settlementCurrency !== "NGN") {
+    const { priced } = await priceCartItems({ brand, items });
+    const usd = usdPricing.orderUsd({
+      lines: usdEngineLines(priced),
+      total_ngn: order.total_ngn,
+      delivery_ngn: order.shipping_fee_ngn ?? shippingFeeNgn,
+      rate: await usdPricing.catalogueRate(brand),
+    });
+    if (usd && usd.fx_rate) {
+      displayTotal = usd.usd_total;
+      fxRateUsed = usd.fx_rate;
+    }
   }
   const internal = {
     fulfilment_type: isPickup ? "pickup" : "delivery",
@@ -1964,29 +1972,20 @@ async function checkout({ brand, cart_id, sessionCustomerId = null, input = {} }
 }
 
 /**
- * Server-authoritative cart quote for the cart/checkout page. Re-prices lines
- * (styled via the catalogue composer), quotes delivery if an address is given,
- * and totals in NGN + the display currency (USD via catalogue_config.usd_fx_rate).
- * Coupon discounts are applied at checkout (createOrder), not in this preview.
+ * Price every cart item LIVE from the catalogue — the one pass both the cart
+ * quote and checkout's USD figure run, so the dollars a buyer sees in the bag
+ * are the dollars checkout charges. Each item carries its Naira unit price and
+ * its catalogue (₦, $) pair for the USD engine (usd-pricing).
+ *
+ * PR 2: generic (non-styled, non-bundle) lines are re-priced LIVE from the
+ * catalogue — the old branch kept the add-time snapshot forever, so a price
+ * change or an unpublished Care SKU quoted at a stale number right up to
+ * checkout. Retail lines resolve through the typed resolver; an unresolvable
+ * line keeps its snapshot for display but is flagged unavailable so the UI
+ * blocks the purchase (checkout re-validates and rejects it anyway).
  */
-async function quoteCart({
-  brand,
-  cart_id,
-  address = null,
-  display_currency = "NGN",
-}) {
-  const cart = await cartRepo.findCartById({ id: cart_id });
-  if (!cart || cart.business !== brand) throw new NotFoundError("Cart");
-  const items = await cartRepo.listCartItems({ cart_id });
-
-  let subtotal = money(0);
-  const lines = [];
-  // PR 2: generic (non-styled, non-bundle) lines are re-priced LIVE from the
-  // catalogue — the old branch kept the add-time snapshot forever, so a price
-  // change or an unpublished Care SKU quoted at a stale number right up to
-  // checkout. Retail lines resolve through the typed resolver; an unresolvable
-  // line keeps its snapshot for display but is flagged unavailable so the UI
-  // blocks the purchase (checkout re-validates and rejects it anyway).
+async function priceCartItems({ brand, items }) {
+  const noPair = { catalogue_ngn: null, catalogue_usd: null };
   const genericIds = items
     .filter((ci) => !ci.styled_variant_id && !ci.bundle_id && ci.variant_id)
     .map((ci) => ci.variant_id);
@@ -2001,8 +2000,10 @@ async function quoteCart({
       .catch(() => new Map());
   }
   let careCount = 0;
+  const priced = [];
   for (const ci of items) {
     let unit;
+    let pair = noPair;
     let unavailable = false;
     if (ci.styled_variant_id) {
       const resolved = await resolveStyledLine({
@@ -2016,6 +2017,7 @@ async function quoteCart({
       unit = resolved
         ? money(resolved.unit_price_ngn)
         : money(ci.unit_price_ngn || 0);
+      if (resolved) pair = resolved.usd_pair;
     } else if (ci.bundle_id) {
       // Bundle: the decorated effective price (matches what checkout charges).
       const b = await bundleService
@@ -2024,11 +2026,18 @@ async function quoteCart({
       unit = b
         ? money(b.effective_price_ngn || 0)
         : money(ci.unit_price_ngn || 0);
+      pair = await usdPricing
+        .bundlePair({ brand, bundle_id: ci.bundle_id })
+        .catch(() => noPair);
     } else {
       const live = ci.variant_id ? liveGeneric.get(ci.variant_id) : null;
       if (live && live.kind === "retail") {
         careCount += 1;
         unit = money(live.unit_price_ngn);
+        pair = {
+          catalogue_ngn: live.unit_price_ngn,
+          catalogue_usd: live.unit_price_usd,
+        };
       } else if (live) {
         unit = money(live.unit_price_ngn);
       } else if (ci.variant_id) {
@@ -2048,7 +2057,45 @@ async function quoteCart({
       } else {
         unit = money(ci.unit_price_ngn || 0);
       }
+      if (ci.variant_id && pair === noPair)
+        pair = await usdPricing
+          .variantPair({ brand, variant_id: ci.variant_id, unit_ngn: unit })
+          .catch(() => noPair);
     }
+    priced.push({ ci, unit, pair, unavailable });
+  }
+  return { priced, careCount };
+}
+
+/** Engine input lines for a priced cart (see priceCartItems). */
+function usdEngineLines(priced) {
+  return priced.map(({ ci, unit, pair }) => ({
+    unit_ngn: unit,
+    quantity: ci.quantity || 1,
+    ...(pair || {}),
+  }));
+}
+
+/**
+ * Server-authoritative cart quote for the cart/checkout page. Re-prices lines
+ * (styled via the catalogue composer), quotes delivery if an address is given,
+ * and totals in NGN + the display currency (USD via catalogue_config.usd_fx_rate).
+ * Coupon discounts are applied at checkout (createOrder), not in this preview.
+ */
+async function quoteCart({
+  brand,
+  cart_id,
+  address = null,
+  display_currency = "NGN",
+}) {
+  const cart = await cartRepo.findCartById({ id: cart_id });
+  if (!cart || cart.business !== brand) throw new NotFoundError("Cart");
+  const items = await cartRepo.listCartItems({ cart_id });
+
+  const { priced, careCount } = await priceCartItems({ brand, items });
+  let subtotal = money(0);
+  const lines = [];
+  for (const { ci, unit, unavailable } of priced) {
     const lineTotal = unit.times(ci.quantity || 1);
     subtotal = subtotal.plus(lineTotal);
     lines.push({
@@ -2107,18 +2154,31 @@ async function quoteCart({
   }
 
   const totalNgn = subtotal.minus(discountNgn).plus(money(deliveryNgn));
-  // Convert to whatever DISPLAY currency the buyer picked (the toolbar value),
-  // via the SSOT rate for that currency (USD → catalogue tool, unchanged;
-  // GBP/EUR/… → admin-set shared.currency_rates). NGN needs no conversion.
-  const cur = String(display_currency || "NGN").toUpperCase();
-  const fxRate =
+  // Dollar figures come from the USD engine (usd-pricing): each item's
+  // catalogue USD price, the coupon scaled at the goods' dollar ratio, delivery
+  // at the catalogue rate — the SAME engine checkout locks onto the order, so
+  // the bag's $ total is the $ charged. Any non-NGN display is priced in USD
+  // (the storefront offers ₦ and $ only; Nomba charges nothing else).
+  const cur =
+    String(display_currency || "NGN").toUpperCase() === "NGN" ? "NGN" : "USD";
+  const fxRate = cur === "NGN" ? null : await usdPricing.catalogueRate(brand);
+  const usd =
     cur === "NGN"
       ? null
-      : await currencyService.systemFxRate({ brand, currency: cur });
-  const toDisplay = (m) =>
-    cur !== "NGN" && fxRate && fxRate > 0
-      ? toCurrencyString(m.dividedBy(money(fxRate)).ceil())
-      : null;
+      : usdPricing.orderUsd({
+          lines: usdEngineLines(priced),
+          total_ngn: totalNgn,
+          delivery_ngn: deliveryNgn,
+          rate: fxRate,
+        });
+  if (usd)
+    usd.lines.forEach((l, i) => {
+      lines[i].unit_price_usd = l.unit_price_usd;
+      lines[i].line_total_usd = toCurrencyString(
+        money(l.unit_price_usd).times(lines[i].quantity || 1),
+      );
+    });
+  const negate = (v) => toCurrencyString(money(0).minus(money(v)));
 
   return {
     lines,
@@ -2132,10 +2192,18 @@ async function quoteCart({
     delivery_available: deliveryAvailable,
     delivery_unavailable_reason: deliveryUnavailableReason,
     display_currency: cur,
-    subtotal_display: toDisplay(subtotal),
-    discount_display: toDisplay(discountNgn),
-    delivery_display: toDisplay(money(deliveryNgn)),
-    total_display: toDisplay(totalNgn),
+    subtotal_display: usd ? usd.goods_usd : null,
+    // Only a discount lives in the adjustments here (the preview has no VAT or
+    // points), so its dollar figure is the negated adjustment.
+    discount_display: usd ? negate(usd.adjustments_usd) : null,
+    delivery_display: usd ? usd.delivery_usd : null,
+    total_display: usd ? usd.usd_total : null,
+    // The discounted goods in dollars, before delivery — the checkout page adds
+    // its live delivery quote to this (delivery: ₦ ÷ fx_rate_used, rounded up
+    // to the dollar, exactly as checkout prices it).
+    goods_total_display: usd
+      ? toCurrencyString(money(usd.goods_usd).plus(money(usd.adjustments_usd)))
+      : null,
     fx_rate_used: cur === "USD" ? fxRate : null,
     // Applied coupon (if any) so the checkout page can pre-fill the promo
     // field and forward the code on submit.

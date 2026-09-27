@@ -30,7 +30,8 @@ const QUOTE_USD = {
   quotation_number: "FLH-QUO-0007",
   total_ngn: "992400.00",
   display_currency: "USD",
-  fx_rate_used: "1300", // ₦992,400 ÷ 1,300 = $763.38 → $764
+  fx_rate_used: "1300", // ₦992,400 ÷ 1,300 = $763.38
+  display_total: "764.00", // the dollar figure the quote showed
 };
 
 let mockQuote = QUOTE_NGN;
@@ -149,7 +150,7 @@ describe("createQuotationPaymentLink", () => {
     // Same locked-rate rule as an order: the buyer is charged the figure the
     // quote showed them, never a live rate.
     expect(mockNombaCalls[0].currency).toBe("USD");
-    expect(mockNombaCalls[0].amount).toBe("764");
+    expect(mockNombaCalls[0].amount).toBe("764.00");
     expect(mockChainCalls).toContain("USD");
   });
 

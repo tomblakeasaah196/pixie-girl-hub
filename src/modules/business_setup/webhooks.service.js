@@ -856,9 +856,11 @@ async function confirmOpayCharge(log) {
  * link paid after Change Order raised the total — settle the entire order and
  * release its stock.
  *
- * The whole-dollar ceil at checkout means a full payment is worth up to one
- * dollar more than the balance; the cap absorbs that. Anything beyond is a real
- * overpayment and is logged for staff (paid_amount on the row keeps the truth).
+ * Paying the quoted dollar total can land a few Naira either side of the
+ * balance (a whole-dollar ceil on older orders, cent rounding on newer ones):
+ * the cap absorbs an excess, and a shortfall within one cent settles the
+ * balance. Anything beyond is a real overpayment and is logged for staff
+ * (paid_amount on the row keeps the truth).
  *
  * Returns { amount_ngn, fx_rate } or { park: note, value_ngn } when the capture
  * cannot be credited automatically.
@@ -887,7 +889,12 @@ async function foreignCaptureCredit({ brand, order, currency, paidAmount }) {
       park: `${label} arrived after ${order.order_number} was already fully paid — refund it or hold it as credit.`,
       value_ngn: toCurrencyString(value),
     };
-  const credit = value.gt(outstanding) ? outstanding : value;
+  // A payment within one cent of the balance settles it: a USD total and its
+  // effective rate round to the cent, so paying the quoted total can land a
+  // few Naira short of total_ngn — that must not leave the order a kobo
+  // unpaid (and its stock unreleased).
+  const settles = outstanding.minus(value).lte(money(rate).times("0.01"));
+  const credit = settles || value.gt(outstanding) ? outstanding : value;
   const over = value.minus(credit);
   if (over.gt(money(rate)))
     logger.warn(

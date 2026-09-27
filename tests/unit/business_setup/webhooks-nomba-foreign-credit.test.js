@@ -207,3 +207,28 @@ test("payload metadata can't pick the order or the Naira amount", async () => {
   // Nomba's own NGN figure, against the order the reference names.
   expect(mockPayments[0].amount_ngn).toBe("20000.00");
 });
+
+test("a capture within one cent of the balance settles it (cent-rounded USD totals)", async () => {
+  // ₦992,400 at ₦1,300/$ → $763.38 (to the cent) is worth ₦992,394 — ₦6 short
+  // of the balance, under one cent. It must settle, not leave ₦6 owing.
+  mockOrder = {
+    ...USD_ORDER,
+    order_number: "FLH-SO-0200",
+    total_ngn: "992400.00",
+    fx_rate_used: "1300.000000",
+  };
+  mockLog = onlineCapture({ amount: 763.38, currency: "USD" });
+  await confirm();
+  expect(mockPayments[0].amount_ngn).toBe("992400.00");
+});
+
+test("a capture more than a cent short credits only what was paid", async () => {
+  mockOrder = {
+    ...USD_ORDER,
+    total_ngn: "992400.00",
+    fx_rate_used: "1300.000000",
+  };
+  mockLog = onlineCapture({ amount: 763.0, currency: "USD" });
+  await confirm();
+  expect(mockPayments[0].amount_ngn).toBe("991900.00");
+});

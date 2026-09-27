@@ -9,11 +9,9 @@
  *
  *   • NGN            → 1 (the anchor).
  *   • USD            → the brand catalogue tool's `catalogue_config.usd_fx_rate`
- *                      (Catalogue → Config → "Apply USD exchange rate"). This is
- *                      the rate the storefront already displays + settles at, so
- *                      USD figures are byte-identical to before this change.
- *                      Falls back to a manual `shared.currency_rates` USD row if
- *                      the catalogue rate was never set.
+ *                      (Catalogue → Config → "Apply USD exchange rate") — the
+ *                      only USD authority. Falls back to a `shared.currency_rates`
+ *                      USD row only if the catalogue rate was never set.
  *   • everything else→ the latest `shared.currency_rates` row (from_currency→NGN),
  *                      preferring an admin manual override over an auto-refreshed
  *                      provider rate. This is the "system exchange rate" an admin
@@ -92,10 +90,11 @@ async function systemFxRate({ brand, currency }) {
   const cur = String(currency || "NGN").toUpperCase();
   if (cur === "NGN") return 1;
   if (cur === "USD") {
-    // USD authority = the catalogue tool (the storefront's existing SSOT);
-    // a manual currency_rates USD override wins if an admin set one.
-    const manual = await sharedRate("USD", { manualOnly: true });
-    if (manual) return manual;
+    // USD authority = the catalogue tool, full stop (owner, Sept 2026: "rates
+    // come from the catalogue"). A Settings → Currencies USD row used to beat
+    // it, silently repricing every dollar checkout away from the catalogue's
+    // USD prices; it is now only a fallback for a brand whose catalogue rate
+    // was never applied.
     const cat = await catalogueUsdRate(brand);
     if (cat) return cat;
     return sharedRate("USD");

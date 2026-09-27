@@ -4,9 +4,9 @@
 //
 // Anchors the two rules the storefront + settlement rely on:
 //   1. systemFxRate resolves NGN-per-unit from ONE authority per currency —
-//      USD from the catalogue tool (byte-identical to before the parametric
-//      layer), everything else from shared.currency_rates (manual > auto), and
-//      null when nothing is configured (never guess a rate).
+//      USD from the catalogue tool (a currency_rates USD row is only a fallback
+//      when it was never set), everything else from shared.currency_rates
+//      (manual > auto), and null when nothing is configured (never guess).
 //   2. resolveSettlementCurrency: NGN→NGN, any foreign display→USD (see the
 //      currency, pay USD). Nomba settles NGN + USD only, so an is_settlement
 //      flag on another currency no longer routes a charge in it.
@@ -57,8 +57,13 @@ describe("systemFxRate — one authority per currency", () => {
     expect(await currency.systemFxRate({ brand: BRAND, currency: "USD" })).toBe(1300);
   });
 
-  test("a manual currency_rates USD override wins over the catalogue rate", async () => {
+  test("the catalogue rate beats a manual currency_rates USD override", async () => {
     mockScenario = { usd_fx_rate: 1300, rates: { USD: { manual: 1350 } } };
+    expect(await currency.systemFxRate({ brand: BRAND, currency: "USD" })).toBe(1300);
+  });
+
+  test("a currency_rates USD row is only a fallback when the catalogue rate is unset", async () => {
+    mockScenario = { rates: { USD: { manual: 1350 } } };
     expect(await currency.systemFxRate({ brand: BRAND, currency: "USD" })).toBe(1350);
   });
 

@@ -287,7 +287,8 @@ async function setOrderTotals({ client, brand, id, totals }) {
             total_ngn           = $6,
             display_total       = CASE
               WHEN display_currency IS NULL OR display_currency = 'NGN' THEN NULL
-              WHEN COALESCE(fx_rate_used, 0) > 0 THEN ceil($6::numeric / fx_rate_used)
+              WHEN COALESCE(fx_rate_used, 0) > 0 AND fx_rate_used <> 1
+                THEN round($6::numeric / fx_rate_used, 2)
               ELSE display_total
             END,
             updated_at = now()

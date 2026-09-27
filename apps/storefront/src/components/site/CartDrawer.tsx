@@ -3,8 +3,8 @@ import { useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { getCart, updateCartItem, removeCartItem } from "@/lib/storefront";
-import { formatFromNgn } from "@/lib/money";
+import { getCart, updateCartItem, removeCartItem, quoteCart } from "@/lib/storefront";
+import { formatCurrency, formatFromNgn } from "@/lib/money";
 import { useCartDrawer, useCurrency, notifyCartChanged } from "@/lib/useStore";
 
 /**
@@ -24,11 +24,27 @@ export function CartDrawer() {
   });
   const items = data?.items ?? [];
 
+  // A dollar bag shows the server's USD figures (usd-pricing engine: each
+  // item's catalogue USD price) — the same figures checkout charges.
+  const usdQ = useQuery({
+    queryKey: [
+      "cart-drawer-usd",
+      items.map((it) => `${it.cart_item_id}:${it.quantity}`).join(","),
+    ],
+    queryFn: () => quoteCart({ display_currency: "USD" }),
+    enabled: open && currency === "USD" && items.length > 0,
+  });
+  const usdQuote =
+    currency === "USD" && usdQ.data?.total_display != null ? usdQ.data : null;
+
   useEffect(() => {
-    const h = () => refetch();
+    const h = () => {
+      refetch();
+      if (currency === "USD") usdQ.refetch();
+    };
     window.addEventListener("sf:cart-changed", h);
     return () => window.removeEventListener("sf:cart-changed", h);
-  }, [refetch]);
+  }, [refetch, currency, usdQ]);
 
   const n = (x: unknown) => (x == null ? 0 : Number(x) || 0);
   const subtotalNgn = items.reduce(
@@ -66,6 +82,11 @@ export function CartDrawer() {
   // Bag figures render in the active display currency (converted from the NGN
   // anchor via the SSOT rate); full settlement-currency handling is at checkout.
   const money = (ngn: number) => formatFromNgn(ngn, currency);
+  const lineUsd = (id: string) =>
+    usdQuote?.lines?.find((l) => l.cart_item_id === id)?.line_total_usd;
+  const bagTotal = usdQuote
+    ? formatCurrency(n(usdQuote.subtotal_display), "USD")
+    : money(subtotalNgn);
 
   return (
     <AnimatePresence>
@@ -115,7 +136,9 @@ export function CartDrawer() {
                         <div className="flex justify-between gap-2">
                           <h3 className="font-display text-lg leading-tight">{it.product_name_snapshot}</h3>
                           <span className="text-sm text-taupe whitespace-nowrap">
-                            {money(n(it.unit_price_ngn) * (Number(it.quantity) || 1))}
+                            {lineUsd(it.cart_item_id) != null
+                              ? formatCurrency(n(lineUsd(it.cart_item_id)), "USD")
+                              : money(n(it.unit_price_ngn) * (Number(it.quantity) || 1))}
                           </span>
                         </div>
                         {it.variant_label_snapshot ? (
@@ -141,7 +164,7 @@ export function CartDrawer() {
             <footer className="p-6 border-t border-taupe/15 space-y-3">
               <div className="flex justify-between text-xs">
                 <span className="tracking-[0.25em] uppercase text-cream/70">Subtotal</span>
-                <span className="text-cream">{money(subtotalNgn)}</span>
+                <span className="text-cream">{bagTotal}</span>
               </div>
               <div className="flex justify-between text-xs">
                 <span className="tracking-[0.25em] uppercase text-cream/70">Shipping</span>
@@ -149,7 +172,7 @@ export function CartDrawer() {
               </div>
               <div className="flex justify-between items-end pt-2 border-t border-taupe/10">
                 <span className="tracking-[0.3em] uppercase text-taupe text-xs">Total</span>
-                <span className="font-display text-2xl">{money(subtotalNgn)}</span>
+                <span className="font-display text-2xl">{bagTotal}</span>
               </div>
               <button
                 disabled={items.length === 0}

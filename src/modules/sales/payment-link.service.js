@@ -16,7 +16,6 @@
 "use strict";
 
 const salesRepo = require("./sales.repo");
-const campaignsRepo = require("../sales_campaigns/campaigns.repo");
 const paymentSettings = require("./payment-settings.service");
 const brandUrls = require("../../utils/brand-urls");
 const gateways = require("../business_setup/payment-gateways.service");
@@ -25,9 +24,10 @@ const opay = require("../../services/opay.service");
 const nomba = require("../../services/nomba.service");
 const stripe = require("../../services/stripe.service");
 const currencyService = require("../../services/currency.service");
+const usdPricing = require("../../services/usd-pricing.service");
 const { query } = require("../../config/database");
 const { config } = require("../../config/env");
-const { money, toCurrencyString } = require("../../utils/money");
+const { money, toCurrencyString, Decimal } = require("../../utils/money");
 const { logger } = require("../../config/logger");
 const { VALID } = require("../../config/brands");
 const { NotFoundError, AppError } = require("../../utils/errors");
@@ -147,35 +147,14 @@ function lockedRate(doc, currency) {
 }
 
 /**
- * The campaign's static NGN→foreign rate (ngn_per_usd_rate) for a foreign-
- * currency checkout. This is the SAME rate the landing page used to display the
- * buyer's price, so the gateway charges exactly what they saw. Returns null when
- * the order isn't tied to a campaign or the campaign has no rate set — the
- * caller then refuses to settle in a foreign currency rather than guess.
- */
-async function campaignFxRate({ brand, order }) {
-  if (!order || !order.sales_campaign_id) return null;
-  try {
-    const campaign = await campaignsRepo.findById({
-      brand,
-      id: order.sales_campaign_id,
-    });
-    const rate = campaign && campaign.ngn_per_usd_rate;
-    return rate ? Number(rate) : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
  * The NGN→foreign rate to settle THIS order at, for `currency`. Precedence:
  *   1. The rate LOCKED on the order for this currency (fx_rate_used) — the exact
  *      rate the buyer was quoted (re-reading a live rate is unsafe: the owner can
  *      edit it after placement). 1.0 is the "never captured" default, and a rate
  *      locked for another currency doesn't apply, so both fall through.
- *   2. The campaign's static ₦/$ rate (campaign orders, USD only).
- *   3. The system SSOT rate for the settlement currency (currency.service):
- *      USD → the brand catalogue tool's usd_fx_rate.
+ *   2. The catalogue ₦/$ rate (currency.service) — the only USD rate. Campaigns
+ *      no longer carry a static rate of their own (owner, Sept 2026); campaign
+ *      orders placed before that keep theirs via the lock in (1).
  * Also used by the Nomba webhook to convert a USD capture back to Naira, so a
  * payment is credited at the same rate its checkout was charged at.
  */
@@ -183,11 +162,37 @@ async function settlementFxRate({ brand, order, currency }) {
   const cur = String(currency || lockedCurrency(order)).toUpperCase();
   const locked = lockedRate(order, cur);
   if (locked) return locked;
-  if (cur === "USD") {
-    const campaignRate = await campaignFxRate({ brand, order });
-    if (campaignRate && campaignRate > 0) return campaignRate;
-  }
   return currencyService.systemFxRate({ brand, currency: cur });
+}
+
+/**
+ * The dollar amount to charge for `amt` Naira of an order locked at `rate`.
+ * Paying the whole untouched balance charges exactly the USD total the buyer
+ * was quoted (display_total), so a $249.99 order is a $249.99 checkout —
+ * provided that quote still matches the balance (an amendment or delivery fee
+ * that moved the Naira total without re-quoting falls back to the conversion).
+ * Anything else converts at the order's rate, to the cent.
+ */
+function usdCharge({ order, amt, rate }) {
+  const outstanding = money(order.total_ngn).minus(
+    money(order.amount_paid_ngn || 0),
+  );
+  const quoted =
+    order.display_total !== null && order.display_total !== undefined
+      ? money(order.display_total)
+      : null;
+  if (
+    quoted &&
+    quoted.gt(0) &&
+    amt.eq(outstanding) &&
+    money(order.amount_paid_ngn || 0).lte(0) &&
+    quoted.times(money(rate)).minus(amt).abs().lt(money(rate))
+  )
+    return quoted.toDecimalPlaces(2).toFixed(2);
+  return amt
+    .dividedBy(money(rate))
+    .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+    .toFixed(2);
 }
 
 /**
@@ -364,10 +369,10 @@ async function createPaymentLink({
   // keeps the dollar figure at the rate the buyer agreed to, on every pay-link
   // path (admin button, public tokenised link), not just the campaign checkout.
   //
-  // NGN: charge the Naira figure as-is. USD: convert the NGN outstanding with
-  // the order's locked rate (settlementFxRate) and ceil to a whole dollar — the
-  // exact figure the landing page showed the buyer (owner: 10.29 → $11). We
-  // never hardcode a rate; whatever the order locked in is what we charge.
+  // NGN: charge the Naira figure as-is. USD: charge against the dollar total
+  // LOCKED on the order (display_total at its effective rate fx_rate_used) —
+  // the exact figure the buyer was quoted. We never re-read a live rate for an
+  // order that already has one.
   //
   // `currency` is a STAFF override (admin Send Pay Link) — customer-facing
   // callers never pass one, so a buyer always pays in the order's own currency.
@@ -377,33 +382,51 @@ async function createPaymentLink({
   assertSettlementCurrency(settleCurrency);
   let chargeAmount = amountStr;
   if (settleCurrency !== "NGN") {
-    const rate = await settlementFxRate({
-      brand,
-      order,
-      currency: settleCurrency,
-    });
-    if (!rate || rate <= 0)
+    let priced = order;
+    // Currency lock: an order with no dollar price of its own (a Quick Sale, a
+    // staff switch from NGN) is priced from the catalogue now — each line's
+    // catalogue USD price (usd-pricing) — and that total + its effective rate
+    // are pinned on the order. The webhook then credits captures at exactly
+    // this rate, and every later link on the order reuses it.
+    if (!lockedRate(order, settleCurrency)) {
+      const quote = await usdPricing.orderUsdFromLines({
+        brand,
+        order,
+        rate: await usdPricing.catalogueRate(brand),
+      });
+      if (!quote || !quote.fx_rate)
+        throw new AppError(
+          "NO_FX_RATE",
+          `No exchange rate is configured for ${settleCurrency} settlement on this order`,
+          422,
+        );
+      const locked = await salesRepo.lockSettlementCurrency({
+        brand,
+        id: order.order_id,
+        currency: settleCurrency,
+        fx_rate: quote.fx_rate,
+        display_total: quote.usd_total,
+      });
+      // null → a concurrent checkout locked it first; charge against theirs.
+      priced = locked
+        ? { ...order, ...locked }
+        : await salesRepo.findById({ brand, id: order.order_id });
+    }
+    const rate = lockedRate(priced, settleCurrency);
+    if (!rate)
       throw new AppError(
         "NO_FX_RATE",
         `No exchange rate is configured for ${settleCurrency} settlement on this order`,
         422,
       );
-    chargeAmount = amt.dividedBy(money(rate)).ceil().toString();
-    // Currency lock: an order with no rate of its own for this currency (a
-    // Quick Sale, a staff switch from NGN) is pinned to the rate this checkout
-    // charges at. The webhook then credits the capture at exactly this rate,
-    // and every later link on the order reuses it instead of a live rate.
-    if (!lockedRate(order, settleCurrency)) {
-      await salesRepo.lockSettlementCurrency({
-        brand,
-        id: order.order_id,
-        currency: settleCurrency,
-        fx_rate: rate,
-        display_total: toCurrencyString(
-          money(order.total_ngn).dividedBy(money(rate)).ceil(),
-        ),
-      });
-    }
+    chargeAmount = usdCharge({ order: priced, amt, rate });
+    if (money(chargeAmount).lte(0))
+      throw new AppError(
+        "AMOUNT_TOO_SMALL",
+        "Payment amount is too small to charge in USD",
+        422,
+        { user_message: "That amount is too small to pay in US Dollars." },
+      );
   }
 
   const email = await contactEmail(order.contact_id);
@@ -531,9 +554,8 @@ async function createQuotationPaymentLink({
 
   // Settle in the currency the quote was priced in, at the rate locked ON the
   // quote — same precedence as an order (settlementFxRate reads fx_rate_used /
-  // display_currency, both of which quotations carry). A quote has no campaign,
-  // so campaignFxRate short-circuits to null and we fall through to the system
-  // rate when nothing was locked.
+  // display_currency, both of which quotations carry), falling through to the
+  // catalogue rate when nothing was locked.
   const settleCurrency = String(
     currency || lockedCurrency(quote),
   ).toUpperCase();
@@ -551,7 +573,7 @@ async function createQuotationPaymentLink({
         `No exchange rate is configured for ${settleCurrency} settlement on this quotation`,
         422,
       );
-    chargeAmount = amt.dividedBy(money(rate)).ceil().toString();
+    chargeAmount = usdCharge({ order: quote, amt, rate });
   }
 
   const email = await contactEmail(quote.contact_id);

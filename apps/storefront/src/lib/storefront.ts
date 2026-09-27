@@ -163,6 +163,9 @@ export interface Quote {
     quantity: number;
     unit_price_ngn: string;
     line_total_ngn: string;
+    /** USD bag only: the line's dollar price from the server USD engine. */
+    unit_price_usd?: string;
+    line_total_usd?: string;
     /** True when this line's Care & Accessories SKU is no longer sellable
      *  (unpublished/trashed/unpriced) — the checkout must refuse it. */
     unavailable?: boolean;
@@ -184,6 +187,10 @@ export interface Quote {
   discount_display?: string | null;
   delivery_display?: string | null;
   total_display?: string | null;
+  /** USD bag: discounted goods in dollars, before delivery. The checkout page
+   *  adds its live delivery quote (₦ ÷ fx_rate_used, rounded up to the dollar)
+   *  — the same arithmetic the server locks onto the order. */
+  goods_total_display?: string | null;
   fx_rate_used?: number | null;
   applied_coupon_code?: string | null;
 }
@@ -624,11 +631,12 @@ export function unwrap<T>(r: T | { data: T }): T {
 }
 
 /**
- * Display a catalogue card's price in `currency`. Parametric: converts from the
- * NGN anchor via the active SSOT rate (landing parity — rounds up to the whole
- * unit, matching what the gateway charges), so ANY activated currency renders.
- * Before the currency feed hydrates it prefers a precomputed USD column, then
- * falls back to NGN so a price is never blank.
+ * Display a catalogue card's price in `currency`. USD shows the item's
+ * CATALOGUE USD price (the column "Apply USD exchange rate" or a manual edit
+ * wrote) — exactly what checkout charges for it (server usd-pricing engine).
+ * An item with no USD price converts from the NGN anchor at the catalogue rate,
+ * rounded up to the dollar — the engine's rule for such items. Falls back to
+ * NGN so a price is never blank.
  */
 export function priceFor(
   card: {
@@ -643,13 +651,14 @@ export function priceFor(
   const ngn = ngnRaw == null ? null : Number(ngnRaw);
   if (currency === "NGN")
     return ngn != null && Number.isFinite(ngn) ? formatFromNgn(ngn, "NGN") : "-";
-  // Foreign: live-convert from NGN via the SSOT rate once the feed has loaded.
-  if (ngn != null && Number.isFinite(ngn) && rateToNgn(currency) != null)
-    return formatFromNgn(ngn, currency);
-  // Pre-hydration / no rate: fall back to a precomputed USD column if present.
-  const preRaw = card.effective_price_usd ?? card.retail_price_usd;
-  const pre = preRaw == null ? null : Number(preRaw);
-  if (pre != null && Number.isFinite(pre)) return formatCurrency(pre, currency);
+  // Dollars: the catalogue USD price when the item has one.
+  const usdRaw = card.effective_price_usd ?? card.retail_price_usd;
+  const usd = usdRaw == null ? null : Number(usdRaw);
+  if (usd != null && Number.isFinite(usd) && usd > 0)
+    return formatCurrency(usd, "USD");
+  // No USD price: convert from NGN at the catalogue rate once the feed loads.
+  if (ngn != null && Number.isFinite(ngn) && rateToNgn("USD") != null)
+    return formatFromNgn(ngn, "USD");
   return ngn != null && Number.isFinite(ngn) ? formatFromNgn(ngn, "NGN") : "-";
 }
 

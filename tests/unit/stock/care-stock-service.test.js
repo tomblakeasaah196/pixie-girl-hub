@@ -1,7 +1,13 @@
 "use strict";
 
-jest.mock("../../../src/config/env", () => ({ config: { FEATURE_PXG_CARE_ACCESSORIES_ENABLED: true } }));
-jest.mock("../../../src/config/database", () => ({ transaction: jest.fn((fn) => fn({ query: jest.fn() })) }));
+let mockCareOn = true;
+jest.mock("../../../src/config/env", () => ({ config: {} }));
+jest.mock("../../../src/config/database", () => ({
+  transaction: jest.fn((fn) => fn({ query: jest.fn() })),
+  // The Catalogue → Config Care & Accessories switch the gate reads.
+  query: jest.fn(async (sql) =>
+    /care_accessories_enabled/.test(sql) ? { rows: [{ care_accessories_enabled: mockCareOn }] } : { rows: [] }),
+}));
 jest.mock("../../../src/middleware/audit", () => ({ audit: jest.fn() }));
 jest.mock("../../../src/modules/stock/stock.subscribers", () => ({}));
 jest.mock("../../../src/modules/stock/stock.events", () => ({ emit: jest.fn() }));
@@ -10,7 +16,9 @@ jest.mock("../../../src/modules/catalogue/cost_vault.service", () => ({ canSeeCo
 
 const repo = require("../../../src/modules/stock/stock.repo");
 const vault = require("../../../src/modules/catalogue/cost_vault.service");
-const { config } = require("../../../src/config/env");
+const gate = require("../../../src/modules/catalogue/care-accessories.gate");
+// Flip the Catalogue → Config switch (the gate caches it, so drop the cache).
+const setCare = (on) => { mockCareOn = on; gate.invalidate(); };
 const service = require("../../../src/modules/stock/stock.service");
 const user = { user_id: "u1", display_name: "Owner", email: "owner@example.com" };
 const ctx = { brand: "pixiegirl", user, request_id: "req-1" };
@@ -23,7 +31,7 @@ const variants = [
 const receipt = { destination_location_id: "loc-1", lines: [{ variant_id: "v50", quantity: 2, unit_cost_ngn: 900 }] };
 
 beforeEach(() => {
-  config.FEATURE_PXG_CARE_ACCESSORIES_ENABLED = true;
+  setCare(true);
   repo.variantForIntake.mockResolvedValue(retail);
   repo.locationsWithStock.mockResolvedValue([location]);
   repo.careVariantsAtLocation.mockResolvedValue(variants);
@@ -35,7 +43,7 @@ beforeEach(() => {
   repo.setAdjustmentStatus.mockResolvedValue({ status: "submitted" });
   repo.getCostBasisForVariants.mockResolvedValue(new Map([["v50", "900.00"]]));
 });
-afterEach(() => { config.FEATURE_PXG_CARE_ACCESSORIES_ENABLED = false; });
+afterEach(() => { setCare(false); });
 
 test("read-only Care SKU template lists exact location and quantity without cost amounts", async () => {
   const result = await service.listCareSkus({ brand: "pixiegirl", location_id: "loc-1" });

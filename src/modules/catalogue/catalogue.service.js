@@ -1008,7 +1008,7 @@ async function removeCollectionMember({
 async function listImages({ brand, id }) {
   const p = await repo.findProductById({ brand, id });
   if (!p) throw new NotFoundError("Product");
-  if (p.catalogue_role === "retail") careGate.requireEnabled(brand);
+  if (p.catalogue_role === "retail") await careGate.requireEnabled(brand);
   return repo.listImages({ brand, product_id: id });
 }
 async function addImage({ brand, user, request_id, id, file, meta }) {

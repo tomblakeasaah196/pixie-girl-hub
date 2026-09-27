@@ -12,6 +12,7 @@ import {
   X,
   AlertTriangle,
   Scissors,
+  Package,
 } from "lucide-react";
 import { Button, Card } from "@/components/ui/primitives";
 import { Toggle, NumberField, ErrorState, Select } from "@/components/ui/controls";
@@ -19,7 +20,9 @@ import { Field } from "@/components/ui/Form";
 import { Modal } from "@/components/ui/Modal";
 import { useAuthStore } from "@/stores/auth";
 import { toastReport } from "@/lib/error-report";
+import { toast } from "@/stores/toast";
 import {
+  useBrand,
   useSizeConfig,
   useSaveSizeConfig,
   useUsdPricing,
@@ -53,6 +56,13 @@ export function CatalogueSettingsTab() {
 
   return (
     <div className="space-y-5">
+      {/* Care & Accessories on/off — Pixie Girl only */}
+      <CareAccessoriesCard
+        config={cfg.data?.config ?? null}
+        loading={cfg.isLoading}
+        canEdit={canEdit}
+      />
+
       {/* Pre-orders */}
       <PreorderCard
         config={cfg.data?.config ?? null}
@@ -127,6 +137,68 @@ export function CatalogueSettingsTab() {
         </div>
       </Card>
     </div>
+  );
+}
+
+/** Care & Accessories — the on/off switch for the PXG retail line (combs,
+ *  oils, brushes…). Lives here, not in a server setting, so the owner can
+ *  flip it. OFF hides the Catalogue tab and stops new Care items and new Care
+ *  sales; Care orders already placed keep their fee review and fulfilment,
+ *  and nothing is deleted. Pixie Girl only — hidden on every other brand. */
+function CareAccessoriesCard({
+  config,
+  loading,
+  canEdit,
+}: {
+  config: CatalogueConfig | null;
+  loading: boolean;
+  canEdit: boolean;
+}) {
+  const brand = useBrand();
+  const save = useSaveSizeConfig();
+  if (brand !== "pixiegirl") return null;
+  const enabled = config?.care_accessories_enabled ?? true;
+
+  return (
+    <Card className="p-5">
+      <div className="flex items-start gap-3">
+        <div className="grid place-items-center w-10 h-10 rounded-[11px] bg-accent/10 text-accent-glow shrink-0">
+          <Package className="w-5 h-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="text-[15px] font-semibold">Care &amp; Accessories</h3>
+          <p className="text-[12.5px] text-text-muted mt-0.5">
+            {enabled
+              ? "ON — the Care & Accessories tab shows in Catalogue, and live care items (combs, oils, brushes…) can be sold in Quick Sale, quotes, order links and the online shop."
+              : "OFF — the Care & Accessories tab is hidden and no care items can be added or sold. Care orders already placed still go out, and nothing is deleted — turn it back on to carry on where you left off."}
+          </p>
+        </div>
+        <Toggle
+          checked={enabled}
+          disabled={!canEdit || save.isPending || loading}
+          onChange={(v) =>
+            save.mutate(
+              { care_accessories_enabled: v },
+              {
+                onSuccess: () =>
+                  toast.success(
+                    v
+                      ? "Care & Accessories is on"
+                      : "Care & Accessories is off",
+                  ),
+                onError: (err) =>
+                  toastReport(
+                    "Catalogue → Config",
+                    "Switch Care & Accessories",
+                    err,
+                  ),
+              },
+            )
+          }
+          label={enabled ? "On" : "Off"}
+        />
+      </div>
+    </Card>
   );
 }
 

@@ -66,7 +66,7 @@ async function assertCareGrnLine({ client, brand, user, po_id, line, totals }) {
     ? await stockRepo.variantForIntake({ client, brand, variant_id: poLine.variant_id })
     : null;
   if (v?.catalogue_role !== "retail" && ordered?.catalogue_role !== "retail") return;
-  careGate.requireEnabled(brand);
+  await careGate.requireEnabled(brand);
   if (!v || v.catalogue_role !== "retail" || v.variant_id !== poLine.variant_id ||
       v.is_deleted || !v.is_active || !v.track_stock)
     throw new AppError("PO_SKU_MISMATCH", "GRN must specify the active Care SKU ordered on this PO line", 422);

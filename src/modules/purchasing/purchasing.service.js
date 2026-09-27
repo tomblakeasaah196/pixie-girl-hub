@@ -49,7 +49,7 @@ async function assertSupplierSku({ client, brand, variant_id }) {
   const v = await stockRepo.variantForIntake({ client, brand, variant_id });
   if (!v || v.is_deleted || !v.is_active)
     throw new AppError("INVALID_PURCHASING_SKU", "Choose an active stock SKU", 422);
-  if (v.catalogue_role === "retail") careGate.requireEnabled(brand);
+  if (v.catalogue_role === "retail") await careGate.requireEnabled(brand);
 }
 
 // Allowed PO factory-tracking transitions (after approval). Mirrors inbound_shipments.
@@ -522,7 +522,7 @@ async function createPo({ brand, user, request_id, input }) {
       if (product_id) {
         const product = await productRepo.findProductById({ client, brand, id: product_id });
         if (product?.catalogue_role === "retail") {
-          careGate.requireEnabled(brand);
+          await careGate.requireEnabled(brand);
           if (!variant_id)
             throw new AppError("SKU_REQUIRED", "Purchase Care & Accessories by exact SKU", 422);
         }
@@ -536,7 +536,7 @@ async function createPo({ brand, user, request_id, input }) {
         if (!v || v.is_deleted || !v.is_active ||
             (product_id && v.product_id !== product_id))
           throw new AppError("INVALID_PO_SKU", "PO SKU is inactive or belongs to a different item", 422);
-        if (v.catalogue_role === "retail") careGate.requireEnabled(brand);
+        if (v.catalogue_role === "retail") await careGate.requireEnabled(brand);
       }
       resolvedLines.push({ ...rest, variant_id });
     }

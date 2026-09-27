@@ -848,8 +848,8 @@ categories, collections, bundles, shades, and bookable services.
 **Where.** Operate → **Catalogue** · `/catalogue`
 **Who can see it.** `catalogue` permission.
 **What's inside (tabs).** **Styled** · **Base** · **Care & Accessories** (Pixie
-Girl only, when switched on) · **Categories** · **Collections** · **Shades** ·
-**Bundles** · **Services** · **Config**.
+Girl only, while switched on in Config) · **Categories** · **Collections** ·
+**Shades** · **Bundles** · **Services** · **Config**.
 **Common tasks.**
 - *Add a raw/base product?* Catalogue → **Base** → **New base product** opens a
   guided **wizard**: Step 1 basics (name, texture, lace, length, category, cap
@@ -916,6 +916,14 @@ Girl only, when switched on) · **Categories** · **Collections** · **Shades** 
   and **Shop by shade** pickers show where it already lives as chips; click a
   chip's **✕** to remove it, or search to add it somewhere new.
 - *Add a bookable service (Faitlyn)?* Catalogue → **Services** → **New Service Type**.
+- *Turn Care & Accessories on or off (Pixie Girl)? / I can't see the Care &
+  Accessories tab?* Catalogue → **Config** (`/catalogue?tab=config`) → **Care &
+  Accessories** → toggle. It's **on by default**; the tab appears/disappears
+  straight away. There is no server setting to change. **Off** hides the tab
+  and stops new care items and new care sales everywhere (Quick Sale, quotes,
+  order links, campaigns, the shop) — care orders already placed still get
+  their delivery-fee review and go out, and nothing is deleted. Needs
+  Catalogue **edit** permission. Not offered on Faitlynhair.
 - *Add a comb, hair oil or other accessory (Pixie Girl)?* Catalogue → **Care &
   Accessories** (`/catalogue?tab=care`) → **New care item**
   (`/catalogue/care/new`). Give it a name, category, tax treatment (exempt, or

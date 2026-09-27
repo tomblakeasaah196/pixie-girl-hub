@@ -85,6 +85,9 @@ const sizeConfig = z
     rewig_direction: z
       .enum(["down_first", "up_first", "no_preference"])
       .optional(),
+    // Care & Accessories on/off (000392, Pixie Girl only). OFF stops new Care
+    // items and new Care sales; placed Care orders keep fulfilling.
+    care_accessories_enabled: z.boolean().optional(),
   })
   .strict()
   .refine(

@@ -1,9 +1,13 @@
 "use strict";
 
-jest.mock("../../../src/config/env", () => ({
-  config: { FEATURE_PXG_CARE_ACCESSORIES_ENABLED: false },
+// The switch lives in pixiegirl.catalogue_config (Catalogue → Config), not the
+// environment. `mockSwitchRows` is what that read returns.
+let mockSwitchRows = [];
+jest.mock("../../../src/config/env", () => ({ config: {} }));
+jest.mock("../../../src/config/database", () => ({
+  query: jest.fn(async () => ({ rows: mockSwitchRows })),
 }));
-const { config } = require("../../../src/config/env");
+const db = require("../../../src/config/database");
 const gate = require("../../../src/modules/catalogue/care-accessories.gate");
 const { product, variant } = require("../../../src/modules/catalogue/care-accessories.validator");
 
@@ -15,16 +19,55 @@ const input = {
   variants: [{}], // simple item derives SKU from its generated code
 };
 
-afterEach(() => { config.FEATURE_PXG_CARE_ACCESSORIES_ENABLED = false; });
+const setSwitch = (rows) => { mockSwitchRows = rows; gate.invalidate(); };
+afterEach(() => setSwitch([]));
 
-test("flag defaults off; FLH/other brands never gain access even with flag on", () => {
-  expect(gate.enabled("pixiegirl")).toBe(false);
-  expect(() => gate.requireEnabled("pixiegirl")).toThrow();
-  config.FEATURE_PXG_CARE_ACCESSORIES_ENABLED = true;
-  expect(gate.enabled("pixiegirl")).toBe(true);
+test("the Config switch defaults ON; OFF blocks PXG; FLH/other brands never gain access", async () => {
+  // No config row yet → the column default (ON). No env variable involved.
+  setSwitch([]);
+  await expect(gate.enabled("pixiegirl")).resolves.toBe(true);
+  setSwitch([{ care_accessories_enabled: false }]);
+  await expect(gate.enabled("pixiegirl")).resolves.toBe(false);
+  await expect(gate.requireEnabled("pixiegirl")).rejects.toThrow();
+  setSwitch([{ care_accessories_enabled: true }]);
+  await expect(gate.requireEnabled("pixiegirl")).resolves.toBeUndefined();
   for (const brand of ["faitlynhair", "flh", "PIXIEGIRL", "unknown", null]) {
-    expect(gate.enabled(brand)).toBe(false);
-    expect(() => gate.requireEnabled(brand)).toThrow();
+    await expect(gate.enabled(brand)).resolves.toBe(false);
+    await expect(gate.requireEnabled(brand)).rejects.toThrow();
+  }
+});
+
+test("the switch is read for pixiegirl only, cached, and re-read after a Config save", async () => {
+  setSwitch([{ care_accessories_enabled: true }]);
+  db.query.mockClear();
+  await gate.enabled("faitlynhair");
+  expect(db.query).not.toHaveBeenCalled(); // brand allowlist before any read
+  await gate.enabled("pixiegirl");
+  await gate.enabled("pixiegirl");
+  expect(db.query).toHaveBeenCalledTimes(1);
+  expect(db.query.mock.calls[0][0]).toMatch(/FROM pixiegirl\.catalogue_config/);
+  mockSwitchRows = [{ care_accessories_enabled: false }];
+  await expect(gate.enabled("pixiegirl")).resolves.toBe(true); // still cached
+  gate.invalidate();
+  await expect(gate.enabled("pixiegirl")).resolves.toBe(false);
+});
+
+test("a failed read keeps the last known value instead of flipping the switch", async () => {
+  const now = jest.spyOn(Date, "now");
+  try {
+    now.mockReturnValue(1_000_000);
+    setSwitch([{ care_accessories_enabled: false }]);
+    await expect(gate.enabled("pixiegirl")).resolves.toBe(false);
+    // Cache expired, and the re-read fails → still OFF (not the default ON).
+    now.mockReturnValue(1_000_000 + 60_000);
+    db.query.mockRejectedValueOnce(new Error("connection reset"));
+    await expect(gate.enabled("pixiegirl")).resolves.toBe(false);
+    // Never read successfully (e.g. before the migration ran) → default ON.
+    gate.invalidate();
+    db.query.mockRejectedValueOnce(new Error('column "care_accessories_enabled" does not exist'));
+    await expect(gate.enabled("pixiegirl")).resolves.toBe(true);
+  } finally {
+    now.mockRestore();
   }
 });
 

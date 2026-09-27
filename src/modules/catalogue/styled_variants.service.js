@@ -23,6 +23,7 @@ const {
 const { audit } = require("../../middleware/audit");
 const { transaction } = require("../../config/database");
 const { NotFoundError, AppError } = require("../../utils/errors");
+const careGate = require("./care-accessories.gate");
 
 const A = (
   brand,
@@ -104,7 +105,11 @@ async function getSizeConfig({ brand }) {
 
 /** Save the whole modal: tier premiums/ranges/tips + the guide copy. */
 async function saveSizeConfig({ brand, user, request_id, input }) {
-  return transaction(async (client) => {
+  const careSwitch = input.care_accessories_enabled;
+  // Care & Accessories is Pixie Girl only — the gate never reads this switch
+  // for another brand, so don't let one be stored as if it meant something.
+  if (careSwitch !== undefined) careGate.requireCareBrand(brand);
+  const out = await transaction(async (client) => {
     const before = await getSizeConfig({ brand });
     const savedTiers = [];
     for (const tier of input.tiers || []) {
@@ -159,7 +164,8 @@ async function saveSizeConfig({ brand, user, request_id, input }) {
       input.preorder_max_weeks !== undefined ||
       input.rewig_enabled !== undefined ||
       input.rewig_mode !== undefined ||
-      input.rewig_direction !== undefined
+      input.rewig_direction !== undefined ||
+      careSwitch !== undefined
     ) {
       // Only forward keys the caller explicitly set so the repo's
       // "deliberate NULL clears the field" guard for head_size_video_url
@@ -176,6 +182,7 @@ async function saveSizeConfig({ brand, user, request_id, input }) {
         rewig_enabled: input.rewig_enabled,
         rewig_mode: input.rewig_mode,
         rewig_direction: input.rewig_direction,
+        care_accessories_enabled: careSwitch,
       };
       if (input.head_size_video_url !== undefined) {
         patch.head_size_video_url = input.head_size_video_url;
@@ -193,13 +200,20 @@ async function saveSizeConfig({ brand, user, request_id, input }) {
       "catalogue.size_config.update",
       "catalogue_config",
       brand,
-      { tiers: savedTiers.length },
+      {
+        tiers: savedTiers.length,
+        ...(careSwitch !== undefined ? { care_accessories_enabled: careSwitch } : {}),
+      },
       request_id,
       before,
     );
     events.emit("catalogue.size_config.updated", { brand });
     return { tiers: savedTiers, lace_sizes: savedLace, config };
   });
+  // After COMMIT: the next Care check re-reads the switch, so a flip takes
+  // effect immediately (tab, pickers, checkout).
+  if (careSwitch !== undefined) careGate.invalidate();
+  return out;
 }
 
 // ── Lace ladder: delete → Trash (with in-use replacement repoint) ──

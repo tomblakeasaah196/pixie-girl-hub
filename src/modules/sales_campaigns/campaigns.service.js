@@ -491,7 +491,7 @@ async function assertCampaignProductAllowed(client, brand, input) {
   const product = rows[0];
   if (!product) throw new NotFoundError("Product");
   if (product.catalogue_role === "retail") {
-    careGate.requireEnabled(brand);
+    await careGate.requireEnabled(brand);
     if (product.is_deleted || product.retail_status !== "live") {
       throw new AppError(
         "CAMPAIGN_PRODUCT_UNAVAILABLE",

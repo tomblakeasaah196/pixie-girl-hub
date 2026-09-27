@@ -194,7 +194,7 @@ async function createOrderTx({ brand, user, request_id, input }) {
       (b) => b.ctx.catalogue_role === "retail",
     );
     if (hasRetailLine) {
-      careGate.requireEnabled(brand); // 404 when gated off or non-PXG
+      await careGate.requireEnabled(brand); // 404 when gated off or non-PXG
       for (const b of built) {
         const c = b.ctx;
         if (c.catalogue_role !== "retail") continue;
@@ -2576,7 +2576,7 @@ async function buildQuotationLines({
     // PXG gate while published. Conversion re-validates inside createOrder —
     // a quote never whitelists a later sale of an unpublished item.
     if (ctx.catalogue_role === "retail") {
-      careGate.requireEnabled(brand);
+      await careGate.requireEnabled(brand);
       if (
         ctx.product_deleted ||
         ctx.retail_status !== "live" ||

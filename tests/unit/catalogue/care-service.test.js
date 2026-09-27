@@ -1,7 +1,13 @@
 "use strict";
 
-jest.mock("../../../src/config/env", () => ({ config: { FEATURE_PXG_CARE_ACCESSORIES_ENABLED: true } }));
-jest.mock("../../../src/config/database", () => ({ transaction: jest.fn((fn) => fn({ query: jest.fn() })) }));
+let mockCareOn = true;
+jest.mock("../../../src/config/env", () => ({ config: {} }));
+jest.mock("../../../src/config/database", () => ({
+  transaction: jest.fn((fn) => fn({ query: jest.fn() })),
+  // The Catalogue → Config Care & Accessories switch the gate reads.
+  query: jest.fn(async (sql) =>
+    /care_accessories_enabled/.test(sql) ? { rows: [{ care_accessories_enabled: mockCareOn }] } : { rows: [] }),
+}));
 jest.mock("../../../src/middleware/audit", () => ({ audit: jest.fn() }));
 jest.mock("../../../src/shared/outbox/outbox", () => ({ enqueue: jest.fn() }));
 jest.mock("../../../src/services/numbering.service", () => ({ nextProductCode: jest.fn() }));
@@ -16,7 +22,9 @@ jest.mock("../../../src/modules/catalogue/cost_vault.service", () => ({
 const base = require("../../../src/modules/catalogue/catalogue.repo");
 const repo = require("../../../src/modules/catalogue/care-accessories.repo");
 const vault = require("../../../src/modules/catalogue/cost_vault.service");
-const { config } = require("../../../src/config/env");
+const gate = require("../../../src/modules/catalogue/care-accessories.gate");
+// Flip the Catalogue → Config switch (the gate caches it, so drop the cache).
+const setCare = (on) => { mockCareOn = on; gate.invalidate(); };
 const service = require("../../../src/modules/catalogue/care-accessories.service");
 const user = { user_id: "u1" };
 const cat = "11111111-1111-4111-8111-111111111111";
@@ -32,7 +40,7 @@ const v100 = { ...v50, variant_id: "v100", sku: "PXG-100", variant_name: "100 ml
 const ctx = { brand: "pixiegirl", user, request_id: "req-1" };
 
 beforeEach(() => {
-  config.FEATURE_PXG_CARE_ACCESSORIES_ENABLED = true;
+  setCare(true);
   base.findProductById.mockResolvedValue(source);
   base.productSlugTaken.mockResolvedValue(false);
   base.productCodeTaken.mockResolvedValue(false);
@@ -50,12 +58,12 @@ beforeEach(() => {
   base.updateVariant.mockResolvedValue(v50);
   require("../../../src/services/numbering.service").nextProductCode.mockResolvedValue("PXG002N");
 });
-afterEach(() => { config.FEATURE_PXG_CARE_ACCESSORIES_ENABLED = false; });
+afterEach(() => { setCare(false); });
 
-test("PXG/flag required before any database mutation (including FLH forged IDs)", async () => {
+test("PXG + Config switch required before any database mutation (including FLH forged IDs)", async () => {
   await expect(service.create({ ...ctx, brand: "faitlynhair", input: {} })).rejects.toThrow();
   expect(repo.create).not.toHaveBeenCalled();
-  config.FEATURE_PXG_CARE_ACCESSORIES_ENABLED = false;
+  setCare(false);
   await expect(service.publish({ ...ctx, id: "oil" })).rejects.toThrow();
   expect(repo.setStatus).not.toHaveBeenCalled();
 });

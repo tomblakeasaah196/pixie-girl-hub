@@ -147,7 +147,7 @@ async function resolveSellableVariant({
   product_id = null,
   channel = "storefront",
 }) {
-  gate.requireEnabled(brand);
+  await gate.requireEnabled(brand);
   if (!variant_id)
     throw new AppError(
       "RETAIL_VARIANT_REQUIRED",
@@ -177,7 +177,7 @@ async function resolveSellableVariants({
   const out = new Map();
   const ids = [...new Set((variant_ids || []).filter(Boolean))];
   if (!ids.length) return out;
-  gate.requireEnabled(brand);
+  await gate.requireEnabled(brand);
   const { rows } = await ex(client)(
     `${sqlFor(brand)}
       WHERE pv.variant_id = ANY($1::uuid[]) AND pv.is_active = true`,
@@ -208,7 +208,7 @@ async function listSellable({
   page_size = 25,
   channel = "storefront",
 }) {
-  gate.requireEnabled(brand);
+  await gate.requireEnabled(brand);
   const where = [
     "p.catalogue_role = 'retail'",
     "p.retail_status = 'live'",
@@ -269,7 +269,7 @@ async function listSellable({
  * plain 404 so unpublished items cannot be probed by URL.
  */
 async function getProductBySlug({ client, brand, slug }) {
-  gate.requireEnabled(brand);
+  await gate.requireEnabled(brand);
   const { rows } = await ex(client)(
     `SELECT product_id FROM ${t(brand, "products")}
       WHERE slug = $1 AND catalogue_role = 'retail'

@@ -1,0 +1,26 @@
+-- ============================================================
+-- TEMPLATE 000099 — Care & Accessories on/off switch (Catalogue → Config)
+-- Pixie Girl Hub · JBS Praxis · V2.2
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Applied to NEW brands by bootstrap and to EXISTING brands by
+-- repair-business-schema.js (and migration 000392). NO CREATE TABLE here on
+-- purpose: the runner re-runs sentinel-less templates on every repair, which
+-- is safe because the statement is idempotent.
+--
+-- WHY (owner directive, Sept 2026): Care & Accessories used to be switched on
+-- by a server .env variable (FEATURE_PXG_CARE_ACCESSORIES_ENABLED), so the
+-- owner couldn't turn it on or off without a server edit. The switch now lives
+-- with the other brand-wide catalogue controls and is flipped from
+-- Catalogue → Config. Default ON.
+--
+-- Pixie Girl only: the column exists on every brand (identical templates), but
+-- src/modules/catalogue/care-accessories.gate.js reads it for pixiegirl ONLY —
+-- no row value can ever turn Care & Accessories on for Faitlynhair.
+--
+-- OFF stops NEW Care authoring and NEW Care sales; Care orders already placed
+-- keep their fee review, fulfilment and refunds.
+-- ============================================================
+
+ALTER TABLE {{BUSINESS}}.catalogue_config
+  ADD COLUMN IF NOT EXISTS care_accessories_enabled BOOLEAN NOT NULL DEFAULT true;

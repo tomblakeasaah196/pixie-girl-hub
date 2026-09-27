@@ -332,6 +332,9 @@ export interface CatalogueConfig {
   /** Which sibling to draw from first when more than one qualifies. Never
    *  changes the total reported count — only reservation order. */
   rewig_direction: "down_first" | "up_first" | "no_preference";
+  /** Care & Accessories on/off (Pixie Girl only; default on). OFF stops new
+   *  Care items and new Care sales — placed Care orders keep fulfilling. */
+  care_accessories_enabled?: boolean;
 }
 export interface SizeConfig {
   tiers: SizeTier[];
@@ -1656,6 +1659,7 @@ export interface SaveSizeConfigInput {
   rewig_enabled?: boolean;
   rewig_mode?: "automatic" | "opt_in";
   rewig_direction?: "down_first" | "up_first" | "no_preference";
+  care_accessories_enabled?: boolean;
 }
 
 /** Convenience: may base products be added to collections + bundles? Defaults to
@@ -1680,6 +1684,9 @@ export function useSaveSizeConfig() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["catalogue", "size-config", brand] });
       qc.invalidateQueries({ queryKey: ["catalogue", "styled", brand] });
+      // The Care & Accessories switch lives here too — refresh its
+      // availability so the Catalogue tab and pickers follow a flip at once.
+      qc.invalidateQueries({ queryKey: ["care", brand] });
     },
   });
 }

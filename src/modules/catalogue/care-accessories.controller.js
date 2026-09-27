@@ -6,7 +6,7 @@ const resolver = require("./retail-resolver");
 const { parsePagination } = require("../../utils/pagination");
 const context = (req) => ({ brand: req.brand, user: req.user, request_id: req.request_id });
 
-const availability = (req, res) => res.json({ data: { enabled: gate.enabled(req.brand) } });
+const availability = async (req, res) => res.json({ data: { enabled: await gate.enabled(req.brand) } });
 // PR 2: staff selling search — one hit per ACTIVE, sellable SKU (exact
 // variant, live POS-tier price, sellable-location stock). Powers the shared
 // ProductPicker's Care & Accessories kind in Quick Sale/quotes/amendments.

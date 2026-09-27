@@ -171,7 +171,8 @@ async function getLanding({ slug, brand, brandHint }) {
     }),
   ]);
 
-  const publicProducts = careGate.enabled(resolvedBrand)
+  const careOn = await careGate.enabled(resolvedBrand);
+  const publicProducts = careOn
     ? products
     : products.filter((p) => p.catalogue_role !== "retail");
   const payload = main.buildLandingPayload(campaign, publicProducts, state);
@@ -182,7 +183,7 @@ async function getLanding({ slug, brand, brandHint }) {
     .catch(() => null);
 
   if (state === "live" || state === "before") {
-    payload.bundles = careGate.enabled(resolvedBrand)
+    payload.bundles = careOn
       ? bundles || []
       : (bundles || []).filter(
           (bundle) =>
@@ -796,7 +797,7 @@ async function resolveBundleForCheckout({
     components.push({ unit_price_ngn: unitPrice, quantity: compQty });
 
     const isRetail = bi.catalogue_role === "retail";
-    if (isRetail) careGate.requireEnabled(brand);
+    if (isRetail) await careGate.requireEnabled(brand);
 
     if (bi.styled_id) {
       let baseVariantId = bi.styled_base_variant_id;
@@ -944,7 +945,7 @@ async function priceQuoteLine({ brand, item, campaign_id }) {
     });
     if (!items.length) return null;
     if (items.some((bi) => bi.catalogue_role === "retail")) {
-      careGate.requireEnabled(brand);
+      await careGate.requireEnabled(brand);
     }
     // Bundle quote price = the operator-set campaign bundle price when present,
     // else the live sum of component prices (styled retail / variant storefront,
@@ -1107,7 +1108,7 @@ async function priceQuoteLine({ brand, item, campaign_id }) {
       [item.product_id],
     );
     if (products[0]?.catalogue_role === "retail") {
-      careGate.requireEnabled(brand);
+      await careGate.requireEnabled(brand);
       if (!item.variant_id) {
         throw new AppError(
           "RETAIL_VARIANT_REQUIRED",
@@ -2055,7 +2056,7 @@ async function getProductDetail({ slug, brand, brandHint, styled_id }) {
     [campaign.campaign_id, styled_id],
   );
   if (retailLink.length > 0) {
-    if (!careGate.enabled(resolvedBrand)) throw new NotFoundError("Product");
+    if (!(await careGate.enabled(resolvedBrand))) throw new NotFoundError("Product");
     const retailResolver = require("../catalogue/retail-resolver");
     const retailProduct = await retailResolver.getProductBySlug({
       brand: resolvedBrand,

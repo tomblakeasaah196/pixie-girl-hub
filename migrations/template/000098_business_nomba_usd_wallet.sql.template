@@ -1,0 +1,36 @@
+-- ============================================================
+-- TEMPLATE 000098 — Nomba USD wallet settlement account
+-- Pixie Girl Hub · JBS Praxis · V2.2
+--
+-- Nomba settles a USD checkout into the merchant's USD wallet, not the Naira
+-- account. Until now every Nomba capture debited 1140 Nomba Settlement in
+-- Naira whatever the customer paid in, so the dollars sitting in the wallet
+-- were invisible to the books (and bank rec could never tie 1140 to either
+-- Nomba statement).
+--
+-- 1141 is the USD wallet's own float: a USD capture debits it (Naira value at
+-- the order's locked rate, the dollar amount on the line's transaction-currency
+-- columns), the gateway fee nets against it, and a payout/conversion clears it.
+-- account_currency = USD marks it for FX revaluation.
+--
+-- Substitute {{BUSINESS}} with the brand schema (pixiegirl / faitlynhair).
+-- Insert-only + ON CONFLICT DO NOTHING → idempotent; safe to re-run on repair.
+-- ============================================================
+
+DO $$
+DECLARE
+  g_assets UUID;
+  usd      TEXT;
+BEGIN
+  SELECT group_id INTO g_assets FROM {{BUSINESS}}.account_groups WHERE group_code = '1';
+  -- USD-denominated only if the currency is registered; otherwise the account
+  -- still exists, just without FX revaluation.
+  SELECT currency_code INTO usd FROM shared.currencies WHERE currency_code = 'USD';
+
+  INSERT INTO {{BUSINESS}}.chart_of_accounts
+    (account_code, account_name, group_id, is_control_account, control_subledger, account_currency, description)
+  VALUES
+    ('1141', 'Nomba Settlement — USD Wallet', g_assets, false, NULL, usd,
+     'Nomba USD wallet float: dollar checkouts land here until paid out or converted')
+  ON CONFLICT (account_code) DO NOTHING;
+END $$;

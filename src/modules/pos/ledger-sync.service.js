@@ -47,6 +47,37 @@ function providerRef(row) {
   return meta.transactionId || meta.rrn || meta.merchantTxRef || null;
 }
 
+/**
+ * Every reference this ledger row carries — the payment may be recorded under
+ * any of them (terminal taps under transactionId/merchantTxRef, online
+ * checkouts under our orderReference). providerRef() stays the queue's dedup
+ * key; this is only for "have we already got it?".
+ */
+function candidateRefs(row) {
+  const meta = row.meta || {};
+  return [
+    meta.transactionId,
+    meta.rrn,
+    meta.merchantTxRef,
+    meta.orderReference,
+    meta.sessionId,
+    row.transactionId,
+    row.orderReference,
+  ].filter((v) => v !== undefined && v !== null && String(v).trim() !== "");
+}
+
+/**
+ * The currency of a ledger credit. The business banks both a Naira account and
+ * a USD wallet with Nomba; a USD row's `amount` is DOLLARS and must never be
+ * parked as that many Naira. Anything unstated is Naira (the account default).
+ */
+function rowCurrency(row) {
+  const meta = row.meta || {};
+  return String(
+    row.currency || meta.currency || meta.transactionCurrency || "NGN",
+  ).toUpperCase();
+}
+
 async function syncBrand({ brand, dateFrom, dateTo }) {
   const creds = await gateways.resolveCredentials({ brand, provider: "nomba" });
   if (!creds) return { brand, skipped: "not_configured" };
@@ -80,19 +111,29 @@ async function syncBrand({ brand, dateFrom, dateTo }) {
       const ref = providerRef(row);
       if (!ref) continue; // nothing safe to dedup on — skip rather than risk a duplicate
 
-      const already = await salesRepo.paymentExistsByProviderRefAnyOrder({
+      const already = await salesRepo.paymentExistsForNombaLedgerRefs({
         brand,
-        provider_reference: ref,
+        refs: candidateRefs(row),
       });
       if (already) continue;
 
+      // A USD wallet credit parks with its DOLLAR amount; Match converts it at
+      // the chosen order's locked rate. amount_ngn (NOT NULL) is 0 — there is
+      // no honest Naira figure until an order is chosen.
+      const ccy = rowCurrency(row);
+      const foreign = ccy !== "NGN";
       const parkedRow = await repo.enqueueReconciliation({
         row: {
           provider: "nomba",
           resolved_brand: brand,
-          amount_ngn: row.amount,
+          amount_ngn: foreign ? "0" : row.amount,
+          paid_currency: foreign ? ccy : undefined,
+          paid_amount: foreign ? row.amount : undefined,
           transaction_time: row.timeUpdated || null,
           provider_reference: ref,
+          note: foreign
+            ? `${ccy} ${row.amount} credited to the Nomba ${ccy} wallet with no matching payment in the Hub — match it to its order to convert at that order's locked rate.`
+            : undefined,
           raw_payload: row,
         },
       });
@@ -101,7 +142,9 @@ async function syncBrand({ brand, dateFrom, dateTo }) {
         events.emit("pending", {
           recon_id: parkedRow.recon_id,
           business: brand,
-          amount_ngn: row.amount,
+          amount_ngn: foreign ? "0" : row.amount,
+          paid_currency: foreign ? ccy : null,
+          paid_amount: foreign ? row.amount : null,
         });
       }
     }
@@ -130,4 +173,4 @@ async function runNombaLedgerSync({ lookbackMinutes = LOOKBACK_MINUTES } = {}) {
   return { results, totalParked };
 }
 
-module.exports = { runNombaLedgerSync };
+module.exports = { runNombaLedgerSync, syncBrand, candidateRefs, rowCurrency };

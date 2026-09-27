@@ -681,6 +681,11 @@ export interface PosTerminalReconciliation {
   sender_name: string | null;
   sender_bank: string | null;
   amount_ngn: string;
+  // A non-Naira capture (USD Nomba checkout / wallet credit, 000391): the
+  // amount the customer actually paid. amount_ngn is 0 or provisional until
+  // the row is matched and converted at that order's locked rate.
+  paid_currency?: string | null;
+  paid_amount?: string | null;
   transaction_time: string | null;
   provider_reference: string | null;
   status: PosReconStatus;

@@ -5,6 +5,7 @@ const {
   REVENUE_BY_CHANNEL,
   revenueAccountForChannel,
   gatewayFeeAccount,
+  settlementAccountForProvider,
 } = require("../../../src/modules/accounting/posting-map");
 
 describe("posting map — GL account SSOT", () => {
@@ -29,6 +30,15 @@ describe("posting map — GL account SSOT", () => {
     expect(revenueAccountForChannel("unknown")).toBe(
       ACCOUNTS.SALES_STOREFRONT,
     );
+  });
+
+  test("settlement: Nomba keeps a USD wallet; everything else by provider", () => {
+    expect(settlementAccountForProvider("nomba")).toBe("1140");
+    expect(settlementAccountForProvider("nomba", "NGN")).toBe("1140");
+    expect(settlementAccountForProvider("nomba", "usd")).toBe("1141");
+    // No separate wallet → the provider's own float, whatever the currency.
+    expect(settlementAccountForProvider("paystack", "USD")).toBe("1120");
+    expect(settlementAccountForProvider("manual", "USD")).toBe("1100");
   });
 
   test("gateway fees: per-provider, Stripe split by currency", () => {

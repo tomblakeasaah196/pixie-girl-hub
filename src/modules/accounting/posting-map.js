@@ -22,6 +22,7 @@ const ACCOUNTS = Object.freeze({
   SETTLEMENT_PAYSTACK: "1120",
   SETTLEMENT_STRIVE: "1130",
   SETTLEMENT_NOMBA: "1140",
+  SETTLEMENT_NOMBA_USD: "1141", // Nomba USD wallet (account_currency USD)
   SETTLEMENT_OPAY: "1150",
   SETTLEMENT_STRIPE: "1160",
   AR_CUSTOMERS: "1200",
@@ -157,8 +158,19 @@ const SETTLEMENT_BY_PROVIDER = Object.freeze({
   stripe: ACCOUNTS.SETTLEMENT_STRIPE,
 });
 
-/** Settlement account a captured payment debits (bank for direct/manual). */
-function settlementAccountForProvider(provider) {
+// Nomba settles each currency into its own wallet: a USD checkout lands in the
+// USD wallet, never the Naira account, so it has its own float (1141).
+const FOREIGN_SETTLEMENT_BY_PROVIDER = Object.freeze({
+  nomba: Object.freeze({ USD: ACCOUNTS.SETTLEMENT_NOMBA_USD }),
+});
+
+/** Settlement account a captured payment debits (bank for direct/manual).
+ *  `paid_currency` routes a foreign capture to that currency's wallet when the
+ *  gateway keeps one (Nomba USD → 1141); otherwise the provider's account. */
+function settlementAccountForProvider(provider, paid_currency) {
+  const ccy = String(paid_currency || "NGN").toUpperCase();
+  const foreign = FOREIGN_SETTLEMENT_BY_PROVIDER[provider];
+  if (ccy !== "NGN" && foreign && foreign[ccy]) return foreign[ccy];
   return SETTLEMENT_BY_PROVIDER[provider] || ACCOUNTS.BANK_MAIN;
 }
 
@@ -170,5 +182,6 @@ module.exports = {
   STRIPE_FEE_ACCOUNT_BY_CCY,
   gatewayFeeAccount,
   SETTLEMENT_BY_PROVIDER,
+  FOREIGN_SETTLEMENT_BY_PROVIDER,
   settlementAccountForProvider,
 };

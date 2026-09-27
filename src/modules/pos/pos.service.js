@@ -16,6 +16,7 @@ const events = require("./pos.events");
 const salesRepo = require("../sales/sales.repo");
 const { audit } = require("../../middleware/audit");
 const notifications = require("../../services/notifications.service");
+const paidCurrency = require("../sales/paid-currency");
 const { NotFoundError, AppError } = require("../../utils/errors");
 const { VALID_BRANDS } = require("../../config/brands");
 const { logger } = require("../../config/logger");
@@ -91,9 +92,16 @@ async function suggestions({ id, brand, user }) {
     since = new Date(ms - SUGGEST_WINDOW_HOURS * 3600 * 1000).toISOString();
     until = new Date(ms + SUGGEST_WINDOW_HOURS * 3600 * 1000).toISOString();
   }
+  // A USD row has no Naira figure yet — look for USD-locked orders whose
+  // dollar balance is what was paid instead.
+  const ccy = String(row.paid_currency || "NGN").toUpperCase();
+  const foreign =
+    ccy !== "NGN" && row.paid_amount !== null && row.paid_amount !== undefined;
   const candidates = await salesRepo.findReconcilablePosOrders({
     brand: targetBrand,
     amount_ngn: row.amount_ngn,
+    paid_currency: foreign ? ccy : null,
+    paid_amount: foreign ? row.paid_amount : null,
     since,
     until,
   });
@@ -101,6 +109,42 @@ async function suggestions({ id, brand, user }) {
 }
 
 // ── Actions ─────────────────────────────────────────────────
+
+/**
+ * What a matched row credits. A Naira row credits its amount as an in-store
+ * terminal payment (unchanged). A USD row (a Nomba dollar checkout that could
+ * not be placed) is converted at the CHOSEN order's locked rate — the same
+ * rule the webhook applies — and records the dollars on the payment, so it
+ * lands in the USD wallet account and on a dollar receipt. Parked USD rows
+ * carry amount_ngn 0 when no order was known; crediting that was rejected by
+ * the payments CHECK, and crediting a guessed Naira figure lost the dollars.
+ */
+async function matchedPaymentFigures({ row, brand, order_id }) {
+  const ccy = String(row.paid_currency || "NGN").toUpperCase();
+  if (ccy === "NGN" || row.paid_amount === null || row.paid_amount === undefined)
+    return { amount_ngn: row.amount_ngn, method: "nomba_terminal" };
+
+  const order = await salesRepo.findById({ brand, id: order_id });
+  if (!order) throw new NotFoundError("Order");
+  const webhooksService = require("../business_setup/webhooks.service");
+  const credit = await webhooksService.foreignCaptureCredit({
+    brand,
+    order,
+    currency: ccy,
+    paidAmount: row.paid_amount,
+  });
+  if (credit.park)
+    throw new AppError("CANNOT_MATCH", credit.park, 409, {
+      user_message: credit.park,
+    });
+  return {
+    amount_ngn: credit.amount_ngn,
+    method: "nomba_online",
+    paid_currency: ccy,
+    paid_amount: row.paid_amount,
+    fx_rate_used: Number(credit.fx_rate).toFixed(6),
+  };
+}
 
 /**
  * Match a pending payment to an order (decision 1A: staff picks from
@@ -121,12 +165,12 @@ async function match({ id, brand, order_id, user, request_id }) {
   // Lazy require: avoids a require cycle at module load (webhooks.service.js
   // requires ./pos.repo directly for the fallback that creates these rows).
   const webhooksService = require("../business_setup/webhooks.service");
+  const payment = await matchedPaymentFigures({ row, brand, order_id });
   await webhooksService.recordGatewayPayment({
     brand,
     order_id,
     reference: row.provider_reference || `pos-recon:${row.recon_id}`,
-    amount_ngn: row.amount_ngn,
-    method: "nomba_terminal",
+    ...payment,
     provider: "nomba",
     webhook_id: row.webhook_id,
     // A person decided this payment belongs to this order — name them on the
@@ -156,7 +200,12 @@ async function match({ id, brand, order_id, user, request_id }) {
     action_key: "pos_reconciliation.match",
     target_type: "pos_terminal_reconciliation",
     target_id: id,
-    after: { order_id, amount_ngn: row.amount_ngn },
+    after: {
+      order_id,
+      amount_ngn: row.amount_ngn,
+      paid_currency: row.paid_currency || null,
+      paid_amount: row.paid_amount ?? null,
+    },
     request_id,
   });
   events.emit("matched", {
@@ -210,13 +259,28 @@ async function ignore({ id, note, user, request_id }) {
  * notice it in the tab on their own. Unresolved-brand items reach CEOs only
  * (repo.listNotifyRecipients narrows to is_ceo when brand is null).
  */
-async function notifyNewPending({ recon_id, business, amount_ngn }) {
+async function notifyNewPending({
+  recon_id,
+  business,
+  amount_ngn,
+  paid_currency = null,
+  paid_amount = null,
+}) {
   const recipients = await repo.listNotifyRecipients({
     brand: business || null,
   });
-  const amountDisplay = `₦${Number(amount_ngn).toLocaleString("en-NG", {
-    minimumFractionDigits: 2,
-  })}`;
+  // A USD row's amount_ngn is 0 or a provisional conversion — the dollars are
+  // the truth, so the alert says "$249.99", not "₦0.00".
+  const foreign =
+    paid_currency &&
+    String(paid_currency).toUpperCase() !== "NGN" &&
+    paid_amount !== null &&
+    paid_amount !== undefined;
+  const amountDisplay = foreign
+    ? paidCurrency.formatMoney(paid_amount, paid_currency)
+    : `₦${Number(amount_ngn).toLocaleString("en-NG", {
+        minimumFractionDigits: 2,
+      })}`;
   await Promise.all(
     recipients.map((user_id) =>
       notifications
@@ -226,9 +290,15 @@ async function notifyNewPending({ recon_id, business, amount_ngn }) {
           type: "pos_reconciliation",
           priority: "high",
           title: business
-            ? "Unmatched POS payment"
-            : "Unmatched POS payment — brand unknown",
-          body: `${amountDisplay} came in from a terminal with no matching order. It's waiting in POS Reconciliation.`,
+            ? foreign
+              ? "Unmatched Nomba payment"
+              : "Unmatched POS payment"
+            : foreign
+              ? "Unmatched Nomba payment — brand unknown"
+              : "Unmatched POS payment — brand unknown",
+          body: foreign
+            ? `${amountDisplay} came in through Nomba with no order it could be placed on. It's waiting in POS Reconciliation.`
+            : `${amountDisplay} came in from a terminal with no matching order. It's waiting in POS Reconciliation.`,
           reference_type: "pos_terminal_reconciliation",
           reference_id: recon_id,
           action_url: "/sales?tab=pos-reconciliation",

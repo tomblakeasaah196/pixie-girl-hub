@@ -10,7 +10,7 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { MoneyText, Button } from "@/components/ui/primitives";
 import { Modal } from "@/components/ui/Modal";
 import { ErrorState } from "@/components/ui/controls";
-import { formatDate, formatTime } from "@/lib/format";
+import { formatDate, formatTime, money as fmtMoney } from "@/lib/format";
 import { useAuthStore } from "@/stores/auth";
 import { useBusinessStore, useBusinesses } from "@/stores/business";
 import { useToastStore } from "@/components/notifications/NotificationToast";
@@ -196,7 +196,7 @@ function MatchModal({
       });
       toast(
         "Payment matched",
-        `₦${Number(row!.amount_ngn).toLocaleString()} applied to the order.`,
+        `${foreignAmount(row!) ?? `₦${Number(row!.amount_ngn).toLocaleString()}`} applied to the order.`,
       );
       onClose();
     } catch (err) {
@@ -214,7 +214,7 @@ function MatchModal({
         <div className="rounded-[10px] border border-line p-3 flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="text-[13px] font-semibold">
-              <MoneyText ngn={Number(row.amount_ngn)} />
+              <ReconAmount r={row} />
             </div>
             <div className="text-[11px] text-text-muted truncate">
               {row.alias_account_name || "Unknown sender"} ·{" "}
@@ -347,7 +347,7 @@ function IgnoreModal({
     <Modal open onClose={onClose} title="Ignore POS payment" size="sm">
       <form onSubmit={handleSubmit} className="space-y-4">
         <p className="text-[13px] text-text-muted leading-relaxed">
-          This marks <MoneyText ngn={Number(row.amount_ngn)} /> as a false
+          This marks <ReconAmount r={row} /> as a false
           positive or duplicate — it won't be applied to any order. A short
           reason is required so this stays auditable.
         </p>
@@ -395,7 +395,7 @@ function reconColumns(
     {
       key: "amount",
       header: "Amount",
-      render: (r) => <MoneyText ngn={Number(r.amount_ngn)} />,
+      render: (r) => <ReconAmount r={r} />,
     },
     {
       key: "sender",
@@ -502,6 +502,29 @@ function reconColumns(
   return cols;
 }
 
+/** A row's foreign (USD) amount, when the customer didn't pay in Naira. */
+function foreignAmount(r: PosTerminalReconciliation): string | null {
+  const ccy = String(r.paid_currency || "NGN").toUpperCase();
+  if (ccy === "NGN" || r.paid_amount == null) return null;
+  return fmtMoney(Number(r.paid_amount), ccy);
+}
+
+/** The row's amount as the customer paid it. A USD row shows its dollars —
+ *  its Naira figure is only fixed when it's matched (at that order's locked
+ *  rate), so "₦0.00" would be a lie. */
+function ReconAmount({ r }: { r: PosTerminalReconciliation }) {
+  const usd = foreignAmount(r);
+  if (!usd) return <MoneyText ngn={Number(r.amount_ngn)} />;
+  return (
+    <span
+      className="font-display font-medium tabular-nums"
+      title="Converted to Naira at the order's locked rate when you match it"
+    >
+      {usd}
+    </span>
+  );
+}
+
 export function PosReconciliationView() {
   const can = useAuthStore((s) => s.can);
   const isCeo = useAuthStore((s) => s.user?.isCeo ?? false);
@@ -565,7 +588,7 @@ export function PosReconciliationView() {
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 text-[13px]">
-                      <MoneyText ngn={Number(r.amount_ngn)} />
+                      <ReconAmount r={r} />
                       <span className="text-text-muted truncate">
                         — {r.alias_account_name || "Unknown sender"}
                       </span>

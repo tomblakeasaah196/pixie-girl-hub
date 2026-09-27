@@ -461,6 +461,7 @@ async function startWorkers() {
   require("../modules/sales/receipt.subscribers"); // order.paid → archive receipt PDF
   require("../modules/sales/stock-shortfall.subscribers"); // paid order with nothing to draw → ops + Kaizen
   require("../modules/sales/payment-comms.subscribers"); // part-payment receipt + milestone → Comms Studio
+  require("../modules/sales/overpayment.subscribers"); // order.overpaid → finance: refund or hold as credit
   require("../modules/sales/order-lifecycle-comms.subscribers"); // order.created → proforma invoice + placement email; order.paid → payment-confirmed email
   require("../modules/sales/duplicate-resolve.subscribers"); // order.paid → cancel pending duplicate twins
   require("../modules/sales/amendment.subscribers"); // order.amended → customer letter + invoice PDF + Studio job

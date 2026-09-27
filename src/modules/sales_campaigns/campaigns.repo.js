@@ -336,6 +336,8 @@ async function listProducts({ client, brand, campaign_id }) {
             rv.variant_id AS retail_variant_id,
             rv.sku AS retail_variant_sku,
             rv.variant_name AS retail_variant_label,
+            rv.price_storefront_ngn AS retail_variant_price_ngn,
+            rv.price_storefront_usd AS retail_variant_price_usd,
             COALESCE(rstk.live_retail_stock, vstk.live_base_stock, bstk.live_base_stock) AS live_base_stock
        FROM ${t(brand, "sales_campaign_products")} scp
        LEFT JOIN ${t(brand, "products")} p          ON p.product_id   = scp.product_id
@@ -348,7 +350,8 @@ async function listProducts({ client, brand, campaign_id }) {
           ORDER BY is_primary DESC, display_order ASC LIMIT 1
        ) rpi ON p.catalogue_role = 'retail'
        LEFT JOIN LATERAL (
-         SELECT pv.variant_id, pv.sku, pv.variant_name
+         SELECT pv.variant_id, pv.sku, pv.variant_name,
+                pv.price_storefront_ngn, pv.price_storefront_usd
            FROM ${t(brand, "product_variants")} pv
           WHERE pv.product_id = p.product_id AND pv.is_active = true
           ORDER BY pv.is_default DESC, pv.display_order ASC, pv.created_at ASC

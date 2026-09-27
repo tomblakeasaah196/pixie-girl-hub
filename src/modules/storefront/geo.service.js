@@ -105,7 +105,12 @@ function geoOptions({ brand }) {
  * activate it under Settings → Currencies and set its rate under FX rates.
  */
 async function currencies({ brand, country }) {
-  const active = await currencyService.listActiveCurrencies();
+  // ₦ and $ only (owner, Sept 2026): the toolbar offers exactly what Nomba can
+  // charge, so the currency a buyer browses in is the currency they pay in. A
+  // GBP/EUR/… row active in Settings → Currencies no longer surfaces here.
+  const active = (await currencyService.listActiveCurrencies()).filter((c) =>
+    currencyService.SETTLEMENT_CURRENCIES.includes(c.currency_code),
+  );
   const out = [];
   for (const c of active) {
     const rate = await currencyService.systemFxRate({
@@ -120,10 +125,13 @@ async function currencies({ brand, country }) {
       decimals: Number(c.decimal_places),
       rounding_unit: Number(c.rounding_unit) || 1,
       rate_to_ngn: c.currency_code === "NGN" ? 1 : rate,
-      settlement: !!c.is_settlement,
+      // Both remaining currencies are charged as themselves.
+      settlement: true,
     });
   }
-  const geoCur = currencyForCountry(country);
+  // Visitors outside Nigeria default to dollars (a UK visitor used to land on
+  // GBP; with ₦/$ only they'd otherwise fall back to Naira).
+  const geoCur = currencyForCountry(country) === "NGN" ? "NGN" : "USD";
   const def = out.some((c) => c.code === geoCur) ? geoCur : "NGN";
   return { base: "NGN", default: def, currencies: out };
 }

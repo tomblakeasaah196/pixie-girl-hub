@@ -35,6 +35,7 @@ const { NotFoundError, AppError } = require("../../utils/errors");
 const { logger } = require("../../config/logger");
 const { getSupportContact, supportSentence } = require("../../config/support");
 const stages = require("./checkout.stages");
+const usdPricing = require("../../services/usd-pricing.service");
 
 const { BRANDS } = require("../../config/brands");
 
@@ -174,6 +175,11 @@ async function getLanding({ slug, brand, brandHint }) {
     ? products
     : products.filter((p) => p.catalogue_role !== "retail");
   const payload = main.buildLandingPayload(campaign, publicProducts, state);
+  // Campaigns follow the LIVE catalogue ₦/$ rate (owner, Sept 2026) — the
+  // same rate checkout prices with — not a static per-campaign figure.
+  payload.ngn_per_usd_rate = await usdPricing
+    .catalogueRate(resolvedBrand)
+    .catch(() => null);
 
   if (state === "live" || state === "before") {
     payload.bundles = careGate.enabled(resolvedBrand)
@@ -184,6 +190,14 @@ async function getLanding({ slug, brand, brandHint }) {
         );
     payload.tiers = tiers || [];
     payload.upsells = upsells || [];
+    // A fixed-price bundle's own ₦ per catalogue $ (its bundle_price_usd), so
+    // its card converts exactly as checkout prices it; else null → the rate.
+    for (const b of payload.bundles) {
+      const pair = await usdPricing
+        .bundlePair({ brand: resolvedBrand, bundle_id: b.bundle_id })
+        .catch(() => NO_USD_PAIR);
+      b.ngn_per_usd = ngnPerUsd(pair.catalogue_ngn, pair.catalogue_usd);
+    }
   }
 
   // Owner directive: the live-page social-proof overlays — the "X just bought
@@ -510,6 +524,21 @@ async function buildDealLines({ brand, cart }) {
   return lines;
 }
 
+/** Price each cart item the way the quote does (priceQuoteLine), keeping its
+ *  quantity and catalogue USD pair — shared by the quote and checkout's USD
+ *  lock so both see identical lines. */
+async function priceDealLines({ brand, cart, campaign_id }) {
+  const lines = [];
+  for (const item of cart || []) {
+    const quantity = Number(item.quantity) || 0;
+    if (quantity <= 0) continue;
+    const priced = await priceQuoteLine({ brand, item, campaign_id });
+    if (!priced) continue;
+    lines.push({ ...priced, quantity });
+  }
+  return lines;
+}
+
 /**
  * Server-authoritative cart quote for the landing page. Resolves each line's
  * price the same way checkout does (never trusting the client), runs the deals
@@ -529,18 +558,11 @@ async function quoteCart({ slug, brand, brandHint, input }) {
   // Resolve a display price + margin floor for each line (best-effort; the
   // gross discount is price-independent, prices only drive the displayed
   // subtotal / savings / final total).
-  const dealLines = [];
-  for (const item of input.cart || []) {
-    const quantity = Number(item.quantity) || 0;
-    if (quantity <= 0) continue;
-    const priced = await priceQuoteLine({
-      brand: resolvedBrand,
-      item,
-      campaign_id: campaign.campaign_id,
-    });
-    if (!priced) continue;
-    dealLines.push({ ...priced, quantity });
-  }
+  const dealLines = await priceDealLines({
+    brand: resolvedBrand,
+    cart: input.cart,
+    campaign_id: campaign.campaign_id,
+  });
 
   const breakdown = computeDeals({ campaign, lines: dealLines, tiers });
 
@@ -578,31 +600,83 @@ async function quoteCart({ slug, brand, brandHint, input }) {
     money(0),
   );
 
+  // Dollar figures (usd-pricing engine, live catalogue rate): each line's
+  // catalogue USD price, the deal discounts scaled at the goods' dollar ratio.
+  // Checkout runs the same engine over the same priced lines and locks the
+  // result, so the landing's $ total is the $ charged.
+  // Care VAT rides inside the final total the buyer pays (Sales adds it on
+  // top), so both the ₦ figure and the $ engine include it.
+  const finalTotalNgn =
+    careTax.gt(0) && breakdown.final_total_ngn !== undefined
+      ? toCurrencyString(money(breakdown.final_total_ngn).plus(careTax))
+      : breakdown.final_total_ngn;
+  const usd = await campaignUsd({
+    brand: resolvedBrand,
+    dealLines,
+    total_ngn: finalTotalNgn,
+  });
+
   return {
     slug: campaign.slug,
     currency: "NGN",
     ...breakdown,
     tax_ngn: toCurrencyString(careTax),
-    ...(careTax.gt(0) && breakdown.final_total_ngn !== undefined
-      ? {
-          final_total_ngn: toCurrencyString(
-            money(breakdown.final_total_ngn).plus(careTax),
-          ),
-        }
-      : {}),
+    final_total_ngn: finalTotalNgn,
+    usd,
     has_care_items: hasCareItems,
     care_delivery_notice: hasCareItems ? "EXTRA DELIVERY FEES MAY APPLY" : null,
     care_only: isRetailOnly,
     free_shipping_threshold_ngn: freeShippingThreshold,
     free_shipping_unlocked:
       freeShippingThreshold !== null && cartSubtotal >= freeShippingThreshold,
-    lines: dealLines.map((l) => ({
+    lines: dealLines.map((l, i) => ({
       kind: l.kind,
       bundle_id: l.bundle_id || null,
       name: l.name || null,
       unit_price_ngn: toCurrencyString(money(l.unit_price_ngn || 0)),
+      ...(usd ? { unit_price_usd: usd.lines[i] } : {}),
       quantity: l.quantity,
     })),
+  };
+}
+
+/**
+ * Campaign cart in dollars via the USD engine (usd-pricing): the goods, the
+ * deal/coupon adjustments (at the goods' dollar ratio — `ratio` lets the
+ * landing convert each discount row the same way) and the total. `delivery_ngn`
+ * is converted at the catalogue rate, rounded up (the landing adds its live
+ * delivery the same way). Null when a line can't be priced without a rate.
+ */
+async function campaignUsd({ brand, dealLines, total_ngn, delivery_ngn = 0 }) {
+  const rate = await usdPricing.catalogueRate(brand);
+  const usd = usdPricing.orderUsd({
+    lines: dealLines.map((l) => ({
+      unit_ngn: l.unit_price_ngn,
+      quantity: l.quantity,
+      ...(l.usd_pair || NO_USD_PAIR),
+    })),
+    total_ngn,
+    delivery_ngn,
+    rate,
+  });
+  if (!usd) return null;
+  const goodsNgn = dealLines.reduce(
+    (s, l) => s.plus(money(l.unit_price_ngn || 0).times(Number(l.quantity) || 1)),
+    money(0),
+  );
+  return {
+    rate,
+    ratio: goodsNgn.gt(0)
+      ? money(usd.goods_usd).dividedBy(goodsNgn).toString()
+      : rate
+        ? money(1).dividedBy(money(rate)).toString()
+        : null,
+    lines: usd.lines.map((l) => l.unit_price_usd),
+    goods_usd: usd.goods_usd,
+    adjustments_usd: usd.adjustments_usd,
+    delivery_usd: usd.delivery_usd,
+    total_usd: usd.usd_total,
+    fx_rate: usd.fx_rate,
   };
 }
 
@@ -827,8 +901,41 @@ async function resolveBundleForCheckout({
   };
 }
 
+const NO_USD_PAIR = { catalogue_ngn: null, catalogue_usd: null };
+
+/** A product's effective ₦ per $1 from its catalogue pair, or null. */
+function ngnPerUsd(ngn, usd) {
+  const n = Number(ngn);
+  const u = Number(usd);
+  return n > 0 && u > 0 ? Number((n / u).toFixed(6)) : null;
+}
+
+/**
+ * A styled variant's catalogue (₦, $) pair, NULL-safe exactly like the
+ * composer's effective_price_usd (styled_variants.repo.listVariants): no USD
+ * anchor and no USD override → no USD price (never a partial sum of premiums).
+ * Unstyled → the anchor pair.
+ */
+function styledUsdPair(sv, unitNgn, unstyled) {
+  const n = (v) => (v === null || v === undefined ? null : money(v));
+  if (unstyled)
+    return { catalogue_ngn: sv.retail_price_ngn, catalogue_usd: sv.retail_price_usd };
+  let usd = null;
+  if (n(sv.price_override_usd)) usd = n(sv.price_override_usd);
+  else if (n(sv.retail_price_usd))
+    usd = n(sv.retail_price_usd)
+      .plus(n(sv.colour_premium_usd) || 0)
+      .plus(n(sv.size_premium_usd) || 0)
+      .plus(n(sv.lace_premium_usd) || 0);
+  return {
+    catalogue_ngn: toCurrencyString(unitNgn),
+    catalogue_usd: usd ? toCurrencyString(usd) : null,
+  };
+}
+
 // Resolve one cart line to { kind, unit_price_ngn, wig_units, bundle_id?,
-// floor_ngn, name } for the quote. Read-only; mirrors checkout pricing.
+// floor_ngn, name, usd_pair } for the quote. Read-only; mirrors checkout
+// pricing. usd_pair is the line's catalogue (₦, $) pair for the USD engine.
 async function priceQuoteLine({ brand, item, campaign_id }) {
   if (item.bundle_id) {
     const items = await bundleRepo.listBundleItems({
@@ -895,6 +1002,11 @@ async function priceQuoteLine({ brand, item, campaign_id }) {
       wig_units: wigUnits || 0,
       floor_ngn: null,
       name: null,
+      // Catalogue (₦, $) pair for the USD engine — a fixed-price bundle's own
+      // USD price, scaled to the campaign/sized price; else converted.
+      usd_pair: await usdPricing
+        .bundlePair({ brand, bundle_id: item.bundle_id })
+        .catch(() => NO_USD_PAIR),
     };
   }
 
@@ -934,6 +1046,10 @@ async function priceQuoteLine({ brand, item, campaign_id }) {
         name: priced.name,
         // Sales adds a taxable item's VAT on top — the quote must show it.
         vat_rate: priced.taxable && priced.vat_rate ? priced.vat_rate : null,
+        usd_pair: {
+          catalogue_ngn: priced.unit_price_ngn,
+          catalogue_usd: priced.unit_price_usd,
+        },
       };
     }
   }
@@ -944,7 +1060,11 @@ async function priceQuoteLine({ brand, item, campaign_id }) {
               sp.styled_id, sp.name AS styled_name, sp.retail_price_ngn,
               sp.base_variant_id, sp.base_product_id AS sp_base_product_id,
               c.premium_ngn AS colour_premium,
-              st.premium_ngn AS size_premium, ls.premium_ngn AS lace_premium
+              st.premium_ngn AS size_premium, ls.premium_ngn AS lace_premium,
+              sv.price_override_usd, sp.retail_price_usd,
+              c.premium_usd AS colour_premium_usd,
+              st.premium_usd AS size_premium_usd,
+              ls.premium_usd AS lace_premium_usd
          FROM ${brand}.styled_product_variants sv
          JOIN ${brand}.styled_products sp ON sp.styled_id = sv.styled_id
          JOIN ${brand}.styled_product_colours c ON c.colour_id = sv.colour_id
@@ -975,6 +1095,7 @@ async function priceQuoteLine({ brand, item, campaign_id }) {
       wig_units: 1,
       floor_ngn: null,
       name: sv.styled_name,
+      usd_pair: styledUsdPair(sv, unitPrice, item.unstyled),
     };
   }
 
@@ -1018,11 +1139,15 @@ async function priceQuoteLine({ brand, item, campaign_id }) {
         name: priced.name,
         // Sales adds a taxable item's VAT on top — the quote must show it.
         vat_rate: priced.taxable && priced.vat_rate ? priced.vat_rate : null,
+        usd_pair: {
+          catalogue_ngn: priced.unit_price_ngn,
+          catalogue_usd: priced.unit_price_usd,
+        },
       };
     }
 
     const { rows } = await query(
-      `SELECT variant_id, price_storefront_ngn, min_price_ngn
+      `SELECT variant_id, price_storefront_ngn, price_storefront_usd, min_price_ngn
          FROM ${brand}.product_variants
         WHERE product_id = $1 AND is_active = true
         ORDER BY is_default DESC, display_order ASC, created_at ASC
@@ -1039,6 +1164,10 @@ async function priceQuoteLine({ brand, item, campaign_id }) {
       // Floor-free (owner decision, CONFORMANCE_GAPS G-1) — see styled branch.
       floor_ngn: null,
       name: null,
+      usd_pair: {
+        catalogue_ngn: rows[0].price_storefront_ngn,
+        catalogue_usd: rows[0].price_storefront_usd,
+      },
     };
   }
   return null;
@@ -1682,14 +1811,28 @@ async function checkout({ slug, brand, brandHint, input, ip, user_agent }) {
       order,
     });
     const addressSnapshot = stages.buildAddressSnapshot(deliveryAddress);
-    // USD checkouts record the dollar total + campaign rate so Sales views
-    // show "$X @ ₦rate → ₦total"; recording the real rate also fixes the
-    // realised-FX posting in addPayment (books against order.fx_rate_used).
+    // USD checkouts lock the dollar total the landing showed: the USD engine
+    // (live catalogue rate, each line's catalogue USD price, deals at the
+    // goods' dollar ratio, delivery at the rate) over the SAME priced lines the
+    // quote used. display_total = the $ total, fx_rate_used = its effective
+    // ₦/$ — what the pay link charges against and the webhook credits at.
+    const usd =
+      String(input.display_currency || "NGN").toUpperCase() === "USD"
+        ? await campaignUsd({
+            brand: resolvedBrand,
+            dealLines: await priceDealLines({
+              brand: resolvedBrand,
+              cart: input.cart,
+              campaign_id: campaign.campaign_id,
+            }).catch(() => []),
+            total_ngn: order.total_ngn,
+            delivery_ngn: order.shipping_fee_ngn || 0,
+          }).catch(() => null)
+        : null;
     const { displayCurrency, displayTotal, fxRateUsed } =
       stages.resolveDisplayCurrency({
         display_currency: input.display_currency,
-        campaign,
-        total_ngn: order.total_ngn,
+        usd,
       });
 
     try {
@@ -1946,6 +2089,12 @@ async function getProductDetail({ slug, brand, brandHint, styled_id }) {
       warnings: retailProduct.warnings,
       retail_price_ngn: retailProduct.options[0]?.unit_price_ngn ?? null,
       anchor_price_ngn: retailProduct.options[0]?.unit_price_ngn ?? null,
+      // ₦ per catalogue $ for this product (see buildLandingPayload): the modal
+      // converts its prices at it, matching checkout's USD engine.
+      ngn_per_usd: ngnPerUsd(
+        retailProduct.options[0]?.unit_price_ngn,
+        retailProduct.options[0]?.unit_price_usd,
+      ),
       gallery,
       options: retailProduct.options,
       variants: retailProduct.options.map((opt) => ({
@@ -2089,6 +2238,7 @@ async function getProductDetail({ slug, brand, brandHint, styled_id }) {
     long_description: styled.long_description,
     retail_price_ngn: styled.retail_price_ngn,
     anchor_price_ngn: styled.retail_price_ngn,
+    ngn_per_usd: ngnPerUsd(styled.retail_price_ngn, styled.retail_price_usd),
     gallery,
     variants: variants.map((v) => ({
       // The styled variant's id IS its primary key (styled_product_variants
@@ -2201,4 +2351,6 @@ module.exports = {
   computeBundleDiscount,
   resolveBundleForCheckout,
   priceQuoteLine,
+  styledUsdPair,
+  campaignUsd,
 };

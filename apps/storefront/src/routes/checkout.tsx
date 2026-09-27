@@ -27,7 +27,7 @@ import {
   type CheckoutInput,
   type Quote,
 } from "@/lib/storefront";
-import { formatFromNgn, settlementFor } from "@/lib/money";
+import { formatCurrency, formatFromNgn, settlementFor } from "@/lib/money";
 import { bootstrapAuth, getMe } from "@/lib/auth";
 import { useCurrency, useReferralCode } from "@/lib/useStore";
 import { usePageSlots, withSlots } from "@/lib/site-config";
@@ -389,6 +389,41 @@ function CheckoutPage() {
   // agree to the naira.
   const total = discountedGoods + deliveryDue;
 
+  // A USD order is priced by the server's USD engine (usd-pricing): each item's
+  // catalogue USD price, the discount at the goods' dollar ratio, delivery
+  // converted at the catalogue rate and rounded UP to the dollar. The quote
+  // gives the discounted goods in dollars; delivery is added here with the
+  // exact same rule the server locks onto the order, so the Pay button, the
+  // order and the Nomba checkout show one dollar figure.
+  const usdQuote =
+    currency === "USD" && quoteQ.data?.goods_total_display != null
+      ? quoteQ.data
+      : null;
+  const usdRate = usdQuote?.fx_rate_used ?? null;
+  const deliveryUsd =
+    usdQuote && usdRate && deliveryDue > 0
+      ? Math.ceil(deliveryDue / usdRate - 1e-9)
+      : 0;
+  const totalUsd = usdQuote ? n(usdQuote.goods_total_display) + deliveryUsd : null;
+  const usdLineTotal = (id: string) =>
+    usdQuote?.lines?.find((l) => l.cart_item_id === id)?.line_total_usd;
+  // Money in the buyer's currency: dollars from the engine, else ₦.
+  const show = {
+    subtotal: () =>
+      usdQuote ? formatCurrency(n(usdQuote.subtotal_display), "USD") : fmt(subtotalNgn),
+    discount: () =>
+      usdQuote ? formatCurrency(n(usdQuote.discount_display), "USD") : fmt(discountNgn),
+    tax: () =>
+      usdQuote
+        ? formatCurrency(n(usdQuote.tax_display), "USD")
+        : fmt(n(quoteQ.data?.tax_ngn)),
+    delivery: (ngn: number) =>
+      usdQuote && usdRate
+        ? formatCurrency(Math.ceil(ngn / usdRate - 1e-9), "USD")
+        : fmt(ngn),
+    total: () => (totalUsd != null ? formatCurrency(totalUsd, "USD") : fmt(total)),
+  };
+
   // Right-hand summary label for the delivery line. A delivery order must show a
   // real, positive fee. A ₦0 outcome of any kind — "free" promo, "pending"
   // config gap, or an unpriced/unserviceable location — reads as "not
@@ -400,7 +435,7 @@ function CheckoutPage() {
       : quoting
         ? copy.deliveryCalculating
         : deliveryFee != null && deliveryFee > 0
-          ? fmt(deliveryFee)
+          ? show.delivery(deliveryFee)
           : effectiveZone
             ? copy.deliveryNoService
             : copy.deliverySelectLocation;
@@ -921,7 +956,9 @@ function CheckoutPage() {
                     ) : null}
                   </span>
                   <span className="font-mono tabular-nums">
-                    {fmt(n(it.unit_price_ngn) * it.quantity)}
+                    {usdLineTotal(it.cart_item_id) != null
+                      ? formatCurrency(n(usdLineTotal(it.cart_item_id)), "USD")
+                      : fmt(n(it.unit_price_ngn) * it.quantity)}
                   </span>
                 </li>
               ))}
@@ -931,7 +968,7 @@ function CheckoutPage() {
               <div className="flex justify-between">
                 <dt className="text-muted-foreground">{copy.subtotalLabel}</dt>
                 <dd className="font-mono tabular-nums">
-                  {quoteQ.data ? fmt(subtotalNgn) : "…"}
+                  {quoteQ.data ? show.subtotal() : "…"}
                 </dd>
               </div>
               {discountNgn > 0 ? (
@@ -945,7 +982,7 @@ function CheckoutPage() {
                     ) : null}
                   </dt>
                   <dd className="font-mono tabular-nums">
-                    −{fmt(discountNgn)}
+                    −{show.discount()}
                   </dd>
                 </div>
               ) : null}
@@ -953,7 +990,7 @@ function CheckoutPage() {
                 <div className="flex justify-between">
                   <dt className="text-muted-foreground">{copy.taxLabel}</dt>
                   <dd className="font-mono tabular-nums">
-                    {fmt(n(quoteQ.data?.tax_ngn))}
+                    {show.tax()}
                   </dd>
                 </div>
               ) : null}
@@ -999,7 +1036,7 @@ function CheckoutPage() {
               <div className="flex items-baseline justify-between border-t border-border pt-3 text-body">
                 <dt>{copy.totalLabel}</dt>
                 <dd className="font-display text-h6 tabular-nums">
-                  {quoteQ.data ? fmt(total) : "…"}
+                  {quoteQ.data ? show.total() : "…"}
                 </dd>
               </div>
             </dl>
@@ -1122,7 +1159,7 @@ function CheckoutPage() {
                 </>
               ) : (
                 <>
-                  <Lock size={16} /> {copy.payCta.replace("{total}", fmt(total))}
+                  <Lock size={16} /> {copy.payCta.replace("{total}", show.total())}
                 </>
               )}
             </button>
@@ -1142,7 +1179,12 @@ function CheckoutPage() {
               <p className="mt-1 text-center text-caption text-muted-foreground">
                 {copy.chargedInNote
                   .replace("{currency}", settleCur)
-                  .replace("{amount}", formatFromNgn(total, settleCur))}
+                  .replace(
+                    "{amount}",
+                    settleCur === "USD" && totalUsd != null
+                      ? formatCurrency(totalUsd, "USD")
+                      : formatFromNgn(total, settleCur),
+                  )}
               </p>
             )}
             <p className="mt-1 text-center text-caption text-muted-foreground">

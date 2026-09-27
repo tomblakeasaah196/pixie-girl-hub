@@ -6,10 +6,10 @@ import { Check } from "lucide-react";
 import {
   addCartItem,
   getCareProduct,
+  priceFor,
   type CareDetail,
   type CareOption,
 } from "@/lib/storefront";
-import { formatFromNgn } from "@/lib/money";
 import { useCurrency, notifyCartChanged } from "@/lib/useStore";
 import { Section, ErrorState } from "@/components/parts";
 import { useCareEnabled } from "@/components/care";
@@ -143,7 +143,14 @@ function CareDetailPage() {
             </h1>
             {chosen ? (
               <p className="mt-3 font-mono text-xl">
-                {formatFromNgn(Number(chosen.unit_price_ngn) || 0, currency)}
+                {/* USD: the SKU's catalogue USD price — what checkout charges. */}
+                {priceFor(
+                  {
+                    retail_price_ngn: chosen.unit_price_ngn,
+                    retail_price_usd: chosen.unit_price_usd,
+                  },
+                  currency,
+                )}
               </p>
             ) : null}
             {data.short_description ? (

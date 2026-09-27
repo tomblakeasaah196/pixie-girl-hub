@@ -199,6 +199,23 @@ export interface CartQuote {
   /** VAT on taxable Care & Accessories lines — already inside final_total_ngn. */
   tax_ngn?: string;
   clamped: boolean;
+  /** Priced lines, in cart order. `unit_price_usd` is the line's catalogue
+   *  USD price from the Hub's USD engine. */
+  lines?: { unit_price_ngn: string; unit_price_usd?: string; quantity: number }[];
+  /** The cart in dollars (Hub USD engine, live catalogue ₦/$ rate) — the
+   *  figures checkout locks and Nomba charges. `ratio` = goods $ per goods ₦:
+   *  every goods-side ₦ figure (deal rows, codes) converts at it. Delivery
+   *  converts at `rate`, rounded UP to the dollar. Null when unpriceable. */
+  usd?: {
+    rate: number | null;
+    ratio: string | null;
+    lines: string[];
+    goods_usd: string;
+    adjustments_usd: string;
+    delivery_usd: string;
+    total_usd: string;
+    fx_rate: string | null;
+  } | null;
 }
 
 /**

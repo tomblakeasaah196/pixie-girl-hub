@@ -107,8 +107,12 @@ export function formatCurrency(
   if (n == null || !Number.isFinite(n)) return `${symbolFor(code)}—`;
   const info = RUNTIME.byCode[code];
   const unit = info?.rounding_unit ?? (code === "NGN" ? 1 : 1);
-  const maxFrac = unit < 1 ? (info?.decimals ?? 2) : 0;
+  // A catalogue USD price keeps its cents ($249.99) — whole-dollar figures
+  // (converted prices round up to the dollar) still render without decimals.
+  const hasCents = code !== "NGN" && Math.round(n * 100) % 100 !== 0;
+  const maxFrac = unit < 1 || hasCents ? (info?.decimals ?? 2) : 0;
   return `${symbolFor(code)}${n.toLocaleString(undefined, {
+    minimumFractionDigits: hasCents ? 2 : 0,
     maximumFractionDigits: maxFrac,
   })}`;
 }

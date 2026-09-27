@@ -10,7 +10,7 @@ import {
   type Cart,
   type Quote,
 } from "@/lib/storefront";
-import { formatFromNgn, settlementFor } from "@/lib/money";
+import { formatCurrency, formatFromNgn, settlementFor } from "@/lib/money";
 import { useCurrency, notifyCartChanged } from "@/lib/useStore";
 import { usePageSlots, withSlots } from "@/lib/site-config";
 import { Section, EmptyState, ErrorState } from "@/components/parts";
@@ -95,7 +95,17 @@ function CartPage() {
     );
 
   const q = quoteQ.data;
-  const total = q ? formatFromNgn(num(q.total_ngn), currency) : null;
+  // A USD bag shows the server's dollar figures (usd-pricing engine: each
+  // item's catalogue USD price) — the same figures checkout charges — never
+  // a client-side ₦ ÷ rate conversion.
+  const usdQuote = currency === "USD" && q?.total_display != null ? q : null;
+  const lineUsd = (id: string) =>
+    usdQuote?.lines?.find((l) => l.cart_item_id === id)?.unit_price_usd;
+  const total = usdQuote
+    ? formatCurrency(num(usdQuote.total_display), "USD")
+    : q
+      ? formatFromNgn(num(q.total_ngn), currency)
+      : null;
 
   return (
     <Section className="grid gap-10 md:grid-cols-[1fr_360px]">
@@ -155,7 +165,9 @@ function CartPage() {
                 </div>
               </div>
               <div className="font-mono text-body-sm">
-                {formatFromNgn(num(it.unit_price_ngn), currency)}
+                {lineUsd(it.cart_item_id) != null
+                  ? formatCurrency(num(lineUsd(it.cart_item_id)), "USD")
+                  : formatFromNgn(num(it.unit_price_ngn), currency)}
               </div>
             </li>
           ))}
@@ -169,14 +181,21 @@ function CartPage() {
           <div className="flex justify-between">
             <dt className="text-muted-foreground">{s.subtotalLabel}</dt>
             <dd className="font-mono">
-              {q ? formatFromNgn(num(q.subtotal_ngn), currency) : "..."}
+              {usdQuote
+                ? formatCurrency(num(usdQuote.subtotal_display), "USD")
+                : q
+                  ? formatFromNgn(num(q.subtotal_ngn), currency)
+                  : "..."}
             </dd>
           </div>
           {q && Number(q.discount_ngn || 0) > 0 ? (
             <div className="flex justify-between text-rose">
               <dt>{s.discountLabel}</dt>
               <dd className="font-mono">
-                −{formatFromNgn(num(q.discount_ngn), currency)}
+                −
+                {usdQuote
+                  ? formatCurrency(num(usdQuote.discount_display), "USD")
+                  : formatFromNgn(num(q.discount_ngn), currency)}
               </dd>
             </div>
           ) : null}
@@ -184,7 +203,9 @@ function CartPage() {
             <div className="flex justify-between">
               <dt className="text-muted-foreground">{s.taxLabel}</dt>
               <dd className="font-mono">
-                {formatFromNgn(num(q.tax_ngn), currency)}
+                {usdQuote
+                  ? formatCurrency(num(usdQuote.tax_display), "USD")
+                  : formatFromNgn(num(q.tax_ngn), currency)}
               </dd>
             </div>
           ) : null}

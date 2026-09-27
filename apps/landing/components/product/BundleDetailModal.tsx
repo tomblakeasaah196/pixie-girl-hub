@@ -163,6 +163,8 @@ export function BundleDetailModal({
             role="dialog"
             aria-modal="true"
             aria-label={bundle.bundle_name}
+            // ₦⇄$ toggle: a fixed-price bundle converts at its own catalogue rate.
+            data-ngn-per-usd={bundle.ngn_per_usd ?? undefined}
             className="relative z-[1] w-full h-[100dvh] md:h-[min(860px,88vh)] md:w-[min(1080px,94vw)] md:rounded-[28px] overflow-hidden flex flex-col md:grid md:grid-cols-[1.04fr_1fr] bg-[rgb(var(--bg))] shadow-[0_40px_120px_rgb(0_0_0/0.6)]"
           >
             {/* ── Cinematic hero (swipeable) ── */}

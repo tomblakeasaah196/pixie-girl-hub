@@ -42,6 +42,20 @@ export function displayMoney(
   return money(ngnAmount, "NGN");
 }
 
+/**
+ * A dollar amount ALREADY in USD (no conversion). Keeps cents when the figure
+ * has them — a catalogue USD price like $249.99 — and drops them for whole
+ * dollars, matching the storefront.
+ */
+export function formatUsd(usd: number): string {
+  const v = Number(usd || 0);
+  const hasCents = Math.round(v * 100) % 100 !== 0;
+  return `$${v.toLocaleString("en-US", {
+    minimumFractionDigits: hasCents ? 2 : 0,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
 export function moneyDecimal(
   amount: number,
   currency: Currency | string = "NGN",

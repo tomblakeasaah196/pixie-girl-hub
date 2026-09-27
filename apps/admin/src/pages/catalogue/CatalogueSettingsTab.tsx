@@ -329,6 +329,7 @@ function UsdPricingCard({ canEdit }: { canEdit: boolean }) {
     status.data?.last_run && !status.data.last_run.is_undone
       ? status.data.last_run
       : null;
+  const pending = status.data?.pending_request ?? null;
 
   return (
     <Card className="p-5">
@@ -343,6 +344,12 @@ function UsdPricingCard({ canEdit }: { canEdit: boolean }) {
               ? `Last applied ₦${Number(lastRun.rate).toLocaleString()}/$1 across the catalogue.`
               : "Set every USD price from one exchange rate. Recomputes USD from each item’s Naira price — base variants, styled products, the ladders, bundles and services."}
           </p>
+          {pending && (
+            <p className="text-[12px] text-info mt-1">
+              ₦{Number(pending.rate).toLocaleString()}/$1 is waiting for CEO
+              approval.
+            </p>
+          )}
         </div>
         <Button
           size="sm"
@@ -351,7 +358,7 @@ function UsdPricingCard({ canEdit }: { canEdit: boolean }) {
           disabled={!canEdit}
           onClick={() => setOpen(true)}
         >
-          Apply exchange rate
+          {pending ? "Review request" : "Apply exchange rate"}
         </Button>
       </div>
       <UsdRepriceModal open={open} onClose={() => setOpen(false)} />

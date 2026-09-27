@@ -617,6 +617,9 @@ export interface PayLinkPreview {
   /** USD order only: the $ the whole balance charges, and the $ plan minimum. */
   outstanding_usd?: string;
   min_next_payment_usd?: string;
+  /** Fingerprint of what the order costs now. A shared link whose `?v=`
+   *  differs was made for an earlier version of the order (expired). */
+  link_version?: string;
   payments: PayLinkPayment[];
 }
 export const previewPayLink = (token: string, ctx?: ApiContext) =>

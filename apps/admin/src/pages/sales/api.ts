@@ -92,7 +92,11 @@ export const createPaymentLink = (
   input: PaymentLinkInput = {},
 ) =>
   api.post<{
+    /** The gateway checkout itself — for paying on the spot (in-store QR). */
     checkout_url: string;
+    /** The link to SEND the customer: the order's pay page, which expires if
+     *  the order changes (then it shows the updated balance). */
+    share_url?: string | null;
     /** What the checkout charges: its currency and amount in that currency
      *  (e.g. "USD" / "249.99"). */
     currency?: string;

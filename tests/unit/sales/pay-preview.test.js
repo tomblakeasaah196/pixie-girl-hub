@@ -97,6 +97,8 @@ describe("previewByToken", () => {
     expect(p.amount_paid_ngn).toBe("45000.00");
     expect(p.outstanding_ngn).toBe("105000.00");
     expect(p.min_next_payment_ngn).toBe("1000.00");
+    // The order's current version — a shared link with another ?v= is expired.
+    expect(p.link_version).toMatch(/^[0-9a-f]{12}$/);
     // USD display rate locked at placement.
     expect(p.display_currency).toBe("USD");
     expect(p.display_fx_rate).toBe(1300);

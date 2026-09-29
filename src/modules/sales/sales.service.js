@@ -8,6 +8,12 @@
  * addPayment → markPaid:  when paid in full, deducts stock through the Stock
  *   SSOT (negative 'sale' movement), records campaign usage, and emits
  *   `order.paid` for Invoicing + Accounting to consume.
+ * addPayment (partial):    the FIRST payment of any size also commits the
+ *   order to production — draws its stock as a real sale (drawStockForOrder,
+ *   the same engine markPaid uses) and emits `order.deposit_met` so the
+ *   Stylist Studio opens its job, without waiting for the balance to clear.
+ *   A stock shortfall at either crossing flags the line as a formal
+ *   pre-order rather than blocking the payment.
  */
 
 "use strict";
@@ -1593,20 +1599,41 @@ async function addPayment({ brand, user, request_id, id, input }) {
         });
         if (flipped) result = flipped;
       }
-      // Deposit-triggered orders open their styling job the moment the required
-      // deposit clears — the status stays 'partially_paid' (the balance is still
-      // outstanding); production is unlocked via order.deposit_met. Detect the
-      // crossing from the payment delta: the payment DB trigger stamps
-      // deposit_met_at itself, so we can't gate on it here. The outbox dedup key
-      // guarantees the job opens exactly once.
-      const reqDep = updated.required_deposit_ngn;
-      if (
-        updated.payment_model === "deposit_triggered" &&
-        reqDep !== null &&
-        reqDep !== undefined &&
-        paidBefore.lt(money(reqDep)) &&
-        paidNow.gte(money(reqDep))
-      ) {
+      // ANY order commits to production the moment money first lands on it —
+      // not only a deposit_triggered custom order past its configured
+      // required_deposit_ngn (owner directive 2026-09-29: "once an order is
+      // even partially paid... include partially paid... the stock considers
+      // it as a sale at once"). The status stays 'partially_paid' (the
+      // balance is still outstanding); production unlocks via order.deposit_met
+      // exactly as it always has for deposit-triggered orders, just no longer
+      // restricted to that one payment_model. Detect the crossing from the
+      // payment delta (paidBefore was nothing, paidNow is something) so this
+      // fires once, on the FIRST payment, however small — a later top-up on an
+      // already-committed order does not re-fire it. The outbox dedup key is
+      // the second backstop against a double-open.
+      if (paidBefore.lte(money(0)) && paidNow.gt(money(0))) {
+        // Stock is drawn AS A SALE right now, in this same transaction — not
+        // held back until the balance clears. Mirrors markPaid exactly (same
+        // shared drawStockForOrder engine), so a later full settlement finds
+        // every line already drawn and deducts nothing twice. A shortfall
+        // here never blocks the payment: the short line becomes a formal
+        // pre-order instead (see drawStockForOrder).
+        const { shortfallLines } = await drawStockForOrder({
+          client,
+          brand,
+          user,
+          order: updated,
+          reason: "order partially paid — production committed",
+          hardFailOnNoLocation: false,
+        });
+        await recordStockShortfall({
+          client,
+          brand,
+          order_id: id,
+          shortfallLines,
+        });
+
+        const reqDep = updated.required_deposit_ngn;
         events.emit("order.deposit_met", {
           brand,
           order_id: id,
@@ -1769,152 +1796,255 @@ async function addPayment({ brand, user, request_id, id, input }) {
   });
 }
 
-async function markPaid({ client, brand, user, _request_id, order }) {
+/**
+ * Flag stock-bearing lines as a formal PRE-ORDER (000086/000097 shape) — the
+ * same treatment a stock-short line gets at checkout in `createOrderTx`, now
+ * reused for a shortfall discovered later, at a payment's stock draw. Getting
+ * this flag on the row (not just a note) is what lets the existing pre-order
+ * auto-allocation engine (`preorder-allocation.service.allocateForVariant`)
+ * pick the line up automatically the moment matching stock is received —
+ * before this, a payment-time shortfall left only an internal note nobody's
+ * code ever watched.
+ */
+async function flagLinesAsPreorder({ client, brand, order_id, line_ids }) {
+  const ids = (line_ids || []).filter(Boolean);
+  if (!ids.length) return [];
+  const preorderPolicy = await repo.getPreorderPolicy({ client, brand });
+  const weeks = preorderPolicy.max_weeks || preorderPolicy.min_weeks || 0;
+  const readyBy = weeks
+    ? new Date(Date.now() + weeks * 7 * 86_400_000).toISOString().slice(0, 10)
+    : null;
+  await repo.markOrderPreorder({
+    client,
+    brand,
+    order_id,
+    ready_by: readyBy,
+    min_weeks: preorderPolicy.min_weeks,
+    max_weeks: preorderPolicy.max_weeks,
+  });
+  await repo.markLinesPreorder({ client, brand, line_ids: ids });
+  return ids;
+}
+
+/** The ops-facing trail for a stock shortfall — an internal note (visible on
+ *  the order drawer) plus the alert event (stock-shortfall.subscribers). Used
+ *  whether the shortfall was caught on full settlement or on the very first
+ *  partial payment. */
+async function recordStockShortfall({ client, brand, order_id, shortfallLines }) {
+  if (!shortfallLines.length) return;
+  await repo.mergeInternalNotes({
+    client,
+    brand,
+    id: order_id,
+    patch: {
+      stock_shortfall: {
+        lines: shortfallLines,
+        flagged_at: new Date().toISOString(),
+      },
+    },
+  });
+  events.emit("order.stock_shortfall", {
+    brand,
+    order_id,
+    lines: shortfallLines,
+  });
+}
+
+/**
+ * Draw this order's stock as a real 'sale' — the single engine behind BOTH
+ * `markPaid` (full settlement) and the partial-payment commit (any money
+ * landing opens the Stylist Studio job AND draws stock the same instant —
+ * see addPayment / order-status.js). "The sale owns the stock draw" still
+ * holds: whichever of the two crossings happens FIRST does the real work,
+ * and the other is a clean no-op, because `netSoldForOrder` reads what THIS
+ * order has ACTUALLY drawn from the movement ledger and only ever deducts
+ * the remainder — a part-paid order that draws its stock here and later pays
+ * its balance re-enters markPaid, finds `alreadyDrawn === quantity` on every
+ * line, and deducts nothing a second time.
+ *
+ * A stock shortfall never blocks the payment — the money is already taken —
+ * it flags the short line as a formal pre-order instead (`flagLinesAsPreorder`)
+ * so the pre-order auto-allocation engine closes it out the moment stock
+ * arrives, same as a shortage caught at checkout would have been.
+ *
+ * @param {boolean} [hardFailOnNoLocation] markPaid's long-standing behaviour:
+ *   no active stock location aborts the whole payment outright (a brand with
+ *   no stock location literally cannot fulfil). The partial-payment path must
+ *   never abort a captured payment over a config gap, so it instead flags
+ *   every stock-bearing line as a pre-order and lets the payment land.
+ */
+async function drawStockForOrder({
+  client,
+  brand,
+  user,
+  order,
+  reason,
+  hardFailOnNoLocation = false,
+}) {
+  const variantLines = (order.lines || []).filter((l) => l.variant_id);
+  if (!variantLines.length) return { shortfallLines: [], preorderedLineIds: [] };
+
   const loc = await stockRepo.getDefaultLocation({ client, brand });
-  if (!loc)
-    throw new AppError(
-      "NO_STOCK_LOCATION",
-      "No active stock location to fulfil from",
-      409,
+  if (!loc) {
+    if (hardFailOnNoLocation) {
+      throw new AppError(
+        "NO_STOCK_LOCATION",
+        "No active stock location to fulfil from",
+        409,
+      );
+    }
+    logger.warn(
+      { order_id: order.order_id },
+      "drawStockForOrder: no active stock location — lines flagged as pre-order",
     );
+    const preorderedLineIds = await flagLinesAsPreorder({
+      client,
+      brand,
+      order_id: order.order_id,
+      line_ids: variantLines.map((l) => l.line_id),
+    });
+    return { shortfallLines: [], preorderedLineIds };
+  }
 
   const shortfallLines = [];
-  for (const line of order.lines) {
-    if (line.variant_id) {
-      // Re-settlement guard. An order's total can RISE after it was already
-      // paid in full — a delivery fee confirmed late, or a Change Order
-      // amendment — which puts it back into balance. The top-up payment then
-      // re-enters addPayment's "this payment completed the order" branch and
-      // calls markPaid a second time. The order.paid fan-out is protected by
-      // the outbox dedup key, but the stock deduction below is NOT: without
-      // this check every line would be taken off the shelf twice.
-      //
-      // Read what this order has actually drawn from the movement ledger
-      // (sale − return) and only deduct the remainder. First settlement:
-      // drawn = 0, so the full quantity goes as before. Re-settlement after an
-      // amendment: the reconciler already moved the difference, so drawn
-      // matches and this is a clean no-op.
-      const alreadyDrawn = await stockRepo.netSoldForOrder({
+  const shortLineIds = [];
+  for (const line of variantLines) {
+    // Re-settlement guard. An order can draw its stock twice over its life —
+    // once when it first commits (partial payment) and again if the total
+    // later rises back into balance (a delivery fee, a Change Order) — and
+    // BOTH crossings call this function. Read what this order has actually
+    // drawn from the movement ledger (sale − return) and only deduct the
+    // remainder. First draw: drawn = 0, so the full quantity goes as before.
+    // Any later call: already covered, so this is a clean no-op.
+    const alreadyDrawn = await stockRepo.netSoldForOrder({
+      client,
+      brand,
+      variant_id: line.variant_id,
+      location_id: loc.location_id,
+      reference_id: order.order_id,
+    });
+    const toDeduct = Number(line.quantity) - alreadyDrawn;
+    if (toDeduct <= 0) {
+      logger.info(
+        {
+          order_id: order.order_id,
+          variant_id: line.variant_id,
+          quantity: line.quantity,
+          already_drawn: alreadyDrawn,
+        },
+        "drawStockForOrder: stock for this line already drawn — skipping deduction",
+      );
+      continue;
+    }
+    // Every order reserves at placement now (Flexi Pay D8) — release the
+    // hold first so the 'sale' deduction keeps reserved <= on_hand valid.
+    // releaseOrderReservation releases only what THIS order actually holds
+    // (its own movement ledger), so legacy orders with no reservation are a
+    // clean no-op and another order's hold can never be freed by mistake.
+    try {
+      await stockService.releaseOrderReservation({
         client,
         brand,
         variant_id: line.variant_id,
         location_id: loc.location_id,
+        quantity: toDeduct,
         reference_id: order.order_id,
+        user_id: user.user_id,
+        reason: reason || "order committed to production",
       });
-      const toDeduct = Number(line.quantity) - alreadyDrawn;
-      if (toDeduct <= 0) {
-        logger.info(
-          {
-            order_id: order.order_id,
-            variant_id: line.variant_id,
-            quantity: line.quantity,
-            already_drawn: alreadyDrawn,
-          },
-          "markPaid: stock for this line already drawn — skipping deduction",
-        );
-        continue;
-      }
-      // Every order reserves at placement now (Flexi Pay D8) — release the
-      // hold first so the 'sale' deduction keeps reserved <= on_hand valid.
-      // releaseOrderReservation releases only what THIS order actually holds
-      // (its own movement ledger), so legacy orders with no reservation are a
-      // clean no-op and another order's hold can never be freed by mistake.
+    } catch (err) {
+      logger.warn(
+        { err, order_id: order.order_id, variant_id: line.variant_id },
+        "reservation release skipped",
+      );
+    }
+    // GAP-3: when styled_product_id is on the line, COGS = base cost + style addon
+    let costForCogs = line.unit_cost_ngn;
+    if (line.styled_product_id) {
       try {
-        await stockService.releaseOrderReservation({
-          client,
-          brand,
-          variant_id: line.variant_id,
-          location_id: loc.location_id,
-          quantity: toDeduct,
-          reference_id: order.order_id,
-          user_id: user.user_id,
-          reason: "order paid in full",
-        });
-      } catch (err) {
-        logger.warn(
-          { err, order_id: order.order_id, variant_id: line.variant_id },
-          "reservation release on markPaid skipped",
+        const spRow = await client.query(
+          `SELECT style_addon_price_ngn FROM ${brand}.styled_products WHERE styled_product_id = $1`,
+          [line.styled_product_id],
         );
-      }
-      // GAP-3: when styled_product_id is on the line, COGS = base cost + style addon
-      let costForCogs = line.unit_cost_ngn;
-      if (line.styled_product_id) {
-        try {
-          const spRow = await client.query(
-            `SELECT style_addon_price_ngn FROM ${brand}.styled_products WHERE styled_product_id = $1`,
-            [line.styled_product_id],
-          );
-          if (spRow.rows[0] && spRow.rows[0].style_addon_price_ngn) {
-            costForCogs = String(
-              Number(costForCogs || 0) +
-                Number(spRow.rows[0].style_addon_price_ngn),
-            );
-          }
-        } catch (err) {
-          logger.warn(
-            { err, styled_product_id: line.styled_product_id },
-            "styled addon lookup skipped",
+        if (spRow.rows[0] && spRow.rows[0].style_addon_price_ngn) {
+          costForCogs = String(
+            Number(costForCogs || 0) +
+              Number(spRow.rows[0].style_addon_price_ngn),
           );
         }
-      }
-      // SAFETY (Flexi Pay plan, PR-1): a stock shortfall must NEVER block the
-      // payment from being recorded — the gateway has already taken the
-      // customer's money, and a throw here would roll back the whole
-      // addPayment transaction and strand the order in pending_payment while
-      // the webhook retries forever (pre-order lines have no stock to deduct
-      // by definition). Each deduction runs in its own savepoint; short lines
-      // are flagged on the order for ops instead.
-      await client.query("SAVEPOINT pgh_deduct");
-      try {
-        await stockService.deductForSale({
-          client,
-          brand,
-          variant_id: line.variant_id,
-          location_id: loc.location_id,
-          quantity: toDeduct,
-          reference_id: order.order_id,
-          sales_channel: order.sales_channel,
-          unit_cost_ngn: costForCogs,
-          user_id: user.user_id,
-        });
-        await client.query("RELEASE SAVEPOINT pgh_deduct");
       } catch (err) {
-        await client.query("ROLLBACK TO SAVEPOINT pgh_deduct");
-        await client.query("RELEASE SAVEPOINT pgh_deduct").catch(() => {});
-        shortfallLines.push({
-          variant_id: line.variant_id,
-          quantity: toDeduct,
-          name: line.product_name_snapshot || null,
-        });
-        logger.error(
-          {
-            err: err.message,
-            order_id: order.order_id,
-            variant_id: line.variant_id,
-          },
-          "stock shortfall on paid order — deduction skipped, payment proceeds",
+        logger.warn(
+          { err, styled_product_id: line.styled_product_id },
+          "styled addon lookup skipped",
         );
       }
     }
-  }
-  if (shortfallLines.length) {
-    await repo.mergeInternalNotes({
-      client,
-      brand,
-      id: order.order_id,
-      patch: {
-        stock_shortfall: {
-          lines: shortfallLines,
-          flagged_at: new Date().toISOString(),
+    // SAFETY (Flexi Pay plan, PR-1): a stock shortfall must NEVER block the
+    // payment from being recorded — the gateway has already taken the
+    // customer's money, and a throw here would roll back the whole
+    // addPayment transaction and strand the order in pending_payment while
+    // the webhook retries forever (pre-order lines have no stock to deduct
+    // by definition). Each deduction runs in its own savepoint; short lines
+    // are flagged as a formal pre-order instead.
+    await client.query("SAVEPOINT pgh_deduct");
+    try {
+      await stockService.deductForSale({
+        client,
+        brand,
+        variant_id: line.variant_id,
+        location_id: loc.location_id,
+        quantity: toDeduct,
+        reference_id: order.order_id,
+        sales_channel: order.sales_channel,
+        unit_cost_ngn: costForCogs,
+        user_id: user.user_id,
+      });
+      await client.query("RELEASE SAVEPOINT pgh_deduct");
+    } catch (err) {
+      await client.query("ROLLBACK TO SAVEPOINT pgh_deduct");
+      await client.query("RELEASE SAVEPOINT pgh_deduct").catch(() => {});
+      shortfallLines.push({
+        variant_id: line.variant_id,
+        quantity: toDeduct,
+        name: line.product_name_snapshot || null,
+      });
+      shortLineIds.push(line.line_id);
+      logger.error(
+        {
+          err: err.message,
+          order_id: order.order_id,
+          variant_id: line.variant_id,
         },
-      },
-    });
-    events.emit("order.stock_shortfall", {
-      brand,
-      order_id: order.order_id,
-      lines: shortfallLines,
-    });
+        "stock shortfall on committed order — deduction skipped, payment proceeds",
+      );
+    }
   }
+  const preorderedLineIds = shortLineIds.length
+    ? await flagLinesAsPreorder({
+        client,
+        brand,
+        order_id: order.order_id,
+        line_ids: shortLineIds,
+      })
+    : [];
+  return { shortfallLines, preorderedLineIds };
+}
+
+async function markPaid({ client, brand, user, _request_id, order }) {
+  const { shortfallLines } = await drawStockForOrder({
+    client,
+    brand,
+    user,
+    order,
+    reason: "order paid in full",
+    hardFailOnNoLocation: true,
+  });
+  await recordStockShortfall({
+    client,
+    brand,
+    order_id: order.order_id,
+    shortfallLines,
+  });
   if (order.sales_campaign_id) {
     // Sum only rows attributed to this campaign (source = 'campaign' or
     // 'quantity_rule') — coupon/points/bundle discounts must not inflate
@@ -3468,4 +3598,11 @@ module.exports = {
   requestCancellation,
   reviewCancellation,
   setDeliveryFee,
+  // Exported for scripts/backfill-partial-paid-studio-jobs.js (000393): the
+  // one-off pass that draws stock for orders that were already sitting at
+  // partially_paid before this change shipped, using the exact same engine
+  // addPayment now calls on a fresh first payment. Runs on the caller's
+  // client, inside their own transaction.
+  drawStockForOrder,
+  recordStockShortfall,
 };

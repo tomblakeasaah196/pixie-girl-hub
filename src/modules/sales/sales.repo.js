@@ -1615,6 +1615,39 @@ async function openPreorderLinesForVariant({ client, brand, variant_id }) {
   return rows;
 }
 
+/**
+ * Every open pre-order line waiting on ANY of these PRODUCTS (not a single
+ * variant) — the rewig-adjacency counterpart to `openPreorderLinesForVariant`
+ * (000393): when stock arrives for one size, its size-adjacent siblings may
+ * carry a pre-order that arrival can now cover. Same shape, same priority
+ * ordering (paid-first, oldest-first) and same dead-state exclusion; adds
+ * `product_id` and `styled_id` so the caller can re-run the rewig eligibility
+ * decision (rewig.service) before treating this arrival as that line's donor.
+ */
+async function openPreorderLinesForProducts({ client, brand, product_ids }) {
+  const ids = (product_ids || []).filter(Boolean);
+  if (!ids.length) return [];
+  const { rows } = await ex(client)(
+    `SELECT sol.line_id, sol.order_id, sol.variant_id, sol.product_id,
+            sol.styled_id, sol.quantity,
+            sol.product_name_snapshot, sol.unit_cost_ngn,
+            so.order_number, so.status, so.sales_channel, so.contact_id,
+            COALESCE(so.placed_at, so.created_at) AS ordered_at,
+            (so.status IN ${REVENUE_STATES_SQL}) AS is_paid
+       FROM ${t(brand, "sales_order_lines")} sol
+       JOIN ${t(brand, "sales_orders")} so ON so.order_id = sol.order_id
+      WHERE sol.product_id = ANY($1::uuid[])
+        AND sol.is_preorder = true
+        AND so.status NOT IN ${PREORDER_DEAD_STATES_SQL}
+      ORDER BY is_paid DESC,
+               COALESCE(so.placed_at, so.created_at) ASC,
+               so.order_number ASC,
+               sol.line_id ASC`,
+    [ids],
+  );
+  return rows;
+}
+
 /** Distinct variants that still have at least one open pre-order line on a live
  *  order — the work list for the deploy/backfill reconcile sweep. */
 async function variantsWithOpenPreorders({ client, brand }) {
@@ -1785,6 +1818,7 @@ module.exports = {
   markOrderPreorder,
   markLinesPreorder,
   openPreorderLinesForVariant,
+  openPreorderLinesForProducts,
   variantsWithOpenPreorders,
   resolvePreorderLines,
   recomputeOrderPreorderState,

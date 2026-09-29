@@ -174,6 +174,12 @@ function computeRisks(args: {
     "completed",
   ]);
   const orderPaid = paidStates.has(order.status);
+  // A partial payment now commits an order to production too (000393) — the
+  // Studio job auto-opens on the FIRST payment, not just on full settlement —
+  // so the "Studio hasn't opened a job yet" risk must watch from the same
+  // moment, not wait for `orderPaid`.
+  const studioExpectedStates = new Set(["partially_paid", ...paidStates]);
+  const studioExpected = studioExpectedStates.has(order.status);
 
   if (order.status === "cancellation_requested") {
     risks.push({
@@ -182,8 +188,9 @@ function computeRisks(args: {
       tone: "danger",
     });
   }
-  // Studio should have a job by now (auto-open runs on order.paid).
-  if (needsStudio && orderPaid && !job) {
+  // Studio should have a job by now (auto-open runs on the order's first
+  // payment — order.deposit_met — not only on full settlement).
+  if (needsStudio && studioExpected && !job) {
     risks.push({
       key: "no-studio-job",
       label: "Studio hasn't opened a job yet",

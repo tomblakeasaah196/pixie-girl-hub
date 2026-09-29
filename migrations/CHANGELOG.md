@@ -11,6 +11,45 @@ patches; only the in-order `.sql` files.
 
 ---
 
+## 2026-09-29 — Partial payment unlocks Stylist Studio + draws stock at once
+
+**Source:** Owner directive — "once an order is even partially paid not only
+fully paid we can be able to have it in the stylist studio and be able to
+assign it... include partially paid please... meaning the stock considers it
+as a sale at once."
+
+**Files:** `000393_business_partial_paid_unlocks_production.sql` (new,
+per-brand, both schemas), `template/000034_business_triggers.sql.template`
+(edited in place for future brands).
+
+Before, `deposit_met_at` — the timestamp that opens an order's Stylist Studio
+job (`order.deposit_met`) — only ever stamped for `payment_model =
+'deposit_triggered'` custom orders once payments crossed
+`required_deposit_ngn`. Every other order (the common stock sale, or a
+layaway/instalment plan) waited for the FULL balance before its job opened
+and its stock was drawn as a sale — a part-paid order was invisible to the
+Studio.
+
+`fn_sales_order_recompute_paid` now stamps `deposit_met_at` the moment ANY
+payment lands (`v_paid > 0`), for every `payment_model`. The application layer
+(`sales.service.js` `addPayment`) reads this same crossing to open the styling
+job and draw the order's stock as a real 'sale' movement (not just hold it in
+reservation) the instant the order becomes `partially_paid` — mirroring
+exactly what `markPaid` already does on full settlement, made idempotent by
+the same `netSoldForOrder` ledger check so the later full-payment settlement
+never double-draws. A shortfall at that draw flags the line as a formal
+pre-order (`is_preorder`) instead of a silent ops note, so the existing
+pre-order auto-allocation engine (000086/000097) picks it up the moment stock
+arrives. `required_deposit_ngn` / the Flexi Pay minimum-first-payment settings
+are unchanged — they still gate how much a buyer must pay to be accepted at
+all, they just no longer gate when production starts.
+
+Backfilled: every order already sitting on money (`amount_paid_ngn > 0`) with
+`deposit_met_at` still NULL is stamped retroactively from its earliest
+payment, and `scripts/backfill-partial-paid-studio-jobs.js` opens the missing
+Studio job + draws (or pre-orders) the stock for every such order in one pass.
+
+
 ## 2026-08-11 — Interview scorecard (rate candidates against the 5 questions)
 
 **Source:** Owner directive — the 5 AI screening questions "were questions

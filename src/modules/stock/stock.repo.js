@@ -966,6 +966,18 @@ async function setAlertStatus({ client, brand, id, status, user_id }) {
   return rows[0] || null;
 }
 
+/** The product a variant belongs to — used by the pre-order rewig-adjacency
+ *  allocation (000393) to find the size-adjacent siblings of whatever product
+ *  just received stock. */
+async function productIdForVariant({ client, brand, variant_id }) {
+  if (!variant_id) return null;
+  const { rows } = await ex(client)(
+    `SELECT product_id FROM ${t(brand, "product_variants")} WHERE variant_id = $1`,
+    [variant_id],
+  );
+  return rows[0] ? rows[0].product_id : null;
+}
+
 // The product's default (then first) variant — the stock-bearing SKU a base
 // product receives into. Mirrors catalogue.repo.getDefaultVariant so Goods
 // Reception can take a base product_id and move stock without coupling to the
@@ -1552,6 +1564,7 @@ module.exports = {
   nextMovementNumber,
   nextDocNumber,
   defaultVariantForProduct,
+  productIdForVariant,
   variantWithStockForProduct,
   listMovements,
   getMovementById,

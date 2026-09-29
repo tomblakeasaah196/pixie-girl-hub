@@ -40,9 +40,11 @@
 
 "use strict";
 
-const { transaction } = require("../../config/database");
+const { transaction, query } = require("../../config/database");
 const repo = require("./sales.repo");
 const stockRepo = require("../stock/stock.repo");
+const styledVariantsRepo = require("../catalogue/styled_variants.repo");
+const rewigService = require("../catalogue/rewig.service");
 const stockService = require("../stock/stock.service");
 const events = require("./sales.events");
 const { logger } = require("../../config/logger");
@@ -105,7 +107,10 @@ async function allocateForVariant({
       brand,
       variant_id,
     });
-    if (!lines.length) return emptyResult();
+    // NB: no early return when this variant has no pre-order of its own —
+    // the rewig overflow pass below still needs to run against the full
+    // `pool`, in case a size-adjacent sibling is waiting on exactly this
+    // stock (000393).
 
     // Group lines by order, preserving the priority order of first appearance
     // (the SQL already sorted paid-first, then oldest-first).
@@ -249,6 +254,27 @@ async function allocateForVariant({
       }
     }
 
+    // Rewig adjacency overflow (000393, owner directive 2026-09-29): this
+    // variant's OWN pre-orders are covered — if stock is still left over,
+    // check whether a size-adjacent sibling has a pre-order this arrival can
+    // now back, exactly as a fresh order would have been offered this same
+    // donor at checkout. Before this, a large pre-order sitting on one size
+    // was invisible to a receipt of the adjacent size and just kept waiting.
+    if (pool > 0) {
+      const overflow = await allocateRewigOverflow({
+        client,
+        brand,
+        variant_id,
+        location_id: locId,
+        pool,
+        actor_user_id,
+      });
+      pool -= overflow.pool_consumed;
+      unitsDeducted += overflow.units_deducted;
+      unitsReserved += overflow.units_reserved;
+      fulfilled.push(...overflow.fulfilled);
+    }
+
     return {
       allocated: unitsDeducted + unitsReserved > 0,
       units_deducted: unitsDeducted,
@@ -279,6 +305,220 @@ async function allocateForVariant({
   }
 
   return result;
+}
+
+/**
+ * Rewig-adjacency overflow (000393) — once a variant's own pre-orders are
+ * covered, spend whatever is LEFT of the arriving pool on size-adjacent
+ * siblings' pre-orders, using the exact same donor decision every other rewig
+ * path shares (`rewig.service.pickRewigDonorProductId`) so this can never
+ * fulfil a substitution the brand's Rewig config (master switch, automatic/
+ * opt-in mode, direction preference, per-listing override) wouldn't otherwise
+ * allow.
+ *
+ * WHOLE-LINE ONLY, same rule as at checkout: "a partial fill is not a
+ * substitution, it is a pre-order with extra steps" (rewig.service). So a
+ * candidate line is only taken when the arriving pool can cover its FULL
+ * outstanding quantity AND that line hasn't already drawn/reserved anything
+ * against its own original variant — a line already partly sourced from its
+ * own stock keeps waiting for the rest of that stock rather than being spliced
+ * across two donors.
+ *
+ * @returns {Promise<{pool_consumed:number, units_deducted:number,
+ *                    units_reserved:number, fulfilled:Array}>}
+ */
+async function allocateRewigOverflow({
+  client,
+  brand,
+  variant_id,
+  location_id,
+  pool,
+  actor_user_id,
+}) {
+  const empty = { pool_consumed: 0, units_deducted: 0, units_reserved: 0, fulfilled: [] };
+  if (!(pool > 0)) return empty;
+
+  const cfg = await styledVariantsRepo.getConfig({ client, brand });
+  if (!cfg || !cfg.rewig_enabled) return empty;
+
+  const originProductId = await stockRepo.productIdForVariant({
+    client,
+    brand,
+    variant_id,
+  });
+  if (!originProductId) return empty;
+
+  const siblings = await styledVariantsRepo.listRewigSiblings({
+    client,
+    brand,
+    base_product_id: originProductId,
+    location_id,
+  });
+  if (!siblings.length) return empty;
+  const siblingIds = [...new Set(siblings.map((s) => s.product_id))];
+
+  const lines = await repo.openPreorderLinesForProducts({
+    client,
+    brand,
+    product_ids: siblingIds,
+  });
+  if (!lines.length) return empty;
+
+  // Same grouping the primary pass uses — the SQL already sorted paid-first,
+  // then oldest-first, across every candidate sibling line.
+  const orderSeq = [];
+  const byOrder = new Map();
+  for (const l of lines) {
+    let g = byOrder.get(l.order_id);
+    if (!g) {
+      g = {
+        order_id: l.order_id,
+        order_number: l.order_number,
+        contact_id: l.contact_id,
+        is_paid: l.is_paid,
+        sales_channel: l.sales_channel,
+        lines: [],
+      };
+      byOrder.set(l.order_id, g);
+      orderSeq.push(g);
+    }
+    g.lines.push(l);
+  }
+
+  let unitsDeducted = 0;
+  let unitsReserved = 0;
+  const fulfilled = [];
+  const startingPool = pool;
+
+  for (const order of orderSeq) {
+    if (pool <= 0) break;
+    for (const l of order.lines) {
+      if (pool <= 0) break;
+      const qty = Number(l.quantity);
+      if (qty > pool) continue; // all-or-nothing — never split one line
+
+      // Already partly sourced from its OWN variant — leave it be rather
+      // than splicing a second source onto the same line.
+      const [drawn, held] = await Promise.all([
+        stockRepo.netSoldForOrder({
+          client,
+          brand,
+          variant_id: l.variant_id,
+          location_id,
+          reference_id: order.order_id,
+        }),
+        stockRepo.outstandingReservationForOrder({
+          client,
+          brand,
+          variant_id: l.variant_id,
+          location_id,
+          reference_id: order.order_id,
+        }),
+      ]);
+      if (drawn + held > 0) continue;
+
+      // Re-run the shared rewig decision for THIS line — confirms the brand's
+      // config (mode/override/direction) would actually pick the arriving
+      // product as the donor, not just that it happens to be size-adjacent.
+      let styled = null;
+      if (l.styled_id) {
+        const { rows } = await query(
+          `SELECT rewig_override FROM ${brand}.styled_products WHERE styled_id = $1`,
+          [l.styled_id],
+        );
+        styled = rows[0] || null;
+      }
+      let donorProductId;
+      try {
+        donorProductId = await rewigService.pickRewigDonorProductId({
+          client,
+          brand,
+          styled,
+          originProductId: l.product_id,
+          quantity: qty,
+          location_id,
+        });
+      } catch (err) {
+        logger.warn(
+          { err: err.message, brand, line_id: l.line_id },
+          "rewig overflow: donor decision failed — leaving line as pre-order",
+        );
+        continue;
+      }
+      if (donorProductId !== originProductId) continue;
+
+      const note = `Rewig substitution: fulfilled from newly received stock (variant ${variant_id}).`;
+      await repo.repointLineVariant({
+        client,
+        brand,
+        line_id: l.line_id,
+        product_id: originProductId,
+        variant_id,
+        note,
+      });
+
+      if (order.is_paid) {
+        await stockService.deductForSale({
+          client,
+          brand,
+          variant_id,
+          location_id,
+          quantity: qty,
+          reference_id: order.order_id,
+          sales_channel: order.sales_channel,
+          unit_cost_ngn: l.unit_cost_ngn,
+          user_id: actor_user_id,
+        });
+        unitsDeducted += qty;
+      } else {
+        await stockService.reserveForOrder({
+          client,
+          brand,
+          variant_id,
+          location_id,
+          quantity: qty,
+          reference_id: order.order_id,
+          user_id: actor_user_id,
+        });
+        unitsReserved += qty;
+      }
+      pool -= qty;
+
+      await repo.resolvePreorderLines({ client, brand, line_ids: [l.line_id] });
+      const state = await repo.recomputeOrderPreorderState({
+        client,
+        brand,
+        order_id: order.order_id,
+      });
+      if (order.is_paid) {
+        await repo
+          .clearShortfallForVariant({
+            client,
+            brand,
+            order_id: order.order_id,
+            variant_id: l.variant_id,
+          })
+          .catch(() => {});
+      }
+      fulfilled.push({
+        order_id: order.order_id,
+        order_number: order.order_number,
+        contact_id: order.contact_id,
+        is_paid: order.is_paid,
+        units: qty,
+        action: order.is_paid ? "deducted" : "reserved",
+        fully_fulfilled: !state.is_preorder,
+        rewig_donor_variant_id: variant_id,
+      });
+    }
+  }
+
+  return {
+    pool_consumed: startingPool - pool,
+    units_deducted: unitsDeducted,
+    units_reserved: unitsReserved,
+    fulfilled,
+  };
 }
 
 /**

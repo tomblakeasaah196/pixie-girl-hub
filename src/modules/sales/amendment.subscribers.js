@@ -71,10 +71,16 @@ function moneyCopy({ difference, balance }) {
 // Production is only warranted once the customer has actually committed —
 // the same gate the Studio's own order.paid / order.deposit_met subscribers
 // use, so an amendment can never open a job an ordinary checkout wouldn't.
+//
+// deposit_met_at (000393, owner directive 2026-09-29) now stamps on ANY
+// payment landing, for every payment_model — not only a deposit_triggered
+// custom order past its required_deposit_ngn — so a part-paid regular order
+// amended with more styling units is just as "committed" as one that's paid
+// in full.
 function committedToProduction(order) {
   if (!order) return false;
   if (order.fully_paid_at) return true;
-  return order.payment_model === "deposit_triggered" && !!order.deposit_met_at;
+  return !!order.deposit_met_at;
 }
 
 async function onOrderAmended(payload) {

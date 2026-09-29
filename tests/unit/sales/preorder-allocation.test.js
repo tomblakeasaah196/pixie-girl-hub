@@ -14,6 +14,8 @@ jest.mock("../../../src/config/database", () => ({
 }));
 jest.mock("../../../src/modules/sales/sales.repo", () => ({
   openPreorderLinesForVariant: jest.fn(),
+  openPreorderLinesForProducts: jest.fn(),
+  repointLineVariant: jest.fn(),
   resolvePreorderLines: jest.fn(),
   recomputeOrderPreorderState: jest.fn(),
   clearShortfallForVariant: jest.fn(),
@@ -23,6 +25,7 @@ jest.mock("../../../src/modules/stock/stock.repo", () => ({
   lockLevel: jest.fn(),
   netSoldForOrder: jest.fn(),
   outstandingReservationForOrder: jest.fn(),
+  productIdForVariant: jest.fn(),
 }));
 jest.mock("../../../src/modules/stock/stock.service", () => ({
   deductForSale: jest.fn(),
@@ -32,11 +35,20 @@ jest.mock("../../../src/modules/sales/sales.events", () => ({
   on: jest.fn(),
   emit: jest.fn(),
 }));
+jest.mock("../../../src/modules/catalogue/styled_variants.repo", () => ({
+  getConfig: jest.fn(),
+  listRewigSiblings: jest.fn(),
+}));
+jest.mock("../../../src/modules/catalogue/rewig.service", () => ({
+  pickRewigDonorProductId: jest.fn(),
+}));
 
 const salesRepo = require("../../../src/modules/sales/sales.repo");
 const stockRepo = require("../../../src/modules/stock/stock.repo");
 const stockService = require("../../../src/modules/stock/stock.service");
 const events = require("../../../src/modules/sales/sales.events");
+const styledVariantsRepo = require("../../../src/modules/catalogue/styled_variants.repo");
+const rewigService = require("../../../src/modules/catalogue/rewig.service");
 const {
   allocateForVariant,
 } = require("../../../src/modules/sales/preorder-allocation.service");
@@ -69,6 +81,12 @@ beforeEach(() => {
     is_preorder: false,
     just_fulfilled: true,
   });
+  // Rewig adjacency off by default — most of this suite predates 000393 and
+  // asserts on the primary (exact-variant) pass only. Its own describe block
+  // below switches this on to exercise the overflow pass specifically.
+  styledVariantsRepo.getConfig.mockResolvedValue({ rewig_enabled: false });
+  styledVariantsRepo.listRewigSiblings.mockResolvedValue([]);
+  salesRepo.openPreorderLinesForProducts.mockResolvedValue([]);
 });
 
 describe("allocateForVariant — draw paid, reserve unpaid, paid-first", () => {
@@ -208,5 +226,130 @@ describe("allocateForVariant — draw paid, reserve unpaid, paid-first", () => {
     const r = await allocateForVariant({ brand: BRAND, variant_id: null });
     expect(r.allocated).toBe(false);
     expect(stockRepo.lockLevel).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Rewig adjacency overflow (000393) — owner directive: "the new preorder
+ * fulfilment engine... does not consider the rewig adjacency rule. Meaning if
+ * a preorder is large and we add [stock of an adjacent size] it should still
+ * deduct." Once THIS variant's own pre-orders are covered, whatever pool is
+ * left should be offered to a size-adjacent sibling's waiting pre-order,
+ * through the same shared donor decision every other rewig path uses.
+ */
+describe("allocateForVariant — rewig adjacency overflow", () => {
+  const SIBLING_PRODUCT = "product-M";
+  const ORIGIN_PRODUCT = "product-L";
+
+  beforeEach(() => {
+    // No demand of its own on the arriving variant — the whole pool is free
+    // to spend on a sibling.
+    salesRepo.openPreorderLinesForVariant.mockResolvedValue([]);
+    stockRepo.productIdForVariant.mockResolvedValue(ORIGIN_PRODUCT);
+    styledVariantsRepo.getConfig.mockResolvedValue({
+      rewig_enabled: true,
+      rewig_mode: "automatic",
+      rewig_direction: "down_first",
+    });
+    styledVariantsRepo.listRewigSiblings.mockResolvedValue([
+      { product_id: SIBLING_PRODUCT, name: "Sibling M", size_diff: -1, available: 0 },
+    ]);
+    rewigService.pickRewigDonorProductId.mockResolvedValue(ORIGIN_PRODUCT);
+  });
+
+  function siblingLine(order_id, line_id, quantity, extra = {}) {
+    return {
+      line_id,
+      order_id,
+      variant_id: "sibling-variant-1",
+      product_id: SIBLING_PRODUCT,
+      styled_id: null,
+      quantity,
+      product_name_snapshot: "Lorato Bloom 20\" (M)",
+      unit_cost_ngn: "1000",
+      sales_channel: "storefront",
+      order_number: order_id,
+      ordered_at: new Date().toISOString(),
+      ...extra,
+    };
+  }
+
+  it("fulfils a sibling's pre-order from stock that just arrived for a different size", async () => {
+    stockRepo.lockLevel.mockResolvedValue({ on_hand: 10, reserved: 0, available: 10 });
+    salesRepo.openPreorderLinesForProducts.mockResolvedValue([
+      { ...siblingLine("C", "c1", 4), is_paid: true },
+    ]);
+
+    const r = await allocateForVariant({ brand: BRAND, variant_id: VARIANT, location_id: LOC });
+
+    expect(salesRepo.openPreorderLinesForProducts).toHaveBeenCalledWith(
+      expect.objectContaining({ product_ids: [SIBLING_PRODUCT] }),
+    );
+    // Drawn against the variant that actually arrived, not the sibling's own.
+    expect(stockService.deductForSale).toHaveBeenCalledWith(
+      expect.objectContaining({ variant_id: VARIANT, quantity: 4, reference_id: "C" }),
+    );
+    expect(salesRepo.repointLineVariant).toHaveBeenCalledWith(
+      expect.objectContaining({ line_id: "c1", product_id: ORIGIN_PRODUCT, variant_id: VARIANT }),
+    );
+    expect(salesRepo.resolvePreorderLines).toHaveBeenCalledWith(
+      expect.objectContaining({ line_ids: ["c1"] }),
+    );
+    expect(r.units_deducted).toBe(4);
+    expect(r.allocated).toBe(true);
+  });
+
+  it("never splits a line — a sibling pre-order bigger than the leftover pool stays a pre-order", async () => {
+    stockRepo.lockLevel.mockResolvedValue({ on_hand: 3, reserved: 0, available: 3 });
+    salesRepo.openPreorderLinesForProducts.mockResolvedValue([
+      { ...siblingLine("D", "d1", 4), is_paid: true },
+    ]);
+
+    const r = await allocateForVariant({ brand: BRAND, variant_id: VARIANT, location_id: LOC });
+
+    expect(stockService.deductForSale).not.toHaveBeenCalled();
+    expect(salesRepo.repointLineVariant).not.toHaveBeenCalled();
+    expect(r.allocated).toBe(false);
+  });
+
+  it("leaves a line alone once it has already drawn against its own variant", async () => {
+    stockRepo.lockLevel.mockResolvedValue({ on_hand: 10, reserved: 0, available: 10 });
+    salesRepo.openPreorderLinesForProducts.mockResolvedValue([
+      { ...siblingLine("E", "e1", 2), is_paid: true },
+    ]);
+    stockRepo.netSoldForOrder.mockImplementation(async ({ variant_id }) =>
+      variant_id === "sibling-variant-1" ? 1 : 0,
+    );
+
+    const r = await allocateForVariant({ brand: BRAND, variant_id: VARIANT, location_id: LOC });
+
+    expect(stockService.deductForSale).not.toHaveBeenCalled();
+    expect(r.allocated).toBe(false);
+  });
+
+  it("respects the brand's rewig config — never substitutes when the shared decision says no", async () => {
+    stockRepo.lockLevel.mockResolvedValue({ on_hand: 10, reserved: 0, available: 10 });
+    salesRepo.openPreorderLinesForProducts.mockResolvedValue([
+      { ...siblingLine("F", "f1", 2), is_paid: true },
+    ]);
+    // The shared decision picked a DIFFERENT donor (or none) — this arrival
+    // is not it, so the line must be left exactly as it was.
+    rewigService.pickRewigDonorProductId.mockResolvedValue(null);
+
+    const r = await allocateForVariant({ brand: BRAND, variant_id: VARIANT, location_id: LOC });
+
+    expect(stockService.deductForSale).not.toHaveBeenCalled();
+    expect(salesRepo.repointLineVariant).not.toHaveBeenCalled();
+    expect(r.allocated).toBe(false);
+  });
+
+  it("skips the whole pass when the brand has rewig switched off", async () => {
+    styledVariantsRepo.getConfig.mockResolvedValue({ rewig_enabled: false });
+    stockRepo.lockLevel.mockResolvedValue({ on_hand: 10, reserved: 0, available: 10 });
+
+    const r = await allocateForVariant({ brand: BRAND, variant_id: VARIANT, location_id: LOC });
+
+    expect(salesRepo.openPreorderLinesForProducts).not.toHaveBeenCalled();
+    expect(r.allocated).toBe(false);
   });
 });

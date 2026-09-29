@@ -214,7 +214,6 @@ DECLARE
   v_order_id        UUID;
   v_paid            NUMERIC(14,2);
   v_total           NUMERIC(14,2);
-  v_required_dep    NUMERIC(14,2);
   v_last_pay        TIMESTAMPTZ;
   v_now             TIMESTAMPTZ := now();
 BEGIN
@@ -227,24 +226,30 @@ BEGIN
    WHERE order_id = v_order_id
      AND status IN ('captured','authorised');
 
-  -- Read order totals & policy
-  SELECT total_ngn, required_deposit_ngn
-    INTO v_total, v_required_dep
+  -- Read order totals
+  SELECT total_ngn
+    INTO v_total
     FROM {{BUSINESS}}.sales_orders
    WHERE order_id = v_order_id;
 
-  -- B-2: Update paid amount + the three timestamp flags. Once set
+  -- B-2 / 000393: Update paid amount + the three timestamp flags. Once set
   -- (NOT NULL), each timestamp is sticky — we don't re-clear them on
   -- a refund (refunds get their own flow via cancellation_requests).
+  --
+  -- deposit_met_at (000393): ANY payment landing commits the order to
+  -- production now — not just a deposit_triggered order past its configured
+  -- required_deposit_ngn. The application layer (sales.service.js addPayment)
+  -- reads this same crossing to open the order's Stylist Studio job and draw
+  -- its stock as a real sale, for every payment_model. required_deposit_ngn /
+  -- the Flexi Pay minimum-first-payment settings still gate how much a buyer
+  -- must pay to be accepted at all; they no longer gate when production
+  -- starts.
   UPDATE {{BUSINESS}}.sales_orders
      SET amount_paid_ngn  = v_paid,
          last_payment_at  = COALESCE(v_last_pay, last_payment_at),
          deposit_met_at   = COALESCE(
            deposit_met_at,
-           CASE WHEN payment_model = 'deposit_triggered'
-                  AND v_required_dep IS NOT NULL
-                  AND v_paid >= v_required_dep
-                THEN v_now ELSE NULL END
+           CASE WHEN v_paid > 0 THEN v_now ELSE NULL END
          ),
          fully_paid_at    = COALESCE(
            fully_paid_at,

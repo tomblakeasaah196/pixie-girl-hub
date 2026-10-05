@@ -13,6 +13,9 @@ import { api } from "./api";
 export interface WorkSchedule {
   [day: string]: "on_site" | "remote" | "off";
 }
+export interface WorkScheduleTimes {
+  [day: string]: { start: string; end: string };
+}
 
 export interface MyHrEarnings {
   tracker_enabled: boolean;
@@ -170,6 +173,7 @@ export interface MyHr {
   };
   schedule: {
     work_schedule: WorkSchedule;
+    work_schedule_times: WorkScheduleTimes;
     expected_start_time: string | null;
     expected_end_time: string | null;
     grace_minutes: number;
@@ -232,6 +236,7 @@ export interface StaffProfile {
   bank_name: string | null;
   bank_account_number: string | null;
   work_schedule: WorkSchedule | null;
+  work_schedule_times: WorkScheduleTimes | null;
   work_expected_start_time: string | null;
   work_expected_end_time: string | null;
   probation_status: string;
@@ -258,6 +263,7 @@ export interface Employee360 {
   };
   schedule: {
     work_schedule: WorkSchedule;
+    work_schedule_times: WorkScheduleTimes;
     expected_start_time: string | null;
     expected_end_time: string | null;
   };

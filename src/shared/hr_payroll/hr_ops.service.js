@@ -538,8 +538,9 @@ async function reconcileDay({ brand, user, date }) {
         brandWorkingDays: settings.working_days,
       });
       const wd = employed ? wdRaw : { working: false, mode: "off" };
-      const expectedStart = s.work_expected_start_time || settings.default_expected_start_time;
-      const expectedEnd = s.work_expected_end_time || settings.default_expected_end_time;
+      const hours = resolveWorkHours(s, settings, dateStr);
+      const expectedStart = hours.start;
+      const expectedEnd = hours.end;
       const grace = s.work_grace_minutes !== null && s.work_grace_minutes !== undefined
         ? s.work_grace_minutes
         : settings.default_grace_minutes;
@@ -829,6 +830,18 @@ const CLOCKOUT_NUDGES = [
 const CLOCKOUT_NUDGE_GRACE_MIN = 2;
 
 /** Minutes-since-midnight for an 'HH:MM' / 'HH:MM:SS' string, or null. */
+const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
+
+/** Resolve this date's hours, falling back to the employee/brand defaults. */
+function resolveWorkHours(profile, settings, dateStr) {
+  const dayKey = WEEKDAY_KEYS[new Date(`${dateStr}T12:00:00Z`).getUTCDay()];
+  const override = profile.work_schedule_times && profile.work_schedule_times[dayKey];
+  return {
+    start: override?.start || profile.work_expected_start_time || settings.default_expected_start_time,
+    end: override?.end || profile.work_expected_end_time || settings.default_expected_end_time,
+  };
+}
+
 function parseHhMm(value) {
   if (!value) return null;
   const m = /^(\d{1,2}):(\d{2})/.exec(String(value));
@@ -885,7 +898,7 @@ async function sendClockoutReminders({ brand, now = new Date() }) {
     });
     if (!wd.working) continue;
 
-    const expectedEnd = s.work_expected_end_time || settings.default_expected_end_time;
+    const expectedEnd = resolveWorkHours(s, settings, dateStr).end;
     const endMin = parseHhMm(expectedEnd);
     if (endMin === null) continue;
     const endLabel = String(expectedEnd).slice(0, 5); // HH:MM
@@ -950,7 +963,7 @@ async function getMyToday({ brand, user }) {
     is_offsite: lastIn ? lastIn.is_offsite : false,
     last_address: lastIn ? lastIn.formatted_address : null,
     expected_mode: mode.mode,
-    expected_start_time: profile.work_expected_start_time || settings.default_expected_start_time,
+    expected_start_time: resolveWorkHours(profile, settings, todayStr()).start,
     geofence_required:
       settings.geofence_enabled && settings.geofence_required_on_site && mode.mode === "on_site",
   };
@@ -1136,8 +1149,7 @@ async function selfClock({ brand, user, input, requestMeta = {} }) {
     // Immediate lateness feedback on clock-in (server time is authoritative).
     let lateMinutes = 0;
     if (input.event_type === "clock_in") {
-      const expectedStart =
-        profile.work_expected_start_time || settings.default_expected_start_time;
+      const expectedStart = resolveWorkHours(profile, settings, todayStr()).start;
       const grace =
         profile.work_grace_minutes !== null && profile.work_grace_minutes !== undefined
           ? profile.work_grace_minutes
@@ -1359,6 +1371,7 @@ async function getMyHr({ brand, user }) {
     },
     schedule: {
       work_schedule: profile.work_schedule || {},
+      work_schedule_times: profile.work_schedule_times || {},
       expected_start_time: profile.work_expected_start_time || settings.default_expected_start_time,
       expected_end_time: profile.work_expected_end_time || settings.default_expected_end_time,
       grace_minutes: profile.work_grace_minutes !== null && profile.work_grace_minutes !== undefined
@@ -1555,6 +1568,7 @@ async function getEmployee360({ brand, user, profileId }) {
     },
     schedule: {
       work_schedule: profile.work_schedule || {},
+      work_schedule_times: profile.work_schedule_times || {},
       expected_start_time: profile.work_expected_start_time || settings.default_expected_start_time,
       expected_end_time: profile.work_expected_end_time || settings.default_expected_end_time,
     },

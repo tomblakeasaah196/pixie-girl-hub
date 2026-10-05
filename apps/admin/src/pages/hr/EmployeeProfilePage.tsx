@@ -41,6 +41,7 @@ import {
   type StaffProfile,
   type StaffRow,
   type WorkSchedule,
+  type WorkScheduleTimes,
 } from "@/lib/hr-api";
 import { orgApi } from "@/lib/org-api";
 import { Modal } from "@/components/ui/Modal";
@@ -920,24 +921,45 @@ function ScheduleEditModal({
     for (const d of SCHEDULE_DAYS) s[d.key] = profile.work_schedule?.[d.key] || "off";
     return s;
   });
+  const [times, setTimes] = useState<WorkScheduleTimes>(profile.work_schedule_times || {});
   const [start, setStart] = useState((profile.work_expected_start_time || "").slice(0, 5));
   const [end, setEnd] = useState((profile.work_expected_end_time || "").slice(0, 5));
-  const [grace, setGrace] = useState(
-    profile.work_grace_minutes != null ? String(profile.work_grace_minutes) : "",
-  );
+  const [grace, setGrace] = useState(profile.work_grace_minutes != null ? String(profile.work_grace_minutes) : "");
+  const [editingDay, setEditingDay] = useState<string | null>(null);
+  const [dayStart, setDayStart] = useState("");
+  const [dayEnd, setDayEnd] = useState("");
 
   const workingCount = SCHEDULE_DAYS.filter((d) => schedule[d.key] !== "off").length;
+  const openHours = (key: string) => {
+    setEditingDay(key);
+    setDayStart(times[key]?.start || "");
+    setDayEnd(times[key]?.end || "");
+  };
+  const saveHours = () => {
+    if (!editingDay) return;
+    if (!dayStart && !dayEnd) {
+      setTimes((old) => { const next = { ...old }; delete next[editingDay]; return next; });
+      setEditingDay(null);
+      return;
+    }
+    if (!dayStart || !dayEnd) return notify("Start and closing time are both required", undefined, "high");
+    setTimes((old) => ({ ...old, [editingDay]: { start: dayStart, end: dayEnd } }));
+    setEditingDay(null);
+  };
+  const useDefaults = () => {
+    if (!editingDay) return;
+    setTimes((old) => { const next = { ...old }; delete next[editingDay]; return next; });
+    setEditingDay(null);
+  };
 
   const save = useMutation({
-    mutationFn: () => {
-      const patch: Record<string, unknown> = {
-        work_schedule: schedule,
-        work_expected_start_time: start || null,
-        work_expected_end_time: end || null,
-      };
-      if (grace !== "") patch.work_grace_minutes = Number(grace);
-      return updateStaff(profileId, patch);
-    },
+    mutationFn: () => updateStaff(profileId, {
+      work_schedule: schedule,
+      work_schedule_times: times,
+      work_expected_start_time: start || null,
+      work_expected_end_time: end || null,
+      ...(grace !== "" ? { work_grace_minutes: Number(grace) } : {}),
+    }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["hr", "employee-360", profileId] });
       notify("Schedule updated");
@@ -947,67 +969,53 @@ function ScheduleEditModal({
   });
 
   const cls = "w-full rounded-xl border border-line bg-text-primary/[0.04] p-2.5 text-sm text-text-primary";
+  const editingLabel = SCHEDULE_DAYS.find((d) => d.key === editingDay)?.label;
   return (
-    <Modal open onClose={onClose} title="Edit work schedule"
-      footer={
-        <>
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={save.isPending} onClick={() => save.mutate()}>
-            {save.isPending ? "Saving…" : "Save"}
-          </Button>
-        </>
-      }>
-      <div className="space-y-4">
-        <p className="text-xs text-text-muted">
-          Set on-site / remote / off per weekday, plus the daily start and closing
-          time. Currently {workingCount} working {workingCount === 1 ? "day" : "days"}/week.
-        </p>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
-          {SCHEDULE_DAYS.map((d) => (
-            <div key={d.key} className="rounded-[10px] border border-line p-2">
-              <div className="mb-1 text-center text-[11px] font-semibold text-text-primary">{d.label}</div>
-              <div className="flex flex-col gap-1">
-                {SCHEDULE_MODES.map((m) => {
-                  const selected = schedule[d.key] === m.value;
-                  return (
-                    <button
-                      key={m.value}
-                      type="button"
-                      onClick={() => setSchedule((s) => ({ ...s, [d.key]: m.value }))}
-                      className={[
-                        "rounded-md px-1.5 py-1 text-[10.5px] transition-colors",
-                        selected
-                          ? "bg-accent-deep text-[#F4E9D9] font-semibold"
-                          : "bg-text-primary/[0.05] text-text-muted hover:bg-text-primary/[0.1]",
-                      ].join(" ")}
-                    >
-                      {m.label}
-                    </button>
-                  );
-                })}
-              </div>
+    <>
+      <Modal open onClose={onClose} title="Edit work schedule" size="lg"
+        footer={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="primary" disabled={save.isPending} onClick={() => save.mutate()}>{save.isPending ? "Saving…" : "Save schedule"}</Button></>}>
+        <div className="space-y-5">
+          <div>
+            <p className="text-sm font-medium text-text-primary">Default working hours</p>
+            <p className="mt-0.5 text-xs text-text-muted">Used automatically unless a day has custom hours.</p>
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <label className="block text-xs text-text-muted">Start time<input type="time" value={start} className={cls} onChange={(e) => setStart(e.target.value)} /></label>
+              <label className="block text-xs text-text-muted">Closing time<input type="time" value={end} className={cls} onChange={(e) => setEnd(e.target.value)} /></label>
+              <label className="block text-xs text-text-muted">Grace period (minutes)<input type="number" min={0} max={240} value={grace} className={cls} onChange={(e) => setGrace(e.target.value)} /></label>
             </div>
-          ))}
+          </div>
+
+          <div>
+            <div className="flex items-end justify-between gap-3">
+              <div><p className="text-sm font-medium text-text-primary">Weekly schedule</p><p className="mt-0.5 text-xs text-text-muted">{workingCount} working {workingCount === 1 ? "day" : "days"} per week</p></div>
+              <span className="hidden text-[11px] text-text-faint sm:block">Tap Set hours to override defaults</span>
+            </div>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {SCHEDULE_DAYS.map((d) => {
+                const custom = times[d.key];
+                return <div key={d.key} className="rounded-xl border border-line bg-text-primary/[0.02] p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-semibold text-text-primary">{d.label}</span>
+                    <span className="text-[11px] text-text-muted">{schedule[d.key] === "off" ? "Not working" : custom ? `${custom.start}–${custom.end}` : `${start || "—"}–${end || "—"} default`}</span>
+                  </div>
+                  <div className="mt-2 grid grid-cols-3 gap-1 rounded-lg bg-text-primary/[0.04] p-1">
+                    {SCHEDULE_MODES.map((m) => <button key={m.value} type="button" onClick={() => setSchedule((old) => ({ ...old, [d.key]: m.value }))} className={`rounded-md px-2 py-1.5 text-[11px] transition-colors ${schedule[d.key] === m.value ? "bg-accent-deep font-semibold text-[#F4E9D9]" : "text-text-muted hover:bg-text-primary/[0.08]"}`}>{m.label}</button>)}
+                  </div>
+                  <button type="button" onClick={() => openHours(d.key)} className="mt-2 w-full rounded-lg border border-line px-2 py-1.5 text-xs font-medium text-text-primary hover:bg-text-primary/[0.05]">{custom ? "Edit custom hours" : "Set hours"}</button>
+                </div>;
+              })}
+            </div>
+          </div>
+          <p className="text-[11px] text-text-faint">Closing times drive early-departure tracking, overtime capture, and clock-out reminders. Custom hours are retained when a day is set to Off.</p>
         </div>
-        <div className="grid grid-cols-3 gap-3">
-          <label className="block text-xs text-text-muted">Expected start
-            <input type="time" value={start} className={cls}
-              onChange={(e) => setStart(e.target.value)} />
-          </label>
-          <label className="block text-xs text-text-muted">Closing time
-            <input type="time" value={end} className={cls}
-              onChange={(e) => setEnd(e.target.value)} />
-          </label>
-          <label className="block text-xs text-text-muted">Grace (min)
-            <input type="number" min={0} max={240} value={grace} className={cls}
-              onChange={(e) => setGrace(e.target.value)} />
-          </label>
+      </Modal>
+      {editingDay && <Modal open onClose={() => setEditingDay(null)} title={`${editingLabel} hours`} size="sm" footer={<><Button variant="ghost" onClick={useDefaults}>Use default hours</Button><Button variant="primary" onClick={saveHours}>Apply</Button></>}>
+        <p className="mb-4 text-xs text-text-muted">Leave both fields empty and apply, or choose “Use default hours”, to inherit {start || "the default start"}–{end || "the default close"}.</p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label className="block text-xs text-text-muted">Start time<input autoFocus type="time" value={dayStart} className={cls} onChange={(e) => setDayStart(e.target.value)} /></label>
+          <label className="block text-xs text-text-muted">Closing time<input type="time" value={dayEnd} className={cls} onChange={(e) => setDayEnd(e.target.value)} /></label>
         </div>
-        <p className="text-[11px] text-text-faint">
-          Closing time drives early-departure tracking, supplementary-hours
-          (overtime) capture and the clock-out reminders.
-        </p>
-      </div>
-    </Modal>
+      </Modal>}
+    </>
   );
 }

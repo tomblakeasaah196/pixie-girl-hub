@@ -80,6 +80,15 @@ const staffCreateSchema = z.object({
     .regex(/^\d{2}:\d{2}$/, "Use HH:MM")
     .optional()
     .nullable(),
+  work_schedule_times: z
+    .record(
+      z.string(),
+      z.object({
+        start: z.string().regex(/^\d{2}:\d{2}$/, "Use HH:MM"),
+        end: z.string().regex(/^\d{2}:\d{2}$/, "Use HH:MM"),
+      }),
+    )
+    .optional(),
   work_grace_minutes: z.number().int().min(0).max(240).optional(),
 });
 const staffUpdateSchema = staffCreateSchema

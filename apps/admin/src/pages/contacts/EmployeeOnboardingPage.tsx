@@ -65,6 +65,7 @@ const WEEK_DAYS = [
 
 type DayMode = "on_site" | "remote" | "off";
 type WorkSchedule = Record<string, DayMode>;
+type WorkScheduleTimes = Record<string, { start: string; end: string }>;
 
 const DAY_MODES: { value: DayMode; label: string }[] = [
   { value: "on_site", label: "Office" },
@@ -204,6 +205,7 @@ export function EmployeeOnboardingPage() {
   });
   const [expectedStart, setExpectedStart] = useState("09:00");
   const [expectedEnd, setExpectedEnd] = useState("18:00");
+  const [scheduleTimes, setScheduleTimes] = useState<WorkScheduleTimes>({});
   const [grace, setGrace] = useState("15");
 
   // ── Financial ───────────────────────────────────────────
@@ -379,6 +381,7 @@ export function EmployeeOnboardingPage() {
           ...(nhf.trim() ? { nhf_number: nhf.trim() } : {}),
           ...(taxId.trim() ? { tax_id: taxId.trim() } : {}),
           work_schedule: schedule,
+          work_schedule_times: scheduleTimes,
           ...(expectedStart ? { work_expected_start_time: expectedStart } : {}),
           ...(expectedEnd ? { work_expected_end_time: expectedEnd } : {}),
           work_grace_minutes: Number(grace) || 0,
@@ -643,6 +646,8 @@ export function EmployeeOnboardingPage() {
               <WorkScheduleEditor
                 schedule={schedule}
                 setSchedule={setSchedule}
+                scheduleTimes={scheduleTimes}
+                setScheduleTimes={setScheduleTimes}
                 expectedStart={expectedStart}
                 setExpectedStart={setExpectedStart}
                 expectedEnd={expectedEnd}
@@ -1311,6 +1316,8 @@ function InlinePositionCreator({
 function WorkScheduleEditor({
   schedule,
   setSchedule,
+  scheduleTimes,
+  setScheduleTimes,
   expectedStart,
   setExpectedStart,
   expectedEnd,
@@ -1320,6 +1327,8 @@ function WorkScheduleEditor({
 }: {
   schedule: WorkSchedule;
   setSchedule: (fn: (s: WorkSchedule) => WorkSchedule) => void;
+  scheduleTimes: WorkScheduleTimes;
+  setScheduleTimes: (fn: (s: WorkScheduleTimes) => WorkScheduleTimes) => void;
   expectedStart: string;
   setExpectedStart: (v: string) => void;
   expectedEnd: string;
@@ -1327,7 +1336,20 @@ function WorkScheduleEditor({
   grace: string;
   setGrace: (v: string) => void;
 }) {
+  const [editingDay, setEditingDay] = useState<string | null>(null);
+  const [dayStart, setDayStart] = useState("");
+  const [dayEnd, setDayEnd] = useState("");
+  const openHours = (key: string) => { setEditingDay(key); setDayStart(scheduleTimes[key]?.start || ""); setDayEnd(scheduleTimes[key]?.end || ""); };
+  const clearHours = () => { if (editingDay) setScheduleTimes((old) => { const next = { ...old }; delete next[editingDay]; return next; }); setEditingDay(null); };
+  const applyHours = () => {
+    if (!editingDay) return;
+    if (!dayStart && !dayEnd) return clearHours();
+    if (!dayStart || !dayEnd) return;
+    setScheduleTimes((old) => ({ ...old, [editingDay]: { start: dayStart, end: dayEnd } })); setEditingDay(null);
+  };
+  const editingLabel = WEEK_DAYS.find((d) => d.key === editingDay)?.label;
   return (
+    <>
     <div className="rounded-[12px] border hairline bg-text-primary/[0.03] p-4">
       <h4 className="text-[13px] font-semibold text-text-primary">
         Work schedule
@@ -1364,6 +1386,12 @@ function WorkScheduleEditor({
                 );
               })}
             </div>
+            <div className="mt-2 text-center text-[10.5px] text-text-faint">
+              {scheduleTimes[key] ? `${scheduleTimes[key].start}–${scheduleTimes[key].end}` : `${expectedStart}–${expectedEnd} default`}
+            </div>
+            <button type="button" onClick={() => openHours(key)} className="mt-1.5 w-full rounded-md border border-line px-1.5 py-1.5 text-[10.5px] font-medium text-text-primary hover:bg-text-primary/[0.06]">
+              {scheduleTimes[key] ? "Edit hours" : "Set hours"}
+            </button>
           </div>
         ))}
       </div>
@@ -1395,5 +1423,14 @@ function WorkScheduleEditor({
         (overtime) capture, and the clock-out reminders.
       </p>
     </div>
+    {editingDay && <Modal open onClose={() => setEditingDay(null)} title={`${editingLabel} hours`} size="sm"
+      footer={<><Button variant="ghost" onClick={clearHours}>Use default hours</Button><Button variant="primary" disabled={Boolean((dayStart && !dayEnd) || (!dayStart && dayEnd))} onClick={applyHours}>Apply</Button></>}>
+      <p className="mb-4 text-xs text-text-muted">Custom hours override the defaults for this day only. Empty both fields to restore defaults.</p>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Field label="Start time"><TextInput autoFocus type="time" value={dayStart} onChange={(e) => setDayStart(e.target.value)} /></Field>
+        <Field label="Closing time"><TextInput type="time" value={dayEnd} onChange={(e) => setDayEnd(e.target.value)} /></Field>
+      </div>
+    </Modal>}
+    </>
   );
 }

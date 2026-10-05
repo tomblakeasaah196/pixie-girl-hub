@@ -47,12 +47,13 @@ const UPDATE_COLS = [
   "non_solicit_signed_at",
   "dismissal_triggers_log",
   "work_schedule",
+  "work_schedule_times",
   "work_expected_start_time",
   "work_expected_end_time",
   "work_grace_minutes",
 ];
 const CREATE_COLS = ["contact_id", "employee_number", ...UPDATE_COLS];
-const JSONB = new Set(["dismissal_triggers_log", "work_schedule"]);
+const JSONB = new Set(["dismissal_triggers_log", "work_schedule", "work_schedule_times"]);
 
 function encField(col, value) {
   if (value === null || value === undefined || value === "") return value;

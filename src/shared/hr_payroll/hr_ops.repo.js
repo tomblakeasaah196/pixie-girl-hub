@@ -144,7 +144,7 @@ async function profileById({ client, brand, profileId }) {
 async function activeStaff({ client, brand }) {
   const { rows } = await exec(client)(
     `SELECT sp.profile_id, sp.business, sp.base_salary, sp.job_title,
-            sp.work_schedule, sp.work_expected_start_time,
+            sp.work_schedule, sp.work_schedule_times, sp.work_expected_start_time,
             sp.work_expected_end_time, sp.work_grace_minutes,
             sp.start_date, sp.end_date,
             c.display_name
@@ -972,7 +972,7 @@ async function todayClockEvents({ client, profileId }) {
  */
 async function clockedInWithoutClockout({ client, brand, dateStr }) {
   const { rows } = await exec(client)(
-    `SELECT sp.profile_id, sp.business, sp.work_schedule,
+    `SELECT sp.profile_id, sp.business, sp.work_schedule, sp.work_schedule_times,
             sp.work_expected_end_time, sp.start_date, sp.end_date,
             c.display_name,
             (SELECT u.user_id FROM shared.users u

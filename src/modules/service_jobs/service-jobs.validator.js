@@ -143,6 +143,9 @@ const assignStaff = z
     // behind it. The service rejects an unlinked assignment without it, so the
     // acknowledgement can't be bypassed by calling the API directly.
     acknowledge_unlinked: z.boolean().optional(),
+    // Assigner has confirmed moving a wig that is physically out with another
+    // stylist — custody is transferred instead of refused.
+    acknowledge_transfer: z.boolean().optional(),
   })
   .strict();
 

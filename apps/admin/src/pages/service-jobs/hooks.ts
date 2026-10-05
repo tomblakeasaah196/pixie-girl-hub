@@ -193,16 +193,19 @@ export function useJobActions(jobId: string) {
         userId,
         expected_completion_at,
         acknowledge_unlinked,
+        acknowledge_transfer,
       }: {
         userId: string;
         expected_completion_at?: string;
         acknowledge_unlinked?: boolean;
+        acknowledge_transfer?: boolean;
       }) =>
         api.assignStaff(
           jobId,
           userId,
           expected_completion_at,
           acknowledge_unlinked,
+          acknowledge_transfer,
         ),
       onSuccess: invalidate,
     }),

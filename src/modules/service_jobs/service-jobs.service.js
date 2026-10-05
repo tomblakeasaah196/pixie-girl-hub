@@ -633,8 +633,13 @@ async function openStudioJobForLine({ client, brand, order, line }) {
   });
   const spec = {};
   if (dna && dna.sop_steps) spec.sop_steps = dna.sop_steps;
-  if (order.specific_instructions && String(order.specific_instructions).trim()) {
-    spec.order_specific_instructions = String(order.specific_instructions).trim().slice(0, 2000);
+  if (
+    order.specific_instructions &&
+    String(order.specific_instructions).trim()
+  ) {
+    spec.order_specific_instructions = String(order.specific_instructions)
+      .trim()
+      .slice(0, 2000);
     spec.order_specific_instructions_at = new Date().toISOString();
   }
   const job = await repo.createServiceJob({
@@ -1116,6 +1121,7 @@ async function assignStylist({
   assigned_staff_user_id,
   expected_completion_at,
   acknowledge_unlinked,
+  acknowledge_transfer,
 }) {
   const outcome = await transaction(async (client) => {
     const before = await repo.getServiceJob({ client, brand, id });
@@ -1216,19 +1222,59 @@ async function assignStylist({
     // cannot be re-released to someone else — it must be returned first. This
     // also correctly re-releases a wig on re-assignment AFTER a return (net 0),
     // where an "any out ever" check would have wrongly skipped the deduction.
+    // Reservation balance: a wig already OUT with a stylist (net balance > 0)
+    // used to be a hard refusal — "have it returned first" — which forced a
+    // physical hand-back through the desk before the job could move. It is now
+    // a CUSTODY TRANSFER: with the assigner's explicit acknowledgement we post
+    // the balancing RETURN against the previous holder and immediately re-issue
+    // the OUT to the new one, so the ledger never shows the same unit in two
+    // pairs of hands and Wig Accountability stays correct. The acknowledgement
+    // is still mandatory server-side — a transfer makes someone else answerable
+    // for a wig that is physically elsewhere, so it can't happen by accident.
+    // A net of 0 (never issued, or already returned) is a plain assignment.
     const net = await repo.jobCustodyBalance({ client, brand, job_id: id });
-    if (net > 0) {
+    const previousHolder =
+      net > 0
+        ? await repo.currentCustodyHolder({ client, brand, job_id: id })
+        : null;
+    if (net > 0 && acknowledge_transfer !== true) {
       throw new AppError(
-        "WIG_ALREADY_OUT",
-        "This wig is already out with a stylist and must be returned before it can be re-assigned.",
+        "WIG_TRANSFER_NOT_ACKNOWLEDGED",
+        "This wig is out with a stylist; transferring custody requires explicit acknowledgement",
         409,
         // AppError's 4th arg is an options object; a bare string here was
         // silently discarded and the internal message leaked to the client.
         {
-          user_message:
-            "This wig is already with a stylist — have it returned first.",
+          user_message: previousHolder?.display_name
+            ? `This wig is currently with ${previousHolder.display_name}. Confirm the transfer to move custody to the new stylist.`
+            : "This wig is currently out with a stylist. Confirm the transfer to move custody to the new stylist.",
+          metadata: {
+            job_id: id,
+            requires_transfer_acknowledgement: true,
+            from_user_id: previousHolder?.user_id ?? null,
+            from_user_name: previousHolder?.display_name ?? null,
+            quantity: net,
+          },
         },
       );
+    }
+    if (net > 0) {
+      // Balance the outstanding units off the previous holder before the new
+      // OUT below. Quantity mirrors the net so a legacy multi-unit balance is
+      // fully cleared rather than left half-open.
+      await repo.addCustody({
+        client,
+        brand,
+        c: {
+          job_id: id,
+          event: "return",
+          quantity: net,
+          stylist_user_id:
+            previousHolder?.user_id || before.assigned_staff_user_id,
+          created_by: user.user_id,
+          reason: "auto-returned on reassignment (custody transfer)",
+        },
+      });
     }
     await repo.addCustody({
       client,
@@ -1252,6 +1298,18 @@ async function assignStylist({
         assigned_staff_user_id,
         // Who waved through a no-sale assignment is worth keeping.
         ...(before.sales_order_id ? {} : { unlinked_acknowledged: true }),
+        // …and so is who moved a wig out of someone else's hands, with whose
+        // hands it left: this is the trail that answers "who had it when".
+        ...(net > 0
+          ? {
+              custody_transferred: true,
+              transferred_from_user_id:
+                previousHolder?.user_id ||
+                before.assigned_staff_user_id ||
+                null,
+              transferred_quantity: net,
+            }
+          : {}),
       },
       request_id,
     );
@@ -1279,6 +1337,22 @@ async function assignStylist({
       job_id: id,
       priority: "high",
     });
+    // The stylist the wig just left is told too — they are no longer
+    // accountable for it, and finding that out from a silent ledger row is how
+    // custody disputes start.
+    const releasedFrom =
+      previousHolder?.user_id || before.assigned_staff_user_id || null;
+    if (net > 0 && releasedFrom && releasedFrom !== assigned_staff_user_id) {
+      await notifyUser({
+        brand,
+        user_id: releasedFrom,
+        type: "service_job_custody_transferred",
+        title: "A wig has been moved off you",
+        body: `Job ${job.job_number} has been reassigned. The wig is no longer in your custody — you are not accountable for it.`,
+        job_id: id,
+        priority: "high",
+      });
+    }
     // is_new_tag tells the drawer whether to show the "copy this onto the
     // tag" confirmation modal — only on the assignment that actually
     // allocated the code, never on a later reassignment of the same job.

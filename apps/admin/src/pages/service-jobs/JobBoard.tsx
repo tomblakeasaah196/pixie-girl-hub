@@ -412,8 +412,11 @@ function JobCard({
           {job.hair_description}
         </p>
       )}
-      {((job as any).order_specific_instructions || (job.specification as any)?.order_specific_instructions) && (
-        <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 border border-amber-500/20">📝 Specific instructions</span>
+      {((job as any).order_specific_instructions ||
+        (job.specification as any)?.order_specific_instructions) && (
+        <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-600 border border-amber-500/20">
+          📝 Specific instructions
+        </span>
       )}
       <div className="flex items-center justify-between gap-2 pt-0.5">
         <span
@@ -886,7 +889,10 @@ function AssignConfirmModal({
   // The deadline about to be stamped (formatted), so it's reviewed before it
   // commits — this is what lands on the stylist's My Day.
   dueLabel?: string | null;
-  onConfirm: (acknowledgeUnlinked: boolean) => void;
+  onConfirm: (ack: {
+    acknowledgeUnlinked: boolean;
+    acknowledgeTransfer: boolean;
+  }) => void;
   onCancel: () => void;
   pending: boolean;
   error?: string | null;
@@ -898,6 +904,13 @@ function AssignConfirmModal({
   const label = job.styled_product_name || job.service_type_name || "this job";
   const unlinked = !job.sales_order_id;
   const [acknowledged, setAcknowledged] = useState(false);
+  // The wig is physically with someone else. This is no longer a refusal: with
+  // the tick below the API returns the unit off the current holder and pushes
+  // it straight to the new stylist in one move.
+  const currentHolder =
+    job.assigned_staff_name || job.last_custody_holder_name || null;
+  const transferring = Boolean(job.assigned_staff_user_id);
+  const [transferAck, setTransferAck] = useState(false);
   return (
     <Modal
       open
@@ -910,11 +923,26 @@ function AssignConfirmModal({
             Cancel
           </Button>
           <Button
-            onClick={() => onConfirm(unlinked && acknowledged)}
-            disabled={pending || (unlinked && !acknowledged)}
+            onClick={() =>
+              onConfirm({
+                acknowledgeUnlinked: unlinked && acknowledged,
+                acknowledgeTransfer: transferring && transferAck,
+              })
+            }
+            disabled={
+              pending ||
+              (unlinked && !acknowledged) ||
+              (transferring && !transferAck)
+            }
             icon={<UserCheck className="w-3.5 h-3.5" />}
           >
-            {pending ? "Assigning…" : "Confirm"}
+            {pending
+              ? transferring
+                ? "Transferring…"
+                : "Assigning…"
+              : transferring
+                ? "Confirm transfer"
+                : "Confirm"}
           </Button>
         </>
       }
@@ -939,6 +967,51 @@ function AssignConfirmModal({
             approval from hierarchy — only a CEO can revert an assignment.
           </p>
         </div>
+
+        {transferring && (
+          <div className="rounded-lg p-3.5 border border-warn/40 bg-warn/[0.07] space-y-2.5">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-warn shrink-0" />
+              <span className="text-[12px] font-bold uppercase tracking-wide text-warn">
+                Custody transfer
+              </span>
+            </div>
+            <p className="text-[12px] text-text-secondary leading-relaxed">
+              This wig is currently with{" "}
+              <span className="font-semibold text-text-primary">
+                {currentHolder || "another stylist"}
+              </span>
+              . Confirming moves <span className="font-semibold">1 unit</span>{" "}
+              of stock{" "}
+              {job.tag_code ? (
+                <>
+                  (tag <span className="font-semibold">{job.tag_code}</span>
+                  ){" "}
+                </>
+              ) : null}
+              straight to{" "}
+              <span className="font-semibold text-accent-glow">
+                {stylistName}
+              </span>{" "}
+              — no physical return to the desk is needed. The custody ledger is
+              balanced automatically and{" "}
+              {currentHolder || "the previous stylist"} is notified that they
+              are no longer accountable for it.
+            </p>
+            <label className="flex items-start gap-2.5 cursor-pointer pt-0.5">
+              <input
+                type="checkbox"
+                checked={transferAck}
+                onChange={(e) => setTransferAck(e.target.checked)}
+                className="mt-0.5 w-4 h-4 accent-[rgb(var(--warn))] cursor-pointer"
+              />
+              <span className="text-[12px] text-text-primary font-medium leading-snug">
+                I confirm the hair is being handed over, and {stylistName} is
+                now accountable for it.
+              </span>
+            </label>
+          </div>
+        )}
 
         {unlinked && (
           <div className="rounded-lg p-3.5 border border-danger/40 bg-danger/[0.07] space-y-2.5">
@@ -1395,12 +1468,13 @@ function StylistPicker({
             assign.reset();
             setPending(null);
           }}
-          onConfirm={(acknowledgeUnlinked) =>
+          onConfirm={({ acknowledgeUnlinked, acknowledgeTransfer }) =>
             assign.mutate(
               {
                 userId: pending.user_id,
                 expected_completion_at: localInputToIso(due),
                 acknowledge_unlinked: acknowledgeUnlinked,
+                acknowledge_transfer: acknowledgeTransfer,
               },
               {
                 onSuccess: (assignedJob) => {
@@ -1944,19 +2018,32 @@ function JobDetailDrawer({
         {tab === "details" && (
           <div className="space-y-4">
             {/* Specific instructions — from the linked sales order, read-only */}
-            {((job as any).order_specific_instructions || (job.specification as any)?.order_specific_instructions) && (
+            {((job as any).order_specific_instructions ||
+              (job.specification as any)?.order_specific_instructions) && (
               <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 space-y-1.5">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">Specific Instructions</span>
+                  <span className="text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
+                    Specific Instructions
+                  </span>
                   {job.sales_order_number && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300">Order {job.sales_order_number}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                      Order {job.sales_order_number}
+                    </span>
                   )}
-                  {(job.specification as any)?.order_specific_instructions_updated_at && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-line text-text-muted">edited</span>
+                  {(job.specification as any)
+                    ?.order_specific_instructions_updated_at && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-line text-text-muted">
+                      edited
+                    </span>
                   )}
                 </div>
-                <p className="text-sm text-text-primary whitespace-pre-wrap leading-relaxed">{(job as any).order_specific_instructions || (job.specification as any)?.order_specific_instructions}</p>
-                <p className="text-[10px] text-text-muted">Visible to all stylists — managed in Sales → Order detail.</p>
+                <p className="text-sm text-text-primary whitespace-pre-wrap leading-relaxed">
+                  {(job as any).order_specific_instructions ||
+                    (job.specification as any)?.order_specific_instructions}
+                </p>
+                <p className="text-[10px] text-text-muted">
+                  Visible to all stylists — managed in Sales → Order detail.
+                </p>
               </div>
             )}
             <AiSummaryBox jobId={jobId} />

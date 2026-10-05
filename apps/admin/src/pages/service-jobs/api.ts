@@ -173,11 +173,16 @@ export function assignStaff(
   // sales order behind it (no stock movement, nothing to reconcile against).
   // The API rejects an unlinked assignment without it.
   acknowledge_unlinked?: boolean,
+  // Set when the assigner has confirmed taking the wig off the stylist who
+  // currently holds it. The API then posts the balancing custody return and
+  // pushes the unit to the new stylist, instead of refusing the reassignment.
+  acknowledge_transfer?: boolean,
 ) {
   return api.post<ServiceJob>(`${BASE}/${id}/assign`, {
     assigned_staff_user_id,
     ...(expected_completion_at ? { expected_completion_at } : {}),
     ...(acknowledge_unlinked ? { acknowledge_unlinked: true } : {}),
+    ...(acknowledge_transfer ? { acknowledge_transfer: true } : {}),
   });
 }
 

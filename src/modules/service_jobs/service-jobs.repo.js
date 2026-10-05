@@ -1135,6 +1135,24 @@ async function jobCustodyBalance({ client, brand, job_id }) {
   );
   return rows[0].net;
 }
+// Who is physically holding this job's wig right now: the stylist on the most
+// recent 'out' event that hasn't been balanced off. Used by the reassignment
+// custody transfer so both the warning and the auto-return name a real person
+// rather than guessing from the job's assignee column (which a half-finished
+// reassignment can already have moved on).
+async function currentCustodyHolder({ client, brand, job_id }) {
+  const { rows } = await ex(client)(
+    `SELECT c.stylist_user_id AS user_id,
+            COALESCE(u.display_name, u.email::text) AS display_name
+       FROM ${t(brand, "wig_custody_ledger")} c
+       LEFT JOIN shared.users u ON u.user_id = c.stylist_user_id
+      WHERE c.job_id = $1 AND c.event = 'out' AND c.stylist_user_id IS NOT NULL
+      ORDER BY c.created_at DESC
+      LIMIT 1`,
+    [job_id],
+  );
+  return rows[0] || null;
+}
 async function listCustody({ brand, job_id, stylist_user_id, limit = 200 }) {
   const where = [];
   const params = [];
@@ -1450,6 +1468,7 @@ module.exports = {
   orderAlreadyDrewWig,
   studioDrawBalanceForJob,
   jobCustodyBalance,
+  currentCustodyHolder,
   listCustody,
   custodyBalances,
   overdueOutWigs,

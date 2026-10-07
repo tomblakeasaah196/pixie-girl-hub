@@ -52,7 +52,7 @@ export interface OrderListParams {
   sales_channel?: string;
   sales_campaign_id?: string;
   search?: string;
-  /** Flexi Pay (PR-3): committed instalment orders with a balance still due. */
+  /** Active collection orders: money received and a balance still due. */
   part_paid?: boolean;
   /** Pre-orders tab (000086): orders carrying a made-to-order line. */
   preorder?: boolean;

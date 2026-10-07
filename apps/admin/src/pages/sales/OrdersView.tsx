@@ -25,20 +25,18 @@ import type { SalesOrder, OrderStatus, FulfilmentType } from "./types";
 const LAST_OPENED_KEY = "sales-orders-last";
 // Opening an order navigates to a separate page, which unmounts this list and
 // drops its filter state. Persisting the toolbar filters (status / search /
-// part-paid / page) for the browsing session means "Back" returns the register
-// exactly as the user left it — a PAID filter stays PAID.
+// page) for the browsing session means "Back" returns the register exactly as
+// the user left it — including the balance-based Partially Paid view.
 const FILTERS_KEY = "sales-orders-filters";
 interface PersistedFilters {
   status: string;
   search: string;
-  partPaid: boolean;
   page: number;
 }
 function loadFilters(): PersistedFilters {
   const empty: PersistedFilters = {
     status: "",
     search: "",
-    partPaid: false,
     page: 1,
   };
   if (typeof window === "undefined") return empty;
@@ -326,7 +324,6 @@ export function OrdersView() {
   const [persisted] = useState(loadFilters);
   const [status, setStatus] = useState(persisted.status);
   const [search, setSearch] = useState(persisted.search);
-  const [partPaid, setPartPaid] = useState(persisted.partPaid);
   // Archive drawer (cancelled orders). Deliberately NOT persisted — it's a
   // look-up, not a filter the list should reopen into.
   const [archiveOpen, setArchiveOpen] = useState(false);
@@ -339,12 +336,12 @@ export function OrdersView() {
     try {
       sessionStorage.setItem(
         FILTERS_KEY,
-        JSON.stringify({ status, search, partPaid, page }),
+        JSON.stringify({ status, search, page }),
       );
     } catch {
       /* sessionStorage unavailable — filters just won't persist */
     }
-  }, [status, search, partPaid, page]);
+  }, [status, search, page]);
 
   // "Which row is highlighted right now?" — driven by three sources:
   //   1. ?order=<id> in the URL (deep link or return-from-detail)
@@ -387,14 +384,18 @@ export function OrdersView() {
     [focus, navigate],
   );
 
+  // `status` is normally a literal lifecycle filter. Partially Paid is the
+  // one intentional exception: for collections it means money received with a
+  // balance still due, even when the order has advanced to fulfilment.
+  const isPartiallyPaid = status === "partially_paid";
   const { data, isLoading, isError, refetch } = useOrders({
-    status: status || undefined,
+    status: isPartiallyPaid ? undefined : status || undefined,
     // Cancelled orders live in the Archive drawer, not the working list. An
-    // explicit pick of "Cancelled" in the status dropdown still shows them —
-    // the API ignores exclude_status whenever status is set.
-    exclude_status: status ? undefined : "cancelled",
+    // explicit lifecycle status still wins; the balance-based Partially Paid
+    // filter independently excludes cancellation/refund/failure rows.
+    exclude_status: isPartiallyPaid || !status ? "cancelled" : undefined,
     search: search || undefined,
-    part_paid: partPaid || undefined,
+    part_paid: isPartiallyPaid || undefined,
     page,
     page_size: 25,
   });
@@ -494,21 +495,6 @@ export function OrdersView() {
                   }
                   className="w-[180px]"
                 />
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPartPaid((v) => !v);
-                    setPage(1);
-                  }}
-                  aria-pressed={partPaid}
-                  className={`h-[38px] px-3.5 rounded-[10px] border text-[12px] font-semibold whitespace-nowrap transition-colors ${
-                    partPaid
-                      ? "border-accent/50 bg-accent/10 text-accent-readable"
-                      : "border-line text-text-muted hover:text-text-primary"
-                  }`}
-                >
-                  Part-paid
-                </button>
                 <button
                   type="button"
                   onClick={() => setArchiveOpen(true)}

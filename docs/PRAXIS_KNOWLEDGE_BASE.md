@@ -254,8 +254,8 @@ Care & Accessories is on or orders are waiting) · **POS Reconciliation** ·
   result. If you have the order open, a cancelled order shows a **Reinstate**
   button in its top bar (`/sales/orders/<orderId>`). If you're hunting for it,
   cancelled orders are hidden from the Orders list so it stays a working view —
-  open them with the **archive icon** beside the **Part-paid** button on
-  Sales → **Orders** (`/sales?tab=orders`), which lists every cancelled order
+  open them with the **archive icon** beside the order filters on Sales →
+  **Orders** (`/sales?tab=orders`), which lists every cancelled order
   with a **Restore** button. (You can also still pick **Cancelled** in the
   status dropdown to see them inline.) Either way it returns the order to the
   exact status it held before it was cancelled and re-holds its stock. If some
@@ -484,6 +484,13 @@ Care & Accessories is on or orders are waiting) · **POS Reconciliation** ·
   but **Paid**, the customer still owes money (or is owed it): the balance is in
   the header beside the order number, and **Record Payment** / **Pay Link**
   clear it.
+- *Why does Sales → Orders → Partially Paid show orders marked Assigned, Ready
+  or Dispatched?* That filter is the **collection list**, not a stage filter:
+  it shows every live order that has received some money and still has a
+  positive balance, regardless of its fulfilment stage or payment plan. A
+  customer who has paid ₦0 stays under **Pending Payment** instead. Draft,
+  Cancel Requested, Cancelled, Refunded and Failed orders are excluded from
+  the collection list.
 - *An order with several products — when does the customer get told it's ready?*
   **Only when all of them are ready.** An order with three products opens three
   Studio jobs, one per item. The first two QC passes finish their own item and

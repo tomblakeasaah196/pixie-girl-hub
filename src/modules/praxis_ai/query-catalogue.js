@@ -91,7 +91,7 @@ const QUERIES = [
     key: "sales_summary",
     title: "Sales summary",
     description:
-      "Orders and revenue for the current brand over an optional date range: paid orders, revenue, pending orders, and outstanding balance.",
+      "Money and order counts for the current brand over an optional date range: cash collected (captured/authorised customer payments in the window — answer 'how much did we take in / collect / receive' with this), gross order value of the window's paid-state orders (what was SOLD, not what was received — never call it revenue), paid orders, pending orders, and outstanding invoice balance.",
     module: "dashboards",
     parameters: {
       type: "object",

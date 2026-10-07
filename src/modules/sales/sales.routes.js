@@ -48,6 +48,11 @@ router.post("/orders", can("create"), v.validateOrderCreate, c.createOrder);
 // Impact-modal live state: on/off of the messages a manual move fires.
 // Declared before "/orders/:id" so the literal path isn't shadowed by :id.
 router.get("/orders/status-automations", can("view"), c.getStatusAutomations);
+// Collections headline for the Orders list ("which active customers owe us
+// money?"): live outstanding balance, its part-paid / ₦0-paid split, and the
+// dead-order balances that are deliberately NOT receivables. Also declared
+// before "/orders/:id".
+router.get("/orders/collections-summary", can("view"), c.getCollectionsSummary);
 router.get("/orders/:id", can("view"), c.getById);
 // The order's Stylist Studio job — order-scoped, gated by sales.view (NOT the
 // service_jobs module's stylist own-scope), so seeing the order is enough to

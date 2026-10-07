@@ -60,6 +60,12 @@ const MANIFEST = [
   // arrived" notice. Staff ask "when does a pre-order get fulfilled / how do I
   // tell the customer it's in?", so Praxis needs the mechanism + the button.
   { file: "PREORDER_STOCK_DEDUCTION.md", type: "product_description" },
+  // Sales collections + the monthly money KPI: "which active customers owe us
+  // money?", "how much did we actually take this month?", and why the raw
+  // positive-balance total is not a receivables figure. Staff ask about money in
+  // exactly these terms, so Praxis needs the semantics (Outstanding Balance vs
+  // Partially Paid vs Cash Collected vs Order Value) and where each lives.
+  { file: "SALES_COLLECTIONS_AND_CASH_KPI.md", type: "product_description" },
 ];
 
 // A hand-written orientation chunk so the model always has the big picture even

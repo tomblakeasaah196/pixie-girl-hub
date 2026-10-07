@@ -12,14 +12,18 @@ import { DataTable, type Column } from "@/components/ui/DataTable";
 import { Pill, MoneyText } from "@/components/ui/primitives";
 import { formatDate, formatTime } from "@/lib/format";
 import { Select, ErrorState } from "@/components/ui/controls";
-import { useOrders } from "./hooks";
+import { cn } from "@/lib/cn";
+import { useOrders, useCollectionsSummary } from "./hooks";
 import { OrdersArchiveModal } from "./OrdersArchiveModal";
 import {
   ORDER_STATUS,
   ORDER_STATUS_OPTIONS,
+  COLLECTION_VIEW_OPTIONS,
+  collectionViewHint,
   SALES_CHANNELS,
   FULFILMENT_LABELS,
 } from "./constants";
+import type { CollectionView } from "./constants";
 import type { SalesOrder, OrderStatus, FulfilmentType } from "./types";
 
 const LAST_OPENED_KEY = "sales-orders-last";
@@ -30,12 +34,15 @@ const LAST_OPENED_KEY = "sales-orders-last";
 const FILTERS_KEY = "sales-orders-filters";
 interface PersistedFilters {
   status: string;
+  /** Collections money view (see COLLECTION_VIEWS) — "" means no money filter. */
+  collections: CollectionView;
   search: string;
   page: number;
 }
 function loadFilters(): PersistedFilters {
   const empty: PersistedFilters = {
     status: "",
+    collections: "",
     search: "",
     page: 1,
   };
@@ -47,6 +54,14 @@ function loadFilters(): PersistedFilters {
     return empty;
   }
 }
+
+// The stage dropdown drops `partially_paid`: in this list that value has always
+// driven the collections money filter, not the literal lifecycle status, and it
+// now lives in the Collections control where the two money views (Outstanding
+// Balance / Partially Paid) are named for what they actually count.
+const STAGE_OPTIONS = ORDER_STATUS_OPTIONS.filter(
+  (o) => o.value !== "partially_paid",
+) as { value: string; label: string }[];
 
 const buildColumns = (navigate: (to: string) => void): Column<SalesOrder>[] => [
   {
@@ -322,7 +337,14 @@ export function OrdersView() {
   // the register exactly (see FILTERS_KEY). `useState(loadFilters)` reads
   // sessionStorage once, on mount.
   const [persisted] = useState(loadFilters);
-  const [status, setStatus] = useState(persisted.status);
+  // A session persisted before the Collections control existed can still carry
+  // `status: "partially_paid"`. That value always meant the money filter, so
+  // migrate it into the new control instead of sending it as a literal status.
+  const legacyPartPaid = persisted.status === "partially_paid";
+  const [status, setStatus] = useState(legacyPartPaid ? "" : persisted.status);
+  const [collections, setCollections] = useState<CollectionView>(
+    legacyPartPaid ? "partially_paid" : persisted.collections ?? "",
+  );
   const [search, setSearch] = useState(persisted.search);
   // Archive drawer (cancelled orders). Deliberately NOT persisted — it's a
   // look-up, not a filter the list should reopen into.
@@ -336,12 +358,12 @@ export function OrdersView() {
     try {
       sessionStorage.setItem(
         FILTERS_KEY,
-        JSON.stringify({ status, search, page }),
+        JSON.stringify({ status, collections, search, page }),
       );
     } catch {
       /* sessionStorage unavailable — filters just won't persist */
     }
-  }, [status, search, page]);
+  }, [status, collections, search, page]);
 
   // "Which row is highlighted right now?" — driven by three sources:
   //   1. ?order=<id> in the URL (deep link or return-from-detail)
@@ -384,21 +406,30 @@ export function OrdersView() {
     [focus, navigate],
   );
 
-  // `status` is normally a literal lifecycle filter. Partially Paid is the
-  // one intentional exception: for collections it means money received with a
-  // balance still due, even when the order has advanced to fulfilment.
-  const isPartiallyPaid = status === "partially_paid";
+  // Two independent filters, deliberately:
+  //   • `status`  — the literal lifecycle stage (Assigned, Dispatched, …).
+  //   • `collections` — a MONEY view derived from amount_paid_ngn /
+  //     balance_due_ngn, because a part-paid order can legitimately sit at
+  //     assigned, order_ready, dispatched or completed. They combine, so
+  //     "Outstanding Balance + Dispatched" is the parcels that left with a
+  //     balance still open.
   const { data, isLoading, isError, refetch } = useOrders({
-    status: isPartiallyPaid ? undefined : status || undefined,
+    status: status || undefined,
     // Cancelled orders live in the Archive drawer, not the working list. An
-    // explicit lifecycle status still wins; the balance-based Partially Paid
-    // filter independently excludes cancellation/refund/failure rows.
-    exclude_status: isPartiallyPaid || !status ? "cancelled" : undefined,
+    // explicit lifecycle status still wins; both collections views independently
+    // exclude draft/cancel/refund/failure rows server-side.
+    exclude_status: !status ? "cancelled" : undefined,
     search: search || undefined,
-    part_paid: isPartiallyPaid || undefined,
+    part_paid: collections === "partially_paid" || undefined,
+    outstanding_balance: collections === "outstanding_balance" || undefined,
     page,
     page_size: 25,
   });
+
+  // The collections headline ("which active customers owe us money?") — one
+  // number for the whole book, so nobody has to page through the list to see
+  // the size of the queue they are looking at.
+  const { data: collectionsSummary } = useCollectionsSummary();
 
   const orders = data?.data ?? [];
   const meta = data?.meta;
@@ -453,6 +484,101 @@ export function OrdersView() {
         <ErrorState onRetry={() => refetch()} />
       ) : (
         <div ref={tableWrap}>
+          {/* Collections headline — the answer to "which active customers owe
+              us money?" without paging the list. Live receivables only: the
+              muted tail is the balance stranded on draft / cancel-requested /
+              cancelled / refunded / failed orders, which stays on those rows as
+              history but is not money anyone can still collect. */}
+          {collectionsSummary && (
+            <div
+              className="glass rounded-[13px] shadow-glass px-4 py-2.5 mb-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[12px]"
+              data-testid="collections-summary"
+            >
+              <span className="micro text-text-faint">Collections</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setCollections(
+                    collections === "outstanding_balance"
+                      ? ""
+                      : "outstanding_balance",
+                  );
+                  setPage(1);
+                }}
+                title={collectionViewHint("outstanding_balance")}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-[8px] px-2 py-1 -mx-2 transition-colors hover:bg-text-primary/[0.06]",
+                  collections === "outstanding_balance" &&
+                    "bg-warn/15 text-text-primary",
+                )}
+              >
+                <span className="text-text-muted">Outstanding balance</span>
+                <span className="font-semibold text-text-primary tabular-nums">
+                  {collectionsSummary.outstanding_orders}
+                </span>
+                <MoneyText
+                  ngn={Number(collectionsSummary.outstanding_balance_ngn)}
+                  className="text-text-primary"
+                />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCollections(
+                    collections === "partially_paid" ? "" : "partially_paid",
+                  );
+                  setPage(1);
+                }}
+                title={collectionViewHint("partially_paid")}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-[8px] px-2 py-1 transition-colors hover:bg-text-primary/[0.06]",
+                  collections === "partially_paid" &&
+                    "bg-warn/15 text-text-primary",
+                )}
+              >
+                <span className="text-text-muted">Part-paid</span>
+                <span className="tabular-nums text-text-primary">
+                  {collectionsSummary.partially_paid_orders}
+                </span>
+                ·
+                <MoneyText
+                  ngn={Number(collectionsSummary.partially_paid_balance_ngn)}
+                  className="text-text-primary"
+                />
+              </button>
+              {/* Not a filter of its own: the ₦0-paid slow lane is already
+                  inside Outstanding Balance, and the WhatsApp/staff-negotiated
+                  expiry policy is deliberately unchanged — these orders are
+                  surfaced, never cancelled sooner. */}
+              <span
+                className="text-text-muted"
+                title="Active orders with no payment at all — inside Outstanding Balance. Left to the normal unpaid-order expiry policy."
+              >
+                ₦0 paid{" "}
+                <span className="tabular-nums text-text-primary">
+                  {collectionsSummary.unpaid_orders}
+                </span>{" "}
+                ·{" "}
+                <MoneyText
+                  ngn={Number(collectionsSummary.unpaid_balance_ngn)}
+                  className="text-text-primary"
+                />
+              </span>
+              {Number(collectionsSummary.excluded_balance_ngn) > 0 && (
+                <span
+                  className="text-[11px] text-text-faint ml-auto"
+                  title="Cancelled, refunded, failed, draft and cancel-requested orders keep their balances as history; they are not live receivables."
+                >
+                  Not collectable: {collectionsSummary.excluded_orders} closed
+                  orders ·{" "}
+                  <MoneyText
+                    ngn={Number(collectionsSummary.excluded_balance_ngn)}
+                    className="text-text-faint"
+                  />
+                </span>
+              )}
+            </div>
+          )}
           <DataTable
             columns={columns}
             rows={orders}
@@ -460,12 +586,26 @@ export function OrdersView() {
             onRowClick={(o) => openOrder(o.order_id)}
             activeKey={focusedId}
             loading={isLoading}
-            empty={{
-              icon: <ShoppingBag className="w-8 h-8" />,
-              title: "No orders yet",
-              message:
-                "Orders from Quick Sale and other channels will appear here.",
-            }}
+            empty={
+              collections
+                ? {
+                    icon: <ShoppingBag className="w-8 h-8" />,
+                    title:
+                      collections === "outstanding_balance"
+                        ? "Nothing outstanding"
+                        : "No part-paid orders",
+                    message:
+                      collections === "outstanding_balance"
+                        ? "Every active order is settled — no customer owes a balance right now."
+                        : "No active order has money received with a balance still due.",
+                  }
+                : {
+                    icon: <ShoppingBag className="w-8 h-8" />,
+                    title: "No orders yet",
+                    message:
+                      "Orders from Quick Sale and other channels will appear here.",
+                  }
+            }
             toolbar={
               <>
                 <div className="relative flex-1 min-w-[180px]">
@@ -484,16 +624,30 @@ export function OrdersView() {
                     data-form-type="other"
                   />
                 </div>
+                {/* Collections — the money views. The tooltip spells out what
+                    each one counts, because "who owes us" is the question the
+                    stage dropdown cannot answer. */}
+                <div className="shrink-0" title={collectionViewHint(collections)}>
+                  <Select<CollectionView>
+                    value={collections}
+                    onChange={(v) => {
+                      setCollections(v);
+                      setPage(1);
+                    }}
+                    options={COLLECTION_VIEW_OPTIONS}
+                    ariaLabel="Collections view"
+                    className="w-[190px]"
+                  />
+                </div>
                 <Select
                   value={status}
                   onChange={(v) => {
                     setStatus(v);
                     setPage(1);
                   }}
-                  options={
-                    ORDER_STATUS_OPTIONS as { value: string; label: string }[]
-                  }
-                  className="w-[180px]"
+                  options={STAGE_OPTIONS}
+                  ariaLabel="Order stage"
+                  className="w-[170px]"
                 />
                 <button
                   type="button"

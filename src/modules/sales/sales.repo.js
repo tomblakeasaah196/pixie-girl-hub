@@ -12,7 +12,11 @@ const { t } = require("../../config/brands");
 const {
   nextDocumentNumber,
 } = require("../../shared/numbering/document-number");
-const { REVENUE_STATES_SQL } = require("./order-status");
+const {
+  REVENUE_STATES_SQL,
+  COLLECTION_EXCLUDED_STATES_SQL,
+  SETTLED_PAYMENT_STATUSES_SQL,
+} = require("./order-status");
 
 // Orders that are dead (or in limbo) never receive an auto-allocation of
 // arriving stock — never draw a unit for an order that is cancelled, failed,
@@ -409,7 +413,28 @@ async function listOrders({
     // orders in a cancellation/refund/failure flow are not live collection
     // work.
     where.push(
-      `so.amount_paid_ngn > 0 AND so.balance_due_ngn > 0 AND so.status NOT IN ('draft','cancellation_requested','cancelled','refunded','failed')`,
+      `so.amount_paid_ngn > 0 AND so.balance_due_ngn > 0 AND so.status NOT IN ${COLLECTION_EXCLUDED_STATES_SQL}`,
+    );
+  }
+  if (filters.outstanding_balance) {
+    // Collections — "which ACTIVE customers owe us money?". Every live order
+    // with a balance still due, whether the customer has paid part of it or
+    // nothing at all: the WhatsApp/staff-negotiated ₦0-paid orders stay on the
+    // slow lane (their cancellation timing is a policy question, not a
+    // collections one) but they must be visible here so nobody has to guess
+    // which pending orders are actually receivables.
+    //
+    // Money columns again, never the lifecycle status — a part-paid order can
+    // legitimately sit at assigned/order_ready/dispatched/completed.
+    //
+    // Cancelled history is excluded from the LIVE queue but never rewritten:
+    // a cancelled order keeps its totals and its balance on the row (that is
+    // the audit trail), it just is not money anyone can still collect. In the
+    // production snapshot this is the difference between 46 positive-balance
+    // rows / ₦25,512,175 raw and 3 live orders / ₦1,738,000 actually owed —
+    // 43 cancelled ₦0-paid orders (₦23,774,175) are not receivables.
+    where.push(
+      `so.balance_due_ngn > 0 AND so.status NOT IN ${COLLECTION_EXCLUDED_STATES_SQL}`,
     );
   }
   if (filters.is_preorder) {
@@ -483,6 +508,66 @@ async function listOrders({
     },
   };
 }
+/**
+ * Collections headline (Sales → Orders): how much live money is outstanding,
+ * split the way the collection queue is split — part-paid debtors, ₦0-paid
+ * orders that are still receivables (the WhatsApp/staff-negotiated slow lane),
+ * and the balances that are NOT collectable because their order is dead.
+ *
+ * The last pair is the reconciliation the production audit needed: the raw
+ * `balance_due_ngn > 0` total over the whole table (46 rows / ₦25,512,175 in
+ * the audited snapshot) is dominated by cancelled ₦0-paid history
+ * (43 rows / ₦23,774,175), which is not a receivable. Those rows keep their
+ * totals — nothing here writes — they are simply reported separately so the
+ * live queue (3 orders / ₦1,738,000) can never be confused with them.
+ *
+ * Money columns only, never the lifecycle status: a part-paid order can be
+ * assigned / order_ready / dispatched / completed and still owe us.
+ *
+ * @returns {Promise<{
+ *   outstanding_orders: number, outstanding_balance_ngn: string,
+ *   partially_paid_orders: number, partially_paid_balance_ngn: string,
+ *   unpaid_orders: number, unpaid_balance_ngn: string,
+ *   excluded_orders: number, excluded_balance_ngn: string,
+ *   raw_balance_orders: number, raw_balance_ngn: string }>}
+ */
+async function collectionsSummary({ client, brand }) {
+  const { rows } = await ex(client)(
+    `WITH s AS (
+       SELECT so.balance_due_ngn,
+              so.amount_paid_ngn,
+              -- Live = still collectable. Dead/limbo orders (draft, cancel
+              -- requested, cancelled, refunded, failed) keep their balances on
+              -- the row but leave the collection queue.
+              (so.status NOT IN ${COLLECTION_EXCLUDED_STATES_SQL}) AS is_live
+         FROM ${t(brand, "sales_orders")} so
+     )
+     SELECT
+       count(*) FILTER (WHERE is_live AND balance_due_ngn > 0)::int
+         AS outstanding_orders,
+       COALESCE(SUM(balance_due_ngn) FILTER (WHERE is_live AND balance_due_ngn > 0),0)::text
+         AS outstanding_balance_ngn,
+       count(*) FILTER (WHERE is_live AND balance_due_ngn > 0 AND amount_paid_ngn > 0)::int
+         AS partially_paid_orders,
+       COALESCE(SUM(balance_due_ngn) FILTER (WHERE is_live AND balance_due_ngn > 0 AND amount_paid_ngn > 0),0)::text
+         AS partially_paid_balance_ngn,
+       count(*) FILTER (WHERE is_live AND balance_due_ngn > 0 AND COALESCE(amount_paid_ngn,0) = 0)::int
+         AS unpaid_orders,
+       COALESCE(SUM(balance_due_ngn) FILTER (WHERE is_live AND balance_due_ngn > 0 AND COALESCE(amount_paid_ngn,0) = 0),0)::text
+         AS unpaid_balance_ngn,
+       count(*) FILTER (WHERE NOT is_live AND balance_due_ngn > 0)::int
+         AS excluded_orders,
+       COALESCE(SUM(balance_due_ngn) FILTER (WHERE NOT is_live AND balance_due_ngn > 0),0)::text
+         AS excluded_balance_ngn,
+       count(*) FILTER (WHERE balance_due_ngn > 0)::int
+         AS raw_balance_orders,
+       COALESCE(SUM(balance_due_ngn) FILTER (WHERE balance_due_ngn > 0),0)::text
+         AS raw_balance_ngn
+       FROM s`,
+  );
+  return rows[0];
+}
+
 async function setStatus({ client, brand, id, status }) {
   const { rows } = await ex(client)(
     `UPDATE ${t(brand, "sales_orders")} SET status = $2 WHERE order_id = $1 RETURNING *`,
@@ -1446,6 +1531,50 @@ async function reportPayments({ brand, filters = {} }) {
   return rows;
 }
 
+/**
+ * Cash actually collected in the report window — the payment ledger, scoped by
+ * WHEN THE MONEY LANDED (`captured_at`, falling back to `recorded_at`), not by
+ * when the order was placed. `reportPayments` above is order-scoped (it lists
+ * the payments belonging to the period's orders), so summing that sheet is NOT
+ * period cash: it misses a deposit taken today on an order placed last month
+ * and includes money taken months ago on an order placed today. This is the
+ * figure the Sales "Cash Collected MTD" tile reports, so the export reconciles
+ * with it.
+ *
+ * Deliberately no order-status filter: cash captured on an order that was later
+ * cancelled still moved (and if it was given back, the payment row's own status
+ * is refunded and drops out of the settled set). `sales_channel` is honoured so
+ * a channel-filtered report stays internally consistent.
+ *
+ * @returns {Promise<{ cash_collected_ngn: string, payments: number }>}
+ */
+async function reportCashCollected({ brand, filters = {} }) {
+  const where = [`p.status IN ${SETTLED_PAYMENT_STATUSES_SQL}`];
+  const params = [];
+  let i = 1;
+  if (filters.from) {
+    where.push(`COALESCE(p.captured_at, p.recorded_at) >= $${i++}`);
+    params.push(filters.from);
+  }
+  if (filters.to) {
+    where.push(`COALESCE(p.captured_at, p.recorded_at) <= $${i++}`);
+    params.push(filters.to);
+  }
+  if (filters.sales_channel) {
+    where.push(`so.sales_channel = $${i++}`);
+    params.push(filters.sales_channel);
+  }
+  const { rows } = await query(
+    `SELECT COALESCE(SUM(p.amount_ngn),0)::text AS cash_collected_ngn,
+            count(*)::int AS payments
+       FROM ${t(brand, "sales_order_payments")} p
+       JOIN ${t(brand, "sales_orders")} so ON so.order_id = p.order_id
+      WHERE ${where.join(" AND ")}`,
+    params,
+  );
+  return rows[0];
+}
+
 async function setDeliveryFee({ client, brand, id, fee_ngn }) {
   // internal_notes is TEXT holding a JSON-stringified object — the same column
   // the fee_pending filter reads. Now that the rate is confirmed we clear the
@@ -1850,6 +1979,7 @@ module.exports = {
   insertDiscount,
   findById,
   listOrders,
+  collectionsSummary,
   setStatus,
   setCouponCode,
   advanceStatus,
@@ -1891,4 +2021,5 @@ module.exports = {
   reportOrders,
   reportLines,
   reportPayments,
+  reportCashCollected,
 };

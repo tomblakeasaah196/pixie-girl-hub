@@ -10,6 +10,12 @@
 
 const { query } = require("../../config/database");
 const { t } = require("../../config/brands");
+// Order-value rollups use the lifecycle SSOT; cash collected does NOT (it reads
+// payment rows). Both come from the sales module so the lists never drift.
+const {
+  REVENUE_STATES_SQL,
+  SETTLED_PAYMENT_STATUSES_SQL,
+} = require("../sales/order-status");
 
 // ── Sales KPIs ─────────────────────────────────────────────
 // Response fields are named *_mtd; when the caller doesn't provide a window
@@ -17,6 +23,20 @@ const { t } = require("../../config/brands");
 // label the UI shows matches what's being counted. Prior behaviour silently
 // returned all-time totals under an MTD label. Boundaries are computed in
 // SQL to sidestep server-vs-DB clock drift.
+//
+// TWO MONEY FIGURES, TWO SOURCES — never swap them:
+//   • cash_collected_mtd  — gross captured/authorised customer payments whose
+//     money landed in the window. Read from sales_order_payments (the rows
+//     amount_paid_ngn is itself recomputed from), so it is CASH: it counts a
+//     deposit taken today on an order placed last month, and it never counts an
+//     order nobody has paid. This is the headline monthly money KPI.
+//   • order_value_mtd     — gross value of the window's revenue-state orders
+//     (total_ngn). Useful as "what did we sell", but it is an order-lifecycle
+//     figure: it includes balances nobody has paid yet and excludes money taken
+//     against older orders. It is therefore reported as ORDER VALUE and never
+//     labelled revenue. (The prior `revenue_mtd` field was this same gross
+//     figure under a revenue label.)
+// Neither figure touches accounting journals — recognition stays where it is.
 async function salesKpis({ brand, from, to }) {
   const params = [];
   const fromExpr = from
@@ -25,15 +45,29 @@ async function salesKpis({ brand, from, to }) {
   const toExpr = to ? `$${params.push(to)}::timestamptz` : "now()";
   const { rows } = await query(
     `SELECT
-        count(*) FILTER (WHERE status IN ('paid','assigned','order_ready','dispatched','completed'))::int AS orders_mtd,
-        COALESCE(SUM(total_ngn) FILTER (WHERE status IN ('paid','assigned','order_ready','dispatched','completed')),0)::text AS revenue_mtd,
+        count(*) FILTER (WHERE status IN ${REVENUE_STATES_SQL})::int AS orders_mtd,
+        COALESCE(SUM(total_ngn) FILTER (WHERE status IN ${REVENUE_STATES_SQL}),0)::text AS order_value_mtd,
         count(*) FILTER (WHERE status = 'pending_payment')::int AS pending_payment_count,
         COALESCE(ROUND(
-          SUM(total_ngn) FILTER (WHERE status IN ('paid','assigned','order_ready','dispatched','completed'))
-          / NULLIF(count(*) FILTER (WHERE status IN ('paid','assigned','order_ready','dispatched','completed')), 0)
+          SUM(total_ngn) FILTER (WHERE status IN ${REVENUE_STATES_SQL})
+          / NULLIF(count(*) FILTER (WHERE status IN ${REVENUE_STATES_SQL}), 0)
         , 2), 0)::text AS avg_order_value
        FROM ${t(brand, "sales_orders")}
       WHERE COALESCE(placed_at, created_at) BETWEEN ${fromExpr} AND ${toExpr}`,
+    params,
+  );
+  // Cash collected: the same window applied to the PAYMENT ledger. A payment
+  // counts when its money landed — captured_at, falling back to recorded_at for
+  // rows the gateway never stamped a capture on (the same COALESCE the pay
+  // page, the receipt and the sales export already use). Pending / failed /
+  // refunded rows are not cash in.
+  const { rows: cash } = await query(
+    `SELECT
+        COALESCE(SUM(amount_ngn),0)::text AS cash_collected_mtd,
+        count(*)::int AS payments_mtd
+       FROM ${t(brand, "sales_order_payments")}
+      WHERE status IN ${SETTLED_PAYMENT_STATUSES_SQL}
+        AND COALESCE(captured_at, recorded_at) BETWEEN ${fromExpr} AND ${toExpr}`,
     params,
   );
   // Open quotations (awaiting customer action).
@@ -42,7 +76,12 @@ async function salesKpis({ brand, from, to }) {
        FROM ${t(brand, "quotations")}
       WHERE status IN ('sent','viewed')`,
   );
-  return { ...rows[0], open_quotes: q[0].open_quotes };
+  return {
+    ...rows[0],
+    cash_collected_mtd: cash[0].cash_collected_mtd,
+    payments_mtd: cash[0].payments_mtd,
+    open_quotes: q[0].open_quotes,
+  };
 }
 
 // ── Overview snapshots (point-in-time, not window-scoped) ──

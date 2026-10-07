@@ -591,6 +591,25 @@ export function useSalesKpis() {
   });
 }
 
+// ── Collections (Sales → Orders) ────────────────────────────
+
+/** Live outstanding balance + its split. Point-in-time (not month-scoped):
+ *  receivables are what's owed NOW, whenever the order was placed.
+ *
+ *  The key is deliberately nested under `["sales-kpis", biz]`: every mutation
+ *  that already invalidates the KPIs (record payment, cancel, restore,
+ *  amendment, coupon…) and the realtime `order.*` / `payment.*` invalidation
+ *  match by prefix, so the collections headline refreshes with them instead of
+ *  going stale the moment someone takes money. */
+export function useCollectionsSummary() {
+  const biz = useBiz();
+  return useQuery({
+    queryKey: ["sales-kpis", biz, "collections"],
+    queryFn: salesApi.getCollectionsSummary,
+    staleTime: 30_000,
+  });
+}
+
 // ── Flexi Pay settings (Sales → Payments tab) ───────────────
 
 export function usePaymentSettings() {

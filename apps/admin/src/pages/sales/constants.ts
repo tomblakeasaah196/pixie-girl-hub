@@ -111,6 +111,56 @@ export function isOrderPaymentFinal(order?: {
   );
 }
 
+// ── Collections views (Sales → Orders) ──────────────────────────────────────
+/**
+ * The Orders toolbar's **Collections** control. These are MONEY views, not
+ * lifecycle stages, which is why they live in their own dropdown instead of
+ * pretending to be statuses: an order can be Assigned, Order Ready, Dispatched
+ * or Completed and still owe us money, so a stage filter can never answer
+ * "which active customers owe us money?".
+ *
+ * - `outstanding_balance` — every ACTIVE order with `balance_due_ngn > 0`:
+ *   part-paid debtors AND the ₦0-paid orders (the WhatsApp / staff-negotiated
+ *   slow lane, which stays pending on purpose — its cancellation timing is
+ *   policy, not collections). Draft, Cancel Requested, Cancelled, Refunded and
+ *   Failed orders are excluded: a cancelled order keeps its balance on the row
+ *   as history, but it is not money anyone can still collect.
+ * - `partially_paid` — the narrower part-paid view: money received AND a
+ *   balance still due (a strict subset of Outstanding Balance).
+ */
+export type CollectionView = "" | "outstanding_balance" | "partially_paid";
+
+export const COLLECTION_VIEWS: {
+  value: CollectionView;
+  label: string;
+  /** One-line explanation for the control's title/tooltip. */
+  hint: string;
+}[] = [
+  {
+    value: "",
+    label: "All orders",
+    hint: "No money filter — the working list (cancelled orders stay in the Archive).",
+  },
+  {
+    value: "outstanding_balance",
+    label: "Outstanding Balance",
+    hint: "Every active customer who still owes us — part-paid and ₦0-paid orders. Cancelled, refunded, failed and draft orders are excluded.",
+  },
+  {
+    value: "partially_paid",
+    label: "Partially Paid",
+    hint: "Active orders that have received some money and still have a balance due, whatever their fulfilment stage or payment plan.",
+  },
+];
+
+export const COLLECTION_VIEW_OPTIONS = COLLECTION_VIEWS.map(({ value, label }) => ({
+  value,
+  label,
+}));
+
+export const collectionViewHint = (v: CollectionView): string =>
+  COLLECTION_VIEWS.find((x) => x.value === v)?.hint ?? COLLECTION_VIEWS[0].hint;
+
 // The linear happy-path order, for the drawer's manual status stepper. Excludes
 // the side-states (draft/cancel/refunded/failed), which are reached via their
 // own actions, not by stepping forward.
@@ -375,6 +425,10 @@ export const SEND_VIA_OPTIONS = [
   { value: "sms", label: "SMS" },
 ] as const;
 
+// Every lifecycle value, including `partially_paid` — the report export's
+// status filter is a literal `status =` match and still needs it. The Orders
+// list builds its own stage dropdown from this (minus `partially_paid`, which
+// there drives the collections money filter — see COLLECTION_VIEWS).
 export const ORDER_STATUS_OPTIONS = [
   { value: "", label: "All statuses" },
   ...Object.entries(ORDER_STATUS).map(([v, m]) => ({

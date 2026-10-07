@@ -218,8 +218,13 @@ function KpiStrip({
 
   const d = overview.data;
 
-  // CEO / Manager → revenue / outstanding / pending
-  // Cashier / Staff → pending orders / deliveries / a lighter metric
+  // CEO / Manager → cash collected / outstanding / pending
+  // Cashier / Staff → cash collected / deliveries / a lighter metric
+  // The monthly money tile is CASH COLLECTED (payment rows in the window), not
+  // gross order value: "Revenue this month" used to show `SUM(total_ngn)` over
+  // paid-state orders, i.e. what was sold — including balances nobody has paid.
+  // Order value is still available as `d.sales.order_value_ngn` if a screen ever
+  // needs it, under that name.
   const tiles: {
     label: string;
     value: string;
@@ -228,8 +233,8 @@ function KpiStrip({
   }[] = isCeo
     ? [
         {
-          label: "Revenue this month",
-          value: money(parseFloat(d?.sales.revenue_ngn ?? "0"), "NGN"),
+          label: "Cash collected this month",
+          value: money(parseFloat(d?.sales.cash_collected_ngn ?? "0"), "NGN"),
           tone: "accent" as const,
         },
         {
@@ -245,8 +250,8 @@ function KpiStrip({
       ]
     : [
         {
-          label: "Revenue this month",
-          value: money(parseFloat(d?.sales.revenue_ngn ?? "0"), "NGN"),
+          label: "Cash collected this month",
+          value: money(parseFloat(d?.sales.cash_collected_ngn ?? "0"), "NGN"),
           tone: "accent" as const,
         },
         {

@@ -484,13 +484,39 @@ Care & Accessories is on or orders are waiting) · **POS Reconciliation** ·
   but **Paid**, the customer still owes money (or is owed it): the balance is in
   the header beside the order number, and **Record Payment** / **Pay Link**
   clear it.
-- *Why does Sales → Orders → Partially Paid show orders marked Assigned, Ready
-  or Dispatched?* That filter is the **collection list**, not a stage filter:
-  it shows every live order that has received some money and still has a
-  positive balance, regardless of its fulfilment stage or payment plan. A
-  customer who has paid ₦0 stays under **Pending Payment** instead. Draft,
-  Cancel Requested, Cancelled, Refunded and Failed orders are excluded from
-  the collection list.
+- *Which active customers owe us money?* Sales → **Orders** (`/sales?tab=orders`)
+  → the **Collections** dropdown in the toolbar (next to the stage filter).
+  **Outstanding Balance** is the full collection queue: every active order with
+  a balance still due — both the part-paid debtors and the customers who have
+  paid ₦0 so far (most of those are WhatsApp orders being negotiated by staff,
+  which stay pending on purpose). Above the table a **Collections strip** gives
+  the headline without paging: outstanding orders and ₦, the part-paid / ₦0-paid
+  split, and — muted, on the right — what is **Not collectable** (balances left
+  on cancelled, refunded, failed, draft and cancel-requested orders). Those
+  closed orders keep their totals and balances as history; they are simply not
+  money anyone can still collect, so they never sit in the queue.
+- *Why does the collection list show orders marked Assigned, Ready, Dispatched or
+  even Completed?* Because it is a **money** list, not a stage list: an order
+  keeps moving through fulfilment while a balance is still open, and its stage
+  never rewinds to say so. **Partially Paid** (the second option in the
+  Collections dropdown) is the narrower view — money received AND a balance
+  still due — and Outstanding Balance is that plus the ₦0-paid orders. Both
+  exclude Draft, Cancel Requested, Cancelled, Refunded and Failed orders. The
+  stage dropdown beside them still filters by lifecycle stage, and the two
+  combine (Outstanding Balance + Dispatched = parcels that left with money
+  owing).
+- *How much did we actually take in this month?* The Sales header tile **Cash
+  Collected MTD** — captured/authorised customer payments whose money landed in
+  the current Lagos calendar month, whatever order they belong to. That is the
+  monthly money headline. The tile next to it, **Order Value MTD**, is gross
+  order value (what was *sold* in the month, including balances nobody has paid
+  yet) and is deliberately NOT called revenue; **Outstanding Balance** is what
+  customers still owe right now. Same three figures on the Command Center
+  ("Cash collected this month") and in the Sales **Export Report** workbook's
+  Summary sheet ("Cash Collected in Period", "Order Value (paid-state orders)",
+  "Outstanding Balance (active)" with the not-collectable balances split out).
+  From a terminal: `npm run report:outstanding` prints the same reconciliation
+  per brand.
 - *An order with several products — when does the customer get told it's ready?*
   **Only when all of them are ready.** An order with three products opens three
   Studio jobs, one per item. The first two QC passes finish their own item and

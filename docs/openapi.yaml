@@ -7275,13 +7275,45 @@ paths:
   /sales/orders:
     get:
       {
-        summary: List sales orders,
+        summary: "List sales orders. Collections filters (money, not lifecycle): outstanding_balance=true is the live collection queue — every ACTIVE order with balance_due_ngn > 0, part-paid AND \u20A60-paid, excluding draft/cancellation_requested/cancelled/refunded/failed; part_paid=true is the narrower money-received-and-balance-due view. Both combine with an explicit `status`.",
+        tags: [sales],
+        parameters:
+          [
+            { $ref: "#/components/parameters/BrandContext" },
+            { name: status, in: query, schema: { type: string } },
+            { name: exclude_status, in: query, schema: { type: string } },
+            { name: q, in: query, schema: { type: string } },
+            {
+              name: outstanding_balance,
+              in: query,
+              description: "true = the live collection queue (balance due on an active order)",
+              schema: { type: boolean },
+            },
+            {
+              name: part_paid,
+              in: query,
+              description: "true = active orders with money received and a balance still due",
+              schema: { type: boolean },
+            },
+            { name: preorder, in: query, schema: { type: boolean } },
+            { name: page, in: query, schema: { type: integer } },
+            { name: page_size, in: query, schema: { type: integer } },
+          ],
+        x-required-permission: "sales.view",
+        x-entity-scope: brand,
+        x-is-write: false,
+        responses: { "200": { description: Orders } },
+      }
+  /sales/orders/collections-summary:
+    get:
+      {
+        summary: "Collections headline — live outstanding balance (count and \u20A6), its part-paid / \u20A60-paid split, the balances excluded because their order is draft/cancel-requested/cancelled/refunded/failed, and the raw whole-table positive-balance totals they reconcile to (outstanding + excluded = raw). Point-in-time, not period-scoped. Read-only — cancelled history is never rewritten or zeroed.",
         tags: [sales],
         parameters: [{ $ref: "#/components/parameters/BrandContext" }],
         x-required-permission: "sales.view",
         x-entity-scope: brand,
         x-is-write: false,
-        responses: { "200": { description: Orders } },
+        responses: { "200": { description: Collections summary } },
       }
     post:
       {
@@ -12241,7 +12273,10 @@ paths:
   /dashboards/kpis/sales:
     get:
       {
-        summary: Sales KPIs for a period,
+        summary: "Sales KPIs for a period (defaults to the current Lagos calendar month). cash_collected_mtd = gross captured/authorised customer payments whose money landed in the window, read from sales_order_payments — the monthly money headline; order_value_mtd = gross total_ngn of the window's paid-state orders, i.e. what was SOLD (never labelled revenue). Also orders_mtd, payments_mtd, pending_payment_count, avg_order_value, open_quotes.",
+        # The old `revenue_mtd` field (SUM(total_ngn) over paid-state orders) is
+        # gone: gross order value is not revenue and not cash. See
+        # docs/SALES_COLLECTIONS_AND_CASH_KPI.md.
         tags: [dashboards],
         parameters:
           [

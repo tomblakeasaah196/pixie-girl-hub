@@ -5,6 +5,12 @@
  *   • Summary      — period header + headline totals, by-status and by-channel
  *                    breakdowns. Paid figures use the same PAID_STATES set as
  *                    the dashboard KPIs so the report reconciles with the tiles.
+ *                    Money is reported as THREE distinct figures, never merged:
+ *                    Cash Collected (captured/authorised payment rows in the
+ *                    period), Order Value (gross total of the paid-state orders
+ *                    — what was sold), and Outstanding Balance split into the
+ *                    active receivable and the balances stranded on cancelled /
+ *                    refunded / failed orders (reported, not collectable).
  *   • Orders       — one row per sales order (money in NGN + display currency).
  *   • Order Items  — one row per order line (product snapshot + line economics).
  *   • Payments     — one row per recorded payment (method, provider, fee, net).
@@ -19,6 +25,11 @@
 
 const ExcelJS = require("exceljs");
 const { formatDateTime } = require("../../utils/dates");
+const {
+  REVENUE_STATES,
+  COLLECTION_EXCLUDED_STATES,
+  SETTLED_PAYMENT_STATUSES,
+} = require("./order-status");
 
 // ── House style ────────────────────────────────────────────
 const ACCENT = "FF690909"; // Maroon Noir deep-red
@@ -29,15 +40,25 @@ const NGN_FMT = "#,##0.00;[Red]-#,##0.00";
 const INT_FMT = "#,##0";
 const FX_FMT = "#,##0.0000";
 
-// PAID_STATES mirrors the order lifecycle SSOT (order-status.js REVENUE_STATES)
-// — the states that count as realised revenue.
-const PAID_STATES = new Set([
-  "paid",
-  "assigned",
-  "order_ready",
-  "dispatched",
-  "completed",
-]);
+// Paid-state orders — the lifecycle SSOT's revenue states (order-status.js).
+// NOTE the naming: these are the states an order reaches once it was paid in
+// full, so their `total_ngn` is the period's gross ORDER VALUE. It is not cash
+// and it is not recognised revenue — the cash figure comes from the payment
+// rows (SETTLED_PAYMENTS below) and recognition stays in the GL.
+const PAID_STATES = new Set(REVENUE_STATES);
+
+// Orders whose balance is NOT a receivable: draft, cancel-requested, cancelled,
+// refunded, failed. Their balances stay on the rows (that is the audit trail —
+// a cancelled order's history is never rewritten or zeroed), but they are
+// reported apart from the live outstanding figure so the report cannot imply
+// the business is owed money it can no longer collect. In the audited snapshot
+// that distinction is ₦1,738,000 live vs ₦25,512,175 raw.
+const DEAD_STATES = new Set(COLLECTION_EXCLUDED_STATES);
+
+// Payment rows that are money in — the same set the DB trigger sums into
+// `sales_orders.amount_paid_ngn`, so the report's cash figure reconciles with
+// what each order shows as paid.
+const SETTLED_PAYMENTS = new Set(SETTLED_PAYMENT_STATUSES);
 
 const STATUS_LABELS = {
   draft: "Draft",
@@ -151,7 +172,20 @@ function addTable(wb, name, columns, rows, { totals } = {}) {
 }
 
 // ── Summary aggregation (pure) ─────────────────────────────
-function summarise(orders) {
+/**
+ * @param {Object[]} orders   the period's sales_orders rows (reportOrders).
+ * @param {Object[]} [payments] the period's payment rows (reportPayments) —
+ *   the source of `cash_collected`, which is money that MOVED in the period and
+ *   cannot be derived from the order rows (a deposit taken today on an order
+ *   placed last month belongs to today's cash, and an order placed today that
+ *   nobody has paid contributes none).
+ * @param {?{cash_collected_ngn: string|number, payments: number}} [cash] the
+ *   period's cash from the payment ledger scoped by capture time
+ *   (reportCashCollected). Those rows are order-scoped, so without this the
+ *   cash figure can only describe the payments the workbook lists — passing it
+ *   makes the Summary reconcile with the Sales "Cash Collected MTD" tile.
+ */
+function summarise(orders, payments = [], cash = null) {
   const acc = {
     count: orders.length,
     subtotal: 0,
@@ -161,8 +195,17 @@ function summarise(orders) {
     total: 0,
     paid: 0,
     balance: 0,
+    // Live receivables vs balances stranded on dead orders (see DEAD_STATES).
+    active_balance: 0,
+    active_balance_orders: 0,
+    dead_balance: 0,
+    dead_balance_orders: 0,
     paid_orders: 0,
-    paid_revenue: 0,
+    // Gross order value of the paid-state orders — what was SOLD in the period.
+    paid_order_value: 0,
+    // Gross captured/authorised payments — what was COLLECTED in the period.
+    cash_collected: 0,
+    cash_payments: 0,
     by_status: new Map(),
     by_channel: new Map(),
   };
@@ -180,13 +223,45 @@ function summarise(orders) {
     acc.shipping += num(o.shipping_fee_ngn) || 0;
     acc.total += num(o.total_ngn) || 0;
     acc.paid += num(o.amount_paid_ngn) || 0;
-    acc.balance += num(o.balance_due_ngn) || 0;
+    const balance = num(o.balance_due_ngn) || 0;
+    acc.balance += balance;
+    // Split the balance the same way the collection queue does: a live order's
+    // balance is money still to collect, a dead order's is history.
+    if (balance > 0) {
+      if (DEAD_STATES.has(o.status)) {
+        acc.dead_balance += balance;
+        acc.dead_balance_orders += 1;
+      } else {
+        acc.active_balance += balance;
+        acc.active_balance_orders += 1;
+      }
+    }
     if (PAID_STATES.has(o.status)) {
       acc.paid_orders += 1;
-      acc.paid_revenue += num(o.total_ngn) || 0;
+      acc.paid_order_value += num(o.total_ngn) || 0;
     }
     bump(acc.by_status, o.status, o);
     bump(acc.by_channel, o.sales_channel, o);
+  }
+  for (const p of payments) {
+    // Pending / failed / refunded rows are not cash in. A row with no status at
+    // all predates the status column and was counted as paid when it landed, so
+    // it stays in (the same tolerance paid-currency.js applies).
+    if (p.status && !SETTLED_PAYMENTS.has(p.status)) continue;
+    acc.cash_collected += num(p.amount_ngn) || 0;
+    acc.cash_payments += 1;
+  }
+  // `cash_scope` keeps the Summary row's label honest about what it counted:
+  // the ledger figure is capture-time scoped (true period cash); the fallback
+  // is only the payments belonging to the period's orders.
+  acc.cash_scope = "listed";
+  if (
+    cash &&
+    (cash.cash_collected_ngn !== undefined || cash.payments !== undefined)
+  ) {
+    acc.cash_collected = num(cash.cash_collected_ngn) || 0;
+    acc.cash_payments = Number(cash.payments) || 0;
+    acc.cash_scope = "period";
   }
   return acc;
 }
@@ -270,17 +345,48 @@ function buildSummarySheet(wb, ctx, s) {
   moneyRow("VAT / Tax", round2(s.tax));
   moneyRow("Logistics / Shipping", round2(s.shipping));
   moneyRow("Gross Sales (Total)", round2(s.total), { bold: true });
-  moneyRow("Amount Collected", round2(s.paid));
-  moneyRow("Outstanding Balance", round2(s.balance));
+  moneyRow("Collected on These Orders", round2(s.paid));
+  moneyRow(
+    `Outstanding Balance (active · ${s.active_balance_orders} orders)`,
+    round2(s.active_balance),
+    {
+      bold: true,
+    },
+  );
+  if (s.dead_balance_orders > 0) {
+    // Reported, never collected: balances left on cancelled / refunded / failed
+    // / draft orders. The rows keep their history (nothing is zeroed), they are
+    // simply not receivables — which is why the live figure above excludes them.
+    moneyRow(
+      `Not Collectable (cancelled/refunded/failed · ${s.dead_balance_orders} orders)`,
+      round2(s.dead_balance),
+    );
+  }
   r += 1;
   ws.getCell(`A${r}`).value =
-    "Paid Orders (paid / awaiting dispatch / completed)";
+    "Paid-state Orders (paid / assigned / ready / dispatched / completed)";
   ws.getCell(`B${r}`).value = s.paid_orders;
   ws.getCell(`B${r}`).numFmt = INT_FMT;
   r += 1;
-  moneyRow("Realised Revenue (paid orders)", round2(s.paid_revenue), {
+  // Gross order value of those orders — what the period SOLD. Deliberately not
+  // called revenue: it includes balances nobody has paid and excludes deposits
+  // taken in the period against older orders.
+  moneyRow("Order Value (paid-state orders)", round2(s.paid_order_value), {
     bold: true,
   });
+  // Cash that actually moved: captured/authorised payment rows. "In period" =
+  // scoped by when each payment landed (reconciles with the Sales KPI tile);
+  // "listed" = only the payments belonging to this period's orders.
+  ws.getCell(`A${r}`).value =
+    s.cash_scope === "period"
+      ? `Cash Collected in Period (${s.cash_payments} payments)`
+      : `Cash Collected on These Orders (${s.cash_payments} payments)`;
+  ws.getCell(`A${r}`).font = { bold: true };
+  const cashCell = ws.getCell(`B${r}`);
+  cashCell.value = round2(s.cash_collected);
+  cashCell.numFmt = NGN_FMT;
+  cashCell.font = { bold: true };
+  r += 1;
   r += 1;
 
   // By status
@@ -343,16 +449,20 @@ const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
  * @param {Object[]} opts.orders    sales.repo.reportOrders rows.
  * @param {Object[]} opts.lines     sales.repo.reportLines rows.
  * @param {Object[]} opts.payments  sales.repo.reportPayments rows.
+ * @param {Object} [opts.cash]      sales.repo.reportCashCollected row — period
+ *   cash scoped by capture time (see summarise).
  * @returns {Promise<Buffer>}
  */
 async function buildWorkbook(opts) {
-  const { orders, lines, payments } = opts;
+  const { orders, lines, payments, cash = null } = opts;
   const wb = new ExcelJS.Workbook();
   wb.creator = "Pixie Girl Hub";
   wb.created = new Date();
   wb.title = `Sales Report — ${opts.brandLabel}`;
 
-  const summary = summarise(orders);
+  // The summary reads BOTH ledgers: order rows for what was sold / is still
+  // owed, payment rows for what was actually collected in the period.
+  const summary = summarise(orders, payments, cash);
   buildSummarySheet(wb, opts, summary);
 
   // Orders sheet
@@ -539,4 +649,7 @@ module.exports._internals = {
   labelChannel,
   num,
   round2,
+  PAID_STATES,
+  DEAD_STATES,
+  SETTLED_PAYMENTS,
 };

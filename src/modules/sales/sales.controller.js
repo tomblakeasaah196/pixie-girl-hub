@@ -35,6 +35,10 @@ async function listOrders(req, res) {
         q: req.query.q,
         fee_pending: req.query.fee_pending === "true" ? true : undefined,
         part_paid: req.query.part_paid === "true" ? true : undefined,
+        // Collections: every live order with a balance due — part-paid AND
+        // ₦0-paid. Answers "which active customers owe us money?".
+        outstanding_balance:
+          req.query.outstanding_balance === "true" ? true : undefined,
         is_preorder: req.query.preorder === "true" ? true : undefined,
       },
       page,
@@ -42,6 +46,11 @@ async function listOrders(req, res) {
     }),
   );
 }
+// Live outstanding balance + its split, for the Orders collections header.
+const getCollectionsSummary = async (req, res) =>
+  res.json({
+    data: await service.collectionsSummary({ brand: req.brand }),
+  });
 const getById = async (req, res) =>
   res.json({
     data: await service.getById({ brand: req.brand, id: req.params.id }),
@@ -411,6 +420,7 @@ const updatePaymentSettings = async (req, res) =>
 
 module.exports = {
   listOrders,
+  getCollectionsSummary,
   getById,
   getOrderServiceJob,
   notifyPreorderArrival,

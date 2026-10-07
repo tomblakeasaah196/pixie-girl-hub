@@ -1214,6 +1214,15 @@ function listOrders({ brand, filters, page, page_size }) {
   const offset = (page - 1) * page_size;
   return repo.listOrders({ brand, filters, page, page_size, offset });
 }
+
+/**
+ * Collections headline for Sales → Orders: the live outstanding balance and how
+ * it splits (part-paid debtors vs ₦0-paid orders that are still receivables),
+ * plus the dead-order balances that are deliberately NOT in the queue. Read-only.
+ */
+function collectionsSummary({ brand }) {
+  return repo.collectionsSummary({ brand });
+}
 async function getById({ brand, id }) {
   const o = await repo.findById({ brand, id });
   if (!o) throw new NotFoundError("Order");
@@ -3350,10 +3359,14 @@ async function exportSalesReport({ brand, user, request_id, filters = {} }) {
   const toTs = to ? toUtc(`${to}T23:59:59.999`) : null;
   const repoFilters = { from: fromTs, to: toTs, status, sales_channel };
 
-  const [orders, lines, payments, config] = await Promise.all([
+  const [orders, lines, payments, cash, config] = await Promise.all([
     repo.reportOrders({ brand, filters: repoFilters }),
     repo.reportLines({ brand, filters: repoFilters }),
     repo.reportPayments({ brand, filters: repoFilters }),
+    // Period cash — scoped by when each payment landed, not by order date (see
+    // repo.reportCashCollected). This is what reconciles the workbook's Summary
+    // with the Sales "Cash Collected MTD" tile.
+    repo.reportCashCollected({ brand, filters: repoFilters }),
     businessConfig.findByKey(brand).catch(() => null),
   ]);
 
@@ -3366,6 +3379,7 @@ async function exportSalesReport({ brand, user, request_id, filters = {} }) {
     orders,
     lines,
     payments,
+    cash,
   });
 
   await audit({
@@ -3566,6 +3580,7 @@ async function archiveReceiptPdf({ brand, order_id }) {
 
 module.exports = {
   listOrders,
+  collectionsSummary,
   getById,
   getOrderServiceJob,
   receiptPdf,

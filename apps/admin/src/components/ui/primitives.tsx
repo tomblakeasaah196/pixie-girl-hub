@@ -181,11 +181,16 @@ export function KpiTile({
   label,
   value,
   delta,
+  hint,
   tone = "accent",
 }: {
   label: string;
   value: string;
   delta?: { up: boolean; text: string };
+  /** One line of context under the value — e.g. what a money figure excludes,
+   *  or the count behind a total. Keeps a related second figure next to its
+   *  headline instead of adding another tile (or mislabelling one). */
+  hint?: string;
   tone?: Tone;
 }) {
   const edge = tone === "warn" ? "rgb(var(--warn))" : "rgb(var(--accent))";
@@ -206,6 +211,11 @@ export function KpiTile({
           )}
         >
           {delta.up ? "▲" : "▼"} {delta.text}
+        </div>
+      )}
+      {hint && (
+        <div className="text-[11px] text-text-faint mt-1.5 leading-snug">
+          {hint}
         </div>
       )}
     </div>

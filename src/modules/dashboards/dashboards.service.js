@@ -42,14 +42,22 @@ async function overview({ brand, user, from, to }) {
   ]);
   return {
     period: range,
-    // The client reads paid_orders / revenue_ngn / pending_orders /
-    // outstanding_ngn (see apps/admin useCommandCenter DashboardOverview).
-    // The KPI repo returns *_mtd / pending_payment_count and no outstanding,
-    // so map them here — otherwise every money/count tile silently renders 0.
+    // The client reads paid_orders / cash_collected_ngn / order_value_ngn /
+    // pending_orders / outstanding_ngn (see apps/admin useCommandCenter
+    // DashboardOverview). The KPI repo returns *_mtd / pending_payment_count
+    // and no outstanding, so map them here — otherwise every money/count tile
+    // silently renders 0.
+    //
+    // The monthly money headline is CASH COLLECTED (payment rows in the window),
+    // not gross order value: the tile used to read `revenue_ngn` mapped from a
+    // `SUM(total_ngn)` over revenue-state orders, which is what was SOLD, not
+    // what was received. Gross order value is still exposed — under its own
+    // accurate name — so nothing that needs it loses it.
     sales: {
       ...sales,
       paid_orders: sales.orders_mtd,
-      revenue_ngn: sales.revenue_mtd,
+      cash_collected_ngn: sales.cash_collected_mtd,
+      order_value_ngn: sales.order_value_mtd,
       pending_orders: snapshots.pending_orders,
       outstanding_ngn: snapshots.outstanding_ngn,
     },

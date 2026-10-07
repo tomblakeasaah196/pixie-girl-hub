@@ -507,10 +507,41 @@ export interface TimelineEvent {
 
 export interface SalesKpis {
   orders_mtd: number;
-  revenue_mtd: string;
+  /** Gross captured/authorised customer payments whose money landed in the
+   *  current Lagos calendar month — the headline monthly money figure. Read
+   *  from the payment ledger, never from an order lifecycle status. */
+  cash_collected_mtd: string;
+  /** Payment rows behind `cash_collected_mtd`. */
+  payments_mtd: number;
+  /** Gross `total_ngn` of the month's paid-state orders — what was SOLD, not
+   *  what was received. Label it "Order Value", never "Revenue". */
+  order_value_mtd: string;
   pending_payment_count: number;
   avg_order_value: string;
   open_quotes: number;
+}
+
+/**
+ * Collections headline for Sales → Orders (GET /sales/orders/collections-summary).
+ *
+ * "Outstanding" is every ACTIVE order with a balance due — part-paid debtors
+ * plus the ₦0-paid orders that are still receivables. The `excluded_*` pair is
+ * the reconciliation: balances left on draft / cancel-requested / cancelled /
+ * refunded / failed orders. Those rows keep their history (nothing is zeroed),
+ * they are just not money anyone can still collect, so `raw_*` (the whole-table
+ * positive-balance total) is never a receivable figure.
+ */
+export interface CollectionsSummary {
+  outstanding_orders: number;
+  outstanding_balance_ngn: string;
+  partially_paid_orders: number;
+  partially_paid_balance_ngn: string;
+  unpaid_orders: number;
+  unpaid_balance_ngn: string;
+  excluded_orders: number;
+  excluded_balance_ngn: string;
+  raw_balance_orders: number;
+  raw_balance_ngn: string;
 }
 
 export interface PaginatedResponse<T> {

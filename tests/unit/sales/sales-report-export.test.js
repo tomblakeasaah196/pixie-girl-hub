@@ -92,9 +92,11 @@ describe("sales report — summarise", () => {
     expect(round2(s.balance)).toBe(33750);
   });
 
-  it("counts realised revenue only for PAID_STATES", () => {
+  it("counts gross ORDER VALUE only for PAID_STATES (not revenue, not cash)", () => {
     expect(s.paid_orders).toBe(1);
-    expect(round2(s.paid_revenue)).toBe(99000); // only FLH-SO-0001 (paid)
+    // Only FLH-SO-0001 (paid). This is what was SOLD — the workbook labels it
+    // "Order Value (paid-state orders)"; the cash figure is separate.
+    expect(round2(s.paid_order_value)).toBe(99000);
   });
 
   it("rolls up by status and by channel", () => {
@@ -109,6 +111,94 @@ describe("sales report — summarise", () => {
     expect(e.count).toBe(0);
     expect(round2(e.total)).toBe(0);
     expect(e.paid_orders).toBe(0);
+  });
+});
+
+describe("sales report — collections split + period cash", () => {
+  // A cancelled order keeps its balance on the row (history is never zeroed),
+  // but that balance is not a receivable: the report splits it out instead of
+  // folding it into "Outstanding Balance".
+  const WITH_DEAD = [
+    ...ORDERS,
+    {
+      order_number: "FLH-SO-0003",
+      status: "cancelled",
+      sales_channel: "whatsapp",
+      subtotal_ngn: "300000.00",
+      discount_amount_ngn: "0.00",
+      tax_amount_ngn: "0.00",
+      shipping_fee_ngn: "0.00",
+      total_ngn: "300000.00",
+      amount_paid_ngn: "0.00",
+      balance_due_ngn: "300000.00",
+    },
+  ];
+
+  it("separates live receivables from balances stranded on dead orders", () => {
+    const s = summarise(WITH_DEAD);
+    expect(round2(s.balance)).toBe(333750); // raw positive-balance total
+    expect(round2(s.active_balance)).toBe(33750); // FLH-SO-0002 only
+    expect(s.active_balance_orders).toBe(1);
+    expect(round2(s.dead_balance)).toBe(300000); // FLH-SO-0003 (cancelled)
+    expect(s.dead_balance_orders).toBe(1);
+    // active + dead must reconcile with the raw total, never lose a naira.
+    expect(round2(s.active_balance + s.dead_balance)).toBe(round2(s.balance));
+  });
+
+  it("counts only captured/authorised payment rows as cash", () => {
+    const s = summarise(ORDERS, [
+      { status: "captured", amount_ngn: "50000.00" },
+      { status: "authorised", amount_ngn: "25000.00" },
+      { status: "pending", amount_ngn: "99999.00" },
+      { status: "failed", amount_ngn: "99999.00" },
+      { status: "refunded", amount_ngn: "99999.00" },
+    ]);
+    expect(round2(s.cash_collected)).toBe(75000);
+    expect(s.cash_payments).toBe(2);
+    expect(s.cash_scope).toBe("listed");
+  });
+
+  it("prefers the capture-time ledger figure when the service supplies it", () => {
+    // reportPayments rows are order-scoped; reportCashCollected is scoped by
+    // when the money landed. The Summary must show the latter (that is what
+    // reconciles with the Sales "Cash Collected MTD" tile).
+    const s = summarise(
+      ORDERS,
+      [{ status: "captured", amount_ngn: "99000.00" }],
+      { cash_collected_ngn: "1480000.00", payments: 7 },
+    );
+    expect(round2(s.cash_collected)).toBe(1480000);
+    expect(s.cash_payments).toBe(7);
+    expect(s.cash_scope).toBe("period");
+  });
+
+  it("labels the cash row in the Summary sheet", async () => {
+    const buf = await xport.buildWorkbook({
+      brandLabel: "Faitlynhair",
+      fromLabel: "2026-01-01",
+      toLabel: "2026-01-31",
+      generatedAt: "2026-01-31 17:00",
+      generatedBy: null,
+      orders: WITH_DEAD,
+      lines: [],
+      payments: [],
+      cash: { cash_collected_ngn: "1480000.00", payments: 7 },
+    });
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(buf);
+    const labels = [];
+    wb.getWorksheet("Summary").eachRow((row) => {
+      const v = row.getCell(1).value;
+      if (typeof v === "string") labels.push(v);
+    });
+    expect(labels).toContain("Cash Collected in Period (7 payments)");
+    expect(labels).toContain("Outstanding Balance (active · 1 orders)");
+    expect(labels).toContain(
+      "Not Collectable (cancelled/refunded/failed · 1 orders)",
+    );
+    expect(labels).toContain("Order Value (paid-state orders)");
+    // The old mislabel must be gone: gross order value is never "revenue".
+    expect(labels.some((l) => /revenue/i.test(l))).toBe(false);
   });
 });
 

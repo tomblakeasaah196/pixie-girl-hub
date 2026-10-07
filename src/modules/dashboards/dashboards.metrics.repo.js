@@ -19,9 +19,21 @@
 
 const { query } = require("../../config/database");
 const { t } = require("../../config/brands");
+const {
+  SETTLED_PAYMENT_STATUSES_SQL,
+} = require("../sales/order-status");
 
-// Mirrors the order lifecycle SSOT (order-status.js REVENUE_STATES).
+// Mirrors the order lifecycle SSOT (order-status.js REVENUE_STATES). This gates
+// GROSS ORDER VALUE rollups (total_ngn of orders that were paid in full) — it is
+// not a cash measure and must not be labelled revenue.
 const REVENUE_STATES = `('paid','assigned','order_ready','dispatched','completed')`;
+
+// Cash in = captured/authorised payment rows, dated by when the money landed.
+// One definition for every cash figure in the product (Sales "Cash Collected
+// MTD", the Dashboard "Cash Collected" tile, the Payment Methods donut, the
+// payments drill-down and the sales report export), so they reconcile.
+const CASH_WHERE = `status IN ${SETTLED_PAYMENT_STATUSES_SQL}`;
+const CASH_AT = `COALESCE(captured_at, recorded_at)`;
 const ACTIVE_DELIVERY_STATES = `('queued','booked','picked_up','in_transit','arrived_destination_city','out_for_delivery')`;
 const TZ = `'Africa/Lagos'`;
 
@@ -147,7 +159,7 @@ async function paymentMethodBreakdown({ brand, from, to }) {
             count(*)::int AS payments,
             COALESCE(SUM(amount_ngn),0)::float8 AS value
        FROM ${t(brand, "sales_order_payments")}
-      WHERE captured_at BETWEEN $1 AND $2
+      WHERE ${CASH_WHERE} AND ${CASH_AT} BETWEEN $1 AND $2
       GROUP BY 1 ORDER BY value DESC`,
     [from, to],
   );
@@ -158,7 +170,7 @@ async function cashCollected({ brand, from, to }) {
   const { rows } = await query(
     `SELECT COALESCE(SUM(amount_ngn),0)::text AS cash_collected
        FROM ${t(brand, "sales_order_payments")}
-      WHERE captured_at BETWEEN $1 AND $2`,
+      WHERE ${CASH_WHERE} AND ${CASH_AT} BETWEEN $1 AND $2`,
     [from, to],
   );
   return rows[0].cash_collected;

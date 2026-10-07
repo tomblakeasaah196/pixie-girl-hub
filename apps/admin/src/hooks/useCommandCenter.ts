@@ -23,7 +23,13 @@ export interface DashboardOverview {
   period: { from: string; to: string };
   sales: {
     paid_orders: number;
-    revenue_ngn: string;
+    /** Gross captured/authorised customer payments in the window — the money
+     *  that actually landed. The monthly money headline. */
+    cash_collected_ngn: string;
+    /** Gross `total_ngn` of the window's paid-state orders — what was SOLD.
+     *  Never labelled revenue: it includes unpaid balances and excludes
+     *  deposits taken in the window against older orders. */
+    order_value_ngn: string;
     pending_orders: number;
     outstanding_ngn: string;
   };

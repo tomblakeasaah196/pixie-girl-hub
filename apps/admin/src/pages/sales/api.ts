@@ -3,6 +3,7 @@ import type {
   SalesOrder,
   Quotation,
   SalesKpis,
+  CollectionsSummary,
   TimelineEvent,
   OrderCreateInput,
   PaymentCreateInput,
@@ -54,6 +55,9 @@ export interface OrderListParams {
   search?: string;
   /** Active collection orders: money received and a balance still due. */
   part_paid?: boolean;
+  /** Every ACTIVE order with a balance still due — part-paid AND ₦0-paid.
+   *  Excludes draft / cancel-requested / cancelled / refunded / failed. */
+  outstanding_balance?: boolean;
   /** Pre-orders tab (000086): orders carrying a made-to-order line. */
   preorder?: boolean;
   page?: number;
@@ -63,6 +67,7 @@ export interface OrderListParams {
 export const listOrders = ({
   search,
   part_paid,
+  outstanding_balance,
   preorder,
   ...rest
 }: OrderListParams = {}) =>
@@ -71,9 +76,15 @@ export const listOrders = ({
       ...rest,
       q: search,
       part_paid: part_paid || undefined,
+      outstanding_balance: outstanding_balance || undefined,
       preorder: preorder || undefined,
     })}`,
   );
+
+/** Collections headline for the Orders list — live outstanding balance, its
+ *  part-paid / ₦0-paid split, and the dead-order balances that are excluded. */
+export const getCollectionsSummary = () =>
+  api.get<CollectionsSummary>(`${S}/orders/collections-summary`);
 
 export const getOrder = (id: string) =>
   api.get<SalesOrder>(`${S}/orders/${id}`);

@@ -53,6 +53,7 @@
     "diag:bg-removal": "node scripts/diag-bg-removal.js",
     "cleanup:unpaid-deliveries": "node scripts/cleanup-unpaid-deliveries.js",
     "report:pending-unpaid": "node scripts/report-pending-unpaid-orders.js",
+    "report:outstanding": "node scripts/report-outstanding-balance.js",
     "stock:import-count": "node scripts/import-stock-count.js",
     "workers:start": "node src/jobs/worker.js",
     "coverage:frontend": "node scripts/build-frontend-coverage.js",

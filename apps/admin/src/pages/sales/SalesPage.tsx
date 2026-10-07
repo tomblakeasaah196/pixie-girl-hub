@@ -21,6 +21,7 @@ import { money } from "@/lib/format";
 import { useAuthStore } from "@/stores/auth";
 import {
   useSalesKpis,
+  useCollectionsSummary,
   useDeliveryPendingOrders,
   usePosReconciliation,
 } from "./hooks";
@@ -61,6 +62,9 @@ export function SalesPage() {
   const tab = (sp.get("tab") as SalesTab) ?? "quick-sale";
   const setTab = (t: SalesTab) => setSp({ tab: t });
   const { data: kpis } = useSalesKpis();
+  // Live receivables (Sales → Orders → Collections). Point-in-time, not MTD:
+  // what customers owe now is not a period figure.
+  const { data: collections } = useCollectionsSummary();
   const { data: pendingFee } = useDeliveryPendingOrders({ page_size: 1 });
   const pendingCount = pendingFee?.meta?.total ?? 0;
   const { data: pendingRecon } = usePosReconciliation({ page_size: 1 });
@@ -106,20 +110,41 @@ export function SalesPage() {
       />
 
       {kpis && (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           <KpiTile label="Orders MTD" value={String(kpis.orders_mtd)} />
+          {/* The monthly money headline is CASH: captured/authorised customer
+              payments that landed this Lagos month. It used to be gross order
+              value under a "Revenue" label, which counted money nobody had paid
+              and missed deposits taken on older orders. */}
           <KpiTile
-            label="Revenue MTD"
-            value={money(Number(kpis.revenue_mtd))}
+            label="Cash Collected MTD"
+            value={money(Number(kpis.cash_collected_mtd))}
+            hint={`${kpis.payments_mtd} captured payments`}
+          />
+          <KpiTile
+            label="Order Value MTD"
+            value={money(Number(kpis.order_value_mtd))}
+            hint={`avg ${money(Number(kpis.avg_order_value))} · gross, not cash`}
+          />
+          {/* Live receivables — the Orders → Collections queue in one figure. */}
+          <KpiTile
+            label="Outstanding Balance"
+            value={
+              collections
+                ? money(Number(collections.outstanding_balance_ngn))
+                : "—"
+            }
+            hint={
+              collections
+                ? `${collections.outstanding_orders} active orders owe a balance`
+                : undefined
+            }
+            tone="warn"
           />
           <KpiTile
             label="Pending Payment"
             value={String(kpis.pending_payment_count)}
             tone="warn"
-          />
-          <KpiTile
-            label="Avg Order Value"
-            value={money(Number(kpis.avg_order_value))}
           />
           <KpiTile label="Open Quotes" value={String(kpis.open_quotes)} />
         </div>

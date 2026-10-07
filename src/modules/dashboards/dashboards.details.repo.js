@@ -16,6 +16,10 @@
 
 const { query } = require("../../config/database");
 const { t } = require("../../config/brands");
+// One definition of "cash in" across every surface (see dashboards.metrics.repo).
+const {
+  SETTLED_PAYMENT_STATUSES_SQL,
+} = require("../sales/order-status");
 const metrics = require("./dashboards.metrics.repo");
 
 const ACTIVE_DELIVERY_STATES = `('queued','booked','picked_up','in_transit','arrived_destination_city','out_for_delivery')`;
@@ -59,15 +63,19 @@ async function orders({ brand, from, to, filters = {}, limit, offset }) {
 }
 
 async function payments({ brand, from, to, limit, offset }) {
-  const w = `WHERE p.captured_at BETWEEN $1 AND $2`;
+  // The drill-down behind the Cash Collected tile, so it uses the SAME
+  // predicate as that tile (captured/authorised rows, dated by when the money
+  // landed) — otherwise the listed rows would not sum to the figure.
+  const w = `WHERE p.status IN ${SETTLED_PAYMENT_STATUSES_SQL}
+        AND COALESCE(p.captured_at, p.recorded_at) BETWEEN $1 AND $2`;
   return paged(
-    `SELECT p.payment_number, p.captured_at, o.order_number,
+    `SELECT p.payment_number, COALESCE(p.captured_at, p.recorded_at) AS captured_at, o.order_number,
             p.method, p.provider, p.status,
             p.amount_ngn::text AS amount_ngn, p.fee_ngn::text AS fee_ngn,
             p.net_received_ngn::text AS net_received_ngn
        FROM ${t(brand, "sales_order_payments")} p
        LEFT JOIN ${t(brand, "sales_orders")} o ON o.order_id = p.order_id
-      ${w} ORDER BY p.captured_at DESC`,
+      ${w} ORDER BY COALESCE(p.captured_at, p.recorded_at) DESC`,
     `SELECT count(*)::int AS total FROM ${t(brand, "sales_order_payments")} p ${w}`,
     [from, to],
     { limit, offset },

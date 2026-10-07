@@ -399,10 +399,17 @@ async function listOrders({
     params.push(`%${filters.q}%`);
   }
   if (filters.part_paid) {
-    // Flexi Pay (PR-3): committed-but-unsettled instalment orders — the buyer
-    // chose the plan and has paid something, with a balance still outstanding.
+    // Collections: money received AND money still due. This is deliberately
+    // derived from the monetary columns, not the single lifecycle `status`:
+    // an order can move to assigned/order_ready/dispatched while its balance is
+    // still open. Do not limit this to Flexi Pay either — legacy and full-plan
+    // orders can legitimately have a recorded part payment.
+    //
+    // A customer who has paid nothing remains in Pending Payment. Drafts and
+    // orders in a cancellation/refund/failure flow are not live collection
+    // work.
     where.push(
-      `so.payment_plan = 'instalment' AND so.amount_paid_ngn > 0 AND so.balance_due_ngn > 0 AND so.status NOT IN ('cancelled','refunded')`,
+      `so.amount_paid_ngn > 0 AND so.balance_due_ngn > 0 AND so.status NOT IN ('draft','cancellation_requested','cancelled','refunded','failed')`,
     );
   }
   if (filters.is_preorder) {

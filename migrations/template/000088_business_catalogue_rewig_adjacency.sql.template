@@ -92,8 +92,13 @@ UPDATE {{BUSINESS}}.products p
    AND length(p.name) > length(t.label) + 3;
 
 -- 4b. base_family_id: group by the name with that suffix stripped, so every
--- sibling size of the same base shares one id. Only touches rows 4a just
--- matched (size_code newly set, family not yet assigned).
+-- sibling size of the same base shares one id. Only touches rows whose
+-- family is not yet assigned — but REUSES a family an earlier sibling
+-- already carries for the same key. (Replays of this template used to mint
+-- a FRESH id per run for whatever rows were unassigned that day, so a size
+-- added months after its siblings landed in a family of one and rewig
+-- never saw the others. Catalogue now stamps the family at creation time;
+-- this backfill only heals rows that predate that.)
 WITH fam AS (
   SELECT p.product_id,
          trim(regexp_replace(p.name, '\s*-\s*' || t.label || '\s*$', '', 'i')) AS family_key
@@ -103,16 +108,52 @@ WITH fam AS (
      AND p.size_code IS NOT NULL
      AND (to_jsonb(p)->>'catalogue_role') IS DISTINCT FROM 'retail'
 ),
+existing AS (
+  SELECT trim(regexp_replace(p.name, '\s*-\s*' || t.label || '\s*$', '', 'i')) AS family_key,
+         MIN(p.base_family_id::text)::uuid AS family_id
+    FROM {{BUSINESS}}.products p
+    JOIN {{BUSINESS}}.styled_size_tiers t ON t.size_code = p.size_code
+   WHERE p.base_family_id IS NOT NULL
+     AND p.size_code IS NOT NULL
+     AND (to_jsonb(p)->>'catalogue_role') IS DISTINCT FROM 'retail'
+   GROUP BY 1
+),
 grp AS (
-  SELECT family_key, gen_random_uuid() AS family_id
-    FROM fam
-   GROUP BY family_key
+  SELECT f.family_key,
+         COALESCE(e.family_id, gen_random_uuid()) AS family_id
+    FROM (SELECT DISTINCT family_key FROM fam) f
+    LEFT JOIN existing e ON e.family_key = f.family_key
 )
 UPDATE {{BUSINESS}}.products p
    SET base_family_id = g.family_id
   FROM fam f
   JOIN grp g ON g.family_key = f.family_key
  WHERE p.product_id = f.product_id;
+
+-- 4c. Merge split families: rows that already carry DIFFERENT family ids
+-- for the same family key (minted by separate pre-fix replays of 4b) are
+-- unified onto the smallest id, so the whole size run is one family again.
+WITH keyed AS (
+  SELECT p.product_id,
+         trim(regexp_replace(p.name, '\s*-\s*' || t.label || '\s*$', '', 'i')) AS family_key,
+         p.base_family_id
+    FROM {{BUSINESS}}.products p
+    JOIN {{BUSINESS}}.styled_size_tiers t ON t.size_code = p.size_code
+   WHERE p.base_family_id IS NOT NULL
+     AND p.size_code IS NOT NULL
+     AND (to_jsonb(p)->>'catalogue_role') IS DISTINCT FROM 'retail'
+),
+canon AS (
+  SELECT family_key, MIN(base_family_id::text)::uuid AS family_id
+    FROM keyed
+   GROUP BY family_key
+)
+UPDATE {{BUSINESS}}.products p
+   SET base_family_id = c.family_id
+  FROM keyed k
+  JOIN canon c ON c.family_key = k.family_key
+ WHERE p.product_id = k.product_id
+   AND p.base_family_id IS DISTINCT FROM c.family_id;
 
 -- ============================================================
 -- Verify (after substitution):

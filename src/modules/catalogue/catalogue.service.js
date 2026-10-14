@@ -20,6 +20,7 @@ const {
 } = require("../../services/media-compression.service");
 const { isolateSubject } = require("../../services/background-cutout.service");
 const { audit } = require("../../middleware/audit");
+const { randomUUID } = require("crypto");
 const { transaction } = require("../../config/database");
 const { NotFoundError, AppError } = require("../../utils/errors");
 const { computeAvailability } = require("./availability");
@@ -194,6 +195,9 @@ async function createProduct({ brand, user, request_id, input }) {
 // ── Wizard / clone: base + stock-bearing default variant ──
 
 // Descriptive fields copied when a base is cloned (never code/slug/visibility).
+// The rewig trio (000088) rides along on purpose: a clone is the same base in
+// the same size, so it stays in the source's size family; "Create other
+// sizes" overrides size_code per requested size (see createSiblingSizes).
 const CLONE_PROD_FIELDS = [
   "category_id",
   "name",
@@ -211,7 +215,68 @@ const CLONE_PROD_FIELDS = [
   "lace_size_codes",
   "preorder_excluded",
   "production_lead_days",
+  "size_code",
+  "base_family_id",
+  "rewig_eligible",
 ];
+
+// ── Rewig family stamping (000088) ───────────────────────
+// Rewig (one-size-up/down substitution) can only see a base whose
+// products.size_code is set AND which shares a products.base_family_id with
+// its size siblings. Until now nothing at runtime set either: the only writer
+// was migration 000088's one-off name backfill, so any base created afterwards
+// (wizard, Clone, "Create other sizes") joined NO family and read
+// "out of stock" the moment its own size hit zero — even with an adjacent
+// size on the shelf. These helpers stamp the linkage at creation time, the
+// moment the size is actually known.
+
+/** The tier whose label (or code) a cap_size refers to, e.g. "Large" → L. */
+function sizeCodeForCapSize(tiers, capSize) {
+  if (!capSize) return null;
+  const needle = String(capSize).trim().toLowerCase();
+  const tier = (tiers || []).find(
+    (t) =>
+      String(t.label || "").trim().toLowerCase() === needle ||
+      String(t.size_code || "").trim().toLowerCase() === needle,
+  );
+  return tier ? tier.size_code : null;
+}
+
+const escRegExp = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** "{family} - Large" → "{family}" (the grouping key 000088's backfill uses). */
+function familyKeyForName(name, tiers) {
+  let key = String(name || "").trim();
+  for (const t of tiers || []) {
+    if (!t.label) continue;
+    const re = new RegExp(`\\s*-\\s*${escRegExp(t.label)}\\s*$`, "i");
+    if (re.test(key)) {
+      key = key.replace(re, "").trim();
+      break;
+    }
+  }
+  return key;
+}
+
+/**
+ * The rewig family a clone/sibling of the base `id` belongs to: the source's
+ * own family when it has one; otherwise a fresh family, written back onto the
+ * source too (plus its size_code when derivable from its cap size) so the
+ * source and everything cloned from it share one family from now on.
+ * Returns { family, size_code } — size_code is the SOURCE's own tier.
+ */
+async function ensureBaseFamily(client, brand, id, fields, tiers) {
+  const family = fields.base_family_id || randomUUID();
+  const size_code =
+    fields.size_code || sizeCodeForCapSize(tiers, fields.cap_size);
+  const patch = {};
+  if (!fields.base_family_id) patch.base_family_id = family;
+  if (!fields.size_code && size_code) patch.size_code = size_code;
+  if (Object.keys(patch).length) {
+    await repo.updateProduct({ client, brand, id, patch });
+  }
+  return { family, size_code };
+}
 
 /** Create the stock-bearing default variant for a wizard/clone base, carrying
  *  the prices + physical fields the wizard collects. */
@@ -305,6 +370,21 @@ async function createOneBase(client, brand, request_id, user, spec, source) {
 async function createBaseProducts({ brand, user, request_id, input }) {
   const specs = input.products || [];
   return transaction(async (client) => {
+    // Stamp the rewig linkage (000088) as the run is created: each wizard
+    // size IS a tier, and sizes sharing a family name form one family.
+    // Without this a wizard-born base joined no family and could neither
+    // donate to nor receive a size-adjacent substitution.
+    const tiers = await repo.listSizeTiers({ client, brand });
+    const familyByKey = new Map();
+    for (const spec of specs) {
+      const size_code =
+        spec.size_code || sizeCodeForCapSize(tiers, spec.cap_size);
+      if (!size_code) continue;
+      spec.size_code = size_code;
+      const key = familyKeyForName(spec.name, tiers);
+      if (!familyByKey.has(key)) familyByKey.set(key, randomUUID());
+      spec.base_family_id = familyByKey.get(key);
+    }
     const created = [];
     for (const spec of specs) {
       created.push(
@@ -348,12 +428,23 @@ async function loadCloneSource(client, brand, id) {
 async function cloneProduct({ brand, user, request_id, id }) {
   return transaction(async (client) => {
     const { fields, variant } = await loadCloneSource(client, brand, id);
+    // A clone is the same size as its source, so it stays in the source's
+    // rewig family (minting + healing one when the source predates the
+    // linkage) instead of starting life as a family-less orphan.
+    const tiers = await repo.listSizeTiers({ client, brand });
+    const { family, size_code } = await ensureBaseFamily(
+      client,
+      brand,
+      id,
+      fields,
+      tiers,
+    );
     return createOneBase(
       client,
       brand,
       request_id,
       user,
-      { ...fields, variant },
+      { ...fields, base_family_id: family, size_code, variant },
       "clone",
     );
   });
@@ -367,12 +458,26 @@ async function cloneProduct({ brand, user, request_id, id }) {
 async function createSiblingSizes({ brand, user, request_id, id, sizes }) {
   return transaction(async (client) => {
     const { fields, variant } = await loadCloneSource(client, brand, id);
+    // Every new size joins the source's rewig family with its OWN size_code
+    // (000088). Previously the clone fields carried neither, so a base born
+    // here could never be filled from — or fill — an adjacent size, and read
+    // "out of stock" while its sibling sat on the shelf.
+    const tiers = await repo.listSizeTiers({ client, brand });
+    const { family } = await ensureBaseFamily(client, brand, id, fields, tiers);
     const created = [];
     for (const s of sizes || []) {
+      const cap_size = s.cap_size ?? fields.cap_size;
       const spec = {
         ...fields,
         name: s.name,
-        cap_size: s.cap_size ?? fields.cap_size,
+        cap_size,
+        // NB: no fall-back to the source's own tier — a sibling whose size
+        // can't be resolved gets NULL rather than a wrong size_code, which
+        // would make rewig treat it as the source's size.
+        size_code:
+          sizeCodeForCapSize(tiers, s.size_code) ||
+          sizeCodeForCapSize(tiers, cap_size),
+        base_family_id: family,
         variant: { ...variant, variant_cap_size: s.cap_size ?? variant.variant_cap_size },
       };
       created.push(
@@ -1351,6 +1456,9 @@ module.exports = {
   createBaseProducts,
   cloneProduct,
   createSiblingSizes,
+  // Exported for unit tests (rewig family stamping, 000088).
+  sizeCodeForCapSize,
+  familyKeyForName,
   bulkImportProducts,
   updateProduct,
   deleteProduct,

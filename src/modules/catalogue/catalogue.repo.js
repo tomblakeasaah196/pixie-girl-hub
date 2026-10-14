@@ -348,6 +348,19 @@ async function productCodeTaken({ client, brand, code }) {
   );
   return rows.length > 0;
 }
+/** The brand's size ladder (S/M/L/XL …) — the vocabulary a base's own
+ *  size_code (rewig adjacency, 000088) is drawn from. Read here so base
+ *  creation can stamp size_code/base_family_id without a cross-repo hop
+ *  into styled_variants.repo. */
+async function listSizeTiers({ client, brand }) {
+  const { rows } = await ex(client)(
+    `SELECT size_code, label, display_order, is_active
+       FROM ${t(brand, "styled_size_tiers")}
+      ORDER BY display_order, size_code`,
+  );
+  return rows;
+}
+
 async function createProduct({ client, brand, input, user_id }) {
   const { f, ph, p } = insert(PROD_COLS, input, { created_by: user_id });
   const { rows } = await ex(client)(
@@ -890,6 +903,7 @@ module.exports = {
   archiveCategory,
   findAllProducts,
   findProductById,
+  listSizeTiers,
   findProductByName,
   findProductRole,
   productSlugTaken,

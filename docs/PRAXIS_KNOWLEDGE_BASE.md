@@ -891,7 +891,9 @@ Girl only, while switched on in Config) · **Categories** · **Collections** ·
   once** (one base per size). Open one at `/catalogue/base/<id>`.
 - *Create the other sizes of a base I already made?* Open the base →
   **Create other sizes** (top-right) → pick the sizes; it clones this base into
-  new sibling bases (same everything, size differs).
+  new sibling bases (same everything, size differs). New sizes are linked
+  into this base's size family automatically, so rewig (below) can substitute
+  between them straight away — no extra setup.
 - *Duplicate a base to tweak one thing?* Open the base → **Clone** (top-right).
 - *Set a base's cap size?* Open the base → Details → **Cap size** (dropdown from
   your size config, plus Adjustable).
@@ -909,7 +911,9 @@ Girl only, while switched on in Config) · **Categories** · **Collections** ·
   fill an order — same styling job, no separate service. Turn it on/off, choose
   whether it applies to every listing automatically or only listings switched on,
   and pick which size is drawn from first (cut down vs built up) at Catalogue →
-  **Config** → **Rewig adjacency**. A single listing can override the brand
+  **Config** → **Rewig adjacency**. Bases made with the wizard, **Clone** or
+  **Create other sizes** join their size family automatically when created.
+  A single listing can override the brand
   setting from its own Sizes & variants tab — note **"Always off for this
   listing" beats the brand setting**, so a listing set that way never substitutes
   even while adjacency is on everywhere else. The substitution applies on every

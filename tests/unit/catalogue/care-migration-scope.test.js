@@ -18,7 +18,9 @@ test("fresh/upgrade: FLH cannot store a retail row, no legacy rows reclassified"
 
 test("repeat repair: base storefront lockdown and rewig backfill exclude classified retail", () => {
   expect(old43.match(/\(to_jsonb\(p\)->>'catalogue_role'\) IS DISTINCT FROM 'retail'/g)).toHaveLength(2);
-  expect(rewig.match(/\(to_jsonb\(p\)->>'catalogue_role'\) IS DISTINCT FROM 'retail'/g)).toHaveLength(2);
+  // 4 occurrences in 000088: 4a, 4b's unassigned + existing-family reads,
+  // and 4c's split-family merge — every products read there excludes retail.
+  expect(rewig.match(/\(to_jsonb\(p\)->>'catalogue_role'\) IS DISTINCT FROM 'retail'/g)).toHaveLength(4);
   expect(old43).not.toMatch(/ALTER COLUMN catalogue_role/);
   expect(sql).toContain("DROP TRIGGER IF EXISTS trg_care_role_immutable");
   expect(sql).toContain("DROP TRIGGER IF EXISTS trg_care_no_sales_before_pr2");

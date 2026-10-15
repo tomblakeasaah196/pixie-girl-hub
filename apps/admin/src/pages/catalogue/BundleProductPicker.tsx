@@ -239,7 +239,7 @@ export function BundleProductPicker({
                   )}
                 </span>
                 <span className="flex-1 min-w-0">
-                  <span className="block truncate text-[13px] text-text-primary">
+                  <span className="block whitespace-normal break-words text-[13px] leading-snug text-text-primary">
                     {p.name}
                   </span>
                   <span className="block text-[10.5px] text-text-faint truncate">

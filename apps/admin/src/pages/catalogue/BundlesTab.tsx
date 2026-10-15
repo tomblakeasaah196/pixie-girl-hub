@@ -19,6 +19,7 @@ import {
   MoneyText,
   Pill,
 } from "@/components/ui/primitives";
+import { ExpandableText } from "@/components/ui/ExpandableText";
 import {
   ErrorState,
   DeniedState,
@@ -211,9 +212,10 @@ export function BundlesTab() {
               </div>
               <div className="flex items-start justify-between gap-2 mb-1">
                 <div className="min-w-0">
-                  <div className="font-display text-[15px] truncate">
-                    {b.display_name}
-                  </div>
+                  <ExpandableText
+                    text={b.display_name}
+                    className="text-[15px] font-display"
+                  />
                   <div className="font-mono text-[10.5px] text-accent-glow">
                     {b.bundle_code}
                   </div>
@@ -633,19 +635,16 @@ function BundleEditorModal({
                   key={c.bundle_product_id}
                   className="flex items-center gap-2 rounded-[11px] border border-line bg-text-primary/[0.03] px-3 py-2"
                 >
-                  <span className="flex-1 min-w-0 truncate text-[13px]">
-                    {c.styled_name ?? c.product_name ?? c.product_code ?? "Product"}
-                    {c.styled_name && (
-                      <span className="ml-1.5 inline-flex align-middle">
-                        <Pill tone="accent" dot={false}>
-                          styled
-                        </Pill>
-                      </span>
-                    )}
-                    {c.quantity > 1 && (
-                      <span className="text-text-faint"> × {c.quantity}</span>
-                    )}
-                  </span>
+                  <div className="min-w-0 flex-1">
+                    <ExpandableText
+                      text={c.styled_name ?? c.product_name ?? c.product_code ?? "Product"}
+                      className="w-full text-[13px]"
+                    />
+                    <div className="flex items-center gap-1.5 text-[11px] text-text-faint">
+                      {c.styled_name && <Pill tone="accent" dot={false}>styled</Pill>}
+                      {c.quantity > 1 && <span>× {c.quantity}</span>}
+                    </div>
+                  </div>
                   {c.unit_price_ngn != null && (
                     <MoneyText
                       ngn={c.unit_price_ngn}
@@ -931,9 +930,10 @@ function CreateBundleModal({
                 key={c.styled_id}
                 className="flex items-center gap-2 rounded-[11px] border border-line bg-text-primary/[0.03] px-3 py-2"
               >
-                <span className="flex-1 min-w-0 truncate text-[13px]">
-                  {c.name}
-                </span>
+                <ExpandableText
+                  text={c.name}
+                  className="min-w-0 w-auto flex-1 text-[13px]"
+                />
                 <input
                   type="number"
                   min={1}

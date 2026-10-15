@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { Search, Package, Layers, Box, Sparkles, Droplets, Check, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { AnchoredDropdown } from "@/components/ui/AnchoredDropdown";
+import { ExpandableText } from "@/components/ui/ExpandableText";
 import {
   PRODUCT_KINDS,
   searchByKind,
@@ -194,6 +195,7 @@ export function ProductPicker({
           open={open && !!kind && q.trim().length >= 2}
           onClose={() => setOpen(false)}
           maxHeight={260}
+          mobileMinWidth={360}
           className="dropglass"
         >
           {loading ? (
@@ -241,11 +243,11 @@ export function ProductPicker({
                       <KIND_ICON_EL kind={h.kind} />
                     )}
                   </div>
-                  <div className="min-w-0">
-                    <div className="text-[13px] font-semibold truncate">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[13px] font-semibold whitespace-normal break-words leading-snug">
                       {h.label}
                     </div>
-                    <div className="text-[11px] text-text-faint truncate">
+                    <div className="text-[11px] text-text-faint whitespace-normal break-words">
                       {h.sub}
                     </div>
                   </div>
@@ -262,11 +264,14 @@ export function ProductPicker({
         <div className="glass rounded-[11px] border border-accent/25 p-2.5 space-y-2">
           <div className="flex flex-wrap gap-1.5">
             {selected.map((h) => (
-              <span
+              <div
                 key={`${h.kind}:${h.id}`}
-                className="inline-flex items-center gap-1.5 max-w-full pl-2.5 pr-1.5 h-7 rounded-[8px] bg-accent/[0.1] border border-accent/30 text-[12px] text-text-primary"
+                className="inline-flex items-start gap-1.5 max-w-full min-h-7 py-1 pl-2.5 pr-1.5 rounded-[8px] bg-accent/[0.1] border border-accent/30 text-[12px] text-text-primary"
               >
-                <span className="truncate">{h.label}</span>
+                <ExpandableText
+                  text={h.label}
+                  className="min-w-0 w-auto flex-1 text-[12px]"
+                />
                 <button
                   type="button"
                   aria-label={`Remove ${h.label}`}
@@ -275,7 +280,7 @@ export function ProductPicker({
                 >
                   <X className="w-3 h-3" />
                 </button>
-              </span>
+              </div>
             ))}
           </div>
           <div className="flex items-center justify-between gap-2">

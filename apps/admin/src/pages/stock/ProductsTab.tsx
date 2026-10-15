@@ -4,6 +4,7 @@ import { Boxes, PackageOpen } from "lucide-react";
 import { Button, KpiTile, Pill, Skeleton } from "@/components/ui/primitives";
 import { ErrorState, Select } from "@/components/ui/controls";
 import { DataTable, type Column } from "@/components/ui/DataTable";
+import { ExpandableText } from "@/components/ui/ExpandableText";
 import { CardImage } from "@/pages/catalogue/parts";
 import { formatDateTime } from "@/lib/format";
 import { useAuthStore } from "@/stores/auth";
@@ -75,9 +76,10 @@ function ProductIdentity({
         className={size === "row" ? "w-10 h-10 rounded-[9px]" : "w-12 h-12"}
       />
       <div className="flex flex-col gap-0.5 min-w-0">
-        <span className="text-[13px] text-text-primary font-medium truncate">
-          {row.name}
-        </span>
+        <ExpandableText
+          text={row.name}
+          className="text-[13px] text-text-primary font-medium"
+        />
         <span className="text-[11px] text-text-faint font-mono truncate">
           {meta || "No SKU"}
           {row.variant_count > 1 && (

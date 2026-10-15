@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button, IconButton, Pill } from "@/components/ui/primitives";
+import { ExpandableText } from "@/components/ui/ExpandableText";
 import {
   useBulkImportProducts,
   useVaultAccess,
@@ -581,8 +582,11 @@ function PreviewView({
                   <td className="px-3 py-2 text-text-faint tabular-nums">
                     {i + 1}
                   </td>
-                  <td className="px-3 py-2 text-text-primary max-w-[260px] truncate">
-                    {r.name || <span className="text-text-faint">—</span>}
+                  <td className="px-3 py-2 max-w-[260px]">
+                    <ExpandableText
+                      text={r.name || "—"}
+                      className="text-[12px] text-text-primary"
+                    />
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-text-muted">
                     {r.length != null ? `${r.length}"` : "—"}
@@ -694,8 +698,11 @@ function ResultView({ result }: { result: BulkImportResult }) {
                     <td className="px-3 py-2 font-mono text-[11px] text-accent-glow">
                       {r.product_code}
                     </td>
-                    <td className="px-3 py-2 text-text-primary max-w-[300px] truncate">
-                      {r.name}
+                    <td className="px-3 py-2 max-w-[300px]">
+                      <ExpandableText
+                        text={r.name}
+                        className="text-[12px] text-text-primary"
+                      />
                     </td>
                     <td className="px-3 py-2">
                       <Pill tone={meta.tone} dot={false}>

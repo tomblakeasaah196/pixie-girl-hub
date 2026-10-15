@@ -30,6 +30,7 @@ export function AnchoredDropdown({
   onClose,
   children,
   maxHeight = 300,
+  mobileMinWidth,
   className,
   id,
   role,
@@ -40,6 +41,8 @@ export function AnchoredDropdown({
   onClose: () => void;
   children: ReactNode;
   maxHeight?: number;
+  /** Expand a narrow anchored panel on phones, while keeping it in the viewport. */
+  mobileMinWidth?: number;
   className?: string;
   /** Element id, so a trigger can point at this panel via aria-controls. */
   id?: string;
@@ -69,9 +72,24 @@ export function AnchoredDropdown({
       // Flip up only when below is genuinely cramped and above is roomier.
       const openUp = spaceBelow < 180 && spaceAbove > spaceBelow;
       const avail = Math.max(120, (openUp ? spaceAbove : spaceBelow) - 8);
+      const viewportWidth = window.innerWidth;
+      const mobileInset = 12;
+      const expandOnMobile = mobileMinWidth != null && viewportWidth <= 640;
+      const width = expandOnMobile
+        ? Math.min(
+            Math.max(r.width, mobileMinWidth),
+            Math.max(0, viewportWidth - mobileInset * 2),
+          )
+        : r.width;
+      const left = expandOnMobile
+        ? Math.min(
+            Math.max(mobileInset, r.left + (r.width - width) / 2),
+            Math.max(mobileInset, viewportWidth - width - mobileInset),
+          )
+        : r.left;
       setPos({
-        left: r.left,
-        width: r.width,
+        left,
+        width,
         maxHeight: Math.min(maxHeight, avail),
         ...(openUp
           ? { bottom: window.innerHeight - r.top + gap }
@@ -80,15 +98,21 @@ export function AnchoredDropdown({
     };
 
     reposition();
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(reposition);
+    resizeObserver?.observe(anchor);
     // Capture-phase scroll catches scrolling in any ancestor container, not
     // just the window, so the panel stays glued to its trigger.
     window.addEventListener("scroll", reposition, true);
     window.addEventListener("resize", reposition);
     return () => {
+      resizeObserver?.disconnect();
       window.removeEventListener("scroll", reposition, true);
       window.removeEventListener("resize", reposition);
     };
-  }, [open, anchorRef, maxHeight]);
+  }, [open, anchorRef, maxHeight, mobileMinWidth]);
 
   useEffect(() => {
     if (!open) return;

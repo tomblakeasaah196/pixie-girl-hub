@@ -23,6 +23,7 @@ import { toast } from "@/stores/toast";
 import { toastReport } from "@/lib/error-report";
 import * as purchasingApi from "@/pages/purchasing/api";
 import { BaseProductPicker } from "@/pages/catalogue/BaseProductPicker";
+import { ExpandableText } from "@/components/ui/ExpandableText";
 import { useVaultAccess } from "@/lib/catalogue";
 import { VariantPicker } from "@/components/catalogue/VariantPicker";
 import {
@@ -824,10 +825,11 @@ export default function ReceiveTab() {
                     {line.po_line_id ? (
                       /* A PO line's product is fixed — swapping it would
                          break the link back to what was ordered. */
-                      <div className="h-[42px] flex flex-col justify-center px-3 rounded-[11px] bg-accent/[0.06] border border-accent/25">
-                        <span className="text-[13px] text-text-primary truncate leading-tight">
-                          {line.label}
-                        </span>
+                      <div className="min-h-[42px] flex flex-col justify-center px-3 py-1 rounded-[11px] bg-accent/[0.06] border border-accent/25">
+                        <ExpandableText
+                          text={line.label ?? "Product"}
+                          className="text-[13px] text-text-primary leading-tight"
+                        />
                         <span className="text-[10px] text-text-faint leading-tight">
                           {line.outstanding} of {line.ordered} still due
                         </span>

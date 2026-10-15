@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/primitives";
+import { ExpandableText } from "@/components/ui/ExpandableText";
 import { formatDate } from "@/lib/format";
 import { NumberField, Select } from "@/components/ui/controls";
 import {
@@ -314,8 +315,11 @@ export function UsdRepriceModal({
                   <tbody>
                     {preview.data!.sample.map((s, i) => (
                       <tr key={i} className="border-b hairline last:border-0">
-                        <td className="px-3.5 py-2 truncate max-w-[260px]">
-                          {s.name}
+                        <td className="px-3.5 py-2 max-w-[260px]">
+                          <ExpandableText
+                            text={s.name}
+                            className="text-[12.5px]"
+                          />
                         </td>
                         <td className="px-2 py-2 text-right text-text-muted">
                           {fmtNgn(s.ngn)}

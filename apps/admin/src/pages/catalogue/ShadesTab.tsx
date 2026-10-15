@@ -9,6 +9,7 @@ import {
   Link2,
 } from "lucide-react";
 import { Button, Card, EmptyState, Pill } from "@/components/ui/primitives";
+import { ExpandableText } from "@/components/ui/ExpandableText";
 import { ErrorState, ConfirmDialog, Toggle, NumberField } from "@/components/ui/controls";
 import { Modal } from "@/components/ui/Modal";
 import { Field } from "@/components/ui/Form";
@@ -523,9 +524,10 @@ function ShadeProductPicker({
                     <ImageIcon className="w-3.5 h-3.5 text-text-faint" />
                   )}
                 </div>
-                <span className="flex-1 min-w-0 truncate text-[13px]">
-                  {m.styled_name}
-                </span>
+                  <ExpandableText
+                    text={m.styled_name}
+                    className="min-w-0 w-auto flex-1 text-[13px]"
+                  />
                 <button
                   onClick={() => onRemoveMember(m.styled_id)}
                   className="grid place-items-center w-7 h-7 rounded-[8px] text-text-faint hover:text-danger hover:bg-danger/10 transition-colors"

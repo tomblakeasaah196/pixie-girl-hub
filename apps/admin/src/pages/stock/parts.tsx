@@ -1,6 +1,7 @@
 import { type ReactNode } from "react";
 import { Search } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { ExpandableText } from "@/components/ui/ExpandableText";
 import { Pill, type Tone } from "@/components/ui/primitives";
 
 export interface TabDef {
@@ -202,9 +203,10 @@ export function ProductCell({
 
   return (
     <div className={cn("flex flex-col gap-0.5 min-w-0", className)}>
-      <span className="text-[13px] text-text-primary font-medium truncate">
-        {primary}
-      </span>
+      <ExpandableText
+        text={primary}
+        className="text-[13px] text-text-primary font-medium"
+      />
       {secondaryParts.length > 0 && (
         <span className="text-[11px] text-text-faint font-mono truncate">
           {secondaryParts.join(" · ")}
@@ -233,11 +235,13 @@ export function ProductsSummary({
   const unique = Array.from(new Set(names));
   const shown = unique.slice(0, 2).join(", ");
   const extra = unique.length - 2;
+  const summary = `${shown}${extra > 0 ? ` +${extra} more` : ""}`;
   return (
-    <span className="text-[13px] text-text-primary truncate block max-w-[260px]">
-      {shown}
-      {extra > 0 && <span className="text-text-faint"> +{extra} more</span>}
-    </span>
+    <ExpandableText
+      text={summary}
+      expandedText={unique.join(", ")}
+      className="max-w-[260px] text-[13px] text-text-primary"
+    />
   );
 }
 

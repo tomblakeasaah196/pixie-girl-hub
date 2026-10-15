@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Button, IconButton, Pill } from "@/components/ui/primitives";
+import { ExpandableText } from "@/components/ui/ExpandableText";
 import { Select } from "@/components/ui/controls";
 import { useAllBaseProducts, type BaseProduct } from "@/lib/catalogue";
 import { FieldLabel, TextInput } from "./parts";
@@ -593,19 +594,18 @@ function PreviewView({
                   <td className="px-3 py-2 text-text-faint tabular-nums">
                     {i + 1}
                   </td>
-                  <td className="px-3 py-2 text-text-primary max-w-[320px] truncate">
-                    {r.matchedName ? (
-                      <span>
-                        <span className="font-mono text-[11px] text-accent-glow">
-                          {r.matchedCode}
-                        </span>{" "}
-                        · {r.matchedName}
-                      </span>
-                    ) : (
-                      <span className="text-text-faint">
-                        {r.rawCode || r.rawName || "—"}
-                      </span>
-                    )}
+                  <td className="px-3 py-2 max-w-[320px]">
+                    <ExpandableText
+                      text={
+                        r.matchedName
+                          ? `${r.matchedCode} · ${r.matchedName}`
+                          : r.rawCode || r.rawName || "—"
+                      }
+                      className={cn(
+                        "text-[12px]",
+                        r.matchedName ? "text-text-primary" : "text-text-faint",
+                      )}
+                    />
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-text-muted">
                     {r.quantity ?? "—"}

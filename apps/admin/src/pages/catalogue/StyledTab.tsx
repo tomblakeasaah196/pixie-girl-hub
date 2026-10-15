@@ -18,6 +18,7 @@ import {
   Pill,
 } from "@/components/ui/primitives";
 import { ErrorState } from "@/components/ui/controls";
+import { ExpandableText } from "@/components/ui/ExpandableText";
 import { useAuthStore } from "@/stores/auth";
 import { cn } from "@/lib/cn";
 import {
@@ -320,12 +321,14 @@ function StyledCard({
         </span>
         <StyledStatusBadge status={s.status} />
       </div>
-      <div className="font-display text-[16px] leading-tight mb-1 truncate">
-        {s.name}
-      </div>
-      <div className="text-[11.5px] text-text-faint mb-3 truncate">
-        on {s.base_name} · {s.base_product_code}
-      </div>
+      <ExpandableText
+        text={s.name}
+        className="mb-1 text-[16px] font-display leading-tight"
+      />
+      <ExpandableText
+        text={`on ${s.base_name} · ${s.base_product_code}`}
+        className="mb-3 text-[11.5px] text-text-faint"
+      />
       <div className="flex items-center justify-between gap-2">
         <AvailabilityPill availability={s.availability} />
         {s.effective_price_ngn != null && (
@@ -382,9 +385,10 @@ function StyledListRow({
         </div>
         {/* Full name, unlike the card grid — this is the point of list view. */}
         <div className="font-display text-[15px] leading-snug">{s.name}</div>
-        <div className="text-[11.5px] text-text-faint truncate">
-          on {s.base_name} · {s.base_product_code}
-        </div>
+        <ExpandableText
+          text={`on ${s.base_name} · ${s.base_product_code}`}
+          className="text-[11.5px] text-text-faint"
+        />
       </div>
       <div className="flex flex-col items-end gap-1.5 shrink-0">
         <AvailabilityPill availability={s.availability} />

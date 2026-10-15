@@ -128,6 +128,7 @@ export function GeoapifyAddressSearch({
         open={open && results.length > 0}
         onClose={() => setOpen(false)}
         maxHeight={260}
+        mobileMinWidth={300}
         className="bg-panel-2 border hairline shadow-lg"
       >
         {results.map((r, i) => (
@@ -140,10 +141,10 @@ export function GeoapifyAddressSearch({
               setResults([]);
               setOpen(false);
             }}
-            className="w-full flex items-start gap-2 px-3 py-2.5 text-left hover:bg-text-primary/[0.06] transition-colors border-b hairline last:border-0"
+            className="w-full min-h-11 flex items-start gap-2 px-3 py-2.5 text-left whitespace-normal hover:bg-text-primary/[0.06] transition-colors border-b hairline last:border-0"
           >
             <MapPin className="w-3.5 h-3.5 text-text-faint shrink-0 mt-0.5" />
-            <span className="text-[12.5px] leading-snug">{r.formatted}</span>
+            <span className="min-w-0 text-[12.5px] leading-snug whitespace-normal break-words">{r.formatted}</span>
           </button>
         ))}
       </AnchoredDropdown>

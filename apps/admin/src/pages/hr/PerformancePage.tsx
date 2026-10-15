@@ -655,7 +655,7 @@ function KpiEditorModal({ kpi, onClose }: { kpi: KpiDef | null; onClose: () => v
       <div className="space-y-3">
         <input value={form.display_name} placeholder="KPI name (e.g. Punctuality)"
           onChange={(e) => setForm({ ...form, display_name: e.target.value })} className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <label className="text-xs text-text-muted">Weight %
             <input type="number" min={0} max={100} value={form.weight_pct}
               onChange={(e) => setForm({ ...form, weight_pct: e.target.value })} className={inputCls} autoComplete="off" data-lpignore="true" data-1p-ignore="" data-form-type="other" />

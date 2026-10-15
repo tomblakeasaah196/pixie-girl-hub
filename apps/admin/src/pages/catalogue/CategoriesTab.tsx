@@ -83,11 +83,11 @@ export function CategoriesTab() {
           {(cats.data ?? []).map((c: Category) => (
             <Card key={c.category_id} className="p-3.5 flex items-center gap-3">
               <div className="flex-1 min-w-0">
-                <div className="text-[14px] font-semibold truncate">
+                <div className="text-[14px] font-semibold whitespace-normal break-words">
                   {c.name}
                 </div>
                 {c.description && (
-                  <div className="text-[12px] text-text-faint truncate">
+                  <div className="text-[12px] text-text-faint whitespace-normal break-words">
                     {c.description}
                   </div>
                 )}

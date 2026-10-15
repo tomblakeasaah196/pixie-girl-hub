@@ -109,7 +109,7 @@ export function SearchBox({
   placeholder?: string;
 }) {
   return (
-    <div className="relative flex-1 min-w-[180px] max-w-[340px]">
+    <div className="relative min-w-0 w-full sm:flex-1 sm:min-w-[180px] max-w-[340px]">
       <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-faint pointer-events-none" />
       <input
         value={value}

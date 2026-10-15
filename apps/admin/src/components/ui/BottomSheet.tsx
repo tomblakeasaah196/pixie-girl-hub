@@ -65,7 +65,7 @@ export function BottomSheet({
         aria-modal="true"
         aria-label={title}
         className={cn(
-          "fixed bottom-0 inset-x-0 z-[81] rounded-t-[24px] glass border-t animate-[sheet-slide-up_250ms_cubic-bezier(.16,1,.3,1)_both]",
+          "fixed bottom-0 inset-x-0 z-[81] max-h-[90dvh] flex flex-col rounded-t-[24px] glass border-t animate-[sheet-slide-up_250ms_cubic-bezier(.16,1,.3,1)_both]",
           !dragging && "transition-transform duration-200",
         )}
         style={{ transform: dragY > 0 ? `translateY(${dragY}px)` : undefined }}
@@ -80,7 +80,7 @@ export function BottomSheet({
             {title}
           </h3>
         )}
-        <div className="px-5 pb-[max(20px,calc(env(safe-area-inset-bottom,0px)+12px))] max-h-[70vh] overflow-y-auto">
+        <div className="min-h-0 flex-1 px-5 pb-[max(20px,calc(env(safe-area-inset-bottom,0px)+12px))] overflow-y-auto overscroll-contain">
           {children}
         </div>
       </div>

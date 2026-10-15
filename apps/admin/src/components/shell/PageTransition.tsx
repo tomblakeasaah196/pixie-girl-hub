@@ -37,7 +37,7 @@ export function PageTransition({ children }: { children: ReactNode }) {
   }, [location.pathname]);
 
   return (
-    <div ref={ref} className="page-enter">
+    <div ref={ref} className="page-enter min-w-0">
       {children}
     </div>
   );

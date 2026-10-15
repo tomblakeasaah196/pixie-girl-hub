@@ -147,7 +147,7 @@ export function GlobalView({ payload }: { payload: GlobalPayload }) {
         toolbar={<span className="micro">Side by Side</span>}
         mobileCard={(b) => (
           <div className="space-y-1.5">
-            <div className="font-medium text-[13px]">{b.display_name}</div>
+            <div className="min-w-0 font-medium text-[13px] whitespace-normal break-words">{b.display_name}</div>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[11.5px]">
               <span className="text-text-faint">Revenue</span>
               <span className="font-mono tabular-nums text-right">

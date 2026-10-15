@@ -126,7 +126,7 @@ function ClientRow({ client, onOpen }: { client: CrmClient; onOpen: () => void }
   return (
     <div
       onClick={onOpen}
-      className="flex items-center gap-3 p-3 rounded-[13px] bg-text-primary/[0.03] border hairline hover:bg-text-primary/[0.06] transition-colors cursor-pointer group"
+      className="flex flex-wrap items-center gap-3 p-3 rounded-[13px] bg-text-primary/[0.03] border hairline hover:bg-text-primary/[0.06] transition-colors cursor-pointer group"
     >
       {/* Avatar */}
       <div
@@ -137,9 +137,9 @@ function ClientRow({ client, onOpen }: { client: CrmClient; onOpen: () => void }
       </div>
 
       {/* Identity */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-[13px] font-medium text-text-primary truncate">
+      <div className="min-w-0 flex-1 basis-[180px]">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="min-w-0 flex-1 text-[13px] font-medium text-text-primary whitespace-normal break-words">
             {name}
           </span>
           {client.priority_level === "vip" && (
@@ -253,7 +253,7 @@ export function ClientsTab() {
     <div>
       {/* Search + country + sort + add */}
       <div className="flex flex-wrap gap-2 mb-4">
-        <div className="relative flex-1 min-w-[180px]">
+        <div className="relative min-w-0 w-full sm:flex-1 sm:min-w-[180px]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint pointer-events-none" />
           <input
             type="text"

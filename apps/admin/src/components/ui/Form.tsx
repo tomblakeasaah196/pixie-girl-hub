@@ -41,7 +41,7 @@ export function FormGrid({
   return (
     <div
       className={cn(
-        "grid gap-4 grid-cols-1",
+        "grid min-w-0 gap-4 grid-cols-1",
         cols === 3 ? "md:grid-cols-2 xl:grid-cols-3" : "md:grid-cols-2",
         className,
       )}
@@ -61,8 +61,8 @@ export function Field({
   children: ReactNode;
 }) {
   return (
-    <label className="block">
-      <span className="flex items-center gap-1.5 text-[10.5px] uppercase tracking-[0.1em] font-bold text-text-muted mb-2">
+    <label className="block min-w-0">
+      <span className="flex min-w-0 flex-wrap items-center gap-1.5 text-[10.5px] uppercase tracking-[0.1em] font-bold text-text-muted mb-2">
         {label}
         {hint && (
           <span className="normal-case tracking-normal font-normal text-text-faint">
@@ -84,7 +84,7 @@ export function TextInput({
   return (
     <input
       className={cn(
-        "w-full h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none transition-colors focus:border-accent/50",
+        "w-full min-w-0 h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none transition-colors focus:border-accent/50",
         className,
       )}
       autoComplete={suppress}

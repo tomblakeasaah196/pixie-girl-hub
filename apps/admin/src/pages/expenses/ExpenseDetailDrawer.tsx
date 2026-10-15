@@ -212,7 +212,7 @@ function ExpenseDetailContent({ d }: { d: ExpenseDetail }) {
       </div>
 
       {/* Financial ribbon */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <MiniCard label="Total">
           <MoneyText ngn={Number(e.total_amount_ngn)} className="text-lg" />
         </MiniCard>

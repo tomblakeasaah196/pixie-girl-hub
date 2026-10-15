@@ -74,7 +74,7 @@ export function Drawer({
           // panel stays visible while it slides out, then flips to hidden —
           // otherwise the big left-spreading shadow bleeds back on-screen and
           // the drawer appears to "hang" at the right edge when closed.
-          "fixed top-0 right-0 h-full flex flex-col dropglass border-l shadow-[-30px_0_80px_rgb(0_0_0/0.5)] transition-[transform,visibility] duration-300 ease-brand pt-safe",
+          "fixed top-0 right-0 h-[100dvh] max-h-[100dvh] min-w-0 flex flex-col dropglass border-l shadow-[-30px_0_80px_rgb(0_0_0/0.5)] transition-[transform,visibility] duration-300 ease-brand pt-safe",
           elevated ? "z-[96]" : "z-[90]",
           // Mobile widths are frozen (min() caps); the lg:/xl: overrides only
           // widen the panel on the desktop tier (≥1024px) so detail/edit
@@ -87,21 +87,21 @@ export function Drawer({
             : "translate-x-full invisible pointer-events-none",
         )}
       >
-        <div className="flex items-center gap-3 p-5 border-b hairline">
+        <div className="flex items-start gap-3 p-4 md:p-5 border-b hairline min-w-0 shrink-0">
           {leading}
-          <div className="min-w-0">
-            <h2 className="font-display text-xl font-medium leading-tight truncate">
+          <div className="min-w-0 flex-1">
+            <h2 className="font-display text-xl font-medium leading-tight whitespace-normal break-words">
               {title}
             </h2>
-            {subtitle && <div className="micro mt-0.5">{subtitle}</div>}
+            {subtitle && <div className="micro mt-0.5 whitespace-normal break-words">{subtitle}</div>}
           </div>
           <IconButton className="ml-auto" onClick={onClose} aria-label="Close">
             <X className="w-[18px] h-[18px]" />
           </IconButton>
         </div>
-        <div className="flex-1 overflow-y-auto p-[22px]">{children}</div>
+        <div className="min-w-0 flex-1 overflow-y-auto overscroll-contain p-4 md:p-[22px]">{children}</div>
         {footer && (
-          <div className="p-[15px_20px] border-t hairline flex gap-2 justify-end">
+          <div className="shrink-0 p-3 md:p-[15px_20px] pb-[max(env(safe-area-inset-bottom,0px),12px)] md:pb-[15px] border-t hairline flex flex-wrap gap-2 justify-end">
             {footer}
           </div>
         )}

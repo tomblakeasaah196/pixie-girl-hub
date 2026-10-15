@@ -380,7 +380,7 @@ function ZoneEditor({ zone, onClose }: { zone: DeliveryZone | null; onClose: () 
           <Input value={name} onChange={setName} placeholder="Lekki / Ikoyi" />
         </Field>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Delivery fee (₦)">
             <Input value={fee} onChange={(v) => setFee(v.replace(/[^0-9.]/g, ""))} placeholder="0" mono />
           </Field>
@@ -433,12 +433,12 @@ function ZoneEditor({ zone, onClose }: { zone: DeliveryZone | null; onClose: () 
             )}
 
             {type === "radius" ? (
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <Field label="Centre lat">
-                  <Input value={centerLat} onChange={(v) => setCenterLat(v.replace(/[^0-9.\-]/g, ""))} placeholder="6.45" mono />
+                  <Input value={centerLat} onChange={(v) => setCenterLat(v.replace(/[^0-9.-]/g, ""))} placeholder="6.45" mono />
                 </Field>
                 <Field label="Centre lng">
-                  <Input value={centerLng} onChange={(v) => setCenterLng(v.replace(/[^0-9.\-]/g, ""))} placeholder="3.47" mono />
+                  <Input value={centerLng} onChange={(v) => setCenterLng(v.replace(/[^0-9.-]/g, ""))} placeholder="3.47" mono />
                 </Field>
                 <Field label="Radius (km)">
                   <Input value={radiusKm} onChange={(v) => setRadiusKm(v.replace(/[^0-9.]/g, ""))} placeholder="5" mono />
@@ -537,12 +537,12 @@ function PointTester({ onClose }: { onClose: () => void }) {
             onChange={fromPlace}
           />
         )}
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Latitude">
-            <Input value={lat} onChange={(v) => setLat(v.replace(/[^0-9.\-]/g, ""))} placeholder="6.45" mono />
+            <Input value={lat} onChange={(v) => setLat(v.replace(/[^0-9.-]/g, ""))} placeholder="6.45" mono />
           </Field>
           <Field label="Longitude">
-            <Input value={lng} onChange={(v) => setLng(v.replace(/[^0-9.\-]/g, ""))} placeholder="3.47" mono />
+            <Input value={lng} onChange={(v) => setLng(v.replace(/[^0-9.-]/g, ""))} placeholder="3.47" mono />
           </Field>
         </div>
         <Button

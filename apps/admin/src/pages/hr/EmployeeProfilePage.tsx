@@ -602,7 +602,7 @@ function TermsEditModal({
             ))}
           </select>
         </label>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="block text-xs text-text-muted">Probation start
             <input type="date" value={form.probation_start_date} className={cls}
               onChange={(e) => setForm({ ...form, probation_start_date: e.target.value })} />
@@ -612,7 +612,7 @@ function TermsEditModal({
               onChange={(e) => setForm({ ...form, probation_end_date: e.target.value })} />
           </label>
         </div>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <label className="block text-xs text-text-muted">Non-solicit (months)
             <input type="number" value={form.non_solicit_months} className={cls}
               onChange={(e) => setForm({ ...form, non_solicit_months: e.target.value })} />
@@ -747,7 +747,7 @@ function EmploymentEditModal({
             ))}
           </select>
         </label>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="block text-xs text-text-muted">Start date
             <input type="date" value={form.start_date ?? ""} className={cls}
               onChange={(e) => setForm({ ...form, start_date: e.target.value })} />
@@ -840,7 +840,7 @@ function CompensationEditModal({
           <input type="number" min="0" value={form.base_salary} className={cls}
             onChange={(e) => setForm({ ...form, base_salary: e.target.value })} />
         </label>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="block text-xs text-text-muted">Bank name
             <input value={form.bank_name} className={cls}
               onChange={(e) => setForm({ ...form, bank_name: e.target.value })} />
@@ -850,7 +850,7 @@ function CompensationEditModal({
               onChange={(e) => setForm({ ...form, bank_account_number: e.target.value })} />
           </label>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="block text-xs text-text-muted">Sort code
             <input value={form.bank_sort_code} className={cls} placeholder={maskedHint}
               onChange={(e) => setForm({ ...form, bank_sort_code: e.target.value })} />
@@ -860,7 +860,7 @@ function CompensationEditModal({
               onChange={(e) => setForm({ ...form, tax_id: e.target.value })} />
           </label>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="block text-xs text-text-muted">Pension PIN
             <input value={form.pension_pin} className={cls}
               onChange={(e) => setForm({ ...form, pension_pin: e.target.value })} />
@@ -870,7 +870,7 @@ function CompensationEditModal({
               onChange={(e) => setForm({ ...form, nhf_number: e.target.value })} />
           </label>
         </div>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="block text-xs text-text-muted">NIN
             <input value={form.nin} className={cls} placeholder={maskedHint}
               onChange={(e) => setForm({ ...form, nin: e.target.value })} />

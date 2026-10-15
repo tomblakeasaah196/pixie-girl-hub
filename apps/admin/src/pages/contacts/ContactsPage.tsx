@@ -449,7 +449,7 @@ export function ContactsPage() {
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           <span className="flex items-center gap-1.5 min-w-0 flex-1">
-            <span className="font-semibold text-[15px] text-text-primary truncate">
+            <span className="min-w-0 flex-1 font-semibold text-[15px] text-text-primary whitespace-normal break-words">
               {c.display_name}
             </span>
             <VipStar level={c.priority_level} />
@@ -466,7 +466,7 @@ export function ContactsPage() {
           )}
         </div>
         {meta.length > 0 && (
-          <div className="mt-1 text-[13px] text-text-muted truncate">
+          <div className="mt-1 text-[13px] text-text-muted whitespace-normal break-words">
             {meta.map((e, i) => (
               <span key={i}>
                 {i > 0 && <span className="text-text-faint mx-1.5">•</span>}
@@ -490,7 +490,7 @@ export function ContactsPage() {
         <ContactAvatar name={name} idx={idx} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
-            <span className="font-medium text-[14px] text-text-primary truncate">
+            <span className="min-w-0 flex-1 font-medium text-[14px] text-text-primary whitespace-normal break-words">
               {name}
             </span>
             <Pill tone="accent" dot={false}>
@@ -498,7 +498,7 @@ export function ContactsPage() {
             </Pill>
           </div>
           {a.instagram_handle && (
-            <div className="text-[12px] text-text-faint truncate mt-0.5">
+            <div className="text-[12px] text-text-faint whitespace-normal break-words mt-0.5">
               @{a.instagram_handle}
             </div>
           )}
@@ -523,14 +523,14 @@ export function ContactsPage() {
         <ContactAvatar name={s.display_name} idx={idx} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
-            <span className="font-medium text-[14px] text-text-primary truncate">
+            <span className="min-w-0 flex-1 font-medium text-[14px] text-text-primary whitespace-normal break-words">
               {s.display_name}
             </span>
             <Pill tone={STYLIST_STATUS_TONE[s.status] ?? "neutral"} dot={false}>
               {s.status}
             </Pill>
           </div>
-          <div className="text-[12px] text-text-faint truncate mt-0.5 font-mono">
+          <div className="text-[12px] text-text-faint whitespace-normal break-words mt-0.5 font-mono">
             {s.partner_code}
           </div>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-2 text-[12px] text-text-muted">
@@ -1035,7 +1035,7 @@ function ContactCard({
         <ContactAvatar name={contact.display_name} idx={idx} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 min-w-0">
-            <div className="text-[14px] font-medium text-text-primary truncate">
+            <div className="text-[14px] font-medium text-text-primary whitespace-normal break-words">
               {contact.display_name}
             </div>
             <VipStar level={contact.priority_level} />

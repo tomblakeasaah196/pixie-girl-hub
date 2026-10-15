@@ -164,7 +164,7 @@ function ProfileTab({
 }) {
   return (
     <Card className="p-5 space-y-4">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Field label="Display name">
           <TextInput
             value={draft.display_name}
@@ -184,7 +184,7 @@ function ProfileTab({
           onChange={(e) => set("address", e.target.value || null)}
         />
       </Field>
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Field label="Phone">
           <TextInput
             value={draft.phone ?? ""}
@@ -204,7 +204,7 @@ function ProfileTab({
           />
         </Field>
       </div>
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Field label="Instagram" hint="Public @handle — storefront & campaigns">
           <div className="relative flex items-center">
             <span className="absolute left-[13px] text-text-faint pointer-events-none select-none">
@@ -224,7 +224,7 @@ function ProfileTab({
           </div>
         </Field>
       </div>
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <SensitiveField
           label="TIN"
           hint="Tax Identification Number"
@@ -274,7 +274,7 @@ function FinancialTab({
   );
   return (
     <Card className="p-5 space-y-4">
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Field label="VAT rate" hint="Percent">
           <NumberField
             value={vatPct}

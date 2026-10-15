@@ -80,7 +80,7 @@ export function Modal({
         style={{ "--modal-w": `${SIZE_PX[size]}px` } as React.CSSProperties}
         className={cn(
           // Height-capped flex column: header/footer pinned, body scrolls.
-          "w-full md:w-[min(94vw,var(--modal-w))] max-h-[92dvh] md:max-h-[calc(100dvh-2rem)] flex flex-col dropglass overflow-hidden transition-transform duration-300 ease-brand",
+          "box-border w-full min-w-0 md:w-[min(94vw,var(--modal-w))] max-h-[min(92dvh,calc(100dvh-env(safe-area-inset-top,0px)))] md:max-h-[calc(100dvh-2rem)] flex flex-col dropglass overflow-hidden transition-transform duration-300 ease-brand",
           "rounded-t-[22px] rounded-b-none md:rounded-[18px]",
           open
             ? "translate-y-0 scale-100"
@@ -92,7 +92,7 @@ export function Modal({
         </div>
         {title && (
           <div className="flex items-center gap-3 p-5 max-md:py-4 border-b hairline shrink-0">
-            <h2 className="font-display text-lg font-medium flex-1 min-w-0 truncate">
+            <h2 className="font-display text-lg font-medium flex-1 min-w-0 whitespace-normal break-words leading-snug">
               {title}
             </h2>
             <IconButton onClick={onClose} aria-label="Close">
@@ -102,7 +102,7 @@ export function Modal({
         )}
         <div
           className={cn(
-            "p-5 overflow-y-auto",
+            "min-w-0 px-4 py-4 md:p-5 overflow-y-auto overscroll-contain",
             !footer && "max-md:pb-[max(env(safe-area-inset-bottom,0px),20px)]",
           )}
         >

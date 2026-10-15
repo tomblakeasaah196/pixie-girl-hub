@@ -54,8 +54,8 @@ export function AnchoredDropdown({
   const [pos, setPos] = useState<{
     left: number;
     width: number;
-    top?: number;
-    bottom?: number;
+    top: number;
+    openUp: boolean;
     maxHeight: number;
   } | null>(null);
 
@@ -67,33 +67,40 @@ export function AnchoredDropdown({
     const reposition = () => {
       const r = anchor.getBoundingClientRect();
       const gap = 4;
-      const spaceBelow = window.innerHeight - r.bottom - gap;
-      const spaceAbove = r.top - gap;
+      // Use the visual viewport when a phone keyboard or pinch zoom changes
+      // the actually-visible area; window.innerHeight still describes the
+      // layout viewport in several mobile browsers.
+      const visual = window.visualViewport;
+      const viewportLeft = visual?.offsetLeft ?? 0;
+      const viewportTop = visual?.offsetTop ?? 0;
+      const viewportWidth = visual?.width ?? window.innerWidth;
+      const viewportHeight = visual?.height ?? window.innerHeight;
+      const viewportRight = viewportLeft + viewportWidth;
+      const viewportBottom = viewportTop + viewportHeight;
+      const spaceBelow = viewportBottom - r.bottom - gap;
+      const spaceAbove = r.top - viewportTop - gap;
       // Flip up only when below is genuinely cramped and above is roomier.
       const openUp = spaceBelow < 180 && spaceAbove > spaceBelow;
-      const avail = Math.max(120, (openUp ? spaceAbove : spaceBelow) - 8);
-      const viewportWidth = window.innerWidth;
-      const mobileInset = 12;
+      const avail = Math.max(96, (openUp ? spaceAbove : spaceBelow) - 8);
+      const mobileInset = 10;
       const expandOnMobile = mobileMinWidth != null && viewportWidth <= 640;
-      const width = expandOnMobile
-        ? Math.min(
-            Math.max(r.width, mobileMinWidth),
-            Math.max(0, viewportWidth - mobileInset * 2),
-          )
-        : r.width;
-      const left = expandOnMobile
-        ? Math.min(
-            Math.max(mobileInset, r.left + (r.width - width) / 2),
-            Math.max(mobileInset, viewportWidth - width - mobileInset),
-          )
-        : r.left;
+      const width = Math.min(
+        expandOnMobile ? Math.max(r.width, mobileMinWidth) : r.width,
+        Math.max(0, viewportWidth - mobileInset * 2),
+      );
+      const left = Math.min(
+        Math.max(viewportLeft + mobileInset, expandOnMobile ? r.left + (r.width - width) / 2 : r.left),
+        Math.max(viewportLeft + mobileInset, viewportRight - width - mobileInset),
+      );
       setPos({
         left,
         width,
         maxHeight: Math.min(maxHeight, avail),
-        ...(openUp
-          ? { bottom: window.innerHeight - r.top + gap }
-          : { top: r.bottom + gap }),
+        openUp,
+        // Anchor above by translating the panel's own measured height, not by
+        // positioning from the layout viewport bottom. This stays visible
+        // when the on-screen keyboard shrinks the visual viewport.
+        top: openUp ? r.top - gap : Math.max(viewportTop, r.bottom + gap),
       });
     };
 
@@ -107,10 +114,14 @@ export function AnchoredDropdown({
     // just the window, so the panel stays glued to its trigger.
     window.addEventListener("scroll", reposition, true);
     window.addEventListener("resize", reposition);
+    window.visualViewport?.addEventListener("resize", reposition);
+    window.visualViewport?.addEventListener("scroll", reposition);
     return () => {
       resizeObserver?.disconnect();
       window.removeEventListener("scroll", reposition, true);
       window.removeEventListener("resize", reposition);
+      window.visualViewport?.removeEventListener("resize", reposition);
+      window.visualViewport?.removeEventListener("scroll", reposition);
     };
   }, [open, anchorRef, maxHeight, mobileMinWidth]);
 
@@ -149,7 +160,7 @@ export function AnchoredDropdown({
         left: pos.left,
         width: pos.width,
         top: pos.top,
-        bottom: pos.bottom,
+        transform: pos.openUp ? "translateY(-100%)" : undefined,
         maxHeight: pos.maxHeight,
       }}
     >

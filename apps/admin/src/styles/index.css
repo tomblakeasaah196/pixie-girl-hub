@@ -669,6 +669,19 @@ body.session-locked #root {
    TOUCH TARGET GUARD — 44px minimum for interactive elements on
    small screens (WCAG 2.5.8). Opt out with .no-min-h.
    ═══════════════════════════════════════════════════════════════ */
+@media (max-width: 639px) {
+  /* The DataTable phone-card renderer reuses the desktop cell renderers. Undo
+     compact one-line truncation inside those values so names remain readable
+     without changing the desktop density. */
+  .data-table-mobile-value .truncate {
+    max-width: 100% !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+  }
+}
+
 @media (max-width: 768px) {
   button:not(.no-min-h),
   [role="button"]:not(.no-min-h),

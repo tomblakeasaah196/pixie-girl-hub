@@ -369,7 +369,8 @@ export default function SettlementWizardDrawer({ request: r, onClose }: Props) {
             {receipts.length > 0 && (
               <Card className="p-4">
                 <div className="micro mb-3">Receipts ({receipts.length})</div>
-                <table className="w-full text-sm">
+                <div className="max-w-full overflow-x-auto">
+                  <table className="w-full min-w-[480px] text-sm">
                   <thead>
                     <tr className="text-text-faint text-[10px] uppercase tracking-wide">
                       <th className="text-left pb-2">Vendor</th>
@@ -398,7 +399,8 @@ export default function SettlementWizardDrawer({ request: r, onClose }: Props) {
                       </td>
                     </tr>
                   </tbody>
-                </table>
+                  </table>
+                </div>
               </Card>
             )}
 

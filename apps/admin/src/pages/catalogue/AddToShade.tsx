@@ -130,6 +130,7 @@ export function AddToShade({
         open={open}
         onClose={() => setOpen(false)}
         maxHeight={260}
+        mobileMinWidth={300}
       >
         {matches.map((s) => {
           const isCurrent = s.shade_id === currentShadeId;
@@ -139,9 +140,9 @@ export function AddToShade({
               type="button"
               disabled={busy || isCurrent}
               onClick={() => add(s.shade_id, s.name)}
-              className="w-full px-[13px] py-2 text-left text-[13px] text-text-primary transition-colors hover:bg-text-primary/[0.06] disabled:opacity-60 disabled:hover:bg-transparent flex items-center justify-between gap-2"
+              className="w-full min-h-11 px-[13px] py-2.5 text-left text-[13px] text-text-primary whitespace-normal transition-colors hover:bg-text-primary/[0.06] disabled:opacity-60 disabled:hover:bg-transparent flex items-center justify-between gap-2"
             >
-              <span className="min-w-0 truncate">{s.name}</span>
+              <span className="min-w-0 flex-1 whitespace-normal break-words">{s.name}</span>
               {isCurrent && (
                 <span className="text-[10.5px] text-text-faint shrink-0">
                   current

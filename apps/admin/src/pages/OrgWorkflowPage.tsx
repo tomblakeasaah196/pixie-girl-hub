@@ -1769,7 +1769,7 @@ function RoleEditorDrawer({
                         {isExp && (
                     <div className="border-t border-[rgb(var(--border-c))] bg-[rgb(var(--text)/0.02)] px-4 py-3 space-y-3">
                       {/* Action toggles */}
-                      <div className="grid grid-cols-3 gap-2">
+                      <div className="grid grid-cols-1 min-[400px]:grid-cols-2 sm:grid-cols-3 gap-2">
                         {ACTION_ORDER.filter((a) =>
                           cat.actions.includes(a),
                         ).map((action) => {

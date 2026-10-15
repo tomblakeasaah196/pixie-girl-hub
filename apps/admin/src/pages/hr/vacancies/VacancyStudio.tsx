@@ -317,7 +317,7 @@ function DetailsPanel({
                 onChange={(e) => set({ probation_months: num(e.target.value) })} />
             </F>
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <F label="City"><input className={inputCls} value={d.location_city || ""} disabled={readOnly}
               onChange={(e) => set({ location_city: e.target.value })} /></F>
             <F label="State"><input className={inputCls} value={d.location_state || ""} disabled={readOnly}

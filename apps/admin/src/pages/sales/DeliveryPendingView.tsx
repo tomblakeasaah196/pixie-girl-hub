@@ -246,7 +246,7 @@ export function DeliveryPendingView() {
               message: "All orders have confirmed delivery rates.",
             }}
             toolbar={
-              <div className="relative flex-1 min-w-[180px]">
+              <div className="relative min-w-0 w-full sm:flex-1 sm:min-w-[180px]">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-text-faint pointer-events-none" />
                 <input
                   placeholder="Filter orders…"

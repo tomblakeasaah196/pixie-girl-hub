@@ -43,9 +43,14 @@ export function BaseProductPicker({
   const list = (results.data ?? []).slice(0, 30);
 
   // Selected, not actively searching → show a confirmation chip.
+  // `min-w-0` + the truncating ExpandableText are what keep a long
+  // "name · code" inside the row: without them the chip's min-content width
+  // is the whole name, and in a `1fr` grid track that widens the entire form
+  // (a phone ends up scrolling sideways). `change`/clear stay fixed-size so
+  // the squeezed element is always the label.
   if (value && label && !open) {
     return (
-      <div className="flex items-center gap-2 min-h-[42px] py-1.5 px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line">
+      <div className="flex items-center gap-2 min-w-0 min-h-[42px] py-1.5 px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line">
         <Check className="w-4 h-4 text-success shrink-0" />
         <ExpandableText
           text={label}
@@ -54,7 +59,7 @@ export function BaseProductPicker({
         {!disabled && (
           <button
             onClick={() => setOpen(true)}
-            className="text-[12px] font-semibold text-accent-glow hover:underline"
+            className="shrink-0 text-[12px] font-semibold text-accent-glow hover:underline"
           >
             change
           </button>
@@ -62,7 +67,7 @@ export function BaseProductPicker({
         {!disabled && (
           <button
             onClick={clear}
-            className="text-text-faint hover:text-danger"
+            className="shrink-0 text-text-faint hover:text-danger"
             aria-label="Clear"
           >
             <X className="w-4 h-4" />

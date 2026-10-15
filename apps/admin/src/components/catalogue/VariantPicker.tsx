@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Search, Check, X, ChevronLeft } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { AnchoredDropdown } from "@/components/ui/AnchoredDropdown";
+import { ExpandableText } from "@/components/ui/ExpandableText";
 import { useBaseProducts, useVariants, type BaseProduct } from "@/lib/catalogue";
 
 /**
@@ -23,20 +25,10 @@ export function VariantPicker({
   const [open, setOpen] = useState(false);
   const [label, setLabel] = useState("");
   const [pendingProduct, setPendingProduct] = useState<BaseProduct | null>(null);
-  const ref = useRef<HTMLDivElement>(null);
+  const anchorRef = useRef<HTMLDivElement>(null);
 
   const results = useBaseProducts(q.trim() ? { q: q.trim() } : {});
   const variantsQ = useVariants(pendingProduct?.product_id ?? null);
-
-  useEffect(() => {
-    if (!open) return;
-    const handle = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node))
-        setOpen(false);
-    };
-    document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, [open]);
 
   // Once variants for the chosen product load, auto-pick if there's only one.
   useEffect(() => {
@@ -86,9 +78,12 @@ export function VariantPicker({
   // Selected, not actively searching → show a confirmation chip.
   if (value && label && !open) {
     return (
-      <div className="flex items-center gap-2 h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line w-full min-w-0">
+      <div className="flex items-center gap-2 min-h-[42px] py-1.5 px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line w-full min-w-0">
         <Check className="w-4 h-4 text-success shrink-0" />
-        <span className="text-[13px] truncate flex-1 min-w-0">{label}</span>
+        <ExpandableText
+          text={label}
+          className="min-w-0 w-auto flex-1 text-[13px]"
+        />
         {!disabled && (
           <button
             onClick={() => setOpen(true)}
@@ -114,8 +109,11 @@ export function VariantPicker({
   if (pendingProduct) {
     const variants = (variantsQ.data ?? []).filter((v) => v.is_active !== false);
     return (
-      <div ref={ref} className="relative w-full min-w-0">
-        <div className="flex items-center gap-2 h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line min-w-0">
+      <div className="relative w-full min-w-0">
+        <div
+          ref={anchorRef}
+          className="flex items-center gap-2 min-h-[42px] py-1.5 px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line min-w-0"
+        >
           <button
             onClick={() => setPendingProduct(null)}
             className="text-text-faint hover:text-text-primary shrink-0"
@@ -123,11 +121,21 @@ export function VariantPicker({
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <span className="text-[13px] truncate flex-1 min-w-0">
-            {pendingProduct.name}
-          </span>
+          <ExpandableText
+            text={pendingProduct.name}
+            className="min-w-0 w-auto flex-1 text-[13px]"
+          />
         </div>
-        <div className="select-dropdown-list absolute z-50 top-[calc(100%+4px)] left-0 right-0 rounded-[11px] overflow-hidden py-1 max-h-[260px] overflow-y-auto">
+        <AnchoredDropdown
+          anchorRef={anchorRef}
+          open={open}
+          onClose={() => {
+            setOpen(false);
+            setPendingProduct(null);
+          }}
+          maxHeight={260}
+          mobileMinWidth={360}
+        >
           {variantsQ.isLoading ? (
             <div className="px-[13px] py-3 text-[12.5px] text-text-faint">
               Loading variants…
@@ -144,7 +152,7 @@ export function VariantPicker({
                 onClick={() => pickVariant(v.variant_id, v.variant_name, v.sku)}
                 className="w-full px-[13px] py-2 text-left transition-colors hover:bg-text-primary/[0.06]"
               >
-                <div className="text-[13px] text-text-primary truncate">
+                <div className="text-[13px] text-text-primary whitespace-normal break-words leading-snug">
                   {v.variant_name ?? "Unnamed variant"}
                 </div>
                 {v.sku && (
@@ -155,15 +163,15 @@ export function VariantPicker({
               </button>
             ))
           )}
-        </div>
+        </AnchoredDropdown>
       </div>
     );
   }
 
   // Step 1 — search base products by name.
   return (
-    <div ref={ref} className="relative w-full min-w-0">
-      <div className="relative">
+    <div className="relative w-full min-w-0">
+      <div className="relative" ref={anchorRef}>
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-faint pointer-events-none" />
         <input
           disabled={disabled}
@@ -178,49 +186,53 @@ export function VariantPicker({
         />
       </div>
 
-      {open && (
-        <div className="select-dropdown-list absolute z-50 top-[calc(100%+4px)] left-0 right-0 rounded-[11px] overflow-hidden py-1 max-h-[300px] overflow-y-auto">
-          {q.trim().length === 0 ? (
-            <div className="px-[13px] py-3 text-[12.5px] text-text-faint">
-              Start typing to search…
-            </div>
-          ) : results.isLoading ? (
-            <div className="px-[13px] py-3 text-[12.5px] text-text-faint">
-              Searching…
-            </div>
-          ) : list.length === 0 ? (
-            <div className="px-[13px] py-3 text-[12.5px] text-text-faint">
-              No products match "{q.trim()}".
-            </div>
-          ) : (
-            list.map((b) => (
-              <button
-                key={b.product_id}
-                type="button"
-                onClick={() => pickProduct(b)}
-                className={cn(
-                  "w-full px-[13px] py-2 text-left transition-colors hover:bg-text-primary/[0.06]",
+      <AnchoredDropdown
+        anchorRef={anchorRef}
+        open={open}
+        onClose={() => setOpen(false)}
+        maxHeight={300}
+        mobileMinWidth={360}
+      >
+        {q.trim().length === 0 ? (
+          <div className="px-[13px] py-3 text-[12.5px] text-text-faint">
+            Start typing to search…
+          </div>
+        ) : results.isLoading ? (
+          <div className="px-[13px] py-3 text-[12.5px] text-text-faint">
+            Searching…
+          </div>
+        ) : list.length === 0 ? (
+          <div className="px-[13px] py-3 text-[12.5px] text-text-faint">
+            No products match "{q.trim()}".
+          </div>
+        ) : (
+          list.map((b) => (
+            <button
+              key={b.product_id}
+              type="button"
+              onClick={() => pickProduct(b)}
+              className={cn(
+                "w-full px-[13px] py-2 text-left transition-colors hover:bg-text-primary/[0.06]",
+              )}
+            >
+              <div className="text-[13px] text-text-primary whitespace-normal break-words leading-snug">
+                {b.name}
+              </div>
+              <div className="text-[11px] text-text-faint flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                <span className="font-mono text-accent-glow">
+                  {b.product_code}
+                </span>
+                {b.lace_type && (
+                  <span>· {b.lace_type.replace(/_/g, " ")}</span>
                 )}
-              >
-                <div className="text-[13px] text-text-primary truncate">
-                  {b.name}
-                </div>
-                <div className="text-[11px] text-text-faint flex items-center gap-2">
-                  <span className="font-mono text-accent-glow">
-                    {b.product_code}
-                  </span>
-                  {b.lace_type && (
-                    <span>· {b.lace_type.replace(/_/g, " ")}</span>
-                  )}
-                  {b.hair_length_inches != null && (
-                    <span>· {b.hair_length_inches}"</span>
-                  )}
-                </div>
-              </button>
-            ))
-          )}
-        </div>
-      )}
+                {b.hair_length_inches != null && (
+                  <span>· {b.hair_length_inches}"</span>
+                )}
+              </div>
+            </button>
+          ))
+        )}
+      </AnchoredDropdown>
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Plus, Package, Upload, Download, ClipboardCheck, Trash2 } from "lucide-react";
 import { Button, Card, EmptyState, Pill } from "@/components/ui/primitives";
 import { ErrorState } from "@/components/ui/controls";
+import { ExpandableText } from "@/components/ui/ExpandableText";
 import { useAuthStore } from "@/stores/auth";
 import { useCareCategories, useCareProducts, useCareTrash, useCareActions, type CareProduct } from "@/lib/care-accessories";
 import { toast } from "@/stores/toast";
@@ -94,7 +95,10 @@ function CareCard({ p, onOpen }: { p: CareProduct; onOpen: () => void }) {
       <span className="font-mono text-[10.5px] text-accent-glow">{p.product_code}</span>
       <Pill tone={statusTone[p.retail_status]} dot={false}>{p.retail_status === "live" ? "Published" : p.retail_status}</Pill>
     </div>
-    <div className="font-semibold text-[13px] text-text-primary line-clamp-2">{p.name}</div>
+    <ExpandableText
+      text={p.name}
+      className="text-[13px] font-semibold text-text-primary"
+    />
     <div className="text-[11px] text-text-muted mt-2">{p.category_name || "Uncategorised"} · {Number(p.stock_available || 0)} available</div>
   </CardShell>;
 }

@@ -4,6 +4,7 @@ import { ArrowLeft, Plus, Boxes, Factory, Trash2 } from "lucide-react";
 import { useBreadcrumbs } from "@/stores/breadcrumbs";
 import { useAuthStore } from "@/stores/auth";
 import { Button, Card, MoneyText, Pill } from "@/components/ui/primitives";
+import { ExpandableText } from "@/components/ui/ExpandableText";
 import { formatDate } from "@/lib/format";
 import {
   ErrorState,
@@ -483,9 +484,10 @@ function VariantRow({
     <div className="rounded-[12px] border hairline p-3 bg-text-primary/[0.02] space-y-3">
       <div className="flex items-center gap-2">
         <div className="flex-1 min-w-0">
-          <div className="text-[13px] font-semibold truncate">
-            {v.variant_name ?? v.sku ?? "Variant"}
-          </div>
+          <ExpandableText
+            text={v.variant_name ?? v.sku ?? "Variant"}
+            className="text-[13px] font-semibold"
+          />
           <div className="font-mono text-[10.5px] text-text-faint">{v.sku}</div>
         </div>
         {v.is_default && (

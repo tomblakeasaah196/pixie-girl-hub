@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { formatDate } from "@/lib/format";
 import { Button, Card, MoneyText, Pill } from "@/components/ui/primitives";
+import { ExpandableText } from "@/components/ui/ExpandableText";
 import { cn } from "@/lib/cn";
 import {
   NumberField,
@@ -857,21 +858,27 @@ function VariantRow({
       <td className="py-2 font-mono text-[10.5px] text-text-faint">{v.sku}</td>
       <td className="py-2 text-[11px] max-w-[140px]">
         {canEdit ? (
-          <button
-            type="button"
-            onClick={() => {
-              setPickedBase(v.base_product_id ?? "");
-              setBaseOpen(true);
-            }}
-            title={v.base_product_name ?? "Set base"}
-            className="text-left text-accent-glow hover:underline truncate max-w-[140px] block"
-          >
-            {v.base_product_name ?? "Set base"}
-          </button>
+          <div className="flex flex-col items-start gap-1">
+            <ExpandableText
+              text={v.base_product_name ?? "Set base"}
+              className="max-w-[140px] text-left text-accent-glow"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                setPickedBase(v.base_product_id ?? "");
+                setBaseOpen(true);
+              }}
+              className="text-[10px] text-text-faint hover:text-accent-glow"
+            >
+              Change base
+            </button>
+          </div>
         ) : (
-          <span className="text-text-muted truncate max-w-[140px] block">
-            {v.base_product_name ?? "—"}
-          </span>
+          <ExpandableText
+            text={v.base_product_name ?? "—"}
+            className="max-w-[140px] text-left text-text-muted"
+          />
         )}
         <Modal
           open={baseOpen}

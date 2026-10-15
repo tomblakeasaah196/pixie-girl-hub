@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { X, Loader2, Check } from "lucide-react";
+import { ExpandableText } from "@/components/ui/ExpandableText";
 import { useStyledVariants, type StyledVariant } from "@/lib/catalogue";
 import { cn } from "@/lib/cn";
 
@@ -175,7 +176,10 @@ export function StyledVariantPicker({
             <div className="text-[10.5px] uppercase tracking-widest text-text-faint">
               Choose size &amp; lace
             </div>
-            <div className="truncate text-[14px] font-medium">{productName}</div>
+            <ExpandableText
+              text={productName}
+              className="text-[14px] font-medium"
+            />
           </div>
           <button
             onClick={onCancel}

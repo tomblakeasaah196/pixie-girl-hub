@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button, MoneyText } from "@/components/ui/primitives";
+import { ExpandableText } from "@/components/ui/ExpandableText";
 import { ErrorState, NumberField, Select } from "@/components/ui/controls";
 import { formatDateTime } from "@/lib/format";
 import { useAuthStore } from "@/stores/auth";
@@ -394,12 +395,15 @@ export function MovementDetailModal({
                         key={m.movement_id}
                         className="flex items-center justify-between gap-3 py-1.5 border-b hairline last:border-0"
                       >
-                        <span className="text-[12px] text-text-primary truncate min-w-0">
-                          {m.product_name ??
+                        <ExpandableText
+                          text={
+                            m.product_name ??
                             m.variant_name ??
                             m.sku ??
-                            m.movement_number}
-                        </span>
+                            m.movement_number
+                          }
+                          className="min-w-0 w-auto flex-1 text-[12px] text-text-primary"
+                        />
                         <span
                           className={`text-[12px] font-mono font-semibold shrink-0 ${
                             m.quantity > 0 ? "text-success" : "text-danger"

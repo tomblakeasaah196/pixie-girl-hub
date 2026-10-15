@@ -30,6 +30,7 @@ import {
   Skeleton,
 } from "@/components/ui/primitives";
 import { DataTable, type Column } from "@/components/ui/DataTable";
+import { ExpandableText } from "@/components/ui/ExpandableText";
 import { Drawer } from "@/components/ui/Drawer";
 import { Field } from "@/components/ui/Form";
 import { Select } from "@/components/ui/controls";
@@ -648,9 +649,10 @@ function PoLineCard({ line }: { line: import("./types").PoLine }) {
     <div className="glass rounded-xl p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="font-semibold text-[13px] truncate">
-            {line.description}
-          </div>
+          <ExpandableText
+            text={line.description}
+            className="text-[13px] font-semibold"
+          />
           {line.factory_order_ref && (
             <div className="font-mono text-[10px] text-text-faint mt-0.5">
               Ref: {line.factory_order_ref}
@@ -1115,10 +1117,11 @@ function CreatePoDrawer({
                   line receivable into stock without re-keying. */}
               <Field label="Base product">
                 {line.product_id || line.variant_id ? (
-                  <div className="flex items-center justify-between gap-2 h-[38px] px-[11px] rounded-[10px] bg-accent/[0.07] border border-accent/30">
-                    <span className="text-[13px] text-text-primary truncate">
-                      {line.product_label}
-                    </span>
+                  <div className="flex items-center justify-between gap-2 min-h-[38px] py-1 px-[11px] rounded-[10px] bg-accent/[0.07] border border-accent/30">
+                    <ExpandableText
+                      text={line.product_label ?? line.description ?? "Product"}
+                      className="min-w-0 w-auto flex-1 text-[13px] text-text-primary"
+                    />
                     <button
                       onClick={() => setLines((prev) => prev.map((l, j) => i === j ? { ...l, product_id: "", variant_id: "", product_label: "" } : l))}
                       className="text-[11px] text-text-muted hover:text-danger shrink-0"
@@ -1295,14 +1298,17 @@ function CreatePoDrawer({
                 key={i}
                 className="flex justify-between text-[13px] py-1.5 border-b hairline last:border-0"
               >
-                <span className="text-text-muted truncate mr-3">
-                  {l.description}
+                <div className="min-w-0 flex-1 mr-3">
+                  <ExpandableText
+                    text={l.description}
+                    className="text-[13px] text-text-muted"
+                  />
                   {!l.product_id && !l.variant_id && (
-                    <span className="text-[11px] text-warn ml-2">
+                    <span className="ml-2 text-[11px] text-warn">
                       not stock-linked
                     </span>
                   )}
-                </span>
+                </div>
                 <span className="font-mono shrink-0">
                   ×{l.qty} · {currency}{" "}
                   {(Number(l.unit_price) || 0).toFixed(2)}
@@ -1342,13 +1348,13 @@ function CarePoSkuPicker({ onPick }: { onPick: (variantId: string, label: string
       placeholder="Search item name / code / SKU" value={search} onChange={(e) => { setSearch(e.target.value); setProductId(null); }} />
     {search && !productId && <div className="max-h-36 overflow-y-auto space-y-1">
       {results.isLoading ? "Searching…" : results.isError ? "Could not search Care items" :
-        (results.data?.data ?? []).length ? (results.data?.data ?? []).map((p) => <button type="button" key={p.product_id} className="w-full text-left py-1 hover:text-accent-glow"
+        (results.data?.data ?? []).length ? (results.data?.data ?? []).map((p) => <button type="button" key={p.product_id} className="w-full text-left py-1 whitespace-normal break-words hover:text-accent-glow"
           onClick={() => setProductId(p.product_id)}>{p.name} · {p.product_code}</button>) : "No exact Care item found"}
     </div>}
     {productId && <div className="space-y-1 max-h-36 overflow-y-auto">
       <div className="text-text-muted">Choose the exact option to order:</div>
       {item.isLoading ? "Loading options…" : item.isError ? "Could not load SKUs" : (item.data?.variants ?? []).filter((v) => v.is_active).map((v) => <button type="button" key={v.variant_id}
-        className="w-full text-left py-1 font-mono hover:text-accent-glow"
+        className="w-full text-left py-1 font-mono whitespace-normal break-words hover:text-accent-glow"
         onClick={() => onPick(v.variant_id, `${item.data?.name} · ${v.variant_name} (${v.sku})`)}>{v.variant_name} · {v.sku}</button>)}
     </div>}
   </div>;

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Undo2, Trash2 } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/primitives";
+import { ExpandableText } from "@/components/ui/ExpandableText";
 import { formatDate } from "@/lib/format";
 import {
   useStyledTrash,
@@ -123,7 +124,10 @@ function Row({
   return (
     <div className="flex items-center gap-3 rounded-[11px] border border-line p-3">
       <div className="flex-1 min-w-0">
-        <div className="text-[13.5px] font-semibold truncate">{title}</div>
+        <ExpandableText
+          text={title}
+          className="text-[13.5px] font-semibold"
+        />
         <div className="text-[11px] text-text-faint font-mono truncate">
           {subtitle}
         </div>

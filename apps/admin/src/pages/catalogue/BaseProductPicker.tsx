@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { Search, Check, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { AnchoredDropdown } from "@/components/ui/AnchoredDropdown";
+import { ExpandableText } from "@/components/ui/ExpandableText";
 import { useBaseProducts, type BaseProduct } from "@/lib/catalogue";
 
 /**
@@ -44,9 +45,12 @@ export function BaseProductPicker({
   // Selected, not actively searching → show a confirmation chip.
   if (value && label && !open) {
     return (
-      <div className="flex items-center gap-2 h-[42px] px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line">
+      <div className="flex items-center gap-2 min-h-[42px] py-1.5 px-[13px] rounded-[11px] bg-text-primary/[0.04] border border-line">
         <Check className="w-4 h-4 text-success shrink-0" />
-        <span className="text-[13px] truncate min-w-0 flex-1">{label}</span>
+        <ExpandableText
+          text={label}
+          className="min-w-0 w-auto flex-1 text-[13px]"
+        />
         {!disabled && (
           <button
             onClick={() => setOpen(true)}
@@ -91,6 +95,7 @@ export function BaseProductPicker({
         open={open}
         onClose={() => setOpen(false)}
         maxHeight={300}
+        mobileMinWidth={360}
       >
         {q.trim().length === 0 ? (
           <div className="px-[13px] py-3 text-[12.5px] text-text-faint">
@@ -115,10 +120,10 @@ export function BaseProductPicker({
                 b.product_id === value && "bg-accent/[0.08]",
               )}
             >
-              <div className="text-[13px] text-text-primary truncate">
+              <div className="text-[13px] text-text-primary whitespace-normal break-words leading-snug">
                 {b.name}
               </div>
-              <div className="text-[11px] text-text-faint flex items-center gap-2">
+              <div className="text-[11px] text-text-faint flex flex-wrap items-center gap-x-2 gap-y-0.5">
                 <span className="font-mono text-accent-glow">
                   {b.product_code}
                 </span>

@@ -151,7 +151,7 @@ function VaultTab() {
     <div className="space-y-4">
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
-        <div className="flex items-center flex-1 min-w-[200px] rounded-[11px] bg-text-primary/[0.04] border border-line focus-within:border-accent/50 px-3">
+        <div className="flex items-center min-w-0 w-full sm:flex-1 sm:min-w-[200px] rounded-[11px] bg-text-primary/[0.04] border border-line focus-within:border-accent/50 px-3">
           <Search className="w-4 h-4 text-text-faint" />
           <input
             value={q}

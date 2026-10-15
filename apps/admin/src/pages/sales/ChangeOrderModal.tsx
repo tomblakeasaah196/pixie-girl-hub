@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Modal } from "@/components/ui/Modal";
+import { ExpandableText } from "@/components/ui/ExpandableText";
 import { Button, MoneyText, Pill } from "@/components/ui/primitives";
 import { NumberField, Select, Toggle } from "@/components/ui/controls";
 import { Field, TextInput, TextArea } from "@/components/ui/Form";
@@ -542,11 +543,12 @@ export function ChangeOrderModal({
                     />
                   )}
                 </div>
-                <div className="flex-1 min-w-[140px]">
-                  <div className="text-[13px] font-semibold truncate">
-                    {l.name}
-                  </div>
-                  <div className="text-[11px] text-text-faint truncate">
+                <div className="min-w-0 flex-1 basis-[140px]">
+                  <ExpandableText
+                    text={l.name}
+                    className="text-[13px] font-semibold"
+                  />
+                  <div className="text-[11px] text-text-faint whitespace-normal break-words">
                     {[l.variant_label, l.sku].filter(Boolean).join(" · ") || "—"}
                   </div>
                   {!l.line_id && (
@@ -845,7 +847,7 @@ export function ChangeOrderModal({
               </div>
 
               {/* Money, before → after */}
-              <div className="rounded-[11px] border border-line p-3 grid grid-cols-3 gap-3 text-[13px]">
+              <div className="rounded-[11px] border border-line p-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-[13px]">
                 <div>
                   <div className="micro">Was</div>
                   <MoneyText

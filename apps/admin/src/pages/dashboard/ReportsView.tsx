@@ -115,7 +115,7 @@ export function ReportsView({ canApprove, canExport }: { canApprove: boolean; ca
         <span className="font-mono text-[12px]">{run.run_number}</span>
         <Pill tone={STATUS_TONE[run.status]}>{run.status.replace(/_/g, " ")}</Pill>
       </div>
-      <div className="text-[13px] font-medium truncate">{run.template_name ?? "—"}</div>
+      <div className="text-[13px] font-medium whitespace-normal break-words">{run.template_name ?? "—"}</div>
       <div className="text-[11px] text-text-faint">{fmtPeriod(run)}</div>
       <div className="text-[11px] text-text-faint">{formatDateTime(run.created_at)}</div>
       <div className="flex items-center gap-1.5 pt-1" onClick={(e) => e.stopPropagation()}>
@@ -285,7 +285,7 @@ export function ReportsView({ canApprove, canExport }: { canApprove: boolean; ca
         mobileCard={(t) => (
           <div className="space-y-1.5">
             <div className="flex items-center justify-between gap-2">
-              <span className="font-medium text-[13px] truncate">{t.display_name}</span>
+              <span className="min-w-0 flex-1 font-medium text-[13px] whitespace-normal break-words">{t.display_name}</span>
               <Pill tone={t.is_active ? "success" : "neutral"}>
                 {t.is_active ? "active" : "paused"}
               </Pill>

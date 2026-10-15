@@ -102,7 +102,6 @@ function ScorecardCard({
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-full bg-accent/[0.1] grid place-items-center overflow-hidden shrink-0">
           {s.avatar_url ? (
-            // eslint-disable-next-line jsx-a11y/img-redundant-alt
             <img src={s.avatar_url} alt={s.full_name} className="w-full h-full object-cover" />
           ) : (
             <User className="w-4 h-4 text-accent-glow" />
@@ -174,7 +173,6 @@ export function StylistScorecardDetail({
       <div className="flex items-center gap-3">
         <div className="w-14 h-14 rounded-full bg-accent/[0.1] grid place-items-center overflow-hidden shrink-0">
           {data.avatar_url ? (
-            // eslint-disable-next-line jsx-a11y/img-redundant-alt
             <img src={data.avatar_url} alt={data.full_name} className="w-full h-full object-cover" />
           ) : (
             <User className="w-6 h-6 text-accent-glow" />

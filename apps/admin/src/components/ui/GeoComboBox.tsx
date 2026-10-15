@@ -61,6 +61,7 @@ export function GeoComboBox({
         open={open}
         onClose={() => setOpen(false)}
         maxHeight={240}
+        mobileMinWidth={280}
         className="dropglass"
       >
         {filtered.length > 0 ? (
@@ -73,7 +74,7 @@ export function GeoComboBox({
                 onSelect(item);
                 setOpen(false);
               }}
-              className="w-full px-4 py-2.5 text-left text-[13px] hover:bg-text-primary/[0.06] transition-colors"
+              className="w-full min-h-11 px-4 py-2.5 text-left text-[13px] whitespace-normal break-words hover:bg-text-primary/[0.06] transition-colors"
             >
               {item.name}
             </button>

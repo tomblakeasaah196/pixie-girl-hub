@@ -199,7 +199,7 @@ export function Select<T extends string>({
         onKeyDown={handleKey}
         className="w-full h-[42px] px-[11px] rounded-[11px] bg-text-primary/[0.04] border border-line text-text-primary outline-none focus-visible:border-accent/50 disabled:opacity-50 flex items-center justify-between gap-2 text-left transition-colors"
       >
-        <span className="truncate text-[13px]">{selected?.label ?? ""}</span>
+        <span className="min-w-0 flex-1 text-[13px] leading-tight line-clamp-2 whitespace-normal break-words">{selected?.label ?? ""}</span>
         <ChevronDown
           className={cn(
             "w-4 h-4 shrink-0 text-text-faint transition-transform duration-150",
@@ -212,6 +212,7 @@ export function Select<T extends string>({
         anchorRef={triggerRef}
         open={open}
         onClose={close}
+        mobileMinWidth={260}
         id={listboxId}
         role="listbox"
         aria-label={ariaLabel}
@@ -228,7 +229,7 @@ export function Select<T extends string>({
               close();
             }}
             className={cn(
-              "w-full px-[11px] py-[9px] text-[13px] text-left transition-colors hover:bg-text-primary/[0.06]",
+              "w-full min-h-11 px-[11px] py-2.5 text-[13px] text-left whitespace-normal break-words transition-colors hover:bg-text-primary/[0.06]",
               o.value === value
                 ? "text-accent-glow font-semibold"
                 : "text-text-primary",

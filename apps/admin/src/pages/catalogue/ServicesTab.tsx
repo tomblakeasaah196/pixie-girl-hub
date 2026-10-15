@@ -135,7 +135,7 @@ export function ServicesTab() {
             >
               <div className="flex items-start justify-between gap-2 mb-1">
                 <div className="min-w-0">
-                  <div className="font-display text-[15px] truncate">
+                  <div className="font-display text-[15px] whitespace-normal break-words">
                     {s.name}
                   </div>
                   {s.category && (

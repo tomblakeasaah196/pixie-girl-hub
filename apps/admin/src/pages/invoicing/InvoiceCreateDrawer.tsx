@@ -255,13 +255,13 @@ export function InvoiceCreateDrawer({
             {lines.map((l) => (
               <Card key={l.id} className="p-3">
                 <div className="flex items-start gap-2">
-                  <div className="flex-1 space-y-2">
+                  <div className="min-w-0 flex-1 space-y-2">
                     <TextInput
                       value={l.description}
                       onChange={(e) => updateLine(l.id, { description: e.target.value })}
                       placeholder="Description"
                     />
-                    <div className="grid grid-cols-4 gap-2">
+                    <div className="grid min-w-0 grid-cols-2 sm:grid-cols-4 gap-2">
                       <NumberField value={l.quantity} onChange={(v) => updateLine(l.id, { quantity: v })} placeholder="Qty" />
                       <NumberField value={l.unit_price_ngn} onChange={(v) => updateLine(l.id, { unit_price_ngn: v })} placeholder="Unit Price" suffix="NGN" />
                       <NumberField value={l.line_discount_ngn} onChange={(v) => updateLine(l.id, { line_discount_ngn: v })} placeholder="Discount" suffix="NGN" />

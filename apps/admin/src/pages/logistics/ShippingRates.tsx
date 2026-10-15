@@ -221,7 +221,7 @@ export function ShippingRatesTab() {
     <div className="space-y-5">
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap justify-between">
-        <div className="flex items-center flex-1 min-w-[200px] max-w-sm rounded-[11px] bg-text-primary/[0.04] border border-line focus-within:border-accent/50 px-3">
+        <div className="flex items-center min-w-0 w-full sm:flex-1 sm:min-w-[200px] max-w-sm rounded-[11px] bg-text-primary/[0.04] border border-line focus-within:border-accent/50 px-3">
           <Search className="w-4 h-4 text-text-faint" />
           <input
             value={search}
@@ -706,7 +706,7 @@ function ZoneEditorDrawer({ zone, onClose }: { zone: DeliveryZone | null; onClos
           <ZInput value={name} onChange={setName} placeholder="Lagos Mainland" />
         </Field>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Field label="Base fee (₦)">
             <ZInput value={fee} onChange={(v) => setFee(v.replace(/[^0-9.]/g, ""))} placeholder="3500" mono />
           </Field>
@@ -738,12 +738,12 @@ function ZoneEditorDrawer({ zone, onClose }: { zone: DeliveryZone | null; onClos
         ) : (
           <>
             {type === "radius" ? (
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <Field label="Centre lat">
-                  <ZInput value={centerLat} onChange={(v) => setCenterLat(v.replace(/[^0-9.\-]/g, ""))} placeholder="6.45" mono />
+                  <ZInput value={centerLat} onChange={(v) => setCenterLat(v.replace(/[^0-9.-]/g, ""))} placeholder="6.45" mono />
                 </Field>
                 <Field label="Centre lng">
-                  <ZInput value={centerLng} onChange={(v) => setCenterLng(v.replace(/[^0-9.\-]/g, ""))} placeholder="3.47" mono />
+                  <ZInput value={centerLng} onChange={(v) => setCenterLng(v.replace(/[^0-9.-]/g, ""))} placeholder="3.47" mono />
                 </Field>
                 <Field label="Radius km">
                   <ZInput value={radiusKm} onChange={(v) => setRadiusKm(v.replace(/[^0-9.]/g, ""))} placeholder="5" mono />

@@ -1395,7 +1395,7 @@ function WorkScheduleEditor({
           </div>
         ))}
       </div>
-      <div className="mt-3 grid grid-cols-3 gap-3 sm:max-w-md">
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3 sm:max-w-md">
         <Field label="Expected start">
           <TextInput
             type="time"

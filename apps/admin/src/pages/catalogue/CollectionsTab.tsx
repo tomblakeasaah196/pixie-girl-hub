@@ -139,7 +139,7 @@ export function CollectionsTab() {
                 className="w-full text-left disabled:cursor-default"
               >
                 <div className="flex items-start justify-between gap-2 mb-1">
-                  <div className="font-display text-[15px] truncate">
+                  <div className="min-w-0 flex-1 font-display text-[15px] whitespace-normal break-words">
                     {c.name}
                   </div>
                   <Pill

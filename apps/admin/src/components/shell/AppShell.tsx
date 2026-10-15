@@ -125,12 +125,12 @@ export function AppShell() {
   }, [setPaletteOpen]);
 
   return (
-    <div className="h-screen overflow-hidden">
+    <div className="h-screen supports-[height:100dvh]:h-dvh overflow-hidden">
       <Sidebar />
       <PullToRefresh
         onRefresh={softRefresh}
         className={cn(
-          "h-screen overflow-y-auto overflow-x-hidden transition-[margin] duration-300 ease-brand",
+          "h-screen supports-[height:100dvh]:h-dvh overflow-y-auto overflow-x-hidden transition-[margin] duration-300 ease-brand",
           isDesktop
             ? sidebarCollapsed
               ? "ml-[var(--side-c)]"
@@ -161,7 +161,7 @@ export function AppShell() {
           className={
             immersive
               ? "h-full"
-              : "mx-auto w-full max-w-[var(--content-max)] p-[26px_34px_120px] max-md:p-[20px_16px_96px]"
+              : "mx-auto w-full min-w-0 max-w-[var(--content-max)] p-[26px_34px_120px] max-md:p-[20px_16px_96px]"
           }
         >
           <PageTransition>

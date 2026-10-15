@@ -285,7 +285,7 @@ export function BaseProductWizard() {
                       cap size · {t.label}
                     </span>
                   </div>
-                  <div className="grid grid-cols-3 gap-2.5">
+                  <div className="grid min-w-0 grid-cols-1 sm:grid-cols-3 gap-2.5">
                     <Field label="Retail (₦)">
                       <NumberField
                         value={p.ngn}

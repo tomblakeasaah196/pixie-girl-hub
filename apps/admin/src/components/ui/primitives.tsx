@@ -83,7 +83,7 @@ export function Card({
 }) {
   return (
     <div
-      className={cn("glass rounded-[var(--radius)] shadow-glass", className)}
+      className={cn("glass min-w-0 rounded-[var(--radius)] shadow-glass", className)}
     >
       {children}
     </div>

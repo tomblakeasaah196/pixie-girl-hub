@@ -1236,7 +1236,6 @@ function AssignedRow({
       <div className="glass p-3 rounded-lg flex items-center gap-3">
         <div className="w-9 h-9 rounded-full bg-accent/[0.12] grid place-items-center overflow-hidden shrink-0">
           {current?.avatar_url ? (
-            // eslint-disable-next-line jsx-a11y/img-redundant-alt
             <img
               src={current.avatar_url}
               alt={current.full_name}
@@ -2459,7 +2458,7 @@ function CreateJobDrawer({
           </div>
         )}
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="label">Scheduled for</label>
             <input

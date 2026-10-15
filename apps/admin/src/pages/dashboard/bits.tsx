@@ -221,7 +221,7 @@ export function MobileRowCard({
   return (
     <div className="space-y-1 min-w-0">
       {primary && (
-        <div className="font-medium text-[13px] truncate">
+        <div className="font-medium text-[13px] whitespace-normal break-words">
           {fmtValue(row[primary.key], primary.format)}
         </div>
       )}
@@ -231,7 +231,7 @@ export function MobileRowCard({
             <span className="text-text-faint shrink-0">{c.label}:</span>
             <span
               className={cn(
-                "truncate",
+                "min-w-0 whitespace-normal break-words",
                 c.format === "money" && "font-mono tabular-nums",
               )}
             >

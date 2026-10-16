@@ -814,9 +814,17 @@ export default function ReceiveTab() {
               {recLines.map((line, idx) => (
                 <div
                   key={line.id}
-                  className="grid grid-cols-[1fr_110px_36px] gap-2 items-end"
+                  /* Mobile: the line stacks — the product owns the full width,
+                     quantity + delete share the row beneath it, so a long
+                     product name never widens the form. From `sm` up the same
+                     three cells sit back in one compact row (the wrapper turns
+                     into `contents` and hands them to the grid). `minmax(0,…)`
+                     is load-bearing: a bare `1fr` track has a content-based
+                     minimum, so one long name pushes the track — and the whole
+                     drawer — past the phone viewport into a sideways scrollbar. */
+                  className="flex flex-col gap-2 sm:grid sm:grid-cols-[minmax(0,1fr)_110px_36px] sm:items-end"
                 >
-                  <div>
+                  <div className="min-w-0">
                     {idx === 0 && (
                       <span className="text-[10px] text-text-faint uppercase">
                         {line.catalogue_role === "retail" ? "Exact Care SKU" : "Base Product"}
@@ -825,7 +833,7 @@ export default function ReceiveTab() {
                     {line.po_line_id ? (
                       /* A PO line's product is fixed — swapping it would
                          break the link back to what was ordered. */
-                      <div className="min-h-[42px] flex flex-col justify-center px-3 py-1 rounded-[11px] bg-accent/[0.06] border border-accent/25">
+                      <div className="min-w-0 min-h-[42px] flex flex-col justify-center px-3 py-1 rounded-[11px] bg-accent/[0.06] border border-accent/25">
                         <ExpandableText
                           text={line.label ?? "Product"}
                           className="text-[13px] text-text-primary leading-tight"
@@ -848,28 +856,31 @@ export default function ReceiveTab() {
                       {vaultAccess.data?.can_see !== true && <p className="text-danger text-[11px]">Cost Vault access required to receive Care SKU</p>}
                     </div>}
                   </div>
-                  <div>
-                    {idx === 0 && (
-                      <span className="text-[10px] text-text-faint uppercase">
-                        Quantity
-                      </span>
-                    )}
-                    <NumberField
-                      value={line.quantity}
-                      onChange={(v) => updateRecLine(line.id, "quantity", v)}
-                      allowDecimal={false}
-                      placeholder="0"
-                    />
-                  </div>
-                  <div className={idx === 0 ? "mt-3" : ""}>
-                    <button
-                      type="button"
-                      onClick={() => removeRecLine(line.id)}
-                      disabled={recLines.length <= 1}
-                      className="grid place-items-center w-[36px] h-[42px] rounded-[11px] text-text-faint hover:text-danger hover:bg-danger/10 transition-colors disabled:opacity-30"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                  <div className="flex items-end gap-2 sm:contents">
+                    <div className="min-w-0 flex-1">
+                      {idx === 0 && (
+                        <span className="text-[10px] text-text-faint uppercase">
+                          Quantity
+                        </span>
+                      )}
+                      <NumberField
+                        value={line.quantity}
+                        onChange={(v) => updateRecLine(line.id, "quantity", v)}
+                        allowDecimal={false}
+                        placeholder="0"
+                      />
+                    </div>
+                    <div className="shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => removeRecLine(line.id)}
+                        disabled={recLines.length <= 1}
+                        className="grid place-items-center w-[36px] h-[42px] rounded-[11px] text-text-faint hover:text-danger hover:bg-danger/10 transition-colors disabled:opacity-30"
+                        aria-label={`Remove receipt line ${idx + 1}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
